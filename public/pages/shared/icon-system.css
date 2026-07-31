@@ -1,0 +1,96 @@
+.tj-icon-source,
+.tj-icon,
+svg.lucide {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  flex: 0 0 20px;
+  vertical-align: middle;
+  color: currentColor;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  shape-rendering: geometricPrecision;
+}
+
+.sidebar nav svg.lucide,
+.side-link svg.lucide,
+.menu-link svg.lucide,
+.nav-link svg.lucide {
+  width: 23px;
+  height: 23px;
+  min-width: 23px;
+  flex-basis: 23px;
+  stroke-width: 2.15;
+  filter: drop-shadow(0 0 7px rgba(var(--accent-rgb, var(--ps-accent-rgb, 63, 182, 92)), .18));
+}
+
+.session-entry-action svg.lucide,
+.session-primary svg.lucide,
+.session-quiet svg.lucide,
+.swe-modal button svg.lucide,
+.sw-modal button svg.lucide,
+.sw-workspace button svg.lucide {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex-basis: 18px;
+}
+
+.session-entry-action,
+.session-back,
+.sw-timeline-nav button,
+.swc-ai-button,
+.swc-ai-toggle,
+.swc-add-scenario,
+.swe-upload-actions button,
+.swe-ai-start button,
+.swe-analysis-top button,
+.sw-stage,
+.sw-scenario-flags button,
+.swc-entry-note > span,
+.swc-related > span,
+.swe-related h4,
+.swe-outcome,
+.swe-lesson,
+.swe-carry h4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tj-icon-loading svg.lucide,
+svg.lucide-loader-circle {
+  animation: tj-icon-spin .85s linear infinite;
+}
+
+@keyframes tj-icon-spin {
+  to { transform: rotate(360deg); }
+}
+
+.swc-type-icon svg.lucide,
+.swe-upload-icon svg.lucide {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  flex-basis: 24px;
+  stroke-width: 2.1;
+}
+
+.header-settings svg.lucide,
+.settings-button svg.lucide,
+.settings-btn svg.lucide {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  flex-basis: 24px;
+}
+
+[dir="rtl"] svg.lucide-arrow-left,
+[dir="rtl"] svg.lucide-chevron-left,
+[dir="rtl"] svg.lucide-arrow-right,
+[dir="rtl"] svg.lucide-chevron-right {
+  transform: scaleX(-1);
+}
