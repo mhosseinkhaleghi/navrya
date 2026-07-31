@@ -1,0 +1,2 @@
+# navrya
+ai trading journal 
