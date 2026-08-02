@@ -5,12 +5,20 @@
     hunter: { title: 'TradeJournal · Hunter', source: pagePrefix + 'hunter/index.html' },
     engineer: { title: 'TradeJournal · Engineer', source: pagePrefix + 'engineer/index.html' },
     commander: { title: 'TradeJournal · Commander', source: pagePrefix + 'commander/index.html' },
-    sage: { title: 'TradeJournal · Market Sage', source: pagePrefix + 'sage/index.html' }
+    sage: { title: 'TradeJournal · Market Sage', source: pagePrefix + 'sage/index.html' },
+    admin: { title: 'TradeJournal · Admin', source: pagePrefix + 'admin/index.html' }
   };
 
+  // The admin page is a standalone top-level page like select/, not nested in a character
+  // iframe - it needs its own branch here, since a character page's own in-iframe hash change
+  // (e.g. a plain <a href="#/admin">) only ever affects that iframe's own document, never this
+  // outer shell's real hash. Reaching this route from inside a character page requires
+  // target="_top" on the link (see the Settings-page admin link), not a bare anchor.
   function pageFromHash() {
-    const match = window.location.hash.match(/^#\/dashboard\/(hunter|engineer|commander|sage)$/);
-    return match ? match[1] : 'select';
+    const dash = window.location.hash.match(/^#\/dashboard\/(hunter|engineer|commander|sage)$/);
+    if (dash) return dash[1];
+    if (window.location.hash === '#/admin') return 'admin';
+    return 'select';
   }
 
   function App() {

@@ -21,28 +21,32 @@
     patternReport: 'گزارش این الگو', detections: 'تعداد تشخیص', averageCompletion: 'میانگین تکمیل مراحل',
     occurrenceRate: 'نرخ تحقق', linkedTrades: 'معاملات لینک‌شده', winRate: 'نرخ برد', averageRr: 'میانگین RR',
     detectionFunnel: 'قیف تشخیص تا تحقق', detected: 'تشخیص‌شده', stagesCompleted: 'مراحل تکمیل‌شده', occurred: 'تحقق‌یافته',
-    insufficientData: 'داده کافی نیست', publicPattern: 'این الگو را عمومی نمایش بده', sharingSoon: 'این قابلیت به‌زودی فعال می‌شود — اشتراک‌گذاری در کامیونیتی در نسخه‌های بعدی اضافه خواهد شد.'
+    insufficientData: 'داده کافی نیست', publicPattern: 'این الگو را عمومی نمایش بده', sharingSoon: 'بازارچه در دسترس نیست.',
+    notListedYet: 'هنوز در بازارچه ثبت نشده است.', listedBadge: 'در بازارچه ثبت شده', editListing: 'ویرایش آگهی', refreshEvidence: 'به‌روزرسانی شواهد'
   });
   Object.assign(messages.ar, {
     details: 'التفاصيل', report: 'التقرير', sharing: 'المشاركة', profileBack: 'العودة إلى قائمة الأنماط',
     patternReport: 'تقرير هذا النمط', detections: 'عدد الاكتشافات', averageCompletion: 'متوسط اكتمال المراحل',
     occurrenceRate: 'معدل التحقق', linkedTrades: 'الصفقات المرتبطة', winRate: 'نسبة الفوز', averageRr: 'متوسط RR',
     detectionFunnel: 'قمع الاكتشاف إلى التحقق', detected: 'مكتشف', stagesCompleted: 'المراحل المكتملة', occurred: 'متحقق',
-    insufficientData: 'لا توجد بيانات كافية', publicPattern: 'عرض هذا النمط للعامة', sharingSoon: 'ستتوفر هذه الميزة قريبًا — ستضاف المشاركة في المجتمع في إصدار لاحق.'
+    insufficientData: 'لا توجد بيانات كافية', publicPattern: 'عرض هذا النمط للعامة', sharingSoon: 'السوق غير متاح حالياً.',
+    notListedYet: 'لم يُدرج في السوق بعد.', listedBadge: 'مُدرج في السوق', editListing: 'تعديل الإعلان', refreshEvidence: 'تحديث البيانات'
   });
   Object.assign(messages.en, {
     details: 'Details', report: 'Report', sharing: 'Sharing', profileBack: 'Back to pattern list',
     patternReport: 'Pattern report', detections: 'Detections', averageCompletion: 'Average stage completion',
     occurrenceRate: 'Occurrence rate', linkedTrades: 'Linked trades', winRate: 'Win rate', averageRr: 'Average RR',
     detectionFunnel: 'Detection to occurrence funnel', detected: 'Detected', stagesCompleted: 'Stages completed', occurred: 'Occurred',
-    insufficientData: 'Insufficient data', publicPattern: 'Display this pattern publicly', sharingSoon: 'This feature is coming soon — community sharing will be added in a later release.'
+    insufficientData: 'Insufficient data', publicPattern: 'Display this pattern publicly', sharingSoon: 'Marketplace is unavailable right now.',
+    notListedYet: 'Not listed on the marketplace yet.', listedBadge: 'Listed on marketplace', editListing: 'Edit listing', refreshEvidence: 'Refresh evidence'
   });
   Object.assign(messages.es, {
     details: 'Detalles', report: 'Informe', sharing: 'Compartir', profileBack: 'Volver a la lista de patrones',
     patternReport: 'Informe del patrón', detections: 'Detecciones', averageCompletion: 'Progreso medio de etapas',
     occurrenceRate: 'Tasa de cumplimiento', linkedTrades: 'Operaciones vinculadas', winRate: 'Tasa de acierto', averageRr: 'RR medio',
     detectionFunnel: 'Embudo de detección a cumplimiento', detected: 'Detectado', stagesCompleted: 'Etapas completadas', occurred: 'Cumplido',
-    insufficientData: 'Datos insuficientes', publicPattern: 'Mostrar este patrón públicamente', sharingSoon: 'Esta función estará disponible pronto; compartir en la comunidad se añadirá más adelante.'
+    insufficientData: 'Datos insuficientes', publicPattern: 'Mostrar este patrón públicamente', sharingSoon: 'El mercado no está disponible en este momento.',
+    notListedYet: 'Aún no está en el mercado.', listedBadge: 'Publicado en el mercado', editListing: 'Editar anuncio', refreshEvidence: 'Actualizar evidencia'
   });
 
   function language() {

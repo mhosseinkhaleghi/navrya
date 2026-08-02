@@ -37,6 +37,10 @@
     Pattern: 'Pattern',
     PatternStage: 'PatternStage',
     PatternScreenshot: 'PatternScreenshot',
-    PatternChatMessage: 'PatternChatMessage'
+    PatternChatMessage: 'PatternChatMessage',
+    // A4 process-registry allowlist: fields the global AI dock may suggest into while a
+    // pattern's editor is open. Stage text isn't included - stages are an ordered array,
+    // and generateStages()/chat() already have their own dedicated stage-suggestion path.
+    patternStagePaths: ['name', 'description']
   });
 }());

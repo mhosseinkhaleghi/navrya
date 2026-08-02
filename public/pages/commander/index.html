@@ -19,7 +19,15 @@
     <link rel="stylesheet" href="../shared/pattern-registry.css" />
     <link rel="stylesheet" href="../shared/strategy-education.css" />
     <link rel="stylesheet" href="../shared/strategy-education-extras.css" />
+    <link rel="stylesheet" href="../shared/dev-user-switcher.css" />
+    <link rel="stylesheet" href="../shared/community.css" />
+    <link rel="stylesheet" href="../shared/marketplace.css" />
+    <link rel="stylesheet" href="../shared/messages.css" />
     <link rel="stylesheet" href="../shared/trade-system.css" />
+    <link rel="stylesheet" href="../shared/psychology.css" />
+    <link rel="stylesheet" href="../shared/mental-health.css" />
+    <link rel="stylesheet" href="../shared/ai-settings.css" />
+    <link rel="stylesheet" href="../shared/global-ai-dock.css" />
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -114,8 +122,8 @@
             <a href="#strategies"><svg class="icon"><use href="#i-strategy-clean" /></svg><span data-i18n="strategies">استراتژی‌ها</span></a>
             <a href="#mindset"><svg class="icon"><use href="#i-mind-clean" /></svg><span data-i18n="psychology">روانشناسی</span></a>
             <a href="#subscription"><svg class="icon"><use href="#i-crown-clean" /></svg><span data-i18n="subscription">اشتراک</span></a>
-            <a href="#assistant" id="assistantNav"><svg class="icon"><use href="#i-ai-clean" /></svg><span data-i18n="ai">هوش مصنوعی</span></a>
-            <a href="#forum"><svg class="icon"><use href="#i-forum-clean" /></svg><span data-i18n="forum">تالار گفتگو</span></a>
+            <a href="#ai-settings" id="assistantNav"><svg class="icon"><use href="#i-ai-clean" /></svg><span data-i18n="ai">هوش مصنوعی</span></a>
+            <a href="#community"><svg class="icon"><use href="#i-forum-clean" /></svg><span data-i18n="forum">تالار گفتگو</span></a>
             <a href="#settings" data-panel-route="settings"><svg class="icon"><use href="#i-gear" /></svg><span data-panel-label>Settings</span></a>
           </nav>
           <blockquote data-i18n="hunterQuote">فرمانده عجله نمی‌کند؛
@@ -189,18 +197,13 @@
         </section>
       </div>
     </main>
-    <button class="ai-chat-fab" id="openChat" type="button" aria-label="گفتگو با هوش مصنوعی"><svg class="icon"><use href="#i-chat-clean" /></svg><span data-i18n="chatWithAI">گفتگو با هوش مصنوعی</span></button>
-    <section class="ai-chat-panel" id="chatPanel" hidden aria-label="گفتگو با هوش مصنوعی">
-      <header><div class="ai-orb"><svg class="icon"><use href="#i-ai-clean" /></svg></div><div><b data-i18n="aiAssistant">راهنمای هوش مصنوعی</b><small data-i18n="frontendOnly">نسخهٔ نمایشی · بدون اتصال زنده</small></div><button id="closeChat" type="button" aria-label="بستن">×</button></header>
-      <div class="chat-messages" id="chatMessages"><div class="chat-bubble assistant" data-i18n="chatWelcome">سلام شکارچی؛ برای تحلیل سشن بعدی آماده‌ام.</div></div>
-      <form id="chatForm"><input id="chatInput" data-i18n-placeholder="chatPlaceholder" placeholder="پیامت را بنویس..." autocomplete="off" /><button type="submit" aria-label="ارسال"><svg class="icon"><use href="#i-send-clean" /></svg></button></form>
-    </section>
     <div class="toast" role="status" aria-live="polite"></div>
     <script src="app.js"></script>
     <script src="../shared/vendor/lucide.min.js"></script>
     <script src="../shared/icon-system.js"></script>
     <script src="../shared/panel-system.js"></script>
     <script src="../shared/session-system.js"></script>
+    <script src="../shared/ai-process-registry.js"></script>
     <script src="../shared/session-signature.types.js"></script>
     <script src="../shared/session-signature-store.js"></script>
     <script src="../shared/session-signature-engine.js"></script>
@@ -215,9 +218,18 @@
     <script src="../shared/strategy-education.types.js"></script>
     <script src="../shared/strategy-education-store.js"></script>
     <script src="../shared/strategy-education-i18n.js"></script>
+    <script src="../shared/dev-user-switcher.js"></script>
+    <script src="../shared/admin-heartbeat.js"></script>
+    <script src="../shared/community.types.js"></script>
+    <script src="../shared/community-i18n.js"></script>
+    <script src="../shared/community-store.js"></script>
+    <script src="../shared/marketplace-ui.js"></script>
+    <script src="../shared/messages-ui.js"></script>
+    <script src="../shared/community-ui.js"></script>
     <script src="../shared/trade.types.js"></script>
     <script src="../shared/trade-i18n.js"></script>
     <script src="../shared/trade-store.js"></script>
+    <script src="../shared/psychology-store.js"></script>
     <script src="../shared/trade-calculator.js"></script>
     <script src="../shared/session-card-updates.js"></script>
     <script src="../shared/session-entry-flow.js"></script>
@@ -228,7 +240,28 @@
     <script src="../shared/trade-ui.js"></script>
     <script src="../shared/trade-open-positions.js"></script>
     <script src="../shared/trade-reports.js"></script>
+    <script src="../shared/psychology-ui.js"></script>
+    <script src="../shared/mental-health.types.js"></script>
+    <script src="../shared/mental-health-i18n.js"></script>
+    <script src="../shared/mental-health-safety.js"></script>
+    <script src="../shared/mental-health-store.js"></script>
+    <script src="../shared/mental-health-collector.js"></script>
+    <script src="../shared/mental-health-cycle.js"></script>
+    <script src="../shared/mental-health-ai.js"></script>
+    <script src="../shared/ai-i18n.js"></script>
+    <script src="../shared/ai-settings-store.js"></script>
+    <script src="../shared/ai-usage-store.js"></script>
+    <script src="../shared/mental-health-cards.js"></script>
+    <script src="../shared/mental-health-report.js"></script>
+    <script src="../shared/mental-health-scheduler.js"></script>
+    <script src="../shared/mental-health-charts.js"></script>
+    <script src="../shared/mental-health-ui.js"></script>
+    <script src="../shared/mental-health-continuous.js"></script>
+    <script src="../shared/mental-health-intake.js"></script>
+    <script src="../shared/mental-health-profile-page.js"></script>
     <script src="../shared/pattern-registry.js"></script>
     <script src="../shared/strategy-education.js"></script>
+    <script src="../shared/ai-settings-ui.js"></script>
+    <script src="../shared/global-ai-dock.js"></script>
   </body>
 </html>

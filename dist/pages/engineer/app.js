@@ -157,37 +157,6 @@ document.addEventListener('click', (event) => {
   }
 });
 
-const chatPanel = document.querySelector('#chatPanel');
-const openChat = document.querySelector('#openChat');
-const closeChat = document.querySelector('#closeChat');
-const assistantNav = document.querySelector('#assistantNav');
-const chatForm = document.querySelector('#chatForm');
-const chatInput = document.querySelector('#chatInput');
-const chatMessages = document.querySelector('#chatMessages');
-
-function setChatOpen(isOpen) {
-  chatPanel.hidden = !isOpen;
-  if (isOpen) chatInput.focus();
-}
-
-openChat.addEventListener('click', () => setChatOpen(true));
-closeChat.addEventListener('click', () => setChatOpen(false));
-assistantNav.addEventListener('click', (event) => {
-  event.preventDefault();
-  setChatOpen(true);
-});
-chatForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const message = chatInput.value.trim();
-  if (!message) return;
-  const userBubble = document.createElement('div');
-  userBubble.className = 'chat-bubble user';
-  userBubble.textContent = message;
-  chatMessages.append(userBubble);
-  chatInput.value = '';
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-});
-
 window.setInterval(() => {
   quoteIndex += 1;
   updateQuote(true);

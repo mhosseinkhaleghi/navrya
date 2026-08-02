@@ -106,6 +106,29 @@
     return card;
   }
 
+  // The cool-down timer here is only a *reflection* of the one started from the unified Post-Trade
+  // Reflection popup (mental-health-continuous.js), never a second, independently-triggered nudge.
+  function cooldownCard() {
+    var psych = window.TradeJournalPsychologyStore, mh = window.TradeJournalMentalHealthStore;
+    if (!psych || !mh) return null;
+    var settings = psych.settings().postTradeReflection;
+    if (!settings || !settings.enabled) return null;
+    var cooldown = mh.activeCooldownTimer(mh.load(), settings);
+    if (!cooldown.active) return null;
+    var card = el('div', 'tj-cooldown-card');
+    var text = el('div');
+    var minutes = Math.max(1, Math.ceil(cooldown.remainingMs / 60000));
+    text.append(
+      el('strong', '', i18n.t('psyCooldownTitle')),
+      el('small', '', i18n.t('psyCooldownHint')),
+      el('small', '', i18n.t('psyCooldownRemaining', { minutes: i18n.number(minutes) }))
+    );
+    var dismiss = button(i18n.t('psyCooldownDismiss'), 'ghost', 'x');
+    dismiss.onclick = function () { mh.dismissCooldownTimer(mh.load()); refresh(); };
+    card.append(text, dismiss);
+    return card;
+  }
+
   function render(options) {
     var opts = options || {};
     var wrap = el('section', 'tj-open-positions-module' + (opts.compact ? ' compact' : ''));
@@ -117,6 +140,8 @@
     title.append(icon('radio-tower'), el('strong', '', i18n.t('openTrades')));
     head.append(title, el('span', '', i18n.number(values.length)));
     wrap.append(head);
+    var cooldown = cooldownCard();
+    if (cooldown) wrap.append(cooldown);
 
     var list = el('div', 'tj-op-list');
     if (!values.length) {
@@ -147,6 +172,7 @@
 
   window.addEventListener('tradejournal:trades-changed', refresh);
   new MutationObserver(refresh).observe(document.documentElement, { attributes: true, attributeFilter: ['lang', 'dir'] });
+  if (window.setInterval) window.setInterval(refresh, 15000);
   window.TradeJournalOpenPositionsModule = { render: render, mount: mount, refresh: refresh, listActive: listActive };
 
   if (layer) {

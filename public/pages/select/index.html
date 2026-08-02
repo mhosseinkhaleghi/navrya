@@ -94,7 +94,18 @@
         </footer>
       </section>
     </main>
+    <div class="name-step-overlay" id="nameStepOverlay" hidden>
+      <div class="name-step-card" role="dialog" aria-modal="true">
+        <button type="button" class="name-step-close" id="nameStepClose" aria-label="Close">&times;</button>
+        <h2 data-i18n="nameStepTitle">What should we call you?</h2>
+        <p data-i18n="nameStepHint">A temporary display name for testing — not real registration yet.</p>
+        <input type="text" id="nameStepInput" data-i18n-placeholder="nameStepPlaceholder" placeholder="Display name" />
+        <p class="name-step-error" id="nameStepError"></p>
+        <button type="button" class="name-step-submit" id="nameStepSubmit" data-i18n="nameStepSubmit">Continue</button>
+      </div>
+    </div>
     <div class="toast" id="toast" role="status"></div>
+    <script src="../shared/dev-user-switcher.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

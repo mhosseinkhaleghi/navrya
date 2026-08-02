@@ -62,11 +62,11 @@
     var payload = await context(pattern);
     try {
       var result = await request('/api/patterns/generate-stages', payload);
-      return { stages: stageObjects(result.stages), provider: result.provider || 'openai', local: false };
+      return { stages: stageObjects(result.stages), provider: result.provider || 'openai', local: false, usage: result.usage || null };
     } catch (error) {
       var fallback = local[i18n.language()] || local.en;
       var existing = pattern.stages.filter(function (item) { return item.text.trim(); }).map(function (item) { return item.text; });
-      return { stages: stageObjects(existing.length ? existing : fallback.stages), provider: 'local-fallback', local: true, error: error };
+      return { stages: stageObjects(existing.length ? existing : fallback.stages), provider: 'local-fallback', local: true, error: error, usage: null };
     }
   }
 
@@ -76,11 +76,11 @@
     payload.chatHistory = (pattern.chatHistory || []).slice(-20).map(function (item) { return { role: item.role, content: item.content }; });
     try {
       var result = await request('/api/patterns/chat', payload);
-      return { reply: result.reply, suggestedStages: stageObjects(result.suggestedStages || []), provider: result.provider || 'openai', local: false };
+      return { reply: result.reply, suggestedStages: stageObjects(result.suggestedStages || []), provider: result.provider || 'openai', local: false, usage: result.usage || null };
     } catch (error) {
       var fallback = local[i18n.language()] || local.en;
       var asksForStages = /مرحله|مراحل|stage|stages|مرحلة|مراحل|etapa|etapas|ترتیب|order/i.test(message);
-      return { reply: fallback.reply, suggestedStages: asksForStages ? stageObjects(pattern.stages.length ? pattern.stages : fallback.stages) : [], provider: 'local-fallback', local: true, error: error };
+      return { reply: fallback.reply, suggestedStages: asksForStages ? stageObjects(pattern.stages.length ? pattern.stages : fallback.stages) : [], provider: 'local-fallback', local: true, error: error, usage: null };
     }
   }
 

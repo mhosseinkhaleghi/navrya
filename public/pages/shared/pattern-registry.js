@@ -264,6 +264,18 @@
     name.input.oninput = function () { pattern.name = name.input.value; saveSoon(pattern); var card = form.closest('.pr-pattern-card'); var title = card && card.querySelector('.pr-pattern-copy strong'); if (title) title.textContent = pattern.name || i18n.t('unnamed'); var profileTitle = document.querySelector('.pr-profile-title strong'); if (profileTitle) profileTitle.textContent = pattern.name || i18n.t('unnamed'); };
     var description = inputField('description', pattern.description, 'textarea'); description.input.placeholder = i18n.t('descriptionPlaceholder'); description.input.oninput = function () { pattern.description = description.input.value; saveSoon(pattern); };
     description.wrap.append(el('small', 'pr-help', i18n.t('descriptionHelp'))); fields.append(name.wrap, description.wrap); form.append(fields, thresholdEditor(pattern), stageList(pattern), gallery(pattern));
+    var patternRegistry = window.TradeJournalAIProcessRegistry, patternTypes = window.TradeJournalPatternTypes;
+    if (patternRegistry && patternTypes) patternRegistry.register('pattern-editor-' + pattern.id, {
+      allowlist: (patternTypes.patternStagePaths || []).slice(),
+      isOpen: function () { return document.body.contains(form); },
+      activeStep: function () { return 'details'; },
+      applyValue: function (path, value) {
+        var target = path === 'name' ? name : path === 'description' ? description : null;
+        if (!target) return;
+        target.input.value = value;
+        target.input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
     var aiRow = el('div', 'pr-ai-row'); var generate = control(i18n.t('writeWithAI'), 'pr-ai-button', 'sparkles');
     generate.onclick = async function () {
       generate.disabled = true; generate.classList.add('loading'); generate.replaceChildren(icon('loader-circle'), document.createTextNode(i18n.t('generating')));
@@ -397,7 +409,47 @@
   }
 
   function sharingView(pattern) {
-    var section = el('section', 'pr-sharing'); var row = el('label', 'pr-sharing-toggle'); var input = document.createElement('input'); input.type = 'checkbox'; input.checked = Boolean(pattern.isPublic); input.onchange = function () { pattern.isPublic = input.checked; store.save(pattern); toast(i18n.t('saved')); }; row.append(input, el('span', '', i18n.t('publicPattern'))); section.append(row, el('p', '', i18n.t('sharingSoon'))); return section;
+    var section = el('section', 'pr-sharing'); var row = el('label', 'pr-sharing-toggle'); var input = document.createElement('input'); input.type = 'checkbox'; input.checked = Boolean(pattern.isPublic);
+    var marketplace = window.TradeJournalMarketplace, communityStore = window.TradeJournalCommunityStore;
+    var status = el('div', 'pr-marketplace-status');
+
+    // Real evidence only - the same numbers the report tab already shows, never fabricated.
+    function evidenceSnapshot() {
+      var report = store.scenarioReport(pattern.id);
+      return { successRatePercent: report.hasData ? report.occurrenceRate : null, sampleSize: report.hasData ? report.detectionCount : 0, evidenceAsOf: new Date().toISOString() };
+    }
+    function buildContent(previewCount) {
+      return {
+        previewContent: { name: pattern.name, description: pattern.description, stages: pattern.stages.slice(0, previewCount) },
+        fullContent: { name: pattern.name, description: pattern.description, stages: pattern.stages, completionThreshold: pattern.completionThreshold }
+      };
+    }
+    function openFlow(existingListing) {
+      if (!marketplace) return;
+      marketplace.openPublishFlow({
+        type: 'pattern', sourceId: pattern.id, suggestedTitle: pattern.name, evidence: evidenceSnapshot(),
+        maxPreviewItems: pattern.stages.length, buildContent: buildContent, existingListing: existingListing || null, onPublished: paintStatus
+      });
+    }
+    function paintStatus() {
+      if (!marketplace) { status.replaceChildren(el('p', '', i18n.t('sharingSoon'))); return; }
+      marketplace.findListingBySource(pattern.id).then(function (listing) {
+        status.replaceChildren();
+        if (!listing) { status.append(el('p', 'tj-hint', i18n.t('notListedYet'))); return; }
+        status.append(el('span', 'pr-marketplace-badge', i18n.t('listedBadge')));
+        var editBtn = control(i18n.t('editListing'), 'tj-secondary'); editBtn.onclick = function () { openFlow(listing); };
+        var refreshBtn = control(i18n.t('refreshEvidence'), 'tj-secondary'); refreshBtn.onclick = function () {
+          var evidence = evidenceSnapshot();
+          communityStore.updateListing(listing.id, evidence).then(function () { toast(i18n.t('saved')); paintStatus(); });
+        };
+        status.append(editBtn, refreshBtn);
+      });
+    }
+    input.onchange = function () { pattern.isPublic = input.checked; store.save(pattern); toast(i18n.t('saved')); if (input.checked) openFlow(); };
+    row.append(input, el('span', '', i18n.t('publicPattern')));
+    section.append(row, status);
+    paintStatus();
+    return section;
   }
 
   function openProfile(patternId, tab) {

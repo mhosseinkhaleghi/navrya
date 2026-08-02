@@ -1,0 +1,27 @@
+.tj-community-tabs{display:flex;gap:8px;margin:10px 0 18px;flex-wrap:wrap}
+.tj-community-tabs button{display:flex;align-items:center;gap:7px;padding:8px 14px;color:inherit;background:rgba(255,255,255,.03);border:1px solid var(--ps-line);border-radius:9px;font-family:var(--ui-font);font-size:.85rem;cursor:pointer}
+.tj-community-tabs button.active{color:var(--ps-accent,#3ad66f);border-color:var(--ps-accent,#3ad66f);background:color-mix(in srgb,var(--ps-accent,#3ad66f) 9%,transparent)}
+.tj-community-body{max-width:720px}
+
+.tj-feed-composer{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--ps-line);border-radius:12px;margin-bottom:16px}
+.tj-feed-composer textarea{resize:vertical;min-height:56px;border:1px solid var(--ps-line);border-radius:9px;padding:8px 10px;color:inherit;background:rgba(255,255,255,.03);font-family:var(--ui-font);font-size:.88rem}
+.tj-feed-composer-thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.tj-feed-composer-thumb{position:relative}
+.tj-feed-composer-thumb img{width:52px;height:52px;object-fit:cover;border-radius:8px}
+.tj-feed-composer-thumb .tj-icon-button{position:absolute;top:-6px;inset-inline-end:-6px;width:20px;height:20px}
+.tj-feed-composer-actions{display:flex;align-items:center;gap:8px;justify-content:space-between}
+
+.tj-feed-list{display:flex;flex-direction:column;gap:14px}
+.tj-post-card{padding:14px;border:1px solid var(--ps-line);border-radius:12px}
+.tj-post-head{display:flex;align-items:center;gap:8px}
+.tj-post-head .tj-icon-button{margin-inline-start:auto;width:26px;height:26px}
+.tj-post-content{margin:8px 0;font-size:.9rem;line-height:1.7}
+.tj-post-image{max-width:100%;border-radius:10px;margin-top:6px;display:block}
+.tj-post-comments{margin-top:10px;padding-top:10px;border-top:1px solid var(--ps-line)}
+.tj-comment-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.tj-comment-row{display:flex;align-items:center;gap:8px;font-size:.82rem}
+.tj-comment-row .tj-icon-button{margin-inline-start:auto;width:22px;height:22px}
+.tj-comment-form{display:flex;gap:8px}
+.tj-comment-form input{flex:1;min-width:0;border:1px solid var(--ps-line);border-radius:9px;padding:6px 10px;color:inherit;background:rgba(255,255,255,.03);font-family:var(--ui-font);font-size:.82rem}
+
+.tj-report-modal textarea{width:100%;border:1px solid var(--ps-line);border-radius:9px;padding:8px 10px;color:inherit;background:rgba(255,255,255,.03);font-family:var(--ui-font);font-size:.85rem;margin-top:10px}

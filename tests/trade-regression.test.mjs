@@ -132,6 +132,30 @@ test('trade store preserves hunting to open to emotion to closed lifecycle', asy
   assert.ok(events.length >= 5);
 });
 
+test('trade store normalizes per-emotion intensity/tag details and clamps out-of-range input', async () => {
+  const localStorage = memoryStorage();
+  const sandbox = {
+    window: {}, localStorage,
+    document: { body: { dataset: {} } },
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
+    FileReader: class {}
+  };
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'hunter' } });
+  vm.runInNewContext(await source('trade-store.js'), sandbox, { filename: 'trade-store.js' });
+  const store = sandbox.window.TradeJournalTradeStore;
+  let trade = store.save(store.createDraft({ status: 'open' }));
+  trade = store.addEmotion(trade.id, { dominantEmotions: ['afraid'], emotionDetails: [{ emotion: 'afraid', intensity: 99, tags: ['ترس از ضرر', 'ترس از لیکویید شدن'] }], note: '' });
+  assert.equal(trade.emotionLog[0].emotionDetails.length, 1);
+  assert.equal(trade.emotionLog[0].emotionDetails[0].intensity, 10, 'intensity is clamped to the 1-10 range');
+  assert.deepEqual(trade.emotionLog[0].emotionDetails[0].tags, ['ترس از ضرر', 'ترس از لیکویید شدن'], 'multiple tags per emotion are preserved');
+  trade = store.addEmotion(trade.id, { dominantEmotions: [], emotionDetails: [], note: '' });
+  assert.deepEqual(trade.emotionLog[1].emotionDetails, [], 'entries without details default to an empty array, not an error');
+  trade = store.addEmotion(trade.id, { dominantEmotions: ['calm'], emotionDetails: [{ emotion: 'calm', intensity: 4, tag: 'legacy single tag' }], note: '' });
+  const migratedTags = trade.emotionLog[2].emotionDetails[0].tags;
+  assert.equal(migratedTags.length, 1, 'a legacy single-string tag migrates into the tags array');
+  assert.equal(migratedTags[0], 'legacy single tag');
+});
+
 async function strategyStore(localStorage) {
   const events = [];
   const sandbox = {
@@ -260,6 +284,31 @@ test('modal contract supports X, backdrop, Escape, and deterministic teardown', 
   assert.match(text, /\.pr-modal-close,.sw-modal-close,.swe-close/);
 });
 
+test('emotion editor drops the focus/commitment sliders and the would-take question, and captures per-emotion intensity and tags instead', async () => {
+  const text = await source('trade-ui.js');
+  const start = text.indexOf('function emotionEditor');
+  const end = text.indexOf('function openEmotion');
+  const editor = text.slice(start, end);
+  assert.doesNotMatch(editor, /i18n\.t\('focusQuality'\)/, 'no visible focus-quality slider is rendered');
+  assert.doesNotMatch(editor, /i18n\.t\('planCommitment'\)/, 'no visible plan-commitment slider is rendered');
+  assert.doesNotMatch(editor, /i18n\.t\('wouldTake'\)/, 'the would-take-it-again question is no longer asked');
+  assert.doesNotMatch(editor, /wouldTakeIfNotForced=JSON\.parse/, 'no yes/no control writes wouldTakeIfNotForced anymore');
+  assert.match(editor, /state\.emotionDetails/);
+  assert.match(editor, /tagPresets\[name\]/);
+  assert.match(editor, /severityLabel\(entry\.intensity\)/);
+});
+
+test('emotion tags are multi-select and typed text becomes a removable tag chip, not a single overwritten string', async () => {
+  const text = await source('trade-ui.js');
+  const start = text.indexOf('function emotionEditor');
+  const end = text.indexOf('function openEmotion');
+  const editor = text.slice(start, end);
+  assert.match(editor, /entry\.tags\.push\(text\)/, 'clicking a preset tag adds it to the list rather than replacing a single value');
+  assert.match(editor, /entry\.tags\.push\(value\)/, 'typed custom text is pushed onto the tags list');
+  assert.match(editor, /event\.key==='Enter'/, 'pressing Enter converts the typed text into a tag');
+  assert.match(editor, /entry\.tags\.splice\(i,1\)/, 'each chosen tag can be individually removed');
+});
+
 test('trade module keys exist in every supported language', async () => {
   const sandbox = { window: {}, document: { documentElement: { lang: 'en' } }, Intl };
   vm.runInNewContext(await source('trade-i18n.js'), sandbox, { filename: 'trade-i18n.js' });
@@ -306,4 +355,106 @@ test('all four character pages load one shared session library after the entry f
     assert.equal((html.match(/session-library\.js/g) || []).length, 1, character + ':js');
     assert.ok(html.indexOf('session-entry-flow.js') < html.indexOf('session-library.js'), character + ':order');
   }
+});
+
+test('A3: the old non-functional demo chat FAB/panel markup and handlers are gone from every character page', async () => {
+  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
+    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    const app = await readFile(path.join(root, 'public', 'pages', character, 'app.js'), 'utf8');
+    const css = await readFile(path.join(root, 'public', 'pages', character, 'styles.css'), 'utf8');
+    assert.doesNotMatch(html, /id="openChat"/, character + ':html openChat');
+    assert.doesNotMatch(html, /id="chatPanel"/, character + ':html chatPanel');
+    assert.match(html, /id="assistantNav"/, character + ':assistantNav markup must be kept - the dock repoints it, not deletes it');
+    assert.doesNotMatch(app, /document\.querySelector\('#chatPanel'\)/, character + ':app.js chatPanel handler');
+    assert.doesNotMatch(app, /document\.querySelector\('#openChat'\)/, character + ':app.js openChat handler');
+    assert.doesNotMatch(css, /\.ai-chat-fab/, character + ':styles.css ai-chat-fab rule');
+    assert.doesNotMatch(css, /\.ai-chat-panel/, character + ':styles.css ai-chat-panel rule');
+  }
+});
+
+test('A3/A4: every character page loads the AI process registry before the flows that register against it, and the dock last', async () => {
+  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
+    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    const registry = html.indexOf('ai-process-registry.js');
+    assert.ok(registry > -1, character + ':registry present');
+    assert.ok(registry < html.indexOf('trade-ui.js'), character + ':registry before trade-ui');
+    assert.ok(registry < html.indexOf('mental-health-store.js'), character + ':registry before mental-health-store');
+    assert.ok(html.indexOf('mental-health-ai.js') < html.indexOf('ai-settings-store.js'), character + ':settings-store after mental-health-ai');
+    assert.ok(html.indexOf('ai-settings-store.js') < html.indexOf('ai-usage-store.js'), character + ':usage-store after settings-store');
+    assert.ok(html.indexOf('strategy-education.js') < html.indexOf('global-ai-dock.js'), character + ':dock after strategy-education');
+    assert.ok(html.indexOf('ai-settings-ui.js') < html.indexOf('global-ai-dock.js'), character + ':dock after settings-ui');
+    assert.match(html, /ai-settings\.css/, character + ':ai-settings.css linked');
+    assert.match(html, /global-ai-dock\.css/, character + ':global-ai-dock.css linked');
+  }
+});
+
+test('A7: openEmotion accepts a backward-compatible third seed argument that defaults to nothing for existing 2-arg callers', async () => {
+  const text = await source('trade-ui.js');
+  assert.match(text, /function openEmotion\(tradeId,stage,seed\)/, 'seed is an additive third parameter, not a breaking signature change');
+  assert.match(text, /emotionEditor\(Object\.assign\(\{stage:stage\|\|'mid_trade'\},seed\|\|\{\}\)\)/, 'a missing seed must not throw - it defaults to an empty object merge');
+  assert.match(text, /openEmotion\(trade\.id,'mid_trade'\)/, 'the existing 2-arg call site keeps working unchanged');
+});
+
+test('Community: the sidebar link is repointed from #forum to #community (the "forum" i18n label/key is untouched), consistently on all four character pages', async () => {
+  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
+    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    assert.doesNotMatch(html, /href="#forum"/, character + ': the old #forum href must be gone');
+    assert.match(html, /href="#community"/, character + ': the sidebar link must point at #community');
+    assert.match(html, /data-i18n="forum"/, character + ': the existing "forum" i18n label is reused, not renamed');
+  }
+});
+
+test('Community: every new shared module is script/CSS-linked exactly once on all four character pages, in a dependency-safe order', async () => {
+  const scripts = ['dev-user-switcher.js', 'community.types.js', 'community-i18n.js', 'community-store.js', 'marketplace-ui.js', 'messages-ui.js', 'community-ui.js'];
+  const styles = ['dev-user-switcher.css', 'community.css', 'marketplace.css', 'messages.css'];
+  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
+    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    scripts.forEach((file) => assert.equal((html.match(new RegExp(file.replace('.', '\\.'), 'g')) || []).length, 1, character + ':' + file + ' linked exactly once'));
+    styles.forEach((file) => assert.match(html, new RegExp(file.replace('.', '\\.')), character + ':' + file + ' css linked'));
+    // marketplace-ui.js must load before pattern-registry.js/strategy-education.js, the only
+    // two files that read window.TradeJournalMarketplace (both load much later in the
+    // existing sequence, so this just confirms the ordering wasn't accidentally reversed).
+    assert.ok(html.indexOf('marketplace-ui.js') < html.indexOf('pattern-registry.js'), character + ': marketplace-ui before pattern-registry');
+    assert.ok(html.indexOf('marketplace-ui.js') < html.indexOf('strategy-education.js'), character + ': marketplace-ui before strategy-education');
+    assert.ok(html.indexOf('community-store.js') < html.indexOf('community-ui.js'), character + ': store before the tab shell that uses it');
+  }
+});
+
+test('the sidebar "AI" link routes to #ai-settings on every character page - it is a real settings route, not a chat-opening trigger', async () => {
+  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
+    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    assert.match(html, /<a href="#ai-settings" id="assistantNav">/, character + ': #assistantNav must point at #ai-settings');
+    assert.doesNotMatch(html, /href="#assistant"/, character + ': the old placeholder #assistant href must be gone');
+  }
+});
+
+test('the character chooser loads dev-user-switcher.js before its own app.js, so the login-time name step can call the shared createUser()', async () => {
+  const html = await readFile(path.join(root, 'public', 'pages', 'select', 'index.html'), 'utf8');
+  assert.ok(html.indexOf('../shared/dev-user-switcher.js') > -1, 'dev-user-switcher.js is loaded');
+  assert.ok(html.indexOf('../shared/dev-user-switcher.js') < html.indexOf('<script src="app.js">'), 'it loads before app.js, which calls into it at click time');
+  assert.match(html, /id="nameStepOverlay"/);
+  assert.match(html, /id="nameStepInput"/);
+  assert.match(html, /id="nameStepSubmit"/);
+});
+
+test('Admin: src/release.js has a real "admin" shell route, since the admin page is a standalone top-level page like select/, not nested in a character iframe', async () => {
+  const releaseJs = await readFile(path.join(root, 'src', 'release.js'), 'utf8');
+  assert.match(releaseJs, /admin:\s*\{\s*title:[^,]+,\s*source:\s*pagePrefix \+ 'admin\/index\.html'/, 'the pages map must have an admin entry pointing at admin/index.html');
+  assert.match(releaseJs, /window\.location\.hash === '#\/admin'/, 'pageFromHash() must recognize the literal #/admin route');
+});
+
+test('Admin: every character page loads admin-heartbeat.js immediately after dev-user-switcher.js, exactly once', async () => {
+  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
+    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    assert.equal((html.match(/admin-heartbeat\.js/g) || []).length, 1, character + ': admin-heartbeat.js must be linked exactly once');
+    const switcherIndex = html.indexOf('../shared/dev-user-switcher.js');
+    const heartbeatIndex = html.indexOf('../shared/admin-heartbeat.js');
+    assert.ok(switcherIndex > -1 && heartbeatIndex > switcherIndex, character + ': admin-heartbeat.js must load after dev-user-switcher.js, which it depends on for currentUserId()');
+  }
+});
+
+test('Admin: the Settings-page admin link uses target="_top" to break out of the character iframe, since #/admin is an outer-shell route', async () => {
+  const source = await readFile(path.join(root, 'public', 'pages', 'shared', 'dev-user-switcher.js'), 'utf8');
+  assert.match(source, /adminLink\.href = '#\/admin'/);
+  assert.match(source, /adminLink\.target = '_top'/, 'a bare same-document href would only change the iframe\'s own internal hash, never navigate the outer shell');
 });

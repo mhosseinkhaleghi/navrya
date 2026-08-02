@@ -51,8 +51,78 @@
     var trades = activeTradeList(strategy.id), tradeBox = el('section', 'se-report-list'); tradeBox.append(el('h3', '', i18n.t('linkedTrades'))); if (!trades.length) tradeBox.append(el('p', '', i18n.t('reportNoTrades'))); trades.forEach(function (trade) { var row = button('', 'se-report-row'); row.append(el('time', '', date(trade.createdAt)), el('strong', '', i18n.t(trade.direction)), el('span', '', i18n.t(trade.status === 'open' ? 'active' : trade.status)), el('span', '', trade.pnl == null ? '—' : window.TradeJournalTradeI18n.money(trade.pnl))); row.onclick = function () { if (window.TradeJournalTradeUI) window.TradeJournalTradeUI.viewTrade(trade.id); }; tradeBox.append(row); }); root.append(tradeBox, detectionEvents(strategy)); return root; }
   function detectionEvents(strategy) { var box = el('section', 'se-detection-events'), head = el('div', 'pr-section-heading'), add = button(i18n.t('addDetection'), 'pr-primary', 'plus'); head.append(el('h3', '', i18n.t('detections')), add); add.onclick = function () { detectionModal(strategy); }; box.append(head); var filter = document.createElement('select'); filter.append(new Option(i18n.t('eventStatus'), ''), new Option(i18n.t('pending'), 'pending'), new Option(i18n.t('confirmed'), 'confirmed'), new Option(i18n.t('invalidated'), 'invalidated')); filter.value = state.eventFilter; filter.onchange = function () { state.eventFilter = filter.value; renderDetail(); }; box.append(filter); var values = strategy.detectionEvents.filter(function (item) { return !state.eventFilter || item.status === state.eventFilter; }); if (!values.length) box.append(el('p', '', i18n.t('noEvents'))); values.forEach(function (event) { var row = el('article', 'se-detection-row'), status = document.createElement('select'), source = button(i18n.t(event.source.type), 'pr-secondary'); ['pending','confirmed','invalidated'].forEach(function (value) { status.append(new Option(i18n.t(value), value, false, event.status === value)); }); status.onchange = function () { store.updateDetectionEvent(strategy.id, event.id, { status: status.value }); renderDetail(); }; source.onclick = function () { if (event.source.type === 'trade' && event.source.tradeId && window.TradeJournalTradeUI) window.TradeJournalTradeUI.viewTrade(event.source.tradeId); else if (event.source.sessionId && window.TradeJournalWorkspace) window.TradeJournalWorkspace.open(event.source.sessionId); }; row.append(el('time', '', date(event.detectedAt)), source, el('p', '', event.predictedOutcome), status); box.append(row); }); return box; }
   function detectionModal(strategy) { var back = el('div', 'pr-modal-backdrop'), modal = el('section', 'pr-modal'), head = el('header'), close = button('', 'pr-modal-close', 'x'), body = el('div', 'pr-modal-body'), outcome = document.createElement('textarea'), sourceType = document.createElement('select'), sourceId = document.createElement('input'), footer = el('footer'), cancel = button(i18n.t('cancel'), 'pr-secondary'), save = button(i18n.t('addDetection'), 'pr-primary'); head.append(el('h3', '', i18n.t('detectionEvent')), close); outcome.placeholder = i18n.t('eventOutcome'); outcome.dir = 'auto'; ['manual','session','trade'].forEach(function (value) { sourceType.append(new Option(i18n.t(value), value)); }); sourceId.placeholder = i18n.t('sourceId'); body.append(outcome, sourceType, sourceId); footer.append(cancel, save); modal.append(head, body, footer); back.append(modal); document.body.append(back); function remove() { back.remove(); } close.onclick = cancel.onclick = remove; save.onclick = function () { var source = { type: sourceType.value }; if (source.type === 'session') source.sessionId = sourceId.value || undefined; if (source.type === 'trade') source.tradeId = sourceId.value || undefined; store.addDetectionEvent(strategy.id, { source: source, predictedOutcome: outcome.value, status: 'pending' }); remove(); renderDetail(); }; paint(back); }
-  function sharingView(strategy) { var root = el('section', 'se-sharing-placeholder'), toggle = document.createElement('input'), label = el('label'); toggle.type = 'checkbox'; toggle.checked = strategy.isPublic; toggle.onchange = function () { strategy.isPublic = toggle.checked; store.save(strategy, { keepSummary: true }); }; label.append(toggle, document.createTextNode(i18n.t('publicStrategy'))); root.append(icon('share-2'), label, el('p', '', i18n.t('comingSoon'))); return root; }
-  function renderDetail() { releaseUrls(); var strategy = store.find(state.strategyId); if (!strategy) return openList(); var page = el('section', 'panel-page strategy-education-page se-strategy-detail-page'); page.dir = i18n.direction(); page.dataset.route = '/strategies/education/' + strategy.id; page.append(pageHeader(strategy.name || i18n.t('newStrategy'), i18n.t('strategiesSubtitle'), openList), strategyTabs(), detailTabs()); page.append(state.tab === 'details' ? detailsView(strategy) : state.tab === 'chat' ? chatView(strategy) : state.tab === 'report' ? reportView(strategy) : sharingView(strategy)); layer.show(page, 'strategies'); history.replaceState(null, '', '#strategies/education/' + strategy.id + '/' + state.tab); paint(page); }
+  function sharingView(strategy) {
+    var root = el('section', 'se-sharing-placeholder'), toggle = document.createElement('input'), label = el('label');
+    toggle.type = 'checkbox'; toggle.checked = strategy.isPublic;
+    var marketplace = window.TradeJournalMarketplace, communityStore = window.TradeJournalCommunityStore;
+    var status = el('div', 'se-marketplace-status');
+
+    function evidenceSnapshot() {
+      var stats = store.detectionStats(strategy, state.staleHours);
+      return { successRatePercent: stats.confirmationRate, sampleSize: stats.total, evidenceAsOf: new Date().toISOString() };
+    }
+    function fullSummary() {
+      return {
+        name: strategy.name,
+        positionManagement: { entryRules: strategy.positionManagement.entryRules, stopLossRules: strategy.positionManagement.stopLossRules, exitTargetRules: strategy.positionManagement.exitTargetRules, positionSizingRules: strategy.positionManagement.positionSizingRules },
+        riskManagement: { maxRiskPerTradePercent: strategy.riskManagement.maxRiskPerTradePercent, dailyDrawdownLimitPercent: strategy.riskManagement.dailyDrawdownLimitPercent, totalDrawdownLimitPercent: strategy.riskManagement.totalDrawdownLimitPercent, maxConcurrentTrades: strategy.riskManagement.maxConcurrentTrades, maxProfitCapPerTrade: strategy.riskManagement.maxProfitCapPerTrade },
+        overallFramework: { description: strategy.overallFramework.description }
+      };
+    }
+    function buildContent(previewCount) {
+      var full = fullSummary();
+      var chunks = [['overallFramework', full.overallFramework], ['positionManagement', full.positionManagement], ['riskManagement', full.riskManagement]];
+      var preview = { name: full.name };
+      chunks.slice(0, previewCount).forEach(function (chunk) { preview[chunk[0]] = chunk[1]; });
+      return { previewContent: preview, fullContent: full };
+    }
+    function openFlow(existingListing) {
+      if (!marketplace) return;
+      marketplace.openPublishFlow({
+        type: 'strategy', sourceId: strategy.id, suggestedTitle: strategy.name, evidence: evidenceSnapshot(),
+        maxPreviewItems: 3, buildContent: buildContent, existingListing: existingListing || null, onPublished: paintStatus
+      });
+    }
+    function paintStatus() {
+      if (!marketplace) { status.replaceChildren(el('p', '', i18n.t('comingSoon'))); return; }
+      marketplace.findListingBySource(strategy.id).then(function (listing) {
+        status.replaceChildren();
+        if (!listing) { status.append(el('p', 'tj-hint', i18n.t('notListedYet'))); return; }
+        status.append(el('span', 'se-marketplace-badge', i18n.t('listedBadge')));
+        var editBtn = button(i18n.t('editListing'), 'pr-secondary'); editBtn.onclick = function () { openFlow(listing); };
+        var refreshBtn = button(i18n.t('refreshEvidence'), 'pr-secondary'); refreshBtn.onclick = function () {
+          var evidence = evidenceSnapshot();
+          communityStore.updateListing(listing.id, evidence).then(function () { toast(i18n.t('saved')); paintStatus(); });
+        };
+        status.append(editBtn, refreshBtn);
+      });
+    }
+    toggle.onchange = function () { strategy.isPublic = toggle.checked; store.save(strategy, { keepSummary: true }); if (toggle.checked) openFlow(); };
+    label.append(toggle, document.createTextNode(i18n.t('publicStrategy')));
+    root.append(icon('share-2'), label, status);
+    paintStatus();
+    return root;
+  }
+  function renderDetail() { releaseUrls(); var strategy = store.find(state.strategyId); if (!strategy) return openList();
+    var strategyRegistry = window.TradeJournalAIProcessRegistry, strategyTypes = window.TradeJournalStrategyEducationTypes;
+    if (strategyRegistry && strategyTypes) strategyRegistry.register('strategy-editor-' + strategy.id, {
+      allowlist: (strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []),
+      isOpen: function () { return state.tab === 'details' && !!document.querySelector('.se-strategy-detail-page'); },
+      activeStep: function () { return state.tab; },
+      // Persisted flow: routes through the exact same allowlist+applySuggestion pipeline
+      // the strategy chat already uses (strategy-education-ai.js's normalizeSuggestion +
+      // store.applySuggestion) - not a second write path.
+      applyValue: function (path, value, mode) {
+        if ((strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []).indexOf(path) === -1) return;
+        var current = store.find(strategy.id);
+        if (!current) return;
+        var suggestionId = store.uid('se-dock');
+        var updated = store.addMessage(current, 'assistant', '', [{ id: suggestionId, path: path, section: path.split('.')[0], value: value, mode: mode === 'append' ? 'append' : 'replace', status: 'pending', createdAt: store.now() }]);
+        store.applySuggestion(updated, { id: suggestionId }, 'applied');
+        renderDetail();
+      }
+    });
+    var page = el('section', 'panel-page strategy-education-page se-strategy-detail-page'); page.dir = i18n.direction(); page.dataset.route = '/strategies/education/' + strategy.id; page.append(pageHeader(strategy.name || i18n.t('newStrategy'), i18n.t('strategiesSubtitle'), openList), strategyTabs(), detailTabs()); page.append(state.tab === 'details' ? detailsView(strategy) : state.tab === 'chat' ? chatView(strategy) : state.tab === 'report' ? reportView(strategy) : sharingView(strategy)); layer.show(page, 'strategies'); history.replaceState(null, '', '#strategies/education/' + strategy.id + '/' + state.tab); paint(page); }
 
   function fileDataUrl(file) { return new Promise(function (resolve, reject) { var reader = new FileReader(); reader.onload = function () { resolve(String(reader.result || '')); }; reader.onerror = reject; reader.readAsDataURL(file); }); }
   function eventStrategyModal() { var back = el('div', 'pr-modal-backdrop'), modal = el('section', 'pr-modal se-event-modal'), head = el('header'), close = button('', 'pr-modal-close', 'x'), body = el('div', 'pr-modal-body'), messages = el('div', 'se-event-chat'), narrative = document.createElement('textarea'), upload = document.createElement('input'), analyze = button(i18n.t('analyzeEvent'), 'pr-ai-button', 'sparkles'), proposalValue = null, blobIds = []; head.append(el('h3', '', i18n.t('eventChatTitle')), close); narrative.rows = 6; narrative.dir = 'auto'; narrative.placeholder = i18n.t('eventPrompt'); upload.type = 'file'; upload.accept = 'image/*'; upload.multiple = true; body.append(messages, narrative, el('label', 'se-event-upload', i18n.t('eventUpload')), upload, analyze); modal.append(head, body); back.append(modal); document.body.append(back); async function cleanup() { if (window.TradeJournalImageStore) for (var id of blobIds) await window.TradeJournalImageStore.deleteImage(id); back.remove(); } close.onclick = cleanup; back.onclick = function (event) { if (event.target === back) cleanup(); }; analyze.onclick = async function () { var text = narrative.value.trim(); if (!text) return; analyze.disabled = true; var images = []; for (var file of Array.from(upload.files || [])) { if (!/^image\//.test(file.type) || file.size > 15 * 1024 * 1024) continue; if (window.TradeJournalImageStore) { var id = store.uid('strategy-event-image'); try { await window.TradeJournalImageStore.saveImage(id, file); blobIds.push(id); } catch (_) {} } images.push(await fileDataUrl(file)); } var result = await ai.proposeFromEvent(text, images); proposalValue = result.proposal; if (result.local) toast(i18n.t('aiUnavailable'), 'warning'); messages.replaceChildren(); var card = el('article', 'se-event-proposal'); card.append(el('h3', '', proposalValue.name), el('p', '', proposalValue.overallFramework), el('strong', '', i18n.t('validationPlan')), el('p', '', proposalValue.validationPlan), el('strong', '', i18n.t('predictedOutcome')), el('p', '', proposalValue.predictedOutcome)); var actions = el('div'), reject = button(i18n.t('rejectDraft'), 'pr-secondary', 'x'), save = button(i18n.t('saveDraftStrategy'), 'pr-primary', 'save'); reject.onclick = function () { proposalValue = null; messages.replaceChildren(); analyze.disabled = false; }; save.onclick = async function () { var strategy = store.create({ name: proposalValue.name, active: true, origin: 'ai_from_event', overallFramework: { description: proposalValue.overallFramework + '\n\n' + proposalValue.validationPlan, attachments: [] }, positionManagement: { entryRules: proposalValue.entryRules, stopLossRules: proposalValue.stopLossRules, exitTargetRules: proposalValue.exitTargetRules, positionSizingRules: '', freeNotes: '', attachments: [] }, detectionEvents: [{ source: { type: 'manual' }, predictedOutcome: proposalValue.predictedOutcome, status: 'pending', detectedAt: store.now() }] }); toast(i18n.t('strategySaved')); await cleanup(); openDetail(strategy.id); }; actions.append(reject, save); card.append(actions); messages.append(card); analyze.disabled = false; paint(card); }; paint(back); }

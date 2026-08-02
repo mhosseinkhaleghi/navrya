@@ -1,0 +1,8 @@
+.tj-ai-settings-page{max-width:640px;margin-inline:auto}
+.tj-yesno-inline{display:flex;align-items:center;gap:8px;font-size:.85rem;color:#9fb4cb}
+.tj-yesno-inline input[type=checkbox]{accent-color:var(--ps-accent,#3ad66f)}
+.tj-ai-test-row{display:flex;align-items:center;gap:10px;margin:4px 0}
+.tj-ai-usage,.tj-ai-memory{margin-top:14px;padding-top:14px;border-top:1px solid #23344a}
+.tj-ai-usage h4,.tj-ai-memory h4{margin:0 0 10px;font-size:.9rem}
+.tj-ai-memory-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #1c2a3c}
+.tj-ai-memory-row:last-of-type{border-bottom:none}
