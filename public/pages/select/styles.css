@@ -1,7 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Tajawal:wght@400;500;700;800&family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Tajawal:wght@400;500;700;800&display=swap');
+@font-face{font-family:"PeydaWeb";src:url("../shared/navrya/assets/fonts/PeydaWeb-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../shared/navrya/assets/fonts/PeydaWeb-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../shared/navrya/assets/fonts/PeydaWeb-SemiBold.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../shared/navrya/assets/fonts/PeydaWeb-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../shared/navrya/assets/fonts/PeydaWeb-ExtraBold.woff2") format("woff2");font-weight:800;font-style:normal;font-display:swap}
 
 :root { --bg:#050a12; --panel:#080e18; --line:#253045; --text:#f7f8fc; --muted:#b9bbc5; --violet:#a566ff; --violet-soft:#6d44aa; --font:"DM Sans",Arial,sans-serif; }
-html[lang="fa"] { --font:Vazirmatn,Tahoma,sans-serif; } html[lang="ar"] { --font:Tajawal,Arial,sans-serif; } html[lang="es"] { --font:Manrope,Arial,sans-serif; }
+html[lang="fa"] { --font:"PeydaWeb",Tahoma,sans-serif; } html[lang="ar"] { --font:Tajawal,Arial,sans-serif; } html[lang="es"] { --font:Manrope,Arial,sans-serif; }
 * { box-sizing:border-box; } html { min-width:320px; background:var(--bg); } body { min-height:100vh; margin:0; color:var(--text); background:radial-gradient(ellipse at 68% 45%,rgba(25,64,84,.13),transparent 42%),var(--bg); font-family:var(--font); }
 button { font:inherit; color:inherit; cursor:pointer; } svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.65; stroke-linecap:round; stroke-linejoin:round; } .sprite { position:absolute; width:0; height:0; overflow:hidden; }
 .auth-shell { min-height:100vh; display:grid; grid-template-columns:306px minmax(0,1fr); gap:13px; padding:20px; }.welcome-panel,.choice-panel { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(8,14,24,.97),rgba(4,9,16,.98)); }.welcome-panel { min-height:calc(100vh - 40px); display:flex; flex-direction:column; align-items:center; background:linear-gradient(180deg,rgba(4,10,17,.84),rgba(4,9,16,.3) 55%,rgba(4,8,15,.82)),url("assets/welcome-mountains-v1.png") center / cover no-repeat; }

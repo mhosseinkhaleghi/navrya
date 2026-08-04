@@ -40,7 +40,7 @@ function characterCard(name) {
   return { card, selectButton };
 }
 
-function buildSandbox(localStorage) {
+function buildSandbox(localStorage, isStoredUserValidImpl) {
   const toast = new FakeNode('div');
   const languageButton = new FakeNode('button');
   const languageMenu = new FakeNode('div'); languageMenu.hidden = true;
@@ -84,7 +84,13 @@ function buildSandbox(localStorage) {
   sandbox.window = Object.assign(sandbox.window, {
     document, localStorage: sandbox.localStorage, setTimeout: sandbox.setTimeout,
     parent: { postMessage() {} },
-    TradeJournalDevUserSwitcher: { createUser: async () => ({ id: 'stub-id', displayName: 'Stub' }) }
+    // isStoredUserValid defaults to "fresh browser" (false) since that's what most tests in this
+    // file exercise - app.js's hasDevUser() now asks this (a real server-validity check) instead
+    // of a bare localStorage-presence check, so app.js itself no longer decides fresh-vs-returning.
+    TradeJournalDevUserSwitcher: {
+      createUser: async () => ({ id: 'stub-id', displayName: 'Stub' }),
+      isStoredUserValid: isStoredUserValidImpl || (async () => false)
+    }
   });
   return {
     sandbox,
@@ -97,8 +103,8 @@ function buildSandbox(localStorage) {
 // `error instanceof TypeError` check actually recognizes - vm contexts each have their own
 // realm, so an outer-realm TypeError fails `instanceof` against the sandbox's TypeError even
 // with identical name/message.
-async function load(localStorage, createUserImplFactory) {
-  const { sandbox, els } = buildSandbox(localStorage);
+async function load(localStorage, createUserImplFactory, isStoredUserValidImpl) {
+  const { sandbox, els } = buildSandbox(localStorage, isStoredUserValidImpl);
   const context = vm.createContext(sandbox);
   if (createUserImplFactory) {
     const SandboxTypeError = vm.runInContext('TypeError', context);
@@ -111,7 +117,7 @@ async function load(localStorage, createUserImplFactory) {
 test('fresh browser (no dev-user-id): clicking a character\'s Select button opens the name step instead of completing the selection', async () => {
   const els = await load(memoryStorage());
   assert.equal(els.nameStepOverlay.hidden, true, 'starts hidden');
-  fire(els.hunterSelect, 'click');
+  await Promise.all(fire(els.hunterSelect, 'click'));
   assert.equal(els.nameStepOverlay.hidden, false, 'the name step opens');
   assert.doesNotMatch(els.hunterCard.className, /selected/, 'the character is NOT selected yet - creating the account comes first');
 });
@@ -126,7 +132,7 @@ test('fresh browser: the decorative "login" buttons stay pure demo actions - the
 test('fresh browser: submitting a name after selecting a character creates the user via the shared createUser() and THEN completes that exact character\'s selection', async () => {
   let calledWith = null;
   const els = await load(memoryStorage(), () => async (name) => { calledWith = name; return { id: 'new-1', displayName: name }; });
-  fire(els.hunterSelect, 'click');
+  await Promise.all(fire(els.hunterSelect, 'click'));
   els.nameStepInput.value = 'Alex';
   await Promise.all(fire(els.nameStepSubmit, 'click'));
   assert.equal(calledWith, 'Alex', 'the exact reusable dev-user-switcher.js createUser() is called - not a second, duplicated fetch');
@@ -138,7 +144,7 @@ test('fresh browser: submitting a name after selecting a character creates the u
 test('fresh browser: submitting an empty name does not call createUser and keeps the overlay open', async () => {
   let called = false;
   const els = await load(memoryStorage(), () => async () => { called = true; return { id: 'x' }; });
-  fire(els.hunterSelect, 'click');
+  await Promise.all(fire(els.hunterSelect, 'click'));
   els.nameStepInput.value = '   ';
   await Promise.all(fire(els.nameStepSubmit, 'click'));
   assert.equal(called, false);
@@ -148,7 +154,7 @@ test('fresh browser: submitting an empty name does not call createUser and keeps
 test('a server-rejected create shows the real server error code, not a dead-end generic message', async () => {
   const error = new Error('VALIDATION_FAILED'); error.status = 400;
   const els = await load(memoryStorage(), () => async () => { throw error; });
-  fire(els.hunterSelect, 'click');
+  await Promise.all(fire(els.hunterSelect, 'click'));
   els.nameStepInput.value = 'Alex';
   await Promise.all(fire(els.nameStepSubmit, 'click'));
   assert.match(els.nameStepError.textContent, /VALIDATION_FAILED/, 'the underlying server error code must be visible, not hidden behind a generic message');
@@ -158,27 +164,36 @@ test('a server-rejected create shows the real server error code, not a dead-end 
 
 test('an unreachable server (fetch itself throws a TypeError) shows a distinct "server unreachable" message instead of the generic one', async () => {
   const els = await load(memoryStorage(), (SandboxTypeError) => async () => { throw new SandboxTypeError('Failed to fetch'); });
-  fire(els.hunterSelect, 'click');
+  await Promise.all(fire(els.hunterSelect, 'click'));
   els.nameStepInput.value = 'Alex';
   await Promise.all(fire(els.nameStepSubmit, 'click'));
   assert.match(els.nameStepError.textContent, /dev:community-api/, 'a TypeError from fetch (network/connection failure) must point at starting the community backend, not just say "try again"');
 });
 
-test('returning browser (dev-user-id already stored): clicking a character\'s Select button completes the selection immediately, same as today\'s behavior', async () => {
+test('returning browser (stored dev-user-id the server still recognizes): clicking a character\'s Select button completes the selection immediately, same as today\'s behavior', async () => {
   const localStorage = memoryStorage();
   localStorage.setItem('tradejournal:dev-user-id', 'existing-user');
   let createUserCalled = false;
-  const els = await load(localStorage, () => async () => { createUserCalled = true; return { id: 'x' }; });
-  fire(els.hunterSelect, 'click');
+  const els = await load(localStorage, () => async () => { createUserCalled = true; return { id: 'x' }; }, async () => true);
+  await Promise.all(fire(els.hunterSelect, 'click'));
   assert.equal(els.nameStepOverlay.hidden, true, 'the name step never opens for a returning session');
   assert.equal(createUserCalled, false);
   assert.match(els.hunterCard.className, /selected/, 'the character selection completes immediately, unblocked');
 });
 
+test('returning browser with a STALE dev-user-id (server no longer recognizes it, e.g. the in-memory dev backend restarted): the name step opens instead of silently completing with a dead id', async () => {
+  const localStorage = memoryStorage();
+  localStorage.setItem('tradejournal:dev-user-id', 'stale-user-from-a-wiped-backend');
+  const els = await load(localStorage, () => async (name) => ({ id: 'fresh-1', displayName: name }), async () => false);
+  await Promise.all(fire(els.hunterSelect, 'click'));
+  assert.equal(els.nameStepOverlay.hidden, false, 'a stale id must not be trusted - the name step opens exactly as it would for a truly fresh browser');
+  assert.doesNotMatch(els.hunterCard.className, /selected/);
+});
+
 test('the close button dismisses the overlay without creating a user or selecting a character', async () => {
   let called = false;
   const els = await load(memoryStorage(), () => async () => { called = true; return { id: 'x' }; });
-  fire(els.hunterSelect, 'click');
+  await Promise.all(fire(els.hunterSelect, 'click'));
   assert.equal(els.nameStepOverlay.hidden, false);
   fire(els.nameStepClose, 'click');
   assert.equal(els.nameStepOverlay.hidden, true);

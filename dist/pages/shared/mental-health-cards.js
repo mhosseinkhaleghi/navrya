@@ -29,11 +29,20 @@
     return { profile: record, card: card };
   }
 
-  function markViewed(biasType) {
+  // `note` is optional - a short personal-response field next to the existing "Mark Viewed"
+  // button (ARCHITECTURE.md Section 11.8's "read an Education Card and record a personal
+  // response"; the card previously only had viewedAt, no field for what the trader actually
+  // thought). Re-calling with a note after the card was already viewed still records it - only
+  // the first viewedAt stamp is preserved, not the note.
+  function markViewed(biasType, note) {
     var record = store.load();
-    if (record.educationCards[biasType] && !record.educationCards[biasType].viewedAt) {
-      record.educationCards[biasType].viewedAt = new Date().toISOString();
-      record = store.save(record);
+    var card = record.educationCards[biasType];
+    if (card) {
+      var changed = false;
+      if (!card.viewedAt) { card.viewedAt = new Date().toISOString(); changed = true; }
+      var trimmed = note ? String(note).trim() : '';
+      if (trimmed && card.personalResponse !== trimmed) { card.personalResponse = trimmed; changed = true; }
+      if (changed) record = store.save(record);
     }
     return record;
   }

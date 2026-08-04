@@ -11,7 +11,9 @@ export function createMemoryRepo() {
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerPricing: new Map(),
-    adminKeys: new Map(), auditLog: new Map()
+    adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
+    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(),
+    mentalHealthProfiles: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -24,7 +26,11 @@ export function createMemoryRepo() {
     async create({ displayName, avatarUrl, bio }) {
       const trimmed = String(displayName || '').trim();
       if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
-      const record = { id: newId('user'), displayName: trimmed, avatarUrl: avatarUrl || null, bio: bio || null, role: 'user', suspendedAt: null, createdAt: now() };
+      const record = {
+        id: newId('user'), displayName: trimmed, avatarUrl: avatarUrl || null, bio: bio || null, role: 'user', suspendedAt: null,
+        email: null, emailVerified: false, phone: null, phoneVerified: false, profileRole: 'trader', kycStatus: 'not_started',
+        xpTotal: 0, avatarDataUrl: null, createdAt: now()
+      };
       state.users.set(record.id, record);
       return clone(record);
     },
@@ -34,6 +40,30 @@ export function createMemoryRepo() {
       const record = state.users.get(id);
       if (!record) throw new ApiError(404, 'USER_NOT_FOUND');
       Object.assign(record, patch);
+      return clone(record);
+    },
+    // Trader-editable fields only - mirrors repo.pg.mjs's updateProfile() exactly: kyc_status/
+    // xp_total/role are never assigned here, structurally, regardless of what patch contains.
+    async updateProfile(id, patch) {
+      const record = state.users.get(id);
+      if (!record) throw new ApiError(404, 'USER_NOT_FOUND');
+      if (patch.email) {
+        const taken = Array.from(state.users.values()).find((u) => u.id !== id && u.email === patch.email);
+        if (taken) throw new ApiError(409, 'EMAIL_TAKEN');
+      }
+      if ('displayName' in patch) record.displayName = patch.displayName;
+      if ('email' in patch) record.email = patch.email || null;
+      if ('phone' in patch) record.phone = patch.phone || null;
+      if ('profileRole' in patch) record.profileRole = patch.profileRole;
+      if ('avatarDataUrl' in patch) record.avatarDataUrl = patch.avatarDataUrl || null;
+      return clone(record);
+    },
+    // The ONLY way kycStatus is ever written - mirrors repo.pg.mjs's updateKyc().
+    async updateKyc(id, kycStatus) {
+      if (!['not_started', 'pending', 'verified', 'rejected'].includes(kycStatus)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const record = state.users.get(id);
+      if (!record) throw new ApiError(404, 'USER_NOT_FOUND');
+      record.kycStatus = kycStatus;
       return clone(record);
     }
   };
@@ -242,6 +272,20 @@ export function createMemoryRepo() {
       });
       Object.keys(result).forEach((userId) => { result[userId].hoursOnline = result[userId].totalMs / 3600000; delete result[userId].totalMs; });
       return result;
+    },
+    // Backs the server-only 'five_day_login_streak' achievement check - mirrors repo.pg.mjs's
+    // consecutiveLoginDays() exactly: longest run of consecutive calendar days with a session.
+    async consecutiveLoginDays(userId) {
+      const days = new Set();
+      Array.from(state.sessions.values()).filter((s) => s.userId === userId).forEach((s) => { days.add(new Date(s.startedAt).toISOString().slice(0, 10)); });
+      const sortedDays = Array.from(days).sort();
+      let best = 0, current = 0, prev = null;
+      sortedDays.forEach((day) => {
+        current = prev && (new Date(day) - new Date(prev)) / 86400000 === 1 ? current + 1 : 1;
+        best = Math.max(best, current);
+        prev = day;
+      });
+      return best;
     }
   };
 
@@ -315,10 +359,431 @@ export function createMemoryRepo() {
     }
   };
 
+  const xpEvents = {
+    // Records the event AND bumps the user's xpTotal in the same call - mirrors repo.pg.mjs's
+    // record() exactly, so xpTotal is always a maintained running total, never re-summed. A
+    // dedupeKey collision mirrors repo.pg.mjs's unique-violation handling: {duplicate:true},
+    // xpTotal untouched, instead of a second row.
+    async record({ userId, type, domain, points, sourceType, sourceId, dedupeKey, meta }) {
+      requireUser(userId);
+      if (dedupeKey && Array.from(state.xpEvents.values()).some((e) => e.userId === userId && e.dedupeKey === dedupeKey)) {
+        return { duplicate: true };
+      }
+      const pointsValue = Math.round(Number(points) || 0);
+      const record = {
+        id: newId('xpEvent'), userId, type: String(type || ''), domain: domain || null, points: pointsValue,
+        sourceType: sourceType || null, sourceId: sourceId || null, dedupeKey: dedupeKey || null,
+        meta: meta || {}, occurredAt: now()
+      };
+      state.xpEvents.set(record.id, record);
+      const user = state.users.get(userId);
+      user.xpTotal = (user.xpTotal || 0) + pointsValue;
+      return { event: clone(record), user: clone(user) };
+    },
+    async listForUser(userId) {
+      return Array.from(state.xpEvents.values()).filter((e) => e.userId === userId).sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt)).map(clone);
+    },
+    async totalForUser(userId) {
+      const user = state.users.get(userId);
+      return user ? user.xpTotal || 0 : 0;
+    },
+    async hasType(userId, type) {
+      return Array.from(state.xpEvents.values()).some((e) => e.userId === userId && e.type === type);
+    },
+    async countForSource(userId, type, sourceId) {
+      return Array.from(state.xpEvents.values()).filter((e) => e.userId === userId && e.type === type && e.sourceId === sourceId).length;
+    },
+    async countForPeriod(userId, type, periodStart) {
+      const start = new Date(periodStart).getTime();
+      return Array.from(state.xpEvents.values()).filter((e) => e.userId === userId && e.type === type && new Date(e.occurredAt).getTime() >= start).length;
+    },
+    async domainTotalToday(userId, domain) {
+      const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
+      return Array.from(state.xpEvents.values())
+        .filter((e) => e.userId === userId && e.domain === domain && new Date(e.occurredAt).getTime() >= dayStart.getTime())
+        .reduce((sum, e) => sum + e.points, 0);
+    },
+    async recurringTotalToday(userId, onceTypes) {
+      const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
+      const once = new Set(onceTypes || []);
+      return Array.from(state.xpEvents.values())
+        .filter((e) => e.userId === userId && e.domain && !once.has(e.type) && new Date(e.occurredAt).getTime() >= dayStart.getTime())
+        .reduce((sum, e) => sum + e.points, 0);
+    },
+    async sourceTotal(userId, sourceType, sourceId) {
+      return Array.from(state.xpEvents.values())
+        .filter((e) => e.userId === userId && e.sourceType === sourceType && e.sourceId === sourceId)
+        .reduce((sum, e) => sum + e.points, 0);
+    },
+    async domainBreakdown(userId) {
+      const out = { session: 0, pattern: 0, strategy: 0, trade: 0, psychology: 0, community: 0 };
+      Array.from(state.xpEvents.values()).forEach((e) => { if (e.userId === userId && e.domain in out) out[e.domain] += e.points; });
+      return out;
+    },
+    async usefulActivityDays(userId, eligibleTypes) {
+      const eligible = new Set(eligibleTypes || []);
+      const days = new Set();
+      Array.from(state.xpEvents.values()).forEach((e) => {
+        if (e.userId === userId && eligible.has(e.type)) days.add(new Date(e.occurredAt).toISOString().slice(0, 10));
+      });
+      return Array.from(days).sort().reverse();
+    },
+    async countByType(userId, type) {
+      return Array.from(state.xpEvents.values()).filter((e) => e.userId === userId && e.type === type).length;
+    },
+    async sourceCountsForType(userId, type) {
+      const counts = new Map();
+      Array.from(state.xpEvents.values()).forEach((e) => {
+        if (e.userId === userId && e.type === type && e.sourceId) counts.set(e.sourceId, (counts.get(e.sourceId) || 0) + 1);
+      });
+      return Array.from(counts.entries()).map(([sourceId, count]) => ({ sourceId, count }));
+    },
+    async sourceIdsWithAllTypes(userId, types) {
+      if (!types || !types.length) return [];
+      const typesBySource = new Map();
+      Array.from(state.xpEvents.values()).forEach((e) => {
+        if (e.userId !== userId || !e.sourceId || !types.includes(e.type)) return;
+        if (!typesBySource.has(e.sourceId)) typesBySource.set(e.sourceId, new Set());
+        typesBySource.get(e.sourceId).add(e.type);
+      });
+      const out = [];
+      typesBySource.forEach((typeSet, sourceId) => { if (typeSet.size === types.length) out.push(sourceId); });
+      return out;
+    }
+  };
+
+  const achievements = {
+    async unlock({ userId, achievementKey, evidence }) {
+      requireUser(userId);
+      const existing = Array.from(state.achievements.values()).find((a) => a.userId === userId && a.achievementKey === achievementKey);
+      if (existing) return { achievement: clone(existing), created: false };
+      const record = { id: newId('achievement'), userId, achievementKey: String(achievementKey || ''), unlockedAt: now(), evidence: evidence || {} };
+      state.achievements.set(record.id, record);
+      return { achievement: clone(record), created: true };
+    },
+    async listForUser(userId) {
+      return Array.from(state.achievements.values()).filter((a) => a.userId === userId).sort((a, b) => new Date(b.unlockedAt) - new Date(a.unlockedAt)).map(clone);
+    }
+  };
+
+  // Mirrors repo.pg.mjs's xpConfig exactly - see 012_xp_config_overrides.sql for the config_key
+  // namespace convention.
+  const xpConfig = {
+    async list() {
+      return Array.from(state.xpConfig.values()).sort((a, b) => (a.key < b.key ? -1 : 1)).map(clone);
+    },
+    async set(configKey, value, updatedBy) {
+      const record = { key: String(configKey || ''), value: value ?? null, updatedBy: updatedBy || null, updatedAt: now() };
+      state.xpConfig.set(record.key, record);
+      return clone(record);
+    },
+    async remove(configKey) {
+      state.xpConfig.delete(String(configKey || ''));
+    }
+  };
+
+  // Module 1 of the local-first-to-server migration (see ARCHITECTURE.md's Global Data Sync
+  // section). Named tradingSessions, not sessions - that name is already the admin heartbeat
+  // domain above. Stores the full nested SessionRecord shape (entries[].scenarios[]) as one
+  // record per session; repo.pg.mjs explodes the same logical shape into real child tables for
+  // cross-scenario querying, but the in-memory fake only needs to reproduce the same reads/
+  // writes, not the same physical layout - see its own comment for why those columns are real
+  // there. Scoped by user_id alone (not by character - see the migration file's comment).
+  const tradingSessions = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.tradingSessions.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_SESSION_OWNER');
+      const stamp = now();
+      const stored = {
+        id: record.id, userId, character: String(record.character || 'hunter'),
+        name: record.name || null, market: record.market || null, timeframe: record.timeframe || null,
+        date: record.date || null, jalali: record.jalali || null,
+        startedAt: record.startedAt ? new Date(record.startedAt).toISOString() : (existing ? existing.startedAt : stamp),
+        closedAt: record.closedAt ? new Date(record.closedAt).toISOString() : null,
+        status: record.status === 'closed' ? 'closed' : 'open',
+        updateIntervalMinutes: Number(record.updateIntervalMinutes) || 30,
+        gracePeriodMinutes: Number(record.gracePeriodMinutes) || 5,
+        fateSummary: record.fateSummary ?? null,
+        previousSessionSummary: record.previousSessionSummary ?? null,
+        aiSessionAnalysis: record.aiSessionAnalysis || null,
+        aiSessionAnalysisResult: record.aiSessionAnalysisResult ?? null,
+        finalEntryId: record.finalEntryId || null,
+        entries: (record.entries || []).map(function (entry) {
+          return {
+            id: entry.id, sessionId: record.id, type: entry.type,
+            createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : stamp,
+            hasImage: !!entry.hasImage, imageBlobId: entry.imageBlobId || null, imageUrl: entry.imageUrl || null,
+            timeframe: entry.timeframe || null, market: entry.market || null, tradingSession: entry.tradingSession || null,
+            gregorianDate: entry.gregorianDate || null, note: entry.note || null, movementNote: entry.movementNote || null,
+            relatedScenarioIds: Array.isArray(entry.relatedScenarioIds) ? entry.relatedScenarioIds : [],
+            aiAnalysisResult: entry.aiAnalysisResult ?? null,
+            scenarios: (entry.scenarios || []).map(function (scenario) {
+              return {
+                id: scenario.id, entryId: entry.id, sessionId: record.id,
+                title: scenario.title || '', description: scenario.description || null, evidence: scenario.evidence || null,
+                trigger: scenario.trigger || null, occurred: scenario.occurred === true,
+                patternTagId: (scenario.pattern && scenario.pattern.patternTagId) || null,
+                completionPercent: scenario.completion != null ? Number(scenario.completion) : null,
+                probabilityHistory: Array.isArray(scenario.probabilityHistory) ? scenario.probabilityHistory : [],
+                pattern: scenario.pattern ?? null, executionPlan: scenario.executionPlan ?? null
+              };
+            })
+          };
+        }),
+        activityLog: (record.activityLog || []).map(function (item) {
+          return {
+            id: item.id, sessionId: record.id, type: item.type, detail: item.detail || null,
+            scenarioId: item.scenarioId || null, loggedAt: item.loggedAt ? new Date(item.loggedAt).toISOString() : stamp,
+            countsTowardLoopUpdate: item.countsTowardLoopUpdate !== false
+          };
+        }),
+        createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
+      };
+      state.tradingSessions.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.tradingSessions.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.tradingSessions.values()).filter((s) => s.userId === userId).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.tradingSessions.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_SESSION_OWNER');
+      state.tradingSessions.delete(id);
+    },
+    // Mirrors repo.pg.mjs's countScenariosForPattern() - backs the XP engine's
+    // pattern_report_generated 5-sample gate.
+    async countScenariosForPattern(userId, patternId) {
+      let count = 0;
+      Array.from(state.tradingSessions.values()).forEach((session) => {
+        if (session.userId !== userId) return;
+        (session.entries || []).forEach((entry) => {
+          (entry.scenarios || []).forEach((scenario) => { if (scenario.patternTagId === patternId) count += 1; });
+        });
+      });
+      return count;
+    }
+  };
+
+  // Module 2 of the local-first-to-server migration (see ARCHITECTURE.md's Global Data Sync
+  // section, 7.18). Flatter than tradingSessions - stages/screenshots/chat messages are each a
+  // simple one-level array here too, no denormalized cross-link needed (repo.pg.mjs still uses
+  // real child tables for these, per the migration file's reasoning, but the in-memory fake only
+  // needs to reproduce the same reads/writes, not the same physical layout).
+  const patterns = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.patterns.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_PATTERN_OWNER');
+      const stamp = now();
+      const stored = {
+        id: record.id, userId,
+        name: record.name || '', description: record.description || '',
+        completionThreshold: Math.max(0, Math.min(100, Number(record.completionThreshold ?? 70))),
+        usageCount: Math.max(0, Number(record.usageCount || 0)), isPublic: Boolean(record.isPublic),
+        stages: (record.stages || []).map(function (item, index) {
+          return { id: item.id, patternId: record.id, order: Number(item.order || index + 1), text: item.text || '' };
+        }),
+        referenceScreenshots: (record.referenceScreenshots || []).map(function (item) {
+          return {
+            id: item.id, patternId: record.id, fileName: item.fileName || null, blobId: item.blobId || null,
+            imageUrl: item.imageUrl || null, uploadedAt: item.uploadedAt || stamp, note: item.note || null
+          };
+        }),
+        chatHistory: (record.chatHistory || []).map(function (item) {
+          return {
+            id: item.id, patternId: record.id, role: item.role, content: item.content || '',
+            createdAt: item.createdAt || stamp, suggestedStages: item.suggestedStages || null
+          };
+        }),
+        createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
+      };
+      state.patterns.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.patterns.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.patterns.values()).filter((p) => p.userId === userId).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.patterns.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_PATTERN_OWNER');
+      state.patterns.delete(id);
+    }
+  };
+
+  // Module 3 of the local-first-to-server migration (see ARCHITECTURE.md's Global Data Sync
+  // section, 7.18). Mirrors the strategies domain shape - see the migration file's comment for
+  // why the three sections are flattened onto the parent object while attachments/chatHistory/
+  // detectionEvents stay their own arrays.
+  const strategies = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.strategies.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_STRATEGY_OWNER');
+      const stamp = now();
+      const pm = record.positionManagement || {}, rm = record.riskManagement || {}, of = record.overallFramework || {};
+      const attachmentsOf = function (category, list) {
+        return (list || []).map(function (item) {
+          return {
+            id: item.id, strategyId: record.id, category: category, fileName: item.fileName || null,
+            blobId: item.blobId || null, fileUrl: item.fileUrl || null, mimeType: item.mimeType || null,
+            size: Number(item.size || 0), note: item.note || null, uploadedAt: item.uploadedAt || stamp
+          };
+        });
+      };
+      const stored = {
+        id: record.id, userId,
+        name: record.name || '', active: record.active !== false, isPublic: Boolean(record.isPublic),
+        origin: record.origin === 'ai_from_event' ? 'ai_from_event' : 'manual',
+        positionManagement: {
+          entryRules: pm.entryRules || '', stopLossRules: pm.stopLossRules || '', exitTargetRules: pm.exitTargetRules || '',
+          positionSizingRules: pm.positionSizingRules || '', freeNotes: pm.freeNotes || '',
+          attachments: attachmentsOf('positionManagement', pm.attachments)
+        },
+        riskManagement: {
+          maxRiskPerTradePercent: rm.maxRiskPerTradePercent ?? null, dailyDrawdownLimitPercent: rm.dailyDrawdownLimitPercent ?? null,
+          totalDrawdownLimitPercent: rm.totalDrawdownLimitPercent ?? null, maxConcurrentTrades: rm.maxConcurrentTrades ?? null,
+          maxProfitCapPerTrade: rm.maxProfitCapPerTrade ?? null, freeNotes: rm.freeNotes || '',
+          attachments: attachmentsOf('riskManagement', rm.attachments)
+        },
+        overallFramework: { description: of.description || '', attachments: attachmentsOf('overallFramework', of.attachments) },
+        chatHistory: (record.chatHistory || []).map(function (item) {
+          return { id: item.id, strategyId: record.id, role: item.role, content: item.content || '', createdAt: item.createdAt || stamp, suggestions: item.suggestions || null };
+        }),
+        aiUnderstandingSummary: record.aiUnderstandingSummary || null,
+        detectionEvents: (record.detectionEvents || []).map(function (item) {
+          return {
+            id: item.id, strategyId: record.id, detectedAt: item.detectedAt || stamp, source: item.source || null,
+            predictedOutcome: item.predictedOutcome || '', status: ['pending', 'confirmed', 'invalidated'].indexOf(item.status) > -1 ? item.status : 'pending',
+            resolvedAt: item.resolvedAt || null, note: item.note || null
+          };
+        }),
+        createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
+      };
+      state.strategies.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.strategies.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.strategies.values()).filter((s) => s.userId === userId).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.strategies.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_STRATEGY_OWNER');
+      state.strategies.delete(id);
+    }
+  };
+
+  // Module 4 of the local-first-to-server migration (see ARCHITECTURE.md's Global Data Sync
+  // section, 7.18). Mirrors trade.types.js's Trade shape - screenshots/emotionLog get their own
+  // arrays (repo.pg.mjs uses real child tables for these); everything else stays flattened onto
+  // the record object, matching the migration file's column-vs-jsonb reasoning.
+  const trades = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.trades.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
+      const stamp = now();
+      const source = record.source || {};
+      const stored = {
+        id: record.id, userId,
+        status: ['hunting', 'open', 'closed', 'cancelled'].indexOf(record.status) > -1 ? record.status : 'hunting',
+        direction: record.direction === 'short' ? 'short' : 'long',
+        entryMode: record.entryMode === 'quick' ? 'quick' : 'full',
+        entryPrice: record.entryPrice ?? null, stopLoss: record.stopLoss ?? null,
+        takeProfits: Array.isArray(record.takeProfits) ? record.takeProfits : [],
+        slDistancePercent: record.slDistancePercent ?? null, riskPercent: record.riskPercent ?? null, riskAmount: record.riskAmount ?? null,
+        leverage: record.leverage ?? null, positionSize: record.positionSize ?? null, marginRequired: record.marginRequired ?? null,
+        liquidationPrice: record.liquidationPrice ?? null, rr: record.rr ?? null,
+        marginMode: record.marginMode === 'cross' ? 'cross' : 'isolated',
+        commission: record.commission || null, breakevenPercent: record.breakevenPercent ?? null,
+        exitPrice: record.exitPrice ?? null, outcome: record.outcome || null, pnl: record.pnl ?? null, pnlPercent: record.pnlPercent ?? null,
+        session: record.session || 'london', primaryTimeframe: record.primaryTimeframe || null,
+        timeframeTrends: Array.isArray(record.timeframeTrends) ? record.timeframeTrends : [],
+        conceptTags: Array.isArray(record.conceptTags) ? record.conceptTags : [],
+        linkedPatternIds: Array.isArray(record.linkedPatternIds) ? record.linkedPatternIds : [],
+        linkedStrategyId: record.linkedStrategyId || null, chartNote: record.chartNote || '',
+        statusHistory: Array.isArray(record.statusHistory) ? record.statusHistory : [],
+        source: { character: source.character || null, sessionId: source.sessionId || null, scenarioId: source.scenarioId || null },
+        aiPredictionLinks: Array.isArray(record.aiPredictionLinks) ? record.aiPredictionLinks : [],
+        aiInitialAnalysis: record.aiInitialAnalysis || null, disciplineImpact: Number(record.disciplineImpact || 0),
+        screenshots: (record.screenshots || []).map(function (item) {
+          return { id: item.id, tradeId: record.id, fileName: item.fileName || null, blobId: item.blobId || null, imageUrl: item.imageUrl || null, mimeType: item.mimeType || null, uploadedAt: item.uploadedAt || stamp };
+        }),
+        emotionLog: (record.emotionLog || []).map(function (item) {
+          return {
+            id: item.id, tradeId: record.id, timestamp: item.timestamp || stamp, stage: ['entry', 'mid_trade', 'exit'].indexOf(item.stage) > -1 ? item.stage : 'entry',
+            dominantEmotions: Array.isArray(item.dominantEmotions) ? item.dominantEmotions : [], emotionDetails: Array.isArray(item.emotionDetails) ? item.emotionDetails : [],
+            stressLevel: item.stressLevel ?? null, focusQuality: item.focusQuality ?? null, planCommitment: item.planCommitment ?? null,
+            wouldTakeIfNotForced: item.wouldTakeIfNotForced ?? null, note: item.note || ''
+          };
+        }),
+        createdAt: existing ? existing.createdAt : (record.createdAt || stamp), updatedAt: stamp,
+        openedAt: record.openedAt || null, closedAt: record.closedAt || null
+      };
+      state.trades.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.trades.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.trades.values()).filter((t) => t.userId === userId).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.trades.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
+      state.trades.delete(id);
+    }
+  };
+
+  // Module 5 (final module) of the local-first-to-server migration. One document per user, no
+  // child tables, no list - see the migration file's comment. Stored (and returned) verbatim as
+  // the client sent it; this repo layer only owns the user_id-scoped upsert/read, never
+  // reshapes the profile's internal fields.
+  const mentalHealthProfile = {
+    async upsert(userId, profile) {
+      requireUser(userId);
+      if (!profile || typeof profile !== 'object') throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.mentalHealthProfiles.get(userId);
+      const stamp = now();
+      state.mentalHealthProfiles.set(userId, { userId, profile, createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp });
+      return clone(profile);
+    },
+    async get(userId) {
+      const record = state.mentalHealthProfiles.get(userId);
+      return record ? clone(record.profile) : null;
+    }
+  };
+
   // Mirrors repo.pg.mjs's health() shape for the admin Technical tab, so that tab works
   // unmodified under the zero-setup in-memory fallback too - there is no real "database" here
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
-  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, health };
+  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, health };
 }

@@ -30,12 +30,13 @@ class FakeNode {
     return {
       add(c) { if (self.className.split(' ').indexOf(c) === -1) self.className = (self.className + ' ' + c).trim(); },
       remove(c) { self.className = self.className.split(' ').filter((x) => x !== c).join(' '); },
-      toggle(c, on) { const has = self.className.split(' ').indexOf(c) > -1; const want = on === undefined ? !has : on; if (want && !has) this.add(c); else if (!want && has) this.remove(c); }
+      toggle(c, on) { const has = self.className.split(' ').indexOf(c) > -1; const want = on === undefined ? !has : on; if (want && !has) this.add(c); else if (!want && has) this.remove(c); return want; },
+      contains(c) { return self.className.split(' ').indexOf(c) > -1; }
     };
   }
 }
 
-function buildSandbox(fetchImpl) {
+function buildSandbox(fetchImpl, switcherStub) {
   const toast = new FakeNode('div');
   const languageButton = new FakeNode('button');
   const languageMenu = new FakeNode('div'); languageMenu.hidden = true;
@@ -45,16 +46,25 @@ function buildSandbox(fetchImpl) {
   const testModeBadge = new FakeNode('p'); testModeBadge.hidden = true;
   const enforcedBadge = new FakeNode('p'); enforcedBadge.hidden = true;
   const continueTestMode = new FakeNode('button'); continueTestMode.hidden = true;
-  const adminShell = new FakeNode('main'); adminShell.hidden = true;
+  const adminLayout = new FakeNode('div'); adminLayout.hidden = true;
+  const adminSidebar = new FakeNode('aside');
+  const sidebarToggle = new FakeNode('button');
+  const pageTitle = new FakeNode('h1');
   const adminBody = new FakeNode('div');
+  const currentUserLabel = new FakeNode('span'); currentUserLabel.hidden = true;
+  const currentUserName = new FakeNode('span');
   const tabButtons = ['users', 'ai', 'technical', 'xp', 'marketplace', 'financial'].map((tab) => { const b = new FakeNode('button'); b.dataset.tab = tab; return b; });
 
-  const byId = { toast, languageButton, languageMenu, currentLanguage, adminGate, testModeBadge, enforcedBadge, continueTestMode, adminShell, adminBody };
+  const byId = {
+    toast, languageButton, languageMenu, currentLanguage, adminGate, testModeBadge, enforcedBadge, continueTestMode,
+    adminLayout, adminSidebar, sidebarToggle, pageTitle, adminBody, currentUserLabel, currentUserName
+  };
 
   const documentElement = {};
   const document = {
     documentElement,
     createElement: (tag) => new FakeNode(tag),
+    createTextNode: (text) => { const node = new FakeNode('#text'); node.textContent = text; return node; },
     querySelector: (sel) => (sel.startsWith('#') ? byId[sel.slice(1)] || null : null),
     querySelectorAll: (sel) => {
       if (sel === '[data-i18n]') return [];
@@ -65,26 +75,52 @@ function buildSandbox(fetchImpl) {
     addEventListener() {}
   };
 
+  // A real browser fires 'hashchange' (asynchronously) whenever location.hash is set, which is
+  // exactly what startApp() relies on to render the default tab after redirecting to
+  // #/admin/users. Dispatching synchronously to registered listeners here is faithful enough
+  // for this sandbox and keeps the tests from needing arbitrary waits.
+  const windowListeners = {};
+  function addEventListener(type, fn) { windowListeners[type] = windowListeners[type] || []; windowListeners[type].push(fn); }
+  function removeEventListener() {}
   let hash = '';
-  const location = { get hash() { return hash; }, set hash(value) { hash = value; } };
+  const location = {
+    get hash() { return hash; },
+    set hash(value) { hash = value; (windowListeners.hashchange || []).forEach((fn) => fn()); }
+  };
+
+  // Real browsers provide a global Option constructor for building <option> elements
+  // (new Option(text, value)); userDetailRow()/aiTab()'s role/kyc/provider <select> building
+  // relies on it and would ReferenceError without this stub - a vm sandbox has no DOM globals.
+  class Option {
+    constructor(text, value, defaultSelected, selected) { this.tagName = 'option'; this.text = text; this.textContent = text; this.value = value; this.selected = Boolean(selected); }
+  }
 
   const sandbox = {
     document, location, localStorage: memoryStorage(), fetch: fetchImpl,
     setTimeout: (fn, delay) => { if (!delay) fn(); return 0; }, clearTimeout() {},
-    addEventListener() {}, removeEventListener() {},
+    addEventListener, removeEventListener,
+    innerWidth: 1280,
+    TradeJournalDevUserSwitcher: switcherStub,
+    Option,
     console
   };
   sandbox.window = sandbox; // real browsers alias window to the global object itself
 
-  return { sandbox, els: { toast, languageButton, languageMenu, currentLanguage, langButtons, adminGate, testModeBadge, enforcedBadge, continueTestMode, adminShell, adminBody, tabButtons } };
+  return {
+    sandbox,
+    els: {
+      toast, languageButton, languageMenu, currentLanguage, langButtons, adminGate, testModeBadge, enforcedBadge, continueTestMode,
+      adminLayout, adminSidebar, sidebarToggle, pageTitle, adminBody, currentUserLabel, currentUserName, tabButtons
+    }
+  };
 }
 
-async function load(fetchCallCounter) {
-  const fetchImpl = (...args) => {
+async function load(fetchCallCounter, fetchImplOverride, switcherStub) {
+  const fetchImpl = fetchImplOverride || ((...args) => {
     fetchCallCounter.count += 1;
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
-  };
-  const { sandbox, els } = buildSandbox(fetchImpl);
+  });
+  const { sandbox, els } = buildSandbox(fetchImpl, switcherStub);
   vm.runInNewContext(await source(), sandbox, { filename: 'admin-app.js' });
   return { app: sandbox.window.TradeJournalAdminApp, els, sandbox };
 }
@@ -103,15 +139,34 @@ test('route() parses all six admin tab hashes and defaults to "users" for anythi
   });
 });
 
-test('the XP & Segmentation tab renders its placeholder and issues zero additional fetch calls', async () => {
+test('the XP & Segmentation tab fetches real config from GET /xp/config and renders editable tables, not the old placeholder', async () => {
+  const xpConfigResponse = {
+    points: [{ type: 'session_created', domain: 'session', default: 2, current: 2, overridden: false, updatedAt: null },
+      { type: 'trade_calculation_valid', domain: 'trade', default: 2, current: 9, overridden: true, updatedAt: '2026-08-04T00:00:00Z' }],
+    domainCaps: [{ domain: 'session', default: 35, current: 35, overridden: false, updatedAt: null }],
+    recurringCap: { default: 80, current: 80, overridden: false, updatedAt: null },
+    sourceCaps: [{ type: 'session_chart_entry_added', default: 3, current: 3, overridden: false, updatedAt: null }],
+    periodCaps: [{ type: 'psych_checkin', default: { max: 2, period: 'day' }, current: { max: 2, period: 'day' }, overridden: false, updatedAt: null }],
+    sourceTotalCaps: [{ sourceType: 'trade', default: 18, current: 18, overridden: false, updatedAt: null }],
+    achievementPoints: [{ key: 'first_trade_closed', default: 10, current: 10, overridden: false, updatedAt: null }],
+    masteryRequirements: [{ level: 2, requirementKey: 'closedSessions', default: 2, current: 2, overridden: false, updatedAt: null }]
+  };
   const counter = { count: 0 };
-  const { app } = await load(counter);
-  const beforeCount = counter.count; // boot() itself calls fetch once on load - that's expected and unrelated
+  const fetchImpl = (url) => {
+    counter.count += 1;
+    if (String(url).indexOf('/xp/config') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(xpConfigResponse) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
+  };
+  const { app } = await load(counter, fetchImpl);
+  const beforeCount = counter.count;
   const node = await app.xpTab();
-  assert.equal(counter.count, beforeCount, 'the XP placeholder tab must never call fetch/the API');
-  const texts = node.children.map((child) => child.textContent).join(' ');
-  assert.match(texts, /XP control and user segmentation/);
-  assert.match(texts, /coming in the next phase/i);
+  assert.ok(counter.count > beforeCount, 'the XP tab must fetch real config from the API, not render a static placeholder');
+  const texts = findAll(node, () => true).map((n) => n.textContent).join(' | ');
+  assert.match(texts, /session_created/, 'a real XP type from the response must render');
+  assert.match(texts, /trade_calculation_valid/);
+  assert.doesNotMatch(texts, /coming in the next phase/i, 'the old static placeholder copy must be gone');
+  const overriddenRow = findAll(node, (n) => n.tagName === 'tr' && n.className.indexOf('admin-xp-overridden') > -1);
+  assert.equal(overriddenRow.length, 1, 'exactly the one overridden row (trade_calculation_valid) must get the highlight class');
 });
 
 test('on load, the admin gate becomes visible with the TEST MODE banner shown (auth disabled by default in the stub config)', async () => {
@@ -122,4 +177,93 @@ test('on load, the admin gate becomes visible with the TEST MODE banner shown (a
   assert.equal(els.testModeBadge.hidden, false);
   assert.equal(els.continueTestMode.hidden, false);
   assert.equal(els.enforcedBadge.hidden, true);
+  assert.equal(els.adminLayout.hidden, true, 'the sidebar/topbar shell must stay hidden until Continue is actually clicked');
+});
+
+test('clicking "Continue in test mode" reveals the sidebar/topbar shell, sets the page title, and loads the default Users tab', async () => {
+  const switcherStub = { ensureUser: () => Promise.resolve('user-1'), currentUserId: () => 'user-1' };
+  const fetchImpl = (url) => {
+    if (String(url).indexOf('/api/admin/config') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
+    if (String(url).indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [], total: 0, page: 1, pageSize: 20, onlineCount: 0 }) });
+    if (String(url).indexOf('/api/users/me') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'user-1', displayName: 'Test Admin' }) });
+    return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+  };
+  const { els } = await load({ count: 0 }, fetchImpl, switcherStub);
+  await new Promise((resolve) => setTimeout(resolve, 0)); // let boot()'s config fetch settle and show the gate
+  els.continueTestMode.onclick();
+  await new Promise((resolve) => setTimeout(resolve, 0)); // let ensureUser() + startApp()'s renderTab()/loadCurrentUserLabel() settle
+
+  assert.equal(els.adminGate.hidden, true);
+  assert.equal(els.adminLayout.hidden, false);
+  assert.match(els.pageTitle.textContent, /Users/);
+  assert.equal(els.currentUserLabel.hidden, false, 'a successful /api/users/me fetch must reveal the topbar user label');
+  assert.equal(els.currentUserName.textContent, 'Test Admin');
+});
+
+test('the sidebar-collapse toggle persists its state to localStorage and flips the layout class', async () => {
+  const switcherStub = { ensureUser: () => Promise.resolve('user-1'), currentUserId: () => 'user-1' };
+  const fetchImpl = (url) => {
+    if (String(url).indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [], total: 0, page: 1, pageSize: 20, onlineCount: 0 }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
+  };
+  const { els, sandbox } = await load({ count: 0 }, fetchImpl, switcherStub);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  els.continueTestMode.onclick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  els.sidebarToggle._handlers.click[0]();
+  assert.match(els.adminLayout.className, /collapsed/);
+  assert.equal(sandbox.localStorage.getItem('tradejournal:admin-sidebar-collapsed'), '1');
+
+  els.sidebarToggle._handlers.click[0]();
+  assert.doesNotMatch(els.adminLayout.className, /collapsed/);
+  assert.equal(sandbox.localStorage.getItem('tradejournal:admin-sidebar-collapsed'), '0');
+});
+
+function findAll(node, predicate, out = []) {
+  if (!node || !node.children) return out;
+  node.children.forEach((child) => { if (predicate(child)) out.push(child); findAll(child, predicate, out); });
+  return out;
+}
+
+test('expanding a user row fetches the enriched GET /users/:id detail and renders identity/KYC/level/achievements/subscriptions; Save KYC PATCHes the dedicated endpoint', async () => {
+  const switcherStub = { ensureUser: () => Promise.resolve('admin-1'), currentUserId: () => 'admin-1' };
+  const listUser = { id: 'u1', displayName: 'Jane Trader', role: 'user', suspendedAt: null, createdAt: new Date().toISOString(), lastLoginAt: null, isOnline: false, hoursOnline: 0, purchaseCount: 0, totalMockSpent: 0, totalTokensUsed: 0 };
+  const detailUser = {
+    id: 'u1', displayName: 'Jane Trader', role: 'user', suspendedAt: null, email: 'jane@example.com', phone: null,
+    profileRole: 'trader', kycStatus: 'pending', xpTotal: 120, level: 2, avatarDataUrl: null,
+    achievements: [{ achievementKey: 'first_trade_closed', unlockedAt: new Date().toISOString() }],
+    subscriptions: [{ purchasedAt: new Date().toISOString(), listing: { title: 'Mentor Access' } }]
+  };
+  let kycPatchBody = null;
+  const fetchImpl = (url, options) => {
+    const u = String(url);
+    if (u.indexOf('/api/admin/users/u1/kyc') > -1) { kycPatchBody = JSON.parse(options.body); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ...detailUser, kycStatus: kycPatchBody.kycStatus }) }); }
+    if (u.indexOf('/api/admin/users/u1') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(detailUser) });
+    if (u.indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [listUser], total: 1, page: 1, pageSize: 20, onlineCount: 0 }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
+  };
+  const { app } = await load({ count: 0 }, fetchImpl, switcherStub);
+
+  let wrap = await app.usersTab();
+  const [detailBtn] = findAll(wrap, (n) => n.tagName === 'button' && n.textContent === 'Actions');
+  assert.ok(detailBtn, 'expected a detail/Actions button for the listed user');
+  detailBtn.onclick();
+
+  wrap = await app.usersTab();
+  const texts = findAll(wrap, () => true).map((n) => n.textContent).join(' | ');
+  assert.match(texts, /jane@example\.com/, 'email must render from the enriched detail response');
+  assert.match(texts, /Level 2/, 'level line must use the enriched xpTotal/level');
+  assert.match(texts, /First Trade Closed/, 'achievement key must be humanized, not shown raw');
+  assert.match(texts, /Mentor Access/, 'subscription must show the joined listing title');
+
+  const kycSelect = findAll(wrap, (n) => n.tagName === 'select').find((select) => select.children.some((opt) => opt.value === 'verified'));
+  assert.ok(kycSelect, 'expected a KYC status <select>');
+  kycSelect.value = 'verified';
+  const saveKycBtn = findAll(wrap, (n) => n.tagName === 'button' && n.textContent === 'Save status')[0];
+  assert.ok(saveKycBtn, 'expected a Save status button next to the KYC select');
+  saveKycBtn.onclick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(kycPatchBody, { kycStatus: 'verified' }, 'Save must PATCH /api/admin/users/:id/kyc, not the general /users/:id route');
 });

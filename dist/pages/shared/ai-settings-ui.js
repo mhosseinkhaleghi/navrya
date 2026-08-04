@@ -204,9 +204,15 @@
   // toggle, since 'ai-settings' isn't in panel-system.js's own setActiveNav map). This
   // replaces the previous behavior of self-mounting a card inside the generic Settings page.
   function renderPage() {
-    var page = el('section', 'panel-page tj-ai-settings-page');
-    page.dir = i18n.direction();
-    page.append(buildSection());
+    var navrya = window.TradeJournalNavryaAiAssistant;
+    var page;
+    if (navrya && navrya.render) {
+      page = navrya.render();
+    } else {
+      page = el('section', 'panel-page tj-ai-settings-page');
+      page.dir = i18n.direction();
+      page.append(buildSection());
+    }
     layer.show(page, 'ai-settings');
     document.querySelectorAll('.sidebar nav a').forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#ai-settings'); });
     icons(page);

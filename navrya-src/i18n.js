@@ -1,0 +1,118 @@
+// Translations for the NAVRYA UI text this bundle renders. The design system itself is
+// English-only (no i18n mechanism in any copied component) - each string here is threaded
+// through as an explicit prop override (see character-app.jsx), never by editing component
+// defaults, so every component still works standalone with its original English text.
+export const NAVRYA_STRINGS = {
+  en: {
+    navSessions: 'Sessions', navDashboard: 'Dashboard', navStrategies: 'Strategies', navPsychology: 'Psychology',
+    navSubscription: 'Subscription', navAiAssistant: 'AI Assistant', navCommunity: 'Community', navSettings: 'Settings',
+    navMore: 'More tools', activeLabel: 'ACTIVE', collapseSidebar: 'Collapse sidebar', expandSidebar: 'Expand sidebar',
+    level: 'LEVEL', rank: 'RANK', honour: 'HONOUR', scenarios: 'SCENARIOS', execution: 'EXECUTION', streak: 'STREAK',
+    nextSession: 'NEXT SESSION', startsIn: 'STARTS IN', appUptime: 'APP UPTIME',
+    marketLondon: 'LONDON', marketNewYork: 'NEW YORK', marketTokyo: 'TOKYO', marketSydney: 'SYDNEY',
+    sessionLibraryTitle: 'Session Library', sessionLibrarySubtitle: 'Log your trades, follow your risk, and find your best hunts.',
+    newSession: 'New session', continueOpen: 'Continue / open', viewReport: 'View report', repeatCopy: 'Repeat / copy', delete: 'Delete',
+    instrument: 'INSTRUMENT', lastUpdate: 'LAST UPDATE', active: 'ACTIVE', closed: 'CLOSED',
+    emptyTitle: 'No sessions yet', emptyHelper: 'Select “New session” to begin. Saved sessions will appear here as cards.',
+    deleteConfirm: 'Delete this session?',
+    dialogTitle: 'New session', createWithoutChart: 'Create without chart', cancel: 'Cancel',
+    uploadNotice: 'Chart uploads are optional. Add scenarios and notes after creation.',
+    uploadChart: 'Upload chart image', tradingSession: 'Trading session', primaryTimeframe: 'Primary timeframe',
+    gregorianDate: 'Gregorian date', jalaliDate: 'Jalali date', loopInterval: 'Loop / update interval', graceMinutes: 'Update grace period (minutes)',
+    canvasHint: 'Resize cards and build your own panel arrangement from this page.',
+    noPanels: 'No panels are active in this section.', insufficientData: 'Insufficient data.', noData: 'No data',
+    overview: 'Today overview', totalTrades: 'Total trades', wins: 'Wins',
+    metric: 'Today overview', focus: 'Focus loop', watch: 'Market watchlist', strategy: 'Active strategies', notes: 'Quick note', ai: 'AI insight',
+    manage: 'Manage panels', aiPanelBuilder: 'AI panel builder', secure: 'No API key is stored in the browser; this interface is ready for a secure backend connection.',
+    prompt: 'Describe the panel you want to create…', build: 'Create panel',
+    characterTheme: 'Character theme', characterThemeHint: 'The selected character supplies the current skin. Changing it later alters colors and vocabulary, not data.',
+    show: 'Show', hide: 'Hide', addPanel: 'Add panel', patternRegistry: 'Pattern Registry',
+    nextGoalLabel: 'NEXT GOAL', goalMaxLevel: 'All goals complete', goalXpToGo: '{xp} XP to go'
+  },
+  fa: {
+    navSessions: 'سشن‌ها', navDashboard: 'داشبورد', navStrategies: 'استراتژی‌ها', navPsychology: 'روانشناسی',
+    navSubscription: 'اشتراک', navAiAssistant: 'هوش مصنوعی', navCommunity: 'تالار گفتگو', navSettings: 'تنظیمات',
+    navMore: 'ابزارهای بیشتر', activeLabel: 'فعال', collapseSidebar: 'جمع کردن نوار کناری', expandSidebar: 'باز کردن نوار کناری',
+    level: 'سطح', rank: 'رتبه', honour: 'اعتبار', scenarios: 'سناریوها', execution: 'اجرا', streak: 'توالی',
+    nextSession: 'سشن بعدی', startsIn: 'شروع تا', appUptime: 'مدت فعالیت برنامه',
+    marketLondon: 'لندن', marketNewYork: 'نیویورک', marketTokyo: 'توکیو', marketSydney: 'سیدنی',
+    sessionLibraryTitle: 'کتابخانه سشن', sessionLibrarySubtitle: 'معاملاتت را ثبت کن، ریسک‌هایت را دنبال کن، و بهترین شکارهایت را پیدا کن.',
+    newSession: 'سشن جدید', continueOpen: 'ادامه / باز کردن', viewReport: 'مشاهده گزارش', repeatCopy: 'تکرار / کپی', delete: 'حذف',
+    instrument: 'نماد', lastUpdate: 'آخرین به‌روزرسانی', active: 'فعال', closed: 'بسته',
+    emptyTitle: 'هنوز سشنی ثبت نشده است', emptyHelper: 'برای شروع «سشن جدید» را بزنید. سشن‌های ثبت‌شده اینجا به‌صورت کارت نمایش داده می‌شوند.',
+    deleteConfirm: 'این سشن حذف شود؟',
+    dialogTitle: 'سشن جدید', createWithoutChart: 'ایجاد بدون چارت', cancel: 'انصراف',
+    uploadNotice: 'آپلود چارت اختیاری است. پس از ایجاد می‌توانید سناریو و یادداشت اضافه کنید.',
+    uploadChart: 'آپلود تصویر چارت', tradingSession: 'سشن معاملاتی', primaryTimeframe: 'تایم‌فریم اصلی',
+    gregorianDate: 'تاریخ میلادی', jalaliDate: 'تاریخ شمسی', loopInterval: 'لوپ / بازه به‌روزرسانی', graceMinutes: 'مهلت به‌روزرسانی (دقیقه)',
+    canvasHint: 'کارت‌ها را از همین صفحه بزرگ یا کوچک کن و ترتیب پنل‌های شخصی‌ات را بساز.',
+    noPanels: 'پنلی در این بخش فعال نیست.', insufficientData: 'داده کافی نیست.', noData: 'بدون داده',
+    overview: 'نمای کلی امروز', totalTrades: 'مجموع معاملات', wins: 'برد‌ها',
+    metric: 'نمای کلی امروز', focus: 'فوکوس و لوپ', watch: 'واچ‌لیست بازار', strategy: 'استراتژی‌های فعال', notes: 'یادداشت سریع', ai: 'بینش هوش مصنوعی',
+    manage: 'مدیریت پنل‌ها', aiPanelBuilder: 'سازندهٔ پنل هوش مصنوعی', secure: 'کلید API در مرورگر ذخیره نمی‌شود؛ این بخش آمادهٔ اتصال امن به بک‌اند است.',
+    prompt: 'توضیح بده چه پنلی می‌خواهی بسازی…', build: 'ساخت پنل',
+    characterTheme: 'تم شخصیت', characterThemeHint: 'ظاهر فعلی از کاراکتر انتخاب‌شده می‌آید. تغییر تم فقط رنگ و واژگان را عوض می‌کند و داده‌ها ثابت می‌مانند.',
+    show: 'نمایش', hide: 'پنهان‌کردن', addPanel: 'افزودن پنل', patternRegistry: 'ثبت الگو',
+    nextGoalLabel: 'هدف بعدی', goalMaxLevel: 'همه هدف‌ها کامل شد', goalXpToGo: '{xp} امتیاز تا هدف بعدی'
+  },
+  ar: {
+    navSessions: 'الجلسات', navDashboard: 'لوحة التحكم', navStrategies: 'الاستراتيجيات', navPsychology: 'علم النفس',
+    navSubscription: 'الاشتراك', navAiAssistant: 'الذكاء الاصطناعي', navCommunity: 'المجتمع', navSettings: 'الإعدادات',
+    navMore: 'أدوات إضافية', activeLabel: 'نشط', collapseSidebar: 'طي الشريط الجانبي', expandSidebar: 'فتح الشريط الجانبي',
+    level: 'المستوى', rank: 'الرتبة', honour: 'الشرف', scenarios: 'السيناريوهات', execution: 'التنفيذ', streak: 'التتابع',
+    nextSession: 'الجلسة القادمة', startsIn: 'تبدأ خلال', appUptime: 'مدة تشغيل التطبيق',
+    marketLondon: 'لندن', marketNewYork: 'نيويورك', marketTokyo: 'طوكيو', marketSydney: 'سيدني',
+    sessionLibraryTitle: 'مكتبة الجلسات', sessionLibrarySubtitle: 'سجّل صفقاتك، وتتبّع مخاطرك، واعثر على أفضل فرصك.',
+    newSession: 'جلسة جديدة', continueOpen: 'متابعة / فتح', viewReport: 'عرض التقرير', repeatCopy: 'تكرار / نسخ', delete: 'حذف',
+    instrument: 'الأداة', lastUpdate: 'آخر تحديث', active: 'نشطة', closed: 'مغلقة',
+    emptyTitle: 'لم يتم تسجيل أي جلسة بعد', emptyHelper: 'اضغط «جلسة جديدة» للبدء. ستظهر الجلسات المسجلة هنا كبطاقات.',
+    deleteConfirm: 'حذف هذه الجلسة؟',
+    dialogTitle: 'جلسة جديدة', createWithoutChart: 'إنشاء بدون مخطط', cancel: 'إلغاء',
+    uploadNotice: 'رفع المخططات اختياري. يمكنك إضافة سيناريوهات وملاحظات بعد الإنشاء.',
+    uploadChart: 'رفع صورة المخطط', tradingSession: 'جلسة التداول', primaryTimeframe: 'الإطار الزمني الأساسي',
+    gregorianDate: 'التاريخ الميلادي', jalaliDate: 'التاريخ الشمسي', loopInterval: 'حلقة / فترة التحديث', graceMinutes: 'مهلة التحديث (دقائق)',
+    canvasHint: 'يمكنك تكبير أو تصغير البطاقات من هنا وبناء ترتيب اللوحات الخاص بك.',
+    noPanels: 'لا توجد لوحات نشطة في هذا القسم.', insufficientData: 'بيانات غير كافية.', noData: 'لا توجد بيانات',
+    overview: 'نظرة اليوم', totalTrades: 'إجمالي الصفقات', wins: 'الصفقات الرابحة',
+    metric: 'نظرة اليوم', focus: 'التركيز والدورة', watch: 'قائمة المتابعة', strategy: 'الاستراتيجيات النشطة', notes: 'ملاحظة سريعة', ai: 'رؤية الذكاء الاصطناعي',
+    manage: 'إدارة اللوحات', aiPanelBuilder: 'أداة إنشاء اللوحات بالذكاء الاصطناعي', secure: 'لا يتم حفظ مفتاح API في المتصفح؛ هذه الواجهة جاهزة لاتصال خلفي آمن.',
+    prompt: 'صف اللوحة التي تريد إنشاءها…', build: 'إنشاء لوحة',
+    characterTheme: 'سمة الشخصية', characterThemeHint: 'يوفر الشخصية المختارة المظهر الحالي. تغيير السمة لاحقاً يغيّر الألوان والمفردات فقط، لا البيانات.',
+    show: 'إظهار', hide: 'إخفاء', addPanel: 'إضافة لوحة', patternRegistry: 'سجل الأنماط',
+    nextGoalLabel: 'الهدف التالي', goalMaxLevel: 'تم إكمال كل الأهداف', goalXpToGo: '{xp} نقطة للهدف التالي'
+  },
+  es: {
+    navSessions: 'Sesiones', navDashboard: 'Panel', navStrategies: 'Estrategias', navPsychology: 'Psicología',
+    navSubscription: 'Suscripción', navAiAssistant: 'Asistente IA', navCommunity: 'Comunidad', navSettings: 'Ajustes',
+    navMore: 'Más herramientas', activeLabel: 'ACTIVO', collapseSidebar: 'Contraer barra lateral', expandSidebar: 'Expandir barra lateral',
+    level: 'NIVEL', rank: 'RANGO', honour: 'HONOR', scenarios: 'ESCENARIOS', execution: 'EJECUCIÓN', streak: 'RACHA',
+    nextSession: 'PRÓXIMA SESIÓN', startsIn: 'COMIENZA EN', appUptime: 'TIEMPO ACTIVO',
+    marketLondon: 'LONDRES', marketNewYork: 'NUEVA YORK', marketTokyo: 'TOKIO', marketSydney: 'SÍDNEY',
+    sessionLibraryTitle: 'Biblioteca de sesiones', sessionLibrarySubtitle: 'Registra tus operaciones, sigue tu riesgo y encuentra tus mejores oportunidades.',
+    newSession: 'Nueva sesión', continueOpen: 'Continuar / abrir', viewReport: 'Ver informe', repeatCopy: 'Repetir / copiar', delete: 'Eliminar',
+    instrument: 'INSTRUMENTO', lastUpdate: 'ÚLTIMA ACTUALIZACIÓN', active: 'ACTIVA', closed: 'CERRADA',
+    emptyTitle: 'Aún no hay sesiones', emptyHelper: 'Pulsa «Nueva sesión» para comenzar. Las sesiones guardadas aparecerán aquí como tarjetas.',
+    deleteConfirm: '¿Eliminar esta sesión?',
+    dialogTitle: 'Nueva sesión', createWithoutChart: 'Crear sin gráfico', cancel: 'Cancelar',
+    uploadNotice: 'La carga de gráficos es opcional. Puedes añadir escenarios y notas después de crear la sesión.',
+    uploadChart: 'Subir imagen del gráfico', tradingSession: 'Sesión de trading', primaryTimeframe: 'Marco temporal principal',
+    gregorianDate: 'Fecha gregoriana', jalaliDate: 'Fecha jalalí', loopInterval: 'Bucle / intervalo de actualización', graceMinutes: 'Margen de actualización (minutos)',
+    canvasHint: 'Cambia el tamaño de las tarjetas y crea tu propia disposición de paneles desde aquí.',
+    noPanels: 'No hay paneles activos en esta sección.', insufficientData: 'Datos insuficientes.', noData: 'Sin datos',
+    overview: 'Resumen de hoy', totalTrades: 'Operaciones totales', wins: 'Ganadas',
+    metric: 'Resumen de hoy', focus: 'Bucle de enfoque', watch: 'Lista de mercados', strategy: 'Estrategias activas', notes: 'Nota rápida', ai: 'Visión IA',
+    manage: 'Gestionar paneles', aiPanelBuilder: 'Creador de paneles con IA', secure: 'No se guarda ninguna clave API en el navegador; la interfaz está lista para una conexión segura al backend.',
+    prompt: 'Describe el panel que quieres crear…', build: 'Crear panel',
+    characterTheme: 'Tema del personaje', characterThemeHint: 'El personaje seleccionado aporta el aspecto actual. Cambiarlo después solo altera colores y vocabulario, no los datos.',
+    show: 'Mostrar', hide: 'Ocultar', addPanel: 'Añadir panel', patternRegistry: 'Registro de patrones',
+    nextGoalLabel: 'PRÓXIMA META', goalMaxLevel: 'Todas las metas completadas', goalXpToGo: '{xp} XP para la próxima meta'
+  }
+};
+
+export function stringsFor(language) {
+  return NAVRYA_STRINGS[language] || NAVRYA_STRINGS.en;
+}
+
+export function isRtl(language) {
+  return language === 'fa' || language === 'ar';
+}

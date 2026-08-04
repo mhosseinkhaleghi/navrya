@@ -54,6 +54,8 @@
   // the caller via buildContent(previewCount) - this modal only collects generic listing
   // fields (title/description/price/preview depth), it never inspects pattern/strategy shape.
   function openPublishFlow(options) {
+    var navrya = window.TradeJournalNavryaPublishFlow;
+    if (navrya && navrya.open) return navrya.open(options);
     var existing = options.existingListing || null;
     var m = modal('tj-listing-publish-modal', existing ? i18n.t('editListingTitle') : i18n.t('publishListingTitle'));
     var body = el('div', 'tj-modal-body');

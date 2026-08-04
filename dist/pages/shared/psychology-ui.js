@@ -299,11 +299,17 @@
   }
 
   function renderPage(){
-    var page=el('section','panel-page psy-page');
-    page.dir=i18n.direction();
-    page.append(pageHeader(),tabsNav());
-    var mhUi=window.TradeJournalMentalHealthUI;
-    page.append(state.tab==='overview'?overviewTab():state.tab==='journeys'?journeysTab():state.tab==='insights'?insightsTab():state.tab==='profile'&&mhUi?mhUi.renderProfileTab(renderPage):state.tab==='growth'&&mhUi?mhUi.renderGrowthTab(renderPage):settingsTab());
+    var navrya=window.TradeJournalNavryaPsychology;
+    var page;
+    if(navrya&&navrya.render){
+      page=navrya.render(state.tab,function(nextTab){state.tab=nextTab;renderPage();});
+    }else{
+      page=el('section','panel-page psy-page');
+      page.dir=i18n.direction();
+      page.append(pageHeader(),tabsNav());
+      var mhUi=window.TradeJournalMentalHealthUI;
+      page.append(state.tab==='overview'?overviewTab():state.tab==='journeys'?journeysTab():state.tab==='insights'?insightsTab():state.tab==='profile'&&mhUi?mhUi.renderProfileTab(renderPage):state.tab==='growth'&&mhUi?mhUi.renderGrowthTab(renderPage):settingsTab());
+    }
     layer.show(page,'psychology');
     history.replaceState(null,'','#mindset');
     document.querySelectorAll('.sidebar nav a').forEach(function(a){a.classList.toggle('active',a.getAttribute('href')==='#mindset');});
@@ -325,5 +331,5 @@
   window.addEventListener('tradejournal:trades-changed',function(){if(document.querySelector('.psy-page'))renderPage();});
   setTimeout(function(){if(location.hash==='#mindset')renderPage();},0);
 
-  window.TradeJournalPsychology={open:openPage,render:renderPage,renderJourneyChart:renderJourneyChart,buildTriggerCards:buildTriggerCards};
+  window.TradeJournalPsychology={open:openPage,render:renderPage,renderJourneyChart:renderJourneyChart,buildTriggerCards:buildTriggerCards,emotionalMirrorCard:emotionalMirrorCard,tagMirrorCard:tagMirrorCard,disciplineCard:disciplineCard,openTradeMoodCard:openTradeMoodCard};
 }());

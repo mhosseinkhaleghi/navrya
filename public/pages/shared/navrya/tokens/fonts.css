@@ -1,0 +1,38 @@
+/* Display: Cinzel + quote serif: EB Garamond (Google Fonts). UI: Satoshi, self-hosted. */
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400..600;1,400..600&display=swap");
+
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-Light.otf") format("opentype");font-weight:300;font-style:normal;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-LightItalic.otf") format("opentype");font-weight:300;font-style:italic;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-Regular.otf") format("opentype");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-Italic.otf") format("opentype");font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-Medium.otf") format("opentype");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-MediumItalic.otf") format("opentype");font-weight:500;font-style:italic;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-Bold.otf") format("opentype");font-weight:600 700;font-style:normal;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-BoldItalic.otf") format("opentype");font-weight:600 700;font-style:italic;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-Black.otf") format("opentype");font-weight:900;font-style:normal;font-display:swap}
+@font-face{font-family:"Satoshi";src:url("../assets/fonts/Satoshi-BlackItalic.otf") format("opentype");font-weight:900;font-style:italic;font-display:swap}
+
+/* Peyda - self-hosted Persian UI font (replaces Vazirmatn app-wide, fa only). */
+@font-face{font-family:"PeydaWeb";src:url("../assets/fonts/PeydaWeb-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../assets/fonts/PeydaWeb-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../assets/fonts/PeydaWeb-SemiBold.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../assets/fonts/PeydaWeb-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../assets/fonts/PeydaWeb-ExtraBold.woff2") format("woff2");font-weight:800;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../assets/fonts/PeydaWeb-Black.woff2") format("woff2");font-weight:900;font-style:normal;font-display:swap}
+@font-face{font-family:"PeydaWeb";src:url("../assets/fonts/PeydaWeb-ExtraBlack.woff2") format("woff2");font-weight:950;font-style:normal;font-display:swap}
+
+:root{
+--font-display:"Cinzel",'Times New Roman',serif;
+--font-quote:"EB Garamond",Georgia,serif;
+--font-ui:"Satoshi",system-ui,-apple-system,"Segoe UI",sans-serif;
+--font-num:"Satoshi",system-ui,sans-serif;
+}
+html[lang="fa"]{
+--font-ui:"PeydaWeb",Tahoma,Arial,sans-serif;
+--font-num:"PeydaWeb",Tahoma,Arial,sans-serif;
+--fw-regular:400;/* @kind other */
+--fw-medium:500;/* @kind other */
+--fw-semibold:600;/* @kind other */
+--fw-bold:700;/* @kind other */
+--numeric-tabular:tabular-nums;/* @kind other */
+}

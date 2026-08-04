@@ -16,13 +16,30 @@ const translations = {
     pricingPromptLabel: 'Prompt price / 1K tokens', pricingCompletionLabel: 'Completion price / 1K tokens', budgetLabel: 'Monthly token budget', savePricing: 'Save pricing',
     usageChartTitle: 'Token usage by provider', usageChartEmpty: 'No usage recorded yet.',
     dbConnectivity: 'Database connectivity', dbOk: 'Connected', dbFail: 'Unreachable', migrationsApplied: 'Migrations applied', migrationsNone: 'None recorded (in-memory backend)', communityApiHealth: 'Community API', aiGatewayHealth: 'AI gateway', errorTrackingLabel: 'Error tracking', errorTrackingValue: 'Not implemented yet',
-    xpPlaceholderTitle: 'XP control and user segmentation', xpPlaceholderBody: 'Coming in the next phase.',
+    xpStatTypes: 'XP types', xpStatOverridden: 'Overridden values', xpNoRows: 'Nothing to show.',
+    xpColDefault: 'Default', xpColCurrent: 'Current', xpColEdit: 'Edit', xpColType: 'Type', xpColDomain: 'Domain',
+    xpColAchievement: 'Achievement', xpColLevel: 'Level', xpColRequirement: 'Requirement',
+    xpResetDefault: 'Reset to default', xpPeriodDay: 'per day', xpPeriodWeek: 'per week',
+    xpSectionPoints: 'XP points by type', xpSectionDomainCaps: 'Domain daily caps',
+    xpSectionRecurringCap: 'Recurring daily cap (all domains combined)', xpRecurringCapLabel: 'Daily cap',
+    xpSectionSourceCaps: 'Per-source max count (e.g. max chart entries per Session)',
+    xpSectionSourceTotalCaps: 'Per-source total point ceiling (e.g. max total XP per Trade)',
+    xpSectionPeriodCaps: 'Per-type period caps', xpSectionAchievements: 'Achievement points',
+    xpSectionMastery: 'Mastery-gate requirements by level',
     marketplaceColTitle: 'Title', marketplaceColSeller: 'Seller', marketplaceColPrice: 'Price', marketplaceColEvidence: 'Evidence', marketplaceColStatus: 'Status', marketplaceColFeatured: 'Featured',
     delistAction: 'Delist', publishAction: 'Publish', featureAction: 'Feature', unfeatureAction: 'Unfeature',
     statusFilterAll: 'All', statusFilterDraft: 'Draft', statusFilterPublished: 'Published', statusFilterDelisted: 'Delisted',
     financeMockRevenueTitle: 'Mock marketplace revenue', financeMockRevenueNote: 'Mock — no real payment processor connected.',
     financeAiCostTitle: 'AI cost estimate (this month)', financeBudgetTitle: 'Remaining budget (this month)',
-    noPricingSet: 'No pricing set', noBudgetSet: 'No budget set', tokensUsedLabel: 'tokens used', remainingLabel: 'remaining', budgetOfLabel: 'of {budget}'
+    noPricingSet: 'No pricing set', noBudgetSet: 'No budget set', tokensUsedLabel: 'tokens used', remainingLabel: 'remaining', budgetOfLabel: 'of {budget}',
+    gateError: 'Could not continue.', gateErrorOffline: 'Could not reach the server. Is the community backend running? (npm run dev:community-api)',
+    backToApp: 'Back to app', sidebarToggleLabel: 'Toggle menu',
+    statTotalUsers: 'Total users', statOnlineNow: 'Online now', statProvidersConfigured: 'Providers configured', statTotalListings: 'Total listings', statPublishedListings: 'Published', statFeaturedListings: 'Featured',
+    detailLoadFailed: 'Could not load user details.', noEmail: 'No email on file', noPhone: 'No phone on file',
+    kycStatusLabel: 'Verification (KYC) status', kycNotStarted: 'Not started', kycPending: 'Pending review', kycVerified: 'Verified', kycRejected: 'Rejected', saveKyc: 'Save status',
+    profileRoleLabel: 'Product role', profileRoleTrader: 'Trader', profileRoleMentor: 'Mentor', profileRoleTeacher: 'Teacher',
+    levelXpLabel: 'Level {level} · {xp} XP', achievementsLabel: 'Achievements', noAchievements: 'No achievements unlocked yet.',
+    subscriptionsLabel: 'Subscriptions', noSubscriptions: 'No subscriptions.', mockBadge: 'mock', purchasedOnLabel: 'Purchased {date}'
   },
   fa: {
     brand: 'پنل مدیریت',
@@ -41,13 +58,30 @@ const translations = {
     pricingPromptLabel: 'قیمت هر ۱۰۰۰ توکن پرامپت', pricingCompletionLabel: 'قیمت هر ۱۰۰۰ توکن پاسخ', budgetLabel: 'سقف توکن ماهانه', savePricing: 'ذخیرهٔ قیمت‌گذاری',
     usageChartTitle: 'مصرف توکن به تفکیک سرویس‌دهنده', usageChartEmpty: 'هنوز مصرفی ثبت نشده است.',
     dbConnectivity: 'اتصال پایگاه‌داده', dbOk: 'متصل', dbFail: 'در دسترس نیست', migrationsApplied: 'مهاجرت‌های اعمال‌شده', migrationsNone: 'ثبت نشده (بک‌اند حافظه‌ای)', communityApiHealth: 'سرور بخش انجمن', aiGatewayHealth: 'دروازهٔ هوش مصنوعی', errorTrackingLabel: 'ثبت خطا', errorTrackingValue: 'هنوز پیاده‌سازی نشده',
-    xpPlaceholderTitle: 'کنترل XP و بخش‌بندی کاربران', xpPlaceholderBody: 'در فاز بعدی اضافه می‌شود.',
+    xpStatTypes: 'نوع رویداد XP', xpStatOverridden: 'مقادیر تغییریافته', xpNoRows: 'چیزی برای نمایش نیست.',
+    xpColDefault: 'پیش‌فرض', xpColCurrent: 'فعلی', xpColEdit: 'ویرایش', xpColType: 'نوع', xpColDomain: 'حوزه',
+    xpColAchievement: 'دستاورد', xpColLevel: 'سطح', xpColRequirement: 'شرط',
+    xpResetDefault: 'بازگشت به پیش‌فرض', xpPeriodDay: 'در روز', xpPeriodWeek: 'در هفته',
+    xpSectionPoints: 'امتیاز هر نوع رویداد', xpSectionDomainCaps: 'سقف روزانه هر حوزه',
+    xpSectionRecurringCap: 'سقف روزانه کل فعالیت‌های تکرارشونده', xpRecurringCapLabel: 'سقف روزانه',
+    xpSectionSourceCaps: 'حداکثر تعداد در هر منبع (مثلاً حداکثر Chart Entry در هر Session)',
+    xpSectionSourceTotalCaps: 'سقف کل امتیاز هر منبع (مثلاً حداکثر امتیاز هر Trade)',
+    xpSectionPeriodCaps: 'سقف دوره‌ای هر نوع', xpSectionAchievements: 'امتیاز دستاوردها',
+    xpSectionMastery: 'شرایط عبور از هر سطح (Mastery Gate)',
     marketplaceColTitle: 'عنوان', marketplaceColSeller: 'فروشنده', marketplaceColPrice: 'قیمت', marketplaceColEvidence: 'شواهد', marketplaceColStatus: 'وضعیت', marketplaceColFeatured: 'ویژه',
     delistAction: 'حذف از بازار', publishAction: 'انتشار', featureAction: 'ویژه کردن', unfeatureAction: 'برداشتن ویژه',
     statusFilterAll: 'همه', statusFilterDraft: 'پیش‌نویس', statusFilterPublished: 'منتشرشده', statusFilterDelisted: 'حذف‌شده',
     financeMockRevenueTitle: 'درآمد آزمایشی بازار', financeMockRevenueNote: 'آزمایشی — به هیچ درگاه پرداخت واقعی متصل نیست.',
     financeAiCostTitle: 'برآورد هزینهٔ هوش مصنوعی (این ماه)', financeBudgetTitle: 'باقی‌ماندهٔ بودجه (این ماه)',
-    noPricingSet: 'قیمتی تنظیم نشده', noBudgetSet: 'بودجه‌ای تنظیم نشده', tokensUsedLabel: 'توکن مصرف‌شده', remainingLabel: 'باقی‌مانده', budgetOfLabel: 'از {budget}'
+    noPricingSet: 'قیمتی تنظیم نشده', noBudgetSet: 'بودجه‌ای تنظیم نشده', tokensUsedLabel: 'توکن مصرف‌شده', remainingLabel: 'باقی‌مانده', budgetOfLabel: 'از {budget}',
+    gateError: 'ادامه ممکن نشد.', gateErrorOffline: 'اتصال به سرور برقرار نشد. سرور بخش انجمن اجرا شده؟ (npm run dev:community-api)',
+    backToApp: 'بازگشت به برنامه', sidebarToggleLabel: 'باز/بسته کردن منو',
+    statTotalUsers: 'مجموع کاربران', statOnlineNow: 'آنلاین الان', statProvidersConfigured: 'سرویس‌دهنده‌های تنظیم‌شده', statTotalListings: 'مجموع آگهی‌ها', statPublishedListings: 'منتشرشده', statFeaturedListings: 'ویژه',
+    detailLoadFailed: 'جزئیات کاربر بارگذاری نشد.', noEmail: 'ایمیلی ثبت نشده', noPhone: 'شماره‌ای ثبت نشده',
+    kycStatusLabel: 'وضعیت احراز هویت (KYC)', kycNotStarted: 'شروع نشده', kycPending: 'در حال بررسی', kycVerified: 'تأیید شده', kycRejected: 'رد شده', saveKyc: 'ذخیرهٔ وضعیت',
+    profileRoleLabel: 'نقش محصولی', profileRoleTrader: 'معامله‌گر', profileRoleMentor: 'منتور', profileRoleTeacher: 'مدرس',
+    levelXpLabel: 'سطح {level} · {xp} امتیاز', achievementsLabel: 'دستاوردها', noAchievements: 'هنوز دستاوردی باز نشده است.',
+    subscriptionsLabel: 'اشتراک‌ها', noSubscriptions: 'اشتراکی وجود ندارد.', mockBadge: 'آزمایشی', purchasedOnLabel: 'خریداری‌شده در {date}'
   },
   ar: {
     brand: 'لوحة الإدارة',
@@ -66,13 +100,30 @@ const translations = {
     pricingPromptLabel: 'سعر كل 1000 رمز إدخال', pricingCompletionLabel: 'سعر كل 1000 رمز إخراج', budgetLabel: 'الميزانية الشهرية للرموز', savePricing: 'حفظ التسعير',
     usageChartTitle: 'استخدام الرموز حسب المزوّد', usageChartEmpty: 'لا يوجد استخدام مسجل بعد.',
     dbConnectivity: 'اتصال قاعدة البيانات', dbOk: 'متصلة', dbFail: 'غير متاحة', migrationsApplied: 'الترحيلات المطبّقة', migrationsNone: 'لا يوجد سجل (خلفية في الذاكرة)', communityApiHealth: 'خادم المجتمع', aiGatewayHealth: 'بوابة الذكاء الاصطناعي', errorTrackingLabel: 'تتبع الأخطاء', errorTrackingValue: 'غير مطبَّق بعد',
-    xpPlaceholderTitle: 'التحكم بنقاط الخبرة وتصنيف المستخدمين', xpPlaceholderBody: 'قادم في المرحلة القادمة.',
+    xpStatTypes: 'أنواع نقاط الخبرة', xpStatOverridden: 'قيم مخصّصة', xpNoRows: 'لا يوجد شيء لعرضه.',
+    xpColDefault: 'افتراضي', xpColCurrent: 'الحالي', xpColEdit: 'تعديل', xpColType: 'النوع', xpColDomain: 'المجال',
+    xpColAchievement: 'الإنجاز', xpColLevel: 'المستوى', xpColRequirement: 'الشرط',
+    xpResetDefault: 'إعادة إلى الافتراضي', xpPeriodDay: 'يوميًا', xpPeriodWeek: 'أسبوعيًا',
+    xpSectionPoints: 'نقاط الخبرة حسب النوع', xpSectionDomainCaps: 'السقف اليومي لكل مجال',
+    xpSectionRecurringCap: 'السقف اليومي الكلي لكل الأنشطة المتكررة', xpRecurringCapLabel: 'السقف اليومي',
+    xpSectionSourceCaps: 'الحد الأقصى لكل مصدر (مثلاً أقصى عدد إدخالات رسم بياني لكل جلسة)',
+    xpSectionSourceTotalCaps: 'السقف الكلي للنقاط لكل مصدر (مثلاً أقصى نقاط لكل صفقة)',
+    xpSectionPeriodCaps: 'السقف الدوري لكل نوع', xpSectionAchievements: 'نقاط الإنجازات',
+    xpSectionMastery: 'شروط اجتياز كل مستوى',
     marketplaceColTitle: 'العنوان', marketplaceColSeller: 'البائع', marketplaceColPrice: 'السعر', marketplaceColEvidence: 'الأدلة', marketplaceColStatus: 'الحالة', marketplaceColFeatured: 'مميّز',
     delistAction: 'إزالة من السوق', publishAction: 'نشر', featureAction: 'تمييز', unfeatureAction: 'إلغاء التمييز',
     statusFilterAll: 'الكل', statusFilterDraft: 'مسودة', statusFilterPublished: 'منشور', statusFilterDelisted: 'مُزال',
     financeMockRevenueTitle: 'إيراد السوق التجريبي', financeMockRevenueNote: 'تجريبي — غير متصل بأي معالج دفع حقيقي.',
     financeAiCostTitle: 'تقدير تكلفة الذكاء الاصطناعي (هذا الشهر)', financeBudgetTitle: 'الميزانية المتبقية (هذا الشهر)',
-    noPricingSet: 'لا يوجد تسعير', noBudgetSet: 'لا توجد ميزانية', tokensUsedLabel: 'رمز مستخدم', remainingLabel: 'المتبقي', budgetOfLabel: 'من {budget}'
+    noPricingSet: 'لا يوجد تسعير', noBudgetSet: 'لا توجد ميزانية', tokensUsedLabel: 'رمز مستخدم', remainingLabel: 'المتبقي', budgetOfLabel: 'من {budget}',
+    gateError: 'تعذرت المتابعة.', gateErrorOffline: 'تعذر الوصول إلى الخادم. هل خادم المجتمع يعمل؟ (npm run dev:community-api)',
+    backToApp: 'العودة إلى التطبيق', sidebarToggleLabel: 'فتح/إغلاق القائمة',
+    statTotalUsers: 'إجمالي المستخدمين', statOnlineNow: 'متصل الآن', statProvidersConfigured: 'مزوّدون مُهيّؤون', statTotalListings: 'إجمالي الإعلانات', statPublishedListings: 'منشور', statFeaturedListings: 'مميّز',
+    detailLoadFailed: 'تعذر تحميل تفاصيل المستخدم.', noEmail: 'لا يوجد بريد إلكتروني', noPhone: 'لا يوجد هاتف',
+    kycStatusLabel: 'حالة التحقق (KYC)', kycNotStarted: 'لم تبدأ', kycPending: 'قيد المراجعة', kycVerified: 'موثّق', kycRejected: 'مرفوض', saveKyc: 'حفظ الحالة',
+    profileRoleLabel: 'الدور المنتجي', profileRoleTrader: 'متداول', profileRoleMentor: 'موجّه', profileRoleTeacher: 'مدرّس',
+    levelXpLabel: 'المستوى {level} · {xp} نقطة', achievementsLabel: 'الإنجازات', noAchievements: 'لا توجد إنجازات مفتوحة بعد.',
+    subscriptionsLabel: 'الاشتراكات', noSubscriptions: 'لا توجد اشتراكات.', mockBadge: 'تجريبي', purchasedOnLabel: 'تم الشراء في {date}'
   },
   es: {
     brand: 'Administración',
@@ -91,13 +142,30 @@ const translations = {
     pricingPromptLabel: 'Precio por 1K tokens de entrada', pricingCompletionLabel: 'Precio por 1K tokens de salida', budgetLabel: 'Presupuesto mensual de tokens', savePricing: 'Guardar tarifas',
     usageChartTitle: 'Uso de tokens por proveedor', usageChartEmpty: 'Aún no hay uso registrado.',
     dbConnectivity: 'Conectividad de la base de datos', dbOk: 'Conectada', dbFail: 'No disponible', migrationsApplied: 'Migraciones aplicadas', migrationsNone: 'Sin registro (backend en memoria)', communityApiHealth: 'API de comunidad', aiGatewayHealth: 'Pasarela de IA', errorTrackingLabel: 'Seguimiento de errores', errorTrackingValue: 'Aún no implementado',
-    xpPlaceholderTitle: 'Control de XP y segmentación de usuarios', xpPlaceholderBody: 'Disponible en la próxima fase.',
+    xpStatTypes: 'Tipos de XP', xpStatOverridden: 'Valores personalizados', xpNoRows: 'Nada que mostrar.',
+    xpColDefault: 'Predeterminado', xpColCurrent: 'Actual', xpColEdit: 'Editar', xpColType: 'Tipo', xpColDomain: 'Dominio',
+    xpColAchievement: 'Logro', xpColLevel: 'Nivel', xpColRequirement: 'Requisito',
+    xpResetDefault: 'Restablecer predeterminado', xpPeriodDay: 'por día', xpPeriodWeek: 'por semana',
+    xpSectionPoints: 'Puntos de XP por tipo', xpSectionDomainCaps: 'Tope diario por dominio',
+    xpSectionRecurringCap: 'Tope diario total de actividades recurrentes', xpRecurringCapLabel: 'Tope diario',
+    xpSectionSourceCaps: 'Máximo por fuente (p. ej. máx. entradas de gráfico por sesión)',
+    xpSectionSourceTotalCaps: 'Tope total de puntos por fuente (p. ej. máx. XP por operación)',
+    xpSectionPeriodCaps: 'Tope periódico por tipo', xpSectionAchievements: 'Puntos de logros',
+    xpSectionMastery: 'Requisitos de dominio (mastery) por nivel',
     marketplaceColTitle: 'Título', marketplaceColSeller: 'Vendedor', marketplaceColPrice: 'Precio', marketplaceColEvidence: 'Evidencia', marketplaceColStatus: 'Estado', marketplaceColFeatured: 'Destacado',
     delistAction: 'Retirar', publishAction: 'Publicar', featureAction: 'Destacar', unfeatureAction: 'Quitar destacado',
     statusFilterAll: 'Todos', statusFilterDraft: 'Borrador', statusFilterPublished: 'Publicado', statusFilterDelisted: 'Retirado',
     financeMockRevenueTitle: 'Ingresos simulados del mercado', financeMockRevenueNote: 'Simulado — sin procesador de pagos real conectado.',
     financeAiCostTitle: 'Costo estimado de IA (este mes)', financeBudgetTitle: 'Presupuesto restante (este mes)',
-    noPricingSet: 'Sin tarifas configuradas', noBudgetSet: 'Sin presupuesto configurado', tokensUsedLabel: 'tokens usados', remainingLabel: 'restante', budgetOfLabel: 'de {budget}'
+    noPricingSet: 'Sin tarifas configuradas', noBudgetSet: 'Sin presupuesto configurado', tokensUsedLabel: 'tokens usados', remainingLabel: 'restante', budgetOfLabel: 'de {budget}',
+    gateError: 'No se pudo continuar.', gateErrorOffline: 'No se pudo conectar con el servidor. ¿Está corriendo el backend de comunidad? (npm run dev:community-api)',
+    backToApp: 'Volver a la app', sidebarToggleLabel: 'Mostrar/ocultar menú',
+    statTotalUsers: 'Usuarios totales', statOnlineNow: 'En línea ahora', statProvidersConfigured: 'Proveedores configurados', statTotalListings: 'Anuncios totales', statPublishedListings: 'Publicados', statFeaturedListings: 'Destacados',
+    detailLoadFailed: 'No se pudieron cargar los detalles del usuario.', noEmail: 'Sin correo registrado', noPhone: 'Sin teléfono registrado',
+    kycStatusLabel: 'Estado de verificación (KYC)', kycNotStarted: 'No iniciado', kycPending: 'En revisión', kycVerified: 'Verificado', kycRejected: 'Rechazado', saveKyc: 'Guardar estado',
+    profileRoleLabel: 'Rol de producto', profileRoleTrader: 'Trader', profileRoleMentor: 'Mentor', profileRoleTeacher: 'Profesor',
+    levelXpLabel: 'Nivel {level} · {xp} XP', achievementsLabel: 'Logros', noAchievements: 'Aún no hay logros desbloqueados.',
+    subscriptionsLabel: 'Suscripciones', noSubscriptions: 'Sin suscripciones.', mockBadge: 'simulado', purchasedOnLabel: 'Comprado el {date}'
   }
 };
 
@@ -117,6 +185,8 @@ function applyLanguage(language) {
   document.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = t(node.dataset.i18n); });
   document.querySelector('#currentLanguage').textContent = languageNames[activeLanguage];
   document.querySelectorAll('[data-language]').forEach((button) => button.classList.toggle('active', button.dataset.language === activeLanguage));
+  const toggle = document.querySelector('#sidebarToggle');
+  if (toggle) toggle.setAttribute('aria-label', t('sidebarToggleLabel'));
   localStorage.setItem('tradejournal-language', activeLanguage);
 }
 
@@ -154,6 +224,20 @@ function api(path, options) {
 }
 
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
+function icons(root) { if (window.TradeJournalIcons) window.TradeJournalIcons.schedule(root || document); }
+// Gentelella-style "tile" stat cards - every value passed in must already be real, computed
+// from the same response the table/cards below it render from. Never call this with an
+// invented number.
+function statCard(iconName, value, label) {
+  const card = el('div', 'admin-stat-card');
+  const iconWrap = el('div', 'admin-stat-icon');
+  if (window.TradeJournalIcons) iconWrap.append(window.TradeJournalIcons.icon(iconName));
+  const text = el('div');
+  text.append(el('p', 'admin-stat-value', String(value)), el('p', 'admin-stat-label', label));
+  card.append(iconWrap, text);
+  return card;
+}
+function statRow(cards) { const row = el('div', 'admin-stat-row'); row.append(...cards); return row; }
 function errorNode(error, onRetry) {
   const wrap = el('div', 'admin-card');
   wrap.append(el('p', 'error-text', t('errorGeneric') + (error && error.code ? ' (' + error.code + ')' : '')));
@@ -170,7 +254,19 @@ let usersState = { search: '', sort: 'createdAt', dir: 'desc', page: 1, expanded
 
 function usersTab() {
   return api('/users?search=' + encodeURIComponent(usersState.search) + '&sort=' + usersState.sort + '&dir=' + usersState.dir + '&page=' + usersState.page).then((data) => {
+    // The list row is a lightweight shape (server/admin/routes.mjs's GET /users) - it has no
+    // kyc/profileRole/level/achievements/subscriptions. The expanded detail row needs the fully
+    // enriched GET /users/:id response instead, fetched once here rather than per-row.
+    const detailPromise = usersState.expanded ? api('/users/' + usersState.expanded).catch(() => null) : Promise.resolve(null);
+    return detailPromise.then((detail) => buildUsersTabBody(data, detail));
+  });
+}
+function buildUsersTabBody(data, detail) {
     const wrap = el('div');
+    wrap.append(statRow([
+      statCard('users', fmtNumber(data.total), t('statTotalUsers')),
+      statCard('wifi', fmtNumber(data.onlineCount || 0), t('statOnlineNow'))
+    ]));
     const toolbar = el('div', 'admin-toolbar');
     const search = document.createElement('input');
     search.type = 'text'; search.placeholder = t('usersSearchPlaceholder'); search.value = usersState.search;
@@ -216,7 +312,7 @@ function usersTab() {
       actionsCell.append(detailBtn);
       row.append(actionsCell);
       tbody.append(row);
-      if (usersState.expanded === user.id) tbody.append(userDetailRow(user, columns.length));
+      if (usersState.expanded === user.id) tbody.append(userDetailRow(detail, columns.length));
     });
     table.append(tbody);
     tableWrap.append(table);
@@ -233,7 +329,6 @@ function usersTab() {
     pagination.append(prev, el('span', '', t('pageOf', { page: usersState.page, total: totalPages })), next);
     wrap.append(pagination);
     return wrap;
-  });
 }
 function cell(text) { const td = document.createElement('td'); td.textContent = text; return td; }
 function onlineCell(isOnline) {
@@ -242,11 +337,25 @@ function onlineCell(isOnline) {
   td.append(dot, document.createTextNode(' ' + (isOnline ? t('online') : t('offline'))));
   return td;
 }
+function humanizeAchievementKey(key) { return String(key || '').split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '); }
+// `user` here is the fully-enriched GET /api/admin/users/:id response (identity, kyc,
+// profileRole, xpTotal, level, achievements, subscriptions) - null if that fetch failed.
 function userDetailRow(user, colSpan) {
   const row = document.createElement('tr');
   const td = document.createElement('td');
   td.colSpan = colSpan;
-  const box = el('div', 'admin-card');
+  if (!user) {
+    td.append(el('p', 'error-text', t('detailLoadFailed')));
+    row.append(td);
+    return row;
+  }
+  const box = el('div', 'admin-card admin-user-detail');
+
+  const identity = el('div', 'admin-user-identity');
+  if (user.avatarDataUrl) { const img = document.createElement('img'); img.className = 'admin-user-avatar'; img.src = user.avatarDataUrl; img.alt = ''; identity.append(img); }
+  identity.append(el('p', '', user.email || t('noEmail')), el('p', 'hint', user.phone || t('noPhone')));
+  box.append(identity);
+
   const roleField = el('label', 'field');
   roleField.append(el('span', '', t('colRole')));
   const roleSelect = document.createElement('select');
@@ -263,6 +372,48 @@ function userDetailRow(user, colSpan) {
       .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
   };
   box.append(roleField, suspendBtn);
+
+  box.append(el('p', 'hint', t('profileRoleLabel') + ': ' + t('profileRole' + user.profileRole.charAt(0).toUpperCase() + user.profileRole.slice(1))));
+
+  const kycField = el('label', 'field');
+  kycField.append(el('span', '', t('kycStatusLabel')));
+  const kycSelect = document.createElement('select');
+  ['not_started', 'pending', 'verified', 'rejected'].forEach((status) => kycSelect.append(new Option(t('kyc' + status.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('')), status, false, user.kycStatus === status)));
+  kycField.append(kycSelect);
+  const saveKycBtn = el('button', 'btn btn-secondary', t('saveKyc'));
+  saveKycBtn.type = 'button';
+  saveKycBtn.onclick = () => {
+    api('/users/' + user.id + '/kyc', { method: 'PATCH', body: JSON.stringify({ kycStatus: kycSelect.value }) })
+      .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+  };
+  box.append(kycField, saveKycBtn);
+
+  const rules = window.TradeJournalProfileXPRules;
+  const levelLine = el('p', '', t('levelXpLabel', { level: rules ? rules.levelForXp(user.xpTotal) : user.level, xp: fmtNumber(user.xpTotal) }));
+  box.append(levelLine);
+
+  box.append(el('h3', '', t('achievementsLabel')));
+  if (!user.achievements || !user.achievements.length) {
+    box.append(el('p', 'hint', t('noAchievements')));
+  } else {
+    const achList = document.createElement('ul');
+    user.achievements.forEach((achievement) => { const li = document.createElement('li'); li.textContent = humanizeAchievementKey(achievement.achievementKey) + ' — ' + fmtDate(achievement.unlockedAt); achList.append(li); });
+    box.append(achList);
+  }
+
+  box.append(el('h3', '', t('subscriptionsLabel')));
+  if (!user.subscriptions || !user.subscriptions.length) {
+    box.append(el('p', 'hint', t('noSubscriptions')));
+  } else {
+    const subList = document.createElement('ul');
+    user.subscriptions.forEach((sub) => {
+      const li = document.createElement('li');
+      li.textContent = (sub.listing ? sub.listing.title : sub.listingId) + ' — ' + t('purchasedOnLabel', { date: fmtDate(sub.purchasedAt) }) + ' (' + t('mockBadge') + ')';
+      subList.append(li);
+    });
+    box.append(subList);
+  }
+
   td.append(box);
   row.append(td);
   return row;
@@ -275,6 +426,7 @@ const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 function aiTab() {
   return Promise.all([api('/ai/keys'), api('/ai/pricing'), api('/ai/usage')]).then(([keys, pricing, usage]) => {
     const wrap = el('div');
+    wrap.append(statRow([statCard('key-round', keys.filter((k) => k.isSet).length + ' / ' + KNOWN_PROVIDERS.length, t('statProvidersConfigured'))]));
     const grid = el('div', 'admin-grid');
     const keyByProvider = {}; keys.forEach((k) => { keyByProvider[k.provider] = k; });
     const pricingByProvider = {}; pricing.forEach((p) => { pricingByProvider[p.provider] = p; });
@@ -380,12 +532,117 @@ function technicalTab() {
   });
 }
 
-// --- XP & Segmentation tab (deliberate placeholder - issues zero fetch calls) ---
+// --- XP & Segmentation tab ---
+// Real, DB-backed rule editing (Section 11's XP engine) - every number the engine reads
+// (POST /me/xp-events, GET /me/mastery, achievement unlock) is listed here alongside its code
+// default and whether it's currently overridden. Only the NUMBER is ever editable per row - the
+// verification logic behind each type/achievement/requirement stays in code (see
+// server/community/xp-config.mjs's header comment on that boundary), so this tab can never let
+// an admin invent a brand-new, unverified XP source.
+
+// Builds one editable table: `leadColumns` render the identifying cells (type/domain, etc.),
+// then Default | Current | an editable input (+ a period selector when isPeriod) | Save | Reset.
+// Reset is disabled once a row is no longer overridden - nothing to reset back to.
+function xpConfigTable(title, rows, leadColumns, category, keyFor, opts) {
+  opts = opts || {};
+  const card = el('div', 'admin-card admin-xp-section');
+  card.append(el('h3', '', title));
+  if (!rows.length) { card.append(el('p', 'hint', t('xpNoRows'))); return card; }
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  const thead = document.createElement('tr');
+  leadColumns.forEach((col) => thead.append(el('th', '', col.label)));
+  [t('xpColDefault'), t('xpColCurrent'), t('xpColEdit'), ''].forEach((label) => thead.append(el('th', '', label)));
+  const theadWrap = document.createElement('thead'); theadWrap.append(thead);
+  table.append(theadWrap);
+  const tbody = document.createElement('tbody');
+  rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    if (row.overridden) tr.className = 'admin-xp-overridden';
+    leadColumns.forEach((col) => tr.append(el('td', '', col.render(row))));
+    tr.append(el('td', 'navrya-tabular', opts.formatValue ? opts.formatValue(row.default) : fmtNumber(row.default)));
+    tr.append(el('td', 'navrya-tabular', opts.formatValue ? opts.formatValue(row.current) : fmtNumber(row.current)));
+
+    const editTd = document.createElement('td');
+    const controls = el('div', 'admin-xp-controls');
+    const numberInput = document.createElement('input');
+    numberInput.type = 'number'; numberInput.min = '0'; numberInput.step = '1';
+    numberInput.value = opts.isPeriod ? (row.current && row.current.max) : row.current;
+    numberInput.className = 'admin-xp-input';
+    controls.append(numberInput);
+    let periodSelect = null;
+    if (opts.isPeriod) {
+      periodSelect = document.createElement('select');
+      ['day', 'week'].forEach((p) => periodSelect.append(new Option(t(p === 'day' ? 'xpPeriodDay' : 'xpPeriodWeek'), p, false, row.current && row.current.period === p)));
+      controls.append(periodSelect);
+    }
+    editTd.append(controls);
+    tr.append(editTd);
+
+    const actionsTd = document.createElement('td');
+    const actions = el('div', 'admin-xp-controls');
+    const saveBtn = el('button', 'btn btn-primary btn-sm', t('save'));
+    saveBtn.type = 'button';
+    saveBtn.onclick = () => {
+      const value = opts.isPeriod ? { maxCount: numberInput.value, period: periodSelect.value } : numberInput.value;
+      api('/xp/config', { method: 'POST', body: JSON.stringify({ category, key: keyFor(row), value }) })
+        .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    const resetBtn = el('button', 'btn btn-secondary btn-sm', t('xpResetDefault'));
+    resetBtn.type = 'button';
+    resetBtn.disabled = !row.overridden;
+    resetBtn.onclick = () => {
+      api('/xp/config?category=' + encodeURIComponent(category) + '&key=' + encodeURIComponent(keyFor(row)), { method: 'DELETE' })
+        .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    actions.append(saveBtn, resetBtn);
+    actionsTd.append(actions);
+    tr.append(actionsTd);
+    tbody.append(tr);
+  });
+  table.append(tbody);
+  const tableWrap = el('div', 'admin-table-wrap');
+  tableWrap.append(table);
+  card.append(tableWrap);
+  return card;
+}
 
 function xpTab() {
-  const wrap = el('div', 'admin-card');
-  wrap.append(el('h3', '', t('xpPlaceholderTitle')), el('p', 'hint', t('xpPlaceholderBody')));
-  return Promise.resolve(wrap);
+  return api('/xp/config').then((cfg) => {
+    const wrap = el('div');
+    const overriddenCount = ['points', 'domainCaps', 'sourceCaps', 'periodCaps', 'sourceTotalCaps', 'achievementPoints', 'masteryRequirements']
+      .reduce((sum, key) => sum + cfg[key].filter((r) => r.overridden).length, 0) + (cfg.recurringCap.overridden ? 1 : 0);
+    wrap.append(statRow([statCard('award', String(cfg.points.length), t('xpStatTypes')), statCard('sliders-horizontal', String(overriddenCount), t('xpStatOverridden'))]));
+
+    wrap.append(xpConfigTable(t('xpSectionPoints'), cfg.points,
+      [{ label: t('xpColType'), render: (r) => r.type }, { label: t('xpColDomain'), render: (r) => r.domain || '—' }],
+      'points', (r) => r.type));
+
+    wrap.append(xpConfigTable(t('xpSectionDomainCaps'), cfg.domainCaps,
+      [{ label: t('xpColDomain'), render: (r) => r.domain }], 'domainCap', (r) => r.domain));
+
+    wrap.append(xpConfigTable(t('xpSectionRecurringCap'), [Object.assign({ label: t('xpRecurringCapLabel') }, cfg.recurringCap)],
+      [{ label: '', render: (r) => r.label }], 'recurringCap', () => ''));
+
+    wrap.append(xpConfigTable(t('xpSectionSourceCaps'), cfg.sourceCaps,
+      [{ label: t('xpColType'), render: (r) => r.type }], 'sourceCap', (r) => r.type));
+
+    wrap.append(xpConfigTable(t('xpSectionSourceTotalCaps'), cfg.sourceTotalCaps,
+      [{ label: t('xpColDomain'), render: (r) => r.sourceType }], 'sourceTotalCap', (r) => r.sourceType));
+
+    wrap.append(xpConfigTable(t('xpSectionPeriodCaps'), cfg.periodCaps,
+      [{ label: t('xpColType'), render: (r) => r.type }], 'periodCap', (r) => r.type,
+      { isPeriod: true, formatValue: (v) => (v ? v.max + ' / ' + t(v.period === 'week' ? 'xpPeriodWeek' : 'xpPeriodDay') : '—') }));
+
+    wrap.append(xpConfigTable(t('xpSectionAchievements'), cfg.achievementPoints,
+      [{ label: t('xpColAchievement'), render: (r) => r.key }], 'achievementPoints', (r) => r.key));
+
+    wrap.append(xpConfigTable(t('xpSectionMastery'), cfg.masteryRequirements,
+      [{ label: t('xpColLevel'), render: (r) => String(r.level) }, { label: t('xpColRequirement'), render: (r) => r.requirementKey }],
+      'mastery', (r) => r.level + ':' + r.requirementKey));
+
+    return wrap;
+  });
 }
 
 // --- Marketplace tab ---
@@ -395,6 +652,11 @@ let marketplaceStatusFilter = 'all';
 function marketplaceTab() {
   return api('/marketplace/listings?status=' + marketplaceStatusFilter).then((listings) => {
     const wrap = el('div');
+    wrap.append(statRow([
+      statCard('store', fmtNumber(listings.length), t('statTotalListings')),
+      statCard('badge-check', fmtNumber(listings.filter((l) => l.status === 'published').length), t('statPublishedListings')),
+      statCard('star', fmtNumber(listings.filter((l) => l.featured).length), t('statFeaturedListings'))
+    ]));
     const toolbar = el('div', 'admin-toolbar');
     const select = document.createElement('select');
     [['all', 'statusFilterAll'], ['draft', 'statusFilterDraft'], ['published', 'statusFilterPublished'], ['delisted', 'statusFilterDelisted']]
@@ -490,24 +752,59 @@ function route() {
 function renderTab() {
   const tab = route();
   document.querySelectorAll('#adminTabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelector('#pageTitle').textContent = t('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
   const body = document.querySelector('#adminBody');
   body.replaceChildren(el('p', 'hint', t('loading')));
-  tabBuilders[tab]().then((node) => { body.replaceChildren(node); }).catch((error) => { body.replaceChildren(errorNode(error, renderTab)); });
+  tabBuilders[tab]().then((node) => { body.replaceChildren(node); icons(body); }).catch((error) => { body.replaceChildren(errorNode(error, renderTab)); });
 }
-function rerenderCurrentTab() { if (!document.querySelector('#adminShell').hidden) renderTab(); }
+function rerenderCurrentTab() { if (!document.querySelector('#adminLayout').hidden) renderTab(); }
 
-document.querySelectorAll('#adminTabs button').forEach((button) => button.addEventListener('click', () => { location.hash = '#/admin/' + button.dataset.tab; }));
+document.querySelectorAll('#adminTabs button').forEach((button) => button.addEventListener('click', () => {
+  location.hash = '#/admin/' + button.dataset.tab;
+  // On the mobile overlay drawer, picking a tab should close the sidebar back down.
+  document.querySelector('#adminLayout').classList.remove('sidebar-open');
+}));
 window.addEventListener('hashchange', () => { if (location.hash.indexOf('#/admin') === 0) renderTab(); });
+
+const SIDEBAR_COLLAPSE_KEY = 'tradejournal:admin-sidebar-collapsed';
+const sidebarToggle = document.querySelector('#sidebarToggle');
+sidebarToggle.addEventListener('click', () => {
+  const layout = document.querySelector('#adminLayout');
+  if (window.innerWidth <= 880) { layout.classList.toggle('sidebar-open'); return; }
+  const collapsed = layout.classList.toggle('collapsed');
+  try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (_) { /* no-op if storage is unavailable */ }
+});
+document.addEventListener('click', (event) => {
+  const layout = document.querySelector('#adminLayout');
+  if (window.innerWidth <= 880 && layout.classList.contains('sidebar-open') && !event.target.closest('#adminSidebar') && !event.target.closest('#sidebarToggle')) layout.classList.remove('sidebar-open');
+});
+
+function loadCurrentUserLabel() {
+  fetch('/api/users/me', { headers: switcher && switcher.currentUserId() ? { 'x-dev-user-id': switcher.currentUserId() } : {} })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((user) => {
+      if (!user) return;
+      const label = document.querySelector('#currentUserLabel');
+      document.querySelector('#currentUserName').textContent = user.displayName;
+      label.hidden = false;
+    })
+    .catch(() => {}); // best-effort - the topbar label is a courtesy, never blocks the panel
+}
 
 function startApp() {
   document.querySelector('#adminGate').hidden = true;
-  document.querySelector('#adminShell').hidden = false;
+  const layout = document.querySelector('#adminLayout');
+  layout.hidden = false;
+  try { if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1') layout.classList.add('collapsed'); } catch (_) { /* no-op */ }
+  loadCurrentUserLabel();
+  icons(document);
   if (!/^#\/admin\/(users|ai|technical|xp|marketplace|financial)$/.test(location.hash)) location.hash = '#/admin/users';
   else renderTab();
 }
 
 function boot() {
   applyLanguage(activeLanguage);
+  icons(document);
   fetch('/api/admin/config').then((r) => r.json()).catch(() => ({ authEnforced: false })).then((config) => {
     const gate = document.querySelector('#adminGate');
     gate.hidden = false;
@@ -518,14 +815,31 @@ function boot() {
       const continueBtn = document.querySelector('#continueTestMode');
       testBadge.hidden = false;
       continueBtn.hidden = false;
-      continueBtn.onclick = () => { (switcher ? switcher.ensureUser() : Promise.resolve()).then(startApp); };
+      // The previous version of this handler had no .catch() at all: if ensureUser() rejected
+      // (most commonly a TypeError from fetch() because the Community backend on port 8788
+      // isn't running), the click silently did nothing - no error, no way to tell what
+      // happened. Mirrors select/app.js's describeCreateError() distinction between "never
+      // reached a server" and "server rejected it".
+      continueBtn.onclick = () => {
+        continueBtn.disabled = true;
+        (switcher ? switcher.ensureUser() : Promise.resolve()).then(startApp).catch((error) => {
+          continueBtn.disabled = false;
+          showToast(describeGateError(error), 'danger');
+        });
+      };
     }
   });
+}
+
+function describeGateError(error) {
+  if (error instanceof TypeError) return t('gateErrorOffline');
+  const base = t('gateError');
+  return error && error.message ? base + ' (' + error.message + ')' : base;
 }
 
 // Minimal testability surface (this page otherwise has no window export, matching
 // select/app.js's own standalone-script style) - route() and the XP placeholder tab are pure
 // enough to unit-test directly rather than only indirectly through hash/DOM interaction.
-window.TradeJournalAdminApp = { route: route, xpTab: xpTab };
+window.TradeJournalAdminApp = { route: route, xpTab: xpTab, usersTab: usersTab };
 
 boot();

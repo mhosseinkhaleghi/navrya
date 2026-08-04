@@ -1,7 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Manrope:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Manrope:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap');
 
 :root {
-  --ui-font: Vazirmatn, Tahoma, Arial, sans-serif;
+  --ui-font: "PeydaWeb", Tahoma, Arial, sans-serif;
   --ink: #0b0b0e;
   --panel: rgba(18, 14, 17, .82);
   --panel-2: rgba(25, 17, 20, .86);
@@ -169,4 +169,17 @@ html[dir="ltr"] .featured-card::before { background: linear-gradient(270deg, rgb
 }
 @media (max-width: 570px) {
   .app-shell { padding: 8px; }.brand-block h1 { font-size: 13px; }.profile-block { min-height: 105px; grid-template-columns: minmax(0, 1fr) 83px 40px; }.level-wrap { padding-left: 0; padding-right: 0; }.level-copy { width: 145px; }.xp-line { width: 140px; }.date { font-size: 10px; }.market-clocks { width: 100%; }.content-heading h2 { font-size: 21px; }.content-heading p { line-height: 1.7; }.toolbar > * { flex: 1 1 100%; width: 100% !important; }.view-toggle { margin-left: 0; flex: 0 0 auto; width: auto !important; }.featured-card { margin-top: 12px; }.small-card { height: 350px; }.cards-grid { grid-template-columns: 1fr; }.muted-grid { display: none; }.sidebar nav a { font-size: 12px; gap: 9px; }.sidebar nav a .icon { width: 21px; }.sidebar { border-radius: 10px; }
+}
+
+/* NAVRYA design-system pilot (Sessions tab): minimal layout shell only - every visual detail
+   lives in the copied component styles (public/pages/shared/navrya/), not here. */
+/* No forced direction/ltr here - .navrya-shell inherits dir/direction from <html> (toggled by
+   store.setLanguage()) so the sidebar physically moves to the trailing edge in fa/ar, matching
+   each React root's own dir={rtl?'rtl':'ltr'} on its wrapper div. */
+.app-shell { width: min(100%, 1660px); }
+.navrya-shell { display: flex; gap: 17px; align-items: flex-start; margin-top: 16px; }
+.navrya-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.content { padding: 0; }
+@media (max-width: 920px) {
+  .navrya-shell { flex-direction: column; }
 }

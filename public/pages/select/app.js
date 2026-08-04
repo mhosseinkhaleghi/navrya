@@ -41,15 +41,24 @@ applyLanguage(activeLanguage);
 languageButton.addEventListener('click', () => { const open = languageMenu.hidden; languageMenu.hidden = !open; languageButton.setAttribute('aria-expanded', String(open)); });
 document.querySelectorAll('[data-language]').forEach((button) => button.addEventListener('click', () => { applyLanguage(button.dataset.language); languageMenu.hidden = true; languageButton.setAttribute('aria-expanded','false'); }));
 document.addEventListener('click', (event) => { if (!event.target.closest('.language-picker')) { languageMenu.hidden = true; languageButton.setAttribute('aria-expanded','false'); } });
-// Account-creation gate (fixed): a fresh browser (no tradejournal:dev-user-id yet) must name
-// itself BEFORE a character selection is allowed to complete - clicking a character card opens
-// the name step instead of proceeding immediately, and the pending selection only completes
-// after a real account exists. A returning browser (id already stored) is unaffected - the
-// card completes exactly as it always has. Creation goes through dev-user-switcher.js's own
+// Account-creation gate: a fresh browser (no tradejournal:dev-user-id yet) must name itself
+// BEFORE a character selection is allowed to complete - clicking a character card opens the name
+// step instead of proceeding immediately, and the pending selection only completes after a real
+// account exists. A returning browser whose stored id the server still recognizes is unaffected -
+// the card completes exactly as it always has. Creation goes through dev-user-switcher.js's own
 // exported createUser() - the single place a user is ever created - so there is exactly one
 // implementation of that API call, never a second one duplicated here.
-const DEV_USER_ID_KEY = 'tradejournal:dev-user-id';
-function hasDevUser() { try { return !!localStorage.getItem(DEV_USER_ID_KEY); } catch (_) { return false; } }
+//
+// hasDevUser() used to be a bare localStorage-presence check, so a STALE id (e.g. the in-memory
+// dev backend restarted, which resets its whole user table) was trusted forever: character
+// selection "completed" with an id the server had never heard of, the name step never
+// re-appeared, and every subsequent request silently 401'd - the trader just saw dead/demo data
+// with no visible reason. Now it asks dev-user-switcher.js's isStoredUserValid(), which actually
+// checks the id against the server (once per page load, not per click).
+function hasDevUser() {
+  const switcher = window.TradeJournalDevUserSwitcher;
+  return switcher ? switcher.isStoredUserValid() : Promise.resolve(false);
+}
 
 const nameStepOverlay = document.querySelector('#nameStepOverlay');
 const nameStepInput = document.querySelector('#nameStepInput');
@@ -66,9 +75,9 @@ function completeCharacterSelection(card) {
   window.setTimeout(() => window.parent.postMessage({ type: 'tradejournal:character-selected', character }, '*'), 220);
 }
 
-document.querySelectorAll('.select-character').forEach((button) => button.addEventListener('click', () => {
+document.querySelectorAll('.select-character').forEach((button) => button.addEventListener('click', async () => {
   const card = button.closest('.character-card');
-  if (hasDevUser()) { completeCharacterSelection(card); return; }
+  if (await hasDevUser()) { completeCharacterSelection(card); return; }
   pendingCharacterCard = card;
   openNameStep();
 }));

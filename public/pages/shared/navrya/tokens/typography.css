@@ -1,0 +1,27 @@
+:root{
+/* Display — Cinzel */
+--type-character-title:600 34px/42px var(--font-display);
+--type-display-lg:500 22px/28px var(--font-display);
+--type-display-md:500 18px/24px var(--font-display);
+--type-quote:italic 400 15px/20px var(--font-quote);
+--type-quote-sm:italic 400 13px/20px var(--font-ui);
+
+/* UI — Satoshi / Inter */
+--type-nav:600 16px/22px var(--font-ui);
+--type-section-label:700 11px/14px var(--font-ui);
+--type-username:500 14px/20px var(--font-ui);
+--type-body:500 13px/18px var(--font-ui);
+--type-caption:500 11px/14px var(--font-ui);
+--type-metric-label:400 11px/16px var(--font-ui);
+--type-metric-value:500 20px/24px var(--font-ui);
+--type-countdown:500 18px/24px var(--font-ui);
+--type-level:600 48px/52px var(--font-ui);
+
+/* Sizes / leading, when composing by hand */
+--fs-11:11px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-20:20px;--fs-22:22px;--fs-34:34px;--fs-48:48px;
+--lh-14:14px;--lh-16:16px;--lh-18:18px;--lh-20:20px;--lh-22:22px;--lh-24:24px;--lh-28:28px;--lh-42:42px;--lh-52:52px;
+
+--tracking-label:.08em;
+--tracking-display:.06em;
+--tracking-tight:0;
+}

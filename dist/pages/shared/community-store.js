@@ -38,7 +38,15 @@
     getUser: function (id) { return get('/api/users/' + encodeURIComponent(id)); },
 
     listPosts: function (params) { return get('/api/community/posts' + query(params)); },
-    createPost: function (data) { return post('/api/community/posts', data); },
+    // Dispatches on success, mirroring createListing/purchaseListing below - account-profile-store.js
+    // listens for this to fire the community_post_published XP type without this file needing to
+    // know anything about XP.
+    createPost: function (data) {
+      return post('/api/community/posts', data).then(function (result) {
+        window.dispatchEvent(new CustomEvent('tradejournal:community-post-published', { detail: { postId: result.id } }));
+        return result;
+      });
+    },
     removePost: function (id) { return del('/api/community/posts/' + encodeURIComponent(id)); },
     listComments: function (postId) { return get('/api/community/posts/' + encodeURIComponent(postId) + '/comments'); },
     createComment: function (postId, content) { return post('/api/community/posts/' + encodeURIComponent(postId) + '/comments', { content: content }); },
@@ -53,11 +61,38 @@
       });
     },
     getListing: function (id) { return get('/api/marketplace/listings/' + encodeURIComponent(id)); },
-    createListing: function (data) { return post('/api/marketplace/listings', data); },
-    updateListing: function (id, patch) { return patchRequest('/api/marketplace/listings/' + encodeURIComponent(id), patch); },
-    purchaseListing: function (id) { return post('/api/marketplace/listings/' + encodeURIComponent(id) + '/purchase'); },
+    // All four dispatch a CustomEvent on success, mirroring the same change-notification
+    // convention every other store in this app already uses (tradejournal:trades-changed etc.)
+    // - account-profile-store.js listens for these to route pattern_published/strategy_published/
+    // pattern_evidence_refreshed/community XP without this file needing to know anything about XP.
+    // listing-published's detail now also carries type/sourceId (not just listingId) so the
+    // listener can route XP to the right domain without an extra fetch. The resolved value/error
+    // behavior for every existing caller is unchanged.
+    createListing: function (data) {
+      return post('/api/marketplace/listings', data).then(function (listing) {
+        window.dispatchEvent(new CustomEvent('tradejournal:listing-published', { detail: { listingId: listing.id, type: listing.type, sourceId: listing.sourceId } }));
+        return listing;
+      });
+    },
+    updateListing: function (id, patch) {
+      return patchRequest('/api/marketplace/listings/' + encodeURIComponent(id), patch).then(function (listing) {
+        window.dispatchEvent(new CustomEvent('tradejournal:listing-evidence-refreshed', { detail: { listingId: id, type: listing.type, sourceId: listing.sourceId } }));
+        return listing;
+      });
+    },
+    purchaseListing: function (id) {
+      return post('/api/marketplace/listings/' + encodeURIComponent(id) + '/purchase').then(function (result) {
+        window.dispatchEvent(new CustomEvent('tradejournal:listing-purchased', { detail: { listingId: id } }));
+        return result;
+      });
+    },
     listRatings: function (id) { return get('/api/marketplace/listings/' + encodeURIComponent(id) + '/ratings'); },
-    rateListing: function (id, rating, reviewText) { return post('/api/marketplace/listings/' + encodeURIComponent(id) + '/ratings', { rating: rating, reviewText: reviewText }); },
+    rateListing: function (id, rating, reviewText) {
+      return post('/api/marketplace/listings/' + encodeURIComponent(id) + '/ratings', { rating: rating, reviewText: reviewText }).then(function (result) {
+        window.dispatchEvent(new CustomEvent('tradejournal:listing-rated', { detail: { listingId: id, reviewText: reviewText } }));
+        return result;
+      });
+    },
 
     listThreads: function () { return get('/api/messages/threads'); },
     openThread: function (listingId) { return post('/api/messages/threads', { listingId: listingId }); },

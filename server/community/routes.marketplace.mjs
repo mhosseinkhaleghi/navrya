@@ -1,6 +1,6 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
-import { saveImages } from './storage.mjs';
+import { saveImages } from '../storage/storage.mjs';
 
 function requiredFields(body, fields) {
   for (const field of fields) if (body[field] === undefined || body[field] === null || body[field] === '') throw new ApiError(400, 'VALIDATION_FAILED');
@@ -21,8 +21,10 @@ export function router(repo, uploadsDir) {
   app.post('/listings', asyncHandler(async (req, res) => {
     const body = req.body || {};
     requiredFields(body, ['type', 'sourceId', 'title', 'priceAmount', 'previewContent', 'fullContent', 'evidenceAsOf']);
-    if (!['pattern', 'strategy'].includes(body.type)) throw new ApiError(400, 'VALIDATION_FAILED');
-    const screenshots = await saveImages(body.screenshots, { uploadsDir, subdir: 'listings' });
+    // 'subscription' added for the Account Profile feature (Section 5/1 of the migration) -
+    // widens the existing type enum rather than introducing a parallel listing_type column.
+    if (!['pattern', 'strategy', 'subscription'].includes(body.type)) throw new ApiError(400, 'VALIDATION_FAILED');
+    const screenshots = await saveImages(body.screenshots, { uploadsDir, category: 'listings' });
     const listing = await repo.listings.create({ ...body, sellerId: req.currentUser.id, screenshots });
     res.status(201).json(listing);
   }));

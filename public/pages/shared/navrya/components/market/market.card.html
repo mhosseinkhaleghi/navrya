@@ -1,0 +1,28 @@
+<!-- @dsCard group="Components" viewport="700x330" name="Market — Session cards, utilities, countdown" subtitle="Six session-card states plus the 344px utility and next-session panels" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:16px;background:var(--ink-900);color:var(--text-primary);font:var(--type-body)}
+.lbl{font:var(--type-caption);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:8px}</style>
+</head><body data-character="hunter"><div id="root"></div>
+<script type="text/babel">const { MarketSessionCard, UtilityPanel, NextSessionPanel } = window.NAVRYADesignSystem_e93c97;
+
+function Card(){return(<div className="col" style={{gap:12}}>
+ <div className="row" style={{gap:10}}>
+  {[['london','default'],['new-york','hover'],['london','open'],['sydney','next'],['tokyo','closed'],['tokyo','disabled']].map(([m,s],i)=>
+   <div className="col" key={i} style={{gap:5}}>
+    <MarketSessionCard market={m} state={s} minWidth={200}/>
+    <span className="lbl">{s}</span>
+   </div>)}
+ </div>
+ <div className="row" style={{gap:12}}><UtilityPanel/><NextSessionPanel live={false}/></div>
+</div>);}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Card/>);
+</script></body></html>

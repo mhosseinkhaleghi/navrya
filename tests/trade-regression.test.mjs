@@ -100,10 +100,43 @@ test('all character pages load session signature modules in dependency order', a
     const engine = html.indexOf('session-signature-engine.js');
     const ui = html.indexOf('session-signature-ui.js');
     const workspace = html.indexOf('session-workspace-logic.js');
-    const library = html.indexOf('session-library.js');
+    // session-library.js is retired - the NAVRYA sessions app (navrya-src/character-app.jsx's
+    // SessionsApp, mounted into #navryaSessionsRoot) now owns the session list and loads after
+    // its workspace dependency, same as session-library.js used to.
+    // Matched as a real <script src> tag, not the doc-comment prose above it that also
+    // mentions this bundle's filename by name.
+    const sessionsApp = html.indexOf('<script src="../shared/navrya-' + character + '-sessions-app.js">');
     assert.ok(types > -1 && types < store && store < engine && engine < ui && ui < workspace, character + ' signature script order');
-    assert.ok(library > workspace, character + ' library script order');
+    assert.ok(sessionsApp > workspace, character + ' navrya sessions app script order');
   }
+});
+
+test('all character pages load account profile modules in dependency order, link its CSS, and expose a stable #userChip', async () => {
+  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
+    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    const css = html.indexOf('account-profile.css');
+    const rules = html.indexOf('profile-xp-rules.js');
+    const achievements = html.indexOf('profile-achievements.js');
+    const types = html.indexOf('account-profile.types.js');
+    const i18n = html.indexOf('account-profile-i18n.js');
+    const store = html.indexOf('account-profile-store.js');
+    const ui = html.indexOf('account-profile-ui.js');
+    const devUserSwitcher = html.indexOf('dev-user-switcher.js');
+    assert.ok(css > -1, character + ' must link account-profile.css');
+    assert.ok(devUserSwitcher > -1 && devUserSwitcher < store, character + ' dev-user-switcher.js must load before account-profile-store.js');
+    assert.ok(rules > -1 && rules < ui, character + ' profile-xp-rules.js must load before account-profile-ui.js');
+    assert.ok(achievements > -1 && achievements < ui, character + ' profile-achievements.js must load before account-profile-ui.js');
+    assert.ok(types > -1 && types < ui, character + ' account-profile.types.js must load before account-profile-ui.js');
+    assert.ok(i18n > -1 && i18n < ui, character + ' account-profile-i18n.js must load before account-profile-ui.js');
+    assert.ok(store > -1 && store < ui, character + ' account-profile-store.js must load before account-profile-ui.js');
+  }
+  // The sidebar/header shell is a React root now (navrya-src/character-app.jsx) - #userChip is
+  // rendered by CharacterIdentity.jsx and wired to TradeJournalAccountProfilePage.open() there,
+  // not present in the static HTML the way the old static sidebar markup was.
+  const identity = await source('navrya/components/identity/CharacterIdentity.jsx');
+  assert.match(identity, /id="userChip"/, 'CharacterIdentity.jsx must render a stable #userChip');
+  const characterApp = await readFile(path.join(root, 'navrya-src', 'character-app.jsx'), 'utf8');
+  assert.match(characterApp, /onIdentityClick=\{[^}]*TradeJournalAccountProfilePage/, 'character-app.jsx must wire the header identity click to open Account Profile');
 });
 
 test('trade store preserves hunting to open to emotion to closed lifecycle', async () => {
@@ -348,12 +381,16 @@ test('workspace and legacy session renderer suspend the library and restore it o
   assert.match(legacy, /back\.onclick=function\(\)\{if\(window\.TradeJournalSessionLibrary\)window\.TradeJournalSessionLibrary\.resume\(\)/);
 });
 
-test('all four character pages load one shared session library after the entry flow', async () => {
+test('all four character pages load one shared NAVRYA sessions app after the entry flow', async () => {
+  // session-library.js/.css are retired - navrya-{character}-sessions-app.js (mounted into
+  // #navryaSessionsRoot) is the one shared session list now, same load-after-entry-flow order.
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    assert.equal((html.match(/session-library\.css/g) || []).length, 1, character + ':css');
-    assert.equal((html.match(/session-library\.js/g) || []).length, 1, character + ':js');
-    assert.ok(html.indexOf('session-entry-flow.js') < html.indexOf('session-library.js'), character + ':order');
+    // Matched as a real <script src> tag, not the doc-comment prose above it that also
+    // mentions this bundle's filename by name.
+    const tag = '<script src="../shared/navrya-' + character + '-sessions-app.js">';
+    assert.equal((html.match(new RegExp(tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1, character + ':js');
+    assert.ok(html.indexOf('session-entry-flow.js') < html.indexOf(tag), character + ':order');
   }
 });
 
@@ -364,7 +401,6 @@ test('A3: the old non-functional demo chat FAB/panel markup and handlers are gon
     const css = await readFile(path.join(root, 'public', 'pages', character, 'styles.css'), 'utf8');
     assert.doesNotMatch(html, /id="openChat"/, character + ':html openChat');
     assert.doesNotMatch(html, /id="chatPanel"/, character + ':html chatPanel');
-    assert.match(html, /id="assistantNav"/, character + ':assistantNav markup must be kept - the dock repoints it, not deletes it');
     assert.doesNotMatch(app, /document\.querySelector\('#chatPanel'\)/, character + ':app.js chatPanel handler');
     assert.doesNotMatch(app, /document\.querySelector\('#openChat'\)/, character + ':app.js openChat handler');
     assert.doesNotMatch(css, /\.ai-chat-fab/, character + ':styles.css ai-chat-fab rule');
@@ -372,7 +408,7 @@ test('A3: the old non-functional demo chat FAB/panel markup and handlers are gon
   }
 });
 
-test('A3/A4: every character page loads the AI process registry before the flows that register against it, and the dock last', async () => {
+test('A3/A4: every character page loads the AI process registry before the flows that register against it, and the chat dock core last', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
     const registry = html.indexOf('ai-process-registry.js');
@@ -381,10 +417,12 @@ test('A3/A4: every character page loads the AI process registry before the flows
     assert.ok(registry < html.indexOf('mental-health-store.js'), character + ':registry before mental-health-store');
     assert.ok(html.indexOf('mental-health-ai.js') < html.indexOf('ai-settings-store.js'), character + ':settings-store after mental-health-ai');
     assert.ok(html.indexOf('ai-settings-store.js') < html.indexOf('ai-usage-store.js'), character + ':usage-store after settings-store');
-    assert.ok(html.indexOf('strategy-education.js') < html.indexOf('global-ai-dock.js'), character + ':dock after strategy-education');
-    assert.ok(html.indexOf('ai-settings-ui.js') < html.indexOf('global-ai-dock.js'), character + ':dock after settings-ui');
+    assert.ok(html.indexOf('strategy-education.js') < html.indexOf('chat-dock-core.js'), character + ':chat-dock-core after strategy-education');
+    assert.ok(html.indexOf('ai-settings-ui.js') < html.indexOf('chat-dock-core.js'), character + ':chat-dock-core after settings-ui');
+    assert.ok(html.indexOf('chat-dock-core.js') < html.lastIndexOf('navrya-' + character + '-sessions-app.js'), character + ':chat-dock-core before the NAVRYA bundle that mounts the ChatDock React tree into it');
     assert.match(html, /ai-settings\.css/, character + ':ai-settings.css linked');
-    assert.match(html, /global-ai-dock\.css/, character + ':global-ai-dock.css linked');
+    assert.match(html, /id="navryaChatDockRoot"/, character + ':navryaChatDockRoot mount point present');
+    assert.doesNotMatch(html, /global-ai-dock/, character + ':the retired global-ai-dock UI must be fully gone');
   }
 });
 
@@ -395,13 +433,14 @@ test('A7: openEmotion accepts a backward-compatible third seed argument that def
   assert.match(text, /openEmotion\(trade\.id,'mid_trade'\)/, 'the existing 2-arg call site keeps working unchanged');
 });
 
-test('Community: the sidebar link is repointed from #forum to #community (the "forum" i18n label/key is untouched), consistently on all four character pages', async () => {
-  for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
-    const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    assert.doesNotMatch(html, /href="#forum"/, character + ': the old #forum href must be gone');
-    assert.match(html, /href="#community"/, character + ': the sidebar link must point at #community');
-    assert.match(html, /data-i18n="forum"/, character + ': the existing "forum" i18n label is reused, not renamed');
-  }
+test('Community: the sidebar nav item routes to #community and has a translated label in every supported language', async () => {
+  // The sidebar is a React root now (navrya-src/store.js's setActiveId + navrya-src/i18n.js's
+  // navCommunity label), not static per-character HTML with a data-i18n attribute.
+  const storeSource = await readFile(path.join(root, 'navrya-src', 'store.js'), 'utf8');
+  assert.match(storeSource, /community:\s*'#community'/, 'store.js must route the community nav item to #community');
+  const i18nSource = await readFile(path.join(root, 'navrya-src', 'i18n.js'), 'utf8');
+  const matches = i18nSource.match(/navCommunity:\s*'[^']+'/g) || [];
+  assert.equal(matches.length, 4, 'navCommunity must be translated in all four supported languages (en/fa/ar/es)');
 });
 
 test('Community: every new shared module is script/CSS-linked exactly once on all four character pages, in a dependency-safe order', async () => {
@@ -421,9 +460,13 @@ test('Community: every new shared module is script/CSS-linked exactly once on al
 });
 
 test('the sidebar "AI" link routes to #ai-settings on every character page - it is a real settings route, not a chat-opening trigger', async () => {
+  // The sidebar is a React root now (navrya-src/store.js's setActiveId) - #assistantNav's old
+  // static href is gone along with the rest of the static sidebar markup, but the routing
+  // behavior it used to provide is preserved here instead.
+  const storeSource = await readFile(path.join(root, 'navrya-src', 'store.js'), 'utf8');
+  assert.match(storeSource, /'ai-assistant':\s*'#ai-settings'/, "store.js must route the ai-assistant nav item to #ai-settings");
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    assert.match(html, /<a href="#ai-settings" id="assistantNav">/, character + ': #assistantNav must point at #ai-settings');
     assert.doesNotMatch(html, /href="#assistant"/, character + ': the old placeholder #assistant href must be gone');
   }
 });

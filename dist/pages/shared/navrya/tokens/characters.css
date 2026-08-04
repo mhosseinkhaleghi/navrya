@@ -1,0 +1,38 @@
+/* SAME COMPONENT · DIFFERENT TOKENS.
+   Set data-character="hunter|commander|engineer|master" on any ancestor. */
+:root{
+--char-accent:var(--gold-antique);
+--char-accent-strong:var(--bronze);
+--char-active-surface:rgba(183,138,74,.14);
+--char-atmosphere:var(--ink-950);
+--char-glow:rgba(183,138,74,.18);
+--char-texture:none;/* @kind other */
+}
+[data-character="hunter"]{
+--char-accent:#66C94E;--char-accent-strong:#2F8F43;--char-active-surface:#12331B;--char-atmosphere:#07150D;
+--char-glow:rgba(102,201,78,.18);
+--char-forest-black:#080F0C;--char-pine-shadow:#0F1712;--char-moss:#1F3D2B;--char-green:#2F7A58;--char-emerald:#35D07F;--char-light-glow:#8AF7B4;
+--char-texture:url("../assets/textures/atmosphere-hunter.png");/* @kind other */
+--char-crest:url("../assets/crests/crest-hunter.png");/* @kind other */
+}
+[data-character="commander"]{
+--char-accent:#F04432;--char-accent-strong:#A82B21;--char-active-surface:#3A1714;--char-atmosphere:#160B09;
+--char-glow:rgba(240,68,50,.18);
+--char-deep-navy:#071018;--char-charcoal:#11161C;--char-red:#B91F27;--char-crimson:#7A0C14;--char-ember:#D93A2F;--char-gold:#D4AF37;
+--char-texture:url("../assets/textures/atmosphere-commander.png");/* @kind other */
+--char-crest:url("../assets/crests/crest-commander.png");/* @kind other */
+}
+[data-character="engineer"]{
+--char-accent:#3A9AF8;--char-accent-strong:#1B65AA;--char-active-surface:#0B263D;--char-atmosphere:#061522;
+--char-glow:rgba(58,154,248,.18);
+--char-midnight:#07101F;--char-blueprint:#0C1830;--char-cobalt:#1668D4;--char-electric:#2F8FFF;--char-cyan:#68C8FF;--char-steel-blue:#7E8FA8;
+--char-texture:url("../assets/textures/atmosphere-engineer.png");/* @kind other */
+--char-crest:url("../assets/crests/crest-engineer.png");/* @kind other */
+}
+[data-character="master"]{
+--char-accent:#A965D8;--char-accent-strong:#72409B;--char-active-surface:#26152F;--char-atmosphere:#120A18;
+--char-glow:rgba(169,101,216,.18);
+--char-plum-black:#100A18;--char-deep-violet:#1B1028;--char-violet:#6F2DBD;--char-amethyst:#9A4EFF;--char-lilac:#C084FC;--char-platinum:#BFC3D4;
+--char-texture:url("../assets/textures/atmosphere-master.png");/* @kind other */
+--char-crest:url("../assets/crests/crest-master.png");/* @kind other */
+}

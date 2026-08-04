@@ -93,6 +93,102 @@
     window.dispatchEvent(new CustomEvent('tradejournal:patterns-changed', { detail: { count: items.length } }));
   }
 
+  // --- Server sync (Module 2 of the local-first-to-server migration; see ARCHITECTURE.md's
+  // Global Data Sync section, 7.18). Same shape as session-workspace-logic.js's own sync block:
+  // localStorage (read()/write() above) stays the source of instant, offline-capable reads and
+  // writes; this only pushes the same writes to the server in the background and reconciles the
+  // local cache from the server when reachable. TradeJournalDevUserSwitcher is looked up live
+  // inside each function (never cached in a top-level const) since dev-user-switcher.js's
+  // <script> tag loads after this file's in every character page's existing order. ---
+  (function () {
+    var queue = window.TradeJournalSyncQueue;
+    if (!queue) return;
+    function devUser() { return window.TradeJournalDevUserSwitcher; }
+
+    queue.registerModule('patterns', function (entry) {
+      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
+      if (!uid) throw new Error('NO_CURRENT_USER'); // stays queued, retried once a user exists
+      if (entry.action === 'delete') {
+        return fetch('/api/sync/patterns/' + encodeURIComponent(entry.recordId), { method: 'DELETE', headers: { 'x-dev-user-id': uid } })
+          .then(function (response) { if (!response.ok && response.status !== 404) throw new Error('SYNC_FAILED'); });
+      }
+      return fetch('/api/sync/patterns', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
+        body: JSON.stringify(entry.payload)
+      }).then(function (response) { if (!response.ok) throw new Error('SYNC_FAILED'); });
+    });
+
+    // TradeJournalImageStore.saveImage(id, blob, 'pattern') enqueues here once the IndexedDB
+    // write already landed (see addScreenshots() below) - mirrors session-workspace-logic.js's
+    // 'session-images' sender exactly, one category swapped for the other.
+    queue.registerModule('pattern-images', function (entry) {
+      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
+      if (!uid) throw new Error('NO_CURRENT_USER');
+      return fetch('/api/sync/patterns/images', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
+        body: JSON.stringify({ dataUrl: entry.payload.dataUrl })
+      }).then(function (response) {
+        if (!response.ok) throw new Error('SYNC_FAILED');
+        return response.json();
+      }).then(function (result) {
+        var items = read();
+        var matched = null;
+        items.forEach(function (pattern) {
+          (pattern.referenceScreenshots || []).forEach(function (shot) {
+            if (shot.blobId === entry.recordId && !shot.imageUrl) { shot.imageUrl = result.url; matched = pattern; }
+          });
+        });
+        if (matched) { write(items); queue.enqueue('patterns', matched.id, matched); }
+      });
+    });
+
+    function mergeServerPatterns(serverPatterns) {
+      if (!Array.isArray(serverPatterns) || !serverPatterns.length) return;
+      var byId = {};
+      read().forEach(function (item) { byId[item.id] = item; });
+      serverPatterns.forEach(function (item) { byId[item.id] = item; }); // server wins on conflict
+      write(Object.keys(byId).map(function (id) { return byId[id]; }));
+    }
+
+    function reconcileFromServer() {
+      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
+      if (!uid) return;
+      fetch('/api/sync/patterns', { headers: { 'x-dev-user-id': uid } })
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(function (result) { if (result) mergeServerPatterns(result.patterns); })
+        .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
+    }
+
+    // Unlike Sessions (Module 1), Patterns auto-seeds 8 defaults into an empty local cache
+    // (see seedPatterns() in read()) - pushing those blindly on first activation would create
+    // duplicates alongside a different browser's already-synced real patterns for the same
+    // user. So this checks the server FIRST: if it already has patterns, adopt them as the
+    // local cache outright; only if the server is genuinely empty does it push whatever local
+    // patterns exist (including the freshly seeded defaults) up as this user's starting set.
+    function migrateOrAdopt() {
+      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
+      if (!uid) return;
+      var flagKey = 'tradejournal:patterns-migrated:v1:' + uid;
+      if (localStorage.getItem(flagKey)) { reconcileFromServer(); return; }
+      fetch('/api/sync/patterns', { headers: { 'x-dev-user-id': uid } })
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(function (result) {
+          if (result && Array.isArray(result.patterns) && result.patterns.length) {
+            write(result.patterns);
+          } else {
+            read().forEach(function (pattern) { queue.enqueue('patterns', pattern.id, pattern); });
+          }
+          localStorage.setItem(flagKey, new Date().toISOString());
+        })
+        .catch(function () { /* offline - try again next time this runs (flag not yet set) */ });
+    }
+
+    // Deferred to the next tick (see session-workspace-logic.js's identical comment) -
+    // dev-user-switcher.js's <script> tag sits after this file's in the existing load order.
+    window.setTimeout(migrateOrAdopt, 0);
+    window.addEventListener('online', reconcileFromServer);
+  }());
+
   function listSync() { return read().sort(function (a, b) { return new Date(b.updatedAt) - new Date(a.updatedAt); }); }
 
   function find(id) { return listSync().find(function (item) { return item.id === id; }) || null; }
@@ -105,6 +201,7 @@
     if (index > -1) items[index] = value;
     else items.unshift(value);
     write(items);
+    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('patterns', value.id, value);
     return value;
   }
 
@@ -113,6 +210,7 @@
     var items = read();
     items.unshift(pattern);
     write(items);
+    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('patterns', pattern.id, pattern);
     return pattern;
   }
 
@@ -124,6 +222,7 @@
       }));
     }
     write(read().filter(function (item) { return item.id !== id; }));
+    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('patterns', id, null, 'delete');
   }
 
   function fileDataUrl(file) {
@@ -147,7 +246,7 @@
       try {
         if (!window.TradeJournalImageStore) throw new Error('IMAGE_STORE_UNAVAILABLE');
         image.blobId = uid('pattern-image');
-        await window.TradeJournalImageStore.saveImage(image.blobId, file);
+        await window.TradeJournalImageStore.saveImage(image.blobId, file, 'pattern');
       } catch (_) {
         image.blobId = undefined;
         image.dataUrl = await fileDataUrl(file);

@@ -11,6 +11,100 @@
   const id = function(prefix){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); };
   const list = function(){ try{return JSON.parse(localStorage.getItem(key))||[];}catch(_){return [];} };
   const persist = function(items){ localStorage.setItem(key,JSON.stringify(items)); };
+
+  // --- Server sync (Module 1 of the local-first-to-server migration; see ARCHITECTURE.md's
+  // Global Data Sync section). localStorage (list()/persist() above) stays the source of
+  // instant, offline-capable reads and writes exactly as before - this only pushes the same
+  // writes to the server in the background, and pulls the server's copy down to reconcile the
+  // local cache when reachable (server wins on conflict, since it is now canonical). Reads
+  // elsewhere in this file stay synchronous: reconciliation runs ahead of read time (on load
+  // and on reconnect), not inside every list()/find() call, so no caller in this file changes. ---
+  (function () {
+    const queue = window.TradeJournalSyncQueue;
+    if (!queue) return;
+    // Looked up live (never cached in a const) inside each function below, not once here at
+    // IIFE-load time - dev-user-switcher.js's <script> tag sits after this file's in every
+    // character page's existing load order (ARCHITECTURE.md's documented dependency chain),
+    // so caching window.TradeJournalDevUserSwitcher now would permanently capture `undefined`.
+    function devUser() { return window.TradeJournalDevUserSwitcher; }
+
+    queue.registerModule('sessions', function (entry) {
+      const uid = devUser().currentUserId();
+      if (!uid) throw new Error('NO_CURRENT_USER'); // stays queued, retried once a user exists
+      if (entry.action === 'delete') {
+        return fetch('/api/sync/sessions/' + encodeURIComponent(entry.recordId), { method: 'DELETE', headers: { 'x-dev-user-id': uid } })
+          .then(function (response) { if (!response.ok && response.status !== 404) throw new Error('SYNC_FAILED'); });
+      }
+      return fetch('/api/sync/sessions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
+        body: JSON.stringify(entry.payload)
+      }).then(function (response) { if (!response.ok) throw new Error('SYNC_FAILED'); });
+    });
+
+    // TradeJournalImageStore.saveImage(id, blob, 'session') enqueues here once the IndexedDB
+    // write already landed (see session-entry-flow.js). The entry that referenced this blob id
+    // may already be saved without a resolved imageUrl by the time this upload completes - once
+    // it does, patch it into whichever local session/entry still carries that imageBlobId and
+    // re-enqueue that one session, so the link reaches the server too instead of staying local-only.
+    queue.registerModule('session-images', function (entry) {
+      const uid = devUser().currentUserId();
+      if (!uid) throw new Error('NO_CURRENT_USER');
+      return fetch('/api/sync/sessions/images', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
+        body: JSON.stringify({ dataUrl: entry.payload.dataUrl })
+      }).then(function (response) {
+        if (!response.ok) throw new Error('SYNC_FAILED');
+        return response.json();
+      }).then(function (result) {
+        const sessions = list();
+        let matched = null;
+        sessions.forEach(function (session) {
+          (session.entries || []).forEach(function (sessionEntry) {
+            if (sessionEntry.imageBlobId === entry.recordId && !sessionEntry.imageUrl) { sessionEntry.imageUrl = result.url; matched = session; }
+          });
+        });
+        if (matched) { persist(sessions); queue.enqueue('sessions', matched.id, matched); }
+      });
+    });
+
+    function mergeServerSessions(serverSessions) {
+      if (!Array.isArray(serverSessions) || !serverSessions.length) return;
+      const byId = {};
+      list().forEach(function (item) { byId[item.id] = item; });
+      serverSessions.forEach(function (item) { byId[item.id] = item; }); // server wins on conflict
+      persist(Object.keys(byId).map(function (itemId) { return byId[itemId]; }));
+    }
+
+    function reconcileFromServer() {
+      const switcher = devUser();
+      const uid = switcher && switcher.currentUserId();
+      if (!uid) return;
+      fetch('/api/sync/sessions', { headers: { 'x-dev-user-id': uid } })
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(function (result) { if (result) mergeServerSessions(result.sessions); })
+        .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
+    }
+
+    // One-time, idempotent push of whatever local sessions already existed before this sync
+    // layer ever activated for this user/character - upsert-by-id on the server means a repeat
+    // run (e.g. a second tab, or this code re-running before the flag write lands) is always safe.
+    function migrateExistingLocalSessions() {
+      const switcher = devUser();
+      const uid = switcher && switcher.currentUserId();
+      if (!uid) return;
+      const flagKey = 'tradejournal:sessions-migrated:v1:' + layer.character + ':' + uid;
+      if (localStorage.getItem(flagKey)) return;
+      list().forEach(function (session) { queue.enqueue('sessions', session.id, session); });
+      localStorage.setItem(flagKey, new Date().toISOString());
+    }
+
+    // Deferred to the next tick (this project's existing convention for "run once every
+    // script on the page has finished loading", e.g. ai-settings-ui.js's own setTimeout(render,
+    // 0)) - dev-user-switcher.js's <script> tag currently sits after this one, so calling
+    // these synchronously, right now, would always see no current user yet.
+    window.setTimeout(function () { migrateExistingLocalSessions(); reconcileFromServer(); }, 0);
+    window.addEventListener('online', reconcileFromServer);
+  }());
   const date = function(){ return new Date().toISOString().slice(0,10); };
   const time = function(value){ const code={fa:'fa-IR',ar:'ar-EG',es:'es-ES',en:'en-GB'}[locale()]||'en-GB';return new Intl.DateTimeFormat(code,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(value||Date.now())); };
   const clock = function(ms){ const n=Math.max(0,Math.floor(ms/1000)); return String(Math.floor(n/3600)).padStart(2,'0')+':'+String(Math.floor(n%3600/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0'); };
@@ -58,7 +152,7 @@
     return session;
   }
   function find(idValue){ const items=list(); const found=items.find(function(item){return item.id===idValue;}); return found?normalize(found):null; }
-  function save(session){ const items=list(); const index=items.findIndex(function(item){return item.id===session.id;}); if(index>-1)items[index]=session; else items.unshift(session); persist(items); if(window.TradeJournalSessionSignatureStore)window.TradeJournalSessionSignatureStore.captureClosedSession(session,layer.character); }
+  function save(session){ const items=list(); const index=items.findIndex(function(item){return item.id===session.id;}); if(index>-1)items[index]=session; else items.unshift(session); persist(items); if(window.TradeJournalSyncQueue)window.TradeJournalSyncQueue.enqueue('sessions',session.id,session); if(window.TradeJournalSessionSignatureStore)window.TradeJournalSessionSignatureStore.captureClosedSession(session,layer.character); window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed',{detail:{sessionId:session.id}})); }
   function scenarios(session){ return session.entries.reduce(function(all,entry){ return all.concat(entry.scenarios.map(function(s){return Object.assign(s,{entryId:entry.id});}));},[]); }
   function probability(s){ const h=s.probabilityHistory||[]; return Number(h.length?h[h.length-1].value:50); }
   function log(session,type,detail,scenarioId,counts){ session.activityLog.push({id:id('log'),type:type,detail:detail,scenarioId:scenarioId||null,loggedAt:Date.now(),countsTowardLoopUpdate:counts!==false}); }
@@ -143,7 +237,7 @@
   if(window.TradeJournalSessions)window.TradeJournalSessions.open=open;
   function reopenSession(idValue){const session=find(idValue);if(!session)return null;session.status='open';session.closedAt=null;save(session);open(session.id);return session;}
   function openReport(idValue){state[idValue]=state[idValue]||{view:'workspace',tab:'patterns',mode:'compact'};state[idValue].view='report';open(idValue);}
-  function removeSession(idValue){const items=list().filter(function(item){return item.id!==idValue;});persist(items);if(activeWorkspaceId===idValue)activeWorkspaceId=null;window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed'));returnToLibrary();}
+  function removeSession(idValue){const items=list().filter(function(item){return item.id!==idValue;});persist(items);if(window.TradeJournalSyncQueue)window.TradeJournalSyncQueue.enqueue('sessions',idValue,null,'delete');if(activeWorkspaceId===idValue)activeWorkspaceId=null;window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed'));returnToLibrary();}
   function duplicateSession(idValue){const source=find(idValue);if(!source)return null;const copy=JSON.parse(JSON.stringify(source));copy.id=id('session');copy.name=(source.name||source.market||'Session')+' · Copy';copy.status='open';copy.startedAt=Date.now();copy.closedAt=null;delete copy.fateSummary;delete copy.previousSessionSummary;copy.entries=(copy.entries||[]).map(function(entry){entry.id=id('entry');entry.sessionId=copy.id;entry.scenarios=(entry.scenarios||[]).map(function(scenario){scenario.id=id('scenario');return scenario;});return entry;});save(copy);open(copy.id);return copy;}
   window.TradeJournalWorkspace={open:open,openReport:openReport,reopen:reopenSession,remove:removeSession,duplicate:duplicateSession,list:list,find:find,refresh:function(){if(activeWorkspaceId)open(activeWorkspaceId);},activeId:function(){return activeWorkspaceId;}};
 }());

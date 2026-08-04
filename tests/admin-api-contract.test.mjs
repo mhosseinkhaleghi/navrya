@@ -171,3 +171,42 @@ test('with ADMIN_AUTH_ENFORCED=true, a non-admin role is rejected with 403 and a
     if (enforcedServer) await new Promise((resolve) => enforcedServer.close(resolve));
   }
 });
+
+test('GET /api/admin/users/:id includes identity, level, achievements, and subscriptions - everything a support agent needs on one screen', async () => {
+  const admin = await createUser('Admin7');
+  const target = await createUser('Support Target');
+  await repo.users.updateProfile(target.id, { email: 'support-target@example.com', profileRole: 'mentor' });
+  await repo.xpEvents.record({ userId: target.id, type: 'trade_closed', points: 100, meta: {} });
+  await repo.achievements.unlock({ userId: target.id, achievementKey: 'first_trade_closed', evidence: { tradeIds: ['t1'] } });
+  const seller = await createUser('SubSeller');
+  const subListing = await repo.listings.create({ sellerId: seller.id, type: 'subscription', sourceId: 'sub-x', title: 'Sub', priceAmount: 9, previewContent: {}, fullContent: {}, evidenceAsOf: new Date().toISOString() });
+  await repo.purchases.create({ listingId: subListing.id, buyerId: target.id, priceAtPurchase: 9 });
+
+  const result = await api('GET', `/api/admin/users/${target.id}`, { userId: admin.id });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.email, 'support-target@example.com');
+  assert.equal(result.body.profileRole, 'mentor');
+  assert.equal(result.body.xpTotal, 100);
+  assert.equal(result.body.level, 2);
+  assert.equal(result.body.achievements.length, 1);
+  assert.equal(result.body.achievements[0].achievementKey, 'first_trade_closed');
+  assert.equal(result.body.subscriptions.length, 1);
+  assert.equal(result.body.subscriptions[0].listing.title, 'Sub');
+});
+
+test('PATCH /api/admin/users/:id/kyc changes kycStatus, rejects an invalid value, and writes one audit log row', async () => {
+  const admin = await createUser('Admin8');
+  const target = await createUser('KYC Target');
+  const before = await repo.auditLog.list({ limit: 100 });
+
+  const invalid = await api('PATCH', `/api/admin/users/${target.id}/kyc`, { userId: admin.id, body: { kycStatus: 'super_verified' } });
+  assert.equal(invalid.status, 400);
+
+  const result = await api('PATCH', `/api/admin/users/${target.id}/kyc`, { userId: admin.id, body: { kycStatus: 'verified' } });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.kycStatus, 'verified');
+
+  const after = await repo.auditLog.list({ limit: 100 });
+  assert.equal(after.length, before.length + 1, 'only the successful PATCH should write an audit row, not the rejected one');
+  assert.equal(after[0].action, 'user.kyc.update');
+});

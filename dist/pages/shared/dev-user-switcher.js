@@ -23,6 +23,52 @@
 
   function listUsers() { return fetch('/api/users').then(function (r) { return r.json(); }); }
 
+  function bootstrapFrom(list) {
+    if (list.length) { setCurrentUserId(list[0].id); return Promise.resolve(list[0].id); }
+    return createUser('Trader ' + Math.random().toString(36).slice(2, 6)).then(function (user) { return user.id; });
+  }
+
+  // Pure check, no side effects: is the CURRENTLY stored id one the server actually knows about?
+  // A stale id (most commonly: the in-memory dev backend was restarted, which resets its whole
+  // user table - see community-api-server.mjs's own startup log) used to be trusted blindly
+  // forever, on both this check and ensureUser() below - every request then failed 401
+  // UNKNOWN_DEV_USER, silently swallowed by most callers, so the whole app just quietly fell
+  // back to dead/demo-looking state with no visible reason and select/app.js's name popup never
+  // re-triggered. Exposed so select/app.js's "does this browser already have an account" gate can
+  // ask this instead of the old bare localStorage-presence check (hasDevUser()), which could
+  // never tell a stale id apart from a real one. Cached per page load (not per call) since this
+  // costs a real network round trip.
+  var validityCheck = null;
+  function isStoredUserValid() {
+    var stored = currentUserId();
+    if (!stored) return Promise.resolve(false);
+    if (!validityCheck) {
+      validityCheck = listUsers().then(function (users) {
+        var list = Array.isArray(users) ? users : [];
+        return list.some(function (u) { return u.id === currentUserId(); });
+      }).catch(function () { return true; }); // GET /api/users itself unreachable - fail open, let the real call surface its own honest error
+    }
+    return validityCheck;
+  }
+
+  // Same validation, but self-healing: used by the deep API-call plumbing throughout the app
+  // (every store's request() calls this before attaching x-dev-user-id), where "just get me some
+  // working identity so this call can proceed" is the goal - unlike select/app.js's gate, which
+  // must show the name step rather than silently substituting a random placeholder identity.
+  var selfHeal = null;
+  function ensureUser() {
+    if (!selfHeal) {
+      selfHeal = isStoredUserValid().then(function (valid) {
+        if (valid) return currentUserId();
+        return listUsers().then(function (users) { return bootstrapFrom(Array.isArray(users) ? users : []); }).catch(function () {
+          var stored = currentUserId();
+          return stored || Promise.reject(new Error('NO_CURRENT_USER'));
+        });
+      });
+    }
+    return selfHeal;
+  }
+
   // The single place a new dev-mode user is ever created (POST /api/users), reused by both
   // ensureUser()'s auto-bootstrap below and the login-time name step in public/pages/select/.
   // Fixed from an earlier version that resolved on ANY response (including error bodies) and
@@ -43,19 +89,6 @@
           return body;
         });
       });
-  }
-
-  // Bootstraps a current user with minimal friction (dev-mode convenience): reuse the stored
-  // id if present, else adopt the first server-known user, else auto-create one. Every path
-  // still resolves to a real users-table row - this only removes the need to click through a
-  // create-user form before the Community section becomes usable.
-  function ensureUser() {
-    var stored = currentUserId();
-    if (stored) return Promise.resolve(stored);
-    return listUsers().then(function (users) {
-      if (users && users.length) { setCurrentUserId(users[0].id); return users[0].id; }
-      return createUser('Trader ' + Math.random().toString(36).slice(2, 6)).then(function (user) { return user.id; });
-    });
   }
 
   function buildCard() {
@@ -119,5 +152,7 @@
   new MutationObserver(ensureSwitcher).observe(document.documentElement, { attributes: true, attributeFilter: ['lang', 'dir'] });
   setTimeout(ensureSwitcher, 0);
 
-  window.TradeJournalDevUserSwitcher = { currentUserId: currentUserId, ensureUser: ensureUser, createUser: createUser };
+  window.TradeJournalDevUserSwitcher = {
+    currentUserId: currentUserId, ensureUser: ensureUser, createUser: createUser, isStoredUserValid: isStoredUserValid
+  };
 }());

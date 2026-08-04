@@ -71,12 +71,24 @@
     return wrap;
   }
 
-  function checkInCard(due) {
+  // Runs the existing (previously unwired) captureWeeklySnapshot() function - ARCHITECTURE.md
+  // Section 11.8's "Complete a Weekly Check-in" XP had no real trigger before this button
+  // existed, since nothing called that function anywhere in the UI.
+  function checkInCard(due, refresh) {
     var card = el('section', 'mh-card mh-checkin-card');
     card.append(el('strong', '', i18n.t('mhCheckInDue')), el('p', '', i18n.t('mhCheckInHint')));
+    var actions = el('div', 'mh-card-actions');
+    var run = button(i18n.t('mhWeeklyCheckinRun'), 'tj-primary', 'calendar-check');
+    run.onclick = function () {
+      run.disabled = true;
+      collector.captureWeeklySnapshot(new Date()); // already dispatches tradejournal:mental-health-changed via store.save()
+      toast(i18n.t('mhWeeklyCheckinDone'), 'success');
+      if (refresh) refresh(); else card.remove();
+    };
     var dismiss = button(i18n.t('mhCheckInDismiss'), 'tj-secondary');
     dismiss.onclick = function () { card.remove(); };
-    card.append(dismiss);
+    actions.append(run, dismiss);
+    card.append(actions);
     return card;
   }
 
@@ -242,8 +254,11 @@
     regen.onclick = function () { regen.disabled = true; cardsEngine.ensureCard(profile, bias.type, true).then(function () { refresh(); }); };
     actions.append(regen);
     if (!card.viewedAt) {
+      var response = document.createElement('textarea');
+      response.rows = 2; response.dir = 'auto'; response.placeholder = i18n.t('mhCardResponsePlaceholder');
       var viewed = button(i18n.t('mhMarkViewed'), 'tj-primary', 'eye');
-      viewed.onclick = function () { cardsEngine.markViewed(bias.type); cycle.advanceAll(store.load()); refresh(); };
+      viewed.onclick = function () { cardsEngine.markViewed(bias.type, response.value); cycle.advanceAll(store.load()); refresh(); };
+      wrap.append(response);
       actions.append(viewed);
     }
     wrap.append(actions);
@@ -317,7 +332,7 @@
     wrap.append(scoreCard);
 
     var due = scheduler.dueItems(profile, new Date());
-    if (due.length) wrap.append(checkInCard(due));
+    if (due.length) wrap.append(checkInCard(due, refresh));
 
     wrap.append(activityLogCard(profile, allTrades));
     wrap.append(chatCard(profile, refresh));

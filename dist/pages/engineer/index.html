@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="../shared/session-system.css" />
     <link rel="stylesheet" href="../shared/session-workspace-logic.css" />
     <link rel="stylesheet" href="../shared/session-signature.css" />
-    <link rel="stylesheet" href="../shared/session-library.css" />
+    <link rel="stylesheet" href="../shared/navrya/styles.css" />
     <link rel="stylesheet" href="../shared/session-design-system.css" />
     <link rel="stylesheet" href="../shared/session-card-updates.css" />
     <link rel="stylesheet" href="../shared/session-entry-flow.css" />
@@ -26,8 +26,8 @@
     <link rel="stylesheet" href="../shared/trade-system.css" />
     <link rel="stylesheet" href="../shared/psychology.css" />
     <link rel="stylesheet" href="../shared/mental-health.css" />
+    <link rel="stylesheet" href="../shared/account-profile.css" />
     <link rel="stylesheet" href="../shared/ai-settings.css" />
-    <link rel="stylesheet" href="../shared/global-ai-dock.css" />
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -74,135 +74,25 @@
     </svg>
 
     <main class="app-shell">
-      <header class="topbar">
-        <section class="brand-block">
-          <div class="brand-mark"><svg class="icon"><use href="#i-gear" /></svg></div>
-          <div><h1 data-i18n="brandTitle">دفتر سناریوهای مهندس بازار</h1><p data-i18n="brandSub">Engineer's Chart Journal</p></div>
-          <div class="market-clocks">
-            <span><small><svg class="city-clock"><use href="#i-city-newyork" /></svg><span data-market-city="newYork">نیویورک</span></small><b data-market-time="04:22">04:22</b></span>
-            <span><small><svg class="city-clock"><use href="#i-city-london" /></svg><span data-market-city="london">لندن</span></small><b data-market-time="09:22">09:22</b></span>
-            <span class="active"><i></i><small><svg class="city-clock"><use href="#i-city-tokyo" /></svg><span data-market-city="tokyo">توکیو</span></small><b data-market-time="17:22">17:22</b></span>
-            <span><small><svg class="city-clock"><use href="#i-city-sydney" /></svg><span data-market-city="sydney">سیدنی</span></small><b data-market-time="18:22">18:22</b></span>
-          </div>
-        </section>
-
-        <section class="hunter-banner">
-          <img src="assets/engineer-hero-v1.png" alt="مهندس در حال تحلیل نمودار" />
-          <div class="hunter-copy"><h2 data-i18n="hunterTitle">مهندس بازار</h2><p data-i18n="hunterSub">The Engineer</p><span data-i18n="hunterMotto">تحلیل کن، ساختار بده، اجرا کن.</span></div>
-        </section>
-
-        <section class="profile-block">
-          <button class="settings" aria-label="تنظیمات"><svg class="icon"><use href="#i-gear" /></svg></button>
-          <div class="language-picker">
-            <button id="languageButton" type="button" aria-label="انتخاب زبان" aria-expanded="false"><svg class="tiny-icon"><use href="#i-globe" /></svg><span id="currentLanguage">فارسی</span><svg class="chevron"><use href="#i-chevron" /></svg></button>
-            <div class="language-menu" id="languageMenu" hidden>
-              <button type="button" data-language="fa">فارسی</button>
-              <button type="button" data-language="ar">العربية</button>
-              <button type="button" data-language="en">English</button>
-              <button type="button" data-language="es">Español</button>
-            </div>
-          </div>
-          <div class="date">2026-07-27 <svg class="tiny-icon"><use href="#i-chevron" /></svg></div>
-          <div class="level-wrap"><div class="level-ring"><b>4</b></div><div class="level-copy"><span data-i18n="hunterLevel">سطح مهندسی حرفه‌ای</span><div class="xp-line"><i></i></div></div><strong>2,450 / 5,000 XP</strong></div>
-          <div class="profile-stats">
-            <div><svg class="orange"><use href="#i-crosshair" /></svg><span data-i18n="huntMarks">نشان شکار</span><b>1,850</b></div>
-            <div><svg class="orange"><use href="#i-target" /></svg><span data-i18n="scenarios">سناریوها</span><b><em>42</em> 💧</b></div>
-            <div><svg class="orange"><use href="#i-crosshair" /></svg><span data-i18n="huntSetups">ستاپ‌های شکار</span><b>68%</b></div>
-            <div><svg class="green"><use href="#i-gear" /></svg><span data-i18n="streakDays">روزهای توالی</span><b>9</b></div>
-          </div>
-        </section>
-      </header>
-
-      <div class="workspace">
-        <aside class="sidebar">
-          <div class="sidebar-art"></div>
-          <div class="sidebar-top-art" aria-hidden="true"></div>
-          <nav aria-label="منوی اصلی">
-            <a class="active" href="#library"><svg class="icon"><use href="#i-crosshair" /></svg><span data-i18n="sessions">سشن‌ها</span></a>
-            <a href="#dashboard"><svg class="icon"><use href="#i-dashboard-clean" /></svg><span data-i18n="dashboard">داشبورد</span></a>
-            <a href="#strategies"><svg class="icon"><use href="#i-strategy-clean" /></svg><span data-i18n="strategies">استراتژی‌ها</span></a>
-            <a href="#mindset"><svg class="icon"><use href="#i-mind-clean" /></svg><span data-i18n="psychology">روانشناسی</span></a>
-            <a href="#subscription"><svg class="icon"><use href="#i-crown-clean" /></svg><span data-i18n="subscription">اشتراک</span></a>
-            <a href="#ai-settings" id="assistantNav"><svg class="icon"><use href="#i-ai-clean" /></svg><span data-i18n="ai">هوش مصنوعی</span></a>
-            <a href="#community"><svg class="icon"><use href="#i-forum-clean" /></svg><span data-i18n="forum">تالار گفتگو</span></a>
-            <a href="#settings" data-panel-route="settings"><svg class="icon"><use href="#i-gear" /></svg><span data-panel-label>Settings</span></a>
-          </nav>
-          <blockquote data-i18n="hunterQuote">مهندس بازار شتاب نمی‌کند؛
-ساختار را می‌سنجد
-و بعد با دقت اجرا می‌کند.</blockquote>
-          <button class="user-chip"><span class="avatar"><img src="assets/engineer-hero-v1.png" alt="" /></span><span><b data-i18n="hunterTitle">مهندس بازار</b><small data-i18n="hunterSub">The Engineer</small></span><svg class="tiny-icon"><use href="#i-chevron" /></svg></button>
-        </aside>
-
-        <section class="content" id="library">
-          <div class="content-heading">
-            <div><h2 data-i18n="libraryTitle">کتابخانه سشن</h2><p data-i18n="libraryDesc">معاملاتت را ثبت کن، ریسک‌هایت را دنبال کن، و بهترین شکارهایت را پیدا کن.</p></div>
-          </div>
-
-          <div class="toolbar">
-            <button class="new-session" id="newSession"><svg class="icon"><use href="#i-plus" /></svg><svg class="feather"><use href="#i-gear" /></svg><span data-i18n="newSession">سشن جدید</span></button>
-            <div class="tool-select"><svg class="tiny-icon"><use href="#i-chevron" /></svg><span data-i18n="allSessions">همه سشن‌ها</span><svg class="icon"><use href="#i-filter" /></svg></div>
-            <label class="search-box"><svg class="icon"><use href="#i-search" /></svg><input data-i18n-placeholder="search" placeholder="جستجو در سشن‌ها..." /></label>
-            <div class="tool-select sort"><svg class="tiny-icon"><use href="#i-chevron" /></svg><span data-i18n="newest">جدیدترین</span><svg class="icon"><use href="#i-sort" /></svg></div>
-            <div class="view-toggle"><button class="selected" aria-label="نمای شبکه‌ای"><svg class="icon"><use href="#i-grid" /></svg></button><button aria-label="نمای فهرست"><svg class="icon"><use href="#i-list" /></svg></button></div>
-          </div>
-
-          <article class="featured-card session-card">
-            <button class="star" aria-label="افزودن به علاقه‌مندی"><svg class="icon"><use href="#i-star" /></svg></button>
-            <div class="chart-wrap"><img src="assets/chart-main.png" alt="نمودار معاملاتی لندن" /><span class="symbol-badge">پپ‌کوین <b>↗</b></span></div>
-            <div class="session-copy">
-              <h3><svg class="icon city-icon london"><use href="#i-city-london" /></svg><span data-i18n="mainTitle">لندن — 2026-07-27</span></h3>
-              <div class="tags"><span data-i18n="london">لندن</span><span>5m</span></div>
-              <ul class="session-details">
-                <li><svg><use href="#i-calendar" /></svg><span data-i18n="mainDate">۵ تیر 1405 · دوشنبه</span></li>
-                <li><svg><use href="#i-clock" /></svg><span data-i18n="mainTime">09:00 – 17:00 (UTC)</span></li>
-                <li><svg><use href="#i-crosshair" /></svg><span data-i18n="mainScenarios">4 سناریوها</span></li>
-                <li><svg><use href="#i-paw" /></svg><span data-i18n="mainEntries">2 ورودی‌ها</span></li>
-              </ul>
-              <span class="result good" data-i18n="mainResult">نتیجه: 4/0</span>
-            </div>
-          </article>
-
-          <section class="cards-grid">
-            <article class="session-card small-card">
-              <button class="star"><svg class="icon"><use href="#i-star" /></svg></button>
-              <h3><svg class="icon city-icon newyork"><use href="#i-city-newyork" /></svg><span data-i18n="newYorkTitle">نیویورک — 2026-07-26</span></h3>
-              <div class="tags"><span data-i18n="newYork">نیویورک</span><span>5m</span></div>
-              <img class="mini-chart ny-chart" src="assets/chart-main.png" alt="نمودار نیویورک" />
-              <ul class="mini-details"><li><svg><use href="#i-calendar" /></svg><span data-i18n="smallDate">26 تیر 1405 · یکشنبه</span></li><li><svg><use href="#i-clock" /></svg><span data-i18n="newYorkTime">17:00 – 01:00 (UTC)</span></li><li><svg><use href="#i-crosshair" /></svg><span data-i18n="newYorkScenarios">28 سناریوها</span></li><li><svg><use href="#i-paw" /></svg><span data-i18n="newYorkEntries">7 ورودی‌ها</span></li></ul>
-              <span class="result danger" data-i18n="newYorkResult">نتیجه: 7/38</span>
-            </article>
-            <article class="session-card small-card">
-              <button class="star"><svg class="icon"><use href="#i-star" /></svg></button>
-              <h3><svg class="icon city-icon london"><use href="#i-city-london" /></svg><span data-i18n="londonTitle">لندن — 2026-07-26</span></h3>
-              <div class="tags"><span data-i18n="london">لندن</span><span>5m</span></div>
-              <img class="mini-chart london-chart" src="assets/chart-main.png" alt="نمودار لندن" />
-              <ul class="mini-details"><li><svg><use href="#i-calendar" /></svg><span data-i18n="smallDate">26 تیر 1405 · یکشنبه</span></li><li><svg><use href="#i-clock" /></svg><span data-i18n="londonTime">09:00 – 17:00 (UTC)</span></li><li><svg><use href="#i-crosshair" /></svg><span data-i18n="londonScenarios">43 سناریوها</span></li><li><svg><use href="#i-paw" /></svg><span data-i18n="londonEntries">10 ورودی‌ها</span></li></ul>
-              <span class="result danger" data-i18n="londonResult">نتیجه: 10/43</span>
-            </article>
-            <article class="session-card small-card">
-              <button class="star"><svg class="icon"><use href="#i-star" /></svg></button>
-              <h3><svg class="icon city-icon sydney"><use href="#i-city-sydney" /></svg><span data-i18n="sydneyTitle">سیدنی — 2026-07-26</span></h3>
-              <div class="tags"><span data-i18n="sydney">سیدنی</span><span>5m</span></div>
-              <img class="mini-chart sydney-chart" src="assets/chart-main.png" alt="نمودار سیدنی" />
-              <ul class="mini-details"><li><svg><use href="#i-calendar" /></svg><span data-i18n="smallDate">26 تیر 1405 · یکشنبه</span></li><li><svg><use href="#i-clock" /></svg><span data-i18n="sydneyTime">22:00 – 06:00 (UTC)</span></li><li><svg><use href="#i-crosshair" /></svg><span data-i18n="sydneyScenarios">39 سناریوها</span></li><li><svg><use href="#i-paw" /></svg><span data-i18n="sydneyEntries">6 ورودی‌ها</span></li></ul>
-              <span class="result danger" data-i18n="sydneyResult">نتیجه: 8/9</span>
-            </article>
+      <!-- NAVRYA design-system pilot: see hunter/index.html for the detailed comment on why
+           #navryaSessionsRoot is the sole child of .content. -->
+      <div id="navryaHeaderRoot"></div>
+      <div class="navrya-shell">
+        <div id="navryaSidebarRoot"></div>
+        <div class="navrya-main">
+          <section class="content" id="library">
+            <div id="navryaSessionsRoot"></div>
           </section>
-
-          <div class="week-label"><span></span><i><svg><use href="#i-leaf" /></svg></i><b>هفته گذشته</b><i><svg><use href="#i-leaf" /></svg></i><span></span></div>
-          <section class="cards-grid muted-grid" aria-label="سشن‌های هفته گذشته">
-            <article class="session-card old-card"><button class="star"><svg class="icon"><use href="#i-star" /></svg></button><img src="assets/chart-main.png" alt="" /><div></div></article>
-            <article class="session-card old-card"><button class="star"><svg class="icon"><use href="#i-star" /></svg></button><img src="assets/chart-main.png" alt="" /><div></div></article>
-            <article class="session-card old-card"><button class="star"><svg class="icon"><use href="#i-star" /></svg></button><img src="assets/chart-main.png" alt="" /><div></div></article>
-          </section>
-        </section>
+        </div>
       </div>
     </main>
+    <div id="navryaChatDockRoot"></div>
     <div class="toast" role="status" aria-live="polite"></div>
     <script src="app.js"></script>
     <script src="../shared/vendor/lucide.min.js"></script>
     <script src="../shared/icon-system.js"></script>
     <script src="../shared/panel-system.js"></script>
+    <script src="../shared/sync-queue.js"></script>
     <script src="../shared/session-system.js"></script>
     <script src="../shared/ai-process-registry.js"></script>
     <script src="../shared/session-signature.types.js"></script>
@@ -234,7 +124,6 @@
     <script src="../shared/trade-calculator.js"></script>
     <script src="../shared/session-card-updates.js"></script>
     <script src="../shared/session-entry-flow.js"></script>
-    <script src="../shared/session-library.js"></script>
     <script src="../shared/session-behavior-fixes.js"></script>
     <script src="../shared/pattern-registry-ai.js"></script>
     <script src="../shared/strategy-education-ai.js"></script>
@@ -260,9 +149,16 @@
     <script src="../shared/mental-health-continuous.js"></script>
     <script src="../shared/mental-health-intake.js"></script>
     <script src="../shared/mental-health-profile-page.js"></script>
+    <script src="../shared/profile-xp-rules.js"></script>
+    <script src="../shared/profile-achievements.js"></script>
+    <script src="../shared/account-profile.types.js"></script>
+    <script src="../shared/account-profile-i18n.js"></script>
+    <script src="../shared/account-profile-store.js"></script>
+    <script src="../shared/account-profile-ui.js"></script>
     <script src="../shared/pattern-registry.js"></script>
     <script src="../shared/strategy-education.js"></script>
     <script src="../shared/ai-settings-ui.js"></script>
-    <script src="../shared/global-ai-dock.js"></script>
+    <script src="../shared/chat-dock-core.js"></script>
+    <script src="../shared/navrya-engineer-sessions-app.js"></script>
   </body>
 </html>

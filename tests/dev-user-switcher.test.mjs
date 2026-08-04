@@ -68,17 +68,47 @@ test('the DEV MODE label is rendered directly in the settings card DOM, not just
   assert.match(textOf(card), /DEV MODE — not real authentication/, 'the exact non-production warning must be visible in the rendered card');
 });
 
-test('ensureUser() reuses an already-stored id without calling the server at all', async () => {
+test('ensureUser() validates an already-stored id against the server (once), and reuses it once confirmed valid', async () => {
   // noSettingsPanel avoids mounting the settings card, whose own refresh() legitimately
   // fetches the user list for display purposes - that's separate from ensureUser() itself,
   // which is what this test isolates.
-  let fetchCalled = false;
+  let fetchCount = 0;
   const localStorage = memoryStorage();
   localStorage.setItem('tradejournal:dev-user-id', 'existing-user');
-  const { window } = await load(async () => { fetchCalled = true; return { json: async () => [] }; }, localStorage, { noSettingsPanel: true });
+  const { window } = await load(async () => { fetchCount += 1; return { json: async () => [{ id: 'existing-user', displayName: 'Existing' }] }; }, localStorage, { noSettingsPanel: true });
   const id = await window.TradeJournalDevUserSwitcher.ensureUser();
   assert.equal(id, 'existing-user');
-  assert.equal(fetchCalled, false, 'no bootstrap request is needed once an id is already chosen');
+  assert.equal(fetchCount, 1, 'exactly one validation request, not zero (a stale id must be checkable) and not more than one');
+  // A second call in the same page load must not re-validate - the result is cached, not
+  // re-fetched every time (every store's request() calls ensureUser() before every API call).
+  await window.TradeJournalDevUserSwitcher.ensureUser();
+  assert.equal(fetchCount, 1, 'ensureUser() caches its validation for the lifetime of the page load, not per call');
+});
+
+test('ensureUser() self-heals a STALE stored id (the server no longer recognizes it) by adopting a real server-known user instead of trusting it forever', async () => {
+  const localStorage = memoryStorage();
+  localStorage.setItem('tradejournal:dev-user-id', 'stale-id-from-a-wiped-backend');
+  const { window } = await load(async () => ({ json: async () => [{ id: 'real-server-user', displayName: 'Real' }] }), localStorage, { noSettingsPanel: true });
+  const id = await window.TradeJournalDevUserSwitcher.ensureUser();
+  assert.equal(id, 'real-server-user', 'a stale id must be replaced with a real one the server actually knows about, not trusted just because localStorage had something in it');
+  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'real-server-user', 'the corrected id is persisted');
+});
+
+test('isStoredUserValid() is a pure check with no self-heal side effect - false for empty or stale storage, true only for a real server-known id', async () => {
+  const emptyStorage = memoryStorage();
+  const empty = await load(async () => ({ json: async () => [{ id: 'someone', displayName: 'S' }] }), emptyStorage, { noSettingsPanel: true });
+  assert.equal(await empty.window.TradeJournalDevUserSwitcher.isStoredUserValid(), false, 'no stored id at all is never valid');
+
+  const staleStorage = memoryStorage();
+  staleStorage.setItem('tradejournal:dev-user-id', 'stale-id');
+  const stale = await load(async () => ({ json: async () => [{ id: 'someone-else', displayName: 'S' }] }), staleStorage, { noSettingsPanel: true });
+  assert.equal(await stale.window.TradeJournalDevUserSwitcher.isStoredUserValid(), false);
+  assert.equal(stale.window.TradeJournalDevUserSwitcher.currentUserId(), 'stale-id', 'unlike ensureUser(), isStoredUserValid() must never mutate storage as a side effect');
+
+  const validStorage = memoryStorage();
+  validStorage.setItem('tradejournal:dev-user-id', 'real-id');
+  const valid = await load(async () => ({ json: async () => [{ id: 'real-id', displayName: 'Real' }] }), validStorage, { noSettingsPanel: true });
+  assert.equal(await valid.window.TradeJournalDevUserSwitcher.isStoredUserValid(), true);
 });
 
 test('ensureUser() adopts the first server-known user when none is stored locally yet', async () => {

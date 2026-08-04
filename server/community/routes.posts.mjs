@@ -1,6 +1,6 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
-import { saveImages } from './storage.mjs';
+import { saveImages } from '../storage/storage.mjs';
 
 async function withAuthors(repo, records, key) {
   const cache = new Map();
@@ -29,7 +29,7 @@ export function router(repo, uploadsDir) {
   app.post('/posts', asyncHandler(async (req, res) => {
     const { content, images } = req.body || {};
     if (!content && !(images && images.length)) throw new ApiError(400, 'VALIDATION_FAILED');
-    const savedImages = await saveImages(images, { uploadsDir, subdir: 'posts' });
+    const savedImages = await saveImages(images, { uploadsDir, category: 'posts' });
     const post = await repo.posts.create({ userId: req.currentUser.id, content, images: savedImages });
     res.status(201).json({ ...post, author: req.currentUser, commentCount: 0 });
   }));

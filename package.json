@@ -9,7 +9,8 @@
     "dev:community-api": "node --env-file-if-exists=.env server/community-api-server.mjs",
     "db:migrate": "node --env-file-if-exists=.env server/db/migrate.mjs",
     "test": "node --test tests/*.test.mjs",
-    "build": "vite build",
+    "build": "vite build && node navrya-src/build.mjs",
+    "build:navrya": "node navrya-src/build.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

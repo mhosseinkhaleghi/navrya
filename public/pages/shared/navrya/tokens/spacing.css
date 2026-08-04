@@ -1,0 +1,30 @@
+:root{
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;
+--base-unit:4px;/* @kind spacing */
+--radius-4:4px;--radius-6:6px;--radius-8:8px;--radius-12:12px;--radius-14:14px;--radius-pill:999px;
+
+--border-1:1px;--border-2:2px;
+--ornament-12:12px;--ornament-16:16px;--ornament-24:24px;
+
+/* Header geometry (desktop 1920 × 320) */
+--header-h:320px;--header-content-row:208px;--header-market-rail:88px;
+--header-pad:16px;--header-gutter:12px;
+--region-brand:200px;--region-portrait:236px;--region-identity:640px;--region-level:104px;--region-crest:152px;--region-utilities:344px;
+--market-card-min-w:264px;--market-card-min-h:72px;
+
+/* Sidebar geometry */
+--sidebar-w:256px;--sidebar-w-collapsed:72px;--sidebar-h:900px;
+--sidebar-brand-h:92px;--sidebar-pad:12px;--sidebar-gap:12px;
+--nav-row-h:52px;--rail-w:46px;--icon-node:32px;
+--quote-card-h:96px;--reward-card-h:104px;--collapse-h:44px;
+--scrollbar-w:3px;--arrowhead:8px;
+
+/* Icon grid */
+--icon-grid:24px;--icon-optical:20px;--icon-stroke:2px;--icon-pad:2px;
+--icon-16:16px;--icon-20:20px;--icon-24:24px;--icon-32:32px;--icon-48:48px;
+
+--target-min:44px;
+--xp-track-h:8px;--xp-track-radius:4px;
+--metric-tile-min-w:132px;--metric-tile-h:64px;
+--portrait-frame:220px;--portrait-crop:188px;--portrait-edit:36px;
+}

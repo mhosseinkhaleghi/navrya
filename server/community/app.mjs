@@ -8,6 +8,12 @@ import * as routesMarketplace from './routes.marketplace.mjs';
 import * as routesMessages from './routes.messages.mjs';
 import * as routesInternal from './routes.internal.mjs';
 import * as routesAdmin from '../admin/routes.mjs';
+import * as routesProfile from './routes.profile.mjs';
+import * as routesTradingSessions from './routes.trading-sessions.mjs';
+import * as routesPatterns from './routes.patterns.mjs';
+import * as routesStrategies from './routes.strategies.mjs';
+import * as routesTrades from './routes.trades.mjs';
+import * as routesMentalHealth from './routes.mental-health.mjs';
 
 // Pure app factory - zero side effects at import time (no port binding, no DB pool). This is
 // what tests inject a fake repo into; the real, pg-backed, port-binding instance lives only
@@ -49,9 +55,23 @@ export function createApp({ repo, uploadsDir }) {
   app.use('/api/users', routesUsers.publicRouter(repo)); // bootstraps identity - no auth required yet
   app.use(devUserAuth(repo)); // <- the ONLY line a real-auth swap touches
   app.use('/api/users', routesUsers.protectedRouter(repo));
+  // Two segments after /users (/me/profile, /me/xp-events, ...) - never collides with the
+  // single-segment GET /:id above, so mount order between the two doesn't matter.
+  app.use('/api/users', routesProfile.router(repo));
   app.use('/api/community', routesPosts.router(repo, uploadsDir));
   app.use('/api/marketplace', routesMarketplace.router(repo, uploadsDir));
   app.use('/api/messages', routesMessages.router(repo));
+  // /api/sync/* is its own prefix (not /api/sessions, /api/patterns, etc.) because those
+  // exact prefixes are already claimed end-to-end by vite.config.js's proxy rules, routed to
+  // the AI-only gateway (server/pattern-ai-server.mjs, a different port/process) for its
+  // existing analysis endpoints - reusing them here would either collide or require Vite to
+  // pick apart sub-paths of the same prefix across two backends. One new prefix, one new proxy
+  // rule, no ambiguity - see ARCHITECTURE.md's Global Data Sync section for the full reasoning.
+  app.use('/api/sync/sessions', routesTradingSessions.router(repo, uploadsDir));
+  app.use('/api/sync/patterns', routesPatterns.router(repo, uploadsDir));
+  app.use('/api/sync/strategies', routesStrategies.router(repo, uploadsDir));
+  app.use('/api/sync/trades', routesTrades.router(repo, uploadsDir));
+  app.use('/api/sync/mental-health', routesMentalHealth.router(repo));
   app.use('/api/admin', requireAdmin(repo), routesAdmin.router(repo));
 
   app.use(notFoundMiddleware);

@@ -460,24 +460,40 @@
   function renderProfile(patternId, tab) {
     releaseUrls(); state.open = true; state.patternId = patternId; state.tab = tab;
     var pattern = store.find(patternId); if (!pattern) { history.replaceState(null, '', '#strategies/patterns'); return renderList(); }
-    var page = el('section', 'panel-page pattern-registry-page pr-profile-page'); page.dir = i18n.direction(); page.dataset.route = '/strategies/patterns/' + pattern.id + '/' + tab;
-    page.append(profileHeader(pattern), moduleTabs(), profileTabs(pattern));
-    if (tab === 'chat') page.append(chatView(pattern)); else if (tab === 'report') page.append(reportView(pattern)); else if (tab === 'sharing') page.append(sharingView(pattern)); else page.append(editor(pattern));
-    layer.show(page, 'strategies'); hydrateImages(page); if (icons) icons.schedule(document);
+    var navrya = window.TradeJournalNavryaPatternRegistry;
+    var page;
+    if (navrya && navrya.render) {
+      page = navrya.render('profile', patternId, tab);
+    } else {
+      page = el('section', 'panel-page pattern-registry-page pr-profile-page'); page.dir = i18n.direction(); page.dataset.route = '/strategies/patterns/' + pattern.id + '/' + tab;
+      page.append(profileHeader(pattern), moduleTabs(), profileTabs(pattern));
+      if (tab === 'chat') page.append(chatView(pattern)); else if (tab === 'report') page.append(reportView(pattern)); else if (tab === 'sharing') page.append(sharingView(pattern)); else page.append(editor(pattern));
+    }
+    layer.show(page, 'strategies');
+    if (!navrya || !navrya.render) hydrateImages(page);
+    if (icons) icons.schedule(document);
   }
 
   function renderList() {
     releaseUrls(); state.open = true;
     state.patternId = null;
-    var page = el('section', 'panel-page pattern-registry-page'); page.dir = i18n.direction(); page.dataset.route = '/strategies/patterns';
-    page.append(header(), moduleTabs(), toolbar());
-    var list = el('section', 'pr-list'); var patterns = store.listSync(); var query = state.query.trim().toLocaleLowerCase(i18n.locale());
-    var filtered = query ? patterns.filter(function (pattern) { return pattern.name.toLocaleLowerCase(i18n.locale()).indexOf(query) > -1; }) : patterns;
-    if (!filtered.length) { var empty = el('div', 'pr-empty'); empty.append(icon('scan-search'), el('strong', '', i18n.t(query ? 'emptySearch' : 'empty'))); list.append(empty); }
-    else filtered.forEach(function (pattern) { list.append(patternRow(pattern)); });
-    page.append(list); layer.show(page, 'strategies');
+    var navrya = window.TradeJournalNavryaPatternRegistry;
+    var page;
+    if (navrya && navrya.render) {
+      page = navrya.render('list');
+    } else {
+      page = el('section', 'panel-page pattern-registry-page'); page.dir = i18n.direction(); page.dataset.route = '/strategies/patterns';
+      page.append(header(), moduleTabs(), toolbar());
+      var list = el('section', 'pr-list'); var patterns = store.listSync(); var query = state.query.trim().toLocaleLowerCase(i18n.locale());
+      var filtered = query ? patterns.filter(function (pattern) { return pattern.name.toLocaleLowerCase(i18n.locale()).indexOf(query) > -1; }) : patterns;
+      if (!filtered.length) { var empty = el('div', 'pr-empty'); empty.append(icon('scan-search'), el('strong', '', i18n.t(query ? 'emptySearch' : 'empty'))); list.append(empty); }
+      else filtered.forEach(function (pattern) { list.append(patternRow(pattern)); });
+      page.append(list);
+    }
+    layer.show(page, 'strategies');
     if (window.location.hash !== '#strategies/patterns') history.replaceState(null, '', '#strategies/patterns');
-    hydrateImages(page); if (icons) icons.schedule(document);
+    if (!navrya || !navrya.render) hydrateImages(page);
+    if (icons) icons.schedule(document);
   }
 
   function route() {

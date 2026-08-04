@@ -165,24 +165,29 @@
   }
 
   function renderPage(tab, itemId) {
-    var page = el('section', 'panel-page tj-community-page');
-    page.dir = i18n.direction();
-    var head = el('header', 'pr-page-header');
-    head.append(el('h2', '', i18n.t('communityTitle')), el('p', '', i18n.t('communityHint')));
-    var nav = el('nav', 'tj-community-tabs');
-    [['feed', 'tabFeed', 'rss'], ['marketplace', 'tabMarketplace', 'store'], ['messages', 'tabMessages', 'mail']].forEach(function (item) {
-      var b = button(i18n.t(item[1]), tab === item[0] ? 'active' : '', item[2]);
-      b.onclick = function () { location.hash = '#community/' + item[0]; };
-      nav.append(b);
-    });
-    var body = el('div', 'tj-community-body');
-    page.append(head, nav, body);
+    var navrya = window.TradeJournalNavryaCommunity;
+    var page;
+    if (navrya && navrya.render) {
+      page = navrya.render(tab, itemId);
+    } else {
+      page = el('section', 'panel-page tj-community-page');
+      page.dir = i18n.direction();
+      var head = el('header', 'pr-page-header');
+      head.append(el('h2', '', i18n.t('communityTitle')), el('p', '', i18n.t('communityHint')));
+      var nav = el('nav', 'tj-community-tabs');
+      [['feed', 'tabFeed', 'rss'], ['marketplace', 'tabMarketplace', 'store'], ['messages', 'tabMessages', 'mail']].forEach(function (item) {
+        var b = button(i18n.t(item[1]), tab === item[0] ? 'active' : '', item[2]);
+        b.onclick = function () { location.hash = '#community/' + item[0]; };
+        nav.append(b);
+      });
+      var body = el('div', 'tj-community-body');
+      page.append(head, nav, body);
+      if (tab === 'marketplace' && window.TradeJournalMarketplace) window.TradeJournalMarketplace.render(body, itemId);
+      else if (tab === 'messages' && window.TradeJournalMessages) window.TradeJournalMessages.render(body, itemId);
+      else renderFeed(body);
+    }
     layer.show(page, 'community');
     document.querySelectorAll('.sidebar nav a').forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#community'); });
-
-    if (tab === 'marketplace' && window.TradeJournalMarketplace) window.TradeJournalMarketplace.render(body, itemId);
-    else if (tab === 'messages' && window.TradeJournalMessages) window.TradeJournalMessages.render(body, itemId);
-    else renderFeed(body);
     icons(page);
   }
 
