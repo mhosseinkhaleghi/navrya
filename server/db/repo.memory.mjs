@@ -13,7 +13,7 @@ export function createMemoryRepo() {
     sessions: new Map(), usageEvents: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(),
-    mentalHealthProfiles: new Map()
+    mentalHealthProfiles: new Map(), aiChatHistory: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -803,10 +803,26 @@ export function createMemoryRepo() {
     }
   };
 
+  // Same one-row-per-user shape as mentalHealthProfile above - see 014_ai_chat_history.sql.
+  const aiChatHistory = {
+    async upsert(userId, messages) {
+      requireUser(userId);
+      if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.aiChatHistory.get(userId);
+      const stamp = now();
+      state.aiChatHistory.set(userId, { userId, messages, createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp });
+      return clone(messages);
+    },
+    async get(userId) {
+      const record = state.aiChatHistory.get(userId);
+      return record ? clone(record.messages) : [];
+    }
+  };
+
   // Mirrors repo.pg.mjs's health() shape for the admin Technical tab, so that tab works
   // unmodified under the zero-setup in-memory fallback too - there is no real "database" here
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
-  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, health };
+  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
 }

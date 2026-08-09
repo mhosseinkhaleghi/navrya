@@ -1340,6 +1340,25 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Same one-row-per-user jsonb-document shape as mentalHealthProfile above - see
+  // 014_ai_chat_history.sql's reasoning.
+  const aiChatHistory = {
+    async upsert(userId, messages) {
+      if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows } = await pool.query(
+        `INSERT INTO ai_chat_history (user_id, messages, updated_at) VALUES ($1,$2,now())
+         ON CONFLICT (user_id) DO UPDATE SET messages=$2, updated_at=now()
+         RETURNING messages`,
+        [userId, JSON.stringify(messages)]
+      );
+      return rows[0].messages;
+    },
+    async get(userId) {
+      const { rows } = await pool.query('SELECT messages FROM ai_chat_history WHERE user_id=$1', [userId]);
+      return rows[0] ? rows[0].messages : [];
+    }
+  };
+
   // Backs the admin Technical tab's DB-connectivity check (a real SELECT 1) and applied-
   // migrations list. Not domain-scoped like everything else above, so it sits at the top
   // level of the returned repo object rather than inside one of the per-noun sub-objects.
@@ -1354,5 +1373,5 @@ export function createPgRepo(pool) {
     return { backend: 'postgres', dbOk, migrations };
   }
 
-  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, health };
+  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
 }

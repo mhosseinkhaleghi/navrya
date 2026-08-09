@@ -289,8 +289,29 @@
     footer.append(remove, status, save); form.append(footer); return form;
   }
 
+  // Hardened the same way trade-ui.js's modal() already is (Escape-key close, backdrop-click
+  // close, a guaranteed single teardown even if a caller's own close handler also calls
+  // overlay.remove()) - previously this had none of that, so an interrupted open/close cycle
+  // (e.g. navigating away mid-async) could leave a full-viewport backdrop behind, silently
+  // intercepting clicks meant for whatever opens next (see trade-system.css's z-index comment
+  // for the other half of this fix). Every existing caller already calls modal.overlay.remove()
+  // in its own close/cancel/confirm handlers, so overriding what that does is a transparent
+  // upgrade - no call site needs to change.
   function modalShell(className) {
-    var overlay = el('div', 'pr-modal-backdrop'); var box = el('section', 'pr-modal ' + (className || '')); overlay.append(box); document.body.append(overlay); return { overlay: overlay, box: box };
+    var overlay = el('div', 'pr-modal-backdrop'); var box = el('section', 'pr-modal ' + (className || '')); overlay.append(box); document.body.append(overlay);
+    var closed = false;
+    var nativeRemove = overlay.remove.bind(overlay);
+    function destroy() {
+      if (closed) return; closed = true;
+      document.removeEventListener('keydown', onKeydown, true);
+      nativeRemove();
+    }
+    function onKeydown(event) { if (event.key === 'Escape') destroy(); }
+    document.addEventListener('keydown', onKeydown, true);
+    overlay.remove = destroy;
+    overlay.addEventListener('click', function (event) { if (event.target === overlay) destroy(); });
+    box.addEventListener('click', function (event) { event.stopPropagation(); });
+    return { overlay: overlay, box: box };
   }
 
   function confirmDelete(patternId) {

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Sidebar } from '../public/pages/shared/navrya/components/navigation/Sidebar.jsx';
 import { CharacterHeader } from '../public/pages/shared/navrya/components/header/CharacterHeader.jsx';
 import { SessionLibrary } from '../public/pages/shared/navrya/components/sessions/SessionLibrary.jsx';
+import * as sessionEntryCards from './sessionEntryCardsView.jsx';
 import * as sessionsAdapter from './sessionsAdapter.js';
 import * as marketAdapter from './marketAdapter.js';
 import { createStore } from './store.js';
@@ -111,6 +112,12 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
   const now = useClock();
+  // Captured once, on this root's first render (i.e. when this character's dashboard first
+  // loads this session) - not a wall clock. "APP UPTIME" previously displayed
+  // marketAdapter.utcClock(now), which is just the current UTC time re-labeled - identical to
+  // the London market clock whenever London's UTC offset is 0. This ref is the actual "session
+  // started at" reference utcClock never had.
+  const appStartRef = React.useRef(Date.now());
   const metrics = useMetrics(s.sessions, t);
   const rules = window.TradeJournalProfileXPRules;
   const level = s.profile && rules ? rules.levelForXp(s.profile.xpTotal) : undefined;
@@ -133,7 +140,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
         onSettings={() => store.setActiveId('settings')}
         onIdentityClick={() => { if (window.TradeJournalAccountProfilePage) window.TradeJournalAccountProfilePage.open(); }}
         levelLabel={t.level} rankLabel={t.rank}
-        uptime={marketAdapter.utcClock(now)} uptimeLabel={t.appUptime}
+        uptime={marketAdapter.elapsedClock(now.getTime() - appStartRef.current)} uptimeLabel={t.appUptime}
         nextSession={{ city: marketLabels[nextSession.city.toLowerCase().replace(' ', '-')] || nextSession.city, startsIn: nextSession.startsIn }}
         nextSessionLabel={t.nextSession} startsInLabel={t.startsIn}
         markets={markets}
@@ -221,6 +228,21 @@ export function mountCharacterApp(character) {
 
   // strategy-education.js's renderList()/renderDetail() defer to this hook when present.
   window.TradeJournalNavryaStrategyEducation = { render: renderStrategyEducation };
+
+  // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
+  // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version
+  // session-card-updates.js sets earlier in the page's own <script> load order, since this file
+  // loads last. Same normalizeSession/patternCatalog/availablePatterns callers elsewhere already
+  // depend on (session-workspace-logic.js's normalize(), trade-ui.js, etc.) - only renderEntry's
+  // markup changed, from manual DOM building to JSX + NAVRYA components.
+  window.TradeJournalSessionCards = {
+    normalizeSession: sessionEntryCards.normalizeSession,
+    renderEntry: sessionEntryCards.renderEntry,
+    renderActions: sessionEntryCards.renderActions,
+    renderTimelineNav: sessionEntryCards.renderTimelineNav,
+    patternCatalog: sessionEntryCards.patternCatalog,
+    availablePatterns: sessionEntryCards.availablePatterns
+  };
 
   function mount() {
     const sidebarRoot = document.getElementById('navryaSidebarRoot');

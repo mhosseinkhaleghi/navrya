@@ -23,7 +23,19 @@ function MemoryRow({ label, count, clearLabel, onClear }) {
   );
 }
 
-function AiAssistantView({ i18n, settingsStore, usageStore }) {
+function ChatHistoryRow({ message }) {
+  const isUser = message.role === 'user';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 10px', borderRadius: 8, background: isUser ? 'rgba(255,255,255,.04)' : 'rgba(11,20,21,.4)' }}>
+      <span style={{ font: 'var(--type-caption)', fontSize: 11, color: 'var(--text-muted)' }}>
+        {(isUser ? 'You' : 'Assistant') + ' · ' + new Date(message.createdAt).toLocaleString()}
+      </span>
+      <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{message.content}</span>
+    </div>
+  );
+}
+
+function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) {
   const catalog = React.useMemo(() => settingsStore.providerCatalog(), []);
   const initial = React.useMemo(() => settingsStore.settings(), []);
   const [provider, setProvider] = React.useState(initial.provider);
@@ -36,7 +48,15 @@ function AiAssistantView({ i18n, settingsStore, usageStore }) {
   const [testResult, setTestResult] = React.useState(null);
   const [usage, setUsage] = React.useState(null);
   const [memory, setMemory] = React.useState(() => memorySnapshot());
+  const [chatHistory, setChatHistory] = React.useState(() => (chatHistoryStore ? chatHistoryStore.load() : []));
   const [toast, setToast] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!chatHistoryStore) return undefined;
+    function onChange() { setChatHistory(chatHistoryStore.load()); }
+    window.addEventListener('tradejournal:ai-chat-history-changed', onChange);
+    return () => window.removeEventListener('tradejournal:ai-chat-history-changed', onChange);
+  }, [chatHistoryStore]);
 
   function refreshUsage() {
     setUsage({
@@ -89,6 +109,13 @@ function AiAssistantView({ i18n, settingsStore, usageStore }) {
     if (!window.confirm(i18n.t('aiMemoryClearConfirm'))) return;
     clearChatHistory(kind);
     setMemory(memorySnapshot());
+    showToast(i18n.t('aiSettingsSaved'));
+  }
+
+  function clearChatHistoryLog() {
+    if (!chatHistoryStore || !window.confirm(i18n.t('aiChatHistoryClearConfirm'))) return;
+    chatHistoryStore.clear();
+    setChatHistory([]);
     showToast(i18n.t('aiSettingsSaved'));
   }
 
@@ -155,6 +182,23 @@ function AiAssistantView({ i18n, settingsStore, usageStore }) {
         <Button variant="secondary" icon="download" onClick={exportMemory} style={{ alignSelf: 'flex-start' }}>{i18n.t('aiMemoryExport')}</Button>
       </Panel>
 
+      <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px', font: 'var(--type-body)', fontWeight: 700, color: 'var(--parchment)' }}>{i18n.t('aiChatHistoryTitle')}</h3>
+            <p style={{ margin: 0, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiChatHistoryHint')}</p>
+          </div>
+          {chatHistory.length > 0 && <Button variant="secondary" size="sm" icon="trash-2" onClick={clearChatHistoryLog}>{i18n.t('aiMemoryClear')}</Button>}
+        </div>
+        {chatHistory.length === 0 ? (
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiChatHistoryEmpty')}</span>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
+            {chatHistory.map((message) => <ChatHistoryRow key={message.id} message={message} />)}
+          </div>
+        )}
+      </Panel>
+
       {toast && <div className="tj-toast success" role="status">{toast}</div>}
     </div>
   );
@@ -166,9 +210,10 @@ export function renderAiAssistant() {
   const i18n = window.TradeJournalAII18n;
   const settingsStore = window.TradeJournalAISettingsStore;
   const usageStore = window.TradeJournalAIUsage;
+  const chatHistoryStore = window.TradeJournalAiChatHistoryStore;
   const container = document.createElement('div');
   container.className = 'panel-page tj-ai-settings-page';
   container.dataset.character = currentNavryaCharacter();
-  createRoot(container).render(<AiAssistantView i18n={i18n} settingsStore={settingsStore} usageStore={usageStore} />);
+  createRoot(container).render(<AiAssistantView i18n={i18n} settingsStore={settingsStore} usageStore={usageStore} chatHistoryStore={chatHistoryStore} />);
   return container;
 }

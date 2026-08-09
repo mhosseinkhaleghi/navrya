@@ -61,3 +61,16 @@ export function nextSessionCountdown(now) {
 export function utcClock(now) {
   return pad(now.getUTCHours()) + ':' + pad(now.getUTCMinutes()) + ':' + pad(now.getUTCSeconds());
 }
+
+// A real duration formatter (ms elapsed -> HH:MM:SS), distinct from utcClock/cityClock above,
+// which are wall-clock formatters. Mirrors session-workspace-logic.js's own clock(ms) helper for
+// per-trading-session elapsed/loop timers, exported here since that file is a plain script (not
+// a module) and this app-wide "time in app this session" counter has no session record to read
+// startedAt from - HeaderApp captures its own mount time instead (see character-app.jsx).
+export function elapsedClock(ms) {
+  const totalSeconds = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return pad(hours) + ':' + pad(minutes) + ':' + pad(seconds);
+}

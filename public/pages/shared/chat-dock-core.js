@@ -40,6 +40,8 @@
 
     var active = settingsStore.settings();
     var activeProcess = registry ? registry.activeOpenProcess() : null;
+    var historyStore = window.TradeJournalAiChatHistoryStore;
+    if (historyStore) historyStore.addMessage('user', text);
     var response = await fetch('/api/ai/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -51,6 +53,7 @@
     var payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'AI_REQUEST_FAILED');
     if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage });
+    if (historyStore) historyStore.addMessage('assistant', payload.reply);
     return { kind: 'assistant', reply: payload.reply, suggestions: payload.suggestions || [], activeProcess: activeProcess };
   }
 

@@ -202,9 +202,26 @@ function SettingsView({ character }) {
           <h3 style={{ margin: 0, font: 'var(--type-body)', fontWeight: 700, color: 'var(--parchment)' }}>{t.characterTheme}</h3>
           <p style={{ margin: 0, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t.characterThemeHint}</p>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {['Hunter', 'Engineer', 'Commander', 'Market Sage'].map((name) => (
-              <span key={name} style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--border-gold)', font: 'var(--type-caption)', color: 'var(--text-primary)' }}>{name}</span>
-            ))}
+            {[{ id: 'hunter', name: 'Hunter' }, { id: 'engineer', name: 'Engineer' }, { id: 'commander', name: 'Commander' }, { id: 'sage', name: 'Market Sage' }].map(({ id, name }) => {
+              const active = id === character;
+              return (
+                <button
+                  key={id} type="button" disabled={active}
+                  // Each character is its own built page (navrya-src/entries/*.jsx bakes the
+                  // character in at build time), so switching isn't an in-place re-render - it's
+                  // the exact same cross-iframe navigation the character-select chooser page
+                  // already triggers (public/pages/select/app.js), reused here verbatim rather
+                  // than inventing a second way to do the same navigation.
+                  onClick={() => { if (!active) window.parent.postMessage({ type: 'tradejournal:character-selected', character: id }, '*'); }}
+                  style={{
+                    padding: '4px 10px', borderRadius: 999, font: 'var(--type-caption)', cursor: active ? 'default' : 'pointer',
+                    border: active ? '1px solid var(--char-accent)' : '1px solid var(--border-gold)',
+                    background: active ? 'var(--char-active-surface)' : 'transparent',
+                    color: active ? 'var(--parchment)' : 'var(--text-primary)'
+                  }}
+                >{name}</button>
+              );
+            })}
           </div>
         </Panel>
       </div>
