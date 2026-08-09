@@ -1,0 +1,38 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+(navrya_api) {
+	@ai path /api/patterns/* /api/strategy-education/* /api/trades/* /api/mental-health/* /api/ai/*
+	handle @ai {
+		reverse_proxy pattern-ai:8787
+	}
+
+	handle /api/* {
+		reverse_proxy community-api:8788
+	}
+
+	handle /uploads/* {
+		reverse_proxy community-api:8788
+	}
+}
+
+(navrya_static) {
+	handle {
+		encode zstd gzip
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+app.navrya.com {
+	import navrya_api
+	import navrya_static
+}
+
+admin.navrya.com {
+	import navrya_api
+	import navrya_static
+}

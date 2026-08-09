@@ -111,6 +111,7 @@
     // document - a bare same-document href would silently change only the iframe's hash.
     var adminLink = el('a', 'tj-dev-user-admin-link', t('adminLink'));
     adminLink.href = '#/admin';
+    if (window.location && window.location.hostname === 'app.navrya.com') adminLink.href = 'https://admin.navrya.com';
     adminLink.target = '_top';
     card.append(adminLink);
 
