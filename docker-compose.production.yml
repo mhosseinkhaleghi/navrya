@@ -6,8 +6,6 @@ services:
       context: .
       target: web
     restart: unless-stopped
-    environment:
-      ACME_EMAIL: ${ACME_EMAIL}
     ports:
       - '80:80'
       - '443:443'
@@ -108,4 +106,3 @@ volumes:
   caddy_config:
   postgres_data:
   uploads_data:
-
