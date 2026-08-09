@@ -12,6 +12,8 @@ RUN npm run build
 FROM caddy:2.10-alpine AS web
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/dist /srv
+COPY --from=build /app/vendor /srv/vendor
+COPY --from=build /app/src/release.js /srv/src/release.js
 
 FROM node:22-alpine AS app
 ENV NODE_ENV=production
