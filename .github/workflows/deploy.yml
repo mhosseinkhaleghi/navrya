@@ -26,6 +26,7 @@ jobs:
       - run: npm run build
 
   deploy:
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     needs: verify
     runs-on: ubuntu-latest
     environment: production
@@ -49,4 +50,3 @@ jobs:
         run: |
           ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" \
             'set -eu; cd /opt/navrya; git fetch --prune origin main; git checkout main; git reset --hard origin/main; docker compose --env-file .env -f docker-compose.production.yml build; docker compose --env-file .env -f docker-compose.production.yml run --rm migrate; docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans; docker image prune -f'
-

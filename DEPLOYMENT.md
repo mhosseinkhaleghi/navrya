@@ -43,6 +43,9 @@ Add these repository Actions secrets:
 - `SSH_PRIVATE_KEY`: the dedicated deployment private key.
 - `SSH_KNOWN_HOSTS`: the server's pinned SSH host-key line.
 
+After the server bootstrap and secrets are complete, add the repository Actions variable
+`DEPLOY_ENABLED=true`. Until then, GitHub still runs tests/builds but safely skips deployment.
+
 Every push to `main` runs tests and a production build before deploying. The workflow only
 replaces the checked-out application source; `.env`, PostgreSQL data, uploads, and Caddy's TLS
 state remain on server volumes.
