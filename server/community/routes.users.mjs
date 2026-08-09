@@ -1,20 +1,10 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
 
-// Mounted at /api/users, in two halves: publicRouter runs BEFORE devUserAuth (bootstrapping
-// an identity requires no identity yet), protectedRouter runs after.
-export function publicRouter(repo) {
-  const router = express.Router();
-  router.get('/', asyncHandler(async (req, res) => {
-    res.json(await repo.users.list());
-  }));
-  router.post('/', asyncHandler(async (req, res) => {
-    const user = await repo.users.create(req.body || {});
-    res.status(201).json(user);
-  }));
-  return router;
-}
-
+// Mounted at /api/users, after requireAuth (server/community/app.mjs) - bootstrapping an
+// identity now happens at /api/auth (routes.auth.mjs) instead, which is why the old
+// unauthenticated publicRouter (GET /, POST /) was removed entirely: nothing legitimate needs
+// an unauthenticated full user list or a no-credential account-creation endpoint anymore.
 export function protectedRouter(repo) {
   const router = express.Router();
   router.get('/me', asyncHandler(async (req, res) => {

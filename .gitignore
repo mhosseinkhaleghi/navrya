@@ -2,3 +2,5 @@ node_modules/
 graphify-out/
 uploads/
 .env
+dist/
+tailadmin-reference/

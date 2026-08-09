@@ -1,0 +1,169 @@
+# Render Blueprint - deploys the whole app (static frontend + both backend services +
+# Postgres) from one GitHub-connected repo. See https://render.com/docs/blueprint-spec.
+#
+# First-time setup on Render:
+#   1. Dashboard -> New -> Blueprint -> select this repo/branch (main).
+#   2. Render prompts for every `sync: false` var below (AI provider keys, BASIC_AUTH_USER/PASS,
+#      INTERNAL_API_SECRET, GOOGLE_CLIENT_ID) - AI keys and GOOGLE_CLIENT_ID can be left blank
+#      for now and added later from each service's Environment tab with no code change or
+#      redeploy needed (Google sign-in returns a clean 503 until it's set).
+#   3. IMPORTANT: after the first deploy, open tradejournal-web's Settings -> Redirects/Rewrites
+#      and replace the two placeholder destinations below (REPLACE_WITH_AI_SERVICE_URL,
+#      REPLACE_WITH_COMMUNITY_SERVICE_URL) with the real https://<service>.onrender.com URLs
+#      Render assigned - a static site's `routes.destination` is a literal string, it cannot
+#      reference another service by name the way `envVars.fromService` can.
+#   4. BASIC_AUTH_USER/PASS must be set to the SAME values on both tradejournal-ai and
+#      tradejournal-community, or requests split across the two services will prompt twice.
+
+services:
+  - type: web
+    name: tradejournal-web
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      # AI gateway (server/pattern-ai-server.mjs) - no DB, stateless.
+      - type: rewrite
+        source: /api/patterns/*
+        destination: REPLACE_WITH_AI_SERVICE_URL/api/patterns/*
+      - type: rewrite
+        source: /api/strategy-education/*
+        destination: REPLACE_WITH_AI_SERVICE_URL/api/strategy-education/*
+      - type: rewrite
+        source: /api/trades/*
+        destination: REPLACE_WITH_AI_SERVICE_URL/api/trades/*
+      - type: rewrite
+        source: /api/mental-health/*
+        destination: REPLACE_WITH_AI_SERVICE_URL/api/mental-health/*
+      - type: rewrite
+        source: /api/ai/*
+        destination: REPLACE_WITH_AI_SERVICE_URL/api/ai/*
+      # Community API (server/community-api-server.mjs) - Postgres-backed.
+      - type: rewrite
+        source: /api/auth/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/api/auth/*
+      - type: rewrite
+        source: /api/community/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/api/community/*
+      - type: rewrite
+        source: /api/sync/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/api/sync/*
+      - type: rewrite
+        source: /api/users/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/api/users/*
+      - type: rewrite
+        source: /api/marketplace/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/api/marketplace/*
+      - type: rewrite
+        source: /api/messages/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/api/messages/*
+      - type: rewrite
+        source: /api/admin/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/api/admin/*
+      - type: rewrite
+        source: /uploads/*
+        destination: REPLACE_WITH_COMMUNITY_SERVICE_URL/uploads/*
+      # Deliberately no catch-all "/* -> /index.html" SPA fallback: every route in this app
+      # (src/release.js's hash router + iframes) resolves to a real static file already, so a
+      # fallback rule is unnecessary and would only risk shadowing a real path.
+
+  - type: web
+    name: tradejournal-ai
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server/pattern-ai-server.mjs
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PATTERN_AI_PORT
+        value: 8787
+      - key: COMMUNITY_API_URL
+        value: REPLACE_WITH_COMMUNITY_SERVICE_URL
+      - key: OPENAI_MODEL
+        value: gpt-5.6
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-5
+      - key: KIMI_MODEL
+        value: moonshot-v1-8k
+      - key: DEEPSEEK_MODEL
+        value: deepseek-chat
+      # Leave blank at first deploy - the app degrades each AI feature to a clean 503 until a
+      # key is added here later (no redeploy needed, Render restarts on env var save).
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: KIMI_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: INTERNAL_API_SECRET
+        sync: false
+      # Must match tradejournal-community's BASIC_AUTH_USER/PASS exactly.
+      - key: BASIC_AUTH_USER
+        sync: false
+      - key: BASIC_AUTH_PASS
+        sync: false
+
+  - type: web
+    name: tradejournal-community
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server/community-api-server.mjs
+    preDeployCommand: npm run db:migrate
+    healthCheckPath: /health
+    disk:
+      name: tradejournal-uploads
+      mountPath: /var/data/uploads
+      sizeGB: 1
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: COMMUNITY_API_PORT
+        value: 8788
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tradejournal-db
+          property: connectionString
+      - key: PATTERN_AI_URL
+        value: REPLACE_WITH_AI_SERVICE_URL
+      # Real per-user authentication now exists (server/community/routes.auth.mjs,
+      # auth-real.mjs) - every /api/admin route requires an actual role=admin account.
+      - key: ADMIN_AUTH_ENFORCED
+        value: true
+      # Auto-promoted to role=admin the moment this email registers or first signs in with
+      # Google - only checked at account-creation time, not on every login.
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        value: mhossein.khaleghi@gmail.com
+      # Signs/verifies session tokens (server/community/auth-tokens.mjs). Render generates a
+      # real random value once, on initial Blueprint creation, and it persists across syncs -
+      # not left blank like the AI-provider keys, since an unset value here just means "a new
+      # ephemeral secret every restart" (every session silently invalidated), a worse default
+      # for a real deploy than for local dev.
+      - key: AUTH_TOKEN_SECRET
+        generateValue: true
+      # Google OAuth Client ID (not a secret, but its exact value isn't known until you create
+      # it in Google Cloud Console - see the plan's manual-steps checklist). Google sign-in
+      # returns a clean 503 until this is set. The SAME value must also be placed in
+      # public/pages/select/index.html's GOOGLE_CLIENT_ID constant (that page is static JS, not
+      # Vite-processed, so it can't read this env var at runtime).
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: INTERNAL_API_SECRET
+        sync: false
+      # Must match tradejournal-ai's BASIC_AUTH_USER/PASS exactly.
+      - key: BASIC_AUTH_USER
+        sync: false
+      - key: BASIC_AUTH_PASS
+        sync: false
+
+databases:
+  - name: tradejournal-db
+    plan: starter
+    databaseName: tradejournal
+    user: tradejournal

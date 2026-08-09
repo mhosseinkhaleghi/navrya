@@ -32,9 +32,9 @@ test('OPTIONS is handled by the CORS middleware alone, before any route or auth 
   assert.equal(response.status, 204);
 });
 
-test('an unauthenticated request to an unknown route gets DEV_USER_ID_REQUIRED, not a 404 - devUserAuth is mounted globally with no path exceptions, so unknown paths never leak which routes exist to an unauthenticated caller. (Reaching notFoundMiddleware genuinely requires a valid user, so that specific case is covered by the memory-repo-backed tests/community-api-contract.test.mjs instead - the real pg-backed server in this file has no DB to authenticate against.)', async () => {
+test('an unauthenticated request to an unknown route gets AUTH_TOKEN_REQUIRED, not a 404 - requireAuth is mounted globally with no path exceptions, so unknown paths never leak which routes exist to an unauthenticated caller. (Reaching notFoundMiddleware genuinely requires a valid user, so that specific case is covered by the memory-repo-backed tests/community-api-contract.test.mjs instead - the real pg-backed server in this file has no DB to authenticate against.)', async () => {
   const response = await fetch(baseUrl + '/this-route-does-not-exist');
   const body = await response.json();
   assert.equal(response.status, 401);
-  assert.equal(body.error, 'DEV_USER_ID_REQUIRED');
+  assert.equal(body.error, 'AUTH_TOKEN_REQUIRED');
 });

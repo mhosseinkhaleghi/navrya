@@ -5,12 +5,14 @@ import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
+import { testToken } from './helpers/auth-token.mjs';
 
-let server, baseUrl, uploadsDir;
+let server, baseUrl, uploadsDir, repo;
 
 before(async () => {
   uploadsDir = await mkdtemp(path.join(os.tmpdir(), 'tj-uploads-'));
-  server = createApp({ repo: createMemoryRepo(), uploadsDir }).listen(0);
+  repo = createMemoryRepo();
+  server = createApp({ repo, uploadsDir }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
@@ -21,15 +23,14 @@ after(async () => {
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = userId;
+  if (userId) headers['x-dev-user-id'] = testToken(userId);
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   const json = text ? JSON.parse(text) : null;
   return { status: response.status, body: json };
 }
 async function createUser(name) {
-  const { body } = await api('POST', '/api/users', { body: { displayName: name } });
-  return body;
+  return repo.users.create({ displayName: name });
 }
 
 function sampleTrade(id) {
@@ -52,10 +53,10 @@ function sampleTrade(id) {
   };
 }
 
-test('a request with no x-dev-user-id is rejected with DEV_USER_ID_REQUIRED', async () => {
+test('a request with no x-dev-user-id is rejected with AUTH_TOKEN_REQUIRED', async () => {
   const result = await api('GET', '/api/sync/trades');
   assert.equal(result.status, 401);
-  assert.equal(result.body.error, 'DEV_USER_ID_REQUIRED');
+  assert.equal(result.body.error, 'AUTH_TOKEN_REQUIRED');
 });
 
 test('POST upserts a full trade (screenshots + emotion log + status history + ai prediction links) and GET reassembles it identically', async () => {

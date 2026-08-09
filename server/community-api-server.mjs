@@ -10,7 +10,8 @@ import { createMemoryRepo } from './db/repo.memory.mjs';
 // server/community/app.mjs; this file's only job is to wire up a repo and bind a real port -
 // kept separate so tests can import createApp() directly without ever triggering a port bind.
 const uploadsDir = process.env.UPLOADS_DIR || './uploads';
-const port = Number(process.env.COMMUNITY_API_PORT || 8788);
+const host = process.env.HOST || '127.0.0.1';
+const port = Number(process.env.PORT || process.env.COMMUNITY_API_PORT || 8788);
 
 // No DATABASE_URL configured -> no Postgres/Docker setup has been done. Rather than refusing
 // to start (leaving account creation permanently broken until someone installs Docker), fall
@@ -23,8 +24,8 @@ const repo = usingMemoryRepo ? createMemoryRepo() : createPgRepo(createPool(proc
 // pg.Pool never opens a connection at construction (lazy per-query), so building it is safe
 // even with no Postgres reachable - exactly what makes the import-triggers-listen smoke test
 // (mirroring tests/ai-gateway.test.mjs) safe to run here.
-const server = createApp({ repo, uploadsDir }).listen(port, '127.0.0.1', () => {
-  console.log(`Community API server: http://127.0.0.1:${port}`);
+const server = createApp({ repo, uploadsDir }).listen(port, host, () => {
+  console.log(`Community API server: http://${host}:${port}`);
   if (usingMemoryRepo) {
     console.log('  -> No DATABASE_URL set: using an IN-MEMORY repo. Data resets on restart. Set DATABASE_URL (see .env.example) for real Postgres persistence.');
   }

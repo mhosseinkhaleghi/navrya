@@ -1,7 +1,8 @@
 import express from 'express';
-import { devUserAuth } from './auth-dev.mjs';
+import { requireAuth } from './auth-real.mjs';
 import { errorMiddleware, notFoundMiddleware } from './errors.mjs';
 import { requireAdmin } from '../admin/auth-admin.mjs';
+import * as routesAuth from './routes.auth.mjs';
 import * as routesUsers from './routes.users.mjs';
 import * as routesPosts from './routes.posts.mjs';
 import * as routesMarketplace from './routes.marketplace.mjs';
@@ -15,6 +16,25 @@ import * as routesStrategies from './routes.strategies.mjs';
 import * as routesTrades from './routes.trades.mjs';
 import * as routesMentalHealth from './routes.mental-health.mjs';
 
+// Shared-secret gate for the public preview deploy - BASIC_AUTH_USER/PASS are unset in local
+// dev (checkBasicAuth then always passes), and set as Render env vars once a real link is
+// handed to testers/investors, since neither this API nor pattern-ai-server.mjs has real user
+// authentication yet. /internal is exempt - it's server-to-server (pattern-ai-server.mjs's
+// admin-key bridge), already protected by its own x-internal-secret header, and never goes
+// through a browser.
+function checkBasicAuth(req) {
+  const user = process.env.BASIC_AUTH_USER;
+  const pass = process.env.BASIC_AUTH_PASS;
+  if (!user || !pass) return true;
+  const header = req.headers['authorization'] || '';
+  const [scheme, encoded] = header.split(' ');
+  if (scheme !== 'Basic' || !encoded) return false;
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  const sep = decoded.indexOf(':');
+  if (sep === -1) return false;
+  return decoded.slice(0, sep) === user && decoded.slice(sep + 1) === pass;
+}
+
 // Pure app factory - zero side effects at import time (no port binding, no DB pool). This is
 // what tests inject a fake repo into; the real, pg-backed, port-binding instance lives only
 // in server/community-api-server.mjs so that importing THIS module never risks a port
@@ -27,7 +47,7 @@ export function createApp({ repo, uploadsDir }) {
   app.use((req, res, next) => {
     res.set({
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type, x-dev-user-id',
+      'Access-Control-Allow-Headers': 'Content-Type, x-dev-user-id, Authorization',
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
       'Cache-Control': 'no-store'
     });
@@ -35,14 +55,21 @@ export function createApp({ repo, uploadsDir }) {
     next();
   });
 
+  // No DB query here - lets a smoke test hit /health with zero Postgres connectivity required,
+  // and lets a hosting platform's health probe succeed without the shared-secret gate below.
+  app.get('/health', (req, res) => res.json({ ok: true, uploadsDir }));
+
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/internal')) return next();
+    if (checkBasicAuth(req)) return next();
+    res.set('WWW-Authenticate', 'Basic realm="TradeJournal"');
+    res.status(401).json({ error: 'UNAUTHORIZED' });
+  });
+
   // Base64 images inflate payloads ~33% over their binary size; 60mb comfortably covers a
   // handful of 15MB-capped images per request, well under the AI server's 100mb cap.
   app.use(express.json({ limit: '60mb' }));
   app.use('/uploads', express.static(uploadsDir));
-
-  // No DB query here - mirrors pattern-ai-server.mjs's /health, and lets a smoke test hit
-  // /health with zero Postgres connectivity required.
-  app.get('/health', (req, res) => res.json({ ok: true, uploadsDir }));
 
   // Public - the admin frontend's login/test-mode gate reads this BEFORE anyone is
   // identified, to decide whether to show the "TEST MODE" banner or a real login screen.
@@ -52,8 +79,8 @@ export function createApp({ repo, uploadsDir }) {
   // dev-user identity on this call at all.
   app.use('/internal', routesInternal.router(repo));
 
-  app.use('/api/users', routesUsers.publicRouter(repo)); // bootstraps identity - no auth required yet
-  app.use(devUserAuth(repo)); // <- the ONLY line a real-auth swap touches
+  app.use('/api/auth', routesAuth.router(repo)); // register/login/google - bootstraps identity, no auth required yet
+  app.use(requireAuth(repo));
   app.use('/api/users', routesUsers.protectedRouter(repo));
   // Two segments after /users (/me/profile, /me/xp-events, ...) - never collides with the
   // single-segment GET /:id above, so mount order between the two doesn't matter.

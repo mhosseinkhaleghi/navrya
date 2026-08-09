@@ -13,7 +13,7 @@ function memoryStorage() {
 }
 
 class FakeNode {
-  constructor(tag) { this.tagName = tag; this.className = ''; this.textContent = ''; this.dataset = {}; this.children = []; this.attributes = {}; this._handlers = {}; this.hidden = false; }
+  constructor(tag) { this.tagName = tag; this.className = ''; this.textContent = ''; this.dataset = {}; this.children = []; this.attributes = {}; this._handlers = {}; this.hidden = false; this.value = ''; }
   addEventListener(type, fn) { this._handlers[type] = this._handlers[type] || []; this._handlers[type].push(fn); }
   removeEventListener() {}
   setAttribute(name, value) { this.attributes[name] = value; }
@@ -46,27 +46,40 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
   const languageMenu = new FakeNode('div'); languageMenu.hidden = true;
   const currentLanguage = new FakeNode('span');
   const langButtons = ['fa', 'ar', 'en', 'es'].map(l => { const b = new FakeNode('button'); b.dataset.language = l; return b; });
-  const loginButtons = ['google', 'email', 'signup'].map(a => { const b = new FakeNode('button'); b.dataset.action = a; return b; });
+  const googleButton = new FakeNode('button'); googleButton.dataset.action = 'google';
+  const emailButton = new FakeNode('button'); emailButton.dataset.action = 'email';
+  const signupButton = new FakeNode('button'); signupButton.dataset.action = 'signup';
+  const loginButtons = [googleButton, emailButton, signupButton];
   const hunter = characterCard('hunter');
   const engineer = characterCard('engineer');
   const characterCards = [hunter.card, engineer.card];
   const selectButtons = [hunter.selectButton, engineer.selectButton];
-  const nameStepOverlay = new FakeNode('div'); nameStepOverlay.hidden = true;
-  const nameStepInput = new FakeNode('input'); nameStepInput.dataset.i18nPlaceholder = 'nameStepPlaceholder'; nameStepInput.value = '';
-  const nameStepSubmit = new FakeNode('button');
-  const nameStepError = new FakeNode('p');
-  const nameStepClose = new FakeNode('button');
+  const authOverlay = new FakeNode('div'); authOverlay.hidden = true;
+  const authTitle = new FakeNode('h2');
+  const authHint = new FakeNode('p');
+  const authNameInput = new FakeNode('input'); authNameInput.dataset.i18nPlaceholder = 'nameStepPlaceholder';
+  const authEmailInput = new FakeNode('input'); authEmailInput.dataset.i18nPlaceholder = 'emailPlaceholder';
+  const authPasswordInput = new FakeNode('input'); authPasswordInput.dataset.i18nPlaceholder = 'passwordPlaceholder';
+  const authSubmit = new FakeNode('button');
+  const authError = new FakeNode('p');
+  const authClose = new FakeNode('button');
+  const authToggleBtn = new FakeNode('button');
 
-  const byId = { toast, languageButton, languageMenu, currentLanguage, nameStepOverlay, nameStepInput, nameStepSubmit, nameStepError, nameStepClose };
+  const byId = {
+    toast, languageButton, languageMenu, currentLanguage,
+    authOverlay, authTitle, authHint, authNameInput, authEmailInput, authPasswordInput, authSubmit, authError, authClose, authToggleBtn
+  };
   const document = {
     querySelector: sel => sel.startsWith('#') ? (byId[sel.slice(1)] || null) : null,
     querySelectorAll: sel => {
       if (sel === '[data-language]') return langButtons;
       if (sel === '[data-i18n]') return [];
-      if (sel === '[data-i18n-placeholder]') return [nameStepInput];
+      if (sel === '[data-i18n-placeholder]') return [authNameInput, authEmailInput, authPasswordInput];
       if (sel === '.select-character') return selectButtons;
       if (sel === '.character-card') return characterCards;
-      if (sel === '[data-action]') return loginButtons;
+      if (sel === '[data-action="google"]') return [googleButton];
+      if (sel === '[data-action="email"]') return [emailButton];
+      if (sel === '[data-action="signup"]') return [signupButton];
       return [];
     },
     documentElement: {},
@@ -78,125 +91,152 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
     // A real (deferred) setTimeout stand-in: showToast() schedules a delayed "hide again"
     // callback that must NOT run synchronously, or the very act of showing a toast would
     // immediately undo itself within the same tick. Only fire zero-delay calls (e.g. the
-    // focus-on-open nicety, or the postMessage-after-select delay) synchronously.
+    // focus-on-open nicety, or the postMessage-after-select delay) synchronously - this also
+    // means initGoogle() (scheduled via `window.setTimeout(initGoogle, 0)`) runs during load().
     setTimeout: (fn, delay) => { if (!delay) fn(); return 0; }, clearTimeout() {}
   };
   sandbox.window = Object.assign(sandbox.window, {
     document, localStorage: sandbox.localStorage, setTimeout: sandbox.setTimeout,
     parent: { postMessage() {} },
     // isStoredUserValid defaults to "fresh browser" (false) since that's what most tests in this
-    // file exercise - app.js's hasDevUser() now asks this (a real server-validity check) instead
-    // of a bare localStorage-presence check, so app.js itself no longer decides fresh-vs-returning.
+    // file exercise - app.js's isLoggedIn() asks this (a real server-validity check) instead of
+    // a bare localStorage-presence check.
     TradeJournalDevUserSwitcher: {
-      createUser: async () => ({ id: 'stub-id', displayName: 'Stub' }),
+      register: async () => ({ id: 'stub-id', displayName: 'Stub' }),
+      login: async () => ({ id: 'stub-id', displayName: 'Stub' }),
+      loginWithGoogle: async () => ({ id: 'stub-id', displayName: 'Stub' }),
       isStoredUserValid: isStoredUserValidImpl || (async () => false)
     }
   });
   return {
     sandbox,
-    els: { toast, languageButton, languageMenu, currentLanguage, langButtons, loginButtons, characterCards, hunterCard: hunter.card, hunterSelect: hunter.selectButton, engineerCard: engineer.card, nameStepOverlay, nameStepInput, nameStepSubmit, nameStepError, nameStepClose }
+    els: {
+      toast, languageButton, languageMenu, currentLanguage, langButtons, loginButtons, googleButton, emailButton, signupButton,
+      characterCards, hunterCard: hunter.card, hunterSelect: hunter.selectButton, engineerCard: engineer.card,
+      authOverlay, authNameInput, authEmailInput, authPasswordInput, authSubmit, authError, authClose, authToggleBtn
+    }
   };
 }
 
-// createUserImplFactory receives the SANDBOX's own TypeError constructor (not Node's) so a
-// stub that throws `new TypeError(...)` produces an error the sandboxed app.js's own
-// `error instanceof TypeError` check actually recognizes - vm contexts each have their own
+// registerImplFactory/loginImplFactory receive the SANDBOX's own TypeError constructor (not
+// Node's) so a stub that throws `new TypeError(...)` produces an error the sandboxed app.js's
+// own `error instanceof TypeError` check actually recognizes - vm contexts each have their own
 // realm, so an outer-realm TypeError fails `instanceof` against the sandbox's TypeError even
 // with identical name/message.
-async function load(localStorage, createUserImplFactory, isStoredUserValidImpl) {
+async function load(localStorage, overridesFactory, isStoredUserValidImpl) {
   const { sandbox, els } = buildSandbox(localStorage, isStoredUserValidImpl);
   const context = vm.createContext(sandbox);
-  if (createUserImplFactory) {
+  if (overridesFactory) {
     const SandboxTypeError = vm.runInContext('TypeError', context);
-    sandbox.window.TradeJournalDevUserSwitcher.createUser = createUserImplFactory(SandboxTypeError);
+    Object.assign(sandbox.window.TradeJournalDevUserSwitcher, overridesFactory(SandboxTypeError));
   }
   vm.runInContext(await source('app.js'), context, { filename: 'app.js' });
   return els;
 }
 
-test('fresh browser (no dev-user-id): clicking a character\'s Select button opens the name step instead of completing the selection', async () => {
+test('fresh browser (no session): clicking a character\'s Select button opens the login step instead of completing the selection', async () => {
   const els = await load(memoryStorage());
-  assert.equal(els.nameStepOverlay.hidden, true, 'starts hidden');
+  assert.equal(els.authOverlay.hidden, true, 'starts hidden');
   await Promise.all(fire(els.hunterSelect, 'click'));
-  assert.equal(els.nameStepOverlay.hidden, false, 'the name step opens');
-  assert.doesNotMatch(els.hunterCard.className, /selected/, 'the character is NOT selected yet - creating the account comes first');
+  assert.equal(els.authOverlay.hidden, false, 'the login step opens');
+  assert.doesNotMatch(els.hunterCard.className, /selected/, 'the character is NOT selected yet - logging in comes first');
 });
 
-test('fresh browser: the decorative "login" buttons stay pure demo actions - they never open the name step themselves', async () => {
+test('fresh browser: clicking "Continue with Email" opens the login form directly, without needing a character click first', async () => {
   const els = await load(memoryStorage());
-  fire(els.loginButtons[0], 'click');
-  assert.equal(els.nameStepOverlay.hidden, true, 'clicking Google/Email/Sign up does not gate on an account - only character selection does');
-  assert.match(els.toast.className, /show/, 'the original demo toast still fires for these buttons');
+  fire(els.emailButton, 'click');
+  assert.equal(els.authOverlay.hidden, false);
 });
 
-test('fresh browser: submitting a name after selecting a character creates the user via the shared createUser() and THEN completes that exact character\'s selection', async () => {
+test('fresh browser: clicking "Sign up" opens the same overlay in signup mode, revealing the display-name field', async () => {
+  const els = await load(memoryStorage());
+  fire(els.signupButton, 'click');
+  assert.equal(els.authOverlay.hidden, false);
+  assert.equal(els.authNameInput.hidden, false, 'signup mode must reveal the display-name field, unlike login mode');
+});
+
+test('fresh browser: the Google button never crashes when Google Identity Services is unavailable in the sandbox, and shows a toast', async () => {
+  const els = await load(memoryStorage());
+  fire(els.googleButton, 'click');
+  assert.equal(els.authOverlay.hidden, true, 'the Google button does not open the email/password overlay');
+  assert.match(els.toast.className, /show/, 'a "not configured" toast is shown instead of silently failing');
+});
+
+test('fresh browser: submitting the login form after selecting a character calls login() and THEN completes that exact character\'s selection', async () => {
   let calledWith = null;
-  const els = await load(memoryStorage(), () => async (name) => { calledWith = name; return { id: 'new-1', displayName: name }; });
+  const els = await load(memoryStorage(), () => ({ login: async (payload) => { calledWith = payload; return { id: 'new-1', displayName: 'X' }; } }));
   await Promise.all(fire(els.hunterSelect, 'click'));
-  els.nameStepInput.value = 'Alex';
-  await Promise.all(fire(els.nameStepSubmit, 'click'));
-  assert.equal(calledWith, 'Alex', 'the exact reusable dev-user-switcher.js createUser() is called - not a second, duplicated fetch');
-  assert.equal(els.nameStepOverlay.hidden, true, 'the overlay closes once the user is created');
+  els.authEmailInput.value = 'trader@example.com';
+  els.authPasswordInput.value = 'abcd';
+  await Promise.all(fire(els.authSubmit, 'click'));
+  assert.equal(calledWith.email, 'trader@example.com');
+  assert.equal(calledWith.password, 'abcd');
+  assert.equal(els.authOverlay.hidden, true, 'the overlay closes once login succeeds');
   assert.match(els.hunterCard.className, /selected/, 'the originally-clicked character is now selected');
   assert.doesNotMatch(els.engineerCard.className, /selected/, 'a different character card must not be affected');
 });
 
-test('fresh browser: submitting an empty name does not call createUser and keeps the overlay open', async () => {
-  let called = false;
-  const els = await load(memoryStorage(), () => async () => { called = true; return { id: 'x' }; });
-  await Promise.all(fire(els.hunterSelect, 'click'));
-  els.nameStepInput.value = '   ';
-  await Promise.all(fire(els.nameStepSubmit, 'click'));
-  assert.equal(called, false);
-  assert.equal(els.nameStepOverlay.hidden, false);
+test('fresh browser: toggling to signup and submitting calls register() with the display name, email, and password', async () => {
+  let calledWith = null;
+  const els = await load(memoryStorage(), () => ({ register: async (payload) => { calledWith = payload; return { id: 'new-2', displayName: payload.displayName }; } }));
+  fire(els.signupButton, 'click');
+  els.authNameInput.value = 'Alex';
+  els.authEmailInput.value = 'alex@example.com';
+  els.authPasswordInput.value = 'abcd';
+  await Promise.all(fire(els.authSubmit, 'click'));
+  assert.equal(calledWith.displayName, 'Alex');
+  assert.equal(calledWith.email, 'alex@example.com');
+  assert.equal(els.authOverlay.hidden, true);
 });
 
-test('a server-rejected create shows the real server error code, not a dead-end generic message', async () => {
-  const error = new Error('VALIDATION_FAILED'); error.status = 400;
-  const els = await load(memoryStorage(), () => async () => { throw error; });
+test('a server-rejected login shows a translated message for a known error code, not the raw code itself', async () => {
+  const error = new Error('INVALID_CREDENTIALS'); error.status = 401; error.code = 'INVALID_CREDENTIALS';
+  const els = await load(memoryStorage(), () => ({ login: async () => { throw error; } }));
   await Promise.all(fire(els.hunterSelect, 'click'));
-  els.nameStepInput.value = 'Alex';
-  await Promise.all(fire(els.nameStepSubmit, 'click'));
-  assert.match(els.nameStepError.textContent, /VALIDATION_FAILED/, 'the underlying server error code must be visible, not hidden behind a generic message');
-  assert.equal(els.nameStepOverlay.hidden, false, 'the overlay stays open so the user can retry');
-  assert.doesNotMatch(els.hunterCard.className, /selected/, 'no character gets selected on a failed create');
+  els.authEmailInput.value = 'trader@example.com';
+  els.authPasswordInput.value = 'wrong';
+  await Promise.all(fire(els.authSubmit, 'click'));
+  assert.match(els.authError.textContent, /Incorrect email or password/, 'known error codes get a friendly translated message');
+  assert.equal(els.authOverlay.hidden, false, 'the overlay stays open so the user can retry');
+  assert.doesNotMatch(els.hunterCard.className, /selected/, 'no character gets selected on a failed login');
 });
 
-test('an unreachable server (fetch itself throws a TypeError) shows a distinct "server unreachable" message instead of the generic one', async () => {
-  const els = await load(memoryStorage(), (SandboxTypeError) => async () => { throw new SandboxTypeError('Failed to fetch'); });
+test('an unreachable server (fetch itself throws a TypeError) shows a distinct "server unreachable" message', async () => {
+  const els = await load(memoryStorage(), (SandboxTypeError) => ({ login: async () => { throw new SandboxTypeError('Failed to fetch'); } }));
   await Promise.all(fire(els.hunterSelect, 'click'));
-  els.nameStepInput.value = 'Alex';
-  await Promise.all(fire(els.nameStepSubmit, 'click'));
-  assert.match(els.nameStepError.textContent, /dev:community-api/, 'a TypeError from fetch (network/connection failure) must point at starting the community backend, not just say "try again"');
+  els.authEmailInput.value = 'trader@example.com';
+  els.authPasswordInput.value = 'abcd';
+  await Promise.all(fire(els.authSubmit, 'click'));
+  assert.match(els.authError.textContent, /dev:community-api/, 'a TypeError from fetch (network/connection failure) must point at starting the community backend');
 });
 
-test('returning browser (stored dev-user-id the server still recognizes): clicking a character\'s Select button completes the selection immediately, same as today\'s behavior', async () => {
+test('returning browser (a session token the server still accepts): clicking a character\'s Select button completes the selection immediately', async () => {
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:dev-user-id', 'existing-user');
-  let createUserCalled = false;
-  const els = await load(localStorage, () => async () => { createUserCalled = true; return { id: 'x' }; }, async () => true);
+  localStorage.setItem('tradejournal:auth-token', 'existing-token');
+  let loginCalled = false;
+  const els = await load(localStorage, () => ({ login: async () => { loginCalled = true; return { id: 'x' }; } }), async () => true);
   await Promise.all(fire(els.hunterSelect, 'click'));
-  assert.equal(els.nameStepOverlay.hidden, true, 'the name step never opens for a returning session');
-  assert.equal(createUserCalled, false);
+  assert.equal(els.authOverlay.hidden, true, 'the login step never opens for a returning session');
+  assert.equal(loginCalled, false);
   assert.match(els.hunterCard.className, /selected/, 'the character selection completes immediately, unblocked');
 });
 
-test('returning browser with a STALE dev-user-id (server no longer recognizes it, e.g. the in-memory dev backend restarted): the name step opens instead of silently completing with a dead id', async () => {
+test('returning browser with a STALE token (the server no longer accepts it): the login step opens instead of silently completing', async () => {
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:dev-user-id', 'stale-user-from-a-wiped-backend');
-  const els = await load(localStorage, () => async (name) => ({ id: 'fresh-1', displayName: name }), async () => false);
+  localStorage.setItem('tradejournal:auth-token', 'stale-token-from-a-wiped-backend');
+  const els = await load(localStorage, () => ({}), async () => false);
   await Promise.all(fire(els.hunterSelect, 'click'));
-  assert.equal(els.nameStepOverlay.hidden, false, 'a stale id must not be trusted - the name step opens exactly as it would for a truly fresh browser');
+  assert.equal(els.authOverlay.hidden, false, 'a stale token must not be trusted - the login step opens exactly as it would for a truly fresh browser');
   assert.doesNotMatch(els.hunterCard.className, /selected/);
 });
 
-test('the close button dismisses the overlay without creating a user or selecting a character', async () => {
+test('the close button dismisses the overlay without logging in or selecting a character', async () => {
   let called = false;
-  const els = await load(memoryStorage(), () => async () => { called = true; return { id: 'x' }; });
+  const els = await load(memoryStorage(), () => ({ login: async () => { called = true; return { id: 'x' }; } }));
   await Promise.all(fire(els.hunterSelect, 'click'));
-  assert.equal(els.nameStepOverlay.hidden, false);
-  fire(els.nameStepClose, 'click');
-  assert.equal(els.nameStepOverlay.hidden, true);
+  assert.equal(els.authOverlay.hidden, false);
+  fire(els.authClose, 'click');
+  assert.equal(els.authOverlay.hidden, true);
   assert.equal(called, false);
   assert.doesNotMatch(els.hunterCard.className, /selected/);
 });

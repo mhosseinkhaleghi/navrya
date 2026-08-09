@@ -170,15 +170,39 @@ const ONLINE_THRESHOLD_SECONDS = 135;
 // write) but DOES auto-parse JSONB columns coming OUT (no JSON.parse needed on read).
 export function createPgRepo(pool) {
   const users = {
-    async create({ displayName, avatarUrl, bio }) {
+    async create({ displayName, avatarUrl, bio, email }) {
       const trimmed = String(displayName || '').trim();
       if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
       const id = newId('user');
-      const { rows } = await pool.query(
-        'INSERT INTO users (id, display_name, avatar_url, bio) VALUES ($1,$2,$3,$4) RETURNING *',
-        [id, trimmed, avatarUrl || null, bio || null]
+      try {
+        const { rows } = await pool.query(
+          'INSERT INTO users (id, display_name, avatar_url, bio, email) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+          [id, trimmed, avatarUrl || null, bio || null, email || null]
+        );
+        return mapUser(rows[0]);
+      } catch (error) {
+        if (error && error.code === '23505') throw new ApiError(409, 'EMAIL_TAKEN');
+        throw error;
+      }
+    },
+    // Auth-only lookups - deliberately bypass mapUser() so password_hash/google_id can never
+    // leak into the public user shape that get()/list()/update() return (that shape is what
+    // req.currentUser and every API response use). These three methods are the ONLY code paths
+    // that ever read or write those two columns - see 013_real_auth.sql.
+    async findCredentialsByEmail(email) {
+      const { rows } = await pool.query('SELECT id, password_hash, suspended_at FROM users WHERE email=$1', [email]);
+      if (!rows[0]) return null;
+      return { id: rows[0].id, passwordHash: rows[0].password_hash, suspendedAt: rows[0].suspended_at };
+    },
+    async findIdByGoogleId(googleId) {
+      const { rows } = await pool.query('SELECT id FROM users WHERE google_id=$1', [googleId]);
+      return rows[0] ? rows[0].id : null;
+    },
+    async setCredentials(id, { passwordHash, googleId } = {}) {
+      await pool.query(
+        'UPDATE users SET password_hash=COALESCE($2,password_hash), google_id=COALESCE($3,google_id) WHERE id=$1',
+        [id, passwordHash || null, googleId || null]
       );
-      return mapUser(rows[0]);
     },
     async get(id) {
       const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [id]);

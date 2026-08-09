@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
+import { testToken } from './helpers/auth-token.mjs';
 import { getEffectiveXpConfig, invalidateXpConfigCache } from '../server/community/xp-config.mjs';
 import { POINTS_BY_TYPE } from '../server/community/xp-rules.mjs';
 import { LEVEL_REQUIREMENTS, blockersForLevel } from '../server/community/mastery-rules.mjs';
@@ -25,12 +26,12 @@ after(() => new Promise((resolve) => server.close(resolve)));
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = userId;
+  if (userId) headers['x-dev-user-id'] = testToken(userId);
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
-async function createUser(name) { return api('POST', '/api/users', { body: { displayName: name } }).then((r) => r.body); }
+async function createUser(name) { return repo.users.create({ displayName: name }); }
 
 test('repo.xpConfig.set/list/remove round-trips a natural-key override', async () => {
   const memRepo = createMemoryRepo();

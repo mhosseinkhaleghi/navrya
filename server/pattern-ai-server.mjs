@@ -1,7 +1,32 @@
 import http from 'node:http';
 
-const port = Number(process.env.PATTERN_AI_PORT || 8787);
+const host = process.env.HOST || '127.0.0.1';
+const port = Number(process.env.PORT || process.env.PATTERN_AI_PORT || 8787);
 const maxBodyBytes = 100 * 1024 * 1024;
+
+// Shared-secret gate for the public preview deploy - BASIC_AUTH_USER/PASS are unset in local
+// dev (checkBasicAuth then always passes), and set as Render env vars once a real link is
+// handed to testers/investors, since neither server has real user authentication yet.
+function checkBasicAuth(request) {
+  const user = process.env.BASIC_AUTH_USER;
+  const pass = process.env.BASIC_AUTH_PASS;
+  if (!user || !pass) return true;
+  const header = request.headers['authorization'] || '';
+  const [scheme, encoded] = header.split(' ');
+  if (scheme !== 'Basic' || !encoded) return false;
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  const sep = decoded.indexOf(':');
+  if (sep === -1) return false;
+  return decoded.slice(0, sep) === user && decoded.slice(sep + 1) === pass;
+}
+
+function requireBasicAuth(response) {
+  response.writeHead(401, {
+    'WWW-Authenticate': 'Basic realm="TradeJournal"',
+    'Content-Type': 'application/json; charset=utf-8'
+  });
+  response.end(JSON.stringify({ error: 'UNAUTHORIZED' }));
+}
 
 const languageNames = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 'Spanish' };
 
@@ -823,6 +848,7 @@ const server = http.createServer(async (request, response) => {
       configured: Boolean(process.env.OPENAI_API_KEY)
     });
   }
+  if (!checkBasicAuth(request)) return requireBasicAuth(response);
   if (request.method !== 'POST') return json(response, 404, { error: 'NOT_FOUND' });
 
   try {
@@ -849,8 +875,8 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`Pattern AI server: http://127.0.0.1:${port}`);
+server.listen(port, host, () => {
+  console.log(`Pattern AI server: http://${host}:${port}`);
 });
 
 export default server;

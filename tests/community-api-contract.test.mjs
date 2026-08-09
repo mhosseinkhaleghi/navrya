@@ -5,16 +5,18 @@ import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
+import { testToken } from './helpers/auth-token.mjs';
 
 // server/community/app.mjs's createApp() has zero import-time side effects (no port bind, no
 // DB pool) - unlike server/community-api-server.mjs (the real entrypoint), so this file never
 // risks colliding with tests/community-api-server.test.mjs's real-server smoke test on the
 // same port.
-let server, baseUrl, uploadsDir;
+let server, baseUrl, uploadsDir, repo;
 
 before(async () => {
   uploadsDir = await mkdtemp(path.join(os.tmpdir(), 'tj-uploads-'));
-  server = createApp({ repo: createMemoryRepo(), uploadsDir }).listen(0);
+  repo = createMemoryRepo();
+  server = createApp({ repo, uploadsDir }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
@@ -25,7 +27,7 @@ after(async () => {
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = userId;
+  if (userId) headers['x-dev-user-id'] = testToken(userId);
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   const json = text ? JSON.parse(text) : null;
@@ -33,20 +35,19 @@ async function api(method, path, { body, userId } = {}) {
 }
 
 async function createUser(name) {
-  const { body } = await api('POST', '/api/users', { body: { displayName: name } });
-  return body;
+  return repo.users.create({ displayName: name });
 }
 
-test('a request with no x-dev-user-id is rejected with DEV_USER_ID_REQUIRED', async () => {
+test('a request with no x-dev-user-id is rejected with AUTH_TOKEN_REQUIRED', async () => {
   const result = await api('GET', '/api/community/posts');
   assert.equal(result.status, 401);
-  assert.equal(result.body.error, 'DEV_USER_ID_REQUIRED');
+  assert.equal(result.body.error, 'AUTH_TOKEN_REQUIRED');
 });
 
-test('an unknown x-dev-user-id is rejected with UNKNOWN_DEV_USER', async () => {
+test('a validly-signed token for a user id that no longer exists is rejected with AUTH_USER_NOT_FOUND', async () => {
   const result = await api('GET', '/api/community/posts', { userId: 'user-does-not-exist' });
   assert.equal(result.status, 401);
-  assert.equal(result.body.error, 'UNKNOWN_DEV_USER');
+  assert.equal(result.body.error, 'AUTH_USER_NOT_FOUND');
 });
 
 test('posts + comments: create, list, comment, and only-author delete', async () => {

@@ -9,12 +9,13 @@
     "dev:community-api": "node --env-file-if-exists=.env server/community-api-server.mjs",
     "db:migrate": "node --env-file-if-exists=.env server/db/migrate.mjs",
     "test": "node --test tests/*.test.mjs",
-    "build": "vite build && node navrya-src/build.mjs",
+    "build": "node navrya-src/build.mjs && vite build",
     "build:navrya": "node navrya-src/build.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "express": "^4.22.2",
+    "google-auth-library": "^11.0.0",
     "lucide": "^1.24.0",
     "pg": "^8.22.0",
     "react": "^18.3.1",

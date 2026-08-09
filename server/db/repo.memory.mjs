@@ -7,7 +7,7 @@ import { ApiError } from '../community/errors.mjs';
 // behavior is verified with zero Postgres dependency.
 export function createMemoryRepo() {
   const state = {
-    users: new Map(), posts: new Map(), comments: new Map(),
+    users: new Map(), credentials: new Map(), posts: new Map(), comments: new Map(),
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerPricing: new Map(),
@@ -23,16 +23,39 @@ export function createMemoryRepo() {
   const ONLINE_THRESHOLD_MS = 135000;
 
   const users = {
-    async create({ displayName, avatarUrl, bio }) {
+    async create({ displayName, avatarUrl, bio, email }) {
       const trimmed = String(displayName || '').trim();
       if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (email && Array.from(state.users.values()).some((u) => u.email === email)) throw new ApiError(409, 'EMAIL_TAKEN');
       const record = {
         id: newId('user'), displayName: trimmed, avatarUrl: avatarUrl || null, bio: bio || null, role: 'user', suspendedAt: null,
-        email: null, emailVerified: false, phone: null, phoneVerified: false, profileRole: 'trader', kycStatus: 'not_started',
+        email: email || null, emailVerified: false, phone: null, phoneVerified: false, profileRole: 'trader', kycStatus: 'not_started',
         xpTotal: 0, avatarDataUrl: null, createdAt: now()
       };
       state.users.set(record.id, record);
       return clone(record);
+    },
+    // Auth-only lookups - mirror repo.pg.mjs's methods of the same name. passwordHash/googleId
+    // live in a wholly separate state.credentials Map, never inside a `users` record, so they
+    // are structurally impossible for list()/get()/update()'s clone(record) to leak - unlike a
+    // field-filtering discipline, a value that was never on the object can't be forgotten later.
+    async findCredentialsByEmail(email) {
+      const record = Array.from(state.users.values()).find((u) => u.email === email);
+      if (!record) return null;
+      const creds = state.credentials.get(record.id) || {};
+      return { id: record.id, passwordHash: creds.passwordHash || null, suspendedAt: record.suspendedAt };
+    },
+    async findIdByGoogleId(googleId) {
+      for (const [id, creds] of state.credentials) if (creds.googleId === googleId) return id;
+      return null;
+    },
+    async setCredentials(id, { passwordHash, googleId } = {}) {
+      if (!state.users.has(id)) throw new ApiError(404, 'USER_NOT_FOUND');
+      const existing = state.credentials.get(id) || {};
+      state.credentials.set(id, {
+        passwordHash: passwordHash != null ? passwordHash : existing.passwordHash || null,
+        googleId: googleId != null ? googleId : existing.googleId || null
+      });
     },
     async get(id) { const record = state.users.get(id); return record ? clone(record) : null; },
     async list() { return Array.from(state.users.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(clone); },

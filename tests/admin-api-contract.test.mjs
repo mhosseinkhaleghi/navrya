@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
+import { testToken } from './helpers/auth-token.mjs';
 
 // Mirrors community-api-contract.test.mjs's setup exactly: createApp() has zero import-time
 // side effects, so each server here gets its own memory repo and OS-assigned port.
@@ -18,15 +19,14 @@ after(() => new Promise((resolve) => server.close(resolve)));
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = userId;
+  if (userId) headers['x-dev-user-id'] = testToken(userId);
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 
 async function createUser(name) {
-  const { body } = await api('POST', '/api/users', { body: { displayName: name } });
-  return body;
+  return repo.users.create({ displayName: name });
 }
 
 test('GET /api/admin/config reflects the ADMIN_AUTH_ENFORCED env flag live, without auth', async () => {
@@ -151,18 +151,18 @@ test('with ADMIN_AUTH_ENFORCED=true, a non-admin role is rejected with 403 and a
     const enforcedBaseUrl = `http://127.0.0.1:${enforcedServer.address().port}`;
     async function enforcedApi(method, path, { body, userId } = {}) {
       const headers = { 'Content-Type': 'application/json' };
-      if (userId) headers['x-dev-user-id'] = userId;
+      if (userId) headers['x-dev-user-id'] = testToken(userId);
       const response = await fetch(enforcedBaseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
       const text = await response.text();
       return { status: response.status, body: text ? JSON.parse(text) : null };
     }
 
-    const plainUser = await enforcedApi('POST', '/api/users', { body: { displayName: 'Plain' } }).then((r) => r.body);
+    const plainUser = await enforcedRepo.users.create({ displayName: 'Plain' });
     const rejected = await enforcedApi('GET', '/api/admin/users', { userId: plainUser.id });
     assert.equal(rejected.status, 403);
     assert.equal(rejected.body.error, 'ADMIN_ROLE_REQUIRED');
 
-    const adminUser = await enforcedApi('POST', '/api/users', { body: { displayName: 'Real Admin' } }).then((r) => r.body);
+    const adminUser = await enforcedRepo.users.create({ displayName: 'Real Admin' });
     await enforcedRepo.users.update(adminUser.id, { role: 'admin' });
     const admitted = await enforcedApi('GET', '/api/admin/users', { userId: adminUser.id });
     assert.equal(admitted.status, 200);

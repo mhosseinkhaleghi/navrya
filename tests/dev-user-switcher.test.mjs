@@ -38,20 +38,17 @@ function makeSandbox(fetchImpl, localStorage, options) {
     createElement: tag => new FakeNode(tag),
     createTextNode: text => { const node = new FakeNode('#text'); node.textContent = text; return node; },
     documentElement: { lang: 'en' },
+    body: new FakeNode('body'),
     querySelector: sel => (!noSettingsPanel && sel === '.panel-settings') ? settings : null,
     addEventListener() {}
   };
   const storage = localStorage || memoryStorage();
-  // Option is a real DOM global (<option> element constructor) that dev-user-switcher.js's
-  // refresh() calls via `new Option(...)` to populate the user <select> - not provided by
-  // Node by default, so the sandbox must supply a minimal stand-in.
-  class Option { constructor(text, value, defaultSelected, selected) { this.text = text; this.value = value; this.selected = !!selected; } }
   const sandbox = {
-    window: {}, document, localStorage: storage, fetch: fetchImpl, Option,
+    window: { top: { location: { hash: '' } } }, document, localStorage: storage, fetch: fetchImpl,
     MutationObserver: class { observe() {} },
     setTimeout: fn => fn(), clearTimeout() {}, Math
   };
-  sandbox.window = Object.assign(sandbox.window, { document, localStorage: storage, fetch: fetchImpl, setTimeout: sandbox.setTimeout, Option });
+  sandbox.window = Object.assign(sandbox.window, { document, localStorage: storage, fetch: fetchImpl, setTimeout: sandbox.setTimeout });
   return { sandbox, settings };
 }
 
@@ -61,102 +58,99 @@ async function load(fetchImpl, localStorage, options) {
   return { window: sandbox.window, settings };
 }
 
-test('the DEV MODE label is rendered directly in the settings card DOM, not just documented in code', async () => {
-  const { settings } = await load(async () => ({ ok: true, json: async () => [] }));
-  const card = settings.children.find(c => c.dataset && c.dataset.devUserSwitcher === '');
-  assert.ok(card, 'a card guarded by data-dev-user-switcher must be appended into .panel-settings');
-  assert.match(textOf(card), /DEV MODE — not real authentication/, 'the exact non-production warning must be visible in the rendered card');
+test('currentUserId()/setToken persist under the tradejournal:auth-token key, not the old dev-user-id key', async () => {
+  const localStorage = memoryStorage();
+  const { window } = await load(async () => ({ ok: false }), localStorage, { noSettingsPanel: true });
+  await window.TradeJournalDevUserSwitcher.register({ email: 'a@b.com', password: 'abcd', displayName: 'A' }).catch(() => {});
+  assert.equal(localStorage.getItem('tradejournal:dev-user-id'), null, 'the old key must not be used anymore');
 });
 
-test('ensureUser() validates an already-stored id against the server (once), and reuses it once confirmed valid', async () => {
-  // noSettingsPanel avoids mounting the settings card, whose own refresh() legitimately
-  // fetches the user list for display purposes - that's separate from ensureUser() itself,
-  // which is what this test isolates.
+test('register() POSTs to /api/auth/register, persists the returned token, and resolves the user', async () => {
+  let requestBody = null;
+  const fetchImpl = async (url, options) => {
+    assert.equal(url, '/api/auth/register');
+    requestBody = JSON.parse(options.body);
+    return { ok: true, status: 201, json: async () => ({ user: { id: 'u1', displayName: requestBody.displayName }, token: 'signed-token-1' }) };
+  };
+  const { window } = await load(fetchImpl, memoryStorage(), { noSettingsPanel: true });
+  const user = await window.TradeJournalDevUserSwitcher.register({ email: 'trader@example.com', password: 'abcd', displayName: 'Trader' });
+  assert.equal(user.id, 'u1');
+  assert.equal(requestBody.email, 'trader@example.com');
+  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'signed-token-1', 'the session token, not the raw user id, is what gets stored/attached to requests');
+});
+
+test('login() POSTs to /api/auth/login and never persists a token on a rejected response', async () => {
+  const fetchImpl = async (url) => {
+    assert.equal(url, '/api/auth/login');
+    return { ok: false, status: 401, json: async () => ({ error: 'INVALID_CREDENTIALS' }) };
+  };
+  const { window } = await load(fetchImpl, memoryStorage(), { noSettingsPanel: true });
+  await assert.rejects(
+    () => window.TradeJournalDevUserSwitcher.login({ email: 'x@y.com', password: 'wrong' }),
+    (error) => error.code === 'INVALID_CREDENTIALS'
+  );
+  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), '', 'a rejected login must never leave a token in storage');
+});
+
+test('loginWithGoogle(credential) POSTs the credential to /api/auth/google', async () => {
+  let sentCredential = null;
+  const fetchImpl = async (url, options) => {
+    assert.equal(url, '/api/auth/google');
+    sentCredential = JSON.parse(options.body).credential;
+    return { ok: true, status: 200, json: async () => ({ user: { id: 'u2', displayName: 'G' }, token: 'signed-token-2' }) };
+  };
+  const { window } = await load(fetchImpl, memoryStorage(), { noSettingsPanel: true });
+  await window.TradeJournalDevUserSwitcher.loginWithGoogle('raw-google-id-token');
+  assert.equal(sentCredential, 'raw-google-id-token');
+  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'signed-token-2');
+});
+
+test('logout() clears the stored token', async () => {
+  const localStorage = memoryStorage();
+  localStorage.setItem('tradejournal:auth-token', 'some-token');
+  const { window } = await load(async () => ({ ok: true }), localStorage, { noSettingsPanel: true });
+  window.TradeJournalDevUserSwitcher.logout();
+  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), '');
+});
+
+test('isStoredUserValid() checks the token against GET /api/users/me, is cached per page load, and never self-heals', async () => {
   let fetchCount = 0;
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:dev-user-id', 'existing-user');
-  const { window } = await load(async () => { fetchCount += 1; return { json: async () => [{ id: 'existing-user', displayName: 'Existing' }] }; }, localStorage, { noSettingsPanel: true });
-  const id = await window.TradeJournalDevUserSwitcher.ensureUser();
-  assert.equal(id, 'existing-user');
-  assert.equal(fetchCount, 1, 'exactly one validation request, not zero (a stale id must be checkable) and not more than one');
-  // A second call in the same page load must not re-validate - the result is cached, not
-  // re-fetched every time (every store's request() calls ensureUser() before every API call).
-  await window.TradeJournalDevUserSwitcher.ensureUser();
-  assert.equal(fetchCount, 1, 'ensureUser() caches its validation for the lifetime of the page load, not per call');
+  localStorage.setItem('tradejournal:auth-token', 'a-token');
+  const { window } = await load(async (url) => { fetchCount += 1; assert.equal(url, '/api/users/me'); return { ok: true, json: async () => ({ id: 'u1' }) }; }, localStorage, { noSettingsPanel: true });
+  assert.equal(await window.TradeJournalDevUserSwitcher.isStoredUserValid(), true);
+  assert.equal(fetchCount, 1);
+  await window.TradeJournalDevUserSwitcher.isStoredUserValid();
+  assert.equal(fetchCount, 1, 'the validation result is cached for the lifetime of the page load, not re-fetched every call');
+  assert.equal(localStorage.getItem('tradejournal:auth-token'), 'a-token', 'a pure check must never mutate storage as a side effect');
 });
 
-test('ensureUser() self-heals a STALE stored id (the server no longer recognizes it) by adopting a real server-known user instead of trusting it forever', async () => {
-  const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:dev-user-id', 'stale-id-from-a-wiped-backend');
-  const { window } = await load(async () => ({ json: async () => [{ id: 'real-server-user', displayName: 'Real' }] }), localStorage, { noSettingsPanel: true });
-  const id = await window.TradeJournalDevUserSwitcher.ensureUser();
-  assert.equal(id, 'real-server-user', 'a stale id must be replaced with a real one the server actually knows about, not trusted just because localStorage had something in it');
-  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'real-server-user', 'the corrected id is persisted');
+test('isStoredUserValid() is false with no stored token at all, without making a network call', async () => {
+  let called = false;
+  const { window } = await load(async () => { called = true; return { ok: true, json: async () => ({}) }; }, memoryStorage(), { noSettingsPanel: true });
+  assert.equal(await window.TradeJournalDevUserSwitcher.isStoredUserValid(), false);
+  assert.equal(called, false);
 });
 
-test('isStoredUserValid() is a pure check with no self-heal side effect - false for empty or stale storage, true only for a real server-known id', async () => {
-  const emptyStorage = memoryStorage();
-  const empty = await load(async () => ({ json: async () => [{ id: 'someone', displayName: 'S' }] }), emptyStorage, { noSettingsPanel: true });
-  assert.equal(await empty.window.TradeJournalDevUserSwitcher.isStoredUserValid(), false, 'no stored id at all is never valid');
-
-  const staleStorage = memoryStorage();
-  staleStorage.setItem('tradejournal:dev-user-id', 'stale-id');
-  const stale = await load(async () => ({ json: async () => [{ id: 'someone-else', displayName: 'S' }] }), staleStorage, { noSettingsPanel: true });
-  assert.equal(await stale.window.TradeJournalDevUserSwitcher.isStoredUserValid(), false);
-  assert.equal(stale.window.TradeJournalDevUserSwitcher.currentUserId(), 'stale-id', 'unlike ensureUser(), isStoredUserValid() must never mutate storage as a side effect');
-
+test('ensureUser() resolves the stored token when valid, and REJECTS (no self-heal / no auto-bootstrap) when invalid or missing', async () => {
   const validStorage = memoryStorage();
-  validStorage.setItem('tradejournal:dev-user-id', 'real-id');
-  const valid = await load(async () => ({ json: async () => [{ id: 'real-id', displayName: 'Real' }] }), validStorage, { noSettingsPanel: true });
-  assert.equal(await valid.window.TradeJournalDevUserSwitcher.isStoredUserValid(), true);
+  validStorage.setItem('tradejournal:auth-token', 'good-token');
+  const valid = await load(async () => ({ ok: true, json: async () => ({ id: 'u1' }) }), validStorage, { noSettingsPanel: true });
+  assert.equal(await valid.window.TradeJournalDevUserSwitcher.ensureUser(), 'good-token');
+
+  const invalid = await load(async () => ({ ok: false }), memoryStorage(), { noSettingsPanel: true });
+  await assert.rejects(() => invalid.window.TradeJournalDevUserSwitcher.ensureUser(), /NOT_AUTHENTICATED/);
 });
 
-test('ensureUser() adopts the first server-known user when none is stored locally yet', async () => {
-  const { window } = await load(async () => ({ json: async () => ([{ id: 'server-user-1', displayName: 'Someone' }]) }));
-  const id = await window.TradeJournalDevUserSwitcher.ensureUser();
-  assert.equal(id, 'server-user-1');
-  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'server-user-1', 'the adopted id is persisted for next time');
-});
-
-test('ensureUser() auto-creates a user when neither a stored id nor any server users exist', async () => {
-  let createBody = null;
-  const fetchImpl = async (url, options) => {
-    if (url === '/api/users' && (!options || !options.method)) return { ok: true, json: async () => [] };
-    if (url === '/api/users' && options.method === 'POST') { createBody = JSON.parse(options.body); return { ok: true, status: 201, json: async () => ({ id: 'new-user-1', displayName: createBody.displayName }) }; }
-    throw new Error('unexpected fetch ' + url);
-  };
-  const { window } = await load(fetchImpl);
-  const id = await window.TradeJournalDevUserSwitcher.ensureUser();
-  assert.equal(id, 'new-user-1');
-  assert.ok(createBody.displayName, 'a generated display name is sent when auto-creating a fallback user');
-  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'new-user-1', 'a successful create persists the new id');
-});
-
-test('createUser() is exported and reusable by external callers (the login-time name step), and never persists on a failed/invalid response', async () => {
-  const failing = await load(async (url, options) => {
-    if (options && options.method === 'POST') return { ok: false, status: 500, json: async () => ({ error: 'BOOM' }) };
-    return { ok: true, json: async () => [] }; // GET /api/users - unrelated to the create call under test
-  });
-  await assert.rejects(
-    () => failing.window.TradeJournalDevUserSwitcher.createUser('Someone'),
-    (error) => error.message === 'BOOM' && error.status === 500
-  );
-  assert.equal(failing.window.TradeJournalDevUserSwitcher.currentUserId(), '', 'a failed create must never leave a garbage id (e.g. the literal string "undefined") in storage');
-
-  const succeeding = await load(async (url, options) => {
-    if (options && options.method === 'POST') return { ok: true, status: 201, json: async () => ({ id: 'created-123', displayName: JSON.parse(options.body).displayName }) };
-    return { ok: true, json: async () => [] };
-  });
-  const user = await succeeding.window.TradeJournalDevUserSwitcher.createUser('New Trader');
-  assert.equal(user.id, 'created-123');
-  assert.equal(succeeding.window.TradeJournalDevUserSwitcher.currentUserId(), 'created-123', 'a successful create persists the id as a side effect, so callers do not need to do it themselves');
-});
-
-test('the Settings card no longer offers a "create new user" form - only switching between existing users, since creation now happens at login', async () => {
-  const { settings } = await load(async () => ({ ok: true, json: async () => [{ id: 'u1', displayName: 'A' }] }));
+test('the Settings card shows the logged-in identity and a Log out control - no DEV MODE badge, no switch-to-any-user dropdown', async () => {
+  const localStorage = memoryStorage();
+  localStorage.setItem('tradejournal:auth-token', 'a-token');
+  const { settings } = await load(async () => ({ ok: true, json: async () => ({ id: 'u1', displayName: 'Real Trader', email: 'real@example.com' }) }), localStorage);
   const card = settings.children.find(c => c.dataset && c.dataset.devUserSwitcher === '');
-  const inputs = descendants(card).filter(n => n.tagName === 'input');
-  assert.equal(inputs.length, 0, 'no free-text display-name input should remain in the Settings card');
+  assert.ok(card, 'a card guarded by data-dev-user-switcher must be appended into .panel-settings');
+  assert.doesNotMatch(textOf(card), /DEV MODE/, 'the old non-production warning must be gone now that authentication is real');
   const selects = descendants(card).filter(n => n.tagName === 'select');
-  assert.equal(selects.length, 1, 'the switch-between-existing-users dropdown is still present');
+  assert.equal(selects.length, 0, 'the old switch-to-any-existing-user dropdown (an impersonation hole) must not exist anymore');
+  const inputs = descendants(card).filter(n => n.tagName === 'input');
+  assert.equal(inputs.length, 0, 'no free-text display-name input either - account creation lives on the select page now');
 });

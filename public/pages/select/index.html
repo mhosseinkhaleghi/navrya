@@ -94,17 +94,21 @@
         </footer>
       </section>
     </main>
-    <div class="name-step-overlay" id="nameStepOverlay" hidden>
+    <div class="name-step-overlay" id="authOverlay" hidden>
       <div class="name-step-card" role="dialog" aria-modal="true">
-        <button type="button" class="name-step-close" id="nameStepClose" aria-label="Close">&times;</button>
-        <h2 data-i18n="nameStepTitle">What should we call you?</h2>
-        <p data-i18n="nameStepHint">A temporary display name for testing — not real registration yet.</p>
-        <input type="text" id="nameStepInput" data-i18n-placeholder="nameStepPlaceholder" placeholder="Display name" />
-        <p class="name-step-error" id="nameStepError"></p>
-        <button type="button" class="name-step-submit" id="nameStepSubmit" data-i18n="nameStepSubmit">Continue</button>
+        <button type="button" class="name-step-close" id="authClose" aria-label="Close">&times;</button>
+        <h2 id="authTitle" data-i18n="loginTitle">Log in</h2>
+        <p id="authHint" data-i18n="loginHint">Enter your email and password.</p>
+        <input type="text" id="authNameInput" data-i18n-placeholder="nameStepPlaceholder" placeholder="Display name" hidden />
+        <input type="email" id="authEmailInput" data-i18n-placeholder="emailPlaceholder" placeholder="Email" autocomplete="email" />
+        <input type="password" id="authPasswordInput" data-i18n-placeholder="passwordPlaceholder" placeholder="Password" autocomplete="current-password" />
+        <p class="name-step-error" id="authError"></p>
+        <button type="button" class="name-step-submit" id="authSubmit" data-i18n="loginSubmit">Log in</button>
+        <p class="signup" id="authToggleRow"><button type="button" id="authToggleBtn" data-i18n="signup">Sign up</button></p>
       </div>
     </div>
     <div class="toast" id="toast" role="status"></div>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="../shared/dev-user-switcher.js"></script>
     <script src="app.js"></script>
   </body>
