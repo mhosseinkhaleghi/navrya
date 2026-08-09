@@ -1,12 +1,12 @@
 (function () {
   const pagePrefix = window.location.protocol === 'file:' ? 'public/pages/' : 'pages/';
   const pages = {
-    select: { title: 'TradeJournal · Choose Your Character', source: pagePrefix + 'select/index.html' },
-    hunter: { title: 'TradeJournal · Hunter', source: pagePrefix + 'hunter/index.html' },
-    engineer: { title: 'TradeJournal · Engineer', source: pagePrefix + 'engineer/index.html' },
-    commander: { title: 'TradeJournal · Commander', source: pagePrefix + 'commander/index.html' },
-    sage: { title: 'TradeJournal · Market Sage', source: pagePrefix + 'sage/index.html' },
-    admin: { title: 'TradeJournal · Admin', source: pagePrefix + 'admin/index.html' }
+    select: { title: 'NAVRYA · Choose Your Character', source: pagePrefix + 'select/index.html' },
+    hunter: { title: 'NAVRYA · Hunter', source: pagePrefix + 'hunter/index.html' },
+    engineer: { title: 'NAVRYA · Engineer', source: pagePrefix + 'engineer/index.html' },
+    commander: { title: 'NAVRYA · Commander', source: pagePrefix + 'commander/index.html' },
+    sage: { title: 'NAVRYA · Market Sage', source: pagePrefix + 'sage/index.html' },
+    admin: { title: 'NAVRYA · Admin', source: pagePrefix + 'admin/index.html' }
   };
 
   // The admin page is a standalone top-level page like select/, not nested in a character

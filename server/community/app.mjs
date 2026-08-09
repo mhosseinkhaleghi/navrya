@@ -62,7 +62,7 @@ export function createApp({ repo, uploadsDir }) {
   app.use((req, res, next) => {
     if (req.path.startsWith('/internal')) return next();
     if (checkBasicAuth(req)) return next();
-    res.set('WWW-Authenticate', 'Basic realm="TradeJournal"');
+    res.set('WWW-Authenticate', 'Basic realm="NAVRYA"');
     res.status(401).json({ error: 'UNAUTHORIZED' });
   });
 

@@ -1,8 +1,8 @@
-# TradeJournal Architecture
+# NAVRYA Architecture
 
 ## 1. Overview
 
-TradeJournal is a local-first trading journal and scenario-planning interface. A user selects one of four gamified trading characters, then works inside a character-themed dashboard to create market sessions, register price patterns, document strategy rules, plan and log trades, track emotions, and review reports. The application prioritizes preserving the four existing dashboard designs while sharing the same behavior and stored data across them.
+NAVRYA is a local-first trading journal and scenario-planning interface. A user selects one of four gamified trading characters, then works inside a character-themed dashboard to create market sessions, register price patterns, document strategy rules, plan and log trades, track emotions, and review reports. The application prioritizes preserving the four existing dashboard designs while sharing the same behavior and stored data across them.
 
 ### Technology stack
 

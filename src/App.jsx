@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const pages = {
-  select: { title: 'TradeJournal · Choose Your Character', source: 'pages/select/index.html' },
-  hunter: { title: 'TradeJournal · Hunter', source: 'pages/hunter/index.html' },
-  engineer: { title: 'TradeJournal · Engineer', source: 'pages/engineer/index.html' },
-  commander: { title: 'TradeJournal · Commander', source: 'pages/commander/index.html' },
-  sage: { title: 'TradeJournal · Market Sage', source: 'pages/sage/index.html' }
+  select: { title: 'NAVRYA · Choose Your Character', source: 'pages/select/index.html' },
+  hunter: { title: 'NAVRYA · Hunter', source: 'pages/hunter/index.html' },
+  engineer: { title: 'NAVRYA · Engineer', source: 'pages/engineer/index.html' },
+  commander: { title: 'NAVRYA · Commander', source: 'pages/commander/index.html' },
+  sage: { title: 'NAVRYA · Market Sage', source: 'pages/sage/index.html' }
 };
 
 function pageFromHash() {

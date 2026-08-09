@@ -22,7 +22,7 @@ function checkBasicAuth(request) {
 
 function requireBasicAuth(response) {
   response.writeHead(401, {
-    'WWW-Authenticate': 'Basic realm="TradeJournal"',
+    'WWW-Authenticate': 'Basic realm="NAVRYA"',
     'Content-Type': 'application/json; charset=utf-8'
   });
   response.end(JSON.stringify({ error: 'UNAUTHORIZED' }));

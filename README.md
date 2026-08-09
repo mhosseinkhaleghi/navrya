@@ -1,4 +1,4 @@
-# TradeJournal React
+# NAVRYA
 
 ## Character-dashboard panel layer
 
