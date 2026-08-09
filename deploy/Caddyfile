@@ -35,3 +35,8 @@ admin.navrya.com {
 	import navrya_api
 	import navrya_static
 }
+
+navrya.com, www.navrya.com {
+	encode zstd gzip
+	reverse_proxy navrya-marketing:3000
+}
