@@ -12,9 +12,11 @@
     <div class="admin-gate" id="adminGate" hidden>
       <div class="admin-gate-card">
         <div class="admin-gate-brand"><i data-lucide="shield-check"></i><strong data-i18n="brand">Admin</strong></div>
-        <p class="admin-badge test" id="testModeBadge" hidden data-i18n="testModeBanner">TEST MODE — admin auth is disabled</p>
-        <p class="admin-badge enforced" id="enforcedBadge" hidden data-i18n="enforcedBanner">Admin authentication is enforced. A real admin session is required.</p>
-        <button type="button" class="btn btn-primary" id="continueTestMode" data-i18n="continueTestMode" hidden>Continue in test mode</button>
+        <p class="hint" data-i18n="loginHint">Sign in with your admin account.</p>
+        <label class="field"><span data-i18n="emailLabel">Email</span><input type="email" id="gateEmail" autocomplete="email" dir="ltr" /></label>
+        <label class="field"><span data-i18n="passwordLabel">Password</span><input type="password" id="gatePassword" autocomplete="current-password" dir="ltr" /></label>
+        <p class="error-text" id="gateError" hidden></p>
+        <button type="button" class="btn btn-primary" id="gateSubmit" data-i18n="loginSubmit">Log in</button>
       </div>
     </div>
 

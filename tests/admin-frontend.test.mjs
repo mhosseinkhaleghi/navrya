@@ -13,7 +13,7 @@ function memoryStorage() {
 }
 
 class FakeNode {
-  constructor(tag) { this.tagName = tag; this.className = ''; this.textContent = ''; this.dataset = {}; this.children = []; this.attributes = {}; this._handlers = {}; this.hidden = false; }
+  constructor(tag) { this.tagName = tag; this.className = ''; this.textContent = ''; this.dataset = {}; this.children = []; this.attributes = {}; this._handlers = {}; this.hidden = false; this.value = ''; }
   addEventListener(type, fn) { this._handlers[type] = this._handlers[type] || []; this._handlers[type].push(fn); }
   removeEventListener() {}
   setAttribute(name, value) { this.attributes[name] = value; }
@@ -43,9 +43,10 @@ function buildSandbox(fetchImpl, switcherStub) {
   const currentLanguage = new FakeNode('span');
   const langButtons = ['fa', 'ar', 'en', 'es'].map((l) => { const b = new FakeNode('button'); b.dataset.language = l; return b; });
   const adminGate = new FakeNode('div'); adminGate.hidden = true;
-  const testModeBadge = new FakeNode('p'); testModeBadge.hidden = true;
-  const enforcedBadge = new FakeNode('p'); enforcedBadge.hidden = true;
-  const continueTestMode = new FakeNode('button'); continueTestMode.hidden = true;
+  const gateEmail = new FakeNode('input');
+  const gatePassword = new FakeNode('input');
+  const gateError = new FakeNode('p'); gateError.hidden = true;
+  const gateSubmit = new FakeNode('button');
   const adminLayout = new FakeNode('div'); adminLayout.hidden = true;
   const adminSidebar = new FakeNode('aside');
   const sidebarToggle = new FakeNode('button');
@@ -56,7 +57,7 @@ function buildSandbox(fetchImpl, switcherStub) {
   const tabButtons = ['users', 'ai', 'technical', 'xp', 'marketplace', 'financial'].map((tab) => { const b = new FakeNode('button'); b.dataset.tab = tab; return b; });
 
   const byId = {
-    toast, languageButton, languageMenu, currentLanguage, adminGate, testModeBadge, enforcedBadge, continueTestMode,
+    toast, languageButton, languageMenu, currentLanguage, adminGate, gateEmail, gatePassword, gateError, gateSubmit,
     adminLayout, adminSidebar, sidebarToggle, pageTitle, adminBody, currentUserLabel, currentUserName
   };
 
@@ -109,7 +110,7 @@ function buildSandbox(fetchImpl, switcherStub) {
   return {
     sandbox,
     els: {
-      toast, languageButton, languageMenu, currentLanguage, langButtons, adminGate, testModeBadge, enforcedBadge, continueTestMode,
+      toast, languageButton, languageMenu, currentLanguage, langButtons, adminGate, gateEmail, gatePassword, gateError, gateSubmit,
       adminLayout, adminSidebar, sidebarToggle, pageTitle, adminBody, currentUserLabel, currentUserName, tabButtons
     }
   };
@@ -169,29 +170,32 @@ test('the XP & Segmentation tab fetches real config from GET /xp/config and rend
   assert.equal(overriddenRow.length, 1, 'exactly the one overridden row (trade_calculation_valid) must get the highlight class');
 });
 
-test('on load, the admin gate becomes visible with the TEST MODE banner shown (auth disabled by default in the stub config)', async () => {
+test('on load, the admin gate shows a real login form - no test-mode bypass exists anymore', async () => {
   const counter = { count: 0 };
   const { els } = await load(counter);
-  await new Promise((resolve) => setTimeout(resolve, 0)); // let boot()'s fetch chain settle
+  await new Promise((resolve) => setTimeout(resolve, 0)); // let boot()'s config fetch settle
   assert.equal(els.adminGate.hidden, false);
-  assert.equal(els.testModeBadge.hidden, false);
-  assert.equal(els.continueTestMode.hidden, false);
-  assert.equal(els.enforcedBadge.hidden, true);
-  assert.equal(els.adminLayout.hidden, true, 'the sidebar/topbar shell must stay hidden until Continue is actually clicked');
+  assert.equal(els.adminLayout.hidden, true, 'the sidebar/topbar shell must stay hidden until a real admin login succeeds');
 });
 
-test('clicking "Continue in test mode" reveals the sidebar/topbar shell, sets the page title, and loads the default Users tab', async () => {
-  const switcherStub = { ensureUser: () => Promise.resolve('user-1'), currentUserId: () => 'user-1' };
+test('submitting valid admin credentials logs in, reveals the sidebar/topbar shell, and loads the default Users tab', async () => {
+  const switcherStub = {
+    login: ({ email, password }) => { assert.equal(email, 'admin@example.com'); assert.equal(password, 'abcd1234'); return Promise.resolve({ id: 'user-1', role: 'admin', displayName: 'Test Admin' }); },
+    logout: () => {}, currentUserId: () => ''
+  };
   const fetchImpl = (url) => {
-    if (String(url).indexOf('/api/admin/config') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
-    if (String(url).indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [], total: 0, page: 1, pageSize: 20, onlineCount: 0 }) });
-    if (String(url).indexOf('/api/users/me') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'user-1', displayName: 'Test Admin' }) });
+    const u = String(url);
+    if (u.indexOf('/api/admin/config') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: true }) });
+    if (u.indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [], total: 0, page: 1, pageSize: 20, onlineCount: 0 }) });
+    if (u.indexOf('/api/users/me') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'user-1', displayName: 'Test Admin' }) });
     return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
   };
   const { els } = await load({ count: 0 }, fetchImpl, switcherStub);
-  await new Promise((resolve) => setTimeout(resolve, 0)); // let boot()'s config fetch settle and show the gate
-  els.continueTestMode.onclick();
-  await new Promise((resolve) => setTimeout(resolve, 0)); // let ensureUser() + startApp()'s renderTab()/loadCurrentUserLabel() settle
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  els.gateEmail.value = 'admin@example.com';
+  els.gatePassword.value = 'abcd1234';
+  els.gateSubmit._handlers.click[0]();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(els.adminGate.hidden, true);
   assert.equal(els.adminLayout.hidden, false);
@@ -200,15 +204,58 @@ test('clicking "Continue in test mode" reveals the sidebar/topbar shell, sets th
   assert.equal(els.currentUserName.textContent, 'Test Admin');
 });
 
+test('a real login that resolves to a non-admin account is rejected, logs the token back out, and never reveals the shell', async () => {
+  let loggedOut = false;
+  const switcherStub = {
+    login: () => Promise.resolve({ id: 'user-2', role: 'user', displayName: 'Regular User' }),
+    logout: () => { loggedOut = true; }, currentUserId: () => ''
+  };
+  const { els } = await load({ count: 0 }, undefined, switcherStub);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  els.gateSubmit._handlers.click[0]();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(els.adminLayout.hidden, true, 'a non-admin account must never see the admin shell');
+  assert.equal(els.gateError.hidden, false);
+  assert.match(els.gateError.textContent, /admin access/i);
+  assert.ok(loggedOut, 'the session token for a non-admin account must be discarded, not left stored');
+});
+
+test('a rejected login (wrong credentials) shows a translated error and keeps the form open', async () => {
+  const invalid = new Error('INVALID_CREDENTIALS'); invalid.code = 'INVALID_CREDENTIALS';
+  const switcherStub = { login: () => Promise.reject(invalid), logout: () => {}, currentUserId: () => '' };
+  const { els } = await load({ count: 0 }, undefined, switcherStub);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  els.gateSubmit._handlers.click[0]();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(els.adminLayout.hidden, true);
+  assert.equal(els.gateError.hidden, false);
+  assert.match(els.gateError.textContent, /Incorrect email or password/);
+});
+
+test('a returning browser with an already-valid admin session token skips the login form entirely', async () => {
+  const switcherStub = { login: () => Promise.reject(new Error('must not be called')), logout: () => {}, currentUserId: () => 'existing-token' };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/api/users/me') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'user-1', role: 'admin', displayName: 'Returning Admin' }) });
+    if (u.indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [], total: 0, page: 1, pageSize: 20, onlineCount: 0 }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: true }) });
+  };
+  const { els } = await load({ count: 0 }, fetchImpl, switcherStub);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(els.adminLayout.hidden, false, 'an existing admin session should fast-forward past the login form');
+});
+
 test('the sidebar-collapse toggle persists its state to localStorage and flips the layout class', async () => {
-  const switcherStub = { ensureUser: () => Promise.resolve('user-1'), currentUserId: () => 'user-1' };
+  const switcherStub = { login: () => Promise.resolve({ id: 'user-1', role: 'admin', displayName: 'Test Admin' }), logout: () => {}, currentUserId: () => '' };
   const fetchImpl = (url) => {
     if (String(url).indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [], total: 0, page: 1, pageSize: 20, onlineCount: 0 }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
   };
   const { els, sandbox } = await load({ count: 0 }, fetchImpl, switcherStub);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  els.continueTestMode.onclick();
+  els.gateSubmit._handlers.click[0]();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   els.sidebarToggle._handlers.click[0]();
@@ -227,7 +274,7 @@ function findAll(node, predicate, out = []) {
 }
 
 test('expanding a user row fetches the enriched GET /users/:id detail and renders identity/KYC/level/achievements/subscriptions; Save KYC PATCHes the dedicated endpoint', async () => {
-  const switcherStub = { ensureUser: () => Promise.resolve('admin-1'), currentUserId: () => 'admin-1' };
+  const switcherStub = { currentUserId: () => 'admin-1' };
   const listUser = { id: 'u1', displayName: 'Jane Trader', role: 'user', suspendedAt: null, createdAt: new Date().toISOString(), lastLoginAt: null, isOnline: false, hoursOnline: 0, purchaseCount: 0, totalMockSpent: 0, totalTokensUsed: 0 };
   const detailUser = {
     id: 'u1', displayName: 'Jane Trader', role: 'user', suspendedAt: null, email: 'jane@example.com', phone: null,

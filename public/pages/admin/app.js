@@ -1,9 +1,9 @@
 const translations = {
   en: {
     brand: 'Admin',
-    testModeBanner: 'TEST MODE — admin authentication is disabled. Every request is treated as admin.',
-    enforcedBanner: 'Admin authentication is enforced. A real admin session is required.',
-    continueTestMode: 'Continue in test mode',
+    loginHint: 'Sign in with your admin account.', emailLabel: 'Email', passwordLabel: 'Password', loginSubmit: 'Log in',
+    gateErrorNotAdmin: 'This account does not have admin access.', gateErrorInvalidCredentials: 'Incorrect email or password.',
+    enforcementWarning: 'Warning: ADMIN_AUTH_ENFORCED is not set on the server - every account currently has admin access. Set ADMIN_AUTH_ENFORCED=true.',
     tabUsers: 'Users', tabAI: 'AI', tabTechnical: 'Technical', tabXP: 'XP & Segmentation', tabMarketplace: 'Marketplace', tabFinancial: 'Financial',
     loading: 'Loading…', errorGeneric: 'Something went wrong.', retry: 'Retry',
     usersSearchPlaceholder: 'Search by name…',
@@ -43,9 +43,9 @@ const translations = {
   },
   fa: {
     brand: 'پنل مدیریت',
-    testModeBanner: 'حالت آزمایشی — احراز هویت مدیریت غیرفعال است. هر درخواستی مدیر در نظر گرفته می‌شود.',
-    enforcedBanner: 'احراز هویت مدیریت فعال است. نیاز به یک نشست واقعی مدیر دارید.',
-    continueTestMode: 'ادامه در حالت آزمایشی',
+    loginHint: 'با حساب مدیریتی خود وارد شوید.', emailLabel: 'ایمیل', passwordLabel: 'رمز عبور', loginSubmit: 'ورود',
+    gateErrorNotAdmin: 'این حساب دسترسی مدیریت ندارد.', gateErrorInvalidCredentials: 'ایمیل یا رمز عبور اشتباه است.',
+    enforcementWarning: 'هشدار: ADMIN_AUTH_ENFORCED روی سرور تنظیم نشده — فعلاً هر حسابی دسترسی مدیریت داره. مقدار ADMIN_AUTH_ENFORCED=true رو تنظیم کنید.',
     tabUsers: 'کاربران', tabAI: 'هوش مصنوعی', tabTechnical: 'فنی', tabXP: 'XP و بخش‌بندی', tabMarketplace: 'بازار', tabFinancial: 'مالی',
     loading: 'در حال بارگذاری…', errorGeneric: 'خطایی رخ داد.', retry: 'تلاش دوباره',
     usersSearchPlaceholder: 'جست‌وجو بر اساس نام…',
@@ -85,9 +85,9 @@ const translations = {
   },
   ar: {
     brand: 'لوحة الإدارة',
-    testModeBanner: 'وضع الاختبار — مصادقة المدير معطّلة. تُعامل كل الطلبات كمدير.',
-    enforcedBanner: 'مصادقة المدير مفعّلة. مطلوب جلسة مدير حقيقية.',
-    continueTestMode: 'المتابعة في وضع الاختبار',
+    loginHint: 'سجّل الدخول بحساب المدير الخاص بك.', emailLabel: 'البريد الإلكتروني', passwordLabel: 'كلمة المرور', loginSubmit: 'تسجيل الدخول',
+    gateErrorNotAdmin: 'هذا الحساب لا يملك صلاحية الإدارة.', gateErrorInvalidCredentials: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    enforcementWarning: 'تحذير: ADMIN_AUTH_ENFORCED غير مضبوط على الخادم - كل حساب لديه صلاحية الإدارة حاليًا. اضبط ADMIN_AUTH_ENFORCED=true.',
     tabUsers: 'المستخدمون', tabAI: 'الذكاء الاصطناعي', tabTechnical: 'تقني', tabXP: 'نقاط الخبرة والتصنيف', tabMarketplace: 'السوق', tabFinancial: 'مالي',
     loading: 'جارٍ التحميل…', errorGeneric: 'حدث خطأ ما.', retry: 'إعادة المحاولة',
     usersSearchPlaceholder: 'البحث بالاسم…',
@@ -127,9 +127,9 @@ const translations = {
   },
   es: {
     brand: 'Administración',
-    testModeBanner: 'MODO DE PRUEBA — la autenticación de administrador está desactivada. Toda solicitud se trata como administrador.',
-    enforcedBanner: 'La autenticación de administrador está activada. Se requiere una sesión de administrador real.',
-    continueTestMode: 'Continuar en modo de prueba',
+    loginHint: 'Inicia sesión con tu cuenta de administrador.', emailLabel: 'Correo electrónico', passwordLabel: 'Contraseña', loginSubmit: 'Iniciar sesión',
+    gateErrorNotAdmin: 'Esta cuenta no tiene acceso de administrador.', gateErrorInvalidCredentials: 'Correo o contraseña incorrectos.',
+    enforcementWarning: 'Advertencia: ADMIN_AUTH_ENFORCED no está configurado en el servidor - toda cuenta tiene acceso de administrador por ahora. Configura ADMIN_AUTH_ENFORCED=true.',
     tabUsers: 'Usuarios', tabAI: 'IA', tabTechnical: 'Técnico', tabXP: 'XP y segmentación', tabMarketplace: 'Mercado', tabFinancial: 'Finanzas',
     loading: 'Cargando…', errorGeneric: 'Algo salió mal.', retry: 'Reintentar',
     usersSearchPlaceholder: 'Buscar por nombre…',
@@ -802,37 +802,67 @@ function startApp() {
   else renderTab();
 }
 
+// Real email/password login only - the old "TEST MODE: continue as any dev-user" bypass is
+// gone entirely, not just hidden behind a flag. Every visitor must authenticate with real
+// credentials, and only an account with role='admin' is let past the gate; the server's own
+// requireAdmin (server/admin/auth-admin.mjs) is the actual security boundary this defends
+// nothing without - see the ADMIN_AUTH_ENFORCED warning below, which exists specifically to
+// catch the case where this client-side check is the only thing stopping a non-admin, because
+// the server hasn't been told to enforce roles yet.
+let adminAuthEnforced = null;
+
+function gateElements() {
+  return {
+    email: document.querySelector('#gateEmail'), password: document.querySelector('#gatePassword'),
+    error: document.querySelector('#gateError'), submit: document.querySelector('#gateSubmit')
+  };
+}
+
+function submitGateLogin() {
+  const { email, password, error, submit } = gateElements();
+  error.hidden = true;
+  submit.disabled = true;
+  (switcher ? switcher.login({ email: email.value.trim(), password: password.value }) : Promise.reject(new Error('NO_SWITCHER')))
+    .then((user) => {
+      if (user.role !== 'admin') {
+        switcher.logout();
+        const notAdmin = new Error('NOT_ADMIN'); notAdmin.code = 'NOT_ADMIN';
+        throw notAdmin;
+      }
+      startApp();
+      if (adminAuthEnforced === false) showToast(t('enforcementWarning'), 'danger');
+    })
+    .catch((err) => { error.textContent = describeGateError(err); error.hidden = false; })
+    .finally(() => { submit.disabled = false; });
+}
+
 function boot() {
   applyLanguage(activeLanguage);
   icons(document);
-  fetch('/api/admin/config').then((r) => r.json()).catch(() => ({ authEnforced: false })).then((config) => {
-    const gate = document.querySelector('#adminGate');
-    gate.hidden = false;
-    if (config.authEnforced) {
-      document.querySelector('#enforcedBadge').hidden = false;
-    } else {
-      const testBadge = document.querySelector('#testModeBadge');
-      const continueBtn = document.querySelector('#continueTestMode');
-      testBadge.hidden = false;
-      continueBtn.hidden = false;
-      // The previous version of this handler had no .catch() at all: if ensureUser() rejected
-      // (most commonly a TypeError from fetch() because the Community backend on port 8788
-      // isn't running), the click silently did nothing - no error, no way to tell what
-      // happened. Mirrors select/app.js's describeCreateError() distinction between "never
-      // reached a server" and "server rejected it".
-      continueBtn.onclick = () => {
-        continueBtn.disabled = true;
-        (switcher ? switcher.ensureUser() : Promise.resolve()).then(startApp).catch((error) => {
-          continueBtn.disabled = false;
-          showToast(describeGateError(error), 'danger');
-        });
-      };
-    }
-  });
+  const gate = document.querySelector('#adminGate');
+  gate.hidden = false;
+
+  fetch('/api/admin/config').then((r) => r.json()).then((config) => { adminAuthEnforced = !!config.authEnforced; }).catch(() => { adminAuthEnforced = null; });
+
+  const { email, password, submit } = gateElements();
+  submit.addEventListener('click', submitGateLogin);
+  [email, password].forEach((input) => input.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); submitGateLogin(); } }));
+
+  // A returning admin whose browser already holds a valid session token skips straight past
+  // the form, same as the main app's own isLoggedIn() check - only fast-forwards if that token
+  // really does belong to an admin account, never just "any known token".
+  if (switcher && switcher.currentUserId()) {
+    fetch('/api/users/me', { headers: { 'x-dev-user-id': switcher.currentUserId() } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((user) => { if (user && user.role === 'admin') startApp(); })
+      .catch(() => {});
+  }
 }
 
 function describeGateError(error) {
   if (error instanceof TypeError) return t('gateErrorOffline');
+  if (error && error.code === 'NOT_ADMIN') return t('gateErrorNotAdmin');
+  if (error && (error.code === 'INVALID_CREDENTIALS' || error.status === 401)) return t('gateErrorInvalidCredentials');
   const base = t('gateError');
   return error && error.message ? base + ' (' + error.message + ')' : base;
 }
