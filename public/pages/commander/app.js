@@ -12,7 +12,12 @@ function showToast(message) {
 }
 window.TradeJournalShowToast = showToast;
 
-const savedLanguage = localStorage.getItem('commander-language') || 'fa';
+// Unified with the select (login) page's own key - a language chosen at login must carry
+// through into every character dashboard instead of each one defaulting to Persian on its own.
+// The old per-character key is kept only as a fallback for a browser that set it before this
+// fix shipped; the unified key then becomes canonical going forward.
+const savedLanguage = localStorage.getItem('tradejournal-language') || localStorage.getItem('commander-language') || 'fa';
+localStorage.setItem('tradejournal-language', savedLanguage);
 document.documentElement.lang = savedLanguage;
 document.documentElement.dir = savedLanguage === 'fa' || savedLanguage === 'ar' ? 'rtl' : 'ltr';
 

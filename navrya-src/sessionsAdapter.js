@@ -4,8 +4,36 @@
 const SESSION_KEY_PREFIX = 'tradejournal:sessions:v1:';
 export const RESET_KEY = 'tradejournal:session-library-empty-reset:v1';
 const CHARACTERS = ['hunter', 'engineer', 'commander', 'sage'];
+// Sessions (and the chart images they reference) belong to the trader's account, not to
+// whichever character happened to be active when they were created - a session logged while
+// on Hunter must still be there after switching to Engineer. One shared bucket for every
+// character, instead of the old per-character key, fixes that. `character` is still accepted
+// by the functions below (existing callers keep passing it) but no longer affects the key.
+const SHARED_KEY = SESSION_KEY_PREFIX + 'shared';
+const SHARED_MIGRATION_FLAG = 'tradejournal:sessions-shared-migration:v1';
 
-export function storageKey(character) { return SESSION_KEY_PREFIX + character; }
+// One-time merge of the four legacy per-character buckets into the shared one, newest-first,
+// deduped by id (a session that happens to exist in more than one legacy bucket - shouldn't
+// normally happen, but costs nothing to guard) - runs once per browser, guarded by
+// SHARED_MIGRATION_FLAG, then removes the now-empty legacy keys so nothing reads stale data.
+function migrateLegacyPerCharacterSessions() {
+  if (typeof localStorage === 'undefined' || localStorage.getItem(SHARED_MIGRATION_FLAG)) return;
+  const byId = {};
+  try { (JSON.parse(localStorage.getItem(SHARED_KEY)) || []).forEach((s) => { if (s && s.id) byId[s.id] = s; }); } catch (_) { /* start empty */ }
+  CHARACTERS.forEach((character) => {
+    try {
+      const items = JSON.parse(localStorage.getItem(SESSION_KEY_PREFIX + character)) || [];
+      items.forEach((s) => { if (s && s.id && !byId[s.id]) byId[s.id] = s; });
+    } catch (_) { /* continue merging the remaining legacy stores */ }
+  });
+  const merged = Object.values(byId).sort((a, b) => (Number(b.startedAt || b.createdAt) || 0) - (Number(a.startedAt || a.createdAt) || 0));
+  localStorage.setItem(SHARED_KEY, JSON.stringify(merged));
+  CHARACTERS.forEach((character) => localStorage.removeItem(SESSION_KEY_PREFIX + character));
+  localStorage.setItem(SHARED_MIGRATION_FLAG, new Date().toISOString());
+}
+migrateLegacyPerCharacterSessions();
+
+export function storageKey() { return SHARED_KEY; }
 
 export function readSessions(character) {
   try {
@@ -89,7 +117,12 @@ export function toCardProps(session) {
     summary: entryCount(session) + ' entries · ' + scenarioCount(session) + ' scenarios',
     instrument: '—',
     lastUpdate: formatLastUpdate(session),
-    showDetail: true
+    showDetail: true,
+    // Sort-only fields (SessionLibrary reads these to order the grid; stripped before they
+    // reach SessionCard, which doesn't know them). Never trust storage array order alone for
+    // "newest first" - save() on an existing session doesn't move it, only creation does.
+    sortTimestamp: sessionTimestamp(session),
+    sortEntryCount: entryCount(session)
   };
 }
 
@@ -161,16 +194,14 @@ export async function createSession(character, values) {
 export async function resetOnce() {
   if (localStorage.getItem(RESET_KEY)) return;
   const blobIds = [];
-  CHARACTERS.forEach((character) => {
-    try {
-      const sessions = JSON.parse(localStorage.getItem(storageKey(character))) || [];
-      sessions.forEach((session) => (session.entries || []).forEach((entry) => { if (entry.imageBlobId) blobIds.push(entry.imageBlobId); }));
-    } catch (_) { /* continue clearing the remaining stores */ }
-  });
+  try {
+    const sessions = JSON.parse(localStorage.getItem(SHARED_KEY)) || [];
+    sessions.forEach((session) => (session.entries || []).forEach((entry) => { if (entry.imageBlobId) blobIds.push(entry.imageBlobId); }));
+  } catch (_) { /* nothing usable to collect blob ids from */ }
   if (window.TradeJournalImageStore) {
     await Promise.all(blobIds.map((id) => window.TradeJournalImageStore.deleteImage(id).catch(() => {})));
   }
-  CHARACTERS.forEach((character) => localStorage.removeItem(storageKey(character)));
+  localStorage.removeItem(SHARED_KEY);
   localStorage.removeItem('tradejournal:session-signatures:v1');
   localStorage.setItem(RESET_KEY, new Date().toISOString());
   window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed', { detail: { reset: true } }));

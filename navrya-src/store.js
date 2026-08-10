@@ -8,7 +8,9 @@
 import * as sessionsAdapter from './sessionsAdapter.js';
 
 export function createStore(character) {
-  const languageKey = character + '-language';
+  // Unified with the select (login) page's own key so a language switch made from inside a
+  // character dashboard is visible everywhere else too - the app, not just this one character.
+  const languageKey = 'tradejournal-language';
   const listeners = new Set();
 
   // useSyncExternalStore compares snapshots with Object.is - mutating one shared object in

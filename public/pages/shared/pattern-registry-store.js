@@ -312,29 +312,30 @@
 
   function scenarioReport(patternId) {
     var rows = [];
-    ['hunter', 'engineer', 'commander', 'sage'].forEach(function (character) {
-      try {
-        var sessions = JSON.parse(localStorage.getItem('tradejournal:sessions:v1:' + character)) || [];
-        sessions.forEach(function (session) {
-          (session.entries || []).forEach(function (entry) {
-            (entry.scenarios || []).forEach(function (scenario) {
-              if (!scenario.pattern || scenario.pattern.patternTagId !== patternId) return;
-              var stages = scenario.pattern.stages || [];
-              var completed = scenario.pattern.completedStageIds || [];
-              rows.push({
-                sessionId: session.id,
-                character: character,
-                scenarioId: scenario.id,
-                occurred: scenario.occurred === true,
-                stageCount: stages.length,
-                completedStageCount: completed.length,
-                completionPercent: stages.length ? Math.min(100, completed.length / stages.length * 100) : null
-              });
+    // Sessions live in one shared account-wide bucket (tradejournal:sessions:v1:shared), not a
+    // per-character one - a pattern's usage/completion report must count every session
+    // regardless of which character was active when it was logged.
+    try {
+      var sessions = JSON.parse(localStorage.getItem('tradejournal:sessions:v1:shared')) || [];
+      sessions.forEach(function (session) {
+        (session.entries || []).forEach(function (entry) {
+          (entry.scenarios || []).forEach(function (scenario) {
+            if (!scenario.pattern || scenario.pattern.patternTagId !== patternId) return;
+            var stages = scenario.pattern.stages || [];
+            var completed = scenario.pattern.completedStageIds || [];
+            rows.push({
+              sessionId: session.id,
+              character: session.character || null,
+              scenarioId: scenario.id,
+              occurred: scenario.occurred === true,
+              stageCount: stages.length,
+              completedStageCount: completed.length,
+              completionPercent: stages.length ? Math.min(100, completed.length / stages.length * 100) : null
             });
           });
         });
-      } catch (_) { /* Ignore corrupt legacy records for one character. */ }
-    });
+      });
+    } catch (_) { /* Ignore corrupt session records. */ }
     if (!rows.length) return { hasData: false, scenarios: [], detectionCount: null, averageCompletion: null, occurrenceRate: null, fullyCompletedCount: null };
     var completionRows = rows.filter(function (row) { return row.completionPercent !== null; });
     var completedCount = rows.filter(function (row) { return row.stageCount > 0 && row.completedStageCount >= row.stageCount; }).length;

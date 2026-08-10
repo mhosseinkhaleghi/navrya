@@ -109,15 +109,12 @@
   var PURCHASE_SYNC_KEY = 'tradejournal:account-profile-purchase-ids:v1';
 
   // ============================== SESSION DOMAIN ==============================
-  // Sessions have no single global accessor (they're character-scoped) - reads the same
-  // documented per-character localStorage key session-workspace-logic.js itself writes to
-  // (tradejournal:sessions:v1:{character}, ARCHITECTURE.md Section 3). Only scans the currently
-  // active character, same pre-existing scoping the old session_closed trigger already had.
+  // Sessions live in one shared account-wide bucket, not a per-character one - reads the same
+  // key session-workspace-logic.js/sessionsAdapter.js write to (tradejournal:sessions:v1:shared),
+  // so XP/achievements count every session regardless of which character created it.
   function allSessions() {
-    var character = window.TradeJournalPanelCharacter;
-    if (!character) return [];
     try {
-      var raw = localStorage.getItem('tradejournal:sessions:v1:' + character);
+      var raw = localStorage.getItem('tradejournal:sessions:v1:shared');
       var list = raw ? JSON.parse(raw) : [];
       return Array.isArray(list) ? list.filter(function (s) { return s && s.id; }) : [];
     } catch (_) { return []; }
