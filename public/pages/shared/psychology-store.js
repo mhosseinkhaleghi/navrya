@@ -100,6 +100,78 @@
     }
     return streak;
   }
+  function weekStart(date){var d=new Date(date.getFullYear(),date.getMonth(),date.getDate());var day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);return d;}
+  function weekKey(date){var w=weekStart(date);return w.getFullYear()+'-'+(w.getMonth()+1)+'-'+w.getDate();}
+
+  // Weekly discipline score (0-100), last `weeks` calendar weeks ending with the current week -
+  // the same real per-trade fields disciplineStreak()/disciplineSeries() already use
+  // (entryMode/disciplineImpact), just bucketed and normalised instead of a running total. A week
+  // with no trades logged is scored null (rendered as an honest gap, never a fabricated number).
+  function disciplineWeekly(trades,weeks,now){
+    weeks=weeks||12;now=now||new Date();
+    var buckets={};
+    (trades||[]).forEach(function(trade){
+      if(!trade||!trade.createdAt)return;
+      var key=weekKey(new Date(trade.createdAt));
+      (buckets[key]=buckets[key]||[]).push(trade);
+    });
+    var out=[],cursor=weekStart(now);
+    for(var i=weeks-1;i>=0;i--){
+      var d=new Date(cursor);d.setDate(d.getDate()-i*7);
+      var key=weekKey(d),list=buckets[key]||[];
+      var score=null;
+      if(list.length){
+        var full=list.filter(function(t){return t.entryMode==='full';}).length;
+        score=Math.round(full/list.length*100);
+      }
+      out.push({weekStart:key,score:score,tradeCount:list.length});
+    }
+    return out;
+  }
+
+  // Frequency distribution of dominant emotions logged over the trailing `days`, across every
+  // emotionLog entry (not just closed trades' last entry, unlike emotionalMirror() above, which
+  // is win-rate not frequency) - real counts, never fabricated percentages.
+  function emotionFrequency(trades,days,now){
+    days=days||30;now=now||new Date();
+    var since=now.getTime()-days*86400000;
+    var counts={},total=0;
+    (trades||[]).forEach(function(trade){
+      (trade.emotionLog||[]).forEach(function(entry){
+        if(new Date(entry.timestamp).getTime()<since)return;
+        (entry.dominantEmotions||[]).forEach(function(name){
+          counts[name]=(counts[name]||0)+1;total+=1;
+        });
+      });
+    });
+    return Object.keys(counts).map(function(name){
+      return{emotion:name,count:counts[name],pct:total?Math.round(counts[name]/total*1000)/10:0};
+    }).sort(function(a,b){return b.count-a.count;});
+  }
+
+  // Average stress per calendar day for the trailing `days` (default 7) - real emotionLog data,
+  // grouped by day rather than mental-health-collector.js's flat 30-day average, since the
+  // "emotional weather" panel needs one point per day, not one overall number.
+  function emotionalWeatherDaily(trades,days,now){
+    days=days||7;now=now||new Date();
+    var byDay={},order=[];
+    for(var i=days-1;i>=0;i--){
+      var d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-i);
+      var key=dayKey(d);
+      byDay[key]={date:d,values:[]};order.push(key);
+    }
+    (trades||[]).forEach(function(trade){
+      (trade.emotionLog||[]).forEach(function(entry){
+        var key=dayKey(new Date(entry.timestamp));
+        if(byDay[key]&&Number.isFinite(Number(entry.stressLevel)))byDay[key].values.push(Number(entry.stressLevel));
+      });
+    });
+    return order.map(function(key){
+      var bucket=byDay[key],values=bucket.values;
+      return{date:bucket.date,avgStress:values.length?Math.round(values.reduce(function(s,v){return s+v;},0)/values.length*10)/10:null,sampleSize:values.length};
+    });
+  }
+
   window.TradeJournalPsychologyStore={
     key:SETTINGS_KEY,
     settings:settings,
@@ -108,6 +180,9 @@
     tagMirror:tagMirror,
     disciplineSeries:disciplineSeries,
     disciplineStreak:disciplineStreak,
+    disciplineWeekly:disciplineWeekly,
+    emotionFrequency:emotionFrequency,
+    emotionalWeatherDaily:emotionalWeatherDaily,
     lastClosedTrade:lastClosedTrade
   };
 }());

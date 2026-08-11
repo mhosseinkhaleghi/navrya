@@ -1,245 +1,952 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
+import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
-import { MetricTile } from '../public/pages/shared/navrya/components/metrics/MetricTile.jsx';
-import { ListRow } from '../public/pages/shared/navrya/components/core/ListRow.jsx';
-import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
+import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
-import { Toggle } from '../public/pages/shared/navrya/components/forms/Toggle.jsx';
-import { showToast } from './toast.js';
+import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
+import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
+import { MetricRow } from '../public/pages/shared/navrya/components/metrics/MetricRow.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
-// Wraps a DOM node built by an existing legacy function (chart cards, canvas drawing, the
-// mental-health "profile"/"growth" sub-tabs) - same technique canvasApp.jsx's PanelBody already
-// uses for TradeJournalOpenPositionsModule.render(). Keeps that code's real data/canvas-drawing
-// logic completely untouched; only the surrounding chrome is NAVRYA.
-function LegacyNode({ build, watch }) {
-  const ref = React.useRef(null);
-  React.useEffect(() => {
-    if (!ref.current) return;
-    const node = build();
-    ref.current.replaceChildren();
-    if (node) {
-      ref.current.append(node);
-      if (window.TradeJournalIcons) window.TradeJournalIcons.schedule(ref.current);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, watch);
-  return <div ref={ref} />;
+// ============================================================================
+// Small shared building blocks
+// ============================================================================
+
+// The same bespoke 46x26 toggle the AI Assistant screen's VOICE MODE/REMEMBER
+// controls use - recreated here rather than shared, matching that screen's own
+// choice to keep this one shape local to whichever screen needs it.
+function BigToggle({ checked, onChange, ariaLabel }) {
+  return (
+    <button
+      type="button" onClick={() => onChange(!checked)} aria-label={ariaLabel} aria-pressed={checked}
+      style={{
+        width: 46, height: 26, flex: 'none', boxSizing: 'border-box', borderRadius: 999,
+        border: '1px solid ' + (checked ? 'color-mix(in srgb, var(--char-accent) 70%, transparent)' : 'var(--border-gold)'),
+        background: checked ? 'var(--char-active-surface)' : 'rgba(3,8,7,.55)',
+        display: 'flex', alignItems: 'center', justifyContent: checked ? 'flex-end' : 'flex-start',
+        padding: 2, cursor: 'pointer', transition: 'background var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out)'
+      }}
+    >
+      <span style={{ width: 20, height: 20, borderRadius: 999, background: checked ? 'var(--char-accent)' : 'var(--text-disabled)', display: 'block' }}></span>
+    </button>
+  );
 }
 
-function sectionTitle(text) {
-  return <h3 style={{ margin: 0, font: 'var(--type-body)', fontWeight: 700, color: 'var(--parchment)' }}>{text}</h3>;
+function SectionLabel({ children, style }) {
+  return <span style={{ font: 'var(--type-section-label)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase', ...style }}>{children}</span>;
+}
+function Caption({ children, style }) {
+  return <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em', ...style }}>{children}</span>;
 }
 
-function OverviewTab({ i18n, psych, store }) {
-  const psy = window.TradeJournalPsychology;
-  const trades = store.listSync();
-  const closed = trades.filter((t) => t.status === 'closed');
+const NEGATIVE_ACUTE = ['afraid', 'revenge', 'angry'];
+const NEGATIVE = ['revenge', 'angry', 'afraid', 'anxious', 'fatigued', 'restless', 'overconfident'];
+const POSITIVE = ['calm', 'confident', 'excited'];
+function emotionTone(name) {
+  if (NEGATIVE_ACUTE.indexOf(name) > -1) return 'danger';
+  if (NEGATIVE.indexOf(name) > -1) return 'accent';
+  if (POSITIVE.indexOf(name) > -1) return 'success';
+  return 'neutral';
+}
+function stageLabel(i18n, stage) { return i18n.t(stage === 'entry' ? 'entryStage' : stage === 'exit' ? 'exitStage' : 'midTrade'); }
+function stressChipTone(value) { return value >= 7 ? 'danger' : value >= 4 ? 'accent' : 'success'; }
+
+function journeyReading(i18n, log) {
+  const values = log.map((e) => Number(e.stressLevel)).filter((v) => Number.isFinite(v));
+  if (!values.length) return '';
+  const from = values[0], to = values[values.length - 1], peak = Math.max(...values);
+  if (peak > from && peak > to && peak - Math.min(from, to) >= 2) return i18n.t('psyJourneyReadingSpike', { from, to, peak });
+  if (to - from >= 2) return i18n.t('psyJourneyReadingRising', { from, to });
+  if (from - to >= 2) return i18n.t('psyJourneyReadingFalling', { from, to });
+  return i18n.t('psyJourneyReadingSteady', { from });
+}
+
+const SCENARIO_CONSTRUCTS = { A_stop_loss: 'loss_aversion_discipline', B_revenge: 'revenge_trading', C_fomo: 'fomo', D_patience: 'overtrading_patience', E_identity: 'identity_outcome_fusion' };
+const TRIGGER_TYPE_OPTIONS = ['custom', 'revenge', 'fomo', 'fatigue', 'overconfidence'];
+const GROWTH_HOLD_TARGET = 10;
+
+// ============================================================================
+// The always-available file rail (right, every tab)
+// ============================================================================
+function FileRail({ i18n, mi, profile, closed, goFile, activeSection, onRunCheckIn }) {
+  const intake = profile.intake;
+  const answeredIntake = [intake.demographics.age, intake.financialContext.capitalType, intake.tradingHistory.yearsTrading, intake.motivationForTrading, intake.financialContext.capitalAllocationPercent, intake.financialContext.borrowedMoneyForTrading].filter((v) => v !== null && v !== undefined).length;
+  const logCount = closed.reduce((sum, t) => sum + (t.emotionLog || []).length, 0);
+  const signals = [intake.completed, profile.psychologicalProfile.biasChecklist.lastAssessedAt != null, logCount > 0, true].filter(Boolean).length;
+  const completePct = Math.round((signals / 4) * 100);
+
+  const links = [
+    { id: 'intake', icon: 'ClipboardList', label: mi.t('mhTabIntake'), status: intake.completed ? i18n.t('psyIntakeStatusComplete', { count: answeredIntake }) : i18n.t('psyIntakeStatusIncomplete') },
+    { id: 'psych', icon: 'psychology', label: mi.t('mhTabPsychological'), status: profile.psychologicalProfile.biasChecklist.lastAssessedAt ? i18n.t('psyPsychStatusDone', { count: profile.psychologicalProfile.scenarioAssessment.responses.length, total: 5 }) : i18n.t('psyPsychStatusDue', { count: profile.psychologicalProfile.scenarioAssessment.responses.length, total: 5 }) },
+    { id: 'tracking', icon: 'Activity', label: mi.t('mhTabContinuous'), status: logCount > 0 ? i18n.t('psyTrackingStatus', { count: logCount, score: i18n.number(profile.healthReportCache.weeklyScore) }) : i18n.t('psyTrackingStatusEmpty') },
+    { id: 'flags', icon: 'Flag', label: mi.t('mhTabRedFlags'), status: profile.redFlags.active.length ? i18n.t('psyFlagsStatus', { count: profile.redFlags.active.length }) : i18n.t('psyFlagsStatusClear') }
+  ];
+
+  return (
+    <div style={{ width: 380, flex: 'none', display: 'flex', flexDirection: 'column', gap: 16, position: 'sticky', top: 16 }}>
+      <Panel variant="prestige" ornament texture padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 999, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', display: 'grid', placeItems: 'center', color: 'var(--char-accent)' }}>
+              <Icon name="psychology" size={22} />
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+              <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{i18n.t('psyFileTitle')}</span>
+              <Caption>{i18n.t('psyFileSubtitle')}</Caption>
+            </div>
+            <Chip tone="accent">{i18n.t('psyFileComplete', { pct: completePct })}</Chip>
+          </div>
+          <div style={{ height: 8, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,color-mix(in srgb, var(--char-accent) 55%, transparent),var(--char-accent))', transition: 'width var(--dur-progress) var(--ease-out)', width: completePct + '%' }}></div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {links.map((link) => {
+              const selected = activeSection === link.id;
+              return (
+                <button
+                  key={link.id} type="button" onClick={() => goFile(link.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 8, cursor: 'pointer', textAlign: 'start',
+                    border: selected ? '1px solid color-mix(in srgb, var(--char-accent) 70%, transparent)' : '1px solid var(--border-hairline)',
+                    background: selected ? 'var(--char-active-surface)' : 'rgba(11,20,21,.55)',
+                    boxShadow: selected ? 'var(--glow-active)' : 'none',
+                    color: selected ? 'var(--char-accent)' : 'var(--text-muted)'
+                  }}
+                >
+                  <Icon name={link.icon} size={18} />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
+                    <span style={{ font: 'var(--type-body)', color: selected ? 'var(--char-accent)' : 'var(--text-primary)' }}>{link.label}</span>
+                    <Caption>{link.status}</Caption>
+                  </span>
+                  <Icon name="active-arrow" size={18} />
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ height: 1, background: 'var(--border-hairline)' }}></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Caption>{profile.lastUpdatedAt ? i18n.t('psyFileUpdated', { value: i18n.date(profile.lastUpdatedAt, { dateStyle: 'medium', timeStyle: 'short' }) }) : i18n.t('psyFileNeverUpdated')}</Caption>
+            <Button variant="primary" icon="calendar" fullWidth onClick={onRunCheckIn}>{i18n.t('psyRunWeeklyCheckIn')}</Button>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+// ============================================================================
+// Tab 1 - Overview
+// ============================================================================
+function OverviewTab({ i18n, psych, trades, closed, profile }) {
   const streak = psych.disciplineStreak(trades);
-  const mirrorRows = psych.emotionalMirror(closed, 3).filter((r) => !r.insufficient).sort((a, b) => b.winRate - a.winRate);
-  const best = mirrorRows[0];
-  const worst = mirrorRows[mirrorRows.length - 1];
-  const num = (v) => i18n.number(v, { maximumFractionDigits: 2 });
+  const totalLogs = closed.reduce((sum, t) => sum + (t.emotionLog || []).length, 0);
+  const mirror = psych.emotionFrequency(trades, 30).slice(0, 5);
+  const weekly = psych.disciplineWeekly(trades, 12);
+  const scored = weekly.filter((w) => w.score != null);
+  const recent4 = scored.slice(-4), prior4 = scored.slice(-8, -4);
+  const recentAvg = recent4.length ? recent4.reduce((s, w) => s + w.score, 0) / recent4.length : null;
+  const priorAvg = prior4.length ? prior4.reduce((s, w) => s + w.score, 0) / prior4.length : null;
+  const delta = recentAvg != null && priorAvg != null ? Math.round(recentAvg - priorAvg) : null;
+  const avgStressToday = (() => {
+    const since = Date.now() - 30 * 86400000;
+    const values = [];
+    trades.forEach((t) => (t.emotionLog || []).forEach((e) => { if (new Date(e.timestamp).getTime() >= since && Number.isFinite(Number(e.stressLevel))) values.push(Number(e.stressLevel)); }));
+    return values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
+  })();
+  const planAdherencePct = closed.length ? Math.max(0, Math.round(100 - profile.behavioralPatterns.planDeviationRate)) : null;
+
+  const metrics = [
+    { icon: 'streak', label: i18n.t('psyDisciplineStreakTitle'), value: i18n.t('psyDisciplineStreakDays', { count: streak }) },
+    { icon: 'scenarios', label: i18n.t('totalTrades'), value: i18n.number(closed.length) },
+    { icon: 'psychology', label: i18n.t('psyMetricAvgStress'), value: avgStressToday != null ? avgStressToday.toFixed(1) + ' / 10' : '—' },
+    { icon: 'execution', label: i18n.t('psyMetricPlanAdherence'), value: planAdherencePct != null ? planAdherencePct + '%' : '—' }
+  ];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <MetricTile icon="streak" label={i18n.t('psyDisciplineStreakTitle')} value={i18n.t('psyDisciplineStreakDays', { count: i18n.number(streak) })} />
-        <MetricTile icon="scenarios" label={i18n.t('totalTrades')} value={i18n.number(closed.length)} />
-        {best && <MetricTile icon="trending-up" label={i18n.t(best.emotion)} value={num(best.winRate) + '%'} />}
-        {worst && (!best || worst.emotion !== best.emotion) && <MetricTile icon="trending-down" label={i18n.t(worst.emotion)} value={num(worst.winRate) + '%'} />}
-      </div>
-      <LegacyNode watch={[trades.length]} build={() => psy.openTradeMoodCard()} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-        <LegacyNode watch={[trades.length]} build={() => psy.emotionalMirrorCard(trades)} />
-        <LegacyNode watch={[trades.length]} build={() => psy.disciplineCard(trades)} />
-        <LegacyNode watch={[trades.length]} build={() => psy.tagMirrorCard(trades)} />
+      <MetricRow metrics={metrics} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <SectionLabel>{i18n.t('psyEmotionalMirrorTitle')}</SectionLabel>
+              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyMirrorNote', { days: 30, count: totalLogs })}</Caption>
+            </div>
+            {mirror.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {mirror.map((row) => (
+                  <div key={row.emotion} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <span style={{ width: 104, flex: 'none', font: 'var(--type-body)', color: 'var(--text-primary)' }}>{i18n.t(row.emotion)}</span>
+                    <span style={{ flex: 1, height: 10, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden', display: 'block' }}>
+                      <span style={{ display: 'block', height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,color-mix(in srgb, var(--char-accent) 45%, transparent),var(--char-accent))', transition: 'width var(--dur-progress) var(--ease-out)', width: Math.min(100, row.pct) + '%' }}></span>
+                    </span>
+                    <span className="navrya-tabular" style={{ width: 92, flex: 'none', textAlign: 'end', font: 'var(--type-caption)', letterSpacing: '.06em', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{row.pct}%</span>
+                  </div>
+                ))}
+              </div>
+            ) : <Caption>{i18n.t('psyMirrorEmpty')}</Caption>}
+          </div>
+        </Panel>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <SectionLabel>{i18n.t('psyDisciplineScoreTitle')}</SectionLabel>
+              {delta != null && <Chip tone={delta >= 0 ? 'success' : 'danger'}>{i18n.t(delta > 0 ? 'psyDisciplineTrendUp' : delta < 0 ? 'psyDisciplineTrendDown' : 'psyDisciplineTrendFlat', { value: delta })}</Chip>}
+              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyLast12Weeks')}</Caption>
+            </div>
+            {scored.length ? (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 186, paddingTop: 6 }}>
+                {weekly.map((w, i) => (
+                  <div key={w.weekStart} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
+                    <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{w.score != null ? w.score : '—'}</span>
+                    <span style={{ width: '100%', borderRadius: '4px 4px 2px 2px', background: w.score != null ? 'linear-gradient(180deg,var(--char-accent),color-mix(in srgb, var(--char-accent) 30%, transparent))' : 'var(--border-hairline)', display: 'block', height: (w.score != null ? Math.max(2, Math.round(w.score / 100 * 120)) : 2) + 'px' }}></span>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em' }}>{'W' + (i + 1)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <Caption>{i18n.t('psyDisciplineEmpty')}</Caption>}
+          </div>
+        </Panel>
       </div>
     </div>
   );
 }
 
-function JourneysTab({ i18n, store }) {
-  const trades = store.listSync().filter((t) => (t.emotionLog || []).length > 1);
-  const [modalTrade, setModalTrade] = React.useState(null);
+// ============================================================================
+// Tab 2 - Trade journeys
+// ============================================================================
+function JourneyRow({ i18n, trade, expanded, onToggle }) {
+  const log = trade.emotionLog || [];
+  const path = log.map((e) => ({ tone: emotionTone((e.dominantEmotions || [])[0]), label: stageLabel(i18n, e.stage) + ' · ' + ((e.dominantEmotions || [])[0] ? i18n.t(e.dominantEmotions[0]) : '—') }));
+  const stages = log.map((e) => ({ label: stageLabel(i18n, e.stage), value: e.stressLevel, height: Math.max(4, Math.round(Number(e.stressLevel || 0) / 10 * 110)) }));
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div>
-        {sectionTitle(i18n.t('psyJourneysTitle'))}
-        <p style={{ margin: '4px 0 0', font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('psyJourneysSubtitle')}</p>
+    <div style={{ border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <span style={{ width: 34, height: 34, flex: 'none', borderRadius: 999, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', display: 'grid', placeItems: 'center', color: 'var(--char-accent)' }}>
+          <Icon name="strategies" size={18} />
+        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 200 }}>
+          <span style={{ font: 'var(--type-username)', color: 'var(--text-primary)' }}>{(trade.session ? trade.session.toUpperCase() : '—') + ' · ' + i18n.t(trade.direction)}</span>
+          <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
+            {i18n.date(trade.createdAt, { dateStyle: 'medium', timeStyle: 'short' }) + ' · ' + i18n.t(log.length === 1 ? 'psyEmotionLogsOne' : 'psyEmotionLogsMany', { count: log.length })}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+          {path.map((p, i) => <Chip key={i} tone={p.tone} dot>{p.label}</Chip>)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+          <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{i18n.t('psyStressPath', { path: log.map((e) => e.stressLevel).join(' → ') })}</span>
+          <Button variant="secondary" size="sm" onClick={onToggle}>{expanded ? i18n.t('psyHideJourney') : i18n.t('psyViewJourney')}</Button>
+        </div>
       </div>
-      {!trades.length ? (
-        <Panel variant="base" radius={12} style={{ padding: 16 }}><span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('psyJourneysEmpty')}</span></Panel>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {trades.map((trade) => (
-            <ListRow
-              key={trade.id} onClick={() => setModalTrade(trade)}
-              title={i18n.date(trade.createdAt) + ' · ' + i18n.t(trade.direction)}
-              value={i18n.t('tradesCount', { count: i18n.number(trade.emotionLog.length) })}
-            />
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--border-hairline)', paddingTop: 14, display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 260px', display: 'flex', alignItems: 'flex-end', gap: 16, height: 150 }}>
+            {stages.map((s, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
+                <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--char-accent)' }}>{s.value}</span>
+                <span style={{ width: '100%', maxWidth: 64, borderRadius: '4px 4px 2px 2px', background: 'linear-gradient(180deg,var(--char-accent),color-mix(in srgb, var(--char-accent) 30%, transparent))', display: 'block', height: s.height + 'px' }}></span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em', textTransform: 'uppercase' }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ width: 300, flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 6 }}>
+            <SectionLabel>{i18n.t('psyWhatJourneySays')}</SectionLabel>
+            <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-primary)', textWrap: 'pretty' }}>{journeyReading(i18n, log)}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JourneysTab({ i18n, trades, openJourney, setOpenJourney }) {
+  const journeys = trades.filter((t) => (t.emotionLog || []).length > 1).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return (
+    <Panel variant="base" ornament padding="18px 20px 20px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <SectionLabel>{i18n.t('psyJourneysTitle')}</SectionLabel>
+          <Chip tone="neutral">{i18n.t('psyJourneysCountChip', { count: journeys.length })}</Chip>
+          <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyJourneysHint')}</Caption>
+        </div>
+        {journeys.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {journeys.map((trade) => (
+              <JourneyRow key={trade.id} i18n={i18n} trade={trade} expanded={openJourney === trade.id} onToggle={() => setOpenJourney((v) => (v === trade.id ? null : trade.id))} />
+            ))}
+          </div>
+        ) : <Caption>{i18n.t('psyJourneysEmpty')}</Caption>}
+      </div>
+    </Panel>
+  );
+}
+
+// ============================================================================
+// Tab 3 - AI insights
+// ============================================================================
+function InsightsTab({ i18n, insights, dismissedIds, onDismiss, onAddAsTrigger }) {
+  const confidenceTone = (c) => (c >= 0.7 ? 'success' : c >= 0.4 ? 'accent' : 'neutral');
+  const confidenceLabel = (i18n, c) => i18n.t(c >= 0.7 ? 'psyConfidenceHigh' : c >= 0.4 ? 'psyConfidenceMedium' : 'psyConfidenceLow');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Notice tone="accent" icon="sparkle">{i18n.t('psyInsightsNotice')}</Notice>
+      {insights === 'loading' && <Panel variant="base" ornament padding="18px 20px"><Caption>{i18n.t('psyInsightsLoading')}</Caption></Panel>}
+      {(insights === 'unavailable' || (insights && insights !== 'loading' && !insights.insights.length)) && (
+        <Panel variant="base" ornament padding="18px 20px"><Caption>{i18n.t('psyInsightsEmpty')}</Caption></Panel>
+      )}
+      {insights && insights !== 'loading' && insights !== 'unavailable' && insights.insights.map((insight, idx) => {
+        if (dismissedIds.has(idx)) return null;
+        const emotionLogCount = insights.emotionLogCount || 0;
+        return (
+          <Panel key={idx} variant="base" ornament padding="18px 20px">
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+              <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'var(--char-active-surface)', display: 'grid', placeItems: 'center', color: 'var(--char-accent)' }}>
+                <Icon name="sparkle" size={22} />
+              </span>
+              <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{insight.title}</span>
+                  <Chip tone={confidenceTone(insight.confidence)}>{confidenceLabel(i18n, insight.confidence)}</Chip>
+                </div>
+                <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{[insight.evidence, insight.recommendation].filter(Boolean).join(' ')}</p>
+                <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{i18n.t('psyInsightEvidence', { trades: i18n.number(insights.sampleSize || 0), logs: i18n.number(emotionLogCount) })}</span>
+              </div>
+              <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch' }}>
+                <Button variant="secondary" size="sm" icon="plus" onClick={() => onAddAsTrigger(insight)}>{i18n.t('psyAddAsTrigger')}</Button>
+                <Button variant="ghost" size="sm" onClick={() => onDismiss(idx)}>{i18n.t('psyDismiss')}</Button>
+              </div>
+            </div>
+          </Panel>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================================
+// Tab 4 - Protective
+// ============================================================================
+function ProtectiveTab({ i18n, psych, savedAt, onSaved }) {
+  const settings = psych.settings();
+  const guards = [
+    {
+      icon: 'psychology', title: i18n.t('psyBreathingTitle'), body: i18n.t('psyBreathingBody'),
+      fieldLabel: i18n.t('psyStressThresholdLabel'), value: String(settings.breathing.stressThreshold),
+      hint: i18n.t('psyBreathingHintValue', { value: settings.breathing.stressThreshold }),
+      on: settings.breathing.enabled,
+      onToggle: () => psych.saveSettings({ breathing: { ...settings.breathing, enabled: !settings.breathing.enabled } }),
+      onChange: (v) => psych.saveSettings({ breathing: { ...settings.breathing, stressThreshold: Number(String(v).replace(/[^0-9]/g, '')) || 0 } })
+    },
+    {
+      icon: 'clock', title: i18n.t('psyPostTradeReflectionTitle'), body: i18n.t('psyPostTradeReflectionBody'),
+      fieldLabel: i18n.t('psyCooldownMinutes'), value: String(settings.postTradeReflection.cooldownMinutes),
+      hint: i18n.t('psyCooldownHintValue', { value: settings.postTradeReflection.cooldownMinutes }),
+      on: settings.postTradeReflection.enabled,
+      onToggle: () => psych.saveSettings({ postTradeReflection: { ...settings.postTradeReflection, enabled: !settings.postTradeReflection.enabled } }),
+      onChange: (v) => psych.saveSettings({ postTradeReflection: { ...settings.postTradeReflection, cooldownMinutes: Number(String(v).replace(/[^0-9]/g, '')) || 0 } })
+    }
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Notice tone="accent" icon="honour">{i18n.t('psyGuardsNotice')}</Notice>
+      {guards.map((g) => (
+        <Panel key={g.title} variant="base" ornament padding="18px 20px 20px">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
+            <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'var(--char-active-surface)', display: 'grid', placeItems: 'center', color: 'var(--char-accent)' }}>
+              <Icon name={g.icon} size={22} />
+            </span>
+            <div style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{g.title}</span>
+              <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{g.body}</p>
+            </div>
+            <div style={{ width: 220, flex: 'none' }}>
+              <TextField label={g.fieldLabel} value={g.value} onChange={g.onChange} hint={g.hint} />
+            </div>
+            <div style={{ flex: 'none', paddingTop: 26 }}>
+              <BigToggle checked={g.on} onChange={g.onToggle} ariaLabel={g.title} />
+            </div>
+          </div>
+        </Panel>
+      ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '0 2px', flexWrap: 'wrap' }}>
+        <Caption style={{ flex: 1 }}>{savedAt ? i18n.t('psyGuardsSavedNote', { value: savedAt }) : i18n.t('psyGuardsNeverSaved')}</Caption>
+        <Button variant="primary" icon="check" onClick={onSaved}>{i18n.t('psySaveProtective')}</Button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Tab 5 - My file
+// ============================================================================
+function IntakeSection({ i18n, mi, profile, onOpenIntake }) {
+  const intake = profile.intake;
+  const rows = [
+    [mi.t('mhAge'), intake.demographics.age],
+    [mi.t('mhCapitalType'), intake.financialContext.capitalType ? mi.t('mhCapitalType_' + intake.financialContext.capitalType) : null],
+    [mi.t('mhYearsTrading'), intake.tradingHistory.yearsTrading],
+    [mi.t('mhMotivationQuestion'), intake.motivationForTrading ? mi.t('mhMotivation_' + intake.motivationForTrading) : null],
+    [mi.t('mhCapitalAllocation'), intake.financialContext.capitalAllocationPercent != null ? intake.financialContext.capitalAllocationPercent + '%' : null],
+    [mi.t('mhBorrowedMoney'), intake.financialContext.borrowedMoneyForTrading == null ? null : (intake.financialContext.borrowedMoneyForTrading ? mi.t('mhYes') : mi.t('mhNo'))]
+  ];
+  return (
+    <Panel variant="base" ornament padding="18px 20px 20px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <SectionLabel>{mi.t('mhTabIntake')}</SectionLabel>
+          <Chip tone={intake.completed ? 'success' : 'neutral'} dot>{i18n.t(intake.completed ? 'psyIntakeComplete' : 'psyIntakeIncomplete')}</Chip>
+          {intake.completed && <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyIntakeAnswered', { value: i18n.date(intake.completedAt) })}</Caption>}
+          <Button variant="secondary" size="sm" icon="edit" onClick={onOpenIntake} style={intake.completed ? {} : { marginInlineStart: 'auto' }}>{i18n.t(intake.completed ? 'psyEditIntake' : 'psyStartIntake')}</Button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+          {rows.map(([label, value]) => (
+            <div key={label} style={{ border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase', textWrap: 'pretty' }}>{label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ flex: 1, font: 'var(--type-username)', color: 'var(--text-primary)', textWrap: 'pretty' }}>{value == null || value === '' ? '—' : String(value)}</span>
+                <Button variant="ghost" size="sm" icon="edit" onClick={onOpenIntake}></Button>
+              </div>
+            </div>
           ))}
         </div>
-      )}
-      {modalTrade && (
-        <Modal title={i18n.t('psyJourneyChartTitle')} icon="route" onClose={() => setModalTrade(null)}>
-          <LegacyNode watch={[modalTrade.id]} build={() => window.TradeJournalPsychology.renderJourneyChart(modalTrade)} />
-        </Modal>
-      )}
-    </div>
+      </div>
+    </Panel>
   );
 }
 
-function InsightsTab({ i18n, store, reports }) {
-  const [range, setRange] = React.useState('month');
-  const [from, setFrom] = React.useState('');
-  const [to, setTo] = React.useState('');
-  const [running, setRunning] = React.useState(false);
-  const [result, setResult] = React.useState(null);
-
-  async function run() {
-    const dates = reports.rangeDates({ range, from, to });
-    const fromTime = dates.from ? new Date(dates.from).getTime() : -Infinity;
-    const toTime = dates.to ? new Date(dates.to).getTime() + 86400000 : Infinity;
-    const payload = store.psychologyDataset().filter((t) => t.emotionLog.length).filter((t) => {
-      const time = new Date(t.closedAt || t.updatedAt).getTime();
-      return time >= fromTime && time <= toTime;
-    });
-    if (!payload.length) { setResult('unavailable'); return; }
-    setRunning(true);
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 20000);
-    try {
-      const response = await fetch('/api/trades/psychology-analysis', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: i18n.language(), trades: payload }), signal: controller.signal
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setResult(data);
-    } catch (_) {
-      setResult('unavailable');
-    } finally {
-      window.clearTimeout(timer);
-      setRunning(false);
-    }
-  }
-
-  const ranges = [['week', 'week'], ['month', 'month'], ['quarter', 'quarter'], ['all', 'allTime'], ['custom', 'custom']];
-  const triggerCards = result && result !== 'unavailable' ? window.TradeJournalPsychology.buildTriggerCards(result) : [];
-
+function PsychSection({ i18n, mi, profile, onOpenChecklist }) {
+  const responses = profile.psychologicalProfile.scenarioAssessment.responses;
+  const scenarioIds = (window.TradeJournalMentalHealthTypes && window.TradeJournalMentalHealthTypes.scenarioIds) || Object.keys(SCENARIO_CONSTRUCTS);
+  const biases = profile.psychologicalProfile.biasChecklist.biases.slice().sort((a, b) => {
+    const av = a.computedIndicatorScore != null ? a.computedIndicatorScore * 10 : a.selfRating * 20;
+    const bv = b.computedIndicatorScore != null ? b.computedIndicatorScore * 10 : b.selfRating * 20;
+    return bv - av;
+  });
+  const tests = [['bigFive', mi.t('mhTestBigFive')], ['riskToleranceScale', mi.t('mhTestRiskTolerance')], ['bis11Impulsivity', mi.t('mhTestBis11')], ['sogsGamblingScreen', mi.t('mhTestSogs')]];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {ranges.map(([value, key]) => <Button key={value} variant={range === value ? 'primary' : 'ghost'} size="sm" onClick={() => setRange(value)}>{i18n.t(key)}</Button>)}
-      </div>
-      {range === 'custom' && (
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <TextField label={i18n.t('from')} type="date" value={from} onChange={setFrom} />
-          <TextField label={i18n.t('to')} type="date" value={to} onChange={setTo} />
-        </div>
-      )}
-      <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {sectionTitle(i18n.t('psyWeeklyNarrativeTitle'))}
-        <Button variant="primary" icon="brain-circuit" onClick={run} disabled={running} style={{ alignSelf: 'flex-start' }}>{i18n.t('psyRunWeeklyAnalysis')}</Button>
-        {result === 'unavailable' && <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('analysisUnavailable')}</span>}
-        {result && result !== 'unavailable' && (
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <SectionLabel>{mi.t('mhScenarioAssessmentTitle')}</SectionLabel>
+            <Chip tone="neutral">{i18n.t('psyScenarioChip', { count: responses.length, total: scenarioIds.length })}</Chip>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {result.summary && <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-primary)' }}>{result.summary}</p>}
-            {(result.insights || []).map((x, i) => (
-              <Panel key={i} variant="base" radius={10} style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <strong style={{ color: 'var(--parchment)' }}>{x.title}</strong>
-                <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-primary)' }}>{x.evidence}</p>
-                <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{x.recommendation}</p>
-              </Panel>
-            ))}
+            {scenarioIds.map((id) => {
+              const r = responses.find((x) => x.scenarioId === id);
+              const construct = r ? r.measuresConstruct : SCENARIO_CONSTRUCTS[id];
+              const answer = r ? (r.choice ? mi.t('mhScenarioChoice_' + id + '_' + r.choice) : (r.freeText || '—')) : i18n.t('psyScenarioNotAnswered');
+              const intensity = r && r.sliderValue != null ? r.sliderValue : null;
+              return (
+                <div key={id} style={{ border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ font: 'var(--type-username)', color: 'var(--text-primary)' }}>{mi.t('mhScenario_' + id + '_title')}</span>
+                      <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{mi.t('mhMeasures') + ': ' + mi.t('mhConstruct_' + construct)}</span>
+                    </div>
+                    <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{answer}</span>
+                  </div>
+                  <div style={{ width: 180, flex: 'none', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{mi.t('mhScenarioIntensity')}</span>
+                      <span className="navrya-tabular" style={{ marginInlineStart: 'auto', font: 'var(--type-caption)', color: 'var(--char-accent)' }}>{intensity != null ? intensity + '/10' : '—'}</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', borderRadius: 999, background: 'var(--char-accent)', transition: 'width var(--dur-progress) var(--ease-out)', width: (intensity != null ? intensity * 10 : 0) + '%' }}></div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <Button variant="secondary" icon="check" fullWidth onClick={onOpenChecklist}>{i18n.t(profile.psychologicalProfile.biasChecklist.lastAssessedAt ? 'psyRedoMonthlyChecklist' : 'psyStartMonthlyChecklist')}</Button>
+        </div>
+      </Panel>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <SectionLabel>{i18n.t('psyBiasMeterTitle')}</SectionLabel>
+            {biases.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {biases.map((b) => {
+                  const value = b.computedIndicatorScore != null ? Math.round(b.computedIndicatorScore * 10) : Math.round(b.selfRating * 20);
+                  return (
+                    <div key={b.type} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <span style={{ width: 150, flex: 'none', font: 'var(--type-body)', color: 'var(--text-primary)' }}>{mi.t('mhBias_' + b.type)}</span>
+                      <span style={{ flex: 1, height: 10, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden', display: 'block' }}>
+                        <span style={{ display: 'block', height: '100%', borderRadius: 999, background: value >= 55 ? 'var(--warning)' : 'var(--char-accent)', transition: 'width var(--dur-progress) var(--ease-out)', width: value + '%' }}></span>
+                      </span>
+                      <span className="navrya-tabular" style={{ width: 44, flex: 'none', textAlign: 'end', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{value}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <Caption>{i18n.t('psyBiasMeterEmpty')}</Caption>}
+          </div>
+        </Panel>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <SectionLabel>{mi.t('mhStandardizedTestsTitle')}</SectionLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <h4 style={{ margin: 0, font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('psyTriggersTitle')}</h4>
-              {!triggerCards.length ? (
-                <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('psyNoTrigger')}</span>
-              ) : triggerCards.map((c, i) => (
-                <Panel key={i} variant="base" radius={10} style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <strong style={{ color: 'var(--parchment)' }}>{c.title}</strong>
-                  <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-primary)' }}>{c.body}</p>
-                </Panel>
+              {tests.map(([key, label]) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)' }}>
+                  <span style={{ flex: 1, font: 'var(--type-body)', color: 'var(--text-primary)' }}>{label}</span>
+                  <Chip tone="neutral">{i18n.t('psyComingSoonChip')}</Chip>
+                </div>
               ))}
             </div>
           </div>
-        )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function TrackingSection({ i18n, mi, psych, trades, closed, profile, dueCheckIn, checkInDismissed, onDismissCheckIn, onRunCheckIn }) {
+  const weather = psych.emotionalWeatherDaily(trades, 7);
+  const weeklyScore = profile.healthReportCache.weeklyScore;
+  const weekTrades = closed.filter((t) => (new Date(t.closedAt || t.createdAt)).getTime() >= Date.now() - 7 * 86400000);
+  const snapshots = profile.progressTracking.weeklySnapshots.slice(-8);
+  const trend = snapshots.length >= 2 ? Math.round(snapshots[snapshots.length - 1].progressScore - snapshots[snapshots.length - 2].progressScore) : null;
+  const activity = [];
+  trades.forEach((t) => (t.emotionLog || []).forEach((e) => activity.push({ timestamp: e.timestamp, dominantEmotions: e.dominantEmotions || [], stressLevel: Number(e.stressLevel) })));
+  activity.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  function exportLog() {
+    const blob = new Blob([JSON.stringify(activity, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'psychology-activity-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.append(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <SectionLabel>{mi.t('mhEmotionalWeatherTitle')}</SectionLabel>
+              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyWeatherNote')}</Caption>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 150 }}>
+              {weather.map((w, i) => {
+                const fill = w.avgStress == null ? 'var(--border-hairline)' : w.avgStress >= 7 ? 'color-mix(in srgb, var(--warning) 70%, transparent)' : w.avgStress >= 5 ? 'color-mix(in srgb, var(--char-accent) 75%, transparent)' : 'color-mix(in srgb, var(--char-accent) 40%, transparent)';
+                const label = new Date(w.date).toLocaleDateString(i18n.locale(), { weekday: 'short' });
+                return (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
+                    <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{w.avgStress != null ? w.avgStress : '—'}</span>
+                    <span style={{ width: '100%', borderRadius: 4, display: 'block', height: (w.avgStress != null ? Math.max(4, Math.round(w.avgStress / 10 * 110)) : 4) + 'px', background: fill }}></span>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em', textTransform: 'uppercase' }}>{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Panel>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ width: 340, flex: 'none' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
+            <SectionLabel>{i18n.t('psyWeeklyScoreTitle')}</SectionLabel>
+            {weekTrades.length ? (
+              <React.Fragment>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+                  <span className="navrya-tabular" style={{ font: 'var(--type-level)', color: 'var(--char-accent)' }}>{i18n.number(weeklyScore)}</span>
+                  <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)', paddingBottom: 10 }}>/ 100</span>
+                  {trend != null && <span style={{ marginInlineStart: 'auto', paddingBottom: 10 }}><Chip tone={trend >= 0 ? 'success' : 'danger'}>{i18n.t(trend > 0 ? 'psyDisciplineTrendUp' : trend < 0 ? 'psyDisciplineTrendDown' : 'psyDisciplineTrendFlat', { value: trend })}</Chip></span>}
+                </div>
+                {snapshots.length > 0 && (
+                  <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', gap: 5, height: 52 }}>
+                    {snapshots.map((s, i) => <span key={i} style={{ flex: 1, borderRadius: 3, display: 'block', background: 'color-mix(in srgb, var(--char-accent) 60%, transparent)', height: Math.max(6, Math.round(s.progressScore / 100 * 52)) + 'px' }}></span>)}
+                  </div>
+                )}
+              </React.Fragment>
+            ) : <Caption>{i18n.t('psyWeeklyScoreEmpty')}</Caption>}
+          </div>
+        </Panel>
+      </div>
+      {dueCheckIn && !checkInDismissed && (
+        <Panel variant="active" ornament padding="18px 20px">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+            <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--char-accent) 60%, transparent)', background: 'rgba(3,8,7,.45)', display: 'grid', placeItems: 'center', color: 'var(--char-accent)' }}>
+              <Icon name="calendar" size={22} />
+            </span>
+            <div style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{mi.t('mhCheckInDue')}</span>
+              <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('psyCheckInPromptBody')}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+              <Button variant="ghost" onClick={onDismissCheckIn}>{i18n.t('psyLater')}</Button>
+              <Button variant="primary" icon="calendar" onClick={onRunCheckIn}>{i18n.t('psyRunCheckInNow')}</Button>
+            </div>
+          </div>
+        </Panel>
+      )}
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SectionLabel>{mi.t('mhActivityLog')}</SectionLabel>
+            <Chip tone="neutral">{i18n.t('psyActivityCountChip', { count: activity.length })}</Chip>
+            <span style={{ marginInlineStart: 'auto' }}><Button variant="ghost" size="sm" icon="download" onClick={exportLog}>{i18n.t('psyExportLog')}</Button></span>
+          </div>
+          {activity.length ? (
+            <div className="navrya-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto', overflowX: 'hidden', paddingInlineEnd: 6 }}>
+              {activity.map((a, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px', border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)' }}>
+                  <span className="navrya-tabular" style={{ width: 180, flex: 'none', font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{i18n.date(a.timestamp, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                  <span style={{ flex: 1, font: 'var(--type-body)', color: 'var(--text-primary)' }}>{a.dominantEmotions.length ? a.dominantEmotions.map((e) => i18n.t(e)).join(' · ') : '—'}</span>
+                  <Chip tone={stressChipTone(a.stressLevel)} dot>{i18n.t('psyStressChip', { value: a.stressLevel })}</Chip>
+                </div>
+              ))}
+            </div>
+          ) : <Caption>{i18n.t('psyActivityEmpty')}</Caption>}
+        </div>
       </Panel>
     </div>
   );
 }
 
-function SettingsTab({ i18n, psych }) {
-  const current = React.useMemo(() => psych.settings(), []);
-  const [breathing, setBreathing] = React.useState(() => ({ ...current.breathing }));
-  const [reflection, setReflection] = React.useState(() => ({ ...current.postTradeReflection }));
-  function save() {
-    psych.saveSettings({ breathing, postTradeReflection: reflection });
-    showToast(i18n.t('psyProtectiveSaved'), 'success');
-  }
+function FlagsSection({ i18n, mi, profile, onResolve }) {
+  const mandatory = (window.TradeJournalMentalHealthTypes && window.TradeJournalMentalHealthTypes.mandatoryReferralRedFlags) || [];
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560 }}>
-      {sectionTitle(i18n.t('psySettingsTitle'))}
-      <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h4 style={{ margin: 0, font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('psyBreathingTitle')}</h4>
-        <Toggle checked={breathing.enabled} onChange={(v) => setBreathing({ ...breathing, enabled: v })} label={i18n.t('psyBreathingToggle')} />
-        <TextField label={i18n.t('psyStressThreshold')} type="number" value={String(breathing.stressThreshold)} onChange={(v) => setBreathing({ ...breathing, stressThreshold: Number(v) })} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Notice tone="warning" icon="honour">{i18n.t('psyRedFlagsWarning')}</Notice>
+      {profile.redFlags.active.length ? profile.redFlags.active.map((flag) => (
+        <Panel key={flag.id} variant="base" ornament padding="18px 20px">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 8, border: '1px solid rgba(255,56,48,.45)', background: 'rgba(255,56,48,.08)', display: 'grid', placeItems: 'center', color: 'var(--danger)' }}>
+              <Icon name="Flag" size={22} />
+            </span>
+            <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{mi.t('mhRedFlag_' + flag.type)}</span>
+                <Chip tone="danger" dot>{i18n.t(mandatory.indexOf(flag.type) > -1 ? 'psyFlagSeverityHigh' : 'psyFlagSeverityReview')}</Chip>
+                <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{i18n.date(flag.detectedAt)}</span>
+              </div>
+              <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t('psyRedFlagBody_' + flag.type)}</p>
+            </div>
+            <Button variant="secondary" size="sm" icon="check" onClick={() => onResolve(flag.id)}>{i18n.t('psyMarkReviewed')}</Button>
+          </div>
+        </Panel>
+      )) : <Panel variant="base" ornament padding="18px 20px"><Caption>{i18n.t('psyNoActiveFlags')}</Caption></Panel>}
+    </div>
+  );
+}
+
+function FileTab(props) {
+  const { i18n, mi, fileTab, setFileTab } = props;
+  const SUBS = [
+    ['intake', mi.t('mhTabIntake'), 'ClipboardList'],
+    ['psych', mi.t('mhTabPsychological'), 'psychology'],
+    ['tracking', mi.t('mhTabContinuous'), 'Activity'],
+    ['flags', mi.t('mhTabRedFlags'), 'Flag']
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 6, border: '1px solid var(--border-hairline)', borderRadius: 10, background: 'rgba(11,20,21,.55)' }}>
+        {SUBS.map(([id, label, icon]) => {
+          const selected = fileTab === id;
+          return (
+            <button
+              key={id} type="button" onClick={() => setFileTab(id)}
+              style={{
+                boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 9, height: 40, padding: '0 14px', borderRadius: 6, cursor: 'pointer',
+                border: selected ? '1px solid color-mix(in srgb, var(--char-accent) 70%, transparent)' : '1px solid transparent',
+                background: selected ? 'var(--char-active-surface)' : 'transparent',
+                color: selected ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-body)', letterSpacing: '.04em'
+              }}
+            >
+              <Icon name={icon} size={18} />{label}
+            </button>
+          );
+        })}
+      </div>
+      {fileTab === 'intake' && <IntakeSection {...props} />}
+      {fileTab === 'psych' && <PsychSection {...props} />}
+      {fileTab === 'tracking' && <TrackingSection {...props} />}
+      {fileTab === 'flags' && <FlagsSection {...props} />}
+    </div>
+  );
+}
+
+// ============================================================================
+// Tab 6 - Growth path
+// ============================================================================
+function GrowthTab({ i18n, mi, psych, mhStore, profile, closed, triggerDraft, setTriggerDraft, onSaveTrigger, onDeleteTrigger, thoughtDraft, setThoughtDraft, onSaveThought }) {
+  const triggers = profile.triggerProfile.triggers;
+  const settings = psych.settings();
+  const guardActive = settings.breathing.enabled || settings.postTradeReflection.enabled;
+  const stage1Done = triggers.length > 0;
+  const earliest = triggers.slice().sort((a, b) => new Date(a.lastTriggeredAt) - new Date(b.lastTriggeredAt))[0];
+  const sessionsHeld = stage1Done && earliest ? closed.filter((t) => new Date(t.closedAt || t.createdAt) > new Date(earliest.lastTriggeredAt)).length : 0;
+  const stage2Done = stage1Done && guardActive;
+  const stage3Done = stage2Done && sessionsHeld >= GROWTH_HOLD_TARGET;
+  const stages = [
+    { stage: 'STAGE 01', label: i18n.t('psyStage1'), kind: stage1Done ? 'done' : 'locked' },
+    { stage: 'STAGE 02', label: i18n.t('psyStage2'), kind: stage2Done ? 'done' : stage1Done ? 'now' : 'locked' },
+    { stage: 'STAGE 03', label: i18n.t('psyStage3', { target: GROWTH_HOLD_TARGET }), kind: stage3Done ? 'done' : stage2Done ? 'now' : 'locked' },
+    { stage: 'STAGE 04', label: i18n.t('psyStage4'), kind: stage3Done ? 'now' : 'locked' }
+  ];
+  const statusFor = (kind, idx) => {
+    if (kind === 'done') return i18n.t('psyStageComplete');
+    if (kind === 'locked') return i18n.t('psyStageLocked');
+    if (idx === 2) return i18n.t('psyStage3Progress', { count: Math.min(sessionsHeld, GROWTH_HOLD_TARGET), target: GROWTH_HOLD_TARGET });
+    return i18n.t('psyStageComplete');
+  };
+  const GSTYLE = {
+    done: { border: 'var(--border-gold)', bg: 'rgba(11,20,21,.55)', tone: 'var(--text-muted)' },
+    now: { border: 'color-mix(in srgb, var(--char-accent) 70%, transparent)', bg: 'var(--char-active-surface)', tone: 'var(--char-accent)' },
+    locked: { border: 'var(--border-hairline)', bg: 'transparent', tone: 'var(--text-disabled)' }
+  };
+  const triggerTypeOptions = TRIGGER_TYPE_OPTIONS.map((v) => ({ value: v, label: i18n.t('psyTriggerType_' + v) }));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SectionLabel>{i18n.t('psyIdentifiedTriggers')}</SectionLabel>
+            <Chip tone="neutral">{i18n.t('psyTriggersActiveChip', { count: triggers.length })}</Chip>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {triggers.map((t) => (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <span style={{ font: 'var(--type-username)', color: 'var(--text-primary)' }}>{t.description}</span>
+                  <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{t.recommendedAction || '—'}</span>
+                </div>
+                <Chip tone="accent">{String(t.triggerType || 'custom').toUpperCase()}</Chip>
+                <Button variant="danger" size="sm" icon="trash" onClick={() => onDeleteTrigger(t.id)}></Button>
+              </div>
+            ))}
+          </div>
+        </div>
       </Panel>
-      <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h4 style={{ margin: 0, font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('psyPostTradeReflectionTitle')}</h4>
-        <Toggle checked={reflection.enabled} onChange={(v) => setReflection({ ...reflection, enabled: v })} label={i18n.t('psyPostTradeReflectionToggle')} />
-        <TextField label={i18n.t('psyCooldownMinutes')} type="number" value={String(reflection.cooldownMinutes)} onChange={(v) => setReflection({ ...reflection, cooldownMinutes: Number(v) })} />
-      </Panel>
-      <Button variant="primary" icon="save" onClick={save} style={{ alignSelf: 'flex-start' }}>{i18n.t('psySaveProtective')}</Button>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 340px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <SectionLabel>{i18n.t('psyAddTriggerTitle')}</SectionLabel>
+            <TextField label={i18n.t('psyTriggerDescLabel')} value={triggerDraft.desc} onChange={(v) => setTriggerDraft((d) => ({ ...d, desc: v }))} placeholder={i18n.t('psyTriggerDescPlaceholder')} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('psyTriggerTypeLabel')}</span>
+              <Select value={triggerDraft.type} options={triggerTypeOptions} onChange={(v) => setTriggerDraft((d) => ({ ...d, type: v }))} icon="psychology" />
+            </div>
+            <TextField label={i18n.t('psyTriggerActionLabel')} value={triggerDraft.action} onChange={(v) => setTriggerDraft((d) => ({ ...d, action: v }))} placeholder={i18n.t('psyTriggerActionPlaceholder')} />
+            <Button variant="primary" icon="check" fullWidth onClick={onSaveTrigger}>{mi.t('mhSaveTrigger')}</Button>
+          </div>
+        </Panel>
+        <div style={{ flex: '1 1 340px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Panel variant="base" ornament padding="18px 20px 20px">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <SectionLabel>{i18n.t('psyGrowthPathTitle')}</SectionLabel>
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, flexWrap: 'wrap' }}>
+                {stages.map((s, i) => {
+                  const style = GSTYLE[s.kind];
+                  return (
+                    <div key={s.stage} style={{ flex: '1 1 120px', display: 'flex', flexDirection: 'column', gap: 8, padding: 14, borderRadius: 8, border: '1px solid ' + style.border, background: style.bg }}>
+                      <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: style.tone, textTransform: 'uppercase' }}>{s.stage}</span>
+                      <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)', textWrap: 'pretty' }}>{s.label}</span>
+                      <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{statusFor(s.kind, i)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </Panel>
+          <Panel variant="base" ornament padding="18px 20px 20px">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <SectionLabel>{mi.t('mhThoughtRecordTitle')}</SectionLabel>
+                <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyThoughtRecordNote')}</Caption>
+              </div>
+              <TextField label={mi.t('mhAutomaticThought')} value={thoughtDraft.auto} onChange={(v) => setThoughtDraft((d) => ({ ...d, auto: v }))} placeholder={i18n.t('psyAutomaticThoughtPlaceholder')} />
+              <TextField label={mi.t('mhBalancedThought')} value={thoughtDraft.balanced} onChange={(v) => setThoughtDraft((d) => ({ ...d, balanced: v }))} placeholder={i18n.t('psyBalancedThoughtPlaceholder')} />
+              <Button variant="secondary" icon="check" fullWidth onClick={onSaveThought}>{mi.t('mhSaveThoughtRecord')}</Button>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Shell
+// ============================================================================
+function TabStrip({ i18n, psyTab, setPsyTab }) {
+  const TABS = [
+    { id: 'overview', label: i18n.t('psyTabOverview'), icon: 'dashboard' },
+    { id: 'journeys', label: i18n.t('psyTabJourneys'), icon: 'strategies' },
+    { id: 'insights', label: i18n.t('psyTabInsights'), icon: 'sparkle' },
+    { id: 'protective', label: i18n.t('psyTabProtective'), icon: 'honour' },
+    { id: 'file', label: i18n.t('psyTabFile'), icon: 'User' },
+    { id: 'growth', label: i18n.t('psyTabGrowth'), icon: 'Sprout' }
+  ];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 8, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)', flexWrap: 'wrap' }}>
+      {TABS.map((t) => {
+        const selected = psyTab === t.id;
+        return (
+          <button
+            key={t.id} type="button" onClick={() => setPsyTab(t.id)}
+            style={{
+              boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 10, height: 52, padding: '0 16px', borderRadius: 8, cursor: 'pointer',
+              border: selected ? '2px solid var(--char-accent)' : '1px solid transparent',
+              background: selected ? 'var(--char-active-surface)' : 'transparent',
+              boxShadow: selected ? 'var(--glow-active)' : 'none',
+              color: selected ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-body)', letterSpacing: '.06em', textTransform: 'uppercase'
+            }}
+          >
+            <Icon name={t.icon} size={18} />{t.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 function PsychologyShell({ i18n, tab, onTabChange }) {
-  const store = window.TradeJournalTradeStore;
+  const mi = window.TradeJournalMentalHealthI18n;
   const psych = window.TradeJournalPsychologyStore;
-  const reports = window.TradeJournalTradeReports;
-  const mhUi = window.TradeJournalMentalHealthUI;
-  const mhI18n = window.TradeJournalMentalHealthI18n;
-  const [legacyTick, setLegacyTick] = React.useState(0);
+  const mhStore = window.TradeJournalMentalHealthStore;
+  const collector = window.TradeJournalMentalHealthCollector;
+  const scheduler = window.TradeJournalMentalHealthScheduler;
+  const tradeStore = window.TradeJournalTradeStore;
+
+  const [psyTab, setPsyTabState] = React.useState(tab || 'overview');
+  const [fileTab, setFileTab] = React.useState('intake');
+  const [openJourney, setOpenJourney] = React.useState(null);
+  const [, forceRerender] = React.useReducer((x) => x + 1, 0);
+  const [insights, setInsights] = React.useState(null);
+  const [dismissedIds, setDismissedIds] = React.useState(() => new Set());
+  const [triggerDraft, setTriggerDraft] = React.useState({ desc: '', type: 'custom', action: '' });
+  const [thoughtDraft, setThoughtDraft] = React.useState({ auto: '', balanced: '' });
+  const [protectiveSavedAt, setProtectiveSavedAt] = React.useState(null);
+  const [checkInDismissed, setCheckInDismissed] = React.useState(false);
+
+  React.useEffect(() => {
+    function onChange() { forceRerender(); }
+    window.addEventListener('tradejournal:mental-health-changed', onChange);
+    window.addEventListener('tradejournal:trades-changed', onChange);
+    window.addEventListener('tradejournal:psychology-settings-changed', onChange);
+    return () => {
+      window.removeEventListener('tradejournal:mental-health-changed', onChange);
+      window.removeEventListener('tradejournal:trades-changed', onChange);
+      window.removeEventListener('tradejournal:psychology-settings-changed', onChange);
+    };
+  }, []);
+
   const rtl = i18n.direction() === 'rtl';
+  const trades = tradeStore.listSync();
+  const closed = trades.filter((t) => t.status === 'closed');
+  const profile = collector ? collector.ensureFresh() : mhStore.load();
+  const dueCheckIn = scheduler ? scheduler.dueItems(profile, new Date()).some((d) => d.type === 'weekly_snapshot') : false;
 
-  const items = [
-    ['overview', 'psyTabOverview', 'layout-dashboard'], ['journeys', 'psyTabJourneys', 'route'],
-    ['insights', 'psyTabInsights', 'brain-circuit'], ['settings', 'psyTabSettings', 'shield']
-  ];
-  if (mhUi && mhI18n) items.push(['profile', null, 'user-round', 'mhProfileTab'], ['growth', null, 'sprout', 'mhGrowthTab']);
+  React.useEffect(() => {
+    if (psyTab !== 'insights' || insights !== null || !tradeStore) return;
+    const payload = (tradeStore.psychologyDataset ? tradeStore.psychologyDataset() : trades).filter((t) => (t.emotionLog || []).length);
+    if (!payload.length) { setInsights('unavailable'); return; }
+    let cancelled = false;
+    setInsights('loading');
+    fetch('/api/trades/psychology-analysis', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: i18n.language(), trades: payload })
+    }).then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        if (!ok) throw new Error(data.error);
+        const emotionLogCount = payload.reduce((sum, t) => sum + (t.emotionLog || []).length, 0);
+        setInsights({ ...data, emotionLogCount });
+      })
+      .catch(() => { if (!cancelled) setInsights('unavailable'); });
+    return () => { cancelled = true; };
+  }, [psyTab]);
 
-  function refreshLegacy() { setLegacyTick((x) => x + 1); }
+  function setPsyTab(next) { setPsyTabState(next); if (onTabChange) onTabChange(next); }
+  function goFile(section) { setFileTab(section); setPsyTabState('file'); if (onTabChange) onTabChange('file'); }
+
+  function runCheckIn() {
+    if (collector) collector.captureWeeklySnapshot(new Date());
+    setCheckInDismissed(false);
+    goFile('tracking');
+  }
+
+  function saveTrigger() {
+    if (!triggerDraft.desc.trim()) return;
+    let p = mhStore.load();
+    p.triggerProfile.draftTrigger = { description: triggerDraft.desc.trim(), triggerType: triggerDraft.type, recommendedAction: triggerDraft.action.trim() };
+    p = mhStore.save(p);
+    mhStore.commitDraftTrigger(p);
+    setTriggerDraft({ desc: '', type: 'custom', action: '' });
+  }
+  function deleteTrigger(id) { mhStore.removeTrigger(mhStore.load(), id); }
+
+  function saveThought() {
+    let p = mhStore.load();
+    p.cognitiveProfile.draftThoughtRecord = { automaticThought: thoughtDraft.auto.trim(), emotion: '', evidenceFor: '', evidenceAgainst: '', balancedThought: thoughtDraft.balanced.trim() };
+    p = mhStore.save(p);
+    mhStore.commitDraftThoughtRecord(p, null, null);
+    setThoughtDraft({ auto: '', balanced: '' });
+  }
+
+  function addInsightAsTrigger(insight) {
+    setTriggerDraft({ desc: insight.title, type: 'custom', action: insight.recommendation || '' });
+    setPsyTab('growth');
+  }
+
+  function openIntake() { if (window.TradeJournalMentalHealthIntake) window.TradeJournalMentalHealthIntake.open(forceRerender); }
+  function openChecklist() { if (window.TradeJournalMentalHealthContinuous) window.TradeJournalMentalHealthContinuous.openBiasChecklist(forceRerender); }
+
+  const totalLogs = closed.reduce((sum, t) => sum + (t.emotionLog || []).length, 0);
+  const streak = psych.disciplineStreak(trades);
+
+  const sharedProps = { i18n, mi, psych, mhStore, collector, scheduler, tradeStore, trades, closed, profile, fileTab, setFileTab, dueCheckIn, checkInDismissed, onDismissCheckIn: () => setCheckInDismissed(true), onRunCheckIn: runCheckIn, onOpenIntake: openIntake, onOpenChecklist: openChecklist, onResolve: (id) => mhStore.resolveRedFlag(mhStore.load(), id) };
 
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <h2 style={{ margin: '0 0 4px', font: 'var(--type-display-md)', fontSize: 22, color: 'var(--parchment)' }}>{i18n.t('psyNavTitle')}</h2>
-        <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('psyNavSubtitle')}</p>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, padding: '0 2px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ font: 'var(--type-display-lg)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase' }}>{i18n.t('psyNavTitle')}</div>
+          <p style={{ margin: 0, maxWidth: 660, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t('psyNavSubtitle')}</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+          <Chip tone="accent" dot>{i18n.t('psyStreakChip', { count: streak })}</Chip>
+          <Chip tone="neutral">{i18n.t('psyTradesLogsChip', { trades: closed.length, logs: totalLogs })}</Chip>
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {items.map(([id, key, icon, mhKey]) => (
-          <Button key={id} variant={tab === id ? 'primary' : 'ghost'} icon={icon} onClick={() => onTabChange(id)}>{key ? i18n.t(key) : mhI18n.t(mhKey)}</Button>
-        ))}
+
+      <TabStrip i18n={i18n} psyTab={psyTab} setPsyTab={setPsyTab} />
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 700px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {psyTab === 'overview' && <OverviewTab i18n={i18n} psych={psych} trades={trades} closed={closed} profile={profile} />}
+          {psyTab === 'journeys' && <JourneysTab i18n={i18n} trades={trades} openJourney={openJourney} setOpenJourney={setOpenJourney} />}
+          {psyTab === 'insights' && <InsightsTab i18n={i18n} insights={insights} dismissedIds={dismissedIds} onDismiss={(idx) => setDismissedIds((s) => new Set(s).add(idx))} onAddAsTrigger={addInsightAsTrigger} />}
+          {psyTab === 'protective' && <ProtectiveTab i18n={i18n} psych={psych} savedAt={protectiveSavedAt} onSaved={() => setProtectiveSavedAt(i18n.date(new Date(), { dateStyle: 'medium', timeStyle: 'short' }))} />}
+          {psyTab === 'file' && <FileTab {...sharedProps} />}
+          {psyTab === 'growth' && (
+            <GrowthTab
+              i18n={i18n} mi={mi} psych={psych} mhStore={mhStore} profile={profile} closed={closed}
+              triggerDraft={triggerDraft} setTriggerDraft={setTriggerDraft} onSaveTrigger={saveTrigger} onDeleteTrigger={deleteTrigger}
+              thoughtDraft={thoughtDraft} setThoughtDraft={setThoughtDraft} onSaveThought={saveThought}
+            />
+          )}
+        </div>
+        <FileRail i18n={i18n} mi={mi} profile={profile} closed={closed} goFile={goFile} activeSection={psyTab === 'file' ? fileTab : null} onRunCheckIn={runCheckIn} />
       </div>
-      {tab === 'overview' ? <OverviewTab i18n={i18n} psych={psych} store={store} /> :
-        tab === 'journeys' ? <JourneysTab i18n={i18n} store={store} /> :
-        tab === 'insights' ? <InsightsTab i18n={i18n} store={store} reports={reports} /> :
-        tab === 'profile' && mhUi ? <LegacyNode watch={[legacyTick]} build={() => mhUi.renderProfileTab(refreshLegacy)} /> :
-        tab === 'growth' && mhUi ? <LegacyNode watch={[legacyTick]} build={() => mhUi.renderGrowthTab(refreshLegacy)} /> :
-        <SettingsTab i18n={i18n} psych={psych} />}
     </div>
   );
 }
 
 // psychology-ui.js's renderPage() defers to this hook when present - state.tab stays owned by
 // psychology-ui.js's own controller (onTabChange calls back into it), only the DOM building
-// changes. The mental-health "profile"/"growth" sub-tabs stay their existing legacy DOM
-// (already re-skinned onto NAVRYA CSS vars), wrapped via LegacyNode rather than rebuilt.
+// changes. tab/onTabChange are an opaque string passthrough - this screen owns a wider tab
+// vocabulary (overview/journeys/insights/protective/file/growth) than the legacy controller
+// ever knew about, which is fine since its own tab-switch branches are unreachable dead code
+// once this hook exists (mirrors ai-settings-ui.js's identical fallback-hook pattern).
 export function renderPsychology(tab, onTabChange) {
   const i18n = window.TradeJournalTradeI18n;
   const container = document.createElement('div');

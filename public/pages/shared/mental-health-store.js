@@ -268,6 +268,12 @@
     return save(record);
   }
 
+  function removeTrigger(profile, triggerId) {
+    var record = normalize(profile);
+    record.triggerProfile.triggers = record.triggerProfile.triggers.filter(function (t) { return t.id !== triggerId; });
+    return save(record);
+  }
+
   function addMilestone(profile, title, relatedBiasType) {
     var record = normalize(profile);
     record.progressTracking.milestones.push({ id: uid('milestone'), title: title, achievedAt: now(), relatedBiasType: relatedBiasType || null });
@@ -383,7 +389,7 @@
     key: KEY, uid: uid, now: now, load: load, save: save, normalize: normalize,
     getPath: getPath, setPath: setPath,
     addMessage: addMessage, applySuggestion: applySuggestion,
-    commitDraftThoughtRecord: commitDraftThoughtRecord, commitDraftTrigger: commitDraftTrigger,
+    commitDraftThoughtRecord: commitDraftThoughtRecord, commitDraftTrigger: commitDraftTrigger, removeTrigger: removeTrigger,
     addMilestone: addMilestone, recordPhaseTransition: recordPhaseTransition, ensureBias: ensureBias,
     addPreSessionCheckIn: addPreSessionCheckIn, addPreTradeContext: addPreTradeContext, addPostTradeReflection: addPostTradeReflection,
     activeCooldownTimer: activeCooldownTimer, dismissCooldownTimer: dismissCooldownTimer,
