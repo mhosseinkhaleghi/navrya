@@ -37,6 +37,22 @@ test('sessions.aggregateByUser reports isOnline for a fresh heartbeat and report
   assert.equal(typeof agg[user.id].hoursOnline, 'number');
 });
 
+test('sessions.hoursOnlineFor accumulates across multiple sessions instead of resetting on each new one (the character-switch bug)', async () => {
+  const repo = createMemoryRepo();
+  const user = await seedUser(repo);
+  await repo.sessions.heartbeat(user.id); // session 1 starts (sets startedAt)
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await repo.sessions.heartbeat(user.id); // advances lastHeartbeatAt, so the session now spans a real >=5ms duration
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await repo.sessions.sweepStale(1); // ends session 1: its >=5ms-stale lastHeartbeatAt crosses the 1ms threshold
+  const afterFirst = await repo.sessions.hoursOnlineFor(user.id);
+  assert.ok(afterFirst > 0, 'a completed session must contribute non-zero accumulated time');
+
+  await repo.sessions.heartbeat(user.id); // session 2 starts - the equivalent of switching character (a fresh page load)
+  const afterSecond = await repo.sessions.hoursOnlineFor(user.id);
+  assert.ok(afterSecond >= afterFirst, 'starting a new session must never reduce the previously accumulated total');
+});
+
 test('usageEvents.create is tracked and aggregateByUser/aggregateByProviderForMonth sum correctly', async () => {
   const repo = createMemoryRepo();
   const user = await seedUser(repo);

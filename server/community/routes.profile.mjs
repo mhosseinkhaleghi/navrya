@@ -24,11 +24,12 @@ const STREAK_ELIGIBLE_TYPES = [
   'psych_post_trade_reflection', 'psych_weekly_checkin', 'pattern_created', 'strategy_created'
 ];
 
-function profileView(user) {
+function profileView(user, extra) {
   return {
     id: user.id, displayName: user.displayName, email: user.email, emailVerified: user.emailVerified,
     phone: user.phone, phoneVerified: user.phoneVerified, profileRole: user.profileRole, kycStatus: user.kycStatus,
-    avatarDataUrl: user.avatarDataUrl, xpTotal: user.xpTotal, level: levelForXp(user.xpTotal)
+    avatarDataUrl: user.avatarDataUrl, xpTotal: user.xpTotal, level: levelForXp(user.xpTotal),
+    createdAt: user.createdAt, hoursOnline: (extra && extra.hoursOnline) || 0
   };
 }
 
@@ -166,7 +167,8 @@ export function router(repo) {
       await checkStreaks(repo, req.currentUser.id, cfg);
     } catch (_) { /* best-effort, never block profile load */ }
     const fresh = (await repo.users.get(req.currentUser.id)) || req.currentUser;
-    res.json(profileView(fresh));
+    const hoursOnline = await repo.sessions.hoursOnlineFor(fresh.id);
+    res.json(profileView(fresh, { hoursOnline }));
   }));
 
   app.patch('/me/profile', asyncHandler(async (req, res) => {
@@ -188,7 +190,8 @@ export function router(repo) {
     // never looked at - and repo.users.updateProfile()'s own SQL/patch handling structurally
     // cannot write those columns either way. Two independent layers, not one.
     const updated = await repo.users.updateProfile(req.currentUser.id, patch);
-    res.json(profileView(updated));
+    const hoursOnline = await repo.sessions.hoursOnlineFor(updated.id);
+    res.json(profileView(updated, { hoursOnline }));
   }));
 
   app.get('/me/xp-events', asyncHandler(async (req, res) => {

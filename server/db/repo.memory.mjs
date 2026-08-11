@@ -296,6 +296,17 @@ export function createMemoryRepo() {
       Object.keys(result).forEach((userId) => { result[userId].hoursOnline = result[userId].totalMs / 3600000; delete result[userId].totalMs; });
       return result;
     },
+    // Backs the account profile's "app uptime" stat - total accumulated online time across every
+    // user_sessions row ever recorded for this user (started_at..ended_at/last_heartbeat_at),
+    // same accumulation aggregateByUser() does for the admin panel, just scoped to one user so
+    // switching characters (a full page reload) never resets it back to zero.
+    async hoursOnlineFor(userId) {
+      requireUser(userId);
+      const totalMs = Array.from(state.sessions.values())
+        .filter((s) => s.userId === userId)
+        .reduce((sum, s) => sum + Math.max(0, new Date(s.endedAt || s.lastHeartbeatAt) - new Date(s.startedAt)), 0);
+      return totalMs / 3600000;
+    },
     // Backs the server-only 'five_day_login_streak' achievement check - mirrors repo.pg.mjs's
     // consecutiveLoginDays() exactly: longest run of consecutive calendar days with a session.
     async consecutiveLoginDays(userId) {

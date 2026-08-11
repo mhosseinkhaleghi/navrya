@@ -112,12 +112,15 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
   const now = useClock();
-  // Captured once, on this root's first render (i.e. when this character's dashboard first
-  // loads this session) - not a wall clock. "APP UPTIME" previously displayed
-  // marketAdapter.utcClock(now), which is just the current UTC time re-labeled - identical to
-  // the London market clock whenever London's UTC offset is 0. This ref is the actual "session
-  // started at" reference utcClock never had.
+  // "APP UPTIME" is Steam-style playtime: total time the account has ever been online, server-
+  // accumulated across every login (routes.profile.mjs's hoursOnlineFor(), fed by admin-
+  // heartbeat.js's 45s beat into user_sessions) - not a per-mount session clock. Each character
+  // page is its own full reload, so s.profile.hoursOnline is re-fetched fresh every time and
+  // keeps growing across character switches instead of restarting at zero. appStartRef only
+  // covers the gap between that fetch and now, so the number keeps ticking live between fetches
+  // rather than jumping once a heartbeat lands.
   const appStartRef = React.useRef(Date.now());
+  const baseUptimeMs = s.profile ? s.profile.hoursOnline * 3600000 : 0;
   const metrics = useMetrics(s.sessions, t);
   const rules = window.TradeJournalProfileXPRules;
   const level = s.profile && rules ? rules.levelForXp(s.profile.xpTotal) : undefined;
@@ -140,7 +143,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
         onSettings={() => store.setActiveId('settings')}
         onIdentityClick={() => { if (window.TradeJournalAccountProfilePage) window.TradeJournalAccountProfilePage.open(); }}
         levelLabel={t.level} rankLabel={t.rank}
-        uptime={marketAdapter.elapsedClock(now.getTime() - appStartRef.current)} uptimeLabel={t.appUptime}
+        uptime={marketAdapter.elapsedClock(baseUptimeMs + (now.getTime() - appStartRef.current))} uptimeLabel={t.appUptime}
         nextSession={{ city: marketLabels[nextSession.city.toLowerCase().replace(' ', '-')] || nextSession.city, startsIn: nextSession.startsIn }}
         nextSessionLabel={t.nextSession} startsInLabel={t.startsIn}
         markets={markets}

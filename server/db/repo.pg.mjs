@@ -536,6 +536,18 @@ export function createPgRepo(pool) {
       rows.forEach((row) => { result[row.user_id] = { lastLoginAt: row.last_login_at, isOnline: row.is_online, hoursOnline: Number(row.total_seconds || 0) / 3600 }; });
       return result;
     },
+    // Backs the account profile's "app uptime" stat - total accumulated online time across every
+    // user_sessions row ever recorded for this user, same accumulation aggregateByUser() does for
+    // the admin panel, just scoped to one user so switching characters (a full page reload) never
+    // resets it back to zero.
+    async hoursOnlineFor(userId) {
+      const { rows } = await pool.query(
+        `SELECT SUM(EXTRACT(EPOCH FROM (COALESCE(ended_at, last_heartbeat_at) - started_at))) AS total_seconds
+         FROM user_sessions WHERE user_id=$1`,
+        [userId]
+      );
+      return Number(rows[0].total_seconds || 0) / 3600;
+    },
     // Backs the server-only 'five_day_login_streak' achievement check - the longest run of
     // consecutive calendar days with at least one session, not necessarily ending today.
     async consecutiveLoginDays(userId) {

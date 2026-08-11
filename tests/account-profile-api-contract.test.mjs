@@ -35,6 +35,27 @@ test('GET /api/users/me/profile requires auth and returns the fresh-user default
   assert.equal(result.body.kycStatus, 'not_started');
   assert.equal(result.body.xpTotal, 0);
   assert.equal(result.body.level, 1);
+  assert.ok(result.body.createdAt, 'profile must expose the account signup timestamp');
+  assert.equal(typeof result.body.hoursOnline, 'number');
+});
+
+test('GET /api/users/me/profile\'s hoursOnline is account-lifetime, server-accumulated and never resets on a repeat fetch (the "switching character resets the clock" bug)', async () => {
+  const user = await createUser('Uptime Tester');
+  await repo.sessions.heartbeat(user.id); // sets startedAt
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await repo.sessions.heartbeat(user.id); // advances lastHeartbeatAt by a real >=5ms
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await repo.sessions.sweepStale(1); // ends the session, so its >=5ms span contributes real accumulated time
+
+  const first = await api('GET', '/api/users/me/profile', { userId: user.id });
+  assert.ok(first.body.hoursOnline > 0, 'a completed heartbeat session must show up as accumulated online time');
+
+  // A character switch is just another full page load - i.e. another GET of the same profile.
+  // It must never re-derive uptime from "now", only ever read forward from what is already
+  // accumulated server-side.
+  await repo.sessions.heartbeat(user.id); // simulates the new character page's heartbeat starting
+  const second = await api('GET', '/api/users/me/profile', { userId: user.id });
+  assert.ok(second.body.hoursOnline >= first.body.hoursOnline, 'a character switch must never reduce the accumulated uptime');
 });
 
 test('PATCH /api/users/me/profile updates trader-editable fields and silently ignores kycStatus/xpTotal/role in the body', async () => {
