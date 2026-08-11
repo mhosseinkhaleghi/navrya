@@ -1,10 +1,14 @@
 (function () {
   const character = window.TradeJournalPanelCharacter || 'hunter';
+  // Matches navrya/tokens/characters.css's --char-accent per character exactly, so every
+  // legacy (--ps-accent-driven) surface - the session workspace chief among them - reads as
+  // the same brand hue as the NAVRYA header/sidebar instead of its own slightly-off green/blue/
+  // red/purple. See ARCHITECTURE.md's NAVRYA design-system pilot section.
   const themes = {
-    hunter: { accent: '#79df59', rgb: '121,223,89', backdrop: 'assets/card-stag-v2.webp' },
-    engineer: { accent: '#398cff', rgb: '57,140,255', backdrop: 'assets/engineer-card-v1.webp' },
-    commander: { accent: '#ff5f5e', rgb: '255,95,94', backdrop: 'assets/commander-card-v1.webp' },
-    sage: { accent: '#c362ff', rgb: '195,98,255', backdrop: 'assets/sage-card-v1.webp' }
+    hunter: { accent: '#66C94E', rgb: '102,201,78', backdrop: 'assets/card-stag-v2.webp' },
+    engineer: { accent: '#3A9AF8', rgb: '58,154,248', backdrop: 'assets/engineer-card-v1.webp' },
+    commander: { accent: '#F04432', rgb: '240,68,50', backdrop: 'assets/commander-card-v1.webp' },
+    sage: { accent: '#A965D8', rgb: '169,101,216', backdrop: 'assets/sage-card-v1.webp' }
   };
   const root = document.documentElement;
   const theme = themes[character] || themes.hunter;

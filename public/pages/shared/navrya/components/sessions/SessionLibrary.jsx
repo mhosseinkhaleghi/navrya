@@ -23,11 +23,18 @@ export function SessionLibrary({
   const [view, setView] = React.useState('grid');
   const [dialog, setDialog] = React.useState(false);
 
-  const visible = sessions.filter((s) => {
-    const cityOk = filter === 'All sessions' || s.city === filter;
-    const q = query.trim().toLowerCase();
-    return cityOk && (!q || (s.title || '').toLowerCase().includes(q));
-  });
+  const visible = sessions
+    .filter((s) => {
+      const cityOk = filter === 'All sessions' || s.city === filter;
+      const q = query.trim().toLowerCase();
+      return cityOk && (!q || (s.title || '').toLowerCase().includes(q));
+    })
+    .slice()
+    .sort((a, b) => {
+      if (sort === 'Oldest') return (a.sortTimestamp || 0) - (b.sortTimestamp || 0);
+      if (sort === 'Most entries') return (b.sortEntryCount || 0) - (a.sortEntryCount || 0);
+      return (b.sortTimestamp || 0) - (a.sortTimestamp || 0); // Newest first (default)
+    });
 
   return (
     <section
@@ -59,9 +66,10 @@ export function SessionLibrary({
           display: 'grid', gap: 16,
           gridTemplateColumns: view === 'grid' ? 'repeat(auto-fill, minmax(340px, 1fr))' : '1fr'
         }}>
-          {visible.map((s, i) => (
-            <SessionCard key={s.id || i} edition={edition} {...s} layout={view === 'grid' ? 'compact' : 'row'} />
-          ))}
+          {visible.map((s, i) => {
+            const { sortTimestamp, sortEntryCount, ...cardProps } = s;
+            return <SessionCard key={s.id || i} edition={edition} {...cardProps} layout={view === 'grid' ? 'compact' : 'row'} />;
+          })}
         </div>
       )}
       <NewSessionDialog
