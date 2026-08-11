@@ -49,12 +49,23 @@ test('day/month rollover creates fresh buckets keyed by the current date rather 
   assert.equal(window.TradeJournalAIUsage.today().totalTokens, 2, 'today gets its own fresh bucket');
 });
 
-test('remaining() is null with no budget set, and budget minus month-to-date once one is saved', async () => {
+test('remaining(provider) is null with no budget set for that provider, and budget minus that provider\'s month-to-date once one is saved - other providers are unaffected', async () => {
   const window = await usageSandbox();
-  assert.equal(window.TradeJournalAIUsage.remaining(), null);
-  window.TradeJournalAISettingsStore.saveSettings({ monthlyTokenBudget: 1000 });
+  assert.equal(window.TradeJournalAIUsage.remaining('openai'), null);
+  window.TradeJournalAISettingsStore.saveSettings({ budgetByProvider: { openai: 1000 } });
   window.TradeJournalAIUsage.record({ provider: 'openai', usage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 } });
-  assert.equal(window.TradeJournalAIUsage.remaining(), 800);
+  window.TradeJournalAIUsage.record({ provider: 'anthropic', usage: { promptTokens: 50, completionTokens: 50, totalTokens: 100 } });
+  assert.equal(window.TradeJournalAIUsage.remaining('openai'), 800);
+  assert.equal(window.TradeJournalAIUsage.remaining('anthropic'), null, 'anthropic never had a budget set');
+});
+
+test('lifetime() accumulates across record() calls the same way today()/thisMonth() do, and survives day/month rollover untouched', async () => {
+  const window = await usageSandbox();
+  window.TradeJournalAIUsage.record({ provider: 'openai', usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } });
+  window.TradeJournalAIUsage.record({ provider: 'openai', usage: { promptTokens: 4, completionTokens: 2, totalTokens: 6 } });
+  const lifetime = window.TradeJournalAIUsage.lifetime();
+  assert.equal(lifetime.totalTokens, 21);
+  assert.equal(lifetime.byProvider.openai.totalTokens, 21);
 });
 
 test('local-fallback responses (no usage field, or a usage-less object) are never recorded', async () => {

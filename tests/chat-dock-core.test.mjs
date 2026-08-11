@@ -35,7 +35,7 @@ async function coreSandbox(overrides) {
 
 test('providerLabel resolves the real i18n label, not a raw fallback key', async () => {
   const window = await coreSandbox({});
-  assert.equal(window.TradeJournalChatDockCore.providerLabel('openai'), 'OpenAI');
+  assert.equal(window.TradeJournalChatDockCore.providerLabel('openai'), 'ChatGPT');
 });
 
 test('A6 OFF (default): sending a message never touches TradeJournalMentalHealthStore and goes through /api/ai/chat instead', async () => {

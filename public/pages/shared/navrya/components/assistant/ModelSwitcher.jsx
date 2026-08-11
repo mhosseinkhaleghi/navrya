@@ -7,7 +7,7 @@ import { useAssistantMotion, TRAIT_ANIM } from './motion.js';
    section). Black-on-white marks (OpenAI, Kimi) are knocked out to white so they read on the
    dark dock; the two already-coloured marks (Anthropic's sunburst, DeepSeek's whale) keep
    their own brand colour - `model.knockout` picks which. */
-function ModelGlyph({ model, size = 18, animate = false, muted = false, style, ...rest }) {
+export function ModelGlyph({ model, size = 18, animate = false, muted = false, style, ...rest }) {
   if (!model) return null;
   const filters = [];
   if (model.knockout) filters.push('brightness(0) invert(1)');

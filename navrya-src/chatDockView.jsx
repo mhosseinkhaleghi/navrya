@@ -3,14 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { ChatDock } from '../public/pages/shared/navrya/components/assistant/ChatDock.jsx';
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
 
-// Real provider marks, supplied by the project owner and stored under
-// public/pages/shared/navrya/assets/models/{id}.webp (see ARCHITECTURE.md's Global AI Assistant
-// section). Black-on-white marks (OpenAI, Kimi) are knocked out to white so they read on the
-// ink dock; the two already-coloured marks (Anthropic, DeepSeek) keep their own brand colour.
-const ENGINE_TINT = { openai: '#68C8FF', anthropic: '#D6AF6B', kimi: '#66C94E', deepseek: '#A965D8' };
-const ENGINE_TRAIT = { openai: 'spin', anthropic: 'tilt', kimi: 'wink', deepseek: 'dive' };
-const ENGINE_KNOCKOUT = { openai: true, anthropic: false, kimi: true, deepseek: false };
-
 function fieldLabel(tradeI18n, key) { return tradeI18n ? tradeI18n.t(key) : key; }
 function fieldNumber(tradeI18n, value) { return tradeI18n ? tradeI18n.number(value, { maximumFractionDigits: 4 }) : String(value); }
 
@@ -50,9 +42,20 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
   const rtl = i18n.direction() === 'rtl';
 
   const models = React.useMemo(() => settingsStore.providerCatalog().map((p) => ({
-    id: p.id, label: core.providerLabel(p.id), tint: ENGINE_TINT[p.id] || 'var(--char-accent)',
-    trait: ENGINE_TRAIT[p.id] || 'spin', knockout: !!ENGINE_KNOCKOUT[p.id]
+    id: p.id, label: core.providerLabel(p.id), trait: p.trait, knockout: !!p.knockout
   })), []);
+
+  // Keeps this dock and the AI Assistant screen's tab strip pointed at the same engine even
+  // though they are two separate React roots (README: "one selection, two surfaces") - whichever
+  // one changes the provider broadcasts it, both listen and re-sync their own local state.
+  React.useEffect(() => {
+    function onSettingsChanged(event) {
+      const next = (event.detail && event.detail.provider) || settingsStore.activeProvider();
+      setProviderId(next);
+    }
+    window.addEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
+    return () => window.removeEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
+  }, []);
 
   function onModelChange(nextProvider) {
     setProviderId(nextProvider);

@@ -12,9 +12,9 @@
     try {
       var raw = localStorage.getItem(KEY);
       var parsed = raw ? JSON.parse(raw) : {};
-      return { daily: parsed.daily || {}, monthly: parsed.monthly || {} };
+      return { daily: parsed.daily || {}, monthly: parsed.monthly || {}, lifetime: parsed.lifetime || emptyBucket() };
     } catch (_) {
-      return { daily: {}, monthly: {} };
+      return { daily: {}, monthly: {}, lifetime: emptyBucket() };
     }
   }
 
@@ -51,6 +51,7 @@
     state.monthly[monthKey] = state.monthly[monthKey] || emptyBucket();
     addInto(state.daily[dayKey], provider, usage);
     addInto(state.monthly[monthKey], provider, usage);
+    addInto(state.lifetime, provider, usage);
     write(state);
     reportToServer(provider, usage, entry.source);
   }
@@ -73,11 +74,15 @@
 
   function todayUsage() { return load().daily[today()] || emptyBucket(); }
   function thisMonth() { return load().monthly[thisMonthKey()] || emptyBucket(); }
+  function lifetime() { return load().lifetime; }
 
-  function remaining() {
-    var budget = settingsStore ? settingsStore.settings().monthlyTokenBudget : null;
+  // Per-provider now (each engine keeps its own budget) - was a single workspace-wide budget
+  // compared against the whole month's total across every provider combined.
+  function remaining(provider) {
+    var budget = settingsStore ? settingsStore.settings().budgetByProvider[provider] : null;
     if (budget == null) return null;
-    return budget - thisMonth().totalTokens;
+    var spent = (thisMonth().byProvider[provider] || { totalTokens: 0 }).totalTokens;
+    return budget - spent;
   }
 
   // Observes usage from the three existing AI clients WITHOUT editing them: loads after
@@ -103,5 +108,5 @@
   decorate('TradeJournalStrategyEducationAI', ['chat', 'summarize', 'proposeFromEvent']);
   decorate('TradeJournalMentalHealthAI', ['chat', 'educationCard']);
 
-  window.TradeJournalAIUsage = { record: record, today: todayUsage, thisMonth: thisMonth, remaining: remaining };
+  window.TradeJournalAIUsage = { record: record, today: todayUsage, thisMonth: thisMonth, lifetime: lifetime, remaining: remaining };
 }());

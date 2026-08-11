@@ -5,20 +5,36 @@
 
   // BYO API keys are in-memory only for the session by default (never in localStorage) -
   // opt-in persistence is the only path that writes them anywhere, and it writes to the
-  // separate BYOK_KEY, never into the settings object itself.
+  // separate BYOK_KEY, never into the settings object itself. Persistence is now a per-provider
+  // choice (persistApiKeyByProvider), matching the AI Assistant screen's per-engine REMEMBER
+  // toggle - remembering ChatGPT's key must never also remember Claude's.
   var sessionKeys = {};
 
+  // trait/knockout are ModelGlyph's own presentation hints (idle-loop animation, black-on-white
+  // knockout-to-parchment) - kept on the one canonical catalog entry per engine so chatDockView.jsx
+  // and aiAssistantView.jsx read the exact same values instead of each keeping its own copy.
   var PROVIDER_CATALOG = [
-    { id: 'openai', label: 'OpenAI', models: ['gpt-5.6', 'gpt-4.1', 'gpt-4o'], supportsVoice: true },
-    { id: 'anthropic', label: 'Claude', models: ['claude-sonnet-4-5', 'claude-opus-4-1'], supportsVoice: false },
-    { id: 'kimi', label: 'Kimi', models: ['moonshot-v1-8k', 'moonshot-v1-32k'], supportsVoice: false },
-    { id: 'deepseek', label: 'DeepSeek', models: ['deepseek-chat', 'deepseek-reasoner'], supportsVoice: false }
+    { id: 'openai', label: 'OpenAI', endpoint: 'api.openai.com', models: ['gpt-5.6', 'gpt-4.1', 'gpt-4o'], supportsVoice: true, trait: 'spin', knockout: true },
+    { id: 'anthropic', label: 'Claude', endpoint: 'api.anthropic.com', models: ['claude-sonnet-4-5', 'claude-opus-4-1'], supportsVoice: false, trait: 'tilt', knockout: false },
+    { id: 'kimi', label: 'Kimi', endpoint: 'api.moonshot.cn', models: ['moonshot-v1-8k', 'moonshot-v1-32k'], supportsVoice: false, trait: 'wink', knockout: true },
+    { id: 'deepseek', label: 'DeepSeek', endpoint: 'api.deepseek.com', models: ['deepseek-chat', 'deepseek-reasoner'], supportsVoice: false, trait: 'dive', knockout: false }
   ];
 
+  function perProviderMap(fill) {
+    var map = {};
+    PROVIDER_CATALOG.forEach(function (p) { map[p.id] = typeof fill === 'function' ? fill(p) : fill; });
+    return map;
+  }
+
   function defaults() {
-    var modelByProvider = {};
-    PROVIDER_CATALOG.forEach(function (p) { modelByProvider[p.id] = p.models[0]; });
-    return { provider: 'openai', modelByProvider: modelByProvider, persistApiKey: false, monthlyTokenBudget: null, therapistModeDefault: false };
+    return {
+      provider: 'openai',
+      modelByProvider: perProviderMap(function (p) { return p.models[0]; }),
+      voiceByProvider: perProviderMap(function (p) { return !!p.supportsVoice; }),
+      persistApiKeyByProvider: perProviderMap(false),
+      budgetByProvider: perProviderMap(null),
+      therapistModeDefault: false
+    };
   }
 
   function load() {
@@ -26,20 +42,42 @@
       var raw = localStorage.getItem(KEY);
       var parsed = raw ? JSON.parse(raw) : {};
       var base = defaults();
-      return Object.assign({}, base, parsed, { modelByProvider: Object.assign({}, base.modelByProvider, parsed.modelByProvider || {}) });
+      return Object.assign({}, base, parsed, {
+        modelByProvider: Object.assign({}, base.modelByProvider, parsed.modelByProvider || {}),
+        voiceByProvider: Object.assign({}, base.voiceByProvider, parsed.voiceByProvider || {}),
+        persistApiKeyByProvider: Object.assign({}, base.persistApiKeyByProvider, parsed.persistApiKeyByProvider || {}),
+        budgetByProvider: Object.assign({}, base.budgetByProvider, parsed.budgetByProvider || {})
+      });
     } catch (_) {
       return defaults();
     }
   }
 
-  function write(value) { localStorage.setItem(KEY, JSON.stringify(value)); return value; }
+  // Lets every mounted surface that reads "the current engine" (the ChatDock's own switcher, the
+  // AI Assistant screen's tab strip) stay in sync without a shared React tree - mirrors
+  // ai-chat-history-store.js's identical changed-event pattern. Guarded: this file is also
+  // executed headless via vm.runInNewContext in tests, where window.dispatchEvent/CustomEvent
+  // don't exist - a no-op there is correct, not a bug to work around.
+  function notify(detail) {
+    if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('tradejournal:ai-settings-changed', { detail: detail }));
+    }
+  }
+
+  function write(value) {
+    localStorage.setItem(KEY, JSON.stringify(value));
+    notify(value);
+    return value;
+  }
 
   function settings() { return load(); }
 
   function saveSettings(patch) {
     var current = load();
     var next = Object.assign({}, current, patch || {});
-    if (patch && patch.modelByProvider) next.modelByProvider = Object.assign({}, current.modelByProvider, patch.modelByProvider);
+    ['modelByProvider', 'voiceByProvider', 'persistApiKeyByProvider', 'budgetByProvider'].forEach(function (field) {
+      if (patch && patch[field]) next[field] = Object.assign({}, current[field], patch[field]);
+    });
     return write(next);
   }
 
@@ -49,23 +87,28 @@
   }
   function writeByok(value) { localStorage.setItem(BYOK_KEY, JSON.stringify(value)); }
 
-  // Restore persisted keys into memory once, at load time, only if the user had already
-  // opted in on a previous visit - never read implicitly otherwise.
+  // Restore persisted keys into memory once, at load time, only for providers the user had
+  // already opted into remembering on a previous visit - never read implicitly otherwise.
   (function restorePersisted() {
-    if (!settings().persistApiKey) return;
+    var remember = settings().persistApiKeyByProvider;
     var byok = loadByok();
-    Object.keys(byok).forEach(function (provider) { sessionKeys[provider] = byok[provider]; });
+    Object.keys(byok).forEach(function (provider) { if (remember[provider]) sessionKeys[provider] = byok[provider]; });
   }());
 
   function getKey(provider) { return sessionKeys[provider] || ''; }
 
   function setKey(provider, value) {
     sessionKeys[provider] = value || '';
-    if (settings().persistApiKey) {
+    if (settings().persistApiKeyByProvider[provider]) {
       var byok = loadByok();
       byok[provider] = value || '';
       writeByok(byok);
     }
+    // The key itself never lives in the persisted settings object (see the file-top comment), so
+    // it has no natural write() call to piggyback its change-notification on - notify by hand, so
+    // a controlled key TextField re-renders on every keystroke exactly like every other
+    // per-provider field here.
+    notify(settings());
   }
 
   function clearKey(provider) {
@@ -75,12 +118,29 @@
     writeByok(byok);
   }
 
-  // Atomic toggle: flips the persisted setting AND immediately syncs the current
-  // in-memory keys into (or out of) BYOK_KEY, so the two never drift out of sync.
-  function setPersistApiKey(value) {
-    saveSettings({ persistApiKey: !!value });
-    if (value) writeByok(Object.assign({}, loadByok(), sessionKeys));
-    else writeByok({});
+  // Atomic per-provider toggle: flips that provider's persisted flag AND immediately syncs its
+  // current in-memory key into (or out of) BYOK_KEY, so the two never drift out of sync -
+  // mirrors the previous global setPersistApiKey()'s exact guarantee, just scoped to one engine.
+  function setPersistApiKey(provider, value) {
+    var patch = { persistApiKeyByProvider: {} };
+    patch.persistApiKeyByProvider[provider] = !!value;
+    saveSettings(patch);
+    var byok = loadByok();
+    if (value) byok[provider] = sessionKeys[provider] || '';
+    else delete byok[provider];
+    writeByok(byok);
+  }
+
+  function setVoice(provider, value) {
+    var patch = { voiceByProvider: {} };
+    patch.voiceByProvider[provider] = !!value;
+    saveSettings(patch);
+  }
+
+  function setBudget(provider, value) {
+    var patch = { budgetByProvider: {} };
+    patch.budgetByProvider[provider] = value === null || value === undefined || value === '' ? null : Number(value);
+    saveSettings(patch);
   }
 
   function providerCatalog() { return PROVIDER_CATALOG.map(function (p) { return Object.assign({}, p, { models: p.models.slice() }); }); }
@@ -94,7 +154,8 @@
 
   window.TradeJournalAISettingsStore = {
     settings: settings, saveSettings: saveSettings,
-    getKey: getKey, setKey: setKey, clearKey: clearKey, setPersistApiKey: setPersistApiKey,
+    getKey: getKey, setKey: setKey, clearKey: clearKey,
+    setPersistApiKey: setPersistApiKey, setVoice: setVoice, setBudget: setBudget,
     providerCatalog: providerCatalog, activeProvider: activeProvider, activeModel: activeModel
   };
 }());

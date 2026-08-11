@@ -1,82 +1,91 @@
 (function () {
   'use strict';
-  // History for the global AI assistant dock (chat-dock-core.js), which previously had no
-  // persistence at all - the transcript lived only in chatDockView.jsx's React state and was
-  // lost on every close/reload. Deliberately much smaller than mental-health-store.js's sync
-  // block (no offline migrate-or-adopt flag, no per-field merge) because this is a single
-  // ever-growing, append-only log with no conflicting edits possible - "union of local and
-  // server messages, deduped by id" is a correct merge for that shape, unlike a document with
-  // independently-editable fields.
-  var KEY = 'tradejournal:ai-chat-history:v1';
+  // History for the global AI assistant dock (chat-dock-core.js) AND the AI Assistant screen's
+  // per-engine "Chat history" module - each engine keeps its own list of titled conversation
+  // cards (not one flat cross-engine message log). v2 replaces the v1 shape (a single
+  // ever-growing { role, content } log with no engine or conversation boundary at all) -
+  // deliberately not migrated: the shapes are fundamentally different (one flat log vs many
+  // titled per-engine threads) and v1's raw log was never itself a resumable unit the user could
+  // recognise, so a one-time reset here costs nothing real. No server sync: no server route for
+  // this ever existed (the old v1 sync calls always 404'd silently), so this stays local-only,
+  // same as ai-settings-store.js/ai-usage-store.js.
+  var KEY = 'tradejournal:ai-chat-history:v2';
 
   function uid() { return 'aichat-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9); }
-  function now() { return new Date().toISOString(); }
+  function today() { return new Date().toISOString().slice(0, 10); }
 
   function load() {
     try {
       var raw = localStorage.getItem(KEY);
-      var messages = raw ? JSON.parse(raw) : [];
-      return Array.isArray(messages) ? messages : [];
-    } catch (_) { return []; }
+      var parsed = raw ? JSON.parse(raw) : {};
+      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch (_) { return {}; }
   }
 
-  function writeLocal(messages) {
-    localStorage.setItem(KEY, JSON.stringify(messages));
+  function write(all) {
+    localStorage.setItem(KEY, JSON.stringify(all));
     window.dispatchEvent(new CustomEvent('tradejournal:ai-chat-history-changed'));
-    return messages;
+    return all;
   }
 
-  function currentUserId() {
-    var switcher = window.TradeJournalDevUserSwitcher;
-    return switcher ? switcher.currentUserId() : '';
+  function listFor(provider) {
+    var all = load();
+    return Array.isArray(all[provider]) ? all[provider] : [];
   }
 
-  function syncToServer(messages) {
-    var uidValue = currentUserId();
-    if (!uidValue) return;
-    fetch('/api/sync/ai-chat-history', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uidValue },
-      body: JSON.stringify({ messages: messages })
-    }).catch(function () { /* offline - the local copy stands; next addMessage() retries the whole array */ });
+  function snippetFrom(text) {
+    var s = String(text || '').trim();
+    return s.length > 140 ? s.slice(0, 140) + '…' : s;
+  }
+  function titleFrom(text) {
+    var s = String(text || '').trim();
+    return s.length > 60 ? s.slice(0, 60) + '…' : (s || 'Untitled conversation');
   }
 
-  // Called once per page load (see the bottom of this file) - fetches the server copy and
-  // unions it with whatever is already local, deduped by id, so a message added on one device/
-  // tab is visible after switching to another without ever dropping one added while offline.
-  function reconcileFromServer() {
-    var uidValue = currentUserId();
-    if (!uidValue) return;
-    fetch('/api/sync/ai-chat-history', { headers: { 'x-dev-user-id': uidValue } })
-      .then(function (response) { return response.ok ? response.json() : null; })
-      .then(function (result) {
-        if (!result || !Array.isArray(result.messages)) return;
-        var local = load();
-        var seen = {};
-        var merged = [];
-        local.concat(result.messages).forEach(function (message) {
-          if (message && message.id && !seen[message.id]) { seen[message.id] = true; merged.push(message); }
-        });
-        merged.sort(function (a, b) { return new Date(a.createdAt) - new Date(b.createdAt); });
-        writeLocal(merged);
-      })
-      .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
+  // One dock question + its answer = one new conversation card, prepended - mirrors the design
+  // handoff's interaction contract exactly ("Ask from the ChatDock" appends a new conversation),
+  // not a single growing thread.
+  function addExchange(provider, question, answerText, speakerLabel, tokens) {
+    var all = load();
+    var list = Array.isArray(all[provider]) ? all[provider] : [];
+    var entry = {
+      id: uid(), title: titleFrom(question), snippet: snippetFrom(answerText || question),
+      date: today(), messages: 2, tokens: Math.max(0, Number(tokens) || 0),
+      lines: [{ who: 'TRADER', text: question }, { who: String(speakerLabel || provider).toUpperCase(), text: answerText || '' }]
+    };
+    all[provider] = [entry].concat(list);
+    write(all);
+    return entry;
   }
 
-  function addMessage(role, content) {
-    var messages = load();
-    messages.push({ id: uid(), role: role, content: String(content || ''), createdAt: now() });
-    writeLocal(messages);
-    syncToServer(messages);
-    return messages;
+  // The AI Assistant screen's manual "New conversation" button - an empty draft card, opened
+  // straight away so the trader can see it before anything has been asked yet.
+  function newDraft(provider, systemLine) {
+    var all = load();
+    var list = Array.isArray(all[provider]) ? all[provider] : [];
+    var entry = {
+      id: uid(), title: 'Untitled conversation', snippet: systemLine || '', date: today(), messages: 0, tokens: 0,
+      lines: systemLine ? [{ who: 'NAVRYA', text: systemLine }] : []
+    };
+    all[provider] = [entry].concat(list);
+    write(all);
+    return entry;
   }
 
-  function clear() {
-    writeLocal([]);
-    syncToServer([]);
+  function remove(provider, id) {
+    var all = load();
+    var list = Array.isArray(all[provider]) ? all[provider] : [];
+    all[provider] = list.filter(function (c) { return c.id !== id; });
+    write(all);
   }
 
-  window.setTimeout(reconcileFromServer, 0);
-  window.addEventListener('online', reconcileFromServer);
+  function clear(provider) {
+    var all = load();
+    all[provider] = [];
+    write(all);
+  }
 
-  window.TradeJournalAiChatHistoryStore = { load: load, addMessage: addMessage, clear: clear };
+  window.TradeJournalAiChatHistoryStore = {
+    load: load, listFor: listFor, addExchange: addExchange, newDraft: newDraft, remove: remove, clear: clear
+  };
 }());

@@ -20,12 +20,17 @@ async function settingsSandbox(localStorage) {
   return sandbox.window.TradeJournalAISettingsStore;
 }
 
-test('defaults to openai, a per-provider default model, and no persisted key', async () => {
+test('defaults to openai, a per-provider default model, and no persisted key for any provider', async () => {
   const store = await settingsSandbox();
   const settings = store.settings();
   assert.equal(settings.provider, 'openai');
-  assert.equal(settings.persistApiKey, false);
-  assert.equal(settings.monthlyTokenBudget, null);
+  // Objects built inside the vm sandbox have a different realm's Object.prototype, so compare
+  // field-by-field rather than via assert.deepEqual (mirrors ai-usage-store.test.mjs's identical
+  // cross-realm caveat).
+  ['openai', 'anthropic', 'kimi', 'deepseek'].forEach((id) => {
+    assert.equal(settings.persistApiKeyByProvider[id], false, id + ' must default to not remembering its key');
+    assert.equal(settings.budgetByProvider[id], null, id + ' must default to no budget');
+  });
   assert.equal(store.activeModel(), settings.modelByProvider.openai);
 });
 
@@ -38,34 +43,37 @@ test('A0: a BYO API key is in-memory-only by default - it never reaches localSto
   assert.equal(localStorage.getItem('tradejournal:ai-settings:v1'), null, 'the settings object itself never carries the raw key either');
 });
 
-test('turning persistApiKey on writes the current in-memory keys to the separate BYOK key, and off clears it', async () => {
+test('turning persistApiKey on for one provider writes only that provider\'s in-memory key to the separate BYOK key, and off clears it - other providers are unaffected', async () => {
   const localStorage = memoryStorage();
   const store = await settingsSandbox(localStorage);
   store.setKey('anthropic', 'claude-key-1');
-  store.setPersistApiKey(true);
+  store.setKey('openai', 'gpt-key-1');
+  store.setPersistApiKey('anthropic', true);
   const persisted = JSON.parse(localStorage.getItem('tradejournal:ai-byok:v1'));
   assert.equal(persisted.anthropic, 'claude-key-1');
-  assert.equal(JSON.parse(localStorage.getItem('tradejournal:ai-settings:v1')).persistApiKey, true);
+  assert.equal(persisted.openai, undefined, 'openai was never opted in, so its key must never reach storage');
+  assert.equal(JSON.parse(localStorage.getItem('tradejournal:ai-settings:v1')).persistApiKeyByProvider.anthropic, true);
 
   store.setKey('anthropic', 'claude-key-2');
   assert.equal(JSON.parse(localStorage.getItem('tradejournal:ai-byok:v1')).anthropic, 'claude-key-2', 'once opted in, further edits keep syncing to storage');
 
-  store.setPersistApiKey(false);
-  assert.deepEqual(JSON.parse(localStorage.getItem('tradejournal:ai-byok:v1')), {}, 'turning persistence off clears the stored keys, not just the flag');
+  store.setPersistApiKey('anthropic', false);
+  assert.deepEqual(JSON.parse(localStorage.getItem('tradejournal:ai-byok:v1')), {}, 'turning persistence off clears that provider\'s stored key, not just the flag');
   assert.equal(store.getKey('anthropic'), 'claude-key-2', 'the in-memory session key survives even though storage was cleared');
 });
 
-test('a fresh page load restores persisted keys into memory only when persistApiKey was already on', async () => {
+test('a fresh page load restores a persisted key into memory only for the provider whose persistApiKeyByProvider flag was already on', async () => {
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:ai-settings:v1', JSON.stringify({ provider: 'openai', persistApiKey: true }));
-  localStorage.setItem('tradejournal:ai-byok:v1', JSON.stringify({ openai: 'restored-key' }));
+  localStorage.setItem('tradejournal:ai-settings:v1', JSON.stringify({ provider: 'openai', persistApiKeyByProvider: { openai: true, anthropic: false } }));
+  localStorage.setItem('tradejournal:ai-byok:v1', JSON.stringify({ openai: 'restored-key', anthropic: 'stale-key' }));
   const store = await settingsSandbox(localStorage);
   assert.equal(store.getKey('openai'), 'restored-key');
+  assert.equal(store.getKey('anthropic'), '', 'anthropic was never opted in, so nothing is implicitly read back for it');
 });
 
-test('a fresh page load never restores keys when persistApiKey is off, even if stale data is present in storage', async () => {
+test('a fresh page load never restores a key when that provider\'s persistApiKeyByProvider flag is off, even if stale data is present in storage', async () => {
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:ai-settings:v1', JSON.stringify({ provider: 'openai', persistApiKey: false }));
+  localStorage.setItem('tradejournal:ai-settings:v1', JSON.stringify({ provider: 'openai', persistApiKeyByProvider: { openai: false } }));
   localStorage.setItem('tradejournal:ai-byok:v1', JSON.stringify({ openai: 'stale-key' }));
   const store = await settingsSandbox(localStorage);
   assert.equal(store.getKey('openai'), '', 'nothing is implicitly read back once persistence is off');
@@ -75,7 +83,7 @@ test('clearKey removes a key from both memory and storage', async () => {
   const localStorage = memoryStorage();
   const store = await settingsSandbox(localStorage);
   store.setKey('kimi', 'kimi-key');
-  store.setPersistApiKey(true);
+  store.setPersistApiKey('kimi', true);
   store.clearKey('kimi');
   assert.equal(store.getKey('kimi'), '');
   assert.equal(JSON.parse(localStorage.getItem('tradejournal:ai-byok:v1')).kimi, undefined);
