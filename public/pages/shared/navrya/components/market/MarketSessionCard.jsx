@@ -60,7 +60,7 @@ export function MarketSessionCard({
         }}>{countdown || m.hours}</span>
       </div>
       <img
-        src={assetUrl('assets/icons/landmark-' + m.landmark + '.png')} alt=""
+        src={assetUrl('assets/icons/landmark-' + m.landmark + '.webp')} alt=""
         style={{ width: 26, height: 36, objectFit: 'contain', opacity: dim ? .35 : .95, flex: 'none' }}
       />
     </div>

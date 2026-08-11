@@ -43,7 +43,7 @@ export function SessionCard({
         borderBottom: compact ? '1px solid var(--border-hairline)' : 0
       }}>
         <img
-          src={thumbnail || assetUrl('assets/sessions/chart-session-london.png')} alt=""
+          src={thumbnail || assetUrl('assets/sessions/chart-session-london.webp')} alt=""
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
         />
         {edition && (

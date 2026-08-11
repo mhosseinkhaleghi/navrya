@@ -51,7 +51,7 @@ function CollapsedRail({ character, items, activeId, onNavigate, progress }) {
             position: 'absolute', inset: 3, borderRadius: '50%', background: 'var(--surface-card)',
             border: '1px solid var(--border-hairline)'
           }}></div>
-          <img src={assetUrl('assets/icons/reward-chest-' + character + '.png')} alt=""
+          <img src={assetUrl('assets/icons/reward-chest-' + character + '.webp')} alt=""
             style={{ position: 'relative', width: 30, height: 30, objectFit: 'contain' }} />
         </div>
         <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--char-accent)' }}>{progress}%</span>

@@ -18,7 +18,7 @@ export function RewardCard({
       style={{ height, background: 'color-mix(in srgb, var(--char-active-surface) 30%, var(--surface-card))', ...style }} {...rest}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: height - 2, padding: '0 10px' }}>
         <img
-          src={assetUrl('assets/icons/reward-chest-' + character + '.png')} alt=""
+          src={assetUrl('assets/icons/reward-chest-' + character + '.webp')} alt=""
           style={{ width: 42, height: 42, objectFit: 'contain', flex: 'none' }}
         />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>

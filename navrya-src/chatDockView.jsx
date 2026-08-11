@@ -4,7 +4,7 @@ import { ChatDock } from '../public/pages/shared/navrya/components/assistant/Cha
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
 
 // Real provider marks, supplied by the project owner and stored under
-// public/pages/shared/navrya/assets/models/{id}.png (see ARCHITECTURE.md's Global AI Assistant
+// public/pages/shared/navrya/assets/models/{id}.webp (see ARCHITECTURE.md's Global AI Assistant
 // section). Black-on-white marks (OpenAI, Kimi) are knocked out to white so they read on the
 // ink dock; the two already-coloured marks (Anthropic, DeepSeek) keep their own brand colour.
 const ENGINE_TINT = { openai: '#68C8FF', anthropic: '#D6AF6B', kimi: '#66C94E', deepseek: '#A965D8' };

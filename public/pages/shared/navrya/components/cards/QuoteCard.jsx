@@ -24,7 +24,7 @@ export function QuoteCard({ character = 'hunter', quote, height = 96, style, ...
           whiteSpace: 'pre-line', textWrap: 'pretty'
         }}>{text}</p>
         <img
-          src={assetUrl('assets/icons/quote-ornament-' + character + '.png')} alt=""
+          src={assetUrl('assets/icons/quote-ornament-' + character + '.webp')} alt=""
           style={{ width: 34, height: 34, objectFit: 'contain', opacity: .9, flex: 'none' }}
         />
       </div>

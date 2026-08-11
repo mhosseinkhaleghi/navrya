@@ -168,7 +168,7 @@
   }
   function normalize(session){
     session.status=session.status||(session.closedAt?'closed':'open'); session.updateIntervalMinutes=Number(session.updateIntervalMinutes||session.loop||30); session.gracePeriodMinutes=Number(session.gracePeriodMinutes||session.grace||5); session.activityLog=session.activityLog||[];
-    if(!session.entries){ session.entries=(session.charts||[]).map(function(chart){return {id:chart.id||id('entry'),type:'chart',createdAt:chart.createdAt||session.startedAt||Date.now(),preview:chart.preview||'assets/chart-main.png',timeframe:chart.timeframe||session.timeframe||'5m',market:chart.market||session.market||'London',note:chart.note||'',scenarios:chart.scenarios||[]};}); }
+    if(!session.entries){ session.entries=(session.charts||[]).map(function(chart){return {id:chart.id||id('entry'),type:'chart',createdAt:chart.createdAt||session.startedAt||Date.now(),preview:chart.preview||'assets/chart-main.webp',timeframe:chart.timeframe||session.timeframe||'5m',market:chart.market||session.market||'London',note:chart.note||'',scenarios:chart.scenarios||[]};}); }
     session.entries.forEach(function(entry){
       entry.scenarios=entry.scenarios||[]; entry.createdAt=entry.createdAt||Date.now(); entry.type=entry.type||'chart';
       entry.scenarios.forEach(function(s){

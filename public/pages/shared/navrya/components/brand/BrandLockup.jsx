@@ -22,7 +22,7 @@ export function BrandLockup({
       {...rest}
     >
       <img
-        src={assetUrl('assets/logo/navrya-mark-' + character + '.png')} alt="NAVRYA"
+        src={assetUrl('assets/logo/navrya-mark-' + character + '.webp')} alt="NAVRYA"
         style={{ width: markSize, height: 'auto', display: 'block', flex: 'none' }}
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: vertical ? 6 : 2, alignItems: vertical ? 'center' : 'flex-start' }}>

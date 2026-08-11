@@ -18,7 +18,7 @@ export function BrandStrip({
       {...rest}
     >
       <img
-        src={assetUrl('assets/textures/atmosphere-' + character + '.png')} alt=""
+        src={assetUrl('assets/textures/atmosphere-' + character + '.webp')} alt=""
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }}
       />
       <span aria-hidden="true" style={{
@@ -27,7 +27,7 @@ export function BrandStrip({
       }}></span>
       {collapsed ? (
         <img
-          src={assetUrl('assets/logo/navrya-mark-' + character + '.png')} alt="NAVRYA"
+          src={assetUrl('assets/logo/navrya-mark-' + character + '.webp')} alt="NAVRYA"
           style={{ position: 'relative', width: 40, height: 'auto' }}
         />
       ) : (
@@ -35,7 +35,7 @@ export function BrandStrip({
           <BrandLockup character={character} orientation="horizontal" markSize={40} wordmarkSize={21} style={{ position: 'relative', gap: 10 }} />
           {showInsignia && (
             <img
-              src={assetUrl('assets/crests/insignia-' + character + '.png')} alt=""
+              src={assetUrl('assets/crests/insignia-' + character + '.webp')} alt=""
               style={{ position: 'relative', width: 52, height: 52, objectFit: 'contain' }}
             />
           )}

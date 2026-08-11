@@ -19,7 +19,7 @@ export function RankCrest({
       alignItems: 'center', gap: 14, ...style
     }} {...rest}>
       <img
-        src={assetUrl('assets/crests/crest-' + character + '.png')} alt=""
+        src={assetUrl('assets/crests/crest-' + character + '.webp')} alt=""
         style={{ width: size, height: size, objectFit: 'contain', flex: 'none' }}
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, textAlign: layout === 'row' ? 'left' : 'center' }}>

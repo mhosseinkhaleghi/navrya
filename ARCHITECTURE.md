@@ -563,22 +563,22 @@ const themes = {
   hunter: {
     accent: '#79df59',
     rgb: '121,223,89',
-    backdrop: 'assets/card-stag-v2.png'
+    backdrop: 'assets/card-stag-v2.webp'
   },
   engineer: {
     accent: '#398cff',
     rgb: '57,140,255',
-    backdrop: 'assets/engineer-card-v1.png'
+    backdrop: 'assets/engineer-card-v1.webp'
   },
   commander: {
     accent: '#ff5f5e',
     rgb: '255,95,94',
-    backdrop: 'assets/commander-card-v1.png'
+    backdrop: 'assets/commander-card-v1.webp'
   },
   sage: {
     accent: '#c362ff',
     rgb: '195,98,255',
-    backdrop: 'assets/sage-card-v1.png'
+    backdrop: 'assets/sage-card-v1.webp'
   }
 };
 ```
@@ -604,7 +604,7 @@ Current principal assets:
 - Engineer: engineer hero, menu-top, sidebar, quote, card, and main chart art.
 - Commander: commander hero/card/sidebar, charts, plus retained Hunter/forest source assets.
 - Sage: sage hero, menu-top, quote, card, and main chart art.
-- Chooser: four character-card images and `welcome-mountains-v1.png`.
+- Chooser: four character-card images and `welcome-mountains-v1.webp`.
 
 When adding a character-sensitive background, add a correctly named equivalent to every character asset folder and then map it in `panel-system.js` or character CSS. Do not hardcode one character's directory into shared code.
 
@@ -813,7 +813,7 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   - **The dock is mounted once per character page, alongside the header/sidebar React roots**, in `character-app.jsx`'s `mount()` - unconditional, not gated behind `sessionsAdapter.resetOnce()` like the session-scoped roots, since it holds no session data of its own. Its input pill carries `data-navrya-chat-dock`, the attribute `trade-ui.js`'s `ensureGlobalUi()` looks for to position the calculator FAB beside it.
   - **Universal process access (`ai-process-registry.js`):** any flow calls `register(processId, {allowlist, isOpen, activeStep, applyValue})` once, at the top of its own open-function. `isOpen()` is a plain DOM-presence check, so no flow needed new open/close event plumbing. Eight flows are registered: Trade Wizard and the emotion-log popup (`trade-ui.js`), pre-session check-in/post-trade reflection/monthly bias checklist (`mental-health-continuous.js`), the mental-health intake wizard (`mental-health-intake.js`), Pattern stage editing (`pattern-registry.js`), and Strategy field editing (`strategy-education.js`). Each `applyValue` uses whatever mutation mechanism that flow already has - a live closure over not-yet-persisted state for the first five, or the flow's own existing `store.applySuggestion` pipeline for intake/pattern/strategy - the dock never builds a second persistence path.
   - **Therapist mode** is an explicit toggle in the dock's button row (a `psychology`-icon `DockButton`), re-initialized from `ai-settings-store.js`'s `therapistModeDefault` on every page load rather than silently staying sticky. **On**, `chat-dock-core.js`'s `sendChat()` appends to the mental-health profile's own chat history and calls `TradeJournalMentalHealthAI.chat()` directly, so its unconditional `checkText()` safety gate still runs first, exactly as it does from the Psychology page's own chat card - a flagged message renders `TradeJournalMentalHealthSafety.renderSafetyCard()`'s real DOM node inside the reply popover (embedded via a ref, not re-implemented in JSX). **Off** (the default), it calls the provider-agnostic `/api/ai/chat` gateway with the current `activeOpenProcess()` and never touches `TradeJournalMentalHealthStore` at all.
-  - **The model quick-switch** (`ModelSwitcher`, four glyph chips next to the add button) selects `ai-settings-store.js`'s active `provider` directly (`openai`/`anthropic`/`kimi`/`deepseek`) - the same catalog `#ai-settings` uses, just one click away instead of a full settings visit. Each engine renders its real mark from `public/pages/shared/navrya/assets/models/{id}.png` (project-owner-supplied); OpenAI's and Kimi's black-on-white marks are knocked out to white (`model.knockout`) so they read on the dark dock, while Anthropic's and DeepSeek's already-coloured marks keep their own brand colour.
+  - **The model quick-switch** (`ModelSwitcher`, four glyph chips next to the add button) selects `ai-settings-store.js`'s active `provider` directly (`openai`/`anthropic`/`kimi`/`deepseek`) - the same catalog `#ai-settings` uses, just one click away instead of a full settings visit. Each engine renders its real mark from `public/pages/shared/navrya/assets/models/{id}.webp` (project-owner-supplied); OpenAI's and Kimi's black-on-white marks are knocked out to white (`model.knockout`) so they read on the dark dock, while Anthropic's and DeepSeek's already-coloured marks keep their own brand colour.
   - **Screenshot-driven trade entry** is explicit and click-initiated (choosing an image via the dock's add button), not auto-detected - consistent with every other AI trigger in the app. It calls `/api/trades/extract-fields` and shows a review card (in the same reply popover, `state="review"`) with Apply/Discard before anything touches the wizard; on Apply it runs the exact same three-call sequence the existing calculator's "Log Trade" button already uses (`store.createDraft` → `applyCalculatedToTrade` → `openWizard`), just fed by extracted values. Emotional content in the accompanying message is seeded onto `trade.emotionLog` before the wizard opens, reusing the wizard's existing pre-seeded emotions step. Unlike the retired build, one image is analyzed immediately on selection rather than queued behind a separate manual "Analyze" click - the new bar has no room for a multi-image attachment strip, and the artifact this UI is based on doesn't show one either.
   - Token usage is recorded from two places: the decorator over the three pre-existing AI clients, and explicit `TradeJournalAIUsage.record()` calls from `chat-dock-core.js`'s own two direct fetches (see section 8's "Usage tracking" note) - both are necessary for the usage totals to be complete.
   - The now-redundant per-page "fill by chat" launcher button in the intake wizard's welcome step was removed (the dock supersedes it); the intake chat surface itself is untouched.

@@ -1,10 +1,10 @@
 (function () {
   const character = window.TradeJournalPanelCharacter || 'hunter';
   const themes = {
-    hunter: { accent: '#79df59', rgb: '121,223,89', backdrop: 'assets/card-stag-v2.png' },
-    engineer: { accent: '#398cff', rgb: '57,140,255', backdrop: 'assets/engineer-card-v1.png' },
-    commander: { accent: '#ff5f5e', rgb: '255,95,94', backdrop: 'assets/commander-card-v1.png' },
-    sage: { accent: '#c362ff', rgb: '195,98,255', backdrop: 'assets/sage-card-v1.png' }
+    hunter: { accent: '#79df59', rgb: '121,223,89', backdrop: 'assets/card-stag-v2.webp' },
+    engineer: { accent: '#398cff', rgb: '57,140,255', backdrop: 'assets/engineer-card-v1.webp' },
+    commander: { accent: '#ff5f5e', rgb: '255,95,94', backdrop: 'assets/commander-card-v1.webp' },
+    sage: { accent: '#c362ff', rgb: '195,98,255', backdrop: 'assets/sage-card-v1.webp' }
   };
   const root = document.documentElement;
   const theme = themes[character] || themes.hunter;

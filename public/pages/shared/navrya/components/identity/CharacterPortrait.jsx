@@ -19,7 +19,7 @@ export function CharacterPortrait({
         border: '1px solid rgba(214,175,107,.35)'
       }}></span>
       <img
-        src={src || assetUrl('assets/portraits/portrait-' + character + '.png')} alt={alt}
+        src={src || assetUrl('assets/portraits/portrait-' + character + '.webp')} alt={alt}
         style={{
           position: 'absolute', inset: Math.round(16 * scale), width: 'calc(100% - ' + Math.round(32 * scale) + 'px)',
           height: 'calc(100% - ' + Math.round(32 * scale) + 'px)', borderRadius: '50%', objectFit: 'cover',
