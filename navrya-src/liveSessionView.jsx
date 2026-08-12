@@ -43,12 +43,18 @@ const copy = {
     noteLabel: 'یادداشت این ورودی', notePlaceholder: 'چه چیزی در این لحظه دیدید؟',
     aiStripTitle: 'تحلیل هوش مصنوعی این ورودی', aiReady: 'تحلیل آماده است', aiNotReady: 'هنوز تحلیل نشده',
     viewAction: 'مشاهده', closeAction: 'بستن', aiDemoSummary: 'تحلیل محلی: ساختار چارت با سناریوهای فعال این سشن مقایسه شد.',
-    scenariosOfEntry: 'سناریوهای این ورودی', scenarioTitleLabel: 'عنوان سناریو', scenarioDescLabel: 'شرح و شواهد',
+    scenariosOfEntry: 'سناریوهای این ورودی', scenarioTitleLabel: 'عنوان سناریو', scenarioDescLabel: 'شرح سناریو',
     scenarioDescPlaceholder: 'چرا این سناریو معتبر است؟', noPatternTag: 'بدون تگ الگو', noPatternChip: 'بدون الگو',
     patternChipPrefix: 'الگو', lockedNoticeTemplate: 'پروتکل پوزیشن قفل است · {threshold}% تکمیل الگو لازم است',
     probabilityLabel: 'درصد احتمال', planTitle: 'نقشه اجرا', sideLong: 'خرید (لانگ)', sideShort: 'فروش (شورت)',
     entryPriceLabel: 'قیمت ورود', stopLabel: 'حد ضرر', targetLabel: 'حد سود',
     invalidationLabel: 'بی‌اعتباری سناریو', invalidationPlaceholder: 'دلایل را با کاما جدا کنید', occurredYes: 'این سناریو اتفاق افتاد',
+    evidenceLabel: 'شواهد سناریو', evidencePlaceholder: 'چه چیزی این سناریو را معتبر می‌کند؟',
+    problemLabel: 'مشکل سناریو', problemPlaceholder: 'نقطه ضعف یا ریسک این سناریو چیست؟',
+    triggerLabel: 'تریگر سناریو', triggerPlaceholder: 'چه اتفاقی باید بیفتد تا وارد شوید؟',
+    patternTagLabel: 'تگ الگو', noPatternOption: 'بدون الگو', completionLabel: 'تکمیل',
+    invalidationNoteLabel: 'یادداشت اختیاری در مورد ابطال', invalidationNotePlaceholder: 'یادداشت اختیاری…',
+    addTagPlaceholder: 'دلیلی بنویسید و افزودن را بزنید…', addTagButton: 'افزودن', removeTagAria: 'حذف برچسب',
     addScenario: 'افزودن سناریو', newScenarioTitle: 'سناریو جدید', deleteScenarioTitle: 'حذف سناریو',
     filteredEmptyText: 'با این فیلتر ورودی‌ای پیدا نشد', clearFilter: 'پاک کردن فیلتر',
     dashboardTitle: 'داشبورد سشن', dashPatterns: 'الگوها', dashScenarios: 'سناریوها', dashPositions: 'پوزیشن‌ها', dashLog: 'لاگ',
@@ -77,12 +83,18 @@ const copy = {
     noteLabel: 'ملاحظة هذا الإدخال', notePlaceholder: 'ماذا رأيت في هذه اللحظة؟',
     aiStripTitle: 'تحليل الذكاء الاصطناعي لهذا الإدخال', aiReady: 'التحليل جاهز', aiNotReady: 'لم يُحلَّل بعد',
     viewAction: 'عرض', closeAction: 'إغلاق', aiDemoSummary: 'تحليل محلي: تمت مقارنة بنية الرسم بالسيناريوهات النشطة لهذه الجلسة.',
-    scenariosOfEntry: 'سيناريوهات هذا الإدخال', scenarioTitleLabel: 'عنوان السيناريو', scenarioDescLabel: 'الشرح والأدلة',
+    scenariosOfEntry: 'سيناريوهات هذا الإدخال', scenarioTitleLabel: 'عنوان السيناريو', scenarioDescLabel: 'وصف السيناريو',
     scenarioDescPlaceholder: 'لماذا هذا السيناريو صالح؟', noPatternTag: 'بدون وسم نمط', noPatternChip: 'بدون نمط',
     patternChipPrefix: 'نمط', lockedNoticeTemplate: 'بروتوكول الصفقة مقفل · يلزم اكتمال {threshold}% من النمط',
     probabilityLabel: 'نسبة الاحتمال', planTitle: 'خطة التنفيذ', sideLong: 'شراء (Long)', sideShort: 'بيع (Short)',
     entryPriceLabel: 'سعر الدخول', stopLabel: 'وقف الخسارة', targetLabel: 'هدف الربح',
     invalidationLabel: 'إبطال السيناريو', invalidationPlaceholder: 'افصل الأسباب بفواصل', occurredYes: 'هذا السيناريو حدث',
+    evidenceLabel: 'أدلة السيناريو', evidencePlaceholder: 'ما الذي يجعل هذا السيناريو صالحاً؟',
+    problemLabel: 'مشكلة السيناريو', problemPlaceholder: 'ما نقطة الضعف أو المخاطرة في هذا السيناريو؟',
+    triggerLabel: 'محفّز السيناريو', triggerPlaceholder: 'ما الذي يجب أن يحدث لتدخل الصفقة؟',
+    patternTagLabel: 'وسم النمط', noPatternOption: 'بدون نمط', completionLabel: 'اكتمال',
+    invalidationNoteLabel: 'ملاحظة اختيارية حول الإبطال', invalidationNotePlaceholder: 'ملاحظة اختيارية…',
+    addTagPlaceholder: 'اكتب سبباً واضغط إضافة…', addTagButton: 'إضافة', removeTagAria: 'حذف الوسم',
     addScenario: 'إضافة سيناريو', newScenarioTitle: 'سيناريو جديد', deleteScenarioTitle: 'حذف السيناريو',
     filteredEmptyText: 'لا يوجد إدخال بهذا الفلتر', clearFilter: 'مسح الفلتر',
     dashboardTitle: 'لوحة الجلسة', dashPatterns: 'الأنماط', dashScenarios: 'السيناريوهات', dashPositions: 'الصفقات', dashLog: 'السجل',
@@ -111,12 +123,18 @@ const copy = {
     noteLabel: 'Note for this entry', notePlaceholder: 'What did you see at this moment?',
     aiStripTitle: 'AI analysis of this entry', aiReady: 'Analysis ready', aiNotReady: 'Not analyzed yet',
     viewAction: 'View', closeAction: 'Close', aiDemoSummary: 'Local analysis: the chart structure was compared with this session’s active scenarios.',
-    scenariosOfEntry: 'Scenarios for this entry', scenarioTitleLabel: 'Scenario title', scenarioDescLabel: 'Description & evidence',
+    scenariosOfEntry: 'Scenarios for this entry', scenarioTitleLabel: 'Scenario title', scenarioDescLabel: 'Scenario description',
     scenarioDescPlaceholder: 'Why is this scenario valid?', noPatternTag: 'No pattern tag', noPatternChip: 'No pattern',
     patternChipPrefix: 'Pattern', lockedNoticeTemplate: 'Position protocol locked · {threshold}% pattern completion required',
     probabilityLabel: 'Probability', planTitle: 'Execution plan', sideLong: 'Buy (Long)', sideShort: 'Sell (Short)',
     entryPriceLabel: 'Entry price', stopLabel: 'Stop loss', targetLabel: 'Take profit',
     invalidationLabel: 'Scenario invalidation', invalidationPlaceholder: 'Separate reasons with commas', occurredYes: 'This scenario occurred',
+    evidenceLabel: 'Scenario evidence', evidencePlaceholder: 'What makes this scenario valid?',
+    problemLabel: 'Scenario issue', problemPlaceholder: 'What is the weak point or risk in this scenario?',
+    triggerLabel: 'Scenario trigger', triggerPlaceholder: 'What has to happen for you to enter?',
+    patternTagLabel: 'Pattern tag', noPatternOption: 'No pattern', completionLabel: 'Complete',
+    invalidationNoteLabel: 'Optional note about the invalidation', invalidationNotePlaceholder: 'Optional note…',
+    addTagPlaceholder: 'Write a reason and press Add…', addTagButton: 'Add', removeTagAria: 'Remove tag',
     addScenario: 'Add scenario', newScenarioTitle: 'New scenario', deleteScenarioTitle: 'Delete scenario',
     filteredEmptyText: 'No entry matches this filter', clearFilter: 'Clear filter',
     dashboardTitle: 'Session dashboard', dashPatterns: 'Patterns', dashScenarios: 'Scenarios', dashPositions: 'Positions', dashLog: 'Log',
@@ -145,12 +163,18 @@ const copy = {
     noteLabel: 'Nota de esta entrada', notePlaceholder: '¿Qué viste en este momento?',
     aiStripTitle: 'Análisis de IA de esta entrada', aiReady: 'Análisis listo', aiNotReady: 'Aún sin analizar',
     viewAction: 'Ver', closeAction: 'Cerrar', aiDemoSummary: 'Análisis local: la estructura del gráfico se comparó con los escenarios activos de esta sesión.',
-    scenariosOfEntry: 'Escenarios de esta entrada', scenarioTitleLabel: 'Título del escenario', scenarioDescLabel: 'Descripción y evidencias',
+    scenariosOfEntry: 'Escenarios de esta entrada', scenarioTitleLabel: 'Título del escenario', scenarioDescLabel: 'Descripción del escenario',
     scenarioDescPlaceholder: '¿Por qué es válido este escenario?', noPatternTag: 'Sin etiqueta de patrón', noPatternChip: 'Sin patrón',
     patternChipPrefix: 'Patrón', lockedNoticeTemplate: 'Protocolo de posición bloqueado · se requiere {threshold}% del patrón',
     probabilityLabel: 'Probabilidad', planTitle: 'Plan de ejecución', sideLong: 'Compra (Long)', sideShort: 'Venta (Short)',
     entryPriceLabel: 'Precio de entrada', stopLabel: 'Stop loss', targetLabel: 'Take profit',
     invalidationLabel: 'Invalidación del escenario', invalidationPlaceholder: 'Separa las razones con comas', occurredYes: 'Este escenario ocurrió',
+    evidenceLabel: 'Evidencia del escenario', evidencePlaceholder: '¿Qué hace válido este escenario?',
+    problemLabel: 'Problema del escenario', problemPlaceholder: '¿Cuál es el punto débil o riesgo de este escenario?',
+    triggerLabel: 'Disparador del escenario', triggerPlaceholder: '¿Qué debe ocurrir para entrar?',
+    patternTagLabel: 'Etiqueta de patrón', noPatternOption: 'Sin patrón', completionLabel: 'Completado',
+    invalidationNoteLabel: 'Nota opcional sobre la invalidación', invalidationNotePlaceholder: 'Nota opcional…',
+    addTagPlaceholder: 'Escribe un motivo y pulsa Añadir…', addTagButton: 'Añadir', removeTagAria: 'Eliminar etiqueta',
     addScenario: 'Añadir escenario', newScenarioTitle: 'Nuevo escenario', deleteScenarioTitle: 'Eliminar escenario',
     filteredEmptyText: 'Ninguna entrada coincide con este filtro', clearFilter: 'Limpiar filtro',
     dashboardTitle: 'Panel de la sesión', dashPatterns: 'Patrones', dashScenarios: 'Escenarios', dashPositions: 'Posiciones', dashLog: 'Registro',
@@ -223,6 +247,13 @@ function minutesFromStart(session, atMs) {
 function probabilityOf(scenario) {
   const h = scenario.probabilityHistory || [];
   return Number(h.length ? h[h.length - 1].value : 50);
+}
+// Ported from session-workspace-logic.js's completion(s) (the old vanilla workspace) - counts how
+// many of a scenario's real fields are filled in, out of the same 10 tracked there.
+function scenarioCompletion(scenario) {
+  const ep = scenario.executionPlan || {};
+  const fields = [scenario.title, scenario.description, scenario.evidence, scenario.trigger, probabilityOf(scenario) > 0, ep.actionPlan, ep.positionType, (ep.entryPrices || []).length, ep.stopLoss, ep.takeProfit];
+  return Math.round(fields.filter(Boolean).length / fields.length * 100);
 }
 function patternInfo(scenario) {
   const pattern = scenario.pattern;
@@ -426,11 +457,57 @@ function EntryCard({ entry, index, selected, kindMeta, lang, imageUrl, onClick }
   );
 }
 
+function InvalidationTags({ lang, tags, readOnly, onChange }) {
+  const [draft, setDraft] = React.useState('');
+  function addTag() {
+    const value = draft.trim();
+    if (!value) return;
+    if ((tags || []).indexOf(value) === -1) onChange((tags || []).concat([value]));
+    setDraft('');
+  }
+  function removeTag(value) { onChange((tags || []).filter((t) => t !== value)); }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {!!(tags || []).length && (
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {tags.map((tagValue) => (
+            <span key={tagValue} dir="auto" style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 6px 0 10px', borderRadius: 6, fontSize: 11, border: '1px solid color-mix(in srgb, var(--warning) 45%, transparent)', background: 'rgba(255,180,0,.08)', color: 'var(--warning)' }}>
+              {tagValue}
+              {!readOnly && (
+                <button type="button" onClick={() => removeTag(tagValue)} aria-label={tr(lang, 'removeTagAria')} style={{ display: 'grid', placeItems: 'center', width: 16, height: 16, borderRadius: '50%', border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>
+                  <Icon name="close" size={10} />
+                </button>
+              )}
+            </span>
+          ))}
+        </span>
+      )}
+      {!readOnly && (
+        <span style={{ display: 'flex', gap: 6 }}>
+          <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={tr(lang, 'addTagPlaceholder')} dir="auto"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+            style={{ ...inputStyle, flex: 1, height: 32, fontSize: 11 }} />
+          <button type="button" onClick={addTag} style={{ height: 32, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-body)', fontSize: 11 }}>{tr(lang, 'addTagButton')}</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpdate, onDelete, onToggleStage, onSetSide }) {
   const readOnly = session.status === 'closed';
   const prob = probabilityOf(scenario);
   const info = patternInfo(scenario);
   const plan = scenario.executionPlan || {};
+  const completionPct = scenarioCompletion(scenario);
+  const registeredPatterns = window.TradeJournalPatternStore ? window.TradeJournalPatternStore.listForScenarios() : [];
+  function handlePatternChange(patternId) {
+    if (!patternId) { onUpdate({ pattern: null }); return; }
+    const picked = registeredPatterns.find((p) => p.id === patternId);
+    if (!picked) return;
+    const keepDone = scenario.pattern && scenario.pattern.patternTagId === picked.id ? (scenario.pattern.completedStageIds || []) : [];
+    onUpdate({ pattern: { patternTagId: picked.id, name: picked.name, stages: picked.stages, completedStageIds: keepDone, completionThreshold: picked.completionThreshold } });
+  }
   return (
     <div style={{ border: '1px solid var(--border-hairline)', borderRadius: 10, background: 'rgba(11,20,21,.55)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px' }}>
@@ -438,6 +515,7 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
           <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={14} />
         </button>
         <span dir="auto" style={{ fontSize: 12, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scenario.title || tr(lang, 'newScenarioTitle')}</span>
+        <Chip tone="neutral">{tr(lang, 'completionLabel')} {completionPct}%</Chip>
         <Chip tone="success">{prob}%</Chip>
         <Chip tone="neutral">{info.pattern ? tr(lang, 'patternChipPrefix') + ' ' + info.pct + '%' : tr(lang, 'noPatternChip')}</Chip>
         {!readOnly && (
@@ -450,6 +528,15 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
         <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--border-hairline)', paddingTop: 12 }}>
           <TextField label={tr(lang, 'scenarioTitleLabel')} value={scenario.title} onCommit={(v) => onUpdate({ title: v })} />
           <TextAreaField label={tr(lang, 'scenarioDescLabel')} value={scenario.description} placeholder={tr(lang, 'scenarioDescPlaceholder')} onCommit={(v) => onUpdate({ description: v })} />
+          <TextAreaField label={tr(lang, 'evidenceLabel')} value={scenario.evidence} placeholder={tr(lang, 'evidencePlaceholder')} onCommit={(v) => onUpdate({ evidence: v })} />
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={fieldLabelStyle}>{tr(lang, 'patternTagLabel')}</span>
+            <select disabled={readOnly} value={(scenario.pattern && scenario.pattern.patternTagId) || ''} onChange={(e) => handlePatternChange(e.target.value)} style={inputStyle}>
+              <option value="">{tr(lang, 'noPatternOption')}</option>
+              {registeredPatterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -483,6 +570,9 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
               </span>
             )}
           </div>
+
+          <TextAreaField label={tr(lang, 'problemLabel')} value={scenario.problem} placeholder={tr(lang, 'problemPlaceholder')} onCommit={(v) => onUpdate({ problem: v })} />
+          <TextAreaField label={tr(lang, 'triggerLabel')} value={scenario.trigger} placeholder={tr(lang, 'triggerPlaceholder')} onCommit={(v) => onUpdate({ trigger: v })} />
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -523,11 +613,11 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
             </span>
           </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--warning)' }}><Icon name="TriangleAlert" size={12} />{tr(lang, 'invalidationLabel')}</span>
-            <input type="text" defaultValue={(scenario.invalidationTagIds || []).join(', ')} placeholder={tr(lang, 'invalidationPlaceholder')} style={inputStyle}
-              onBlur={(e) => onUpdate({ invalidationTagIds: e.target.value.split(/[,،]/).map((x) => x.trim()).filter(Boolean) })} />
-          </label>
+            <InvalidationTags lang={lang} tags={scenario.invalidationTagIds} readOnly={readOnly} onChange={(tags) => onUpdate({ invalidationTagIds: tags })} />
+            <TextAreaField label={tr(lang, 'invalidationNoteLabel')} value={scenario.invalidationNote} placeholder={tr(lang, 'invalidationNotePlaceholder')} onCommit={(v) => onUpdate({ invalidationNote: v })} />
+          </div>
 
           <button type="button" onClick={() => onUpdate({ occurred: !scenario.occurred })} style={{
             display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', borderRadius: 8, cursor: 'pointer', font: 'var(--type-body)', fontSize: 12,
@@ -643,19 +733,76 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
   );
 }
 
-function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEntry }) {
+function DashboardPatternRow({ lang, x, entryN, readOnly, onSelectEntry, onToggleStage }) {
+  const info = patternInfo(x.scenario);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
+      <button type="button" onClick={() => onSelectEntry(x.entry.id)} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 7, padding: 0, border: 0, background: 'transparent', cursor: 'pointer', font: 'inherit', width: '100%' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+          <span dir="auto" style={{ fontSize: 11, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.scenario.pattern.name || tr(lang, 'noPatternTag')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--char-accent)' }}>{info.pct}%</span>
+        </span>
+        <span style={{ display: 'block', width: '100%', height: 5, borderRadius: 3, background: 'rgba(244,234,215,.08)', overflow: 'hidden' }}>
+          <span style={{ display: 'block', height: '100%', borderRadius: 3, background: 'var(--char-accent)', width: info.pct + '%' }}></span>
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+          <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.scenario.title || tr(lang, 'newScenarioTitle')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'dashEntryPrefix')} {entryN}</span>
+        </span>
+      </button>
+      {info.pattern && !!info.pattern.stages.length && (
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {info.pattern.stages.map((stage) => {
+            const done = (info.pattern.completedStageIds || []).indexOf(stage.id) > -1;
+            return (
+              <button key={stage.id} type="button" disabled={readOnly} onClick={() => onToggleStage(x.entry, x.scenario, stage)} style={{
+                display: 'flex', alignItems: 'center', gap: 5, height: 24, padding: '0 7px', borderRadius: 6, cursor: readOnly ? 'not-allowed' : 'pointer',
+                font: 'var(--type-caption)', fontSize: 10,
+                border: '1px solid ' + (done ? 'color-mix(in srgb, var(--success) 55%, transparent)' : 'var(--border-hairline)'),
+                background: done ? 'rgba(46,204,113,.1)' : 'transparent', color: done ? 'var(--success)' : 'var(--text-dim)'
+              }}>
+                {done ? <Icon name="check" size={11} /> : <span style={{ width: 8, height: 8, borderRadius: '50%', border: '1px solid currentColor', display: 'block' }}></span>}
+                {stage.index} · {stage.label}
+              </button>
+            );
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DashboardScenarioRow({ lang, x, entryN, readOnly, onSelectEntry, onProbabilityChange }) {
+  const prob = probabilityOf(x.scenario);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
+      <button type="button" onClick={() => onSelectEntry(x.entry.id)} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 6, padding: 0, border: 0, background: 'transparent', cursor: 'pointer', font: 'inherit', width: '100%' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+          <span dir="auto" style={{ fontSize: 11, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.scenario.title || tr(lang, 'newScenarioTitle')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--char-accent)' }}>{prob}%</span>
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+          <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.scenario.occurred ? tr(lang, 'occurredYesShort') : tr(lang, 'pendingShort')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'dashEntryPrefix')} {entryN}</span>
+        </span>
+      </button>
+      <input type="range" min="0" max="100" step="5" value={prob} disabled={readOnly}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => onProbabilityChange(x.entry, x.scenario, Number(e.target.value))}
+        style={{ width: '100%', accentColor: 'var(--success)', cursor: readOnly ? 'not-allowed' : 'pointer' }} />
+    </div>
+  );
+}
+
+function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEntry, onToggleStage, onProbabilityChange }) {
+  const readOnly = session.status === 'closed';
   const flat = flatScenarios(session);
-  let rows = [];
-  if (dash === 'patterns') {
-    rows = flat.filter((x) => x.scenario.pattern).map((x) => {
-      const info = patternInfo(x.scenario);
-      return { key: x.scenario.id, title: x.scenario.pattern.name || tr(lang, 'noPatternTag'), value: info.pct, meta: x.scenario.title || tr(lang, 'newScenarioTitle'), entryN: indexById[x.entry.id], onClick: () => onSelectEntry(x.entry.id) };
-    });
-  } else if (dash === 'scenarios') {
-    rows = flat.map((x) => ({ key: x.scenario.id, title: x.scenario.title || tr(lang, 'newScenarioTitle'), value: probabilityOf(x.scenario), meta: x.scenario.occurred ? tr(lang, 'occurredYesShort') : tr(lang, 'pendingShort'), entryN: indexById[x.entry.id], onClick: () => onSelectEntry(x.entry.id) }));
-  } else if (dash === 'positions') {
+  const patternRows = dash === 'patterns' ? flat.filter((x) => x.scenario.pattern) : [];
+  const scenarioRows = dash === 'scenarios' ? flat : [];
+  let positionRows = [];
+  if (dash === 'positions') {
     const tradeStore = window.TradeJournalTradeStore;
-    rows = flat.filter((x) => tradeStore && tradeStore.findBySource(session.id, x.scenario.id)).map((x) => {
+    positionRows = flat.filter((x) => tradeStore && tradeStore.findBySource(session.id, x.scenario.id)).map((x) => {
       const trade = tradeStore.findBySource(session.id, x.scenario.id);
       return { key: x.scenario.id, title: x.scenario.title || tr(lang, 'newScenarioTitle'), value: probabilityOf(x.scenario), meta: statusLabel(trade.status, lang), entryN: indexById[x.entry.id], onClick: () => onSelectEntry(x.entry.id) };
     });
@@ -664,6 +811,7 @@ function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEnt
   // scenario/stage/note/position edit already writes an entry here; this just surfaces it.
   const logRows = dash === 'log' ? (session.activityLog || []).slice().reverse().slice(0, 60) : [];
   const emptyText = { patterns: tr(lang, 'dashEmptyPatterns'), scenarios: tr(lang, 'dashEmptyScenarios'), positions: tr(lang, 'dashEmptyPositions'), log: tr(lang, 'dashEmptyLog') }[dash];
+  const isEmpty = dash === 'log' ? logRows.length === 0 : dash === 'patterns' ? patternRows.length === 0 : dash === 'scenarios' ? scenarioRows.length === 0 : positionRows.length === 0;
   return (
     <Panel variant="base" padding="14px">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -673,18 +821,20 @@ function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEnt
             <button key={id} type="button" onClick={() => onSetDash(id)} style={{ flex: 1, height: 30, borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 11, border: '1px solid ' + (dash === id ? 'var(--char-accent)' : 'transparent'), background: dash === id ? 'var(--char-active-surface)' : 'transparent', color: dash === id ? 'var(--char-accent)' : 'var(--text-dim)' }}>{label}</button>
           ))}
         </div>
-        {dash === 'log' ? (
-          logRows.length === 0 ? (
-            <span style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>{emptyText}</span>
-          ) : logRows.map((entry) => (
+        {isEmpty ? (
+          <span style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>{emptyText}</span>
+        ) : dash === 'log' ? (
+          logRows.map((entry) => (
             <div key={entry.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
               <span dir="auto" style={{ fontSize: 11, color: 'var(--text-primary)' }}>{entry.detail || entry.type}</span>
               <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)' }}>{new Date(entry.loggedAt).toLocaleTimeString(localeCode(lang), { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           ))
-        ) : rows.length === 0 ? (
-          <span style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>{emptyText}</span>
-        ) : rows.map((r) => (
+        ) : dash === 'patterns' ? (
+          patternRows.map((x) => <DashboardPatternRow key={x.scenario.id} lang={lang} x={x} entryN={indexById[x.entry.id]} readOnly={readOnly} onSelectEntry={onSelectEntry} onToggleStage={onToggleStage} />)
+        ) : dash === 'scenarios' ? (
+          scenarioRows.map((x) => <DashboardScenarioRow key={x.scenario.id} lang={lang} x={x} entryN={indexById[x.entry.id]} readOnly={readOnly} onSelectEntry={onSelectEntry} onProbabilityChange={onProbabilityChange} />)
+        ) : positionRows.map((r) => (
           <button key={r.key} type="button" onClick={r.onClick} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)', font: 'inherit' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
               <span dir="auto" style={{ fontSize: 11, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
@@ -1058,7 +1208,8 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           </div>
 
           <div style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <DashboardPanel session={session} lang={lang} dash={dash} onSetDash={setDash} indexById={indexById} onSelectEntry={selectEntry} />
+            <DashboardPanel session={session} lang={lang} dash={dash} onSetDash={setDash} indexById={indexById} onSelectEntry={selectEntry}
+              onToggleStage={toggleStage} onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')} />
             <PrevSummaryPanel session={session} lang={lang} />
             <SimilarSessionsPanel session={session} character={character} lang={lang} />
           </div>
