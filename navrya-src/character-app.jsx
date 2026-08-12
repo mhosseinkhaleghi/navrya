@@ -20,6 +20,7 @@ import { renderPsychology } from './psychologyView.jsx';
 import { renderPatternRegistry } from './patternRegistryView.jsx';
 import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
+import { renderAccountProfile } from './accountProfileView.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -244,6 +245,9 @@ export function mountCharacterApp(character) {
 
   // strategy-education.js's renderList()/renderDetail() defer to this hook when present.
   window.TradeJournalNavryaStrategyEducation = { render: renderStrategyEducation };
+
+  // account-profile-ui.js's renderPage() defers to this hook when present.
+  window.TradeJournalNavryaAccountProfile = { render: renderAccountProfile };
 
   // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
   // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version

@@ -232,6 +232,15 @@
   var state = { tab: 'identity' };
 
   function renderPage() {
+    // navrya-src/accountProfileView.jsx's React redesign defers here, same hook pattern as every
+    // other NAVRYA screen (character-app.jsx registers it) - falls through to the vanilla DOM
+    // page below untouched when the hook isn't present (e.g. a page that hasn't loaded the
+    // NAVRYA bundle).
+    if (window.TradeJournalNavryaAccountProfile && window.TradeJournalNavryaAccountProfile.render) {
+      var reactPage = window.TradeJournalNavryaAccountProfile.render(state.tab);
+      layer.show(reactPage, 'account-profile');
+      return;
+    }
     var page = el('section', 'panel-page account-profile-page');
     page.dir = i18n.direction();
 
