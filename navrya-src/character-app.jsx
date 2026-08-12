@@ -5,6 +5,8 @@ import { CharacterHeader } from '../public/pages/shared/navrya/components/header
 import { SessionLibrary } from '../public/pages/shared/navrya/components/sessions/SessionLibrary.jsx';
 import * as sessionEntryCards from './sessionEntryCardsView.jsx';
 import * as sessionsAdapter from './sessionsAdapter.js';
+import { LiveSessionView } from './liveSessionView.jsx';
+import { openLiveSession, closeLiveSession, getLiveSessionId, getLiveSessionView, subscribeLiveSession } from './liveSessionSignal.js';
 import * as marketAdapter from './marketAdapter.js';
 import { createStore } from './store.js';
 import { CHARACTERS } from './characters.js';
@@ -112,6 +114,11 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
   const now = useClock();
+  // The Live Session screen (navrya-src/liveSessionView.jsx) hides the character header to
+  // reclaim ~320px, per the design handoff - it's a live-session-only override, so it only
+  // applies while the Sessions nav tab is what's actually showing that screen.
+  const liveSessionId = React.useSyncExternalStore(subscribeLiveSession, getLiveSessionId);
+  const showHeader = !(s.activeId === 'sessions' && liveSessionId);
   // "APP UPTIME" is Steam-style playtime: total time the account has ever been online, server-
   // accumulated across every login (routes.profile.mjs's hoursOnlineFor(), fed by admin-
   // heartbeat.js's 45s beat into user_sessions) - not a per-mount session clock. Each character
@@ -128,6 +135,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const marketLabels = { london: t.marketLondon, 'new-york': t.marketNewYork, tokyo: t.marketTokyo, sydney: t.marketSydney };
   const nextSession = marketAdapter.nextSessionCountdown(now);
   const markets = marketAdapter.marketStates(now).map((m) => ({ ...m, cityLabel: marketLabels[m.market] }));
+  if (!showHeader) return null;
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
       <CharacterHeader
@@ -152,10 +160,14 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   );
 }
 
-function SessionsApp({ navryaCharacter, store }) {
+function SessionsApp({ character, navryaCharacter, store }) {
   const s = useStore(store);
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
+  // Live Session (navrya-src/liveSessionView.jsx) replaces the Session Library in place, in this
+  // same root, whenever a session is open - the cross-root signal (liveSessionSignal.js) exists
+  // only so HeaderApp (a separate createRoot tree) can hide the character header at the same time.
+  const liveSessionId = React.useSyncExternalStore(subscribeLiveSession, getLiveSessionId);
   const cards = s.sessions.map((session) => {
     const props = sessionsAdapter.toCardProps(session);
     return {
@@ -164,8 +176,8 @@ function SessionsApp({ navryaCharacter, store }) {
       instrumentLabel: t.instrument, lastUpdateLabel: t.lastUpdate,
       openLabel: t.continueOpen, reportLabel: t.viewReport, repeatLabel: t.repeatCopy, deleteLabel: t.delete,
       thumbnail: s.thumbnails[session.id],
-      onOpen: () => window.TradeJournalWorkspace && window.TradeJournalWorkspace.open(session.id),
-      onReport: () => window.TradeJournalWorkspace && window.TradeJournalWorkspace.openReport(session.id),
+      onOpen: () => openLiveSession(session.id),
+      onReport: () => openLiveSession(session.id, 'report'),
       onRepeat: () => window.TradeJournalWorkspace && window.TradeJournalWorkspace.duplicate(session.id),
       onDelete: () => {
         if (window.confirm(t.deleteConfirm) && window.TradeJournalWorkspace) window.TradeJournalWorkspace.remove(session.id);
@@ -174,19 +186,26 @@ function SessionsApp({ navryaCharacter, store }) {
   });
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
-      <SessionLibrary
-        sessions={cards} onNewSession={store.createSession}
-        title={t.sessionLibraryTitle} subtitle={t.sessionLibrarySubtitle} newSessionLabel={t.newSession}
-        emptyStateProps={{ title: t.emptyTitle, helper: t.emptyHelper }}
-        newSessionDialogProps={{
-          labels: {
-            dialogTitle: t.dialogTitle, createWithoutChart: t.createWithoutChart, cancel: t.cancel,
-            uploadNotice: t.uploadNotice, uploadChart: t.uploadChart, tradingSession: t.tradingSession,
-            primaryTimeframe: t.primaryTimeframe, gregorianDate: t.gregorianDate, jalaliDate: t.jalaliDate,
-            loopInterval: t.loopInterval, graceMinutes: t.graceMinutes
-          }
-        }}
-      />
+      {liveSessionId ? (
+        <LiveSessionView
+          key={liveSessionId} character={character} sessionId={liveSessionId} navActiveId={s.activeId} language={s.language}
+          initialView={getLiveSessionView()} onBack={closeLiveSession}
+        />
+      ) : (
+        <SessionLibrary
+          sessions={cards} onNewSession={store.createSession}
+          title={t.sessionLibraryTitle} subtitle={t.sessionLibrarySubtitle} newSessionLabel={t.newSession}
+          emptyStateProps={{ title: t.emptyTitle, helper: t.emptyHelper }}
+          newSessionDialogProps={{
+            labels: {
+              dialogTitle: t.dialogTitle, createWithoutChart: t.createWithoutChart, cancel: t.cancel,
+              uploadNotice: t.uploadNotice, uploadChart: t.uploadChart, tradingSession: t.tradingSession,
+              primaryTimeframe: t.primaryTimeframe, gregorianDate: t.gregorianDate, jalaliDate: t.jalaliDate,
+              loopInterval: t.loopInterval, graceMinutes: t.graceMinutes
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -247,6 +266,12 @@ export function mountCharacterApp(character) {
     availablePatterns: sessionEntryCards.availablePatterns
   };
 
+  // session-workspace-logic.js's open() defers to this hook when present (see that file's own
+  // open=function(idValue){...} reassignment) - same real find()/save()/log() data every other
+  // TradeJournalWorkspace caller (openReport/reopen/duplicate) already goes through, only the
+  // open-session screen itself is now navrya-src/liveSessionView.jsx instead of hand-built DOM.
+  window.TradeJournalNavryaLiveSession = { open: openLiveSession };
+
   function mount() {
     const sidebarRoot = document.getElementById('navryaSidebarRoot');
     const headerRoot = document.getElementById('navryaHeaderRoot');
@@ -257,7 +282,7 @@ export function mountCharacterApp(character) {
       store.init();
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);
       createRoot(headerRoot).render(<HeaderApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);
-      createRoot(sessionsRoot).render(<SessionsApp navryaCharacter={navryaCharacter} store={store} />);
+      createRoot(sessionsRoot).render(<SessionsApp character={character} navryaCharacter={navryaCharacter} store={store} />);
     });
 
     // The global assistant (replaces the retired global-ai-dock.js floating launcher) - always

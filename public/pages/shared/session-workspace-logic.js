@@ -269,6 +269,18 @@
     const positionRows=Array.from(page.querySelectorAll('.sw-position')),positionScenarios=all.filter(function(s){const ep=s.executionPlan;return ep.positionType||ep.stopLoss||ep.takeProfit;});positionRows.forEach(function(row,index){const s=positionScenarios[index];if(!s)return;const model=patternState(s),unlocked=patternPercent(s)>=model.threshold,rr=riskReward(s),header=row.querySelector('.sw-row-head');if(header){header.append(make('span','sw-protocol '+(unlocked?'open':'locked'),unlocked?text('پروتکل باز','Protocol open'):text('پروتکل قفل','Protocol locked')));if(rr!==null)header.append(make('span','sw-rr','R:R 1:'+rr));}if(!unlocked)row.querySelectorAll('input,button').forEach(function(el){el.disabled=true;});row.dataset.score=String((rr||0)+probability(s)*.01);});if(dash&&positionRows.length)positionRows.sort(function(a,b){return Number(b.dataset.score)-Number(a.dataset.score);}).forEach(function(row){dash.append(row);});
   }
   open=function(idValue){
+    // navrya-src/character-app.jsx registers this hook once the React "Live Session" screen
+    // (navrya-src/liveSessionView.jsx) is mounted - every caller below (openReport/reopen/
+    // duplicate, and TradeJournalWorkspace.open itself) funnels through this same `open`, so
+    // deferring here routes all of them to the new screen without touching those call sites.
+    // Falls through to the vanilla DOM workspace unchanged when the hook isn't present (e.g. a
+    // page that hasn't loaded the NAVRYA bundle).
+    if(window.TradeJournalNavryaLiveSession&&window.TradeJournalNavryaLiveSession.open){
+      activeWorkspaceId=idValue;
+      const viewState=state[idValue];
+      window.TradeJournalNavryaLiveSession.open(idValue,viewState&&viewState.view==='report'?'report':'timeline');
+      return;
+    }
     activeWorkspaceId=idValue;
     buildWorkspace(idValue);
     clearInterval(window.__swTimer);
@@ -293,5 +305,9 @@
   function openReport(idValue){state[idValue]=state[idValue]||{view:'workspace',tab:'patterns',mode:'compact'};state[idValue].view='report';open(idValue);}
   function removeSession(idValue){const items=list().filter(function(item){return item.id!==idValue;});persist(items);if(window.TradeJournalSyncQueue)window.TradeJournalSyncQueue.enqueue('sessions',idValue,null,'delete');if(activeWorkspaceId===idValue)activeWorkspaceId=null;window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed'));returnToLibrary();}
   function duplicateSession(idValue){const source=find(idValue);if(!source)return null;const copy=JSON.parse(JSON.stringify(source));copy.id=id('session');copy.name=(source.name||source.market||'Session')+' · Copy';copy.status='open';copy.startedAt=Date.now();copy.closedAt=null;delete copy.fateSummary;delete copy.previousSessionSummary;copy.entries=(copy.entries||[]).map(function(entry){entry.id=id('entry');entry.sessionId=copy.id;entry.scenarios=(entry.scenarios||[]).map(function(scenario){scenario.id=id('scenario');return scenario;});return entry;});save(copy);open(copy.id);return copy;}
-  window.TradeJournalWorkspace={open:open,openReport:openReport,reopen:reopenSession,remove:removeSession,duplicate:duplicateSession,list:list,find:find,refresh:function(){if(activeWorkspaceId)open(activeWorkspaceId);},activeId:function(){return activeWorkspaceId;}};
+  // save/log/id are exposed alongside the read/navigation surface above so
+  // navrya-src/liveSessionView.jsx can mutate sessions through the exact same real
+  // persist/sync-queue/session-signature/log pipeline as every other caller in this file,
+  // instead of re-implementing it.
+  window.TradeJournalWorkspace={open:open,openReport:openReport,reopen:reopenSession,remove:removeSession,duplicate:duplicateSession,list:list,find:find,save:save,log:log,id:id,refresh:function(){if(activeWorkspaceId)open(activeWorkspaceId);},activeId:function(){return activeWorkspaceId;}};
 }());
