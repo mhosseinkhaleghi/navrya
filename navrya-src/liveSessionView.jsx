@@ -51,9 +51,9 @@ const copy = {
     invalidationLabel: 'بی‌اعتباری سناریو', invalidationPlaceholder: 'دلایل را با کاما جدا کنید', occurredYes: 'این سناریو اتفاق افتاد',
     addScenario: 'افزودن سناریو', newScenarioTitle: 'سناریو جدید', deleteScenarioTitle: 'حذف سناریو',
     filteredEmptyText: 'با این فیلتر ورودی‌ای پیدا نشد', clearFilter: 'پاک کردن فیلتر',
-    dashboardTitle: 'داشبورد سشن', dashPatterns: 'الگوها', dashScenarios: 'سناریوها', dashPositions: 'پوزیشن‌ها',
+    dashboardTitle: 'داشبورد سشن', dashPatterns: 'الگوها', dashScenarios: 'سناریوها', dashPositions: 'پوزیشن‌ها', dashLog: 'لاگ',
     dashEmptyPatterns: 'هنوز الگویی به سناریوها تگ نشده است.', dashEmptyScenarios: 'هنوز سناریویی ثبت نشده است.',
-    dashEmptyPositions: 'هنوز پوزیشنی از سناریوها باز نشده است.', dashEntryPrefix: 'ورودی',
+    dashEmptyPositions: 'هنوز پوزیشنی از سناریوها باز نشده است.', dashEmptyLog: 'هنوز فعالیتی در این سشن ثبت نشده است.', dashEntryPrefix: 'ورودی',
     occurredYesShort: 'اتفاق افتاد', pendingShort: 'در انتظار',
     tradeStatusHunting: 'شکار', tradeStatusOpen: 'باز', tradeStatusClosed: 'بسته', tradeStatusCancelled: 'لغو شده',
     prevSummaryTitle: 'خلاصه سشن قبلی', prevSummaryEmpty: 'هنوز خلاصه‌ای از سشن قبلی ندارید. پس از بستن سشن، نتیجه و درس‌ها به سشن بعدی منتقل می‌شود.',
@@ -85,9 +85,9 @@ const copy = {
     invalidationLabel: 'إبطال السيناريو', invalidationPlaceholder: 'افصل الأسباب بفواصل', occurredYes: 'هذا السيناريو حدث',
     addScenario: 'إضافة سيناريو', newScenarioTitle: 'سيناريو جديد', deleteScenarioTitle: 'حذف السيناريو',
     filteredEmptyText: 'لا يوجد إدخال بهذا الفلتر', clearFilter: 'مسح الفلتر',
-    dashboardTitle: 'لوحة الجلسة', dashPatterns: 'الأنماط', dashScenarios: 'السيناريوهات', dashPositions: 'الصفقات',
+    dashboardTitle: 'لوحة الجلسة', dashPatterns: 'الأنماط', dashScenarios: 'السيناريوهات', dashPositions: 'الصفقات', dashLog: 'السجل',
     dashEmptyPatterns: 'لم يتم وسم أي نمط بعد.', dashEmptyScenarios: 'لم يتم تسجيل أي سيناريو بعد.',
-    dashEmptyPositions: 'لا توجد صفقة مفتوحة من السيناريوهات بعد.', dashEntryPrefix: 'إدخال',
+    dashEmptyPositions: 'لا توجد صفقة مفتوحة من السيناريوهات بعد.', dashEmptyLog: 'لا يوجد أي نشاط مسجل في هذه الجلسة بعد.', dashEntryPrefix: 'إدخال',
     occurredYesShort: 'حدث', pendingShort: 'قيد الانتظار',
     tradeStatusHunting: 'بحث', tradeStatusOpen: 'مفتوحة', tradeStatusClosed: 'مغلقة', tradeStatusCancelled: 'ملغاة',
     prevSummaryTitle: 'ملخص الجلسة السابقة', prevSummaryEmpty: 'لا يوجد ملخص للجلسة السابقة بعد. بعد إغلاق الجلسة تُنقل النتيجة والدروس إلى الجلسة التالية.',
@@ -119,9 +119,9 @@ const copy = {
     invalidationLabel: 'Scenario invalidation', invalidationPlaceholder: 'Separate reasons with commas', occurredYes: 'This scenario occurred',
     addScenario: 'Add scenario', newScenarioTitle: 'New scenario', deleteScenarioTitle: 'Delete scenario',
     filteredEmptyText: 'No entry matches this filter', clearFilter: 'Clear filter',
-    dashboardTitle: 'Session dashboard', dashPatterns: 'Patterns', dashScenarios: 'Scenarios', dashPositions: 'Positions',
+    dashboardTitle: 'Session dashboard', dashPatterns: 'Patterns', dashScenarios: 'Scenarios', dashPositions: 'Positions', dashLog: 'Log',
     dashEmptyPatterns: 'No pattern is tagged on a scenario yet.', dashEmptyScenarios: 'No scenario is logged yet.',
-    dashEmptyPositions: 'No position is open from a scenario yet.', dashEntryPrefix: 'Entry',
+    dashEmptyPositions: 'No position is open from a scenario yet.', dashEmptyLog: 'No activity logged in this session yet.', dashEntryPrefix: 'Entry',
     occurredYesShort: 'Occurred', pendingShort: 'Pending',
     tradeStatusHunting: 'Hunting', tradeStatusOpen: 'Open', tradeStatusClosed: 'Closed', tradeStatusCancelled: 'Cancelled',
     prevSummaryTitle: 'Previous session summary', prevSummaryEmpty: 'No previous session summary yet. Closing a session carries its outcome and lessons into the next one.',
@@ -153,9 +153,9 @@ const copy = {
     invalidationLabel: 'Invalidación del escenario', invalidationPlaceholder: 'Separa las razones con comas', occurredYes: 'Este escenario ocurrió',
     addScenario: 'Añadir escenario', newScenarioTitle: 'Nuevo escenario', deleteScenarioTitle: 'Eliminar escenario',
     filteredEmptyText: 'Ninguna entrada coincide con este filtro', clearFilter: 'Limpiar filtro',
-    dashboardTitle: 'Panel de la sesión', dashPatterns: 'Patrones', dashScenarios: 'Escenarios', dashPositions: 'Posiciones',
+    dashboardTitle: 'Panel de la sesión', dashPatterns: 'Patrones', dashScenarios: 'Escenarios', dashPositions: 'Posiciones', dashLog: 'Registro',
     dashEmptyPatterns: 'Aún no hay un patrón etiquetado en un escenario.', dashEmptyScenarios: 'Aún no hay ningún escenario registrado.',
-    dashEmptyPositions: 'Aún no hay ninguna posición abierta desde un escenario.', dashEntryPrefix: 'Entrada',
+    dashEmptyPositions: 'Aún no hay ninguna posición abierta desde un escenario.', dashEmptyLog: 'Aún no hay actividad registrada en esta sesión.', dashEntryPrefix: 'Entrada',
     occurredYesShort: 'Ocurrió', pendingShort: 'Pendiente',
     tradeStatusHunting: 'Buscando', tradeStatusOpen: 'Abierta', tradeStatusClosed: 'Cerrada', tradeStatusCancelled: 'Cancelada',
     prevSummaryTitle: 'Resumen de la sesión anterior', prevSummaryEmpty: 'Aún no hay un resumen de la sesión anterior. Al cerrar una sesión, su resultado y lecciones pasan a la siguiente.',
@@ -653,24 +653,36 @@ function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEnt
     });
   } else if (dash === 'scenarios') {
     rows = flat.map((x) => ({ key: x.scenario.id, title: x.scenario.title || tr(lang, 'newScenarioTitle'), value: probabilityOf(x.scenario), meta: x.scenario.occurred ? tr(lang, 'occurredYesShort') : tr(lang, 'pendingShort'), entryN: indexById[x.entry.id], onClick: () => onSelectEntry(x.entry.id) }));
-  } else {
+  } else if (dash === 'positions') {
     const tradeStore = window.TradeJournalTradeStore;
     rows = flat.filter((x) => tradeStore && tradeStore.findBySource(session.id, x.scenario.id)).map((x) => {
       const trade = tradeStore.findBySource(session.id, x.scenario.id);
       return { key: x.scenario.id, title: x.scenario.title || tr(lang, 'newScenarioTitle'), value: probabilityOf(x.scenario), meta: statusLabel(trade.status, lang), entryN: indexById[x.entry.id], onClick: () => onSelectEntry(x.entry.id) };
     });
   }
-  const emptyText = { patterns: tr(lang, 'dashEmptyPatterns'), scenarios: tr(lang, 'dashEmptyScenarios'), positions: tr(lang, 'dashEmptyPositions') }[dash];
+  // Log tab shows the session's real activityLog (session-workspace-logic.js's log()) - every
+  // scenario/stage/note/position edit already writes an entry here; this just surfaces it.
+  const logRows = dash === 'log' ? (session.activityLog || []).slice().reverse().slice(0, 60) : [];
+  const emptyText = { patterns: tr(lang, 'dashEmptyPatterns'), scenarios: tr(lang, 'dashEmptyScenarios'), positions: tr(lang, 'dashEmptyPositions'), log: tr(lang, 'dashEmptyLog') }[dash];
   return (
     <Panel variant="base" padding="14px">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="dashboard" size={16} /><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'dashboardTitle')}</span></div>
         <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.5)' }}>
-          {[['patterns', tr(lang, 'dashPatterns')], ['scenarios', tr(lang, 'dashScenarios')], ['positions', tr(lang, 'dashPositions')]].map(([id, label]) => (
+          {[['patterns', tr(lang, 'dashPatterns')], ['scenarios', tr(lang, 'dashScenarios')], ['positions', tr(lang, 'dashPositions')], ['log', tr(lang, 'dashLog')]].map(([id, label]) => (
             <button key={id} type="button" onClick={() => onSetDash(id)} style={{ flex: 1, height: 30, borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 11, border: '1px solid ' + (dash === id ? 'var(--char-accent)' : 'transparent'), background: dash === id ? 'var(--char-active-surface)' : 'transparent', color: dash === id ? 'var(--char-accent)' : 'var(--text-dim)' }}>{label}</button>
           ))}
         </div>
-        {rows.length === 0 ? (
+        {dash === 'log' ? (
+          logRows.length === 0 ? (
+            <span style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>{emptyText}</span>
+          ) : logRows.map((entry) => (
+            <div key={entry.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
+              <span dir="auto" style={{ fontSize: 11, color: 'var(--text-primary)' }}>{entry.detail || entry.type}</span>
+              <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)' }}>{new Date(entry.loggedAt).toLocaleTimeString(localeCode(lang), { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          ))
+        ) : rows.length === 0 ? (
           <span style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>{emptyText}</span>
         ) : rows.map((r) => (
           <button key={r.key} type="button" onClick={r.onClick} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)', font: 'inherit' }}>

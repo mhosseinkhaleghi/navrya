@@ -24,22 +24,10 @@
       usageCount: 0,
       chatHistory: [],
       isPublic: false,
+      active: true,
       createdAt: createdAt,
       updatedAt: createdAt
     };
-  }
-
-  function seedPatterns() {
-    return [
-      createPattern('Quit ACC', 'An accumulation pattern that begins with a strong spike, develops a controlled counter-direction accumulation, and then resumes in the prevailing market direction.', 85, ['Strong impulsive spike', 'Controlled accumulation against the spike', 'False move or liquidity test', 'Return toward the spike origin', 'Continuation with the dominant trend']),
-      createPattern('Double Bottom V+ No Retest', 'A double-bottom reversal with an impulsive V-shaped recovery and no full retest of the breakout area.', 70, ['First low and reaction', 'Second low or liquidity sweep', 'Strong V-shaped displacement', 'Breakout without full retest', 'Trend continuation']),
-      createPattern('No Liquidity ACC', 'Accumulation that develops without a clear external liquidity sweep.', 70, ['Initial range', 'Internal liquidity rotation', 'Compression', 'Directional break', 'Continuation']),
-      createPattern('3ACC at the end', 'Three consecutive accumulation structures near the end of a directional move.', 70, ['First accumulation', 'Expansion', 'Second accumulation', 'Expansion and compression', 'Third accumulation', 'Final resolution']),
-      createPattern('Boomerang ACC', 'A boomerang-shaped accumulation that rejects the first direction before returning to the dominant path.', 70, ['Initial displacement', 'Counter move', 'Rejection', 'Return to origin']),
-      createPattern('UTAD WYCKOF', 'Wyckoff UTAD structure with a strong spike, counter-direction accumulation, return to the origin, and distribution in the original spike direction.', 70, ['Strong spike move', 'Counter-direction accumulation after the spike', 'Return to the spike origin', 'Distribution in the original spike direction']),
-      createPattern('Liquidity Engineering', 'A liquidity-engineering structure used to prepare and confirm a directional move.', 70, []),
-      createPattern('ACC at the start', 'Accumulation forming at the beginning of a new directional movement.', 70, [])
-    ];
   }
 
   function scenarioUsage(patternId) {
@@ -73,19 +61,20 @@
     pattern.usageCount = Math.max(Number(pattern.usageCount || 0), scenarioUsage(pattern.id));
     pattern.chatHistory = pattern.chatHistory || [];
     pattern.isPublic = Boolean(pattern.isPublic);
+    pattern.active = pattern.active !== false;
     pattern.createdAt = pattern.createdAt || now();
     pattern.updatedAt = pattern.updatedAt || pattern.createdAt;
     return pattern;
   }
 
+  // A brand-new user's registry starts empty - no demo/starter patterns are pre-filled, matching
+  // every other store in the app (sessions, strategies, trades all start empty for a new user).
   function read() {
     try {
       var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
       if (Array.isArray(parsed)) return parsed.map(normalize);
-    } catch (_) { /* Seed below. */ }
-    var seeded = seedPatterns();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
-    return seeded;
+    } catch (_) { /* Corrupt/missing - start empty below. */ }
+    return [];
   }
 
   function write(items) {
@@ -159,12 +148,9 @@
         .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
     }
 
-    // Unlike Sessions (Module 1), Patterns auto-seeds 8 defaults into an empty local cache
-    // (see seedPatterns() in read()) - pushing those blindly on first activation would create
-    // duplicates alongside a different browser's already-synced real patterns for the same
-    // user. So this checks the server FIRST: if it already has patterns, adopt them as the
-    // local cache outright; only if the server is genuinely empty does it push whatever local
-    // patterns exist (including the freshly seeded defaults) up as this user's starting set.
+    // Checks the server FIRST: if it already has patterns (e.g. synced from a different browser
+    // for this same user), adopt them as the local cache outright; only if the server is
+    // genuinely empty does it push whatever local patterns exist up as this user's starting set.
     function migrateOrAdopt() {
       var switcher = devUser(); var uid = switcher && switcher.currentUserId();
       if (!uid) return;

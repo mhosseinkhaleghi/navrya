@@ -35,7 +35,9 @@ const copy = {
     openBtn: 'باز کردن', reportBtn: 'گزارش', shareBtn: 'اشتراک‌گذاری', deleteBtn: 'حذف',
     emptyIndexTitle: 'هنوز چیزی ثبت نشده است', emptyIndexBody: 'برای شروع یک الگو یا استراتژی جدید بسازید.',
     deleteConfirm: 'این مورد حذف شود؟',
-    backToList: 'بازگشت به فهرست', saveChanges: 'ذخیره تغییرات',
+    backToList: 'بازگشت به فهرست', saveChanges: 'ذخیره تغییرات', changesSaved: 'تغییرات ذخیره شد',
+    activeLabel: 'فعال', inactiveLabel: 'غیرفعال', activeToggleHelp: 'می‌توانید این مورد را بدون حذف کردن غیرفعال کنید.',
+    strategyNameLabel: 'نام استراتژی', strategyNamePlaceholder: 'نام استراتژی را وارد کنید…',
     eyebrowPattern: 'ثبت الگو · REGISTRY', eyebrowStrategy: 'استراتژی · PLAYBOOK',
     chipSteps: '{n} مرحله', chipUsage: '{n} بار استفاده', chipUpdated: 'آخرین بروزرسانی {date}',
     tabDetails: 'جزئیات', tabChat: 'گفتگو با هوش مصنوعی', tabReport: 'گزارش', tabShare: 'اشتراک‌گذاری',
@@ -107,7 +109,9 @@ const copy = {
     openBtn: 'فتح', reportBtn: 'تقرير', shareBtn: 'مشاركة', deleteBtn: 'حذف',
     emptyIndexTitle: 'لا يوجد شيء مسجل بعد', emptyIndexBody: 'أنشئ نمطاً أو استراتيجية جديدة للبدء.',
     deleteConfirm: 'حذف هذا العنصر؟',
-    backToList: 'العودة إلى القائمة', saveChanges: 'حفظ التغييرات',
+    backToList: 'العودة إلى القائمة', saveChanges: 'حفظ التغييرات', changesSaved: 'تم حفظ التغييرات',
+    activeLabel: 'نشط', inactiveLabel: 'غير نشط', activeToggleHelp: 'يمكنك تعطيل هذا العنصر دون حذفه.',
+    strategyNameLabel: 'اسم الاستراتيجية', strategyNamePlaceholder: 'أدخل اسم الاستراتيجية…',
     eyebrowPattern: 'سجل الأنماط · REGISTRY', eyebrowStrategy: 'استراتيجية · PLAYBOOK',
     chipSteps: '{n} مرحلة', chipUsage: 'استُخدم {n} مرة', chipUpdated: 'آخر تحديث {date}',
     tabDetails: 'التفاصيل', tabChat: 'محادثة مع الذكاء الاصطناعي', tabReport: 'التقرير', tabShare: 'المشاركة',
@@ -179,7 +183,9 @@ const copy = {
     openBtn: 'Open', reportBtn: 'Report', shareBtn: 'Share', deleteBtn: 'Delete',
     emptyIndexTitle: 'Nothing registered yet', emptyIndexBody: 'Create a new pattern or strategy to get started.',
     deleteConfirm: 'Delete this item?',
-    backToList: 'Back to list', saveChanges: 'Save changes',
+    backToList: 'Back to list', saveChanges: 'Save changes', changesSaved: 'Changes saved',
+    activeLabel: 'Active', inactiveLabel: 'Inactive', activeToggleHelp: 'You can deactivate this item without deleting it.',
+    strategyNameLabel: 'Strategy name', strategyNamePlaceholder: 'Enter a strategy name…',
     eyebrowPattern: 'Pattern · REGISTRY', eyebrowStrategy: 'Strategy · PLAYBOOK',
     chipSteps: '{n} steps', chipUsage: 'used {n} times', chipUpdated: 'Last updated {date}',
     tabDetails: 'Details', tabChat: 'Chat with AI', tabReport: 'Report', tabShare: 'Share',
@@ -251,7 +257,9 @@ const copy = {
     openBtn: 'Abrir', reportBtn: 'Informe', shareBtn: 'Compartir', deleteBtn: 'Eliminar',
     emptyIndexTitle: 'Aún no hay nada registrado', emptyIndexBody: 'Crea un nuevo patrón o estrategia para empezar.',
     deleteConfirm: '¿Eliminar este elemento?',
-    backToList: 'Volver a la lista', saveChanges: 'Guardar cambios',
+    backToList: 'Volver a la lista', saveChanges: 'Guardar cambios', changesSaved: 'Cambios guardados',
+    activeLabel: 'Activo', inactiveLabel: 'Inactivo', activeToggleHelp: 'Puedes desactivar este elemento sin eliminarlo.',
+    strategyNameLabel: 'Nombre de la estrategia', strategyNamePlaceholder: 'Introduce un nombre de estrategia…',
     eyebrowPattern: 'Patrón · REGISTRO', eyebrowStrategy: 'Estrategia · PLAYBOOK',
     chipSteps: '{n} etapas', chipUsage: 'usado {n} veces', chipUpdated: 'Última actualización {date}',
     tabDetails: 'Detalles', tabChat: 'Chat con IA', tabReport: 'Informe', tabShare: 'Compartir',
@@ -765,6 +773,7 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
   const [newStep, setNewStep] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [shotUrls, setShotUrls] = React.useState({});
+  const [savedAt, setSavedAt] = React.useState(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -777,7 +786,7 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pattern.referenceScreenshots.map((s) => s.id).join(',')]);
 
-  function patch(fields) { Object.assign(pattern, fields); onSave(pattern); }
+  function patch(fields) { Object.assign(pattern, fields); onSave(pattern); setSavedAt(Date.now()); }
   function patchStage(index, text) { const stages = pattern.stages.slice(); stages[index] = { ...stages[index], text }; patch({ stages }); }
   function deleteStage(index) { patch({ stages: pattern.stages.filter((_, i) => i !== index) }); }
   function addStage() { if (!newStep.trim()) return; patch({ stages: pattern.stages.concat([{ id: window.TradeJournalPatternStore.createStage(newStep.trim(), pattern.stages.length + 1).id, order: pattern.stages.length + 1, text: newStep.trim() }]) }); setNewStep(''); }
@@ -794,7 +803,10 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Panel variant="base" padding="18px 20px 20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <span style={{ fontSize: 11, letterSpacing: '.1em', color: 'var(--char-accent)' }}>{tr(lang, 'defTitle')}</span>
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ fontSize: 11, letterSpacing: '.1em', color: 'var(--char-accent)' }}>{tr(lang, 'defTitle')}</span>
+            {savedAt && <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={13} />{tr(lang, 'changesSaved')}</span>}
+          </span>
           <TextField_ label={tr(lang, 'nameLabel')} value={pattern.name} onCommit={(v) => patch({ name: v })} />
           <TextAreaField_ label={tr(lang, 'descLabel')} value={pattern.description} rows={3} onCommit={(v) => patch({ description: v })} help={tr(lang, 'descHelp')} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: 14, borderRadius: 10, border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.05)' }}>
@@ -860,7 +872,8 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
 }
 
 function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
-  function set(path, value) { window.TradeJournalStrategyEducationStore.setPath(strategy, path, value); onSave(strategy); }
+  const [savedAt, setSavedAt] = React.useState(null);
+  function set(path, value) { window.TradeJournalStrategyEducationStore.setPath(strategy, path, value); onSave(strategy); setSavedAt(Date.now()); }
   const p = strategy.positionManagement, r = strategy.riskManagement, o = strategy.overallFramework;
   const groups = [
     { icon: 'execution', title: tr(lang, 'groupPositionTitle'), sub: tr(lang, 'groupPositionSub'),
@@ -883,6 +896,12 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <Panel variant="base" padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {savedAt && <span style={{ display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-end', fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={13} />{tr(lang, 'changesSaved')}</span>}
+          <TextField_ label={tr(lang, 'strategyNameLabel')} value={strategy.name} placeholder={tr(lang, 'strategyNamePlaceholder')} onCommit={(v) => set('name', v)} />
+        </div>
+      </Panel>
       {groups.map((g) => (
         <Panel key={g.title} variant="base" padding="18px 20px 20px">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
@@ -1492,8 +1511,9 @@ function ShareTab({ lang, kind, item, onSave }) {
 // Detail shell
 // ---------------------------------------------------------------------------------------------
 
-function DetailView({ lang, kind, item, dtab, setDtab, onBack, onSave, onAiSteps, onGoChat, onFromEventAi }) {
+function DetailView({ lang, kind, item, dtab, setDtab, onBack, onSave, onAiSteps, onGoChat, onFromEventAi, onDelete, onToggleActive }) {
   const isP = isPatternKind(kind);
+  const active = item.active !== false;
   const chips = [
     tr(lang, 'chipSteps', { n: digits(lang, (item.stages || []).length) }),
     tr(lang, 'chipUpdated', { date: new Date(item.updatedAt).toLocaleDateString(localeCode(lang)) })
@@ -1514,6 +1534,11 @@ function DetailView({ lang, kind, item, dtab, setDtab, onBack, onSave, onAiSteps
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label title={tr(lang, 'activeToggleHelp')} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 13px', borderRadius: 8, cursor: 'pointer', border: '1px solid ' + (active ? 'var(--char-accent)' : 'var(--border-hairline)'), background: active ? 'var(--char-active-surface)' : 'transparent', color: active ? 'var(--char-accent)' : 'var(--text-dim)', fontSize: 12.5, fontWeight: 600 }}>
+            <input type="checkbox" checked={active} onChange={() => onToggleActive()} style={{ accentColor: 'var(--char-accent)', cursor: 'pointer' }} />
+            {active ? tr(lang, 'activeLabel') : tr(lang, 'inactiveLabel')}
+          </label>
+          <Button variant="ghost" icon="trash" onClick={onDelete}>{tr(lang, 'deleteBtn')}</Button>
           <Button variant="secondary" icon="ArrowRight" onClick={onBack}>{tr(lang, 'backToList')}</Button>
         </div>
       </div>
@@ -1571,7 +1596,19 @@ function StrategiesHub({ character }) {
 
   function openItem(kind, id, tabId) { setOpenKind(kind); setOpenId(id); setDtab(tabId || 'details'); }
   function back() { setOpenId(null); setOpenKind(null); }
-  function onSave() { rerender(); }
+  // Every Details-tab field edit (threshold, stage add/edit/delete, name, description, risk
+  // fields, ...) flows through this single handler - it must actually persist, not just
+  // re-render, or every edit is silently lost the moment this component next re-renders (its
+  // `pattern`/`strategy` prop is re-derived fresh from the store on every render). Callers that
+  // already saved internally (chat send, screenshot upload, suggestion apply) just redundantly
+  // re-save the same already-current record here, which is harmless (save() is an idempotent
+  // upsert).
+  function onSave(updated) {
+    if (!updated) { rerender(); return; }
+    if (openKind === 'pattern') window.TradeJournalPatternStore.save(updated);
+    else if (openKind === 'strategy') window.TradeJournalStrategyEducationStore.save(updated);
+    rerender();
+  }
 
   function createNew() {
     if (tab === 'patterns') { const p = window.TradeJournalPatternStore.create(); openItem('pattern', p.id, 'details'); }
@@ -1580,6 +1617,16 @@ function StrategiesHub({ character }) {
   function removeItem(kind, id) {
     if (!window.confirm(tr(lang, 'deleteConfirm'))) return;
     if (kind === 'pattern') window.TradeJournalPatternStore.remove(id); else window.TradeJournalStrategyEducationStore.remove(id);
+    rerender();
+  }
+  // Patterns and strategies both carry a real `active` flag (strategy-education-store.js already
+  // had setActive()/listActive(); patterns gained the same field so the two stay symmetric) - this
+  // lets a user retire an item without deleting it, distinct from isPublic (marketplace listing).
+  function toggleActive() {
+    if (!item) return;
+    const next = !(item.active !== false);
+    if (openKind === 'pattern') window.TradeJournalPatternStore.save({ ...item, active: next });
+    else if (openKind === 'strategy') window.TradeJournalStrategyEducationStore.setActive(item.id, next);
     rerender();
   }
   async function aiWriteSteps() {
@@ -1617,7 +1664,8 @@ function StrategiesHub({ character }) {
   return (
     <div style={container}>
       <DetailView lang={lang} kind={openKind} item={item} dtab={dtab} setDtab={setDtab} onBack={back} onSave={onSave}
-        onAiSteps={aiWriteSteps} onGoChat={() => setDtab('chat')} onFromEventAi={aiWriteSteps} />
+        onAiSteps={aiWriteSteps} onGoChat={() => setDtab('chat')} onFromEventAi={aiWriteSteps}
+        onDelete={() => removeItem(openKind, item.id)} onToggleActive={toggleActive} />
     </div>
   );
 }
