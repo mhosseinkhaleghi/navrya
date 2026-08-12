@@ -6,7 +6,7 @@ export const EDITION_LABEL = {
   engineer: 'ENGINEER EDITION', master: 'MASTER EDITION'
 };
 
-/* NAVRYA compass-arrow mark + wordmark. The mark's wedge carries the character accent. */
+/* NAVRYA compass-arrow mark + wordmark. Gold is the high-contrast brand treatment on the dark app chrome. */
 export function BrandLockup({
   character = 'hunter', orientation = 'vertical', markSize = 56, showEdition = true,
   edition, wordmarkSize, style, ...rest
@@ -22,7 +22,7 @@ export function BrandLockup({
       {...rest}
     >
       <img
-        src={assetUrl('assets/logo/navrya-mark-' + character + '.webp')} alt="NAVRYA"
+        src={assetUrl('assets/logo/navrya-mark-gold.svg')} alt="NAVRYA"
         style={{ width: markSize, height: 'auto', display: 'block', flex: 'none' }}
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: vertical ? 6 : 2, alignItems: vertical ? 'center' : 'flex-start' }}>

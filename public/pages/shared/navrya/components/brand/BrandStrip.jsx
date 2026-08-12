@@ -27,7 +27,7 @@ export function BrandStrip({
       }}></span>
       {collapsed ? (
         <img
-          src={assetUrl('assets/logo/navrya-mark-' + character + '.webp')} alt="NAVRYA"
+          src={assetUrl('assets/logo/navrya-mark-gold.svg')} alt="NAVRYA"
           style={{ position: 'relative', width: 40, height: 'auto' }}
         />
       ) : (

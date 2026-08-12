@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="title">
+  <title id="title">NAVRYA</title>
+  <g fill="none" stroke="#DFAE4F" stroke-width="118" stroke-linecap="butt">
+    <circle cx="500" cy="520" r="410" stroke-dasharray="2092 484" stroke-dashoffset="-232"/>
+  </g>
+  <path fill="#7B5CF4" d="M503 531 679 268c3-7 4-15 4-23v-27l37-111c77 41 143 104 181 184l-111 67c-9 3-17 7-24 13L503 531Z"/>
+</svg>

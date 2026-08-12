@@ -26,6 +26,7 @@ input, select, textarea { font:inherit; color:inherit; }
 .admin-gate { min-height:100vh; display:grid; place-items:center; padding:24px; }
 .admin-gate-card { width:min(440px, 100%); padding:28px; border:1px solid var(--line); border-radius:16px; background:var(--panel); text-align:center; display:grid; gap:14px; }
 .admin-gate-brand { display:flex; align-items:center; justify-content:center; gap:10px; color:var(--violet); font-size:19px; font-weight:800; }
+.admin-gate-brand img { width:32px; height:32px; object-fit:contain; }
 .admin-badge { margin:0; padding:10px 14px; border-radius:8px; font-size:13px; line-height:1.6; }
 .admin-badge.test { border:1px solid #6c521d; color:#ffc94a; background:#2a2110; }
 .admin-badge.enforced { border:1px solid #7d2633; color:#ff7581; background:#2a1118; }
@@ -36,6 +37,7 @@ input, select, textarea { font:inherit; color:inherit; }
 
 .admin-sidebar { display:flex; flex-direction:column; border-inline-end:1px solid var(--line); background:linear-gradient(180deg, var(--panel-raised), var(--panel)); overflow:hidden; }
 .admin-brand { display:flex; align-items:center; gap:10px; padding:18px 20px; color:var(--violet); font-size:17px; font-weight:800; white-space:nowrap; }
+.admin-brand img { width:30px; height:30px; object-fit:contain; flex:none; }
 .admin-nav { display:flex; flex-direction:column; gap:2px; padding:8px; flex:1; }
 .admin-nav button { display:flex; align-items:center; gap:12px; padding:11px 12px; border:0; border-radius:9px; background:transparent; color:var(--muted); font-size:13.5px; font-weight:600; text-align:start; white-space:nowrap; }
 .admin-nav button:hover { color:var(--text); background:rgba(255,255,255,.04); }
