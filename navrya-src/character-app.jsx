@@ -114,11 +114,6 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
   const now = useClock();
-  // The Live Session screen (navrya-src/liveSessionView.jsx) hides the character header to
-  // reclaim ~320px, per the design handoff - it's a live-session-only override, so it only
-  // applies while the Sessions nav tab is what's actually showing that screen.
-  const liveSessionId = React.useSyncExternalStore(subscribeLiveSession, getLiveSessionId);
-  const showHeader = !(s.activeId === 'sessions' && liveSessionId);
   // "APP UPTIME" is Steam-style playtime: total time the account has ever been online, server-
   // accumulated across every login (routes.profile.mjs's hoursOnlineFor(), fed by admin-
   // heartbeat.js's 45s beat into user_sessions) - not a per-mount session clock. Each character
@@ -135,7 +130,6 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const marketLabels = { london: t.marketLondon, 'new-york': t.marketNewYork, tokyo: t.marketTokyo, sydney: t.marketSydney };
   const nextSession = marketAdapter.nextSessionCountdown(now);
   const markets = marketAdapter.marketStates(now).map((m) => ({ ...m, cityLabel: marketLabels[m.market] }));
-  if (!showHeader) return null;
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
       <CharacterHeader
