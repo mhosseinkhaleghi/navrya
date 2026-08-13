@@ -29,6 +29,14 @@ function toNum(v) {
   const n = parseFloat(String(v).replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
 }
+// Plain Western-digit round-trip formatter - for a computed value reflected back into an
+// editable numeric field (never i18n.number(), which renders Persian-indic digits/separators
+// under fa that toNum() above cannot parse back out).
+function plainNum(n, d) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '';
+  const k = Math.pow(10, d === undefined ? 2 : d);
+  return String(Math.round(n * k) / k);
+}
 function fmtMoney(i18n, n, d) {
   if (n === null || n === undefined || !Number.isFinite(n)) return '—';
   return i18n.number(n, { minimumFractionDigits: d === undefined ? 2 : d, maximumFractionDigits: d === undefined ? 2 : d });
@@ -272,13 +280,19 @@ function computeOut(state) {
   const calc = window.TradeJournalTradeCalculator;
   const e = toNum(state.entry), s = toNum(state.stop), bal = toNum(state.balance);
   if (!calc || e === null || s === null || e <= 0 || s <= 0 || e === s) return { valid: false };
+  // Risk is bidirectional, same as the legacy calculator's manual Set: whichever of
+  // riskPercent/riskAmount the trader last touched drives the solve, the other is derived from
+  // it. Position size only ever needs riskAmount + SL distance, never accountBalance directly -
+  // so a directly-typed risk amount in USD sizes the trade even with no balance entered at all.
+  const amountManual = state.riskMode === 'amount';
   const source = {
     direction: state.dir, marginMode: state.margin, entryPrice: e, stopLoss: s, slDistancePercent: null,
-    riskPercent: state.risk, riskAmount: null, leverage: state.leverage, positionSize: null, marginRequired: null,
+    riskPercent: amountManual ? null : state.risk, riskAmount: amountManual ? toNum(state.riskAmountInput) : null,
+    leverage: toNum(state.leverage), positionSize: null, marginRequired: null,
     accountBalance: bal, takeProfits: state.tps.map((x) => ({ price: toNum(x.price), portionPercent: toNum(x.portion) })),
     feeType: state.feeType, feePercent: toNum(state.feePercent) || 0
   };
-  const manual = new Set(['entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'leverage']);
+  const manual = new Set(['entryPrice', 'stopLoss', 'accountBalance', 'leverage', amountManual ? 'riskAmount' : 'riskPercent']);
   const r = calc.solve(source, manual, { feePercent: source.feePercent });
   let wSum = 0, tpNum = 0;
   state.tps.forEach((x) => {
@@ -309,7 +323,9 @@ function TradeCalculatorModal({ onClose }) {
   const [stop, setStop] = React.useState('');
   const [balance, setBalance] = React.useState(settings.accountBalance !== null && settings.accountBalance !== undefined ? String(settings.accountBalance) : '');
   const [risk, setRisk] = React.useState(settings.defaultRiskPercent || 1);
-  const [leverage, setLeverage] = React.useState(10);
+  const [riskAmountInput, setRiskAmountInput] = React.useState('');
+  const [riskMode, setRiskMode] = React.useState('percent'); // 'percent' | 'amount' - whichever the trader last edited
+  const [leverage, setLeverage] = React.useState('10');
   const [feeType, setFeeType] = React.useState(settings.defaultFeeType || 'taker');
   const [feePercent, setFeePercent] = React.useState(String(settings.defaultFeeType === 'maker' ? settings.makerFeePercent : settings.takerFeePercent));
   const [tps, setTps] = React.useState([{ price: '', portion: '100' }]);
@@ -321,7 +337,13 @@ function TradeCalculatorModal({ onClose }) {
   const fileInputRef = React.useRef(null);
   const readTokenRef = React.useRef(0);
 
-  const out = computeOut({ dir, margin, entry, stop, balance, risk, leverage, feeType, feePercent, tps });
+  const out = computeOut({ dir, margin, entry, stop, balance, risk, riskAmountInput, riskMode, leverage, feeType, feePercent, tps });
+
+  // The risk-amount field always reflects the live solved value while the trader is driving it
+  // from the percent side, so switching between the two never shows a stale number.
+  const riskAmountShown = riskMode === 'amount' ? riskAmountInput : (out.valid ? plainNum(out.r.riskAmount, 2) : '');
+  function pickRisk(v) { setRisk(v); setRiskMode('percent'); }
+  function typeRiskAmount(v) { setRiskAmountInput(v); setRiskMode('amount'); }
 
   function resetImportState() { setImg({ state: 'idle', url: null, name: '', summary: '', failKind: null }); setFilled([]); setSnapshot(null); }
 
@@ -357,7 +379,7 @@ function TradeCalculatorModal({ onClose }) {
           setTps(extraction.takeProfits.map((tp, i) => ({ price: String(tp.price), portion: String(i === n - 1 ? 100 - equal * (n - 1) : equal) })));
           next.push('tps');
         }
-        if (typeof extraction.leverage === 'number') { setLeverage(extraction.leverage); next.push('leverage'); }
+        if (typeof extraction.leverage === 'number') { setLeverage(String(extraction.leverage)); next.push('leverage'); }
         setFilled(next);
         const segments = [];
         if (gotDir) segments.push(t(extraction.direction));
@@ -394,6 +416,7 @@ function TradeCalculatorModal({ onClose }) {
       const defaults = strategyStore.getRiskDefaults(id);
       if (defaults && defaults.maxRiskPerTradePercent !== null && defaults.maxRiskPerTradePercent !== undefined) {
         setRisk(defaults.maxRiskPerTradePercent);
+        setRiskMode('percent');
         const tradeUi = window.TradeJournalTradeUI;
         if (tradeUi) tradeUi.toast(t('strategyRiskLoaded'), 'success');
       }
@@ -409,7 +432,7 @@ function TradeCalculatorModal({ onClose }) {
     setDir('long'); setMargin('isolated'); setStrategyId('');
     setEntry(''); setStop('');
     setBalance(settings.accountBalance !== null && settings.accountBalance !== undefined ? String(settings.accountBalance) : '');
-    setRisk(settings.defaultRiskPercent || 1); setLeverage(10);
+    setRisk(settings.defaultRiskPercent || 1); setRiskAmountInput(''); setRiskMode('percent'); setLeverage('10');
     setFeeType(settings.defaultFeeType || 'taker');
     setFeePercent(String(settings.defaultFeeType === 'maker' ? settings.makerFeePercent : settings.takerFeePercent));
     setTps([{ price: '', portion: '100' }]);
@@ -436,7 +459,7 @@ function TradeCalculatorModal({ onClose }) {
   const ladder = buildLadder(i18n, t, out, tps);
   const tiles = [
     { label: t('marginRequired'), value: out.valid && out.r.marginRequired !== null && out.r.marginRequired !== undefined ? fmtMoney(i18n, out.r.marginRequired, 0) + ' USD' : '—' },
-    { label: t('calcLeverageUsed'), value: leverage + '×' },
+    { label: t('calcLeverageUsed'), value: (toNum(leverage) || 0) + '×' },
     { label: t('slDistance'), value: out.valid ? fmtMoney(i18n, out.r.slDistancePercent, 2) + '% · ' + fmtPrice(i18n, Math.abs(out.entry - out.stop)) : '—' },
     { label: t('calcAvgTp'), value: out.valid && out.tpAvg !== null ? fmtPrice(i18n, out.tpAvg) : '—' },
     { label: t('breakeven'), value: out.valid ? fmtPrice(i18n, out.r.profitPrice) : '—', gold: true },
@@ -549,13 +572,22 @@ function TradeCalculatorModal({ onClose }) {
                   <MetricLabel>{t('calcRiskPerTrade')}</MetricLabel>
                   <span style={{ flex: 1 }} />
                   <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-username)', color: 'var(--char-accent)' }}>
-                    {fmtMoney(i18n, risk, risk % 1 ? 2 : 0) + '% · ' + (out.valid && out.r.riskAmount !== null && out.r.riskAmount !== undefined ? fmtMoney(i18n, out.r.riskAmount, 0) + ' USD' : '—')}
+                    {riskMode === 'amount'
+                      ? (out.valid && out.r.riskPercent !== null && out.r.riskPercent !== undefined ? fmtMoney(i18n, out.r.riskPercent, out.r.riskPercent % 1 ? 2 : 0) + '%' : '—') + ' · ' + (toNum(riskAmountInput) !== null ? fmtMoney(i18n, toNum(riskAmountInput), 0) + ' USD' : '—')
+                      : fmtMoney(i18n, risk, risk % 1 ? 2 : 0) + '% · ' + (out.valid && out.r.riskAmount !== null && out.r.riskAmount !== undefined ? fmtMoney(i18n, out.r.riskAmount, 0) + ' USD' : '—')}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 7 }}>
-                  {RISK_CHIPS.map((v) => <PillButton key={v} selected={risk === v} onClick={() => setRisk(v)}>{fmtMoney(i18n, v, v % 1 ? 1 : 0) + '%'}</PillButton>)}
+                  {RISK_CHIPS.map((v) => <PillButton key={v} selected={riskMode === 'percent' && risk === v} onClick={() => pickRisk(v)}>{fmtMoney(i18n, v, v % 1 ? 1 : 0) + '%'}</PillButton>)}
                 </div>
-                <RiskSlider value={risk} onChange={setRisk} label={t('calcRiskPerTrade')} />
+                <RiskSlider value={riskMode === 'amount' ? (out.r && out.r.riskPercent) || 0 : risk} onChange={pickRisk} label={t('calcRiskPerTrade')} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)', flex: 'none' }}>{t('calcCustom')}</span>
+                  <div style={{ width: 150, flex: 'none' }}>
+                    <NumField value={riskAmountShown} onChange={typeRiskAmount} placeholder="0.00" unit="usd" />
+                  </div>
+                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('riskAmount')}</span>
+                </div>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -563,11 +595,17 @@ function TradeCalculatorModal({ onClose }) {
                   <MetricLabel>{t('leverage')}</MetricLabel>
                   <span style={{ flex: 1 }} />
                   <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-username)', color: 'var(--char-accent)' }}>
-                    {leverage + '× · ' + (out.valid && out.r.marginRequired !== null && out.r.marginRequired !== undefined ? fmtMoney(i18n, out.r.marginRequired, 0) + ' USD margin' : '—')}
+                    {(toNum(leverage) || 0) + '× · ' + (out.valid && out.r.marginRequired !== null && out.r.marginRequired !== undefined ? fmtMoney(i18n, out.r.marginRequired, 0) + ' USD margin' : '—')}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 7 }}>
-                  {LEV_CHIPS.map((v) => <PillButton key={v} selected={leverage === v} onClick={() => setLeverage(v)}>{v + '×'}</PillButton>)}
+                  {LEV_CHIPS.map((v) => <PillButton key={v} selected={toNum(leverage) === v} onClick={() => setLeverage(String(v))}>{v + '×'}</PillButton>)}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)', flex: 'none' }}>{t('calcCustom')}</span>
+                  <div style={{ width: 110, flex: 'none' }}>
+                    <NumField value={leverage} onChange={setLeverage} placeholder="10" unit="×" />
+                  </div>
                 </div>
               </div>
 
@@ -632,12 +670,12 @@ function TradeCalculatorModal({ onClose }) {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' }}>
               <div style={{ flex: '1 1 150px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: 14, borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)' }}>
                 <MetricLabel>{t('positionSize')}</MetricLabel>
-                <span className="navrya-tabular" style={{ font: '600 26px/30px var(--font-display)', color: 'var(--text-primary)' }}>{out.valid && out.r.positionSize !== null && out.r.positionSize !== undefined ? fmtMoney(i18n, out.r.positionSize, 0) + ' USD' : '—'}</span>
+                <span className="navrya-tabular" style={{ font: '600 26px/30px var(--font-num)', color: 'var(--text-primary)' }}>{out.valid && out.r.positionSize !== null && out.r.positionSize !== undefined ? fmtMoney(i18n, out.r.positionSize, 0) + ' USD' : '—'}</span>
                 <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{out.valid && out.qty !== null ? t('calcUnitsAt', { qty: fmtMoney(i18n, out.qty, 4), price: fmtPrice(i18n, out.entry) }) : t('calcEnterBalanceHint')}</span>
               </div>
               <div style={{ flex: '1 1 150px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: 14, borderRadius: 8, border: '1px solid ' + (out.bad ? 'rgba(255,56,48,.45)' : 'rgba(46,204,113,.4)'), background: out.bad ? 'rgba(255,56,48,.09)' : 'rgba(46,204,113,.07)' }}>
                 <MetricLabel>{out.bad ? t('calcLossAtTargets') : t('potentialProfit')}</MetricLabel>
-                <span className="navrya-tabular" style={{ font: '600 26px/30px var(--font-display)', color: out.bad ? 'var(--danger)' : 'var(--success)' }}>
+                <span className="navrya-tabular" style={{ font: '600 26px/30px var(--font-num)', color: out.bad ? 'var(--danger)' : 'var(--success)' }}>
                   {out.valid && out.r.potentialProfit !== null && out.r.potentialProfit !== undefined ? (out.r.potentialProfit < 0 ? '−' : '') + fmtMoney(i18n, Math.abs(out.r.potentialProfit)) + ' USD' : '—'}
                 </span>
                 <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: out.bad ? 'var(--danger)' : 'var(--success)' }}>
@@ -648,7 +686,7 @@ function TradeCalculatorModal({ onClose }) {
               </div>
               <div style={{ flex: '1 1 150px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: 14, borderRadius: 8, border: '1px solid rgba(255,56,48,.4)', background: 'rgba(255,56,48,.07)' }}>
                 <MetricLabel>{t('riskAmount')}</MetricLabel>
-                <span className="navrya-tabular" style={{ font: '600 26px/30px var(--font-display)', color: 'var(--danger)' }}>{out.valid && out.r.riskAmount !== null && out.r.riskAmount !== undefined ? fmtMoney(i18n, out.r.riskAmount) + ' USD' : '—'}</span>
+                <span className="navrya-tabular" style={{ font: '600 26px/30px var(--font-num)', color: 'var(--danger)' }}>{out.valid && out.r.riskAmount !== null && out.r.riskAmount !== undefined ? fmtMoney(i18n, out.r.riskAmount) + ' USD' : '—'}</span>
                 <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--danger)' }}>{t('calcOfBalance', { value: fmtMoney(i18n, risk, risk % 1 ? 2 : 0) })}</span>
               </div>
             </div>
