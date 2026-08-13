@@ -22,6 +22,7 @@ import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
 import { renderAccountProfile } from './accountProfileView.jsx';
 import { openIntake } from './mentalHealthIntakeModal.jsx';
+import { openCalculator } from './tradeCalculatorModal.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -255,6 +256,11 @@ export function mountCharacterApp(character) {
   // here, unlike the TradeJournalNavryaXxx hooks above) - this IS that global, real
   // TradeJournalMentalHealthStore/I18n data underneath, only the rendering is React now.
   window.TradeJournalMentalHealthIntake = { open: openIntake };
+
+  // trade-ui.js's ensureGlobalUi() FAB defers to this hook when present (see that file's own
+  // fab.onclick) - same real TradeJournalTradeStore/TradeCalculator/TradeUI data every other
+  // TradeJournalTradeUI.openCalculator() caller already goes through, only the dialog is React now.
+  window.TradeJournalNavryaTradeCalculator = { open: openCalculator };
 
   // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
   // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version
