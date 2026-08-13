@@ -475,10 +475,11 @@ test('the character chooser loads dev-user-switcher.js before its own app.js, so
   const html = await readFile(path.join(root, 'public', 'pages', 'select', 'index.html'), 'utf8');
   assert.ok(html.indexOf('../shared/dev-user-switcher.js') > -1, 'dev-user-switcher.js is loaded');
   assert.ok(html.indexOf('../shared/dev-user-switcher.js') < html.indexOf('<script src="app.js">'), 'it loads before app.js, which calls into it at click time');
-  assert.match(html, /id="authOverlay"/);
-  assert.match(html, /id="authEmailInput"/);
-  assert.match(html, /id="authPasswordInput"/);
-  assert.match(html, /id="authSubmit"/);
+  assert.match(html, /id="stepAccount"/);
+  assert.match(html, /id="stepCharacter"/);
+  assert.match(html, /id="emailInput"/);
+  assert.match(html, /id="passwordInput"/);
+  assert.match(html, /id="continueBtn"/);
 });
 
 test('Admin: src/release.js has a real "admin" shell route, since the admin page is a standalone top-level page like select/, not nested in a character iframe', async () => {
