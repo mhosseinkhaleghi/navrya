@@ -261,7 +261,12 @@ test('all four character pages load the mental-health module set after psycholog
     assert.ok(types < uiFile && uiFile < registry, character + ' mental-health block order');
     assert.ok(html.indexOf('mental-health-cards.js') < html.indexOf('mental-health-report.js') && html.indexOf('mental-health-report.js') < html.indexOf('mental-health-scheduler.js'), character + ' mental-health-report.js order');
     assert.ok(html.indexOf('mental-health.css') > html.indexOf('psychology.css'), character + ' mental-health.css order');
-    assert.ok(uiFile < html.indexOf('mental-health-continuous.js') && html.indexOf('mental-health-continuous.js') < html.indexOf('mental-health-intake.js') && html.indexOf('mental-health-intake.js') < html.indexOf('mental-health-profile-page.js') && html.indexOf('mental-health-profile-page.js') < registry, character + ' v2 (intake/continuous/profile-page) script order');
+    // mental-health-intake.js/.css were retired when the Trading Intake wizard moved to React
+    // (navrya-src/mentalHealthIntakeModal.jsx, wired into character-app.jsx's mountCharacterApp);
+    // window.TradeJournalMentalHealthIntake now comes from the navrya-{character}-sessions-app.js
+    // bundle instead of a page-local <script> tag.
+    assert.ok(uiFile < html.indexOf('mental-health-continuous.js') && html.indexOf('mental-health-continuous.js') < html.indexOf('mental-health-profile-page.js') && html.indexOf('mental-health-profile-page.js') < registry, character + ' v2 (continuous/profile-page) script order');
+    assert.ok(!html.includes('mental-health-intake.js') && !html.includes('mental-health-intake.css'), character + ' no longer references the retired vanilla intake wizard files');
   }
 });
 

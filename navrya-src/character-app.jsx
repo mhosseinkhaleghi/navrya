@@ -21,6 +21,7 @@ import { renderPatternRegistry } from './patternRegistryView.jsx';
 import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
 import { renderAccountProfile } from './accountProfileView.jsx';
+import { openIntake } from './mentalHealthIntakeModal.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -248,6 +249,12 @@ export function mountCharacterApp(character) {
 
   // account-profile-ui.js's renderPage() defers to this hook when present.
   window.TradeJournalNavryaAccountProfile = { render: renderAccountProfile };
+
+  // mental-health-profile-page.js's/mental-health-ui.js's "Start intake" buttons both call
+  // window.TradeJournalMentalHealthIntake.open(refresh) directly (there is no legacy fallback
+  // here, unlike the TradeJournalNavryaXxx hooks above) - this IS that global, real
+  // TradeJournalMentalHealthStore/I18n data underneath, only the rendering is React now.
+  window.TradeJournalMentalHealthIntake = { open: openIntake };
 
   // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
   // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version
