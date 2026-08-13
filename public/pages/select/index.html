@@ -3,111 +3,309 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#080d17" />
+    <meta name="theme-color" content="#030807" />
     <link rel="icon" href="../shared/navrya/assets/logo/navrya-favicon.svg" type="image/svg+xml" />
-    <title>NAVRYA · Choose Your Character</title>
+    <title>NAVRYA · Sign In</title>
+    <link rel="stylesheet" href="../shared/navrya/styles.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <svg class="sprite" aria-hidden="true">
-      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 18V9M9 16V5M14 12V3M19 8v-5"/><path d="m4 21 5-5 4 2 7-8"/><path d="m16 10 4-1v4"/></symbol>
-      <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
-      <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12 3.2 13.3 5l2-.25.78 1.87 1.84.84-.1 2.02 1.55 1.28-1.1 1.7 1.1 1.7-1.55 1.28.1 2.02-1.84.84-.78 1.87-2-.25L12 20.8l-1.3-1.58-2 .25-.78-1.87-1.84-.84.1-2.02-1.55-1.28 1.1-1.7-1.1-1.7 1.55-1.28-.1-2.02 1.84-.84.78-1.87 2 .25Z"/><circle cx="12" cy="12" r="3.15"/></symbol>
-      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2 19 6v5.55c0 4.18-2.9 7.45-7 9.25-4.1-1.8-7-5.07-7-9.25V6Z"/><path d="m9.1 12 1.8 1.8 4-4.2"/></symbol>
-      <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4.5h5.5A2.5 2.5 0 0 1 13 7v12a2.5 2.5 0 0 0-2.5-2.5H5zM19 4.5h-5.5A2.5 2.5 0 0 0 11 7v12a2.5 2.5 0 0 1 2.5-2.5H19z"/><path d="M8 8h2M14 8h2M8 11h2M14 11h2"/></symbol>
+    <svg class="sprite icon" aria-hidden="true">
       <symbol id="i-crown" viewBox="0 0 24 24"><path d="m4 8 4 3 4-6 4 6 4-3-2 10H6Z"/><path d="M6 21h12"/></symbol>
-      <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></symbol>
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.8 12h16.4M12 3.5c2.25 2.35 3.4 5.18 3.4 8.5s-1.15 6.15-3.4 8.5c-2.25-2.35-3.4-5.18-3.4-8.5S9.75 5.85 12 3.5"/></symbol>
       <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-collapse" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
       <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0ZM7 6H4v1a4 4 0 0 0 4 4M17 6h3v1a4 4 0 0 1-4 4M12 14v4M8 21h8M9 18h6"/></symbol>
-      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2.5 13.9 9l6.1 1.9-6.1 1.9L12 19.5l-1.9-6.7L4 10.9 10.1 9Z"/></symbol>
     </svg>
 
-    <main class="auth-shell">
-      <aside class="welcome-panel">
-        <div class="stars" aria-hidden="true"></div>
-        <section class="brand" aria-label="NAVRYA">
-          <div class="brand-mark"><img src="../shared/navrya/assets/logo/navrya-mark-gold.svg" alt="" /></div>
+    <div class="navrya-grid" aria-hidden="true"></div>
+
+    <header class="page-header">
+      <div class="brand-lockup">
+        <img class="brand-mark" src="../shared/navrya/assets/logo/navrya-mark-gold.svg" alt="" />
+        <div class="brand-word">
           <strong>NAV<span>RYA</span></strong>
           <small data-i18n="brandTagline">Track. Analyze. Master.</small>
-        </section>
-
-        <section class="welcome-copy">
-          <h2 data-i18n="welcomeTitle">Welcome Back</h2>
-          <p data-i18n="welcomeDesc">Sign in to continue your trading journey</p>
-          <button class="social google" type="button" data-action="google"><b>G</b><span data-i18n="google">Continue with Google</span></button>
-          <div class="or"><span></span><em data-i18n="or">or</em><span></span></div>
-          <button class="social email" type="button" data-action="email"><svg><use href="#i-mail" /></svg><span data-i18n="email">Continue with Email</span></button>
-          <p class="signup"><span data-i18n="noAccount">Don’t have an account?</span> <button type="button" data-action="signup" data-i18n="signup">Sign up</button></p>
-        </section>
-
-        <div class="language-picker">
-          <button id="languageButton" type="button" aria-expanded="false"><svg><use href="#i-globe" /></svg><span id="currentLanguage">English</span><svg class="chevron"><use href="#i-chevron" /></svg></button>
-          <div class="language-menu" id="languageMenu" hidden>
-            <button type="button" data-language="fa">فارسی</button>
-            <button type="button" data-language="ar">العربية</button>
-            <button type="button" data-language="en">English</button>
-            <button type="button" data-language="es">Español</button>
-          </div>
         </div>
-      </aside>
+      </div>
+      <div class="step-indicator" id="stepIndicator">
+        <div class="step-chip is-on" data-step="account" id="stepChipAccount">
+          <span class="step-num">01</span>
+          <span class="step-label" data-i18n="stepAccountLabel">Account</span>
+        </div>
+        <span class="step-line" aria-hidden="true"></span>
+        <div class="step-chip" data-step="character" id="stepChipCharacter">
+          <span class="step-num">02</span>
+          <span class="step-label" data-i18n="stepCharacterLabel">Character</span>
+        </div>
+      </div>
+    </header>
 
-      <section class="choice-panel">
+    <main class="navrya-main">
+      <!-- Step 01 · Account -->
+      <section class="step-panel account-grid" id="stepAccount">
+        <section class="showcase" id="showcase">
+          <div class="showcase-media" id="showcaseMedia"></div>
+          <span class="showcase-scrim" aria-hidden="true"></span>
+          <span class="corner corner-tl" aria-hidden="true"></span>
+          <span class="corner corner-tr" aria-hidden="true"></span>
+          <span class="corner corner-bl" aria-hidden="true"></span>
+          <span class="corner corner-br" aria-hidden="true"></span>
+
+          <div class="showcase-top">
+            <span class="showcase-eyebrow"><i aria-hidden="true"></i><em data-i18n="showcaseEyebrow">Four paths · one discipline</em></span>
+            <span class="showcase-count" id="showcaseCount">01 / 04</span>
+          </div>
+
+          <div class="showcase-body" id="showcaseBody" data-character="hunter">
+            <div class="showcase-heading">
+              <span class="showcase-role" id="showcaseRole"></span>
+              <h1 class="showcase-title" id="showcaseTitle"></h1>
+              <p class="showcase-quote" id="showcaseQuote"></p>
+            </div>
+
+            <div class="showcase-traits">
+              <span class="showcase-traits-label" data-i18n="howThisPathTrades">How this path trades</span>
+              <div class="showcase-traits-grid" id="showcaseTraits">
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span id="showcaseTrait0"></span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span id="showcaseTrait1"></span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span id="showcaseTrait2"></span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span id="showcaseTrait3"></span></div>
+              </div>
+            </div>
+
+            <div class="showcase-slides" id="showcaseSlides">
+              <button type="button" class="slide-btn" data-character="hunter">
+                <img src="../shared/navrya/assets/portraits/portrait-hunter.webp" alt="" />
+                <span data-i18n="hunterShort">Hunter</span>
+              </button>
+              <button type="button" class="slide-btn" data-character="engineer">
+                <img src="../shared/navrya/assets/portraits/portrait-engineer.webp" alt="" />
+                <span data-i18n="engineerShort">Engineer</span>
+              </button>
+              <button type="button" class="slide-btn" data-character="commander">
+                <img src="../shared/navrya/assets/portraits/portrait-commander.webp" alt="" />
+                <span data-i18n="commanderShort">Commander</span>
+              </button>
+              <button type="button" class="slide-btn" data-character="sage">
+                <img src="../shared/navrya/assets/portraits/portrait-master.webp" alt="" />
+                <span data-i18n="sageShort">Sage</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="auth-card">
+          <div class="auth-card-head">
+            <h2 id="authCardTitle"></h2>
+            <p id="authCardSub"></p>
+          </div>
+
+          <div class="auth-tabs" role="tablist">
+            <button type="button" class="auth-tab" role="tab" data-mode="signin" id="tabSignin" data-i18n="tabSignin">Sign in</button>
+            <button type="button" class="auth-tab" role="tab" data-mode="signup" id="tabSignup" data-i18n="tabSignup">Sign up</button>
+          </div>
+
+          <button type="button" class="google-btn" id="googleBtn" data-action="google">
+            <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M45.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h11.8c-.5 2.7-2 5-4.4 6.6v5.5h7.1c4.2-3.8 6.6-9.5 6.6-16.1z" fill="#4285F4"/>
+              <path d="M24 46c5.9 0 10.9-2 14.5-5.4l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.6-3.9-12.3-9.1H4.4v5.7C8 41.1 15.4 46 24 46z" fill="#34A853"/>
+              <path d="M11.7 28.1c-.4-1.3-.7-2.7-.7-4.1s.3-2.8.7-4.1V14H4.4C2.9 17 2 20.4 2 24s.9 7 2.4 10l7.3-5.9z" fill="#FBBC05"/>
+              <path d="M24 10.4c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 3.9 29.9 2 24 2 15.4 2 8 6.9 4.4 14l7.3 5.9c1.7-5.2 6.6-9.5 12.3-9.5z" fill="#EA4335"/>
+            </svg>
+            <span id="googleLabel"></span>
+          </button>
+
+          <div class="or-divider"><span></span><em data-i18n="or">or</em><span></span></div>
+
+          <div class="auth-fields">
+            <label class="field" id="nameField" hidden>
+              <span data-i18n="traderNameLabel">Trader name</span>
+              <input type="text" id="nameInput" autocomplete="name" data-i18n-placeholder="traderNamePlaceholder" placeholder="Rayan Land" />
+            </label>
+            <label class="field">
+              <span data-i18n="emailLabel">Email</span>
+              <input type="email" id="emailInput" autocomplete="email" data-i18n-placeholder="emailFieldPlaceholder" placeholder="trader@navrya.app" />
+            </label>
+            <label class="field">
+              <span class="field-row"><span data-i18n="passwordLabel">Password</span><span class="forgot" data-i18n="forgotPassword">Forgot?</span></span>
+              <input type="password" id="passwordInput" autocomplete="current-password" placeholder="••••••••" />
+            </label>
+          </div>
+
+          <p class="auth-error" id="authError" role="alert"></p>
+
+          <button type="button" class="btn-primary" id="continueBtn">
+            <span id="continueLabel"></span>
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" class="icon"><use href="#i-chevron-right" /></svg>
+          </button>
+
+          <div class="switch-row">
+            <span id="switchPrompt"></span>
+            <button type="button" id="switchAction"></button>
+          </div>
+
+          <div class="auth-foot">
+            <div class="language-picker">
+              <button id="languageButton" type="button" aria-expanded="false"><svg class="icon"><use href="#i-globe" /></svg><span id="currentLanguage">English</span><svg class="chevron icon"><use href="#i-chevron" /></svg></button>
+              <div class="language-menu" id="languageMenu" hidden>
+                <button type="button" data-language="fa">فارسی</button>
+                <button type="button" data-language="ar">العربية</button>
+                <button type="button" data-language="en">English</button>
+                <button type="button" data-language="es">Español</button>
+              </div>
+            </div>
+            <span class="secure-tag" data-i18n="secureEntryTag">NAVRYA v1.0 · Secure entry</span>
+          </div>
+        </section>
+      </section>
+
+      <!-- Step 02 · Character -->
+      <section class="step-panel character-grid" id="stepCharacter" hidden>
         <header class="choice-head">
           <div class="head-copy">
+            <span class="head-eyebrow" data-i18n="step2Eyebrow">Step 02 · The path</span>
             <h1 data-i18n="pageTitle">Choose Your Character</h1>
             <p data-i18n="pageDesc">Every great trader has a path. Choose the role that represents your trading philosophy and begin your journey to mastery.</p>
-            <div class="ornament" aria-hidden="true"><span></span><i></i><span></span></div>
           </div>
-          <div class="journey-note"><div class="note-icon"><svg><use href="#i-crown" /></svg></div><div><b data-i18n="noteTitle">This choice defines your journey</b><p data-i18n="noteCopy">You can change your character later, but your progress and XP will remain.</p></div></div>
+          <div class="journey-note">
+            <span class="note-icon"><svg class="icon"><use href="#i-crown" /></svg></span>
+            <div><b data-i18n="noteTitle">This choice defines your journey</b><p data-i18n="noteCopy">You can change your character later, but your progress and XP will remain.</p></div>
+          </div>
         </header>
 
+        <div class="ornament" aria-hidden="true"><span></span><i></i><span></span></div>
+
         <section class="characters" aria-label="Character choices">
-          <article class="character-card hunter selected" data-character="hunter">
-            <div class="art"><img src="assets/hunter-card.webp" alt="" /></div><div class="art-shade"></div>
-            <div class="card-icon"><svg><use href="#i-crosshair" /></svg></div>
-            <div class="card-copy"><h2 data-i18n="hunterName">The Hunter</h2><h3 data-i18n="hunterRole">Hunter</h3><p class="motto" data-i18n="hunterMotto">I wait for the perfect moment to act.</p><ul><li data-i18n="hunterBullet1">Patience and precision</li><li data-i18n="hunterBullet2">Low-risk quality trades</li><li data-i18n="hunterBullet3">Focus before every entry</li><li data-i18n="hunterBullet4">Wait for the best setup</li></ul></div>
-            <button class="select-character" type="button" data-i18n="select">Select</button>
+          <article class="character-card" data-character="hunter">
+            <div class="art-frame">
+              <img class="art" src="assets/characters/hunter.jpg" alt="" />
+              <span class="art-shade"></span>
+              <img class="portrait" src="../shared/navrya/assets/portraits/portrait-hunter.webp" alt="" />
+              <span class="chosen-badge" hidden><svg class="icon"><use href="#i-check" /></svg><span data-i18n="chosenBadge">Chosen</span></span>
+            </div>
+            <div class="card-copy">
+              <div class="card-name">
+                <span class="card-title" data-i18n="hunterName">The Hunter</span>
+                <span class="card-rank" data-i18n="hunterRank">Emerald Hunter · III</span>
+              </div>
+              <p class="card-quote" data-i18n="hunterMotto">“I wait for the perfect moment to act.”</p>
+              <div class="card-divider"></div>
+              <div class="card-traits">
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="hunterBullet1">Patience and precision</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="hunterBullet2">Low-risk quality trades</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="hunterBullet3">Focus before every entry</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="hunterBullet4">Wait for the best setup</span></div>
+              </div>
+              <button class="select-character" type="button"><svg class="check-icon icon" width="16" height="16" viewBox="0 0 24 24" hidden><use href="#i-check" /></svg><span data-i18n="select">Select</span></button>
+            </div>
           </article>
-          <article class="character-card engineer" data-character="engineer">
-            <div class="art"><img src="assets/engineer-card.webp" alt="" /></div><div class="art-shade"></div>
-            <div class="card-icon"><svg><use href="#i-gear" /></svg></div>
-            <div class="card-copy"><h2 data-i18n="engineerName">The Engineer</h2><h3 data-i18n="engineerRole">Market Engineer</h3><p class="motto" data-i18n="engineerMotto">Every market move has a system.</p><ul><li data-i18n="engineerBullet1">Systematic analysis</li><li data-i18n="engineerBullet2">Love structure and detail</li><li data-i18n="engineerBullet3">Document everything</li><li data-i18n="engineerBullet4">Read market logic</li></ul></div>
-            <button class="select-character" type="button" data-i18n="select">Select</button>
+          <article class="character-card" data-character="engineer">
+            <div class="art-frame">
+              <img class="art" src="assets/characters/engineer.jpg" alt="" />
+              <span class="art-shade"></span>
+              <img class="portrait" src="../shared/navrya/assets/portraits/portrait-engineer.webp" alt="" />
+              <span class="chosen-badge" hidden><svg class="icon"><use href="#i-check" /></svg><span data-i18n="chosenBadge">Chosen</span></span>
+            </div>
+            <div class="card-copy">
+              <div class="card-name">
+                <span class="card-title" data-i18n="engineerName">The Engineer</span>
+                <span class="card-rank" data-i18n="engineerRank">Systems Engineer · II</span>
+              </div>
+              <p class="card-quote" data-i18n="engineerMotto">“Every market move has a system.”</p>
+              <div class="card-divider"></div>
+              <div class="card-traits">
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="engineerBullet1">Systematic analysis</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="engineerBullet2">Love structure and detail</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="engineerBullet3">Document everything</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="engineerBullet4">Read market logic</span></div>
+              </div>
+              <button class="select-character" type="button"><svg class="check-icon icon" width="16" height="16" viewBox="0 0 24 24" hidden><use href="#i-check" /></svg><span data-i18n="select">Select</span></button>
+            </div>
           </article>
-          <article class="character-card commander" data-character="commander">
-            <div class="art"><img src="assets/commander-card.webp" alt="" /></div><div class="art-shade"></div>
-            <div class="card-icon"><svg><use href="#i-shield" /></svg></div>
-            <div class="card-copy"><h2 data-i18n="commanderName">The Commander</h2><h3 data-i18n="commanderRole">Commander</h3><p class="motto" data-i18n="commanderMotto">Emotion is my enemy; discipline is my law.</p><ul><li data-i18n="commanderBullet1">Risk and capital command</li><li data-i18n="commanderBullet2">Discipline under pressure</li><li data-i18n="commanderBullet3">Fast strategic decisions</li><li data-i18n="commanderBullet4">Lead your trades</li></ul></div>
-            <button class="select-character" type="button" data-i18n="select">Select</button>
+          <article class="character-card" data-character="commander">
+            <div class="art-frame">
+              <img class="art" src="assets/characters/commander.jpg" alt="" />
+              <span class="art-shade"></span>
+              <img class="portrait" src="../shared/navrya/assets/portraits/portrait-commander.webp" alt="" />
+              <span class="chosen-badge" hidden><svg class="icon"><use href="#i-check" /></svg><span data-i18n="chosenBadge">Chosen</span></span>
+            </div>
+            <div class="card-copy">
+              <div class="card-name">
+                <span class="card-title" data-i18n="commanderName">The Commander</span>
+                <span class="card-rank" data-i18n="commanderRank">Field Commander · III</span>
+              </div>
+              <p class="card-quote" data-i18n="commanderMotto">“Emotion is my enemy; discipline is my law.”</p>
+              <div class="card-divider"></div>
+              <div class="card-traits">
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="commanderBullet1">Risk and capital command</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="commanderBullet2">Discipline under pressure</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="commanderBullet3">Fast strategic decisions</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="commanderBullet4">Lead your trades</span></div>
+              </div>
+              <button class="select-character" type="button"><svg class="check-icon icon" width="16" height="16" viewBox="0 0 24 24" hidden><use href="#i-check" /></svg><span data-i18n="select">Select</span></button>
+            </div>
           </article>
-          <article class="character-card sage" data-character="sage">
-            <div class="art"><img src="assets/sage-card.webp" alt="" /></div><div class="art-shade"></div>
-            <div class="card-icon"><svg><use href="#i-book" /></svg></div>
-            <div class="card-copy"><h2 data-i18n="sageName">The Sage</h2><h3 data-i18n="sageRole">Market Sage</h3><p class="motto" data-i18n="sageMotto">The goal is not profit; it is understanding.</p><ul><li data-i18n="sageBullet1">Continuous deep learning</li><li data-i18n="sageBullet2">Build patterns and laws</li><li data-i18n="sageBullet3">Focus on the market’s essence</li><li data-i18n="sageBullet4">Search for market wisdom</li></ul></div>
-            <button class="select-character" type="button" data-i18n="select">Select</button>
+          <article class="character-card" data-character="sage">
+            <div class="art-frame">
+              <img class="art" src="assets/characters/sage.jpg" alt="" />
+              <span class="art-shade"></span>
+              <img class="portrait" src="../shared/navrya/assets/portraits/portrait-master.webp" alt="" />
+              <span class="chosen-badge" hidden><svg class="icon"><use href="#i-check" /></svg><span data-i18n="chosenBadge">Chosen</span></span>
+            </div>
+            <div class="card-copy">
+              <div class="card-name">
+                <span class="card-title" data-i18n="sageName">The Sage</span>
+                <span class="card-rank" data-i18n="sageRank">Grand Market Sage · IV</span>
+              </div>
+              <p class="card-quote" data-i18n="sageMotto">“The goal is not profit; it is understanding.”</p>
+              <div class="card-divider"></div>
+              <div class="card-traits">
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="sageBullet1">Continuous deep learning</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="sageBullet2">Build patterns and laws</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="sageBullet3">Focus on the market’s essence</span></div>
+                <div class="trait-row"><svg width="14" height="14" viewBox="0 0 24 24" class="icon"><use href="#i-chevron-right" /></svg><span data-i18n="sageBullet4">Search for market wisdom</span></div>
+              </div>
+              <button class="select-character" type="button"><svg class="check-icon icon" width="16" height="16" viewBox="0 0 24 24" hidden><use href="#i-check" /></svg><span data-i18n="select">Select</span></button>
+            </div>
           </article>
         </section>
 
         <footer class="rank-path">
-          <div class="rank-intro"><span class="trophy"><svg><use href="#i-trophy" /></svg></span><div><b data-i18n="rankTitle">All characters follow the same 7 mastery ranks</b><p data-i18n="rankCopy">Your actions, discipline, and consistency will help you rise through the ranks and become a legend.</p></div></div>
-          <ol class="ranks"><li class="r1"><i>1</i><span data-i18n="rank1">Novice</span></li><li class="r2"><i>2</i><span data-i18n="rank2">Seeker</span></li><li class="r3"><i>3</i><span data-i18n="rank3">Analyst</span></li><li class="r4"><i>4</i><span data-i18n="rank4">Strategist</span></li><li class="r5"><i>5</i><span data-i18n="rank5">Specialist</span></li><li class="r6"><i>6</i><span data-i18n="rank6">Master</span></li><li class="r7"><i>7</i><span data-i18n="rank7">Legend</span></li></ol>
+          <div class="rank-intro"><span class="trophy"><svg class="icon"><use href="#i-trophy" /></svg></span><div><b data-i18n="rankTitle">All characters follow the same 7 mastery ranks</b><p data-i18n="rankCopy">Your actions, discipline, and consistency will help you rise through the ranks and become a legend.</p></div></div>
+          <ol class="ranks">
+            <li class="r1"><div class="rank-node"><i>1</i><span data-i18n="rank1">Novice</span></div></li>
+            <li class="r2"><div class="rank-node"><i>2</i><span data-i18n="rank2">Seeker</span></div></li>
+            <li class="r3"><div class="rank-node"><i>3</i><span data-i18n="rank3">Analyst</span></div></li>
+            <li class="r4"><div class="rank-node"><i>4</i><span data-i18n="rank4">Strategist</span></div></li>
+            <li class="r5"><div class="rank-node"><i>5</i><span data-i18n="rank5">Specialist</span></div></li>
+            <li class="r6"><div class="rank-node"><i>6</i><span data-i18n="rank6">Master</span></div></li>
+            <li class="r7"><div class="rank-node"><i>7</i><span data-i18n="rank7">Legend</span></div></li>
+          </ol>
         </footer>
+
+        <div class="picked-bar" id="pickedBar" data-character="">
+          <div class="picked-info">
+            <img id="pickedCrest" src="" alt="" hidden />
+            <div class="picked-text">
+              <span data-i18n="selectedPathLabel">Selected path</span>
+              <strong id="pickedTitle"></strong>
+            </div>
+            <span id="pickedPlaceholder" data-i18n="selectPathPlaceholder">Select a character to continue.</span>
+          </div>
+          <div class="picked-actions">
+            <button type="button" class="btn-ghost" id="backBtn"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" class="icon"><use href="#i-collapse" /></svg><span data-i18n="backButton">Back</span></button>
+            <button type="button" class="btn-primary" id="enterBtn" disabled>
+              <span data-i18n="enterNavrya">Enter NAVRYA</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" class="icon"><use href="#i-chevron-right" /></svg>
+            </button>
+          </div>
+        </div>
       </section>
     </main>
-    <div class="name-step-overlay" id="authOverlay" hidden>
-      <div class="name-step-card" role="dialog" aria-modal="true">
-        <button type="button" class="name-step-close" id="authClose" aria-label="Close">&times;</button>
-        <h2 id="authTitle" data-i18n="loginTitle">Log in</h2>
-        <p id="authHint" data-i18n="loginHint">Enter your email and password.</p>
-        <input type="text" id="authNameInput" data-i18n-placeholder="nameStepPlaceholder" placeholder="Display name" hidden />
-        <input type="email" id="authEmailInput" data-i18n-placeholder="emailPlaceholder" placeholder="Email" autocomplete="email" />
-        <input type="password" id="authPasswordInput" data-i18n-placeholder="passwordPlaceholder" placeholder="Password" autocomplete="current-password" />
-        <p class="name-step-error" id="authError"></p>
-        <button type="button" class="name-step-submit" id="authSubmit" data-i18n="loginSubmit">Log in</button>
-        <p class="signup" id="authToggleRow"><button type="button" id="authToggleBtn" data-i18n="signup">Sign up</button></p>
-      </div>
-    </div>
+
     <div class="toast" id="toast" role="status"></div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="../shared/dev-user-switcher.js"></script>
