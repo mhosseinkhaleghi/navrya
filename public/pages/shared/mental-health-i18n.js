@@ -92,7 +92,7 @@
   };
   Object.assign(messages.fa, {
     mhYes:'بله',mhNo:'خیر',mhPrevious:'قبلی',mhCancel:'انصراف',mhAdd:'افزودن',
-    mhIntakeTitle:'پذیرش اطلاعات معامله‌گری',mhIntakeWelcomeTitle:'قبل از شروع',mhIntakeWelcomeBody:'چند سؤال کوتاه درباره زمینه معامله‌گری‌ات. همه اینها اختیاری و بعداً قابل ویرایش است و هیچ بخش دیگری از اپ را قفل نمی‌کند.',mhIntakeStep2Title:'درباره تو',mhIntakeStep3Title:'زمینه مالی',mhIntakeStep4Title:'سابقه معامله‌گری',mhIntakeStep5Title:'انگیزه و اولین ضرر بزرگ',mhIntakeStep6Title:'شفافیت با خانواده',mhIntakeStep8Title:'جمع‌بندی',mhIntakeSummaryHint:'آنچه ثبت شد را مرور کن؛ هرکدام را بعداً از صفحه پرونده می‌توانی ویرایش کنی.',mhIntakeSaved:'پذیرش اطلاعات ذخیره شد.',mhIntakeNotCompleted:'پرسشنامه پذیرش هنوز تکمیل نشده است.',mhIntakeSummaryTitle:'خلاصه پذیرش',mhStartIntake:'شروع پذیرش اطلاعات',mhEditIntake:'ویرایش پذیرش اطلاعات',
+    mhIntakeTitle:'پذیرش اطلاعات معامله‌گری',mhIntakeWelcomeTitle:'قبل از شروع',mhIntakeWelcomeBody:'سیزده سؤال کوتاه دربارهٔ اینکه چطور معامله می‌کنی و زیر فشار چطور واکنش نشان می‌دهی. هیچ‌چیز علیه تو نمره‌گذاری نمی‌شود — فقط شکل می‌دهد که NAVRYA چطور سشن‌هایت را بخواند.',mhIntakeStep2Title:'درباره تو',mhIntakeStep3Title:'زمینه مالی',mhIntakeStep4Title:'سابقه معامله‌گری',mhIntakeStep5Title:'انگیزه و اولین ضرر بزرگ',mhIntakeStep6Title:'شفافیت با خانواده',mhIntakeStep8Title:'جمع‌بندی',mhIntakeSummaryHint:'آنچه ثبت شد را مرور کن؛ هرکدام را بعداً از صفحه پرونده می‌توانی ویرایش کنی.',mhIntakeSaved:'پذیرش اطلاعات ذخیره شد.',mhIntakeNotCompleted:'پرسشنامه پذیرش هنوز تکمیل نشده است.',mhIntakeSummaryTitle:'خلاصه پذیرش',mhStartIntake:'شروع پذیرش اطلاعات',mhEditIntake:'ویرایش پذیرش اطلاعات',
     mhAge:'سن',mhMaritalStatus:'وضعیت تأهل',mhOccupation:'شغل اصلی',mhFullTimeTrader:'معامله‌گری شغل تمام‌وقتت است؟',
     mhGender:'جنسیت',mhGender_male:'مرد',mhGender_female:'زن',mhGender_prefer_not_to_say:'ترجیح می‌دهم نگویم',
     mhMaritalStatus_single:'مجرد',mhMaritalStatus_married:'متأهل',mhMaritalStatus_divorced:'مطلقه/مطلق',mhMaritalStatus_widowed:'همسر از دست‌رفته',mhMaritalStatus_prefer_not_to_say:'ترجیح می‌دهم نگویم',
@@ -119,7 +119,7 @@
   });
   Object.assign(messages.ar, {
     mhYes:'نعم',mhNo:'لا',mhPrevious:'السابق',mhCancel:'إلغاء',mhAdd:'إضافة',
-    mhIntakeTitle:'استقبال بيانات التداول',mhIntakeWelcomeTitle:'قبل أن نبدأ',mhIntakeWelcomeBody:'بضعة أسئلة قصيرة عن سياق تداولك. كل هذا اختياري وقابل للتعديل لاحقاً، ولا يقفل أي جزء آخر من التطبيق.',mhIntakeStep2Title:'عنك',mhIntakeStep3Title:'السياق المالي',mhIntakeStep4Title:'تاريخ التداول',mhIntakeStep5Title:'الدافع وأول خسارة كبيرة',mhIntakeStep6Title:'الشفافية مع العائلة',mhIntakeStep8Title:'الملخص',mhIntakeSummaryHint:'راجع ما تم تسجيله؛ يمكنك تعديل أي منه لاحقاً من صفحة الملف.',mhIntakeSaved:'تم حفظ بيانات الاستقبال.',mhIntakeNotCompleted:'لم تُكمَل استبانة الاستقبال بعد.',mhIntakeSummaryTitle:'ملخص الاستقبال',mhStartIntake:'بدء استقبال البيانات',mhEditIntake:'تعديل بيانات الاستقبال',
+    mhIntakeTitle:'استقبال بيانات التداول',mhIntakeWelcomeTitle:'قبل أن نبدأ',mhIntakeWelcomeBody:'ثلاثة عشر سؤالاً قصيراً عن طريقة تداولك وكيف تتفاعل تحت الضغط. لا شيء يُحتسب ضدك - إنه فقط يشكّل الطريقة التي يقرأ بها NAVRYA جلساتك.',mhIntakeStep2Title:'عنك',mhIntakeStep3Title:'السياق المالي',mhIntakeStep4Title:'تاريخ التداول',mhIntakeStep5Title:'الدافع وأول خسارة كبيرة',mhIntakeStep6Title:'الشفافية مع العائلة',mhIntakeStep8Title:'الملخص',mhIntakeSummaryHint:'راجع ما تم تسجيله؛ يمكنك تعديل أي منه لاحقاً من صفحة الملف.',mhIntakeSaved:'تم حفظ بيانات الاستقبال.',mhIntakeNotCompleted:'لم تُكمَل استبانة الاستقبال بعد.',mhIntakeSummaryTitle:'ملخص الاستقبال',mhStartIntake:'بدء استقبال البيانات',mhEditIntake:'تعديل بيانات الاستقبال',
     mhAge:'العمر',mhMaritalStatus:'الحالة الاجتماعية',mhOccupation:'المهنة الأساسية',mhFullTimeTrader:'هل التداول عملك بدوام كامل؟',
     mhGender:'الجنس',mhGender_male:'ذكر',mhGender_female:'أنثى',mhGender_prefer_not_to_say:'أفضل عدم القول',
     mhMaritalStatus_single:'أعزب',mhMaritalStatus_married:'متزوج',mhMaritalStatus_divorced:'مطلّق',mhMaritalStatus_widowed:'أرمل',mhMaritalStatus_prefer_not_to_say:'أفضل عدم القول',
@@ -146,7 +146,7 @@
   });
   Object.assign(messages.en, {
     mhYes:'Yes',mhNo:'No',mhPrevious:'Previous',mhCancel:'Cancel',mhAdd:'Add',
-    mhIntakeTitle:'Trading Intake',mhIntakeWelcomeTitle:'Before we start',mhIntakeWelcomeBody:'A few short questions about your trading context. Everything here is optional and editable later, and it never blocks any other part of the app.',mhIntakeStep2Title:'About you',mhIntakeStep3Title:'Financial context',mhIntakeStep4Title:'Trading history',mhIntakeStep5Title:'Motivation & first big loss',mhIntakeStep6Title:'Transparency with family',mhIntakeStep8Title:'Summary',mhIntakeSummaryHint:'Review what was captured. You can edit any of this later from the profile page.',mhIntakeSaved:'Intake saved.',mhIntakeNotCompleted:'The intake questionnaire has not been completed yet.',mhIntakeSummaryTitle:'Intake summary',mhStartIntake:'Start intake',mhEditIntake:'Edit intake',
+    mhIntakeTitle:'Trading Intake',mhIntakeWelcomeTitle:'Before we start',mhIntakeWelcomeBody:'Thirteen short questions about how you trade and how you react under pressure. Nothing is scored against you — it shapes how NAVRYA reads your sessions.',mhIntakeStep2Title:'About you',mhIntakeStep3Title:'Financial context',mhIntakeStep4Title:'Trading history',mhIntakeStep5Title:'Motivation & first big loss',mhIntakeStep6Title:'Transparency with family',mhIntakeStep8Title:'Summary',mhIntakeSummaryHint:'Review what was captured. You can edit any of this later from the profile page.',mhIntakeSaved:'Intake saved.',mhIntakeNotCompleted:'The intake questionnaire has not been completed yet.',mhIntakeSummaryTitle:'Intake summary',mhStartIntake:'Start intake',mhEditIntake:'Edit intake',
     mhAge:'Age',mhMaritalStatus:'Marital status',mhOccupation:'Primary occupation',mhFullTimeTrader:'Full-time trader?',
     mhGender:'Gender',mhGender_male:'Male',mhGender_female:'Female',mhGender_prefer_not_to_say:'Prefer not to say',
     mhMaritalStatus_single:'Single',mhMaritalStatus_married:'Married',mhMaritalStatus_divorced:'Divorced',mhMaritalStatus_widowed:'Widowed',mhMaritalStatus_prefer_not_to_say:'Prefer not to say',
@@ -173,7 +173,7 @@
   });
   Object.assign(messages.es, {
     mhYes:'Sí',mhNo:'No',mhPrevious:'Anterior',mhCancel:'Cancelar',mhAdd:'Añadir',
-    mhIntakeTitle:'Admisión de datos de trading',mhIntakeWelcomeTitle:'Antes de empezar',mhIntakeWelcomeBody:'Unas preguntas breves sobre tu contexto como trader. Todo es opcional y editable después, y nunca bloquea ninguna otra parte de la app.',mhIntakeStep2Title:'Sobre ti',mhIntakeStep3Title:'Contexto financiero',mhIntakeStep4Title:'Historial de trading',mhIntakeStep5Title:'Motivación y primera gran pérdida',mhIntakeStep6Title:'Transparencia con la familia',mhIntakeStep8Title:'Resumen',mhIntakeSummaryHint:'Revisa lo que se capturó; puedes editar cualquier cosa después desde la página de perfil.',mhIntakeSaved:'Admisión guardada.',mhIntakeNotCompleted:'Aún no se ha completado el cuestionario de admisión.',mhIntakeSummaryTitle:'Resumen de admisión',mhStartIntake:'Iniciar admisión',mhEditIntake:'Editar admisión',
+    mhIntakeTitle:'Admisión de datos de trading',mhIntakeWelcomeTitle:'Antes de empezar',mhIntakeWelcomeBody:'Trece preguntas breves sobre cómo operas y cómo reaccionas bajo presión. Nada de esto se puntúa en tu contra — moldea cómo NAVRYA lee tus sesiones.',mhIntakeStep2Title:'Sobre ti',mhIntakeStep3Title:'Contexto financiero',mhIntakeStep4Title:'Historial de trading',mhIntakeStep5Title:'Motivación y primera gran pérdida',mhIntakeStep6Title:'Transparencia con la familia',mhIntakeStep8Title:'Resumen',mhIntakeSummaryHint:'Revisa lo que se capturó; puedes editar cualquier cosa después desde la página de perfil.',mhIntakeSaved:'Admisión guardada.',mhIntakeNotCompleted:'Aún no se ha completado el cuestionario de admisión.',mhIntakeSummaryTitle:'Resumen de admisión',mhStartIntake:'Iniciar admisión',mhEditIntake:'Editar admisión',
     mhAge:'Edad',mhMaritalStatus:'Estado civil',mhOccupation:'Ocupación principal',mhFullTimeTrader:'¿Operas a tiempo completo?',
     mhGender:'Género',mhGender_male:'Masculino',mhGender_female:'Femenino',mhGender_prefer_not_to_say:'Prefiero no decirlo',
     mhMaritalStatus_single:'Soltero/a',mhMaritalStatus_married:'Casado/a',mhMaritalStatus_divorced:'Divorciado/a',mhMaritalStatus_widowed:'Viudo/a',mhMaritalStatus_prefer_not_to_say:'Prefiero no decirlo',
@@ -197,6 +197,124 @@
     mhPreSessionCheckIns:'Revisiones previas a la sesión',mhInfoPreSessionCheckIns:'Una reflexión rápida capturada una vez al inicio de cada sesión.',mhPreTradeContextTitle:'Contexto previo a la operación',mhInfoPreTradeContext:'Notas breves que dejaste sobre el sueño y eventos importantes al registrar una operación.',mhPostTradeReflections:'Reflexiones posteriores a la operación',mhInfoPostTradeReflections:'Lo que notaste sobre ti mismo justo después de cada operación cerrada.',mhSentencesTitle:'Frase del día',mhInfoSentences:'Una lista creciente de tus propias reflexiones de una línea, en tus propias palabras - sin juicio, solo para que te observes.',mhMonthlyReportsTitle:'Informes mensuales de correlación',mhInfoMonthlyReports:'Cómo se alinearon el estado de ánimo y el rendimiento cada mes, dando más peso a la disciplina que al P&L bruto.',mhPlanAdherenceScore:'Puntuación de disciplina del plan',
     mhPostTradeTitle:'Después de esta operación',mhPostTradeSaved:'Reflexión guardada.',mhEmotionThermometer:'¿Cómo se sintió esa operación?',mhEmotion_anger:'Ira',mhEmotion_anxiety:'Ansiedad',mhEmotion_calm:'Calma',mhEmotion_euphoria:'Euforia',mhEmotion_regret:'Arrepentimiento',mhEmotion_indifference:'Indiferencia',mhEmotion_disappointment:'Decepción',mhEmotion_confidence:'Confianza',mhTradeJudgment:'¿Cómo evalúas esta operación?',mhSetupQuality:'Calidad del setup',mhPlanAdherence:'Disciplina del plan',mhEmotionManagement:'Manejo emocional',mhKeyQuestion:'Un par de preguntas más',mhDeviatedFromPlan:'¿Te desviaste de tu plan?',mhDeviation_none:'No',mhDeviation_slightly:'Un poco',mhDeviation_yes:'Sí',mhDeviationReasonPlaceholder:'¿Dónde/por qué? (opcional)',mhWouldTakeAgainQuestion:'¿Tomarías esta operación de nuevo mañana?',mhTakeAgain_yes:'Sí',mhTakeAgain_no:'No',mhTakeAgain_unsure:'No estoy seguro',mhRevengeCheckQuestion:'¿Quieres abrir otra operación ahora mismo?',mhRevengeChoice_rest:'No, voy a descansar',mhRevengeChoice_recover:'Sí, para recuperarlo',mhRevengeChoice_saw_setup:'Sí, vi un setup real',mhRevengeWarningBody:'Las operaciones de venganza suelen agrandar la pérdida del día. Espera {minutes} minutos y luego decide.',mhSentenceOfTheDay:'Frase del día',mhSentenceHint:'Una frase sobre esta operación o sobre hoy, en tus propias palabras (opcional).',mhSentencePlaceholder:'Escribe una frase…',
     mhRedFlagsTitle:'Señales de alerta',mhInfoRedFlags:'Patrones que merece la pena tomar en serio, según lo que compartiste y lo que aparece en tus datos de trading.',mhRedFlagsClear:'No se ha marcado nada. Esto no es un "certificado de salud" - solo que no hay nada destacable por ahora.',mhRedFlagsResolved:'Resueltas',mhRedFlag_hiding_losses:'Pérdidas no compartidas con la familia',mhRedFlag_borrowed_money:'Operar con dinero prestado',mhRedFlag_escalating_revenge_trading:'El trading de venganza aparece cada vez más',mhRedFlag_pervasive_distress_signs:'Lenguaje que sugiere angustia real',mhRedFlag_identity_outcome_fusion:'Fuerte fusión entre identidad y resultados de trading',mhRedFlag_custom:'Señal personalizada'
+  });
+
+  // ---------------------------------------------------------------------
+  // v3: gold-design-system intake wizard (mental-health-intake.js redesign).
+  // Additive only - every key above stays exactly as consumed by the other
+  // mental-health-*.js modules (profile page, continuous tracking, etc.).
+  // ---------------------------------------------------------------------
+  Object.assign(messages.fa, {
+    mhChapterOrientation:'مقدمه', mhChapterContext:'زمینه', mhChapterHistory:'سابقه', mhChapterScenarios:'سناریوها', mhChapterSeal:'مهر پایانی',
+    mhIntakeEyebrow:'روان‌شناسی · پروندهٔ پذیرش',
+    mhIntakeInfo1Label:'۱۳ سؤال · حدود ۴ دقیقه', mhIntakeInfo1Text:'چهار بخش: اینکه چه کسی هستی، سرمایه‌ای که پشت توست، سابقه‌ات، و پنج سناریوی زنده.',
+    mhIntakeInfo2Label:'اختیاری و خصوصی', mhIntakeInfo2Text:'هر سؤالی را می‌توانی رد کنی. هیچ‌چیز اینجا با دیگران به اشتراک گذاشته، رتبه‌بندی یا در انجمن نمایش داده نمی‌شود.',
+    mhIntakeInfo3Label:'همیشه قابل ویرایش', mhIntakeInfo3Text:'پاسخ‌ها در «روان‌شناسی · پروندهٔ پذیرش» می‌مانند و هیچ بخش دیگری از NAVRYA را قفل نمی‌کنند.',
+    mhAgeSliderHint:'مقیاس را بکش، اسکرول کن یا از ← → استفاده کن', mhAgeYearsUnit:'سال',
+    mhYearsHint:'پله‌ها را بالا برو تا به سال خودت برسی', mhYearsUnderOne:'کمتر از یک سال', mhYearsOne:'۱ سال', mhYearsPlural:'{n} سال', mhYearsTenPlus:'۱۰ سال به بالا',
+    mhInstrumentsHint:'هرکدام را که معامله می‌کنی انتخاب کن', mhInstrumentsSelectedCount:'{n} مورد انتخاب‌شده', mhInstrumentsAddedByYou:'افزوده‌شده توسط تو',
+    mhLargestWinTitle:'بزرگ‌ترین سود تکی', mhLargestLossTitle:'بزرگ‌ترین ضرر تکی', mhAmountLabel:'مبلغ', mhPercentLabel:'درصد',
+    mhMarginNever:'هرگز', mhMarginOnce:'یک‌بار', mhMarginTimes:'{n} بار',
+    mhHeatQuestionB:'همین الان چقدر عصبانی هستی؟', mhHeatQuestionD:'این انتظار چقدر برایت سخت است؟', mhOutOfTen:'از ۱۰',
+    mhDisclosureTitle:'شفافیت', mhDisclosureHint:'چقدر از زندگی معامله‌گری‌ات در خانه دیده می‌شود', mhDisclosureNone:'چیزی گفته نشده', mhDisclosurePartial:'تا حدی روشن', mhDisclosureFull:'کاملاً روشن', mhDisclosureCount:'{n} از ۴',
+    mhInTradingLabel:'در معامله‌گری', mhScenariosAnsweredLabel:'سناریوهای پاسخ‌داده‌شده', mhFirstDrewYouLabel:'اولین چیزی که جذبت کرد',
+    mhReadsAs:'خوانش می‌شود به‌عنوان', mhXpOnSeal:'با مهر پایانی +{points} XP', mhSealedTitle:'پروندهٔ پذیرش مهر شد', mhXpBadge:'+{points} XP', mhPsychologyUnlocked:'روان‌شناسی باز شد',
+    mhArchetypeImpulseTitle:'تکانشی', mhArchetypeImpulseBody:'پاسخ‌هایت نشان می‌دهد زیر فشار واکنشی عمل می‌کنی. NAVRYA حصارهای محافظ را همیشه در دید نگه می‌دارد: قوانین پیش از سشن، یک بازهٔ خنک‌شدن بعد از ضرر، و یادآوری یادداشت قبل از هر ورود دوباره.',
+    mhArchetypeReactiveTitle:'دست واکنشی', mhArchetypeReactiveBody:'انضباط هست، اما وقتی بازار پرسروصدا می‌شود می‌لغزد. سشن‌ها قوانینت را جلو می‌آورند و لحظه‌هایی که معمولاً آن‌ها را کنار می‌گذاری را علامت می‌زنند.',
+    mhArchetypeMeasuredTitle:'سنجیده', mhArchetypeMeasuredBody:'بیشتر وقت‌ها روی روندت می‌مانی، با چند نقطهٔ فشار. NAVRYA همان نقطه‌ها را پیگیری می‌کند، نه اینکه دربارهٔ بقیه نصیحت کند.',
+    mhArchetypeSteadyTitle:'اپراتور پایدار', mhArchetypeSteadyBody:'بعد از یک ضربه سریع به روندت برمی‌گردی. مرورها بیشتر روی داده تکیه می‌کنند تا یادآوری.',
+    mhArchetypePatientTitle:'دست صبور', mhArchetypePatientBody:'صبر برگ برندهٔ توست و پاسخ‌هایت این را نشان می‌دهد. NAVRYA فقط سر راهت نمی‌ایستد و رکورد را نگه می‌دارد.',
+    mhArchetypePendingTitle:'خوانش در انتظار', mhArchetypePendingBody:'فقط {answered} از ۵ سناریو پاسخ داده شده. NAVRYA همچنان از روی سشن‌هایی که ثبت می‌کنی تو را می‌خواند — هر وقت خواستی خوانش دقیق‌تری داشته باشی، به سناریوها برگرد.',
+    mhBeginIntake:'شروع پذیرش', mhNext:'بعدی', mhReview:'مرور', mhSealProfile:'مهر پروفایل', mhDone:'انجام شد',
+    mhFootNoteOptional:'اختیاری · بعداً قابل ویرایش', mhFootNoteSealing:'مهر پایانی {points} XP می‌دهد', mhFootNoteSaved:'در پروفایلت ذخیره شد',
+    mhStepAboutYouHint:'فقط زمینه است. هر چیزی که حس درستی نداشت را رد کن.',
+    mhStepExperienceTitle:'تجربه', mhStepExperienceHint:'چقدر در بازار بوده‌ای، و واقعاً چه چیزی معامله می‌کنی.',
+    mhStepExtremesTitle:'نقاط اوج و مارجین‌کال', mhStepExtremesHint:'بزرگ‌ترین سود تکی، بزرگ‌ترین ضرر تکی، و دفعاتی که حساب مارجین‌کال شد یا صفر شد. عدد تقریبی هم کافی است — هرچه را نمی‌خواهی خالی بگذار.',
+    mhAllocationWarning:'بیشتر سرمایه‌ات در بازار است. این فقط به‌عنوان زمینه ثبت می‌شود — هرگز قضاوت یا به اشتراک گذاشته نمی‌شود.'
+  });
+  Object.assign(messages.ar, {
+    mhChapterOrientation:'التوجيه', mhChapterContext:'السياق', mhChapterHistory:'التاريخ', mhChapterScenarios:'السيناريوهات', mhChapterSeal:'الختم',
+    mhIntakeEyebrow:'علم النفس · ملف الاستقبال',
+    mhIntakeInfo1Label:'١٣ سؤالاً · نحو ٤ دقائق', mhIntakeInfo1Text:'أربعة أقسام: من أنت، رأس المال خلفك، تاريخك، وخمسة سيناريوهات حية.',
+    mhIntakeInfo2Label:'اختياري وخاص', mhIntakeInfo2Text:'تخطَّ أي سؤال تريد. لا شيء هنا يُشارَك أو يُصنَّف مقابل متداولين آخرين أو يُعرض في المجتمع.',
+    mhIntakeInfo3Label:'قابل للتعديل دائماً', mhIntakeInfo3Text:'تبقى الإجابات في «علم النفس · ملف الاستقبال» ولا تحجب أي جزء آخر من NAVRYA أبداً.',
+    mhAgeSliderHint:'اسحب المقياس أو مرّر أو استخدم ← →', mhAgeYearsUnit:'سنة',
+    mhYearsHint:'تسلّق الدرجات حتى سنتك', mhYearsUnderOne:'أقل من سنة', mhYearsOne:'سنة واحدة', mhYearsPlural:'{n} سنوات', mhYearsTenPlus:'١٠ سنوات فأكثر',
+    mhInstrumentsHint:'اختر أي أداة تتداول بها', mhInstrumentsSelectedCount:'{n} محدد', mhInstrumentsAddedByYou:'أضفتها أنت',
+    mhLargestWinTitle:'أكبر ربح فردي', mhLargestLossTitle:'أكبر خسارة فردية', mhAmountLabel:'المبلغ', mhPercentLabel:'النسبة',
+    mhMarginNever:'أبداً', mhMarginOnce:'مرة واحدة', mhMarginTimes:'{n} مرات',
+    mhHeatQuestionB:'ما مدى غضبك الآن؟', mhHeatQuestionD:'ما مدى صعوبة هذا الانتظار عليك؟', mhOutOfTen:'من ١٠',
+    mhDisclosureTitle:'الشفافية', mhDisclosureHint:'كم من حياتك التداولية ظاهر في المنزل', mhDisclosureNone:'لا شيء مشارَك', mhDisclosurePartial:'مكشوف جزئياً', mhDisclosureFull:'مكشوف بالكامل', mhDisclosureCount:'{n} من ٤',
+    mhInTradingLabel:'في التداول', mhScenariosAnsweredLabel:'السيناريوهات المجاب عنها', mhFirstDrewYouLabel:'أول ما جذبك',
+    mhReadsAs:'يُقرأ كـ', mhXpOnSeal:'+{points} XP عند الختم', mhSealedTitle:'تم ختم ملف الاستقبال', mhXpBadge:'+{points} XP', mhPsychologyUnlocked:'تم فتح علم النفس',
+    mhArchetypeImpulseTitle:'المندفع', mhArchetypeImpulseBody:'إجاباتك تظهر ردّ فعل تحت الضغط. سيبقي NAVRYA الحواجز الواقية ظاهرة دائماً: قواعد ما قبل الجلسة، فترة تهدئة بعد الخسائر، وتذكير بكتابة ملاحظة قبل كل دخول جديد.',
+    mhArchetypeReactiveTitle:'اليد التفاعلية', mhArchetypeReactiveBody:'الانضباط موجود لكنه ينزلق حين يصخب السوق. ستُبرز الجلسات قواعدك وتُشير إلى اللحظات التي تتجاوزها فيها عادةً.',
+    mhArchetypeMeasuredTitle:'المتّزن', mhArchetypeMeasuredBody:'تحافظ على مسارك في الغالب، مع بضع نقاط ضغط. سيتتبع NAVRYA تلك النقاط فقط بدلاً من مواعظك في كل شيء.',
+    mhArchetypeSteadyTitle:'المشغّل الثابت', mhArchetypeSteadyBody:'تعود إلى مسارك بسرعة بعد أي ضربة. ستعتمد المراجعات على البيانات أكثر من التذكيرات.',
+    mhArchetypePatientTitle:'اليد الصبورة', mhArchetypePatientBody:'الصبر هو ميزتك وإجاباتك تُظهر ذلك. سيبتعد NAVRYA عن طريقك ويكتفي بحفظ السجل.',
+    mhArchetypePendingTitle:'القراءة معلّقة', mhArchetypePendingBody:'أُجيب عن {answered} من ٥ سيناريوهات فقط. سيواصل NAVRYA قراءتك من الجلسات التي تسجلها - عد إلى السيناريوهات متى أردت قراءة أدق.',
+    mhBeginIntake:'بدء الاستقبال', mhNext:'التالي', mhReview:'مراجعة', mhSealProfile:'ختم الملف', mhDone:'تم',
+    mhFootNoteOptional:'اختياري · قابل للتعديل لاحقاً', mhFootNoteSealing:'الختم يمنحك {points} XP', mhFootNoteSaved:'تم الحفظ في ملفك',
+    mhStepAboutYouHint:'سياق فقط. تخطَّ أي شيء لا يبدو مناسباً.',
+    mhStepExperienceTitle:'الخبرة', mhStepExperienceHint:'منذ متى وأنت في السوق، وما الذي تتداوله فعلياً.',
+    mhStepExtremesTitle:'أقصى النتائج ونداءات الهامش', mhStepExtremesHint:'أكبر ربح فردي، أكبر خسارة فردية، وعدد مرات نداء الهامش أو تصفير الحساب. الأرقام التقريبية مقبولة - اترك أي شيء فارغاً إن أردت.',
+    mhAllocationWarning:'معظم رأس مالك في السوق. يُسجَّل هذا كسياق فقط - لا يُحكَم عليه ولا يُشارَك أبداً.'
+  });
+  Object.assign(messages.en, {
+    mhChapterOrientation:'Orientation', mhChapterContext:'Context', mhChapterHistory:'History', mhChapterScenarios:'Scenarios', mhChapterSeal:'Seal',
+    mhIntakeEyebrow:'Psychology · intake profile',
+    mhIntakeInfo1Label:'13 questions · about 4 minutes', mhIntakeInfo1Text:'Four chapters: who you are, the capital behind you, your history, and five live scenarios.',
+    mhIntakeInfo2Label:'Optional and private', mhIntakeInfo2Text:'Skip any question. Nothing here is shared, ranked against other traders, or shown in the community.',
+    mhIntakeInfo3Label:'Editable forever', mhIntakeInfo3Text:'Answers live in Psychology · Intake profile and never block another part of NAVRYA.',
+    mhAgeSliderHint:'Drag the scale, scroll, or use ← →', mhAgeYearsUnit:'years',
+    mhYearsHint:'Climb the rungs to your own year', mhYearsUnderOne:'Under a year', mhYearsOne:'1 year', mhYearsPlural:'{n} years', mhYearsTenPlus:'10 years +',
+    mhInstrumentsHint:'Select any that apply', mhInstrumentsSelectedCount:'{n} selected', mhInstrumentsAddedByYou:'Added by you',
+    mhLargestWinTitle:'Largest single win', mhLargestLossTitle:'Largest single loss', mhAmountLabel:'Amount', mhPercentLabel:'Percent',
+    mhMarginNever:'Never', mhMarginOnce:'Once', mhMarginTimes:'{n} times',
+    mhHeatQuestionB:'How hot is your head right now?', mhHeatQuestionD:'How hard is the waiting?', mhOutOfTen:'/ 10',
+    mhDisclosureTitle:'Disclosure', mhDisclosureHint:'How much of your trading life is visible at home', mhDisclosureNone:'Nothing shared', mhDisclosurePartial:'Partly open', mhDisclosureFull:'Fully open', mhDisclosureCount:'{n} / 4',
+    mhInTradingLabel:'In trading', mhScenariosAnsweredLabel:'Scenarios answered', mhFirstDrewYouLabel:'First drew you in',
+    mhReadsAs:'Reads as', mhXpOnSeal:'+{points} XP on seal', mhSealedTitle:'Intake profile sealed', mhXpBadge:'+{points} XP', mhPsychologyUnlocked:'Psychology unlocked',
+    mhArchetypeImpulseTitle:'The Impulse', mhArchetypeImpulseBody:'Your answers read as reactive under pressure. NAVRYA will keep the guardrails visible: pre-session rules, a cooling window after losses, and a note prompt before every re-entry.',
+    mhArchetypeReactiveTitle:'The Reactive Hand', mhArchetypeReactiveBody:'Discipline shows up, then slips when the market gets loud. Sessions will foreground your rules and flag the moments where you historically override them.',
+    mhArchetypeMeasuredTitle:'The Measured', mhArchetypeMeasuredBody:'You mostly hold your process, with a few pressure points. NAVRYA will track those points instead of lecturing you about the rest.',
+    mhArchetypeSteadyTitle:'The Steady Operator', mhArchetypeSteadyBody:'You return to process quickly after a hit. Reviews will lean on data rather than reminders.',
+    mhArchetypePatientTitle:'The Patient Hand', mhArchetypePatientBody:'Patience is your edge and your answers show it. NAVRYA will get out of your way and simply keep the record.',
+    mhArchetypePendingTitle:'Read pending', mhArchetypePendingBody:'Only {answered} of 5 scenarios answered. NAVRYA will keep reading you from the sessions you log — come back to the scenarios whenever you want a sharper read.',
+    mhBeginIntake:'Begin intake', mhNext:'Next', mhReview:'Review', mhSealProfile:'Seal profile', mhDone:'Done',
+    mhFootNoteOptional:'Optional · editable later', mhFootNoteSealing:'Sealing awards {points} XP', mhFootNoteSaved:'Saved to your profile',
+    mhStepAboutYouHint:'Context only. Skip anything that does not sit right.',
+    mhStepExperienceTitle:'Experience', mhStepExperienceHint:'How long you have been in the market, and what you actually trade.',
+    mhStepExtremesTitle:'Extremes and margin calls', mhStepExtremesHint:'The biggest single win, the biggest single loss, and the times an account was called or wiped out. Approximate numbers are fine — leave anything blank.',
+    mhAllocationWarning:'Most of your capital sits in the market. Recorded as context — never judged, never shared.'
+  });
+  Object.assign(messages.es, {
+    mhChapterOrientation:'Orientación', mhChapterContext:'Contexto', mhChapterHistory:'Historial', mhChapterScenarios:'Escenarios', mhChapterSeal:'Sello',
+    mhIntakeEyebrow:'Psicología · perfil de admisión',
+    mhIntakeInfo1Label:'13 preguntas · unos 4 minutos', mhIntakeInfo1Text:'Cuatro capítulos: quién eres, el capital detrás de ti, tu historial y cinco escenarios en vivo.',
+    mhIntakeInfo2Label:'Opcional y privado', mhIntakeInfo2Text:'Omite cualquier pregunta. Nada de esto se comparte, se compara con otros traders ni se muestra en la comunidad.',
+    mhIntakeInfo3Label:'Editable para siempre', mhIntakeInfo3Text:'Las respuestas viven en Psicología · Perfil de admisión y nunca bloquean otra parte de NAVRYA.',
+    mhAgeSliderHint:'Arrastra la escala, desplázate o usa ← →', mhAgeYearsUnit:'años',
+    mhYearsHint:'Sube los peldaños hasta tu propio año', mhYearsUnderOne:'Menos de un año', mhYearsOne:'1 año', mhYearsPlural:'{n} años', mhYearsTenPlus:'10 años o más',
+    mhInstrumentsHint:'Selecciona los que operes', mhInstrumentsSelectedCount:'{n} seleccionados', mhInstrumentsAddedByYou:'Añadido por ti',
+    mhLargestWinTitle:'Mayor ganancia individual', mhLargestLossTitle:'Mayor pérdida individual', mhAmountLabel:'Importe', mhPercentLabel:'Porcentaje',
+    mhMarginNever:'Nunca', mhMarginOnce:'Una vez', mhMarginTimes:'{n} veces',
+    mhHeatQuestionB:'¿Qué tan enojado estás ahora mismo?', mhHeatQuestionD:'¿Qué tan difícil es esperar?', mhOutOfTen:'/ 10',
+    mhDisclosureTitle:'Transparencia', mhDisclosureHint:'Cuánto de tu vida como trader es visible en casa', mhDisclosureNone:'Nada compartido', mhDisclosurePartial:'Parcialmente abierto', mhDisclosureFull:'Totalmente abierto', mhDisclosureCount:'{n} de 4',
+    mhInTradingLabel:'En trading', mhScenariosAnsweredLabel:'Escenarios respondidos', mhFirstDrewYouLabel:'Lo que primero te atrajo',
+    mhReadsAs:'Se lee como', mhXpOnSeal:'+{points} XP al sellar', mhSealedTitle:'Perfil de admisión sellado', mhXpBadge:'+{points} XP', mhPsychologyUnlocked:'Psicología desbloqueada',
+    mhArchetypeImpulseTitle:'El Impulsivo', mhArchetypeImpulseBody:'Tus respuestas se leen como reactivas bajo presión. NAVRYA mantendrá visibles las barandillas: reglas previas a la sesión, una ventana de enfriamiento tras las pérdidas y un recordatorio de nota antes de cada reentrada.',
+    mhArchetypeReactiveTitle:'La Mano Reactiva', mhArchetypeReactiveBody:'La disciplina aparece, pero se resbala cuando el mercado se pone ruidoso. Las sesiones destacarán tus reglas y marcarán los momentos en que sueles pasarlas por alto.',
+    mhArchetypeMeasuredTitle:'El Mesurado', mhArchetypeMeasuredBody:'Mantienes tu proceso la mayor parte del tiempo, con algunos puntos de presión. NAVRYA rastreará esos puntos en vez de sermonearte sobre el resto.',
+    mhArchetypeSteadyTitle:'El Operador Constante', mhArchetypeSteadyBody:'Vuelves al proceso rápido después de un golpe. Las revisiones se apoyarán en datos más que en recordatorios.',
+    mhArchetypePatientTitle:'La Mano Paciente', mhArchetypePatientBody:'La paciencia es tu ventaja y tus respuestas lo demuestran. NAVRYA se apartará de tu camino y simplemente llevará el registro.',
+    mhArchetypePendingTitle:'Lectura pendiente', mhArchetypePendingBody:'Solo {answered} de 5 escenarios respondidos. NAVRYA seguirá leyéndote a partir de las sesiones que registres — vuelve a los escenarios cuando quieras una lectura más precisa.',
+    mhBeginIntake:'Comenzar admisión', mhNext:'Siguiente', mhReview:'Revisar', mhSealProfile:'Sellar perfil', mhDone:'Listo',
+    mhFootNoteOptional:'Opcional · editable después', mhFootNoteSealing:'Sellar otorga {points} XP', mhFootNoteSaved:'Guardado en tu perfil',
+    mhStepAboutYouHint:'Solo contexto. Omite lo que no te resulte cómodo.',
+    mhStepExperienceTitle:'Experiencia', mhStepExperienceHint:'Cuánto tiempo llevas en el mercado y qué operas realmente.',
+    mhStepExtremesTitle:'Extremos y margin calls', mhStepExtremesHint:'La mayor ganancia individual, la mayor pérdida individual y las veces que una cuenta recibió un margin call o quedó en cero. Los números aproximados están bien — deja en blanco lo que prefieras.',
+    mhAllocationWarning:'La mayor parte de tu capital está en el mercado. Se registra solo como contexto — nunca se juzga ni se comparte.'
   });
 
   function language() { var value = String(document.documentElement.lang || 'fa').toLowerCase(); return messages[value] ? value : value.indexOf('ar') === 0 ? 'ar' : value.indexOf('es') === 0 ? 'es' : value.indexOf('en') === 0 ? 'en' : 'fa'; }
