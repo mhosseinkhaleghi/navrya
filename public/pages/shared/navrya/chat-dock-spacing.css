@@ -1,0 +1,14 @@
+/* Reserves bottom space in every character page's main content column so the fixed, global
+   ChatDock (position:fixed, bottom:24px, ~54px tall even idle/collapsed - see
+   components/assistant/ChatDock.jsx) never overlaps the last piece of real content (forms,
+   buttons, review rows, etc). `.app-shell .content` is the one shared content-injection point
+   every destination - current and future - renders into (see
+   public/pages/{hunter,commander,engineer,sage}/index.html's shared shell markup, and
+   panel-system.js/community-ui.js/marketplace-ui.js, which all inject into that same node) -
+   so this single rule keeps every page clear of the dock without a per-page or per-panel fix.
+   Loaded after every page's own styles.css (see styles.css's import order + each character
+   page's <link> order), and `.app-shell .content` (2 classes) outranks the plain `.content`
+   rules in the legacy per-character stylesheets, so this reliably wins the cascade. */
+.app-shell .content {
+  padding-bottom: 130px;
+}
