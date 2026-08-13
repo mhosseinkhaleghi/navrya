@@ -24,6 +24,11 @@ export function protectedRouter(repo) {
     });
     res.status(201).json({ ok: true });
   }));
+  // Recipient autocomplete for Community's "New message" dialog - registered before /:id for the
+  // same reason /heartbeat and /usage-report are (otherwise Express treats "search" as a user id).
+  router.get('/search', asyncHandler(async (req, res) => {
+    res.json(await repo.users.search(req.query.q, { excludeUserId: req.currentUser.id, limit: 8 }));
+  }));
   router.get('/:id', asyncHandler(async (req, res) => {
     // /me is matched above before this handler ever runs for that literal path.
     const target = req.params.id === req.currentUser.id ? req.currentUser : await repo.users.get(req.params.id);

@@ -5,8 +5,9 @@ function assertParticipant(thread, userId) {
   if (thread.buyerId !== userId && thread.sellerId !== userId) throw new ApiError(403, 'NOT_THREAD_PARTICIPANT');
 }
 
-// Mounted at /api/messages, behind devUserAuth. Threads are always anchored to a specific
-// marketplace listing (buyer asking the seller about that item) - never a general inbox.
+// Mounted at /api/messages, behind requireAuth. Threads are either anchored to a specific
+// marketplace listing (buyer asking the seller about that item) or general (started from
+// Community's "New message" dialog, listingId null) - see repo.threads.findOrCreate.
 export function router(repo) {
   const app = express.Router();
 
@@ -28,10 +29,13 @@ export function router(repo) {
     res.json(enriched);
   }));
 
+  // Either the existing product-anchored flow (listingId) or a general DM to any user
+  // (counterpartyId, from Community's "New message" dialog) - repo.threads.findOrCreate resolves
+  // both to the same idempotent thread lookup.
   app.post('/threads', asyncHandler(async (req, res) => {
-    const { listingId } = req.body || {};
-    if (!listingId) throw new ApiError(400, 'VALIDATION_FAILED');
-    const thread = await repo.threads.findOrCreate({ listingId, buyerId: req.currentUser.id });
+    const { listingId, counterpartyId } = req.body || {};
+    if (!listingId && !counterpartyId) throw new ApiError(400, 'VALIDATION_FAILED');
+    const thread = await repo.threads.findOrCreate({ listingId, counterpartyId, buyerId: req.currentUser.id });
     res.status(201).json(thread);
   }));
 

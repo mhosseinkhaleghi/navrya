@@ -36,6 +36,8 @@
   window.TradeJournalCommunityStore = {
     listUsers: function () { return get('/api/users'); },
     getUser: function (id) { return get('/api/users/' + encodeURIComponent(id)); },
+    // Recipient autocomplete for Messages' "New message" dialog - real users only, never raw text.
+    searchUsers: function (q) { return get('/api/users/search' + query({ q: q })); },
 
     listPosts: function (params) { return get('/api/community/posts' + query(params)); },
     // Dispatches on success, mirroring createListing/purchaseListing below - account-profile-store.js
@@ -50,6 +52,8 @@
     removePost: function (id) { return del('/api/community/posts/' + encodeURIComponent(id)); },
     listComments: function (postId) { return get('/api/community/posts/' + encodeURIComponent(postId) + '/comments'); },
     createComment: function (postId, content) { return post('/api/community/posts/' + encodeURIComponent(postId) + '/comments', { content: content }); },
+    toggleLike: function (postId) { return post('/api/community/posts/' + encodeURIComponent(postId) + '/likes'); },
+    listLikers: function (postId) { return get('/api/community/posts/' + encodeURIComponent(postId) + '/likes'); },
     report: function (targetType, targetId, reason) { return post('/api/community/reports', { targetType: targetType, targetId: targetId, reason: reason }); },
 
     listListings: function (params) { return get('/api/marketplace/listings' + query(params)); },
@@ -96,6 +100,8 @@
 
     listThreads: function () { return get('/api/messages/threads'); },
     openThread: function (listingId) { return post('/api/messages/threads', { listingId: listingId }); },
+    // General DM (Community's "New message" dialog) - not anchored to a listing.
+    openThreadWithUser: function (userId) { return post('/api/messages/threads', { counterpartyId: userId }); },
     getThread: function (id) { return get('/api/messages/threads/' + encodeURIComponent(id)); },
     sendMessage: function (threadId, content) { return post('/api/messages/threads/' + encodeURIComponent(threadId) + '/messages', { content: content }); }
   };

@@ -211,6 +211,114 @@ test('an invalid image data URL is rejected with a validation error, not silentl
   assert.equal(result.body.error, 'INVALID_IMAGE_TYPE');
 });
 
+test('likes: toggling updates likeCount/likedByMe/firstLiker and the likers list, and is idempotent per user', async () => {
+  const author = await createUser('LikeAuthor');
+  const liker = await createUser('Liker');
+  const post = await api('POST', '/api/community/posts', { userId: author.id, body: { content: 'like me' } });
+
+  const likeOn = await api('POST', `/api/community/posts/${post.body.id}/likes`, { userId: liker.id });
+  assert.equal(likeOn.status, 200);
+  assert.equal(likeOn.body.liked, true);
+
+  const asAuthor = await api('GET', '/api/community/posts', { userId: author.id });
+  const seenByAuthor = asAuthor.body.posts.find((p) => p.id === post.body.id);
+  assert.equal(seenByAuthor.likeCount, 1);
+  assert.equal(seenByAuthor.likedByMe, false, "the author didn't like their own post");
+  assert.equal(seenByAuthor.firstLiker.id, liker.id);
+
+  const asLiker = await api('GET', '/api/community/posts', { userId: liker.id });
+  assert.equal(asLiker.body.posts.find((p) => p.id === post.body.id).likedByMe, true);
+
+  const likers = await api('GET', `/api/community/posts/${post.body.id}/likes`, { userId: author.id });
+  assert.equal(likers.body.length, 1);
+  assert.equal(likers.body[0].author.id, liker.id);
+
+  const likeOff = await api('POST', `/api/community/posts/${post.body.id}/likes`, { userId: liker.id });
+  assert.equal(likeOff.body.liked, false);
+  const afterUnlike = await api('GET', '/api/community/posts', { userId: author.id });
+  assert.equal(afterUnlike.body.posts.find((p) => p.id === post.body.id).likeCount, 0);
+});
+
+test('user search: matches by display name substring, excludes the caller, and an empty query returns nothing', async () => {
+  const match1 = await createUser('Alice Trader');
+  const match2 = await createUser('Alicia Market');
+  const nonMatch = await createUser('Bob Trader');
+  const searcher = await createUser('Alice Searcher');
+
+  const results = await api('GET', '/api/users/search?q=alic', { userId: searcher.id });
+  assert.equal(results.status, 200);
+  const ids = results.body.map((u) => u.id);
+  assert.ok(ids.includes(match1.id) && ids.includes(match2.id));
+  assert.ok(!ids.includes(nonMatch.id), 'non-matching names are excluded');
+  assert.ok(!ids.includes(searcher.id), 'search never returns the caller themself even if their own name matches');
+
+  const empty = await api('GET', '/api/users/search?q=', { userId: searcher.id });
+  assert.deepEqual(empty.body, []);
+});
+
+test('messaging: a general (listing-less) thread resolves to the same record from either direction and self-messaging is rejected', async () => {
+  const userA = await createUser('GeneralA');
+  const userB = await createUser('GeneralB');
+
+  const selfThread = await api('POST', '/api/messages/threads', { userId: userA.id, body: { counterpartyId: userA.id } });
+  assert.equal(selfThread.status, 400);
+  assert.equal(selfThread.body.error, 'CANNOT_MESSAGE_SELF');
+
+  const fromA = await api('POST', '/api/messages/threads', { userId: userA.id, body: { counterpartyId: userB.id } });
+  assert.equal(fromA.status, 201);
+  assert.equal(fromA.body.listingId, null);
+
+  const fromB = await api('POST', '/api/messages/threads', { userId: userB.id, body: { counterpartyId: userA.id } });
+  assert.equal(fromB.status, 201);
+  assert.equal(fromB.body.id, fromA.body.id, 'the reverse direction finds the same thread, not a duplicate');
+
+  const sent = await api('POST', `/api/messages/threads/${fromA.body.id}/messages`, { userId: userA.id, body: { content: 'hey' } });
+  assert.equal(sent.status, 201);
+
+  const threadsForB = await api('GET', '/api/messages/threads', { userId: userB.id });
+  assert.equal(threadsForB.body.length, 1);
+  assert.equal(threadsForB.body[0].listingTitle, null, 'a general thread carries no listing title');
+});
+
+test('messaging: a general thread and a listing-anchored thread between the same two users stay independent', async () => {
+  const seller = await createUser('IndepSeller');
+  const buyer = await createUser('IndepBuyer');
+  const listing = await api('POST', '/api/marketplace/listings', {
+    userId: seller.id,
+    body: { type: 'pattern', sourceId: 'pattern-indep', title: 'Indep', priceAmount: 0, evidenceAsOf: new Date().toISOString(), previewContent: {}, fullContent: {} }
+  });
+  const listingThread = await api('POST', '/api/messages/threads', { userId: buyer.id, body: { listingId: listing.body.id } });
+  const generalThread = await api('POST', '/api/messages/threads', { userId: buyer.id, body: { counterpartyId: seller.id } });
+  assert.notEqual(listingThread.body.id, generalThread.body.id);
+
+  const threads = await api('GET', '/api/messages/threads', { userId: buyer.id });
+  assert.equal(threads.body.length, 2);
+});
+
+test('marketplace: GET /listings/:id reports real salesCount and bestsellerRank among published listings of the same type', async () => {
+  const seller = await createUser('RankSeller');
+  const buyerA = await createUser('RankBuyerA');
+  const buyerB = await createUser('RankBuyerB');
+
+  const popular = await api('POST', '/api/marketplace/listings', {
+    userId: seller.id, body: { type: 'strategy', sourceId: 'strategy-popular', title: 'Popular', priceAmount: 10, evidenceAsOf: new Date().toISOString(), previewContent: {}, fullContent: {} }
+  });
+  const quiet = await api('POST', '/api/marketplace/listings', {
+    userId: seller.id, body: { type: 'strategy', sourceId: 'strategy-quiet', title: 'Quiet', priceAmount: 10, evidenceAsOf: new Date().toISOString(), previewContent: {}, fullContent: {} }
+  });
+
+  await api('POST', `/api/marketplace/listings/${popular.body.id}/purchase`, { userId: buyerA.id });
+  await api('POST', `/api/marketplace/listings/${popular.body.id}/purchase`, { userId: buyerB.id });
+
+  const popularView = await api('GET', `/api/marketplace/listings/${popular.body.id}`, { userId: seller.id });
+  assert.equal(popularView.body.salesCount, 2);
+  assert.equal(popularView.body.bestsellerRank, 1);
+
+  const quietView = await api('GET', `/api/marketplace/listings/${quiet.body.id}`, { userId: seller.id });
+  assert.equal(quietView.body.salesCount, 0);
+  assert.equal(quietView.body.bestsellerRank, null, 'zero sales never gets a meaningful rank');
+});
+
 test('unknown routes return 404 NOT_FOUND for an authenticated caller, and OPTIONS returns 204 unauthenticated', async () => {
   const user = await createUser('RouteUser');
   const notFound = await api('GET', '/api/community/does-not-exist', { userId: user.id });

@@ -7,7 +7,7 @@ import { ApiError } from '../community/errors.mjs';
 // behavior is verified with zero Postgres dependency.
 export function createMemoryRepo() {
   const state = {
-    users: new Map(), credentials: new Map(), posts: new Map(), comments: new Map(),
+    users: new Map(), credentials: new Map(), posts: new Map(), comments: new Map(), likes: new Map(),
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerPricing: new Map(),
@@ -59,6 +59,15 @@ export function createMemoryRepo() {
     },
     async get(id) { const record = state.users.get(id); return record ? clone(record) : null; },
     async list() { return Array.from(state.users.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(clone); },
+    // Mirrors repo.pg.mjs's search() exactly - substring match on displayName, self excluded.
+    async search(query, { excludeUserId, limit } = {}) {
+      const needle = String(query || '').trim().toLowerCase();
+      if (!needle) return [];
+      let values = Array.from(state.users.values()).filter((u) => u.displayName.toLowerCase().includes(needle));
+      if (excludeUserId) values = values.filter((u) => u.id !== excludeUserId);
+      values = values.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      return values.slice(0, limit || 8).map(clone);
+    },
     async update(id, patch) {
       const record = state.users.get(id);
       if (!record) throw new ApiError(404, 'USER_NOT_FOUND');
@@ -110,6 +119,7 @@ export function createMemoryRepo() {
       if (record.userId !== userId) throw new ApiError(403, 'NOT_POST_OWNER');
       state.posts.delete(id);
       Array.from(state.comments.values()).filter((c) => c.postId === id).forEach((c) => state.comments.delete(c.id));
+      Array.from(state.likes.values()).filter((l) => l.postId === id).forEach((l) => state.likes.delete(l.id));
     }
   };
 
@@ -125,6 +135,29 @@ export function createMemoryRepo() {
     },
     async listByPost(postId) {
       return Array.from(state.comments.values()).filter((c) => c.postId === postId).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(clone);
+    }
+  };
+
+  const likes = {
+    async find(postId, userId) {
+      const record = Array.from(state.likes.values()).find((l) => l.postId === postId && l.userId === userId);
+      return record ? clone(record) : null;
+    },
+    async create({ postId, userId }) {
+      if (!state.posts.has(postId)) throw new ApiError(404, 'POST_NOT_FOUND');
+      requireUser(userId);
+      const existing = await likes.find(postId, userId);
+      if (existing) return existing;
+      const record = { id: newId('like'), postId, userId, createdAt: now() };
+      state.likes.set(record.id, record);
+      return clone(record);
+    },
+    async remove(postId, userId) {
+      const record = Array.from(state.likes.values()).find((l) => l.postId === postId && l.userId === userId);
+      if (record) state.likes.delete(record.id);
+    },
+    async listByPost(postId) {
+      return Array.from(state.likes.values()).filter((l) => l.postId === postId).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(clone);
     }
   };
 
@@ -189,6 +222,7 @@ export function createMemoryRepo() {
       return record ? clone(record) : null;
     },
     async listByBuyer(buyerId) { return Array.from(state.purchases.values()).filter((p) => p.buyerId === buyerId).map(clone); },
+    async countByListing(listingId) { return Array.from(state.purchases.values()).filter((p) => p.listingId === listingId).length; },
     async aggregateByBuyer() {
       const result = {};
       Array.from(state.purchases.values()).forEach((p) => {
@@ -216,13 +250,26 @@ export function createMemoryRepo() {
   };
 
   const threads = {
-    async findOrCreate({ listingId, buyerId }) {
-      const listing = state.listings.get(listingId);
-      if (!listing) throw new ApiError(404, 'LISTING_NOT_FOUND');
-      if (listing.sellerId === buyerId) throw new ApiError(400, 'CANNOT_MESSAGE_OWN_LISTING');
-      const existing = Array.from(state.threads.values()).find((t) => t.listingId === listingId && t.buyerId === buyerId);
+    // Mirrors repo.pg.mjs's findOrCreate: listingId path unchanged, counterpartyId path (listingId
+    // omitted) is a general DM to any user, looked up symmetrically regardless of who initiated.
+    async findOrCreate({ listingId, buyerId, counterpartyId }) {
+      if (listingId) {
+        const listing = state.listings.get(listingId);
+        if (!listing) throw new ApiError(404, 'LISTING_NOT_FOUND');
+        if (listing.sellerId === buyerId) throw new ApiError(400, 'CANNOT_MESSAGE_OWN_LISTING');
+        const existing = Array.from(state.threads.values()).find((t) => t.listingId === listingId && t.buyerId === buyerId);
+        if (existing) return clone(existing);
+        const record = { id: newId('thread'), listingId, buyerId, sellerId: listing.sellerId, createdAt: now() };
+        state.threads.set(record.id, record);
+        return clone(record);
+      }
+      if (!counterpartyId) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (counterpartyId === buyerId) throw new ApiError(400, 'CANNOT_MESSAGE_SELF');
+      requireUser(counterpartyId);
+      const existing = Array.from(state.threads.values()).find((t) =>
+        !t.listingId && ((t.buyerId === buyerId && t.sellerId === counterpartyId) || (t.buyerId === counterpartyId && t.sellerId === buyerId)));
       if (existing) return clone(existing);
-      const record = { id: newId('thread'), listingId, buyerId, sellerId: listing.sellerId, createdAt: now() };
+      const record = { id: newId('thread'), listingId: null, buyerId, sellerId: counterpartyId, createdAt: now() };
       state.threads.set(record.id, record);
       return clone(record);
     },
@@ -835,5 +882,5 @@ export function createMemoryRepo() {
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
-  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
 }

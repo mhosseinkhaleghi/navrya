@@ -11,6 +11,7 @@ function mapUser(row) {
 }
 function mapPost(row) { return { id: row.id, userId: row.user_id, content: row.content, images: row.images, createdAt: row.created_at, updatedAt: row.updated_at }; }
 function mapComment(row) { return { id: row.id, postId: row.post_id, userId: row.user_id, content: row.content, createdAt: row.created_at }; }
+function mapPostLike(row) { return { id: row.id, postId: row.post_id, userId: row.user_id, createdAt: row.created_at }; }
 function mapListing(row) {
   return {
     id: row.id, sellerId: row.seller_id, type: row.type, sourceId: row.source_id, title: row.title,
@@ -212,6 +213,19 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
       return rows.map(mapUser);
     },
+    // Recipient autocomplete for the Messages "New message" dialog - substring match on
+    // display_name, self excluded, capped for a dropdown-sized result set.
+    async search(query, { excludeUserId, limit } = {}) {
+      const trimmed = String(query || '').trim();
+      if (!trimmed) return [];
+      const params = [`%${trimmed}%`];
+      let text = 'SELECT * FROM users WHERE display_name ILIKE $1';
+      if (excludeUserId) { params.push(excludeUserId); text += ` AND id<>$${params.length}`; }
+      params.push(limit || 8);
+      text += ` ORDER BY display_name ASC LIMIT $${params.length}`;
+      const { rows } = await pool.query(text, params);
+      return rows.map(mapUser);
+    },
     async update(id, patch) {
       const existing = await users.get(id);
       if (!existing) throw new ApiError(404, 'USER_NOT_FOUND');
@@ -298,6 +312,35 @@ export function createPgRepo(pool) {
     async listByPost(postId) {
       const { rows } = await pool.query('SELECT * FROM comments WHERE post_id=$1 ORDER BY created_at ASC', [postId]);
       return rows.map(mapComment);
+    }
+  };
+
+  const likes = {
+    async find(postId, userId) {
+      const { rows } = await pool.query('SELECT * FROM post_likes WHERE post_id=$1 AND user_id=$2', [postId, userId]);
+      return rows[0] ? mapPostLike(rows[0]) : null;
+    },
+    async create({ postId, userId }) {
+      const post = await posts.get(postId);
+      if (!post) throw new ApiError(404, 'POST_NOT_FOUND');
+      const id = newId('like');
+      try {
+        const { rows } = await pool.query(
+          'INSERT INTO post_likes (id, post_id, user_id) VALUES ($1,$2,$3) RETURNING *',
+          [id, postId, userId]
+        );
+        return mapPostLike(rows[0]);
+      } catch (error) {
+        if (error && error.code === '23505') return likes.find(postId, userId);
+        throw error;
+      }
+    },
+    async remove(postId, userId) {
+      await pool.query('DELETE FROM post_likes WHERE post_id=$1 AND user_id=$2', [postId, userId]);
+    },
+    async listByPost(postId) {
+      const { rows } = await pool.query('SELECT * FROM post_likes WHERE post_id=$1 ORDER BY created_at ASC', [postId]);
+      return rows.map(mapPostLike);
     }
   };
 
@@ -393,6 +436,10 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query('SELECT * FROM marketplace_purchases WHERE buyer_id=$1', [buyerId]);
       return rows.map(mapPurchase);
     },
+    async countByListing(listingId) {
+      const { rows } = await pool.query('SELECT COUNT(*) AS count FROM marketplace_purchases WHERE listing_id=$1', [listingId]);
+      return Number(rows[0].count);
+    },
     async aggregateByBuyer() {
       const { rows } = await pool.query('SELECT buyer_id, COUNT(*) AS count, SUM(price_at_purchase) AS total FROM marketplace_purchases GROUP BY buyer_id');
       const result = {};
@@ -426,16 +473,38 @@ export function createPgRepo(pool) {
   };
 
   const threads = {
-    async findOrCreate({ listingId, buyerId }) {
-      const listing = await listings.get(listingId);
-      if (!listing) throw new ApiError(404, 'LISTING_NOT_FOUND');
-      if (listing.sellerId === buyerId) throw new ApiError(400, 'CANNOT_MESSAGE_OWN_LISTING');
-      const { rows: existingRows } = await pool.query('SELECT * FROM dm_threads WHERE listing_id=$1 AND buyer_id=$2', [listingId, buyerId]);
+    // listingId path: existing buyer-asks-seller-about-this-item flow, unchanged. counterpartyId
+    // path (listingId omitted): general DM to any user, backed by 015_post_likes_and_general_
+    // messaging.sql's nullable listing_id + the unordered-pair partial unique index, so either
+    // participant starting a thread lands on the same row.
+    async findOrCreate({ listingId, buyerId, counterpartyId }) {
+      if (listingId) {
+        const listing = await listings.get(listingId);
+        if (!listing) throw new ApiError(404, 'LISTING_NOT_FOUND');
+        if (listing.sellerId === buyerId) throw new ApiError(400, 'CANNOT_MESSAGE_OWN_LISTING');
+        const { rows: existingRows } = await pool.query('SELECT * FROM dm_threads WHERE listing_id=$1 AND buyer_id=$2', [listingId, buyerId]);
+        if (existingRows[0]) return mapThread(existingRows[0]);
+        const id = newId('thread');
+        const { rows } = await pool.query(
+          'INSERT INTO dm_threads (id, listing_id, buyer_id, seller_id) VALUES ($1,$2,$3,$4) RETURNING *',
+          [id, listingId, buyerId, listing.sellerId]
+        );
+        return mapThread(rows[0]);
+      }
+      if (!counterpartyId) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (counterpartyId === buyerId) throw new ApiError(400, 'CANNOT_MESSAGE_SELF');
+      const counterparty = await users.get(counterpartyId);
+      if (!counterparty) throw new ApiError(404, 'USER_NOT_FOUND');
+      const { rows: existingRows } = await pool.query(
+        `SELECT * FROM dm_threads WHERE listing_id IS NULL AND
+           ((buyer_id=$1 AND seller_id=$2) OR (buyer_id=$2 AND seller_id=$1))`,
+        [buyerId, counterpartyId]
+      );
       if (existingRows[0]) return mapThread(existingRows[0]);
       const id = newId('thread');
       const { rows } = await pool.query(
-        'INSERT INTO dm_threads (id, listing_id, buyer_id, seller_id) VALUES ($1,$2,$3,$4) RETURNING *',
-        [id, listingId, buyerId, listing.sellerId]
+        'INSERT INTO dm_threads (id, listing_id, buyer_id, seller_id) VALUES ($1,NULL,$2,$3) RETURNING *',
+        [id, buyerId, counterpartyId]
       );
       return mapThread(rows[0]);
     },
@@ -1385,5 +1454,5 @@ export function createPgRepo(pool) {
     return { backend: 'postgres', dbOk, migrations };
   }
 
-  return { users, posts, comments, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
 }

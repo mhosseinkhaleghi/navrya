@@ -74,6 +74,41 @@ test('threads: findOrCreate is idempotent for the same listing/buyer pair, and r
   );
 });
 
+test('threads: the counterpartyId (listing-less) path is idempotent from either direction and rejects self-messaging', async () => {
+  const repo = createMemoryRepo();
+  const [userA, userB] = await seedUsers(repo, ['GeneralA', 'GeneralB']);
+
+  await assert.rejects(
+    () => repo.threads.findOrCreate({ buyerId: userA.id, counterpartyId: userA.id }),
+    (error) => error.code === 'CANNOT_MESSAGE_SELF' && error.status === 400
+  );
+
+  const fromA = await repo.threads.findOrCreate({ buyerId: userA.id, counterpartyId: userB.id });
+  assert.equal(fromA.listingId, null);
+  const fromB = await repo.threads.findOrCreate({ buyerId: userB.id, counterpartyId: userA.id });
+  assert.equal(fromA.id, fromB.id, 'either participant finding-or-creating resolves to the same general thread');
+
+  const listing = await repo.listings.create({ sellerId: userB.id, type: 'pattern', sourceId: 'p-general', title: 'Range', priceAmount: 0, previewContent: {}, fullContent: {}, evidenceAsOf: new Date().toISOString() });
+  const listingThread = await repo.threads.findOrCreate({ listingId: listing.id, buyerId: userA.id });
+  assert.notEqual(listingThread.id, fromA.id, 'a listing-anchored thread between the same two users stays a separate record');
+});
+
+test('likes: creating twice for the same post/user is idempotent, and remove()/listByPost() behave', async () => {
+  const repo = createMemoryRepo();
+  const [author, liker] = await seedUsers(repo, ['LikeAuthor', 'Liker']);
+  const post = await repo.posts.create({ userId: author.id, content: 'like me', images: [] });
+
+  const first = await repo.likes.create({ postId: post.id, userId: liker.id });
+  const second = await repo.likes.create({ postId: post.id, userId: liker.id });
+  assert.equal(first.id, second.id, 'liking twice returns the existing like, not a duplicate row');
+  assert.equal((await repo.likes.listByPost(post.id)).length, 1);
+
+  assert.ok(await repo.likes.find(post.id, liker.id));
+  await repo.likes.remove(post.id, liker.id);
+  assert.equal(await repo.likes.find(post.id, liker.id), null);
+  assert.equal((await repo.likes.listByPost(post.id)).length, 0);
+});
+
 test('reports: accepts all four target types when the target actually exists, and rejects an unknown type or a missing target', async () => {
   const repo = createMemoryRepo();
   const [reporter, author] = await seedUsers(repo, ['Reporter', 'Author']);

@@ -13,6 +13,16 @@ async function withAuthors(repo, records, key) {
   return enriched;
 }
 
+// Mutates `post` in place with likeCount/likedByMe/firstLiker - the earliest liker, resolved to
+// their real display name, for the "Liked by {name}" row (design shows a single name, not a
+// count-only affordance).
+async function attachLikes(repo, post, currentUserId) {
+  const likes = await repo.likes.listByPost(post.id);
+  post.likeCount = likes.length;
+  post.likedByMe = likes.some((like) => like.userId === currentUserId);
+  post.firstLiker = likes.length ? await repo.users.get(likes[0].userId) : null;
+}
+
 // Mounted at /api/community - the social-feed surface (posts, comments) plus reporting,
 // all behind devUserAuth.
 export function router(repo, uploadsDir) {
@@ -22,7 +32,10 @@ export function router(repo, uploadsDir) {
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const posts = await repo.posts.list({ limit, before: req.query.before });
     const enriched = await withAuthors(repo, posts, 'userId');
-    for (const post of enriched) post.commentCount = (await repo.comments.listByPost(post.id)).length;
+    for (const post of enriched) {
+      post.commentCount = (await repo.comments.listByPost(post.id)).length;
+      await attachLikes(repo, post, req.currentUser.id);
+    }
     res.json({ posts: enriched, nextBefore: posts.length ? posts[posts.length - 1].createdAt : null });
   }));
 
@@ -31,7 +44,7 @@ export function router(repo, uploadsDir) {
     if (!content && !(images && images.length)) throw new ApiError(400, 'VALIDATION_FAILED');
     const savedImages = await saveImages(images, { uploadsDir, category: 'posts' });
     const post = await repo.posts.create({ userId: req.currentUser.id, content, images: savedImages });
-    res.status(201).json({ ...post, author: req.currentUser, commentCount: 0 });
+    res.status(201).json({ ...post, author: req.currentUser, commentCount: 0, likeCount: 0, likedByMe: false, firstLiker: null });
   }));
 
   app.delete('/posts/:id', asyncHandler(async (req, res) => {
@@ -49,6 +62,19 @@ export function router(repo, uploadsDir) {
   app.post('/posts/:id/comments', asyncHandler(async (req, res) => {
     const comment = await repo.comments.create({ postId: req.params.id, userId: req.currentUser.id, content: (req.body || {}).content });
     res.status(201).json({ ...comment, author: req.currentUser });
+  }));
+
+  // Toggle: like if not already liked, unlike otherwise - mirrors the prototype's likes-array
+  // toggle behavior but backed by the real post_likes table instead of a client-side array.
+  app.post('/posts/:id/likes', asyncHandler(async (req, res) => {
+    const existing = await repo.likes.find(req.params.id, req.currentUser.id);
+    if (existing) { await repo.likes.remove(req.params.id, req.currentUser.id); res.json({ liked: false }); }
+    else { await repo.likes.create({ postId: req.params.id, userId: req.currentUser.id }); res.json({ liked: true }); }
+  }));
+
+  app.get('/posts/:id/likes', asyncHandler(async (req, res) => {
+    const likes = await repo.likes.listByPost(req.params.id);
+    res.json(await withAuthors(repo, likes, 'userId'));
   }));
 
   app.post('/reports', asyncHandler(async (req, res) => {
