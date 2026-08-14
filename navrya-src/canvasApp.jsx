@@ -12,6 +12,7 @@ import * as panelsAdapter from './panelsAdapter.js';
 import { stringsFor, isRtl } from './i18n.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { renderStrategiesHub } from './strategiesHubView.jsx';
+import { renderDashboard } from './dashboardView.jsx';
 
 // Real numbers only where a real source exists; every other widget type shows an honest
 // "insufficient data" card instead of the old fabricated percentages/prices, per this app's
@@ -242,10 +243,11 @@ class DebugBoundary extends React.Component {
 }
 
 export function renderCanvas(character, view) {
-  // "Strategies" is its own full screen (navrya-src/strategiesHubView.jsx) per the design
-  // handoff, not a generic panel grid - dashboard/settings are unaffected and keep using
-  // CanvasView/SettingsView below.
+  // "Strategies" and "Dashboard" are each their own full screen (navrya-src/strategiesHubView.jsx,
+  // navrya-src/dashboardView.jsx) per their design handoffs, not the generic panel grid below -
+  // only "settings" (panel management) still uses CanvasView/SettingsView.
   if (view === 'strategies') return renderStrategiesHub(character);
+  if (view === 'dashboard') return renderDashboard(character);
   const container = document.createElement('div');
   // panel-system.css hides any direct child of .content that lacks this class while
   // .content.panel-mode is active (display:none !important) - the same class
