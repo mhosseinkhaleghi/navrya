@@ -23,6 +23,7 @@ import { renderChatDock } from './chatDockView.jsx';
 import { renderAccountProfile } from './accountProfileView.jsx';
 import { openIntake } from './mentalHealthIntakeModal.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
+import { openLogWizard } from './tradeLogModal.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -261,6 +262,13 @@ export function mountCharacterApp(character) {
   // fab.onclick) - same real TradeJournalTradeStore/TradeCalculator/TradeUI data every other
   // TradeJournalTradeUI.openCalculator() caller already goes through, only the dialog is React now.
   window.TradeJournalNavryaTradeCalculator = { open: openCalculator };
+
+  // trade-ui.js's own openWizard(seed, options) defers to this hook when present (see that
+  // file's own function body) - every existing caller (the calculator's "Log trade" button,
+  // chat-dock-core.js's screenshot-triggered applyExtractionToWizard, and the live-session
+  // "register trade" launch button) keeps working unchanged, same seed/options contract, only
+  // the dialog itself is React now.
+  window.TradeJournalNavryaTradeLog = { open: openLogWizard };
 
   // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
   // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version
