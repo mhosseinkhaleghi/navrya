@@ -95,7 +95,14 @@ const copy = {
     previewSectionLabel: 'پیش‌نمایش در بازارچه', cancel: 'انصراف', publishAction: 'انتشار در بازارچه', saveAction: 'ذخیره',
     freeBadge: '{n} مرحله رایگان در پیش‌نمایش', noFreeBadge: 'بدون پیش‌نمایش رایگان',
     addToCart: 'افزودن به سبد', oneTimePayment: 'پرداخت یک‌باره', publishFooterNote: 'با انتشار، قواعد بازارچهٔ ناوریا را می‌پذیرید.',
-    saving: 'در حال ذخیره…'
+    saving: 'در حال ذخیره…',
+    tabPositions: 'پوزیشن‌ها', positionsTitle: 'پوزیشن‌ها', positionsSubtitle: 'فهرست کامل معاملات، با فیلتر و جستجو روی همه‌ی وضعیت‌ها.',
+    positionsSearchPlaceholder: 'جستجو در معاملات…', positionsAllStatuses: 'همه وضعیت‌ها', positionsAllDirections: 'همه جهت‌ها', positionsAllPatterns: 'همه الگوها',
+    positionsFrom: 'از تاریخ', positionsTo: 'تا تاریخ',
+    positionsHeadDate: 'تاریخ', positionsHeadDirection: 'جهت', positionsHeadPattern: 'الگو', positionsHeadStatus: 'وضعیت', positionsHeadRR: 'RR',
+    positionsHeadOutcome: 'نتیجه', positionsHeadPnl: 'سود و زیان', positionsHeadMood: 'حال‌وهوا', positionsHeadActions: 'عملیات',
+    positionsEmptyTitle: 'هنوز معامله‌ای ثبت نشده است', positionsEmptyBody: 'معاملات از ماشین‌حساب یا ثبت معامله اینجا ظاهر می‌شوند.',
+    positionsResultLine: '{n} معامله', positionsEdit: 'ویرایش', positionsDetails: 'جزئیات', positionsNoPattern: '—', positionsNoMood: '—'
   },
   ar: {
     eyebrow: 'NAVRYA · ورشة العمل', title: 'الاستراتيجيات والأنماط',
@@ -169,7 +176,14 @@ const copy = {
     previewSectionLabel: 'معاينة السوق', cancel: 'إلغاء', publishAction: 'نشر في السوق', saveAction: 'حفظ',
     freeBadge: '{n} مرحلة مجانية في المعاينة', noFreeBadge: 'بدون معاينة مجانية',
     addToCart: 'أضف إلى السلة', oneTimePayment: 'دفعة واحدة', publishFooterNote: 'بالنشر، أنت توافق على قواعد سوق ناوريا.',
-    saving: 'جارٍ الحفظ…'
+    saving: 'جارٍ الحفظ…',
+    tabPositions: 'الصفقات', positionsTitle: 'الصفقات', positionsSubtitle: 'قائمة كاملة بالصفقات، مع فلترة وبحث عبر كل الحالات.',
+    positionsSearchPlaceholder: 'البحث في الصفقات…', positionsAllStatuses: 'كل الحالات', positionsAllDirections: 'كل الاتجاهات', positionsAllPatterns: 'كل الأنماط',
+    positionsFrom: 'من تاريخ', positionsTo: 'إلى تاريخ',
+    positionsHeadDate: 'التاريخ', positionsHeadDirection: 'الاتجاه', positionsHeadPattern: 'النمط', positionsHeadStatus: 'الحالة', positionsHeadRR: 'RR',
+    positionsHeadOutcome: 'النتيجة', positionsHeadPnl: 'الربح والخسارة', positionsHeadMood: 'الحالة المزاجية', positionsHeadActions: 'الإجراءات',
+    positionsEmptyTitle: 'لم تُسجَّل أي صفقة بعد', positionsEmptyBody: 'تظهر الصفقات هنا من حاسبة الصفقة أو تسجيل صفقة.',
+    positionsResultLine: '{n} صفقة', positionsEdit: 'تعديل', positionsDetails: 'التفاصيل', positionsNoPattern: '—', positionsNoMood: '—'
   },
   en: {
     eyebrow: 'NAVRYA · WORKSHOP', title: 'Strategies & Patterns',
@@ -243,7 +257,14 @@ const copy = {
     previewSectionLabel: 'Marketplace preview', cancel: 'Cancel', publishAction: 'Publish to marketplace', saveAction: 'Save',
     freeBadge: '{n} free preview stages', noFreeBadge: 'No free preview',
     addToCart: 'Add to cart', oneTimePayment: 'One-time payment', publishFooterNote: 'Publishing means you accept the NAVRYA marketplace rules.',
-    saving: 'Saving…'
+    saving: 'Saving…',
+    tabPositions: 'Positions', positionsTitle: 'Positions', positionsSubtitle: 'The full trade list, filterable and searchable across every status.',
+    positionsSearchPlaceholder: 'Search trades…', positionsAllStatuses: 'All statuses', positionsAllDirections: 'All directions', positionsAllPatterns: 'All patterns',
+    positionsFrom: 'From', positionsTo: 'To',
+    positionsHeadDate: 'Date', positionsHeadDirection: 'Direction', positionsHeadPattern: 'Pattern', positionsHeadStatus: 'Status', positionsHeadRR: 'RR',
+    positionsHeadOutcome: 'Outcome', positionsHeadPnl: 'P&L', positionsHeadMood: 'Mood', positionsHeadActions: 'Actions',
+    positionsEmptyTitle: 'No trades logged yet', positionsEmptyBody: 'Trades from the calculator or Log Trade appear here.',
+    positionsResultLine: '{n} trades', positionsEdit: 'Edit', positionsDetails: 'Details', positionsNoPattern: '—', positionsNoMood: '—'
   },
   es: {
     eyebrow: 'NAVRYA · TALLER', title: 'Estrategias y patrones',
@@ -317,7 +338,14 @@ const copy = {
     previewSectionLabel: 'Vista previa del mercado', cancel: 'Cancelar', publishAction: 'Publicar en el mercado', saveAction: 'Guardar',
     freeBadge: '{n} etapas gratis en la vista previa', noFreeBadge: 'Sin vista previa gratis',
     addToCart: 'Añadir al carrito', oneTimePayment: 'Pago único', publishFooterNote: 'Al publicar, aceptas las reglas del mercado NAVRYA.',
-    saving: 'Guardando…'
+    saving: 'Guardando…',
+    tabPositions: 'Posiciones', positionsTitle: 'Posiciones', positionsSubtitle: 'La lista completa de operaciones, con filtro y búsqueda en todos los estados.',
+    positionsSearchPlaceholder: 'Buscar operaciones…', positionsAllStatuses: 'Todos los estados', positionsAllDirections: 'Todas las direcciones', positionsAllPatterns: 'Todos los patrones',
+    positionsFrom: 'Desde', positionsTo: 'Hasta',
+    positionsHeadDate: 'Fecha', positionsHeadDirection: 'Dirección', positionsHeadPattern: 'Patrón', positionsHeadStatus: 'Estado', positionsHeadRR: 'RR',
+    positionsHeadOutcome: 'Resultado', positionsHeadPnl: 'P&L', positionsHeadMood: 'Estado de ánimo', positionsHeadActions: 'Acciones',
+    positionsEmptyTitle: 'Aún no hay operaciones registradas', positionsEmptyBody: 'Las operaciones de la calculadora o de Registrar operación aparecen aquí.',
+    positionsResultLine: '{n} operaciones', positionsEdit: 'Editar', positionsDetails: 'Detalles', positionsNoPattern: '—', positionsNoMood: '—'
   }
 };
 
@@ -667,6 +695,150 @@ function ItemCard({ item, kind, lang, onOpen, onReport, onShare, onDelete }) {
   );
 }
 
+// Shared top pill bar (Patterns / Strategies / Positions) - both IndexView and PositionsView
+// render it identically so switching between the three feels like one continuous screen, not
+// three unrelated pages. `rightSlot` carries whatever page-specific actions sit to its right
+// (the "+ New pattern/strategy" buttons for the first two, nothing for Positions).
+function TopTabBar({ lang, tab, setTab, patternsCount, strategiesCount, tradesCount, rightSlot }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 7, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)' }}>
+        {[['patterns', tr(lang, 'tabPatterns'), 'execution', patternsCount], ['strategies', tr(lang, 'tabStrategies'), 'strategies', strategiesCount], ['positions', tr(lang, 'tabPositions'), 'list-checks', tradesCount]].map(([id, label, icon, count]) => (
+          <button key={id} type="button" onClick={() => setTab(id)} style={{
+            boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 10, height: 50, padding: '0 20px', borderRadius: 8, cursor: 'pointer',
+            border: tab === id ? '2px solid var(--char-accent)' : '1px solid transparent', background: tab === id ? 'var(--char-active-surface)' : 'transparent',
+            color: tab === id ? 'var(--char-accent)' : 'var(--text-muted)', font: 'inherit', fontSize: 14, fontWeight: tab === id ? 600 : 500,
+            boxShadow: tab === id ? '0 0 16px var(--char-glow)' : 'none'
+          }}>
+            <Icon name={icon} size={18} />{label}
+            <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 7px', borderRadius: 5, background: 'rgba(3,8,7,.45)', border: '1px solid currentColor' }}>{digits(lang, count)}</span>
+          </button>
+        ))}
+      </div>
+      {rightSlot && <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{rightSlot}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Positions: the full trade list (date/direction/pattern/status/RR/outcome/P&L/mood/actions,
+// searchable and filterable across every status) - trade-reports.js's legacy renderTrades()
+// had this exact feature set on its own "All Trades" tab, but that vanilla module renders into
+// the old panel-system DOM (layer.show()) this hub replaced, so it never had anywhere to mount
+// once Strategies moved to this unified React hub. Same real TradeJournalTradeStore.filter()
+// data, same TradeJournalTradeUI.editTrade()/viewTrade() actions, just resurfaced as a real tab
+// here instead of a dangling, unreachable module.
+// ---------------------------------------------------------------------------------------------
+
+function money(lang, n) {
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return '—';
+  const v = Number(n);
+  return (v < 0 ? '−' : '') + digits(lang, Math.abs(v).toLocaleString(localeCode(lang), { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + ' USD';
+}
+
+function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
+  const tradeStore = window.TradeJournalTradeStore;
+  const tradeUi = window.TradeJournalTradeUI;
+  const tradeI18n = window.TradeJournalTradeI18n;
+  const patternStore = window.TradeJournalPatternStore;
+  const [query, setQuery] = React.useState('');
+  const [status, setStatus] = React.useState('');
+  const [direction, setDirection] = React.useState('');
+  const [patternId, setPatternId] = React.useState('');
+  const [from, setFrom] = React.useState('');
+  const [to, setTo] = React.useState('');
+
+  const allPatterns = patternStore ? patternStore.listSync() : [];
+  const trades = tradeStore ? tradeStore.filter(tradeStore.listSync(), { query, status, direction, patternId, from, to }) : [];
+  const patternName = (id) => { const p = allPatterns.find((x) => x.id === id); return p ? p.name : id; };
+  const statusLabel = (value) => (tradeUi && tradeUi.statusLabel ? tradeUi.statusLabel(value) : value);
+  const outcomeLabel = (value) => (tradeUi && tradeUi.outcomeLabel ? tradeUi.outcomeLabel(value) : (value || '—'));
+  const directionLabel = (value) => tr(lang, value === 'short' ? 'directionShort' : 'directionLong');
+
+  const selectStyle = { height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5, outline: 'none' };
+  const columns = '1fr .8fr 1.1fr .9fr .6fr .8fr .9fr 1fr .8fr';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9, maxWidth: 640, paddingTop: 6 }}>
+        <span style={{ fontSize: 11, letterSpacing: '.14em', color: 'var(--char-accent)' }}>{tr(lang, 'eyebrow')}</span>
+        <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.25, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'positionsTitle')}</h1>
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{tr(lang, 'positionsSubtitle')}</p>
+      </div>
+
+      <TopTabBar lang={lang} tab={tab} setTab={setTab} patternsCount={patternsCount} strategiesCount={strategiesCount} tradesCount={tradeStore ? tradeStore.listSync().length : 0} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 9, height: 40, padding: '0 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flex: 1, minWidth: 240, maxWidth: 360, color: 'var(--text-dim)' }}>
+          <Icon name="search" size={16} />
+          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tr(lang, 'positionsSearchPlaceholder')} style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
+        </label>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} style={selectStyle}>
+          <option value="">{tr(lang, 'positionsAllStatuses')}</option>
+          {['hunting', 'open', 'closed', 'cancelled'].map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+        </select>
+        <select value={direction} onChange={(e) => setDirection(e.target.value)} style={selectStyle}>
+          <option value="">{tr(lang, 'positionsAllDirections')}</option>
+          <option value="long">{tr(lang, 'directionLong')}</option>
+          <option value="short">{tr(lang, 'directionShort')}</option>
+        </select>
+        <select value={patternId} onChange={(e) => setPatternId(e.target.value)} style={selectStyle}>
+          <option value="">{tr(lang, 'positionsAllPatterns')}</option>
+          {allPatterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <input type="date" value={from} title={tr(lang, 'positionsFrom')} onChange={(e) => setFrom(e.target.value)} style={selectStyle} />
+        <input type="date" value={to} title={tr(lang, 'positionsTo')} onChange={(e) => setTo(e.target.value)} style={selectStyle} />
+        <span style={{ marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'positionsResultLine', { n: digits(lang, trades.length) })}</span>
+      </div>
+
+      {!trades.length ? (
+        <Panel variant="quiet" padding="34px 20px">
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--parchment)' }}>{tr(lang, 'positionsEmptyTitle')}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(lang, 'positionsEmptyBody')}</span>
+          </div>
+        </Panel>
+      ) : (
+        <Panel variant="base" padding={0}>
+          <div style={{ overflowX: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: columns, gap: 0, minWidth: 920 }}>
+              {[tr(lang, 'positionsHeadDate'), tr(lang, 'positionsHeadDirection'), tr(lang, 'positionsHeadPattern'), tr(lang, 'positionsHeadStatus'), tr(lang, 'positionsHeadRR'), tr(lang, 'positionsHeadOutcome'), tr(lang, 'positionsHeadPnl'), tr(lang, 'positionsHeadMood'), tr(lang, 'positionsHeadActions')].map((th) => (
+                <span key={th} style={{ padding: '9px 14px', fontSize: 10.5, letterSpacing: '.07em', color: 'var(--text-dim)', borderBottom: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)' }}>{th}</span>
+              ))}
+              {trades.map((trade) => {
+                const rr = trade.rr === null || trade.rr === undefined ? null : Number(trade.rr);
+                const rColor = rr === null ? 'var(--text-dim)' : rr >= 0 ? 'var(--success)' : 'var(--danger)';
+                const names = allPatterns.filter((p) => trade.linkedPatternIds.indexOf(p.id) > -1).map((p) => p.name).join(', ') || tr(lang, 'positionsNoPattern');
+                const lastEmotion = (trade.emotionLog || []).length ? trade.emotionLog[trade.emotionLog.length - 1] : null;
+                const mood = lastEmotion && lastEmotion.dominantEmotions && lastEmotion.dominantEmotions.length
+                  ? lastEmotion.dominantEmotions.slice(0, 2).map((id) => (tradeI18n ? tradeI18n.t(id) : id)).join(' · ')
+                  : tr(lang, 'positionsNoMood');
+                const pnlColor = trade.pnl > 0 ? 'var(--success)' : trade.pnl < 0 ? 'var(--danger)' : 'var(--text-primary)';
+                return (
+                  <React.Fragment key={trade.id}>
+                    <span className="navrya-tabular" dir="ltr" style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-hairline)', textAlign: 'right' }}>{new Date(trade.createdAt).toLocaleDateString(localeCode(lang))}</span>
+                    <span style={{ padding: '11px 14px', fontSize: 12.5, color: trade.direction === 'short' ? 'var(--danger)' : 'var(--success)', borderBottom: '1px solid var(--border-hairline)' }}>{directionLabel(trade.direction)}</span>
+                    <span dir="auto" style={{ padding: '11px 14px', fontSize: 12.5, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-hairline)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{names}</span>
+                    <span style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-hairline)' }}>{statusLabel(trade.status)}</span>
+                    <span className="navrya-tabular" dir="ltr" style={{ padding: '11px 14px', fontSize: 12.5, fontWeight: 600, color: rColor, borderBottom: '1px solid var(--border-hairline)' }}>{rr === null ? '—' : '1:' + digits(lang, round1(rr))}</span>
+                    <span style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-hairline)' }}>{outcomeLabel(trade.outcome)}</span>
+                    <span className="navrya-tabular" dir="ltr" style={{ padding: '11px 14px', fontSize: 12.5, fontWeight: 600, color: pnlColor, borderBottom: '1px solid var(--border-hairline)' }}>{money(lang, trade.pnl)}</span>
+                    <span dir="auto" style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-hairline)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mood}</span>
+                    <span style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 4, borderBottom: '1px solid var(--border-hairline)' }}>
+                      <button type="button" title={tr(lang, 'positionsEdit')} onClick={() => tradeUi && tradeUi.editTrade(trade.id)} style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid transparent', background: 'transparent', color: 'var(--text-muted)' }}><Icon name="edit" size={14} /></button>
+                      <button type="button" title={tr(lang, 'positionsDetails')} onClick={() => tradeUi && tradeUi.viewTrade(trade.id)} style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid transparent', background: 'transparent', color: 'var(--text-muted)' }}><Icon name="eye" size={14} /></button>
+                    </span>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
 function IndexView({ lang, tab, setTab, query, setQuery, sort, setSort, patterns, strategies, onOpen, onReport, onShare, onDelete, onNew, onFromEvent }) {
   const list = tab === 'patterns' ? patterns : strategies;
   const sortLabels = [tr(lang, 'sortRecent'), tr(lang, 'sortRealization'), tr(lang, 'sortUsage')];
@@ -707,25 +879,14 @@ function IndexView({ lang, tab, setTab, query, setQuery, sort, setSort, patterns
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 7, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)' }}>
-          {[['patterns', tr(lang, 'tabPatterns'), 'execution', patterns.length], ['strategies', tr(lang, 'tabStrategies'), 'strategies', strategies.length]].map(([id, label, icon, count]) => (
-            <button key={id} type="button" onClick={() => setTab(id)} style={{
-              boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 10, height: 50, padding: '0 20px', borderRadius: 8, cursor: 'pointer',
-              border: tab === id ? '2px solid var(--char-accent)' : '1px solid transparent', background: tab === id ? 'var(--char-active-surface)' : 'transparent',
-              color: tab === id ? 'var(--char-accent)' : 'var(--text-muted)', font: 'inherit', fontSize: 14, fontWeight: tab === id ? 600 : 500,
-              boxShadow: tab === id ? '0 0 16px var(--char-glow)' : 'none'
-            }}>
-              <Icon name={icon} size={18} />{label}
-              <span style={{ fontSize: 11, fontWeight: 500, padding: '2px 7px', borderRadius: 5, background: 'rgba(3,8,7,.45)', border: '1px solid currentColor' }}>{digits(lang, count)}</span>
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <TopTabBar
+        lang={lang} tab={tab} setTab={setTab} patternsCount={patterns.length} strategiesCount={strategies.length}
+        tradesCount={window.TradeJournalTradeStore ? window.TradeJournalTradeStore.listSync().length : 0}
+        rightSlot={<>
           {tab === 'strategies' && <Button variant="secondary" icon="sparkle" onClick={onFromEvent}>{tr(lang, 'fromEvent')}</Button>}
           <Button variant="primary" icon="plus" onClick={onNew}>{tab === 'patterns' ? tr(lang, 'newPattern') : tr(lang, 'newStrategy')}</Button>
-        </div>
-      </div>
+        </>}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 9, height: 40, padding: '0 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flex: 1, minWidth: 240, maxWidth: 360, color: 'var(--text-dim)' }}>
@@ -1653,6 +1814,13 @@ function StrategiesHub({ character }) {
   }
 
   const container = { display: 'flex', flexDirection: 'column', gap: 16 };
+  if (tab === 'positions') {
+    return (
+      <div style={container}>
+        <PositionsView lang={lang} tab={tab} setTab={setTab} patternsCount={patterns.length} strategiesCount={strategies.length} />
+      </div>
+    );
+  }
   if (!item) {
     return (
       <div style={container}>
