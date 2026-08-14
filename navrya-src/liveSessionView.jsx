@@ -3,7 +3,12 @@ import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
+import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import * as sessionsAdapter from './sessionsAdapter.js';
+import { openLogWizard } from './tradeLogModal.jsx';
+
+const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
+const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
 
 // React rewrite of the "open session" workspace (session-workspace-logic.js's vanilla-DOM
 // open()/meta()/dashboard()/timeline()/report()) per the "Live Session" design handoff. UI only
@@ -17,9 +22,15 @@ import * as sessionsAdapter from './sessionsAdapter.js';
 // each entry's real createdAt (not a fake 09:00 anchor) and "attach image" is a real file picker
 // through window.TradeJournalImageStore, not a boolean flip.
 //
-// The DC prototype's Fate button/"سرنوشت سشن" only ever switches the view to the Report tab
-// (`onFate: () => patchLive({ view: 'report' })`) - it never closes a session or opens a fate
-// form anywhere in the handoff. Matched verbatim: no closing action is added here.
+// The DC prototype's Fate button/"سرنوشت سشن" only ever switched the view to the Report tab -
+// it never closed a session or opened a fate form anywhere in the handoff, which was a real
+// regression against the legacy vanilla-DOM flow (session-workspace-logic.js's fateModal() +
+// session-entry-flow.js's openEntry(...,'fate')/openFateSummary()): a final chart/note entry
+// that closes the session, followed by a real whole-session summary (key movements, pattern
+// progression, real scenario outcomes, lessons, a carry-forward note) saved as session.fateSummary
+// so the next session's "Previous session summary" panel has something real to show. Restored
+// below as FateEntryModal/FateSummaryModal, same real session shape and TradeJournalWorkspace
+// save()/log() calls, redesigned against the NAVRYA dialog system.
 
 const SPAN_MIN = 180; // decorative pacing window shared by both pulse rings and the ruler - real
 // sessions are open-ended (no stored "planned length"), this only gives the sweep/ruler the same
@@ -64,7 +75,26 @@ const copy = {
     tradeStatusHunting: 'شکار', tradeStatusOpen: 'باز', tradeStatusClosed: 'بسته', tradeStatusCancelled: 'لغو شده',
     prevSummaryTitle: 'خلاصه سشن قبلی', prevSummaryEmpty: 'هنوز خلاصه‌ای از سشن قبلی ندارید. پس از بستن سشن، نتیجه و درس‌ها به سشن بعدی منتقل می‌شود.',
     similarTitle: 'سشن‌های مشابه', similarThreshold: 'آستانه هشدار', similarEmpty: 'هنوز سشن مشابه قابل‌اعتمادی پیدا نشد.', similarSummary: 'خلاصه',
-    reportTitle: 'گزارش سشن', intervalChip: 'بازه {n}m'
+    reportTitle: 'گزارش سشن', intervalChip: 'بازه {n}m',
+    chartEntryTitle: 'ثبت چارت جدید', uploadFinalTitle: 'آپلود چارت نهایی سشن', uploadChartTitle: 'آپلود تصویر چارت',
+    timeframeLabel: 'تایم‌فریم', timeframeRequired: 'لطفاً تایم‌فریم این چارت را مشخص کنید', marketLabel: 'سشن معاملاتی',
+    dateLabel: 'تاریخ میلادی', noteOptionalLabel: 'یادداشت (اختیاری)', relatedScenariosLabel: 'سناریوهای مرتبط',
+    relatedScenariosHint: 'کدام سناریوها با این ورودی تأیید یا مرتبط هستند؟', submitLabel: 'ثبت', cancel: 'انصراف', uploadPrompt: 'کلیک کنید یا تصویر را اینجا رها کنید',
+    uploadRequired: 'لطفاً تصویر چارت را آپلود کنید', timeframeFilterLabel: 'تایم‌فریم', allTimeframesLabel: 'همه تایم‌فریم‌ها',
+    fateStep1Title: 'سرنوشت سشن · چارت نهایی', fateSubmit: 'ثبت سرنوشت سشن',
+    fateStep2Title: 'خلاصه سرنوشت سشن', summaryIntro: 'خلاصه‌ای از نتیجه سشن ثبت کنید تا در سشن بعدی نمایش داده شود.',
+    moveStrengthLabel: 'جهت قدرت حرکت', spikeLabel: 'جهت حرکت اسپایکی', dirUp: 'صعودی', dirDown: 'نزولی', dirFlat: 'خنثی',
+    lessonsNoteLabel: 'یادداشت (اختیاری)', lessonsPlaceholder: 'هر نکته‌ای که ارزش انتقال به سشن بعدی را دارد...',
+    sessionAiTitle: 'تحلیل هوش مصنوعی کل سشن', aiIntro: 'تمام ورودی‌های تایم‌لاین، سناریوها و الگوها بررسی می‌شوند.',
+    startAnalysis: 'شروع تحلیل', reanalyzeLabel: 'تحلیل مجدد', overviewLabel: 'نمای کلی', keyMovementsLabel: 'حرکت‌های کلیدی',
+    significanceLabel: 'اهمیت', patternProgressionLabel: 'سیر الگوها', scenarioOutcomesLabel: 'نتیجه سناریوها',
+    occurredLabel: 'اتفاق افتاد', notOccurredLabel: 'اتفاق نیفتاد', lessonsLabel: 'درس‌ها', carryForwardLabel: 'منتقل‌شده به سشن بعدی',
+    saveFateLabel: 'ذخیره سرنوشت', localProviderLabel: 'تحلیل محلی',
+    defaultOverview: 'سشن بر اساس ورودی‌های تایم‌لاین، تغییر احتمال سناریوها و پیشرفت الگوها جمع‌بندی شد.',
+    defaultLesson: 'پیش از هر ورود، تریگر و سطح ابطال را دوباره تأیید کنید.',
+    defaultCarry: 'سناریوهای معتبر، مراحل ناتمام الگو و نکته‌های مدیریت ریسک را در سشن بعدی مرور کنید.',
+    logTradeAction: 'ثبت معامله', allOpenPositions: 'همه پوزیشن‌های باز', rrShort: 'RR', leverageShort: 'اهرم',
+    noOpenPositions: 'هیچ پوزیشن بازی نیست', closeAction2: 'بستن پوزیشن', logEmotionShort: 'ثبت احساس', analyzing: 'در حال تحلیل کامل سشن...'
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة',
@@ -104,7 +134,26 @@ const copy = {
     tradeStatusHunting: 'بحث', tradeStatusOpen: 'مفتوحة', tradeStatusClosed: 'مغلقة', tradeStatusCancelled: 'ملغاة',
     prevSummaryTitle: 'ملخص الجلسة السابقة', prevSummaryEmpty: 'لا يوجد ملخص للجلسة السابقة بعد. بعد إغلاق الجلسة تُنقل النتيجة والدروس إلى الجلسة التالية.',
     similarTitle: 'جلسات مشابهة', similarThreshold: 'حد التنبيه', similarEmpty: 'لم يتم العثور على جلسة مشابهة موثوقة بعد.', similarSummary: 'ملخص',
-    reportTitle: 'تقرير الجلسة', intervalChip: 'فترة {n} د'
+    reportTitle: 'تقرير الجلسة', intervalChip: 'فترة {n} د',
+    chartEntryTitle: 'تسجيل رسم جديد', uploadFinalTitle: 'رفع الرسم النهائي للجلسة', uploadChartTitle: 'رفع صورة الرسم',
+    timeframeLabel: 'الإطار الزمني', timeframeRequired: 'يرجى تحديد الإطار الزمني لهذا الرسم', marketLabel: 'جلسة التداول',
+    dateLabel: 'التاريخ الميلادي', noteOptionalLabel: 'ملاحظة (اختياري)', relatedScenariosLabel: 'السيناريوهات المرتبطة',
+    relatedScenariosHint: 'ما السيناريوهات التي يؤكدها هذا الإدخال؟', submitLabel: 'تسجيل', cancel: 'إلغاء', uploadPrompt: 'انقر أو اسحب الصورة إلى هنا',
+    uploadRequired: 'يرجى رفع صورة الرسم', timeframeFilterLabel: 'الإطار الزمني', allTimeframesLabel: 'كل الأطر الزمنية',
+    fateStep1Title: 'مصير الجلسة · الرسم النهائي', fateSubmit: 'تسجيل مصير الجلسة',
+    fateStep2Title: 'ملخص مصير الجلسة', summaryIntro: 'سجل خلاصة الجلسة لتظهر في الجلسة التالية.',
+    moveStrengthLabel: 'اتجاه قوة الحركة', spikeLabel: 'اتجاه الحركة السريعة', dirUp: 'صاعد', dirDown: 'هابط', dirFlat: 'محايد',
+    lessonsNoteLabel: 'ملاحظة (اختياري)', lessonsPlaceholder: 'أي درس يستحق نقله إلى الجلسة التالية...',
+    sessionAiTitle: 'تحليل الذكاء الاصطناعي للجلسة', aiIntro: 'سيتم فحص جميع إدخالات الخط الزمني والسيناريوهات والأنماط.',
+    startAnalysis: 'بدء التحليل', reanalyzeLabel: 'إعادة التحليل', overviewLabel: 'نظرة عامة', keyMovementsLabel: 'الحركات الرئيسية',
+    significanceLabel: 'الأهمية', patternProgressionLabel: 'تطور الأنماط', scenarioOutcomesLabel: 'نتائج السيناريوهات',
+    occurredLabel: 'حدث', notOccurredLabel: 'لم يحدث', lessonsLabel: 'الدروس', carryForwardLabel: 'للجلسة التالية',
+    saveFateLabel: 'حفظ المصير', localProviderLabel: 'تحليل محلي',
+    defaultOverview: 'تم تلخيص الجلسة وفق الخط الزمني والسيناريوهات وتقدم الأنماط.',
+    defaultLesson: 'أكد المحفز ومستوى الإبطال قبل أي دخول.',
+    defaultCarry: 'راجع السيناريوهات الصالحة ومراحل الأنماط غير المكتملة في الجلسة التالية.',
+    logTradeAction: 'تسجيل صفقة', allOpenPositions: 'كل الصفقات المفتوحة', rrShort: 'RR', leverageShort: 'الرافعة',
+    noOpenPositions: 'لا توجد صفقة مفتوحة', closeAction2: 'إغلاق الصفقة', logEmotionShort: 'تسجيل شعور', analyzing: 'جارٍ تحليل الجلسة بالكامل...'
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed',
@@ -144,7 +193,26 @@ const copy = {
     tradeStatusHunting: 'Hunting', tradeStatusOpen: 'Open', tradeStatusClosed: 'Closed', tradeStatusCancelled: 'Cancelled',
     prevSummaryTitle: 'Previous session summary', prevSummaryEmpty: 'No previous session summary yet. Closing a session carries its outcome and lessons into the next one.',
     similarTitle: 'Similar sessions', similarThreshold: 'Alert threshold', similarEmpty: 'No trustworthy similar session found yet.', similarSummary: 'Summary',
-    reportTitle: 'Session report', intervalChip: '{n}m loop'
+    reportTitle: 'Session report', intervalChip: '{n}m loop',
+    chartEntryTitle: 'Log new chart', uploadFinalTitle: 'Upload final session chart', uploadChartTitle: 'Upload chart image',
+    timeframeLabel: 'Timeframe', timeframeRequired: 'Please pick this chart’s timeframe', marketLabel: 'Trading session',
+    dateLabel: 'Gregorian date', noteOptionalLabel: 'Note (optional)', relatedScenariosLabel: 'Related scenarios',
+    relatedScenariosHint: 'Which scenarios does this entry confirm or relate to?', submitLabel: 'Submit', cancel: 'Cancel', uploadPrompt: 'Click or drop an image here',
+    uploadRequired: 'Please upload a chart image', timeframeFilterLabel: 'Timeframe', allTimeframesLabel: 'All timeframes',
+    fateStep1Title: 'Session fate · final chart', fateSubmit: 'Submit session fate',
+    fateStep2Title: 'Session fate summary', summaryIntro: 'Record a session outcome so it can be shown in the next session.',
+    moveStrengthLabel: 'Move-strength direction', spikeLabel: 'Spike direction', dirUp: 'Bullish', dirDown: 'Bearish', dirFlat: 'Neutral',
+    lessonsNoteLabel: 'Note (optional)', lessonsPlaceholder: 'Anything worth carrying into the next session...',
+    sessionAiTitle: 'Whole-session AI analysis', aiIntro: 'All timeline entries, scenarios and patterns will be reviewed.',
+    startAnalysis: 'Start analysis', reanalyzeLabel: 'Analyze again', overviewLabel: 'Overview', keyMovementsLabel: 'Key movements',
+    significanceLabel: 'Significance', patternProgressionLabel: 'Pattern progression', scenarioOutcomesLabel: 'Scenario outcomes',
+    occurredLabel: 'Occurred', notOccurredLabel: 'Did not occur', lessonsLabel: 'Lessons', carryForwardLabel: 'Carry forward to next session',
+    saveFateLabel: 'Save fate', localProviderLabel: 'Local analysis',
+    defaultOverview: 'The session was summarized from timeline entries, scenario probability changes and pattern progress.',
+    defaultLesson: 'Confirm the trigger and invalidation level before every entry.',
+    defaultCarry: 'Review valid scenarios, unfinished pattern stages and risk notes in the next session.',
+    logTradeAction: 'Log trade', allOpenPositions: 'All open positions', rrShort: 'RR', leverageShort: 'Leverage',
+    noOpenPositions: 'No open positions', closeAction2: 'Close position', logEmotionShort: 'Log emotion', analyzing: 'Analyzing the complete session...'
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada',
@@ -184,7 +252,26 @@ const copy = {
     tradeStatusHunting: 'Buscando', tradeStatusOpen: 'Abierta', tradeStatusClosed: 'Cerrada', tradeStatusCancelled: 'Cancelada',
     prevSummaryTitle: 'Resumen de la sesión anterior', prevSummaryEmpty: 'Aún no hay un resumen de la sesión anterior. Al cerrar una sesión, su resultado y lecciones pasan a la siguiente.',
     similarTitle: 'Sesiones similares', similarThreshold: 'Umbral de alerta', similarEmpty: 'Aún no se encontró una sesión similar fiable.', similarSummary: 'Resumen',
-    reportTitle: 'Informe de sesión', intervalChip: 'Bucle {n}m'
+    reportTitle: 'Informe de sesión', intervalChip: 'Bucle {n}m',
+    chartEntryTitle: 'Registrar nuevo gráfico', uploadFinalTitle: 'Subir gráfico final de la sesión', uploadChartTitle: 'Subir imagen del gráfico',
+    timeframeLabel: 'Temporalidad', timeframeRequired: 'Elige la temporalidad de este gráfico', marketLabel: 'Sesión de mercado',
+    dateLabel: 'Fecha gregoriana', noteOptionalLabel: 'Nota (opcional)', relatedScenariosLabel: 'Escenarios relacionados',
+    relatedScenariosHint: '¿Qué escenarios confirma esta entrada?', submitLabel: 'Registrar', cancel: 'Cancelar', uploadPrompt: 'Haz clic o suelta una imagen aquí',
+    uploadRequired: 'Sube una imagen del gráfico', timeframeFilterLabel: 'Temporalidad', allTimeframesLabel: 'Todas las temporalidades',
+    fateStep1Title: 'Destino de la sesión · gráfico final', fateSubmit: 'Registrar destino de la sesión',
+    fateStep2Title: 'Resumen del destino de la sesión', summaryIntro: 'Registra el resultado para mostrarlo en la siguiente sesión.',
+    moveStrengthLabel: 'Dirección de la fuerza', spikeLabel: 'Dirección del impulso', dirUp: 'Alcista', dirDown: 'Bajista', dirFlat: 'Neutral',
+    lessonsNoteLabel: 'Nota (opcional)', lessonsPlaceholder: 'Algo que valga la pena llevar a la próxima sesión...',
+    sessionAiTitle: 'Análisis IA de toda la sesión', aiIntro: 'Se revisarán todas las entradas, escenarios y patrones.',
+    startAnalysis: 'Iniciar análisis', reanalyzeLabel: 'Analizar otra vez', overviewLabel: 'Resumen', keyMovementsLabel: 'Movimientos clave',
+    significanceLabel: 'Importancia', patternProgressionLabel: 'Evolución de patrones', scenarioOutcomesLabel: 'Resultados de escenarios',
+    occurredLabel: 'Ocurrió', notOccurredLabel: 'No ocurrió', lessonsLabel: 'Lecciones', carryForwardLabel: 'Para la próxima sesión',
+    saveFateLabel: 'Guardar destino', localProviderLabel: 'Análisis local',
+    defaultOverview: 'La sesión se resumió según la línea temporal, los escenarios y el progreso de patrones.',
+    defaultLesson: 'Confirma el activador y la invalidación antes de cada entrada.',
+    defaultCarry: 'Revisa los escenarios válidos y las etapas pendientes en la próxima sesión.',
+    logTradeAction: 'Registrar operación', allOpenPositions: 'Todas las posiciones abiertas', rrShort: 'RR', leverageShort: 'Apalanc.',
+    noOpenPositions: 'No hay posiciones abiertas', closeAction2: 'Cerrar posición', logEmotionShort: 'Registrar emoción', analyzing: 'Analizando la sesión completa...'
   }
 };
 
@@ -225,12 +312,13 @@ function entryTimeLabel(entry, lang) {
 function sortedEntries(session) {
   return (session.entries || []).slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
-function visibleEntries(entries, filter, q, lang) {
+function visibleEntries(entries, filter, q, lang, tf) {
   const query = (q || '').trim().toLowerCase();
   return entries.filter((e) => {
     if (filter === 'chart' && e.type !== 'chart') return false;
     if (filter === 'move' && e.type !== 'movement') return false;
     if (filter === 'scen' && !((e.scenarios || []).length)) return false;
+    if (tf && tf !== 'all' && e.timeframe !== tf) return false;
     if (query) {
       const noteText = e.type === 'movement' ? (e.movementNote || '') : (e.note || '');
       const hay = (noteText + ' ' + entryTimeLabel(e, lang) + ' ' + (e.scenarios || []).map((s) => s.title || '').join(' ')).toLowerCase();
@@ -293,6 +381,37 @@ function makeAiResult(session, entry, lang) {
     scenarioAssessments: (entry.scenarios || []).slice(0, 3).map((s) => ({ scenarioTitle: s.title, stillValid: probabilityOf(s) > 0 }))
   };
 }
+// Ported from session-entry-flow.js's own makeSessionAnalysis() - a real "local-demo" summary
+// computed from this session's actual entries/scenarios/patterns, not a fabricated one: overview
+// count, the last 5 real timeline entries, real pattern-completion progress, real scenario
+// occurred/probability outcomes. No external AI call - same as the legacy flow's own provider.
+function patternPercent(scenario) {
+  const stages = (scenario.pattern && scenario.pattern.stages) || [];
+  const done = (scenario.pattern && scenario.pattern.completedStageIds) || [];
+  return stages.length ? Math.round((done.length / stages.length) * 100) : 0;
+}
+function makeSessionAnalysis(session, lang) {
+  const entries = sortedEntries(session);
+  const scenarios = flatScenarios(session).map((x) => x.scenario);
+  const patterns = [];
+  scenarios.forEach((scenario) => {
+    const name = (scenario.pattern && (scenario.pattern.name || scenario.pattern.patternTagId)) || scenario.strategy;
+    if (name && !patterns.some((p) => p.patternName === name)) patterns.push({ patternName: name, outcome: patternPercent(scenario) + '% · ' + scenario.title });
+  });
+  return {
+    provider: 'local-demo',
+    overview: tr(lang, 'defaultOverview') + ' ' + entries.length + ' ' + tr(lang, 'counterEntryWord') + '.',
+    keyMovements: entries.slice(-5).map((entry) => ({
+      time: entryTimeLabel(entry, lang),
+      description: entry.movementNote || entry.note || (kindInfo(lang)[entry.type] || kindInfo(lang).chart).label,
+      significance: entry.type === 'fate' ? tr(lang, 'carryForwardLabel') : tr(lang, 'relatedScenariosLabel')
+    })),
+    patternProgression: patterns,
+    scenarioOutcomes: scenarios.map((scenario) => ({ title: scenario.title || tr(lang, 'newScenarioTitle'), occurred: Boolean(scenario.occurred), note: probabilityOf(scenario) + '%' })),
+    lessonsLearned: [tr(lang, 'defaultLesson')],
+    carryForwardToNextSession: tr(lang, 'defaultCarry')
+  };
+}
 function statusLabel(status, lang) {
   const key = { hunting: 'tradeStatusHunting', open: 'tradeStatusOpen', closed: 'tradeStatusClosed', cancelled: 'tradeStatusCancelled' }[status];
   return key ? tr(lang, key) : status;
@@ -318,6 +437,146 @@ function TextAreaField({ label, value, onCommit, placeholder }) {
       <textarea defaultValue={value || ''} placeholder={placeholder} dir="auto" style={textareaStyle}
         onBlur={(e) => { if (e.target.value !== (value || '')) onCommit(e.target.value); }} />
     </label>
+  );
+}
+
+// Generic full-bleed dialog shell shared by the three custom modals below (chart entry, fate
+// entry, fate summary) - same fixed/backdrop/Escape-to-close pattern the redesigned trade modals
+// (closePositionModal.jsx etc.) use, sized for this file's own denser two-column content.
+function SessionModalShell({ title, icon, eyebrow, onClose, footer, width = 640, children }) {
+  React.useEffect(() => {
+    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center', padding: 24, background: 'var(--scrim)', backdropFilter: 'blur(3px)' }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div role="dialog" aria-modal="true" aria-label={title} style={{ position: 'relative', width: '100%', maxWidth: width, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--ink-900)', boxShadow: '0 12px 30px rgba(0,0,0,.45)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px' }}>
+          {icon && (
+            <span style={{ width: 40, height: 40, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)' }}>
+              <Icon name={icon} size={20} />
+            </span>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+            {eyebrow && <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{eyebrow}</span>}
+            <span style={{ font: 'var(--type-display-md)', letterSpacing: 'var(--tracking-display)', color: 'var(--text-primary)' }}>{title}</span>
+          </div>
+          <button type="button" onClick={onClose} aria-label="close" style={{ width: 40, height: 40, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}>
+            <Icon name="close" size={18} />
+          </button>
+        </div>
+        <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+        {footer && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderTop: '1px solid var(--border-hairline)', background: 'var(--ink-900)' }}>{footer}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Real chart-entry creation - replaces the bare file input the DC prototype used with the fields
+// the legacy session-entry-flow.js's openEntry('chart') always asked for: a required image,
+// a required timeframe (the DC prototype silently defaulted this and never asked), market, date,
+// an optional note and scenario linking. Same real entry shape TradeJournalWorkspace saves.
+function ChartEntryModal({ session, lang, onClose, onSubmit }) {
+  const rtl = lang === 'fa' || lang === 'ar';
+  const [file, setFile] = React.useState(null);
+  const [previewUrl, setPreviewUrl] = React.useState('');
+  const [timeframe, setTimeframe] = React.useState(session.timeframe || '5m');
+  const [market, setMarket] = React.useState(sessionsAdapter.displayCity(session.market) === 'New York' ? 'NewYork' : (session.market || 'London'));
+  const [date, setDate] = React.useState(session.date || new Date().toISOString().slice(0, 10));
+  const [note, setNote] = React.useState('');
+  const [related, setRelated] = React.useState([]);
+  const [error, setError] = React.useState('');
+  const fileRef = React.useRef(null);
+  const scenarios = flatScenarios(session);
+
+  function handleFile(f) {
+    if (!f || !f.type.startsWith('image/')) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setFile(f);
+    setPreviewUrl(URL.createObjectURL(f));
+    setError('');
+  }
+  function toggleRelated(id) {
+    setRelated((list) => (list.indexOf(id) > -1 ? list.filter((x) => x !== id) : list.concat([id])));
+  }
+  function submit() {
+    if (!file) { setError(tr(lang, 'uploadRequired')); return; }
+    if (!timeframe) { setError(tr(lang, 'timeframeRequired')); return; }
+    onSubmit({ file, timeframe, market, date, note, relatedScenarioIds: related });
+  }
+
+  return (
+    <SessionModalShell title={tr(lang, 'chartEntryTitle')} icon="ImagePlus" onClose={onClose} width={640} footer={(
+      <>
+        <span style={{ flex: 1 }} />
+        <Button variant="secondary" onClick={onClose}>{tr(lang, 'cancel')}</Button>
+        <Button variant="primary" icon="check" onClick={submit}>{tr(lang, 'submitLabel')}</Button>
+      </>
+    )}>
+      <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {previewUrl ? (
+          <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
+            <img src={previewUrl} alt="" style={{ display: 'block', width: '100%', height: 240, objectFit: 'cover' }} />
+            <button type="button" onClick={() => fileRef.current && fileRef.current.click()} style={{ position: 'absolute', bottom: 10, insetInlineEnd: 10, height: 32, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'uploadChartTitle')}</button>
+          </span>
+        ) : (
+          <button
+            type="button" onClick={() => fileRef.current && fileRef.current.click()}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, height: 200, borderRadius: 10, cursor: 'pointer', border: '1px dashed ' + (error && !file ? 'var(--danger)' : 'var(--border-gold)'), background: 'rgba(3,8,7,.5)' }}
+            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]); }}
+          >
+            <span style={{ color: 'rgba(244,234,215,.2)' }}><Icon name="image" size={28} /></span>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'uploadPrompt')}</span>
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')} <span style={{ color: 'var(--danger)' }}>*</span></span>
+            <select value={timeframe} onChange={(e) => { setTimeframe(e.target.value); setError(''); }} style={{ ...inputStyle, borderColor: error && !timeframe ? 'var(--danger)' : 'var(--border-hairline)' }}>
+              {TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={fieldLabelStyle}>{tr(lang, 'marketLabel')}</span>
+            <select value={market} onChange={(e) => setMarket(e.target.value)} style={inputStyle}>
+              {MARKET_NAMES.map((v) => <option key={v} value={v}>{sessionsAdapter.displayCity(v)}</option>)}
+            </select>
+          </label>
+        </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={fieldLabelStyle}>{tr(lang, 'dateLabel')}</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+        </label>
+        <TextAreaField label={tr(lang, 'noteOptionalLabel')} value={note} onCommit={setNote} />
+
+        {!!scenarios.length && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={fieldLabelStyle}>{tr(lang, 'relatedScenariosLabel')}</span>
+            <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'relatedScenariosHint')}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {scenarios.map(({ scenario }) => {
+                const on = related.indexOf(scenario.id) > -1;
+                return (
+                  <button key={scenario.id} type="button" onClick={() => toggleRelated(scenario.id)} dir="auto" style={{ height: 30, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--char-accent)' : 'var(--border-hairline)'), background: on ? 'var(--char-active-surface)' : 'transparent', color: on ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 11 }}>
+                    {scenario.title || tr(lang, 'newScenarioTitle')}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {error && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</span>}
+      </div>
+    </SessionModalShell>
   );
 }
 
@@ -494,13 +753,44 @@ function InvalidationTags({ lang, tags, readOnly, onChange }) {
   );
 }
 
-function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpdate, onDelete, onToggleStage, onSetSide }) {
+function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpdate, onDelete, onToggleStage, onSetSide, character }) {
   const readOnly = session.status === 'closed';
   const prob = probabilityOf(scenario);
   const info = patternInfo(scenario);
   const plan = scenario.executionPlan || {};
   const completionPct = scenarioCompletion(scenario);
   const registeredPatterns = window.TradeJournalPatternStore ? window.TradeJournalPatternStore.listForScenarios() : [];
+  const tradeStore = window.TradeJournalTradeStore;
+  const tradeUi = window.TradeJournalTradeUI;
+  // Same trade this scenario's "Log Trade" button would have registered (or that a earlier
+  // dashboard-side registration already linked) - mirrors the legacy enhanceSessionPositionsV2's
+  // own store.findBySource(session.id, scenario.id) lookup.
+  const linkedTrade = tradeStore ? tradeStore.findBySource(session.id, scenario.id) : null;
+  function applyTradeUpdate(value, logType) {
+    onUpdate({
+      executionPlan: {
+        ...plan, tradeId: value.id, positionStatus: value.status,
+        entryPrices: value.entryPrice != null ? [value.entryPrice] : (plan.entryPrices || []),
+        stopLoss: value.stopLoss != null ? value.stopLoss : plan.stopLoss,
+        takeProfit: value.takeProfits && value.takeProfits[0] ? value.takeProfits[0].price : plan.takeProfit
+      }
+    }, logType || 'trade_' + value.status);
+  }
+  // Exact seed shape as trade-ui.js's enhanceSessionPositionsV2 launch.onclick (registerTrade):
+  // direction/entry/stop/target come straight from the scenario's own action plan, linked pattern
+  // carries over, and source.scenarioId is what makes findBySource(session.id, scenario.id) work.
+  function logTrade() {
+    const patternId = scenario.pattern && scenario.pattern.patternTagId;
+    openLogWizard({
+      status: 'hunting',
+      direction: String(plan.positionType || 'long').toLowerCase() === 'short' ? 'short' : 'long',
+      entryPrice: (plan.entryPrices || [])[0] || null,
+      stopLoss: plan.stopLoss || null,
+      takeProfits: plan.takeProfit ? [{ price: plan.takeProfit, portionPercent: 100 }] : [],
+      linkedPatternIds: patternId ? [patternId] : [],
+      source: { character, sessionId: session.id, scenarioId: scenario.id }
+    }, { onSave: (value) => applyTradeUpdate(value) });
+  }
   function handlePatternChange(patternId) {
     if (!patternId) { onUpdate({ pattern: null }); return; }
     const picked = registeredPatterns.find((p) => p.id === patternId);
@@ -614,6 +904,40 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
+            {!linkedTrade ? (
+              <button type="button" disabled={readOnly} onClick={logTrade} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 36, borderRadius: 8,
+                cursor: readOnly ? 'not-allowed' : 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)',
+                color: 'var(--text-primary)', font: 'var(--type-body)', fontSize: 12
+              }}>
+                <Icon name="edit" size={14} />{tr(lang, 'logTradeAction')}
+              </button>
+            ) : (
+              <>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Chip tone={linkedTrade.status === 'open' ? 'success' : linkedTrade.status === 'hunting' ? 'accent' : 'neutral'} dot>{statusLabel(linkedTrade.status, lang)}</Chip>
+                  <span className="navrya-tabular" dir="ltr" style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--text-dim)' }}>{linkedTrade.entryPrice ?? '—'}</span>
+                </span>
+                <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {linkedTrade.status === 'hunting' && (
+                    <>
+                      <button type="button" onClick={() => applyTradeUpdate(tradeStore.updateStatus(linkedTrade.id, 'open'))} style={{ height: 30, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 10 }}>{window.TradeJournalTradeI18n.t('markOpen')}</button>
+                      <button type="button" onClick={() => applyTradeUpdate(tradeStore.updateStatus(linkedTrade.id, 'cancelled'))} style={{ height: 30, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', font: 'var(--type-caption)', fontSize: 10 }}>{window.TradeJournalTradeI18n.t('cancelTrade')}</button>
+                    </>
+                  )}
+                  {linkedTrade.status === 'open' && (
+                    <>
+                      <button type="button" onClick={() => tradeUi && tradeUi.openEmotion(linkedTrade.id, 'mid_trade')} style={{ height: 30, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.08)', color: 'var(--gold-warm)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'logEmotionShort')}</button>
+                      <button type="button" onClick={() => tradeUi && tradeUi.closeTrade(linkedTrade.id, (saved) => applyTradeUpdate(saved))} style={{ height: 30, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'closeAction2')}</button>
+                    </>
+                  )}
+                  <button type="button" onClick={() => tradeUi && tradeUi.viewTrade(linkedTrade.id)} style={{ height: 30, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-dim)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'viewAction')}</button>
+                </span>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--warning)' }}><Icon name="TriangleAlert" size={12} />{tr(lang, 'invalidationLabel')}</span>
             <InvalidationTags lang={lang} tags={scenario.invalidationTagIds} readOnly={readOnly} onChange={(tags) => onUpdate({ invalidationTagIds: tags })} />
             <TextAreaField label={tr(lang, 'invalidationNoteLabel')} value={scenario.invalidationNote} placeholder={tr(lang, 'invalidationNotePlaceholder')} onCommit={(v) => onUpdate({ invalidationNote: v })} />
@@ -659,7 +983,7 @@ function AiStrip({ session, entry, lang, onAnalyze }) {
   );
 }
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario }) {
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
@@ -720,6 +1044,7 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
               onDelete={() => onScenarioDelete(entry, scenario)}
               onToggleStage={(stage) => onScenarioStage(entry, scenario, stage)}
               onSetSide={(side) => onScenarioSide(entry, scenario, side)}
+              character={character}
             />
           ))}
           {session.status !== 'closed' && (
@@ -794,28 +1119,65 @@ function DashboardScenarioRow({ lang, x, entryN, readOnly, onSelectEntry, onProb
   );
 }
 
-function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEntry, onToggleStage, onProbabilityChange }) {
+function PositionRow({ trade, lang }) {
+  const tradeUi = window.TradeJournalTradeUI;
+  const ti = window.TradeJournalTradeI18n;
+  const tp = trade.takeProfits && trade.takeProfits[0] ? trade.takeProfits[0].price : null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 11, color: trade.direction === 'short' ? 'var(--danger)' : 'var(--char-accent)', flex: 1, minWidth: 0 }}>{ti ? ti.t(trade.direction) : trade.direction}</span>
+        <Chip tone={trade.status === 'open' ? 'success' : 'accent'} dot>{statusLabel(trade.status, lang)}</Chip>
+      </div>
+      <div dir="ltr" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{tr(lang, 'entryPriceLabel')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--text-primary)' }}>{trade.entryPrice ?? '—'}</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{tr(lang, 'stopLabel')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--danger)' }}>{trade.stopLoss ?? '—'}</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{tr(lang, 'targetLabel')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--success)' }}>{tp ?? '—'}</span>
+        </div>
+      </div>
+      <span className="navrya-tabular" dir="ltr" style={{ fontSize: 10, color: 'var(--gold-warm)' }}>{(trade.rr ? '1:' + trade.rr : '—') + ' ' + tr(lang, 'rrShort') + ' · ' + (trade.leverage ? trade.leverage + '×' : '—') + ' ' + tr(lang, 'leverageShort')}</span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button type="button" onClick={() => tradeUi && tradeUi.openEmotion(trade.id, 'mid_trade')} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.08)', color: 'var(--gold-warm)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'logEmotionShort')}</button>
+        <button type="button" onClick={() => tradeUi && tradeUi.closeTrade(trade.id)} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'closeAction2')}</button>
+        <button type="button" onClick={() => tradeUi && tradeUi.viewTrade(trade.id)} aria-label={tr(lang, 'viewAction')} style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-dim)' }}><Icon name="eye" size={13} /></button>
+      </div>
+    </div>
+  );
+}
+
+function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEntry, onToggleStage, onProbabilityChange, openPositions, onLogTrade }) {
   const readOnly = session.status === 'closed';
   const flat = flatScenarios(session);
   const patternRows = dash === 'patterns' ? flat.filter((x) => x.scenario.pattern) : [];
   const scenarioRows = dash === 'scenarios' ? flat : [];
-  let positionRows = [];
-  if (dash === 'positions') {
-    const tradeStore = window.TradeJournalTradeStore;
-    positionRows = flat.filter((x) => tradeStore && tradeStore.findBySource(session.id, x.scenario.id)).map((x) => {
-      const trade = tradeStore.findBySource(session.id, x.scenario.id);
-      return { key: x.scenario.id, title: x.scenario.title || tr(lang, 'newScenarioTitle'), value: probabilityOf(x.scenario), meta: statusLabel(trade.status, lang), entryN: indexById[x.entry.id], onClick: () => onSelectEntry(x.entry.id) };
-    });
-  }
+  // Every real open/hunting trade for this character (see LiveSessionView's own openPositions -
+  // "all open trades should be visible in the session dashboard", including ones carried over
+  // from an earlier session), not only trades that trace back to a scenario in this one.
+  const positionRows = dash === 'positions' ? (openPositions || []) : [];
   // Log tab shows the session's real activityLog (session-workspace-logic.js's log()) - every
   // scenario/stage/note/position edit already writes an entry here; this just surfaces it.
   const logRows = dash === 'log' ? (session.activityLog || []).slice().reverse().slice(0, 60) : [];
-  const emptyText = { patterns: tr(lang, 'dashEmptyPatterns'), scenarios: tr(lang, 'dashEmptyScenarios'), positions: tr(lang, 'dashEmptyPositions'), log: tr(lang, 'dashEmptyLog') }[dash];
+  const emptyText = { patterns: tr(lang, 'dashEmptyPatterns'), scenarios: tr(lang, 'dashEmptyScenarios'), positions: tr(lang, 'noOpenPositions'), log: tr(lang, 'dashEmptyLog') }[dash];
   const isEmpty = dash === 'log' ? logRows.length === 0 : dash === 'patterns' ? patternRows.length === 0 : dash === 'scenarios' ? scenarioRows.length === 0 : positionRows.length === 0;
   return (
     <Panel variant="base" padding="14px">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="dashboard" size={16} /><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'dashboardTitle')}</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="dashboard" size={16} /><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'dashboardTitle')}</span>
+          {dash === 'positions' && (
+            <button type="button" onClick={onLogTrade} style={{ marginInlineStart: 'auto', height: 26, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 10 }}>
+              <Icon name="edit" size={12} />{tr(lang, 'logTradeAction')}
+            </button>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.5)' }}>
           {[['patterns', tr(lang, 'dashPatterns')], ['scenarios', tr(lang, 'dashScenarios')], ['positions', tr(lang, 'dashPositions')], ['log', tr(lang, 'dashLog')]].map(([id, label]) => (
             <button key={id} type="button" onClick={() => onSetDash(id)} style={{ flex: 1, height: 30, borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 11, border: '1px solid ' + (dash === id ? 'var(--char-accent)' : 'transparent'), background: dash === id ? 'var(--char-active-surface)' : 'transparent', color: dash === id ? 'var(--char-accent)' : 'var(--text-dim)' }}>{label}</button>
@@ -834,21 +1196,7 @@ function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEnt
           patternRows.map((x) => <DashboardPatternRow key={x.scenario.id} lang={lang} x={x} entryN={indexById[x.entry.id]} readOnly={readOnly} onSelectEntry={onSelectEntry} onToggleStage={onToggleStage} />)
         ) : dash === 'scenarios' ? (
           scenarioRows.map((x) => <DashboardScenarioRow key={x.scenario.id} lang={lang} x={x} entryN={indexById[x.entry.id]} readOnly={readOnly} onSelectEntry={onSelectEntry} onProbabilityChange={onProbabilityChange} />)
-        ) : positionRows.map((r) => (
-          <button key={r.key} type="button" onClick={r.onClick} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)', font: 'inherit' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-              <span dir="auto" style={{ fontSize: 11, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
-              <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--char-accent)' }}>{r.value}%</span>
-            </span>
-            <span style={{ display: 'block', width: '100%', height: 5, borderRadius: 3, background: 'rgba(244,234,215,.08)', overflow: 'hidden' }}>
-              <span style={{ display: 'block', height: '100%', borderRadius: 3, background: 'var(--char-accent)', width: r.value + '%' }}></span>
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-              <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.meta}</span>
-              <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'dashEntryPrefix')} {r.entryN}</span>
-            </span>
-          </button>
-        ))}
+        ) : positionRows.map((trade) => <PositionRow key={trade.id} trade={trade} lang={lang} />)}
       </div>
     </Panel>
   );
@@ -944,6 +1292,194 @@ function ReportView({ session, lang, indexById }) {
   );
 }
 
+// Session fate, step 1 - the final chart entry that closes the session. Ported from
+// session-entry-flow.js's openEntry(api, session, 'fate'): same real required-image rule
+// (required=type!=='movement', so fate needs one too), same fields, same close-on-submit
+// behaviour (status/closedAt/finalEntryId) before handing off to the real summary step.
+function FateEntryModal({ session, lang, onClose, onSubmit }) {
+  const rtl = lang === 'fa' || lang === 'ar';
+  const [file, setFile] = React.useState(null);
+  const [previewUrl, setPreviewUrl] = React.useState('');
+  const [timeframe, setTimeframe] = React.useState(session.timeframe || '5m');
+  const [market, setMarket] = React.useState(session.market || 'London');
+  const [note, setNote] = React.useState('');
+  const [error, setError] = React.useState('');
+  const fileRef = React.useRef(null);
+
+  function handleFile(f) {
+    if (!f || !f.type.startsWith('image/')) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setFile(f); setPreviewUrl(URL.createObjectURL(f)); setError('');
+  }
+  function submit() {
+    if (!file) { setError(tr(lang, 'uploadRequired')); return; }
+    onSubmit({ file, timeframe, market, note });
+  }
+
+  return (
+    <SessionModalShell title={tr(lang, 'fateStep1Title')} icon="Flag" onClose={onClose} width={600} footer={(
+      <>
+        <span style={{ flex: 1 }} />
+        <Button variant="secondary" onClick={onClose}>{tr(lang, 'cancel')}</Button>
+        <Button variant="primary" icon="Flag" onClick={submit}>{tr(lang, 'fateSubmit')}</Button>
+      </>
+    )}>
+      <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {previewUrl ? (
+          <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
+            <img src={previewUrl} alt="" style={{ display: 'block', width: '100%', height: 220, objectFit: 'cover' }} />
+            <button type="button" onClick={() => fileRef.current && fileRef.current.click()} style={{ position: 'absolute', bottom: 10, insetInlineEnd: 10, height: 32, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'uploadChartTitle')}</button>
+          </span>
+        ) : (
+          <button
+            type="button" onClick={() => fileRef.current && fileRef.current.click()}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, height: 190, borderRadius: 10, cursor: 'pointer', border: '1px dashed ' + (error ? 'var(--danger)' : 'var(--border-gold)'), background: 'rgba(3,8,7,.5)' }}
+            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]); }}
+          >
+            <span style={{ color: 'rgba(244,234,215,.2)' }}><Icon name="image" size={26} /></span>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'uploadFinalTitle')}</span>
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')}</span>
+            <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} style={inputStyle}>{TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}</select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={fieldLabelStyle}>{tr(lang, 'marketLabel')}</span>
+            <select value={market} onChange={(e) => setMarket(e.target.value)} style={inputStyle}>{MARKET_NAMES.map((v) => <option key={v} value={v}>{sessionsAdapter.displayCity(v)}</option>)}</select>
+          </label>
+        </div>
+        <TextAreaField label={tr(lang, 'noteOptionalLabel')} value={note} onCommit={setNote} />
+        {error && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</span>}
+      </div>
+    </SessionModalShell>
+  );
+}
+
+function DirectionPicker({ label, value, onChange, lang }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[['up', tr(lang, 'dirUp'), 'var(--success)'], ['down', tr(lang, 'dirDown'), 'var(--danger)'], ['flat', tr(lang, 'dirFlat'), 'var(--text-muted)']].map(([id, text, color]) => (
+          <button key={id} type="button" onClick={() => onChange(id)} style={{ flex: 1, height: 36, borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 12, border: '1px solid ' + (value === id ? color : 'var(--border-hairline)'), background: value === id ? 'color-mix(in srgb, ' + color + ' 14%, transparent)' : 'transparent', color: value === id ? color : 'var(--text-muted)' }}>{text}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Session fate, step 2 - the real whole-session summary. Ported from session-entry-flow.js's
+// openFateSummary(): move-strength/spike direction, an optional note, and the real
+// makeSessionAnalysis() computed from this session's own entries/scenarios/patterns - not an
+// external AI call, matching the legacy flow's own "local-demo" provider exactly. Saves
+// session.fateSummary (+ previousSessionSummary, so the NEXT session's own "previous session"
+// panel picks it up for real).
+function FateSummaryModal({ session, lang, onClose, onSave }) {
+  const rtl = lang === 'fa' || lang === 'ar';
+  const [moveStrength, setMoveStrength] = React.useState('');
+  const [spike, setSpike] = React.useState('');
+  const [note, setNote] = React.useState('');
+  const [analysis, setAnalysis] = React.useState(session.aiSessionAnalysisResult || null);
+  const [loading, setLoading] = React.useState(false);
+
+  function runAnalysis() {
+    setLoading(true);
+    window.setTimeout(() => { setAnalysis(makeSessionAnalysis(session, lang)); setLoading(false); }, 250);
+  }
+  function save() {
+    onSave({ moveStrength, spike, note, analysis: analysis || makeSessionAnalysis(session, lang) });
+  }
+
+  return (
+    <SessionModalShell title={tr(lang, 'fateStep2Title')} icon="Flag" onClose={onClose} width={640} footer={(
+      <>
+        <span style={{ flex: 1 }} />
+        <Button variant="secondary" onClick={onClose}>{tr(lang, 'cancel')}</Button>
+        <Button variant="primary" icon="check" onClick={save}>{tr(lang, 'saveFateLabel')}</Button>
+      </>
+    )}>
+      <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'summaryIntro')}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <DirectionPicker label={tr(lang, 'moveStrengthLabel')} value={moveStrength} onChange={setMoveStrength} lang={lang} />
+          <DirectionPicker label={tr(lang, 'spikeLabel')} value={spike} onChange={setSpike} lang={lang} />
+        </div>
+        <TextAreaField label={tr(lang, 'lessonsNoteLabel')} value={note} placeholder={tr(lang, 'lessonsPlaceholder')} onCommit={setNote} />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="sparkle" size={16} /><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'sessionAiTitle')}</span>
+            {analysis && (
+              <>
+                <span style={{ marginInlineStart: 'auto' }} />
+                <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'localProviderLabel')}</span>
+                <button type="button" onClick={runAnalysis} style={{ height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'reanalyzeLabel')}</button>
+              </>
+            )}
+          </div>
+          {!analysis && !loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '10px 0' }}>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-dim)', textAlign: 'center' }}>{tr(lang, 'aiIntro')}</p>
+              <Button variant="primary" icon="sparkle" size="sm" onClick={runAnalysis}>{tr(lang, 'startAnalysis')}</Button>
+            </div>
+          )}
+          {loading && <span style={{ fontSize: 11, color: 'var(--text-dim)', textAlign: 'center', padding: '10px 0' }}>{tr(lang, 'analyzing')}</span>}
+          {analysis && !loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 11, lineHeight: 1.8 }}>
+              <div>
+                <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'overviewLabel')}</span>
+                <p dir="auto" style={{ margin: 0, color: 'var(--text-primary)' }}>{analysis.overview}</p>
+              </div>
+              {!!analysis.keyMovements.length && (
+                <div>
+                  <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'keyMovementsLabel')}</span>
+                  {analysis.keyMovements.map((m, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
+                      <span className="navrya-tabular" style={{ color: 'var(--text-dim)', flex: 'none' }}>{m.time}</span>
+                      <span dir="auto" style={{ flex: 1, color: 'var(--text-primary)' }}>{m.description}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!!analysis.patternProgression.length && (
+                <div>
+                  <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'patternProgressionLabel')}</span>
+                  {analysis.patternProgression.map((p, i) => (
+                    <div key={i} dir="auto" style={{ padding: '4px 0', color: 'var(--text-primary)' }}><b>{p.patternName}</b> — <span style={{ color: 'var(--text-dim)' }}>{p.outcome}</span></div>
+                  ))}
+                </div>
+              )}
+              {!!analysis.scenarioOutcomes.length && (
+                <div>
+                  <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'scenarioOutcomesLabel')}</span>
+                  {analysis.scenarioOutcomes.map((s, i) => (
+                    <div key={i} dir="auto" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', color: s.occurred ? 'var(--success)' : 'var(--text-dim)' }}>
+                      <Icon name={s.occurred ? 'CircleCheck' : 'Circle'} size={12} />
+                      <span style={{ flex: 1 }}>{s.title}</span>
+                      <span>{s.occurred ? tr(lang, 'occurredLabel') : tr(lang, 'notOccurredLabel')} · {s.note}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div>
+                <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'lessonsLabel')}</span>
+                {analysis.lessonsLearned.map((l, i) => <p key={i} dir="auto" style={{ margin: '2px 0', color: 'var(--text-primary)' }}>{l}</p>)}
+              </div>
+              <div style={{ padding: 10, borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(214,175,107,.06)' }}>
+                <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'carryForwardLabel')}</span>
+                <p dir="auto" style={{ margin: 0, color: 'var(--text-primary)' }}>{analysis.carryForwardToNextSession}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </SessionModalShell>
+  );
+}
+
 export function LiveSessionView({ character, sessionId, navActiveId, language, initialView, onBack }) {
   const lang = language || 'fa';
   const [, setTick] = React.useState(0);
@@ -959,8 +1495,11 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   const [filter, setFilter] = React.useState('all');
   const [q, setQ] = React.useState('');
   const [dash, setDash] = React.useState('patterns');
+  const [tfFilter, setTfFilter] = React.useState('all');
   const [openScenarios, setOpenScenarios] = React.useState(() => new Set());
   const [imageUrls, setImageUrls] = React.useState({});
+  const [chartModalOpen, setChartModalOpen] = React.useState(false);
+  const [fateStep, setFateStep] = React.useState(null); // null | 'entry' | 'summary'
   const railRef = React.useRef(null);
 
   const session = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
@@ -968,7 +1507,8 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   const entries = session ? sortedEntries(session) : [];
   const indexById = {};
   entries.forEach((e, i) => { indexById[e.id] = i + 1; });
-  const list = session ? visibleEntries(entries, filter, q, lang) : [];
+  const list = session ? visibleEntries(entries, filter, q, lang, tfFilter) : [];
+  const presentTimeframes = Array.from(new Set(entries.map((e) => e.timeframe).filter(Boolean)));
   const selId = sel && list.some((e) => e.id === sel) ? sel : (list[0] ? list[0].id : null);
 
   React.useEffect(() => {
@@ -1060,6 +1600,57 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       if (blobId) target.imageBlobId = blobId; else target.preview = preview;
     }, 'image_attached', tr(lang, 'uploadImage'), null, true);
   }
+  // Shared by the chart-entry and fate-entry modals - same real IndexedDB-then-dataURL fallback
+  // attachImage() above already uses.
+  async function storeImage(file) {
+    if (window.TradeJournalImageStore) {
+      const blobId = window.TradeJournalWorkspace.id('img');
+      try { await window.TradeJournalImageStore.saveImage(blobId, file, 'session'); return { blobId }; }
+      catch (_) { /* fall through to dataURL */ }
+    }
+    return { preview: await readAsDataUrl(file) };
+  }
+  async function submitChartEntry({ file, timeframe, market, date, note, relatedScenarioIds }) {
+    const { blobId, preview } = await storeImage(file);
+    const entry = {
+      id: window.TradeJournalWorkspace.id('entry'), sessionId: session.id, type: 'chart', createdAt: new Date().toISOString(),
+      hasImage: true, imageBlobId: blobId, preview, timeframe, tradingSession: market, market, gregorianDate: date,
+      note: note || '', relatedScenarioIds: relatedScenarioIds || [], scenarios: []
+    };
+    persist((s) => { s.entries = (s.entries || []).concat([entry]); }, 'entry_added', tr(lang, 'addChart'));
+    setChartModalOpen(false); setFilter('all'); setQ('');
+    selectEntry(entry.id);
+  }
+  async function submitFateEntry({ file, timeframe, market, note }) {
+    const { blobId, preview } = await storeImage(file);
+    const entryId = window.TradeJournalWorkspace.id('entry');
+    const now = new Date().toISOString();
+    const entry = {
+      id: entryId, sessionId: session.id, type: 'fate', createdAt: now,
+      hasImage: true, imageBlobId: blobId, preview, timeframe, tradingSession: market, market,
+      note: note || '', relatedScenarioIds: [], scenarios: []
+    };
+    persist((s) => {
+      s.entries = (s.entries || []).concat([entry]);
+      s.status = 'closed'; s.closedAt = now; s.finalEntryId = entryId;
+    }, 'entry_added', tr(lang, 'fateStep1Title'));
+    setFateStep('summary');
+  }
+  function saveFateSummary({ moveStrength, spike, note, analysis }) {
+    persist((s) => {
+      s.fateSummary = {
+        moveStrengthDirection: moveStrength || undefined, spikeDirection: spike || undefined,
+        moveStrength: moveStrength || undefined, spike: spike || undefined, note: note || undefined,
+        relatedScenarioIds: flatScenarios(s).map((x) => x.scenario.id), finalEntryId: s.finalEntryId || undefined,
+        savedAt: new Date().toISOString()
+      };
+      s.previousSessionSummary = s.fateSummary;
+      s.aiSessionAnalysisResult = analysis;
+      s.aiSessionAnalysis = analysis.overview + ' ' + analysis.carryForwardToNextSession;
+    }, 'fate_summary_saved', tr(lang, 'saveFateLabel'), null, false);
+    setFateStep(null);
+    setView('report');
+  }
   function updateNote(entry, value) {
     persist((s) => {
       const target = (s.entries || []).find((e) => e.id === entry.id);
@@ -1116,13 +1707,18 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   }
 
   const selEntry = list.find((e) => e.id === selId) || null;
-  const positionsOpen = ((window.TradeJournalTradeStore ? window.TradeJournalTradeStore.listSync() : []))
-    .filter((t) => t.source && t.source.sessionId === session.id && t.status === 'open').length;
+  // Broadened from "trades whose source.sessionId is this exact session" to every real open/
+  // hunting trade for this character - a position opened in an earlier session (say, London)
+  // that is still running when the next session (New York) starts is still a live position of
+  // that next session too, not just the one it happened to originate in.
+  const allTrades = window.TradeJournalTradeStore ? window.TradeJournalTradeStore.listSync() : [];
+  const openPositions = allTrades.filter((t) => (t.status === 'open' || t.status === 'hunting') && t.source && t.source.character === character);
+  const positionsOpen = openPositions.filter((t) => t.status === 'open').length;
 
   return (
     <div dir="rtl" style={{ fontFamily: 'var(--font-ui)', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <CommandBar session={session} lang={lang} view={view} onBack={onBack} onSetView={setView} />
-      <PulseBand session={session} lang={lang} positionsOpen={positionsOpen} onFate={() => setView('report')} />
+      <PulseBand session={session} lang={lang} positionsOpen={positionsOpen} onFate={() => setFateStep('entry')} />
 
       {view === 'timeline' ? (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -1139,9 +1735,15 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                   <Icon name="search" size={14} />
                   <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr(lang, 'searchPlaceholder')} style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'transparent', color: 'var(--text-primary)', font: 'inherit', fontSize: 11 }} />
                 </label>
+                {!!presentTimeframes.length && (
+                  <select value={tfFilter} onChange={(e) => setTfFilter(e.target.value)} title={tr(lang, 'timeframeFilterLabel')} style={{ height: 30, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: tfFilter === 'all' ? 'var(--text-dim)' : 'var(--char-accent)', font: 'var(--type-body)', fontSize: 11, flex: 'none' }}>
+                    <option value="all">{tr(lang, 'allTimeframesLabel')}</option>
+                    {presentTimeframes.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                )}
                 <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
                   <Button variant="secondary" size="sm" icon="Activity" onClick={() => addEntry('movement')}>{tr(lang, 'addMove')}</Button>
-                  <Button variant="primary" size="sm" icon="ImagePlus" onClick={() => addEntry('chart')}>{tr(lang, 'addChart')}</Button>
+                  <Button variant="primary" size="sm" icon="ImagePlus" onClick={() => setChartModalOpen(true)}>{tr(lang, 'addChart')}</Button>
                 </span>
               </div>
 
@@ -1151,7 +1753,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                   {list.map((e) => (
                     <EntryCard key={e.id} entry={e} index={indexById[e.id]} selected={e.id === selId} kindMeta={kindInfo(lang)[e.type] || kindInfo(lang).chart} lang={lang} imageUrl={imageUrls[e.id]} onClick={() => selectEntry(e.id)} />
                   ))}
-                  <button type="button" onClick={() => addEntry('chart')} style={{ flex: 'none', width: 112, borderRadius: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'transparent', color: 'var(--text-dim)', font: 'var(--type-body)', fontSize: 11, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <button type="button" onClick={() => setChartModalOpen(true)} style={{ flex: 'none', width: 112, borderRadius: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'transparent', color: 'var(--text-dim)', font: 'var(--type-body)', fontSize: 11, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                     <Icon name="plus" size={18} />{tr(lang, 'newEntryTile')}
                   </button>
                 </div>
@@ -1189,12 +1791,13 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
 
             {selEntry ? (
               <EntryDetailPanel
+                key={selEntry.id}
                 session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
                 openScenarios={openScenarios}
                 onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage} onAnalyze={analyzeEntry}
                 onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
                 onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
-                onAddScenario={addScenario}
+                onAddScenario={addScenario} character={character}
               />
             ) : (
               <Panel variant="base" ornament padding="48px">
@@ -1209,7 +1812,8 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
 
           <div style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <DashboardPanel session={session} lang={lang} dash={dash} onSetDash={setDash} indexById={indexById} onSelectEntry={selectEntry}
-              onToggleStage={toggleStage} onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')} />
+              onToggleStage={toggleStage} onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')}
+              openPositions={openPositions} onLogTrade={() => openLogWizard({ source: { character, sessionId: session.id } }, { onSave: rerender })} />
             <PrevSummaryPanel session={session} lang={lang} />
             <SimilarSessionsPanel session={session} character={character} lang={lang} />
           </div>
@@ -1217,6 +1821,10 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       ) : (
         <ReportView session={session} lang={lang} indexById={indexById} />
       )}
+
+      {chartModalOpen && <ChartEntryModal session={session} lang={lang} onClose={() => setChartModalOpen(false)} onSubmit={submitChartEntry} />}
+      {fateStep === 'entry' && <FateEntryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSubmit={submitFateEntry} />}
+      {fateStep === 'summary' && <FateSummaryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSave={saveFateSummary} />}
     </div>
   );
 }
