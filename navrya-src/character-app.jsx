@@ -26,6 +26,9 @@ import { renderAccountProfile } from './accountProfileView.jsx';
 import { openIntake } from './mentalHealthIntakeModal.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { openLogWizard } from './tradeLogModal.jsx';
+import { openClosePosition } from './closePositionModal.jsx';
+import { openEmotion } from './logEmotionModal.jsx';
+import { openTradeDetails } from './tradeDetailsModal.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -337,6 +340,21 @@ export function mountCharacterApp(character) {
   // "register trade" launch button) keeps working unchanged, same seed/options contract, only
   // the dialog itself is React now.
   window.TradeJournalNavryaTradeLog = { open: openLogWizard };
+
+  // trade-ui.js's own closeTrade(id, callback) defers to this hook when present (see that
+  // file's own function body) - every existing caller (trade-open-positions.js's close button,
+  // the session-workspace position row's close action, the Dashboard's own Positions panel)
+  // keeps the exact same id/callback contract; only the dialog itself is React now.
+  window.TradeJournalNavryaClosePosition = { open: openClosePosition };
+
+  // trade-ui.js's own openEmotion(tradeId, stage, seed) defers to this hook when present - every
+  // existing caller (session position rows' "Log emotion" button, the Dashboard's own Positions
+  // panel, the wizard's post-save prompts) keeps the exact same contract, only React now.
+  window.TradeJournalNavryaLogEmotion = { open: openEmotion };
+
+  // trade-ui.js's own details(id) (exported as TradeJournalTradeUI.viewTrade) defers to this
+  // hook when present - same real fields/actions, only React now.
+  window.TradeJournalNavryaTradeDetails = { open: openTradeDetails };
 
   // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
   // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version
