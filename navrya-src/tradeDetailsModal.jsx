@@ -108,6 +108,12 @@ function TradeDetailsModal({ trade, onClose, onChanged }) {
   const patternStore = window.TradeJournalPatternStore;
   const strategyStore = window.TradeJournalStrategyEducationStore;
 
+  React.useEffect(() => {
+    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
+
   const tp = trade.takeProfits && trade.takeProfits[0] ? trade.takeProfits[0].price : null;
   const closed = trade.status === 'closed';
   const canClose = trade.status === 'open' || trade.status === 'hunting';
@@ -278,6 +284,15 @@ function TradeDetailsModal({ trade, onClose, onChanged }) {
                       </span>
                       <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-caption)', color: tone }}>{ti.t('stressLevel') + ' ' + digits(lang, entry.stressLevel)}</span>
                     </div>
+                    {!!(entry.emotionDetails || []).length && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {entry.emotionDetails.map((d) => (
+                          <Chip key={d.emotion} tone="neutral">
+                            {ti.t(d.emotion) + ' ' + digits(lang, d.intensity) + ((d.tags || []).length ? ' · ' + d.tags.join('، ') : '')}
+                          </Chip>
+                        ))}
+                      </div>
+                    )}
                     {entry.note && <span dir="auto" style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{entry.note}</span>}
                   </div>
                 );

@@ -32,6 +32,12 @@ function ClosePositionModal({ trade, onClose, onSave }) {
   const [touched, setTouched] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
+  React.useEffect(() => {
+    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
+
   const exit = exitInput.trim() === '' ? null : Number(exitInput);
   const valid = exit !== null && Number.isFinite(exit) && exit > 0;
   const preview = valid ? computeClose(trade, exit) : null;

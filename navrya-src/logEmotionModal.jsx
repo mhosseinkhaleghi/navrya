@@ -6,15 +6,116 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 
 // Redesign of trade-ui.js's openEmotion()/emotionEditor() modal against the design handoff
 // code-codex/dashboard/LogEmotion.dc.html. Same real save path (TradeJournalTradeStore.addEmotion),
-// same 10-emotion list, same breathing-card trigger, same content-safety gate on the note field -
-// the design simplifies the editor to "pick emotions, one stress slider, one note" (no per-emotion
-// intensity/tag cards), so emotionDetails is saved empty here, exactly as the simpler flow implies.
+// same 10-emotion list, same breathing-card trigger, same content-safety gate on the note field.
+// The design mock simplifies the editor down to "pick emotions, one stress slider, one note", but
+// per-emotion intensity + reason tags (emotionDetails) is real, saved data other real code reads -
+// psychology-store.js's tagMirror() correlates each reason tag against real trade outcomes, and
+// the legacy Trade Details view already rendered it - so it is kept here (below the emotion grid,
+// same MoodDetailCard/IntensityBars pattern tradeLogModal.jsx's own emotion step uses) rather than
+// silently dropped just because this particular mock left it out.
 
 const EMOTION_ICONS = {
   excited: 'zap', anxious: 'activity', calm: 'leaf', revenge: 'rotate-ccw', angry: 'flame',
   afraid: 'shield', confident: 'check', fatigued: 'moon', restless: 'wind', overconfident: 'triangle-alert'
 };
 const SESSION_CITY_LABEL = { london: 'London', newyork: 'New York', tokyo: 'Tokyo', sydney: 'Sydney' };
+// Ported verbatim from trade-ui.js's own tagPresets table / tradeLogModal.jsx's TAG_PRESETS
+// (i18n keys, not literal strings) - the exact same reason chips per emotion everywhere else.
+const TAG_PRESETS = {
+  excited: ['tagOpportunity', 'tagBreakout', 'tagConfidenceHigh'],
+  anxious: ['tagVolatility', 'tagNews', 'tagEntryFear'],
+  calm: ['tagOnPlan', 'tagRelaxed', 'tagPatient'],
+  revenge: ['tagWantRecover', 'tagAngryLoss', 'tagMustWin'],
+  angry: ['tagAngryMarket', 'tagAngrySelf', 'tagFrustrated'],
+  afraid: ['tagFearLoss', 'tagFearLiquidation', 'tagFearMissing'],
+  confident: ['tagTrustAnalysis', 'tagStrongSetup', 'tagFollowedRules'],
+  fatigued: ['tagTired', 'tagLossFocus', 'tagOvertraded'],
+  restless: ['tagImpatient', 'tagBored', 'tagCantWait'],
+  overconfident: ['tagSureThing', 'tagIgnoredRisk', 'tagWinStreak']
+};
+function severityLabel(ti, value) {
+  if (value <= 2) return ti.t('severityVeryWeak');
+  if (value <= 4) return ti.t('severityWeak');
+  if (value <= 6) return ti.t('severityModerate');
+  if (value <= 8) return ti.t('severityStrong');
+  return ti.t('severityDominant');
+}
+// Vertical bar-strip intensity widget, 1-10 - identical widget tradeLogModal.jsx's own emotion
+// step uses, copied rather than shared since the two modals are still separate bundles/entries.
+function IntensityBars({ value, onChange }) {
+  const trackRef = React.useRef(null);
+  function valueAt(clientX) {
+    const r = trackRef.current && trackRef.current.getBoundingClientRect();
+    if (!r || !r.width) return value;
+    const t = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    return Math.max(1, Math.min(10, Math.ceil(t * 10)));
+  }
+  function onPointerDown(e) {
+    onChange(valueAt(e.clientX));
+    function move(ev) { onChange(valueAt(ev.clientX)); }
+    function up() { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+  function onKeyDown(e) {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onChange(Math.max(1, value - 1)); }
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onChange(Math.min(10, value + 1)); }
+  }
+  return (
+    <div
+      ref={trackRef} role="slider" tabIndex={0} aria-label="Intensity" aria-valuemin={1} aria-valuemax={10} aria-valuenow={value}
+      onPointerDown={onPointerDown} onKeyDown={onKeyDown}
+      style={{ direction: 'ltr', display: 'flex', alignItems: 'flex-end', gap: 4, height: 44, cursor: 'pointer', touchAction: 'none', userSelect: 'none', outlineOffset: 4 }}
+    >
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+        <span key={i} style={{
+          flex: 1, minWidth: 0, height: (34 + i * 6.6).toFixed(0) + '%', borderRadius: 3,
+          background: i <= value ? 'var(--char-accent)' : 'rgba(244,234,215,.09)',
+          boxShadow: i <= value ? '0 0 12px var(--char-glow)' : 'none'
+        }} />
+      ))}
+    </div>
+  );
+}
+// Per-emotion detail card: intensity dial + preset/custom reason tags - the exact same
+// emotionDetails[] shape trade-store.js's normalize() expects and psychology-store.js's
+// tagMirror() reads (detail.emotion/intensity/tags).
+function MoodDetailCard({ ti, id, entry, onLevel, onToggleReason, onDraftChange, onDraftCommit, onRemove }) {
+  const presets = (TAG_PRESETS[id] || []).map((key) => ti.t(key));
+  const custom = (entry.tags || []).filter((tag) => presets.indexOf(tag) === -1);
+  const allChips = presets.concat(custom);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--char-accent)', borderRadius: 10, background: 'rgba(3,8,7,.6)', padding: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ width: 28, height: 28, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 6, border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)' }}><Icon name={EMOTION_ICONS[id] || 'circle'} size={14} /></span>
+        <span dir="auto" style={{ font: 'var(--type-username)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--char-accent)' }}>{ti.t(id)}</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{severityLabel(ti, entry.intensity)}</span>
+        <span className="navrya-tabular" dir="ltr" style={{ font: '600 22px/24px var(--font-num)', color: 'var(--char-accent)' }}>{entry.intensity}</span>
+        <button type="button" onClick={onRemove} aria-label={ti.t('logRemoveFeeling')} style={{ width: 30, height: 30, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid transparent', background: 'transparent', color: 'var(--text-muted)' }}><Icon name="close" size={14} /></button>
+      </div>
+      <IntensityBars value={entry.intensity} onChange={onLevel} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{ti.t('logBecause')}</span>
+        {allChips.map((label) => {
+          const sel = (entry.tags || []).indexOf(label) > -1;
+          return (
+            <button
+              key={label} type="button" onClick={() => onToggleReason(label)}
+              style={{ height: 32, padding: '0 11px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (sel ? 'var(--char-accent)' : 'var(--divider-gold)'), background: sel ? 'var(--char-active-surface)' : 'rgba(11,20,21,.5)', color: sel ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-caption)' }}
+            >{label}</button>
+          );
+        })}
+      </div>
+      <input
+        dir="auto" value={entry.draft || ''} onChange={(e) => onDraftChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onDraftCommit(); } }}
+        placeholder={ti.t('logOwnWay')}
+        style={{ height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-caption)', outline: 'none' }}
+      />
+    </div>
+  );
+}
 
 const copy = {
   fa: {
@@ -125,11 +226,21 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
   const emotionList = (types && types.emotions) || Object.keys(EMOTION_ICONS);
 
   const [selected, setSelected] = React.useState((seed && seed.dominantEmotions) || []);
+  const [details, setDetails] = React.useState(
+    (seed && seed.emotionDetails && seed.emotionDetails.map((d) => ({ ...d, draft: '' })))
+    || ((seed && seed.dominantEmotions) || []).map((id) => ({ emotion: id, intensity: 5, tags: [], draft: '' }))
+  );
   const [stress, setStress] = React.useState((seed && seed.stressLevel) || 5);
   const [note, setNote] = React.useState((seed && seed.note) || '');
   const [breathDismissed, setBreathDismissed] = React.useState(false);
   const [safetyNode, setSafetyNode] = React.useState(null);
   const [now, setNow] = React.useState(() => new Date());
+
+  React.useEffect(() => {
+    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
 
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -154,10 +265,28 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
 
   function toggle(id) {
     setSelected((list) => {
-      if (list.indexOf(id) > -1) return list.filter((x) => x !== id);
+      if (list.indexOf(id) > -1) {
+        setDetails((d) => d.filter((x) => x.emotion !== id));
+        return list.filter((x) => x !== id);
+      }
       if (list.length >= 3) { if (window.TradeJournalTradeUI) window.TradeJournalTradeUI.toast(t('maxThree'), 'warning'); return list; }
+      setDetails((d) => (d.some((x) => x.emotion === id) ? d : d.concat([{ emotion: id, intensity: 5, tags: [], draft: '' }])));
       return list.concat([id]);
     });
+  }
+  function detailFor(id) { return details.find((d) => d.emotion === id) || { emotion: id, intensity: 5, tags: [], draft: '' }; }
+  function updateDetail(id, patch) {
+    setDetails((list) => list.map((d) => (d.emotion === id ? { ...d, ...patch } : d)));
+  }
+  function toggleReason(id, label) {
+    const cur = detailFor(id).tags || [];
+    updateDetail(id, { tags: cur.indexOf(label) > -1 ? cur.filter((x) => x !== label) : cur.concat([label]) });
+  }
+  function commitDraft(id) {
+    const value = (detailFor(id).draft || '').trim();
+    if (!value) return;
+    toggleReason(id, value);
+    updateDetail(id, { draft: '' });
   }
 
   const hot = stress >= 7, warm = stress >= 4;
@@ -168,8 +297,9 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
   const breathOpen = !!(breathing && breathing.enabled && !breathDismissed && stress >= breathing.stressThreshold);
 
   function submit() {
+    const cleanDetails = details.filter((d) => selected.indexOf(d.emotion) > -1).map(({ draft, ...rest }) => rest);
     const value = {
-      dominantEmotions: selected, emotionDetails: [], stressLevel: stress, focusQuality: 5, planCommitment: 5,
+      dominantEmotions: selected, emotionDetails: cleanDetails, stressLevel: stress, focusQuality: 5, planCommitment: 5,
       wouldTakeIfNotForced: null, note, stage: stage || 'mid_trade'
     };
     const mhSafety = window.TradeJournalMentalHealthSafety;
@@ -244,6 +374,21 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
                 })}
               </div>
             </div>
+
+            {!!selected.length && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {selected.map((id) => (
+                  <MoodDetailCard
+                    key={id} ti={ti} id={id} entry={detailFor(id)}
+                    onLevel={(v) => updateDetail(id, { intensity: v })}
+                    onToggleReason={(label) => toggleReason(id, label)}
+                    onDraftChange={(v) => updateDetail(id, { draft: v })}
+                    onDraftCommit={() => commitDraft(id)}
+                    onRemove={() => toggle(id)}
+                  />
+                ))}
+              </div>
+            )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

@@ -89,6 +89,7 @@ const copy = {
     catWatchlistTitle: 'واچ‌لیست بازار', catWatchlistMeta: 'قیمت زنده', catWatchlistDesc: 'نمادهایی که دنبال می‌کنی — هنوز به منبع قیمت زنده وصل نیست.',
     complete: 'کامل', identityGoals: 'هویت و اهداف', riskTemperament: 'خلق‌وخوی ریسک', emotionalTriggers: 'محرک‌های احساسی', patternLibrary: 'کتابخانه الگو', dailyRoutine: 'روتین روزانه',
     continueDossier: 'ادامه پرونده', index: 'شاخص', last7Sessions: '۷ سشن اخیر', noWeatherData: 'هنوز داده‌ی کافی از ثبت احساس نیست.',
+    reasonPatterns: 'الگوهای دلیل احساسی', noReasonPatterns: 'هنوز دلیلی برای احساسات ثبت نشده.', samples: '{n} معامله',
     noOpenSession: 'الان سشن بازی در جریان نیست', startOneNote: 'یک سشن شروع کن تا اینجا زنده دنبالش کنی.',
     sessionOpenSince: 'سشن باز · {window}', elapsed: 'سپری‌شده', trades: 'معاملات', booked: 'ثبت‌شده', discipline: 'انضباط', endSession: 'پایان سشن',
     next: 'بعدی', open: 'باز', closed: 'بسته',
@@ -120,6 +121,7 @@ const copy = {
     catWatchlistTitle: 'قائمة المراقبة', catWatchlistMeta: 'سعر مباشر', catWatchlistDesc: 'الرموز التي تتابعها — غير متصلة بمصدر أسعار مباشر بعد.',
     complete: 'مكتمل', identityGoals: 'الهوية والأهداف', riskTemperament: 'مزاج المخاطرة', emotionalTriggers: 'المحفزات العاطفية', patternLibrary: 'مكتبة الأنماط', dailyRoutine: 'الروتين اليومي',
     continueDossier: 'متابعة الملف', index: 'المؤشر', last7Sessions: 'آخر ٧ جلسات', noWeatherData: 'لا توجد بيانات كافية من سجلات المشاعر بعد.',
+    reasonPatterns: 'أنماط الأسباب العاطفية', noReasonPatterns: 'لا توجد أسباب مسجلة للمشاعر بعد.', samples: '{n} صفقة',
     noOpenSession: 'لا توجد جلسة سوق مفتوحة الآن', startOneNote: 'ابدأ جلسة لمتابعتها هنا مباشرة.',
     sessionOpenSince: 'جلسة مفتوحة · {window}', elapsed: 'الوقت المنقضي', trades: 'الصفقات', booked: 'مُحقَّق', discipline: 'الانضباط', endSession: 'إنهاء الجلسة',
     next: 'التالي', open: 'مفتوحة', closed: 'مغلقة',
@@ -151,6 +153,7 @@ const copy = {
     catWatchlistTitle: 'Market watchlist', catWatchlistMeta: 'live price', catWatchlistDesc: 'Instruments you follow — not wired to a live price source yet.',
     complete: 'complete', identityGoals: 'Identity & goals', riskTemperament: 'Risk temperament', emotionalTriggers: 'Emotional triggers', patternLibrary: 'Pattern library', dailyRoutine: 'Daily routine',
     continueDossier: 'Continue the dossier', index: 'index', last7Sessions: 'Last 7 sessions', noWeatherData: 'Not enough emotion-log data yet.',
+    reasonPatterns: 'Emotional reason patterns', noReasonPatterns: 'No emotion reasons logged yet.', samples: '{n} trades',
     noOpenSession: 'No market session is open right now', startOneNote: 'Start a session to follow it live here.',
     sessionOpenSince: 'Session open · {window}', elapsed: 'elapsed', trades: 'Trades', booked: 'Booked', discipline: 'Discipline', endSession: 'End session',
     next: 'Next', open: 'Open', closed: 'Closed',
@@ -182,6 +185,7 @@ const copy = {
     catWatchlistTitle: 'Lista de seguimiento', catWatchlistMeta: 'precio en vivo', catWatchlistDesc: 'Instrumentos que sigues — aún sin fuente de precios en vivo.',
     complete: 'completo', identityGoals: 'Identidad y metas', riskTemperament: 'Temperamento de riesgo', emotionalTriggers: 'Detonantes emocionales', patternLibrary: 'Biblioteca de patrones', dailyRoutine: 'Rutina diaria',
     continueDossier: 'Continuar el expediente', index: 'índice', last7Sessions: 'Últimas 7 sesiones', noWeatherData: 'Aún no hay suficientes datos de emociones.',
+    reasonPatterns: 'Patrones de razones emocionales', noReasonPatterns: 'Aún no hay razones emocionales registradas.', samples: '{n} operaciones',
     noOpenSession: 'No hay ninguna sesión de mercado abierta', startOneNote: 'Inicia una sesión para seguirla aquí en vivo.',
     sessionOpenSince: 'Sesión abierta · {window}', elapsed: 'transcurrido', trades: 'Operaciones', booked: 'Realizado', discipline: 'Disciplina', endSession: 'Terminar sesión',
     next: 'Siguiente', open: 'Abierta', closed: 'Cerrada',
@@ -281,6 +285,13 @@ function PsychPanel({ t, lang }) {
   const intake = profile.intake, fin = intake.financialContext, dem = intake.demographics;
   const patternStore = window.TradeJournalPatternStore;
   const patternCount = patternStore ? patternStore.listSync().length : 0;
+  // Real reason-tag → outcome correlation (psychology-store.js's tagMirror()) - the same
+  // emotionDetails[].tags the Log Emotion modal's per-emotion "because" chips save, read back
+  // here so picking a reason during a trade visibly feeds the psychology dossier, not just the
+  // one trade it was logged on.
+  const psy = window.TradeJournalPsychologyStore;
+  const tradeStore = window.TradeJournalTradeStore;
+  const tagRows = psy && tradeStore ? psy.tagMirror(tradeStore.listSync(), 3).sort((a, b) => b.sampleSize - a.sampleSize).slice(0, 3) : [];
   const rows = [
     [t('identityGoals'), pctFilled([dem.age, dem.gender, dem.maritalStatus, dem.primaryOccupation, dem.isFullTimeTrader, intake.motivationForTrading])],
     [t('riskTemperament'), pctFilled([fin.capitalType, fin.capitalAllocationPercent, fin.borrowedMoneyForTrading, profile.psychologicalProfile.standardizedTests.riskToleranceScale])],
@@ -312,6 +323,18 @@ function PsychPanel({ t, lang }) {
             </div>
           ))}
         </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('reasonPatterns')}</span>
+        {!tagRows.length ? (
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('noReasonPatterns')}</span>
+        ) : tagRows.map((row) => (
+          <div key={row.tag} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+            <span dir="auto" style={{ font: 'var(--type-caption)', color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.tag}</span>
+            <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-caption)', color: row.insufficient ? 'var(--text-muted)' : row.winRate >= 50 ? 'var(--success)' : 'var(--danger)' }}>{row.insufficient ? '—' : Math.round(row.winRate) + '%'}</span>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-disabled)' }}>{t('samples', { n: digits(lang, row.sampleSize) })}</span>
+          </div>
+        ))}
       </div>
       <Button variant="secondary" icon="psychology" fullWidth onClick={() => { if (window.TradeJournalMentalHealthIntake) window.TradeJournalMentalHealthIntake.open(); }}>{t('continueDossier')}</Button>
     </div>
