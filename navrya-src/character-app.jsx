@@ -2,6 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Sidebar } from '../public/pages/shared/navrya/components/navigation/Sidebar.jsx';
 import { CharacterHeader } from '../public/pages/shared/navrya/components/header/CharacterHeader.jsx';
+import { MarketSessionCard } from '../public/pages/shared/navrya/components/market/MarketSessionCard.jsx';
+import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { SessionLibrary } from '../public/pages/shared/navrya/components/sessions/SessionLibrary.jsx';
 import * as sessionEntryCards from './sessionEntryCardsView.jsx';
 import * as sessionsAdapter from './sessionsAdapter.js';
@@ -118,6 +120,11 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
   const now = useClock();
+  // Collapse-to-rail toggle from the design handoff (code-codex/dashboard/NavryaDashboard.dc.html):
+  // the full 320px header can shrink to a slim 72px live-clock rail. Local, runtime-only state -
+  // same as the Sidebar's own `collapsed` in store.js, which also doesn't persist across reloads -
+  // since nothing outside this one root needs to react to it.
+  const [headerOpen, setHeaderOpen] = React.useState(true);
   // "APP UPTIME" is Steam-style playtime: total time the account has ever been online, server-
   // accumulated across every login (routes.profile.mjs's hoursOnlineFor(), fed by admin-
   // heartbeat.js's 45s beat into user_sessions) - not a per-mount session clock. Each character
@@ -134,26 +141,67 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const marketLabels = { london: t.marketLondon, 'new-york': t.marketNewYork, tokyo: t.marketTokyo, sydney: t.marketSydney };
   const nextSession = marketAdapter.nextSessionCountdown(now);
   const markets = marketAdapter.marketStates(now).map((m) => ({ ...m, cityLabel: marketLabels[m.market] }));
+  const nextCityLabel = marketLabels[nextSession.city.toLowerCase().replace(' ', '-')] || nextSession.city;
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
-      <CharacterHeader
-        character={navryaCharacter}
-        name={s.profile ? s.profile.displayName : undefined}
-        handle={s.profile ? '@' + s.profile.id : undefined}
-        level={level} xp={s.profile ? s.profile.xpTotal : undefined} xpMax={xpMax}
-        quote={quotes[s.language] || quotes.en}
-        metrics={metrics}
-        date={now.toISOString().slice(0, 10)}
-        language={s.language.toUpperCase()}
-        onLanguageChange={(value) => store.setLanguage(value.toLowerCase())}
-        onSettings={() => store.setActiveId('settings')}
-        onIdentityClick={() => { if (window.TradeJournalAccountProfilePage) window.TradeJournalAccountProfilePage.open(); }}
-        levelLabel={t.level} rankLabel={t.rank}
-        uptime={marketAdapter.elapsedClock(baseUptimeMs + (now.getTime() - appStartRef.current))} uptimeLabel={t.appUptime}
-        nextSession={{ city: marketLabels[nextSession.city.toLowerCase().replace(' ', '-')] || nextSession.city, startsIn: nextSession.startsIn }}
-        nextSessionLabel={t.nextSession} startsInLabel={t.startsIn}
-        markets={markets}
-      />
+      {/* Full header, collapsible to nothing - the "Collapse header" button sits over its own
+          bottom-left corner (absolute, matching the design handoff) so it never displaces the
+          header's own content. */}
+      <div style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 400 : 0, opacity: headerOpen ? 1 : 0 }}>
+        <div style={{ position: 'relative' }}>
+          <CharacterHeader
+            character={navryaCharacter}
+            name={s.profile ? s.profile.displayName : undefined}
+            handle={s.profile ? '@' + s.profile.id : undefined}
+            level={level} xp={s.profile ? s.profile.xpTotal : undefined} xpMax={xpMax}
+            quote={quotes[s.language] || quotes.en}
+            metrics={metrics}
+            date={now.toISOString().slice(0, 10)}
+            language={s.language.toUpperCase()}
+            onLanguageChange={(value) => store.setLanguage(value.toLowerCase())}
+            onSettings={() => store.setActiveId('settings')}
+            onIdentityClick={() => { if (window.TradeJournalAccountProfilePage) window.TradeJournalAccountProfilePage.open(); }}
+            levelLabel={t.level} rankLabel={t.rank}
+            uptime={marketAdapter.elapsedClock(baseUptimeMs + (now.getTime() - appStartRef.current))} uptimeLabel={t.appUptime}
+            nextSession={{ city: nextCityLabel, startsIn: nextSession.startsIn }}
+            nextSessionLabel={t.nextSession} startsInLabel={t.startsIn}
+            markets={markets}
+          />
+          <button
+            type="button" onClick={() => setHeaderOpen(false)}
+            style={{
+              position: 'absolute', [rtl ? 'right' : 'left']: 24, bottom: 14, width: 196, height: 40, boxSizing: 'border-box',
+              display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderRadius: 8, cursor: 'pointer',
+              border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)', color: 'var(--text-muted)',
+              font: 'var(--type-section-label)', letterSpacing: '.1em', textTransform: 'uppercase'
+            }}
+          >
+            <Icon name="chevrons-up" size={18} />
+            {t.collapseHeader}
+          </button>
+        </div>
+      </div>
+      {/* Compact live-clock rail shown in place of the header once collapsed - the same four
+          MarketSessionCard rows the full header's own market strip uses, just laid out inline. */}
+      <div style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 0 : 80, opacity: headerOpen ? 0 : 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, height: 72, boxSizing: 'border-box', padding: '0 14px', borderRadius: 12, border: '1px solid var(--border-gold)', background: 'linear-gradient(90deg, var(--char-atmosphere) 0%, var(--surface-780, var(--surface-800)) 38%, var(--ink-900) 100%)', boxShadow: 'var(--shadow-panel)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+            {markets.map((m) => (
+              <MarketSessionCard key={m.market} market={m.market} state={m.state} countdown={m.countdown} cityLabel={m.cityLabel} minWidth={190} height={52} style={{ flex: '1 1 0' }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: rtl ? 'flex-start' : 'flex-end', gap: 2, flex: 'none', padding: rtl ? '0 0 0 12px' : '0 12px 0 0' }}>
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t.nextShort + ' · ' + nextCityLabel}</span>
+            <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-countdown)', color: 'var(--gold-warm)' }}>{nextSession.startsIn}</span>
+          </div>
+          <button
+            type="button" onClick={() => setHeaderOpen(true)} aria-label={t.expandHeader} title={t.expandHeader}
+            style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}
+          >
+            <Icon name="chevrons-down" size={18} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
