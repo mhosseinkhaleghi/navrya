@@ -26,7 +26,7 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 // standing rule of insufficient-data-over-fabricated-numbers.
 // ============================================================================
 
-const SPANS = [3, 4, 6, 8, 12];
+export const SPANS = [3, 4, 6, 8, 12];
 const DEFAULT_BOARD = ['session', 'psych', 'weather', 'positions', 'chart', 'sessions', 'strategies', 'patterns', 'reward'];
 const CITIES = [
   { market: 'london', city: 'LONDON', off: 0, from: 7, to: 16 },
@@ -35,15 +35,37 @@ const CITIES = [
   { market: 'sydney', city: 'SYDNEY', off: 10, from: 0, to: 24 }
 ];
 
-function boardKey(character) { return 'tradejournal:navrya-dashboard-board:v1:' + character; }
-function loadBoard(character) {
+// Board persistence - shared with navrya-src/settingsView.jsx's "Manage panels" panel, which
+// reads/writes the exact same localStorage record (via these same functions) rather than a
+// parallel copy, so a resize/hide/remove/AI-drafted-panel made from Settings is the same board
+// the actual Dashboard renders next time it mounts.
+export function boardKey(character) { return 'tradejournal:navrya-dashboard-board:v1:' + character; }
+export function loadBoard(character) {
   try {
     const saved = JSON.parse(localStorage.getItem(boardKey(character)));
-    if (saved && Array.isArray(saved.board)) return { board: saved.board, spans: saved.spans || {} };
+    if (saved && Array.isArray(saved.board)) {
+      return { board: saved.board, spans: saved.spans || {}, hidden: saved.hidden || {}, custom: saved.custom || {} };
+    }
   } catch (_) { /* fall through to default */ }
-  return { board: DEFAULT_BOARD.slice(), spans: {} };
+  return { board: DEFAULT_BOARD.slice(), spans: {}, hidden: {}, custom: {} };
 }
-function saveBoard(character, value) { localStorage.setItem(boardKey(character), JSON.stringify(value)); }
+export function saveBoard(character, value) { localStorage.setItem(boardKey(character), JSON.stringify(value)); window.dispatchEvent(new CustomEvent('tradejournal:dashboard-board-changed', { detail: { character } })); }
+
+// One AI-drafted (or otherwise free-form) panel: a title/description note card, span 4, sparkle
+// icon - the same shape the design handoff's own "Drafts from the assistant" cards add to the
+// board with, nothing else attached since there is no real data source behind an arbitrary
+// AI-authored idea. Appends to the end of the board, matching addCustomPanel's own precedent.
+export function addCustomPanel(character, title, desc) {
+  const state = loadBoard(character);
+  const id = 'custom-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+  const next = {
+    ...state,
+    board: state.board.concat([id]),
+    custom: { ...state.custom, [id]: { title: String(title || '').slice(0, 60), desc: String(desc || '') } }
+  };
+  saveBoard(character, next);
+  return id;
+}
 
 // ---- self-contained i18n, same pattern as strategiesHubView.jsx's own copy/tr/digits ----
 const copy = {
@@ -182,6 +204,11 @@ function digits(lang, value) {
   if (lang !== 'fa') return s;
   return s.replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 }
+// catalog(t) only resolves correctly against ITS OWN tr()/copy above (catPsychTitle and friends
+// aren't defined in any other screen's i18n dict) - this is the one correct way for another
+// screen (navrya-src/settingsView.jsx's "Manage panels") to get real, translated catalog entries
+// without duplicating or mismatching this file's own keys.
+export function catalogForLang(lang) { return catalog((key, vars) => tr(lang, key, vars)); }
 function pad(n) { return String(n).padStart(2, '0'); }
 function round1(n) { return Math.round(n * 10) / 10; }
 // trade.session holds trade-store.js's detectSession() output ('london'/'newyork'/'tokyo'/
@@ -194,7 +221,7 @@ function sessionCityLabel(session) { return SESSION_CITY_LABEL[session] || sessi
 // ============================================================================
 // Panel catalog - meta is computed per-render from real data (below), never a static count.
 // ============================================================================
-function catalog(t) {
+export function catalog(t) {
   return {
     psych: { title: t('catPsychTitle'), icon: 'psychology', span: 4, desc: t('catPsychDesc') },
     weather: { title: t('catWeatherTitle'), icon: 'streak', span: 4, desc: t('catWeatherDesc') },
@@ -563,8 +590,7 @@ function ChartPanel({ t, lang }) {
   );
 }
 
-// Active strategies: TradeJournalStrategyEducationStore.listActive() + its own detectionStats(),
-// the exact pair navrya-src/panelsAdapter.js's useActiveStrategies() already calls.
+// Active strategies: TradeJournalStrategyEducationStore.listActive() + its own detectionStats().
 function StrategiesPanel({ t, lang }) {
   const store = window.TradeJournalStrategyEducationStore;
   if (!store) return <NotConnectedNote t={t} />;
@@ -672,8 +698,16 @@ function NoBackendPanel({ t, cta }) {
   );
 }
 
+// A custom board entry has no CAT slug - resolveCustomEntry() turns its stored {title,desc} into
+// the same {title,icon,span,desc} shape a CAT lookup returns, so entryOf()/panelBody()/panelMeta()
+// never need to know whether an id is a fixed panel type or one the AI panel builder drafted.
+export function resolveCustomEntry(id, customMap) {
+  const entry = customMap && customMap[id];
+  return entry ? { title: entry.title, icon: 'sparkle', span: 4, desc: entry.desc } : null;
+}
+
 function panelBody(id, ctx) {
-  const { t, lang, character, now } = ctx;
+  const { t, lang, character, now, custom } = ctx;
   switch (id) {
     case 'psych': return <PsychPanel t={t} lang={lang} />;
     case 'weather': return <WeatherPanel t={t} lang={lang} />;
@@ -687,7 +721,13 @@ function panelBody(id, ctx) {
     case 'video': return <NoBackendPanel t={t} />;
     case 'banner': return <NoBackendPanel t={t} />;
     case 'watchlist': return <NoBackendPanel t={t} />;
-    default: return null;
+    default: {
+      // Custom (AI-drafted) panel: a plain note, exactly what it was drafted as - no invented
+      // data binding, since a free-form prompt has no real store backing it.
+      const entry = custom && custom[id];
+      if (!entry) return null;
+      return <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{entry.desc}</p>;
+    }
   }
 }
 
@@ -698,6 +738,7 @@ function panelMeta(id, t, lang) {
   const stratStore = window.TradeJournalStrategyEducationStore;
   if (id === 'positions' && tradeStore) return t('catPositionsMeta', { n: digits(lang, tradeStore.listSync().filter((tr) => tr.status === 'hunting' || tr.status === 'open').length) });
   if (id === 'strategies' && stratStore) return t('catStrategiesMeta', { n: digits(lang, stratStore.listActive().length) });
+  if (!/^(psych|weather|session|sessions|positions|chart|strategies|patterns|reward|video|banner|watchlist)$/.test(id)) return '';
   return t('cat' + id.charAt(0).toUpperCase() + id.slice(1) + 'Meta');
 }
 
@@ -727,7 +768,8 @@ export function DashboardView({ character }) {
     return () => window.removeEventListener('tradejournal:trades-changed', onChange);
   }, []);
 
-  function spanOf(id) { return state.spans[id] || CAT[id].span; }
+  function entryOf(id) { return CAT[id] || resolveCustomEntry(id, state.custom); }
+  function spanOf(id) { const e = entryOf(id); return state.spans[id] || (e ? e.span : 4); }
   function setSpan(id, dir) {
     const i = SPANS.indexOf(spanOf(id));
     const next = SPANS[Math.min(SPANS.length - 1, Math.max(0, i + dir))];
@@ -746,7 +788,8 @@ export function DashboardView({ character }) {
   }
 
   const tray = Object.keys(CAT).filter((id) => state.board.indexOf(id) < 0);
-  const ctx = { t, lang, character, now };
+  const visibleBoard = state.board.filter((id) => !state.hidden[id]);
+  const ctx = { t, lang, character, now, custom: state.custom };
 
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -764,7 +807,7 @@ export function DashboardView({ character }) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flexWrap: 'wrap' }}>
         <span style={{ color: 'var(--gold-warm)', display: 'flex' }}><Icon name="dashboard" size={16} /></span>
-        <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('panelsOnBoard', { n: digits(lang, state.board.length), m: digits(lang, tray.length) })}</span>
+        <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('panelsOnBoard', { n: digits(lang, visibleBoard.length), m: digits(lang, tray.length) })}</span>
         <span style={{ flex: 1 }} />
         <button type="button" onClick={() => setAdding((v) => !v)} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 9, padding: '0 14px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'var(--surface-800)', color: 'var(--text-primary)', font: 'var(--type-section-label)', letterSpacing: '.1em', textTransform: 'uppercase' }}>
           <Icon name="plus" size={16} />{t('addPanel')}
@@ -809,7 +852,7 @@ export function DashboardView({ character }) {
         </Panel>
       )}
 
-      {!state.board.length ? (
+      {!visibleBoard.length ? (
         <Panel variant="quiet" padding="34px 20px">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
             <span style={{ font: 'var(--type-body)', fontWeight: 600, color: 'var(--parchment)' }}>{t('addPanel')}</span>
@@ -817,8 +860,8 @@ export function DashboardView({ character }) {
         </Panel>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,minmax(0,1fr))', gap: 16 }}>
-          {state.board.map((id) => {
-            const cat = CAT[id];
+          {visibleBoard.map((id) => {
+            const cat = entryOf(id);
             if (!cat) return null;
             const span = spanOf(id);
             return (

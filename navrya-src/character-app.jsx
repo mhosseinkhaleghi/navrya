@@ -256,6 +256,27 @@ function SessionsApp({ character, navryaCharacter, store }) {
   );
 }
 
+// Plain DOM, not a React root - it needs to exist before/outside any of the roots mount() creates,
+// and never re-renders (the grid is static; the glow's color follows --char-atmosphere via CSS,
+// not JS). Guarded so a hot-reload or a second mount() call never stacks a duplicate pair.
+function ensureBackgroundLayer(navryaCharacter) {
+  if (document.getElementById('navryaBackgroundGrid')) return;
+  const grid = document.createElement('span');
+  grid.id = 'navryaBackgroundGrid';
+  grid.setAttribute('aria-hidden', 'true');
+  grid.setAttribute('data-character', navryaCharacter);
+  grid.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;'
+    + 'background-image:linear-gradient(rgba(38,51,50,.28) 1px,transparent 1px),linear-gradient(90deg,rgba(38,51,50,.28) 1px,transparent 1px);'
+    + 'background-size:48px 48px';
+  const glow = document.createElement('span');
+  glow.setAttribute('aria-hidden', 'true');
+  glow.setAttribute('data-character', navryaCharacter);
+  glow.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.8;'
+    + 'background:radial-gradient(90% 70% at 20% 0%,var(--char-atmosphere) 0%,transparent 70%)';
+  document.body.insertBefore(glow, document.body.firstChild);
+  document.body.insertBefore(grid, document.body.firstChild);
+}
+
 export function mountCharacterApp(character) {
   const config = CHARACTERS[character];
   if (!config) throw new Error('Unknown NAVRYA character: ' + character);
@@ -270,8 +291,7 @@ export function mountCharacterApp(character) {
 
   // panel-system.js's render('dashboard'|'strategies'|'settings') delegates to this hook when
   // present (see panel-system.js's render()), instead of its own legacy makeCanvas/makeSettings
-  // DOM builders - same real localStorage panel data (navrya-src/panelsAdapter.js reads the
-  // identical key format), only the rendering changes.
+  // DOM builders - each view is its own real, backend-connected screen (navrya-src/canvasApp.jsx).
   window.TradeJournalNavryaCanvas = { render: (view) => renderCanvas(character, view) };
 
   // account-profile-ui.js's subscriptionsTab() defers to this hook when present (see
@@ -338,6 +358,14 @@ export function mountCharacterApp(character) {
   // TradeJournalWorkspace caller (openReport/reopen/duplicate) already goes through, only the
   // open-session screen itself is now navrya-src/liveSessionView.jsx instead of hand-built DOM.
   window.TradeJournalNavryaLiveSession = { open: openLiveSession };
+
+  // Every design handoff (Calculator, Trade Log, Dashboard, Settings) opens its character page
+  // with the same two fixed full-viewport overlays - a faint 48px grid and a soft radial glow of
+  // the character's own atmosphere color - directly under <body>. The live app never had them.
+  // Added once here (not per-view) since it's page chrome, not any one screen's content; each
+  // React root already sets its own data-character locally, so these two spans carry the same
+  // attribute themselves to resolve --char-atmosphere without touching the static index.html.
+  ensureBackgroundLayer(navryaCharacter);
 
   function mount() {
     const sidebarRoot = document.getElementById('navryaSidebarRoot');
