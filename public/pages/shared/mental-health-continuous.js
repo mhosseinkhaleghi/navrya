@@ -148,6 +148,8 @@
   function openPostTradeReflection(trade) {
     var settings = (psych ? psych.settings().postTradeReflection : null) || { enabled: true, cooldownMinutes: 15 };
     if (!settings.enabled) return;
+    var navrya = window.TradeJournalNavryaPostTradeReflection;
+    if (navrya) { navrya.open(trade); return; }
     var showRevenge = trade.outcome === 'loss';
     var state = { emotionThermometer: [], setupQualityRating: 5, planAdherenceRating: 5, emotionManagementRating: 5, deviatedFromPlan: 'none', deviationReason: '', wouldTakeAgain: 'unsure', revengeChoice: null, sentenceOfTheDay: '' };
     var steps = ['emotion', 'ratings', 'plan', 'sentence'];

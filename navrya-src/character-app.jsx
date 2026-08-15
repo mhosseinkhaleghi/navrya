@@ -29,6 +29,7 @@ import { openLogWizard } from './tradeLogModal.jsx';
 import { openClosePosition } from './closePositionModal.jsx';
 import { openEmotion } from './logEmotionModal.jsx';
 import { openTradeDetails } from './tradeDetailsModal.jsx';
+import { openPostTradeReflection } from './postTradeReflectionModal.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -355,6 +356,12 @@ export function mountCharacterApp(character) {
   // trade-ui.js's own details(id) (exported as TradeJournalTradeUI.viewTrade) defers to this
   // hook when present - same real fields/actions, only React now.
   window.TradeJournalNavryaTradeDetails = { open: openTradeDetails };
+
+  // mental-health-continuous.js's own openPostTradeReflection(trade) defers to this hook when
+  // present (see that file's own function body) - it's what onTradeClosed(trade) opens right
+  // after closePositionModal.jsx saves a close, same enabled/cooldownMinutes settings gate,
+  // same addPostTradeReflection() write; only the dialog itself is React now.
+  window.TradeJournalNavryaPostTradeReflection = { open: openPostTradeReflection };
 
   // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
   // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version
