@@ -30,9 +30,27 @@
 html[lang="fa"]{
 --font-ui:"PeydaWeb",Tahoma,Arial,sans-serif;
 --font-num:"PeydaWeb",Tahoma,Arial,sans-serif;
+/* Cinzel (the Latin-only display face --font-display normally points at) has no Persian
+   glyphs, so any element styled from the --type-display-lg / --type-display-md / --type-
+   character-title tokens quietly fell through to the 'Times New Roman' fallback for fa text -
+   a visibly different typeface from the PeydaWeb used everywhere else on the page. Section
+   titles are the most visible offenders (Dashboard, Settings, Community, etc. all style their
+   h1 from --type-display-lg). Pointing --font-display at the same PeydaWeb stack keeps every
+   section title on one consistent typeface in Persian; English/decorative-only strings
+   (character plate titles typed in Latin) are unaffected since this only applies under
+   html[lang="fa"]. */
+--font-display:"PeydaWeb",Tahoma,Arial,sans-serif;
 --fw-regular:400;/* @kind other */
 --fw-medium:500;/* @kind other */
 --fw-semibold:600;/* @kind other */
 --fw-bold:700;/* @kind other */
 --numeric-tabular:tabular-nums;/* @kind other */
+}
+html[lang="ar"]{
+/* Same reasoning as html[lang="fa"] above: Cinzel has no Arabic glyphs either, so Arabic
+   section titles fell back to 'Times New Roman'. Arabic has no self-hosted UI font in this
+   design system (--font-ui stays Satoshi -> system-ui, which already covers Arabic reasonably
+   through the OS font), so --font-display falls back to that same --font-ui stack rather than
+   introducing a new font family just for this one property. */
+--font-display:var(--font-ui);
 }

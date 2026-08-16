@@ -33,9 +33,24 @@ function useViewportWidth() {
   return width;
 }
 
+// Same idea, on the vertical axis: the header was previously only width-aware, so on a short
+// laptop viewport (~700-800px tall) it kept its full ~230-260px portrait-driven height no matter
+// what, crowding out everything below it (the chat dock ended up overlapping the session-library
+// toolbar at 1440x560). Below 820px tall, shrink the identity-plate title, portrait, and outer
+// padding/gutter so the whole header takes meaningfully less vertical room.
+function useViewportHeight() {
+  const [height, setHeight] = React.useState(() => (typeof window !== 'undefined' ? window.innerHeight : 1080));
+  React.useEffect(() => {
+    function onResize() { setHeight(window.innerHeight); }
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return height;
+}
+
 /* ONE COMPONENT. FOUR IDENTITIES. The 1920×320 character header. */
 export function CharacterHeader({
-  character = 'hunter', name = 'RAYAN LAND', handle = '@rayanland', level, xp, xpMax, quote,
+  character = 'hunter', title, name = 'RAYAN LAND', handle = '@rayanland', level, xp, xpMax, quote,
   metrics = DEFAULT_METRICS, date = '2026-07-30', language = 'EN', uptime = '12:48:36', uptimeLabel,
   onLanguageChange, onSettings, onIdentityClick, levelLabel, rankLabel,
   nextSession = { city: 'SYDNEY', startsIn: '01:35:40' }, nextSessionLabel, startsInLabel,
@@ -47,29 +62,41 @@ export function CharacterHeader({
 }) {
   const d = CHARACTER_DATA[character] || CHARACTER_DATA.hunter;
   const viewportWidth = useViewportWidth();
+  const viewportHeight = useViewportHeight();
   const narrow1280 = viewportWidth <= 1280;
   const narrow920 = viewportWidth <= 920;
-  const portraitSize = narrow1280 ? 176 : 200;
+  const shortHeight = viewportHeight <= 820;
+  const portraitSize = shortHeight ? 108 : (narrow1280 ? 176 : 200);
+  const headerPad = shortHeight ? '10px 16px' : 'var(--header-pad)';
+  const gutter = shortHeight ? 8 : 'var(--header-gutter)';
+  const marketTileHeight = shortHeight ? 44 : 'var(--metric-tile-h)';
   return (
     <header
       style={{
         position: 'relative', boxSizing: 'border-box', width: '100%',
         display: 'flex', flexDirection: 'column',
-        padding: 'var(--header-pad)', gap: 'var(--header-gutter)', overflow: 'visible',
+        padding: headerPad, gap: gutter, overflow: 'visible',
         borderRadius: 'var(--radius-12)', border: '1px solid var(--border-gold)',
         background: 'linear-gradient(90deg, var(--char-atmosphere) 0%, color-mix(in srgb, var(--char-atmosphere) 42%, var(--ink-950)) 55%, var(--ink-950) 100%)',
         boxShadow: 'var(--shadow-panel)', ...style
       }}
       {...rest}
     >
-      <div style={{ display: 'flex', flexDirection: narrow920 ? 'column' : 'row', alignItems: narrow920 ? 'stretch' : 'stretch', gap: 'var(--header-gutter)', flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--header-gutter)', flex: 'none' }}>
-          <BrandLockup character={character} style={{ width: 'var(--region-brand)', flex: 'none', paddingTop: 14, alignSelf: 'flex-start' }} markSize={54} />
+      <div style={{ display: 'flex', flexDirection: narrow920 ? 'column' : 'row', alignItems: narrow920 ? 'stretch' : 'stretch', gap: gutter, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: gutter, flex: 'none' }}>
+          <BrandLockup character={character} style={{ width: 'var(--region-brand)', flex: 'none', paddingTop: shortHeight ? 4 : 14, alignSelf: 'flex-start' }} markSize={shortHeight ? 36 : 54} />
           <CharacterPortrait character={character} size={portraitSize} onEdit={onEditPortrait} style={{ margin: '0 8px' }} />
         </div>
-        <div style={{ flex: narrow920 ? 'none' : '1 1 var(--region-identity)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 6 }}>
+        <div style={{ flex: narrow920 ? 'none' : '1 1 var(--region-identity)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: shortHeight ? 8 : 12, paddingTop: shortHeight ? 0 : 6 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
-            <CharacterIdentity character={character} name={name} handle={handle} quote={quote || d.quote} onClick={onIdentityClick} style={{ flex: '1 1 200px', minWidth: 200 }} />
+            {/* On a short viewport the quote line is dropped (not just shrunk) - it's the one
+                purely decorative line in this column, so it's the first thing to go once space
+                is tight; title/name/handle stay since they carry real identity. */}
+            <CharacterIdentity
+              character={character} name={name} handle={handle} title={title}
+              quote={shortHeight ? undefined : (quote || d.quote)} onClick={onIdentityClick}
+              titleSize={shortHeight ? 21 : 34} style={{ flex: '1 1 200px', minWidth: 200 }}
+            />
             <LevelBadge level={level ?? d.level} label={levelLabel} />
           </div>
           {/* ??, not || - a real signed-in trader's xpTotal is legitimately 0 at the very start,
@@ -78,9 +105,9 @@ export function CharacterHeader({
           <XPProgress value={xp ?? d.xp} max={xpMax ?? d.xpMax} />
           <MetricRow metrics={metrics} style={{ marginTop: 'auto', flexWrap: 'wrap' }} />
         </div>
-        <div style={{ flex: narrow920 ? 'none' : '0 0 auto', minWidth: narrow920 ? 0 : 508, width: narrow920 ? '100%' : undefined, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--header-gutter)', flexWrap: narrow920 ? 'wrap' : 'nowrap' }}>
-            <RankCrest character={character} style={{ flex: 'none', paddingTop: 8 }} label={rankLabel} />
+        <div style={{ flex: narrow920 ? 'none' : '0 0 auto', minWidth: narrow920 ? 0 : 508, width: narrow920 ? '100%' : undefined, display: 'flex', flexDirection: 'column', gap: shortHeight ? 6 : 10 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: gutter, flexWrap: narrow920 ? 'wrap' : 'nowrap' }}>
+            <RankCrest character={character} style={{ flex: 'none', paddingTop: shortHeight ? 0 : 8 }} label={rankLabel} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: narrow920 ? '1 1 260px' : 'none', flexShrink: narrow920 ? 1 : 0, minWidth: narrow920 ? 260 : undefined }}>
               <UtilityPanel date={date} language={language} uptime={uptime} uptimeLabel={uptimeLabel} onLanguageChange={onLanguageChange} onSettings={onSettings} width={narrow920 ? '100%' : 344} />
               <NextSessionPanel city={nextSession.city} startsIn={nextSession.startsIn} nextSessionLabel={nextSessionLabel} startsInLabel={startsInLabel} width={narrow920 ? '100%' : 344} />
@@ -90,11 +117,11 @@ export function CharacterHeader({
               illegibly-thin or overflowing past the page edge (previously clipped/hidden by
               body{overflow-x:hidden} - see CharacterHeader.prompt.md's original "carousel"
               breakpoint spec; a contained scroll strip is the same idea, simpler to keep clean). */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', minHeight: 'var(--metric-tile-h)', marginTop: 'auto', overflowX: narrow920 ? 'auto' : 'visible', paddingBottom: narrow920 ? 2 : 0 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', minHeight: marketTileHeight, marginTop: 'auto', overflowX: narrow920 ? 'auto' : 'visible', paddingBottom: narrow920 ? 2 : 0 }}>
             {markets.map((m) => (
               <MarketSessionCard
                 key={m.market} market={m.market} state={m.state} countdown={m.countdown} cityLabel={m.cityLabel}
-                minWidth={narrow920 ? 'var(--market-card-min-w)' : 0} height="var(--metric-tile-h)"
+                minWidth={narrow920 ? 'var(--market-card-min-w)' : 0} height={marketTileHeight}
                 style={{ flex: narrow920 ? '0 0 auto' : '1 1 0' }}
               />
             ))}

@@ -657,7 +657,13 @@ function ItemCard({ item, kind, lang, onOpen, onReport, onShare, onDelete }) {
             <span dir="auto" style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{desc}</span>
           </div>
           <span style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 9px', borderRadius: 6, fontSize: 10.5, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.5)', color: 'var(--text-muted)' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', display: 'block', background: status === 'live' ? 'var(--success)' : 'var(--warning)' }}></span>
+            {/* Was a fixed var(--success) green regardless of character - on every non-hunter
+                theme this dot read as an off-brand green fixed in the middle of the card (the
+                one --success is close enough to hunter's own #66C94E accent that it looked
+                native there, and only stood out as "wrong" everywhere else). "Live" here means
+                "part of my active set," an identity concept, not a win/loss outcome - so it
+                follows the character accent like the rest of the card chrome instead. */}
+            <span style={{ width: 7, height: 7, borderRadius: '50%', display: 'block', background: status === 'live' ? 'var(--char-accent)' : 'var(--warning)' }}></span>
             {status === 'live' ? tr(lang, 'statusLive') : tr(lang, 'statusDraft')}
           </span>
         </div>

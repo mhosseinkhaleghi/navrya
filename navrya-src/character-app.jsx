@@ -155,6 +155,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
         <div style={{ position: 'relative' }}>
           <CharacterHeader
             character={navryaCharacter}
+            title={t.charTitle && t.charTitle[navryaCharacter]}
             name={s.profile ? s.profile.displayName : undefined}
             handle={s.profile ? '@' + s.profile.id : undefined}
             level={level} xp={s.profile ? s.profile.xpTotal : undefined} xpMax={xpMax}

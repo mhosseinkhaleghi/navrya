@@ -34,10 +34,17 @@ const CHAPTER_STEPS = [[1], [2, 3, 4], [5, 6, 7], [8, 9, 10, 11, 12], [13]];
 const CHAPTER_KEYS = ['mhChapterOrientation', 'mhChapterContext', 'mhChapterHistory', 'mhChapterScenarios', 'mhChapterSeal'];
 const TOTAL_STEPS = 13;
 
-// English-only display titles (uppercase, not localized) - ported verbatim from the vanilla
-// wizard's own CHAR_META table, keyed by this app's character id (not the design system's
-// navryaCharacter id - sage's navryaCharacter is "master", see characters.js).
-const CHAR_TITLE = { hunter: 'THE HUNTER', engineer: 'THE MARKET ENGINEER', commander: 'THE COMMANDER', sage: 'THE MARKET SAGE' };
+// Per-language display titles, keyed by this app's character id (not the design system's
+// navryaCharacter id - sage's navryaCharacter is "master", see characters.js). Previously
+// English-only/uppercase regardless of UI language (ported verbatim from the vanilla wizard's
+// own CHAR_META table) - every other character-identity surface in the app translates this same
+// title (see navrya-src/i18n.js's charTitle), so this one now does too.
+const CHAR_TITLE = {
+  hunter: { en: 'THE HUNTER', fa: 'شکارچی', ar: 'الصياد', es: 'EL CAZADOR' },
+  engineer: { en: 'THE MARKET ENGINEER', fa: 'مهندس بازار', ar: 'مهندس السوق', es: 'EL INGENIERO DE MERCADO' },
+  commander: { en: 'THE COMMANDER', fa: 'فرمانده', ar: 'القائد', es: 'EL COMANDANTE' },
+  sage: { en: 'THE MARKET SAGE', fa: 'استاد بزرگ بازار', ar: 'الحكيم الأعظم للسوق', es: 'EL GRAN SABIO DEL MERCADO' }
+};
 
 // Deterministic decorative visuals (stop-loss/patience candlesticks, FOMO bars, losing-month
 // grid) - ported from the design handoff. Pure display, seeded so every trader sees the same
@@ -638,7 +645,7 @@ function OrientationStep({ character, navryaId, t, lang }) {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
         <CharacterPortrait character={navryaId} size={176} editable={false} />
         <span style={{ font: 'var(--type-display-md)', letterSpacing: 'var(--tracking-display)', color: 'var(--char-accent)', textAlign: 'center' }}>
-          {CHAR_TITLE[character] || character.toUpperCase()}
+          {(CHAR_TITLE[character] && (CHAR_TITLE[character][lang] || CHAR_TITLE[character].en)) || character.toUpperCase()}
         </span>
         <QuoteCard character={navryaId} quote={quote} height={96} style={{ width: '100%' }} />
       </div>

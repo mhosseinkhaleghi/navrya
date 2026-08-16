@@ -28,7 +28,11 @@ export const NAVRYA_STRINGS = {
     prompt: 'Describe the panel you want to create…', build: 'Create panel',
     characterTheme: 'Character theme', characterThemeHint: 'The selected character supplies the current skin. Changing it later alters colors and vocabulary, not data.',
     show: 'Show', hide: 'Hide', addPanel: 'Add panel', patternRegistry: 'Pattern Registry',
-    nextGoalLabel: 'NEXT GOAL', goalMaxLevel: 'All goals complete', goalXpToGo: '{xp} XP to go'
+    nextGoalLabel: 'NEXT GOAL', goalMaxLevel: 'All goals complete', goalXpToGo: '{xp} XP to go',
+    // Character identity-plate title (the big display line under the header portrait/crest,
+    // e.g. "THE COMMANDER") - keyed by navryaCharacter (design-system id: hunter/commander/
+    // engineer/master, sage's design-system id - see characters.js), not this app's character id.
+    charTitle: { hunter: 'THE HUNTER', commander: 'THE COMMANDER', engineer: 'THE MARKET ENGINEER', master: 'THE MARKET MASTER' }
   },
   fa: {
     navSessions: 'سشن‌ها', navDashboard: 'داشبورد', navStrategies: 'استراتژی‌ها', navPsychology: 'روانشناسی',
@@ -55,7 +59,8 @@ export const NAVRYA_STRINGS = {
     prompt: 'توضیح بده چه پنلی می‌خواهی بسازی…', build: 'ساخت پنل',
     characterTheme: 'تم شخصیت', characterThemeHint: 'ظاهر فعلی از کاراکتر انتخاب‌شده می‌آید. تغییر تم فقط رنگ و واژگان را عوض می‌کند و داده‌ها ثابت می‌مانند.',
     show: 'نمایش', hide: 'پنهان‌کردن', addPanel: 'افزودن پنل', patternRegistry: 'ثبت الگو',
-    nextGoalLabel: 'هدف بعدی', goalMaxLevel: 'همه هدف‌ها کامل شد', goalXpToGo: '{xp} امتیاز تا هدف بعدی'
+    nextGoalLabel: 'هدف بعدی', goalMaxLevel: 'همه هدف‌ها کامل شد', goalXpToGo: '{xp} امتیاز تا هدف بعدی',
+    charTitle: { hunter: 'شکارچی', commander: 'فرمانده', engineer: 'مهندس بازار', master: 'استاد بزرگ بازار' }
   },
   ar: {
     navSessions: 'الجلسات', navDashboard: 'لوحة التحكم', navStrategies: 'الاستراتيجيات', navPsychology: 'علم النفس',
@@ -82,7 +87,8 @@ export const NAVRYA_STRINGS = {
     prompt: 'صف اللوحة التي تريد إنشاءها…', build: 'إنشاء لوحة',
     characterTheme: 'سمة الشخصية', characterThemeHint: 'يوفر الشخصية المختارة المظهر الحالي. تغيير السمة لاحقاً يغيّر الألوان والمفردات فقط، لا البيانات.',
     show: 'إظهار', hide: 'إخفاء', addPanel: 'إضافة لوحة', patternRegistry: 'سجل الأنماط',
-    nextGoalLabel: 'الهدف التالي', goalMaxLevel: 'تم إكمال كل الأهداف', goalXpToGo: '{xp} نقطة للهدف التالي'
+    nextGoalLabel: 'الهدف التالي', goalMaxLevel: 'تم إكمال كل الأهداف', goalXpToGo: '{xp} نقطة للهدف التالي',
+    charTitle: { hunter: 'الصياد', commander: 'القائد', engineer: 'مهندس السوق', master: 'الحكيم الأعظم للسوق' }
   },
   es: {
     navSessions: 'Sesiones', navDashboard: 'Panel', navStrategies: 'Estrategias', navPsychology: 'Psicología',
@@ -109,7 +115,8 @@ export const NAVRYA_STRINGS = {
     prompt: 'Describe el panel que quieres crear…', build: 'Crear panel',
     characterTheme: 'Tema del personaje', characterThemeHint: 'El personaje seleccionado aporta el aspecto actual. Cambiarlo después solo altera colores y vocabulario, no los datos.',
     show: 'Mostrar', hide: 'Ocultar', addPanel: 'Añadir panel', patternRegistry: 'Registro de patrones',
-    nextGoalLabel: 'PRÓXIMA META', goalMaxLevel: 'Todas las metas completadas', goalXpToGo: '{xp} XP para la próxima meta'
+    nextGoalLabel: 'PRÓXIMA META', goalMaxLevel: 'Todas las metas completadas', goalXpToGo: '{xp} XP para la próxima meta',
+    charTitle: { hunter: 'EL CAZADOR', commander: 'EL COMANDANTE', engineer: 'EL INGENIERO DE MERCADO', master: 'EL GRAN SABIO DEL MERCADO' }
   }
 };
 
