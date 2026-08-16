@@ -167,7 +167,7 @@ function Header({ dictionary, lang, onLanguage }: { dictionary: Dictionary; lang
   return (
     <header className="site-header">
       <a className="wordmark" href="#hero" aria-label="NAVRYA Hunter">
-        <span className="wordmark-mark" aria-hidden="true">N</span>
+        <img className="wordmark-mark" src={assetUrl('/navrya-mark-gold.svg')} alt="" aria-hidden="true" />
         <span>
           <strong>NAVRYA</strong>
           <small>{dictionary.nav.fieldManual}</small>
@@ -257,7 +257,7 @@ function DeviceShowcase({ dictionary }: { dictionary: Dictionary }) {
     <div className="device-showcase" data-reveal>
       <div className="desktop-device">
         <div className="device-topbar">
-          <span className="device-brand">N</span>
+          <img className="device-brand" src={assetUrl('/navrya-mark-gold.svg')} alt="" aria-hidden="true" />
           <span>{dictionary.field.desktopLabel}</span>
           <i />
         </div>
