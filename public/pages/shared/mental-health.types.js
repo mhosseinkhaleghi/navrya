@@ -24,6 +24,10 @@
    * @typedef {{id:string,sessionId:string,sleepQuality:number,currentStressLevel:number,somethingToProveToday:boolean,significantPersonalEvent:string|null,createdAt:string}} PreSessionCheckIn
    * @typedef {{id:string,tradeId:string,sleepQuality:number,significantPersonalEvent:string|null,createdAt:string}} PreTradeContext
    * @typedef {{id:string,tradeId:string,emotionThermometer:string[],setupQualityRating:number,planAdherenceRating:number,emotionManagementRating:number,deviatedFromPlan:'none'|'slightly'|'yes',deviationReason:string|null,wouldTakeAgain:'yes'|'no'|'unsure',revengeCheck:{shown:boolean,choice:'rest'|'recover'|'saw_setup'|null,cooldownTimerStartedAt:string|null}|null,sentenceOfTheDay:string|null,createdAt:string}} PostTradeReflection
+   * WeeklyCheckIn is the real, answerable counterpart to WeeklySnapshot above (which only ever
+   * aggregates numbers already present in trade history) - a short subjective reflection the
+   * trader actually writes, stored alongside it, not instead of it.
+   * @typedef {{id:string,weekStart:string,disciplineRating:number,biggestWin:string|null,biggestLesson:string|null,moodNextWeek:string|null,createdAt:string}} WeeklyCheckIn
    * @typedef {{month:string,moodPerformanceCorrelation:CorrelationEntry[],cyclicalPatternNote:string|null,planAdherenceScore:number}} MonthlyCorrelationReport
    * @typedef {{id:string,type:'hiding_losses'|'borrowed_money'|'escalating_revenge_trading'|'pervasive_distress_signs'|'identity_outcome_fusion'|'custom',detectedAt:string,evidence:string,status:'active'|'resolved',professionalReferralShown:boolean}} RedFlagEntry
    * @typedef {{completed:boolean,completedAt:string|null,filledVia:'form'|'chat'|'mixed',demographics:object,financialContext:object,tradingHistory:object,motivationForTrading:string|null,firstBigLossReaction:string|null,transparencyMatrix:object,legacyBaselineV1:object|null}} MentalHealthIntake

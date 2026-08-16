@@ -36,7 +36,7 @@
         scenarioAssessment: { completedAt: null, responses: [], draftResponse: { choice: '', sliderValue: null, freeText: '' } },
         biasChecklist: { lastAssessedAt: null, biases: [] }
       },
-      continuousTracking: { preSessionCheckIns: [], preTradeContext: [], postTradeReflections: [], monthlyCorrelationReports: [] },
+      continuousTracking: { preSessionCheckIns: [], preTradeContext: [], postTradeReflections: [], monthlyCorrelationReports: [], weeklyCheckIns: [] },
       redFlags: { active: [], resolved: [] }
     };
   }
@@ -98,6 +98,7 @@
     record.continuousTracking.preTradeContext = array(record.continuousTracking.preTradeContext);
     record.continuousTracking.postTradeReflections = array(record.continuousTracking.postTradeReflections);
     record.continuousTracking.monthlyCorrelationReports = array(record.continuousTracking.monthlyCorrelationReports);
+    record.continuousTracking.weeklyCheckIns = array(record.continuousTracking.weeklyCheckIns);
     record.redFlags.active = array(record.redFlags.active);
     record.redFlags.resolved = array(record.redFlags.resolved);
 
@@ -307,6 +308,19 @@
     return save(record);
   }
 
+  // Weekly check-in - the real, answerable counterpart to captureWeeklySnapshot()
+  // (mental-health-collector.js), which only ever aggregates numbers already present in trade
+  // history. This is the subjective side: a short weekly reflection the trader actually writes,
+  // stored alongside (not instead of) the auto-computed WeeklySnapshot.
+  function addWeeklyCheckIn(profile, data) {
+    var record = normalize(profile);
+    var weekStart = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    record.continuousTracking.weeklyCheckIns.push(Object.assign({
+      id: uid('weeklycheckin'), weekStart: weekStart, disciplineRating: 5, biggestWin: null, biggestLesson: null, moodNextWeek: null
+    }, data || {}, { createdAt: now() }));
+    return save(record);
+  }
+
   function addPreTradeContext(profile, tradeId, data) {
     var record = normalize(profile);
     record.continuousTracking.preTradeContext.push(Object.assign({
@@ -392,6 +406,7 @@
     commitDraftThoughtRecord: commitDraftThoughtRecord, commitDraftTrigger: commitDraftTrigger, removeTrigger: removeTrigger,
     addMilestone: addMilestone, recordPhaseTransition: recordPhaseTransition, ensureBias: ensureBias,
     addPreSessionCheckIn: addPreSessionCheckIn, addPreTradeContext: addPreTradeContext, addPostTradeReflection: addPostTradeReflection,
+    addWeeklyCheckIn: addWeeklyCheckIn,
     activeCooldownTimer: activeCooldownTimer, dismissCooldownTimer: dismissCooldownTimer,
     commitDraftScenarioResponse: commitDraftScenarioResponse, saveBiasChecklist: saveBiasChecklist,
     addRedFlag: addRedFlag, resolveRedFlag: resolveRedFlag

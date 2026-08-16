@@ -9,6 +9,7 @@ import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 import { MetricRow } from '../public/pages/shared/navrya/components/metrics/MetricRow.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
 
 // ============================================================================
 // Small shared building blocks
@@ -808,6 +809,16 @@ function TabStrip({ i18n, psyTab, setPsyTab }) {
   );
 }
 
+// renderPsychology() below creates a brand-new container + React root on every call (it's the
+// render target psychology-ui.js's onTabChange callback re-invokes on every main-tab switch, see
+// that file's renderPage()) - so PsychologyShell fully remounts, and any local useState (like
+// fileTab) is lost, on every main-tab change. `tab` survives this because renderPsychology()
+// already threads it through as an argument; goFile() below stashes the target FILE sub-tab here
+// just before triggering that same remount, so PsychologyShell's initial fileTab state can read
+// it back instead of always defaulting to 'intake'. Cleared immediately after being read so a
+// later plain tab switch (clicking a file sub-tab directly) isn't affected by a stale value.
+let pendingFileTab = null;
+
 function PsychologyShell({ i18n, tab, onTabChange }) {
   const mi = window.TradeJournalMentalHealthI18n;
   const psych = window.TradeJournalPsychologyStore;
@@ -817,7 +828,11 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
   const tradeStore = window.TradeJournalTradeStore;
 
   const [psyTab, setPsyTabState] = React.useState(tab || 'overview');
-  const [fileTab, setFileTab] = React.useState('intake');
+  const [fileTab, setFileTab] = React.useState(() => {
+    const initial = pendingFileTab || 'intake';
+    pendingFileTab = null;
+    return initial;
+  });
   const [openJourney, setOpenJourney] = React.useState(null);
   const [, forceRerender] = React.useReducer((x) => x + 1, 0);
   const [insights, setInsights] = React.useState(null);
@@ -866,12 +881,26 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
   }, [psyTab]);
 
   function setPsyTab(next) { setPsyTabState(next); if (onTabChange) onTabChange(next); }
-  function goFile(section) { setFileTab(section); setPsyTabState('file'); if (onTabChange) onTabChange('file'); }
+  function goFile(section) {
+    setFileTab(section); setPsyTabState('file');
+    // onTabChange (when present) remounts this whole shell - see pendingFileTab's comment above.
+    // Stashed for the remount even though setFileTab(section) above already covers the case
+    // where onTabChange is absent/a no-op and this instance survives in place.
+    pendingFileTab = section;
+    if (onTabChange) onTabChange('file');
+  }
 
+  // "Run check-in now"/"Run weekly check-in" used to just silently call captureWeeklySnapshot()
+  // and switch tabs - no visible result, despite the card's own copy (psyCheckInPromptBody)
+  // promising "four questions, about two minutes". This now opens that real popup; the snapshot
+  // itself is still captured (from inside the modal's own save handler) once the trader actually
+  // answers or skips, so every existing reader of progressTracking.weeklySnapshots keeps working.
   function runCheckIn() {
-    if (collector) collector.captureWeeklySnapshot(new Date());
-    setCheckInDismissed(false);
-    goFile('tracking');
+    openWeeklyCheckIn(() => {
+      setCheckInDismissed(false);
+      goFile('tracking');
+      forceRerender();
+    });
   }
 
   function saveTrigger() {
