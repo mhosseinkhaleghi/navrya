@@ -30,6 +30,7 @@ import { openClosePosition } from './closePositionModal.jsx';
 import { openEmotion } from './logEmotionModal.jsx';
 import { openTradeDetails } from './tradeDetailsModal.jsx';
 import { openPostTradeReflection } from './postTradeReflectionModal.jsx';
+import { openPreSessionCheckIn } from './preSessionCheckInModal.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -363,6 +364,15 @@ export function mountCharacterApp(character) {
   // after closePositionModal.jsx saves a close, same enabled/cooldownMinutes settings gate,
   // same addPostTradeReflection() write; only the dialog itself is React now.
   window.TradeJournalNavryaPostTradeReflection = { open: openPostTradeReflection };
+
+  // mental-health-continuous.js's own openPreSessionCheckIn(session, onDone) defers to this hook
+  // when present (see that file's own function body) - liveSessionView.jsx's withPreSessionCheckIn()
+  // calls it directly (the legacy wrapEntryFlow() monkey-patch of TradeJournalEntryFlow.openEntry
+  // never fires from the NAVRYA session screen, since it builds entries straight against
+  // TradeJournalWorkspace and never calls that legacy function), same real
+  // addPreSessionCheckIn() write, same onDone(session, onDone) continuation contract; only the
+  // dialog itself is React now.
+  window.TradeJournalNavryaPreSessionCheckIn = { open: openPreSessionCheckIn };
 
   // session-workspace-logic.js's entryCard() defers to TradeJournalSessionCards.renderEntry when
   // present (see session-workspace-logic.js's entryCard()) - overwrites the plain-DOM version

@@ -89,6 +89,13 @@
   // image-upload UI, by wrapping TradeJournalEntryFlow.openEntry.
   // ---------------------------------------------------------------------
   function openPreSessionCheckIn(session, onDone) {
+    // Redesign of this same wizard against the NAVRYA design system - navrya-src/
+    // preSessionCheckInModal.jsx defers back to store.addPreSessionCheckIn() itself, same
+    // sleepQuality/currentStressLevel/somethingToProveToday/significantPersonalEvent shape,
+    // only the dialog is React now. Same "prefer the hook when present" pattern
+    // openPostTradeReflection() below already uses.
+    var navrya = window.TradeJournalNavryaPreSessionCheckIn;
+    if (navrya) { navrya.open(session, onDone); return; }
     var m = modal('tj-small-modal mh-checkin-modal', i18n.t('mhPreSessionCheckInTitle'));
     m.box.append(el('p', '', i18n.t('mhPreSessionCheckInHint')));
     var sleep = rangeField(i18n.t('mhSleepQuality'), 5, 1, 10);

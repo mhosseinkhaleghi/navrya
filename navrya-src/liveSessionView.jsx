@@ -1573,6 +1573,22 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     rerender();
   }
 
+  // Replaces mental-health-continuous.js's legacy wrapEntryFlow(), which monkey-patched
+  // TradeJournalEntryFlow.openEntry to show a "before you start" popup once per session - this
+  // screen builds entries directly against TradeJournalWorkspace and never calls that legacy
+  // function, so the wrap silently stopped firing once the session UI moved here. Every action
+  // that opens an add-entry UI (chart/movement/fate) goes through this gate instead, checking
+  // the same continuousTracking.preSessionCheckIns record the legacy wrap checked, so the popup
+  // still shows at most once per session and never blocks anything once already answered.
+  function withPreSessionCheckIn(action) {
+    const continuous = window.TradeJournalMentalHealthContinuous;
+    const mh = window.TradeJournalMentalHealthStore;
+    if (!continuous || !mh) { action(); return; }
+    const already = mh.load().continuousTracking.preSessionCheckIns.some((c) => c.sessionId === session.id);
+    if (already) { action(); return; }
+    continuous.openPreSessionCheckIn(session, action);
+  }
+
   function addEntry(kind) {
     const entry = {
       id: window.TradeJournalWorkspace.id('entry'), sessionId: session.id, type: kind, createdAt: new Date().toISOString(),
@@ -1718,7 +1734,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   return (
     <div dir="rtl" style={{ fontFamily: 'var(--font-ui)', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <CommandBar session={session} lang={lang} view={view} onBack={onBack} onSetView={setView} />
-      <PulseBand session={session} lang={lang} positionsOpen={positionsOpen} onFate={() => setFateStep('entry')} />
+      <PulseBand session={session} lang={lang} positionsOpen={positionsOpen} onFate={() => withPreSessionCheckIn(() => setFateStep('entry'))} />
 
       {view === 'timeline' ? (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -1742,8 +1758,8 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                   </select>
                 )}
                 <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
-                  <Button variant="secondary" size="sm" icon="Activity" onClick={() => addEntry('movement')}>{tr(lang, 'addMove')}</Button>
-                  <Button variant="primary" size="sm" icon="ImagePlus" onClick={() => setChartModalOpen(true)}>{tr(lang, 'addChart')}</Button>
+                  <Button variant="secondary" size="sm" icon="Activity" onClick={() => withPreSessionCheckIn(() => addEntry('movement'))}>{tr(lang, 'addMove')}</Button>
+                  <Button variant="primary" size="sm" icon="ImagePlus" onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))}>{tr(lang, 'addChart')}</Button>
                 </span>
               </div>
 
@@ -1753,7 +1769,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                   {list.map((e) => (
                     <EntryCard key={e.id} entry={e} index={indexById[e.id]} selected={e.id === selId} kindMeta={kindInfo(lang)[e.type] || kindInfo(lang).chart} lang={lang} imageUrl={imageUrls[e.id]} onClick={() => selectEntry(e.id)} />
                   ))}
-                  <button type="button" onClick={() => setChartModalOpen(true)} style={{ flex: 'none', width: 112, borderRadius: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'transparent', color: 'var(--text-dim)', font: 'var(--type-body)', fontSize: 11, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <button type="button" onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))} style={{ flex: 'none', width: 112, borderRadius: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'transparent', color: 'var(--text-dim)', font: 'var(--type-body)', fontSize: 11, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                     <Icon name="plus" size={18} />{tr(lang, 'newEntryTile')}
                   </button>
                 </div>
