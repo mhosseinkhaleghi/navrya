@@ -43,7 +43,7 @@ const copy = {
     pulseEntries: 'ورودی‌ها', pulseEntriesUnit: 'چارت و حرکت', pulseScenarios: 'سناریوها', pulseScenariosUnit: 'ثبت‌شده',
     pulsePatterns: 'الگوها', pulsePatternsUnit: 'تگ‌شده', pulsePositions: 'پوزیشن‌ها', pulsePositionsUnit: 'باز',
     fateButton: 'سرنوشت سشن', focusHigh: 'تمرکز بالا', focusMedium: 'تمرکز متوسط', focusLow: 'تمرکز پایین',
-    cockpitTitle: 'ثبت چارت و تایم‌لاین', filterAll: 'همه', filterChart: 'چارت', filterMove: 'حرکت', filterScen: 'سناریو‌دار',
+    cockpitTitle: 'ثبت چارت و تایم‌لاین', filterAll: 'همه', filterChart: 'چارت', filterMove: 'حرکت',
     searchPlaceholder: 'جست‌وجو در ورودی‌ها', addMove: 'ثبت حرکت', addChart: 'افزودن چارت',
     prevEntry: 'ورودی قبلی', nextEntry: 'ورودی بعدی', newEntryTile: 'ورودی جدید',
     scenCountSuffix: 'سناریو', noScenarios: 'بدون سناریو', aiBadge: 'AI', startShort: 'شروع', endShort: 'پایان',
@@ -102,7 +102,7 @@ const copy = {
     pulseEntries: 'الإدخالات', pulseEntriesUnit: 'رسم وحركة', pulseScenarios: 'السيناريوهات', pulseScenariosUnit: 'مسجّلة',
     pulsePatterns: 'الأنماط', pulsePatternsUnit: 'موسومة', pulsePositions: 'الصفقات', pulsePositionsUnit: 'مفتوحة',
     fateButton: 'مصير الجلسة', focusHigh: 'تركيز عالٍ', focusMedium: 'تركيز متوسط', focusLow: 'تركيز منخفض',
-    cockpitTitle: 'تسجيل الرسم والخط الزمني', filterAll: 'الكل', filterChart: 'رسم', filterMove: 'حركة', filterScen: 'بسيناريو',
+    cockpitTitle: 'تسجيل الرسم والخط الزمني', filterAll: 'الكل', filterChart: 'رسم', filterMove: 'حركة',
     searchPlaceholder: 'ابحث في الإدخالات', addMove: 'تسجيل حركة', addChart: 'إضافة رسم',
     prevEntry: 'الإدخال السابق', nextEntry: 'الإدخال التالي', newEntryTile: 'إدخال جديد',
     scenCountSuffix: 'سيناريو', noScenarios: 'بدون سيناريو', aiBadge: 'AI', startShort: 'البداية', endShort: 'النهاية',
@@ -161,7 +161,7 @@ const copy = {
     pulseEntries: 'Entries', pulseEntriesUnit: 'chart & move', pulseScenarios: 'Scenarios', pulseScenariosUnit: 'logged',
     pulsePatterns: 'Patterns', pulsePatternsUnit: 'tagged', pulsePositions: 'Positions', pulsePositionsUnit: 'open',
     fateButton: 'Session fate', focusHigh: 'High focus', focusMedium: 'Medium focus', focusLow: 'Low focus',
-    cockpitTitle: 'Chart & timeline register', filterAll: 'All', filterChart: 'Chart', filterMove: 'Move', filterScen: 'Has scenario',
+    cockpitTitle: 'Chart & timeline register', filterAll: 'All', filterChart: 'Chart', filterMove: 'Move',
     searchPlaceholder: 'Search entries', addMove: 'Log movement', addChart: 'Add chart',
     prevEntry: 'Previous entry', nextEntry: 'Next entry', newEntryTile: 'New entry',
     scenCountSuffix: 'scenarios', noScenarios: 'No scenarios', aiBadge: 'AI', startShort: 'Start', endShort: 'End',
@@ -220,7 +220,7 @@ const copy = {
     pulseEntries: 'Entradas', pulseEntriesUnit: 'gráfico y movimiento', pulseScenarios: 'Escenarios', pulseScenariosUnit: 'registrados',
     pulsePatterns: 'Patrones', pulsePatternsUnit: 'etiquetados', pulsePositions: 'Posiciones', pulsePositionsUnit: 'abiertas',
     fateButton: 'Destino de la sesión', focusHigh: 'Enfoque alto', focusMedium: 'Enfoque medio', focusLow: 'Enfoque bajo',
-    cockpitTitle: 'Registro de gráfico y línea temporal', filterAll: 'Todo', filterChart: 'Gráfico', filterMove: 'Movimiento', filterScen: 'Con escenario',
+    cockpitTitle: 'Registro de gráfico y línea temporal', filterAll: 'Todo', filterChart: 'Gráfico', filterMove: 'Movimiento',
     searchPlaceholder: 'Buscar en las entradas', addMove: 'Registrar movimiento', addChart: 'Añadir gráfico',
     prevEntry: 'Entrada anterior', nextEntry: 'Entrada siguiente', newEntryTile: 'Nueva entrada',
     scenCountSuffix: 'escenarios', noScenarios: 'Sin escenarios', aiBadge: 'AI', startShort: 'Inicio', endShort: 'Fin',
@@ -317,7 +317,6 @@ function visibleEntries(entries, filter, q, lang, tf) {
   return entries.filter((e) => {
     if (filter === 'chart' && e.type !== 'chart') return false;
     if (filter === 'move' && e.type !== 'movement') return false;
-    if (filter === 'scen' && !((e.scenarios || []).length)) return false;
     if (tf && tf !== 'all' && e.timeframe !== tf) return false;
     if (query) {
       const noteText = e.type === 'movement' ? (e.movementNote || '') : (e.note || '');
@@ -1121,6 +1120,7 @@ function DashboardScenarioRow({ lang, x, entryN, readOnly, onSelectEntry, onProb
 
 function PositionRow({ trade, lang }) {
   const tradeUi = window.TradeJournalTradeUI;
+  const tradeStore = window.TradeJournalTradeStore;
   const ti = window.TradeJournalTradeI18n;
   const tp = trade.takeProfits && trade.takeProfits[0] ? trade.takeProfits[0].price : null;
   return (
@@ -1145,8 +1145,20 @@ function PositionRow({ trade, lang }) {
       </div>
       <span className="navrya-tabular" dir="ltr" style={{ fontSize: 10, color: 'var(--gold-warm)' }}>{(trade.rr ? '1:' + trade.rr : '—') + ' ' + tr(lang, 'rrShort') + ' · ' + (trade.leverage ? trade.leverage + '×' : '—') + ' ' + tr(lang, 'leverageShort')}</span>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" onClick={() => tradeUi && tradeUi.openEmotion(trade.id, 'mid_trade')} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.08)', color: 'var(--gold-warm)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'logEmotionShort')}</button>
-        <button type="button" onClick={() => tradeUi && tradeUi.closeTrade(trade.id)} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'closeAction2')}</button>
+        {/* A hunting trade was never actually opened - it has no entry fill to close, only a
+            plan to either activate (open) or abandon (cancel). Mirrors the same branching
+            ScenarioEditor's own linked-trade card already uses (see applyTradeUpdate above). */}
+        {trade.status === 'hunting' ? (
+          <>
+            <button type="button" onClick={() => tradeStore && tradeStore.updateStatus(trade.id, 'open')} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 10 }}>{ti ? ti.t('markOpen') : ''}</button>
+            <button type="button" onClick={() => tradeStore && tradeStore.updateStatus(trade.id, 'cancelled')} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', font: 'var(--type-caption)', fontSize: 10 }}>{ti ? ti.t('cancelTrade') : ''}</button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={() => tradeUi && tradeUi.openEmotion(trade.id, 'mid_trade')} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.08)', color: 'var(--gold-warm)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'logEmotionShort')}</button>
+            <button type="button" onClick={() => tradeUi && tradeUi.closeTrade(trade.id)} style={{ flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 10 }}>{tr(lang, 'closeAction2')}</button>
+          </>
+        )}
         <button type="button" onClick={() => tradeUi && tradeUi.viewTrade(trade.id)} aria-label={tr(lang, 'viewAction')} style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-dim)' }}><Icon name="eye" size={13} /></button>
       </div>
     </div>
@@ -1482,12 +1494,21 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
 
 export function LiveSessionView({ character, sessionId, navActiveId, language, initialView, onBack }) {
   const lang = language || 'fa';
+  const rtl = lang === 'fa' || lang === 'ar';
   const [, setTick] = React.useState(0);
   const rerender = React.useCallback(() => setTick((t) => t + 1), []);
   React.useEffect(() => {
     const iv = setInterval(rerender, 1000);
     window.addEventListener('tradejournal:sessions-changed', rerender);
-    return () => { clearInterval(iv); window.removeEventListener('tradejournal:sessions-changed', rerender); };
+    // openPositions (below) is recomputed fresh from TradeJournalTradeStore on every render, so
+    // this is enough to reflect a status change (e.g. PositionRow's Mark Open/Cancel/Close
+    // buttons) immediately instead of waiting for the 1s poll above to catch up.
+    window.addEventListener('tradejournal:trades-changed', rerender);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener('tradejournal:sessions-changed', rerender);
+      window.removeEventListener('tradejournal:trades-changed', rerender);
+    };
   }, [rerender]);
 
   const [view, setView] = React.useState(initialView === 'report' ? 'report' : 'timeline');
@@ -1731,8 +1752,12 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   const openPositions = allTrades.filter((t) => (t.status === 'open' || t.status === 'hunting') && t.source && t.source.character === character);
   const positionsOpen = openPositions.filter((t) => t.status === 'open').length;
 
+  // Was hardcoded dir="rtl" regardless of the actual selected language - in English/Spanish
+  // (LTR) this flipped every marginInlineStart:'auto'/flex-order in the toolbar below, which is
+  // exactly why "Add chart"/"Log movement" rendered pushed to the wrong (left) edge, overlapping
+  // the filter-chip row instead of trailing after it.
   return (
-    <div dir="rtl" style={{ fontFamily: 'var(--font-ui)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div dir={rtl ? 'rtl' : 'ltr'} style={{ fontFamily: 'var(--font-ui)', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <CommandBar session={session} lang={lang} view={view} onBack={onBack} onSetView={setView} />
       <PulseBand session={session} lang={lang} positionsOpen={positionsOpen} onFate={() => withPreSessionCheckIn(() => setFateStep('entry'))} />
 
@@ -1743,7 +1768,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border-hairline)' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--char-accent)', flex: 'none' }}><Icon name="Film" size={18} /><span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '.02em' }}>{tr(lang, 'cockpitTitle')}</span></span>
                 <span style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', flex: 'none' }}>
-                  {[['all', tr(lang, 'filterAll'), entries.length], ['chart', tr(lang, 'filterChart'), entries.filter((e) => e.type === 'chart').length], ['move', tr(lang, 'filterMove'), entries.filter((e) => e.type === 'movement').length], ['scen', tr(lang, 'filterScen'), entries.filter((e) => (e.scenarios || []).length).length]].map(([id, label, n]) => (
+                  {[['all', tr(lang, 'filterAll'), entries.length], ['chart', tr(lang, 'filterChart'), entries.filter((e) => e.type === 'chart').length], ['move', tr(lang, 'filterMove'), entries.filter((e) => e.type === 'movement').length]].map(([id, label, n]) => (
                     <button key={id} type="button" onClick={() => setFilter(id)} style={{ height: 28, padding: '0 11px', borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 11, border: '1px solid ' + (filter === id ? 'var(--char-accent)' : 'transparent'), background: filter === id ? 'var(--char-active-surface)' : 'transparent', color: filter === id ? 'var(--char-accent)' : 'var(--text-dim)' }}>{label} {n}</button>
                   ))}
                 </span>
@@ -1796,7 +1821,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                 </span>
                 <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 'none', width: 56, textAlign: 'right' }}>{tr(lang, 'endShort')} {session.startedAt ? entryTimeLabel({ createdAt: Number(session.startedAt) + SPAN_MIN * 60000 }, lang) : ''}</span>
                 <span style={{ width: 1, height: 18, background: 'var(--border-hairline)', flex: 'none' }}></span>
-                <span dir="rtl" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+                <span dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
                   <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--text-primary)' }}>
                     {list.length ? tr(lang, 'counterEntryWord') + ' ' + (list.findIndex((e) => e.id === selId) < 0 ? 1 : list.findIndex((e) => e.id === selId) + 1) + ' ' + tr(lang, 'counterOf') + ' ' + list.length : tr(lang, 'counterNone')}
                   </span>

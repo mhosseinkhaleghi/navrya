@@ -535,12 +535,29 @@ function PositionsPanel({ t, lang }) {
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button type="button" onClick={() => { if (tradeUi) tradeUi.openEmotion(trade.id, 'mid_trade'); }} style={{ height: 38, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.1)', color: 'var(--gold-warm)', font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
-                <Icon name="psychology" size={16} />{t('logEmotion')}
-              </button>
-              <button type="button" onClick={() => { if (tradeUi) tradeUi.closeTrade(trade.id); }} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
-                <Icon name="execution" size={16} />{t('closePosition')}
-              </button>
+              {/* A hunting trade was never actually opened - it has no entry fill to close, only
+                  a plan to either activate (open) or abandon (cancel). Closing was only ever
+                  valid once a trade is genuinely open; showing "Close position" for a still-
+                  hunting trade offered an action that made no sense against its own data. */}
+              {trade.status === 'hunting' ? (
+                <>
+                  <button type="button" onClick={() => tradeStore.updateStatus(trade.id, 'open')} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                    <Icon name="target" size={16} />{tradeI18n ? tradeI18n.t('markOpen') : ''}
+                  </button>
+                  <button type="button" onClick={() => tradeStore.updateStatus(trade.id, 'cancelled')} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                    <Icon name="close" size={16} />{tradeI18n ? tradeI18n.t('cancelTrade') : ''}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => { if (tradeUi) tradeUi.openEmotion(trade.id, 'mid_trade'); }} style={{ height: 38, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.1)', color: 'var(--gold-warm)', font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                    <Icon name="psychology" size={16} />{t('logEmotion')}
+                  </button>
+                  <button type="button" onClick={() => { if (tradeUi) tradeUi.closeTrade(trade.id); }} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                    <Icon name="execution" size={16} />{t('closePosition')}
+                  </button>
+                </>
+              )}
               <span style={{ flex: 1 }} />
               <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('emotionLogsCount', { n: digits(lang, (trade.emotionLog || []).length) })}</span>
               <button type="button" onClick={() => { if (tradeUi) tradeUi.viewTrade(trade.id); }} aria-label={t('tradeDetails')} title={t('tradeDetails')} style={{ width: 38, height: 38, boxSizing: 'border-box', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-muted)' }}>
