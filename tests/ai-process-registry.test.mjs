@@ -101,3 +101,26 @@ test('registrations default isOpen/activeStep/allowlist/applyValue so a minimal 
   assert.equal(result.step, null);
   assert.equal(registry.applyValue('bare-process', 'anything', 1), false);
 });
+
+test('activeOpenProcess() prefers the most recently (re-)registered process when more than one is open at once', async () => {
+  const registry = await registrySandbox();
+  // Two session-scenario-style registrations, both legitimately open at the same time (e.g. two
+  // expanded scenario cards) - registration order alone must decide the winner.
+  registry.register('session-scenario-a', { allowlist: ['title'], isOpen: () => true, activeStep: () => 'a' });
+  registry.register('session-scenario-b', { allowlist: ['title'], isOpen: () => true, activeStep: () => 'b' });
+  assert.equal(registry.activeOpenProcess().id, 'session-scenario-b', 'the later of two simultaneously-open registrations must win');
+
+  // Re-registering "a" (e.g. its component re-rendered after the user touched it) must bump it
+  // back to the front, without needing "b" to unregister or close.
+  registry.register('session-scenario-a', { allowlist: ['title'], isOpen: () => true, activeStep: () => 'a2' });
+  const active = registry.activeOpenProcess();
+  assert.equal(active.id, 'session-scenario-a');
+  assert.equal(active.step, 'a2');
+});
+
+test('activeOpenProcess() ordering never changes behavior for a single-open-at-a-time flow (the original singleton-modal contract)', async () => {
+  const registry = await registrySandbox();
+  registry.register('trade-wizard', { allowlist: ['entryPrice'], isOpen: () => false, activeStep: () => null });
+  registry.register('mh-intake', { allowlist: ['intake.demographics.age'], isOpen: () => true, activeStep: () => 1 });
+  assert.equal(registry.activeOpenProcess().id, 'mh-intake', 'only one process is open, order must not matter');
+});

@@ -111,6 +111,7 @@
           body: JSON.stringify({ provider: providerSelect.input.value, apiKey: settingsStore.getKey(providerSelect.input.value), model: modelSelect.input.value })
         });
         var result = await response.json();
+        if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: result.provider, usage: result.usage, source: 'ai.testConnection' });
         if (!response.ok || !result.ok) throw new Error(result.error || 'FAILED');
         testResult.textContent = i18n.t('aiTestConnectionOk'); testResult.className = 'tj-hint positive';
       } catch (_) {

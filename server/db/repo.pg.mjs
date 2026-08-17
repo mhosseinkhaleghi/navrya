@@ -29,6 +29,7 @@ function mapMessage(row) { return { id: row.id, threadId: row.thread_id, senderI
 function mapReport(row) { return { id: row.id, targetType: row.target_type, targetId: row.target_id, reporterId: row.reporter_id, reason: row.reason, status: row.status, createdAt: row.created_at }; }
 function mapSession(row) { return { id: row.id, userId: row.user_id, startedAt: row.started_at, lastHeartbeatAt: row.last_heartbeat_at, endedAt: row.ended_at }; }
 function mapUsageEvent(row) { return { id: row.id, userId: row.user_id, provider: row.provider, promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens, totalTokens: row.total_tokens, source: row.source, createdAt: row.created_at }; }
+function mapHealthEvent(row) { return { id: row.id, provider: row.provider, ok: row.ok, errorCode: row.error_code, latencyMs: row.latency_ms, source: row.source, createdAt: row.created_at }; }
 function mapProviderPricing(row) { return { provider: row.provider, promptPricePer1k: row.prompt_price_per_1k == null ? null : Number(row.prompt_price_per_1k), completionPricePer1k: row.completion_price_per_1k == null ? null : Number(row.completion_price_per_1k), monthlyTokenBudget: row.monthly_token_budget, updatedAt: row.updated_at }; }
 function mapAdminKey(row) { return { provider: row.provider, apiKey: row.api_key, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
 function mapAuditLog(row) { return { id: row.id, adminUserId: row.admin_user_id, action: row.action, targetType: row.target_type, targetId: row.target_id, details: row.details, createdAt: row.created_at }; }
@@ -662,6 +663,56 @@ export function createPgRepo(pool) {
         [monthKey]
       );
       return rows.map((row) => ({ provider: row.provider, promptTokens: Number(row.prompt_tokens || 0), completionTokens: Number(row.completion_tokens || 0), totalTokens: Number(row.total_tokens || 0) }));
+    },
+    // Section 7.16 follow-up: per-user AND per-provider (not just one lifetime total per user),
+    // for the Admin Users tab's per-user detail view.
+    async aggregateByUserAndProvider(userId) {
+      const { rows } = await pool.query(
+        'SELECT provider, SUM(COALESCE(total_tokens,0)) AS total FROM ai_usage_events WHERE user_id=$1 GROUP BY provider',
+        [userId]
+      );
+      return rows.map((row) => ({ provider: row.provider, totalTokens: Number(row.total || 0) }));
+    }
+  };
+
+  // Section 7.16 follow-up: append-only log of every callProvider() outcome (success or
+  // failure), reported by pattern-ai-server.mjs via POST /internal/ai-health-event - see
+  // 016_ai_provider_health.sql. Read-side aggregation (status derivation) lives in
+  // server/admin/routes.mjs, not here.
+  const providerHealth = {
+    async record({ provider, ok, errorCode, latencyMs, source }) {
+      const id = newId('aiHealthEvent');
+      const { rows } = await pool.query(
+        'INSERT INTO ai_provider_health_events (id, provider, ok, error_code, latency_ms, source) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+        [id, String(provider || 'unknown'), Boolean(ok), errorCode || null, latencyMs == null ? null : Math.round(latencyMs), source || null]
+      );
+      return mapHealthEvent(rows[0]);
+    },
+    // One row per provider - the most recent event, whatever it was. DISTINCT ON is the
+    // idiomatic Postgres way to do this in a single query (mirrors nothing else in this file
+    // yet, but is the standard "latest row per group" pattern).
+    async latestByProvider() {
+      const { rows } = await pool.query(
+        'SELECT DISTINCT ON (provider) * FROM ai_provider_health_events ORDER BY provider, created_at DESC'
+      );
+      const result = {};
+      rows.forEach((row) => { result[row.provider] = mapHealthEvent(row); });
+      return result;
+    },
+    async aggregateSince(sinceIso) {
+      const { rows } = await pool.query(
+        `SELECT provider, COUNT(*) AS calls, COUNT(*) FILTER (WHERE ok = FALSE) AS failures, AVG(latency_ms) AS avg_latency_ms
+         FROM ai_provider_health_events WHERE created_at >= $1 GROUP BY provider`,
+        [sinceIso]
+      );
+      return rows.map((row) => ({
+        provider: row.provider, calls: Number(row.calls || 0), failures: Number(row.failures || 0),
+        avgLatencyMs: row.avg_latency_ms == null ? null : Number(row.avg_latency_ms)
+      }));
+    },
+    async recent({ limit } = {}) {
+      const { rows } = await pool.query('SELECT * FROM ai_provider_health_events ORDER BY created_at DESC LIMIT $1', [limit || 50]);
+      return rows.map(mapHealthEvent);
     }
   };
 
@@ -1454,5 +1505,5 @@ export function createPgRepo(pool) {
     return { backend: 'postgres', dbOk, migrations };
   }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
 }

@@ -510,6 +510,26 @@ function ChartEntryModal({ session, lang, onClose, onSubmit }) {
     onSubmit({ file, timeframe, market, date, note, relatedScenarioIds: related });
   }
 
+  // AI process registry (A4) - mountedRef template. Only mounted while chartModalOpen is true
+  // (LiveSessionView, below).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('live-session-chart-entry', {
+      allowlist: ['note', 'timeframe', 'market', 'date'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'note') setNote(String(value ?? ''));
+        else if (path === 'timeframe' && TIMEFRAMES.indexOf(value) > -1) setTimeframe(value);
+        else if (path === 'market' && MARKET_NAMES.indexOf(value) > -1) setMarket(value);
+        else if (path === 'date') setDate(String(value ?? ''));
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
   return (
     <SessionModalShell title={tr(lang, 'chartEntryTitle')} icon="ImagePlus" onClose={onClose} width={640} footer={(
       <>
@@ -797,6 +817,34 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
     const keepDone = scenario.pattern && scenario.pattern.patternTagId === picked.id ? (scenario.pattern.completedStageIds || []) : [];
     onUpdate({ pattern: { patternTagId: picked.id, name: picked.name, stages: picked.stages, completedStageIds: keepDone, completionThreshold: picked.completionThreshold } });
   }
+
+  // AI process registry (A4) - per-scenario id, same multi-instance reasoning as
+  // sessionEntryCardsView.jsx's ScenarioCard (several ScenarioEditors can be expanded at once).
+  // isOpen tracks the live `open` prop (not a mountedRef - this component itself stays mounted
+  // while collapsed, only its detail panel below toggles), so the effect re-registers whenever
+  // `open` changes, the same "refresh on relevant prop change" shape marketplaceView.jsx's
+  // RatingsPanel already uses.
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('live-session-scenario-' + scenario.id, {
+      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit'],
+      isOpen: () => open,
+      applyValue: (path, value) => {
+        if (['title', 'description', 'evidence', 'problem', 'trigger'].indexOf(path) > -1) { onUpdate({ [path]: String(value ?? '') }); return; }
+        if (path === 'positionType') { onSetSide(value === 'Short' ? 'Short' : 'Long'); return; }
+        if (path === 'entryPrices') {
+          const prices = (Array.isArray(value) ? value : String(value).split(',')).map((item) => Number(String(item).trim())).filter((n) => !Number.isNaN(n));
+          onUpdate({ executionPlan: { ...plan, entryPrices: prices } });
+          return;
+        }
+        if (path === 'stopLoss') { onUpdate({ executionPlan: { ...plan, stopLoss: value === '' || value == null ? null : Number(value) } }); return; }
+        if (path === 'takeProfit') { onUpdate({ executionPlan: { ...plan, takeProfit: value === '' || value == null ? null : Number(value) } }); }
+      }
+    });
+    return undefined;
+  }, [scenario.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div style={{ border: '1px solid var(--border-hairline)', borderRadius: 10, background: 'rgba(11,20,21,.55)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px' }}>
@@ -986,6 +1034,23 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
+
+  // AI process registry (A4) - mountedRef template. The parent renders this with key={entry.id}
+  // (LiveSessionView, above), so React genuinely remounts a fresh instance per selected entry -
+  // only one is ever shown at a time here, unlike ScenarioEditor above.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('live-session-entry-' + entry.id, {
+      allowlist: ['note'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'note') onNote(entry, String(value ?? '')); }
+    });
+    return () => { mountedRef.current = false; };
+  }, [entry.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <Panel variant="base" ornament padding={0}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
@@ -1328,6 +1393,25 @@ function FateEntryModal({ session, lang, onClose, onSubmit }) {
     onSubmit({ file, timeframe, market, note });
   }
 
+  // AI process registry (A4) - mountedRef template. Only mounted while fateStep === 'entry'
+  // (LiveSessionView, below).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('live-session-fate-entry', {
+      allowlist: ['note', 'timeframe', 'market'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'note') setNote(String(value ?? ''));
+        else if (path === 'timeframe' && TIMEFRAMES.indexOf(value) > -1) setTimeframe(value);
+        else if (path === 'market' && MARKET_NAMES.indexOf(value) > -1) setMarket(value);
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
   return (
     <SessionModalShell title={tr(lang, 'fateStep1Title')} icon="Flag" onClose={onClose} width={600} footer={(
       <>
@@ -1404,6 +1488,25 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
   function save() {
     onSave({ moveStrength, spike, note, analysis: analysis || makeSessionAnalysis(session, lang) });
   }
+
+  // AI process registry (A4) - mountedRef template. Only mounted while fateStep === 'summary'
+  // (LiveSessionView, below).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('live-session-fate-summary', {
+      allowlist: ['moveStrength', 'spike', 'note'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'moveStrength' && ['up', 'down', 'flat'].indexOf(value) > -1) setMoveStrength(value);
+        else if (path === 'spike' && ['up', 'down', 'flat'].indexOf(value) > -1) setSpike(value);
+        else if (path === 'note') setNote(String(value ?? ''));
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
 
   return (
     <SessionModalShell title={tr(lang, 'fateStep2Title')} icon="Flag" onClose={onClose} width={640} footer={(

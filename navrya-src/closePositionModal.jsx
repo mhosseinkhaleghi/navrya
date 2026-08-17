@@ -38,6 +38,21 @@ function ClosePositionModal({ trade, onClose, onSave }) {
     return () => document.removeEventListener('keydown', esc);
   }, [onClose]);
 
+  // AI process registry (A4) - same mountedRef template as logEmotionModal.jsx: this modal is
+  // mounted/unmounted per open/close (openClosePosition()), so isOpen is just "am I mounted".
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('trade-close-position', {
+      allowlist: ['exitPrice'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'exitPrice') setExitInput(String(value ?? '')); }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const exit = exitInput.trim() === '' ? null : Number(exitInput);
   const valid = exit !== null && Number.isFinite(exit) && exit > 0;
   const preview = valid ? computeClose(trade, exit) : null;

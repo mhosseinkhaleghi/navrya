@@ -155,16 +155,16 @@ export function router(repo) {
     // response additionally joins in the level, unlocked achievements, and subscription
     // purchases so the Admin Users-tab detail view has everything a support agent needs on one
     // screen (ARCHITECTURE.md §7.16/§7.17), without a second round trip.
-    const [sessions, usageAgg, purchaseAgg, achievements, purchases] = await Promise.all([
-      repo.sessions.listByUser(user.id), repo.usageEvents.aggregateByUser(), repo.purchases.aggregateByBuyer(),
-      repo.achievements.listForUser(user.id), repo.purchases.listByBuyer(user.id)
+    const [sessions, usageAgg, usageByProvider, purchaseAgg, achievements, purchases] = await Promise.all([
+      repo.sessions.listByUser(user.id), repo.usageEvents.aggregateByUser(), repo.usageEvents.aggregateByUserAndProvider(user.id),
+      repo.purchases.aggregateByBuyer(), repo.achievements.listForUser(user.id), repo.purchases.listByBuyer(user.id)
     ]);
     const purchasesWithListings = await Promise.all(purchases.map(async (purchase) => ({ purchase, listing: await repo.listings.get(purchase.listingId) })));
     const subscriptions = purchasesWithListings
       .filter((row) => row.listing && row.listing.type === 'subscription')
       .map((row) => ({ ...row.purchase, listing: row.listing }));
     res.json({
-      ...user, level: levelForXp(user.xpTotal), sessions, totalTokensUsed: usageAgg[user.id] || 0,
+      ...user, level: levelForXp(user.xpTotal), sessions, totalTokensUsed: usageAgg[user.id] || 0, usageByProvider,
       purchases: purchaseAgg[user.id] || { count: 0, total: 0 }, achievements, subscriptions
     });
   }));
@@ -216,8 +216,55 @@ export function router(repo) {
   }));
 
   app.get('/ai/usage', asyncHandler(async (req, res) => {
-    const [byProviderAndDay, byUser] = await Promise.all([repo.usageEvents.aggregateByProviderAndDay({}), repo.usageEvents.aggregateByUser()]);
-    res.json({ byProviderAndDay, byUser });
+    // Defaults to a 30-day trend rather than an unbounded all-time scan; ?days=N (e.g. the AI
+    // tab's 14-day chart) narrows it further. aggregateByProviderAndDay already supported
+    // {since} - this route just never exposed it until now.
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const [byProviderAndDay, byUser] = await Promise.all([repo.usageEvents.aggregateByProviderAndDay({ since }), repo.usageEvents.aggregateByUser()]);
+    res.json({ byProviderAndDay, byUser, days });
+  }));
+
+  // Section 7.16 follow-up: "is this provider actually working right now, or did it just
+  // disconnect" - derived read-side from the append-only ai_provider_health_events log
+  // (server/pattern-ai-server.mjs reports one event per callProvider() outcome via
+  // POST /internal/ai-health-event). Status is computed here, never stored, mirroring
+  // xp-config.mjs's "merge at read time" convention.
+  const HEALTH_FRESH_WINDOW_MS = 15 * 60 * 1000;
+  const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
+  app.get('/ai/health', asyncHandler(async (req, res) => {
+    const since = new Date(Date.now() - HEALTH_WINDOW_MS).toISOString();
+    const [latestByProvider, aggregateSince, recent, keyRows] = await Promise.all([
+      repo.providerHealth.latestByProvider(), repo.providerHealth.aggregateSince(since),
+      repo.providerHealth.recent({ limit: 50 }), repo.adminKeys.list()
+    ]);
+    const aggByProvider = {};
+    aggregateSince.forEach((row) => { aggByProvider[row.provider] = row; });
+    const configuredProviders = new Set(keyRows.map((row) => row.provider));
+
+    const providers = KNOWN_PROVIDERS.map((provider) => {
+      const latest = latestByProvider[provider] || null;
+      const agg = aggByProvider[provider] || { calls: 0, failures: 0, avgLatencyMs: null };
+      const successRatePercent = agg.calls > 0 ? Math.round(((agg.calls - agg.failures) / agg.calls) * 100) : null;
+      const configured = configuredProviders.has(provider);
+      const freshMs = latest ? Date.now() - new Date(latest.createdAt).getTime() : null;
+
+      let status;
+      if (!latest) status = configured ? 'unknown' : 'unconfigured';
+      else if (!latest.ok) status = 'disconnected';
+      else if (successRatePercent != null && successRatePercent < 80) status = 'degraded';
+      else if (freshMs != null && freshMs > HEALTH_FRESH_WINDOW_MS) status = 'idle';
+      else status = 'healthy';
+
+      return {
+        provider, status, configured, lastEventAt: latest ? latest.createdAt : null,
+        lastOk: latest ? latest.ok : null, lastErrorCode: latest ? latest.errorCode : null,
+        lastLatencyMs: latest ? latest.latencyMs : null,
+        last24h: { calls: agg.calls, failures: agg.failures, successRatePercent, avgLatencyMs: agg.avgLatencyMs }
+      };
+    });
+
+    res.json({ providers, recent });
   }));
 
   app.get('/ai/pricing', asyncHandler(async (req, res) => {

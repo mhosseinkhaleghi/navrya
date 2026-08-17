@@ -170,6 +170,21 @@ function NewPostDialog({ i18n, onClose, onPosted }) {
     if (store) store.getProfile().then(setProfile).catch(() => {});
   }, []);
 
+  // AI process registry (A4) - mountedRef template. Only mounted while newPostOpen is true
+  // (CommunityView, below).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('community-new-post', {
+      allowlist: ['text'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'text') setText(String(value ?? '')); }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
   function attach(file) {
     if (pending.length >= 4 || !/^image\//.test(file.type) || file.size > MAX_IMAGE_BYTES) return;
     const reader = new FileReader();
@@ -237,6 +252,23 @@ function CommentsPanel({ i18n, post }) {
   const [draft, setDraft] = React.useState('');
   function load() { window.TradeJournalCommunityStore.listComments(post.id).then(setComments); }
   React.useEffect(() => { load(); }, [post.id]);
+
+  // AI process registry (A4) - per-post id, since several posts' comment panels can legitimately
+  // be expanded at once (unlike every singleton-modal flow above). Mounted only while its
+  // PostCard's own commentsOpen is true, so mounted === open here too.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('community-comment-' + post.id, {
+      allowlist: ['draft'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'draft') setDraft(String(value ?? '')); }
+    });
+    return () => { mountedRef.current = false; };
+  }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function send() {
     const value = draft.trim();
     if (!value) return;

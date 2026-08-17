@@ -194,6 +194,73 @@ test('GET /api/admin/users/:id includes identity, level, achievements, and subsc
   assert.equal(result.body.subscriptions[0].listing.title, 'Sub');
 });
 
+test('GET /api/admin/ai/usage defaults to a 30-day window and honors ?days=, excluding events older than the window', async () => {
+  const admin = await createUser('Admin9');
+  const target = await createUser('Usage Target');
+  await repo.usageEvents.create({ userId: target.id, provider: 'openai', totalTokens: 200, source: 'ai.chat' });
+
+  const defaultWindow = await api('GET', '/api/admin/ai/usage', { userId: admin.id });
+  assert.equal(defaultWindow.status, 200);
+  assert.equal(defaultWindow.body.days, 30);
+  assert.ok(defaultWindow.body.byProviderAndDay.some((row) => row.provider === 'openai' && row.totalTokens === 200));
+  assert.equal(defaultWindow.body.byUser[target.id], 200);
+
+  const narrow = await api('GET', '/api/admin/ai/usage?days=1', { userId: admin.id });
+  assert.equal(narrow.body.days, 1, 'a fresh event must still be inside even a narrow 1-day window');
+  assert.ok(narrow.body.byProviderAndDay.some((row) => row.provider === 'openai'));
+});
+
+test('GET /api/admin/users/:id includes usageByProvider - a per-provider breakdown, not just the one lifetime total', async () => {
+  const admin = await createUser('Admin10');
+  const target = await createUser('Provider Usage Target');
+  await repo.usageEvents.create({ userId: target.id, provider: 'openai', totalTokens: 120, source: 'ai.chat' });
+  await repo.usageEvents.create({ userId: target.id, provider: 'anthropic', totalTokens: 40, source: 'ai.chat' });
+  const result = await api('GET', `/api/admin/users/${target.id}`, { userId: admin.id });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.totalTokensUsed, 160);
+  const byProvider = {};
+  result.body.usageByProvider.forEach((row) => { byProvider[row.provider] = row.totalTokens; });
+  assert.deepEqual(byProvider, { openai: 120, anthropic: 40 });
+});
+
+test('GET /api/admin/ai/health reports unconfigured/unknown/healthy/disconnected per provider, never fabricating a status', async () => {
+  const admin = await createUser('Admin11');
+  // deepseek specifically: every other test in this file touches openai/anthropic/kimi at some
+  // point, and this file's tests share one repo instance cumulatively (see `before()`) - deepseek
+  // is the one provider guaranteed untouched, so this test's own progression (unconfigured ->
+  // unknown -> healthy -> disconnected) is not order-dependent on the rest of the suite.
+  const provider = 'deepseek';
+
+  const empty = await api('GET', '/api/admin/ai/health', { userId: admin.id });
+  assert.equal(empty.status, 200);
+  const emptyRow = empty.body.providers.find((row) => row.provider === provider);
+  assert.equal(emptyRow.status, 'unconfigured', 'no key set and no event ever recorded');
+  assert.equal(emptyRow.configured, false);
+  assert.equal(emptyRow.lastEventAt, null);
+
+  await repo.adminKeys.upsert({ provider, apiKey: 'sk-test-key' });
+  const configuredButUnused = await api('GET', '/api/admin/ai/health', { userId: admin.id });
+  const unknownRow = configuredButUnused.body.providers.find((row) => row.provider === provider);
+  assert.equal(unknownRow.status, 'unknown', 'configured, but never actually called yet');
+
+  await repo.providerHealth.record({ provider, ok: true, latencyMs: 250, source: 'ai.testConnection' });
+  const healthy = await api('GET', '/api/admin/ai/health', { userId: admin.id });
+  const healthyRow = healthy.body.providers.find((row) => row.provider === provider);
+  assert.equal(healthyRow.status, 'healthy');
+  assert.equal(healthyRow.lastOk, true);
+  assert.equal(healthyRow.last24h.calls, 1);
+  assert.equal(healthyRow.last24h.successRatePercent, 100);
+  assert.ok(healthy.body.recent.some((row) => row.provider === provider));
+
+  await repo.providerHealth.record({ provider, ok: false, errorCode: 'DEEPSEEK_401', latencyMs: 90, source: 'ai.chat' });
+  const disconnected = await api('GET', '/api/admin/ai/health', { userId: admin.id });
+  const disconnectedRow = disconnected.body.providers.find((row) => row.provider === provider);
+  assert.equal(disconnectedRow.status, 'disconnected', 'the most recent event failed, so the provider must read as disconnected even though an earlier call succeeded');
+  assert.equal(disconnectedRow.lastErrorCode, 'DEEPSEEK_401');
+  assert.equal(disconnectedRow.last24h.calls, 2);
+  assert.equal(disconnectedRow.last24h.failures, 1);
+});
+
 test('PATCH /api/admin/users/:id/kyc changes kycStatus, rejects an invalid value, and writes one audit log row', async () => {
   const admin = await createUser('Admin8');
   const target = await createUser('KYC Target');

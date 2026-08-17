@@ -6,6 +6,13 @@
   // deliberately - no flow needs internal open/close event plumbing added, just one
   // registration call at the top of its existing open-function.
   var registrations = {};
+  // Bumped on every register() call (including re-registrations of the same processId) so
+  // activeOpenProcess() can prefer whichever open registration was (re-)touched most recently.
+  // Only matters once more than one registered process can legitimately be open at the same
+  // time (e.g. several session scenario cards, or several community comment boxes, expanded
+  // together) - every original singleton-modal flow only ever has one candidate open at all,
+  // so this is a strict improvement with no behavior change for those.
+  var registrationOrderCounter = 0;
 
   function register(processId, config) {
     registrations[processId] = Object.assign({
@@ -14,6 +21,8 @@
       activeStep: function () { return null; },
       applyValue: function () {}
     }, config || {});
+    registrationOrderCounter += 1;
+    registrations[processId]._order = registrationOrderCounter;
   }
 
   function query(processId) {
@@ -24,11 +33,15 @@
 
   function activeOpenProcess() {
     var ids = Object.keys(registrations);
+    var best = null;
     for (var i = 0; i < ids.length; i++) {
       var entry = registrations[ids[i]];
-      if (entry.isOpen()) return { id: ids[i], allowlist: entry.allowlist.slice(), step: entry.activeStep() };
+      if (!entry.isOpen()) continue;
+      if (!best || entry._order > registrations[best]._order) best = ids[i];
     }
-    return null;
+    if (!best) return null;
+    var winner = registrations[best];
+    return { id: best, allowlist: winner.allowlist.slice(), step: winner.activeStep() };
   }
 
   function applyValue(processId, path, value, mode) {

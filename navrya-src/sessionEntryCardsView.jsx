@@ -441,6 +441,34 @@ function ScenarioCard({ api, session, entry, scenario }) {
     saveAndOpen(api, session, 'scenario_autofilled', tr('autoFill'), scenario.id, true);
   }
 
+  // AI process registry (A4) - per-scenario id, since several scenario cards can legitimately be
+  // expanded at once (this is exactly the multi-instance case ai-process-registry.js's
+  // most-recently-registered tiebreak was added for). mountedRef template - this component
+  // genuinely mounts/unmounts on every saveAndOpen()-triggered rebuild, so a fresh effect run
+  // (and a fresh registration) happens on every one of those, same as a real navigation would.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('session-scenario-' + scenario.id, {
+      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'invalidationNote', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit'],
+      isOpen: () => mountedRef.current && open,
+      applyValue: (path, value) => {
+        if (['title', 'description', 'evidence', 'problem', 'trigger', 'invalidationNote'].indexOf(path) > -1) { update({ [path]: String(value ?? '') }, 'note_edited', tr(path) || path); return; }
+        if (path === 'positionType') { setPositionType(String(value ?? '')); return; }
+        if (path === 'entryPrices') {
+          plan.entryPrices = (Array.isArray(value) ? value : String(value).split(',')).map((item) => Number(String(item).trim())).filter((n) => !Number.isNaN(n));
+          saveAndOpen(api, session, 'position_edited', tr('entries'), scenario.id, true);
+          return;
+        }
+        if (path === 'stopLoss') { plan.stopLoss = value === '' || value == null ? null : Number(value); saveAndOpen(api, session, 'position_edited', tr('stop'), scenario.id, true); return; }
+        if (path === 'takeProfit') { plan.takeProfit = value === '' || value == null ? null : Number(value); saveAndOpen(api, session, 'position_edited', tr('target'), scenario.id, true); }
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, [scenario.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <Panel variant={open ? 'active' : 'base'} radius={10} style={{ overflow: 'hidden' }}>
       <header
@@ -668,6 +696,24 @@ function TimelineEntryCard({ session: rawSession, entry, api }) {
   }
   function commitNote(value) { entry.note = value; saveAndOpen(api, session, 'note_edited', tr('note'), null, false); }
   function commitMovement(value) { entry.movementNote = value; saveAndOpen(api, session, 'note_edited', tr('note'), null, false); }
+
+  // AI process registry (A4) - per-entry id, same multi-instance/mountedRef reasoning as
+  // ScenarioCard above (several timeline entry cards can be visible on screen at once).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('session-entry-' + entry.id, {
+      allowlist: ['note', 'movementNote'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'note') commitNote(String(value ?? ''));
+        else if (path === 'movementNote') commitMovement(String(value ?? ''));
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, [entry.id]); // eslint-disable-line react-hooks/exhaustive-deps
   function setAnnotated(value) { state.showAnnotated = value; tick(); }
 
   return (

@@ -27,6 +27,27 @@ function PublishFlowModal({ i18n, options, onClose }) {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(false);
 
+  // AI process registry (A4) - mountedRef template. Only one publish flow modal is ever mounted
+  // at a time (openPublishFlow()'s own single container), matching every other singleton modal.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('publish-flow', {
+      allowlist: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'title') setTitle(String(value ?? ''));
+        else if (path === 'description') setDescription(String(value ?? ''));
+        else if (path === 'priceAmount') setPrice(value === '' || value == null ? '' : String(value));
+        else if (path === 'priceCurrency') { if (currencies.indexOf(value) > -1) setCurrency(value); }
+        else if (path === 'previewItemCount') setPreviewCount(value === '' || value == null ? '' : String(value));
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   function submit() {
     const t = title.trim();
     if (!t) return;

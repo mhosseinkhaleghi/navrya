@@ -51,7 +51,7 @@
     });
     var payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'AI_REQUEST_FAILED');
-    if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage });
+    if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage, source: 'chatDock.chat' });
     if (historyStore) {
       var usageValue = payload.usage || {};
       var usedTokens = typeof usageValue.totalTokens === 'number' ? usageValue.totalTokens : (usageValue.promptTokens || 0) + (usageValue.completionTokens || 0);
@@ -74,7 +74,7 @@
     });
     var result = await response.json();
     if (!response.ok) throw new Error(result.error || 'AI_REQUEST_FAILED');
-    if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: result.provider, usage: result.usage });
+    if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: result.provider, usage: result.usage, source: 'chatDock.extractFields' });
     return result;
   }
 

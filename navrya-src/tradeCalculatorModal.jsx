@@ -337,6 +337,41 @@ function TradeCalculatorModal({ onClose }) {
   const fileInputRef = React.useRef(null);
   const readTokenRef = React.useRef(0);
 
+  // AI process registry (A4) - mountedRef template, same as logEmotionModal.jsx/closePositionModal.jsx.
+  // Numeric setters are routed through the same {entryPrice:'entry', stopLoss:'stop'}-style
+  // translation table tradeLogModal.jsx already uses, since this modal's own local state names
+  // (entry/stop/margin/dir) differ from the allowlist's canonical Trade field names.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('trade-calculator', {
+      allowlist: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'riskAmount', 'leverage', 'feeType', 'feePercent', 'takeProfits', 'linkedStrategyId'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'direction') { setDir(value === 'short' ? 'short' : 'long'); return; }
+        if (path === 'marginMode') { setMargin(value === 'cross' ? 'cross' : 'isolated'); return; }
+        if (path === 'entryPrice') { setEntry(value === '' || value == null ? '' : String(value)); return; }
+        if (path === 'stopLoss') { setStop(value === '' || value == null ? '' : String(value)); return; }
+        if (path === 'accountBalance') { setBalance(value === '' || value == null ? '' : String(value)); return; }
+        if (path === 'riskPercent') { pickRisk(Number(value)); return; }
+        if (path === 'riskAmount') { typeRiskAmount(value === '' || value == null ? '' : String(value)); return; }
+        if (path === 'leverage') { setLeverage(value === '' || value == null ? '' : String(value)); return; }
+        if (path === 'feeType') { handleFeeType(value === 'maker' ? 'maker' : 'taker'); return; }
+        if (path === 'feePercent') { setFeePercent(value === '' || value == null ? '' : String(value)); return; }
+        if (path === 'linkedStrategyId') { handleStrategy(value || ''); return; }
+        // takeProfits: applied as a whole array [{price, portionPercent|portion}, ...] - a
+        // single AI suggestion replacing the full target set, mirroring how the extract-fields
+        // screenshot flow above already rebuilds `tps` wholesale rather than patching one index.
+        if (path === 'takeProfits' && Array.isArray(value) && value.length) {
+          setTps(value.map((tp) => ({ price: tp.price === '' || tp.price == null ? '' : String(tp.price), portion: String(tp.portionPercent ?? tp.portion ?? '') })));
+        }
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const out = computeOut({ dir, margin, entry, stop, balance, risk, riskAmountInput, riskMode, leverage, feeType, feePercent, tps });
 
   // The risk-amount field always reflects the live solved value while the trader is driving it

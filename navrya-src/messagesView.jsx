@@ -69,6 +69,22 @@ function NewMessageDialog({ i18n, onClose, onSent }) {
   const [text, setText] = React.useState('');
   const [sending, setSending] = React.useState(false);
 
+  // AI process registry (A4) - mountedRef template. Only mounted while newMessageOpen is true
+  // (MessagesView, below), so mounted === open. recipient is a picked-user object, not really
+  // AI-fillable free text, so only the message body is on the allowlist.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('messages-compose', {
+      allowlist: ['text'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'text') setText(String(value ?? '')); }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
   function send() {
     const value = text.trim();
     if (!recipient || !value) return;
@@ -170,6 +186,23 @@ function ThreadPanel({ i18n, threadId, reloadKey }) {
   const [draft, setDraft] = React.useState('');
   const [reload, setReload] = React.useState(0);
   React.useEffect(() => { setData(null); window.TradeJournalCommunityStore.getThread(threadId).then(setData); }, [threadId, reloadKey, reload]);
+
+  // AI process registry (A4) - mountedRef template. ThreadPanel is only mounted while a
+  // threadId is selected (MessagesView, below); switching between threads updates props rather
+  // than remounting, which is exactly what's wanted here - the process stays "open" the whole
+  // time a conversation is showing, regardless of which one.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('messages-thread-reply', {
+      allowlist: ['draft'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'draft') setDraft(String(value ?? '')); }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
 
   if (!data) return <Panel variant="base" radius={12} style={{ minHeight: 560 }} />;
   const { thread, messages } = data;

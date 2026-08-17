@@ -225,6 +225,26 @@ function WinsLossesPanel({ i18n, listing }) {
 function RatingsPanel({ i18n, listing, ratingsData, isSeller, unlocked, onRated }) {
   const [ratingValue, setRatingValue] = React.useState('5');
   const [reviewText, setReviewText] = React.useState('');
+
+  // AI process registry (A4) - this panel is always mounted while a listing's detail view is
+  // open, but the rating form itself only makes sense once !isSeller && unlocked, so isOpen
+  // reflects that condition directly rather than mount/unmount. Re-registers whenever those two
+  // props change (idempotent, same "refresh on relevant render" convention the vanilla-JS flows
+  // in trade-ui.js/pattern-registry.js already use), so a stale isSeller/unlocked never lingers.
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('marketplace-rate-' + listing.id, {
+      allowlist: ['ratingValue', 'reviewText'],
+      isOpen: () => !isSeller && unlocked,
+      applyValue: (path, value) => {
+        if (path === 'ratingValue') { const n = Number(value); if (n >= 1 && n <= 5) setRatingValue(String(Math.round(n))); }
+        else if (path === 'reviewText') setReviewText(String(value ?? ''));
+      }
+    });
+    return undefined;
+  }, [listing.id, isSeller, unlocked]);
+
   function submit() {
     window.TradeJournalCommunityStore.rateListing(listing.id, Number(ratingValue), reviewText.trim()).then(() => { setReviewText(''); onRated(); });
   }

@@ -139,3 +139,59 @@ test('memory repo health() is honestly synthetic, never claims a real database c
   assert.equal(health.dbOk, true);
   assert.deepEqual(health.migrations, []);
 });
+
+// --- Section 7.16 follow-up: usageEvents.aggregateByUserAndProvider + providerHealth ---
+
+test('usageEvents.aggregateByUserAndProvider breaks a single user\'s tokens down per provider, not just one lifetime total', async () => {
+  const repo = createMemoryRepo();
+  const user = await seedUser(repo);
+  await repo.usageEvents.create({ userId: user.id, provider: 'openai', totalTokens: 100, source: 'patterns.chat' });
+  await repo.usageEvents.create({ userId: user.id, provider: 'openai', totalTokens: 50, source: 'trades.analyze' });
+  await repo.usageEvents.create({ userId: user.id, provider: 'anthropic', totalTokens: 30, source: 'ai.chat' });
+  const other = await seedUser(repo, 'Other');
+  await repo.usageEvents.create({ userId: other.id, provider: 'openai', totalTokens: 999, source: 'ai.chat' });
+  const byProvider = await repo.usageEvents.aggregateByUserAndProvider(user.id);
+  const byProviderMap = {};
+  byProvider.forEach((row) => { byProviderMap[row.provider] = row.totalTokens; });
+  assert.deepEqual(byProviderMap, { openai: 150, anthropic: 30 }, 'must sum per-provider for this user only, unaffected by another user\'s usage');
+});
+
+test('providerHealth.record stores an event and latestByProvider() reports the most recent one per provider', async () => {
+  const repo = createMemoryRepo();
+  await repo.providerHealth.record({ provider: 'openai', ok: true, latencyMs: 400, source: 'ai.chat' });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await repo.providerHealth.record({ provider: 'openai', ok: false, errorCode: 'OPENAI_401', latencyMs: 120, source: 'ai.testConnection' });
+  await repo.providerHealth.record({ provider: 'anthropic', ok: true, latencyMs: 900, source: 'ai.chat' });
+  const latest = await repo.providerHealth.latestByProvider();
+  assert.equal(latest.openai.ok, false, 'must report the LAST event for a provider, not the first');
+  assert.equal(latest.openai.errorCode, 'OPENAI_401');
+  assert.equal(latest.anthropic.ok, true);
+  assert.equal(latest.kimi, undefined, 'a provider with no events at all must simply be absent, never fabricated');
+});
+
+test('providerHealth.aggregateSince computes calls/failures/avgLatencyMs per provider within the window, ignoring older events', async () => {
+  const repo = createMemoryRepo();
+  const old = { provider: 'openai', ok: true, latencyMs: 1000, source: 'ai.chat' };
+  await repo.providerHealth.record(old);
+  const cutoff = new Date(Date.now() + 5).toISOString(); // everything recorded so far is now "before" this cutoff
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await repo.providerHealth.record({ provider: 'openai', ok: true, latencyMs: 300, source: 'ai.chat' });
+  await repo.providerHealth.record({ provider: 'openai', ok: false, errorCode: 'OPENAI_500', latencyMs: 100, source: 'ai.chat' });
+  const agg = await repo.providerHealth.aggregateSince(cutoff);
+  const openai = agg.find((row) => row.provider === 'openai');
+  assert.equal(openai.calls, 2, 'the event recorded before the cutoff must not count');
+  assert.equal(openai.failures, 1);
+  assert.equal(openai.avgLatencyMs, 200);
+});
+
+test('providerHealth.recent returns newest-first across all providers, capped at the given limit', async () => {
+  const repo = createMemoryRepo();
+  for (let i = 0; i < 5; i += 1) {
+    await repo.providerHealth.record({ provider: i % 2 ? 'anthropic' : 'openai', ok: true, latencyMs: i, source: 'ai.chat' });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  const recent = await repo.providerHealth.recent({ limit: 3 });
+  assert.equal(recent.length, 3);
+  assert.equal(recent[0].latencyMs, 4, 'newest event (latencyMs:4, recorded last) must come first');
+  assert.equal(recent[2].latencyMs, 2);
+});

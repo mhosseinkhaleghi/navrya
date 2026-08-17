@@ -13,6 +13,14 @@ after(() => { server.close(); });
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
+// callProvider() now also fires a fire-and-forget health-event report to
+// /internal/ai-health-event on every call (success or failure) - see reportProviderHealth() in
+// server/pattern-ai-server.mjs. Tests below that capture "the" fetch call's url/body via a
+// closure variable must ignore that second call, or it silently clobbers what they captured from
+// the real provider call. This neutral stub is what each of those tests returns for it.
+const HEALTH_EVENT_URL = '/internal/ai-health-event';
+const neutralHealthEventResponse = { ok: true, json: async () => ({}) };
+
 function withEnv(key, value, fn) {
   const original = process.env[key];
   if (value === undefined) delete process.env[key]; else process.env[key] = value;
@@ -25,6 +33,7 @@ test('falls back to the server env key when no client key is supplied', async ()
   await withEnv('OPENAI_API_KEY', 'env-key-123', async () => {
     let seenAuth = null;
     globalThis.fetch = async (_url, options) => {
+      if (String(_url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
       seenAuth = options.headers.Authorization;
       return { ok: true, json: async () => ({ output_text: JSON.stringify({ reply: 'hi' }), usage: null }) };
     };
@@ -37,6 +46,7 @@ test('a client-supplied key overrides the env default for that call only, and is
   await withEnv('OPENAI_API_KEY', 'env-key-abc', async () => {
     const seenAuths = [];
     globalThis.fetch = async (_url, options) => {
+      if (String(_url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
       seenAuths.push(options.headers.Authorization);
       return { ok: true, json: async () => ({ output_text: JSON.stringify({ ok: true }), usage: null }) };
     };
@@ -57,6 +67,7 @@ test('maps OpenAI Responses usage into the normalized envelope', async () => {
 test('maps Anthropic tool-use output and computes totalTokens from input+output when the provider omits it', async () => {
   let calledUrl = null;
   globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     calledUrl = url;
     return { ok: true, json: async () => ({ content: [{ type: 'tool_use', input: { reply: 'hello' } }], usage: { input_tokens: 20, output_tokens: 8 } }) };
   };
@@ -80,6 +91,7 @@ test('a Kimi/DeepSeek response missing a required schema key throws SCHEMA_VALID
 test('DeepSeek drops unsupported image input and appends an honest note rather than silently ignoring it', async () => {
   let sentBody = null;
   globalThis.fetch = async (_url, options) => {
+    if (String(_url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     sentBody = JSON.parse(options.body);
     return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: 'ok' }) } }], usage: null }) };
   };
@@ -95,6 +107,7 @@ test('DeepSeek drops unsupported image input and appends an honest note rather t
 test('Kimi (vision-capable) keeps image input as an image_url content part instead of dropping it', async () => {
   let sentBody = null;
   globalThis.fetch = async (_url, options) => {
+    if (String(_url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     sentBody = JSON.parse(options.body);
     return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: 'ok' }) } }], usage: null }) };
   };
@@ -111,6 +124,7 @@ test('an unknown/missing provider falls back to openai', async () => {
   await withEnv('OPENAI_API_KEY', 'env-key-fallback', async () => {
     let calledUrl = null;
     globalThis.fetch = async (url) => {
+      if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
       calledUrl = url;
       return { ok: true, json: async () => ({ output_text: JSON.stringify({ reply: 'x' }), usage: null }) };
     };
@@ -133,4 +147,59 @@ test('callOpenAI/callAnthropic/callOpenAICompatible are exported directly for lo
   assert.equal(typeof callOpenAI, 'function');
   assert.equal(typeof callAnthropic, 'function');
   assert.equal(typeof callOpenAICompatible, 'function');
+});
+
+// --- Section 7.16 follow-up: per-provider health-event reporting ---
+
+test('callProvider() reports a health event with ok:true, the real latency and source, on a successful call', async () => {
+  const healthCalls = [];
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) { healthCalls.push(JSON.parse(options.body)); return neutralHealthEventResponse; }
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ reply: 'hi' }), usage: null }) };
+  };
+  await callProvider('openai', 'k', undefined, { input: [], text: { format: { schema: { required: [] } } } }, 'test.source');
+  assert.equal(healthCalls.length, 1, 'exactly one health event must be reported per callProvider() call');
+  assert.equal(healthCalls[0].provider, 'openai');
+  assert.equal(healthCalls[0].ok, true);
+  assert.equal(healthCalls[0].errorCode, null);
+  assert.equal(healthCalls[0].source, 'test.source');
+  assert.equal(typeof healthCalls[0].latencyMs, 'number');
+});
+
+test('callProvider() reports a health event with ok:false and the real error code on a provider failure, and still rejects with the original error', async () => {
+  const healthCalls = [];
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) { healthCalls.push(JSON.parse(options.body)); return neutralHealthEventResponse; }
+    return { ok: false, status: 401, json: async () => ({ error: { message: 'bad key' } }) };
+  };
+  await assert.rejects(
+    () => callProvider('openai', 'k', undefined, { input: [], text: { format: { schema: { required: [] } } } }, 'test.source'),
+    /bad key/
+  );
+  assert.equal(healthCalls.length, 1);
+  assert.equal(healthCalls[0].ok, false);
+  assert.equal(healthCalls[0].errorCode, 'bad key');
+});
+
+test('callProvider() also reports a health event (ok:false, *_API_KEY_MISSING) when no key is available at all, before ever reaching a provider', async () => {
+  const healthCalls = [];
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) { healthCalls.push(JSON.parse(options.body)); return neutralHealthEventResponse; }
+    throw new Error('must never reach a provider fetch when no key resolved at all');
+  };
+  await withEnv('ANTHROPIC_API_KEY', undefined, async () => {
+    await assert.rejects(() => callProvider('anthropic', undefined, undefined, { input: [], text: { format: { schema: { required: [] } } } }, 'test.source'));
+  });
+  assert.equal(healthCalls.length, 1);
+  assert.equal(healthCalls[0].ok, false);
+  assert.equal(healthCalls[0].errorCode, 'ANTHROPIC_API_KEY_MISSING');
+});
+
+test('a rejected/unreachable health-event report never delays or changes callProvider()\'s own result', async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) throw new Error('ECONNREFUSED - Community API not running');
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ reply: 'hi' }), usage: null }) };
+  };
+  const result = await callProvider('openai', 'k', undefined, { input: [], text: { format: { schema: { required: [] } } } }, 'test.source');
+  assert.deepEqual(result.data, { reply: 'hi' }, 'the real AI response must be returned unchanged even though the health report failed');
 });

@@ -196,6 +196,21 @@ function AiPanelBuilderSection({ t, lang, character }) {
   const aiSettings = window.TradeJournalAISettingsStore;
   const configured = aiSettings ? !!aiSettings.getKey(aiSettings.activeProvider()) : false;
 
+  // AI process registry (A4) - mountedRef template. This section is always present while the
+  // Settings page is open (no separate show/hide toggle), so mounted === "on this settings tab".
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-ai-panel-builder', {
+      allowlist: ['prompt'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'prompt') setPrompt(String(value ?? '')); }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
   async function generate() {
     const text = prompt.trim();
     if (!text || busy) return;
@@ -411,6 +426,26 @@ function RegionLanguageSection({ t, lang, store }) {
     { key: 'currency', label: t('currencyLabel'), hint: t('currencyHint'), options: ['USD', 'EUR', 'AED', 'IRR', 'GBP'] },
     { key: 'weekStart', label: t('weekLabel'), hint: t('weekHint'), options: ['Saturday', 'Sunday', 'Monday'] }
   ];
+
+  // AI process registry (A4) - mountedRef template. Every field here is a validated <Select>, so
+  // applyValue only ever applies a suggested value when it's one of that field's own real
+  // options - never lets AI-fill push region prefs into an invalid state.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-region-language', {
+      allowlist: rows.map((row) => 'region.' + row.key),
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        const row = rows.find((r) => 'region.' + r.key === path);
+        if (row && row.options.indexOf(value) > -1) { const p = {}; p[row.key] = value; patch(p); }
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <SectionShell icon="globe" title={t('regionTitle')}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -502,6 +537,26 @@ function TradingDefaultsSection({ t, lang }) {
     { key: 'leverageCap', label: t('leverageCapLabel'), value: settings.leverageCap + '×', step: 5, min: 1, max: 100 },
     { key: 'maxTradesPerSession', label: t('tradesPerSessionLabel'), value: String(settings.maxTradesPerSession), step: 1, min: 1, max: 20 }
   ];
+
+  // AI process registry (A4) - mountedRef template. A suggested value is clamped into that row's
+  // own real [min,max] before being applied, same discipline every +/- stepper button already has.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-trading-defaults', {
+      allowlist: rows.map((row) => row.key),
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        const row = rows.find((r) => r.key === path);
+        const n = Number(value);
+        if (row && Number.isFinite(n)) patch(row.key, Math.min(row.max, Math.max(row.min, n)));
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <SectionShell icon="execution" title={t('tradingDefaultsTitle')}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

@@ -314,3 +314,42 @@ test('expanding a user row fetches the enriched GET /users/:id detail and render
 
   assert.deepEqual(kycPatchBody, { kycStatus: 'verified' }, 'Save must PATCH /api/admin/users/:id/kyc, not the general /users/:id route');
 });
+
+test('the AI tab renders per-provider health badges, a Test now action, a recent-events feed, and a top-users table from GET /ai/health and /users', async () => {
+  // Empty usage/pricing on purpose - keeps both bar-chart cards on their "no usage yet" hint
+  // branch (this sandbox's FakeNode has no real <canvas> 2D context to draw into), while still
+  // exercising the new health/recent-events/top-users sections this test actually targets.
+  const healthResponse = {
+    providers: [
+      { provider: 'openai', status: 'healthy', configured: true, lastEventAt: '2026-08-17T10:00:00Z', lastOk: true, lastErrorCode: null, lastLatencyMs: 220, last24h: { calls: 5, failures: 0, successRatePercent: 100, avgLatencyMs: 210 } },
+      { provider: 'anthropic', status: 'disconnected', configured: true, lastEventAt: '2026-08-17T09:00:00Z', lastOk: false, lastErrorCode: 'ANTHROPIC_401', lastLatencyMs: 90, last24h: { calls: 2, failures: 1, successRatePercent: 50, avgLatencyMs: 100 } },
+      { provider: 'kimi', status: 'unconfigured', configured: false, lastEventAt: null, lastOk: null, lastErrorCode: null, lastLatencyMs: null, last24h: { calls: 0, failures: 0, successRatePercent: null, avgLatencyMs: null } },
+      { provider: 'deepseek', status: 'unknown', configured: true, lastEventAt: null, lastOk: null, lastErrorCode: null, lastLatencyMs: null, last24h: { calls: 0, failures: 0, successRatePercent: null, avgLatencyMs: null } }
+    ],
+    recent: [{ provider: 'openai', ok: true, errorCode: null, latencyMs: 220, source: 'ai.testConnection', createdAt: '2026-08-17T10:00:00Z' }]
+  };
+  const topUsersResponse = { users: [{ id: 'u1', displayName: 'Heavy User', totalTokensUsed: 4200 }], total: 1, page: 1, pageSize: 10, onlineCount: 0 };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/ai/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(healthResponse) });
+    if (u.indexOf('/ai/usage') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ byProviderAndDay: [], byUser: {}, days: 14 }) });
+    if (u.indexOf('/ai/keys') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([{ provider: 'openai', isSet: true, updatedAt: null }]) });
+    if (u.indexOf('/ai/pricing') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (u.indexOf('/finance/overview') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ mockRevenue: { total: 0, mock: true }, aiCostByProvider: [], remainingBudgetByProvider: [] }) });
+    if (u.indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(topUsersResponse) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
+  };
+  const { app } = await load({ count: 0 }, fetchImpl);
+  const node = await app.aiTab();
+  const texts = findAll(node, () => true).map((n) => n.textContent).join(' | ');
+  assert.match(texts, /Healthy/, 'a provider with a fresh successful event must show the Healthy badge');
+  assert.match(texts, /Disconnected/, 'a provider whose most recent event failed must show the Disconnected badge, even with configured:true');
+  assert.match(texts, /Not configured/, 'a provider with no key set and no successful event must read as Not configured');
+  assert.match(texts, /Not tested yet/, 'a configured provider with no event yet must read as Not tested yet, not Healthy');
+  assert.match(texts, /ANTHROPIC_401/, 'the real error code from the last failed event must be shown for a disconnected provider');
+  assert.match(texts, /ai.testConnection/, 'the recent-events feed must render the real source label');
+  assert.match(texts, /Heavy User/, 'the top-users table must render the real display name from GET /users');
+  assert.match(texts, /4,200|4200/, 'the top-users table must render the real token total');
+  const testButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test now');
+  assert.equal(testButtons.length, 4, 'every one of the four providers must have its own Test now action');
+});

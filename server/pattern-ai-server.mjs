@@ -308,27 +308,51 @@ async function callOpenAICompatible(provider, payload, apiKey, model) {
   }
 }
 
+// Admin panel (7.16 follow-up): reports every callProvider() outcome (success or failure) to the
+// Community API's internal health-event route, the same internal-HTTP-bridge shape adminKeys()
+// above already uses, so this deliberately DB-free gateway never needs a direct Postgres
+// dependency just to record health data. Fire-and-forget on purpose - NEVER awaited by
+// callProvider, and every failure is swallowed here, since a down/unreachable Community API must
+// never delay or break the actual AI response a browser is waiting on.
+function reportProviderHealth(event) {
+  try {
+    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/internal/ai-health-event';
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
+    fetch(url, { method: 'POST', headers, body: JSON.stringify(event), signal: AbortSignal.timeout(3000) }).catch(() => {});
+  } catch (_) { /* never let health reporting break or delay the real AI call */ }
+}
+
 // The single entry point every handler below calls instead of callOpenAI directly.
 // Resolves provider -> API key (client override for this call only, else an admin-configured
 // key from the Community API if one has been set, else server env default) -> model (client
 // override, else provider env default, else hardcoded default), dispatches to the matching
-// per-provider caller, and returns a normalized envelope.
-async function callProvider(providerInput, apiKeyOverride, modelOverride, payload) {
+// per-provider caller, and returns a normalized envelope. `source` (a short 'namespace.method'
+// label, one per handler below) is purely for the health-event feed/admin "recent AI events"
+// table - it plays no role in key/model resolution.
+async function callProvider(providerInput, apiKeyOverride, modelOverride, payload, source) {
   const provider = resolveProviderName(providerInput);
-  let key = typeof apiKeyOverride === 'string' && apiKeyOverride.trim() ? apiKeyOverride.trim() : '';
-  if (!key) {
-    const configured = await adminKeys();
-    key = (configured && configured[provider]) || '';
+  const startedAt = Date.now();
+  try {
+    let key = typeof apiKeyOverride === 'string' && apiKeyOverride.trim() ? apiKeyOverride.trim() : '';
+    if (!key) {
+      const configured = await adminKeys();
+      key = (configured && configured[provider]) || '';
+    }
+    if (!key) key = process.env[providerEnvKey[provider]] || '';
+    if (!key) throw new Error(providerEnvKey[provider] + '_MISSING');
+    const model = (typeof modelOverride === 'string' && modelOverride.trim())
+      ? modelOverride.trim()
+      : (process.env[providerEnvModel[provider]] || providerDefaultModel[provider]);
+    const outcome = provider === 'openai' ? await callOpenAI(payload, key, model)
+      : provider === 'anthropic' ? await callAnthropic(payload, key, model)
+      : await callOpenAICompatible(provider, payload, key, model);
+    reportProviderHealth({ provider, ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source });
+    return { data: outcome.data, usage: outcome.usage, provider, model };
+  } catch (error) {
+    reportProviderHealth({ provider, ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source });
+    throw error;
   }
-  if (!key) key = process.env[providerEnvKey[provider]] || '';
-  if (!key) throw new Error(providerEnvKey[provider] + '_MISSING');
-  const model = (typeof modelOverride === 'string' && modelOverride.trim())
-    ? modelOverride.trim()
-    : (process.env[providerEnvModel[provider]] || providerDefaultModel[provider]);
-  const outcome = provider === 'openai' ? await callOpenAI(payload, key, model)
-    : provider === 'anthropic' ? await callAnthropic(payload, key, model)
-    : await callOpenAICompatible(provider, payload, key, model);
-  return { data: outcome.data, usage: outcome.usage, provider, model };
 }
 
 const stageFormat = {
@@ -595,7 +619,7 @@ async function generateStages(body) {
       }
     ],
     text: { format: stageFormat }
-  });
+  }, 'patterns.generateStages');
   return { stages: result.stages || [], provider, model, usage };
 }
 
@@ -621,7 +645,7 @@ async function trainingChat(body) {
       }
     ],
     text: { format: chatFormat }
-  });
+  }, 'patterns.chat');
   return { reply: result.reply || '', suggestedStages: result.suggestedStages || [], provider, model, usage };
 }
 
@@ -642,7 +666,7 @@ async function summarizeStrategyEducation(body) {
       }
     ],
     text: { format: strategySummaryFormat }
-  });
+  }, 'strategyEducation.summarize');
   return { summary: result.summary, provider, model, usage };
 }
 
@@ -668,7 +692,7 @@ async function strategyEducationChat(body) {
       }
     ],
     text: { format: strategyChatFormat }
-  });
+  }, 'strategyEducation.chat');
   return { reply: result.reply || '', summary: result.summary, suggestions: result.suggestions || [], provider, model, usage };
 }
 
@@ -689,7 +713,7 @@ async function strategyFromEvent(body) {
       }
     ],
     text: { format: strategyFromEventFormat }
-  });
+  }, 'strategyEducation.fromEvent');
   return { proposal: result, provider, model, usage };
 }
 
@@ -716,7 +740,7 @@ async function psychologyAnalysis(body) {
       { role: 'user', content: [{ type: 'input_text', text: `Closed trade records:\n${JSON.stringify(trades)}` }] }
     ],
     text: { format: psychologyFormat }
-  });
+  }, 'trades.psychologyAnalysis');
   return { ...result, sampleSize: trades.length, provider, model, usage };
 }
 
@@ -751,7 +775,7 @@ async function mentalHealthChat(body) {
       { role: 'user', content: [{ type: 'input_text', text: `${String(body.message || '').trim()}\n\nKnown field paths you may target: ${JSON.stringify(mentalHealthPaths)}\n\nCurrent context:\n${mentalHealthContext(body)}` }] }
     ],
     text: { format: mentalHealthChatFormat }
-  });
+  }, 'mentalHealth.chat');
   return { reply: result.reply || '', distressFlag: !!result.distressFlag, suggestions: result.suggestions || [], provider, model, usage };
 }
 
@@ -766,7 +790,7 @@ async function mentalHealthEducationCard(body) {
       { role: 'user', content: [{ type: 'input_text', text: `Pattern: ${String(body.biasType || '')}\nUser's own evidence: ${JSON.stringify(body.evidence || {})}` }] }
     ],
     text: { format: educationCardFormat }
-  });
+  }, 'mentalHealth.educationCard');
   return { ...result, provider, model, usage };
 }
 
@@ -785,7 +809,7 @@ async function analyzeTrade(body) {
       { role: 'user', content: [{ type: 'input_text', text: `Trade context:\n${JSON.stringify(context)}` }, ...imageContent(body.images)] }
     ],
     text: { format: tradeAnalysisFormat }
-  });
+  }, 'trades.analyze');
   return { ...result, provider, model, usage };
 }
 
@@ -807,7 +831,7 @@ async function dockChat(body) {
       { role: 'user', content: [{ type: 'input_text', text: userText }] }
     ],
     text: { format: dockChatFormatFor(activeProcess) }
-  });
+  }, 'ai.chat');
   return { reply: result.reply || '', suggestions: result.suggestions || [], provider, model, usage };
 }
 
@@ -818,7 +842,7 @@ async function testConnection(body) {
       { role: 'user', content: [{ type: 'input_text', text: 'ping' }] }
     ],
     text: { format: testConnectionFormat }
-  });
+  }, 'ai.testConnection');
   return { ok: !!result.ok, provider, model, usage };
 }
 
@@ -830,7 +854,7 @@ async function extractTradeFields(body) {
       { role: 'user', content: [{ type: 'input_text', text: 'Extract the trade setup from this chart.' }, ...imageContent(body.images)] }
     ],
     text: { format: tradeFieldsExtractionFormat }
-  });
+  }, 'trades.extractFields');
   return {
     direction: result.direction ?? null, entryPrice: result.entryPrice ?? null, stopLoss: result.stopLoss ?? null,
     takeProfits: result.takeProfits || [], leverage: result.leverage ?? null,

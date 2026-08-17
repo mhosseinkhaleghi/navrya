@@ -954,6 +954,26 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
   }, [pattern.referenceScreenshots.map((s) => s.id).join(',')]);
 
   function patch(fields) { Object.assign(pattern, fields); onSave(pattern); setSavedAt(Date.now()); }
+
+  // AI process registry (A4) - reuses the SAME process id pattern-registry.js's legacy editor()
+  // already registers ('pattern-editor-' + pattern.id), with the exact same allowlist
+  // (patternTypes.patternStagePaths - name/description only), so AI-fill works identically
+  // regardless of which surface is mounted, mirroring StrategyDetailsTab's reasoning above.
+  // Mounted only while dtab === 'details' (DetailView, above).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry, patternTypes = window.TradeJournalPatternTypes;
+    if (!registry || !patternTypes) return undefined;
+    const allowlist = (patternTypes.patternStagePaths || []).slice();
+    registry.register('pattern-editor-' + pattern.id, {
+      allowlist,
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'name' && allowlist.indexOf('name') > -1) patch({ name: String(value ?? '') }); else if (path === 'description' && allowlist.indexOf('description') > -1) patch({ description: String(value ?? '') }); }
+    });
+    return () => { mountedRef.current = false; };
+  }, [pattern.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function patchStage(index, text) { const stages = pattern.stages.slice(); stages[index] = { ...stages[index], text }; patch({ stages }); }
   function deleteStage(index) { patch({ stages: pattern.stages.filter((_, i) => i !== index) }); }
   function addStage() { if (!newStep.trim()) return; patch({ stages: pattern.stages.concat([{ id: window.TradeJournalPatternStore.createStage(newStep.trim(), pattern.stages.length + 1).id, order: pattern.stages.length + 1, text: newStep.trim() }]) }); setNewStep(''); }
@@ -1041,6 +1061,27 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
 function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
   const [savedAt, setSavedAt] = React.useState(null);
   function set(path, value) { window.TradeJournalStrategyEducationStore.setPath(strategy, path, value); onSave(strategy); setSavedAt(Date.now()); }
+
+  // AI process registry (A4) - reuses the SAME process id strategy-education.js's legacy
+  // renderDetail() already registers ('strategy-editor-' + strategy.id), with the exact same
+  // allowlist (strategyTypes.textPaths+numericPaths), so AI-fill works identically regardless of
+  // which of the two surfaces (this NAVRYA hub, or the legacy DOM detail page) is actually
+  // mounted - closing the gap where routing (panel-system.js -> TradeJournalNavryaCanvas ->
+  // this file) may mean the legacy registration never fires in normal navigation. Mounted only
+  // while dtab === 'details' (DetailView, above), so mount === open.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry, strategyTypes = window.TradeJournalStrategyEducationTypes;
+    if (!registry || !strategyTypes) return undefined;
+    const allowlist = (strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []);
+    registry.register('strategy-editor-' + strategy.id, {
+      allowlist,
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (allowlist.indexOf(path) > -1) set(path, value); }
+    });
+    return () => { mountedRef.current = false; };
+  }, [strategy.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const p = strategy.positionManagement, r = strategy.riskManagement, o = strategy.overallFramework;
   const groups = [
     { icon: 'execution', title: tr(lang, 'groupPositionTitle'), sub: tr(lang, 'groupPositionSub'),

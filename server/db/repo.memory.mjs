@@ -10,7 +10,7 @@ export function createMemoryRepo() {
     users: new Map(), credentials: new Map(), posts: new Map(), comments: new Map(), likes: new Map(),
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(),
-    sessions: new Map(), usageEvents: new Map(), providerPricing: new Map(),
+    sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map()
@@ -404,6 +404,58 @@ export function createMemoryRepo() {
         buckets.set(e.provider, bucket);
       });
       return Array.from(buckets.values());
+    },
+    // Section 7.16 follow-up: per-user AND per-provider breakdown (not just one lifetime
+    // total), for the Admin Users tab's per-user detail view.
+    async aggregateByUserAndProvider(userId) {
+      const buckets = new Map();
+      Array.from(state.usageEvents.values()).filter((e) => e.userId === userId).forEach((e) => {
+        buckets.set(e.provider, (buckets.get(e.provider) || 0) + (e.totalTokens || 0));
+      });
+      return Array.from(buckets.entries()).map(([provider, totalTokens]) => ({ provider, totalTokens }));
+    }
+  };
+
+  // Section 7.16 follow-up: append-only log of every callProvider() outcome (success or
+  // failure), reported by pattern-ai-server.mjs via POST /internal/ai-health-event. Read-side
+  // aggregation (status derivation) lives in server/admin/routes.mjs, not here - mirrors
+  // repo.pg.mjs's providerHealth domain exactly.
+  const providerHealth = {
+    async record({ provider, ok, errorCode, latencyMs, source }) {
+      const record = {
+        id: newId('aiHealthEvent'), provider: String(provider || 'unknown'), ok: Boolean(ok),
+        errorCode: errorCode || null, latencyMs: latencyMs == null ? null : Math.round(latencyMs),
+        source: source || null, createdAt: now()
+      };
+      state.providerHealth.set(record.id, record);
+      return clone(record);
+    },
+    async latestByProvider() {
+      const result = {};
+      Array.from(state.providerHealth.values())
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        .forEach((event) => { result[event.provider] = clone(event); });
+      return result;
+    },
+    async aggregateSince(sinceIso) {
+      const buckets = new Map();
+      Array.from(state.providerHealth.values()).filter((e) => new Date(e.createdAt) >= new Date(sinceIso)).forEach((e) => {
+        const bucket = buckets.get(e.provider) || { provider: e.provider, calls: 0, failures: 0, latencies: [] };
+        bucket.calls += 1;
+        if (!e.ok) bucket.failures += 1;
+        if (e.latencyMs != null) bucket.latencies.push(e.latencyMs);
+        buckets.set(e.provider, bucket);
+      });
+      return Array.from(buckets.values()).map((b) => ({
+        provider: b.provider, calls: b.calls, failures: b.failures,
+        avgLatencyMs: b.latencies.length ? b.latencies.reduce((sum, v) => sum + v, 0) / b.latencies.length : null
+      }));
+    },
+    async recent({ limit } = {}) {
+      return Array.from(state.providerHealth.values())
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, limit || 50)
+        .map(clone);
     }
   };
 
@@ -882,5 +934,5 @@ export function createMemoryRepo() {
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
 }

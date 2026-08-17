@@ -93,6 +93,8 @@ input, select, textarea { font:inherit; color:inherit; }
 .admin-card { padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--panel); margin-bottom:16px; }
 .admin-card h3 { margin:0 0 12px; font-size:15px; }
 .admin-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:14px; }
+.admin-ai-card-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.admin-ai-card-head h3 { margin:0; }
 .hint { color:var(--muted); font-size:13px; }
 .error-text { color:#ff7581; font-size:13px; }
 
@@ -125,6 +127,13 @@ table.admin-table tbody tr:hover { background:rgba(255,255,255,.025); }
 .badge.status-published { color:#4fcf7a; background:rgba(79,207,122,.12); border:1px solid #2e6b45; }
 .badge.status-draft { color:var(--muted); background:rgba(255,255,255,.05); border:1px solid var(--line); }
 .badge.status-delisted { color:#ff7581; background:rgba(255,117,129,.12); border:1px solid #7d2633; }
+/* AI provider health badges (Admin AI tab) - same visual language as the marketplace status
+   badges above: green=working, amber=intermittent/dormant, red=failing, gray=nothing to report. */
+.badge.status-healthy { color:#4fcf7a; background:rgba(79,207,122,.12); border:1px solid #2e6b45; }
+.badge.status-degraded { color:#ffc94a; background:rgba(255,201,74,.12); border:1px solid #6c521d; }
+.badge.status-idle { color:#ffc94a; background:rgba(255,201,74,.08); border:1px solid #6c521d; }
+.badge.status-disconnected { color:#ff7581; background:rgba(255,117,129,.12); border:1px solid #7d2633; }
+.badge.status-unconfigured, .badge.status-unknown { color:var(--muted); background:rgba(255,255,255,.05); border:1px solid var(--line); }
 
 .admin-pagination { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:13px; color:var(--muted); }
 

@@ -226,6 +226,7 @@
         var response=await fetch('/api/trades/psychology-analysis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:i18n.language(),trades:payload}),signal:controller.signal}),
             result=await response.json();
         if(!response.ok)throw new Error(result.error);
+        if(window.TradeJournalAIUsage)window.TradeJournalAIUsage.record({provider:result.provider,usage:result.usage,source:'trades.psychologyAnalysis'});
         renderInsightResult(resultArea,result);
       }catch(_){
         resultArea.replaceChildren(el('p','',i18n.t('analysisUnavailable')));

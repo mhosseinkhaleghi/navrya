@@ -874,6 +874,28 @@ function IdentityTab({ lang, i18n, character, profile, onSaved }) {
     setName(profile.displayName || ''); setEmail(profile.email || ''); setPhone(profile.phone || '');
     setAvatarDataUrl(profile.avatarDataUrl || null); setError('');
   }
+
+  // AI process registry (A4) - mountedRef template. Only mounted while tab === 'identity'
+  // (the parent switches tabs via a plain conditional render, no key), so mount/unmount already
+  // is the tab-switch signal.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('account-profile-identity', {
+      allowlist: ['displayName', 'email', 'phone', 'avatarDataUrl'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'displayName') setName(String(value ?? ''));
+        else if (path === 'email') setEmail(String(value ?? ''));
+        else if (path === 'phone') setPhone(String(value ?? ''));
+        else if (path === 'avatarDataUrl') setAvatarDataUrl(value || null);
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
   function pickFile(file) {
     if (!file || !/^image\//.test(file.type)) return;
     const reader = new FileReader();
@@ -986,6 +1008,21 @@ function RoleTab({ lang, profile, onSaved }) {
   const [role, setRole] = React.useState(profile.profileRole || 'trader');
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState('');
+
+  // AI process registry (A4) - mountedRef template, same tab-switch-is-mount-signal shape as
+  // IdentityTab above.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('account-profile-role', {
+      allowlist: ['role'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => { if (path === 'role' && REAL_ROLES.some((r) => r.id === value)) setRole(value); }
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
 
   function save() {
     setBusy(true);

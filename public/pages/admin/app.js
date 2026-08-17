@@ -39,7 +39,15 @@ const translations = {
     kycStatusLabel: 'Verification (KYC) status', kycNotStarted: 'Not started', kycPending: 'Pending review', kycVerified: 'Verified', kycRejected: 'Rejected', saveKyc: 'Save status',
     profileRoleLabel: 'Product role', profileRoleTrader: 'Trader', profileRoleMentor: 'Mentor', profileRoleTeacher: 'Teacher',
     levelXpLabel: 'Level {level} · {xp} XP', achievementsLabel: 'Achievements', noAchievements: 'No achievements unlocked yet.',
-    subscriptionsLabel: 'Subscriptions', noSubscriptions: 'No subscriptions.', mockBadge: 'mock', purchasedOnLabel: 'Purchased {date}'
+    subscriptionsLabel: 'Subscriptions', noSubscriptions: 'No subscriptions.', mockBadge: 'mock', purchasedOnLabel: 'Purchased {date}',
+    aiHealthLabel: 'Health', statusHealthy: 'Healthy', statusDegraded: 'Degraded', statusIdle: 'Idle', statusDisconnected: 'Disconnected', statusUnconfigured: 'Not configured', statusUnknown: 'Not tested yet',
+    aiTestNow: 'Test now', aiTestingNow: 'Testing…', aiTestOk: 'Connection OK.', aiLastChecked: 'Last checked {date}', aiLastErrorLabel: 'Last error: {error}',
+    aiTodayTokensLabel: 'Today', aiMonthTokensLabel: 'This month', aiEstCostLabel: 'Est. cost',
+    aiTrendTitle: 'Daily usage (last 14 days)', aiTrendEmpty: 'No usage in this window yet.',
+    aiRecentEventsTitle: 'Recent AI events', aiRecentEventsEmpty: 'No AI calls recorded yet.',
+    aiRecentColTime: 'Time', aiRecentColProvider: 'Provider', aiRecentColSource: 'Source', aiRecentColStatus: 'Status', aiRecentColLatency: 'Latency',
+    aiTopUsersTitle: 'Top users by token usage', aiTopUsersEmpty: 'No usage recorded yet.', aiTopUsersColUser: 'User', aiTopUsersColTokens: 'Tokens',
+    usageByProviderLabel: 'Token usage by provider', noProviderUsage: 'No AI usage recorded for this user yet.'
   },
   fa: {
     brand: 'پنل مدیریت',
@@ -81,7 +89,15 @@ const translations = {
     kycStatusLabel: 'وضعیت احراز هویت (KYC)', kycNotStarted: 'شروع نشده', kycPending: 'در حال بررسی', kycVerified: 'تأیید شده', kycRejected: 'رد شده', saveKyc: 'ذخیرهٔ وضعیت',
     profileRoleLabel: 'نقش محصولی', profileRoleTrader: 'معامله‌گر', profileRoleMentor: 'منتور', profileRoleTeacher: 'مدرس',
     levelXpLabel: 'سطح {level} · {xp} امتیاز', achievementsLabel: 'دستاوردها', noAchievements: 'هنوز دستاوردی باز نشده است.',
-    subscriptionsLabel: 'اشتراک‌ها', noSubscriptions: 'اشتراکی وجود ندارد.', mockBadge: 'آزمایشی', purchasedOnLabel: 'خریداری‌شده در {date}'
+    subscriptionsLabel: 'اشتراک‌ها', noSubscriptions: 'اشتراکی وجود ندارد.', mockBadge: 'آزمایشی', purchasedOnLabel: 'خریداری‌شده در {date}',
+    aiHealthLabel: 'سلامت', statusHealthy: 'سالم', statusDegraded: 'ناپایدار', statusIdle: 'بی‌فعالیت', statusDisconnected: 'قطع شده', statusUnconfigured: 'پیکربندی نشده', statusUnknown: 'هنوز تست نشده',
+    aiTestNow: 'تست همین حالا', aiTestingNow: 'در حال تست…', aiTestOk: 'اتصال برقرار است.', aiLastChecked: 'آخرین بررسی {date}', aiLastErrorLabel: 'آخرین خطا: {error}',
+    aiTodayTokensLabel: 'امروز', aiMonthTokensLabel: 'این ماه', aiEstCostLabel: 'هزینهٔ تخمینی',
+    aiTrendTitle: 'مصرف روزانه (۱۴ روز اخیر)', aiTrendEmpty: 'در این بازه مصرفی ثبت نشده است.',
+    aiRecentEventsTitle: 'رویدادهای اخیر هوش مصنوعی', aiRecentEventsEmpty: 'هنوز هیچ فراخوانی هوش مصنوعی ثبت نشده است.',
+    aiRecentColTime: 'زمان', aiRecentColProvider: 'سرویس‌دهنده', aiRecentColSource: 'منبع', aiRecentColStatus: 'وضعیت', aiRecentColLatency: 'تأخیر',
+    aiTopUsersTitle: 'پرمصرف‌ترین کاربران (توکن)', aiTopUsersEmpty: 'هنوز مصرفی ثبت نشده است.', aiTopUsersColUser: 'کاربر', aiTopUsersColTokens: 'توکن',
+    usageByProviderLabel: 'مصرف توکن به تفکیک سرویس‌دهنده', noProviderUsage: 'هنوز مصرف هوش مصنوعی برای این کاربر ثبت نشده است.'
   },
   ar: {
     brand: 'لوحة الإدارة',
@@ -123,7 +139,15 @@ const translations = {
     kycStatusLabel: 'حالة التحقق (KYC)', kycNotStarted: 'لم تبدأ', kycPending: 'قيد المراجعة', kycVerified: 'موثّق', kycRejected: 'مرفوض', saveKyc: 'حفظ الحالة',
     profileRoleLabel: 'الدور المنتجي', profileRoleTrader: 'متداول', profileRoleMentor: 'موجّه', profileRoleTeacher: 'مدرّس',
     levelXpLabel: 'المستوى {level} · {xp} نقطة', achievementsLabel: 'الإنجازات', noAchievements: 'لا توجد إنجازات مفتوحة بعد.',
-    subscriptionsLabel: 'الاشتراكات', noSubscriptions: 'لا توجد اشتراكات.', mockBadge: 'تجريبي', purchasedOnLabel: 'تم الشراء في {date}'
+    subscriptionsLabel: 'الاشتراكات', noSubscriptions: 'لا توجد اشتراكات.', mockBadge: 'تجريبي', purchasedOnLabel: 'تم الشراء في {date}',
+    aiHealthLabel: 'الحالة', statusHealthy: 'سليم', statusDegraded: 'غير مستقر', statusIdle: 'خامل', statusDisconnected: 'منقطع', statusUnconfigured: 'غير مهيّأ', statusUnknown: 'لم يُختبر بعد',
+    aiTestNow: 'اختبار الآن', aiTestingNow: 'جارٍ الاختبار…', aiTestOk: 'الاتصال يعمل.', aiLastChecked: 'آخر فحص {date}', aiLastErrorLabel: 'آخر خطأ: {error}',
+    aiTodayTokensLabel: 'اليوم', aiMonthTokensLabel: 'هذا الشهر', aiEstCostLabel: 'التكلفة التقديرية',
+    aiTrendTitle: 'الاستخدام اليومي (آخر 14 يومًا)', aiTrendEmpty: 'لا يوجد استخدام في هذه الفترة بعد.',
+    aiRecentEventsTitle: 'أحداث الذكاء الاصطناعي الأخيرة', aiRecentEventsEmpty: 'لا توجد استدعاءات مسجّلة بعد.',
+    aiRecentColTime: 'الوقت', aiRecentColProvider: 'المزوّد', aiRecentColSource: 'المصدر', aiRecentColStatus: 'الحالة', aiRecentColLatency: 'زمن الاستجابة',
+    aiTopUsersTitle: 'أكثر المستخدمين استهلاكًا للرموز', aiTopUsersEmpty: 'لا يوجد استخدام مسجل بعد.', aiTopUsersColUser: 'المستخدم', aiTopUsersColTokens: 'الرموز',
+    usageByProviderLabel: 'استخدام الرموز حسب المزوّد', noProviderUsage: 'لا يوجد استخدام ذكاء اصطناعي مسجّل لهذا المستخدم بعد.'
   },
   es: {
     brand: 'Administración',
@@ -165,7 +189,15 @@ const translations = {
     kycStatusLabel: 'Estado de verificación (KYC)', kycNotStarted: 'No iniciado', kycPending: 'En revisión', kycVerified: 'Verificado', kycRejected: 'Rechazado', saveKyc: 'Guardar estado',
     profileRoleLabel: 'Rol de producto', profileRoleTrader: 'Trader', profileRoleMentor: 'Mentor', profileRoleTeacher: 'Profesor',
     levelXpLabel: 'Nivel {level} · {xp} XP', achievementsLabel: 'Logros', noAchievements: 'Aún no hay logros desbloqueados.',
-    subscriptionsLabel: 'Suscripciones', noSubscriptions: 'Sin suscripciones.', mockBadge: 'simulado', purchasedOnLabel: 'Comprado el {date}'
+    subscriptionsLabel: 'Suscripciones', noSubscriptions: 'Sin suscripciones.', mockBadge: 'simulado', purchasedOnLabel: 'Comprado el {date}',
+    aiHealthLabel: 'Estado', statusHealthy: 'Saludable', statusDegraded: 'Inestable', statusIdle: 'Inactivo', statusDisconnected: 'Desconectado', statusUnconfigured: 'No configurado', statusUnknown: 'Aún no probado',
+    aiTestNow: 'Probar ahora', aiTestingNow: 'Probando…', aiTestOk: 'Conexión correcta.', aiLastChecked: 'Última verificación {date}', aiLastErrorLabel: 'Último error: {error}',
+    aiTodayTokensLabel: 'Hoy', aiMonthTokensLabel: 'Este mes', aiEstCostLabel: 'Costo estimado',
+    aiTrendTitle: 'Uso diario (últimos 14 días)', aiTrendEmpty: 'Aún no hay uso en este período.',
+    aiRecentEventsTitle: 'Eventos recientes de IA', aiRecentEventsEmpty: 'Aún no hay llamadas registradas.',
+    aiRecentColTime: 'Hora', aiRecentColProvider: 'Proveedor', aiRecentColSource: 'Origen', aiRecentColStatus: 'Estado', aiRecentColLatency: 'Latencia',
+    aiTopUsersTitle: 'Usuarios con mayor uso de tokens', aiTopUsersEmpty: 'Aún no hay uso registrado.', aiTopUsersColUser: 'Usuario', aiTopUsersColTokens: 'Tokens',
+    usageByProviderLabel: 'Uso de tokens por proveedor', noProviderUsage: 'Aún no hay uso de IA registrado para este usuario.'
   }
 };
 
@@ -392,6 +424,17 @@ function userDetailRow(user, colSpan) {
   const levelLine = el('p', '', t('levelXpLabel', { level: rules ? rules.levelForXp(user.xpTotal) : user.level, xp: fmtNumber(user.xpTotal) }));
   box.append(levelLine);
 
+  // Section 7.16 follow-up: this user's AI token usage, broken down by provider - the list row
+  // above only ever showed the one lifetime total (colTokensUsed).
+  box.append(el('h3', '', t('usageByProviderLabel')));
+  if (!user.usageByProvider || !user.usageByProvider.length) {
+    box.append(el('p', 'hint', t('noProviderUsage')));
+  } else {
+    const usageList = document.createElement('ul');
+    user.usageByProvider.forEach((row) => { const li = document.createElement('li'); li.textContent = row.provider + ': ' + fmtNumber(row.totalTokens) + ' ' + t('tokensUsedLabel'); usageList.append(li); });
+    box.append(usageList);
+  }
+
   box.append(el('h3', '', t('achievementsLabel')));
   if (!user.achievements || !user.achievements.length) {
     box.append(el('p', 'hint', t('noAchievements')));
@@ -423,17 +466,56 @@ function userDetailRow(user, colSpan) {
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 
+// Section 7.16 follow-up: the AI tab now also surfaces per-provider health (is it actually
+// working right now, or did it just disconnect - GET /ai/health, Part 1), this-month cost
+// (reusing /finance/overview's real cost math instead of duplicating it), a 14-day usage trend,
+// a recent-events feed, and a top-users-by-tokens table (GET /users sorted server-side, the
+// exact same endpoint/sort the Users tab already offers - no new join logic needed here).
 function aiTab() {
-  return Promise.all([api('/ai/keys'), api('/ai/pricing'), api('/ai/usage')]).then(([keys, pricing, usage]) => {
+  return Promise.all([
+    api('/ai/keys'), api('/ai/pricing'), api('/ai/usage?days=14'), api('/ai/health'),
+    api('/finance/overview'), api('/users?sort=totalTokensUsed&dir=desc&pageSize=10&page=1')
+  ]).then(([keys, pricing, usage, health, finance, topUsers]) => {
     const wrap = el('div');
     wrap.append(statRow([statCard('key-round', keys.filter((k) => k.isSet).length + ' / ' + KNOWN_PROVIDERS.length, t('statProvidersConfigured'))]));
     const grid = el('div', 'admin-grid');
     const keyByProvider = {}; keys.forEach((k) => { keyByProvider[k.provider] = k; });
     const pricingByProvider = {}; pricing.forEach((p) => { pricingByProvider[p.provider] = p; });
+    const healthByProvider = {}; (health.providers || []).forEach((p) => { healthByProvider[p.provider] = p; });
+    const costByProvider = {}; (finance.aiCostByProvider || []).forEach((p) => { costByProvider[p.provider] = p; });
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayTokensByProvider = {};
+    (usage.byProviderAndDay || []).forEach((row) => {
+      const dayKey = new Date(row.day).toISOString().slice(0, 10);
+      todayTokensByProvider[row.provider] = (todayTokensByProvider[row.provider] || 0) + (dayKey === todayKey ? row.totalTokens : 0);
+    });
 
     KNOWN_PROVIDERS.forEach((provider) => {
       const card = el('div', 'admin-card');
-      card.append(el('h3', '', provider));
+      const headRow = el('div', 'admin-ai-card-head');
+      headRow.append(el('h3', '', provider));
+      const healthRow = healthByProvider[provider] || { status: 'unconfigured', lastEventAt: null, lastErrorCode: null };
+      const statusKey = 'status' + healthRow.status.charAt(0).toUpperCase() + healthRow.status.slice(1);
+      headRow.append(el('span', 'badge status-' + healthRow.status, t(statusKey)));
+      card.append(headRow);
+
+      if (healthRow.lastEventAt) card.append(el('p', 'hint', t('aiLastChecked', { date: fmtDate(healthRow.lastEventAt) })));
+      if (healthRow.status === 'disconnected' && healthRow.lastErrorCode) card.append(el('p', 'error-text', t('aiLastErrorLabel', { error: healthRow.lastErrorCode })));
+
+      const testBtn = el('button', 'btn btn-secondary btn-sm', t('aiTestNow'));
+      testBtn.type = 'button';
+      testBtn.onclick = () => {
+        testBtn.disabled = true; testBtn.textContent = t('aiTestingNow');
+        // No apiKey override sent - resolves through the same admin-configured/env tier a real
+        // trader call would use, so this is a genuine end-to-end check, not just a UI ping.
+        fetch('/api/ai/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, apiKey: '', model: '' }) })
+          .then((response) => response.json().catch(() => ({})).then((body) => { if (!response.ok || !body.ok) throw new Error(body.error || 'FAILED'); }))
+          .then(() => showToast(t('aiTestOk')))
+          .catch((error) => showToast(error.message, 'danger'))
+          .finally(() => renderTab());
+      };
+      card.append(testBtn);
+
       const keyInfo = keyByProvider[provider];
       card.append(el('p', 'hint', keyInfo && keyInfo.isSet ? t('aiKeyStatusSet') + (keyInfo.updatedAt ? ' · ' + t('aiKeyUpdatedAt', { date: fmtDate(keyInfo.updatedAt) }) : '') : t('aiKeyStatusNotSet')));
       const keyField = el('label', 'field');
@@ -448,6 +530,13 @@ function aiTab() {
           .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
       };
       card.append(keyField, saveKeyBtn);
+
+      const costRow = costByProvider[provider] || { tokensUsed: 0, cost: null };
+      const usageLine = el('p', 'hint');
+      usageLine.textContent = t('aiTodayTokensLabel') + ': ' + fmtNumber(todayTokensByProvider[provider] || 0)
+        + ' · ' + t('aiMonthTokensLabel') + ': ' + fmtNumber(costRow.tokensUsed)
+        + ' · ' + t('aiEstCostLabel') + ': ' + (costRow.cost === null ? t('noPricingSet') : fmtNumber(costRow.cost));
+      card.append(usageLine);
 
       const pricingRow = pricingByProvider[provider] || {};
       const promptField = field(t('pricingPromptLabel'), 'number', pricingRow.promptPricePer1k);
@@ -466,19 +555,89 @@ function aiTab() {
     wrap.append(grid);
 
     const chartCard = el('div', 'admin-card');
-    chartCard.append(el('h3', '', t('usageChartTitle')));
+    chartCard.append(el('h3', '', t('aiTrendTitle')));
+    // One bar per day (last 14 days), summed across every provider - a single trend line the
+    // reader can scan for "did usage fall off a cliff", not a per-provider breakdown (that's
+    // already the all-time-by-provider chart below).
+    const totalsByDay = {};
+    (usage.byProviderAndDay || []).forEach((row) => {
+      const dayKey = new Date(row.day).toISOString().slice(0, 10);
+      totalsByDay[dayKey] = (totalsByDay[dayKey] || 0) + row.totalTokens;
+    });
+    const trendBars = Object.keys(totalsByDay).sort().map((day) => ({ label: day.slice(5), value: totalsByDay[day] }));
+    if (!trendBars.length) {
+      chartCard.append(el('p', 'hint', t('aiTrendEmpty')));
+    } else {
+      const trendCanvas = document.createElement('canvas');
+      trendCanvas.width = 720; trendCanvas.height = 260;
+      chartCard.append(trendCanvas);
+      setTimeout(() => drawBarChart(trendCanvas, trendBars), 0);
+    }
+    wrap.append(chartCard);
+
+    const allTimeCard = el('div', 'admin-card');
+    allTimeCard.append(el('h3', '', t('usageChartTitle')));
     const totalsByProvider = {};
     (usage.byProviderAndDay || []).forEach((row) => { totalsByProvider[row.provider] = (totalsByProvider[row.provider] || 0) + row.totalTokens; });
     const bars = KNOWN_PROVIDERS.map((provider) => ({ label: provider, value: totalsByProvider[provider] || 0 }));
     if (!bars.some((b) => b.value > 0)) {
-      chartCard.append(el('p', 'hint', t('usageChartEmpty')));
+      allTimeCard.append(el('p', 'hint', t('usageChartEmpty')));
     } else {
       const canvas = document.createElement('canvas');
       canvas.width = 720; canvas.height = 260;
-      chartCard.append(canvas);
+      allTimeCard.append(canvas);
       setTimeout(() => drawBarChart(canvas, bars), 0);
     }
-    wrap.append(chartCard);
+    wrap.append(allTimeCard);
+
+    const recentCard = el('div', 'admin-card');
+    recentCard.append(el('h3', '', t('aiRecentEventsTitle')));
+    if (!health.recent || !health.recent.length) {
+      recentCard.append(el('p', 'hint', t('aiRecentEventsEmpty')));
+    } else {
+      const table = document.createElement('table');
+      table.className = 'admin-table';
+      const thead = document.createElement('tr');
+      [t('aiRecentColTime'), t('aiRecentColProvider'), t('aiRecentColSource'), t('aiRecentColStatus'), t('aiRecentColLatency')]
+        .forEach((label) => thead.append(el('th', '', label)));
+      const theadWrap = document.createElement('thead'); theadWrap.append(thead); table.append(theadWrap);
+      const tbody = document.createElement('tbody');
+      health.recent.forEach((event) => {
+        const row = document.createElement('tr');
+        row.append(cell(fmtDate(event.createdAt)), cell(event.provider), cell(event.source || '—'));
+        const statusTd = document.createElement('td');
+        statusTd.append(el('span', 'badge status-' + (event.ok ? 'healthy' : 'disconnected'), event.ok ? t('statusHealthy') : (event.errorCode || t('statusDisconnected'))));
+        row.append(statusTd);
+        row.append(cell(event.latencyMs == null ? '—' : fmtNumber(event.latencyMs) + ' ms'));
+        tbody.append(row);
+      });
+      table.append(tbody);
+      const tableWrap = el('div', 'admin-table-wrap');
+      tableWrap.append(table);
+      recentCard.append(tableWrap);
+    }
+    wrap.append(recentCard);
+
+    const topUsersCard = el('div', 'admin-card');
+    topUsersCard.append(el('h3', '', t('aiTopUsersTitle')));
+    const topUserRows = (topUsers.users || []).filter((row) => row.totalTokensUsed > 0);
+    if (!topUserRows.length) {
+      topUsersCard.append(el('p', 'hint', t('aiTopUsersEmpty')));
+    } else {
+      const table = document.createElement('table');
+      table.className = 'admin-table';
+      const thead = document.createElement('tr');
+      [t('aiTopUsersColUser'), t('aiTopUsersColTokens')].forEach((label) => thead.append(el('th', '', label)));
+      const theadWrap = document.createElement('thead'); theadWrap.append(thead); table.append(theadWrap);
+      const tbody = document.createElement('tbody');
+      topUserRows.forEach((row) => { const tr = document.createElement('tr'); tr.append(cell(row.displayName), cell(fmtNumber(row.totalTokensUsed))); tbody.append(tr); });
+      table.append(tbody);
+      const tableWrap = el('div', 'admin-table-wrap');
+      tableWrap.append(table);
+      topUsersCard.append(tableWrap);
+    }
+    wrap.append(topUsersCard);
+
     return wrap;
   });
 }
@@ -870,6 +1029,6 @@ function describeGateError(error) {
 // Minimal testability surface (this page otherwise has no window export, matching
 // select/app.js's own standalone-script style) - route() and the XP placeholder tab are pure
 // enough to unit-test directly rather than only indirectly through hash/DOM interaction.
-window.TradeJournalAdminApp = { route: route, xpTab: xpTab, usersTab: usersTab };
+window.TradeJournalAdminApp = { route: route, xpTab: xpTab, usersTab: usersTab, aiTab: aiTab };
 
 boot();
