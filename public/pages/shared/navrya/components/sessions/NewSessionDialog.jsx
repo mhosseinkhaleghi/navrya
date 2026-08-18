@@ -46,6 +46,59 @@ export function NewSessionDialog({
     Object.values(uploads).forEach((u) => { if (u && u.previewUrl) URL.revokeObjectURL(u.previewUrl); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // AI process registry (same convention every other NAVRYA modal uses, e.g.
+  // navrya-src/logEmotionModal.jsx's own 'trade-emotion-log' registration): this dialog is always
+  // mounted by SessionLibrary (only its visibility toggles via `open`), so registration itself
+  // doesn't need to wait for the dialog to be shown - only isOpen() needs to track the live prop.
+  // applyValue drives the exact same setters the fields below already use, so a value the AI
+  // supplies updates the visible UI the same way typing into the field would. submit() calls the
+  // exact same onCreate(...) the primary button's own onClick already calls (and returns its
+  // result, typically a Promise resolving to the created session) - never a second, parallel
+  // create path.
+  const openRef = React.useRef(open);
+  openRef.current = open;
+  // mountedRef: found via real browser testing (Journey B) - "always mounted by SessionLibrary"
+  // (this file's own comment above) holds only for as long as SessionLibrary itself stays
+  // mounted. Navigating into a Live Session (openLiveSession(), right after this dialog's own
+  // AI-driven submit()) unmounts SessionLibrary - and if that happens before the render carrying
+  // this dialog's own onCreate()-queued setDialog(false)/open:false ever commits, openRef.current
+  // (a plain render-body assignment, line above) freezes at its last-committed value (true)
+  // forever, since nothing else ever runs another render to update it. There is no "unregister"
+  // in TradeJournalAIProcessRegistry, so a stale isOpen():true here would then permanently block
+  // ai-workflow-engine.js from ever discovering a new action for the rest of the page's lifetime -
+  // affects a manually-created session exactly the same as an AI-created one, always did, just
+  // never surfaced until Journey B tried a second chat-driven action from inside a session.
+  // mountedRef's own cleanup function, unlike a render-body assignment, is *guaranteed* to run on
+  // a real unmount regardless of whether a pending render ever committed first - the same
+  // "mountedRef template" every other NAVRYA modal in this app already uses for exactly this
+  // reason.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('session-create', {
+      allowlist: ['city', 'timeframe', 'gregorian', 'jalali', 'loop', 'grace'],
+      isOpen: () => openRef.current && mountedRef.current,
+      activeStep: () => 'form',
+      applyValue: (path, value) => {
+        if (path === 'city') setCity(String(value));
+        else if (path === 'timeframe') setTimeframe(String(value));
+        else if (path === 'gregorian') setGregorian(String(value));
+        else if (path === 'jalali') setJalali(String(value));
+        else if (path === 'loop') setLoop(String(value));
+        else if (path === 'grace') setGrace(String(value));
+      },
+      submit: () => onCreate && onCreate({
+        city, timeframe, gregorian, jalali, loop, grace,
+        uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
+      })
+    });
+  }, [city, timeframe, gregorian, jalali, loop, grace, uploads, onCreate]);
+
   function selectFile(slot, file) {
     setUploads((prev) => {
       if (prev[slot] && prev[slot].previewUrl) URL.revokeObjectURL(prev[slot].previewUrl);

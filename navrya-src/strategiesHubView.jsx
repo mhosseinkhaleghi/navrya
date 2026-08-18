@@ -1902,6 +1902,11 @@ export function renderStrategiesHub(character) {
   const rtl = lang === 'fa' || lang === 'ar';
   container.dir = rtl ? 'rtl' : 'ltr';
   container.style.direction = rtl ? 'rtl' : 'ltr';
-  createRoot(container).render(<HubBoundary><StrategiesHub character={character} /></HubBoundary>);
+  // Stashed on the container so panel-system.js's own render(view) can call root.unmount()
+  // before detaching this node on a later view switch - see that file's own comment on why
+  // Element.remove() alone never runs a React 18 root's unmount lifecycle/cleanup effects.
+  const root = createRoot(container);
+  container._reactRoot = root;
+  root.render(<HubBoundary><StrategiesHub character={character} /></HubBoundary>);
   return container;
 }

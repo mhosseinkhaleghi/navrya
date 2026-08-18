@@ -104,6 +104,44 @@ test('DeepSeek drops unsupported image input and appends an honest note rather t
   assert.match(text, /not supported by this provider/);
 });
 
+test('Anthropic treats an output_text part (a prior assistant turn) the same as input_text, rather than silently dropping it to empty', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ content: [{ type: 'tool_use', input: { reply: 'ok' } }], usage: { input_tokens: 1, output_tokens: 1 } }) };
+  };
+  await callProvider('anthropic', 'k', undefined, {
+    input: [
+      { role: 'user', content: [{ type: 'input_text', text: 'first question' }] },
+      { role: 'assistant', content: [{ type: 'output_text', text: 'a prior reply' }] },
+      { role: 'user', content: [{ type: 'input_text', text: 'follow-up' }] }
+    ],
+    text: { format: { name: 'x', schema: { required: ['reply'] } } }
+  });
+  const assistantMessage = sentBody.messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistantMessage.content, [{ type: 'text', text: 'a prior reply' }], 'the prior assistant turn\'s real text must reach Anthropic, not an empty string');
+});
+
+test('Kimi/DeepSeek (OpenAI-compatible) treats an output_text part the same as input_text, rather than silently dropping it', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: 'ok' }) } }], usage: null }) };
+  };
+  await callProvider('deepseek', 'k', undefined, {
+    input: [
+      { role: 'user', content: [{ type: 'input_text', text: 'first question' }] },
+      { role: 'assistant', content: [{ type: 'output_text', text: 'a prior reply' }] },
+      { role: 'user', content: [{ type: 'input_text', text: 'follow-up' }] }
+    ],
+    text: { format: { schema: { required: ['reply'] } } }
+  });
+  const assistantMessage = sentBody.messages.find((m) => m.role === 'assistant');
+  assert.equal(assistantMessage.content, 'a prior reply', 'the prior assistant turn\'s real text must reach the provider, not an empty string');
+});
+
 test('Kimi (vision-capable) keeps image input as an image_url content part instead of dropping it', async () => {
   let sentBody = null;
   globalThis.fetch = async (_url, options) => {

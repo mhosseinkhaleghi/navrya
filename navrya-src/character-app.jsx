@@ -5,6 +5,7 @@ import { CharacterHeader } from '../public/pages/shared/navrya/components/header
 import { MarketSessionCard } from '../public/pages/shared/navrya/components/market/MarketSessionCard.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { SessionLibrary } from '../public/pages/shared/navrya/components/sessions/SessionLibrary.jsx';
+import { TIMEFRAMES as SESSION_TIMEFRAMES, SESSION_CITIES } from '../public/pages/shared/navrya/components/sessions/NewSessionDialog.jsx';
 import * as sessionEntryCards from './sessionEntryCardsView.jsx';
 import * as sessionsAdapter from './sessionsAdapter.js';
 import { LiveSessionView } from './liveSessionView.jsx';
@@ -393,7 +394,10 @@ export function mountCharacterApp(character) {
   // open=function(idValue){...} reassignment) - same real find()/save()/log() data every other
   // TradeJournalWorkspace caller (openReport/reopen/duplicate) already goes through, only the
   // open-session screen itself is now navrya-src/liveSessionView.jsx instead of hand-built DOM.
-  window.TradeJournalNavryaLiveSession = { open: openLiveSession };
+  // getActiveSessionId: exposed for ai-context-engine.js's snapshot() (Journey B) - the real,
+  // already-imported getLiveSessionId() from liveSessionSignal.js, just reachable off this same
+  // window hook alongside .open() rather than a second global.
+  window.TradeJournalNavryaLiveSession = { open: openLiveSession, getActiveSessionId: getLiveSessionId };
 
   // Every design handoff (Calculator, Trade Log, Dashboard, Settings) opens its character page
   // with the same two fixed full-viewport overlays - a faint 48px grid and a soft radial glow of
@@ -409,6 +413,243 @@ export function mountCharacterApp(character) {
     const sessionsRoot = document.getElementById('navryaSessionsRoot');
     if (!sidebarRoot || !headerRoot || !sessionsRoot) return;
     const store = createStore(character);
+
+    // The one shared React store every root on this page already renders from, exposed for
+    // ai-context-engine.js's snapshot() (current activeId) and for the session.create action
+    // below (navigating to the Sessions tab) - same "window hook a shared module defers to"
+    // convention as every TradeJournalNavryaXxx assignment in this function.
+    window.TradeJournalNavryaStore = store;
+
+    // AI Action Registry (Journey A vertical slice): "start a New York session" and similar.
+    // open()/submit()/resultContext() only ever call real, already-existing entry points - the
+    // Sessions tab navigation store.setActiveId() already does, the tradejournal:ai-open-new-session
+    // signal SessionLibrary.jsx already listens for, the session-create registration
+    // NewSessionDialog.jsx already makes (submit() -> the same onCreate()/store.createSession()
+    // path the dialog's own button uses), and the openLiveSession() the "Open" button on a
+    // session card already calls.
+    //
+    // normalizeField() maps a natural-language extraction (the model may just as reasonably say
+    // "15 minutes" or "new york" as "15m"/"New York") onto NewSessionDialog's own real dropdown
+    // option lists (imported directly, never duplicated) before the workflow engine ever treats
+    // a field as known - an unrecognized value returns null (ai-workflow-engine.js then leaves
+    // that field missing rather than live-applying or submitting a value the real UI wouldn't
+    // actually accept).
+    function normalizeSessionTimeframe(raw) {
+      var text = String(raw || '').trim().toLowerCase().replace(/\s+/g, '');
+      if (SESSION_TIMEFRAMES.indexOf(String(raw || '').trim()) > -1) return String(raw).trim();
+      var match = /^(\d+)(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/.exec(text);
+      if (!match) return null;
+      var unit = /^m/.test(match[2]) ? 'm' : /^h/.test(match[2]) ? 'h' : 'D';
+      var candidate = match[1] + unit;
+      return SESSION_TIMEFRAMES.indexOf(candidate) > -1 ? candidate : null;
+    }
+    function normalizeSessionCity(raw) {
+      var text = String(raw || '').trim().toLowerCase().replace(/\s+/g, '');
+      var found = SESSION_CITIES.find((city) => city.toLowerCase().replace(/\s+/g, '') === text);
+      return found || null;
+    }
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'session.create', domain: 'sessions', riskLevel: 'low',
+        description: 'Create a new trading session',
+        aliases: ['start session', 'new session', 'open a session', 'start a session'],
+        requiredFields: ['city', 'timeframe'],
+        optionalFields: ['gregorian', 'jalali', 'loop', 'grace'],
+        available: () => true,
+        open: () => {
+          if (getLiveSessionId()) closeLiveSession();
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
+          window.dispatchEvent(new CustomEvent('tradejournal:ai-open-new-session'));
+        },
+        normalizeField: (path, value) => {
+          if (path === 'city') return normalizeSessionCity(value);
+          if (path === 'timeframe') return normalizeSessionTimeframe(value);
+          return value;
+        },
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('session-create'),
+        resultContext: (session) => { if (session && session.id) openLiveSession(session.id); }
+      });
+    }
+
+    // AI Action Registry (Journey B vertical slice): "I want to take BTC long" and similar
+    // conversational trade-planning flows. Deliberately named 'trade.calculator', not e.g.
+    // 'trade.startPlan' - ai-workflow-engine.js's own processIdFor() derives the real UI process
+    // id purely by replacing dots with dashes (see that file's own comment on the mapping), and
+    // the real target here is the existing 'trade-calculator' process tradeCalculatorModal.jsx
+    // already registers (chosen over the Trade Wizard because the Calculator is the one real
+    // Trade UI surface that already supports takeProfits/linkedStrategyId live, and now
+    // linkedPatternIds/sourceSessionId/sourceScenarioId too - see that file's own registration
+    // block). Matching the action id to that exact existing process name lets the untouched
+    // Workflow Engine route straight to it with zero engine changes, the same way
+    // 'session.create' -> 'session-create' already matches NewSessionDialog.jsx's registration.
+    //
+    // No symbol/instrument field: confirmed (trade.types.js, ARCHITECTURE.md) that no such field
+    // exists anywhere in the real Trade model today - a Trade is sized and risk-managed, never
+    // tied to a specific instrument name. "BTC" in the example prompt is simply never extracted -
+    // a documented gap, not an invented field. No timeframe field either, for the same reason:
+    // the Calculator (this action's real target) has no timeframe control at all - only the
+    // Wizard's later steps do, and the Wizard's own allowlist lacks takeProfits - so timeframe
+    // stays a known limitation of this MVP rather than something faked onto this UI.
+    //
+    // The actual normalization/resolution rules live in public/pages/shared/ai-trade-actions.js
+    // (a plain, unit-testable shared module - this file is JSX and has no test harness of its
+    // own), loaded on this page ahead of this bundle; this just forwards to it with the real
+    // Strategy/Pattern lookup lists this scope already has access to.
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'trade.calculator', domain: 'trades', riskLevel: 'medium',
+        // Found via real browser testing (Journey C). Two separate model-behavior gaps, both
+        // fixed the same way (this is the ONLY field the model gets: catalogFor() never sends a
+        // per-field description, so this string carries both):
+        // 1) With no hint beyond the literal field name, a model reasonably reads
+        //    "linkedStrategyId"/"linkedPatternIds" as requiring a real internal id it doesn't
+        //    have, and refuses to fill them from a name the user actually said ("I don't have a
+        //    strategy ID to link"). resolveStrategyId()/resolvePatternIds() in
+        //    ai-trade-actions.js already resolve a plain spoken NAME to the real id - they were
+        //    always meant to receive the name, never an id the model would have to invent.
+        // 2) A well-aligned model, asked to raise risk right after the user described anger and
+        //    losses, reasonably tries to be protective ITSELF - it declines to extract
+        //    riskPercent at all ("I don't recommend this, I haven't proposed any change"). That
+        //    is exactly the "LLM as the rule engine" failure mode the architecture spec warns
+        //    against (section 3), just arriving organically instead of through this app's own
+        //    code: with nothing ever extracted, ai-proactive-engine.js's real, deterministic
+        //    strategy-risk-limit rule never even runs, so the user never gets the real evidence
+        //    card or the real, explicit override path - the model's own good intentions silently
+        //    pre-empt NAVRYA's real policy layer. The fix is the same kind as (1): tell the model
+        //    plainly that extraction and policy are different jobs, and this one is never its job.
+        description: 'Plan and open a new trade (direction, entry, stop, target, risk). linkedStrategyId/linkedPatternIds: pass the Strategy/Pattern NAME exactly as the user said it (e.g. "Conservative Scalper") - NAVRYA resolves the real id from that name itself; never invent or omit it for lacking a real id. IMPORTANT - riskPercent (and every other field): extraction and safety policy are two different, separate jobs, and enforcing policy is never your job here, even once. Put the exact riskPercent number the user literally typed into the suggestion/fields array on every single turn they state one, with zero exceptions - including a message that also mentions anger, recent losses, or stress in the same breath. NAVRYA itself runs a real, deterministic check on that number after you extract it and will pause for explicit confirmation if it conflicts with anything - that downstream check is the ONLY thing allowed to hold the value back, and it can only do that if you hand the number over first. Silently re-suggesting the OLD value, or leaving the field out of your suggestion, is a bug: it skips NAVRYA own real safety check entirely and is far less safe than extracting the number and letting NAVRYA evaluate it. You may still say in your own reply that you are concerned - just also extract the number.',
+        aliases: ['take a long', 'take a short', 'go long', 'go short', 'open a trade', 'start a trade', 'size a trade', 'plan a trade'],
+        requiredFields: ['direction', 'entryPrice', 'stopLoss', 'riskPercent', 'takeProfits'],
+        optionalFields: ['leverage', 'marginMode', 'accountBalance', 'riskAmount', 'linkedStrategyId', 'linkedPatternIds'],
+        available: () => true,
+        // Session/Scenario context is inherited here, once, from the real snapshot the workflow
+        // engine already passed into start() - never asked for as a chat field (there is nothing
+        // for the user to "say" here; see tradeCalculatorModal.jsx's own sourceSessionId/
+        // sourceScenarioId state comment). By the time this returns, the calculator's own
+        // useLayoutEffect registration has already run (a fresh root's first commit is
+        // synchronous - see that file's own comment on the switch from useEffect), so the
+        // applyValue() calls below always land on a real, already-registered process.
+        open: (context) => {
+          window.TradeJournalNavryaTradeCalculator.open();
+          var registry = window.TradeJournalAIProcessRegistry;
+          var entities = context && context.activeEntities;
+          if (registry && entities) {
+            if (entities.sessionId) registry.applyValue('trade-calculator', 'sourceSessionId', entities.sessionId, 'replace');
+            if (entities.scenarioId) registry.applyValue('trade-calculator', 'sourceScenarioId', entities.scenarioId, 'replace');
+          }
+        },
+        normalizeField: (path, value) => {
+          var helpers = window.TradeJournalAITradeActions;
+          if (!helpers) return value;
+          var strategyStore = window.TradeJournalStrategyEducationStore;
+          var patternStore = window.TradeJournalPatternStore;
+          return helpers.normalizeField(path, value, {
+            strategies: strategyStore && typeof strategyStore.listActive === 'function' ? strategyStore.listActive() : [],
+            patterns: patternStore && typeof patternStore.listForScenarios === 'function' ? patternStore.listForScenarios() : []
+          });
+        },
+        // Delegates straight to the calculator's own registered submit() (see
+        // tradeCalculatorModal.jsx) via the exact same TradeJournalAIProcessRegistry.submit()
+        // Journey A's session.create already uses - builds the trade through
+        // applyCalculatedToTrade()/tradeStore.save(), the same real persistence path the
+        // "Register Trade" button uses, never a parallel one.
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('trade-calculator'),
+        // trade-open-positions.js already listens for tradeStore.save()'s own
+        // tradejournal:trades-changed event, so the Open Positions panel refreshes on its own -
+        // this only navigates the user to see the trade they just described, the same "land in
+        // the result" precedent session.create's own resultContext already set.
+        resultContext: (trade) => { if (trade && trade.id && window.TradeJournalNavryaTradeDetails) window.TradeJournalNavryaTradeDetails.open(trade.id); }
+      });
+    }
+
+    // AI Action Registry (Journey D): "take me to the Dashboard" and similar navigation-from-
+    // knowledge requests. Reuses the exact same real navigation primitives the sidebar/reward
+    // widget/account-profile hash router already use themselves - store.setActiveId() for the
+    // three React "canvas" views (dashboard/strategies/settings) + sessions, location.hash for
+    // the hash-routed pages (psychology/ai-assistant/community/account, exactly like store.js's
+    // own hashById map and the reward widget's own onRewardOpen already do) - never a new,
+    // separate "AI navigation" mechanism, and never arbitrary DOM mutation.
+    //
+    // domainId values are intentionally exactly the real ai-knowledge-registry.js domain ids that
+    // actually have ONE real, single navigable page today - "reports" (legacy/unreachable from
+    // current navigation), "trade-planning" (no single page - genuinely cross-cutting across three
+    // real surfaces) and "character" (switching the active character is done from Settings, not a
+    // page of its own) are deliberately excluded, matching those domains' own honestly-documented
+    // gaps rather than inventing a target for them. "patterns" lands on the same Strategies Hub
+    // page as "strategies" - its own tab is not a separately hash-addressable route today.
+    //
+    // The untouched, protected Workflow Engine always drives a submit through a real, registered
+    // TradeJournalAIProcessRegistry process (its own applyValue()/query() both key off one) -
+    // navigate.to has no fillable form of its own, so it registers the thinnest possible real
+    // process purely so the engine's own liveness check (isOpen()) has something real to read:
+    // "open" exactly while THIS workflow is the current one, never permanently. A permanently-open
+    // registration would make activeOpenProcess() wrongly report something open on every future
+    // turn, silently disabling Journey A/B's own action discovery for the rest of the session -
+    // found by reading ai-workflow-engine.js's own scheduleSubmit()/pruneIfAbandoned() liveness
+    // checks before writing this, not by trial and error in the browser.
+    //
+    // ai-workflow-engine.js's own submit-grace window (SUBMIT_GRACE_MS, ~3s in production) applies
+    // here exactly like every other AI action - a real, small, honestly-disclosed UX cost (a brief
+    // pause before the app actually navigates), not a special case carved out of that protected,
+    // untouched engine.
+    var NAVIGATE_TARGETS = {
+      dashboard: () => store.setActiveId('dashboard'),
+      sessions: () => store.setActiveId('sessions'),
+      strategies: () => store.setActiveId('strategies'),
+      patterns: () => store.setActiveId('strategies'),
+      settings: () => store.setActiveId('settings'),
+      psychology: () => store.setActiveId('psychology'),
+      'ai-assistant': () => store.setActiveId('ai-assistant'),
+      community: () => store.setActiveId('community'),
+      account: () => { location.hash = '#account/profile'; }
+    };
+    var NAVIGATE_ALIASES = {
+      home: 'dashboard', main: 'dashboard',
+      session: 'sessions', trading: 'sessions',
+      strategy: 'strategies', pattern: 'patterns',
+      setting: 'settings', preferences: 'settings',
+      mindset: 'psychology', mental: 'psychology',
+      assistant: 'ai-assistant', aisettings: 'ai-assistant', ai: 'ai-assistant',
+      profile: 'account', subscription: 'account', subscriptions: 'account'
+    };
+    function normalizeNavigateDomainId(raw) {
+      var key = String(raw || '').trim().toLowerCase().replace(/\s+/g, '');
+      if (NAVIGATE_TARGETS[key]) return key;
+      return NAVIGATE_ALIASES[key] || null;
+    }
+    if (window.TradeJournalAIProcessRegistry) {
+      window.TradeJournalAIProcessRegistry.register('navigate-to', {
+        allowlist: ['domainId'],
+        isOpen: () => {
+          var workflowEngine = window.TradeJournalAIWorkflowEngine;
+          var wf = workflowEngine && workflowEngine.current();
+          return !!(wf && wf.actionId === 'navigate.to');
+        },
+        // No live-fillable form exists to reflect a value onto while collecting - the real effect
+        // happens exactly once, in submit() below. TradeJournalAIProcessRegistry.register()'s own
+        // default no-op would cover this identically; kept explicit here for the same reason the
+        // comment above exists at all.
+        applyValue: () => {}
+      });
+    }
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'navigate.to', domain: 'navigation', riskLevel: 'low',
+        description: 'Navigate to a real page/section of NAVRYA. Valid domainId values: dashboard, sessions, strategies, patterns, settings, psychology, ai-assistant, community, account. There is no single dedicated page for "reports"/"trading calendar" (legacy, unreachable from current navigation), "trade-planning"/"open positions" (spans three real surfaces, not one page), or "character" (switching the active character is done from Settings) - if asked to go to one of those, say plainly that no such page exists rather than calling this action.',
+        aliases: ['take me to', 'go to', 'navigate to', 'open the', 'show me the'],
+        requiredFields: ['domainId'], optionalFields: [],
+        available: () => true,
+        normalizeField: (path, value) => path === 'domainId' ? normalizeNavigateDomainId(value) : value,
+        submit: (known) => {
+          var target = NAVIGATE_TARGETS[known.domainId];
+          if (!target) return { navigated: false, domainId: known.domainId };
+          target();
+          return { navigated: true, domainId: known.domainId };
+        },
+        resultContext: () => {}
+      });
+    }
+
     sessionsAdapter.resetOnce().finally(() => {
       store.init();
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);

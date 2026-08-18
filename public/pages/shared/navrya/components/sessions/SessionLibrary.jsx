@@ -23,6 +23,16 @@ export function SessionLibrary({
   const [view, setView] = React.useState('grid');
   const [dialog, setDialog] = React.useState(false);
 
+  // Lets the AI Action Registry's session.create action open this dialog from outside this root
+  // (its own open/known-field state is private useState, same as every other NAVRYA dialog) - the
+  // same cross-root CustomEvent convention navrya-src/chatDockView.jsx already uses for
+  // tradejournal:ai-settings-changed/tradejournal:ai-resume-conversation.
+  React.useEffect(() => {
+    function onAiOpenNewSession() { setDialog(true); }
+    window.addEventListener('tradejournal:ai-open-new-session', onAiOpenNewSession);
+    return () => window.removeEventListener('tradejournal:ai-open-new-session', onAiOpenNewSession);
+  }, []);
+
   const visible = sessions
     .filter((s) => {
       const cityOk = filter === 'All sessions' || s.city === filter;
@@ -74,7 +84,7 @@ export function SessionLibrary({
       )}
       <NewSessionDialog
         open={dialog} onClose={() => setDialog(false)}
-        onCreate={(values) => { setDialog(false); if (onNewSession) onNewSession(values); }}
+        onCreate={(values) => { setDialog(false); return onNewSession ? onNewSession(values) : undefined; }}
         {...newSessionDialogProps}
       />
     </section>

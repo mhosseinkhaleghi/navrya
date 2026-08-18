@@ -114,6 +114,23 @@ function TradeDetailsModal({ trade, onClose, onChanged }) {
     return () => document.removeEventListener('keydown', esc);
   }, [onClose]);
 
+  // AI process registry - same mountedRef template as closePositionModal.jsx/logEmotionModal.jsx:
+  // this modal is mounted/unmounted per open/close (openTradeDetails()), so isOpen is just "am I
+  // mounted". Registered purely so ai-context-builder.js can resolve "this trade" from real,
+  // live UI state (its own resolveActiveIdByPrefix('trade-details-')) - the same "registered for
+  // context, not for field-filling" precedent liveSessionView.jsx's own scenario cards already
+  // set. An empty allowlist is correct and honest: this view has no fillable field of its own -
+  // edit/close/delete all delegate to their own already-registered flows (trade-wizard,
+  // trade-close-position, a direct store call) rather than duplicating them here.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('trade-details-' + trade.id, { allowlist: [], isOpen: () => mountedRef.current });
+    return () => { mountedRef.current = false; };
+  }, [trade.id]);
+
   const tp = trade.takeProfits && trade.takeProfits[0] ? trade.takeProfits[0].price : null;
   const closed = trade.status === 'closed';
   const canClose = trade.status === 'open' || trade.status === 'hunting';

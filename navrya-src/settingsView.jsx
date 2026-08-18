@@ -626,6 +626,14 @@ export function renderSettings(character) {
   // throwaway one (matching store.js's own "one instance per mount" contract) is enough; it does
   // not call init()/subscribe, since nothing here reads sessions/profile from it.
   const store = createStore(character);
-  createRoot(container).render(<SettingsBoundary><SettingsView character={character} store={store} /></SettingsBoundary>);
+  // Stashed on the container so panel-system.js's own render(view) can call root.unmount()
+  // before detaching this node on a later view switch - see that file's own comment on why
+  // Element.remove() alone never runs a React 18 root's unmount lifecycle/cleanup effects (the
+  // real, concrete impact found via testing: TradingDefaultsSection's own AI process registration
+  // below never actually closed, permanently blocking chat-based action discovery app-wide after
+  // the first Settings visit).
+  const root = createRoot(container);
+  container._reactRoot = root;
+  root.render(<SettingsBoundary><SettingsView character={character} store={store} /></SettingsBoundary>);
   return container;
 }

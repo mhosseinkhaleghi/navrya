@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
@@ -319,6 +320,42 @@ function TradeCalculatorModal({ onClose }) {
   const [dir, setDir] = React.useState('long');
   const [margin, setMargin] = React.useState('isolated');
   const [strategyId, setStrategyId] = React.useState('');
+  // Journey B (AI trade planning): a real, visible Linked Pattern control - this modal never had
+  // one before (only the Trade Wizard did, and even there patterns were never AI-fillable; see
+  // trade.types.js's tradeWizardPaths). Added specifically because AI-resolved pattern linking
+  // (ARCHITECTURE.md 7.14-style "link this to my Breakout pattern") must be visibly confirmable,
+  // the same "every accepted value updates the real visible UI" rule every other AI-filled field
+  // here already follows - never an invisible, AI-only field.
+  const [patternId, setPatternId] = React.useState('');
+  // sourceSessionId/sourceScenarioId: real Trade.source fields (the same ones
+  // liveSessionView.jsx's own "Start Trade"/scenario buttons already set via
+  // openLogWizard({source:{sessionId,scenarioId}})), threaded through here so a Trade started by
+  // chat from within an active Session/Scenario keeps the exact same real linkage a manual click
+  // from that same context would have produced. Never shown as an editable field (there is
+  // nothing for a human to "type" here - it's resolved from where the conversation happened, not
+  // language the user supplies) - set only via the AI action's own open()/submit(), through the
+  // same applyValue() mechanism every visible field already uses.
+  const [sourceSessionId, setSourceSessionId] = React.useState(null);
+  const [sourceScenarioId, setSourceScenarioId] = React.useState(null);
+  // pendingEmotionSignal: Journey C's Signal Router routes an explicit trading emotion expressed
+  // WHILE this trade is still being planned (no real Trade id exists yet to call
+  // TradeJournalTradeStore.addEmotion() against - see ai-signal-router.js's own comment on why
+  // TRADE_LOG destination means "attach once the trade exists," not "attach now") here, through
+  // the exact same applyValue() mechanism every other AI-filled field already uses. Carried
+  // through into the real trade.emotionLog[] as an 'entry'-stage record at submit() time, below -
+  // never a second, parallel emotion-storage path. Same "never shown as an editable field" rule
+  // as sourceSessionId/sourceScenarioId above (chat-dock-core.js sets it, never a human typing
+  // into a form field for this).
+  const [pendingEmotionSignal, setPendingEmotionSignal] = React.useState(null);
+  // riskOverride: set only when the user has explicitly confirmed a Proactive Engine
+  // CONFIRM_OVERRIDE finding (ai-proactive-engine.js's own resolveConfirmation('confirm')) -
+  // section 10's "record that an explicit override occurred... create the smallest clean one if
+  // required." Carried onto the saved Trade as an additive `riskOverride` field (trade-store.js's
+  // own normalize() already Object.assign()-preserves any field it doesn't itself recognize - see
+  // that file's own empty()/normalize() - so this persists without any Trade-model/schema change).
+  // Never mutates the Strategy's own maxRiskPerTradePercent - only a record on the Trade that an
+  // override happened for this one trade.
+  const [riskOverride, setRiskOverride] = React.useState(null);
   const [entry, setEntry] = React.useState('');
   const [stop, setStop] = React.useState('');
   const [balance, setBalance] = React.useState(settings.accountBalance !== null && settings.accountBalance !== undefined ? String(settings.accountBalance) : '');
@@ -337,17 +374,39 @@ function TradeCalculatorModal({ onClose }) {
   const fileInputRef = React.useRef(null);
   const readTokenRef = React.useRef(0);
 
+  // Computed here, before the AI registration effect below (moved up from its original spot
+  // further down in this function) - that effect's own dependency array now reads `out` directly
+  // (see its own comment on why), and a dependency array is evaluated eagerly as part of every
+  // render, not deferred like the effect body itself. `out` is a `const`, so referencing it here
+  // before this line would be a genuine temporal-dead-zone crash on every render, not just a
+  // stale-closure bug - found the hard way via real browser testing (the calculator never opened
+  // at all). Every read of `out` further down in this function still works exactly as before,
+  // just naming an already-computed value instead of a freshly-declared one.
+  const out = computeOut({ dir, margin, entry, stop, balance, risk, riskAmountInput, riskMode, leverage, feeType, feePercent, tps });
+
   // AI process registry (A4) - mountedRef template, same as logEmotionModal.jsx/closePositionModal.jsx.
   // Numeric setters are routed through the same {entryPrice:'entry', stopLoss:'stop'}-style
   // translation table tradeLogModal.jsx already uses, since this modal's own local state names
   // (entry/stop/margin/dir) differ from the allowlist's canonical Trade field names.
+  //
+  // useLayoutEffect, not useEffect: unlike NewSessionDialog.jsx (Journey A), which is always
+  // mounted and only toggles a visibility prop, this modal is imperatively mounted fresh on every
+  // openCalculator() call (a brand-new createRoot().render()). useEffect callbacks are deferred
+  // past the current synchronous call stack even for a fresh root's initial commit, so an AI
+  // workflow that opens this calculator and immediately applies extracted fields in the same turn
+  // (Journey B's "all values in one message" scenario) would race an as-yet-unregistered process -
+  // applyValue() would silently no-op. useLayoutEffect fires synchronously as part of that same
+  // initial commit, so the registration is guaranteed to exist by the time openCalculator()
+  // returns. Every other imperatively-mounted modal in this app (trade wizard, emotion log, close
+  // position, ...) has this same latent race; it just never mattered until an AI action needed to
+  // drive one of them the instant it opens, and this Journey has not touched those.
   const mountedRef = React.useRef(true);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('trade-calculator', {
-      allowlist: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'riskAmount', 'leverage', 'feeType', 'feePercent', 'takeProfits', 'linkedStrategyId'],
+      allowlist: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'riskAmount', 'leverage', 'feeType', 'feePercent', 'takeProfits', 'linkedStrategyId', 'linkedPatternIds', 'sourceSessionId', 'sourceScenarioId', 'pendingEmotionSignal', 'riskOverride'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
         if (path === 'direction') { setDir(value === 'short' ? 'short' : 'long'); return; }
@@ -361,18 +420,71 @@ function TradeCalculatorModal({ onClose }) {
         if (path === 'feeType') { handleFeeType(value === 'maker' ? 'maker' : 'taker'); return; }
         if (path === 'feePercent') { setFeePercent(value === '' || value == null ? '' : String(value)); return; }
         if (path === 'linkedStrategyId') { handleStrategy(value || ''); return; }
+        // linkedPatternIds: this MVP's own visible Linked Pattern control (see patternId state
+        // above) only ever manages one pattern at a time - applied as the first id in whatever
+        // array the action resolved, matching the same "one real dropdown, one real value" shape
+        // Strategy linking already has here.
+        if (path === 'linkedPatternIds' && Array.isArray(value)) { setPatternId(value[0] || ''); return; }
+        // sourceSessionId/sourceScenarioId/pendingEmotionSignal/riskOverride: never user-typed -
+        // see each one's own state declaration above.
+        if (path === 'sourceSessionId') { setSourceSessionId(value || null); return; }
+        if (path === 'sourceScenarioId') { setSourceScenarioId(value || null); return; }
+        if (path === 'pendingEmotionSignal') { setPendingEmotionSignal(value || null); return; }
+        if (path === 'riskOverride') { setRiskOverride(value || null); return; }
         // takeProfits: applied as a whole array [{price, portionPercent|portion}, ...] - a
         // single AI suggestion replacing the full target set, mirroring how the extract-fields
         // screenshot flow above already rebuilds `tps` wholesale rather than patching one index.
         if (path === 'takeProfits' && Array.isArray(value) && value.length) {
           setTps(value.map((tp) => ({ price: tp.price === '' || tp.price == null ? '' : String(tp.price), portion: String(tp.portionPercent ?? tp.portion ?? '') })));
         }
+      },
+      // Journey B's own auto-submit path: builds and persists the Trade exactly like the
+      // "Register Trade" button's handleLogTrade() does (same applyCalculatedToTrade(createDraft(...),
+      // out.r, out.source) call, the same real out this modal's own live preview already computed
+      // through window.TradeJournalTradeCalculator.solve()) - the one difference is calling
+      // tradeStore.save() directly instead of opening the wizard for further manual steps
+      // (timeframe/concept tags/screenshots/emotions), since none of those are part of what the
+      // conversation actually collected. tradeStore.save() is the exact same, single real
+      // persistence function the wizard's own quick-log path also calls - never a parallel one.
+      submit: () => {
+        if (!out.valid) return undefined;
+        const tradeUi = window.TradeJournalTradeUI;
+        if (!tradeUi) return undefined;
+        const seed = { status: 'hunting', linkedStrategyId: strategyId || null, linkedPatternIds: patternId ? [patternId] : [] };
+        if (sourceSessionId) seed.source = { character: currentNavryaCharacter(), sessionId: sourceSessionId, scenarioId: sourceScenarioId || null };
+        // Journey C: an explicit trading emotion expressed while THIS trade was being planned -
+        // written as a real 'entry'-stage trade.emotionLog[] record (the same shape/stage
+        // tradeLogModal.jsx's own mergeEmotionIntoTrade() already produces for a trade's first
+        // entry-stage emotion), not a second, parallel store. Only ever the fields actually known
+        // (dominantEmotions/note) - trade-store.js's own normalize() fills stressLevel/
+        // focusQuality/planCommitment to its own neutral default (5) for ANY caller that doesn't
+        // supply them, exactly as it already does for a human using the real Log Emotion modal
+        // with those fields untouched - never treated as a measured value by any Journey C rule.
+        if (pendingEmotionSignal && pendingEmotionSignal.emotion) {
+          seed.emotionLog = [{ stage: 'entry', dominantEmotions: [pendingEmotionSignal.emotion], note: pendingEmotionSignal.note || '' }];
+        }
+        if (riskOverride) seed.riskOverride = riskOverride;
+        const draft = tradeUi.applyCalculatedToTrade(tradeStore.createDraft(seed), out.r, out.source);
+        draft.linkedStrategyId = strategyId || null;
+        draft.linkedPatternIds = patternId ? [patternId] : [];
+        const saved = tradeStore.save(draft);
+        onClose();
+        return saved;
       }
     });
     return () => { mountedRef.current = false; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const out = computeOut({ dir, margin, entry, stop, balance, risk, riskAmountInput, riskMode, leverage, feeType, feePercent, tps });
+    // Unlike the other TradeJournalAIProcessRegistry.register() call sites in this codebase
+    // (which only ever apply values through stable useState setters and can safely register once
+    // with [] deps), this registration's own submit() READS current component state directly
+    // (strategyId/patternId/sourceSessionId/sourceScenarioId/out) rather than only calling
+    // setters - a [] effect would freeze that closure at mount-time (always-empty) values
+    // forever. NewSessionDialog.jsx's own session-create registration hit this exact issue first
+    // and solved it the same way: list every value submit() reads as a real dependency, so the
+    // registration (and its submit closure) is fresh on the render where it matters. `out` is
+    // included rather than its individual inputs (entry/stop/risk/leverage/tps/...) since it is
+    // recomputed fresh every render already - a broader but always-correct proxy for "did
+    // anything submit() reads change".
+  }, [strategyId, patternId, sourceSessionId, sourceScenarioId, pendingEmotionSignal, riskOverride, out]);
 
   // The risk-amount field always reflects the live solved value while the trader is driving it
   // from the percent side, so switching between the two never shows a stale number.
@@ -481,8 +593,13 @@ function TradeCalculatorModal({ onClose }) {
   function handleLogTrade() {
     const tradeUi = window.TradeJournalTradeUI;
     if (!tradeUi || !out.valid) return;
-    const trade = tradeUi.applyCalculatedToTrade(tradeStore.createDraft({ status: 'hunting', linkedStrategyId: strategyId || null }), out.r, out.source);
+    const trade = tradeUi.applyCalculatedToTrade(tradeStore.createDraft({ status: 'hunting', linkedStrategyId: strategyId || null, linkedPatternIds: patternId ? [patternId] : [] }), out.r, out.source);
     trade.linkedStrategyId = strategyId || null;
+    // Consistency with the AI submit() path above: this modal now has a real, visible pattern
+    // picker, so the manual "Register Trade" button must honor whatever the user picked there too
+    // - the wizard's own step 3 (StepSeen) still lets them add/remove further patterns before
+    // sealing it.
+    trade.linkedPatternIds = patternId ? [patternId] : [];
     onClose();
     tradeUi.openWizard(trade);
   }
@@ -490,6 +607,13 @@ function TradeCalculatorModal({ onClose }) {
   const strategyStore = window.TradeJournalStrategyEducationStore;
   const activeStrategies = strategyStore ? strategyStore.listActive() : [];
   const strategyOptions = [{ value: '', label: t('noStrategy') }].concat(activeStrategies.map((s) => ({ value: s.id, label: s.name })));
+  // Journey B: a real, visible Linked Pattern control - see the patternId state declaration above
+  // for why this exists now (AI-resolved pattern linking must be visibly confirmable, same as
+  // every other AI-filled field here). listForScenarios() is the same real Pattern Registry
+  // lookup tradeLogModal.jsx's own pattern picker already uses.
+  const patternStore = window.TradeJournalPatternStore;
+  const patterns = patternStore ? patternStore.listForScenarios() : [];
+  const patternOptions = [{ value: '', label: t('noPattern') }].concat(patterns.map((p) => ({ value: p.id, label: p.name })));
 
   const ladder = buildLadder(i18n, t, out, tps);
   const tiles = [
@@ -537,6 +661,10 @@ function TradeCalculatorModal({ onClose }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('strategy')}</span>
             <Select value={strategyId} options={strategyOptions} onChange={handleStrategy} icon="strategies" width={220} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('logReviewPatternsLabel')}</span>
+            <Select value={patternId} options={patternOptions} onChange={setPatternId} icon="scenarios" width={220} />
           </div>
           <button
             type="button" onClick={onClose} aria-label={t('close')}
@@ -804,6 +932,22 @@ export function openCalculator() {
   document.body.append(container);
   const root = createRoot(container);
   function close() { root.unmount(); container.remove(); }
-  root.render(<TradeCalculatorModal onClose={close} />);
+  // flushSync, not a bare root.render(): found via real browser testing (Journey B) - a fresh
+  // root's first commit is NOT guaranteed synchronous the way React 18's docs (and this file's
+  // own earlier assumption) suggest once render() is invoked from inside an async function's
+  // post-await continuation, e.g. chat-dock-core.js's sendChat() calling this via
+  // TradeJournalNavryaTradeCalculator.open() right after `await fetch('/api/ai/chat')` -
+  // automatic batching can defer even an INITIAL mount's commit (and therefore this component's
+  // own useLayoutEffect registration) past that continuation's own synchronous return. Without
+  // this, ai-workflow-engine.js's applyKnownFields() - called synchronously right after
+  // action.open() returns, per its own documented contract - would run its whole field-application
+  // loop against a registry entry that does not exist yet, silently no-op every field, and the
+  // calculator would sit open forever with nothing applied (found exactly this way: the workflow
+  // reported every field as "known", but the real inputs stayed empty). flushSync forces this
+  // one, specific commit (mount + layout effects, i.e. the registration) to complete before
+  // openCalculator() returns, guaranteeing the same synchronous-registration contract every
+  // other imperatively-mounted AI-drivable modal here relies on - it changes nothing for a human
+  // opening this by hand (a plain, empty commit either way).
+  flushSync(() => { root.render(<TradeCalculatorModal onClose={close} />); });
   return close;
 }

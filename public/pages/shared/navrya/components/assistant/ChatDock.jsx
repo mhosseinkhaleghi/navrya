@@ -8,7 +8,33 @@ import { ModelSwitcher, ModelMascot } from './ModelSwitcher.jsx';
    per-panel widget. `children` renders above the bar (the reply popover) so the whole thing
    pops as one composition. Tints itself off `--char-accent`/`--char-glow`, so it must be
    mounted under a `data-character="..."` ancestor (see chatDockView.jsx) to pick up that
-   character's colour rather than the default gold. */
+   character's colour rather than the default gold.
+
+   The input row and the reply popover (`children`) are two independent position:fixed elements,
+   not one shared stacking context, and deliberately sit at two different z-indices:
+
+   - The input row stays reachable ABOVE any standard NAVRYA modal (Modal.jsx and every
+     hand-rolled dialog that copies its exact zIndex:100 full-viewport backdrop) - before this
+     split, that backdrop sat on top of this dock's old single zIndex:70 wrapper, silently making
+     the chat input unreachable (visually covered and its clicks intercepted) the instant any
+     modal opened. That broke the app's own "fill an already-open form conversationally" premise
+     for every existing AI-registered flow (trade wizard, mental-health intake, etc.), not just
+     the newer AI-opened ones - it just went unnoticed because nothing had exercised a real modal
+     + real chat click together in an actual browser before.
+   - The popover stays BELOW that same modal layer. A child cannot be raised above a sibling of
+     its ancestor by giving the child its own z-index - once a parent wrapper is itself raised
+     above the modal, everything nested inside paints as one atomic unit at that level, popover
+     included. Simply raising the old single wrapper (as a first pass) fixed the input but made
+     the popover cover the modal's own interactive fields instead (a real dialog is tall enough,
+     and the popover close enough to the same screen band, that this reliably collided) - a
+     strict regression on top of the original bug. Splitting into two fixed elements is what
+     actually lets "the input stays clickable" and "the popover doesn't block the modal's own
+     controls" both be true at once.
+
+   200 is reserved for the rare full-screen image lightbox (navrya-src/sessionEntryCardsView.jsx);
+   150 keeps the input row safely below that and above every zIndex:100 modal. The popover keeps
+   the dock's original 70, the same level every other non-modal page content already reasons
+   about (e.g. Select.jsx's own dropdown listbox at 40). */
 export function ChatDock({
   placeholder = 'Ask anything',
   listeningPlaceholder = 'Listening…',
@@ -36,23 +62,54 @@ export function ChatDock({
   const active = list ? (list.find((m) => m.id === model) || list[0]) : null;
   const withMascot = !!(active && mascot);
 
+  // Measures the input row's real rendered height so the popover (now a separate fixed element)
+  // can anchor its own `bottom` directly above it with the same 12px gap the old single flex
+  // column produced - kept live via ResizeObserver rather than a guessed constant, since the row
+  // can legitimately change height (therapist/history buttons appearing, RTL, font scaling).
+  const rowRef = React.useRef(null);
+  const [rowHeight, setRowHeight] = React.useState(56);
+  React.useEffect(() => {
+    const el = rowRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setRowHeight(entry.contentRect.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div
-      data-navrya-assistant="dock" dir={dir}
-      style={{
-        position: 'fixed', left: 16, right: 16, bottom: 24, margin: '0 auto', zIndex: 70,
-        maxWidth: width + (withMascot ? 66 : 0),
-        display: 'flex', alignItems: 'flex-end', gap: 14, ...style
-      }}
-      {...rest}
-    >
-      {withMascot && <ModelMascot model={active} size={52} style={{ flex: 'none', paddingBottom: 2 }} />}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
-        {children}
+    <React.Fragment>
+      {children && (
         <div
+          style={{
+            position: 'fixed', left: 16, right: 16, bottom: 24 + rowHeight + 12, margin: '0 auto',
+            zIndex: 70, maxWidth: width, pointerEvents: 'none'
+          }}
+        >
+          <div style={{ pointerEvents: 'auto' }}>{children}</div>
+        </div>
+      )}
+      <div
+        data-navrya-assistant="dock" dir={dir}
+        style={{
+          position: 'fixed', left: 16, right: 16, bottom: 24, margin: '0 auto', zIndex: 150,
+          maxWidth: width + (withMascot ? 66 : 0),
+          display: 'flex', alignItems: 'flex-end', gap: 14, ...style
+        }}
+        {...rest}
+      >
+        {/* Purely decorative (no onClick of its own) - never allowed to sit in front of and
+            swallow a click meant for whatever's underneath, e.g. a tall modal's own footer
+            button in the same bottom-of-viewport band this raised z-index now shares with it. */}
+        {withMascot && <ModelMascot model={active} size={52} style={{ flex: 'none', paddingBottom: 2, pointerEvents: 'none' }} />}
+        <div
+          ref={rowRef}
           data-navrya-chat-dock=""
           style={{
           display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px 9px 12px', boxSizing: 'border-box',
+          flex: 1, minWidth: 0,
           borderRadius: 'var(--radius-pill)',
           border: '1px solid ' + (focused ? 'var(--border-gold-strong)' : 'var(--border-gold)'),
           background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-active-surface) 46%,rgba(17,27,28,.94)),color-mix(in srgb,var(--char-active-surface) 26%,rgba(7,11,15,.96)))',
@@ -106,6 +163,6 @@ export function ChatDock({
           </div>
         </div>
       </div>
-    </div>
+    </React.Fragment>
   );
 }

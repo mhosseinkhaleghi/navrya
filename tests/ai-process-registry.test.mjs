@@ -8,6 +8,12 @@ const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
 const source = file => readFile(shared(file), 'utf8');
 
+// A value returned from inside the vm-sandboxed registry carries that realm's own Array/Object
+// prototype, so assert.deepEqual (deepStrictEqual, prototype-sensitive) reports "same structure
+// but not reference-equal" even when every element matches - the same caveat this file's own
+// neighbors (chat-dock-core.test.mjs, ai-context-builder.test.mjs) already document.
+const clone = value => JSON.parse(JSON.stringify(value));
+
 async function registrySandbox() {
   const sandbox = { window: {} };
   vm.runInNewContext(await source('ai-process-registry.js'), sandbox, { filename: 'ai-process-registry.js' });
@@ -123,4 +129,63 @@ test('activeOpenProcess() ordering never changes behavior for a single-open-at-a
   registry.register('trade-wizard', { allowlist: ['entryPrice'], isOpen: () => false, activeStep: () => null });
   registry.register('mh-intake', { allowlist: ['intake.demographics.age'], isOpen: () => true, activeStep: () => 1 });
   assert.equal(registry.activeOpenProcess().id, 'mh-intake', 'only one process is open, order must not matter');
+});
+
+test('submit() calls a registration\'s own submit() and returns whatever it returns', async () => {
+  const registry = await registrySandbox();
+  let called = 0;
+  registry.register('session-create', { allowlist: ['city'], submit: () => { called += 1; return { id: 'session-123' }; } });
+  const result = registry.submit('session-create');
+  assert.equal(called, 1);
+  assert.equal(result.id, 'session-123');
+});
+
+test('submit() returns undefined and never throws for an unregistered processId', async () => {
+  const registry = await registrySandbox();
+  assert.equal(registry.submit('nothing-registered'), undefined);
+});
+
+test('submit() returns undefined and never throws for a registration that never declared submit', async () => {
+  const registry = await registrySandbox();
+  registry.register('trade-wizard', { allowlist: ['entryPrice'] });
+  assert.equal(registry.submit('trade-wizard'), undefined);
+});
+
+test('submit() propagates a Promise a registration\'s submit() returns, unresolved, rather than awaiting it itself', async () => {
+  const registry = await registrySandbox();
+  registry.register('session-create', { allowlist: ['city'], submit: () => Promise.resolve({ id: 'session-async' }) });
+  const result = registry.submit('session-create');
+  assert.ok(result && typeof result.then === 'function', 'submit() must hand back the Promise itself, not resolve it internally');
+  assert.deepEqual(await result, { id: 'session-async' });
+});
+
+// --- openIdsWithPrefix() (Journey D checkpoint: active-entity resolution) ---
+
+test('openIdsWithPrefix() returns every currently-open registration matching the prefix, most recently touched first', async () => {
+  const registry = await registrySandbox();
+  registry.register('trade-details-t1', { isOpen: () => true });
+  registry.register('trade-details-t2', { isOpen: () => true });
+  registry.register('strategy-editor-s1', { isOpen: () => true });
+  assert.deepEqual(clone(registry.openIdsWithPrefix('trade-details-')), ['trade-details-t2', 'trade-details-t1']);
+});
+
+test('openIdsWithPrefix() excludes a matching-prefix registration that is not actually open', async () => {
+  const registry = await registrySandbox();
+  registry.register('trade-details-t1', { isOpen: () => false });
+  registry.register('trade-details-t2', { isOpen: () => true });
+  assert.deepEqual(clone(registry.openIdsWithPrefix('trade-details-')), ['trade-details-t2']);
+});
+
+test('openIdsWithPrefix() returns [] when nothing matches, never a guess', async () => {
+  const registry = await registrySandbox();
+  registry.register('strategy-editor-s1', { isOpen: () => true });
+  assert.deepEqual(clone(registry.openIdsWithPrefix('trade-details-')), []);
+});
+
+test('openIdsWithPrefix() re-registering the same id bumps it back to the front, same rule as activeOpenProcess()', async () => {
+  const registry = await registrySandbox();
+  registry.register('pattern-editor-p1', { isOpen: () => true });
+  registry.register('pattern-editor-p2', { isOpen: () => true });
+  registry.register('pattern-editor-p1', { isOpen: () => true }); // re-touched
+  assert.deepEqual(clone(registry.openIdsWithPrefix('pattern-editor-')), ['pattern-editor-p1', 'pattern-editor-p2']);
 });

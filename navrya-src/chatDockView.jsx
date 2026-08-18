@@ -188,7 +188,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
         setPopover({
           open: true, state: 'answer', messages: nextTranscript,
           suggestions: (result.suggestions || []).map((s, i) => ({ id: s.id || 'sugg-' + i, ...s })),
-          activeProcessId: result.activeProcess ? result.activeProcess.id : null
+          activeProcessId: result.activeProcess ? result.activeProcess.id : null,
+          // result.kind === 'workflow' (an AI-discovered/in-progress action, e.g. session.create):
+          // fields it already applied live are shown as plain meta chips - reusing the popover's
+          // existing meta row rather than a new dedicated "AI action progress" component.
+          meta: result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : []
         });
       }
     } catch (_err) {

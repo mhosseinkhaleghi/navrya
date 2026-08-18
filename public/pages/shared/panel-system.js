@@ -70,7 +70,20 @@
   // real panel data (identical localStorage key format, see navrya-src/panelsAdapter.js), only
   // the DOM-building changes. makeCanvas/makeSettings stay as the fallback if that hook is ever
   // absent (e.g. a character page that hasn't loaded its NAVRYA bundle for some reason).
-  function render(view) { currentView=view; setActiveNav(view); document.querySelectorAll('[data-panel-label]').forEach(function(el){el.textContent=copy().settings;}); if(view==='library'){showLegacy();return;} legacyChildren.forEach(function(child){child.hidden=true;}); content.classList.add('panel-mode'); if(panelPage) panelPage.remove(); var navrya=window.TradeJournalNavryaCanvas; panelPage=(navrya&&navrya.render)?navrya.render(view):(view==='settings'?makeSettings():makeCanvas(view));content.append(panelPage); }
+  // Found via real browser testing (Journey D regression pass): Element.remove() only detaches a
+  // DOM node from its parent - it does NOT run a React 18 createRoot() root's own unmount
+  // lifecycle, so none of that tree's useEffect cleanup functions ever fired on a view switch.
+  // renderDashboard()/renderStrategiesHub()/renderSettings() (navrya-src/dashboardView.jsx,
+  // strategiesHubView.jsx, settingsView.jsx) each stash their own root on the returned container
+  // as ._reactRoot specifically so this one shared switch point can unmount it properly before
+  // detaching - real impact confirmed: settingsView.jsx's own TradingDefaultsSection registers an
+  // AI process gated on `isOpen: () => mountedRef.current`, and without a real unmount that ref
+  // never flips back to false, so the AI Process Registry kept reporting Settings' own form as
+  // "still open" forever after the very first visit - silently blocking every later chat-based
+  // action discovery (Journey A/B/C's "start a session"/"take a trade") for the rest of the page
+  // session. Wrapped in try/catch since a double-unmount or an already-detached root must never
+  // block the view switch itself from completing.
+  function render(view) { currentView=view; setActiveNav(view); document.querySelectorAll('[data-panel-label]').forEach(function(el){el.textContent=copy().settings;}); if(view==='library'){showLegacy();return;} legacyChildren.forEach(function(child){child.hidden=true;}); content.classList.add('panel-mode'); if(panelPage){if(panelPage._reactRoot&&panelPage._reactRoot.unmount){try{panelPage._reactRoot.unmount();}catch(e){}}panelPage.remove();} var navrya=window.TradeJournalNavryaCanvas; panelPage=(navrya&&navrya.render)?navrya.render(view):(view==='settings'?makeSettings():makeCanvas(view));content.append(panelPage); }
   const routes={'#library':'library','#dashboard':'dashboard','#strategies':'strategies','#settings':'settings'};
   document.querySelectorAll('.sidebar nav a').forEach(function(link){link.addEventListener('click',function(event){const view=routes[link.getAttribute('href')];if(!view)return;event.preventDefault();render(view);});});
   const settingsButton=document.querySelector('.settings');if(settingsButton)settingsButton.addEventListener('click',function(){render('settings');});
