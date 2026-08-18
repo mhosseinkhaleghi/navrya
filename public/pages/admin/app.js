@@ -472,9 +472,17 @@ const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 // a recent-events feed, and a top-users-by-tokens table (GET /users sorted server-side, the
 // exact same endpoint/sort the Users tab already offers - no new join logic needed here).
 function aiTab() {
+  // Keys/pricing are the tab's original, load-bearing functionality - a failure there still
+  // shows the generic error card (errorNode()), same as before. The four newer sections
+  // (usage/health/finance/topUsers) are each independently allowed to fail - e.g. the DB
+  // migration for ai_provider_health_events not having run yet on this environment - without
+  // taking down key/pricing management, which an operator may urgently need regardless.
   return Promise.all([
-    api('/ai/keys'), api('/ai/pricing'), api('/ai/usage?days=14'), api('/ai/health'),
-    api('/finance/overview'), api('/users?sort=totalTokensUsed&dir=desc&pageSize=10&page=1')
+    api('/ai/keys'), api('/ai/pricing'),
+    api('/ai/usage?days=14').catch(() => ({ byProviderAndDay: [], byUser: {}, days: 14 })),
+    api('/ai/health').catch(() => ({ providers: [], recent: [] })),
+    api('/finance/overview').catch(() => ({ mockRevenue: { total: 0, mock: true }, aiCostByProvider: [], remainingBudgetByProvider: [] })),
+    api('/users?sort=totalTokensUsed&dir=desc&pageSize=10&page=1').catch(() => ({ users: [] }))
   ]).then(([keys, pricing, usage, health, finance, topUsers]) => {
     const wrap = el('div');
     wrap.append(statRow([statCard('key-round', keys.filter((k) => k.isSet).length + ' / ' + KNOWN_PROVIDERS.length, t('statProvidersConfigured'))]));

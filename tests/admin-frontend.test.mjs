@@ -353,3 +353,21 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
   const testButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test now');
   assert.equal(testButtons.length, 4, 'every one of the four providers must have its own Test now action');
 });
+
+test('the AI tab still renders key/pricing management when the newer usage/health/finance/topUsers sections fail (e.g. a migration not yet applied)', async () => {
+  const failing = { ok: false, json: () => Promise.resolve({ error: 'DB_ERROR' }) };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/ai/health') > -1 || u.indexOf('/ai/usage') > -1 || u.indexOf('/finance/overview') > -1 || u.indexOf('/api/admin/users') > -1) return Promise.resolve(failing);
+    if (u.indexOf('/ai/keys') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([{ provider: 'openai', isSet: true, updatedAt: null }, { provider: 'anthropic', isSet: false, updatedAt: null }, { provider: 'kimi', isSet: false, updatedAt: null }, { provider: 'deepseek', isSet: false, updatedAt: null }]) });
+    if (u.indexOf('/ai/pricing') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
+  };
+  const { app } = await load({ count: 0 }, fetchImpl);
+  const node = await app.aiTab();
+  const texts = findAll(node, () => true).map((n) => n.textContent).join(' | ');
+  assert.doesNotMatch(texts, /Something went wrong/, 'a failure in the newer usage/health/finance/topUsers sections must never take down the whole tab');
+  assert.match(texts, /openai/, 'the per-provider key cards must still render');
+  const saveKeyButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Save key');
+  assert.equal(saveKeyButtons.length, 4, 'key management must stay fully usable for every provider regardless of the other sections failing');
+});
