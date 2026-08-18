@@ -195,3 +195,70 @@ test('providerHealth.recent returns newest-first across all providers, capped at
   assert.equal(recent[0].latencyMs, 4, 'newest event (latencyMs:4, recorded last) must come first');
   assert.equal(recent[2].latencyMs, 2);
 });
+
+// --- Global AI assistant dock: real, multiple, resumable conversations (017_ai_conversations.sql) ---
+
+test('aiChatHistory.create/list/get round-trip a real conversation, with a running token total', async () => {
+  const repo = createMemoryRepo();
+  const user = await seedUser(repo);
+  const conv = await repo.aiChatHistory.create({
+    userId: user.id, provider: 'openai', title: 'How do I read this chart?',
+    messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }], tokens: 30
+  });
+  assert.ok(conv.id);
+  assert.equal(conv.tokens, 30);
+
+  const list = await repo.aiChatHistory.list(user.id);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].id, conv.id);
+  assert.equal(list[0].messageCount, 2);
+  assert.equal(list[0].tokens, 30);
+  assert.equal(list[0].messages, undefined, 'the list summary must stay lightweight - no message bodies');
+
+  const fetched = await repo.aiChatHistory.get(user.id, conv.id);
+  assert.equal(fetched.messages.length, 2);
+});
+
+test('aiChatHistory.appendAndSave replaces the messages array wholesale but INCREMENTS tokens rather than replacing them', async () => {
+  const repo = createMemoryRepo();
+  const user = await seedUser(repo);
+  const conv = await repo.aiChatHistory.create({ userId: user.id, provider: 'openai', title: 'T', messages: [{ role: 'user', content: 'a' }], tokens: 10 });
+  const appended = await repo.aiChatHistory.appendAndSave(user.id, conv.id, {
+    messages: [{ role: 'user', content: 'a' }, { role: 'user', content: 'b' }, { role: 'assistant', content: 'c' }], tokens: 15
+  });
+  assert.equal(appended.messages.length, 3);
+  assert.equal(appended.tokens, 25, 'tokens must accumulate (10 + 15), never be replaced by the latest call\'s value alone');
+});
+
+test('aiChatHistory conversations are isolated per user - another user can neither read, append to, nor delete one that is not theirs', async () => {
+  const repo = createMemoryRepo();
+  const owner = await seedUser(repo, 'Owner');
+  const stranger = await seedUser(repo, 'Stranger');
+  const conv = await repo.aiChatHistory.create({ userId: owner.id, provider: 'openai', title: 'T', messages: [{ role: 'user', content: 'a' }], tokens: 5 });
+
+  assert.equal(await repo.aiChatHistory.get(stranger.id, conv.id), null);
+  assert.equal(await repo.aiChatHistory.appendAndSave(stranger.id, conv.id, { messages: [{ role: 'user', content: 'x' }], tokens: 1 }), null);
+  assert.equal(await repo.aiChatHistory.remove(stranger.id, conv.id), false);
+  assert.ok(await repo.aiChatHistory.get(owner.id, conv.id), 'the real owner must still be able to read it after a stranger\'s failed attempts');
+
+  const strangerList = await repo.aiChatHistory.list(stranger.id);
+  assert.equal(strangerList.length, 0, 'list() must never leak another user\'s conversations');
+});
+
+test('aiChatHistory.remove deletes a conversation the owner actually owns', async () => {
+  const repo = createMemoryRepo();
+  const user = await seedUser(repo);
+  const conv = await repo.aiChatHistory.create({ userId: user.id, provider: 'openai', title: 'T', messages: [{ role: 'user', content: 'a' }], tokens: 1 });
+  assert.equal(await repo.aiChatHistory.remove(user.id, conv.id), true);
+  assert.equal(await repo.aiChatHistory.get(user.id, conv.id), null);
+});
+
+test('aiChatHistory.list is newest-first', async () => {
+  const repo = createMemoryRepo();
+  const user = await seedUser(repo);
+  const first = await repo.aiChatHistory.create({ userId: user.id, provider: 'openai', title: 'First', messages: [{ role: 'user', content: 'a' }], tokens: 1 });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const second = await repo.aiChatHistory.create({ userId: user.id, provider: 'openai', title: 'Second', messages: [{ role: 'user', content: 'a' }], tokens: 1 });
+  const list = await repo.aiChatHistory.list(user.id);
+  assert.deepEqual(list.map((c) => c.id), [second.id, first.id]);
+});

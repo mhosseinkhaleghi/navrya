@@ -22,10 +22,16 @@
   // provider-agnostic gateway with the currently open registered process (if any) and NEVER touches
   // TradeJournalMentalHealthStore. (Naming kept from the retired global-ai-dock.js: therapistMode
   // true = the ON branch below.)
+  // A conversation is a real, growing, server-synced thread now (ai-chat-history-store.js), not
+  // one disconnected card per question. `options.conversationId` is null for the first message of
+  // a fresh session (creates the conversation server-side and returns its new id) or the id of
+  // whichever conversation is currently active in the dock (appends to it instead) - the caller
+  // (chatDockView.jsx) owns that state and threads it through on every call.
   async function sendChat(options) {
     var text = String((options && options.text) || '').trim();
     var therapistMode = !!(options && options.therapistMode);
     var transcript = (options && options.transcript) || [];
+    var conversationId = (options && options.conversationId) || null;
     if (!text) return null;
 
     if (therapistMode) {
@@ -52,12 +58,22 @@
     var payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'AI_REQUEST_FAILED');
     if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage, source: 'chatDock.chat' });
+    var usageValue = payload.usage || {};
+    var usedTokens = typeof usageValue.totalTokens === 'number' ? usageValue.totalTokens : (usageValue.promptTokens || 0) + (usageValue.completionTokens || 0);
+    var nextConversationId = conversationId;
     if (historyStore) {
-      var usageValue = payload.usage || {};
-      var usedTokens = typeof usageValue.totalTokens === 'number' ? usageValue.totalTokens : (usageValue.promptTokens || 0) + (usageValue.completionTokens || 0);
-      historyStore.addExchange(active.provider, text, payload.reply, providerLabel(payload.provider || active.provider), usedTokens);
+      // Best-effort, same as ai-usage-store.js's reportToServer() - a history-sync failure must
+      // never break the actual reply the user is waiting on.
+      try {
+        if (conversationId) {
+          await historyStore.appendExchange(conversationId, text, payload.reply, usedTokens);
+        } else {
+          var created = await historyStore.startConversation(active.provider, text, payload.reply, usedTokens);
+          nextConversationId = created ? created.id : null;
+        }
+      } catch (_) { /* no-op */ }
     }
-    return { kind: 'assistant', reply: payload.reply, suggestions: payload.suggestions || [], activeProcess: activeProcess };
+    return { kind: 'assistant', reply: payload.reply, suggestions: payload.suggestions || [], activeProcess: activeProcess, conversationId: nextConversationId };
   }
 
   function applySuggestion(processId, path, value, mode) {

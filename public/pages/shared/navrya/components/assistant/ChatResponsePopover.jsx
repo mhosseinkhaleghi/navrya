@@ -65,6 +65,9 @@ export function ChatResponsePopover({
   title = 'NAVRYA Assistant',
   prompt,
   lines = [],
+  messages,
+  userLabel = 'You',
+  assistantLabel = 'Assistant',
   meta = [],
   thinkingLabel,
   safetyNode,
@@ -82,6 +85,13 @@ export function ChatResponsePopover({
   useAssistantMotion();
   const [mounted, setMounted] = React.useState(open);
   const [leaving, setLeaving] = React.useState(false);
+  const threadRef = React.useRef(null);
+
+  // A real, growing conversation (messages) auto-scrolls to its latest turn on every update -
+  // the old single-answer `lines` shape never needed this since it only ever showed one exchange.
+  React.useEffect(() => {
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+  }, [messages]);
 
   React.useEffect(() => {
     if (open) { setLeaving(false); setMounted(true); return undefined; }
@@ -139,7 +149,7 @@ export function ChatResponsePopover({
       </header>
 
       <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {prompt && (
+        {prompt && (thinking || !messages) && (
           <div style={{
             font: 'var(--type-caption)', color: 'var(--text-muted)', paddingLeft: 10,
             borderLeft: '2px solid var(--divider-gold)', textWrap: 'pretty'
@@ -171,7 +181,27 @@ export function ChatResponsePopover({
             : <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{reviewEmptyLabel}</p>
         )}
 
-        {!thinking && !safety && !review && (
+        {!thinking && !safety && !review && messages && (
+          <div
+            ref={threadRef} className="navrya-scroll"
+            style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 360, overflowY: 'auto', paddingInlineEnd: 4 }}
+          >
+            {messages.map((m, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{
+                  font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase',
+                  color: m.role === 'user' ? 'var(--text-dim)' : 'var(--char-accent)'
+                }}>{m.role === 'user' ? userLabel : assistantLabel}</span>
+                <p style={{
+                  margin: 0, font: 'var(--type-body)', color: m.role === 'user' ? 'var(--text-muted)' : 'var(--text-primary)',
+                  textWrap: 'pretty', animation: i === messages.length - 1 ? 'navrya-line-in 320ms var(--ease-out) both' : 'none'
+                }}>{m.content}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!thinking && !safety && !review && !messages && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {lines.map((line, i) => (
               <p key={i} style={{

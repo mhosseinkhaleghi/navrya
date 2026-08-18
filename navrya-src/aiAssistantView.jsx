@@ -91,7 +91,15 @@ function EngineTabStrip({ catalog, model, aiTab, usageMonthByProvider, onSelectE
   );
 }
 
-function ChatRow({ chat, engineGlyph, expanded, onToggle, onDelete, i18n }) {
+function fmtChatDate(i18n, value) {
+  try { return new Intl.DateTimeFormat(i18n.locale(), { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value)); }
+  catch (_) { return ''; }
+}
+
+// `chat` is the lightweight list summary (id/title/messageCount/tokens/updatedAt - no message
+// bodies); `detail` is the full { messages: [{role,content}] } record, fetched lazily by the
+// parent only once this row is expanded (avoids an N-conversation fetch just to render the list).
+function ChatRow({ chat, engineGlyph, expanded, detail, onToggle, onDelete, onContinue, i18n }) {
   return (
     <div style={{ border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -100,22 +108,26 @@ function ChatRow({ chat, engineGlyph, expanded, onToggle, onDelete, i18n }) {
         </span>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
           <span style={{ font: 'var(--type-username)', color: 'var(--text-primary)' }}>{chat.title}</span>
-          <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chat.snippet}</span>
           <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
-            {i18n.t('aiAsstMessagesTokensMeta', { date: chat.date, messages: chat.messages, tokens: i18n.number(chat.tokens) })}
+            {i18n.t('aiAsstMessagesTokensMeta', { date: fmtChatDate(i18n, chat.updatedAt), messages: chat.messageCount, tokens: i18n.number(chat.tokens || 0) })}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+          <Button variant="primary" size="sm" icon="square-pen" onClick={onContinue}>{i18n.t('aiAsstContinueInDock')}</Button>
           <Button variant="secondary" size="sm" onClick={onToggle}>{expanded ? i18n.t('aiAsstClose') : i18n.t('aiAsstOpen')}</Button>
           <Button variant="danger" size="sm" icon="trash" onClick={onDelete}></Button>
         </div>
       </div>
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--border-hairline)', paddingTop: 12 }}>
-          {(chat.lines || []).map((line, i) => (
+          {!detail ? (
+            <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('aiDockHistoryLoading')}</span>
+          ) : (detail.messages || []).map((line, i) => (
             <div key={i} style={{ display: 'flex', gap: 14 }}>
-              <span style={{ width: 76, flex: 'none', font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--char-accent)', textTransform: 'uppercase' }}>{line.who}</span>
-              <span style={{ flex: 1, font: 'var(--type-body)', color: 'var(--text-primary)', textWrap: 'pretty' }}>{line.text}</span>
+              <span style={{ width: 76, flex: 'none', font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--char-accent)', textTransform: 'uppercase' }}>
+                {line.role === 'user' ? i18n.t('aiDockYou') : i18n.t('aiDockAssistant')}
+              </span>
+              <span style={{ flex: 1, font: 'var(--type-body)', color: 'var(--text-primary)', textWrap: 'pretty' }}>{line.content}</span>
             </div>
           ))}
         </div>
@@ -129,6 +141,9 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   const [model, setModel] = React.useState(() => settingsStore.activeProvider());
   const [aiTab, setAiTab] = React.useState('engine');
   const [openChatId, setOpenChatId] = React.useState(null);
+  const [openChatDetail, setOpenChatDetail] = React.useState(null);
+  const [chats, setChats] = React.useState([]);
+  const [chatsLoading, setChatsLoading] = React.useState(false);
   const [, forceRerender] = React.useReducer((x) => x + 1, 0);
   const [revealByProvider, setRevealByProvider] = React.useState({});
   const [keyStatusByProvider, setKeyStatusByProvider] = React.useState({});
@@ -152,11 +167,27 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     return () => window.removeEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
   }, []);
 
+  // Conversations are real and server-backed now (ai-chat-history-store.js) - fetched per engine,
+  // refreshed whenever the model changes AND on the dock's own
+  // tradejournal:ai-chat-history-changed event (a message sent from the dock, or a delete/rename
+  // here, must both refresh this same list).
+  const refreshChats = React.useCallback(() => {
+    if (!chatHistoryStore) return;
+    setChatsLoading(true);
+    chatHistoryStore.listFor(model)
+      .then((list) => setChats(list))
+      .catch(() => setChats([]))
+      .finally(() => setChatsLoading(false));
+  }, [model, chatHistoryStore]);
+
+  React.useEffect(() => { refreshChats(); }, [refreshChats]);
+
   React.useEffect(() => {
-    function onChanged() { forceRerender(); }
+    function onChanged() { forceRerender(); refreshChats(); }
     window.addEventListener('tradejournal:ai-chat-history-changed', onChanged);
     return () => window.removeEventListener('tradejournal:ai-chat-history-changed', onChanged);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshChats]);
 
   React.useEffect(() => () => { clearTimeout(testTimer.current); clearTimeout(clearMessageTimer.current); }, []);
 
@@ -175,7 +206,6 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   const budget = settings.budgetByProvider[model];
   const budgetPct = budget ? Math.min(100, Math.round((monthTokens / budget) * 100)) : 0;
 
-  const chats = chatHistoryStore ? chatHistoryStore.listFor(model) : [];
   const avgTokens = chats.length ? Math.round(chats.reduce((sum, c) => sum + (c.tokens || 0), 0) / chats.length) : 0;
 
   const key = settingsStore.getKey(model);
@@ -234,9 +264,27 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     setSavedAtByProvider((prev) => ({ ...prev, [model]: value }));
   }
 
+  // No empty draft row is created here anymore - the dock itself creates the real conversation
+  // record on its first successful reply (chat-dock-core.js). This just tells the dock (a
+  // separate React root) to reset to a fresh thread on whichever engine is selected, the same
+  // cross-root-sync convention tradejournal:ai-settings-changed already establishes.
   function newChat() {
-    const created = chatHistoryStore.newDraft(model);
-    setOpenChatId(created.id);
+    window.dispatchEvent(new CustomEvent('tradejournal:ai-resume-conversation', { detail: { id: null, provider: model } }));
+  }
+  function continueInDock(chat) {
+    window.dispatchEvent(new CustomEvent('tradejournal:ai-resume-conversation', { detail: { id: chat.id, provider: model } }));
+  }
+  function toggleChat(chat) {
+    if (openChatId === chat.id) { setOpenChatId(null); setOpenChatDetail(null); return; }
+    setOpenChatId(chat.id);
+    setOpenChatDetail(null);
+    if (chatHistoryStore) {
+      chatHistoryStore.get(chat.id).then((record) => setOpenChatDetail(record)).catch(() => setOpenChatDetail({ messages: [] }));
+    }
+  }
+  function deleteChat(chat) {
+    if (!chatHistoryStore) return;
+    chatHistoryStore.remove(chat.id).then(() => { if (openChatId === chat.id) { setOpenChatId(null); setOpenChatDetail(null); } });
   }
   function clearMemoryBucket(kind) {
     if (!window.confirm(i18n.t('aiMemoryClearConfirm'))) return;
@@ -319,17 +367,21 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
                   <Chip tone="neutral">{i18n.t(chats.length === 1 ? 'aiAsstConversationsOne' : 'aiAsstConversationsMany', { n: chats.length })}</Chip>
                   <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em' }}>{i18n.t('aiAsstKeptForOnly', { engine: engLabel })}</span>
                   <div style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Button variant="ghost" size="sm" icon="trash" onClick={() => { if (window.confirm(i18n.t('aiChatHistoryClearConfirm'))) chatHistoryStore.clear(model); }}>{i18n.t('aiAsstClear')}</Button>
+                    <Button variant="ghost" size="sm" icon="trash" onClick={() => { if (window.confirm(i18n.t('aiChatHistoryClearConfirm'))) chatHistoryStore.clear(model).then(refreshChats); }}>{i18n.t('aiAsstClear')}</Button>
                     <Button variant="primary" icon="plus" onClick={newChat}>{i18n.t('aiAsstNewConversation')}</Button>
                   </div>
                 </div>
-                {chats.length > 0 ? (
+                {chatsLoading && !chats.length ? (
+                  <div style={{ padding: 32, textAlign: 'center', font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('aiDockHistoryLoading')}</div>
+                ) : chats.length > 0 ? (
                   <div className="navrya-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 470, overflowY: 'auto', paddingInlineEnd: 6 }}>
                     {chats.map((chat) => (
                       <ChatRow
                         key={chat.id} chat={chat} engineGlyph={engGlyph} expanded={openChatId === chat.id}
-                        onToggle={() => setOpenChatId((v) => (v === chat.id ? null : chat.id))}
-                        onDelete={() => chatHistoryStore.remove(model, chat.id)}
+                        detail={openChatId === chat.id ? openChatDetail : null}
+                        onToggle={() => toggleChat(chat)}
+                        onDelete={() => deleteChat(chat)}
+                        onContinue={() => continueInDock(chat)}
                         i18n={i18n}
                       />
                     ))}

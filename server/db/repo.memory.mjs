@@ -913,19 +913,42 @@ export function createMemoryRepo() {
     }
   };
 
-  // Same one-row-per-user shape as mentalHealthProfile above - see 014_ai_chat_history.sql.
+  // One row per conversation (017_ai_conversations.sql) - mirrors repo.pg.mjs's aiChatHistory
+  // domain exactly. state.aiChatHistory is keyed by conversation id, not userId, since a user
+  // can now have many.
   const aiChatHistory = {
-    async upsert(userId, messages) {
+    async list(userId) {
+      return Array.from(state.aiChatHistory.values())
+        .filter((c) => c.userId === userId)
+        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+        .map((c) => ({ id: c.id, title: c.title, provider: c.provider, messageCount: c.messages.length, tokens: c.tokens, updatedAt: c.updatedAt }));
+    },
+    async get(userId, id) {
+      const record = state.aiChatHistory.get(id);
+      return record && record.userId === userId ? clone(record) : null;
+    },
+    async create({ userId, provider, title, messages, tokens }) {
       requireUser(userId);
       if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
-      const existing = state.aiChatHistory.get(userId);
-      const stamp = now();
-      state.aiChatHistory.set(userId, { userId, messages, createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp });
-      return clone(messages);
+      const record = { id: newId('aiConv'), userId, title: title || 'Untitled conversation', provider: provider || 'openai', messages, tokens: Math.max(0, Number(tokens) || 0), updatedAt: now() };
+      state.aiChatHistory.set(record.id, record);
+      return clone(record);
     },
-    async get(userId) {
-      const record = state.aiChatHistory.get(userId);
-      return record ? clone(record.messages) : [];
+    // tokens is INCREMENTED (this call's new tokens only), never replaced - mirrors
+    // repo.pg.mjs's total_tokens=total_tokens+$N exactly.
+    async appendAndSave(userId, id, { title, messages, tokens }) {
+      if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.aiChatHistory.get(id);
+      if (!existing || existing.userId !== userId) return null;
+      const record = { ...existing, messages, title: title || existing.title, tokens: (existing.tokens || 0) + Math.max(0, Number(tokens) || 0), updatedAt: now() };
+      state.aiChatHistory.set(id, record);
+      return clone(record);
+    },
+    async remove(userId, id) {
+      const existing = state.aiChatHistory.get(id);
+      if (!existing || existing.userId !== userId) return false;
+      state.aiChatHistory.delete(id);
+      return true;
     }
   };
 

@@ -13,6 +13,7 @@ export function ChatDock({
   placeholder = 'Ask anything',
   listeningPlaceholder = 'Listening…',
   value, onValueChange, onSubmit, onAdd, addLabel, addActive,
+  onNewChat, newChatLabel, onHistory, historyLabel, historyActive,
   onToggleTherapist, therapistActive, therapistLabel,
   listening = false, onMic, micLabel, stopListeningLabel,
   busy = false, width = 680, hint,
@@ -62,6 +63,8 @@ export function ChatDock({
           transition: 'border-color 200ms var(--ease-out),box-shadow 200ms var(--ease-out),background 200ms var(--ease-out)'
         }}>
           <DockButton icon="plus" label={addLabel} active={addActive} onClick={onAdd} />
+          {onNewChat && <DockButton icon="square-pen" label={newChatLabel} onClick={onNewChat} />}
+          {onHistory && <DockButton icon="history" label={historyLabel} active={historyActive} onClick={onHistory} />}
           {list && (
             <React.Fragment>
               <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />

@@ -1472,22 +1472,50 @@ export function createPgRepo(pool) {
     }
   };
 
-  // Same one-row-per-user jsonb-document shape as mentalHealthProfile above - see
-  // 014_ai_chat_history.sql's reasoning.
+  // One row per conversation (017_ai_conversations.sql) - the global AI assistant dock's real,
+  // multiple, resumable chat threads. `messages` stays a single jsonb array per row (same
+  // "nothing queries into it individually" reasoning as mentalHealthProfile/strategies'
+  // chatHistory) - only `list()` needs the lightweight per-conversation summary shape.
+  function mapConversation(row) {
+    return { id: row.id, userId: row.user_id, title: row.title, provider: row.provider, messages: row.messages, tokens: row.total_tokens, updatedAt: row.updated_at };
+  }
   const aiChatHistory = {
-    async upsert(userId, messages) {
+    async list(userId) {
+      const { rows } = await pool.query(
+        `SELECT id, title, provider, jsonb_array_length(messages) AS message_count, total_tokens, updated_at
+         FROM ai_chat_history WHERE user_id=$1 ORDER BY updated_at DESC`,
+        [userId]
+      );
+      return rows.map((row) => ({ id: row.id, title: row.title, provider: row.provider, messageCount: row.message_count, tokens: row.total_tokens, updatedAt: row.updated_at }));
+    },
+    async get(userId, id) {
+      const { rows } = await pool.query('SELECT * FROM ai_chat_history WHERE id=$1 AND user_id=$2', [id, userId]);
+      return rows[0] ? mapConversation(rows[0]) : null;
+    },
+    async create({ userId, provider, title, messages, tokens }) {
+      if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const id = newId('aiConv');
+      const { rows } = await pool.query(
+        `INSERT INTO ai_chat_history (id, user_id, title, provider, messages, total_tokens, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,now()) RETURNING *`,
+        [id, userId, title || 'Untitled conversation', provider || 'openai', JSON.stringify(messages), Math.max(0, Number(tokens) || 0)]
+      );
+      return mapConversation(rows[0]);
+    },
+    // total_tokens is INCREMENTED (this call's new tokens only), never replaced - the client
+    // always sends the whole messages array but only the newest exchange's token count.
+    async appendAndSave(userId, id, { title, messages, tokens }) {
       if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
       const { rows } = await pool.query(
-        `INSERT INTO ai_chat_history (user_id, messages, updated_at) VALUES ($1,$2,now())
-         ON CONFLICT (user_id) DO UPDATE SET messages=$2, updated_at=now()
-         RETURNING messages`,
-        [userId, JSON.stringify(messages)]
+        `UPDATE ai_chat_history SET messages=$3, title=COALESCE($4, title), total_tokens=total_tokens+$5, updated_at=now()
+         WHERE id=$1 AND user_id=$2 RETURNING *`,
+        [id, userId, JSON.stringify(messages), title || null, Math.max(0, Number(tokens) || 0)]
       );
-      return rows[0].messages;
+      return rows[0] ? mapConversation(rows[0]) : null;
     },
-    async get(userId) {
-      const { rows } = await pool.query('SELECT messages FROM ai_chat_history WHERE user_id=$1', [userId]);
-      return rows[0] ? rows[0].messages : [];
+    async remove(userId, id) {
+      const { rowCount } = await pool.query('DELETE FROM ai_chat_history WHERE id=$1 AND user_id=$2', [id, userId]);
+      return rowCount > 0;
     }
   };
 

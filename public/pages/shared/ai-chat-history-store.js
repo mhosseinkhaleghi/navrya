@@ -1,37 +1,17 @@
 (function () {
   'use strict';
-  // History for the global AI assistant dock (chat-dock-core.js) AND the AI Assistant screen's
-  // per-engine "Chat history" module - each engine keeps its own list of titled conversation
-  // cards (not one flat cross-engine message log). v2 replaces the v1 shape (a single
-  // ever-growing { role, content } log with no engine or conversation boundary at all) -
-  // deliberately not migrated: the shapes are fundamentally different (one flat log vs many
-  // titled per-engine threads) and v1's raw log was never itself a resumable unit the user could
-  // recognise, so a one-time reset here costs nothing real. No server sync: no server route for
-  // this ever existed (the old v1 sync calls always 404'd silently), so this stays local-only,
-  // same as ai-settings-store.js/ai-usage-store.js.
-  var KEY = 'tradejournal:ai-chat-history:v2';
-
-  function uid() { return 'aichat-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9); }
-  function today() { return new Date().toISOString().slice(0, 10); }
-
-  function load() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      var parsed = raw ? JSON.parse(raw) : {};
-      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
-    } catch (_) { return {}; }
-  }
-
-  function write(all) {
-    localStorage.setItem(KEY, JSON.stringify(all));
-    window.dispatchEvent(new CustomEvent('tradejournal:ai-chat-history-changed'));
-    return all;
-  }
-
-  function listFor(provider) {
-    var all = load();
-    return Array.isArray(all[provider]) ? all[provider] : [];
-  }
+  // Real, server-synced, resumable conversations for the global AI assistant dock
+  // (chat-dock-core.js) AND the AI Assistant screen's per-engine "Chat history" module - each
+  // engine's list is still a client-side filter over the same server list, same split as before.
+  // Replaces the old v2 local-only shape ("one dock question + its answer = one new disconnected
+  // conversation card", localStorage-only) with real growing conversations backed by
+  // /api/sync/ai-chat-history (server/community/routes.ai-chat-history.mjs,
+  // 017_ai_conversations.sql) - real per-user auth now exists app-wide, so history follows the
+  // trader across devices/browsers, matching real ChatGPT/Claude. No offline write-through cache
+  // here (unlike the Section 7.18 sync-queue modules): there is no "offline chat" use case to
+  // preserve - a sync failure just means history is temporarily unavailable, never that anything
+  // already answered is lost, since the live conversation lives in the dock's own state until
+  // it's saved.
 
   function snippetFrom(text) {
     var s = String(text || '').trim();
@@ -42,50 +22,74 @@
     return s.length > 60 ? s.slice(0, 60) + '…' : (s || 'Untitled conversation');
   }
 
-  // One dock question + its answer = one new conversation card, prepended - mirrors the design
-  // handoff's interaction contract exactly ("Ask from the ChatDock" appends a new conversation),
-  // not a single growing thread.
-  function addExchange(provider, question, answerText, speakerLabel, tokens) {
-    var all = load();
-    var list = Array.isArray(all[provider]) ? all[provider] : [];
-    var entry = {
-      id: uid(), title: titleFrom(question), snippet: snippetFrom(answerText || question),
-      date: today(), messages: 2, tokens: Math.max(0, Number(tokens) || 0),
-      lines: [{ who: 'TRADER', text: question }, { who: String(speakerLabel || provider).toUpperCase(), text: answerText || '' }]
-    };
-    all[provider] = [entry].concat(list);
-    write(all);
-    return entry;
+  function authHeaders() {
+    var switcher = window.TradeJournalDevUserSwitcher;
+    var token = switcher && switcher.currentUserId();
+    return token ? { 'Content-Type': 'application/json', 'x-dev-user-id': token } : null;
   }
 
-  // The AI Assistant screen's manual "New conversation" button - an empty draft card, opened
-  // straight away so the trader can see it before anything has been asked yet.
-  function newDraft(provider, systemLine) {
-    var all = load();
-    var list = Array.isArray(all[provider]) ? all[provider] : [];
-    var entry = {
-      id: uid(), title: 'Untitled conversation', snippet: systemLine || '', date: today(), messages: 0, tokens: 0,
-      lines: systemLine ? [{ who: 'NAVRYA', text: systemLine }] : []
-    };
-    all[provider] = [entry].concat(list);
-    write(all);
-    return entry;
+  function notifyChanged() { window.dispatchEvent(new CustomEvent('tradejournal:ai-chat-history-changed')); }
+
+  async function request(method, path, body) {
+    var headers = authHeaders();
+    if (!headers) throw new Error('NOT_SIGNED_IN');
+    var response = await fetch('/api/sync/ai-chat-history' + path, {
+      method: method, headers: headers, body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+    if (response.status === 204) return null;
+    var result = await response.json().catch(function () { return {}; });
+    if (!response.ok) throw new Error((result && result.error) || 'AI_CHAT_HISTORY_REQUEST_FAILED');
+    return result;
   }
 
-  function remove(provider, id) {
-    var all = load();
-    var list = Array.isArray(all[provider]) ? all[provider] : [];
-    all[provider] = list.filter(function (c) { return c.id !== id; });
-    write(all);
+  // Lightweight per-conversation summaries (no messages), filtered to one provider client-side -
+  // the server already returns everything sorted newest-first.
+  async function listFor(provider) {
+    var result = await request('GET', '/');
+    var all = (result && result.conversations) || [];
+    return provider ? all.filter(function (c) { return c.provider === provider; }) : all;
   }
 
-  function clear(provider) {
-    var all = load();
-    all[provider] = [];
-    write(all);
+  async function get(id) { return request('GET', '/' + encodeURIComponent(id)); }
+
+  // Creates the conversation with its first exchange already in it - called once, after the
+  // dock's first successful reply in a fresh session.
+  async function startConversation(provider, questionText, answerText, tokens) {
+    var messages = [{ role: 'user', content: questionText }, { role: 'assistant', content: answerText || '' }];
+    var record = await request('POST', '/', { provider: provider, title: titleFrom(questionText), messages: messages, tokens: Math.max(0, Number(tokens) || 0) });
+    notifyChanged();
+    return record;
+  }
+
+  // Fetches the conversation's current messages, appends the new turn, and saves the whole array
+  // back - keeps the caller's own contract to a single call, same as the old addExchange().
+  async function appendExchange(id, questionText, answerText, tokens) {
+    var current = await get(id);
+    var messages = (current ? current.messages : []).concat([
+      { role: 'user', content: questionText }, { role: 'assistant', content: answerText || '' }
+    ]);
+    var record = await request('PATCH', '/' + encodeURIComponent(id), { messages: messages, tokens: Math.max(0, Number(tokens) || 0) });
+    notifyChanged();
+    return record;
+  }
+
+  async function remove(id) {
+    await request('DELETE', '/' + encodeURIComponent(id));
+    notifyChanged();
+  }
+
+  // Bulk "Clear" action (AI Assistant screen) - no dedicated bulk-delete route; conversation
+  // counts per engine are small, so a sequential loop is simple and safe.
+  async function clear(provider) {
+    var conversations = await listFor(provider);
+    for (var i = 0; i < conversations.length; i++) {
+      await request('DELETE', '/' + encodeURIComponent(conversations[i].id));
+    }
+    notifyChanged();
   }
 
   window.TradeJournalAiChatHistoryStore = {
-    load: load, listFor: listFor, addExchange: addExchange, newDraft: newDraft, remove: remove, clear: clear
+    listFor: listFor, get: get, startConversation: startConversation, appendExchange: appendExchange,
+    remove: remove, clear: clear, titleFrom: titleFrom, snippetFrom: snippetFrom
   };
 }());

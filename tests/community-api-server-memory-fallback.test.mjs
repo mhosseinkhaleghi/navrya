@@ -26,7 +26,10 @@ test('running the community server with no DATABASE_URL configured lets a real a
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('server did not start in time. stdout=' + stdout + ' stderr=' + stderr)), 10000);
       const timerHandle = setInterval(() => {
-        if (stdout.includes('Community API server:')) { clearInterval(timerHandle); clearTimeout(timer); resolve(); }
+        // Wait for the IN-MEMORY-repo line itself, not the earlier "Community API server:" line -
+        // that one prints first but is not what the assertion below checks, so waiting on it only
+        // was a race: under load, the very next log chunk (this line) could still be in flight.
+        if (stdout.includes('IN-MEMORY repo')) { clearInterval(timerHandle); clearTimeout(timer); resolve(); }
       }, 50);
       child.on('exit', (code) => { clearInterval(timerHandle); clearTimeout(timer); reject(new Error('server exited early with code ' + code + '. stdout=' + stdout + ' stderr=' + stderr)); });
     });

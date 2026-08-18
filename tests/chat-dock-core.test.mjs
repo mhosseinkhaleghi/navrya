@@ -24,7 +24,8 @@ async function coreSandbox(overrides) {
     document, localStorage: sandbox.localStorage, fetch: sandbox.fetch,
     TradeJournalMentalHealthStore: overrides.mentalHealthStore,
     TradeJournalMentalHealthAI: overrides.mentalHealthAI,
-    TradeJournalAIUsage: overrides.aiUsage || { record() {} }
+    TradeJournalAIUsage: overrides.aiUsage || { record() {} },
+    TradeJournalAiChatHistoryStore: overrides.historyStore
   });
   for (const file of ['ai-i18n.js', 'ai-settings-store.js', 'ai-process-registry.js']) {
     vm.runInNewContext(await source(file), sandbox, { filename: file });
@@ -106,4 +107,57 @@ test('analyzeScreenshot posts to /api/trades/extract-fields and records usage', 
   assert.deepEqual(fetchCall.body.images, ['data:image/png;base64,xyz']);
   assert.equal(extraction.entryPrice, 100);
   assert.equal(usageRecorded.length, 1);
+});
+
+// --- Real, multiple, resumable conversations (ai-chat-history-store.js) ---
+
+test('sendChat() with no conversationId starts a brand-new server conversation and returns its id', async () => {
+  const startCalls = [];
+  const historyStore = {
+    startConversation: async (provider, question, answer, tokens) => { startCalls.push([provider, question, answer, tokens]); return { id: 'new-conv-1' }; },
+    appendExchange: async () => { throw new Error('appendExchange must not be called for a fresh conversation'); }
+  };
+  const window = await coreSandbox({
+    historyStore,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'hello there', suggestions: [], provider: 'openai', usage: { promptTokens: 3, completionTokens: 4, totalTokens: 7 } }) })
+  });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'first question', therapistMode: false, transcript: [], conversationId: null });
+
+  assert.equal(startCalls.length, 1);
+  assert.deepEqual(startCalls[0], ['openai', 'first question', 'hello there', 7]);
+  assert.equal(result.conversationId, 'new-conv-1', 'the caller must learn the newly-created conversation id to thread through subsequent messages');
+});
+
+test('sendChat() with an existing conversationId appends to it instead of creating a new one, and returns the same id back', async () => {
+  const appendCalls = [];
+  const historyStore = {
+    startConversation: async () => { throw new Error('startConversation must not be called when a conversation is already active'); },
+    appendExchange: async (id, question, answer, tokens) => { appendCalls.push([id, question, answer, tokens]); return { id }; }
+  };
+  const window = await coreSandbox({
+    historyStore,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'a follow-up reply', suggestions: [], provider: 'openai', usage: { totalTokens: 9 } }) })
+  });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'a follow-up question', therapistMode: false, transcript: [{ role: 'user', content: 'first question' }, { role: 'assistant', content: 'hello there' }], conversationId: 'conv-1' });
+
+  assert.equal(appendCalls.length, 1);
+  assert.deepEqual(appendCalls[0], ['conv-1', 'a follow-up question', 'a follow-up reply', 9]);
+  assert.equal(result.conversationId, 'conv-1', 'must keep threading the same conversation id, not mint a new one');
+});
+
+test('a history-sync failure (startConversation/appendExchange rejecting) never breaks the actual reply the user is waiting on', async () => {
+  const historyStore = {
+    startConversation: async () => { throw new Error('history service unreachable'); },
+    appendExchange: async () => { throw new Error('history service unreachable'); }
+  };
+  const window = await coreSandbox({
+    historyStore,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'the real reply', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'anything', therapistMode: false, transcript: [], conversationId: null });
+  assert.equal(result.reply, 'the real reply', 'the gateway reply must still be returned even though history sync failed');
+  assert.equal(result.conversationId, null, 'no conversation id was ever obtained, since the create attempt failed');
 });
