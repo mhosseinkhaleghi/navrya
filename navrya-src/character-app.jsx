@@ -650,6 +650,122 @@ export function mountCharacterApp(character) {
       });
     }
 
+    // Journey F, first vertical slice: "Create a Pattern." Unlike session.create/trade.calculator,
+    // Pattern creation has no separate "submit" moment - PatternStore.create() (called inside
+    // open(), via strategiesHubView.jsx's own window.TradeJournalNavryaPatternHub hook) persists a
+    // real Pattern immediately and returns its real id; everything after that is a normal live
+    // edit of an already-existing record through its own already-registered 'pattern-editor-{id}'
+    // process (see that file's PatternDetailsTab). open() reports that real dynamic process id
+    // back via ai-workflow-engine.js's own open()-return convention (see that file's comment on
+    // why applyKnownFields() resolves it lazily rather than start() awaiting it). submit()/
+    // resultContext() are deliberately close to no-ops: the record already exists and is already
+    // visible the moment open() resolves.
+    //
+    // Two separate things have to be waited for, found via real browser testing (the first
+    // attempt applied 'name' to nothing and silently lost it): (1) the Strategies Hub itself may
+    // not be mounted yet (a per-view React root, unmounted while any other page is showing - see
+    // canvasApp.jsx) - waited for via its own window hook; (2) creating the Pattern only sets React
+    // state (setTab/openItem) - PatternDetailsTab does not actually MOUNT and run its own
+    // registration effect until React commits that state change and runs effects afterward, which
+    // is asynchronous relative to the synchronous hub.createNew() call. Resolving open() the
+    // instant hub.createNew() returns raced ai-workflow-engine.js's very next applyKnownFields()
+    // call against that not-yet-existing registration - the field values were sent to
+    // TradeJournalAIProcessRegistry.applyValue() for a process id nothing was listening on yet, so
+    // they were silently dropped. open() now also polls TradeJournalAIProcessRegistry.query() for
+    // the real registration to actually exist before resolving.
+    // Shared by pattern.create and pattern.edit below: waits for something to become truthy
+    // (a window hook mounting, a process finishing registration), polling rather than assuming
+    // either already exists - found necessary via real browser testing, see pattern.create's own
+    // comment for exactly which two race conditions this closes.
+    function pollFor(check, onReady, onGiveUp) {
+      var attempts = 0;
+      var poll = setInterval(() => {
+        attempts += 1;
+        var value = check();
+        if (value) { clearInterval(poll); onReady(value); }
+        else if (attempts > 40) { clearInterval(poll); onGiveUp(); } // ~2s at 50ms
+      }, 50);
+    }
+
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'pattern.create', domain: 'patterns', riskLevel: 'low',
+        description: 'Create a new market Pattern definition in NAVRYA (name, optional description, optional completion threshold percentage from 0 to 100). Opens the real Pattern editor immediately.',
+        aliases: ['create a pattern', 'new pattern', 'make a pattern', 'add a pattern', 'create a new pattern', 'define a pattern'],
+        requiredFields: ['name'], optionalFields: ['description', 'completionThreshold'],
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          pollFor(
+            () => window.TradeJournalNavryaPatternHub,
+            (hub) => {
+              var created = hub.createNew();
+              if (!created || !created.id) { resolve(null); return; }
+              var processId = 'pattern-editor-' + created.id;
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null) // the real editor never actually mounted/registered (unexpected)
+              );
+            },
+            () => resolve(null) // the Strategies Hub never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+    }
+
+    // Journey F, second slice: "Edit the Liquidity Sweep pattern's threshold to 85%." Unlike
+    // pattern.create, there is no new entity to make - the real target is an EXISTING Pattern that
+    // must first be RESOLVED by name (F53: never guess). `patternName` is a resolution-only field,
+    // never applied to the real UI (it isn't on 'pattern-editor-{id}''s own allowlist in
+    // pattern-registry.types.js, so a harmless no-op even if it were ever pushed) - it exists only
+    // so open() knows which real Pattern to open. Deliberately requires patternName on the SAME
+    // turn the action is selected (ai-workflow-engine.js's start() now passes this turn's own
+    // extracted fields straight through to open() for exactly this reason) rather than trying to
+    // resolve it across a later turn once a workflow is already active: this action's own
+    // description steers the model to ask "which Pattern?" in plain conversation first if it
+    // doesn't yet have a name, the same as it already would for any other missing required field
+    // it doesn't attempt an action without.
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'pattern.edit', domain: 'patterns', riskLevel: 'low',
+        description: 'Open an EXISTING market Pattern by name so its name, description, or completion threshold percentage (0-100) can be edited. patternName identifies which existing Pattern to open - it is never a rename. Only select this action once the user has actually named which existing Pattern they mean; if they have not, ask them which Pattern first instead of guessing.',
+        aliases: ['edit a pattern', 'edit the pattern', 'update a pattern', 'change the pattern', 'open the pattern'],
+        requiredFields: ['patternName'], optionalFields: ['name', 'description', 'completionThreshold'],
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var nameField = (initialFields || []).filter((f) => f && f.path === 'patternName')[0];
+          var patternName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';
+          if (!patternName) { resolve(null); return; } // nothing to resolve yet - see this action's own description
+          var store2 = window.TradeJournalPatternStore;
+          var patterns = store2 ? store2.listSync() : [];
+          var matches = patterns.filter((p) => String(p.name || '').trim().toLowerCase() === patternName.toLowerCase());
+          if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
+          var target = matches[0];
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          pollFor(
+            () => window.TradeJournalNavryaPatternHub,
+            (hub) => {
+              hub.openExisting(target.id);
+              var processId = 'pattern-editor-' + target.id;
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null) // the real editor never actually mounted/registered (unexpected)
+              );
+            },
+            () => resolve(null) // the Strategies Hub never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+    }
+
     sessionsAdapter.resetOnce().finally(() => {
       store.init();
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);

@@ -41,6 +41,8 @@
     // A4 process-registry allowlist: fields the global AI dock may suggest into while a
     // pattern's editor is open. Stage text isn't included - stages are an ordered array,
     // and generateStages()/chat() already have their own dedicated stage-suggestion path.
-    patternStagePaths: ['name', 'description']
+    // completionThreshold added for Journey F's pattern.create (F9/F10) - clamped into the real
+    // slider's own [0,100] range in strategiesHubView.jsx's applyValue(), never trusted as-is.
+    patternStagePaths: ['name', 'description', 'completionThreshold']
   });
 }());

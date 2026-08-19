@@ -243,8 +243,11 @@
       // see availableActions' own gating above) means the user has moved on; any confirmation
       // still pending from an earlier, different interaction is definitely stale now.
       if (proactiveEngine && typeof proactiveEngine.clearConfirmation === 'function') proactiveEngine.clearConfirmation();
-      workflowEngine.start(payload.action.id, contextEngine ? contextEngine.snapshot() : {});
       var fields1 = mergedFields(payload.action.fields || [], text, payload.action.id);
+      // fields1 is passed straight through as start()'s own third argument too - an action whose
+      // open() must first RESOLVE an existing real entity (pattern.edit's patternName) needs this
+      // turn's extraction to do that lookup; see ai-workflow-engine.js's start() comment.
+      workflowEngine.start(payload.action.id, contextEngine ? contextEngine.snapshot() : {}, fields1);
       var check1 = runProactiveCheck(fields1, payload.action.id, workflowEngine.current());
       proactiveFindings = check1.findings;
       workflowResult = await workflowEngine.applyKnownFields(check1.fieldsToApply, contextEngine ? contextEngine.snapshot() : {});

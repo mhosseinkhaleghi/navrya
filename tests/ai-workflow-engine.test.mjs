@@ -57,6 +57,97 @@ test('start() survives (and still returns a usable workflow) even if open() itse
   assert.equal(workflow.status, 'collecting');
 });
 
+// Journey F: pattern.create/strategy.create-shaped actions target a process id that only exists
+// after open() creates a brand-new entity (PatternStore.create() -> 'pattern-editor-' + realId) -
+// processIdFor(actionId) alone can never express that. open() may return (or resolve to) an
+// object with a `processId` field to override the default; start() itself stays synchronous
+// (existing callers rely on that), the override is resolved lazily on the first
+// applyKnownFields() call instead.
+test('start() stays synchronous even when open() is async - the workflow is usable immediately, before open() has resolved', async () => {
+  let resolveOpen;
+  const action = {
+    id: 'pattern.create', requiredFields: ['name'],
+    open: () => new Promise((resolve) => { resolveOpen = resolve; })
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action) });
+  const workflow = engine.start('pattern.create', {}); // NOT awaited - open() has not resolved yet
+  assert.equal(workflow.actionId, 'pattern.create');
+  assert.equal(workflow.processId, 'pattern-create', 'the default mapping, until open() resolves with an override');
+  resolveOpen({ processId: 'pattern-editor-p1' });
+});
+
+// Journey F, second slice: pattern.edit-shaped actions must RESOLVE which real entity to open
+// (by name) before open() can do anything - and that name is only ever known via this turn's own
+// extraction, never via `known` (which applyKnownFields() alone still owns). start() now passes
+// this turn's fields straight through to open() as a second argument for exactly this reason.
+test('start() passes initialFields straight through to open() as a second argument, without writing them into workflow.known itself', async () => {
+  const openCalls = [];
+  const action = { id: 'pattern.edit', requiredFields: ['patternName'], open: (context, initialFields) => openCalls.push(initialFields) };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action) });
+  const fields = [{ path: 'patternName', value: 'Liquidity Sweep' }];
+  const workflow = engine.start('pattern.edit', {}, fields);
+  assert.deepEqual(openCalls, [fields]);
+  assert.deepEqual(clone(workflow.known), {}, 'known is still applyKnownFields()\'s own job - start() must not pre-populate it itself');
+});
+
+test('start() called the old two-argument way (no initialFields) still passes undefined through to open() - every pre-existing action ignores the extra argument', async () => {
+  const openCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city'], open: (context, initialFields) => openCalls.push(initialFields) };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action) });
+  engine.start('session.create', {});
+  assert.deepEqual(openCalls, [undefined]);
+});
+
+test('applyKnownFields() resolves open()\'s returned {processId} and uses it (not the default actionId mapping) for the real UI sync', async () => {
+  const applyCalls = [];
+  const action = {
+    id: 'pattern.create', requiredFields: ['name'],
+    open: async () => ({ processId: 'pattern-editor-p1' })
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.start('pattern.create', {});
+  const workflow = await engine.applyKnownFields([{ path: 'name', value: 'Liquidity Sweep' }], {});
+  assert.equal(workflow.processId, 'pattern-editor-p1');
+  assert.deepEqual(clone(applyCalls), [['pattern-editor-p1', 'name', 'Liquidity Sweep', 'replace']]);
+});
+
+test('an action whose open() returns nothing (every pre-Journey-F action) keeps the default processId mapping unchanged', async () => {
+  const applyCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city'], open: () => undefined };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.start('session.create', {});
+  const workflow = await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  assert.equal(workflow.processId, 'session-create');
+  assert.deepEqual(clone(applyCalls), [['session-create', 'city', 'New York', 'replace']]);
+});
+
+test('open()\'s processId override is only ever resolved once - a second applyKnownFields() call does not re-await it or overwrite an already-resolved processId', async () => {
+  let openCallCount = 0;
+  const action = {
+    id: 'pattern.create', requiredFields: ['name', 'description'],
+    open: async () => { openCallCount += 1; return { processId: 'pattern-editor-p1' }; }
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('pattern.create', {});
+  await engine.applyKnownFields([{ path: 'name', value: 'Sweep' }], {});
+  const workflow = await engine.applyKnownFields([{ path: 'description', value: 'A liquidity sweep pattern' }], {});
+  assert.equal(openCallCount, 1, 'open() must only ever be called once per workflow, by start() itself');
+  assert.equal(workflow.processId, 'pattern-editor-p1');
+});
+
+test('applyKnownFields() tolerates open() rejecting asynchronously (a real navigation/mount failure) - the workflow keeps the default processId rather than throwing', async () => {
+  const applyCalls = [];
+  const action = {
+    id: 'pattern.create', requiredFields: ['name'],
+    open: async () => { throw new Error('Strategies Hub never mounted'); }
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.start('pattern.create', {});
+  const workflow = await engine.applyKnownFields([{ path: 'name', value: 'Sweep' }], {});
+  assert.equal(workflow.processId, 'pattern-create', 'falls back to the default mapping, matching start()\'s own synchronous-throw handling');
+  assert.deepEqual(clone(applyCalls), [['pattern-create', 'name', 'Sweep', 'replace']]);
+});
+
 test('applyKnownFields() merges known fields and calls TradeJournalAIProcessRegistry.applyValue for each - the live UI sync contract', async () => {
   const applyCalls = [];
   const action = { id: 'session.create', requiredFields: ['city', 'timeframe'], submit: async () => ({ id: 'session-1' }), resultContext: () => {} };

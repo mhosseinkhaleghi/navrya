@@ -31,7 +31,30 @@
     });
   }
 
-  function start(actionId, context) {
+  // Journey F: an action whose target UI has a STABLE, well-known process id (session.create ->
+  // 'session-create', trade.calculator -> 'trade-calculator') needs nothing more than
+  // processIdFor() below. An action that creates a brand-new entity first (pattern.create,
+  // strategy.create, ...) targets a process id that only exists AFTER open() runs
+  // (PatternStore.create() returns a real id, and the real editor registers under
+  // 'pattern-editor-' + that id) - processIdFor(actionId) alone can never express that. Rather
+  // than inventing a second mechanism, open() may optionally return (or resolve to) an object
+  // with a `processId` field, which overrides the default once it's known.
+  //
+  // start() stays synchronous (every existing caller/test relies on that) - the returned/resolved
+  // value from open() is stashed as `pendingOpen` and resolved lazily, on the very first
+  // applyKnownFields() call for this workflow instead (see that function's own comment). Every
+  // existing action's open() returns undefined, Promise.resolve(undefined) is a no-op, and this
+  // is completely unobservable to them.
+  //
+  // `initialFields` (added for pattern.edit-shaped actions): the same {path,value} pairs this
+  // turn already extracted, passed straight through to open() as a second argument - open() never
+  // writes them into `known` itself (that stays applyKnownFields()'s own job, right after this
+  // returns), this is purely so an action that must RESOLVE an existing real entity before it can
+  // open anything (e.g. "Edit the Liquidity Sweep pattern's threshold to 85%" - which real Pattern
+  // even is that?) has the name to look up on the very same turn, instead of only ever seeing an
+  // empty `known`. An action that creates rather than resolves (pattern.create) simply ignores the
+  // second argument, unaffected.
+  function start(actionId, context, initialFields) {
     var actionRegistry = window.TradeJournalAIActionRegistry;
     var action = actionRegistry && actionRegistry.get(actionId);
     if (!action) return null;
@@ -43,7 +66,13 @@
       known: {},
       missing: action.requiredFields.slice()
     };
-    try { action.open(context); } catch (_) { /* opening is best-effort - the workflow state is still usable even if navigation/opening partly failed */ }
+    try {
+      current.pendingOpen = Promise.resolve(action.open(context, initialFields));
+    } catch (_) {
+      // opening is best-effort - the workflow state is still usable even if navigation/opening
+      // partly failed (a synchronous throw is treated the same as open() resolving to nothing).
+      current.pendingOpen = Promise.resolve(null);
+    }
     return current;
   }
 
@@ -55,10 +84,24 @@
   // null once it has completed).
   async function applyKnownFields(fields, context) {
     if (!current) return current;
+    var workflow = current;
     var actionRegistry = window.TradeJournalAIActionRegistry;
     var processRegistry = window.TradeJournalAIProcessRegistry;
-    var action = actionRegistry && actionRegistry.get(current.actionId);
+    var action = actionRegistry && actionRegistry.get(workflow.actionId);
     if (!action) return current;
+
+    // Journey F: resolve start()'s stashed open() result exactly once, on this workflow's first
+    // applyKnownFields() call - see start()'s own comment on why this is deferred rather than
+    // awaited there. `current` may have moved on (cancelled, superseded by a brand-new start())
+    // while this specific await was pending; re-check identity before touching it, the same
+    // pattern scheduleSubmit() below already uses for the identical reason.
+    if (workflow.pendingOpen) {
+      var openResult = null;
+      try { openResult = await workflow.pendingOpen; } catch (_) { /* best-effort, matching start()'s own synchronous-throw handling */ }
+      if (current !== workflow) return current;
+      if (openResult && typeof openResult === 'object' && openResult.processId) workflow.processId = openResult.processId;
+      workflow.pendingOpen = null;
+    }
 
     var appliedAny = false;
     (fields || []).forEach(function (field) {

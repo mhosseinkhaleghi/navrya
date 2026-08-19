@@ -969,7 +969,18 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
     registry.register('pattern-editor-' + pattern.id, {
       allowlist,
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'name' && allowlist.indexOf('name') > -1) patch({ name: String(value ?? '') }); else if (path === 'description' && allowlist.indexOf('description') > -1) patch({ description: String(value ?? '') }); }
+      applyValue: (path, value) => {
+        if (path === 'name' && allowlist.indexOf('name') > -1) patch({ name: String(value ?? '') });
+        else if (path === 'description' && allowlist.indexOf('description') > -1) patch({ description: String(value ?? '') });
+        else if (path === 'completionThreshold' && allowlist.indexOf('completionThreshold') > -1) {
+          // Same [0,100] range the real slider (min=0 max=100) enforces. F50: the model never
+          // decides what's in range - an out-of-range value is rejected outright (left unapplied,
+          // same as normalizeSessionCity()/normalizeSessionTimeframe() rejecting an unrecognized
+          // value elsewhere), never silently clamped to the nearest boundary.
+          var n = Number(value);
+          if (Number.isFinite(n) && n >= 0 && n <= 100) patch({ completionThreshold: Math.round(n) });
+        }
+      }
     });
     return () => { mountedRef.current = false; };
   }, [pattern.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1822,6 +1833,27 @@ function StrategiesHub({ character }) {
     if (tab === 'patterns') { const p = window.TradeJournalPatternStore.create(); openItem('pattern', p.id, 'details'); }
     else { const s = window.TradeJournalStrategyEducationStore.create(); openItem('strategy', s.id, 'details'); }
   }
+  // Journey F (pattern.create): a dedicated function, not a reuse of createNew() above -
+  // createNew() branches on the `tab` state variable, which a caller outside this component
+  // (character-app.jsx's own action registration) cannot reliably set moments earlier (setTab()
+  // is an async/batched React update; reading `tab` back in the same synchronous call would
+  // still see the pre-update value). Creates and opens immediately regardless of whichever tab
+  // is currently showing, then syncs the visible tab to match - the same real
+  // PatternStore.create() the "New pattern" button already calls, never a second creation path.
+  function createNewPattern() { const p = window.TradeJournalPatternStore.create(); setTab('patterns'); openItem('pattern', p.id, 'details'); return p; }
+  // pattern.edit (Journey F): opens an EXISTING Pattern the action's own open() already resolved
+  // by name - never creates anything, just the same setTab/openItem navigation createNewPattern()
+  // already does for a brand-new one.
+  function openExistingPattern(id) { setTab('patterns'); openItem('pattern', id, 'details'); }
+  // Same window-hook handoff convention every other NAVRYA modal/view already exposes
+  // (TradeJournalNavryaTradeCalculator, TradeJournalNavryaLiveSession, ...) - this one is scoped
+  // to this component's own mount/unmount lifecycle (StrategiesHub is a per-view React root,
+  // torn down when navigating away - see canvasApp.jsx), so an action's open() must be prepared
+  // for this hook not existing yet and wait for it (see character-app.jsx's pattern.create).
+  React.useEffect(() => {
+    window.TradeJournalNavryaPatternHub = { createNew: createNewPattern, openExisting: openExistingPattern };
+    return () => { delete window.TradeJournalNavryaPatternHub; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   function removeItem(kind, id) {
     if (!window.confirm(tr(lang, 'deleteConfirm'))) return;
     if (kind === 'pattern') window.TradeJournalPatternStore.remove(id); else window.TradeJournalStrategyEducationStore.remove(id);
