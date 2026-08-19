@@ -177,10 +177,16 @@ function TradeDetailsModal({ trade, onClose, onChanged }) {
   return (
     <div
       dir={rtl ? 'rtl' : 'ltr'}
-      style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center', padding: 24, background: 'var(--scrim)', backdropFilter: 'blur(3px)' }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center',
+        // See Modal.jsx's own comment: reserves the ChatDock's real bottom footprint (0 when no
+        // dock is mounted) so this dialog's own controls never land underneath it, unclickable.
+        padding: '24px 24px calc(24px + var(--navrya-chat-dock-reserved, 0px)) 24px',
+        background: 'var(--scrim)', backdropFilter: 'blur(3px)'
+      }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div role="dialog" aria-modal="true" aria-label={t('title')} style={{ position: 'relative', width: 'min(1240px,100%)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--ink-900)', boxShadow: '0 12px 30px rgba(0,0,0,.45)', display: 'flex', flexDirection: 'column' }}>
+      <div role="dialog" aria-modal="true" aria-label={t('title')} style={{ position: 'relative', width: 'min(1240px,100%)', maxHeight: 'calc(100vh - 48px - var(--navrya-chat-dock-reserved, 0px))', overflowY: 'auto', border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--ink-900)', boxShadow: '0 12px 30px rgba(0,0,0,.45)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px' }}>
           <span style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)' }}>
             <Icon name="execution" size={22} />

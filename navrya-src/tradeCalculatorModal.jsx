@@ -632,13 +632,22 @@ function TradeCalculatorModal({ onClose }) {
   return (
     <div
       dir={rtl ? 'rtl' : 'ltr'}
-      style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, boxSizing: 'border-box', background: 'var(--scrim)', backdropFilter: 'blur(6px)' }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        // See public/pages/shared/navrya/components/feedback/Modal.jsx's own comment: reserves
+        // the ChatDock's real bottom footprint (0 when no dock is mounted) so this dialog's own
+        // footer buttons never land underneath the dock's higher z-index, unclickable - a real
+        // bug found via testing Journey B's "open a trade via chat" flow with a real click
+        // hit-test at the button's own center.
+        padding: '24px 24px calc(24px + var(--navrya-chat-dock-reserved, 0px)) 24px', boxSizing: 'border-box',
+        background: 'var(--scrim)', backdropFilter: 'blur(6px)'
+      }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <Panel
         variant="prestige" radius={12} ornament ornamentSize={16} ornamentInset={6}
         role="dialog" aria-modal="true" aria-label={t('tradeCalculator')}
-        style={{ width: 'min(1380px,100%)', maxHeight: 'calc(100vh - 48px)', background: 'var(--ink-900)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={{ width: 'min(1380px,100%)', maxHeight: 'calc(100vh - 48px - var(--navrya-chat-dock-reserved, 0px))', background: 'var(--ink-900)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         onMouseDown={(e) => e.stopPropagation()}
         onDragOver={(e) => { e.preventDefault(); if (!dragging) setDragging(true); }}
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }}

@@ -34,7 +34,21 @@ import { ModelSwitcher, ModelMascot } from './ModelSwitcher.jsx';
    200 is reserved for the rare full-screen image lightbox (navrya-src/sessionEntryCardsView.jsx);
    150 keeps the input row safely below that and above every zIndex:100 modal. The popover keeps
    the dock's original 70, the same level every other non-modal page content already reasons
-   about (e.g. Select.jsx's own dropdown listbox at 40). */
+   about (e.g. Select.jsx's own dropdown listbox at 40) - deliberately NOT raised above the modal
+   (see the regression this already caused, above): instead, geometry does the work. Every render
+   this component publishes its own real reserved bottom footprint - the dock row's real height
+   PLUS a fixed allowance for a typical SHORT popover reply (the size a workflow slot-filling
+   question actually is, per this app's own "keep these questions short" convention - not the
+   popover's rare full ~360px scrollable-thread maximum, which would waste too much of every
+   modal's usable height for an uncommon case) - as `--navrya-chat-dock-reserved` on the document
+   root. Modal.jsx's own backdrop reserves that same space at its own bottom edge, so in the
+   common case (a short workflow question) the popover and the modal's card simply never occupy
+   the same pixels at all, regardless of which one has the higher z-index - an unusually long
+   reply while a modal also happens to be open is the one bounded, rare case where the popover
+   can still be partially covered, exactly matching this file's own "must not cover the modal's
+   controls" precedent rather than reopening it. */
+var POPOVER_SHORT_REPLY_ALLOWANCE_PX = 130;
+
 export function ChatDock({
   placeholder = 'Ask anything',
   listeningPlaceholder = 'Listening…',
@@ -62,22 +76,39 @@ export function ChatDock({
   const active = list ? (list.find((m) => m.id === model) || list[0]) : null;
   const withMascot = !!(active && mascot);
 
-  // Measures the input row's real rendered height so the popover (now a separate fixed element)
-  // can anchor its own `bottom` directly above it with the same 12px gap the old single flex
-  // column produced - kept live via ResizeObserver rather than a guessed constant, since the row
-  // can legitimately change height (therapist/history buttons appearing, RTL, font scaling).
+  // Measures the input row's real rendered (border-box, visual) height so the popover (a
+  // separate fixed element) and Modal.jsx's own reserved-bottom-space can both anchor/clear it
+  // exactly - kept live via ResizeObserver rather than a guessed constant, since the row can
+  // legitimately change height (therapist/history buttons appearing, RTL, font scaling).
+  //
+  // Found via real browser measurement (production repair pass): ResizeObserverEntry.contentRect
+  // reports the CONTENT box only - it excludes this row's own 9px top/bottom padding, so the
+  // popover/gap math below was under-measuring the row by ~18-20px and visibly overlapping it.
+  // el.offsetHeight is the actual border-box height (padding + border included, matching
+  // getBoundingClientRect()) - the number every consumer of rowHeight here actually needs.
   const rowRef = React.useRef(null);
   const [rowHeight, setRowHeight] = React.useState(56);
   React.useEffect(() => {
     const el = rowRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) setRowHeight(entry.contentRect.height);
-    });
+    const observer = new ResizeObserver(() => setRowHeight(el.offsetHeight));
     observer.observe(el);
+    setRowHeight(el.offsetHeight);
     return () => observer.disconnect();
   }, []);
+
+  // Publishes the dock's own real reserved bottom footprint - its own `bottom` margin + the row's
+  // real height + the popover's own gap AND typical-short-reply allowance (see the top-of-file
+  // comment) - as a CSS custom property on the document root, so any other fixed-positioned UI on
+  // the page - today, specifically Modal.jsx's own backdrop - can reserve the same space without
+  // importing/knowing anything about ChatDock itself. Cleared on unmount (there is exactly one
+  // ChatDock per character page, but this keeps the contract honest for any future page that
+  // doesn't mount one).
+  React.useEffect(() => {
+    var root = document.documentElement;
+    root.style.setProperty('--navrya-chat-dock-reserved', (24 + rowHeight + 12 + POPOVER_SHORT_REPLY_ALLOWANCE_PX) + 'px');
+    return () => { root.style.removeProperty('--navrya-chat-dock-reserved'); };
+  }, [rowHeight]);
 
   return (
     <React.Fragment>

@@ -323,9 +323,47 @@ test('an expanded live-session Scenario card does not block a brand-new action f
   assert.equal(fetchCall.body.activeProcess, null, 'the scenario card must not be reported as an active form either - it would otherwise suppress availableActions server-side too (mutually exclusive per dockChatFormatFor())');
 });
 
-// A registered process that IS a real fillable form (not a scenario card) must keep blocking
-// discovery exactly as Journey A already established - this exclusion is scoped to the one
-// specific id prefix, not a general loosening of the gate.
+// Production repair pass, section 11: found via the real, required 20-turn browser script -
+// completing a Trade via chat auto-opens its own real Trade Details view (character-app.jsx's
+// trade.calculator resultContext, pre-existing, unchanged), which registers itself
+// ('trade-details-{id}', tradeDetailsModal.jsx) purely so ai-context-builder.js can resolve "this
+// trade" - it has no fillable field of its own (allowlist: []). Before this fix, that silently
+// blocked every later action-discovery turn (e.g. "take me to Strategies") for the rest of the
+// session the instant a trade was created - a background/context-only registration suppressing
+// unrelated, brand-new action discovery, exactly the failure mode this section warns about.
+test('a Trade Details view left open by an auto-navigate after Trade creation does not block a later, unrelated action from being discovered', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => { fetchCall = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'plain answer', action: null, provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  window.TradeJournalAIProcessRegistry.register('trade-details-trade-1', { allowlist: [], isOpen: () => true });
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'navigate.to', available: () => true });
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'take me to strategies', therapistMode: false, transcript: [] });
+
+  assert.ok(Array.isArray(fetchCall.body.availableActions) && fetchCall.body.availableActions.some((a) => a.id === 'navigate.to'), 'an open Trade Details view must never suppress action discovery - it has nothing fillable to protect');
+  assert.equal(fetchCall.body.activeProcess, null);
+});
+
+// General principle proven directly: ANY empty-allowlist registration is excluded, not only the
+// two id prefixes exercised above - a future context-only registration gets this for free.
+test('any registration with an empty allowlist is excluded from blocking discovery, regardless of its id prefix', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => { fetchCall = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'plain answer', action: null, provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  window.TradeJournalAIProcessRegistry.register('some-future-context-only-view-x1', { allowlist: [], isOpen: () => true });
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'session.create', available: () => true });
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'start a session', therapistMode: false, transcript: [] });
+
+  assert.ok(Array.isArray(fetchCall.body.availableActions) && fetchCall.body.availableActions.some((a) => a.id === 'session.create'));
+});
+
+// A registered process that IS a real fillable form (a non-empty allowlist, not a scenario card)
+// must keep blocking discovery exactly as Journey A already established.
 test('any other open process (a real dialog/modal) still blocks discovery exactly as before', async () => {
   let fetchCall = null;
   const window = await coreSandbox({
@@ -464,4 +502,57 @@ test('a productContext build() failure never breaks the actual chat turn - purel
   const result = await window.TradeJournalChatDockCore.sendChat({ text: 'anything', therapistMode: false, transcript: [] });
   assert.equal(result.reply, 'still works');
   assert.equal(fetchCall.body.productContext, undefined);
+});
+
+// --- Production repair pass, section 12: debugLastTurn() dev diagnostic ---
+
+test('debugLastTurn() is null before any turn has ever run', async () => {
+  const window = await coreSandbox({});
+  assert.equal(window.TradeJournalChatDockCore.debugLastTurn(), null);
+});
+
+test('debugLastTurn() reports a real workflow start - action id, availableActions offered, and the field paths actually applied (never the values)', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'Starting your New York session - what timeframe?', action: { id: 'session.create', fields: [{ path: 'city', value: 'New York' }] }, provider: 'openai', usage: { totalTokens: 5 } }) })
+  });
+  registerFakeSessionCreate(window, spies);
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'Start a New York session', therapistMode: false, transcript: [] });
+  const debug = window.TradeJournalChatDockCore.debugLastTurn();
+
+  assert.equal(debug.activeProcessBefore, null);
+  assert.deepEqual(clone(debug.availableActionIds), ['session.create']);
+  assert.equal(debug.modelActionId, 'session.create');
+  assert.equal(debug.workflowStarted, true);
+  assert.equal(debug.workflowContinued, false);
+  assert.deepEqual(clone(debug.fieldsAppliedPaths), ['city']);
+  assert.equal(debug.processAfterOpen, 'session-create');
+  const json = JSON.stringify(debug);
+  assert.ok(json.indexOf('New York') === -1, 'must report the field PATH, never the actual value');
+});
+
+test('debugLastTurn() reports action.id: null turns as neither started nor continued', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'Sure, here is an answer.', action: null, provider: 'openai', usage: { totalTokens: 2 } }) })
+  });
+  registerFakeSessionCreate(window, spies);
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'what is my average risk?', therapistMode: false, transcript: [] });
+  const debug = window.TradeJournalChatDockCore.debugLastTurn();
+
+  assert.equal(debug.modelActionId, null);
+  assert.equal(debug.workflowStarted, false);
+  assert.equal(debug.workflowContinued, false);
+});
+
+test('debugLastTurn() marks a therapist-mode turn distinctly, rather than showing stale action-discovery data', async () => {
+  const mentalHealthStore = { load: () => ({ chatHistory: [] }), addMessage: (profile) => profile };
+  const mentalHealthAI = { chat: async () => ({ flagged: false, reply: 'ok', suggestions: [] }) };
+  const window = await coreSandbox({ mentalHealthStore, mentalHealthAI });
+  await window.TradeJournalChatDockCore.sendChat({ text: 'I feel anxious', therapistMode: true, transcript: [] });
+  assert.equal(window.TradeJournalChatDockCore.debugLastTurn().path, 'therapist');
 });

@@ -31,6 +31,16 @@
     return (allowlist || []).filter(function (path) { return !AI_INTERNAL_ONLY_FIELDS[path]; });
   }
 
+  // Production repair pass, section 12: a development-only diagnostic of exactly what the LAST
+  // sendChat() turn's own action-discovery/workflow pipeline decided - sanitized metadata only
+  // (real ids and field PATHS, never field values, never a message's own text, never an API key).
+  // null before the first turn. Overwritten every call, including therapist-mode and
+  // pending-confirmation turns (each sets a minimal { path } marker of its own) so this never goes
+  // stale/misleading about which kind of turn it's actually describing.
+  var lastTurnDebug = null;
+  function setLastTurnDebug(patch) { lastTurnDebug = Object.assign({ at: new Date().toISOString() }, patch); }
+  function debugLastTurn() { return lastTurnDebug; }
+
   function providerLabel(id) {
     var suffix = { openai: 'OpenAI', anthropic: 'Anthropic', kimi: 'Kimi', deepseek: 'Deepseek' }[id] || (id.charAt(0).toUpperCase() + id.slice(1));
     return i18n.t('aiProvider' + suffix);
@@ -54,6 +64,7 @@
     if (!text) return null;
 
     if (therapistMode) {
+      setLastTurnDebug({ path: 'therapist' });
       var mhStore = window.TradeJournalMentalHealthStore, mhAi = window.TradeJournalMentalHealthAI;
       if (!mhStore || !mhAi) throw new Error('AI_REQUEST_FAILED');
       var profile = mhStore.addMessage(mhStore.load(), 'user', text);
@@ -104,6 +115,7 @@
                 }, 'replace');
               }
             }
+            setLastTurnDebug({ path: 'proactive-resolved', decision: decision, ruleId: resolved.ruleId, field: resolved.field });
             return {
               kind: 'proactive-resolved', decision: decision, finding: resolved,
               reply: proactiveEngine.confirmationReply(decision, resolved),
@@ -128,6 +140,20 @@
     // brand-new trade from it via chat - exactly the "starting a trade FROM a specific Scenario"
     // case Journey B needs to support. Every other registered process is unaffected.
     if (activeProcess && String(activeProcess.id).indexOf('live-session-scenario-') === 0) activeProcess = null;
+    // Production repair pass, section 11: a registration with a deliberately EMPTY allowlist
+    // (tradeDetailsModal.jsx's own 'trade-details-{id}', registered purely so ai-context-builder.js
+    // can resolve "this trade" - it has no fillable field of its own at all) is, by construction,
+    // never something the user could be "actively editing" - there is nothing in it applyValue()
+    // could ever legally target. Found via real testing of the full 20-turn required script:
+    // completing a Trade via chat auto-opens its own Trade Details view (character-app.jsx's
+    // trade.calculator resultContext, unchanged, pre-existing behavior), which then silently
+    // blocked every later action-discovery turn (e.g. "take me to Strategies") for the rest of the
+    // session, exactly the failure mode this section warns about - a background/context-only
+    // registration suppressing unrelated, brand-new action discovery. This is the SAME excluding
+    // treatment as live-session-scenario- above, generalized by the actual reason it's safe (empty
+    // allowlist = nothing to fill) rather than another one-off hardcoded id prefix - a future
+    // context-only registration gets this for free as long as it follows the same real convention.
+    if (activeProcess && (!activeProcess.allowlist || !activeProcess.allowlist.length)) activeProcess = null;
     var historyStore = window.TradeJournalAiChatHistoryStore;
 
     // Action discovery (Journey A: "start a New York session" and similar) - only offered when
@@ -230,6 +256,29 @@
     // a stale snapshot from before start() ran.
     var signalResult = runSignalRouting(text, workflowEngine ? workflowEngine.current() : currentWorkflow, contextEngine ? contextEngine.snapshot() : {});
     if (signalResult && signalResult.flagged) return { kind: 'safety' };
+
+    // Production repair pass, section 12: a dev-only, sanitized snapshot of exactly what this
+    // turn's own action-discovery/workflow pipeline decided - which real ids reported themselves
+    // open before/after, whether the model's own action.id was actually acted on, which field
+    // PATHS (never values - this is a debug aid, not a place to accidentally surface a real risk
+    // number or account balance) got live-applied. Exists specifically because "did the model
+    // return an action, and did NAVRYA actually act on it" was, in real production use, hard to
+    // tell apart from the outside - this makes every turn's own answer to that inspectable without
+    // re-reading server logs or re-instrumenting the browser each time.
+    setLastTurnDebug({
+      activeProcessBefore: activeProcess ? activeProcess.id : null,
+      availableActionIds: availableActions ? availableActions.map(function (a) { return a.id; }) : null,
+      modelActionId: (payload.action && payload.action.id) || null,
+      workflowStarted: tookWorkflowPath && !!(workflowEngine && availableActions && payload.action && payload.action.id),
+      workflowContinued: tookWorkflowPath && !(workflowEngine && availableActions && payload.action && payload.action.id),
+      workflowId: workflowResult ? workflowResult.workflowId : null,
+      workflowStatus: workflowResult ? workflowResult.status : (tookWorkflowPath ? 'completed-and-cleared' : null),
+      processAfterOpen: registry ? (registry.activeOpenProcess() && registry.activeOpenProcess().id) : null,
+      fieldsAppliedPaths: tookWorkflowPath ? (workflowResult && workflowResult.known ? Object.keys(workflowResult.known) : []) : [],
+      proactiveFindingIds: proactiveFindings.map(function (f) { return f.id; }),
+      signalRelevant: !!(signalResult && signalResult.relevant),
+      signalDestination: signalResult ? signalResult.destination : null
+    });
 
     if (tookWorkflowPath) {
       var result = { kind: 'workflow', reply: payload.reply, workflow: workflowResult, activeProcess: activeProcess, conversationId: nextConversationId };
@@ -427,6 +476,7 @@
     sendChat: sendChat,
     applySuggestion: applySuggestion,
     analyzeScreenshot: analyzeScreenshot,
-    applyExtractionToWizard: applyExtractionToWizard
+    applyExtractionToWizard: applyExtractionToWizard,
+    debugLastTurn: debugLastTurn
   };
 }());
