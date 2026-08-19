@@ -62,6 +62,29 @@ test('the dock system prompt grounds NAVRYA as a journal/planning tool, never a 
   assert.match(match[1], /never reply as a generic crypto\/trading assistant/i);
 });
 
+// --- response box sizing + collapse/expand toggle (found via a real user report + screenshot:
+// even with the whitespace fix above, a genuinely long, richly-structured reply could still make
+// the whole popover dominate a shorter viewport, since its scrollable thread had a fixed-pixel
+// cap rather than a viewport-relative one) ---
+
+test('ChatResponsePopover.jsx caps its scrollable message thread with a viewport-relative height, not a fixed pixel value', async () => {
+  const source = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
+  assert.doesNotMatch(source, /maxHeight:\s*360\b/, 'must not regress back to a fixed-pixel cap that ignores real viewport height');
+  assert.match(source, /maxHeight:\s*'\d+vh'/, 'must use a viewport-relative (vh) cap instead');
+});
+
+test('ChatResponsePopover.jsx has a real collapse/expand toggle next to the close button, and collapsing hides the body while keeping the header (and the toggle itself) reachable', async () => {
+  const source = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
+  assert.match(source, /const \[collapsed, setCollapsed\] = React\.useState\(false\)/, 'must track a real collapsed/expanded state');
+  assert.match(source, /setCollapsed\(\(v\) => !v\)/, 'the toggle button must actually flip the state, not just set it one way');
+  assert.match(source, /\{!collapsed && <div/, 'collapsing must hide the body content, not just visually shrink it');
+  // The toggle button itself must be OUTSIDE the collapsible body (i.e. still inside <header>),
+  // otherwise collapsing would hide the only control that could ever expand it again.
+  const headerEnd = source.indexOf('</header>');
+  const toggleAt = source.indexOf('setCollapsed((v) => !v)');
+  assert.ok(toggleAt > -1 && toggleAt < headerEnd, 'the collapse toggle must live inside the header, before it closes, so it is never hidden by its own collapsed state');
+});
+
 // --- trade.calculator's own real alias coverage (found via a real user report: "open long trade
 // position for btc" / "open a long position" did not always map to the action) ---
 

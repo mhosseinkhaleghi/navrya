@@ -101,6 +101,17 @@ export function ChatResponsePopover({
   useAssistantMotion();
   const [mounted, setMounted] = React.useState(open);
   const [leaving, setLeaving] = React.useState(false);
+  // Found via real user report + screenshot: a genuinely long, richly-structured reply (the
+  // exact kind the higher-verbosity system prompt now produces on purpose) could still make this
+  // whole popover dominate a shorter viewport even after the earlier whitespace-rendering fix -
+  // the text itself rendered correctly, but the BOX around it had no viewport-relative ceiling of
+  // its own. `collapsed` lets the user manually shrink it back to just the header (still
+  // reachable to re-expand) without losing/closing the conversation - a real, requested control,
+  // not merely a smaller default. Deliberately local state, not lifted to chatDockView.jsx: React
+  // reuses this same component instance across every new message in one open conversation (no
+  // `key` prop forces a remount), so a manual collapse correctly persists turn to turn until the
+  // user explicitly expands it again, and just as correctly resets for a genuinely new popover.
+  const [collapsed, setCollapsed] = React.useState(false);
   const threadRef = React.useRef(null);
 
   // A real, growing conversation (messages) auto-scrolls to its latest turn on every update -
@@ -153,6 +164,14 @@ export function ChatResponsePopover({
           textTransform: 'uppercase', color: 'var(--text-muted)', whiteSpace: 'nowrap',
           overflow: 'hidden', textOverflow: 'ellipsis'
         }}>{title}</span>
+        <button
+          type="button" onClick={() => setCollapsed((v) => !v)}
+          aria-label={collapsed ? 'Expand reply' : 'Collapse reply'} aria-expanded={!collapsed}
+          style={{
+            width: 26, height: 26, borderRadius: 'var(--radius-6)', display: 'grid', placeItems: 'center', padding: 0,
+            background: 'transparent', border: '1px solid transparent', color: 'var(--text-muted)', cursor: 'pointer'
+          }}
+        ><Icon name="chevron" size={14} style={{ transform: collapsed ? 'none' : 'rotate(180deg)', transition: 'transform 160ms var(--ease-out)' }} /></button>
         {onClose && (
           <button
             type="button" onClick={onClose} aria-label="Dismiss reply"
@@ -164,7 +183,7 @@ export function ChatResponsePopover({
         )}
       </header>
 
-      <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {!collapsed && <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {prompt && (thinking || !messages) && (
           <div style={{
             font: 'var(--type-caption)', color: 'var(--text-muted)', paddingLeft: 10,
@@ -200,7 +219,13 @@ export function ChatResponsePopover({
         {!thinking && !safety && !review && messages && (
           <div
             ref={threadRef} className="navrya-scroll"
-            style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 360, overflowY: 'auto', paddingInlineEnd: 4 }}
+            // Found via a real user report + screenshot: a fixed 360px thread cap, plus this
+            // header/padding's own real overhead, could still exceed roughly half the viewport
+            // on a shorter window - never viewport-relative, so it didn't scale down. 38vh keeps
+            // the whole popover (header + padding + this thread) safely inside the ~40-50vh
+            // budget on real, shorter viewports too, while still comfortably fitting several
+            // turns on a normal desktop height before the internal scrollbar engages.
+            style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '38vh', overflowY: 'auto', paddingInlineEnd: 4 }}
           >
             {messages.map((m, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -259,7 +284,7 @@ export function ChatResponsePopover({
             ))}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
