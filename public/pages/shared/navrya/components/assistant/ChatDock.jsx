@@ -49,19 +49,74 @@ import { ModelSwitcher, ModelMascot } from './ModelSwitcher.jsx';
    controls" precedent rather than reopening it. */
 var POPOVER_SHORT_REPLY_ALLOWANCE_PX = 130;
 
+// Ties each real Journey E VOICE_STATES value (navrya-src/aiVoiceRealtime.js) to what the button
+// actually looks like and does - the single source of truth so the icon/tone/pulsing/label a user
+// sees can never drift out of sync with the real underlying state again. IDLE/ERROR intentionally
+// fall through to the same ghost, non-pulsing default below (their own dedicated handling lives in
+// the render code, since IDLE has no status pill at all and ERROR needs the caller's own message).
+var VOICE_STATE_ICON = {
+  requesting_permission: 'mic', connecting: 'mic', listening: 'mic', user_speaking: 'mic',
+  processing: 'mic', assistant_speaking: 'volume-2', interrupted: 'mic', reconnecting: 'mic'
+};
+// Distinct dot colour per state family - connecting/processing (getting ready) vs. live audio
+// (listening/speaking) are visually different even though both pulse, per the spec's own
+// "unmistakable" requirement (not just one colour for every non-idle state).
+var VOICE_STATE_DOT = {
+  requesting_permission: 'var(--warn,#e2b04a)', connecting: 'var(--warn,#e2b04a)', reconnecting: 'var(--warn,#e2b04a)',
+  processing: 'var(--warn,#e2b04a)',
+  listening: 'var(--char-accent)', user_speaking: 'var(--char-accent)', interrupted: 'var(--char-accent)',
+  assistant_speaking: 'var(--char-accent)'
+};
+
+/* Small "[ state • label ]" pill - the always-visible, text-based state readout the spec asks
+   for (not just a few-pixel icon colour change). Only ever rendered for a real, active voice
+   state; IDLE has no pill (nothing to announce) and ERROR uses its own red variant inline below. */
+function VoiceStatusPill({ label, dotColor, pulsing = true }) {
+  return (
+    <span
+      role="status" aria-live="polite" title={label}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7, flex: '0 1 auto', minWidth: 0,
+        // Found via real browser testing: the localized permission-denied error message is long
+        // enough on its own to squeeze the flexible text input (flex:1, minWidth:0) down to zero
+        // visible width in the same row - capped + truncated here so the input NEVER loses its
+        // space; the full untruncated text is still reachable via this same element's own title
+        // and the Voice button's own aria-label/title (see ChatDock's caller below).
+        maxWidth: 240, overflow: 'hidden',
+        padding: '4px 10px 4px 8px', borderRadius: 'var(--radius-pill)',
+        background: 'rgba(244,234,215,.06)', border: '1px solid var(--border-hairline)',
+        font: 'var(--type-caption)', color: 'var(--text-primary)', whiteSpace: 'nowrap'
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 7, height: 7, borderRadius: '50%', background: dotColor, flex: 'none',
+          animation: pulsing ? 'navrya-halo 1150ms var(--ease-standard) infinite' : 'none'
+        }}
+      />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+    </span>
+  );
+}
+
 export function ChatDock({
   placeholder = 'Ask anything',
   listeningPlaceholder = 'Listening…',
   value, onValueChange, onSubmit, onAdd, addLabel, addActive,
   onNewChat, newChatLabel, onHistory, historyLabel, historyActive,
   onToggleTherapist, therapistActive, therapistLabel,
-  listening = false, onMic, micLabel, stopListeningLabel,
+  // Journey E ChatDock voice-UX repair: one real Voice control, driven directly off
+  // aiVoiceRealtime.js's own VOICE_STATES (never a collapsed boolean) so every distinct state the
+  // adapter can report is actually distinguishable on screen, not folded into "listening: true".
+  voiceState = 'idle', voiceMuted = false, onVoiceToggle, onVoiceMuteToggle, voiceErrorLabel, voiceLabels = {},
   busy = false, width = 680, hint,
   models, model, onModelChange, mascot = true, children,
   dir = 'ltr',
-  sendLabel = 'Send', voiceLabel = 'Voice mode',
+  sendLabel = 'Send',
   style, ...rest
 }) {
+  var listening = voiceState !== 'idle' && voiceState !== 'error';
   useAssistantMotion();
   const [focused, setFocused] = React.useState(false);
   const text = value || '';
@@ -161,9 +216,27 @@ export function ChatDock({
             </React.Fragment>
           )}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            {listening && <Waveform />}
+            {voiceState !== 'idle' && (
+              <VoiceStatusPill
+                label={
+                  (voiceState === 'error'
+                    ? (voiceErrorLabel || voiceLabels.error)
+                    : ({
+                      requesting_permission: voiceLabels.requestingPermission, connecting: voiceLabels.connecting,
+                      listening: voiceLabels.listening, user_speaking: voiceLabels.userSpeaking,
+                      processing: voiceLabels.processing, assistant_speaking: voiceLabels.speaking,
+                      interrupted: voiceLabels.listening, reconnecting: voiceLabels.reconnecting
+                    }[voiceState])
+                  ) + (voiceMuted && voiceState !== 'error' ? ' · ' + voiceLabels.muted : '')
+                }
+                dotColor={voiceState === 'error' ? 'var(--danger,#e05a5a)' : VOICE_STATE_DOT[voiceState]}
+                pulsing={voiceState !== 'error'}
+              />
+            )}
+            {(voiceState === 'listening' || voiceState === 'user_speaking' || voiceState === 'assistant_speaking') && <Waveform />}
             <input
-              type="text" value={text} placeholder={listening ? listeningPlaceholder : placeholder}
+              type="text" value={text}
+              placeholder={(voiceState === 'listening' || voiceState === 'user_speaking') ? listeningPlaceholder : placeholder}
               onChange={(e) => onValueChange && onValueChange(e.target.value)}
               onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
@@ -184,13 +257,27 @@ export function ChatDock({
             {onToggleTherapist && (
               <DockButton icon="psychology" label={therapistLabel} active={therapistActive} onClick={onToggleTherapist} />
             )}
-            {onMic && (
-              <DockButton icon="mic" label={listening ? stopListeningLabel : micLabel} active={listening} onClick={onMic} />
+            {/* Mute only ever appears once a real Voice session is live - muting a session that
+                doesn't exist yet has nothing to act on, and showing it beforehand would be a
+                second, redundant voice-ish control right next to the one real entry point below
+                (the exact ambiguity this whole repair pass exists to remove). */}
+            {listening && onVoiceMuteToggle && (
+              <DockButton
+                icon={voiceMuted ? 'mic-off' : 'mic'} active={voiceMuted}
+                label={voiceMuted ? voiceLabels.unmute : voiceLabels.mute}
+                onClick={onVoiceMuteToggle}
+              />
             )}
-            <DockButton
-              icon={ready ? 'arrow-up' : 'waveform'} tone="primary" disabled={!ready}
-              label={ready ? sendLabel : voiceLabel} onClick={submit}
-            />
+            {onVoiceToggle && (
+              <DockButton
+                icon={voiceState === 'idle' || voiceState === 'error' ? 'mic' : (VOICE_STATE_ICON[voiceState] || 'mic')}
+                tone={listening ? 'primary' : 'ghost'}
+                danger={voiceState === 'error'}
+                label={voiceState === 'idle' ? voiceLabels.start : voiceState === 'error' ? (voiceErrorLabel || voiceLabels.error) : voiceLabels.stop}
+                onClick={onVoiceToggle}
+              />
+            )}
+            <DockButton icon="arrow-up" tone="primary" disabled={!ready} label={sendLabel} onClick={submit} />
           </div>
         </div>
       </div>

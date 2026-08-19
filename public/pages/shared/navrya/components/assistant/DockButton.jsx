@@ -1,7 +1,7 @@
 import React from 'react';
 import { Icon } from '../core/Icon.jsx';
 
-export function DockButton({ icon, label, tone = 'ghost', active = false, disabled = false, onClick }) {
+export function DockButton({ icon, label, tone = 'ghost', active = false, disabled = false, danger = false, onClick }) {
   const [hover, setHover] = React.useState(false);
   const primary = tone === 'primary';
   const base = {
@@ -17,11 +17,20 @@ export function DockButton({ icon, label, tone = 'ghost', active = false, disabl
       color: disabled ? 'var(--text-muted)' : 'var(--ink-950)',
       boxShadow: disabled ? 'none' : 'var(--glow-active)'
     }
-    : {
-      border: '1px solid ' + (active || hover ? 'var(--border-gold-strong)' : 'var(--border-hairline)'),
-      background: active ? 'var(--char-active-surface)' : hover ? 'rgba(244,234,215,.04)' : 'transparent',
-      color: active ? 'var(--char-accent)' : hover ? 'var(--text-primary)' : 'var(--text-muted)'
-    };
+    // Voice ERROR state (aiVoiceRealtime.js's VOICE_STATES.ERROR, see ChatDock.jsx's own Voice
+    // button): the one ghost-tone case that must never be mistaken for a normal "active" toggle -
+    // a red border/tint reads as "something needs your attention", not "this is currently on".
+    : danger
+      ? {
+        border: '1px solid var(--danger,#e05a5a)',
+        background: hover ? 'rgba(224,90,90,.12)' : 'rgba(224,90,90,.06)',
+        color: 'var(--danger,#e05a5a)'
+      }
+      : {
+        border: '1px solid ' + (active || hover ? 'var(--border-gold-strong)' : 'var(--border-hairline)'),
+        background: active ? 'var(--char-active-surface)' : hover ? 'rgba(244,234,215,.04)' : 'transparent',
+        color: active ? 'var(--char-accent)' : hover ? 'var(--text-primary)' : 'var(--text-muted)'
+      };
   return (
     <button
       type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}

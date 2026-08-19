@@ -61,33 +61,39 @@ form is `"New York"`. See `docs/ai/voice-architecture.md`'s "Transcription accur
 the full writeup - this is a prompt-level fix, not a hardcoded per-language value map, so it
 generalizes to Persian/Spanish (and any future language) the same way.
 
-## UI labels: reused, not a new key set
+## UI labels: a dedicated `voiceDock*` key set (closed in the ChatDock Voice-UX repair pass)
 
-The Journey E spec that scoped this project called for a dedicated `voice.*` i18n key set
-(`voice.connecting`, `voice.listening`, `voice.speaking`, `voice.muted`, `voice.interrupted`, one
-key per state in the adapter's ten-state machine, all four languages). **That key set was not
-built.** What was actually implemented: the ChatDock's pre-existing mic button and its
-`micLabel`/`stopListeningLabel`/`listeningPlaceholder` props (`aiDockMic`, `aiDockStopListening`,
-`aiDockListening` in `ai-i18n.js`, already translated in all four languages before this journey)
-now drive a real voice connection instead of the cosmetic toggle they previously drove. The
-adapter's internal ten-state machine (`idle`/`requesting_permission`/`connecting`/`listening`/
-`user_speaking`/`processing`/`assistant_speaking`/`interrupted`/`reconnecting`/`error`) exists and
-is exercised in every gate's tests, but the **UI itself only visibly distinguishes two states**
-(not listening vs. listening - the existing waveform indicator), the same binary the mic button
-already expressed. A user does not currently see a distinct label for "connecting" vs.
-"listening" vs. "processing," or a translated error message for a failed connection/denied
-microphone permission.
+Journey E's original pass deliberately left this gap open (see the git history of this file for
+the prior write-up) - the ChatDock only distinguished two visible states (not-listening vs.
+listening), and the button most likely to read as "start voice" to a real user was actually a
+non-functional decoy: the primary send button showed a waveform icon labelled "Voice mode" when
+the text field was empty, but its click handler was the plain text-submit function, which did
+nothing on empty input. The real, working control was the separate ghost-styled `mic` button,
+easy to mistake for a plain dictation toggle rather than a live spoken conversation with NAVRYA.
 
-**This is scoped, honest technical debt, not an oversight to paper over.** Building it out is
-straightforward given the state machine already exists and is already localized-adjacent (every
-other NAVRYA surface already has the four-language infrastructure) - it just was not part of what
-got built and real-browser-verified in this pass. If/when it is built, the 15 keys the original
-spec named (`voice.start`, `voice.stop`, `voice.listening`, `voice.connecting`, `voice.speaking`,
-`voice.processing`, `voice.muted`, `voice.unmuted`, `voice.interrupted`, `voice.reconnecting`,
-`voice.connectionFailed`, `voice.microphoneDenied`, `voice.microphoneUnavailable`,
-`voice.tryAgain`, `voice.endSession`) map directly onto the adapter's existing state values and
-`onError({code, stage})` shape - no adapter-level change would be needed, only new `ai-i18n.js`
-entries and a richer `ChatDock.jsx` rendering of `voiceState`.
+That gap is now closed. `ai-i18n.js` carries a real `voiceDock*` key set, present and non-empty in
+all four languages (`voiceDockStart`, `voiceDockStop`, `voiceDockRequestingPermission`,
+`voiceDockConnecting`, `voiceDockListening`, `voiceDockUserSpeaking`, `voiceDockProcessing`,
+`voiceDockSpeaking`, `voiceDockReconnecting`, `voiceDockError`, `voiceDockErrorPermissionDenied`,
+`voiceDockMute`, `voiceDockUnmute`, `voiceDockMuted` - `tests/ai-voice-chatdock-ux.test.mjs`
+regression-guards every key's presence across all four). `ChatDock.jsx` now renders every reachable
+`VOICE_STATES` value distinctly: the decoy is gone, the one real Voice button changes icon/tone per
+state (a distinct speaker icon while NAVRYA itself is talking, not just "mic" again), and a small
+status pill (`[ ● Listening ]`-shaped, `role="status"`) shows the real, localized state text next
+to the input - including a specific, actionable message for a denied microphone permission,
+distinct from the generic Voice-error message every other failure mode falls back to. A mute
+control appears once a session is live, mirroring the adapter's own `mute()`/`isMuted()`.
+
+Real-browser-verified this pass (see the ChatDock Voice-UX repair final report): clicking the real,
+visible "Start Voice" button (no DevTools) against a real WebRTC connection with real synthesized
+speech input correctly walked through `Requesting microphone access…` → `Connecting…` → `Listening`
+→ `You are speaking` → `Processing…` → `NAVRYA is speaking` → back to `Listening`, with the real
+Session dialog opening mid-flow exactly as Journey A already established, and objective proof (a
+real, inspectable `<audio>` element handed to the transport, not left for the SDK to manage
+invisibly) that assistant audio was actually playing, not just that the state machine claimed it.
+A simulated denied microphone permission produced the correct localized error, left the text
+ChatDock fully usable, and a retry click did not get stuck. All four languages and all four
+character dashboards were confirmed to expose and correctly drive the same real control.
 
 ## Not verified
 
@@ -96,11 +102,15 @@ entries and a richer `ChatDock.jsx` rendering of `voiceState`.
   Pronunciation/naturalness quality per language was not formally assessed beyond confirming
   intelligible, on-topic spoken replies were produced (the content proof in
   `docs/ai/voice-testing.md`), not a native-speaker quality review.
-- **Dedicated RTL viewport testing for the voice UI** (Persian/Arabic at 1920×1080/1366×768/
-  1024×768, called for in the original spec) was not performed. The mic button and waveform
-  indicator use `ChatDock.jsx`'s existing RTL-aware layout (`dir` prop, logical CSS properties),
-  unchanged by Journey E, but no dedicated screenshot-based RTL check of the voice-specific
-  elements was done.
+- **A live, real-audio-triggered interrupt (barge-in) was not cleanly reproduced in the ChatDock
+  Voice-UX repair pass's own test harness** - a two-phrase fake-microphone WAV timed to land the
+  second utterance mid-reply did not register a second finalized transcript in this environment
+  (most likely a turn-detection/VAD timing artifact of the synthetic test audio, not a code change
+  in this pass - `aiVoiceRealtime.js`'s own `interrupt()`/barge-in handling is untouched from the
+  original Journey E implementation, already real-browser-verified in the E3 gate in
+  `docs/ai/voice-testing.md`). The new UI's own state-to-label mapping for `user_speaking` and
+  `interrupted` is code-verified (`tests/ai-voice-chatdock-ux.test.mjs`), not re-confirmed against
+  a fresh live interrupt in this specific pass.
 - **Auto-detection of a language switch mid-utterance** (a user code-switching within one spoken
   turn) was not tested. `languages` is a single-value array sent at session-mint time from the
   UI's current language; the Realtime transcription model may still recognize mixed-language

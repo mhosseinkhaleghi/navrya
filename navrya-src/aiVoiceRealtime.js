@@ -55,22 +55,55 @@ export function createVoiceSession(options) {
   var onStateChange = (options && options.onStateChange) || function () {};
   var onFinalTranscript = (options && options.onFinalTranscript) || function () {};
   var onError = (options && options.onError) || function () {};
+  var onMuteChange = (options && options.onMuteChange) || function () {};
   var fetchSession = options && options.fetchSession;
   var language = (options && options.language) || 'en';
 
   var state = VOICE_STATES.IDLE;
   var session = null;
   var mediaStream = null;
+  // Tracks mute state - deliberately not named `muted` (mute()'s own parameter already is, see
+  // its own comment on why that pre-existing name is kept as-is).
+  var isMuted = false;
+  // A real <audio> element this module owns and hands to the transport (OpenAIRealtimeWebRTC's
+  // own `audioElement` option) instead of letting it create/manage an invisible one itself -
+  // ChatDock UX repair: the only way to OBJECTIVELY prove assistant audio is actually playing
+  // (not just that the state machine says ASSISTANT_SPEAKING) is to inspect a real element's own
+  // .paused/.srcObject/track state - see audioDiagnostics() below.
+  var audioEl = null;
   var handledItemIds = Object.create(null);
   // Bounded ring buffer of recent raw event *types* only (never audio/transcript content) -
   // purely a dev diagnostic surfaced through debugState(), same privacy posture as
   // chat-dock-core.js's own debugLastTurn() (paths/ids, never values).
   var recentEventTypes = [];
 
+  // Shared by setState() and mute() below - found via real browser testing: debugState() only
+  // ever refreshed from inside setState(), so muting (which changes nothing about `state` itself)
+  // left the diagnostic's own `muted` field silently stale at whatever it was during the last real
+  // state transition, even though the real UI's own onMuteChange()-driven display was already
+  // correct. debugState() must reflect the CURRENT mute status any time either one changes.
+  function refreshDebugState() {
+    setDebugState({ state: state, language: language, sessionActive: !!session, muted: isMuted, recentEventTypes: recentEventTypes.slice(-12), audio: audioDiagnostics() });
+  }
+
   function setState(next) {
     state = next;
-    setDebugState({ state: state, language: language, sessionActive: !!session, recentEventTypes: recentEventTypes.slice(-12) });
+    refreshDebugState();
     onStateChange(state);
+  }
+
+  // Objective, inspectable proof that assistant audio is actually playing - never the audio
+  // content itself, only playback/track metadata (readyState/enabled/paused), matching this
+  // file's existing privacy posture for every other diagnostic here.
+  function audioDiagnostics() {
+    var stream = audioEl && audioEl.srcObject;
+    var tracks = stream && typeof stream.getAudioTracks === 'function' ? stream.getAudioTracks() : [];
+    return {
+      hasAudioElement: !!audioEl,
+      audioPaused: audioEl ? audioEl.paused : null,
+      audioTrackActive: tracks.some(function (track) { return track.readyState === 'live' && track.enabled; }),
+      audioTrackCount: tracks.length
+    };
   }
 
   function onTransportEvent(event) {
@@ -120,7 +153,9 @@ export function createVoiceSession(options) {
         tools: [],
         voice: creds.voice
       });
-      var transport = new OpenAIRealtimeWebRTC({ mediaStream: mediaStream });
+      audioEl = document.createElement('audio');
+      audioEl.autoplay = true;
+      var transport = new OpenAIRealtimeWebRTC({ mediaStream: mediaStream, audioElement: audioEl });
       session = new RealtimeSession(agent, { model: creds.model, transport: transport });
       session.on('transport_event', onTransportEvent);
       session.on('audio_start', function () { setState(VOICE_STATES.ASSISTANT_SPEAKING); });
@@ -143,11 +178,23 @@ export function createVoiceSession(options) {
   function disconnect() {
     if (session) { try { session.close(); } catch (_e) { /* already closed */ } session = null; }
     if (mediaStream) { mediaStream.getTracks().forEach(function (track) { track.stop(); }); mediaStream = null; }
+    audioEl = null;
     handledItemIds = Object.create(null);
+    isMuted = false;
+    onMuteChange(isMuted);
     setState(VOICE_STATES.IDLE);
   }
 
-  function mute(muted) { if (session) { try { session.mute(!!muted); } catch (_e) { /* connection already gone - nothing to mute */ } } }
+  // Orthogonal to `state` - the user can mute while NAVRYA is speaking (to stop their own
+  // background noise triggering a barge-in) just as easily as while listening, so this is its own
+  // boolean rather than another VOICE_STATES entry the existing state machine's transitions would
+  // have to account for on top of everything already ASSISTANT_SPEAKING/LISTENING mean.
+  function mute(muted) {
+    isMuted = !!muted;
+    if (session) { try { session.mute(isMuted); } catch (_e) { /* connection already gone - nothing to mute */ } }
+    refreshDebugState();
+    onMuteChange(isMuted);
+  }
 
   // Found via real E3 barge-in testing: the underlying WebRTC data channel can drop between two
   // turns (a real, if infrequent, network hiccup) - every session.* call below used to be
@@ -212,7 +259,9 @@ export function createVoiceSession(options) {
     interrupt: interrupt,
     speak: speak,
     setLanguage: setLanguage,
-    state: function () { return state; }
+    state: function () { return state; },
+    isMuted: function () { return isMuted; },
+    audioDiagnostics: audioDiagnostics
   };
 }
 

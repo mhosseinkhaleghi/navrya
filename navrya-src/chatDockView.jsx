@@ -84,11 +84,17 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyList, setHistoryList] = React.useState([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
-  // Journey E (Realtime Voice): the mic button drives a real OpenAI Realtime WebRTC session
-  // (navrya-src/aiVoiceRealtime.js). `listening` stays true for every non-idle/non-error voice
-  // state so the dock's existing waveform/placeholder treatment keeps working unmodified.
+  // Journey E (Realtime Voice): the Voice button drives a real OpenAI Realtime WebRTC session
+  // (navrya-src/aiVoiceRealtime.js). ChatDock.jsx renders every one of these states distinctly
+  // (see its own VOICE_STATE_ICON/VOICE_STATE_DOT/VoiceStatusPill) directly off voiceState - it
+  // derives its own "is a session live" boolean internally rather than this file collapsing the
+  // state for it.
   const [voiceState, setVoiceState] = React.useState(VOICE_STATES.IDLE);
-  const listening = voiceState !== VOICE_STATES.IDLE && voiceState !== VOICE_STATES.ERROR;
+  const [voiceMuted, setVoiceMuted] = React.useState(false);
+  // Which localized error message to show - a denied microphone permission gets its own clearer
+  // message (spec: "DENY -> clear localized error", not the same generic "something went wrong"
+  // every other Voice failure mode falls back to).
+  const [voicePermissionDenied, setVoicePermissionDenied] = React.useState(false);
   const voiceRef = React.useRef(null);
   const fileInputRef = React.useRef(null);
   const rtl = i18n.direction() === 'rtl';
@@ -268,7 +274,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
       fetchSession: fetchRealtimeSession,
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
-      onError: () => setVoiceState(VOICE_STATES.ERROR)
+      onMuteChange: setVoiceMuted,
+      // A denied getUserMedia prompt reports stage:'permission' (see aiVoiceRealtime.js's
+      // connect()) - every other failure mode (session/connect/interrupt/speak) falls back to the
+      // generic Voice error message instead.
+      onError: (detail) => {
+        setVoicePermissionDenied(!!(detail && detail.stage === 'permission'));
+        setVoiceState(VOICE_STATES.ERROR);
+      }
     });
     return () => { if (voiceRef.current) voiceRef.current.disconnect(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -278,6 +291,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
     if (!voiceRef.current) return;
     const current = voiceRef.current.state();
     if (current === VOICE_STATES.IDLE || current === VOICE_STATES.ERROR) {
+      setVoicePermissionDenied(false);
       // i18n.language() reads document.documentElement.lang live (see ai-i18n.js) - it has no
       // change event, so the adapter's own language is re-synced right here, immediately before
       // every connect(), rather than through a React effect keyed on the i18n object (which never
@@ -288,6 +302,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
     } else {
       voiceRef.current.disconnect();
     }
+  }
+
+  function toggleVoiceMute() {
+    if (!voiceRef.current) return;
+    voiceRef.current.mute(!voiceRef.current.isMuted());
   }
 
   function applySuggestion(item) {
@@ -346,10 +365,17 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
         placeholder={i18n.t('aiDockPlaceholder')}
         listeningPlaceholder={i18n.t('aiDockListening')}
         sendLabel={i18n.t('aiDockSend')}
-        voiceLabel={i18n.t('aiVoiceModeLabel')}
-        micLabel={i18n.t('aiDockMic')}
-        stopListeningLabel={i18n.t('aiDockStopListening')}
-        listening={listening} onMic={toggleVoice}
+        voiceState={voiceState} voiceMuted={voiceMuted}
+        onVoiceToggle={toggleVoice} onVoiceMuteToggle={toggleVoiceMute}
+        voiceErrorLabel={voicePermissionDenied ? i18n.t('voiceDockErrorPermissionDenied') : i18n.t('voiceDockError')}
+        voiceLabels={{
+          start: i18n.t('voiceDockStart'), stop: i18n.t('voiceDockStop'),
+          requestingPermission: i18n.t('voiceDockRequestingPermission'), connecting: i18n.t('voiceDockConnecting'),
+          listening: i18n.t('voiceDockListening'), userSpeaking: i18n.t('voiceDockUserSpeaking'),
+          processing: i18n.t('voiceDockProcessing'), speaking: i18n.t('voiceDockSpeaking'),
+          reconnecting: i18n.t('voiceDockReconnecting'), error: i18n.t('voiceDockError'),
+          mute: i18n.t('voiceDockMute'), unmute: i18n.t('voiceDockUnmute'), muted: i18n.t('voiceDockMuted')
+        }}
         value={text} onValueChange={setText} onSubmit={submit} busy={busy}
         onAdd={triggerAttach} addLabel={i18n.t('aiDockAttach')}
         onNewChat={startNewChat} newChatLabel={i18n.t('aiDockNewChat')}
