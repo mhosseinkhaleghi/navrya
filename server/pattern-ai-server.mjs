@@ -900,7 +900,18 @@ async function analyzeTrade(body) {
 // the repair brief) - never scattered per-component string literals. Applies to every dockChat()
 // branch below; the activeProcess branch layers one extra "keep it short" sentence on top, since
 // a workflow slot question is a different genre of reply than an open-ended answer.
-const DOCK_STYLE_INSTRUCTION = 'For genuine questions, give a polished, useful answer rather than a terse one-liner: state the conclusion clearly, explain the relevant NAVRYA context or reasoning, mention material caveats, and suggest a useful next step when appropriate. Use clean paragraphs; use a short list only when it truly helps. Avoid generic filler ("Sure!", "Great question!") and avoid robotic one-line replies. Stay concise for simple confirmations or when the user\'s own question is simple - match your depth to theirs, don\'t pad. Never claim a NAVRYA action occurred until the application actually confirms it. Do not give personalized financial advice.';
+// Found via real testing (production repair follow-up): (1) the ChatDock has no markdown
+// renderer anywhere - a reply using '**bold**'/'# headers' shows those characters literally, and
+// this app's popover previously collapsed '\n' into a single space too (now fixed client-side,
+// ChatResponsePopover.jsx's own whiteSpace:'pre-line' - this prompt-side instruction is the other
+// half: producing text that renders cleanly once whitespace IS preserved, not raw markdown syntax
+// the model would otherwise reach for reflexively). (2) A message like "open a long position for
+// BTC" can read as ambiguous between "plan/size this in NAVRYA" and "execute this on a live
+// exchange" - without being told which one NAVRYA actually is, a model can default to generic
+// crypto-exchange advice ("specify your order type", "confirm in your exchange") instead of using
+// the real trade.calculator action, exactly the kind of reply that never mentions NAVRYA doing
+// anything at all. Both fixes are stated plainly, not left implicit.
+const DOCK_STYLE_INSTRUCTION = 'NAVRYA is a local trading JOURNAL and PLANNING tool - it has its own real Session/Trade/Strategy/Pattern features, but it is never connected to a live broker or exchange and never executes a real order. When a message reads as wanting to plan, size, or log a trade or session, that maps to using NAVRYA\'s own real feature (a registered action, if one is offered - see below) - never reply as a generic crypto/trading assistant describing how the user would do this on their own exchange; that is a different question than the one being asked here. For genuine questions, give a polished, useful answer rather than a terse one-liner: state the conclusion clearly, explain the relevant NAVRYA context or reasoning, mention material caveats, and suggest a useful next step when appropriate. Stay concise for simple confirmations or when the user\'s own question is simple - match your depth to theirs, don\'t pad. Write in plain text only - never markdown syntax (no "**bold**", no "# headers", no "*" bullets); use real paragraph breaks, and for a genuine list, one short "- item" per line, since that is exactly what actually renders cleanly here. Avoid generic filler ("Sure!", "Great question!") and avoid robotic one-line replies. Never claim a NAVRYA action occurred until the application actually confirms it. Do not give personalized financial advice.';
 
 async function dockChat(body) {
   const language = languageNames[body.language] || languageNames.en;

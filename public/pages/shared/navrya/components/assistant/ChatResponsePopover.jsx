@@ -33,6 +33,22 @@ function ActionRow({ children }) {
   return <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 2 }}>{children}</div>;
 }
 
+// Found via real testing (production repair follow-up): the richer, higher-verbosity system
+// prompt (server/pattern-ai-server.mjs) reliably produces real '\n' paragraph/list breaks and
+// occasional '**bold**'/leading '#' markdown - this app has no markdown renderer anywhere, and a
+// bare <p> tag's default `white-space: normal` collapses every '\n' into a single space, so a
+// genuinely well-structured reply rendered as one dense run-on sentence with stray asterisks and
+// dashes crammed together. `whiteSpace: 'pre-line'` on the paragraph (below) is the other half of
+// this fix - it makes '\n' a real line break again without needing a markdown parser; this
+// function strips the handful of markdown TOKENS that would otherwise show up literally (a stray
+// '**'/'__'/leading '#'), it does not attempt to parse markdown structure.
+function stripMarkdownTokens(text) {
+  return String(text || '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '');
+}
+
 function actionButtonStyle(kind) {
   return kind === 'apply'
     ? { border: '1px solid transparent', background: 'var(--char-accent)', color: 'var(--ink-950)', fontWeight: 600 }
@@ -194,8 +210,9 @@ export function ChatResponsePopover({
                 }}>{m.role === 'user' ? userLabel : assistantLabel}</span>
                 <p style={{
                   margin: 0, font: 'var(--type-body)', color: m.role === 'user' ? 'var(--text-muted)' : 'var(--text-primary)',
-                  textWrap: 'pretty', animation: i === messages.length - 1 ? 'navrya-line-in 320ms var(--ease-out) both' : 'none'
-                }}>{m.content}</p>
+                  textWrap: 'pretty', whiteSpace: 'pre-line',
+                  animation: i === messages.length - 1 ? 'navrya-line-in 320ms var(--ease-out) both' : 'none'
+                }}>{stripMarkdownTokens(m.content)}</p>
               </div>
             ))}
           </div>
@@ -206,9 +223,9 @@ export function ChatResponsePopover({
             {lines.map((line, i) => (
               <p key={i} style={{
                 margin: 0, font: 'var(--type-body)', color: i === 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                textWrap: 'pretty',
+                textWrap: 'pretty', whiteSpace: 'pre-line',
                 animation: `navrya-line-in 320ms var(--ease-out) ${90 + i * 70}ms both`
-              }}>{line}</p>
+              }}>{stripMarkdownTokens(line)}</p>
             ))}
           </div>
         )}
