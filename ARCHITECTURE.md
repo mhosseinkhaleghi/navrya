@@ -949,6 +949,71 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
 - **The Knowledge Base is not a second source of deterministic proactive rules.** `ai-proactive-engine.js`'s rules still only ever check real, live store data; nothing in it reads from the Knowledge Base, and nothing in the Knowledge Base computes a risk/behavioral verdict.
 - **A real, pre-existing bug found and fixed during this journey's own mandatory Journey A/B/C regression pass** (unrelated to the Knowledge Base itself): `panel-system.js`'s view-switch called `Element.remove()` on the outgoing panel, which does not run a React 18 `createRoot()` root's own unmount lifecycle - `settingsView.jsx`'s `TradingDefaultsSection` AI-process registration (`isOpen: () => mountedRef.current`) never actually closed after the first Settings visit, silently blocking all future chat-based action discovery for the rest of the page session. Fixed by having `renderDashboard()`/`renderStrategiesHub()`/`renderSettings()` stash their own root as `container._reactRoot`, and having `panel-system.js`'s `render()` call `.unmount()` on the outgoing panel's stashed root before detaching it.
 
+### 7.20 AI Copilot: Realtime Voice (Journey E)
+
+- **Purpose:** Adds OpenAI Realtime Voice (browser WebRTC) as a second input/output *channel* for
+  the exact same Copilot runtime Journeys A-D already built - not a second AI brain, not a
+  separate Session/Trade persistence path, and not a way for a model to bypass NAVRYA's own
+  deterministic Action Registry/Workflow Engine/Proactive Engine. Full design detail, the complete
+  bug list, per-language behavior, and deployment notes live under `docs/ai/` (`voice-architecture.md`,
+  `voice-i18n.md`, `voice-testing.md`, `realtime-deployment.md`) - this section is the map of what
+  exists and how it fits, matching Section 7.19's own convention.
+- **Files:** `navrya-src/aiVoiceRealtime.js` (`window.TradeJournalAIVoiceRealtime`, the browser
+  WebRTC transport adapter, built on the official `@openai/agents-realtime` npm SDK - a new
+  dependency, not a hand-rolled WebRTC/SDP implementation), wired into `navrya-src/chatDockView.jsx`
+  (the mic button that already existed as a cosmetic no-op now drives a real voice session);
+  server-side, `mintRealtimeClientSecret()`/`POST /api/ai/realtime/session` in
+  `server/pattern-ai-server.mjs`.
+- **Core principle, one level more specific than 7.19's:** the Realtime session itself is given
+  **zero tools** and an instruction that it must never answer, decide, or act - it is a
+  transcription-and-playback transport only. A finalized spoken turn
+  (`conversation.item.input_audio_transcription.completed` - never the interim `.delta` event, an
+  absolute rule) is handed to `chatDockView.jsx`'s existing `submit()`, the exact function a typed
+  message already goes through: same Context Engine snapshot, same Action Registry catalog, same
+  Workflow Engine, same Proactive Engine, same Knowledge Base, same `activeConversationId`/
+  transcript/popover state. Once that resolves with NAVRYA's own reply, the adapter tells the
+  Realtime session to speak that exact text verbatim - never lets the model improvise its own
+  answer. `turn_detection.create_response`/`interrupt_response` are both `false` at session-mint
+  time specifically so the API only reports finalized turn boundaries; NAVRYA always decides
+  whether and what to speak, never the model unprompted.
+- **Ephemeral credentials:** the permanent `OPENAI_API_KEY` never reaches the browser.
+  `mintRealtimeClientSecret()` resolves a key the same three-tier way `callProvider()` already
+  does for every other AI route, then mints a short-lived (`ek_...`, 10-minute) client secret via
+  OpenAI's current `POST /v1/realtime/client_secrets` endpoint, with the full session config
+  (model, voice, audio format, transcription vocabulary hints, turn detection, instructions,
+  `tools: []`) baked in server-side so a compromised browser session can't widen its own
+  permissions by reconnecting with different options.
+- **Voice replies are shorter than written replies.** Reading a full written-Q&A-length answer
+  back verbatim via TTS took over a minute in real testing. `dockChat()` accepts
+  `source: 'voice'` and, only then, its structured-output schema also requires a `voiceReply`
+  field - a short, TTS-phrased rendering of the same answer, same language - alongside the
+  unchanged `reply` (the written transcript entry is completely unaffected).
+- **A pre-existing, cross-cutting bug this journey found (not voice-specific):**
+  `ai-deterministic-extraction.js`'s extractors (timeframe, risk %, entry/stop/target, Session
+  city) each returned the *first* regex/list match, not the *last* - so a self-correcting message
+  ("15 minutes... no, 5 minutes," spoken **or typed**) could resolve to the superseded value even
+  when the model's own extraction was correct, since a deterministic match unconditionally
+  overrides the model's. Fixed with a shared `lastRegexMatch()` helper used by every extractor.
+  See `docs/ai/voice-architecture.md` for the full writeup.
+- **Four languages (English, Persian, Arabic, Spanish) - the same four `ai-i18n.js` already
+  supports, reusing `document.documentElement.lang` directly; no separate voice-language
+  preference exists.** See `docs/ai/voice-i18n.md` for the full per-language verification table
+  and one real per-language bug (Arabic field values transliterated instead of staying in
+  NAVRYA's own canonical English form - fixed at the prompt layer, so it generalizes to any
+  language, not a hardcoded value map).
+- **Verification status: all six planned gates (E0 connection, E1 Session Voice ×4 languages, E2
+  Trade Voice, E3 correction+interruption, E4 Proactive Voice, E5 text/voice continuity) are
+  complete, each verified against the real OpenAI Realtime API with real synthesized speech in a
+  real browser - never a simulated text event standing in for audio.** Full methodology and the
+  complete per-gate bug list are in `docs/ai/voice-testing.md`.
+- **Explicitly not built in this pass** (see `docs/ai/voice-i18n.md`/`realtime-deployment.md` for
+  the honest gap list): a dedicated `voice.*` i18n key set for a per-state voice UI (the mic
+  button reuses the pre-existing `aiDockMic`/`aiDockListening` keys; the adapter's internal
+  ten-state machine exists and is tested, but the UI only visibly distinguishes two states);
+  dedicated RTL viewport testing of the voice UI; per-language voice/TTS selection (one voice,
+  `cedar`, used for all four languages); and production validation (everything above was verified
+  against local dev servers only).
+
 ## 8. AI Integration Points
 
 ### Server configuration
@@ -972,6 +1037,7 @@ KIMI_API_KEY         # Optional - enables the Kimi provider
 KIMI_MODEL           # Defaults to moonshot-v1-8k
 DEEPSEEK_API_KEY     # Optional - enables the DeepSeek provider
 DEEPSEEK_MODEL       # Defaults to deepseek-chat
+OPENAI_REALTIME_MODEL # Optional - overrides the Realtime Voice model (Section 7.20); defaults to gpt-realtime-2.1
 PATTERN_AI_PORT      # Defaults to 8787
 ```
 
@@ -994,8 +1060,9 @@ All model calls request strict JSON Schema output (or the closest equivalent the
 | `POST /api/trades/psychology-analysis` | `trade-reports.js`, `psychology-ui.js` | language and up to 500 closed trade records | `{summary, insights[], correlations[], triggers[], sampleSize, provider, model}`; `triggers[]` (time-of-day/day-of-week/gap-since-last-trade/entry-mode/emotion-repeat) is an additive, backward-compatible field - older callers reading only `summary`/`insights`/`correlations` are unaffected |
 | `POST /api/mental-health/chat` | `mental-health-ai.js` | language, message, trimmed chat history, a light profile-context summary (baseline/intake summaries, active biases, recent triggers, draft thought-record/trigger/scenario-response) | `{reply, distressFlag, suggestions[], provider, model}`; suggestions are restricted to a known field-path allowlist (`mentalHealthPaths`) covering both the v1 draft objects and the v2 intake/scenario-draft paths |
 | `POST /api/mental-health/education-card` | `mental-health-cards.js` | language, `biasType`, the user's own evidence numbers (never raw trade content) | `{title, explanation, whyItMattersForYou, practicalSteps[], imagePrompt, provider, model}` |
-| `POST /api/ai/chat` | `chat-dock-core.js` (therapist mode **off**) | provider/apiKey/model, language, message, trimmed chat history, the currently open registered process (`{id, allowlist}`) if any; when nothing is open, `availableActions[]` (the real Action Registry's own catalog, Section 7.19) instead; either way, an optional `productContext` (Section 7.19's Knowledge Base - narrowed product knowledge/user memory/live state for THIS turn) | `{reply, suggestions[], action, provider, model, usage}`; `suggestions[].path`/`action.fields[].path` are constrained via a dynamically-built schema enum; `action` is `{id, fields[]}` or `null` |
+| `POST /api/ai/chat` | `chat-dock-core.js` (therapist mode **off**) | provider/apiKey/model, language, message, trimmed chat history, the currently open registered process (`{id, allowlist}`) if any; when nothing is open, `availableActions[]` (the real Action Registry's own catalog, Section 7.19) instead; either way, an optional `productContext` (Section 7.19's Knowledge Base - narrowed product knowledge/user memory/live state for THIS turn); an optional `source: 'voice'` (Section 7.20) when the turn originated from a finalized spoken transcript | `{reply, suggestions[], action, provider, model, usage}`; `suggestions[].path`/`action.fields[].path` are constrained via a dynamically-built schema enum; `action` is `{id, fields[]}` or `null`; when `source: 'voice'` was sent, also `voiceReply` - a shorter, TTS-phrased rendering of `reply` for the Realtime session to speak, never used for the written transcript |
 | `POST /api/ai/test-connection` | `ai-settings-ui.js` ("Test connection") | provider/apiKey/model | `{ok: boolean, provider, model, usage}` |
+| `POST /api/ai/realtime/session` | `navrya-src/aiVoiceRealtime.js` (Section 7.20) | apiKey (personal-key override), language | `{value, expiresAt, model, voice, language}` - `value` is a short-lived (`ek_...`, 10 min) OpenAI Realtime client secret; the permanent server key never leaves this endpoint |
 | `POST /api/trades/extract-fields` | `chat-dock-core.js` (screenshot analysis) | provider/apiKey/model, language, one chart screenshot data URL | `{direction, entryPrice, stopLoss, takeProfits[], leverage, confidence, provider, model, usage}`, all fields nullable except `confidence` - never a fabricated price |
 
 Pattern and Strategy Education browser clients provide local multilingual fallbacks when the server or key is unavailable. Session entry/fate summaries are fully local demonstration output. Trade screenshot analysis fails softly; psychology analysis reports an unavailable state rather than inventing results.

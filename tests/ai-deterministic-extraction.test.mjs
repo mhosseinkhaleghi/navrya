@@ -109,6 +109,20 @@ test('does not claim an unsupported timeframe value', async () => {
   assert.equal(x.extractDeterministicFields('37 minutes', { domain: 'session' }).timeframe, undefined);
 });
 
+// Found via real Journey E voice testing: a spoken self-correction ("fifteen minutes... no, five
+// minutes") was transcribed with digit notation ("15 minutes... no, 5 minutes"), and the
+// extractor returned the FIRST value (15m) instead of the LAST, corrected one (5m) - the model's
+// own reply correctly said "5m", but the deterministic layer silently overrode it (see
+// mergeWithModelFields()'s "deterministic wins" precedence) with the superseded value.
+test('a self-correcting message resolves to the LAST stated value, not the first, for every numeric extractor', async () => {
+  const x = await extractionSandbox();
+  assert.equal(x.extractDeterministicFields('15 minutes, no, 5 minutes', { domain: 'session' }).timeframe, '5m');
+  assert.equal(x.extractDeterministicFields('use the 15m chart, actually make that 5m', { domain: 'session' }).timeframe, '5m');
+  assert.equal(x.extractDeterministicFields('risk 4%, no wait, risk 2%', { domain: 'trade' }).riskPercent, 2);
+  assert.equal(x.extractDeterministicFields('entry 64250, no, entry 64500', { domain: 'trade' }).entryPrice, 64500);
+  assert.equal(x.extractDeterministicFields('۱۵ دقیقه، نه، ۵ دقیقه', { domain: 'session' }).timeframe, '5m');
+});
+
 // ---- session city names ----
 
 test('extracts known Session city names, EN + FA', async () => {
@@ -116,6 +130,12 @@ test('extracts known Session city names, EN + FA', async () => {
   assert.equal(x.extractDeterministicFields('Start a New York session.', { domain: 'session' }).city, 'New York');
   assert.equal(x.extractDeterministicFields('Start a Tokyo session.', { domain: 'session' }).city, 'Tokyo');
   assert.equal(x.extractDeterministicFields('یک سشن نیویورک شروع کن', { domain: 'session' }).city, 'New York');
+});
+
+test('a self-correcting city mention resolves to the LAST stated city, not whichever comes first in the known-cities list', async () => {
+  const x = await extractionSandbox();
+  assert.equal(x.extractDeterministicFields('London, no, New York', { domain: 'session' }).city, 'New York');
+  assert.equal(x.extractDeterministicFields('New York, actually Tokyo', { domain: 'session' }).city, 'Tokyo');
 });
 
 // ---- domain scoping ----

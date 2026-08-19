@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatDock } from '../public/pages/shared/navrya/components/assistant/ChatDock.jsx';
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
+import { createVoiceSession, VOICE_STATES } from './aiVoiceRealtime.js';
 
 function fieldLabel(tradeI18n, key) { return tradeI18n ? tradeI18n.t(key) : key; }
 function fieldNumber(tradeI18n, value) { return tradeI18n ? tradeI18n.number(value, { maximumFractionDigits: 4 }) : String(value); }
@@ -83,10 +84,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyList, setHistoryList] = React.useState([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
-  // Mirrors the original NAVRYA chat-dock artifact exactly: a visual mic toggle only - this
-  // app has no speech-to-text backend anywhere (Settings' aiVoiceModeLabel is a disabled,
-  // "not available" control for the same reason), so listening never transcribes into `text`.
-  const [listening, setListening] = React.useState(false);
+  // Journey E (Realtime Voice): the mic button drives a real OpenAI Realtime WebRTC session
+  // (navrya-src/aiVoiceRealtime.js). `listening` stays true for every non-idle/non-error voice
+  // state so the dock's existing waveform/placeholder treatment keeps working unmodified.
+  const [voiceState, setVoiceState] = React.useState(VOICE_STATES.IDLE);
+  const listening = voiceState !== VOICE_STATES.IDLE && voiceState !== VOICE_STATES.ERROR;
+  const voiceRef = React.useRef(null);
   const fileInputRef = React.useRef(null);
   const rtl = i18n.direction() === 'rtl';
   const historyStore = window.TradeJournalAiChatHistoryStore;
@@ -166,13 +169,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function submit(value) {
+  async function submit(value, options) {
+    const source = (options && options.source) === 'voice' ? 'voice' : 'text';
     setText('');
     setPopover((p) => ({ open: true, state: 'thinking', prompt: value, messages: p && p.messages }));
     setBusy(true);
     try {
-      const result = await core.sendChat({ text: value, therapistMode, transcript, conversationId: activeConversationId });
-      if (!result) { setBusy(false); return; }
+      const result = await core.sendChat({ text: value, therapistMode, transcript, conversationId: activeConversationId, source });
+      if (!result) { setBusy(false); return null; }
       if (result.kind === 'safety') {
         // Mirrors the retired global-ai-dock.js exactly: the user turn is still recorded, but
         // no assistant turn exists to append when the safety gate stops the reply.
@@ -181,6 +185,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
           ? window.TradeJournalMentalHealthSafety.renderSafetyCard(closePopover)
           : null;
         setPopover({ open: true, state: 'safety', prompt: value, safetyNode });
+        return { kind: 'safety', reply: '' };
       } else {
         const nextTranscript = transcript.concat([{ role: 'user', content: value }, { role: 'assistant', content: result.reply || '' }]).slice(-24);
         setTranscript(nextTranscript);
@@ -194,13 +199,94 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
           // existing meta row rather than a new dedicated "AI action progress" component.
           meta: result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : []
         });
+        // Returned so a voice-originated turn (see the Realtime wiring below) can speak back a
+        // reply - voiceReply (a deliberately shorter, TTS-friendly rendering the server produces
+        // only for source:'voice' turns) is preferred over the full written reply so a long
+        // written Q&A answer isn't read back verbatim; falls back to `reply` when absent (e.g.
+        // the therapist/proactive-resolved paths, whose replies are already short).
+        return { kind: result.kind || 'assistant', reply: result.reply || '', voiceReply: result.voiceReply || result.reply || '' };
       }
     } catch (_err) {
       const nextTranscript = transcript.concat([{ role: 'user', content: value }, { role: 'assistant', content: i18n.t('aiDockError') }]).slice(-24);
       setTranscript(nextTranscript);
       setPopover({ open: true, state: 'answer', messages: nextTranscript });
+      return { kind: 'error', reply: i18n.t('aiDockError') };
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Always points at the current render's `submit` closure (itself closing over the current
+  // transcript/activeConversationId/therapistMode) - the voice session below is created once
+  // and must never call a stale copy of submit() from the render it was constructed in.
+  const submitRef = React.useRef(submit);
+  submitRef.current = submit;
+
+  async function fetchRealtimeSession(language) {
+    const settingsForOpenAI = settingsStore.getKey('openai');
+    const response = await fetch('/api/ai/realtime/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: settingsForOpenAI, language })
+    });
+    if (!response.ok) throw new Error('VOICE_SESSION_REQUEST_FAILED');
+    return response.json();
+  }
+
+  // A finalized voice turn goes through the exact same submit() a typed message does - one
+  // brain, not two conversations. Once NAVRYA's own deterministic reply comes back, the
+  // Realtime session is told to speak that exact text (never its own improvised answer).
+  //
+  // Found via real E1 multi-turn browser testing: aiVoiceRealtime.js's transcription-completed
+  // handler fires this function once per finalized transcript with no awareness of whether a
+  // PRIOR voice turn is still in flight. Two finalized transcripts arriving close together (a
+  // fast talker, or a queued backlog after a slow reply) each independently called submit() and
+  // both raced core.sendChat()'s own read of "is there already an open form/workflow" before
+  // either had finished starting one - producing duplicate session.create action turns instead of
+  // the second turn being recognized as filling the form the first one had just opened. Text
+  // input never had this problem (one input field, one submit at a time); voice needed the same
+  // guarantee explicitly. voiceTurnQueue serializes every voice-originated submit()+speak() cycle
+  // strictly one at a time, in arrival order - "one utterance -> one Copilot turn", never two
+  // turns processed concurrently.
+  const voiceTurnQueue = React.useRef(Promise.resolve());
+  function onVoiceTranscript(transcriptText) {
+    voiceTurnQueue.current = voiceTurnQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const result = await submitRef.current(transcriptText, { source: 'voice' });
+        const toSpeak = result && (result.voiceReply || result.reply);
+        // Awaited so the queue doesn't move on to the next turn until this one has actually
+        // finished being spoken (see aiVoiceRealtime.js's speak() for why that matters).
+        if (toSpeak && voiceRef.current) await voiceRef.current.speak(toSpeak);
+      });
+    return voiceTurnQueue.current;
+  }
+
+  React.useEffect(() => {
+    voiceRef.current = createVoiceSession({
+      language: i18n.language(),
+      fetchSession: fetchRealtimeSession,
+      onStateChange: setVoiceState,
+      onFinalTranscript: onVoiceTranscript,
+      onError: () => setVoiceState(VOICE_STATES.ERROR)
+    });
+    return () => { if (voiceRef.current) voiceRef.current.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function toggleVoice() {
+    if (!voiceRef.current) return;
+    const current = voiceRef.current.state();
+    if (current === VOICE_STATES.IDLE || current === VOICE_STATES.ERROR) {
+      // i18n.language() reads document.documentElement.lang live (see ai-i18n.js) - it has no
+      // change event, so the adapter's own language is re-synced right here, immediately before
+      // every connect(), rather than through a React effect keyed on the i18n object (which never
+      // changes reference and would silently miss a language switch made between mounting the
+      // dock and the user actually pressing the mic button).
+      voiceRef.current.setLanguage(i18n.language());
+      voiceRef.current.connect().catch(() => {});
+    } else {
+      voiceRef.current.disconnect();
     }
   }
 
@@ -263,7 +349,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
         voiceLabel={i18n.t('aiVoiceModeLabel')}
         micLabel={i18n.t('aiDockMic')}
         stopListeningLabel={i18n.t('aiDockStopListening')}
-        listening={listening} onMic={() => setListening((v) => !v)}
+        listening={listening} onMic={toggleVoice}
         value={text} onValueChange={setText} onSubmit={submit} busy={busy}
         onAdd={triggerAttach} addLabel={i18n.t('aiDockAttach')}
         onNewChat={startNewChat} newChatLabel={i18n.t('aiDockNewChat')}

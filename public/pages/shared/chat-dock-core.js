@@ -61,6 +61,12 @@
     var therapistMode = !!(options && options.therapistMode);
     var transcript = (options && options.transcript) || [];
     var conversationId = (options && options.conversationId) || null;
+    // Journey E: 'voice' when this turn originated from a finalized Realtime transcript - the
+    // written `reply` (transcript/history) is unaffected either way; a voice-sourced turn also
+    // asks the server for a separate, concise `voiceReply` for TTS playback (see
+    // dockChat()/DOCK_STYLE_INSTRUCTION in server/pattern-ai-server.mjs) so the spoken answer
+    // doesn't read back a full written-Q&A-length reply verbatim.
+    var source = (options && options.source) === 'voice' ? 'voice' : 'text';
     if (!text) return null;
 
     if (therapistMode) {
@@ -184,6 +190,7 @@
       activeProcess: activeProcess ? { id: activeProcess.id, allowlist: modelFacingAllowlist(activeProcess.allowlist) } : null
     };
     if (availableActions) requestBody.availableActions = availableActions;
+    if (source === 'voice') requestBody.source = 'voice';
     // Journey D: the smallest-sufficient-context package for THIS turn (LAYER A product
     // knowledge + LAYER B user memory + LAYER C live state), built fresh every call - never
     // cached, never "all knowledge every turn" (ai-context-builder.js's own deterministic
@@ -281,12 +288,12 @@
     });
 
     if (tookWorkflowPath) {
-      var result = { kind: 'workflow', reply: payload.reply, workflow: workflowResult, activeProcess: activeProcess, conversationId: nextConversationId };
-      if (proactiveFindings.length) { result.kind = 'proactive-warning'; result.proactive = proactiveFindings; result.reply = buildProactiveReply(proactiveFindings); }
+      var result = { kind: 'workflow', reply: payload.reply, voiceReply: payload.voiceReply || null, workflow: workflowResult, activeProcess: activeProcess, conversationId: nextConversationId };
+      if (proactiveFindings.length) { result.kind = 'proactive-warning'; result.proactive = proactiveFindings; result.reply = buildProactiveReply(proactiveFindings); result.voiceReply = null; }
       return result;
     }
 
-    return { kind: 'assistant', reply: payload.reply, suggestions: payload.suggestions || [], activeProcess: activeProcess, conversationId: nextConversationId };
+    return { kind: 'assistant', reply: payload.reply, voiceReply: payload.voiceReply || null, suggestions: payload.suggestions || [], activeProcess: activeProcess, conversationId: nextConversationId };
   }
 
   // Journey D, step 0: merges this turn's real user text through the deterministic extractor

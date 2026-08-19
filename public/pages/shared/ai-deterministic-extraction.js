@@ -28,6 +28,28 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  // Found via real Journey E voice testing: a self-correcting message ("15 minutes... no, 5
+  // minutes") was extracted as 15m, not 5m - every extractor below used a plain .exec(), which
+  // only ever finds the FIRST match in the text. A self-correction states the user's real intent
+  // LAST; extractDeterministicFields must agree with that (and with the model's own semantic
+  // reading - see mergeWithModelFields()'s own comment on why deterministic wins the merge), or an
+  // earlier, superseded value silently overrides what the user actually meant to say. Runs each
+  // pattern with its own 'g' flag and returns whichever match (across every given pattern) starts
+  // latest in the text.
+  function lastRegexMatch(text, patterns) {
+    var best = null;
+    patterns.forEach(function (pattern) {
+      var flags = pattern.flags.indexOf('g') > -1 ? pattern.flags : pattern.flags + 'g';
+      var global = new RegExp(pattern.source, flags);
+      var m;
+      while ((m = global.exec(text))) {
+        if (!best || m.index >= best.index) best = m;
+        if (m.index === global.lastIndex) global.lastIndex++; // never loop forever on a zero-width match
+      }
+    });
+    return best;
+  }
+
   // ---- risk percentage: "risk to/of/at 4%", "4% risk", "ریسک ... ۴ درصد" ----
   var RISK_PATTERNS = [
     /risk\D{0,12}?(\d+(?:\.\d+)?)\s*%/i,
@@ -36,11 +58,9 @@
   var RISK_PATTERN_FA = /ریسک[^0-9]{0,12}?(\d+(?:\.\d+)?)\s*درصد/;
 
   function extractRiskPercent(text) {
-    for (var i = 0; i < RISK_PATTERNS.length; i++) {
-      var m = RISK_PATTERNS[i].exec(text);
-      if (m) { var n = toNum(m[1]); if (n !== null && n > 0) return n; }
-    }
-    var mfa = RISK_PATTERN_FA.exec(text);
+    var m = lastRegexMatch(text, RISK_PATTERNS);
+    if (m) { var n = toNum(m[1]); if (n !== null && n > 0) return n; }
+    var mfa = lastRegexMatch(text, [RISK_PATTERN_FA]);
     if (mfa) { var nfa = toNum(mfa[1]); if (nfa !== null && nfa > 0) return nfa; }
     return null;
   }
@@ -74,10 +94,8 @@
 
   function extractLabeledPrice(text, field) {
     var patterns = (LABEL_PATTERNS[field] || []).concat(LABEL_PATTERNS_FA[field] || []);
-    for (var i = 0; i < patterns.length; i++) {
-      var m = patterns[i].exec(text);
-      if (m) { var n = toNum(m[1]); if (n !== null && n > 0) return n; }
-    }
+    var m = lastRegexMatch(text, patterns);
+    if (m) { var n = toNum(m[1]); if (n !== null && n > 0) return n; }
     return null;
   }
 
@@ -88,17 +106,23 @@
 
   function extractTimeframe(text) {
     var lower = text.toLowerCase();
-    for (var i = 0; i < TIMEFRAME_TOKENS.length; i++) {
-      var token = TIMEFRAME_TOKENS[i];
-      if (new RegExp('\\b' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(text)) return token;
+    var tokenMatches = [];
+    TIMEFRAME_TOKENS.forEach(function (token) {
+      var re = new RegExp('\\b' + token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi');
+      var m;
+      while ((m = re.exec(text))) tokenMatches.push({ index: m.index, token: token });
+    });
+    if (tokenMatches.length) {
+      tokenMatches.sort(function (a, b) { return a.index - b.index; });
+      return tokenMatches[tokenMatches.length - 1].token;
     }
-    var m = TIMEFRAME_WORD_PATTERN.exec(lower);
+    var m = lastRegexMatch(lower, [TIMEFRAME_WORD_PATTERN]);
     if (m) {
       var unit = /^m/.test(m[2]) ? 'm' : /^h/.test(m[2]) ? 'h' : 'D';
       var candidate = m[1] + unit;
       return TIMEFRAME_TOKENS.indexOf(candidate) > -1 ? candidate : null;
     }
-    var mfa = TIMEFRAME_WORD_PATTERN_FA.exec(faToAsciiDigits(text));
+    var mfa = lastRegexMatch(faToAsciiDigits(text), [TIMEFRAME_WORD_PATTERN_FA]);
     if (mfa) {
       var unitFa = mfa[2] === 'دقیقه' ? 'm' : mfa[2] === 'ساعت' ? 'h' : 'D';
       var candidateFa = mfa[1] + unitFa;
@@ -112,15 +136,19 @@
   var SESSION_CITY_ALIASES_FA = { 'نیویورک': 'New York', 'لندن': 'London', 'توکیو': 'Tokyo', 'سیدنی': 'Sydney' };
 
   function extractSessionCity(text) {
-    for (var i = 0; i < SESSION_CITIES.length; i++) {
-      var city = SESSION_CITIES[i];
-      if (new RegExp(city.replace(/\s+/g, '\\s*'), 'i').test(text)) return city;
-    }
-    var keys = Object.keys(SESSION_CITY_ALIASES_FA);
-    for (var j = 0; j < keys.length; j++) {
-      if (text.indexOf(keys[j]) > -1) return SESSION_CITY_ALIASES_FA[keys[j]];
-    }
-    return null;
+    var cityMatches = [];
+    SESSION_CITIES.forEach(function (city) {
+      var re = new RegExp(city.replace(/\s+/g, '\\s*'), 'gi');
+      var m;
+      while ((m = re.exec(text))) cityMatches.push({ index: m.index, city: city });
+    });
+    Object.keys(SESSION_CITY_ALIASES_FA).forEach(function (alias) {
+      var idx = text.indexOf(alias);
+      while (idx > -1) { cityMatches.push({ index: idx, city: SESSION_CITY_ALIASES_FA[alias] }); idx = text.indexOf(alias, idx + 1); }
+    });
+    if (!cityMatches.length) return null;
+    cityMatches.sort(function (a, b) { return a.index - b.index; });
+    return cityMatches[cityMatches.length - 1].city;
   }
 
   // context: {domain} - e.g. {domain:'trade'} narrows which fields are worth attempting (a

@@ -130,3 +130,72 @@ test('reasoning/verbosity never appear in the actual outgoing request body for A
     assert.ok(jsonStr.indexOf('verbosity') === -1, provider + ' must never receive the OpenAI-only text.verbosity param');
   }
 });
+
+// --- Journey E: voice-sourced turns get a separate, shorter spoken reply (found via real E0
+// browser testing: a full written-Q&A-length reply read back verbatim via TTS ran past a minute -
+// see DOCK_STYLE_INSTRUCTION/voiceInstruction and dockChatFormatFor()'s voiceSource param) ---
+
+test('a plain text turn (no source, or source !== "voice") never asks for voiceReply and never returns one', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'a full written answer', action: null });
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'What is a Session?', language: 'en' }));
+  const body = getBody();
+  assert.equal(body.text.format.schema.required.includes('voiceReply'), false);
+  assert.equal(body.text.format.schema.properties.voiceReply, undefined);
+  assert.equal(result.voiceReply, null);
+});
+
+test('a voice-sourced turn (source: "voice") requires voiceReply in the schema, adds the spoken-reply instruction, and passes it through in the result', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'a full written answer', voiceReply: 'a short spoken version', action: null });
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'What can I do in the positions panel?', language: 'en', source: 'voice' }));
+  const body = getBody();
+  assert.ok(body.text.format.schema.required.includes('voiceReply'));
+  assert.equal(body.text.format.schema.properties.voiceReply.type, 'string');
+  const systemText = body.input[0].content[0].text;
+  assert.match(systemText, /read aloud/i);
+  assert.match(systemText, /noticeably shorter than reading `reply` verbatim/i);
+  assert.equal(result.reply, 'a full written answer');
+  assert.equal(result.voiceReply, 'a short spoken version');
+});
+
+// Found via real Journey E voice testing in Arabic: a session-city field value came back
+// transliterated ("نيويورك") instead of NAVRYA's own canonical English form ("New York"), which
+// the client's normalizeSessionCity() then correctly refuses (never applies a value the real
+// dropdown wouldn't accept) but silently drops the field instead of filling it - the user has to
+// repeat themselves. Applies to both the activeProcess and availableActions branches, since both
+// extract field values.
+test('both the activeProcess and availableActions branches instruct the model to keep fixed-choice field values in their canonical English form, not translated/transliterated into the reply language', async () => {
+  const getBody1 = captureOpenAIRequest({ reply: 'ok', action: null });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'استخدم نيويورك', language: 'ar', availableActions: [{ id: 'session.create', requiredFields: ['city'], optionalFields: [] }] }));
+  assert.match(getBody1().input[0].content[0].text, /canonical English form/i);
+
+  const getBody2 = captureOpenAIRequest({ reply: 'ok', suggestions: [] });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'نيويورك', language: 'ar', activeProcess: { id: 'session-create', allowlist: ['city'] } }));
+  assert.match(getBody2().input[0].content[0].text, /canonical English form/i);
+});
+
+// Found via real E1 voice testing: a spoken self-correction ("fifteen minutes... no, five
+// minutes") produced a reply that correctly named the corrected value ("5m") but a structured
+// suggestion that still held the superseded first value ("15m") - the two must never disagree.
+test('both branches instruct the model to resolve a self-correcting message to only the final value, and to keep the reply text and any extracted field value in agreement', async () => {
+  const getBody1 = captureOpenAIRequest({ reply: 'ok', action: null });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: '15 minutes, no, 5 minutes', language: 'en', availableActions: [{ id: 'session.create', requiredFields: ['timeframe'], optionalFields: [] }] }));
+  assert.match(getBody1().input[0].content[0].text, /final, corrected value/i);
+
+  const getBody2 = captureOpenAIRequest({ reply: 'ok', suggestions: [] });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: '15 minutes, no, 5 minutes', language: 'en', activeProcess: { id: 'session-create', allowlist: ['timeframe'] } }));
+  assert.match(getBody2().input[0].content[0].text, /final, corrected value/i);
+});
+
+test('voiceReply is requested in the activeProcess (open-form) branch too, since its own reply can still occasionally be full Q&A-length', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok', suggestions: [] });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'New York', language: 'en', activeProcess: { id: 'session-create', allowlist: ['city'] }, source: 'voice' }));
+  const body = getBody();
+  assert.ok(body.text.format.schema.required.includes('voiceReply'));
+});
