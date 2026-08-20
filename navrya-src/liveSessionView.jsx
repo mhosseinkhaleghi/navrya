@@ -810,12 +810,36 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       source: { character, sessionId: session.id, scenarioId: scenario.id }
     }, { onSave: (value) => applyTradeUpdate(value) });
   }
+  // F21-close: refs kept current every render, read from inside the useEffect-registered
+  // applyValue() below instead of closing directly over onUpdate/onSetSide/scenario/
+  // registeredPatterns. Found via real browser testing (manual-edit-precedence, real UI
+  // interaction, not code reading): the registration effect's own deps ([scenario.id, open])
+  // never change once a Scenario is created and expanded, so applyValue() stayed permanently
+  // bound to whichever onUpdate/session closure existed at the FIRST render - itself ultimately
+  // closing over liveSessionView's own `session` variable at that moment (persist()'s own
+  // `mutator(session)` mutates that exact captured object, not a fresh read of current storage).
+  // A human manually editing the description in between, then a LATER AI field edit routed
+  // through this same stale applyValue(), silently reverted the manual edit: the AI's own patch
+  // WAS correctly a single-key object ({evidence: ...}), but persist() saved it merged onto the
+  // stale, pre-manual-edit `session` snapshot, discarding everything that changed in between.
+  // Same fix pattern as StrategyDetailsTab/PatternDetailsTab's own strategyRef/patternRef - not a
+  // new mechanism, the same one generalized to a component that never got it.
+  const onUpdateRef = React.useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+  const onSetSideRef = React.useRef(onSetSide);
+  onSetSideRef.current = onSetSide;
+  const scenarioRef = React.useRef(scenario);
+  scenarioRef.current = scenario;
+  const registeredPatternsRef = React.useRef(registeredPatterns);
+  registeredPatternsRef.current = registeredPatterns;
+
   function handlePatternChange(patternId) {
-    if (!patternId) { onUpdate({ pattern: null }); return; }
-    const picked = registeredPatterns.find((p) => p.id === patternId);
+    if (!patternId) { onUpdateRef.current({ pattern: null }); return; }
+    const picked = registeredPatternsRef.current.find((p) => p.id === patternId);
     if (!picked) return;
-    const keepDone = scenario.pattern && scenario.pattern.patternTagId === picked.id ? (scenario.pattern.completedStageIds || []) : [];
-    onUpdate({ pattern: { patternTagId: picked.id, name: picked.name, stages: picked.stages, completedStageIds: keepDone, completionThreshold: picked.completionThreshold } });
+    const currentScenario = scenarioRef.current;
+    const keepDone = currentScenario.pattern && currentScenario.pattern.patternTagId === picked.id ? (currentScenario.pattern.completedStageIds || []) : [];
+    onUpdateRef.current({ pattern: { patternTagId: picked.id, name: picked.name, stages: picked.stages, completedStageIds: keepDone, completionThreshold: picked.completionThreshold } });
   }
 
   // AI process registry (A4) - per-scenario id, same multi-instance reasoning as
@@ -828,18 +852,31 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('live-session-scenario-' + scenario.id, {
-      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit'],
+      // Journey F, F20: patternName is resolution-only (never itself written - it drives
+      // handlePatternChange, which already writes the real snapshot shape). Exact, case-
+      // insensitive match against the same registeredPatterns list the manual Pattern picker UI
+      // itself offers - zero or ambiguous matches silently do not apply, the same "never guess"
+      // (F53) behavior pattern.edit/strategy.edit already established, rather than a UI-visible
+      // rejection this fire-and-forget applyValue() has no channel to surface.
+      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName'],
       isOpen: () => open,
       applyValue: (path, value) => {
-        if (['title', 'description', 'evidence', 'problem', 'trigger'].indexOf(path) > -1) { onUpdate({ [path]: String(value ?? '') }); return; }
-        if (path === 'positionType') { onSetSide(value === 'Short' ? 'Short' : 'Long'); return; }
+        if (['title', 'description', 'evidence', 'problem', 'trigger'].indexOf(path) > -1) { onUpdateRef.current({ [path]: String(value ?? '') }); return; }
+        if (path === 'positionType') { onSetSideRef.current(value === 'Short' ? 'Short' : 'Long'); return; }
         if (path === 'entryPrices') {
+          const freshPlan = scenarioRef.current.executionPlan || {};
           const prices = (Array.isArray(value) ? value : String(value).split(',')).map((item) => Number(String(item).trim())).filter((n) => !Number.isNaN(n));
-          onUpdate({ executionPlan: { ...plan, entryPrices: prices } });
+          onUpdateRef.current({ executionPlan: { ...freshPlan, entryPrices: prices } });
           return;
         }
-        if (path === 'stopLoss') { onUpdate({ executionPlan: { ...plan, stopLoss: value === '' || value == null ? null : Number(value) } }); return; }
-        if (path === 'takeProfit') { onUpdate({ executionPlan: { ...plan, takeProfit: value === '' || value == null ? null : Number(value) } }); }
+        if (path === 'stopLoss') { onUpdateRef.current({ executionPlan: { ...(scenarioRef.current.executionPlan || {}), stopLoss: value === '' || value == null ? null : Number(value) } }); return; }
+        if (path === 'takeProfit') { onUpdateRef.current({ executionPlan: { ...(scenarioRef.current.executionPlan || {}), takeProfit: value === '' || value == null ? null : Number(value) } }); return; }
+        if (path === 'patternName') {
+          const wanted = String(value ?? '').trim().toLowerCase();
+          if (!wanted) return;
+          const matches = registeredPatternsRef.current.filter((p) => String(p.name || '').trim().toLowerCase() === wanted);
+          if (matches.length === 1) handlePatternChange(matches[0].id);
+        }
       }
     });
     return undefined;
@@ -1722,6 +1759,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     persist((s) => { s.entries = (s.entries || []).concat([entry]); }, 'entry_added', kind === 'chart' ? tr(lang, 'addChart') : tr(lang, 'addMove'));
     setFilter('all'); setQ('');
     selectEntry(entry.id);
+    return entry;
   }
   function deleteEntry(entry) {
     persist((s) => { s.entries = (s.entries || []).filter((e) => e.id !== entry.id); });
@@ -1817,6 +1855,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       if (target) target.scenarios = (target.scenarios || []).concat([scenario]);
     }, 'scenario_added', tr(lang, 'addScenario'), scenario.id, true);
     setOpenScenarios((prev) => new Set(prev).add(scenario.id));
+    return scenario;
   }
   function updateScenario(entry, scenario, patch, logType) {
     persist((s) => {
@@ -1847,6 +1886,50 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   }
 
   const selEntry = list.find((e) => e.id === selId) || null;
+
+  // Journey F, F19/F20: real window-hook handoff, same convention as
+  // TradeJournalNavryaPatternHub/StrategyHub - session.chartEntry.create/movementEntry.create/
+  // scenario.create all drive the exact real functions the "Add chart"/"Add movement"/"Add
+  // scenario" buttons already call (addEntry/addScenario/setChartModalOpen/withPreSessionCheckIn),
+  // never a second creation path. Every one of those closes over this render's own
+  // session/selId/list, which are freshly recomputed every render (Journey F's own stale-closure
+  // lesson from Pattern/Strategy - see strategiesHubView.jsx's patternRef/strategyRef) - a ref kept
+  // current every render decouples what the hook actually calls from which render's own effect
+  // closure happens to still be registered.
+  const liveSessionHubRef = React.useRef(null);
+  liveSessionHubRef.current = { session, addEntry, addScenario, setChartModalOpen, withPreSessionCheckIn, selectEntry, setOpenScenarios };
+  React.useEffect(() => {
+    window.TradeJournalNavryaLiveSessionHub = {
+      addChartEntry: () => { liveSessionHubRef.current.withPreSessionCheckIn(() => liveSessionHubRef.current.setChartModalOpen(true)); },
+      // Returns the real created entry (or null if the pre-session check-in gate deferred it - a
+      // known, rare edge case: the caller's own poll-for-registration simply times out gracefully
+      // in that case, same fallback as every other "the real UI never mounted" path).
+      addMovementEntry: () => {
+        var created = null;
+        liveSessionHubRef.current.withPreSessionCheckIn(() => { created = liveSessionHubRef.current.addEntry('movement'); });
+        return created;
+      },
+      addScenarioToEntry: (entryId) => {
+        var entry = (liveSessionHubRef.current.session.entries || []).find((e) => e.id === entryId);
+        if (!entry) return null;
+        return liveSessionHubRef.current.addScenario(entry);
+      },
+      // session.scenario.edit (F20): a Scenario's own card only ever mounts/registers while its
+      // parent Entry is the one currently selected AND its own card is expanded (ScenarioEditor's
+      // own isOpen tracks the openScenarios Set) - opening an EXISTING Scenario found by title
+      // therefore has to do both, not just resolve an id, or the real registration this then polls
+      // for would never actually appear.
+      openScenario: (scenarioId) => {
+        var entries = liveSessionHubRef.current.session.entries || [];
+        var owner = entries.find((e) => (e.scenarios || []).some((sc) => sc.id === scenarioId));
+        if (!owner) return false;
+        liveSessionHubRef.current.selectEntry(owner.id);
+        liveSessionHubRef.current.setOpenScenarios((prev) => new Set(prev).add(scenarioId));
+        return true;
+      }
+    };
+    return () => { delete window.TradeJournalNavryaLiveSessionHub; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Broadened from "trades whose source.sessionId is this exact session" to every real open/
   // hunting trade for this character - a position opened in an earlier session (say, London)
   // that is still running when the next session (New York) starts is still a live position of

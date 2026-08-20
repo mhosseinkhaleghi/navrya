@@ -842,6 +842,180 @@ export function mountCharacterApp(character) {
       });
     }
 
+    // Journey F, F19/F20: Session Entry + Scenario actions. Same real architecture as
+    // pattern.create/strategy.create - Action Registry -> Workflow Engine -> Process Registry ->
+    // liveSessionView.jsx's own real UI/persistence, never a second AI-to-Session-store path.
+    // available() gates every one of these on a real active Session (F5: no active Session, no
+    // guessing) - context.activeEntities is ai-context-engine.js's own snapshot() shape.
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'session.chartEntry.create', domain: 'sessions', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Open the real Chart Entry form for the current active trading Session (optionally timeframe, market, date, and a note). A real chart screenshot must still be attached by the user through the real form - this can never auto-complete or fabricate an image. Only available while a Session is actively open.',
+        aliases: ['add a chart entry', 'add a chart', 'log a chart entry', 'upload a chart'],
+        requiredFields: [], optionalFields: ['timeframe', 'market', 'date', 'note'],
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
+          pollFor(
+            () => window.TradeJournalNavryaLiveSessionHub,
+            (hub) => {
+              hub.addChartEntry();
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('live-session-chart-entry').open,
+                () => resolve({ processId: 'live-session-chart-entry' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null) // the Live Session workspace never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Deliberately NOT entityAlreadyPersisted, unlike pattern.create/strategy.create/
+        // scenario.create - found via real browser testing. Those stay "open" because a
+        // deliberate, real UI gesture keeps them so (a modal the user must explicitly close, or a
+        // multi-field record naturally filled over several turns) - a Movement Entry's own
+        // registration ('live-session-entry-{id}') instead reports itself open merely because it
+        // is WHICHEVER entry happens to be currently selected in the timeline, an ambient,
+        // passive state with no deliberate "stay focused here" gesture behind it and only one
+        // real field (note) worth filling. Keeping this workflow alive indefinitely blocked every
+        // later turn from discovering ANY other action at all ("Create a scenario called X" was
+        // mis-routed into the still-open entry's own note field instead) - the normal auto-
+        // submit-then-clear grace window (the same one session.create/trade.calculator already
+        // use) is the correct shape here: a few seconds' room for a quick correction, then the
+        // workflow releases control for the next, likely unrelated, turn.
+        id: 'session.movementEntry.create', domain: 'sessions', riskLevel: 'low',
+        description: 'Add a movement note entry to the current active trading Session. Opens the real entry immediately and fills its note field. Only available while a Session is actively open.',
+        aliases: ['add a movement note', 'add a movement entry', 'log a movement', 'add a note'],
+        requiredFields: [], optionalFields: ['note'],
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
+        open: (context) => new Promise((resolve) => {
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
+          // Journey F, F21: reuse the currently-selected Entry if it is already a still-empty
+          // Movement Entry, instead of unconditionally creating a new one. Found via real browser
+          // testing of the exact two-turn pattern the spec requires ("Add a movement entry." then,
+          // separately, "Price swept the previous high and rejected."): requiredFields is
+          // deliberately empty (see this action's own comment above), so the workflow reaches
+          // pending-submit and clears within a few seconds whether or not a note was ever
+          // supplied - a delayed follow-up re-triggers fresh discovery of this same action (there
+          // is no movementEntry.edit, unlike Scenario's title-resolved edit), and without this
+          // check it silently created a SECOND, redundant entry instead of filling the first
+          // one's note.
+          var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
+          var entryId = context && context.activeEntities && context.activeEntities.entryId;
+          var session = sessionId && window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
+          var existing = entryId && session ? (session.entries || []).find((e) => e.id === entryId) : null;
+          var reuse = existing && existing.type === 'movement' && !existing.movementNote;
+          pollFor(
+            () => window.TradeJournalNavryaLiveSessionHub,
+            (hub) => {
+              var created = reuse ? existing : hub.addMovementEntry();
+              if (!created || !created.id) { resolve(null); return; }
+              var processId = 'live-session-entry-' + created.id;
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null) // the Live Session workspace never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Deliberately NOT entityAlreadyPersisted, unlike pattern.create/strategy.create - found
+        // via real browser testing. chat-dock-core.js's own activeProcess resolution already, and
+        // deliberately, treats every 'live-session-scenario-{id}' registration as passive (never
+        // "something open" there at all - see that file's own comment, added for Journey B's
+        // "start a Trade from this Scenario" discovery), so the workflow-continuation branch this
+        // flag exists to keep alive for can structurally never fire for a Scenario in the first
+        // place - keeping the workflow around anyway only blocked ALL further action discovery
+        // (a later "Add X to the evidence" got silently swallowed) for no benefit. A follow-up
+        // edit instead goes through fresh re-discovery of session.scenario.edit, resolved by
+        // title from conversation history - the exact same real, already-proven mechanism
+        // pattern.edit/strategy.edit already use for "the Pattern I don't yet have a name for".
+        id: 'session.scenario.create', domain: 'sessions', riskLevel: 'low',
+        description: 'Create a new Scenario (title, and optionally description, evidence, problem, trigger) inside the active trading Session, attached to its currently selected Entry. patternName links it to an existing Pattern by name. Never invents a probability value - that field is never AI-fillable.',
+        aliases: ['create a scenario', 'add a scenario', 'new scenario', 'create a new scenario'],
+        requiredFields: ['title'], optionalFields: ['description', 'evidence', 'problem', 'trigger', 'patternName'],
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId && context.activeEntities.entryId),
+        open: (context) => new Promise((resolve) => {
+          var entryId = context && context.activeEntities && context.activeEntities.entryId;
+          if (!entryId) { resolve(null); return; }
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
+          pollFor(
+            () => window.TradeJournalNavryaLiveSessionHub,
+            (hub) => {
+              var created = hub.addScenarioToEntry(entryId);
+              if (!created || !created.id) { resolve(null); return; }
+              var processId = 'live-session-scenario-' + created.id;
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null) // the Live Session workspace never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      // Mirrors pattern.edit/strategy.edit: scenarioTitle is resolution-only, exact case-
+      // insensitive match, never guessed (F53) - and, per F15 (Journey F "zero stale entity
+      // leakage between Sessions"), scoped to the CURRENT active Session's own scenarios only,
+      // never a cross-Session search.
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Also deliberately NOT entityAlreadyPersisted - same reasoning as session.scenario.create
+        // above. Every edit turn re-resolves scenarioTitle fresh; there is nothing useful a kept-
+        // alive workflow would add here since the continuation branch can never reach it anyway.
+        id: 'session.scenario.edit', domain: 'sessions', riskLevel: 'low',
+        description: 'Open an EXISTING Scenario, in the currently active Session only, by title, so it can be edited (title, description, evidence, problem, trigger, or its Pattern link via patternName). scenarioTitle identifies which existing Scenario to open - it is never a rename (use "title" for that). Only select this action once the user has actually named which existing Scenario they mean; if they have not, ask them first instead of guessing.',
+        aliases: ['edit a scenario', 'edit the scenario', 'update a scenario', 'change the scenario', 'open the scenario'],
+        requiredFields: ['scenarioTitle'], optionalFields: ['title', 'description', 'evidence', 'problem', 'trigger', 'patternName'],
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
+        open: (context, initialFields) => new Promise((resolve) => {
+          var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
+          var titleField = (initialFields || []).filter((f) => f && f.path === 'scenarioTitle')[0];
+          var wanted = titleField ? String(titleField.value == null ? '' : titleField.value).trim() : '';
+          if (!sessionId || !wanted) { resolve(null); return; }
+          var session = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
+          if (!session) { resolve(null); return; }
+          var flat = (session.entries || []).reduce((all, entry) => all.concat((entry.scenarios || []).map((sc) => ({ entry, scenario: sc }))), []);
+          var matches = flat.filter((x) => String(x.scenario.title || '').trim().toLowerCase() === wanted.toLowerCase());
+          if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
+          var target = matches[0].scenario;
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
+          pollFor(
+            () => window.TradeJournalNavryaLiveSessionHub,
+            (hub) => {
+              if (!hub.openScenario(target.id)) { resolve(null); return; }
+              var processId = 'live-session-scenario-' + target.id;
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null) // the target Scenario's own card never actually mounted/registered (unexpected)
+              );
+            },
+            () => resolve(null) // the Live Session workspace never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+    }
+
     sessionsAdapter.resetOnce().finally(() => {
       store.init();
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);

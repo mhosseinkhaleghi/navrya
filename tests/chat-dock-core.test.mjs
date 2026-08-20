@@ -323,6 +323,66 @@ test('an expanded live-session Scenario card does not block a brand-new action f
   assert.equal(fetchCall.body.activeProcess, null, 'the scenario card must not be reported as an active form either - it would otherwise suppress availableActions server-side too (mutually exclusive per dockChatFormatFor())');
 });
 
+// Found via real F21 browser testing: session.scenario.create/session.scenario.edit/
+// session.movementEntry.create deliberately have no entityAlreadyPersisted (see character-app.jsx's
+// own comments), so once their one required field is known they enter a brief 'pending-submit'
+// grace window (ai-workflow-engine.js's SUBMIT_GRACE_MS) before clearing. The exclusion test above
+// proves their processId never counts as an open activeProcess - but before this fix, a currentWorkflow
+// still in that grace window ALSO blocked the availableActions branch above (line ~191's own
+// `!currentWorkflow` check), and could never reach the activeProcess-match continuation branch
+// either (structurally impossible, since activeProcess is always null for these ids) - stranding
+// any message sent during the grace window with neither branch, guaranteeing action:null regardless
+// of what the user said. Real symptom: "Create a scenario called X" followed a few seconds later by
+// an entirely unrelated "Create a Strategy called Y" silently failed to create the Strategy.
+test('a Scenario/Entry-shaped workflow still in its own pending-submit grace window does not block a brand-new, unrelated action from being discovered on the very next turn', async () => {
+  const spies = { strategySubmitted: null };
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (/scenario/i.test(body.message)) {
+        return { ok: true, json: async () => ({ reply: 'Creating your scenario.', action: { id: 'session.scenario.create', fields: [{ path: 'title', value: 'X' }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      }
+      return { ok: true, json: async () => ({ reply: 'Creating your strategy.', action: { id: 'strategy.create', fields: [{ path: 'name', value: 'Y' }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  let scenarioOpen = false;
+  window.TradeJournalAIProcessRegistry.register('live-session-scenario-fake1', { allowlist: [], isOpen: () => scenarioOpen });
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'session.scenario.create', requiredFields: ['title'], optionalFields: [],
+    open: () => { scenarioOpen = true; return { processId: 'live-session-scenario-fake1' }; }, submit: async () => undefined, resultContext: () => {}
+  });
+  let strategyOpen = false;
+  window.TradeJournalAIProcessRegistry.register('strategy-editor-fake2', { allowlist: ['name'], isOpen: () => strategyOpen });
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'strategy.create', requiredFields: ['name'], optionalFields: [],
+    open: () => { strategyOpen = true; return { processId: 'strategy-editor-fake2' }; }, submit: async (known) => { spies.strategySubmitted = known; return { id: 'strategy-1' }; }, resultContext: () => {}
+  });
+  // Long enough that turn 2 (sent immediately after, no real time elapses in a unit test) always
+  // still finds it pending - cleared via cancel() below regardless, so no timer outlives this test.
+  window.TradeJournalAIWorkflowEngine.setSubmitGraceMs(30000);
+  const core = window.TradeJournalChatDockCore;
+
+  let first, second;
+  try {
+    first = await core.sendChat({ text: 'Create a scenario called X', therapistMode: false, transcript: [] });
+    assert.equal(first.kind, 'workflow');
+    assert.equal(first.workflow.status, 'pending-submit', 'title was the only required field, so this workflow is already sitting in its own grace window');
+
+    second = await core.sendChat({ text: 'Create a Strategy called Y', therapistMode: false, transcript: [] });
+    assert.equal(second.kind, 'workflow', 'a fresh, unrelated action must still be discoverable while the Scenario workflow is mid-grace-window');
+    assert.equal(second.workflow.actionId, 'strategy.create');
+  } finally {
+    // starting the second workflow replaces `current` without clearing the first workflow's own
+    // real, outstanding pendingSubmitTimer (harmless in production - a browser tab stays alive and
+    // the orphaned timer's own `if (current !== workflow) return` guard no-ops it a few seconds
+    // later) - but a Node unit test process must not be left with a live timer, so both are cleared
+    // directly via the exact same clearTimeout injected into the sandbox.
+    if (first && first.workflow) clearTimeout(first.workflow.pendingSubmitTimer);
+    if (second && second.workflow) clearTimeout(second.workflow.pendingSubmitTimer);
+  }
+});
+
 // Production repair pass, section 11: found via the real, required 20-turn browser script -
 // completing a Trade via chat auto-opens its own real Trade Details view (character-app.jsx's
 // trade.calculator resultContext, pre-existing, unchanged), which registers itself

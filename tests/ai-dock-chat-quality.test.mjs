@@ -104,6 +104,33 @@ test('the activeProcess branch\'s system prompt still explicitly asks for SHORT 
   assert.match(systemText, /keep these workflow questions short/i);
 });
 
+// --- Journey F, F21: past-action confirmation bias and topic-recency bias (found via real
+// browser testing - a Scenario created a few turns earlier got treated as perpetually "still
+// pending submission", blocking or hedging on completely unrelated later actions like
+// strategy.create/trade.calculator, and a later message naming a different action outright got
+// misclassified as continuing the earlier Scenario topic) ---
+
+test('the system prompt distinguishes "this turn\'s own action" from an action selected in an earlier turn - a past action must be treated as already completed, never described as still pending/unsaved', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'ok', action: null });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
+    await dockChat({ provider: 'openai', message: 'Create a Strategy called X.', language: 'en', availableActions: [{ id: 'strategy.create', requiredFields: ['name'], optionalFields: [] }] });
+  });
+  const systemText = getBody().input[0].content[0].text;
+  assert.match(systemText, /treat that earlier action as having completed successfully/i);
+  assert.match(systemText, /never describe it as still pending, not yet saved, or unconfirmed/i);
+  assert.match(systemText, /never let it block, delay, or add a confirmation step in front of a new, unrelated action/i);
+});
+
+test('the availableActions branch\'s system prompt explicitly warns against recency/topic bias - a new message naming a different action always wins over what recent turns were about', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'ok', action: null });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
+    await dockChat({ provider: 'openai', message: 'Create a Strategy called X.', language: 'en', availableActions: [{ id: 'strategy.create', requiredFields: ['name'], optionalFields: [] }] });
+  });
+  const systemText = getBody().input[0].content[0].text;
+  assert.match(systemText, /do not default to whichever action recent turns happened to be about/i);
+  assert.match(systemText, /always means that different action, in that different domain, not a continuation of the old one/i);
+});
+
 // --- provider isolation (section 42): OpenAI-only params never leak to other providers ---
 
 test('reasoning/verbosity never appear in the actual outgoing request body for Anthropic, Kimi, or DeepSeek', async () => {

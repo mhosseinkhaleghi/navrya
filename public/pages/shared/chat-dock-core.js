@@ -145,6 +145,16 @@
     // server/pattern-ai-server.mjs) every time a user has a scenario expanded and asks to start a
     // brand-new trade from it via chat - exactly the "starting a trade FROM a specific Scenario"
     // case Journey B needs to support. Every other registered process is unaffected.
+    // Journey F, F19/F20: a live-session Entry's own detail panel ('live-session-entry-' + id)
+    // reports itself open for exactly the same passive reason a Scenario card does above -
+    // liveSessionView.jsx defaults `selId` to the first entry in the list, so SOME entry is
+    // always "open" here for the entire rest of a session the instant it has one, with no
+    // deliberate "stay focused here" gesture behind it (unlike a real modal the user must
+    // explicitly close). Found via real browser testing: without this, "Create a scenario called
+    // X" right after "Add a movement note" was silently mis-routed into the still-registered
+    // entry's own note field instead of ever discovering session.scenario.create - the same
+    // failure mode the Scenario exclusion below already exists to prevent, just one level up.
+    if (activeProcess && String(activeProcess.id).indexOf('live-session-entry-') === 0) activeProcess = null;
     if (activeProcess && String(activeProcess.id).indexOf('live-session-scenario-') === 0) activeProcess = null;
     // Production repair pass, section 11: a registration with a deliberately EMPTY allowlist
     // (tradeDetailsModal.jsx's own 'trade-details-{id}', registered purely so ai-context-builder.js
@@ -177,8 +187,29 @@
     // fresh intent.
     if (workflowEngine && typeof workflowEngine.pruneIfAbandoned === 'function') workflowEngine.pruneIfAbandoned();
     var currentWorkflow = workflowEngine ? workflowEngine.current() : null;
+    // Journey F, F21: a workflow in its brief post-collection grace window (status 'pending-submit'
+    // or 'submitting' - ai-workflow-engine.js's own SUBMIT_GRACE_MS) is deliberately never pruned
+    // above, since it is about to legitimately complete on its own. That is fine for an action whose
+    // processId CAN be continued via the activeProcess-match branch below. But
+    // 'live-session-entry-'/'live-session-scenario-' processIds are unconditionally excluded from
+    // activeProcess a few lines up (the exact same "passive/ambient, not a deliberate open gesture"
+    // reasoning as the session.movementEntry.create/session.scenario.create/.edit registrations
+    // themselves - see character-app.jsx) - so that branch can structurally never match for them, in
+    // or out of the grace window. Found via real F21 browser testing ("Create a scenario..." then,
+    // within ~3-8s, "Create a Strategy..."): with no exception here, EVERY message sent during that
+    // window fell through to neither branch - no availableActions (currentWorkflow was still
+    // non-null) and no activeProcess (excluded) - guaranteeing action:null no matter what the user
+    // said, for as long as the grace window lasted. These two process kinds need no more input to
+    // finish (their own required fields were already satisfied to even reach pending-submit), so
+    // treating them as non-blocking here costs nothing and lets fresh discovery (or, for a same-
+    // Scenario follow-up, session.scenario.edit's own real title-based re-resolution) run immediately
+    // instead of silently going dark for the rest of the window.
+    var workflowProcessId = currentWorkflow ? String(currentWorkflow.processId || '') : '';
+    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0;
+    var workflowInGracePeriod = currentWorkflow && (currentWorkflow.status === 'pending-submit' || currentWorkflow.status === 'submitting');
+    var workflowBlocksDiscovery = currentWorkflow && !(workflowProcessExcluded && workflowInGracePeriod);
     var availableActions = null;
-    if (workflowEngine && actionRegistry && !activeProcess && !currentWorkflow) {
+    if (workflowEngine && actionRegistry && !activeProcess && !workflowBlocksDiscovery) {
       var discoveryContext = contextEngine ? contextEngine.snapshot() : {};
       var catalog = actionRegistry.catalogFor(discoveryContext);
       if (catalog.length) availableActions = catalog;

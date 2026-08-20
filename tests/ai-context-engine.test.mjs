@@ -35,7 +35,7 @@ test('snapshot() returns a safe empty snapshot (never throws) when no store is m
   const engine = await engineSandbox({});
   const snapshot = engine.snapshot();
   assert.equal(snapshot.navigation.activeId, null);
-  assert.deepEqual(clone(snapshot.activeEntities), { sessionId: null, scenarioId: null });
+  assert.deepEqual(clone(snapshot.activeEntities), { sessionId: null, scenarioId: null, entryId: null });
   assert.equal(snapshot.workflow, null);
 });
 
@@ -103,4 +103,34 @@ test('snapshot() never resolves a scenarioId without a real active session, even
   const snapshot = engine.snapshot();
   assert.equal(snapshot.activeEntities.sessionId, null);
   assert.equal(snapshot.activeEntities.scenarioId, null);
+});
+
+// Journey F, F19/F20: entryId resolves the exact same way scenarioId does - a Scenario belongs to
+// an Entry, not directly to a Session (liveSessionView.jsx's own addScenario(entry)), and
+// EntryDetailPanel's own comment already documents only one is ever mounted/registered at a time
+// ("the parent renders this with key={entry.id}... React genuinely remounts a fresh instance per
+// selected entry"), so activeOpenProcess() correctly picks whichever one is currently shown.
+
+test('snapshot() resolves activeEntities.entryId from an active "live-session-entry-{id}" process, only when a session is also active', async () => {
+  const engine = await engineSandbox({
+    liveSession: { getActiveSessionId: () => 'session-123' },
+    processRegistry: { activeOpenProcess: () => ({ id: 'live-session-entry-entry-abc', allowlist: [], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.entryId, 'entry-abc');
+});
+
+test('snapshot() reports entryId: null when the active process is not an entry panel', async () => {
+  const engine = await engineSandbox({
+    liveSession: { getActiveSessionId: () => 'session-123' },
+    processRegistry: { activeOpenProcess: () => ({ id: 'live-session-scenario-scenario-abc', allowlist: [], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.entryId, null);
+});
+
+test('snapshot() never resolves an entryId without a real active session, even if an entry process is somehow still registered as open', async () => {
+  const engine = await engineSandbox({
+    liveSession: { getActiveSessionId: () => null },
+    processRegistry: { activeOpenProcess: () => ({ id: 'live-session-entry-entry-abc', allowlist: [], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.entryId, null);
 });
