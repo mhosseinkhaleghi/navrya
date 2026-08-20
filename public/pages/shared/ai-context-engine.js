@@ -26,6 +26,20 @@
     return active.id.slice('live-session-scenario-'.length);
   }
 
+  // Journey F, F19/F20: liveSessionView.jsx's own EntryDetailPanel comment already documents that
+  // only one is ever mounted/registered at a time ("the parent renders this with key={entry.id}...
+  // React genuinely remounts a fresh instance per selected entry") - the exact same
+  // "activeOpenProcess() already picks whichever one is open" reasoning activeScenarioId() above
+  // already established, just applied to 'live-session-entry-' instead. Needed because a Scenario
+  // belongs to an Entry, not directly to a Session (addScenario(entry) in liveSessionView.jsx) -
+  // session.scenario.create resolves which real Entry to attach to from this, never a guess.
+  function activeEntryId() {
+    var registry = window.TradeJournalAIProcessRegistry;
+    var active = registry && registry.activeOpenProcess();
+    if (!active || active.id.indexOf('live-session-entry-') !== 0) return null;
+    return active.id.slice('live-session-entry-'.length);
+  }
+
   function snapshot() {
     var store = window.TradeJournalNavryaStore;
     var state = store && typeof store.getState === 'function' ? store.getState() : null;
@@ -34,7 +48,7 @@
     var sessionId = liveSession && typeof liveSession.getActiveSessionId === 'function' ? liveSession.getActiveSessionId() : null;
     return {
       navigation: { activeId: state ? state.activeId : null },
-      activeEntities: { sessionId: sessionId || null, scenarioId: sessionId ? activeScenarioId() : null },
+      activeEntities: { sessionId: sessionId || null, scenarioId: sessionId ? activeScenarioId() : null, entryId: sessionId ? activeEntryId() : null },
       workflow: workflowEngine ? workflowEngine.current() : null
     };
   }

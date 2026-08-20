@@ -92,8 +92,96 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 | `navigate.to` | navigation | domainId | - | `navigate-to` (no fillable fields - exists only so the Workflow Engine has a liveness check) |
 | `pattern.create` (F1) | patterns | name | description, completionThreshold | `pattern-editor-{id}` (dynamic - the real id only exists once open() creates the Pattern) |
 | `pattern.edit` (F2) | patterns | patternName (resolution-only, never applied to the real UI) | name, description, completionThreshold | `pattern-editor-{id}` (dynamic - resolved by exact, case-insensitive name match; zero/ambiguous matches resolve nothing, never guessed) |
-| `strategy.create` (F15) | strategies | name | full real Strategy allowlist (entry/stop/exit/sizing rules, risk limits, framework description) | `strategy-editor-{id}` (dynamic, same shape as pattern.create) |
-| `strategy.edit` (F15) | strategies | strategyName (resolution-only) | name + full real Strategy allowlist | `strategy-editor-{id}` (dynamic, same shape as pattern.edit) |
+| `strategy.create` (F15) | strategies | name | full real Strategy allowlist | `strategy-editor-{id}` |
+| `strategy.edit` (F15) | strategies | strategyName (resolution-only) | name + full real Strategy allowlist | `strategy-editor-{id}` |
+| `session.chartEntry.create` (F19) | sessions | - | timeframe, market, date, note | `live-session-chart-entry` (fixed id, entityAlreadyPersisted - a real modal the user explicitly closes; **never auto-submits - the real form's own `file` requirement is not, and must never become, AI-fillable; see F19 notes below**) |
+| `session.movementEntry.create` (F19) | sessions | - | note | `live-session-entry-{id}` (dynamic; deliberately NOT entityAlreadyPersisted - see F19 notes below) |
+| `session.scenario.create` (F20) | sessions | title | description, evidence, problem, trigger, patternName (resolution-only, resolves to the real snapshot-preserving `scenario.pattern` shape) | `live-session-scenario-{id}` (dynamic; deliberately NOT entityAlreadyPersisted - see F19/F20 notes below; attaches to whichever real Entry is currently selected/open) |
+| `session.scenario.edit` (F20) | sessions | scenarioTitle (resolution-only) | title, description, evidence, problem, trigger, patternName | `live-session-scenario-{id}` (dynamic, resolved by exact, case-insensitive title match against the currently active Session's own scenarios only - never guessed, never cross-Session) |
+
+### F19/F20 notes - three real, structural findings, not design choices
+
+**`entityAlreadyPersisted` is only correct when the real UI process is either a genuine modal
+(the user must explicitly close it) or a multi-field record naturally filled over several turns
+AND its own process id is not otherwise excluded from `activeProcess`.** Found via real browser
+testing: `session.movementEntry.create` and `session.scenario.create`/`.edit` were all initially
+built with this flag (matching Pattern/Strategy) and it broke action discovery entirely - "Create
+a scenario called X" right after adding a movement entry got silently mis-routed into the
+still-registered entry's own `note` field. Root causes, two distinct ones stacked together:
+1. A `live-session-entry-{id}` registration reports itself open for as long as that Entry happens
+   to be the one currently selected in the timeline (`liveSessionView.jsx` defaults `selId` to the
+   first entry the instant any exist) - an ambient, passive state with no deliberate "stay focused
+   here" gesture behind it, unlike a real modal. Fixed generally: `chat-dock-core.js`'s own
+   `activeProcess` resolution now excludes `live-session-entry-` the same way it already excludes
+   `live-session-scenario-` (see that file's own comment, originally added for Journey B's "start
+   a Trade from this Scenario" discovery) - not a Session-specific patch, the same real, general
+   mechanism generalized by its own actual reason (passive/ambient, not a deliberate focus
+   gesture).
+2. Because `live-session-scenario-` is *already*, and deliberately, excluded from `activeProcess`
+   (for that same pre-existing Journey B reason), the workflow-continuation branch
+   `entityAlreadyPersisted` exists to keep alive for can never actually fire for a Scenario - so
+   keeping its workflow around only blocked *all* later action discovery for no benefit.
+   `session.scenario.create`/`.edit` were changed to the normal auto-submit-then-clear behavior;
+   a later edit turn goes through fresh re-discovery of `session.scenario.edit`, resolved by title
+   from conversation history - the exact same real, already-proven mechanism `pattern.edit`/
+   `strategy.edit` use for "the Pattern I don't yet have a name for yet".
+   `session.movementEntry.create` also does not need the flag - it has only one real field worth
+   filling (`note`), no natural "add more later" shape the way Pattern/Strategy/Scenario have.
+   `session.chartEntry.create` keeps it correctly: `live-session-chart-entry` is a real modal, not
+   excluded from `activeProcess`, so its own continuation branch works exactly like Pattern/
+   Strategy's.
+
+**A hedging action description can make the model decline to select an already-available action.**
+`session.scenario.create`'s first description included "Only available while a Session AND a
+specific Entry are both open - if the user has not selected/added an Entry yet, guide them to do
+that first instead of guessing one." - found via real testing (`debugLastTurn()`) that even when
+`available()` had already gated the action correctly (it genuinely was in the offered catalog,
+with the real `entryId` already resolved), the model still declined to select it, replying
+conversationally about needing an Entry instead. The gating logic was never the problem - the
+model does not need to be told to re-verify a precondition the catalog itself already enforced.
+Shortened to a plain, confident description with no hedging clause; re-verified fixed.
+
+**A pending-submit workflow whose process is excluded from `activeProcess` strands the very next
+turn in neither routing branch - a fourth structural finding, found via F21's own
+active-session-context tests.** `session.scenario.create`/`.edit`/`session.movementEntry.create`
+deliberately have no `entityAlreadyPersisted` (point 2 above), so once their one required field is
+known they sit in a brief `pending-submit` grace window (`ai-workflow-engine.js`'s
+`SUBMIT_GRACE_MS`) before clearing. `chat-dock-core.js`'s own `pruneIfAbandoned()` correctly never
+touches a workflow in that status (it is about to legitimately complete) - but a workflow in that
+state also still counts as non-null for the `!currentWorkflow` check gating fresh `availableActions`
+discovery, and its process id (`live-session-entry-`/`live-session-scenario-`) is *always* excluded
+from `activeProcess` (point 1 above), so the "continue this same workflow" branch
+(`activeProcess.id === currentWorkflow.processId`) can structurally never match either. Any message
+sent during that window fell through to neither branch, guaranteeing `action: null` no matter what
+the user said - real symptom: "Create a scenario called X" followed a few seconds later by a
+completely unrelated "Create a Strategy called Y" silently failed to create the Strategy, and the
+same shape blocked a same-Scenario follow-up edit, a brand-new Session-switch, and Journey B's own
+"open a Trade from this Scenario" cross-domain discovery. Fixed generally in `chat-dock-core.js`:
+discovery is also allowed when the current workflow's process id matches one of the two excluded
+prefixes AND its status is `pending-submit`/`submitting` - both conditions together mean the
+workflow needs no further user input and can never be reached any other way, so treating it as
+non-blocking costs nothing. Two smaller, compounding contributors found alongside this one, both
+model-prompting issues rather than routing bugs: (a) `DOCK_STYLE_INSTRUCTION`'s pre-existing "never
+claim a NAVRYA action occurred until the application confirms it" had no matching "a *past* turn's
+action should be assumed to have already succeeded" counterpart, so the model treated its own prior
+"I'll open a new Scenario..." reply as perpetually unconfirmed for the rest of the conversation once
+routing *did* offer it a choice; (b) the `availableActions` branch's system prompt had no explicit
+instruction against topic-recency bias, so a new message naming a clearly different action (e.g.
+"Strategy" right after several Scenario-focused turns) was sometimes misclassified as continuing the
+old topic even when the correct action was present in the offered catalog. Both were given small,
+general clarifying clauses in `server/pattern-ai-server.mjs`'s system-prompt text (not new mechanism)
+- see `tests/ai-dock-chat-quality.test.mjs`'s and `tests/chat-dock-core.test.mjs`'s new regression
+tests for all three fixes together.
+
+**Scenarios belong to Entries, not directly to Sessions** (`liveSessionView.jsx`'s own `addScenario(entry)`: `{ id, entryId: entry.id, title, ... }`). The real UI's own "Add scenario" control is only ever reachable from within an already-selected Entry's detail view. `session.scenario.create` therefore resolves the Entry to attach to via `activeEntryId()` (new, added to `ai-context-engine.js`, exact same "whichever `live-session-entry-{id}` process is currently open" pattern `activeScenarioId()` already established - `EntryDetailPanel`'s own comment already documents "only one is ever shown at a time" here, i.e. this is not a new assumption, just a previously-unused consequence of an existing, deliberate design) - if the Live Session workspace has no entries yet (nothing selected, `activeEntryId()` returns null), `session.scenario.create` cannot create anything and says so, exactly like "no active Session" in F5 - it does not invent an Entry to attach to.
+
+**Chart Entry's real file requirement is a hard AI boundary, not an oversight**: `ChartEntryModal`'s own `submit()` blocks (`if (!file) { setError(...); return; }`) until a real image is attached - the existing registration's own allowlist (`note, timeframe, market, date`) already excludes the image path entirely, and `session.chartEntry.create` does not, and must not, add one. The action can only ever open the real modal and live-fill the non-image fields; the user must attach the screenshot by hand through the real UI, exactly as today.
+
+**Pattern linking preserves the real snapshot shape**: `ScenarioEditor`'s own `handlePatternChange(patternId)` writes `scenario.pattern = { patternTagId, name, stages, completedStageIds, completionThreshold }`, not a bare id - `session.scenario.create`/`.edit`'s `patternName` resolution reuses this exact function (through the real registration's `applyValue`, never a second write path), so a Pattern later renamed or re-staged does not retroactively change what an already-created Scenario snapshot says.
+
+**Probability is deliberately never AI-fillable.** `probabilityHistory` (seeded `[{value: 50, loggedAt}]` at creation, by the real UI itself) is not in the allowlist and is not added by this gate - F99's "never invent probability" rule has nothing to attach to today; if a future gate adds a real probability-adjustment control to the UI, it should go through this same resolve-then-apply pattern, never a value the model invents unprompted.
+
+**Fate Entry/Fate Summary (session-closing) are deliberately out of scope for this gate** - they are a terminal, session-status-changing action (`sets session.status/closedAt`), materially different in consequence from adding an Entry/Scenario, and the user's own F19 spec's worked examples never exercise them. Left for a later, explicitly-scoped gate rather than folded in here.
 
 ## Process Registry inventory, by domain
 
