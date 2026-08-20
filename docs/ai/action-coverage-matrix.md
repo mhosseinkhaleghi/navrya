@@ -109,6 +109,11 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 | `marketplace.messageSeller` (F27-31) | marketplace | send (OUTBOUND_MESSAGE gate) | text | resolves the real seller thread via `openThread(listingId)` (the same real call the "Message Seller" button makes), then behaves like `message.reply` from there |
 | `message.compose` (F32) | messaging | send (OUTBOUND_MESSAGE gate) | recipientName, text | `messages-compose` (fixed id; recipientName resolves via the real `/api/users/search` the UI's own autocomplete already uses - never a raw guessed id) |
 | `message.reply` (F32) | messaging | send (OUTBOUND_MESSAGE gate) | draft | `messages-thread-reply` (fixed id; only ever targets the currently active/open conversation thread) |
+| `profile.edit` (F33) | account | - | displayName, email, phone | `account-profile-identity` (fixed id; avatarDataUrl deliberately never AI-fillable - F33 section 8, the model cannot supply a real picked file) |
+| `profile.role.update` (F33) | account | role (trader/mentor/teacher only - real registration independently rejects anything else) | - | `account-profile-role` (fixed id; no admin/authorization role exists as an option) |
+| `settings.trading.update` (F34) | settings | - | defaultRiskPercent, leverageCap, maxTradesPerSession | `settings-trading-defaults` (fixed id; entityAlreadyPersisted - every field applies+persists immediately, clamped to real min/max, no separate Save) |
+| `settings.language.update` (F35) | settings | - | language, region.country, region.timezone, region.currency, region.weekStart | `settings-region-language` (fixed id; entityAlreadyPersisted; `language` only from an explicit app-language request, never inferred from the language spoken - F35 section 16) |
+| `settings.ai.update` (F36) | settings | - | provider, model, voice | `ai-assistant-engine` (fixed id, new registration; entityAlreadyPersisted; API key/"remember key"/budget are never wired into `applyValue` at all, not merely excluded from the allowlist) |
 
 ### F19/F20 notes - three real, structural findings, not design choices
 
@@ -424,6 +429,107 @@ Journey F; confirmed via `git diff main` on the affected lines):
   that NAVRYA (not the model) enforce eligibility; flagged here as a recommended follow-up, not
   fixed as part of this gate.
 
+### F33-F36 notes - Account/Profile, Trading Settings, Language/Region, AI provider Settings
+
+**Side-effect classification**: `ACCOUNT_PROFILE` (`profile.edit`, `profile.role.update`) /
+`LOCAL_PREFERENCE` (`settings.trading.update`, `settings.language.update`, `settings.ai.update` -
+each is a private, immediately-reversible preference, never a public or outbound effect, so none
+of them needs a confirmation gate the way Community/Marketplace/Messaging did). `SENSITIVE_EXCLUDED`
+covers password, API key (view/edit/remember), admin/authorization role, billing/subscription, and
+account deletion - none of these fields exist in any new allowlist, and none of the real
+registrations they would target expose them to `applyValue` at all (not merely omitted from the
+action's own field list).
+
+**Three of the four real Settings/Profile registrations already existed before this gate** -
+`account-profile-identity`, `account-profile-role`, and `settings-trading-defaults` were already
+real, human-fillable `ai-process-registry.js` registrations (found via the same repository audit
+the Section 0 finding on p.1 documents), just never wired to a startable Action. This gate added
+`submit()` (via the same `submitRef` pattern used throughout this project) to the two Account
+Profile registrations, whose real save is an explicit button, not an immediate per-field apply;
+Trading Defaults needed no such change since it was already immediate-apply.
+
+**`settings-region-language`'s own allowlist never covered the real interface-language select** -
+only `region.country`/`region.timezone`/`region.currency`/`region.weekStart` (Region & language's
+five other fields) were AI-fillable; the language `<Select>` right next to them called
+`store.setLanguage()` directly, entirely outside the registration. Extended the allowlist with a
+`language` field, validated the same way every other field here is (against the real, fixed
+`languageOptions` list), calling the exact same `store.setLanguage()` the human-facing select uses.
+
+**`aiAssistantView.jsx` had NO process registration at all before this gate** - a deliberate
+absence per the pre-existing matrix note ("F36/F37: never make this AI-fillable"), because the
+screen mixes safe fields (provider, model, voice) with the API key. Rather than leaving the whole
+screen unregistered, a new `ai-assistant-engine` registration exposes only `provider`/`model`/
+`voice` - `applyValue` never references `setKey`/`setPersistApiKey`/`setBudget` at all, so a future
+allowlist edit cannot silently reopen the credential seam by accident. `model` validates against
+the REAL current provider's own `models` array (`ai-settings-store.js`'s `PROVIDER_CATALOG`) -
+asking for an unlisted model (F36 section 23's own "GPT-5.6 that doesn't exist" case) simply never
+applies, exactly like every other never-fabricate-a-value field in this codebase.
+
+**Settings-context disambiguation (F34 sections 10-12) is handled entirely through each action's
+own description text**, not a structural gate - `settings.trading.update`'s description explicitly
+distinguishes the user's Trading *default* risk from a currently-open Trade's own risk field
+(`trade.calculator`'s workflow) or a Strategy's own max-risk rule (`strategy.edit`'s
+`riskManagement.maxRiskPerTradePercent`), instructing the model to only match this action for an
+explicit "my default risk"/"Trading Settings" request. No code-level ambiguity exists between these
+three real targets - they are three different real UI surfaces/process ids, and `resolveActiveTrade`/
+`resolveActivePatternId`-style resolution already means an actively open Trade/Strategy naturally
+wins as `activeProcess` over the passively-open Settings page (see the `chat-dock-core.js` fix
+below), so a genuinely ambiguous "set risk to 1%" while a Trade is open should route to the Trade,
+not silently rewrite the global default.
+
+**"Zero-field start" (F33 section 5) accepts a harmless no-op resave, matching `trade.emotion.log`'s
+own established precedent.** `profile.edit` has empty `requiredFields` (unlike the Community/
+Marketplace/Messaging gate's own public-mutation actions, there is no consequential gate field to
+withhold): a bare "Edit my profile." opens the real Identity tab and lets the model ask what to
+change via its own reply text, but if nothing is ever supplied, the workflow's grace-window
+auto-submit will re-save the user's own already-correct values unchanged - not an "arbitrary value
+change" (nothing the user did not already have gets written), the same trade-off already accepted
+for `trade.emotion.log`'s own empty-note case. `profile.role.update`/the three Settings actions
+either require the one real field they need (`role`) or are `entityAlreadyPersisted` (no auto-submit
+timer exists for them at all), so this trade-off is specific to `profile.edit` alone.
+
+**Passive Settings/Profile/AI-Assistant registrations block fresh action-discovery the same way
+Pattern/Strategy editors did in F27-31** - `settings-ai-panel-builder`/`settings-region-language`/
+`settings-trading-defaults` are all simultaneously mounted the entire time `#settings` is open (not
+tabs - one page, three registrations, "most recently registered wins" would otherwise pick whichever
+one happens to be last in render order regardless of what the user is actually asking about), and
+`account-profile-identity`/`account-profile-role`/`ai-assistant-engine` are each open for as long as
+their own page is simply visible. Generalized the same `chat-dock-core.js` fix (null `activeProcess`
+for these ids unless a workflow is already genuinely continuing through that exact process) to cover
+all six - see the new regression tests and the F46 real-browser verification below.
+
+**Real-browser testing found and fixed two more bugs, both specific to this gate's own new
+territory (immediate-apply, entity-resolution-free Settings actions):**
+
+1. **A value/code mismatch silently dropped every language and AI-provider switch.** A model
+   extracting `language`/`provider` from a natural request just as reasonably returns the name as
+   it appeared ("Persian", "Anthropic") as the real underlying code/id (`fa`, `anthropic`) - the
+   real allowlist's own options-check correctly rejected the mismatched value, so "Change NAVRYA to
+   Persian." and "Switch the assistant to Anthropic." silently applied nothing at all, with no
+   error surfaced anywhere. Fixed the same way `session.create`'s own `normalizeSessionCity`/
+   `normalizeSessionTimeframe` already solve this exact "natural extraction vs. real option value"
+   problem: a `normalizeField` on both actions maps common names (English and, for language, each
+   supported locale's own name) onto the real code/id before the value ever reaches `applyValue` -
+   `settings.ai.update`'s reads the real `providerCatalog()` directly rather than duplicating it,
+   so it can never drift from the actual catalog.
+2. **A `entityAlreadyPersisted` workflow that never completes permanently traps ALL later
+   discovery, not just its own domain.** `settings.trading.update`/`settings.language.update`/
+   `settings.ai.update` apply every field immediately with no separate Save step, so - unlike
+   Pattern/Strategy/Trade actions that eventually auto-submit-then-clear - their workflow status
+   never advances past `'collecting'` on its own; only closing the target page (`pruneIfAbandoned`)
+   or a full page reload ever clears it. The existing "passive process, excluded unless a workflow
+   is genuinely continuing through it" fix (used for Pattern/Strategy/thread/comment/rating above)
+   was the wrong shape here specifically because it *preserves* `activeProcess` once a workflow
+   matches - correct for `pattern.edit` (whose `open()` must re-resolve a named Pattern each turn,
+   so continuation is genuinely needed) but wrong for these three, which need no entity resolution
+   at all and where fresh re-discovery is exactly as good as continuation. Found via the real
+   18-turn-class regression script: "Set my default risk to 3%." followed by *any* later,
+   unrelated message ("Cancel that.", "Create a Pattern.") kept returning `action: null` for the
+   rest of that page visit. Fixed by excluding these three unconditionally (like
+   `live-session-entry-`/`live-session-scenario-` above them), both from `activeProcess` and from
+   `workflowProcessExcluded` (the separate check gating `availableActions` itself) - two call sites
+   needed the same fix since each independently blocked discovery on its own.
+
 ## Process Registry inventory, by domain
 
 Columns match F4's template: **Domain · Intent · Real UI surface · Process id · Allowlist · Open
@@ -502,17 +608,17 @@ Nothing for Journey F to drive here until the live UI itself gains this capabili
 
 | Workflow | Real UI | Process id | Allowlist | Open | Save | Action? | Confirm? |
 |---|---|---|---|---|---|---|---|
-| Profile identity | `accountProfileView.jsx` `IdentityTab` | `account-profile-identity` | displayName, email, phone, avatarDataUrl | Account page | `AccountProfileStore.updateProfile()` | NO | normal |
-| Profile role | `accountProfileView.jsx` `RoleTab` | `account-profile-role` | role (trader/mentor/teacher) | Account page | `AccountProfileStore.updateProfile()` | NO | normal - **F33 explicit: no admin-role path here** |
+| Profile identity | `accountProfileView.jsx` `IdentityTab` | `account-profile-identity` | displayName, email, phone, avatarDataUrl | Account page | `AccountProfileStore.updateProfile()` | **YES - `profile.edit` (F33)** | normal (avatarDataUrl excluded from the action's own fields - see above) |
+| Profile role | `accountProfileView.jsx` `RoleTab` | `account-profile-role` | role (trader/mentor/teacher) | Account page | `AccountProfileStore.updateProfile()` | **YES - `profile.role.update` (F33)** | normal - no admin-role path exists |
 
 ### Settings
 
 | Workflow | Real UI | Process id | Allowlist | Open | Save | Action? | Confirm? |
 |---|---|---|---|---|---|---|---|
-| AI panel builder | `settingsView.jsx` `AiPanelBuilderSection` | `settings-ai-panel-builder` | prompt | Settings page | draft only - "Add to board" separately calls `addCustomPanel()` | NO | normal |
-| Region & language | `settingsView.jsx` `RegionLanguageSection` | `settings-region-language` | region.country, region.timezone, region.currency, region.weekStart (language + clock24 NOT on allowlist) | Settings page | `AppSettingsStore.saveSettings({region})` | NO | **F35 applies**: no AI-drivable language setter exists today (language changes via `store.setLanguage()` directly, outside the allowlist) |
-| Trading defaults | `settingsView.jsx` `TradingDefaultsSection` | `settings-trading-defaults` | defaultRiskPercent, leverageCap, maxTradesPerSession | Settings page | `TradeStore.saveSettings()`, clamped to real min/max | NO | normal - **F34's exact scenario** |
-| AI Assistant / provider+key | `aiAssistantView.jsx` | **NONE - deliberately** | - | AI Assistant page | `settingsStore.setKey()` | N/A | **F36/F37: never make this AI-fillable** |
+| AI panel builder | `settingsView.jsx` `AiPanelBuilderSection` | `settings-ai-panel-builder` | prompt | Settings page | draft only - "Add to board" separately calls `addCustomPanel()` | NO | normal (out of scope for F33-F36 - drafts dashboard panels, not a Settings value) |
+| Region & language | `settingsView.jsx` `RegionLanguageSection` | `settings-region-language` | language, region.country, region.timezone, region.currency, region.weekStart | Settings page | `store.setLanguage()` for language; `AppSettingsStore.saveSettings({region})` for the rest | **YES - `settings.language.update` (F35)** | normal - `language` only applies from an explicit app-language request (F35 section 16) |
+| Trading defaults | `settingsView.jsx` `TradingDefaultsSection` | `settings-trading-defaults` | defaultRiskPercent, leverageCap, maxTradesPerSession | Settings page | `TradeStore.saveSettings()`, clamped to real min/max | **YES - `settings.trading.update` (F34)** | normal |
+| AI Assistant engine | `aiAssistantView.jsx` (new registration) | `ai-assistant-engine` | provider, model, voice | AI Assistant page | `AISettingsStore.saveSettings()`/`setVoice()` | **YES - `settings.ai.update` (F36)** | normal - apiKey/persistApiKey/budget never wired into `applyValue` at all |
 
 ## Workflows with no Process Registry registration (6)
 

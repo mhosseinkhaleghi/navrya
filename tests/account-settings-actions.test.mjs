@@ -1,0 +1,120 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import test from 'node:test';
+
+// Journey F, F33-F36: profile.edit, profile.role.update, settings.trading.update,
+// settings.language.update, settings.ai.update. Same convention as
+// tests/trade-lifecycle-actions.test.mjs / tests/community-marketplace-messaging-actions.test.mjs -
+// navrya-src has no DOM test harness in this project, the real proof is real-browser verification
+// (see the F33-F36 final report). These are static-source regression guards for the exclusion of
+// password/API-key/admin/billing/deletion, and the entityAlreadyPersisted/submit design.
+
+const root = process.cwd();
+const characterAppSrc = await readFile(path.join(root, 'navrya-src', 'character-app.jsx'), 'utf8');
+const accountProfileSrc = await readFile(path.join(root, 'navrya-src', 'accountProfileView.jsx'), 'utf8');
+const settingsViewSrc = await readFile(path.join(root, 'navrya-src', 'settingsView.jsx'), 'utf8');
+const aiAssistantSrc = await readFile(path.join(root, 'navrya-src', 'aiAssistantView.jsx'), 'utf8');
+const chatDockCoreSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'chat-dock-core.js'), 'utf8');
+
+function actionBlock(id) {
+  const re = new RegExp(`id: '${id.replace(/\./g, '\\.')}'[\\s\\S]*?resultContext: [\\s\\S]*?\\}\\);`);
+  const match = re.exec(characterAppSrc);
+  assert.ok(match, `could not find the real ${id} registration`);
+  return match[0];
+}
+
+const NEW_ACTIONS = ['profile.edit', 'profile.role.update', 'settings.trading.update', 'settings.language.update', 'settings.ai.update'];
+
+test('none of the five new F33-F36 actions declares a fillable field for password, API key, admin role, billing, or account deletion - only the requiredFields/optionalFields/allowlist declarations are checked, since the description text legitimately names these terms to instruct the model NOT to touch them', () => {
+  for (const id of NEW_ACTIONS) {
+    const block = actionBlock(id);
+    const fieldsMatch = /requiredFields: \[([^\]]*)\], optionalFields: \[([^\]]*)\]/.exec(block);
+    assert.ok(fieldsMatch, `${id} must declare requiredFields/optionalFields`);
+    const declaredFields = fieldsMatch[1] + fieldsMatch[2];
+    assert.doesNotMatch(declaredFields, /password|apiKey|api_key|admin|billing|subscription|delete/i, `${id} must never declare an excluded field as fillable`);
+  }
+});
+
+test('profile.edit never fills avatarDataUrl - the model cannot supply a real picked file and must never fabricate one', () => {
+  const block = actionBlock('profile.edit');
+  assert.match(block, /optionalFields: \['displayName', 'email', 'phone'\]/);
+  assert.doesNotMatch(block, /avatarDataUrl/);
+});
+
+test('profile.role.update requires role and delegates validation to the real registration - never accepts an authorization role', () => {
+  const block = actionBlock('profile.role.update');
+  assert.match(block, /requiredFields: \['role'\]/);
+  assert.match(block, /never an authorization or admin permission/i);
+  assert.match(accountProfileSrc, /REAL_ROLES\.some\(\(r\) => r\.id === value\)/);
+});
+
+test('settings.trading.update, settings.language.update, and settings.ai.update are all entityAlreadyPersisted (their real UI applies and persists every field immediately, no separate Save step)', () => {
+  for (const id of ['settings.trading.update', 'settings.language.update', 'settings.ai.update']) {
+    assert.match(actionBlock(id), /entityAlreadyPersisted: true/);
+  }
+});
+
+test('settings.trading.update\'s own description explicitly distinguishes the Settings default from a currently-open Trade\'s risk field or a Strategy\'s max-risk rule', () => {
+  const block = actionBlock('settings.trading.update');
+  assert.match(block, /Distinct from a currently open Trade|never place an order/i);
+  assert.match(block, /Strategy/);
+});
+
+test('settings.language.update only sets language from an explicit app-language request, never merely because of the language spoken', () => {
+  const block = actionBlock('settings.language.update');
+  assert.match(block, /EXPLICIT request/i);
+  assert.match(block, /never merely because the user is speaking/i);
+});
+
+test('settings.ai.update never wires an API key field into applyValue - not just missing from the allowlist, absent from the handler entirely', () => {
+  const block = actionBlock('settings.ai.update');
+  assert.match(block, /optionalFields: \['provider', 'model', 'voice'\]/);
+  const registration = /registry\.register\('ai-assistant-engine', \{[\s\S]*?\n {4}\}\);/.exec(aiAssistantSrc);
+  assert.ok(registration, 'could not find the real ai-assistant-engine registration');
+  assert.doesNotMatch(registration[0], /setKey|persistApiKey|setBudget/);
+  assert.match(registration[0], /allowlist: \['provider', 'model', 'voice'\]/);
+});
+
+test('ai-assistant-engine validates model against the real, current provider\'s own models catalog - never a fabricated model id', () => {
+  const registration = /registry\.register\('ai-assistant-engine', \{[\s\S]*?\n {4}\}\);/.exec(aiAssistantSrc);
+  assert.match(registration[0], /current\.models\.indexOf\(value\) > -1/);
+});
+
+test('account-profile-identity and account-profile-role now expose submit() through a ref kept current every render, avoiding the ScenarioEditor-class stale-closure bug', () => {
+  const identityMatch = /registry\.register\('account-profile-identity', \{[\s\S]*?\n {4}\}\);/.exec(accountProfileSrc);
+  assert.ok(identityMatch);
+  assert.match(identityMatch[0], /submit: \(\) => submitRef\.current\(\)/);
+  const roleMatch = /registry\.register\('account-profile-role', \{[\s\S]*?\n {4}\}\);/.exec(accountProfileSrc);
+  assert.ok(roleMatch);
+  assert.match(roleMatch[0], /submit: \(\) => submitRef\.current\(\)/);
+  assert.match(accountProfileSrc, /submitRef\.current = save;/);
+});
+
+test('settings-region-language\'s allowlist now includes language, validated against the real languageOptions and applied through the real store.setLanguage()', () => {
+  const registration = /registry\.register\('settings-region-language', \{[\s\S]*?\n {4}\}\);/.exec(settingsViewSrc);
+  assert.ok(registration);
+  assert.match(registration[0], /allowlist: \['language'\]\.concat/);
+  assert.match(registration[0], /languageOptions\.some\(\(o\) => o\.value === value\)/);
+  assert.match(registration[0], /store\.setLanguage\(value\)/);
+});
+
+test('every new action resolves its real process id and navigates to the real page/tab in open(), never mutating anything before the field-level applyValue/submit steps', () => {
+  assert.match(actionBlock('profile.edit'), /location\.hash = '#account\/profile\/identity'/);
+  assert.match(actionBlock('profile.role.update'), /location\.hash = '#account\/profile\/role'/);
+  assert.match(actionBlock('settings.trading.update'), /store\.setActiveId\('settings'\)/);
+  assert.match(actionBlock('settings.language.update'), /store\.setActiveId\('settings'\)/);
+  assert.match(actionBlock('settings.ai.update'), /location\.hash = '#ai-settings'/);
+});
+
+test('chat-dock-core.js excludes settings-ai-panel-builder/account-profile-identity/account-profile-role conditionally (unless a workflow is already genuinely continuing through them), and settings-trading-defaults/settings-region-language/ai-assistant-engine UNCONDITIONALLY (they need no entity resolution, so a fresh re-discovery is always at least as good as continuation - required since their entityAlreadyPersisted workflow never completes on its own)', () => {
+  assert.match(chatDockCoreSrc, /settings-ai-panel-builder\|account-profile-identity\|account-profile-role/);
+  assert.match(chatDockCoreSrc, /activeProcess\.id === 'settings-trading-defaults' \|\| activeProcess\.id === 'settings-region-language' \|\| activeProcess\.id === 'ai-assistant-engine'/);
+});
+
+test('the unconditional settings exclusion runs BEFORE currentWorkflow is even read, so it can never depend on / race with workflow state - mirrors live-session-entry-/live-session-scenario- above it', () => {
+  const unconditionalIdx = chatDockCoreSrc.indexOf("activeProcess.id === 'settings-trading-defaults'");
+  const currentWorkflowIdx = chatDockCoreSrc.indexOf('var currentWorkflow = workflowEngine');
+  assert.ok(unconditionalIdx > -1 && currentWorkflowIdx > -1);
+  assert.ok(unconditionalIdx < currentWorkflowIdx, 'the unconditional settings exclusion must run before currentWorkflow is read');
+});

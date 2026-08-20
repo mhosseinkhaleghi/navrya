@@ -878,12 +878,20 @@ function IdentityTab({ lang, i18n, character, profile, onSaved }) {
   // AI process registry (A4) - mountedRef template. Only mounted while tab === 'identity'
   // (the parent switches tabs via a plain conditional render, no key), so mount/unmount already
   // is the tab-switch signal.
+  // Journey F, F33: submitRef read from inside the once-only registration effect - same
+  // stale-closure bug class already fixed elsewhere this project: save() closes over
+  // name/email/phone/avatarDataUrl, all of which change after this effect (deps []) first runs.
   const mountedRef = React.useRef(true);
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('account-profile-identity', {
+      // avatarDataUrl deliberately stays out of the AI-fillable allowlist here (F33 section 8):
+      // there is no way for the model to supply a real picked file, and it must never fabricate
+      // one or claim an upload succeeded. The real field/applyValue path stays for any future
+      // human-triggered flow; profile.edit (character-app.jsx) simply never targets it.
       allowlist: ['displayName', 'email', 'phone', 'avatarDataUrl'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
@@ -891,7 +899,8 @@ function IdentityTab({ lang, i18n, character, profile, onSaved }) {
         else if (path === 'email') setEmail(String(value ?? ''));
         else if (path === 'phone') setPhone(String(value ?? ''));
         else if (path === 'avatarDataUrl') setAvatarDataUrl(value || null);
-      }
+      },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, []);
@@ -904,11 +913,12 @@ function IdentityTab({ lang, i18n, character, profile, onSaved }) {
   }
   function save() {
     setBusy(true); setError('');
-    window.TradeJournalAccountProfileStore.updateProfile({ displayName: name.trim(), email: email.trim() || null, phone: phone.trim() || null, avatarDataUrl })
-      .then((updated) => { setSavedAt(new Date()); onSaved(updated); })
-      .catch((err) => setError(err && err.code === 'EMAIL_TAKEN' ? tr(lang, 'emailTaken') : tr(lang, 'validationFailed')))
+    return window.TradeJournalAccountProfileStore.updateProfile({ displayName: name.trim(), email: email.trim() || null, phone: phone.trim() || null, avatarDataUrl })
+      .then((updated) => { setSavedAt(new Date()); onSaved(updated); return updated; })
+      .catch((err) => { setError(err && err.code === 'EMAIL_TAKEN' ? tr(lang, 'emailTaken') : tr(lang, 'validationFailed')); return undefined; })
       .finally(() => setBusy(false));
   }
+  submitRef.current = save;
 
   const kycSteps = [
     { key: 'email', label: tr(lang, 'kycEmail'), icon: 'mail', state: profile.emailVerified ? 'done' : 'todo' },
@@ -1011,26 +1021,32 @@ function RoleTab({ lang, profile, onSaved }) {
 
   // AI process registry (A4) - mountedRef template, same tab-switch-is-mount-signal shape as
   // IdentityTab above.
+  // Journey F, F33: submitRef, same stale-closure fix as IdentityTab - save() closes over role.
   const mountedRef = React.useRef(true);
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('account-profile-role', {
+      // F33 section 7: only the three real, user-facing role values ever apply - 'admin' or any
+      // other string is silently rejected here, never a model decision to honour.
       allowlist: ['role'],
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'role' && REAL_ROLES.some((r) => r.id === value)) setRole(value); }
+      applyValue: (path, value) => { if (path === 'role' && REAL_ROLES.some((r) => r.id === value)) setRole(value); },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, []);
 
   function save() {
     setBusy(true);
-    window.TradeJournalAccountProfileStore.updateProfile({ profileRole: role })
-      .then((updated) => { setNotice(tr(lang, 'roleSaved')); onSaved(updated); })
-      .catch(() => setNotice(tr(lang, 'validationFailed')))
+    return window.TradeJournalAccountProfileStore.updateProfile({ profileRole: role })
+      .then((updated) => { setNotice(tr(lang, 'roleSaved')); onSaved(updated); return updated; })
+      .catch(() => { setNotice(tr(lang, 'validationFailed')); return undefined; })
       .finally(() => setBusy(false));
   }
+  submitRef.current = save;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 900 }}>

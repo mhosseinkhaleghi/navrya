@@ -430,15 +430,20 @@ function RegionLanguageSection({ t, lang, store }) {
   // AI process registry (A4) - mountedRef template. Every field here is a validated <Select>, so
   // applyValue only ever applies a suggested value when it's one of that field's own real
   // options - never lets AI-fill push region prefs into an invalid state.
+  // Journey F, F35: 'language' extends the original region.* allowlist - the real interface
+  // language select (store.setLanguage(), the app's one real language store) sat right next to
+  // these fields but was never itself AI-fillable. Validated the same way, against the real
+  // languageOptions list, never an invented locale.
   const mountedRef = React.useRef(true);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('settings-region-language', {
-      allowlist: rows.map((row) => 'region.' + row.key),
+      allowlist: ['language'].concat(rows.map((row) => 'region.' + row.key)),
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
+        if (path === 'language') { if (languageOptions.some((o) => o.value === value)) store.setLanguage(value); return; }
         const row = rows.find((r) => 'region.' + r.key === path);
         if (row && row.options.indexOf(value) > -1) { const p = {}; p[row.key] = value; patch(p); }
       }
