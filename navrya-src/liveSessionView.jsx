@@ -857,10 +857,24 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
 
   // AI process registry (A4) - per-scenario id, same multi-instance reasoning as
   // sessionEntryCardsView.jsx's ScenarioCard (several ScenarioEditors can be expanded at once).
-  // isOpen tracks the live `open` prop (not a mountedRef - this component itself stays mounted
-  // while collapsed, only its detail panel below toggles), so the effect re-registers whenever
-  // `open` changes, the same "refresh on relevant prop change" shape marketplaceView.jsx's
-  // RatingsPanel already uses.
+  // isOpen tracks the live `open` prop, so the effect re-registers whenever `open` changes, the
+  // same "refresh on relevant prop change" shape marketplaceView.jsx's RatingsPanel already uses.
+  // F37: also needs a real mountedRef, unlike this comment's own original F19/F20 reasoning
+  // ("this component itself stays mounted while collapsed") - true when this was written, but
+  // scenario.delete now makes deletion (hence a real unmount, once this Scenario id no longer
+  // exists in entry.scenarios for the parent's own .map() to render) possible. Found via real
+  // browser testing: without mountedRef, `isOpen: () => open` bakes the LAST live `open` value
+  // (true, since a Scenario is normally expanded right before it's deleted) into a closure that
+  // is never replaced once the component actually unmounts - registry.activeOpenProcess() then
+  // treats this permanently-stale, already-deleted Scenario as the "most recently open" winner
+  // forever, silently blocking activeEntryId() (hence entry.delete's own available() gate) from
+  // ever resolving the parent Entry again for the rest of the page load. Same bug class already
+  // found and fixed for pattern-editor-{id}/strategy-editor-{id} (switched-target safety).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, [scenario.id]);
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
@@ -875,7 +889,7 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       // 'confirm' - the real delete icon here has NO window.confirm() of its own (found via
       // audit), so this gate IS the only confirmation ceremony that exists at all.
       allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'confirmDelete'],
-      isOpen: () => open,
+      isOpen: () => mountedRef.current && open,
       submit: () => onDeleteRef.current(),
       applyValue: (path, value) => {
         if (['title', 'description', 'evidence', 'problem', 'trigger'].indexOf(path) > -1) { onUpdateRef.current({ [path]: String(value ?? '') }); return; }

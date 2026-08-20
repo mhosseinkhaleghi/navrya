@@ -91,6 +91,11 @@ test('scenario.delete and entry.delete extend the real, previously-unconfirmed d
   assert.match(liveSessionSrc, /submit: \(\) => onDeleteEntryRef\.current\(entry\)/);
 });
 
+test('ScenarioEditor\'s live-session-scenario-{id} registration guards isOpen() with a real mountedRef, not just the live `open` prop - found via real browser testing: without it, deleting a Scenario left a permanently-stale, already-deleted registration reporting isOpen()=true forever (the same closure-never-replaced bug already fixed for pattern-editor-{id}/strategy-editor-{id}\'s switched-target safety), which made ai-context-engine.js\'s activeOpenProcess()-based activeEntryId() silently prefer the deleted Scenario over its own still-open parent Entry, permanently blocking entry.delete\'s available() gate for the rest of the page load', () => {
+  assert.match(liveSessionSrc, /const mountedRef = React\.useRef\(true\);\s*\n\s*React\.useEffect\(\(\) => \{\s*\n\s*mountedRef\.current = true;\s*\n\s*return \(\) => \{ mountedRef\.current = false; \};\s*\n\s*\}, \[scenario\.id\]\);/);
+  assert.match(liveSessionSrc, /isOpen: \(\) => mountedRef\.current && open,/);
+});
+
 test('every destructive action calls the exact real store/workspace remove method the human-facing (window.confirm-gated) delete button also reaches - never a hidden/reimplemented delete path', () => {
   assert.match(actionBlock('pattern.delete'), /window\.TradeJournalPatternStore\.remove\(id\)/);
   assert.match(actionBlock('strategy.delete'), /window\.TradeJournalStrategyEducationStore\.remove\(id\)/);
