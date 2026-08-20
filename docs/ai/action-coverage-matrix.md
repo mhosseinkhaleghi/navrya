@@ -98,6 +98,10 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 | `session.movementEntry.create` (F19) | sessions | - | note | `live-session-entry-{id}` (dynamic; deliberately NOT entityAlreadyPersisted - see F19 notes below) |
 | `session.scenario.create` (F20) | sessions | title | description, evidence, problem, trigger, patternName (resolution-only, resolves to the real snapshot-preserving `scenario.pattern` shape) | `live-session-scenario-{id}` (dynamic; deliberately NOT entityAlreadyPersisted - see F19/F20 notes below; attaches to whichever real Entry is currently selected/open) |
 | `session.scenario.edit` (F20) | sessions | scenarioTitle (resolution-only) | title, description, evidence, problem, trigger, patternName | `live-session-scenario-{id}` (dynamic, resolved by exact, case-insensitive title match against the currently active Session's own scenarios only - never guessed, never cross-Session) |
+| `trade.open` (F22) | trades | - | - | `trade-details-{id}` (dynamic; the mutation itself happens synchronously in `open()`, the exact same `updateStatus()` call the real "Mark Open" button makes - no separate submit step) |
+| `trade.cancel` (F22) | trades | confirm (CONSEQUENTIAL - never inferred, only ever set true from an explicit later confirmation) | - | `trade-details-{id}` (dynamic; `open()` only shows the Trade - the real cancellation happens in `submit()`, gated on confirm) |
+| `trade.close` (F23) | trades | exitPrice | - | `trade-close-position` (fixed id; real Close Position modal, real `computeClose()` P&L math - deliberately NOT entityAlreadyPersisted, see F22/F23 notes below) |
+| `trade.emotion.log` (F22) | trades | - | note | `trade-emotion-log` (fixed id; the real form's own AI allowlist is note-only) |
 
 ### F19/F20 notes - three real, structural findings, not design choices
 
@@ -182,6 +186,105 @@ tests for all three fixes together.
 **Probability is deliberately never AI-fillable.** `probabilityHistory` (seeded `[{value: 50, loggedAt}]` at creation, by the real UI itself) is not in the allowlist and is not added by this gate - F99's "never invent probability" rule has nothing to attach to today; if a future gate adds a real probability-adjustment control to the UI, it should go through this same resolve-then-apply pattern, never a value the model invents unprompted.
 
 **Fate Entry/Fate Summary (session-closing) are deliberately out of scope for this gate** - they are a terminal, session-status-changing action (`sets session.status/closedAt`), materially different in consequence from adding an Entry/Scenario, and the user's own F19 spec's worked examples never exercise them. Left for a later, explicitly-scoped gate rather than folded in here.
+
+### F22/F23/F24 notes - Trade lifecycle
+
+**Real Trade lifecycle, as it actually exists (not invented for this gate)**: `dashboardView.jsx`'s
+own Positions panel comment explains the real design intent precisely - "A hunting trade was never
+actually opened - it has no entry fill to close, only a plan to either activate (open) or abandon
+(cancel)." Hunting trades show **Mark Open**/**Cancel Trade** buttons (`tradeStore.updateStatus()`,
+direct, no confirmation dialog); Open trades show **Log Emotion**/**Close Position** buttons
+(`tradeUi.openEmotion()`/`tradeUi.closeTrade()`). `tradeDetailsModal.jsx`'s own `canClose` still
+includes `'hunting'` - a genuine, pre-existing inconsistency between the two real UI surfaces, not
+introduced by this gate and not fixed here (out of scope); `trade.close`'s own `available()` gate
+follows the dashboard's more carefully-reasoned, more recent behavior (`status === 'open'` only).
+
+**`entityAlreadyPersisted` was initially misapplied to `trade.close`/`trade.emotion.log`, the
+mirror image of the F19/F20 finding.** Both were first built with the flag (pattern-matched too
+hastily from "real modal" -> "entityAlreadyPersisted", the same shorthand that was correct for
+Pattern/Strategy/Chart Entry) - found via real browser testing: the exit price visibly filled but
+the Trade never actually closed, because `entityAlreadyPersisted: true` skips the workflow
+engine's own submit-scheduling entirely (`ai-workflow-engine.js`: `if (action.entityAlreadyPersisted)
+current.status = 'collecting'; else scheduleSubmit(...)`). That is correct for Pattern/Strategy/
+Chart Entry because their own "submit" is already a no-op - every field write is already a
+complete, individually-persisted mutation, with nothing left to finalize. It is wrong for
+`trade.close`/`trade.emotion.log`: their real submit() functions perform the actual persisting
+write (closePositionModal.jsx's own `tradeStore.save(next)`, complete with real P&L), and neither
+`trade-close-position` nor `trade-emotion-log` is excluded from `activeProcess` (both have real,
+non-empty allowlists) - so, unlike Scenario/Entry, the normal continuation branch already reaches
+them correctly. Removed the flag from both; they now use the same ordinary
+auto-submit-once-complete shape `session.create`/`trade.calculator` already established.
+
+**A second, genuinely new instance of the F21 pending-submit routing gap, this time in
+`'collecting'` status, not just the post-collection grace window.** `trade.cancel` deliberately
+requires a `confirm` field that only ever arrives on a separate, later turn ("Cancel this trade."
+-> "are you sure?" -> "Yes, cancel it.") - by design, since this is the confirmation seam itself
+(see below). Its process (`trade-details-{id}`) is excluded from `activeProcess` (empty allowlist,
+the same general rule that already excludes Scenario/Entry cards) - found via real browser testing
+that the *first* confirmation turn correctly asked "are you sure?", but the *second* ("Yes, cancel
+it.") produced `action: null` and never actually cancelled anything. The F21 fix only bypassed this
+dead branch during the brief `pending-submit`/`submitting` grace window; a workflow still
+`'collecting'` (never entering a grace window at all, since its required field is still missing)
+hit the identical structural trap. Generalized `chat-dock-core.js`'s own exclusion to apply in
+*any* status, not just the grace window, and added `trade-details-` to the excluded-prefix list.
+Verified safe for every process this now covers: Scenario/Entry's own records are already created
+synchronously in `open()` (documented above), and `trade.cancel`'s own `open()` never mutates
+anything at all - only `submit()`, gated on `confirm`, does - so a fresh re-discovery re-running
+`open()` a second time is always harmless.
+
+**Cancel confirmation is a required `confirm` field, not a `window.confirm()` dialog.** The real
+Hunting-Cancel buttons (`dashboardView.jsx`, `liveSessionView.jsx` x2) have no confirmation
+dialog today, unlike every destructive delete elsewhere in this app. Retrofitting
+`window.confirm()` onto three existing human-facing buttons was judged out of this gate's own
+scope (it is about the new AI action, not auditing/changing existing human UI elsewhere); instead
+`trade.cancel` requires an explicit `confirm` field the model may only set `true` once the user has
+explicitly confirmed - `open()` only shows the real Trade (Trade Details), the actual
+`updateStatus(id, 'cancelled')` call happens exclusively in `submit()`, gated on `confirm === true`.
+This is the smallest deterministic seam that does not bypass the normal lifecycle: the real
+`updateStatus()` call is unchanged, only reachable later and only once confirmed.
+
+**Close Trade's own real submit() needed the same stale-closure fix as `ScenarioEditor`, found
+proactively this time (before, not after, a real-browser regression).** `closePositionModal.jsx`'s
+`submit()` closes over `exitInput` state; its AI registration's `useEffect` has an empty deps
+array (runs once per mount). Exposing `submit` directly in that registration would have frozen the
+FIRST render's `exitInput` (`''`) forever, exactly the `ScenarioEditor` bug from the F19-21
+closure gate - an AI-filled exit price would always fail validation silently. Fixed with the same
+`submitRef` pattern (updated every render, read inside the once-only effect) before this bug could
+ever reach a real browser. `logEmotionModal.jsx` got the identical proactive fix for the same
+reason.
+
+**P&L, commission, and outcome are always `computeClose()`'s real math, never the model's.** The
+model's only real fields are `exitPrice` (`trade.close`) and `note` (`trade.emotion.log`) - there
+is no code path by which either action could report a P&L number itself; `resultContext`/the
+reply text can only ever describe what `closePositionModal.jsx`'s own `computeClose()` already
+wrote to the real Trade record.
+
+**Active Trade resolution is intentionally narrower than Session/Scenario/Entry resolution.**
+`resolveActiveTrade()` only reads `context.activeEntities.tradeId` (itself only ever resolved from
+a real, currently-open `trade-details-{id}` Trade Details view) - no "uniquely resolvable visible
+Trade" auto-selection among several Hunting/Open trades on the dashboard was implemented. This is
+a deliberate scope decision, not an oversight: guessing which of several *visible-but-not-opened*
+trades "this trade" refers to is exactly the class of guess F5/F53 already forbid for
+Session/Scenario/Pattern/Strategy; extending resolution to include it would need its own
+disambiguation design (matching against direction/entry price, or asking when >1 exists) that this
+gate deliberately left for later rather than risk a wrong-Trade mutation. Zero Trades open ->
+`available()` is false for every lifecycle action -> ASK/GUIDE-only, matching F5's "no active
+Session, no guessing" precedent exactly.
+
+**`trade.open` vs `trade.calculator` is resolved entirely by aliases/description, cross-referenced
+in both directions** - `trade.open`'s own description explicitly distinguishes itself from
+"planning a brand-new Trade", and `trade.calculator`'s own description was extended with one
+sentence naming `trade.open` as the different, existing-Trade action. No code-level heuristic
+inspects the sentence itself; this mirrors exactly how `session.scenario.create` vs
+`session.scenario.edit` are already disambiguated. Verified via real browser testing (not just
+inspection): "Open a trade for me." with a Hunting Trade visibly selected correctly triggers
+`trade.calculator`, not `trade.open`, and leaves the Hunting Trade's status untouched.
+
+**Post-trade reflection needs no new code at all.** `closePositionModal.jsx`'s own `submit()`
+already calls `TradeJournalMentalHealthContinuous.onTradeClosed(saved)` unconditionally after every
+successful close; reusing the real modal's real `submit()` (via the registry) means this real,
+existing behavior fires automatically for an AI-driven close exactly as it does for a human-driven
+one, with zero additional wiring.
 
 ## Process Registry inventory, by domain
 

@@ -383,6 +383,48 @@ test('a Scenario/Entry-shaped workflow still in its own pending-submit grace win
   }
 });
 
+// Journey F, F22 (trade.cancel): found via real browser testing - a workflow still 'collecting'
+// (not yet pending-submit) whose process is excluded from activeProcess hits the identical dead
+// branch, not just one in its grace window. trade.cancel deliberately requires a `confirm` field
+// that only arrives on a separate, later turn ("Cancel this trade." -> "are you sure?" -> "Yes,
+// cancel it.") - unlike the scenario above, this workflow is NEVER given a submit grace window at
+// all (missing: ['confirm'] the whole time), so it would stay 'collecting' forever without the
+// broader (any-status) exclusion.
+test('a workflow still "collecting" (not pending-submit) whose process is excluded from activeProcess (e.g. trade-details-{id}) still does not block a fresh, later turn from re-discovering the same action and supplying the missing required field', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (/cancel this trade/i.test(body.message)) {
+        return { ok: true, json: async () => ({ reply: 'Are you sure?', action: { id: 'trade.cancel', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      }
+      return { ok: true, json: async () => ({ reply: 'Confirmed.', action: { id: 'trade.cancel', fields: [{ path: 'confirm', value: true }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  window.TradeJournalAIProcessRegistry.register('trade-details-fake1', { allowlist: [], isOpen: () => true });
+  let cancelled = null;
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'trade.cancel', requiredFields: ['confirm'], optionalFields: [],
+    open: () => ({ processId: 'trade-details-fake1' }),
+    submit: async (known) => { if (known.confirm !== true) return undefined; cancelled = true; return { id: 'trade-1', status: 'cancelled' }; },
+    resultContext: () => {}
+  });
+  window.TradeJournalAIWorkflowEngine.setSubmitGraceMs(20);
+  const core = window.TradeJournalChatDockCore;
+
+  const first = await core.sendChat({ text: 'Cancel this trade.', therapistMode: false, transcript: [] });
+  assert.equal(first.kind, 'workflow');
+  assert.equal(first.workflow.status, 'collecting', 'confirm is still missing - this workflow never enters a submit grace window at all');
+
+  const second = await core.sendChat({ text: 'Yes, cancel it.', therapistMode: false, transcript: [] });
+  assert.equal(second.kind, 'workflow', 'a fresh turn must still re-discover trade.cancel while the prior one is still collecting, not go dark');
+  assert.equal(second.workflow.actionId, 'trade.cancel');
+  assert.equal(second.workflow.status, 'pending-submit', 'confirm is now known, so this workflow reaches its own grace window');
+
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(cancelled, true, 'the second turn\'s confirm:true must actually reach submit() once the grace window elapses');
+});
+
 // Production repair pass, section 11: found via the real, required 20-turn browser script -
 // completing a Trade via chat auto-opens its own real Trade Details view (character-app.jsx's
 // trade.calculator resultContext, pre-existing, unchanged), which registers itself

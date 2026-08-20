@@ -35,7 +35,7 @@ test('snapshot() returns a safe empty snapshot (never throws) when no store is m
   const engine = await engineSandbox({});
   const snapshot = engine.snapshot();
   assert.equal(snapshot.navigation.activeId, null);
-  assert.deepEqual(clone(snapshot.activeEntities), { sessionId: null, scenarioId: null, entryId: null });
+  assert.deepEqual(clone(snapshot.activeEntities), { sessionId: null, scenarioId: null, entryId: null, tradeId: null });
   assert.equal(snapshot.workflow, null);
 });
 
@@ -133,4 +133,28 @@ test('snapshot() never resolves an entryId without a real active session, even i
     processRegistry: { activeOpenProcess: () => ({ id: 'live-session-entry-entry-abc', allowlist: [], step: null }) }
   });
   assert.equal(engine.snapshot().activeEntities.entryId, null);
+});
+
+// Journey F, F22: tradeId resolves from the real 'trade-details-{id}' process (the Trade Details
+// view) - unlike scenarioId/entryId, never gated on an active Session, since a Trade can be
+// viewed with no Session workspace open at all.
+
+test('snapshot() resolves activeEntities.tradeId from an active "trade-details-{id}" process, with no active session required', async () => {
+  const engine = await engineSandbox({
+    liveSession: { getActiveSessionId: () => null },
+    processRegistry: { activeOpenProcess: () => ({ id: 'trade-details-trade-abc', allowlist: [], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.tradeId, 'trade-abc');
+});
+
+test('snapshot() reports tradeId: null when the active process is not a Trade Details view', async () => {
+  const engine = await engineSandbox({
+    processRegistry: { activeOpenProcess: () => ({ id: 'live-session-scenario-scenario-abc', allowlist: [], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.tradeId, null);
+});
+
+test('snapshot() reports tradeId: null when nothing is open at all', async () => {
+  const engine = await engineSandbox({ processRegistry: { activeOpenProcess: () => null } });
+  assert.equal(engine.snapshot().activeEntities.tradeId, null);
 });
