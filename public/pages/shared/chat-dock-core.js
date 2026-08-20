@@ -211,7 +211,17 @@
     // default risk to 3%." still returned action:null. Fresh re-discovery is exactly as good as
     // continuation for these three (every field applies independently and immediately either
     // way), so there is no downside to excluding them unconditionally.
-    if (activeProcess && (activeProcess.id === 'settings-trading-defaults' || activeProcess.id === 'settings-region-language' || activeProcess.id === 'ai-assistant-engine')) activeProcess = null;
+    // F37: 'session-delete-confirm' is a synthetic, fixed, always-open registration (registered
+    // purely so ai-workflow-engine.js's own scheduleSubmit() stillOpen check has something real to
+    // find - see character-app.jsx's session.delete open()) with a non-empty allowlist (['confirm']),
+    // so neither the empty-allowlist rule below nor the pattern/strategy/thread-shaped regex further
+    // down ever excludes it. Once registered (i.e. after the FIRST session.delete flow, cancelled or
+    // confirmed), it never unregisters and isOpen() never returns false - the identical permanently-
+    // open shape already found and fixed for settings-trading-defaults/settings-region-language/
+    // ai-assistant-engine above. Its own confirm/reject continuation is entirely handled by the
+    // deterministic gate fast-path earlier in this function (before activeProcess is even used), so,
+    // like those three, unconditional exclusion costs nothing - fresh re-discovery is exactly as good.
+    if (activeProcess && (activeProcess.id === 'settings-trading-defaults' || activeProcess.id === 'settings-region-language' || activeProcess.id === 'ai-assistant-engine' || activeProcess.id === 'session-delete-confirm')) activeProcess = null;
     // Production repair pass, section 11: a registration with a deliberately EMPTY allowlist
     // (tradeDetailsModal.jsx's own 'trade-details-{id}', registered purely so ai-context-builder.js
     // can resolve "this trade" - it has no fillable field of its own at all) is, by construction,

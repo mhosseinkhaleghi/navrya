@@ -147,3 +147,12 @@ test('the localized cancellation/confirmation replies exist in all four language
     assert.equal(count, 4, `${key} must be defined in exactly 4 languages`);
   }
 });
+
+test('session.delete registers a real, always-open synthetic process (\'session-delete-confirm\') so ai-workflow-engine.js\'s own scheduleSubmit() stillOpen check has something real to find - an unregistered processId silently discards the workflow without ever calling submit()', () => {
+  const block = actionBlock('session.delete');
+  assert.match(block, /registry\.register\('session-delete-confirm', \{ allowlist: \['confirm'\], isOpen: \(\) => true \}\)/);
+});
+
+test('the synthetic \'session-delete-confirm\' registration is permanently open (isOpen always true, non-empty allowlist) and must therefore be unconditionally excluded from activeProcess resolution in chat-dock-core.js, the same way settings-trading-defaults/settings-region-language/ai-assistant-engine already are - otherwise, once registered, it would silently block ALL later action discovery for the rest of the page load (F27-31/F33-36\'s own documented bug class)', () => {
+  assert.match(chatDockCoreSrc, /activeProcess\.id === 'session-delete-confirm'/);
+});
