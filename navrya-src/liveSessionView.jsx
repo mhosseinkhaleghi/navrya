@@ -840,6 +840,11 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
   scenarioRef.current = scenario;
   const registeredPatternsRef = React.useRef(registeredPatterns);
   registeredPatternsRef.current = registeredPatterns;
+  // Journey F, F37: same ref pattern as onUpdateRef above - onDelete is read from inside the
+  // registration effect (deps [scenario.id, open]) via submit(), so it must never be a stale
+  // mount-time closure.
+  const onDeleteRef = React.useRef(onDelete);
+  onDeleteRef.current = onDelete;
 
   function handlePatternChange(patternId) {
     if (!patternId) { onUpdateRef.current({ pattern: null }); return; }
@@ -866,8 +871,12 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       // itself offers - zero or ambiguous matches silently do not apply, the same "never guess"
       // (F53) behavior pattern.edit/strategy.edit already established, rather than a UI-visible
       // rejection this fire-and-forget applyValue() has no channel to surface.
-      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName'],
+      // F37: 'confirmDelete' is a synthetic, AI-only field, same reasoning as trade.cancel's own
+      // 'confirm' - the real delete icon here has NO window.confirm() of its own (found via
+      // audit), so this gate IS the only confirmation ceremony that exists at all.
+      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'confirmDelete'],
       isOpen: () => open,
+      submit: () => onDeleteRef.current(),
       applyValue: (path, value) => {
         if (['title', 'description', 'evidence', 'problem', 'trigger'].indexOf(path) > -1) { onUpdateRef.current({ [path]: String(value ?? '') }); return; }
         if (path === 'positionType') { onSetSideRef.current(value === 'Short' ? 'Short' : 'Long'); return; }
@@ -1084,13 +1093,18 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
   // (LiveSessionView, above), so React genuinely remounts a fresh instance per selected entry -
   // only one is ever shown at a time here, unlike ScenarioEditor above.
   const mountedRef = React.useRef(true);
+  // Journey F, F37: 'confirmDelete' - same synthetic-gate reasoning as ScenarioEditor above; the
+  // real delete button here also has no window.confirm() of its own.
+  const onDeleteEntryRef = React.useRef(onDeleteEntry);
+  onDeleteEntryRef.current = onDeleteEntry;
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('live-session-entry-' + entry.id, {
-      allowlist: ['note'],
+      allowlist: ['note', 'confirmDelete'],
       isOpen: () => mountedRef.current,
+      submit: () => onDeleteEntryRef.current(entry),
       applyValue: (path, value) => { if (path === 'note') onNote(entry, String(value ?? '')); }
     });
     return () => { mountedRef.current = false; };

@@ -133,6 +133,48 @@
       }
     }
 
+    // Journey F, F37: a workflow genuinely waiting on ONLY a yes/no gate field (confirm/
+    // confirmDelete/confirmPublish/send/publish - trade.cancel's own pattern, generalized to
+    // every destructive/external-effect action built since) must resolve an explicit yes/no
+    // deterministically and client-side, the same way Journey C's own pending-confirmation check
+    // above does for its own, differently-shaped pending state - never left to the model's own
+    // free-form JSON extraction on a turn this consequential (F37 section 4: "Accept only clear
+    // confirmation intents according to the existing confirmation parser/policy"). Found via real
+    // browser testing: a terse "Yes." / "Yes, confirm." reply to a pending pattern.delete
+    // sometimes came back with action:null and no confirm field at all, even though the model's
+    // OWN prose reply showed it understood ("Confirmed. NAVRYA can now delete...") - free-form
+    // model JSON extraction is not reliable enough for the one turn that actually deletes
+    // something. Reuses ai-proactive-engine.js's interpretConfirmationText() as a pure, stateless
+    // classifier - no Journey C `pending` state is read or written here, only the same
+    // deterministic EN/FA regex. Scoped narrowly to "missing is EXACTLY one gate-shaped field" so
+    // an ordinary same-breath correction mid-workflow (F19-21's own "15 minutes" -> "no, make
+    // that 5 minutes" - missing still has real content fields left, or the field being corrected
+    // isn't a gate at all) is never mistaken for a decision on this workflow at all -
+    // REJECT_PATTERN's own "no"/"don't" would otherwise cancel an in-progress session.create or
+    // trade.calculator workflow the user never asked to abandon.
+    var gateWorkflow = workflowEngine ? workflowEngine.current() : null;
+    if (gateWorkflow && Array.isArray(gateWorkflow.missing) && gateWorkflow.missing.length === 1 && /^(confirm|send|publish)/i.test(gateWorkflow.missing[0]) && proactiveEngine && typeof proactiveEngine.interpretConfirmationText === 'function') {
+      var gateField = gateWorkflow.missing[0];
+      var gateDecision = proactiveEngine.interpretConfirmationText(text);
+      if (gateDecision === 'reject') {
+        workflowEngine.cancel();
+        setLastTurnDebug({ path: 'gate-rejected', actionId: gateWorkflow.actionId, field: gateField });
+        return {
+          kind: 'workflow', reply: i18n.t('aiDockConfirmationCancelled'), workflow: null,
+          activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+        };
+      }
+      if (gateDecision === 'confirm') {
+        var gateContext = contextEngine ? contextEngine.snapshot() : {};
+        var gateResult = await workflowEngine.applyKnownFields([{ path: gateField, value: true }], gateContext);
+        setLastTurnDebug({ path: 'gate-confirmed', actionId: gateWorkflow.actionId, field: gateField });
+        return {
+          kind: 'workflow', reply: i18n.t('aiDockConfirmationAccepted'), workflow: gateResult,
+          activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+        };
+      }
+    }
+
     var active = settingsStore.settings();
     var activeProcess = registry ? registry.activeOpenProcess() : null;
     // A live-session Scenario card being expanded ('live-session-scenario-' + id - see
@@ -277,7 +319,7 @@
     // page visit. Same reasoning as trade-details- below: open() for all three only navigates and
     // polls, never mutates, so a fresh re-discovery costs nothing.
     var workflowProcessId = currentWorkflow ? String(currentWorkflow.processId || '') : '';
-    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0 || workflowProcessId === 'settings-trading-defaults' || workflowProcessId === 'settings-region-language' || workflowProcessId === 'ai-assistant-engine';
+    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0 || workflowProcessId === 'settings-trading-defaults' || workflowProcessId === 'settings-region-language' || workflowProcessId === 'ai-assistant-engine' || workflowProcessId === 'session-delete-confirm';
     var workflowBlocksDiscovery = currentWorkflow && !workflowProcessExcluded;
     var availableActions = null;
     if (workflowEngine && actionRegistry && !activeProcess && !workflowBlocksDiscovery) {

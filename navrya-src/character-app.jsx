@@ -1083,6 +1083,26 @@ export function mountCharacterApp(character) {
         resultContext: () => {}
       });
 
+      // F37: found via real browser testing that a boolean gate field (confirm/confirmDelete/
+      // confirmPublish/send/publish) is uniquely vulnerable to ai-workflow-engine.js's own
+      // missingFields() rule ("known" the instant a value isn't undefined/null/'') - an explicit
+      // false extraction (the model correctly says "not yet confirmed" as {path:'confirm',
+      // value:false} rather than omitting the field) still counts as fully known, silently
+      // completing and clearing the workflow after the grace window with nothing actually
+      // confirmed. A LATER "Yes." then finds no workflow left to continue and falls to fresh
+      // discovery, re-resolving the target from WHATEVER is active by then - for pattern.delete,
+      // reproduced as deleting a completely different Pattern the user never even asked about.
+      // The fix: normalizeField returns null (never applied, per applyKnownFields()'s own
+      // "value === null -> return" rule) for an explicit false on the gate field, so it stays
+      // genuinely missing - exactly as if the model had never mentioned it - until a real true
+      // arrives. Shared by every gate-field action below rather than duplicated per action.
+      function normalizeGateField(gateFieldName) {
+        return function (path, value) {
+          if (path === gateFieldName && (value === false || value === 'false')) return null;
+          return value;
+        };
+      }
+
       window.TradeJournalAIActionRegistry.registerAction({
         // F22 section 7/16: CONSEQUENTIAL - the real "Cancel Trade" button (dashboardView.jsx/
         // liveSessionView.jsx) has no confirmation dialog today, unlike every destructive delete
@@ -1099,6 +1119,7 @@ export function mountCharacterApp(character) {
         description: 'Cancel (abandon) an EXISTING Hunting Trade - a consequential, hard-to-undo status change. This opens the real Trade Details view so the exact Trade is visible, but does NOT cancel it yet. Set confirm to true ONLY once the user has explicitly confirmed they want to cancel THIS specific Trade (e.g. they said "yes", "cancel it", "confirm") - if they have not yet confirmed, ask them plainly ("Cancel this Hunting Trade - are you sure?") and leave confirm unset. Never infer confirm from the original cancel request alone.',
         aliases: ['cancel this trade', 'abandon this trade', 'cancel the trade'],
         requiredFields: ['confirm'], optionalFields: [],
+        normalizeField: normalizeGateField('confirm'),
         available: (context) => { var t = resolveActiveTrade(context); return !!(t && t.status === 'hunting'); },
         open: (context) => new Promise((resolve) => {
           var trade = resolveActiveTrade(context);
@@ -1205,12 +1226,48 @@ export function mountCharacterApp(character) {
       function resolveActiveListingId(context) { return context && context.activeEntities && context.activeEntities.listingId; }
       function resolveActivePatternId(context) { return context && context.activeEntities && context.activeEntities.patternId; }
       function resolveActiveStrategyId(context) { return context && context.activeEntities && context.activeEntities.strategyId; }
+      // F37: same helper as the Trade-lifecycle block's own normalizeGateField (see trade.cancel)
+      // - `function` declarations are block-scoped under strict mode, so each
+      // `if (window.TradeJournalAIActionRegistry) { ... }` block needs its own copy, the same way
+      // resolveActivePatternId/resolveActiveStrategyId above are already re-declared per block
+      // rather than shared across them.
+      function normalizeGateField(gateFieldName) {
+        return function (path, value) {
+          if (path === gateFieldName && (value === false || value === 'false')) return null;
+          return value;
+        };
+      }
+      // F37: resolveActiveTrade/openTradeDetailsProcess, same reasoning - the Trade-lifecycle
+      // block's own copies (see trade.cancel/trade.close) are not visible here.
+      function resolveActiveTrade(context) {
+        var tradeId = context && context.activeEntities && context.activeEntities.tradeId;
+        if (!tradeId || !window.TradeJournalTradeStore) return null;
+        return window.TradeJournalTradeStore.find(tradeId);
+      }
+      function openTradeDetailsProcess(tradeId, resolve) {
+        if (store.getState().activeId !== 'dashboard') store.setActiveId('dashboard');
+        pollFor(
+          () => window.TradeJournalNavryaTradeDetails,
+          (hub) => {
+            hub.open(tradeId);
+            var processId = 'trade-details-' + tradeId;
+            var registry = window.TradeJournalAIProcessRegistry;
+            pollFor(
+              () => registry && registry.query(processId).open,
+              () => resolve({ processId: processId }),
+              () => resolve(null)
+            );
+          },
+          () => resolve(null)
+        );
+      }
 
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'community.post.create', domain: 'community', riskLevel: 'high',
         description: 'Open the real Community post composer and fill its text - this does NOT publish anything by itself. publish must ONLY be set to true once the user has explicitly asked to actually post/publish/share it publicly right now (e.g. "post this", "publish it", "share it with the Community"). "Write", "draft", "compose", or "create a post saying X" alone must leave publish unset - the composer stays open with the text filled, nothing goes public. Never infer publish from the drafting request alone, even a fully-worded one.',
         aliases: ['create a community post', 'write a post', 'draft a post', 'compose a community post'],
         requiredFields: ['publish'], optionalFields: ['text'],
+        normalizeField: normalizeGateField('publish'),
         available: () => true,
         open: () => new Promise((resolve) => {
           if (location.hash.indexOf('#community/feed') !== 0 && location.hash.indexOf('#community') !== 0) location.hash = '#community/feed';
@@ -1240,6 +1297,7 @@ export function mountCharacterApp(character) {
         description: 'Reply to the Community post the user currently has expanded/in view, filling the real comment draft - this does NOT post the comment by itself. send must ONLY be set to true once the user has explicitly asked to actually send/post the reply now. "Write a reply saying X"/"draft a comment" alone must leave send unset. Only available while a real Community post is already expanded/visible - never guesses which post "this" refers to.',
         aliases: ['reply to this post', 'comment on this post', 'draft a reply', 'write a comment'],
         requiredFields: ['send'], optionalFields: ['draft'],
+        normalizeField: normalizeGateField('send'),
         available: (context) => !!resolveActivePostId(context),
         open: (context) => new Promise((resolve) => {
           var postId = resolveActivePostId(context);
@@ -1262,6 +1320,7 @@ export function mountCharacterApp(character) {
         description: 'Open the real Marketplace publishing form for the Pattern or Strategy currently open, filling title/description/price/currency/preview-item-count - this does NOT publish anything by itself. confirmPublish must ONLY be set to true once the user has explicitly asked to actually publish it publicly right now (e.g. "publish this", "list it on Marketplace", "make it public"). Performance data (win rate, sample size) is always NAVRYA\'s own real, computed evidence - it is never a field you fill or invent; if the form requires data NAVRYA does not have, that field stays empty, never fabricated. Only available while a real Pattern or Strategy is open.',
         aliases: ['publish this pattern', 'publish this strategy', 'publish this to marketplace', 'list this on marketplace'],
         requiredFields: ['confirmPublish'], optionalFields: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount'],
+        normalizeField: normalizeGateField('confirmPublish'),
         available: (context) => !!(resolveActivePatternId(context) || resolveActiveStrategyId(context)),
         open: (context) => new Promise((resolve) => {
           var patternId = resolveActivePatternId(context);
@@ -1336,6 +1395,7 @@ export function mountCharacterApp(character) {
         description: 'Message the seller of the Marketplace listing currently open, filling the real message draft - this does NOT send anything by itself. send must ONLY be set to true once the user has explicitly asked to actually send the message now. Only available while a real Marketplace listing is open.',
         aliases: ['message this seller', 'message the seller', 'ask the seller', 'contact this seller'],
         requiredFields: ['send'], optionalFields: ['text'],
+        normalizeField: normalizeGateField('send'),
         available: (context) => !!resolveActiveListingId(context),
         open: (context) => new Promise((resolve) => {
           var listingId = resolveActiveListingId(context);
@@ -1371,6 +1431,7 @@ export function mountCharacterApp(character) {
         description: 'Open the real "New Message" composer for an explicitly-named recipient (not an already-open conversation or a Marketplace seller - those are different actions) and fill the draft - this does NOT send anything by itself. recipientName must be the exact name the user said; NAVRYA resolves the real user from it, never a guessed id - if it does not resolve to exactly one real user, nothing is sent. send must ONLY be set to true once the user has explicitly asked to actually send the message now.',
         aliases: ['message someone', 'send a message to', 'write a message to', 'compose a message'],
         requiredFields: ['send'], optionalFields: ['recipientName', 'text'],
+        normalizeField: normalizeGateField('send'),
         available: () => true,
         open: () => new Promise((resolve) => {
           if (location.hash.indexOf('#community/messages') !== 0) location.hash = '#community/messages';
@@ -1404,6 +1465,7 @@ export function mountCharacterApp(character) {
         description: 'Reply within the conversation thread the user currently has open, filling the real draft - this does NOT send anything by itself. send must ONLY be set to true once the user has explicitly asked to actually send the message now (e.g. "send it"). "Say X"/"draft a reply" alone must leave send unset. Only available while a real conversation thread is already open - never guesses which one.',
         aliases: ['reply to this', 'send a reply', 'respond to this message'],
         requiredFields: ['send'], optionalFields: ['draft'],
+        normalizeField: normalizeGateField('send'),
         available: () => { var registry = window.TradeJournalAIProcessRegistry; return !!(registry && registry.query('messages-thread-reply').open); },
         open: () => new Promise((resolve) => {
           var registry = window.TradeJournalAIProcessRegistry;
@@ -1606,6 +1668,264 @@ export function mountCharacterApp(character) {
           );
         }),
         submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      // F37: destructive actions. MODEL interprets intent -> NAVRYA resolves the exact target ->
+      // the real entity is shown in its real editor/detail view -> a deterministic `confirm`
+      // gate (never inferred from the delete request alone; rejections are resolved client-side
+      // by the new gate-field fast-path above, never left to a model's own judgment) -> only then
+      // does submit() call the exact same real store method the human-facing "Delete" button's
+      // own (native, AI-unreachable) window.confirm() would have led to. Never
+      // AI -> store.delete(id) directly behind the UI: open() always shows the target first, and
+      // submit() always re-verifies the target is STILL the one showing (via the real
+      // per-entity registry entry's own isOpen(), or - for Session, which has no such per-entity
+      // registration - a fresh getActiveSessionId() re-check) immediately before deleting, so a
+      // target switched mid-confirmation (F37 section 6) is refused, never silently redirected.
+      // Community post/comment, message, and Marketplace listing deletion are intentionally
+      // EXCLUDED - no real, reachable delete UI exists for any of them (verified by repository
+      // audit: community-store.js's removePost() is never called from communityView.jsx; no
+      // comment/message delete exists at any layer; marketplace has no unpublish/withdraw route).
+      // Account deletion is intentionally EXCLUDED - no such flow exists in the product at all.
+
+      var pendingPatternDeleteId = null;
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'pattern.delete', domain: 'patterns', riskLevel: 'high',
+        description: 'Permanently delete an EXISTING Pattern - this cannot be undone. Resolves the exact Pattern either from the one currently open (patternName left unset) or by exact name (patternName set) - if several Patterns match or none do, ask which one instead of guessing. confirm must ONLY be set to true once the user has explicitly confirmed the deletion after being asked (e.g. "yes", "delete it", "confirm") - never inferred from the original delete request alone.',
+        aliases: ['delete this pattern', 'delete the pattern', 'remove this pattern', 'delete pattern'],
+        requiredFields: ['confirm'], optionalFields: ['patternName'],
+        normalizeField: normalizeGateField('confirm'),
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var nameField = (initialFields || []).filter((f) => f && f.path === 'patternName')[0];
+          var patternName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';
+          var store2 = window.TradeJournalPatternStore;
+          var id;
+          if (patternName) {
+            var patterns = store2 ? store2.listSync() : [];
+            var matches = patterns.filter((p) => String(p.name || '').trim().toLowerCase() === patternName.toLowerCase());
+            if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
+            id = matches[0].id;
+          } else {
+            id = resolveActivePatternId(context);
+            if (!id) { resolve(null); return; }
+          }
+          pendingPatternDeleteId = id;
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          pollFor(
+            () => window.TradeJournalNavryaPatternHub,
+            (hub) => {
+              hub.openExisting(id);
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('pattern-editor-' + id).open,
+                () => resolve({ processId: 'pattern-editor-' + id }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: (known, context) => {
+          if (known.confirm !== true && known.confirm !== 'true') return undefined;
+          var id = pendingPatternDeleteId;
+          pendingPatternDeleteId = null;
+          if (!id) return undefined;
+          // F37 section 6: found via real browser testing that pattern-editor-{id}'s own isOpen()
+          // is NOT a reliable "is this specific Pattern still the one showing" signal - switching
+          // from Pattern A to Pattern B leaves A's registration reporting isOpen:true forever (it
+          // is never explicitly unregistered on navigate-away, unlike a real modal). Re-resolving
+          // the ACTIVE Pattern fresh from context (the same "most recently registered wins" signal
+          // resolveActivePatternId() already uses elsewhere) correctly reflects the true current
+          // target instead - if something else is now active, the stale confirmation is refused.
+          var currentActive = resolveActivePatternId(context);
+          if (currentActive && currentActive !== id) return undefined;
+          return window.TradeJournalPatternStore.remove(id);
+        },
+        resultContext: () => {}
+      });
+
+      var pendingStrategyDeleteId = null;
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'strategy.delete', domain: 'strategies', riskLevel: 'high',
+        description: 'Permanently delete an EXISTING Strategy - this cannot be undone. Any Trade linked to it keeps its own record; only the link is cleared (NAVRYA\'s own existing behavior - never invented). Resolves the exact Strategy either from the one currently open (strategyName left unset) or by exact name (strategyName set) - if several match or none do, ask which one instead of guessing. confirm must ONLY be set to true once the user has explicitly confirmed the deletion after being asked - never inferred from the original delete request alone.',
+        aliases: ['delete this strategy', 'delete the strategy', 'remove this strategy', 'delete strategy'],
+        requiredFields: ['confirm'], optionalFields: ['strategyName'],
+        normalizeField: normalizeGateField('confirm'),
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var nameField = (initialFields || []).filter((f) => f && f.path === 'strategyName')[0];
+          var strategyName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';
+          var store2 = window.TradeJournalStrategyEducationStore;
+          var id;
+          if (strategyName) {
+            var strategies = store2 ? store2.listSync() : [];
+            var matches = strategies.filter((s) => String(s.name || '').trim().toLowerCase() === strategyName.toLowerCase());
+            if (matches.length !== 1) { resolve(null); return; }
+            id = matches[0].id;
+          } else {
+            id = resolveActiveStrategyId(context);
+            if (!id) { resolve(null); return; }
+          }
+          pendingStrategyDeleteId = id;
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          pollFor(
+            () => window.TradeJournalNavryaStrategyHub,
+            (hub) => {
+              hub.openExisting(id);
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('strategy-editor-' + id).open,
+                () => resolve({ processId: 'strategy-editor-' + id }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: (known, context) => {
+          if (known.confirm !== true && known.confirm !== 'true') return undefined;
+          var id = pendingStrategyDeleteId;
+          pendingStrategyDeleteId = null;
+          if (!id) return undefined;
+          // F37 section 6: same fix as pattern.delete above - strategy-editor-{id}'s own isOpen()
+          // is not reliable across a Strategy switch either; re-resolve fresh from context.
+          var currentActive = resolveActiveStrategyId(context);
+          if (currentActive && currentActive !== id) return undefined;
+          return window.TradeJournalStrategyEducationStore.remove(id);
+        },
+        resultContext: () => {}
+      });
+
+      var pendingSessionDeleteId = null;
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'session.delete', domain: 'sessions', riskLevel: 'high',
+        description: 'Permanently delete the currently active trading Session - this cannot be undone. Trades created from it keep their own record; only the source link is left as-is (NAVRYA\'s own existing behavior - no reference cleanup is invented here). Only available while a real Session is active. confirm must ONLY be set to true once the user has explicitly confirmed the deletion after being asked - never inferred from the original delete request alone.',
+        aliases: ['delete this session', 'delete the session', 'remove this session', 'delete session'],
+        requiredFields: ['confirm'], optionalFields: [],
+        normalizeField: normalizeGateField('confirm'),
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
+        open: (context) => new Promise((resolve) => {
+          var id = context && context.activeEntities && context.activeEntities.sessionId;
+          if (!id) { resolve(null); return; }
+          pendingSessionDeleteId = id;
+          // 'session-delete-confirm' has no real per-session DOM registration to reuse (Sessions
+          // are not individually process-registered the way Pattern/Strategy/Trade are) - but
+          // ai-workflow-engine.js's own scheduleSubmit() unconditionally checks
+          // registry.query(processId).open before ever calling submit(), and an id that was never
+          // registered at all evaluates that as false, silently discarding the workflow without
+          // ever attempting the delete. Found via real browser testing: "Yes." correctly matched
+          // and applied confirm:true, but submit() was never invoked at all. Registering a real,
+          // minimal, always-open entry here (matching every other synthetic, non-DOM-backed
+          // process id in this codebase) is the fix - session.delete's own submit() already does
+          // the real "is this still the active session" check via getActiveSessionId(), so this
+          // registration exists purely to satisfy scheduleSubmit()'s liveness check, not as a
+          // second source of truth.
+          var registry = window.TradeJournalAIProcessRegistry;
+          if (registry) registry.register('session-delete-confirm', { allowlist: ['confirm'], isOpen: () => true });
+          resolve({ processId: 'session-delete-confirm' });
+        }),
+        submit: (known) => {
+          if (known.confirm !== true && known.confirm !== 'true') return undefined;
+          var id = pendingSessionDeleteId;
+          pendingSessionDeleteId = null;
+          if (!id) return undefined;
+          // F37 section 6: Sessions have no per-entity process registration to check isOpen()
+          // against (getActiveSessionId() IS the real "which one is active" signal) - re-read it
+          // fresh, immediately before deleting, rather than trusting the id captured at open().
+          var live = window.TradeJournalNavryaLiveSession;
+          if (!live || live.getActiveSessionId() !== id) return undefined;
+          return window.TradeJournalWorkspace && window.TradeJournalWorkspace.remove(id);
+        },
+        resultContext: () => {}
+      });
+
+      var pendingScenarioDeleteId = null;
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'scenario.delete', domain: 'sessions', riskLevel: 'high',
+        description: 'Permanently delete the Scenario the user currently has expanded/open within the active Session - this cannot be undone. Only available while a real Scenario is expanded - never guesses which one. confirmDelete must ONLY be set to true once the user has explicitly confirmed the deletion after being asked - never inferred from the original delete request alone. The real editor has no confirmation of its own, so this gate is the only one that exists.',
+        aliases: ['delete this scenario', 'delete the scenario', 'remove this scenario'],
+        requiredFields: ['confirmDelete'], optionalFields: [],
+        normalizeField: normalizeGateField('confirmDelete'),
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.scenarioId),
+        open: (context) => new Promise((resolve) => {
+          var id = context && context.activeEntities && context.activeEntities.scenarioId;
+          if (!id) { resolve(null); return; }
+          pendingScenarioDeleteId = id;
+          resolve({ processId: 'live-session-scenario-' + id });
+        }),
+        submit: (known, context) => {
+          if (known.confirmDelete !== true && known.confirmDelete !== 'true') return undefined;
+          var id = pendingScenarioDeleteId;
+          pendingScenarioDeleteId = null;
+          if (!id) return undefined;
+          // F37 section 6: re-verify the ACTIVE scenario still matches the one originally shown -
+          // the deterministic confirm fast-path (chat-dock-core.js) applies confirmDelete to the
+          // EXISTING workflow directly, without re-running open()/fresh discovery, so a switch to
+          // a different Scenario before confirming is no longer naturally caught the way it would
+          // be if every "Yes." re-triggered discovery from scratch.
+          var currentActive = context && context.activeEntities && context.activeEntities.scenarioId;
+          if (currentActive && currentActive !== id) return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('live-session-scenario-' + id);
+        },
+        resultContext: () => {}
+      });
+
+      var pendingEntryDeleteId = null;
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'entry.delete', domain: 'sessions', riskLevel: 'high',
+        description: 'Permanently delete the Session Entry the user currently has open within the active Session - this cannot be undone. Only available while a real Entry is open - never guesses which one. confirmDelete must ONLY be set to true once the user has explicitly confirmed the deletion after being asked - never inferred from the original delete request alone. The real editor has no confirmation of its own, so this gate is the only one that exists.',
+        aliases: ['delete this entry', 'delete the entry', 'remove this entry'],
+        requiredFields: ['confirmDelete'], optionalFields: [],
+        normalizeField: normalizeGateField('confirmDelete'),
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.entryId),
+        open: (context) => new Promise((resolve) => {
+          var id = context && context.activeEntities && context.activeEntities.entryId;
+          if (!id) { resolve(null); return; }
+          pendingEntryDeleteId = id;
+          resolve({ processId: 'live-session-entry-' + id });
+        }),
+        submit: (known, context) => {
+          if (known.confirmDelete !== true && known.confirmDelete !== 'true') return undefined;
+          var id = pendingEntryDeleteId;
+          pendingEntryDeleteId = null;
+          if (!id) return undefined;
+          // F37 section 6: same fix as scenario.delete above.
+          var currentActive = context && context.activeEntities && context.activeEntities.entryId;
+          if (currentActive && currentActive !== id) return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('live-session-entry-' + id);
+        },
+        resultContext: () => {}
+      });
+
+      var pendingTradeDeleteId = null;
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'trade.delete', domain: 'trades', riskLevel: 'high',
+        description: 'Permanently delete an EXISTING Trade record (including its logged emotion entries) - this cannot be undone. Use this ONLY when the user says "delete"/"remove" the trade (or its record) - never for "cancel"/"abandon" (that is trade.cancel, a status change on a Hunting Trade that keeps the record) or a real exit (trade.close). A "delete"/"remove" request maps here regardless of the Trade\'s current status (Hunting, Open, Closed, or Cancelled) - it always means removing the record entirely, not changing its status. Only available for a real, currently resolved active Trade. confirm must ONLY be set to true once the user has explicitly confirmed the deletion after being asked - never inferred from the original delete request alone.',
+        aliases: ['delete this trade', 'delete the trade', 'remove this trade', 'delete trade record'],
+        requiredFields: ['confirm'], optionalFields: [],
+        normalizeField: normalizeGateField('confirm'),
+        available: (context) => !!resolveActiveTrade(context),
+        open: (context) => new Promise((resolve) => {
+          var trade = resolveActiveTrade(context);
+          if (!trade) { resolve(null); return; }
+          pendingTradeDeleteId = trade.id;
+          openTradeDetailsProcess(trade.id, resolve);
+        }),
+        submit: (known, context) => {
+          if (known.confirm !== true && known.confirm !== 'true') return undefined;
+          var id = pendingTradeDeleteId;
+          pendingTradeDeleteId = null;
+          if (!id) return undefined;
+          // F37 section 6: same fix as pattern.delete/strategy.delete above - re-resolve the
+          // ACTIVE Trade fresh from context (resolveActiveTrade's own "most recently registered
+          // wins" signal) rather than trusting a specific registration's own isOpen() in
+          // isolation, found via real testing to potentially keep reporting itself open long
+          // after the user has moved on to a different entity.
+          var currentActive = resolveActiveTrade(context);
+          if (currentActive && currentActive.id !== id) return undefined;
+          return window.TradeJournalTradeStore.remove(id);
+        },
         resultContext: () => {}
       });
     }
