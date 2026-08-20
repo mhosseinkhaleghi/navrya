@@ -14,6 +14,7 @@ import test from 'node:test';
 const root = process.cwd();
 const characterAppSrc = await readFile(path.join(root, 'navrya-src', 'character-app.jsx'), 'utf8');
 const liveSessionSrc = await readFile(path.join(root, 'navrya-src', 'liveSessionView.jsx'), 'utf8');
+const strategiesHubSrc = await readFile(path.join(root, 'navrya-src', 'strategiesHubView.jsx'), 'utf8');
 const chatDockCoreSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'chat-dock-core.js'), 'utf8');
 const aiI18nSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'ai-i18n.js'), 'utf8');
 
@@ -155,4 +156,12 @@ test('session.delete registers a real, always-open synthetic process (\'session-
 
 test('the synthetic \'session-delete-confirm\' registration is permanently open (isOpen always true, non-empty allowlist) and must therefore be unconditionally excluded from activeProcess resolution in chat-dock-core.js, the same way settings-trading-defaults/settings-region-language/ai-assistant-engine already are - otherwise, once registered, it would silently block ALL later action discovery for the rest of the page load (F27-31/F33-36\'s own documented bug class)', () => {
   assert.match(chatDockCoreSrc, /activeProcess\.id === 'session-delete-confirm'/);
+});
+
+test('pattern-editor-{id} and strategy-editor-{id}\'s own real registrations both extend their allowlist with a synthetic \'confirm\' field (F26-32\'s own documented "missing synthetic gate field" bug class, never applied to F37\'s new confirm field) - without it, pattern.delete/strategy.delete\'s confirm turn continues through activeProcess.allowlist (these two ids are only CONDITIONALLY excluded, preserved for pattern.edit/strategy.edit\'s own legitimate continuation), and the model has no schema path to ever express confirm:true - confirmed via real browser testing: every EN confirm phrase happened to be intercepted by the deterministic gate fast-path before reaching the network, masking this for English, but FA/AR/ES (and any EN phrasing the fast-path\'s regex does not cover) fell through to a network turn with no way to confirm at all until this fix', () => {
+  assert.match(strategiesHubSrc, /const allowlist = \(patternTypes\.patternStagePaths \|\| \[\]\)\.slice\(\)\.concat\(\['confirm'\]\);/);
+  assert.match(strategiesHubSrc, /\.concat\(\['name', 'confirm'\]\);/);
+  // strategy-editor's applyValue forwards ANY allowlisted path straight to the real store's
+  // setPath() - 'confirm' must be explicitly excluded so it can never be written onto the record.
+  assert.match(strategiesHubSrc, /applyValue: \(path, value\) => \{ if \(path !== 'confirm' && allowlist\.indexOf\(path\) > -1\) set\(path, value\); \}/);
 });
