@@ -20,6 +20,7 @@ function patternEditBlock() {
 
 test('pattern.edit is registered with the right domain, required/optional fields, and common aliases', () => {
   const block = patternEditBlock();
+  assert.match(block, /entityAlreadyPersisted: true/, 'submit() is already a no-op - the real Pattern already exists the instant open() resolves it; see ai-workflow-engine.js\'s own comment on why this must never schedule a submit');
   assert.match(block, /domain: 'patterns'/);
   assert.match(block, /requiredFields: \['patternName'\]/);
   assert.match(block, /optionalFields: \['name', 'description', 'completionThreshold'\]/);

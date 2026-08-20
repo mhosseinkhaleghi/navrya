@@ -689,7 +689,7 @@ export function mountCharacterApp(character) {
 
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
-        id: 'pattern.create', domain: 'patterns', riskLevel: 'low',
+        id: 'pattern.create', domain: 'patterns', riskLevel: 'low', entityAlreadyPersisted: true,
         description: 'Create a new market Pattern definition in NAVRYA (name, optional description, optional completion threshold percentage from 0 to 100). Opens the real Pattern editor immediately.',
         aliases: ['create a pattern', 'new pattern', 'make a pattern', 'add a pattern', 'create a new pattern', 'define a pattern'],
         requiredFields: ['name'], optionalFields: ['description', 'completionThreshold'],
@@ -731,7 +731,7 @@ export function mountCharacterApp(character) {
     // it doesn't attempt an action without.
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
-        id: 'pattern.edit', domain: 'patterns', riskLevel: 'low',
+        id: 'pattern.edit', domain: 'patterns', riskLevel: 'low', entityAlreadyPersisted: true,
         description: 'Open an EXISTING market Pattern by name so its name, description, or completion threshold percentage (0-100) can be edited. patternName identifies which existing Pattern to open - it is never a rename. Only select this action once the user has actually named which existing Pattern they mean; if they have not, ask them which Pattern first instead of guessing.',
         aliases: ['edit a pattern', 'edit the pattern', 'update a pattern', 'change the pattern', 'open the pattern'],
         requiredFields: ['patternName'], optionalFields: ['name', 'description', 'completionThreshold'],
@@ -751,6 +751,82 @@ export function mountCharacterApp(character) {
             (hub) => {
               hub.openExisting(target.id);
               var processId = 'pattern-editor-' + target.id;
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null) // the real editor never actually mounted/registered (unexpected)
+              );
+            },
+            () => resolve(null) // the Strategies Hub never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+    }
+
+    // Journey F, F15: Strategy creation/editing, the same shape as pattern.create/pattern.edit
+    // above (real fields, real allowlist - see strategy-education.types.js's own textPaths/
+    // numericPaths, extended with 'name' by strategiesHubView.jsx's own registration effect).
+    var STRATEGY_FIELDS = [
+      'positionManagement.entryRules', 'positionManagement.stopLossRules', 'positionManagement.exitTargetRules', 'positionManagement.positionSizingRules', 'positionManagement.freeNotes',
+      'riskManagement.maxRiskPerTradePercent', 'riskManagement.dailyDrawdownLimitPercent', 'riskManagement.totalDrawdownLimitPercent', 'riskManagement.maxConcurrentTrades', 'riskManagement.maxProfitCapPerTrade', 'riskManagement.freeNotes',
+      'overallFramework.description'
+    ];
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'strategy.create', domain: 'strategies', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Create a new trading Strategy definition in NAVRYA (name, and optionally its entry/stop/exit/sizing rules, risk management limits like max risk per trade percent/max concurrent trades/drawdown limits, and overall framework description). Opens the real Strategy editor immediately.',
+        aliases: ['create a strategy', 'new strategy', 'make a strategy', 'add a strategy', 'create a new strategy', 'define a strategy'],
+        requiredFields: ['name'], optionalFields: STRATEGY_FIELDS,
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          pollFor(
+            () => window.TradeJournalNavryaStrategyHub,
+            (hub) => {
+              var created = hub.createNew();
+              if (!created || !created.id) { resolve(null); return; }
+              var processId = 'strategy-editor-' + created.id;
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null) // the real editor never actually mounted/registered (unexpected)
+              );
+            },
+            () => resolve(null) // the Strategies Hub never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      // Mirrors pattern.edit exactly: strategyName is resolution-only (never applied to the real
+      // UI - it isn't on the real allowlist above), exact case-insensitive match, never guess
+      // (F53) - zero or ambiguous matches resolve nothing rather than picking one.
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'strategy.edit', domain: 'strategies', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Open an EXISTING Strategy by name so its rules can be edited: entry/stop/exit/sizing rules, risk management limits (max risk per trade percent, max concurrent trades, drawdown limits, max profit cap), or overall framework description. strategyName identifies which existing Strategy to open - it is never a rename (use "name" for that). Only select this action once the user has actually named which existing Strategy they mean; if they have not, ask them which Strategy first instead of guessing. Editing a Strategy\'s own maxRiskPerTradePercent is not the same as a Trade\'s own risk override - never confuse the two.',
+        aliases: ['edit a strategy', 'edit the strategy', 'update a strategy', 'change the strategy', 'open the strategy'],
+        requiredFields: ['strategyName'], optionalFields: ['name'].concat(STRATEGY_FIELDS),
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var nameField = (initialFields || []).filter((f) => f && f.path === 'strategyName')[0];
+          var strategyName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';
+          if (!strategyName) { resolve(null); return; } // nothing to resolve yet - see this action's own description
+          var store2 = window.TradeJournalStrategyEducationStore;
+          var strategies = store2 ? store2.listSync() : [];
+          var matches = strategies.filter((s) => String(s.name || '').trim().toLowerCase() === strategyName.toLowerCase());
+          if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
+          var target = matches[0];
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          pollFor(
+            () => window.TradeJournalNavryaStrategyHub,
+            (hub) => {
+              hub.openExisting(target.id);
+              var processId = 'strategy-editor-' + target.id;
               var registry = window.TradeJournalAIProcessRegistry;
               pollFor(
                 () => registry && registry.query(processId).open,
