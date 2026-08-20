@@ -152,8 +152,25 @@
     // scheduleSubmit() below re-arms a fresh window.
     if (current.pendingSubmitTimer) { clearTimeout(current.pendingSubmitTimer); current.pendingSubmitTimer = null; }
 
+    // Journey F: an action whose real entity already persists the instant open() creates it
+    // (pattern.create, pattern.edit, strategy.create, strategy.edit - submit() is already a
+    // no-op for every one of them) declares entityAlreadyPersisted: true precisely so this never
+    // fires for it. Found via real browser testing of a Strategy created-then-edited-a-few-
+    // seconds-later flow: the moment the SOLE required field (often just 'name') became known,
+    // this scheduled a submit exactly like session.create's real "time to persist now" moment -
+    // but there is no real submit step here, only workflow.status flipping to 'pending-submit'
+    // and then, once SUBMIT_GRACE_MS elapsed, current being cleared to null. A follow-up turn
+    // ("Set max risk to 1%.") that happened to arrive a beat AFTER that grace window had already
+    // elapsed found no workflow left to continue - chat-dock-core.js's own "workflow continued"
+    // branch requires a live currentWorkflow, so the turn fell back to fresh action-discovery
+    // instead, and the new field value was lost. An action whose real persistence already
+    // happened has nothing here to actually finish - it should stay collecting for as long as the
+    // real target UI stays open (pruneIfAbandoned already clears it once that closes), so any
+    // later turn keeps landing on the same live workflow instead of racing a timer that exists
+    // for a different kind of action entirely.
     if ((current.status === 'collecting' || current.status === 'pending-submit') && !current.missing.length) {
-      scheduleSubmit(current, action, context);
+      if (action.entityAlreadyPersisted) current.status = 'collecting';
+      else scheduleSubmit(current, action, context);
     }
     return current;
   }

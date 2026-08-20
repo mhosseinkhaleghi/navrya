@@ -19,6 +19,7 @@ test('pattern.create is registered with the right domain, required/optional fiel
   const match = /id: 'pattern\.create'[\s\S]*?resultContext: \(\) => \{\}\s*\}\);/.exec(characterAppSrc);
   assert.ok(match, 'could not find the real pattern.create registration');
   const block = match[0];
+  assert.match(block, /entityAlreadyPersisted: true/, 'submit() is already a no-op - the real Pattern persists the instant open() creates it; see ai-workflow-engine.js\'s own comment on why this must never schedule a submit');
   assert.match(block, /domain: 'patterns'/);
   assert.match(block, /requiredFields: \['name'\]/);
   assert.match(block, /optionalFields: \['description', 'completionThreshold'\]/);

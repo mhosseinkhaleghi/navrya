@@ -98,6 +98,63 @@ test('start() called the old two-argument way (no initialFields) still passes un
   assert.deepEqual(openCalls, [undefined]);
 });
 
+// Found via real F15 (Strategy) browser testing: pattern.create/pattern.edit/strategy.create/
+// strategy.edit all declare entityAlreadyPersisted (their submit() is already a no-op - the real
+// entity persists the instant open() creates/resolves it). Before this fix, the moment the sole
+// required field (often just 'name') became known, the SAME grace-window-then-clear machinery
+// session.create's own real "time to persist now" moment uses fired here too - purely a leftover
+// workflow.status bookkeeping formality for these actions, but clearing `current` to null meant a
+// slower follow-up turn ("Set max risk to 1%." arriving a beat after the ~3s grace window) found
+// no workflow left to continue, fell back to fresh action-discovery, and lost the field.
+test('an action declaring entityAlreadyPersisted never schedules a submit once required fields complete - it just stays collecting so later turns keep landing on the same live workflow', async () => {
+  const submitCalls = [];
+  const action = {
+    id: 'pattern.create', requiredFields: ['name'], entityAlreadyPersisted: true,
+    submit: async (known) => { submitCalls.push(known); return { id: 'should-not-happen' }; }
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.setSubmitGraceMs(10);
+  engine.start('pattern.create', {});
+  const workflow = await engine.applyKnownFields([{ path: 'name', value: 'Sweep' }], {});
+  assert.equal(workflow.status, 'collecting', 'never transitions to pending-submit');
+  await new Promise((resolve) => setTimeout(resolve, 40)); // well past the grace window
+  assert.equal(submitCalls.length, 0, 'submit() must never be called - the real entity already persisted via open()');
+  assert.ok(engine.current(), 'the workflow must still be live for a later turn to continue');
+  assert.deepEqual(clone(engine.current().known), { name: 'Sweep' });
+});
+
+test('a later turn on an entityAlreadyPersisted workflow still applies a genuinely new field, arriving well after what would have been the old grace window', async () => {
+  const applyCalls = [];
+  const action = { id: 'strategy.create', requiredFields: ['name'], entityAlreadyPersisted: true, optionalFields: ['riskManagement.maxRiskPerTradePercent'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.setSubmitGraceMs(10);
+  engine.start('strategy.create', {});
+  await engine.applyKnownFields([{ path: 'name', value: 'NY Reversal' }], {});
+  await new Promise((resolve) => setTimeout(resolve, 40)); // well past the old grace window
+  const workflow = await engine.applyKnownFields([{ path: 'riskManagement.maxRiskPerTradePercent', value: '1' }], {});
+  assert.deepEqual(clone(workflow.known), { name: 'NY Reversal', 'riskManagement.maxRiskPerTradePercent': '1' });
+  assert.deepEqual(clone(applyCalls), [
+    ['strategy-create', 'name', 'NY Reversal', 'replace'],
+    ['strategy-create', 'riskManagement.maxRiskPerTradePercent', '1', 'replace']
+  ]);
+});
+
+test('an action that does NOT declare entityAlreadyPersisted keeps the existing auto-submit-then-clear behavior unchanged - only an explicit opt-in changes anything', async () => {
+  const submitCalls = [];
+  const action = {
+    id: 'session.create', requiredFields: ['city'],
+    submit: async (known) => { submitCalls.push(known); return { id: 'session-1' }; }
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.setSubmitGraceMs(10);
+  engine.start('session.create', {});
+  const workflow = await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  assert.equal(workflow.status, 'pending-submit');
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(clone(submitCalls), [{ city: 'New York' }]);
+  assert.equal(engine.current(), null, 'still clears exactly as before for an action that never opted in');
+});
+
 test('applyKnownFields() resolves open()\'s returned {processId} and uses it (not the default actionId mapping) for the real UI sync', async () => {
   const applyCalls = [];
   const action = {

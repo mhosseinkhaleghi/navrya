@@ -12,16 +12,45 @@ a human has the UI open). **3** are also `ai-action-registry.js` actions (can be
 Process Registry registration at all (listed below). One live, reachable workflow
 (`mh-bias-checklist`) runs through legacy vanilla-DOM, not a NAVRYA React component.
 
-**Journey F progress so far**: `pattern.create` (F1, first slice) and `pattern.edit` (F2, second
-slice) are now action-startable - see the updated Action Registry table and Pattern-edit row
-below. `pattern.edit` introduced a new, generalized `ai-workflow-engine.js` capability: `start()`
-now passes the very same turn's own extracted fields through to `open()` as a second argument, so
-an action whose `open()` must first RESOLVE an existing real entity by name (never guess - F53)
-can do that lookup before deciding what (if anything) to open. Verified via real browser testing
-that a genuinely multi-turn phrasing ("Edit a pattern." -> "Which Pattern?" -> "The Order Block
-one.") still resolves correctly two turns later: the model itself defers picking the action until
-it actually has a name (guided by the action's own description), rather than the workflow engine
-needing to retry `open()` across turns.
+**Journey F progress so far**: `pattern.create` (F1), `pattern.edit` (F2), `strategy.create` and
+`strategy.edit` (F15) are now action-startable - see the updated Action Registry table and the
+Pattern/Strategy edit rows below. `pattern.edit`/`strategy.edit` share a generalized
+`ai-workflow-engine.js` capability: `start()` passes the very same turn's own extracted fields
+through to `open()` as a second argument, so an action whose `open()` must first RESOLVE an
+existing real entity by name (never guess - F53) can do that lookup before deciding what (if
+anything) to open.
+
+**F15 found and fixed two real, general bugs** (neither specific to Strategy - both equally affect
+`pattern.create`/`pattern.edit`, fixed there too):
+1. **A submit-grace-window race**: an action whose real entity already persists the instant
+   `open()` creates/resolves it (`submit()` is already a no-op for all four of these actions) was
+   still scheduling the same auto-submit-then-clear machinery `session.create`'s own real "time to
+   persist now" moment uses. The moment the sole required field (often just `name`) became known,
+   the workflow entered `pending-submit` and, after `SUBMIT_GRACE_MS`, cleared to `null`. A
+   follow-up turn arriving a beat after that window found no workflow left to continue, fell back
+   to fresh action-discovery, and lost the field. Fixed with a new, explicit opt-in action flag,
+   `entityAlreadyPersisted: true` - such a workflow now just stays `collecting` for as long as the
+   real target UI stays open (`pruneIfAbandoned()` already clears it once that closes).
+2. **A stale-closure bug in both `StrategyDetailsTab`'s `set()` and `PatternDetailsTab`'s
+   `patch()`**: the AI process registration effect runs once at mount and never re-runs, so it
+   permanently captured whichever save-function existed at that render - but `strategy`/`pattern`
+   is re-derived fresh from the store on every render (a genuinely different object each time), so
+   a later AI-driven field write, called through the stale mount-time closure, silently clobbered
+   any manual edit (or any other field change) made via a fresher render's own closure since mount.
+   Concretely: AI sets `maxRisk=1%`, user manually edits it to `0.75%`, AI later sets
+   `maxConcurrentTrades=2` -> the stale closure's own save re-wrote the whole record from its
+   outdated snapshot, reverting `maxRisk` back to `1%`. Fixed with a ref kept current every render
+   (the same pattern `chatDockView.jsx`'s own `submitRef` already uses), so the mount-time closure
+   always reads/writes through the latest object regardless of which render's closure is invoked.
+
+Verified via real browser testing that a genuinely multi-turn phrasing ("Edit a pattern." -> "Which
+Pattern?" -> "The Order Block one.") still resolves correctly two turns later: the model itself
+defers picking the action until it actually has a name (guided by the action's own description),
+rather than the workflow engine needing to retry `open()` across turns. Also verified: cross-page
+action discovery (Dashboard/Psychology -> Strategies), active-entity resolution surviving a
+navigate-away-and-back by name (not a remembered id), zero stale `activeStrategyId` leaking between
+two open-in-sequence Strategies, and voice/text continuity (a workflow started by voice, continued
+by text, continued by voice again, stays the same single record).
 
 ## Section 0 — a finding that changes how this matrix must be read
 
@@ -63,6 +92,8 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 | `navigate.to` | navigation | domainId | - | `navigate-to` (no fillable fields - exists only so the Workflow Engine has a liveness check) |
 | `pattern.create` (F1) | patterns | name | description, completionThreshold | `pattern-editor-{id}` (dynamic - the real id only exists once open() creates the Pattern) |
 | `pattern.edit` (F2) | patterns | patternName (resolution-only, never applied to the real UI) | name, description, completionThreshold | `pattern-editor-{id}` (dynamic - resolved by exact, case-insensitive name match; zero/ambiguous matches resolve nothing, never guessed) |
+| `strategy.create` (F15) | strategies | name | full real Strategy allowlist (entry/stop/exit/sizing rules, risk limits, framework description) | `strategy-editor-{id}` (dynamic, same shape as pattern.create) |
+| `strategy.edit` (F15) | strategies | strategyName (resolution-only) | name + full real Strategy allowlist | `strategy-editor-{id}` (dynamic, same shape as pattern.edit) |
 
 ## Process Registry inventory, by domain
 
@@ -95,7 +126,7 @@ other row below is process-fillable only.
 | Pattern delete | same file | - | - | trash icon | `window.confirm()` → `PatternStore.remove(id)` | NO | already confirmed |
 | Pattern stage delete | same file | - | - | per-stage trash | `deleteStage()` | NO | **no confirm today** |
 | Pattern screenshot remove | same file | - | - | per-shot remove | `removeShot()` | NO | **no confirm today** |
-| Strategy edit | `strategiesHubView.jsx` `StrategyDetailsTab` | `strategy-editor-{id}` | positionManagement.{entryRules,stopLossRules,exitTargetRules,positionSizingRules,freeNotes}, riskManagement.{freeNotes,maxRiskPerTradePercent,dailyDrawdownLimitPercent,totalDrawdownLimitPercent,maxConcurrentTrades,maxProfitCapPerTrade}, overallFramework.description | same tabs | `StrategyEducationStore.setPath()` per field | NO | normal |
+| Strategy edit | `strategiesHubView.jsx` `StrategyDetailsTab` | `strategy-editor-{id}` | name **(F15)**, positionManagement.{entryRules,stopLossRules,exitTargetRules,positionSizingRules,freeNotes}, riskManagement.{freeNotes,maxRiskPerTradePercent,dailyDrawdownLimitPercent,totalDrawdownLimitPercent,maxConcurrentTrades,maxProfitCapPerTrade}, overallFramework.description | same tabs / `strategy.create` and `strategy.edit` actions (F15) | `StrategyEducationStore.setPath()` per field | **YES (F15)** | normal |
 | Strategy delete | same file | - | - | trash icon | `window.confirm()` → `StrategyEducationStore.remove(id)` | NO | already confirmed |
 | Strategy active toggle | same file | - | - | toggle | `toggleActive()` | NO | not destructive |
 

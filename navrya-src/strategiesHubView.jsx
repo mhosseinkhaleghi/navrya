@@ -953,7 +953,19 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pattern.referenceScreenshots.map((s) => s.id).join(',')]);
 
-  function patch(fields) { Object.assign(pattern, fields); onSave(pattern); setSavedAt(Date.now()); }
+  // Found via real F15 (Strategy) browser testing, and equally real here: the AI process
+  // registration effect below runs once at mount ([pattern.id], never re-runs) and permanently
+  // captures whichever patch() existed at that render - `pattern` is re-derived fresh from the
+  // store on every render (this file's own top-of-function comment), a genuinely different object
+  // each time (JSON round-trip through storage, not a shared mutable reference), so a STALE
+  // mount-time patch() applying a later AI-driven field write would silently clobber ANY manual
+  // edit or other field change that landed via a fresher render's own closure since mount. A ref,
+  // kept current on every render, decouples what patch() operates on from which render's closure
+  // happens to be the one actually invoked - the same pattern chatDockView.jsx's own submitRef
+  // already uses for the identical reason.
+  const patternRef = React.useRef(pattern);
+  patternRef.current = pattern;
+  function patch(fields) { Object.assign(patternRef.current, fields); onSave(patternRef.current); setSavedAt(Date.now()); }
 
   // AI process registry (A4) - reuses the SAME process id pattern-registry.js's legacy editor()
   // already registers ('pattern-editor-' + pattern.id), with the exact same allowlist
@@ -1071,7 +1083,19 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
 
 function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
   const [savedAt, setSavedAt] = React.useState(null);
-  function set(path, value) { window.TradeJournalStrategyEducationStore.setPath(strategy, path, value); onSave(strategy); setSavedAt(Date.now()); }
+  // Found via real F15 browser testing (manual-edit precedence): the AI process registration
+  // effect below runs once at mount ([strategy.id], never re-runs) and permanently captures
+  // whichever set() existed at that render - `strategy` is re-derived fresh from the store on
+  // every render (a genuinely different object each time), so a stale mount-time set() applying a
+  // later AI-driven field write silently clobbered a manual edit (or any other field change) made
+  // via a fresher render's own closure since mount - e.g. AI sets maxRisk=1%, user manually edits
+  // it to 0.75%, AI then sets maxConcurrentTrades=2 -> the stale closure's own save() re-wrote the
+  // WHOLE record from its own outdated snapshot, silently reverting maxRisk back to 1%. A ref, kept
+  // current on every render, decouples what set() operates on from which render's closure happens
+  // to be the one actually invoked - the same pattern chatDockView.jsx's own submitRef already uses.
+  const strategyRef = React.useRef(strategy);
+  strategyRef.current = strategy;
+  function set(path, value) { window.TradeJournalStrategyEducationStore.setPath(strategyRef.current, path, value); onSave(strategyRef.current); setSavedAt(Date.now()); }
 
   // AI process registry (A4) - reuses the SAME process id strategy-education.js's legacy
   // renderDetail() already registers ('strategy-editor-' + strategy.id), with the exact same
@@ -1085,7 +1109,13 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry, strategyTypes = window.TradeJournalStrategyEducationTypes;
     if (!registry || !strategyTypes) return undefined;
-    const allowlist = (strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []);
+    // 'name' is deliberately added on top of strategyTypes' own textPaths/numericPaths (which the
+    // legacy strategy-education.js registration also reuses verbatim, see this effect's own
+    // comment) - Journey F: strategy.create needs the Strategy's own name to be AI-fillable, the
+    // same gap Pattern's own completionThreshold closed for pattern.create/pattern.edit. set()
+    // already handles a plain 'name' path correctly (StrategyEducationStore.setPath() falls back
+    // to a plain string assignment for any path not in numericPaths), so no other change needed.
+    const allowlist = (strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []).concat(['name']);
     registry.register('strategy-editor-' + strategy.id, {
       allowlist,
       isOpen: () => mountedRef.current,
@@ -1845,6 +1875,10 @@ function StrategiesHub({ character }) {
   // by name - never creates anything, just the same setTab/openItem navigation createNewPattern()
   // already does for a brand-new one.
   function openExistingPattern(id) { setTab('patterns'); openItem('pattern', id, 'details'); }
+  // strategy.create/strategy.edit (Journey F, F15): same pair, same reasoning, for Strategies -
+  // the same real StrategyEducationStore.create() the "New strategy" button already calls.
+  function createNewStrategy() { const s = window.TradeJournalStrategyEducationStore.create(); setTab('strategies'); openItem('strategy', s.id, 'details'); return s; }
+  function openExistingStrategy(id) { setTab('strategies'); openItem('strategy', id, 'details'); }
   // Same window-hook handoff convention every other NAVRYA modal/view already exposes
   // (TradeJournalNavryaTradeCalculator, TradeJournalNavryaLiveSession, ...) - this one is scoped
   // to this component's own mount/unmount lifecycle (StrategiesHub is a per-view React root,
@@ -1852,7 +1886,8 @@ function StrategiesHub({ character }) {
   // for this hook not existing yet and wait for it (see character-app.jsx's pattern.create).
   React.useEffect(() => {
     window.TradeJournalNavryaPatternHub = { createNew: createNewPattern, openExisting: openExistingPattern };
-    return () => { delete window.TradeJournalNavryaPatternHub; };
+    window.TradeJournalNavryaStrategyHub = { createNew: createNewStrategy, openExisting: openExistingStrategy };
+    return () => { delete window.TradeJournalNavryaPatternHub; delete window.TradeJournalNavryaStrategyHub; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   function removeItem(kind, id) {
     if (!window.confirm(tr(lang, 'deleteConfirm'))) return;
