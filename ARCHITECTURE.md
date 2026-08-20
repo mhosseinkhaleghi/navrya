@@ -1014,6 +1014,48 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   `cedar`, used for all four languages); and production validation (everything above was verified
   against local dev servers only).
 
+### 7.21 AI Copilot: Universal Domain Coverage & Destructive-Action Safety (Journey F)
+
+- **Purpose:** Extends Journeys A/B's Action Registry across essentially every remaining safe,
+  product-backed workflow - Pattern/Strategy create+edit, Session Scenario/Entry, the full Trade
+  lifecycle (open/cancel/close/emotion-log), Community/Marketplace/Messaging drafting and
+  publish/send, Account Profile and Settings - and, as its own final gate (F37), adds genuinely
+  irreversible destructive actions (`pattern.delete`, `strategy.delete`, `session.delete`,
+  `scenario.delete`, `entry.delete`, `trade.delete`) with an explicit, deterministic confirmation
+  architecture. Full detail lives under `docs/ai/`: `action-coverage-matrix.md` (the complete
+  per-workflow inventory - what exists, what's action-startable, what's intentionally excluded and
+  why), `universal-actions.md` (the ASK/DO/GUIDE model as it actually falls out of the existing
+  mechanism, no separate classifier), and `action-safety.md`/`action-testing.md` (the destructive-
+  action confirmation architecture and how it was verified). This section is the map, matching
+  7.19/7.20's own convention - not a restatement.
+- **No new mechanism.** Every one of these ~30 actions is built entirely from Journeys A/B/C's own
+  primitives (`ai-action-registry.js`'s `registerAction()`, `ai-workflow-engine.js`'s
+  start/applyKnownFields/submit lifecycle, `ai-context-engine.js`'s active-entity resolution) - this
+  gate is domain breadth and one new safety primitive (the confirmation gate field), never a second
+  runtime.
+- **Destructive actions never call a store's delete method directly from the model.** Every one
+  resolves an exact target (currently active, or by exact name - never guessed), requires an
+  explicit boolean gate field (`confirm`/`confirmDelete`) that only a real, later "yes" can set, and
+  re-verifies the target is *still* the one being confirmed - immediately before calling the exact
+  same real delete method the human-facing, already-`window.confirm()`-gated button reaches. Full
+  architecture, including the four real interaction bugs found and fixed via real-browser testing
+  (an explicit `false` silently treated as "known"; a single registration's own `isOpen()` being an
+  unsafe re-verification signal; two distinct stale-registration bugs that permanently blocked
+  future action discovery once triggered; a missing synthetic gate field on a real form's allowlist
+  that silently broke non-English confirmation) is in `action-safety.md`.
+- **Explicitly excluded from this entire gate, structurally, not just by prompt instruction:**
+  password, API key, admin/authorization role, billing/subscription, brokerage/exchange trade
+  execution, and account deletion. None of these fields exist in any action's allowlist, and none
+  of the real registrations these actions target expose them to `applyValue` at all.
+- **Verification status:** all six destructive actions verified end-to-end in a real browser
+  (real store data, real `/api/ai/chat` calls against a real model), including English, Persian,
+  Arabic, and Spanish confirmation phrasing, and confirmation-channel switching (voice-sourced
+  `sendChat({source:'voice'})` calls confirming a text-started workflow and vice versa). See
+  `action-testing.md` for the full methodology and the honest list of what this pass did and did
+  not cover (a real-microphone voice pass and the full literal 36-step continuous script were judged
+  out of this gate's own scope, given equivalent coverage from shorter targeted scripts and Journey
+  E's own independent real-audio verification of the shared voice transport).
+
 ## 8. AI Integration Points
 
 ### Server configuration

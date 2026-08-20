@@ -116,10 +116,41 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 | `settings.ai.update` (F36) | settings | - | provider, model, voice | `ai-assistant-engine` (fixed id, new registration; entityAlreadyPersisted; API key/"remember key"/budget are never wired into `applyValue` at all, not merely excluded from the allowlist) |
 | `pattern.delete` (F37) | patterns | confirm (destructive - never inferred) | patternName (resolution-only) | `pattern-editor-{id}` (dynamic; reused from pattern.edit; `submit()` re-verifies this exact registration is still open before calling `PatternStore.remove()` directly - the real UI's own `window.confirm()` cannot be driven by chat) |
 | `strategy.delete` (F37) | strategies | confirm (destructive) | strategyName (resolution-only) | `strategy-editor-{id}` (dynamic; same shape as pattern.delete; real cascade behavior - `orphanLinkedTrades()` - is preserved because `submit()` calls the real store's own `remove()`, never reimplemented) |
-| `session.delete` (F37) | sessions | confirm (destructive) | - | `session-delete-confirm` (new, fixed, non-registered id - only available while a real Session is active; `submit()` re-verifies `getActiveSessionId()` still matches before calling `Workspace.remove()`) |
+| `session.delete` (F37) | sessions | confirm (destructive) | - | `session-delete-confirm` (new, fixed, synthetic id - registered by `open()` itself as a real, always-open process, purely so `ai-workflow-engine.js`'s own `scheduleSubmit()` liveness check has something real to find; only available while a real Session is active; `submit()` re-verifies `getActiveSessionId()` still matches before calling `Workspace.remove()`) |
 | `scenario.delete` (F37) | sessions | confirmDelete (destructive) | - | `live-session-scenario-{id}` (dynamic; extends the existing F19/F20 registration with a new `submit()` calling the real, previously-unconfirmed `deleteScenario()` - the real delete icon had no confirmation of its own) |
 | `entry.delete` (F37) | sessions | confirmDelete (destructive) | - | `live-session-entry-{id}` (dynamic; same shape as scenario.delete, extending the real, previously-unconfirmed `deleteEntry()`) |
 | `trade.delete` (F37) | trades | confirm (destructive) | - | `trade-details-{id}` (dynamic; distinct from trade.cancel/trade.close - removes the record entirely, `submit()` re-verifies this exact registration is still open before calling `TradeStore.remove()` directly) |
+
+### F37 notes - four real bugs found via real-browser testing, none of them design flaws in the confirmation architecture itself
+
+Full writeup in `docs/ai/action-safety.md`; summarized here for this table's own audit trail.
+
+1. **An explicit `confirm:false` silently counted as "known"** (`ai-workflow-engine.js`'s
+   `missingFields()` only checks `undefined`/`null`/`''`, not falsy-ness) - self-clearing the
+   workflow with nothing confirmed, so a later genuine "Yes." fell through to fresh re-discovery
+   against whatever was then active. Fixed with `normalizeGateField()`, applied to all thirteen
+   gate-field actions across both files (six new destructive + six pre-existing F26-32 + trade.cancel).
+2. **`session-delete-confirm`'s own registration is permanently open** (a synthetic, non-DOM-backed
+   id, registered once with `isOpen: () => true` so `scheduleSubmit()`'s own liveness check has
+   something real to find) and was never excluded from `activeProcess` resolution - would silently
+   block ALL future action discovery for the rest of the page load after even one `session.delete`
+   flow, the same bug class already documented for `settings-trading-defaults`/`ai-assistant-engine`
+   in F33-36. Fixed by adding it to `chat-dock-core.js`'s existing unconditional-exclusion list.
+3. **`pattern-editor-{id}`/`strategy-editor-{id}`'s own real allowlists never gained the synthetic
+   `confirm` field** the same way `community-new-post`/`publish-flow`/... already did for their own
+   gate fields in F26-32. Every English confirm phrase happened to be intercepted by the
+   deterministic gate fast-path (`chat-dock-core.js`) before ever reaching the network path where
+   this actually mattered, masking it entirely - found via real-browser FA/AR/ES testing (that
+   classifier only recognizes English and a narrow set of Persian phrases), where every non-fast-
+   path confirm turn silently deleted nothing. Fixed by extending both allowlists.
+4. **`ScenarioEditor`'s `live-session-scenario-{id}` registration had no `mountedRef`** - `isOpen()`
+   tracked only the live `open` prop, correct until `scenario.delete` made a real unmount (via
+   actual deletion) possible for the first time; the stale, last-registered closure (`open` baked in
+   as `true`) then permanently outranked its own still-open parent Entry in `activeOpenProcess()`,
+   silently making `entry.delete` permanently unavailable for that Entry - found via real-browser
+   testing of `scenario.delete` immediately followed by `entry.delete` on the same Entry (an
+   isolated `entry.delete` test with no Scenario in the mix passed even before this fix, which is
+   what made the actual trigger condition traceable). Fixed with a real `mountedRef` guard.
 
 ### F19/F20 notes - three real, structural findings, not design choices
 
