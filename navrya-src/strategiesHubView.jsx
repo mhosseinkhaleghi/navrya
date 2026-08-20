@@ -977,7 +977,14 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry, patternTypes = window.TradeJournalPatternTypes;
     if (!registry || !patternTypes) return undefined;
-    const allowlist = (patternTypes.patternStagePaths || []).slice();
+    // 'confirm' is a synthetic, AI-only field appended on top of the real editable paths - same
+    // reasoning as communityView.jsx's 'publish'/messagesView.jsx's 'send' (F37): pattern.delete's
+    // own confirm turn continues through THIS registration's allowlist (pattern-editor-{id} is only
+    // conditionally excluded from activeProcess, preserved for pattern.edit's own legitimate
+    // continuation - see chat-dock-core.js), so without it here the model has no schema path to ever
+    // express "the user just confirmed deletion" on that later turn. applyValue below has no case
+    // for it - pattern.delete's own submit() in character-app.jsx is what actually gates on it.
+    const allowlist = (patternTypes.patternStagePaths || []).slice().concat(['confirm']);
     registry.register('pattern-editor-' + pattern.id, {
       allowlist,
       isOpen: () => mountedRef.current,
@@ -1115,11 +1122,16 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
     // same gap Pattern's own completionThreshold closed for pattern.create/pattern.edit. set()
     // already handles a plain 'name' path correctly (StrategyEducationStore.setPath() falls back
     // to a plain string assignment for any path not in numericPaths), so no other change needed.
-    const allowlist = (strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []).concat(['name']);
+    // 'confirm' is a synthetic, AI-only field, same reasoning as pattern-editor-{id}'s own 'confirm'
+    // just above (F37) - strategy.delete's confirm turn continues through this same registration's
+    // allowlist. Explicitly excluded from the generic applyValue fallback below (which otherwise
+    // forwards any allowlisted path straight to StrategyEducationStore.setPath()) so it can never be
+    // written onto the real Strategy record - strategy.delete's own submit() is what gates on it.
+    const allowlist = (strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []).concat(['name', 'confirm']);
     registry.register('strategy-editor-' + strategy.id, {
       allowlist,
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (allowlist.indexOf(path) > -1) set(path, value); }
+      applyValue: (path, value) => { if (path !== 'confirm' && allowlist.indexOf(path) > -1) set(path, value); }
     });
     return () => { mountedRef.current = false; };
   }, [strategy.id]); // eslint-disable-line react-hooks/exhaustive-deps

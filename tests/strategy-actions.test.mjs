@@ -122,7 +122,9 @@ test('StrategiesHub exposes a real window hook (TradeJournalNavryaStrategyHub) t
 });
 
 test('the real strategy-editor-{id} registration\'s allowlist includes \'name\' on top of the store\'s own textPaths/numericPaths - the exact gap that would otherwise make strategy.create\'s own required field un-fillable, the same fix pattern.create needed for completionThreshold', () => {
-  assert.match(hubSrc, /\.concat\(strategyTypes\.numericPaths \|\| \[\]\)\.concat\(\['name'\]\)/);
+  // F37 also appends a synthetic 'confirm' gate field alongside 'name' here (see
+  // tests/destructive-actions.test.mjs) - this assertion only cares that 'name' is still present.
+  assert.match(hubSrc, /\.concat\(strategyTypes\.numericPaths \|\| \[\]\)\.concat\(\['name', 'confirm'\]\)/);
 });
 
 test('strategy.create/strategy.edit never touch API keys, auth tokens, or admin credentials - domain stays "strategies", nothing settings/credential-shaped in the field allowlist', () => {
