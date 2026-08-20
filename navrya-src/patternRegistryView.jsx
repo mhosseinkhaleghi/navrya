@@ -434,6 +434,23 @@ function PatternSharing({ pattern, i18n }) {
     });
   }
 
+  // Journey F, F27-31: real window hook exposing this real openFlow() (with its own real
+  // evidence/buildContent closures - never reconstructable from chat) to marketplace.publish,
+  // mirroring every other TradeJournalNavryaXxxHub in this codebase. Refs kept current every
+  // render since this effect only re-runs on [pattern.id] - openFlow/status themselves change on
+  // every render (fresh closures/state), the same staleness class already fixed elsewhere.
+  const openFlowRef = React.useRef(openFlow);
+  openFlowRef.current = openFlow;
+  const statusRef = React.useRef(status);
+  statusRef.current = status;
+  React.useEffect(() => {
+    window.TradeJournalNavryaPatternSharingHub = {
+      openFlow: () => openFlowRef.current(statusRef.current && statusRef.current.listing),
+      hasListing: () => !!(statusRef.current && statusRef.current.listing)
+    };
+    return () => { delete window.TradeJournalNavryaPatternSharingHub; };
+  }, [pattern.id]);
+
   function onToggle(checked) {
     setIsPublic(checked);
     pattern.isPublic = checked;

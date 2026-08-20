@@ -226,6 +226,14 @@ function RatingsPanel({ i18n, listing, ratingsData, isSeller, unlocked, onRated 
   const [ratingValue, setRatingValue] = React.useState('5');
   const [reviewText, setReviewText] = React.useState('');
 
+  // Journey F, F27-31: submitRef read from inside the registration effect instead of closing over
+  // submit() directly - same stale-closure bug class already fixed for ScenarioEditor/
+  // closePositionModal.jsx/logEmotionModal.jsx: this effect's deps ([listing.id, isSeller,
+  // unlocked]) do not include ratingValue/reviewText, so a frozen submit() closure would always
+  // rate with whatever ratingValue/reviewText existed at the moment isSeller/unlocked last
+  // changed, not the user's (or AI's) actual current input.
+  const submitRef = React.useRef(null);
+
   // AI process registry (A4) - this panel is always mounted while a listing's detail view is
   // open, but the rating form itself only makes sense once !isSeller && unlocked, so isOpen
   // reflects that condition directly rather than mount/unmount. Re-registers whenever those two
@@ -240,14 +248,16 @@ function RatingsPanel({ i18n, listing, ratingsData, isSeller, unlocked, onRated 
       applyValue: (path, value) => {
         if (path === 'ratingValue') { const n = Number(value); if (n >= 1 && n <= 5) setRatingValue(String(Math.round(n))); }
         else if (path === 'reviewText') setReviewText(String(value ?? ''));
-      }
+      },
+      submit: () => submitRef.current()
     });
     return undefined;
   }, [listing.id, isSeller, unlocked]);
 
   function submit() {
-    window.TradeJournalCommunityStore.rateListing(listing.id, Number(ratingValue), reviewText.trim()).then(() => { setReviewText(''); onRated(); });
+    return window.TradeJournalCommunityStore.rateListing(listing.id, Number(ratingValue), reviewText.trim()).then((result) => { setReviewText(''); onRated(); return result; });
   }
+  submitRef.current = submit;
   const ratings = ratingsData.ratings;
   return (
     <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -345,6 +355,32 @@ export function MarketplaceDetail({ i18n, id }) {
   function buy() { window.TradeJournalCommunityStore.purchaseListing(listing.id).then(() => setReload((r) => r + 1)); }
   function message() { window.TradeJournalCommunityStore.openThread(listing.id).then((thread) => { location.hash = '#community/messages/' + encodeURIComponent(thread.id); }); }
 
+  return <MarketplaceDetailBody i18n={i18n} listing={listing} ratingsData={ratingsData} seller={seller} isSeller={isSeller} unlocked={unlocked} rtl={rtl} character={character} onBuy={buy} onMessage={message} onRated={() => setReload((r) => r + 1)} />;
+}
+
+// Journey F, F27-31: AI process registry - 'marketplace-listing-' + listing.id, deliberately
+// separate from RatingsPanel's own 'marketplace-rate-' + listing.id (see ai-context-engine.js's
+// own comment on activeListingId()). Split into its own component so this effect (and the
+// onMessage ref it needs to stay current) has a clean per-listing mount/unmount boundary, the
+// same shape every other per-entity AI registration in this codebase already uses.
+function MarketplaceDetailBody({ i18n, listing, ratingsData, seller, isSeller, unlocked, rtl, character, onBuy, onMessage, onRated }) {
+  const mountedRef = React.useRef(true);
+  const onMessageRef = React.useRef(onMessage);
+  onMessageRef.current = onMessage;
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (registry) registry.register('marketplace-listing-' + listing.id, { allowlist: [], isOpen: () => mountedRef.current });
+    return () => { mountedRef.current = false; };
+  }, [listing.id]);
+  // trade-ui.js-style real hook, mirroring TradeJournalNavryaClosePosition etc. - every existing
+  // caller of the real "Message Seller" button keeps working unchanged; this only exposes the
+  // exact same real openThread(listingId) call to the AI action.
+  React.useEffect(() => {
+    window.TradeJournalNavryaMessageSeller = { open: () => onMessageRef.current() };
+    return () => { delete window.TradeJournalNavryaMessageSeller; };
+  }, [listing.id]);
+
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Button variant="ghost" icon={rtl ? 'arrow-right' : 'arrow-left'} onClick={() => { location.hash = '#community/marketplace'; }} style={{ alignSelf: 'flex-start' }}>{i18n.t('back')}</Button>
@@ -375,10 +411,10 @@ export function MarketplaceDetail({ i18n, id }) {
           <FreePreviewPanel i18n={i18n} previewContent={listing.previewContent} />
           <FullContentPanel i18n={i18n} listing={listing} unlocked={unlocked} />
           <WinsLossesPanel i18n={i18n} listing={listing} />
-          <RatingsPanel i18n={i18n} listing={listing} ratingsData={ratingsData} isSeller={isSeller} unlocked={unlocked} onRated={() => setReload((r) => r + 1)} />
+          <RatingsPanel i18n={i18n} listing={listing} ratingsData={ratingsData} isSeller={isSeller} unlocked={unlocked} onRated={onRated} />
         </div>
         <div style={{ position: 'sticky', top: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <BuyBox i18n={i18n} listing={listing} isSeller={isSeller} unlocked={unlocked} ratingsData={ratingsData} onBuy={buy} onMessage={message} />
+          <BuyBox i18n={i18n} listing={listing} isSeller={isSeller} unlocked={unlocked} ratingsData={ratingsData} onBuy={onBuy} onMessage={onMessage} />
           <SellerCard i18n={i18n} seller={seller} listingId={listing.id} />
         </div>
       </div>

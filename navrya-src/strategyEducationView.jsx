@@ -614,6 +614,23 @@ function StrategySharing({ strategy, i18n, setStrategy }) {
     if (!marketplace) return;
     marketplace.openPublishFlow({ type: 'strategy', sourceId: strategy.id, suggestedTitle: strategy.name, evidence: evidenceSnapshot(), maxPreviewItems: 3, buildContent, existingListing: existingListing || null, onPublished: refreshStatus });
   }
+
+  // Journey F, F27-31: real window hook exposing this real openFlow() (with its own real
+  // evidence/buildContent closures - never reconstructable from chat) to marketplace.publish,
+  // mirroring every other TradeJournalNavryaXxxHub in this codebase. Refs kept current every
+  // render since this effect only re-runs on [strategy.id].
+  const openFlowRef = React.useRef(openFlow);
+  openFlowRef.current = openFlow;
+  const statusRef = React.useRef(status);
+  statusRef.current = status;
+  React.useEffect(() => {
+    window.TradeJournalNavryaStrategySharingHub = {
+      openFlow: () => openFlowRef.current(statusRef.current && statusRef.current.listing),
+      hasListing: () => !!(statusRef.current && statusRef.current.listing)
+    };
+    return () => { delete window.TradeJournalNavryaStrategySharingHub; };
+  }, [strategy.id]);
+
   function onToggle(checked) {
     strategy.isPublic = checked;
     const updated = store.save(strategy, { keepSummary: true });

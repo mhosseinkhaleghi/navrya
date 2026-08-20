@@ -481,6 +481,51 @@ test('any other open process (a real dialog/modal) still blocks discovery exactl
   assert.deepEqual(fetchCall.body.activeProcess, { id: 'session-create', allowlist: ['city'] });
 });
 
+// Journey F, F27-31: pattern-editor-{id}/strategy-editor-{id}/messages-thread-reply/
+// community-comment-{id}/marketplace-rate-{id} are real, non-empty-allowlist forms (unlike
+// trade-details-{id} above) - but they are ALSO passively open the whole time an unrelated page
+// state says so (a Pattern tab showing, a thread open, ...), not because of a deliberate "fill
+// this out" gesture. Found via real browser testing: with a Pattern's Details tab simply open (no
+// pattern-editing workflow in flight), "Publish this pattern to Marketplace." never reached
+// action-discovery at all. Unlike the empty-allowlist case, these must still normally suppress
+// discovery for the "any other open process" test above - the exception is scoped to these
+// specific ids/prefixes, exercised only when NO workflow is already continuing through them.
+test('a passively-open Pattern/Strategy editor does not block discovery of an unrelated action (e.g. marketplace.publish) when no pattern/strategy-editing workflow is in flight', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => { fetchCall = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'plain answer', action: null, provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  window.TradeJournalAIProcessRegistry.register('pattern-editor-p1', { allowlist: ['name', 'description'], isOpen: () => true });
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'marketplace.publish', available: () => true });
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'publish this pattern to marketplace', therapistMode: false, transcript: [] });
+
+  assert.ok(Array.isArray(fetchCall.body.availableActions) && fetchCall.body.availableActions.some((a) => a.id === 'marketplace.publish'), 'a passively-open Pattern editor must never suppress discovery of an unrelated action');
+  assert.equal(fetchCall.body.activeProcess, null);
+});
+
+test('the same passively-open Pattern editor still supports normal field-continuation once a pattern.edit-shaped workflow is genuinely targeting it', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => { fetchCall = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  window.TradeJournalAIProcessRegistry.register('pattern-editor-p1', { allowlist: ['name', 'description'], isOpen: () => true, applyValue() {} });
+  // start() stashes open() lazily; give the fake action a real open() so processId resolves to
+  // pattern-editor-p1 (mirrors the real pattern.edit's own resolveActivePatternId-based open()).
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'pattern.edit', available: () => true, open: () => ({ processId: 'pattern-editor-p1' }), submit: () => undefined, resultContext() {} });
+  window.TradeJournalAIWorkflowEngine.start('pattern.edit', {});
+  // Resolves the lazily-stashed open() result into workflow.processId, exactly as a real first
+  // turn's own sendChat() -> start() -> applyKnownFields() sequence already does before returning.
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([], {});
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'change the description to X', therapistMode: false, transcript: [] });
+
+  assert.deepEqual(fetchCall.body.activeProcess, { id: 'pattern-editor-p1', allowlist: ['name', 'description'] }, 'a workflow genuinely continuing through this process must still reach it as activeProcess');
+  assert.equal(fetchCall.body.availableActions, undefined);
+});
+
 test('an abandoned workflow (its target UI closed by the user before ever completing) does not block a later, genuinely new request from being recognized', async () => {
   const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
   let fetchCall = null;

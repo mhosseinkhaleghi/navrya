@@ -54,6 +54,46 @@
     return active.id.slice('trade-details-'.length);
   }
 
+  // Journey F, F27-31: patternRegistryView.jsx's/strategyEducationView.jsx's own real
+  // 'pattern-editor-{id}'/'strategy-editor-{id}' registrations (non-empty allowlists - name,
+  // description, etc. - already AI-fillable today) are the real "which Pattern/Strategy is
+  // currently open" signal. marketplace.publish resolves from these directly - never a guess
+  // among several Patterns/Strategies, and never reconstructed from chat history.
+  function activePatternId() {
+    var registry = window.TradeJournalAIProcessRegistry;
+    var active = registry && registry.activeOpenProcess();
+    if (!active || active.id.indexOf('pattern-editor-') !== 0) return null;
+    return active.id.slice('pattern-editor-'.length);
+  }
+  function activeStrategyId() {
+    var registry = window.TradeJournalAIProcessRegistry;
+    var active = registry && registry.activeOpenProcess();
+    if (!active || active.id.indexOf('strategy-editor-') !== 0) return null;
+    return active.id.slice('strategy-editor-'.length);
+  }
+
+  // Journey F, F26: communityView.jsx's own 'community-comment-' + post.id registration (already
+  // real, per-post, exactly like Scenario cards) is the "which post's comments are open" signal.
+  function activePostId() {
+    var registry = window.TradeJournalAIProcessRegistry;
+    var active = registry && registry.activeOpenProcess();
+    if (!active || active.id.indexOf('community-comment-') !== 0) return null;
+    return active.id.slice('community-comment-'.length);
+  }
+
+  // Journey F, F27-31: 'marketplace-listing-' + listing.id (new - see marketplaceView.jsx) is
+  // deliberately separate from the pre-existing 'marketplace-rate-' + listing.id (RatingsPanel's
+  // own registration, whose isOpen() reflects real rating eligibility, not "is this listing
+  // being viewed at all" - a seller viewing their own listing, or the market itself unlocked,
+  // would otherwise never resolve as "this listing" for marketplace.publish/messageSeller, which
+  // have nothing to do with rating eligibility).
+  function activeListingId() {
+    var registry = window.TradeJournalAIProcessRegistry;
+    var active = registry && registry.activeOpenProcess();
+    if (!active || active.id.indexOf('marketplace-listing-') !== 0) return null;
+    return active.id.slice('marketplace-listing-'.length);
+  }
+
   function snapshot() {
     var store = window.TradeJournalNavryaStore;
     var state = store && typeof store.getState === 'function' ? store.getState() : null;
@@ -64,7 +104,8 @@
       navigation: { activeId: state ? state.activeId : null },
       activeEntities: {
         sessionId: sessionId || null, scenarioId: sessionId ? activeScenarioId() : null, entryId: sessionId ? activeEntryId() : null,
-        tradeId: activeTradeId()
+        tradeId: activeTradeId(), patternId: activePatternId(), strategyId: activeStrategyId(),
+        postId: activePostId(), listingId: activeListingId()
       },
       workflow: workflowEngine ? workflowEngine.current() : null
     };
