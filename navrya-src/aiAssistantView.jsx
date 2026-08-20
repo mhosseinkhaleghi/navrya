@@ -167,6 +167,46 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     return () => window.removeEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
   }, []);
 
+  // AI process registry (A4) - mountedRef template, whole-page scope (this screen has no
+  // per-tab remount the way Account Profile's tabs do - 'engine'/'keys' is local aiTab state,
+  // not a mount signal).
+  // Journey F, F36: modelRef keeps applyValue reading the CURRENT active provider (this effect's
+  // deps [] only run once at mount) - 'model' below validates against THAT provider's own real
+  // models list, never a fixed one captured at mount. 'apiKey'/'persistApiKey'/'budget' are
+  // deliberately never wired into applyValue at all - not merely left off the allowlist, since a
+  // future allowlist edit here must not accidentally reopen that seam. Every applied value here
+  // is already a complete, immediate persist (saveSettings()/setVoice() write straight through,
+  // same as Trading Defaults/Region & language) - no separate Save step exists on this screen.
+  const modelRef = React.useRef(model);
+  modelRef.current = model;
+  const engineMountedRef = React.useRef(true);
+  React.useEffect(() => {
+    engineMountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('ai-assistant-engine', {
+      allowlist: ['provider', 'model', 'voice'],
+      isOpen: () => engineMountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'provider') {
+          if (catalog.some((p) => p.id === value)) selectEngine(value);
+          return;
+        }
+        if (path === 'model') {
+          const current = catalog.find((p) => p.id === modelRef.current);
+          if (current && current.models.indexOf(value) > -1) settingsStore.saveSettings({ modelByProvider: { [modelRef.current]: value } });
+          return;
+        }
+        if (path === 'voice') {
+          const v = value === true || value === 'true';
+          if (value === true || value === false || value === 'true' || value === 'false') settingsStore.setVoice(modelRef.current, v);
+        }
+      }
+    });
+    return () => { engineMountedRef.current = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Conversations are real and server-backed now (ai-chat-history-store.js) - fetched per engine,
   // refreshed whenever the model changes AND on the dock's own
   // tradejournal:ai-chat-history-changed event (a message sent from the dock, or a delete/rename

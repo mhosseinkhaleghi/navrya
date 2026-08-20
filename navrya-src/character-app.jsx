@@ -1416,6 +1416,198 @@ export function mountCharacterApp(character) {
         },
         resultContext: () => {}
       });
+
+      // F33-F36: Account/Profile, Trading Settings, Language/Region, AI provider Settings.
+      // Same core architecture as every action above - real Settings/Profile UI, real existing
+      // save/update mechanism, never a hidden store mutation. Explicitly excluded from this
+      // gate, matching the request exactly: password, API key editing/reveal, admin role,
+      // billing/subscription, account deletion. None of these fields exist in any allowlist
+      // below, and none of the real registrations they target expose them either (see
+      // accountProfileView.jsx/aiAssistantView.jsx's own comments on this).
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F33 section 4/5/6: displayName/email/phone only - avatarDataUrl is deliberately never
+        // a fillable field here (section 8: the model cannot supply a real picked file, and must
+        // never fabricate one). requiredFields is empty on purpose (unlike a consequential/public
+        // action, a harmless resave of a user's own already-correct profile values carries no
+        // real risk - same precedent as trade.emotion.log's own zero-required-fields shape): a
+        // bare "Edit my profile." still opens the real Identity tab and lets the model ask what
+        // to change via its own reply, without ever inventing a value.
+        id: 'profile.edit', domain: 'account', riskLevel: 'low',
+        description: 'Open the real Account Profile Identity tab and fill display name, email, and/or phone with EXACTLY what the user stated - never invent or infer a value they did not give. Never touch role, avatar/profile image, password, or any credential field - those are separate, out of scope here.',
+        aliases: ['edit my profile', 'update my profile', 'change my display name', 'update my bio'],
+        requiredFields: [], optionalFields: ['displayName', 'email', 'phone'],
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          location.hash = '#account/profile/identity';
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('account-profile-identity').open,
+            () => resolve({ processId: 'account-profile-identity' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('account-profile-identity'),
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F33 section 7: role is a plain product label (trader/mentor/teacher) the real Role tab
+        // already lets a human pick freely - never admin/moderator/any authorization role, which
+        // do not exist as options here at all. account-profile-role's own applyValue (see
+        // accountProfileView.jsx) independently rejects anything outside REAL_ROLES regardless of
+        // what this description says, so "Make me admin." can never apply even if misextracted.
+        id: 'profile.role.update', domain: 'account', riskLevel: 'low',
+        description: 'Change the user\'s real product role to exactly one of trader, mentor, or teacher - a display/UX preference, never an authorization or admin permission. Only set role once the user names one of these three; never guess, and never accept any other value (e.g. "admin").',
+        aliases: ['change my role', 'set my role', 'update my role'],
+        requiredFields: ['role'], optionalFields: [],
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          location.hash = '#account/profile/role';
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('account-profile-role').open,
+            () => resolve({ processId: 'account-profile-role' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('account-profile-role'),
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F34: real trade-store.js settings()/saveSettings() - the exact object the Calculator
+        // and Trade Log already read defaultRiskPercent from. entityAlreadyPersisted: true
+        // because settings-trading-defaults' own applyValue (settingsView.jsx) already performs
+        // the real, complete, immediate persist on every field - there is no separate Save step
+        // to schedule (same shape as pattern.edit/strategy.edit above).
+        // Section 10/12: this is the user's DEFAULT risk (a Settings preference that pre-fills
+        // future calculations) - NEVER the same thing as an already-open Trade's own risk field
+        // (trade.calculator's own workflow) or a Strategy's own max-risk rule (strategy.edit).
+        // Only extract these fields from an explicit "my default risk" / "Trading Settings"
+        // request, never from a bare "set risk to X%" while a Trade or Strategy editor is the
+        // one actually open and active.
+        id: 'settings.trading.update', domain: 'settings', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Update the user\'s real Trading DEFAULTS (default risk per trade, leverage cap, max trades per session) in Settings - these pre-fill the Calculator and Trade Log, they never place an order or change an already-open Trade. Distinct from a currently open Trade\'s own risk field or a Strategy\'s own max-risk rule - only match this action for an explicit "my default risk" / "Trading Settings" request. Existing NAVRYA validation clamps every value to its real supported range; never decide what is valid yourself.',
+        aliases: ['set my default risk', 'change my default risk', 'set my leverage cap', 'update my trading defaults', 'set my default timeframe'],
+        requiredFields: [], optionalFields: ['defaultRiskPercent', 'leverageCap', 'maxTradesPerSession'],
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'settings') store.setActiveId('settings');
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('settings-trading-defaults').open,
+            () => resolve({ processId: 'settings-trading-defaults' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      // F35: settings-region-language's own real allowlist validates `language` against the
+      // fixed code list ['fa','ar','en','es'] (languageOptions, settingsView.jsx) - but a model
+      // extracting "language" from "Change NAVRYA to Persian." just as naturally returns the
+      // English name "Persian" as it appeared in the request, not the code. Found via real
+      // browser testing: without normalization, that exact request silently applied nothing at
+      // all (the code-only check correctly rejected "Persian", leaving the interface language
+      // unchanged) - the same "map a natural-language extraction onto the real option list"
+      // problem normalizeSessionTimeframe()/normalizeSessionCity() above already solve for
+      // session.create, applied here.
+      function normalizeSettingsLanguage(raw) {
+        var text = String(raw || '').trim().toLowerCase();
+        var codes = ['fa', 'ar', 'en', 'es'];
+        if (codes.indexOf(text) > -1) return text;
+        var names = {
+          persian: 'fa', farsi: 'fa', 'فارسی': 'fa', fa: 'fa',
+          arabic: 'ar', 'العربية': 'ar', ar: 'ar',
+          english: 'en', en: 'en',
+          spanish: 'es', 'español': 'es', espanol: 'es', es: 'es'
+        };
+        return names[text] || null;
+      }
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F35: real store.js setLanguage() for the interface language, plus the real,
+        // already-persisted Region & language preferences (settings-region-language,
+        // settingsView.jsx). entityAlreadyPersisted: true for the same reason as Trading
+        // defaults above - every field here applies and persists immediately, no separate Save.
+        // Section 16: a user SPEAKING Persian must never, by itself, change the app language -
+        // only an explicit request to change the interface/app language may set `language`.
+        id: 'settings.language.update', domain: 'settings', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Change the real interface language and/or Region & language preferences (country, timezone, account currency, week start) in Settings. `language` must ONLY be set from an EXPLICIT request to change NAVRYA\'s interface/app language (e.g. "change the app language to Persian", "switch the interface to Spanish") - never merely because the user is speaking a different language. Only real, currently supported values ever apply; never invent a locale, country, or timezone NAVRYA does not actually offer.',
+        aliases: ['change navrya to persian', 'switch the interface to spanish', 'change the app language', 'set my timezone', 'change my region'],
+        requiredFields: [], optionalFields: ['language', 'region.country', 'region.timezone', 'region.currency', 'region.weekStart'],
+        available: () => true,
+        normalizeField: (path, value) => (path === 'language' ? normalizeSettingsLanguage(value) : value),
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'settings') store.setActiveId('settings');
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('settings-region-language').open,
+            () => resolve({ processId: 'settings-region-language' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F36: real ai-settings-store.js saveSettings()/setVoice() - the exact store the
+        // ChatDock's own engine switcher and the AI Assistant screen already read/write.
+        // entityAlreadyPersisted: true - every field applies and persists immediately (see
+        // ai-assistant-engine's own applyValue, aiAssistantView.jsx), no separate Save step.
+        // Section 22/29: API key, "remember this key", and spend budget are NEVER fillable here -
+        // not merely left off the allowlist, but never wired into applyValue at all, so extending
+        // this allowlist later cannot silently reopen that seam. NAVRYA never displays, reads
+        // aloud, or repeats an API key back through this or any other conversational action.
+        id: 'settings.ai.update', domain: 'settings', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Switch the real AI provider (e.g. OpenAI, Claude/Anthropic, Kimi, DeepSeek), the active model for that provider, or its Voice toggle. `provider` and `model` only apply when they exactly match NAVRYA\'s real, currently offered catalog for that provider - if the user names one that is not available, say so rather than inventing it. NEVER accept, display, or fill an API key, "remember this key", or spend budget through this action - those remain strictly manual, outside chat.',
+        aliases: ['switch the assistant to openai', 'use anthropic', 'switch to kimi', 'use deepseek', 'change the ai model', 'turn on voice mode'],
+        requiredFields: [], optionalFields: ['provider', 'model', 'voice'],
+        available: () => true,
+        // The real catalog's own ids (openai/anthropic/kimi/deepseek) are lowercase codes, but a
+        // model extracting "provider" from "Switch the assistant to Anthropic." just as
+        // naturally returns the display label as it appeared in the request ("Anthropic",
+        // "OpenAI") - found via real browser testing: without normalization, that exact request
+        // silently applied nothing (the id-only check correctly rejected "Anthropic", leaving
+        // the active provider unchanged). Same normalizeField fix as settings.language.update's
+        // own 'language' field, reading the real catalog directly rather than duplicating it -
+        // matches by id OR real label, case-insensitively; 'model' matches case-insensitively
+        // against every real model string across the whole catalog, returning the exact real
+        // string so the later options-check in applyValue (aiAssistantView.jsx) still passes.
+        normalizeField: (path, value) => {
+          var settingsStore = window.TradeJournalAISettingsStore;
+          if (!settingsStore) return value;
+          var catalog = settingsStore.providerCatalog();
+          if (path === 'provider') {
+            var text = String(value || '').trim().toLowerCase();
+            var hit = catalog.filter((p) => p.id.toLowerCase() === text || p.label.toLowerCase() === text)[0];
+            return hit ? hit.id : null;
+          }
+          if (path === 'model') {
+            var wanted = String(value || '').trim().toLowerCase();
+            for (var i = 0; i < catalog.length; i++) {
+              var real = catalog[i].models.filter((m) => m.toLowerCase() === wanted)[0];
+              if (real) return real;
+            }
+            return null;
+          }
+          return value;
+        },
+        open: () => new Promise((resolve) => {
+          location.hash = '#ai-settings';
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('ai-assistant-engine').open,
+            () => resolve({ processId: 'ai-assistant-engine' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
     }
 
     sessionsAdapter.resetOnce().finally(() => {

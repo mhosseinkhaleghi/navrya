@@ -156,6 +156,20 @@
     // failure mode the Scenario exclusion below already exists to prevent, just one level up.
     if (activeProcess && String(activeProcess.id).indexOf('live-session-entry-') === 0) activeProcess = null;
     if (activeProcess && String(activeProcess.id).indexOf('live-session-scenario-') === 0) activeProcess = null;
+    // Journey F, F33-F36: settings-trading-defaults/settings-region-language/ai-assistant-engine
+    // are unconditionally excluded here too (not just via the conditional passiveWorkflowMatch
+    // check further below) - unlike pattern-editor-{id} (whose open() must re-resolve a specific
+    // Pattern by name, so a later turn genuinely needs continuation to keep targeting the same
+    // one), these three need no entity resolution at all (available: () => true, open() only
+    // navigates+polls). Found via real browser testing: because their entityAlreadyPersisted
+    // workflow never completes on its own (stays 'collecting' for as long as the page is open),
+    // `passiveWorkflowMatch` was true from the SECOND turn onward forever, keeping activeProcess
+    // non-null and permanently blocking the OTHER half of the discovery condition below even
+    // after workflowProcessExcluded (below) was fixed - "Create a Pattern." right after "Set my
+    // default risk to 3%." still returned action:null. Fresh re-discovery is exactly as good as
+    // continuation for these three (every field applies independently and immediately either
+    // way), so there is no downside to excluding them unconditionally.
+    if (activeProcess && (activeProcess.id === 'settings-trading-defaults' || activeProcess.id === 'settings-region-language' || activeProcess.id === 'ai-assistant-engine')) activeProcess = null;
     // Production repair pass, section 11: a registration with a deliberately EMPTY allowlist
     // (tradeDetailsModal.jsx's own 'trade-details-{id}', registered purely so ai-context-builder.js
     // can resolve "this trade" - it has no fillable field of its own at all) is, by construction,
@@ -210,7 +224,17 @@
     // through fresh action-discovery instead of the old raw suggestions[] flow - matching each
     // action's own real resolveActive*()/registry.query()-based design (see character-app.jsx),
     // which already handles exactly this case.
-    if (activeProcess && /^(pattern-editor-|strategy-editor-|messages-thread-reply|community-comment-|marketplace-rate-)/.test(String(activeProcess.id))) {
+    // Journey F, F33-F36: the Settings page mounts three of these at once (AI panel builder,
+    // Region & language, Trading defaults - all real, non-empty allowlists, all open the entire
+    // time #settings is showing), and Account Profile's Identity/Role tabs and the AI Assistant
+    // engine screen are each open the whole time their own page is simply visible - none of these
+    // is a "the user just now opened this to fill it out" gesture either. Without this, "Create a
+    // Pattern" while Settings/Profile/AI Assistant happened to be open would never be discovered
+    // (F46), and because all three Settings registrations coexist, activeProcess would resolve to
+    // whichever registered most recently (Trading defaults, being last in the tree) even for a
+    // message actually about Region & language - the exact cross-contamination risk already found
+    // and fixed for Pattern/Strategy/thread/comment/rating above, generalized the same way.
+    if (activeProcess && /^(pattern-editor-|strategy-editor-|messages-thread-reply|community-comment-|marketplace-rate-|settings-ai-panel-builder|account-profile-identity|account-profile-role)/.test(String(activeProcess.id))) {
       var passiveWorkflowMatch = currentWorkflow && currentWorkflow.processId === activeProcess.id;
       if (!passiveWorkflowMatch) activeProcess = null;
     }
@@ -240,8 +264,20 @@
     // records these three prefixes cover are all either already-created-on-open (Scenario/Entry,
     // documented in the F19-21 report) or never-mutated-until-confirmed (Trade Details) - a
     // fresh re-discovery is never destructive for any of them.
+    // Journey F, F33-F36: settings-trading-defaults/settings-region-language/ai-assistant-engine
+    // are entityAlreadyPersisted (character-app.jsx) - every field applies+persists immediately,
+    // so their workflow NEVER transitions past 'collecting' on its own (no scheduleSubmit ever
+    // runs for them, unlike Pattern/Strategy/Trade actions that eventually auto-submit-then-clear
+    // - see ai-workflow-engine.js's own applyKnownFields()). Found via real browser testing: once
+    // "Set my default risk to 3%." starts one of these, it sits 'collecting' for as long as
+    // Settings/AI Assistant stays open - with no exclusion here, EVERY later message (even "Create
+    // a Pattern.", entirely unrelated) fell into this exact dead branch (no availableActions,
+    // since currentWorkflow was still non-null; no activeProcess, since the line above already
+    // excludes these ids) and returned action:null no matter what was said, for the rest of that
+    // page visit. Same reasoning as trade-details- below: open() for all three only navigates and
+    // polls, never mutates, so a fresh re-discovery costs nothing.
     var workflowProcessId = currentWorkflow ? String(currentWorkflow.processId || '') : '';
-    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0;
+    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0 || workflowProcessId === 'settings-trading-defaults' || workflowProcessId === 'settings-region-language' || workflowProcessId === 'ai-assistant-engine';
     var workflowBlocksDiscovery = currentWorkflow && !workflowProcessExcluded;
     var availableActions = null;
     if (workflowEngine && actionRegistry && !activeProcess && !workflowBlocksDiscovery) {
