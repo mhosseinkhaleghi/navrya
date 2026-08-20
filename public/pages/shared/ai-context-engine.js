@@ -40,6 +40,20 @@
     return active.id.slice('live-session-entry-'.length);
   }
 
+  // Journey F, F22: tradeDetailsModal.jsx's own 'trade-details-' + trade.id registration
+  // (allowlist: [], purely so this file can resolve "this trade" - the exact same reason
+  // 'trade-details-{id}' was already excluded from activeProcess in chat-dock-core.js's own
+  // empty-allowlist rule) is the real, existing "which Trade is the user currently looking at"
+  // signal - trade.calculator's own resultContext already opens it the instant a new Trade is
+  // created, and the dashboard's own "eye" button opens it for an existing one. Same
+  // activeOpenProcess() pattern as activeScenarioId()/activeEntryId() above - never a guess.
+  function activeTradeId() {
+    var registry = window.TradeJournalAIProcessRegistry;
+    var active = registry && registry.activeOpenProcess();
+    if (!active || active.id.indexOf('trade-details-') !== 0) return null;
+    return active.id.slice('trade-details-'.length);
+  }
+
   function snapshot() {
     var store = window.TradeJournalNavryaStore;
     var state = store && typeof store.getState === 'function' ? store.getState() : null;
@@ -48,7 +62,10 @@
     var sessionId = liveSession && typeof liveSession.getActiveSessionId === 'function' ? liveSession.getActiveSessionId() : null;
     return {
       navigation: { activeId: state ? state.activeId : null },
-      activeEntities: { sessionId: sessionId || null, scenarioId: sessionId ? activeScenarioId() : null, entryId: sessionId ? activeEntryId() : null },
+      activeEntities: {
+        sessionId: sessionId || null, scenarioId: sessionId ? activeScenarioId() : null, entryId: sessionId ? activeEntryId() : null,
+        tradeId: activeTradeId()
+      },
       workflow: workflowEngine ? workflowEngine.current() : null
     };
   }

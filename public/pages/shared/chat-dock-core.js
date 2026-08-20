@@ -187,27 +187,35 @@
     // fresh intent.
     if (workflowEngine && typeof workflowEngine.pruneIfAbandoned === 'function') workflowEngine.pruneIfAbandoned();
     var currentWorkflow = workflowEngine ? workflowEngine.current() : null;
-    // Journey F, F21: a workflow in its brief post-collection grace window (status 'pending-submit'
-    // or 'submitting' - ai-workflow-engine.js's own SUBMIT_GRACE_MS) is deliberately never pruned
-    // above, since it is about to legitimately complete on its own. That is fine for an action whose
-    // processId CAN be continued via the activeProcess-match branch below. But
-    // 'live-session-entry-'/'live-session-scenario-' processIds are unconditionally excluded from
-    // activeProcess a few lines up (the exact same "passive/ambient, not a deliberate open gesture"
-    // reasoning as the session.movementEntry.create/session.scenario.create/.edit registrations
-    // themselves - see character-app.jsx) - so that branch can structurally never match for them, in
-    // or out of the grace window. Found via real F21 browser testing ("Create a scenario..." then,
-    // within ~3-8s, "Create a Strategy..."): with no exception here, EVERY message sent during that
-    // window fell through to neither branch - no availableActions (currentWorkflow was still
-    // non-null) and no activeProcess (excluded) - guaranteeing action:null no matter what the user
-    // said, for as long as the grace window lasted. These two process kinds need no more input to
-    // finish (their own required fields were already satisfied to even reach pending-submit), so
-    // treating them as non-blocking here costs nothing and lets fresh discovery (or, for a same-
-    // Scenario follow-up, session.scenario.edit's own real title-based re-resolution) run immediately
-    // instead of silently going dark for the rest of the window.
+    // Journey F, F21: 'live-session-entry-'/'live-session-scenario-' processIds are
+    // unconditionally excluded from activeProcess a few lines up (the exact same "passive/
+    // ambient, not a deliberate open gesture" reasoning as the session.movementEntry.create/
+    // session.scenario.create/.edit registrations themselves - see character-app.jsx), so the
+    // activeProcess-match continuation branch below can structurally never reach a workflow
+    // whose process is one of these, in ANY status. Found via real F21 browser testing ("Create
+    // a scenario..." then, within ~3-8s, "Create a Strategy..."): with no exception here, every
+    // message sent during that workflow's own post-collection grace window (status
+    // 'pending-submit'/'submitting' - ai-workflow-engine.js's own SUBMIT_GRACE_MS, deliberately
+    // never pruned since it is about to legitimately complete) fell through to neither branch -
+    // no availableActions (currentWorkflow was still non-null) and no activeProcess (excluded) -
+    // guaranteeing action:null no matter what the user said.
+    //
+    // Journey F, F22 (trade.cancel): the identical dead-branch also reproduces for a workflow
+    // still 'collecting' (not yet pending-submit) whose process is 'trade-details-{id}' - also
+    // excluded from activeProcess (its own allowlist is empty, matched by the general
+    // empty-allowlist rule below). trade.cancel deliberately requires a `confirm` field that
+    // only arrives on a LATER, separate turn ("Cancel this trade." -> "are you sure?" -> "Yes,
+    // cancel it.") - exactly the deliberately-multi-turn shape session.scenario.create's own
+    // title-then-later-edit already established as safe to handle via fresh re-discovery, not
+    // continuation. So the exclusion below applies in EVERY status, not just the grace window:
+    // trade.cancel's own open() never mutates anything (only submit(), gated on confirm, does),
+    // so re-running open() via a fresh discovery costs nothing; the Scenario/Entry/Trade-details
+    // records these three prefixes cover are all either already-created-on-open (Scenario/Entry,
+    // documented in the F19-21 report) or never-mutated-until-confirmed (Trade Details) - a
+    // fresh re-discovery is never destructive for any of them.
     var workflowProcessId = currentWorkflow ? String(currentWorkflow.processId || '') : '';
-    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0;
-    var workflowInGracePeriod = currentWorkflow && (currentWorkflow.status === 'pending-submit' || currentWorkflow.status === 'submitting');
-    var workflowBlocksDiscovery = currentWorkflow && !(workflowProcessExcluded && workflowInGracePeriod);
+    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0;
+    var workflowBlocksDiscovery = currentWorkflow && !workflowProcessExcluded;
     var availableActions = null;
     if (workflowEngine && actionRegistry && !activeProcess && !workflowBlocksDiscovery) {
       var discoveryContext = contextEngine ? contextEngine.snapshot() : {};

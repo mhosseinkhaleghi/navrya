@@ -41,6 +41,14 @@ function ClosePositionModal({ trade, onClose, onSave }) {
   // AI process registry (A4) - same mountedRef template as logEmotionModal.jsx: this modal is
   // mounted/unmounted per open/close (openClosePosition()), so isOpen is just "am I mounted".
   const mountedRef = React.useRef(true);
+  // Journey F, F23: submitRef is read from inside the registration effect (deps [], so it only
+  // ever runs once per mount) instead of closing over submit() directly - found via the exact
+  // same real-browser-proven stale-closure bug class already fixed for ScenarioEditor
+  // (liveSessionView.jsx): submit() itself closes over `exit`/`valid`, both derived from the
+  // `exitInput` state that changes on every keystroke AND every AI applyValue('exitPrice', ...)
+  // call - without the ref, an AI-driven auto-submit would always read back the exitInput from
+  // the FIRST render (still empty), fail validation, and silently do nothing.
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -48,7 +56,8 @@ function ClosePositionModal({ trade, onClose, onSave }) {
     registry.register('trade-close-position', {
       allowlist: ['exitPrice'],
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'exitPrice') setExitInput(String(value ?? '')); }
+      applyValue: (path, value) => { if (path === 'exitPrice') setExitInput(String(value ?? '')); },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, []);
@@ -59,7 +68,7 @@ function ClosePositionModal({ trade, onClose, onSave }) {
   const outcomeColor = !preview ? 'var(--text-muted)' : preview.outcome === 'win' ? 'var(--success)' : preview.outcome === 'loss' ? 'var(--danger)' : 'var(--text-muted)';
 
   function submit() {
-    if (!valid) { setTouched(true); return; }
+    if (!valid) { setTouched(true); return undefined; }
     setSaving(true);
     const result = computeClose(trade, exit);
     const next = { ...trade };
@@ -73,7 +82,9 @@ function ClosePositionModal({ trade, onClose, onSave }) {
     if (window.TradeJournalMentalHealthContinuous) window.TradeJournalMentalHealthContinuous.onTradeClosed(saved);
     onClose();
     if (onSave) onSave(saved);
+    return saved;
   }
+  submitRef.current = submit;
 
   return (
     <Modal

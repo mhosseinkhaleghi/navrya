@@ -517,7 +517,7 @@ export function mountCharacterApp(character) {
         //    card or the real, explicit override path - the model's own good intentions silently
         //    pre-empt NAVRYA's real policy layer. The fix is the same kind as (1): tell the model
         //    plainly that extraction and policy are different jobs, and this one is never its job.
-        description: 'Plan and open a new trade (direction, entry, stop, target, risk). linkedStrategyId/linkedPatternIds: pass the Strategy/Pattern NAME exactly as the user said it (e.g. "Conservative Scalper") - NAVRYA resolves the real id from that name itself; never invent or omit it for lacking a real id. IMPORTANT - riskPercent (and every other field): extraction and safety policy are two different, separate jobs, and enforcing policy is never your job here, even once. Put the exact riskPercent number the user literally typed into the suggestion/fields array on every single turn they state one, with zero exceptions - including a message that also mentions anger, recent losses, or stress in the same breath. NAVRYA itself runs a real, deterministic check on that number after you extract it and will pause for explicit confirmation if it conflicts with anything - that downstream check is the ONLY thing allowed to hold the value back, and it can only do that if you hand the number over first. Silently re-suggesting the OLD value, or leaving the field out of your suggestion, is a bug: it skips NAVRYA own real safety check entirely and is far less safe than extracting the number and letting NAVRYA evaluate it. You may still say in your own reply that you are concerned - just also extract the number.',
+        description: 'Plan and create a brand-new Trade (direction, entry, stop, target, risk) - this is the ONLY action that creates a Trade. "Open this trade"/"mark it open" about an EXISTING, already-visible Hunting Trade is a different action (trade.open, a lifecycle status change) - never this one; use this one whenever no specific existing Trade is already in view. linkedStrategyId/linkedPatternIds: pass the Strategy/Pattern NAME exactly as the user said it (e.g. "Conservative Scalper") - NAVRYA resolves the real id from that name itself; never invent or omit it for lacking a real id. IMPORTANT - riskPercent (and every other field): extraction and safety policy are two different, separate jobs, and enforcing policy is never your job here, even once. Put the exact riskPercent number the user literally typed into the suggestion/fields array on every single turn they state one, with zero exceptions - including a message that also mentions anger, recent losses, or stress in the same breath. NAVRYA itself runs a real, deterministic check on that number after you extract it and will pause for explicit confirmation if it conflicts with anything - that downstream check is the ONLY thing allowed to hold the value back, and it can only do that if you hand the number over first. Silently re-suggesting the OLD value, or leaving the field out of your suggestion, is a bug: it skips NAVRYA own real safety check entirely and is far less safe than extracting the number and letting NAVRYA evaluate it. You may still say in your own reply that you are concerned - just also extract the number.',
         aliases: ['take a long', 'take a short', 'go long', 'go short', 'open a trade', 'start a trade', 'size a trade', 'plan a trade', 'open a position', 'open a long position', 'open a short position'],
         requiredFields: ['direction', 'entryPrice', 'stopLoss', 'riskPercent', 'takeProfits'],
         optionalFields: ['leverage', 'marginMode', 'accountBalance', 'riskAmount', 'linkedStrategyId', 'linkedPatternIds'],
@@ -1012,6 +1012,181 @@ export function mountCharacterApp(character) {
           );
         }),
         submit: () => undefined,
+        resultContext: () => {}
+      });
+    }
+
+    // Journey F, F22/F23/F24: Trade lifecycle actions. Same real architecture as every action
+    // above - Action Registry -> Workflow Engine -> Process Registry -> real Trade UI ->
+    // existing TradeJournalTradeStore. Every lifecycle mutation below goes through the exact
+    // real functions dashboardView.jsx's own Positions panel / closePositionModal.jsx /
+    // logEmotionModal.jsx already use (tradeStore.updateStatus(), the real Close Position modal's
+    // own submit(), the real emotion modal's own submit()) - never a second, parallel path.
+    //
+    // Active Trade resolution (F22 section 5): only context.activeEntities.tradeId - resolved by
+    // ai-context-engine.js's activeTradeId() from whichever real 'trade-details-{id}' process is
+    // open (the Trade Details view, auto-opened by trade.calculator's own resultContext right
+    // after creating a Trade, or by the dashboard's own "eye" button for an existing one). Zero
+    // and multiple candidates both resolve to null here (never a guess) - "uniquely resolvable
+    // visible Trade" auto-selection was deliberately left out of this gate's scope: guessing
+    // which of several visible Hunting/Open trades on the dashboard is "this trade" without an
+    // explicit Trade Details view open is exactly the kind of guess F5/F53 already forbid for
+    // Session/Scenario/Pattern/Strategy, generalized here rather than relaxed for Trade.
+    if (window.TradeJournalAIActionRegistry) {
+      function resolveActiveTrade(context) {
+        var tradeId = context && context.activeEntities && context.activeEntities.tradeId;
+        if (!tradeId || !window.TradeJournalTradeStore) return null;
+        return window.TradeJournalTradeStore.find(tradeId);
+      }
+      // Shared by trade.open/trade.cancel: opens the real Trade Details view for the resolved
+      // Trade (satisfies "the user must SEE lifecycle operations occurring through the real
+      // NAVRYA UI" - F22 section 1) and waits for its own real 'trade-details-{id}' registration,
+      // the exact same registration activeTradeId() itself reads.
+      function openTradeDetailsProcess(tradeId, resolve) {
+        if (store.getState().activeId !== 'dashboard') store.setActiveId('dashboard');
+        pollFor(
+          () => window.TradeJournalNavryaTradeDetails,
+          (hub) => {
+            hub.open(tradeId);
+            var processId = 'trade-details-' + tradeId;
+            var registry = window.TradeJournalAIProcessRegistry;
+            pollFor(
+              () => registry && registry.query(processId).open,
+              () => resolve({ processId: processId }),
+              () => resolve(null)
+            );
+          },
+          () => resolve(null)
+        );
+      }
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F22 section 6: "Open this trade." (lifecycle transition of an EXISTING, resolved
+        // Hunting Trade) vs "Open a trade for me." (trade.calculator - plan/create a NEW Trade).
+        // The distinction lives entirely in aliases/description, the same real signal the model
+        // already uses to pick between session.scenario.create vs session.scenario.edit - never
+        // a code-level heuristic on the sentence itself. No entityAlreadyPersisted: the mutation
+        // happens synchronously in open() (updateStatus(), the exact same call the real "Mark
+        // Open" button makes) - there is no multi-turn form to keep a workflow alive for.
+        id: 'trade.open', domain: 'trades', riskLevel: 'low',
+        description: 'Convert an EXISTING Hunting Trade to Open - a lifecycle status transition, never the creation of a new Trade. Only matches an explicit reference to an already-resolved/visible Trade ("Open THIS trade", "mark it as open") - "Open a trade for me" or "open a long position" with no existing Trade in view means trade.calculator instead (planning a brand-new Trade), never this action. Only available when a real Hunting Trade is currently resolved as the active Trade.',
+        aliases: ['open this trade', 'mark this trade open', 'activate this trade', 'mark open'],
+        requiredFields: [], optionalFields: [],
+        available: (context) => { var t = resolveActiveTrade(context); return !!(t && t.status === 'hunting'); },
+        open: (context) => new Promise((resolve) => {
+          var trade = resolveActiveTrade(context);
+          if (!trade || trade.status !== 'hunting') { resolve(null); return; }
+          window.TradeJournalTradeStore.updateStatus(trade.id, 'open');
+          openTradeDetailsProcess(trade.id, resolve);
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F22 section 7/16: CONSEQUENTIAL - the real "Cancel Trade" button (dashboardView.jsx/
+        // liveSessionView.jsx) has no confirmation dialog today, unlike every destructive delete
+        // elsewhere in this app (window.confirm on Session/Pattern/Strategy/Scenario/Trade
+        // delete). Rather than silently cancelling the instant the model returns this action, or
+        // retrofitting window.confirm onto three existing human-facing buttons out of this
+        // gate's own scope, the smallest deterministic seam is a required `confirm` field:
+        // open() only shows the real Trade (Trade Details, so the target is visible and
+        // unambiguous) - the actual mutation happens in submit(), and ONLY once confirm is
+        // explicitly true. A model that never extracts confirm:true simply never completes the
+        // workflow (F53's own "ask, never guess" extended to a yes/no confirmation, not just an
+        // entity name).
+        id: 'trade.cancel', domain: 'trades', riskLevel: 'high',
+        description: 'Cancel (abandon) an EXISTING Hunting Trade - a consequential, hard-to-undo status change. This opens the real Trade Details view so the exact Trade is visible, but does NOT cancel it yet. Set confirm to true ONLY once the user has explicitly confirmed they want to cancel THIS specific Trade (e.g. they said "yes", "cancel it", "confirm") - if they have not yet confirmed, ask them plainly ("Cancel this Hunting Trade - are you sure?") and leave confirm unset. Never infer confirm from the original cancel request alone.',
+        aliases: ['cancel this trade', 'abandon this trade', 'cancel the trade'],
+        requiredFields: ['confirm'], optionalFields: [],
+        available: (context) => { var t = resolveActiveTrade(context); return !!(t && t.status === 'hunting'); },
+        open: (context) => new Promise((resolve) => {
+          var trade = resolveActiveTrade(context);
+          if (!trade || trade.status !== 'hunting') { resolve(null); return; }
+          openTradeDetailsProcess(trade.id, resolve);
+        }),
+        submit: (known, context) => {
+          if (known.confirm !== true && known.confirm !== 'true') return undefined;
+          var trade = resolveActiveTrade(context);
+          if (!trade || trade.status !== 'hunting') return undefined;
+          return window.TradeJournalTradeStore.updateStatus(trade.id, 'cancelled');
+        },
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F23: the primary vertical slice. Real Close Position modal
+        // (closePositionModal.jsx/'trade-close-position'), real exit-price validation, real
+        // computeClose() P&L math - the model never calculates P&L, only explains the real
+        // number NAVRYA already computed. Deliberately NOT entityAlreadyPersisted, unlike
+        // pattern.create/strategy.create/session.chartEntry.create: this action genuinely can
+        // (and should) auto-complete once its one required field is known, the same normal
+        // auto-submit-then-clear shape session.create/trade.calculator already use - and unlike
+        // Scenario/Entry, 'trade-close-position' has a real, non-empty allowlist, so it is never
+        // excluded from activeProcess: the normal workflow-continuation branch already reaches it.
+        id: 'trade.close', domain: 'trades', riskLevel: 'high',
+        description: 'Close an EXISTING Open Trade at a real exit price. Opens the real Close Position form - exitPrice is the only field; NAVRYA itself computes P&L, percentage, and outcome from the real Trade data, never the model. Only available when a real Open Trade is currently resolved as the active Trade.',
+        aliases: ['close this trade', 'close the trade', 'close this position', 'exit this trade'],
+        requiredFields: ['exitPrice'], optionalFields: [],
+        available: (context) => { var t = resolveActiveTrade(context); return !!(t && t.status === 'open'); },
+        open: (context) => new Promise((resolve) => {
+          var trade = resolveActiveTrade(context);
+          if (!trade || trade.status !== 'open') { resolve(null); return; }
+          pollFor(
+            () => window.TradeJournalNavryaClosePosition,
+            (hub) => {
+              hub.open(trade.id);
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('trade-close-position').open,
+                () => resolve({ processId: 'trade-close-position' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('trade-close-position'),
+        resultContext: (trade) => { if (trade && trade.id && window.TradeJournalNavryaTradeDetails) window.TradeJournalNavryaTradeDetails.open(trade.id); }
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F22 section 13/14: the real emotion-log form's own AI allowlist is ONLY ['note']
+        // (logEmotionModal.jsx) - dominantEmotions/stressLevel are real slider/picker controls
+        // with no chat-fillable path today, and focusQuality/planCommitment have no real control
+        // at all (hardcoded to 5 by the form itself). This is not a scope choice made here - the
+        // real form structurally cannot be AI-filled beyond note, which already guarantees
+        // "never fabricate stress/focus/commitment scores" by construction rather than by prompt
+        // instruction alone. stage is resolved from the real Trade's own current status, mirroring
+        // trade-store.js's own addEmotion() default logic, never asked as a chat field.
+        // Deliberately NOT entityAlreadyPersisted - same reasoning as trade.close above:
+        // 'trade-emotion-log' has a real, non-empty allowlist (['note']), so it is never excluded
+        // from activeProcess, and requiredFields: [] means this reaches pending-submit
+        // immediately, the same normal shape session.movementEntry.create already established.
+        id: 'trade.emotion.log', domain: 'trades', riskLevel: 'low',
+        description: 'Open the real emotion-log form for the active Trade. note is the only field the real form allows filling from chat - stress level, dominant emotions, and every other score are real slider/picker controls only the user can set by hand; never invent or infer a numeric value for any of them.',
+        aliases: ['log an emotion for this trade', 'log my emotion', 'log how i feel about this trade'],
+        requiredFields: [], optionalFields: ['note'],
+        available: (context) => !!resolveActiveTrade(context),
+        open: (context) => new Promise((resolve) => {
+          var trade = resolveActiveTrade(context);
+          if (!trade) { resolve(null); return; }
+          var stage = trade.status === 'closed' ? 'exit' : trade.status === 'open' ? 'mid_trade' : 'entry';
+          pollFor(
+            () => window.TradeJournalNavryaLogEmotion,
+            (hub) => {
+              hub.open(trade.id, stage);
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('trade-emotion-log').open,
+                () => resolve({ processId: 'trade-emotion-log' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('trade-emotion-log'),
         resultContext: () => {}
       });
     }

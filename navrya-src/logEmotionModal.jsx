@@ -250,6 +250,11 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
   // AI process registry - the global assistant dock can suggest the note field into this open
   // editor, same allowlist/applyValue contract trade-ui.js's own openEmotion() registered.
   const mountedRef = React.useRef(true);
+  // Journey F, F22: submitRef read from the registration effect instead of closing over submit()
+  // directly - same real-browser-proven stale-closure bug class already fixed for ScenarioEditor
+  // and closePositionModal.jsx: submit() closes over `note`/`selected`/`stress` state, all of
+  // which can change after this effect (deps [stage]) first registers.
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -258,7 +263,8 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
       allowlist: ['note'],
       isOpen: () => mountedRef.current,
       activeStep: () => stage || 'mid_trade',
-      applyValue: (path, value) => { if (path === 'note') setNote(String(value || '')); }
+      applyValue: (path, value) => { if (path === 'note') setNote(String(value || '')); },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, [stage]);
@@ -305,12 +311,14 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
     const mhSafety = window.TradeJournalMentalHealthSafety;
     if (mhSafety && note && mhSafety.checkText(note).flagged) {
       setSafetyNode(mhSafety.renderSafetyCard(() => setSafetyNode(null)));
-      return;
+      return undefined;
     }
-    tradeStore.addEmotion(trade.id, value);
+    const saved = tradeStore.addEmotion(trade.id, value);
     if (window.TradeJournalTradeUI) window.TradeJournalTradeUI.toast(ti.t('emotionSaved'), 'success');
     onClose();
+    return saved;
   }
+  submitRef.current = submit;
 
   const sessionCity = SESSION_CITY_LABEL[trade.session] || trade.session;
   const openedAt = trade.openedAt || trade.createdAt;
