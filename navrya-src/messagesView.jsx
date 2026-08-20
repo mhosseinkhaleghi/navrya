@@ -70,30 +70,54 @@ function NewMessageDialog({ i18n, onClose, onSent }) {
   const [sending, setSending] = React.useState(false);
 
   // AI process registry (A4) - mountedRef template. Only mounted while newMessageOpen is true
-  // (MessagesView, below), so mounted === open. recipient is a picked-user object, not really
-  // AI-fillable free text, so only the message body is on the allowlist.
+  // (MessagesView, below), so mounted === open.
+  // Journey F, F32: recipientName extends the original text-only allowlist - resolved through
+  // the exact real GET /api/users/search RecipientPicker's own autocomplete already uses (never
+  // a raw guessed user id). Exact, case-insensitive displayName/id match preferred; zero or
+  // ambiguous matches resolve nothing, the same "never guess" F53 already established for every
+  // other name-resolved field (patternName, strategyName, scenarioTitle).
   const mountedRef = React.useRef(true);
+  // submitRef: same stale-closure fix as every other modal this gate - send() closes over
+  // recipient/text, both of which change after this effect (deps []) first runs.
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('messages-compose', {
-      allowlist: ['text'],
+      // 'send' is a synthetic, AI-only confirmation field - same reasoning as
+      // communityView.jsx's 'publish'/'send' fields: needed for the workflow-continuation turn's
+      // schema, since this process has real content fields and is never excluded from
+      // activeProcess.
+      allowlist: ['text', 'recipientName', 'send'],
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'text') setText(String(value ?? '')); }
+      applyValue: (path, value) => {
+        if (path === 'text') { setText(String(value ?? '')); return; }
+        if (path === 'recipientName') {
+          const wanted = String(value ?? '').trim().toLowerCase();
+          if (!wanted) return;
+          window.TradeJournalCommunityStore.searchUsers(wanted).then((users) => {
+            const exact = (users || []).filter((u) => String(u.displayName || '').trim().toLowerCase() === wanted || String(u.id || '').trim().toLowerCase() === wanted);
+            const matches = exact.length ? exact : (users || []);
+            if (matches.length === 1) setRecipient(matches[0]);
+          });
+        }
+      },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, []);
 
   function send() {
     const value = text.trim();
-    if (!recipient || !value) return;
+    if (!recipient || !value) return undefined;
     setSending(true);
-    window.TradeJournalCommunityStore.openThreadWithUser(recipient.id)
+    return window.TradeJournalCommunityStore.openThreadWithUser(recipient.id)
       .then((thread) => window.TradeJournalCommunityStore.sendMessage(thread.id, value).then(() => thread))
-      .then((thread) => { onSent(thread.id); onClose(); })
-      .catch(() => setSending(false));
+      .then((thread) => { onSent(thread.id); onClose(); return thread; })
+      .catch(() => { setSending(false); return undefined; });
   }
+  submitRef.current = send;
 
   return (
     <Modal
@@ -192,14 +216,26 @@ function ThreadPanel({ i18n, threadId, reloadKey }) {
   // than remounting, which is exactly what's wanted here - the process stays "open" the whole
   // time a conversation is showing, regardless of which one.
   const mountedRef = React.useRef(true);
+  // submitRef: same stale-closure fix as every other modal this gate. threadIdRef additionally
+  // guards against the specific F21-class leakage risk (F22 section 24/section 37's own "no
+  // stale entity leakage" requirement, generalized to Messaging): this effect's deps ([]) never
+  // re-run when the user switches threads (ThreadPanel updates via props, not remount, per the
+  // comment above) - a frozen threadId closure inside send() would keep sending to whichever
+  // thread was active at mount, even after switching to a different conversation.
+  const submitRef = React.useRef(null);
+  const threadIdRef = React.useRef(threadId);
+  threadIdRef.current = threadId;
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('messages-thread-reply', {
-      allowlist: ['draft'],
+      // 'send' is a synthetic, AI-only confirmation field - same reasoning as messages-compose
+      // above.
+      allowlist: ['draft', 'send'],
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'draft') setDraft(String(value ?? '')); }
+      applyValue: (path, value) => { if (path === 'draft') setDraft(String(value ?? '')); },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, []);
@@ -208,9 +244,10 @@ function ThreadPanel({ i18n, threadId, reloadKey }) {
   const { thread, messages } = data;
   function send() {
     const value = draft.trim();
-    if (!value) return;
-    window.TradeJournalCommunityStore.sendMessage(threadId, value).then(() => { setDraft(''); setReload((r) => r + 1); });
+    if (!value) return undefined;
+    return window.TradeJournalCommunityStore.sendMessage(threadIdRef.current, value).then((message) => { setDraft(''); setReload((r) => r + 1); return message; });
   }
+  submitRef.current = send;
   return (
     <Panel variant="base" radius={12} style={{ minHeight: 560, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--border-hairline)' }}>

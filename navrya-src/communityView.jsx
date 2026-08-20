@@ -173,14 +173,25 @@ function NewPostDialog({ i18n, onClose, onPosted }) {
   // AI process registry (A4) - mountedRef template. Only mounted while newPostOpen is true
   // (CommunityView, below).
   const mountedRef = React.useRef(true);
+  // Journey F, F26: submitRef read from inside the once-only registration effect - same
+  // stale-closure bug class already fixed elsewhere this gate: submit() closes over text/pending,
+  // both of which change after this effect (deps []) first runs.
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('community-new-post', {
-      allowlist: ['text'],
+      // 'publish' is a synthetic, AI-only field - no real checkbox/toggle backs it. It exists
+      // purely so the workflow-continuation turn (activeProcess.allowlist, not availableActions -
+      // this process has real content fields so it's never in chat-dock-core.js's
+      // workflowProcessExcluded list, unlike trade-details-) has a schema path for the model to
+      // express "the user just confirmed publish now" on a later turn. community.post.create's
+      // own submit() in character-app.jsx is what actually gates on it; applyValue is a no-op here.
+      allowlist: ['text', 'publish'],
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'text') setText(String(value ?? '')); }
+      applyValue: (path, value) => { if (path === 'text') setText(String(value ?? '')); },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, []);
@@ -194,12 +205,13 @@ function NewPostDialog({ i18n, onClose, onPosted }) {
   function removeAttachment(index) { setPending((p) => p.filter((_, i) => i !== index)); }
   function submit() {
     const content = text.trim();
-    if (!content && !pending.length) return;
+    if (!content && !pending.length) return undefined;
     setPosting(true);
-    window.TradeJournalCommunityStore.createPost({ content, images: pending.map((p) => p.url) })
-      .then(() => { onPosted(); onClose(); })
-      .catch((error) => { showToast((error && error.code) || 'FAILED', 'danger'); setPosting(false); });
+    return window.TradeJournalCommunityStore.createPost({ content, images: pending.map((p) => p.url) })
+      .then((post) => { onPosted(); onClose(); return post; })
+      .catch((error) => { showToast((error && error.code) || 'FAILED', 'danger'); setPosting(false); return undefined; });
   }
+  submitRef.current = submit;
 
   return (
     <Modal
@@ -257,23 +269,31 @@ function CommentsPanel({ i18n, post }) {
   // be expanded at once (unlike every singleton-modal flow above). Mounted only while its
   // PostCard's own commentsOpen is true, so mounted === open here too.
   const mountedRef = React.useRef(true);
+  // Journey F, F26: submitRef, same stale-closure fix as NewPostDialog above - this effect's
+  // deps ([post.id]) do not include draft, so a frozen send() closure would always send whatever
+  // draft existed at mount, not the user's (or AI's) actual current input.
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('community-comment-' + post.id, {
-      allowlist: ['draft'],
+      // 'send' is a synthetic, AI-only confirmation field - same reasoning as 'publish' on
+      // community-new-post above.
+      allowlist: ['draft', 'send'],
       isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'draft') setDraft(String(value ?? '')); }
+      applyValue: (path, value) => { if (path === 'draft') setDraft(String(value ?? '')); },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function send() {
     const value = draft.trim();
-    if (!value) return;
-    window.TradeJournalCommunityStore.createComment(post.id, value).then(() => { setDraft(''); load(); });
+    if (!value) return undefined;
+    return window.TradeJournalCommunityStore.createComment(post.id, value).then((comment) => { setDraft(''); load(); return comment; });
   }
+  submitRef.current = send;
   return (
     <div style={{ borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)', padding: '14px 18px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {comments === null ? null : !comments.length ? (
@@ -422,6 +442,16 @@ function CommunityShell({ i18n, tab, itemId }) {
   const rtl = i18n.direction() === 'rtl';
   const [newPostOpen, setNewPostOpen] = React.useState(false);
   const [newMessageOpen, setNewMessageOpen] = React.useState(false);
+
+  // Journey F, F26/F32: the real "New Post"/"New Message" buttons only set this same local
+  // state - no window hook existed to trigger them from outside this component before. Exposes
+  // exactly that, nothing new invented. Re-registers on every mount (this whole shell remounts
+  // fresh per renderCommunity() call, i.e. per hash navigation), so the setters are never stale.
+  React.useEffect(() => {
+    window.TradeJournalNavryaCommunityShell = { openNewPost: () => setNewPostOpen(true), openNewMessage: () => setNewMessageOpen(true), tab: tab };
+    return () => { delete window.TradeJournalNavryaCommunityShell; };
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
       <div>

@@ -102,6 +102,13 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 | `trade.cancel` (F22) | trades | confirm (CONSEQUENTIAL - never inferred, only ever set true from an explicit later confirmation) | - | `trade-details-{id}` (dynamic; `open()` only shows the Trade - the real cancellation happens in `submit()`, gated on confirm) |
 | `trade.close` (F23) | trades | exitPrice | - | `trade-close-position` (fixed id; real Close Position modal, real `computeClose()` P&L math - deliberately NOT entityAlreadyPersisted, see F22/F23 notes below) |
 | `trade.emotion.log` (F22) | trades | - | note | `trade-emotion-log` (fixed id; the real form's own AI allowlist is note-only) |
+| `community.post.create` (F26) | community | publish (PUBLIC_MUTATION gate - never inferred from "write"/"draft"/"compose", only an explicit publish intent) | text | `community-new-post` (fixed id; real composer, real `createPost()` REST call - no separate draft-then-publish step exists in the real product, so the gate lives entirely in this action's own required field) |
+| `community.comment.create` (F26) | community | send (PUBLIC_MUTATION gate) | draft | `community-comment-{id}` (dynamic; resolved from whichever post's comment panel is currently expanded, same "most recently touched wins" convention as Scenario cards) |
+| `marketplace.publish` (F27-31) | marketplace | confirmPublish (PUBLIC_MUTATION gate) | title, description, priceAmount, priceCurrency, previewItemCount | `publish-flow` (fixed id; real publish/edit modal shared by Pattern and Strategy - performance data (`successRatePercent`/`sampleSize`) is computed by the real caller and passed in as a fixed prop, never typed into the form or AI-fillable at all) |
+| `marketplace.rate` (F27-31) | marketplace | ratingValue | reviewText | `marketplace-rate-{id}` (dynamic; the registration's own `isOpen: () => !isSeller && unlocked` is the real eligibility gate - NAVRYA, not the model, decides whether rating is even offered) |
+| `marketplace.messageSeller` (F27-31) | marketplace | send (OUTBOUND_MESSAGE gate) | text | resolves the real seller thread via `openThread(listingId)` (the same real call the "Message Seller" button makes), then behaves like `message.reply` from there |
+| `message.compose` (F32) | messaging | send (OUTBOUND_MESSAGE gate) | recipientName, text | `messages-compose` (fixed id; recipientName resolves via the real `/api/users/search` the UI's own autocomplete already uses - never a raw guessed id) |
+| `message.reply` (F32) | messaging | send (OUTBOUND_MESSAGE gate) | draft | `messages-thread-reply` (fixed id; only ever targets the currently active/open conversation thread) |
 
 ### F19/F20 notes - three real, structural findings, not design choices
 
@@ -285,6 +292,137 @@ already calls `TradeJournalMentalHealthContinuous.onTradeClosed(saved)` uncondit
 successful close; reusing the real modal's real `submit()` (via the registry) means this real,
 existing behavior fires automatically for an AI-driven close exactly as it does for a human-driven
 one, with zero additional wiring.
+
+### F26-F32 notes - Community/Marketplace/Messaging (external side effects)
+
+**Side-effect classification** (deterministic, never model-decided): `LOCAL_DRAFT` (opening a
+composer, filling a field - nothing external happens) / `PUBLIC_MUTATION` (`community.post.create`,
+`community.comment.create`, `marketplace.publish`) / `OUTBOUND_MESSAGE`
+(`message.compose`/`message.reply`/`marketplace.messageSeller`). Marketplace `rateListing`,
+`purchaseListing` are also real REST calls but are gated entirely by the real UI's own eligibility
+checks (`isOpen: () => !isSeller && unlocked` for rating; no AI purchase action was built at all -
+see below), not by a chat-level classification.
+
+**None of Community Post, Comment, or Marketplace Publish has a real draft-then-publish two-step in
+the product today** - every one of `NewPostDialog`/`CommentsPanel`/`PublishFlowModal`'s own real
+submit button performs the actual REST call immediately (`createPost`/`createComment`/
+`createListing`/`updateListing`). There is no server-side "draft" status to save into and finish
+later. This makes the classic "requiredFields all known -> auto-submit" shape (used successfully by
+every private-mutation action so far) actively wrong here: filling `text` would auto-publish the
+instant it's known. Every one of these actions instead has an explicit boolean gate as a required
+field (`publish`/`send`/`confirmPublish`) that the model may only extract from a message expressing
+genuine publish/send intent ("post this", "publish it", "send it") - never from
+"write"/"draft"/"compose"/"create a post saying X" alone, which only ever fills the visible
+composer. This is the same `confirm`-field seam `trade.cancel` already established, generalized
+from "consequential" to "external/public" as the reason it's needed.
+
+**No Marketplace listing-creation UI exists inside `marketplaceView.jsx` itself.** The real publish
+flow (`publishFlowModal.jsx`'s `openPublishFlow()`) is triggered from inside the Pattern/Strategy
+hub's own "Sharing" tab (`patternRegistryView.jsx`'s `PatternSharing`/`strategyEducationView.jsx`'s
+`StrategySharing`), where `evidence`/`buildContent` are constructed from the real, live Pattern/
+Strategy record - never reconstructable from chat history. `marketplace.publish`'s `open()`
+therefore: resolves the active Pattern or Strategy (new `activePatternId()`/`activeStrategyId()`
+context resolvers, mirroring `activeTradeId()`), navigates to that entity's own Sharing tab, and
+calls a new small window hook (`TradeJournalNavryaPatternSharingHub`/`...StrategySharingHub`,
+mirroring every other `TradeJournalNavryaXxxHub` in this codebase) exposing the real, already-built
+`openFlow()` - never reconstructing `evidence`/`buildContent` itself.
+
+**Performance data cannot be fabricated by construction, not just by prompt instruction.**
+`PublishFlowModal`'s own allowlist (`title`, `description`, `priceAmount`, `priceCurrency`,
+`previewItemCount`) does not include `successRatePercent`/`sampleSize`/`evidenceAsOf` at all - these
+are computed by the real caller (`store.detectionStats()`/`store.scenarioReport()`) and passed in as
+a fixed `evidence` prop, the exact same structural protection `trade.emotion.log`'s stress/focus
+fields already established for F22.
+
+**Mock purchase is real and already-honest**: `BuyBox`'s own `Notice` renders `i18n.t('mockBadge')`
+unconditionally next to every Buy button - the real product itself already discloses this is not a
+real payment flow. No AI purchase action was added in this gate (not requested, and F16's "the AI
+must never claim payment completed" is trivially satisfied by not building a path that could say
+so); the Knowledge Base's own description of Marketplace purchase should be checked against this
+same honesty if it is ever surfaced to the model, but no existing text was found claiming otherwise.
+
+**Recipient resolution mirrors `trade.calculator`'s own name-then-resolve pattern.**
+`RecipientPicker`'s real autocomplete (`GET /api/users/search`) is the only path to a valid
+recipient in the real UI - free text was never an option even for a human. `message.compose`
+extends `messages-compose`'s registration with a new `recipientName` field, resolved through that
+same real search endpoint (exact match preferred, ask when zero or ambiguous - F53), never a raw
+guessed user id.
+
+**`marketplace.messageSeller` reuses `openThread(listingId)`, the exact real call the "Message
+Seller" button already makes** (`MarketplaceDetail`'s own `message()` function, exposed via a new
+`TradeJournalNavryaMessageSeller` window hook) - not `openThreadWithUser`, which is for an arbitrary
+named recipient (`message.compose`'s own path). This is a structural, not a heuristic, distinction:
+a listing-originated conversation and an arbitrary new one are two different real store calls.
+
+**Injection boundary is unchanged, not newly built.** Community post/comment bodies, listing
+descriptions, and message content all flow into the model (if at all) only through Journey D's
+existing `ai-context-builder.js` PRODUCT KNOWLEDGE/LIVE STATE/USER DATA framing, which already
+treats stored records as inert data the model must never follow as instructions (see
+`server/pattern-ai-server.mjs`'s own system-prompt clause on this, already shipped, unchanged here).
+No new prompt-injection surface was introduced - see the new regression tests exercising this
+exactly with Community/Marketplace/Messaging content specifically.
+
+**Real-browser testing found and fixed four bugs before this gate could pass:**
+
+1. **`ensureUser()`'s permanent auth-failure cache** (`dev-user-switcher.js`, pre-existing, not
+   introduced here): `account-profile-store.js`'s own `checkSellerRatings()` calls
+   `communityStore.myListings()` on every page boot (`setTimeout(fn, 0)`), before any login has a
+   chance to complete - `ensureUser()`'s `pending` promise, once set, is never invalidated on a
+   later successful login, permanently breaking Community/Marketplace/Messaging for the rest of
+   that page load. Not a Journey F code change (out of scope to fix without being asked) - worked
+   around for testing only by seeding a real, freshly-registered token into `localStorage` via
+   `page.addInitScript()` **before** navigation, beating the same-tick check.
+2. **Missing synthetic gate fields on the real DOM registrations**: `community-new-post`,
+   `community-comment-{id}`, `publish-flow`, `messages-compose`, and `messages-thread-reply`'s
+   `publish`/`send`/`confirmPublish` requiredFields exist only at the *action* level - none of
+   them were in the matching *real registration's* own `allowlist`. A workflow continuing through
+   an already-open one of these processes is served `activeProcess.allowlist` (not the action's
+   `requiredFields`) as its schema, so the model had no path to ever express the confirmation on a
+   follow-up turn ("Publish it." kept replying "I can't do that from chat"). Fixed by extending
+   each real registration's allowlist with the matching synthetic field (a no-op for
+   `applyValue`), the same pattern `recipientName` already established for `messages-compose`.
+3. **Passively-open Pattern/Strategy/thread/comment/rating views blocked all-new-action discovery**
+   (`chat-dock-core.js`): `pattern-editor-{id}`/`strategy-editor-{id}`/`messages-thread-reply`/
+   `community-comment-{id}`/`marketplace-rate-{id}` are open the entire time an unrelated page
+   state says so (a Pattern tab showing, a thread open, a comment panel expanded, an eligible
+   listing's rating form rendered), not because of a deliberate "fill this out" gesture - but
+   unlike `trade-details-{id}`, they carry a real, non-empty allowlist, so the existing
+   empty-allowlist exclusion never applied. With a Pattern's Details tab simply open (no
+   pattern-editing workflow in flight), "Publish this pattern to Marketplace." never reached
+   action-discovery at all; the identical failure reproduced for `message.reply` with a thread
+   simply open. Fixed by nulling `activeProcess` for these ids too, unless a workflow is already
+   genuinely continuing through that exact process (verified via
+   `currentWorkflow.processId === activeProcess.id`) - `pattern.edit`'s own live field-continuation
+   is unaffected. Regression-tested in `tests/chat-dock-core.test.mjs`.
+4. **`marketplace.publish`'s `open()` never actually reached the Sharing tab**: the Pattern/Strategy
+   Sharing hub (`TradeJournalNavryaPatternSharingHub`/`...StrategySharingHub`) only mounts while
+   the real Sharing sub-tab is showing - and `resolveActivePatternId`/`resolveActiveStrategyId`
+   only resolve while the user is on a *different* tab (bug 3, above). `open()` now navigates to
+   the Sharing tab itself first (`patternRegistryView.jsx`'s own `navigateProfile(id, 'sharing')`/
+   `strategyEducationView.jsx`'s `TradeJournalStrategyEducation.openDetail(id, 'sharing')`), using
+   the Pattern/Strategy id already resolved from context before that navigation moves off the tab
+   that resolved it.
+
+**Two pre-existing, out-of-scope bugs were found and are NOT fixed by this gate** (both predate
+Journey F; confirmed via `git diff main` on the affected lines):
+
+- `marketplaceView.jsx`'s `isSeller` check compares `switcher.currentUserId()` (now a signed JWT
+  **token** string, since the client-side auth migration - see `dev-user-switcher.js`'s own
+  comment) against `listing.sellerId` (a raw user id) - these can never be equal, so `isSeller` is
+  always `false` for every user on every listing, including a seller viewing their own. This is a
+  real-UI bug, not an AI-specific one: `marketplace.rate`'s `available()` correctly delegates to
+  the exact same (broken) real gate the human-facing rating form uses, rather than reimplementing
+  its own eligibility check - it is exactly as safe (and exactly as broken) as the button next to
+  it.
+- **`POST /listings/:id/ratings` (`server/community/routes.marketplace.mjs`) has no server-side
+  eligibility, purchase, or duplicate-rating check at all** - it creates a rating record from
+  whatever `req.currentUser.id`/`rating`/`reviewText` it receives, unconditionally. Combined with
+  the client bug above, this means the *only* thing currently preventing a seller from rating their
+  own listing, an unpurchased buyer from rating without buying, or a buyer from rating the same
+  listing twice is the client-side form not rendering - there is no independent backend
+  enforcement. This is a genuine, pre-existing gap relevant to F26-F32 section 20's own requirement
+  that NAVRYA (not the model) enforce eligibility; flagged here as a recommended follow-up, not
+  fixed as part of this gate.
 
 ## Process Registry inventory, by domain
 

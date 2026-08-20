@@ -1191,6 +1191,233 @@ export function mountCharacterApp(character) {
       });
     }
 
+    // Journey F, F26-F32: Community/Marketplace/Messaging - the same real architecture as every
+    // action above, with one structural difference: none of Community Post/Comment, Marketplace
+    // Publish, or Messaging Send has a real draft-then-publish two-step in the product (every
+    // real submit button performs its REST call immediately). Every one of these actions
+    // therefore requires an explicit boolean gate field (publish/send/confirmPublish) the model
+    // may only extract from a message expressing genuine publish/send intent - never from
+    // "write"/"draft"/"compose" alone. See docs/ai/action-coverage-matrix.md's own F26-F32 notes
+    // for the full reasoning. MODEL INTERPRETS -> NAVRYA RESOLVES TARGET -> REAL UI SHOWS CONTENT
+    // -> USER INTENT AUTHORIZES THE EXTERNAL EFFECT -> EXISTING PRODUCT PERMISSIONS EXECUTE.
+    if (window.TradeJournalAIActionRegistry) {
+      function resolveActivePostId(context) { return context && context.activeEntities && context.activeEntities.postId; }
+      function resolveActiveListingId(context) { return context && context.activeEntities && context.activeEntities.listingId; }
+      function resolveActivePatternId(context) { return context && context.activeEntities && context.activeEntities.patternId; }
+      function resolveActiveStrategyId(context) { return context && context.activeEntities && context.activeEntities.strategyId; }
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'community.post.create', domain: 'community', riskLevel: 'high',
+        description: 'Open the real Community post composer and fill its text - this does NOT publish anything by itself. publish must ONLY be set to true once the user has explicitly asked to actually post/publish/share it publicly right now (e.g. "post this", "publish it", "share it with the Community"). "Write", "draft", "compose", or "create a post saying X" alone must leave publish unset - the composer stays open with the text filled, nothing goes public. Never infer publish from the drafting request alone, even a fully-worded one.',
+        aliases: ['create a community post', 'write a post', 'draft a post', 'compose a community post'],
+        requiredFields: ['publish'], optionalFields: ['text'],
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (location.hash.indexOf('#community/feed') !== 0 && location.hash.indexOf('#community') !== 0) location.hash = '#community/feed';
+          pollFor(
+            () => window.TradeJournalNavryaCommunityShell,
+            (hub) => {
+              hub.openNewPost();
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('community-new-post').open,
+                () => resolve({ processId: 'community-new-post' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: (known) => {
+          if (known.publish !== true && known.publish !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('community-new-post');
+        },
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'community.comment.create', domain: 'community', riskLevel: 'high',
+        description: 'Reply to the Community post the user currently has expanded/in view, filling the real comment draft - this does NOT post the comment by itself. send must ONLY be set to true once the user has explicitly asked to actually send/post the reply now. "Write a reply saying X"/"draft a comment" alone must leave send unset. Only available while a real Community post is already expanded/visible - never guesses which post "this" refers to.',
+        aliases: ['reply to this post', 'comment on this post', 'draft a reply', 'write a comment'],
+        requiredFields: ['send'], optionalFields: ['draft'],
+        available: (context) => !!resolveActivePostId(context),
+        open: (context) => new Promise((resolve) => {
+          var postId = resolveActivePostId(context);
+          if (!postId) { resolve(null); return; }
+          resolve({ processId: 'community-comment-' + postId });
+        }),
+        submit: (known, context) => {
+          if (known.send !== true && known.send !== 'true') return undefined;
+          var postId = resolveActivePostId(context);
+          if (!postId) return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('community-comment-' + postId);
+        },
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F27-31: resolves whichever of Pattern/Strategy is currently open - real, existing
+        // pattern-editor-{id}/strategy-editor-{id} registrations, never a guess between them.
+        id: 'marketplace.publish', domain: 'marketplace', riskLevel: 'high',
+        description: 'Open the real Marketplace publishing form for the Pattern or Strategy currently open, filling title/description/price/currency/preview-item-count - this does NOT publish anything by itself. confirmPublish must ONLY be set to true once the user has explicitly asked to actually publish it publicly right now (e.g. "publish this", "list it on Marketplace", "make it public"). Performance data (win rate, sample size) is always NAVRYA\'s own real, computed evidence - it is never a field you fill or invent; if the form requires data NAVRYA does not have, that field stays empty, never fabricated. Only available while a real Pattern or Strategy is open.',
+        aliases: ['publish this pattern', 'publish this strategy', 'publish this to marketplace', 'list this on marketplace'],
+        requiredFields: ['confirmPublish'], optionalFields: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount'],
+        available: (context) => !!(resolveActivePatternId(context) || resolveActiveStrategyId(context)),
+        open: (context) => new Promise((resolve) => {
+          var patternId = resolveActivePatternId(context);
+          var strategyId = !patternId ? resolveActiveStrategyId(context) : null;
+          if (!patternId && !strategyId) { resolve(null); return; }
+          // The Pattern/Strategy Sharing hooks (TradeJournalNavryaPatternSharingHub/
+          // ...StrategySharingHub) only exist while the real Sharing sub-tab is mounted - and
+          // resolveActivePatternId/resolveActiveStrategyId only resolve while the user is on a
+          // DIFFERENT tab (pattern-editor-{id}/strategy-editor-{id} aren't registered while their
+          // own Sharing tab is showing). Navigate to the Sharing tab first, using the already-
+          // resolved id (captured above, before this navigation moves us off the tab that
+          // resolved it) - mirrors patternRegistryView.jsx's own navigateProfile(id, 'sharing')/
+          // strategyEducationView.jsx's navigateDetail(id, 'sharing'), the same calls their own
+          // "Sharing" tab buttons make.
+          if (patternId) {
+            history.replaceState(null, '', '#strategies/patterns/' + encodeURIComponent(patternId) + '/sharing');
+            if (window.TradeJournalPatternRegistry) window.TradeJournalPatternRegistry.render();
+          } else if (window.TradeJournalStrategyEducation) {
+            window.TradeJournalStrategyEducation.openDetail(strategyId, 'sharing');
+          }
+          var hookName = patternId ? 'TradeJournalNavryaPatternSharingHub' : 'TradeJournalNavryaStrategySharingHub';
+          pollFor(
+            () => window[hookName],
+            (hub) => {
+              hub.openFlow();
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('publish-flow').open,
+                () => resolve({ processId: 'publish-flow' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: (known) => {
+          if (known.confirmPublish !== true && known.confirmPublish !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('publish-flow');
+        },
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Eligibility (not a seller, already unlocked) is enforced entirely by the real
+        // registration's own isOpen() - the model never decides eligibility itself (F22 section 20).
+        id: 'marketplace.rate', domain: 'marketplace', riskLevel: 'medium',
+        description: 'Rate the Marketplace listing currently open, using the real rating form. Only available when NAVRYA\'s own real eligibility check (not the seller, already unlocked) already permits rating - never claim eligibility yourself.',
+        aliases: ['rate this listing', 'rate this strategy', 'rate this pattern', 'leave a review'],
+        requiredFields: ['ratingValue'], optionalFields: ['reviewText'],
+        available: (context) => {
+          var listingId = resolveActiveListingId(context);
+          var registry = window.TradeJournalAIProcessRegistry;
+          return !!(listingId && registry && registry.query('marketplace-rate-' + listingId).open);
+        },
+        open: (context) => new Promise((resolve) => {
+          var listingId = resolveActiveListingId(context);
+          if (!listingId) { resolve(null); return; }
+          resolve({ processId: 'marketplace-rate-' + listingId });
+        }),
+        submit: (known, context) => {
+          var listingId = resolveActiveListingId(context);
+          if (!listingId) return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('marketplace-rate-' + listingId);
+        },
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Reuses openThread(listingId), the exact real call the "Message Seller" button already
+        // makes - never openThreadWithUser (message.compose's own, different path).
+        id: 'marketplace.messageSeller', domain: 'marketplace', riskLevel: 'high',
+        description: 'Message the seller of the Marketplace listing currently open, filling the real message draft - this does NOT send anything by itself. send must ONLY be set to true once the user has explicitly asked to actually send the message now. Only available while a real Marketplace listing is open.',
+        aliases: ['message this seller', 'message the seller', 'ask the seller', 'contact this seller'],
+        requiredFields: ['send'], optionalFields: ['text'],
+        available: (context) => !!resolveActiveListingId(context),
+        open: (context) => new Promise((resolve) => {
+          var listingId = resolveActiveListingId(context);
+          if (!listingId) { resolve(null); return; }
+          pollFor(
+            () => window.TradeJournalNavryaMessageSeller,
+            (hub) => {
+              hub.open();
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('messages-thread-reply').open,
+                () => resolve({ processId: 'messages-thread-reply' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: (known) => {
+          if (known.send !== true && known.send !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('messages-thread-reply');
+        },
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F32 section 21: recipient resolution priority is 1) exact active conversation/thread
+        // (message.reply, a different action - a thread already exists), 2) explicit recipient
+        // name (this action), 3) exact contextual seller (marketplace.messageSeller, a different
+        // action). recipientName is resolved through the real user-search endpoint (see
+        // messagesView.jsx's own applyValue) - never a guessed id.
+        id: 'message.compose', domain: 'messaging', riskLevel: 'high',
+        description: 'Open the real "New Message" composer for an explicitly-named recipient (not an already-open conversation or a Marketplace seller - those are different actions) and fill the draft - this does NOT send anything by itself. recipientName must be the exact name the user said; NAVRYA resolves the real user from it, never a guessed id - if it does not resolve to exactly one real user, nothing is sent. send must ONLY be set to true once the user has explicitly asked to actually send the message now.',
+        aliases: ['message someone', 'send a message to', 'write a message to', 'compose a message'],
+        requiredFields: ['send'], optionalFields: ['recipientName', 'text'],
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (location.hash.indexOf('#community/messages') !== 0) location.hash = '#community/messages';
+          pollFor(
+            () => window.TradeJournalNavryaCommunityShell,
+            (hub) => {
+              hub.openNewMessage();
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('messages-compose').open,
+                () => resolve({ processId: 'messages-compose' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: (known) => {
+          if (known.send !== true && known.send !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('messages-compose');
+        },
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // F32 section 21, priority 1: the currently active/open conversation thread only -
+        // messages-thread-reply is a fixed process id (one thread panel mounted at a time), so
+        // "open" here just means "is a real conversation currently showing", never a guess among
+        // several past conversations.
+        id: 'message.reply', domain: 'messaging', riskLevel: 'high',
+        description: 'Reply within the conversation thread the user currently has open, filling the real draft - this does NOT send anything by itself. send must ONLY be set to true once the user has explicitly asked to actually send the message now (e.g. "send it"). "Say X"/"draft a reply" alone must leave send unset. Only available while a real conversation thread is already open - never guesses which one.',
+        aliases: ['reply to this', 'send a reply', 'respond to this message'],
+        requiredFields: ['send'], optionalFields: ['draft'],
+        available: () => { var registry = window.TradeJournalAIProcessRegistry; return !!(registry && registry.query('messages-thread-reply').open); },
+        open: () => new Promise((resolve) => {
+          var registry = window.TradeJournalAIProcessRegistry;
+          if (!registry || !registry.query('messages-thread-reply').open) { resolve(null); return; }
+          resolve({ processId: 'messages-thread-reply' });
+        }),
+        submit: (known) => {
+          if (known.send !== true && known.send !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('messages-thread-reply');
+        },
+        resultContext: () => {}
+      });
+    }
+
     sessionsAdapter.resetOnce().finally(() => {
       store.init();
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);

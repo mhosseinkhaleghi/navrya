@@ -35,7 +35,7 @@ test('snapshot() returns a safe empty snapshot (never throws) when no store is m
   const engine = await engineSandbox({});
   const snapshot = engine.snapshot();
   assert.equal(snapshot.navigation.activeId, null);
-  assert.deepEqual(clone(snapshot.activeEntities), { sessionId: null, scenarioId: null, entryId: null, tradeId: null });
+  assert.deepEqual(clone(snapshot.activeEntities), { sessionId: null, scenarioId: null, entryId: null, tradeId: null, patternId: null, strategyId: null, postId: null, listingId: null });
   assert.equal(snapshot.workflow, null);
 });
 
@@ -157,4 +157,55 @@ test('snapshot() reports tradeId: null when the active process is not a Trade De
 test('snapshot() reports tradeId: null when nothing is open at all', async () => {
   const engine = await engineSandbox({ processRegistry: { activeOpenProcess: () => null } });
   assert.equal(engine.snapshot().activeEntities.tradeId, null);
+});
+
+// Journey F, F27-31: patternId/strategyId/postId/listingId all follow the exact same
+// activeOpenProcess()-prefix pattern as tradeId - no active-Session requirement either (a Pattern,
+// Strategy, Community post, or Marketplace listing can all be viewed with no Session open).
+
+test('snapshot() resolves activeEntities.patternId from an active "pattern-editor-{id}" process, with no active session required', async () => {
+  const engine = await engineSandbox({
+    processRegistry: { activeOpenProcess: () => ({ id: 'pattern-editor-pattern-abc', allowlist: ['name'], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.patternId, 'pattern-abc');
+});
+
+test('snapshot() reports patternId: null when the active process is not a Pattern editor', async () => {
+  const engine = await engineSandbox({
+    processRegistry: { activeOpenProcess: () => ({ id: 'strategy-editor-strategy-abc', allowlist: ['name'], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.patternId, null);
+});
+
+test('snapshot() resolves activeEntities.strategyId from an active "strategy-editor-{id}" process', async () => {
+  const engine = await engineSandbox({
+    processRegistry: { activeOpenProcess: () => ({ id: 'strategy-editor-strategy-abc', allowlist: ['name'], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.strategyId, 'strategy-abc');
+});
+
+test('snapshot() resolves activeEntities.postId from an active "community-comment-{id}" process (the post whose comments are expanded)', async () => {
+  const engine = await engineSandbox({
+    processRegistry: { activeOpenProcess: () => ({ id: 'community-comment-post-abc', allowlist: ['draft'], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.postId, 'post-abc');
+});
+
+test('snapshot() reports postId: null when the active process is not a Community comment panel', async () => {
+  const engine = await engineSandbox({ processRegistry: { activeOpenProcess: () => null } });
+  assert.equal(engine.snapshot().activeEntities.postId, null);
+});
+
+test('snapshot() resolves activeEntities.listingId from a dedicated "marketplace-listing-{id}" process, never the conditional "marketplace-rate-{id}" (whose isOpen() reflects rating eligibility, not "is this listing being viewed")', async () => {
+  const engine = await engineSandbox({
+    processRegistry: { activeOpenProcess: () => ({ id: 'marketplace-listing-listing-abc', allowlist: [], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.listingId, 'listing-abc');
+});
+
+test('snapshot() reports listingId: null when the active process is "marketplace-rate-{id}" instead of "marketplace-listing-{id}"', async () => {
+  const engine = await engineSandbox({
+    processRegistry: { activeOpenProcess: () => ({ id: 'marketplace-rate-listing-abc', allowlist: ['ratingValue'], step: null }) }
+  });
+  assert.equal(engine.snapshot().activeEntities.listingId, null);
 });

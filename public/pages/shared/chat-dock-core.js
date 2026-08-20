@@ -187,6 +187,33 @@
     // fresh intent.
     if (workflowEngine && typeof workflowEngine.pruneIfAbandoned === 'function') workflowEngine.pruneIfAbandoned();
     var currentWorkflow = workflowEngine ? workflowEngine.current() : null;
+    // Journey F, F27-31: several real processes are passive "this entity/conversation happens to
+    // be visible" signals - open for as long as some unrelated, ordinary page state says so
+    // (a Pattern/Strategy tab showing, a comment thread expanded, a message thread open, an
+    // eligible listing's rating form rendered) rather than because the user just now took a
+    // deliberate "fill this out" gesture. Exactly like 'trade-details-{id}' above, but unlike it,
+    // every one of these carries a real, non-empty allowlist (name/description/draft/send/
+    // ratingValue/...), so the empty-allowlist rule a few lines up never nulls them out.
+    // Found via real browser testing: with a Pattern's Details tab simply open (no pattern-
+    // editing workflow actually in flight), "Publish this pattern to Marketplace." fell all the
+    // way to the plain activeProcess-suggestions fallback below, scoped to pattern-editor's own
+    // name/description/completionThreshold fields - the message never reached action-discovery
+    // at all, so marketplace.publish could never be offered no matter how the request was
+    // phrased. The identical failure reproduced for message.reply with a thread simply open
+    // (messages-thread-reply) and would reproduce identically for community.comment.create
+    // (community-comment-{id}) and marketplace.rate (marketplace-rate-{id}) the same way. Null
+    // each out here UNLESS a workflow is already genuinely continuing through that exact process
+    // (pattern.edit picking up a live field correction, message.reply's own second "send it"
+    // turn, ...) - that continuation still reaches the activeProcess-match branch below
+    // unaffected, since it is decided from currentWorkflow, not this variable. A plain "change
+    // the description to X" (or "reply saying X", with no reply workflow yet in flight) now goes
+    // through fresh action-discovery instead of the old raw suggestions[] flow - matching each
+    // action's own real resolveActive*()/registry.query()-based design (see character-app.jsx),
+    // which already handles exactly this case.
+    if (activeProcess && /^(pattern-editor-|strategy-editor-|messages-thread-reply|community-comment-|marketplace-rate-)/.test(String(activeProcess.id))) {
+      var passiveWorkflowMatch = currentWorkflow && currentWorkflow.processId === activeProcess.id;
+      if (!passiveWorkflowMatch) activeProcess = null;
+    }
     // Journey F, F21: 'live-session-entry-'/'live-session-scenario-' processIds are
     // unconditionally excluded from activeProcess a few lines up (the exact same "passive/
     // ambient, not a deliberate open gesture" reasoning as the session.movementEntry.create/

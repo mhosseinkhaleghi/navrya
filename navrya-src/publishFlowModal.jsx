@@ -30,12 +30,21 @@ function PublishFlowModal({ i18n, options, onClose }) {
   // AI process registry (A4) - mountedRef template. Only one publish flow modal is ever mounted
   // at a time (openPublishFlow()'s own single container), matching every other singleton modal.
   const mountedRef = React.useRef(true);
+  // Journey F, F27-31: submitRef read from inside the once-only registration effect - same
+  // stale-closure bug class already fixed elsewhere this gate: submit() closes over
+  // title/description/price/currency/previewCount, all of which change after this effect
+  // (deps []) first runs, exactly the ScenarioEditor/closePositionModal.jsx shape.
+  const submitRef = React.useRef(null);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('publish-flow', {
-      allowlist: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount'],
+      // 'confirmPublish' is a synthetic, AI-only field - same reasoning as community-new-post's
+      // 'publish' field (see communityView.jsx): needed so the workflow-continuation turn has a
+      // schema path to express confirmation, since this process has real content fields and is
+      // never excluded from activeProcess.
+      allowlist: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount', 'confirmPublish'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
         if (path === 'title') setTitle(String(value ?? ''));
@@ -43,14 +52,15 @@ function PublishFlowModal({ i18n, options, onClose }) {
         else if (path === 'priceAmount') setPrice(value === '' || value == null ? '' : String(value));
         else if (path === 'priceCurrency') { if (currencies.indexOf(value) > -1) setCurrency(value); }
         else if (path === 'previewItemCount') setPreviewCount(value === '' || value == null ? '' : String(value));
-      }
+      },
+      submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function submit() {
     const t = title.trim();
-    if (!t) return;
+    if (!t) return undefined;
     setSubmitting(true); setError(false);
     const content = options.buildContent(Number(previewCount) || 0);
     const payload = {
@@ -62,12 +72,14 @@ function PublishFlowModal({ i18n, options, onClose }) {
     };
     const store = window.TradeJournalCommunityStore;
     const promise = existing ? store.updateListing(existing.id, payload) : store.createListing(payload);
-    promise.then((listing) => {
+    return promise.then((listing) => {
       showToast(i18n.t('publishSuccess'), 'success');
       onClose();
       if (options.onPublished) options.onPublished(listing);
-    }).catch(() => { setSubmitting(false); setError(true); });
+      return listing;
+    }).catch(() => { setSubmitting(false); setError(true); return undefined; });
   }
+  submitRef.current = submit;
 
   return (
     <Modal
