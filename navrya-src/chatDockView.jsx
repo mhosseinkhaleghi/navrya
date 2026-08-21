@@ -181,6 +181,21 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Latency pass, section 1/19/34: how long the reply actually took to reach the screen after
+  // sendChat() resolved - chat-dock-core.js has no visibility into React's own commit/paint
+  // timing, so this stays a small, explicit, best-effort stamp taken here instead. A
+  // requestAnimationFrame after the state update (rather than measuring immediately after
+  // setPopover() is called) is the closest approximation of "actually painted" available without
+  // a ref-based DOM mutation observer - documented as an approximation, the same "crude proxy,
+  // said so plainly" posture debugLastPackage()'s own approxTokens already uses.
+  function markRenderTiming(sentAt) {
+    if (typeof requestAnimationFrame !== 'function') return;
+    requestAnimationFrame(() => {
+      const ms = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - sentAt);
+      if (core.recordRenderComplete) core.recordRenderComplete(ms);
+    });
+  }
+
   async function submit(value, options) {
     const source = (options && options.source) === 'voice' ? 'voice' : 'text';
     setText('');
@@ -188,6 +203,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
     setBusy(true);
     try {
       const result = await core.sendChat({ text: value, therapistMode, transcript, conversationId: activeConversationId, source });
+      const renderStampAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
       if (!result) { setBusy(false); return null; }
       if (result.kind === 'safety') {
         // Mirrors the retired global-ai-dock.js exactly: the user turn is still recorded, but
@@ -211,6 +227,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
           // existing meta row rather than a new dedicated "AI action progress" component.
           meta: result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : []
         });
+        markRenderTiming(renderStampAt);
         // Returned so a voice-originated turn (see the Realtime wiring below) can speak back a
         // reply - voiceReply (a deliberately shorter, TTS-friendly rendering the server produces
         // only for source:'voice' turns) is preferred over the full written reply so a long
@@ -261,17 +278,36 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
   // strictly one at a time, in arrival order - "one utterance -> one Copilot turn", never two
   // turns processed concurrently.
   const voiceTurnQueue = React.useRef(Promise.resolve());
+  // Latency pass, section 21/34: final transcript -> useful reply, and final transcript -> the
+  // moment NAVRYA asks the Realtime session to speak it - the two numbers this layer can actually
+  // observe. transcriptToSpeakRequestedMs is NOT "audio actually started" - the real first-audio-
+  // byte moment happens inside aiVoiceRealtime.js's own speak()/response.create round trip, not
+  // observable from here without deeper transport instrumentation (out of scope for this pass -
+  // see docs/ai/latency-testing.md). Kept as its own small object, not folded into
+  // chat-dock-core.js's debugLastLatency() (which knows nothing about the voice transport), since
+  // it spans two modules this file already bridges.
+  let lastVoiceLatency = null;
   function onVoiceTranscript(transcriptText) {
     setVoiceHeardText(transcriptText);
+    const transcriptAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     voiceTurnQueue.current = voiceTurnQueue.current
       .catch(() => {})
       .then(async () => {
         const result = await submitRef.current(transcriptText, { source: 'voice' });
+        const replyAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         const toSpeak = result && (result.voiceReply || result.reply);
         setVoiceReplyCaption(toSpeak || '');
+        lastVoiceLatency = { transcriptToReplyMs: Math.round(replyAt - transcriptAt), transcriptToSpeakRequestedMs: null };
         // Awaited so the queue doesn't move on to the next turn until this one has actually
         // finished being spoken (see aiVoiceRealtime.js's speak() for why that matters).
-        if (toSpeak && voiceRef.current) await voiceRef.current.speak(toSpeak);
+        if (toSpeak && voiceRef.current) {
+          const speakCalledAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+          lastVoiceLatency.transcriptToSpeakRequestedMs = Math.round(speakCalledAt - transcriptAt);
+          window.TradeJournalChatDockVoiceLatency = lastVoiceLatency;
+          await voiceRef.current.speak(toSpeak);
+        } else {
+          window.TradeJournalChatDockVoiceLatency = lastVoiceLatency;
+        }
       });
     return voiceTurnQueue.current;
   }

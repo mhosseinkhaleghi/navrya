@@ -151,6 +151,23 @@
     return cityMatches[cityMatches.length - 1].city;
   }
 
+  // ---- bare number: the ENTIRE message, once trimmed and its optional %/currency decoration
+  // stripped, is nothing but one number - no label word needed, unlike extractLabeledPrice() above.
+  // Latency pass (chat-dock-core.js's own single-missing-field fast path): safe specifically
+  // because the caller only ever uses this when exactly one field is left to ask about - "65500"
+  // answering "what's your exit price?" is unambiguous for that reason, not because this function
+  // itself understands trading semantics. Never attempted against a message carrying ANY other
+  // content (a second word, a second number, extra punctuation beyond the bare unit decoration) -
+  // that ambiguity is deliberately left to the model, matching this whole module's own "only ever
+  // claim a value when the surrounding words make it unambiguous" boundary.
+  var BARE_NUMBER_PATTERN = /^\s*[$€£]?\s*(\d+(?:\.\d+)?)\s*%?\s*(?:percent|درصد)?\s*[.!؟?]?\s*$/i;
+  function extractBareNumber(text) {
+    var m = BARE_NUMBER_PATTERN.exec(faToAsciiDigits(String(text || '')));
+    if (!m) return null;
+    var n = toNum(m[1]);
+    return n !== null && n > 0 ? n : null;
+  }
+
   // context: {domain} - e.g. {domain:'trade'} narrows which fields are worth attempting (a
   // Session-creation turn has no reason to look for stopLoss). Omit for "try everything safe."
   // Returns a plain {path: value} map - only ever the fields it actually found, deterministically.
@@ -200,6 +217,7 @@
 
   window.TradeJournalAIDeterministicExtraction = {
     extractDeterministicFields: extractDeterministicFields,
-    mergeWithModelFields: mergeWithModelFields
+    mergeWithModelFields: mergeWithModelFields,
+    extractBareNumber: extractBareNumber
   };
 }());

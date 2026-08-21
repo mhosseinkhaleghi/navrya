@@ -41,6 +41,37 @@
   function setLastTurnDebug(patch) { lastTurnDebug = Object.assign({ at: new Date().toISOString() }, patch); }
   function debugLastTurn() { return lastTurnDebug; }
 
+  // Latency pass, section 1/36: one sanitized diagnostic per turn - duration/count metadata only,
+  // never a prompt, key, or message body. Mirrors debugLastTurn()'s own module-level-singleton
+  // convention (overwritten every call, including the deterministic fast paths below, so this is
+  // never stale about which kind of turn it's actually describing). now() uses performance.now()
+  // (a monotonic clock) exclusively - never Date.now()/wall-clock time, which can jump backward
+  // across a system clock adjustment and silently produce a negative "duration."
+  var lastLatency = null;
+  function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
+  function debugLastLatency() { return lastLatency; }
+  // Called by chatDockView.jsx once the reply has actually been committed to the DOM (a
+  // requestAnimationFrame after setPopover()) - chat-dock-core.js itself has no visibility into
+  // React's own commit/paint timing, so this stays a small, explicit, optional stamp rather than
+  // a guess. A render-timing report for a turn that resolved before this ever gets called (e.g. a
+  // page navigated away) is simply never recorded - renderMs stays null, honestly, rather than a
+  // stale number from a previous turn.
+  function recordRenderComplete(ms) { if (lastLatency) lastLatency.renderMs = ms; }
+  // Shared by every deterministic, zero-model-call path below (Journey C's own confirm/reject,
+  // the F37 gate fast-path, and the new single-missing-field slot fast path) - each one skips the
+  // network call entirely, so every server-attributed figure is honestly 0/null rather than
+  // fabricated. clientPrepMs is the one real number: everything this turn actually spent, all of
+  // it client-side.
+  function recordZeroNetworkLatency(turnType, t0, extra) {
+    var elapsed = Math.round((now() - t0) * 100) / 100;
+    lastLatency = Object.assign({
+      totalMs: elapsed, clientPrepMs: elapsed, contextMs: 0, productContextMs: 0,
+      networkToGatewayMs: 0, providerMs: 0, parseMs: 0, workflowMs: elapsed, graceMs: 0, renderMs: null,
+      promptApproxTokens: 0, historyMessages: 0, availableActionCount: 0, schemaBytes: 0,
+      provider: null, model: null, turnType: turnType, aiCallMade: false
+    }, extra || {});
+  }
+
   function providerLabel(id) {
     var suffix = { openai: 'OpenAI', anthropic: 'Anthropic', kimi: 'Kimi', deepseek: 'Deepseek' }[id] || (id.charAt(0).toUpperCase() + id.slice(1));
     return i18n.t('aiProvider' + suffix);
@@ -57,6 +88,7 @@
   // whichever conversation is currently active in the dock (appends to it instead) - the caller
   // (chatDockView.jsx) owns that state and threads it through on every call.
   async function sendChat(options) {
+    var t0 = now();
     var text = String((options && options.text) || '').trim();
     var therapistMode = !!(options && options.therapistMode);
     var transcript = (options && options.transcript) || [];
@@ -122,6 +154,7 @@
               }
             }
             setLastTurnDebug({ path: 'proactive-resolved', decision: decision, ruleId: resolved.ruleId, field: resolved.field });
+            recordZeroNetworkLatency('CONFIRMATION', t0, {});
             return {
               kind: 'proactive-resolved', decision: decision, finding: resolved,
               reply: proactiveEngine.confirmationReply(decision, resolved),
@@ -159,6 +192,7 @@
       if (gateDecision === 'reject') {
         workflowEngine.cancel();
         setLastTurnDebug({ path: 'gate-rejected', actionId: gateWorkflow.actionId, field: gateField });
+        recordZeroNetworkLatency('CONFIRMATION', t0, { graceMs: 0 });
         return {
           kind: 'workflow', reply: i18n.t('aiDockConfirmationCancelled'), workflow: null,
           activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
@@ -166,12 +200,62 @@
       }
       if (gateDecision === 'confirm') {
         var gateContext = contextEngine ? contextEngine.snapshot() : {};
-        var gateResult = await workflowEngine.applyKnownFields([{ path: gateField, value: true }], gateContext);
+        // Latency pass, section 15: a workflow whose ONLY remaining transition was an explicit
+        // yes/no has no "same-breath correction" left to protect - SUBMIT_GRACE_MS's whole reason
+        // to exist (room for a follow-up like "no wait, 5 minutes" to still land before an
+        // auto-submit) does not apply to a value that was itself just the deliberate final answer.
+        // Zero grace here, applied only to a gate-field completion specifically - every other
+        // action keeps its existing grace window untouched (see ai-workflow-engine.js's own
+        // setSubmitGraceMs(), a real, exposed toggle, not a hidden internal branch).
+        var previousGraceMs = null;
+        if (workflowEngine.setSubmitGraceMs) { previousGraceMs = workflowEngine.getSubmitGraceMs ? workflowEngine.getSubmitGraceMs() : null; workflowEngine.setSubmitGraceMs(0); }
+        var gateResult;
+        try { gateResult = await workflowEngine.applyKnownFields([{ path: gateField, value: true }], gateContext); }
+        finally { if (workflowEngine.setSubmitGraceMs && previousGraceMs !== null) workflowEngine.setSubmitGraceMs(previousGraceMs); }
         setLastTurnDebug({ path: 'gate-confirmed', actionId: gateWorkflow.actionId, field: gateField });
+        recordZeroNetworkLatency('CONFIRMATION', t0, { graceMs: 0 });
         return {
           kind: 'workflow', reply: i18n.t('aiDockConfirmationAccepted'), workflow: gateResult,
           activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
         };
+      }
+    }
+
+    // Latency pass, section 4-6: a workflow already waiting on exactly ONE non-gate required
+    // field, answered with a short, unambiguous bare value ("5 minutes", "1%", "65500", "New
+    // York") - the single missing slot makes the meaning deterministic the same way a pending gate
+    // field already does above, so this never calls the model just to re-discover what NAVRYA
+    // already knows is the only possible target. Deliberately conservative (section 6): a SHORT
+    // message (nothing else could plausibly be riding along with it), exactly one non-gate field
+    // missing, and a confident match from the same narrow extractors
+    // ai-deterministic-extraction.js already uses for the model-merge path below - never a
+    // free-form guess. Any doubt (extractor finds nothing, or the field isn't in the small,
+    // explicit whitelist) falls straight through to the normal AI path, unchanged.
+    var slotWorkflow = workflowEngine ? workflowEngine.current() : null;
+    if (slotWorkflow && Array.isArray(slotWorkflow.missing) && slotWorkflow.missing.length === 1 && !/^(confirm|send|publish)/i.test(slotWorkflow.missing[0]) && text.length <= 24) {
+      var slotField = slotWorkflow.missing[0];
+      var slotValue = resolveSlotFillValue(slotField, text);
+      if (slotValue !== null) {
+        var slotContext = contextEngine ? contextEngine.snapshot() : {};
+        // Section 7: a slot-filled field is not exempt from Journey C - riskPercent is the one
+        // field in this whitelist trade.calculator's own proactive rules actually watch. Reuses
+        // the exact same runProactiveCheck() the model-driven path below calls, never a second,
+        // parallel safety check.
+        var slotCheck = runProactiveCheck([{ path: slotField, value: slotValue }], slotWorkflow.actionId, slotWorkflow);
+        if (!slotCheck.findings.length) {
+          var slotResult = await workflowEngine.applyKnownFields(slotCheck.fieldsToApply, slotContext);
+          setLastTurnDebug({ path: 'slot-fill', actionId: slotWorkflow.actionId, field: slotField });
+          recordZeroNetworkLatency('WORKFLOW_CONTINUATION', t0, {});
+          return {
+            kind: 'workflow', reply: i18n.t('aiDockSlotFilled', { value: String(slotValue) }), workflow: slotResult,
+            activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+          };
+        }
+        // A proactive finding fired (e.g. riskPercent over a linked Strategy's cap) - fall through
+        // to the normal AI path so the model can produce a real explanatory reply; Journey C's own
+        // pending-confirmation mechanism (staged inside runProactiveCheck() above) still resolves
+        // deterministically on the FOLLOWING turn via the existing check at the top of this
+        // function, exactly as it already does for a model-driven turn.
       }
     }
 
@@ -338,6 +422,7 @@
       if (catalog.length) availableActions = catalog;
     }
 
+    var tContextStart = now();
     var requestBody = {
       provider: active.provider, apiKey: settingsStore.getKey(active.provider), model: settingsStore.activeModel(),
       language: i18n.language(), message: text, chatHistory: transcript.slice(-24),
@@ -345,6 +430,7 @@
     };
     if (availableActions) requestBody.availableActions = availableActions;
     if (source === 'voice') requestBody.source = 'voice';
+    var tContextDone = now();
     // Journey D: the smallest-sufficient-context package for THIS turn (LAYER A product
     // knowledge + LAYER B user memory + LAYER C live state), built fresh every call - never
     // cached, never "all knowledge every turn" (ai-context-builder.js's own deterministic
@@ -359,27 +445,41 @@
         if (wireProductContext) requestBody.productContext = wireProductContext;
       } catch (_) { /* no-op - product knowledge is additive, never load-bearing */ }
     }
+    var tProductContextDone = now();
+    var requestBytes = 0;
+    try { requestBytes = JSON.stringify(requestBody).length; } catch (_) { /* diagnostic only */ }
+    var tFetchStart = now();
     var response = await fetch('/api/ai/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
     });
     var payload = await response.json();
+    var tResponseParsed = now();
     if (!response.ok) throw new Error(payload.error || 'AI_REQUEST_FAILED');
     if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage, source: 'chatDock.chat' });
     var usageValue = payload.usage || {};
     var usedTokens = typeof usageValue.totalTokens === 'number' ? usageValue.totalTokens : (usageValue.promptTokens || 0) + (usageValue.completionTokens || 0);
     var nextConversationId = conversationId;
     if (historyStore) {
-      // Best-effort, same as ai-usage-store.js's reportToServer() - a history-sync failure must
-      // never break the actual reply the user is waiting on.
-      try {
-        if (conversationId) {
-          await historyStore.appendExchange(conversationId, text, payload.reply, usedTokens);
-        } else {
+      if (conversationId) {
+        // Latency pass, section 16: the architecture already says history sync must not block a
+        // reply - found via real inspection that this call was, in fact, still awaited (two
+        // sequential network round trips - a GET then a PATCH - to the Community API, on every
+        // single turn of an ongoing conversation). Nothing downstream of this turn's own return
+        // value depends on this call's result (conversationId is already known), so it is genuinely
+        // safe to let it run in the background - best-effort, same soft-fail posture as
+        // ai-usage-store.js's own reportToServer().
+        historyStore.appendExchange(conversationId, text, payload.reply, usedTokens).catch(function () { /* no-op */ });
+      } else {
+        // The FIRST message of a fresh conversation is the one real exception: the caller
+        // (chatDockView.jsx) needs the newly-created conversation's own id back this turn so the
+        // SECOND turn appends to it instead of starting a duplicate conversation - awaited on
+        // purpose, a one-time-per-conversation cost, not a per-turn one.
+        try {
           var created = await historyStore.startConversation(active.provider, text, payload.reply, usedTokens);
           nextConversationId = created ? created.id : null;
-        }
-      } catch (_) { /* no-op */ }
+        } catch (_) { /* no-op - history sync is best-effort */ }
+      }
     }
 
     // Turn 1: the model matched one of the offered actions - start the workflow (opens the real
@@ -444,6 +544,45 @@
       signalDestination: signalResult ? signalResult.destination : null
     });
 
+    // Latency pass, section 2/36: best-effort turn-type classification from the same branches
+    // this function already took - approximate (a genuinely mixed turn, e.g. a correction that
+    // ALSO carries a behavioral signal, only ever gets one label), documented as such rather than
+    // implying more precision than a few branch checks actually give.
+    var networkTurnType = activeProcess && currentWorkflow && activeProcess.id === currentWorkflow.processId
+      ? 'WORKFLOW_CONTINUATION'
+      : (availableActions && payload.action && payload.action.id)
+        ? (payload.action.id === 'navigate.to' ? 'NAVIGATION' : 'NEW_ACTION')
+        : (requestBody.productContext ? 'PRODUCT_QA' : 'SIMPLE_QA');
+    if (source === 'voice') networkTurnType = /QA$/.test(networkTurnType) ? 'VOICE_QA' : 'VOICE_ACTION';
+    var serverTiming = payload.serverTiming || {};
+    var tWorkflowDone = now();
+    lastLatency = {
+      totalMs: Math.round((tWorkflowDone - t0) * 100) / 100,
+      clientPrepMs: Math.round(((tContextDone - t0) + (tWorkflowDone - tResponseParsed)) * 100) / 100,
+      contextMs: Math.round((tContextDone - tContextStart) * 100) / 100,
+      productContextMs: Math.round((tProductContextDone - tContextDone) * 100) / 100,
+      // "Network" here also folds in Node's own request-parse-to-dockChat()-entry gap and the
+      // response's own transit time back - the one figure that is NOT independently measurable
+      // from either side alone without synchronized clocks (see docs/ai/latency-architecture.md).
+      networkToGatewayMs: Math.max(0, Math.round(((tResponseParsed - tFetchStart) - (serverTiming.gatewayMs || 0)) * 100) / 100),
+      providerMs: serverTiming.providerMs || null,
+      parseMs: 0, // response.json() cost is folded into the fetch await above, not independently observable client-side
+      workflowMs: Math.round((tWorkflowDone - tResponseParsed) * 100) / 100,
+      graceMs: null, // the actual submit (if any) is scheduled, not awaited, here - see ai-workflow-engine.js's own SUBMIT_GRACE_MS
+      renderMs: null,
+      requestBytes: requestBytes,
+      promptApproxTokens: serverTiming.promptApproxChars ? Math.ceil(serverTiming.promptApproxChars / 4) : null,
+      historyMessages: requestBody.chatHistory ? requestBody.chatHistory.length : 0,
+      availableActionCount: availableActions ? availableActions.length : 0,
+      // Reuses the SAME catalogFor() call discovery already made above (when it ran) rather than
+      // computing it a second time purely for this diagnostic - null (not measured) when
+      // discovery didn't run this turn (activeProcess was set), never a redundant extra call.
+      fullActionCount: availableActions ? (typeof catalog !== 'undefined' ? catalog.length : availableActions.length) : null,
+      schemaBytes: serverTiming.schemaBytes || null,
+      provider: payload.provider || null, model: payload.model || null,
+      turnType: networkTurnType, aiCallMade: true
+    };
+
     if (tookWorkflowPath) {
       var result = { kind: 'workflow', reply: payload.reply, voiceReply: payload.voiceReply || null, workflow: workflowResult, activeProcess: activeProcess, conversationId: nextConversationId };
       if (proactiveFindings.length) { result.kind = 'proactive-warning'; result.proactive = proactiveFindings; result.reply = buildProactiveReply(proactiveFindings); result.voiceReply = null; }
@@ -461,6 +600,26 @@
   // same words wins regardless. Scoped by the action's own domain (trade.calculator -> 'trade',
   // session.create -> 'session') so this never tries to pull a Session city out of a Trade
   // conversation or vice versa; an action with neither domain is left completely untouched.
+  // Latency pass: the small, explicit whitelist of missing-field paths the single-missing-field
+  // fast path above is willing to bare-match - deliberately narrow, the same "only ever claim a
+  // value when unambiguous" boundary ai-deterministic-extraction.js's own module comment states,
+  // just applied to "the ONLY thing left to ask" rather than "a labeled value in free text." A
+  // token field resolves through the domain-scoped EN/FA extractor already built for the
+  // model-merge path (mergedFields() below) - never a second, duplicated regex set; a numeric
+  // field resolves through the new extractBareNumber() (language-agnostic - a bare digit string
+  // needs no label word in any of the four supported languages).
+  var SLOT_FILL_TOKEN_FIELDS = { timeframe: 'session', city: 'session', direction: 'trade' };
+  var SLOT_FILL_NUMERIC_FIELDS = { riskPercent: true, defaultRiskPercent: true, exitPrice: true, entryPrice: true, stopLoss: true, leverageCap: true, maxTradesPerSession: true };
+  function resolveSlotFillValue(field, text) {
+    var extraction = window.TradeJournalAIDeterministicExtraction;
+    if (!extraction) return null;
+    if (SLOT_FILL_NUMERIC_FIELDS[field]) return extraction.extractBareNumber(text);
+    var domain = SLOT_FILL_TOKEN_FIELDS[field];
+    if (!domain) return null;
+    var found = extraction.extractDeterministicFields(text, { domain: domain });
+    return found[field] !== undefined ? found[field] : null;
+  }
+
   var ACTION_DETERMINISTIC_DOMAIN = { 'trade.calculator': 'trade', 'session.create': 'session' };
   function mergedFields(modelFields, text, actionId) {
     var extraction = window.TradeJournalAIDeterministicExtraction;
@@ -641,6 +800,8 @@
     applySuggestion: applySuggestion,
     analyzeScreenshot: analyzeScreenshot,
     applyExtractionToWizard: applyExtractionToWizard,
-    debugLastTurn: debugLastTurn
+    debugLastTurn: debugLastTurn,
+    debugLastLatency: debugLastLatency,
+    recordRenderComplete: recordRenderComplete
   };
 }());

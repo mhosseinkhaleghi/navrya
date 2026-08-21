@@ -1056,6 +1056,59 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   out of this gate's own scope, given equivalent coverage from shorter targeted scripts and Journey
   E's own independent real-audio verification of the shared voice transport).
 
+### 7.22 AI Copilot: Latency Optimization
+
+- **Purpose:** A measurement-first pass to make NAVRYA's AI Copilot feel dramatically faster
+  without adding capability, redesigning the Copilot architecture, or weakening action correctness/
+  safety/answer quality/multilingual behavior/Voice continuity. Full detail, real before/after
+  measurements, and the honest list of what was measured-but-not-implemented live in
+  `docs/ai/latency-architecture.md` and `docs/ai/latency-testing.md` - this section is the map.
+- **Central, measured finding:** for any turn that genuinely needs the model, provider generation
+  time is 85-95% of total latency - client-side processing (context snapshot, action catalog,
+  proactive check, workflow apply) measures in single-digit-to-low-double-digit milliseconds
+  regardless of turn type. The optimizations below are therefore split into eliminating the AI call
+  entirely for a narrow, provably-safe class of turns, and lightening the AI call itself when a
+  cheaper reasoning/verbosity tier suffices - not client-side micro-tuning, which measurement
+  showed was never the bottleneck.
+- **A new, deterministic single-missing-field slot fast path** (`chat-dock-core.js`, alongside the
+  pre-existing F37 gate-field confirm/reject fast path): a workflow already waiting on exactly one
+  non-gate required field, answered with a short (<= 24 chars), unambiguous bare value from a
+  small explicit field whitelist, resolves with zero network calls - reusing
+  `ai-deterministic-extraction.js`'s existing EN/FA token extractors plus a new, language-agnostic
+  `extractBareNumber()`, and still routing through `runProactiveCheck()`/the Workflow
+  Engine/Process Registry exactly as the model-driven path does. Measured: session creation's
+  timeframe slot went from ~1963ms (real model call) to ~4ms (zero calls) across 5/5 repetitions.
+- **Adaptive submit grace**: an explicit gate-field confirmation (destructive delete, publish,
+  send) now completes with zero grace delay - `SUBMIT_GRACE_MS`'s ~3000ms correction window has no
+  "same-breath correction" to protect once a deliberate yes/no has already been given - saved and
+  restored per-call, every other action's own grace window is unaffected. Measured: a destructive
+  confirmation's own final-persistence time dropped from ~3129ms to ~112ms.
+- **A third reasoning/verbosity tier**: fresh action discovery (`availableActions`) now shares the
+  same light `low`/`medium` tier `activeProcess` continuation already used, instead of the heavier
+  `medium`/`high` tier it previously shared with genuine Q&A. Genuine open-ended Q&A is
+  deliberately, structurally unaffected - the one turn type this pass never touches, so answer
+  quality/depth stays exactly what it was.
+- **History persistence is now genuinely fire-and-forget**: `appendExchange()` (every turn after a
+  conversation's first) was found still `await`ed despite the architecture's own stated intent -
+  two sequential network round trips added to every ongoing-conversation turn. Now
+  `.catch()`-guarded and never awaited; `startConversation()` (the one-time-per-conversation first
+  call) stays awaited on purpose, since its result is genuinely needed synchronously.
+- **Deliberately measured but not implemented**: candidate action-catalog reduction and chat-
+  history trimming for the model's own context (both showed real, measured opportunity, but neither
+  showed strong enough evidence to justify the added risk in this pass); Q&A streaming (would need
+  fragile partial-JSON-schema parsing against this app's strict structured-output contract).
+- **New dev-only diagnostic**: `window.TradeJournalChatDockCore.debugLastLatency()` - a per-turn
+  breakdown (client/context/network/provider/workflow/grace/render timings, turn-type
+  classification, action-catalog/schema/history size counts) reusing the same duration-only,
+  never-content privacy posture `debugLastTurn()` already established, plus a `serverTiming` object
+  threaded back from `server/pattern-ai-server.mjs`'s `dockChat()` that reuses `callProvider()`'s
+  own existing health-event latency measurement rather than a second one.
+- **Verification status**: real-browser before/after A/B measurement via `git stash`
+  (reverted code vs. optimized code, same environment, same provider/model), 8 new dynamic unit
+  tests, and a real-browser safety regression pass (the exact Journey C Persian phrase, FA
+  destructive confirmation, switched-target safety under the new zero-grace path). See
+  `latency-testing.md` for the full results table and every honestly-reported limitation.
+
 ## 8. AI Integration Points
 
 ### Server configuration
