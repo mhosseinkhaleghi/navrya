@@ -261,7 +261,12 @@ export function createVoiceSession(options) {
     setLanguage: setLanguage,
     state: function () { return state; },
     isMuted: function () { return isMuted; },
-    audioDiagnostics: audioDiagnostics
+    audioDiagnostics: audioDiagnostics,
+    // Purely additive, read-only access to the same mic stream already captured for WebRTC at
+    // connect() time - lets the UI build its own AnalyserNode for a real, audio-reactive waveform
+    // (VoiceConsole.jsx) without this transport module taking on any visualization concerns of its
+    // own or changing anything about how the stream is used for the actual voice session.
+    getMediaStream: function () { return mediaStream; }
   };
 }
 

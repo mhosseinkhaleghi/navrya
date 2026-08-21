@@ -1,7 +1,8 @@
 import React from 'react';
 import { useAssistantMotion } from './motion.js';
-import { DockButton, Waveform } from './DockButton.jsx';
+import { DockButton } from './DockButton.jsx';
 import { ModelSwitcher, ModelMascot } from './ModelSwitcher.jsx';
+import { VoiceConsole, VoiceMiniBar } from './VoiceConsole.jsx';
 
 /* Bottom-centre command bar: add, one line of intent, mic, send. Always fixed to the viewport -
    this is the single global assistant entry point for every character dashboard, not a
@@ -46,95 +47,107 @@ import { ModelSwitcher, ModelMascot } from './ModelSwitcher.jsx';
    the same pixels at all, regardless of which one has the higher z-index - an unusually long
    reply while a modal also happens to be open is the one bounded, rare case where the popover
    can still be partially covered, exactly matching this file's own "must not cover the modal's
-   controls" precedent rather than reopening it. */
+   controls" precedent rather than reopening it.
+
+   Voice Mode (Journey E UI pass, matches NavryaVoiceMode.dc.html): once voiceState leaves 'idle'
+   this row is entirely replaced - VoiceMiniBar or the full VoiceConsole (components/assistant/
+   VoiceConsole.jsx) - rather than coexisting with the plain typing row (confirmed design: voice
+   mode is a distinct mode you enter/exit, not simultaneous with typing; "Type"/Esc in the console
+   is what returns here). The row's own primary button is the real dual-purpose control the design
+   specifies ("two jobs, one button"): empty text -> starts Voice, typed text -> Send, icon AND
+   onClick both switch together (never just the icon - see ai-voice-chatdock-ux.test.mjs's own
+   "no decoy button" guard, which this preserves under its new shape). */
 var POPOVER_SHORT_REPLY_ALLOWANCE_PX = 130;
 
-// Ties each real Journey E VOICE_STATES value (navrya-src/aiVoiceRealtime.js) to what the button
-// actually looks like and does - the single source of truth so the icon/tone/pulsing/label a user
-// sees can never drift out of sync with the real underlying state again. IDLE/ERROR intentionally
-// fall through to the same ghost, non-pulsing default below (their own dedicated handling lives in
-// the render code, since IDLE has no status pill at all and ERROR needs the caller's own message).
-var VOICE_STATE_ICON = {
-  requesting_permission: 'mic', connecting: 'mic', listening: 'mic', user_speaking: 'mic',
-  processing: 'mic', assistant_speaking: 'volume-2', interrupted: 'mic', reconnecting: 'mic'
-};
-// Distinct dot colour per state family - connecting/processing (getting ready) vs. live audio
-// (listening/speaking) are visually different even though both pulse, per the spec's own
-// "unmistakable" requirement (not just one colour for every non-idle state).
+// Ties each real Journey E VOICE_STATES value (navrya-src/aiVoiceRealtime.js) to its dot colour -
+// the single source of truth VoiceConsole/VoiceMiniBar's status dot reads from, so what a user
+// sees can never drift out of sync with the real underlying state. IDLE/ERROR are handled inline
+// below (IDLE has no dot at all; ERROR is always danger-red regardless of this map).
 var VOICE_STATE_DOT = {
-  requesting_permission: 'var(--warn,#e2b04a)', connecting: 'var(--warn,#e2b04a)', reconnecting: 'var(--warn,#e2b04a)',
-  processing: 'var(--warn,#e2b04a)',
+  requesting_permission: 'var(--gold-antique)', connecting: 'var(--gold-antique)', reconnecting: 'var(--gold-antique)',
+  processing: 'var(--gold-antique)',
   listening: 'var(--char-accent)', user_speaking: 'var(--char-accent)', interrupted: 'var(--char-accent)',
-  assistant_speaking: 'var(--char-accent)'
+  assistant_speaking: 'var(--gold-warm)'
 };
 
-/* Small "[ state • label ]" pill - the always-visible, text-based state readout the spec asks
-   for (not just a few-pixel icon colour change). Only ever rendered for a real, active voice
-   state; IDLE has no pill (nothing to announce) and ERROR uses its own red variant inline below. */
-function VoiceStatusPill({ label, dotColor, pulsing = true }) {
-  return (
-    <span
-      role="status" aria-live="polite" title={label}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 7, flex: '0 1 auto', minWidth: 0,
-        // Found via real browser testing: the localized permission-denied error message is long
-        // enough on its own to squeeze the flexible text input (flex:1, minWidth:0) down to zero
-        // visible width in the same row - capped + truncated here so the input NEVER loses its
-        // space; the full untruncated text is still reachable via this same element's own title
-        // and the Voice button's own aria-label/title (see ChatDock's caller below).
-        maxWidth: 240, overflow: 'hidden',
-        padding: '4px 10px 4px 8px', borderRadius: 'var(--radius-pill)',
-        background: 'rgba(244,234,215,.06)', border: '1px solid var(--border-hairline)',
-        font: 'var(--type-caption)', color: 'var(--text-primary)', whiteSpace: 'nowrap'
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 7, height: 7, borderRadius: '50%', background: dotColor, flex: 'none',
-          animation: pulsing ? 'navrya-halo 1150ms var(--ease-standard) infinite' : 'none'
-        }}
-      />
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-    </span>
-  );
+function voicePhaseLabel(voiceState, voiceMuted, voiceErrorLabel, voiceLabels) {
+  if (voiceState === 'error') return voiceErrorLabel || voiceLabels.error;
+  if (voiceMuted) return voiceLabels.muted;
+  return ({
+    requesting_permission: voiceLabels.requestingPermission, connecting: voiceLabels.connecting,
+    listening: voiceLabels.listening, user_speaking: voiceLabels.userSpeaking,
+    processing: voiceLabels.processing, assistant_speaking: voiceLabels.speaking,
+    interrupted: voiceLabels.listening, reconnecting: voiceLabels.reconnecting
+  })[voiceState] || '';
+}
+
+function voicePhaseCaption(voiceState, voiceMuted, voiceLabels) {
+  if (voiceState === 'error') return voiceLabels.captionDenied;
+  if (voiceMuted) return voiceLabels.captionMuted;
+  return ({
+    requesting_permission: voiceLabels.captionConnecting, connecting: voiceLabels.captionConnecting,
+    reconnecting: voiceLabels.captionConnecting,
+    listening: voiceLabels.captionListening, interrupted: voiceLabels.captionListening,
+    user_speaking: voiceLabels.captionUserSpeaking,
+    processing: voiceLabels.captionProcessing, assistant_speaking: voiceLabels.captionSpeaking
+  })[voiceState] || '';
 }
 
 export function ChatDock({
   placeholder = 'Ask anything',
-  listeningPlaceholder = 'Listening…',
   value, onValueChange, onSubmit, onAdd, addLabel, addActive,
   onNewChat, newChatLabel, onHistory, historyLabel, historyActive,
   onToggleTherapist, therapistActive, therapistLabel,
-  // Journey E ChatDock voice-UX repair: one real Voice control, driven directly off
-  // aiVoiceRealtime.js's own VOICE_STATES (never a collapsed boolean) so every distinct state the
-  // adapter can report is actually distinguishable on screen, not folded into "listening: true".
-  voiceState = 'idle', voiceMuted = false, onVoiceToggle, onVoiceMuteToggle, voiceErrorLabel, voiceLabels = {},
+  // Journey E: one real Voice control, driven directly off aiVoiceRealtime.js's own VOICE_STATES
+  // (never a collapsed boolean). Entering any non-idle state hands the whole row over to
+  // VoiceConsole/VoiceMiniBar (see the top-of-file comment) - the labels/callbacks below are
+  // exactly what those components need to stay a thin, stateless presentation layer.
+  voiceState = 'idle', voiceMuted = false, voicePermissionDenied = false,
+  onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, voiceErrorLabel, voiceLabels = {},
+  getVoiceMediaStream, voiceHeardText, voiceReplyCaption,
   busy = false, width = 680, hint,
   models, model, onModelChange, mascot = true, children,
   dir = 'ltr',
   sendLabel = 'Send',
   style, ...rest
 }) {
-  var listening = voiceState !== 'idle' && voiceState !== 'error';
   useAssistantMotion();
   const [focused, setFocused] = React.useState(false);
   const text = value || '';
-  const ready = !!text.trim() && !busy;
+  const showSend = !!text.trim();
+  const ready = showSend && !busy;
+  const idle = voiceState === 'idle';
 
   const submit = () => {
     if (!ready) return;
     if (onSubmit) onSubmit(text.trim());
   };
+  const mainAction = () => { if (showSend) submit(); else if (onVoiceToggle) onVoiceToggle(); };
 
   const list = models && models.length ? models : null;
   const active = list ? (list.find((m) => m.id === model) || list[0]) : null;
   const withMascot = !!(active && mascot);
 
+  // Minimized is purely local UI state for the current session - always starts expanded, and
+  // resets the instant the session actually ends (never stays stuck minimized into the next one).
+  const [voiceMinimized, setVoiceMinimized] = React.useState(false);
+  React.useEffect(() => { if (idle) setVoiceMinimized(false); }, [idle]);
+
+  // Elapsed session timer lives here (not inside VoiceConsole/VoiceMiniBar) specifically so it
+  // survives minimizing/expanding - those are two different mounted components, and a timer local
+  // to either would reset to 0 every time the user toggled between them.
+  const [voiceElapsed, setVoiceElapsed] = React.useState(0);
+  React.useEffect(() => {
+    if (idle) { setVoiceElapsed(0); return undefined; }
+    const iv = setInterval(() => setVoiceElapsed((s) => s + 1), 1000);
+    return () => clearInterval(iv);
+  }, [idle]);
+
   // Measures the input row's real rendered (border-box, visual) height so the popover (a
   // separate fixed element) and Modal.jsx's own reserved-bottom-space can both anchor/clear it
   // exactly - kept live via ResizeObserver rather than a guessed constant, since the row can
-  // legitimately change height (therapist/history buttons appearing, RTL, font scaling).
+  // legitimately change height (therapist/history buttons appearing, RTL, font scaling, or the
+  // voice console's own much taller panel while a session is live).
   //
   // Found via real browser measurement (production repair pass): ResizeObserverEntry.contentRect
   // reports the CONTENT box only - it excludes this row's own 9px top/bottom padding, so the
@@ -165,6 +178,10 @@ export function ChatDock({
     return () => { root.style.removeProperty('--navrya-chat-dock-reserved'); };
   }, [rowHeight]);
 
+  const dotColor = voiceState === 'error' ? 'var(--danger,#e05a5a)' : voiceMuted ? 'var(--steel)' : (VOICE_STATE_DOT[voiceState] || 'var(--char-accent)');
+  const phaseLabel = voicePhaseLabel(voiceState, voiceMuted, voiceErrorLabel, voiceLabels);
+  const phaseCaption = voicePhaseCaption(voiceState, voiceMuted, voiceLabels);
+
   return (
     <React.Fragment>
       {children && (
@@ -190,95 +207,91 @@ export function ChatDock({
             swallow a click meant for whatever's underneath, e.g. a tall modal's own footer
             button in the same bottom-of-viewport band this raised z-index now shares with it. */}
         {withMascot && <ModelMascot model={active} size={52} style={{ flex: 'none', paddingBottom: 2, pointerEvents: 'none' }} />}
-        <div
-          ref={rowRef}
-          data-navrya-chat-dock=""
-          style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px 9px 12px', boxSizing: 'border-box',
-          flex: 1, minWidth: 0,
-          borderRadius: 'var(--radius-pill)',
-          border: '1px solid ' + (focused ? 'var(--border-gold-strong)' : 'var(--border-gold)'),
-          background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-active-surface) 46%,rgba(17,27,28,.94)),color-mix(in srgb,var(--char-active-surface) 26%,rgba(7,11,15,.96)))',
-          backdropFilter: 'blur(12px)',
-          boxShadow: focused
-            ? 'var(--shadow-panel),var(--glow-soft),var(--shadow-inset-hairline)'
-            : 'var(--shadow-panel),var(--shadow-inset-hairline)',
-          transition: 'border-color 200ms var(--ease-out),box-shadow 200ms var(--ease-out),background 200ms var(--ease-out)'
-        }}>
-          <DockButton icon="plus" label={addLabel} active={addActive} onClick={onAdd} />
-          {onNewChat && <DockButton icon="square-pen" label={newChatLabel} onClick={onNewChat} />}
-          {onHistory && <DockButton icon="history" label={historyLabel} active={historyActive} onClick={onHistory} />}
-          {list && (
-            <React.Fragment>
-              <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />
-              <ModelSwitcher models={list} value={active.id} onChange={onModelChange} />
-              <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />
-            </React.Fragment>
-          )}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            {voiceState !== 'idle' && (
-              <VoiceStatusPill
-                label={
-                  (voiceState === 'error'
-                    ? (voiceErrorLabel || voiceLabels.error)
-                    : ({
-                      requesting_permission: voiceLabels.requestingPermission, connecting: voiceLabels.connecting,
-                      listening: voiceLabels.listening, user_speaking: voiceLabels.userSpeaking,
-                      processing: voiceLabels.processing, assistant_speaking: voiceLabels.speaking,
-                      interrupted: voiceLabels.listening, reconnecting: voiceLabels.reconnecting
-                    }[voiceState])
-                  ) + (voiceMuted && voiceState !== 'error' ? ' · ' + voiceLabels.muted : '')
-                }
-                dotColor={voiceState === 'error' ? 'var(--danger,#e05a5a)' : VOICE_STATE_DOT[voiceState]}
-                pulsing={voiceState !== 'error'}
-              />
-            )}
-            {(voiceState === 'listening' || voiceState === 'user_speaking' || voiceState === 'assistant_speaking') && <Waveform />}
-            <input
-              type="text" value={text}
-              placeholder={(voiceState === 'listening' || voiceState === 'user_speaking') ? listeningPlaceholder : placeholder}
-              onChange={(e) => onValueChange && onValueChange(e.target.value)}
-              onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
-              aria-label={placeholder} disabled={busy}
+
+        <div ref={rowRef} style={{ flex: 1, minWidth: 0 }}>
+          {idle && (
+            <div
+              data-navrya-chat-dock=""
               style={{
-                width: '100%', minWidth: 0, border: 0, background: 'transparent', padding: 0,
-                font: 'var(--type-body)', color: 'var(--text-primary)', caretColor: 'var(--char-accent)'
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px 9px 12px', boxSizing: 'border-box',
+                borderRadius: 'var(--radius-pill)',
+                border: '1px solid ' + (focused ? 'var(--border-gold-strong)' : 'var(--border-gold)'),
+                background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-active-surface) 46%,rgba(17,27,28,.94)),color-mix(in srgb,var(--char-active-surface) 26%,rgba(7,11,15,.96)))',
+                backdropFilter: 'blur(12px)',
+                boxShadow: focused
+                  ? 'var(--shadow-panel),var(--glow-soft),var(--shadow-inset-hairline)'
+                  : 'var(--shadow-panel),var(--shadow-inset-hairline)',
+                transition: 'border-color 200ms var(--ease-out),box-shadow 200ms var(--ease-out),background 200ms var(--ease-out)'
+              }}
+            >
+              <DockButton icon="plus" label={addLabel} active={addActive} onClick={onAdd} />
+              {onNewChat && <DockButton icon="square-pen" label={newChatLabel} onClick={onNewChat} />}
+              {onHistory && <DockButton icon="history" label={historyLabel} active={historyActive} onClick={onHistory} />}
+              {list && (
+                <React.Fragment>
+                  <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />
+                  <ModelSwitcher models={list} value={active.id} onChange={onModelChange} />
+                  <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />
+                </React.Fragment>
+              )}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="text" value={text}
+                  placeholder={placeholder}
+                  onChange={(e) => onValueChange && onValueChange(e.target.value)}
+                  onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+                  aria-label={placeholder} disabled={busy}
+                  style={{
+                    width: '100%', minWidth: 0, border: 0, background: 'transparent', padding: 0,
+                    font: 'var(--type-body)', color: 'var(--text-primary)', caretColor: 'var(--char-accent)'
+                  }}
+                />
+              </div>
+              {hint && (
+                <span style={{
+                  font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase',
+                  color: 'var(--text-muted)', whiteSpace: 'nowrap', flex: 'none'
+                }}>{hint}</span>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+                {onToggleTherapist && (
+                  <DockButton icon="psychology" label={therapistLabel} active={therapistActive} onClick={onToggleTherapist} />
+                )}
+                <DockButton
+                  icon={showSend ? 'arrow-up' : 'audio-lines'}
+                  tone="primary" disabled={showSend && !ready}
+                  label={showSend ? sendLabel : voiceLabels.start}
+                  onClick={mainAction}
+                />
+              </div>
+            </div>
+          )}
+          {!idle && voiceMinimized && (
+            <VoiceMiniBar
+              voiceState={voiceState} voiceMuted={voiceMuted} dotColor={dotColor} phaseLabel={phaseLabel}
+              elapsedSeconds={voiceElapsed} onExpand={() => setVoiceMinimized(false)} onVoiceToggle={onVoiceToggle}
+              getVoiceMediaStream={getVoiceMediaStream}
+              strings={{ expand: voiceLabels.expand, close: voiceLabels.close }}
+            />
+          )}
+          {!idle && !voiceMinimized && (
+            <VoiceConsole
+              voiceState={voiceState} voiceMuted={voiceMuted} model={active} elapsedSeconds={voiceElapsed}
+              dotColor={dotColor} phaseLabel={phaseLabel} phaseCaption={phaseCaption}
+              voicePermissionDenied={voicePermissionDenied} voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
+              onVoiceToggle={onVoiceToggle} onVoiceMuteToggle={onVoiceMuteToggle} onVoiceInterrupt={onVoiceInterrupt}
+              onMinimize={() => setVoiceMinimized(true)} getVoiceMediaStream={getVoiceMediaStream}
+              strings={{
+                minimize: voiceLabels.minimize, expand: voiceLabels.expand, close: voiceLabels.close,
+                mute: voiceLabels.mute, unmute: voiceLabels.unmute, type: voiceLabels.type, stopReply: voiceLabels.stopReply,
+                captionsOn: voiceLabels.captionsOn, captionsOff: voiceLabels.captionsOff, analysing: voiceLabels.analysing,
+                listeningPlaceholder: voiceLabels.listeningPlaceholder, heardLabel: voiceLabels.heardLabel, replyLabel: voiceLabels.replyLabel,
+                deniedTitle: voiceLabels.deniedTitle, deniedBody: voiceLabels.deniedBody, retry: voiceLabels.retry,
+                errorLabel: voiceErrorLabel || voiceLabels.error
               }}
             />
-          </div>
-          {hint && (
-            <span style={{
-              font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase',
-              color: 'var(--text-muted)', whiteSpace: 'nowrap', flex: 'none'
-            }}>{hint}</span>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
-            {onToggleTherapist && (
-              <DockButton icon="psychology" label={therapistLabel} active={therapistActive} onClick={onToggleTherapist} />
-            )}
-            {/* Mute only ever appears once a real Voice session is live - muting a session that
-                doesn't exist yet has nothing to act on, and showing it beforehand would be a
-                second, redundant voice-ish control right next to the one real entry point below
-                (the exact ambiguity this whole repair pass exists to remove). */}
-            {listening && onVoiceMuteToggle && (
-              <DockButton
-                icon={voiceMuted ? 'mic-off' : 'mic'} active={voiceMuted}
-                label={voiceMuted ? voiceLabels.unmute : voiceLabels.mute}
-                onClick={onVoiceMuteToggle}
-              />
-            )}
-            {onVoiceToggle && (
-              <DockButton
-                icon={voiceState === 'idle' || voiceState === 'error' ? 'mic' : (VOICE_STATE_ICON[voiceState] || 'mic')}
-                tone={listening ? 'primary' : 'ghost'}
-                danger={voiceState === 'error'}
-                label={voiceState === 'idle' ? voiceLabels.start : voiceState === 'error' ? (voiceErrorLabel || voiceLabels.error) : voiceLabels.stop}
-                onClick={onVoiceToggle}
-              />
-            )}
-            <DockButton icon="arrow-up" tone="primary" disabled={!ready} label={sendLabel} onClick={submit} />
-          </div>
         </div>
       </div>
     </React.Fragment>

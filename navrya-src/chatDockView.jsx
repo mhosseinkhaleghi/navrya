@@ -95,6 +95,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
   // message (spec: "DENY -> clear localized error", not the same generic "something went wrong"
   // every other Voice failure mode falls back to).
   const [voicePermissionDenied, setVoicePermissionDenied] = React.useState(false);
+  // Voice Mode console (ChatDock.jsx/VoiceConsole.jsx): the real, finalized text NAVRYA just
+  // heard (shown during PROCESSING) and the real reply text it's about to speak (timed-revealed
+  // during ASSISTANT_SPEAKING) - both set right where onVoiceTranscript already has them, never
+  // fabricated/interim text (see aiVoiceRealtime.js's own "finalized transcript only" rule).
+  const [voiceHeardText, setVoiceHeardText] = React.useState('');
+  const [voiceReplyCaption, setVoiceReplyCaption] = React.useState('');
   const voiceRef = React.useRef(null);
   const fileInputRef = React.useRef(null);
   const rtl = i18n.direction() === 'rtl';
@@ -256,11 +262,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
   // turns processed concurrently.
   const voiceTurnQueue = React.useRef(Promise.resolve());
   function onVoiceTranscript(transcriptText) {
+    setVoiceHeardText(transcriptText);
     voiceTurnQueue.current = voiceTurnQueue.current
       .catch(() => {})
       .then(async () => {
         const result = await submitRef.current(transcriptText, { source: 'voice' });
         const toSpeak = result && (result.voiceReply || result.reply);
+        setVoiceReplyCaption(toSpeak || '');
         // Awaited so the queue doesn't move on to the next turn until this one has actually
         // finished being spoken (see aiVoiceRealtime.js's speak() for why that matters).
         if (toSpeak && voiceRef.current) await voiceRef.current.speak(toSpeak);
@@ -307,6 +315,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
   function toggleVoiceMute() {
     if (!voiceRef.current) return;
     voiceRef.current.mute(!voiceRef.current.isMuted());
+  }
+
+  // VoiceConsole's centre pill button - real only during ASSISTANT_SPEAKING (barge-in), the one
+  // live phase with an actual transport action to call.
+  function interruptVoice() {
+    if (!voiceRef.current) return;
+    voiceRef.current.interrupt();
   }
 
   function applySuggestion(item) {
@@ -363,18 +378,29 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
       <ChatDock
         dir={rtl ? 'rtl' : 'ltr'}
         placeholder={i18n.t('aiDockPlaceholder')}
-        listeningPlaceholder={i18n.t('aiDockListening')}
         sendLabel={i18n.t('aiDockSend')}
-        voiceState={voiceState} voiceMuted={voiceMuted}
-        onVoiceToggle={toggleVoice} onVoiceMuteToggle={toggleVoiceMute}
+        voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
+        onVoiceToggle={toggleVoice} onVoiceMuteToggle={toggleVoiceMute} onVoiceInterrupt={interruptVoice}
         voiceErrorLabel={voicePermissionDenied ? i18n.t('voiceDockErrorPermissionDenied') : i18n.t('voiceDockError')}
+        getVoiceMediaStream={() => voiceRef.current && voiceRef.current.getMediaStream()}
+        voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
         voiceLabels={{
           start: i18n.t('voiceDockStart'), stop: i18n.t('voiceDockStop'),
           requestingPermission: i18n.t('voiceDockRequestingPermission'), connecting: i18n.t('voiceDockConnecting'),
           listening: i18n.t('voiceDockListening'), userSpeaking: i18n.t('voiceDockUserSpeaking'),
           processing: i18n.t('voiceDockProcessing'), speaking: i18n.t('voiceDockSpeaking'),
           reconnecting: i18n.t('voiceDockReconnecting'), error: i18n.t('voiceDockError'),
-          mute: i18n.t('voiceDockMute'), unmute: i18n.t('voiceDockUnmute'), muted: i18n.t('voiceDockMuted')
+          mute: i18n.t('voiceDockMute'), unmute: i18n.t('voiceDockUnmute'), muted: i18n.t('voiceDockMuted'),
+          analysing: i18n.t('voiceConsoleAnalysing'),
+          captionConnecting: i18n.t('voiceConsoleCaptionConnecting'), captionListening: i18n.t('voiceConsoleCaptionListening'),
+          captionUserSpeaking: i18n.t('voiceConsoleCaptionUserSpeaking'), captionProcessing: i18n.t('voiceConsoleCaptionProcessing'),
+          captionSpeaking: i18n.t('voiceConsoleCaptionSpeaking'), captionMuted: i18n.t('voiceConsoleCaptionMuted'),
+          captionDenied: i18n.t('voiceConsoleCaptionDenied'), listeningPlaceholder: i18n.t('voiceConsoleListeningPlaceholder'),
+          heardLabel: i18n.t('voiceConsoleHeardLabel'), replyLabel: i18n.t('voiceConsoleReplyLabel'),
+          type: i18n.t('voiceConsoleType'), stopReply: i18n.t('voiceConsoleStopReply'),
+          captionsOn: i18n.t('voiceConsoleCaptionsOn'), captionsOff: i18n.t('voiceConsoleCaptionsOff'),
+          minimize: i18n.t('voiceConsoleMinimize'), expand: i18n.t('voiceConsoleExpand'), close: i18n.t('voiceConsoleClose'),
+          deniedTitle: i18n.t('voiceConsoleDeniedTitle'), deniedBody: i18n.t('voiceConsoleDeniedBody'), retry: i18n.t('voiceConsoleRetry')
         }}
         value={text} onValueChange={setText} onSubmit={submit} busy={busy}
         onAdd={triggerAttach} addLabel={i18n.t('aiDockAttach')}

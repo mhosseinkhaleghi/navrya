@@ -3,66 +3,64 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-// Journey E ChatDock Voice-UX repair. Same convention as tests/pattern-create-action.test.mjs and
-// tests/ai-voice-realtime-adapter.test.mjs: ChatDock.jsx/DockButton.jsx/chatDockView.jsx are
+// Journey E ChatDock Voice-UX repair, plus the Voice Mode console redesign (matches
+// NavryaVoiceMode.dc.html): ChatDock.jsx/VoiceConsole.jsx/DockButton.jsx/chatDockView.jsx are
 // JSX with no DOM test harness in this project - these are static-source regression guards for
-// exactly the bugs found and fixed via real browser testing during this pass (the decoy
-// "Voice mode" button that did nothing, the collapsed single "listening" boolean hiding every
-// real VOICE_STATES value, the status pill overflowing and hiding the text input, and
-// debugState().muted going stale). Real-browser verification (real WebRTC connection, real
-// synthesized speech, real audio-element playback diagnostics) is the actual proof these work -
-// see the final report for that pass's results.
+// the bugs found and fixed via real browser testing, and for the "no decoy controls" rule that
+// redesign pass carried forward under the new component shape (a live voice session now fully
+// replaces the row with VoiceConsole/VoiceMiniBar rather than coexisting with the plain status
+// pill the original repair pass added). Real-browser verification (real WebRTC connection, real
+// synthesized speech, real audio-element playback diagnostics, real AnalyserNode-driven waveform)
+// is the actual proof these work - see the final report for each pass's results.
 
 const root = process.cwd();
 const chatDockSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatDock.jsx'), 'utf8');
+const voiceConsoleSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'VoiceConsole.jsx'), 'utf8');
 const dockButtonSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'DockButton.jsx'), 'utf8');
 const dockViewSrc = await readFile(path.join(root, 'navrya-src', 'chatDockView.jsx'), 'utf8');
 const voiceSrc = await readFile(path.join(root, 'navrya-src', 'aiVoiceRealtime.js'), 'utf8');
 const i18nSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'ai-i18n.js'), 'utf8');
 
-test('the old decoy "Voice mode" button is gone - the primary submit button is always a plain, always-enabled-when-ready Send control, never a fake voice affordance', () => {
-  assert.doesNotMatch(chatDockSrc, /icon=\{ready \? 'arrow-up' : 'waveform'\}/, 'the old icon-swap decoy must not come back');
-  assert.doesNotMatch(chatDockSrc, /label=\{ready \? sendLabel : voiceLabel\}/, 'the old label-swap decoy must not come back');
-  assert.match(chatDockSrc, /<DockButton icon="arrow-up" tone="primary" disabled=\{!ready\} label=\{sendLabel\} onClick=\{submit\} \/>/);
+test('the primary dock button is a real dual-purpose control, never a decoy: icon and onClick both switch together between Send and Voice-start (never just the icon)', () => {
+  assert.match(chatDockSrc, /icon=\{showSend \? 'arrow-up' : 'audio-lines'\}/);
+  assert.match(chatDockSrc, /onClick=\{mainAction\}/);
+  const mainActionFn = chatDockSrc.slice(chatDockSrc.indexOf('const mainAction'), chatDockSrc.indexOf('const list ='));
+  assert.match(mainActionFn, /if \(showSend\) submit\(\); else if \(onVoiceToggle\) onVoiceToggle\(\);/);
 });
 
-test('there is exactly one real Voice toggle button, driven by onVoiceToggle/voiceState (not a boolean onMic prop)', () => {
-  assert.doesNotMatch(chatDockSrc, /\bonMic\b/, 'the old collapsed onMic prop must be fully removed');
-  assert.doesNotMatch(chatDockSrc, /\bmicLabel\b/);
-  assert.doesNotMatch(chatDockSrc, /\bstopListeningLabel\b/);
-  assert.match(chatDockSrc, /onVoiceToggle && \(/);
-  const voiceButtonBlock = chatDockSrc.slice(chatDockSrc.indexOf('{onVoiceToggle && ('), chatDockSrc.indexOf('<DockButton icon="arrow-up"'));
-  assert.match(voiceButtonBlock, /onClick=\{onVoiceToggle\}/);
+test('a live voice session replaces the plain typing row entirely with VoiceConsole/VoiceMiniBar, rather than coexisting with it - matches the confirmed design (voice mode is a distinct mode, not simultaneous with typing)', () => {
+  assert.match(chatDockSrc, /\{idle && \(/);
+  assert.match(chatDockSrc, /\{!idle && voiceMinimized && \(\s*<VoiceMiniBar/);
+  assert.match(chatDockSrc, /\{!idle && !voiceMinimized && \(\s*<VoiceConsole/);
 });
 
-test('every real VOICE_STATES value the adapter can report maps to a distinct icon/status label - never collapsed into one generic "listening" boolean', () => {
+test('every real VOICE_STATES value the adapter can report is covered by a distinct status treatment - never collapsed into one generic "listening" boolean', () => {
   const required = ['requesting_permission', 'connecting', 'listening', 'user_speaking', 'processing', 'assistant_speaking', 'interrupted', 'reconnecting'];
   for (const state of required) {
-    assert.match(chatDockSrc, new RegExp(state + ':'), `VOICE_STATE_ICON or the status-label map must cover "${state}"`);
+    assert.match(chatDockSrc, new RegExp(state + ':'), `VOICE_STATE_DOT or the phase label/caption maps must cover "${state}"`);
   }
-  // ASSISTANT_SPEAKING gets its own distinct icon (not just "mic" again) - the one state where
-  // it's NAVRYA making sound, not the user who can speak into the mic.
-  assert.match(chatDockSrc, /assistant_speaking: 'volume-2'/);
+  // ASSISTANT_SPEAKING gets its own distinct tone (gold-warm), never the same colour as the
+  // user's own mic being live (char-accent) - the one state where it's NAVRYA making the sound.
+  assert.match(chatDockSrc, /assistant_speaking: 'var\(--gold-warm\)'/);
 });
 
-test('the status pill is capped and truncates rather than being allowed to squeeze the text input to zero width - the exact bug found via real browser testing with the long permission-denied error message', () => {
-  const pillFn = chatDockSrc.slice(chatDockSrc.indexOf('function VoiceStatusPill'), chatDockSrc.indexOf('export function ChatDock'));
-  assert.match(pillFn, /maxWidth: 240/);
-  assert.match(pillFn, /overflow: 'hidden'/);
-  assert.match(pillFn, /textOverflow: 'ellipsis'/);
+test('the plain text input only ever renders inside the idle row - a live voice session can never show both the text input and the voice console/mini bar at once (the original "status text squeezes the input" bug is now structurally impossible)', () => {
+  const inputCount = (chatDockSrc.match(/<input\b/g) || []).length;
+  assert.equal(inputCount, 1, 'exactly one <input>, inside the idle-only row');
+  assert.doesNotMatch(voiceConsoleSrc, /<input\b/, 'VoiceConsole/VoiceMiniBar must never render a text input - voice mode fully replaces the typing row');
+  assert.match(voiceConsoleSrc, /flexWrap: 'wrap'/, 'the phase label/caption row must still wrap rather than overflow, the same overflow-safety property the old capped status pill protected');
 });
 
-test('the mute control only ever renders once a real Voice session is live, never before - muting a session that does not exist yet has nothing to act on', () => {
-  assert.match(chatDockSrc, /\{listening && onVoiceMuteToggle && \(/);
-  const muteBlock = chatDockSrc.slice(chatDockSrc.indexOf('{listening && onVoiceMuteToggle && ('), chatDockSrc.indexOf('{onVoiceToggle && ('));
-  assert.match(muteBlock, /icon=\{voiceMuted \? 'mic-off' : 'mic'\}/);
-  assert.match(muteBlock, /onClick=\{onVoiceMuteToggle\}/);
+test('the mute control lives in the voice console (only ever rendered while a real session is live, since VoiceConsole/VoiceMiniBar are only rendered while non-idle) and reads/flips the real voiceMuted state', () => {
+  assert.match(voiceConsoleSrc, /aria-label=\{voiceMuted \? strings\.unmute : strings\.mute\} onClick=\{onVoiceMuteToggle\}/);
+  assert.match(voiceConsoleSrc, /name=\{voiceMuted \? 'mic-off' : 'mic'\}/);
 });
 
-test('DockButton supports a distinct danger styling (red border/tint) for the Voice ERROR state - never rendered as an indistinguishable normal "active" toggle', () => {
+test('DockButton still supports its distinct danger styling (red border/tint) for other ghost-tone controls, and the Voice ERROR state is now shown via VoiceConsole\'s own dedicated denied/error card (--danger colour + a triangle-alert icon), never as an indistinguishable normal "active" toggle', () => {
   assert.match(dockButtonSrc, /danger = false/);
   assert.match(dockButtonSrc, /var\(--danger,#e05a5a\)/);
-  assert.match(chatDockSrc, /danger=\{voiceState === 'error'\}/);
+  assert.match(voiceConsoleSrc, /var\(--danger\)/);
+  assert.match(voiceConsoleSrc, /triangle-alert/);
 });
 
 test('chatDockView.jsx wires the real Voice control to the real Journey E adapter: toggleVoice (connect/disconnect) and a new toggleVoiceMute reading/flipping the adapter\'s own isMuted()', () => {
@@ -105,6 +103,10 @@ test('audioDiagnostics() reports playback/track metadata only (paused state, liv
   assert.doesNotMatch(fn, /transcript|apiKey/i);
 });
 
+test('getMediaStream() is a purely additive, read-only accessor for the same stream already captured at connect() time - it changes nothing about the transport itself, only lets the UI build its own AnalyserNode for a real, audio-reactive waveform', () => {
+  assert.match(voiceSrc, /getMediaStream: function \(\) \{ return mediaStream; \}/);
+});
+
 test('disconnect() clears the audio element reference and resets mute back to false - a fresh connect() must never inherit stale audio/mute state from a previous session', () => {
   const disconnectFn = voiceSrc.slice(voiceSrc.indexOf('function disconnect()'), voiceSrc.indexOf('// Orthogonal to `state`'));
   assert.match(disconnectFn, /audioEl = null/);
@@ -128,6 +130,30 @@ test('every one of the new voiceDock* keys exists, with a real (non-empty, non-k
     'voiceDockListening', 'voiceDockUserSpeaking', 'voiceDockProcessing', 'voiceDockSpeaking',
     'voiceDockReconnecting', 'voiceDockError', 'voiceDockErrorPermissionDenied',
     'voiceDockMute', 'voiceDockUnmute', 'voiceDockMuted'
+  ];
+  const langBlocks = {
+    fa: /fa: \{([\s\S]*?)\r?\n    \},\r?\n    ar:/, ar: /ar: \{([\s\S]*?)\r?\n    \},\r?\n    en:/,
+    en: /en: \{([\s\S]*?)\r?\n    \},\r?\n    es:/, es: /es: \{([\s\S]*?)\r?\n    \}\r?\n  \};/
+  };
+  for (const lang of Object.keys(langBlocks)) {
+    const match = langBlocks[lang].exec(i18nSrc);
+    assert.ok(match, `could not isolate the ${lang} messages block`);
+    const block = match[1];
+    for (const key of keys) {
+      const keyMatch = new RegExp(key + ": '([^']+)'").exec(block);
+      assert.ok(keyMatch, `${lang} is missing ${key}`);
+      assert.ok(keyMatch[1].trim().length > 0, `${lang}.${key} must not be empty`);
+    }
+  }
+});
+
+test('every one of the new voiceConsole* keys (the console\'s own chrome: captions, heard/reply labels, keyboard hints, mic-denied card) exists, with a real value, in all four supported languages', () => {
+  const keys = [
+    'voiceConsoleAnalysing', 'voiceConsoleCaptionConnecting', 'voiceConsoleCaptionListening', 'voiceConsoleCaptionUserSpeaking',
+    'voiceConsoleCaptionProcessing', 'voiceConsoleCaptionSpeaking', 'voiceConsoleCaptionMuted', 'voiceConsoleCaptionDenied',
+    'voiceConsoleListeningPlaceholder', 'voiceConsoleHeardLabel', 'voiceConsoleReplyLabel', 'voiceConsoleType', 'voiceConsoleStopReply',
+    'voiceConsoleCaptionsOn', 'voiceConsoleCaptionsOff', 'voiceConsoleMinimize', 'voiceConsoleExpand', 'voiceConsoleClose',
+    'voiceConsoleDeniedTitle', 'voiceConsoleDeniedBody', 'voiceConsoleRetry'
   ];
   const langBlocks = {
     fa: /fa: \{([\s\S]*?)\r?\n    \},\r?\n    ar:/, ar: /ar: \{([\s\S]*?)\r?\n    \},\r?\n    en:/,
