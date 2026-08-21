@@ -42,11 +42,11 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy main on the server
+      - name: Deploy redesign branch on the server
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
           ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" \
-            'set -eu; cd /opt/navrya; git fetch --prune origin main; git checkout main; git reset --hard origin/main; docker compose --env-file .env -f docker-compose.production.yml build; docker compose --env-file .env -f docker-compose.production.yml run --rm migrate; docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans; docker image prune -f'
+            'set -eu; cd /opt/navrya; git fetch --prune origin redesign/trade-modals-react; git checkout redesign/trade-modals-react; git reset --hard origin/redesign/trade-modals-react; docker compose --env-file .env -f docker-compose.production.yml build; docker compose --env-file .env -f docker-compose.production.yml run --rm migrate; docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans; docker image prune -f'
