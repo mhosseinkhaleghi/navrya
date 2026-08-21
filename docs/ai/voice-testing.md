@@ -190,3 +190,29 @@ No code bug found this gate beyond re-confirming the debounce-timer note above (
 
 `npm test`: 681/681 passing. `npm run ai:knowledge:check`: OK. `npm run build`: clean. Built bundle
 scanned for leaked key material: none found.
+
+## Persian Voice Quality pass (voice naturalness, not a new Journey E gate)
+
+A later, separate pass targeted Persian spoken-output naturalness specifically (voice choice,
+`voiceReply` register, number/terminology pronunciation, Realtime prosody instructions) - see
+**`docs/ai/persian-voice-quality.md`** for the full writeup. Two testing-methodology notes worth
+recording here, alongside this file's own conventions above:
+
+- **Real-audio A/B tooling for OUTPUT quality (not input transcription) does not need a browser or
+  a fake microphone.** Every gate above needed real Chromium + fake-audio-capture because the
+  thing being tested was transcription (turning real speech into text). Judging spoken-OUTPUT
+  naturalness (Cedar vs Marin) only needs the model to speak a given sentence back - exactly what
+  production's own `session.transport.requestResponse({instructions: 'Speak exactly...'})` already
+  does - so a plain Node script using `@openai/agents-realtime`'s `OpenAIRealtimeWebSocket`
+  transport (rather than `OpenAIRealtimeWebRTC`) against the real API, with no browser at all, is
+  an equally real, equally faithful way to generate the comparison audio. See
+  `voice-ab-scratch/README.md` (gitignored, ad-hoc - matches this file's own "not committed to the
+  repo" convention above) for the harness.
+- **A text-only agent cannot judge "sounds natural" by listening.** Whichever gate/pass builds the
+  next real-audio harness should say so plainly rather than inferring a naturalness verdict from
+  the generated text alone (this project's own gate brief for the Persian pass was explicit about
+  this: "do not claim subjective improvement without an A/B comparison... real audio only for
+  quality judgment"). Unit tests can and should verify the deterministic, code-side half (number
+  preservation, markup stripping, language routing, no extra AI call) - see
+  `tests/ai-voice-text.test.mjs` - but "which voice sounds more native" is a human-listening
+  question, recorded honestly as pending until a human actually reports back.

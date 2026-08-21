@@ -68,7 +68,7 @@ function ConversationHistoryDropdown({ i18n, loading, conversations, onPick, onC
   );
 }
 
-function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) {
+function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, voiceText }) {
   const [text, setText] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [providerId, setProviderId] = React.useState(settingsStore.activeProvider());
@@ -295,8 +295,19 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter }) 
       .then(async () => {
         const result = await submitRef.current(transcriptText, { source: 'voice' });
         const replyAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        const toSpeak = result && (result.voiceReply || result.reply);
-        setVoiceReplyCaption(toSpeak || '');
+        const rawToSpeak = result && (result.voiceReply || result.reply);
+        // Persian Voice Quality gate: a final, deterministic, voice-ONLY pass (no model call, no
+        // network - see ai-voice-text.js's own header comment) applied uniformly to every spoken
+        // turn regardless of source (a model-generated voiceReply, a Journey C proactive-safety
+        // message, or one of chat-dock-core.js's own zero-network acknowledgements) - strips any
+        // markdown that slipped past the model's own "plain text" instruction, and (Persian only,
+        // for now - section 32/33: no EN/AR/ES regression) spells out the small closed set of
+        // NAVRYA-owned numeric forms (timeframes, whole/half/quarter percents, whole-number
+        // prices) into natural spoken words. The CAPTION shown on screen stays the raw text - only
+        // what is actually spoken changes, matching section 12's "never make the written UI
+        // colloquial."
+        const toSpeak = rawToSpeak && voiceText ? voiceText.toSpokenText(rawToSpeak, i18n.language()) : rawToSpeak;
+        setVoiceReplyCaption(rawToSpeak || '');
         lastVoiceLatency = { transcriptToReplyMs: Math.round(replyAt - transcriptAt), transcriptToSpeakRequestedMs: null };
         // Awaited so the queue doesn't move on to the next turn until this one has actually
         // finished being spoken (see aiVoiceRealtime.js's speak() for why that matters).
@@ -480,6 +491,10 @@ export function renderChatDock(container, navryaCharacter) {
   const core = window.TradeJournalChatDockCore;
   const settingsStore = window.TradeJournalAISettingsStore;
   const tradeI18n = window.TradeJournalTradeI18n;
+  // Persian Voice Quality gate: purely additive/optional (see ai-voice-text.js) - a page that
+  // hasn't loaded it yet keeps today's exact behavior (onVoiceTranscript's own `voiceText &&`
+  // guard falls back to speaking the model's/deterministic path's own text completely unchanged).
+  const voiceText = window.TradeJournalAIVoiceText;
   if (!i18n || !core || !settingsStore) return;
-  createRoot(container).render(<ChatDockApp i18n={i18n} core={core} settingsStore={settingsStore} tradeI18n={tradeI18n} navryaCharacter={navryaCharacter} />);
+  createRoot(container).render(<ChatDockApp i18n={i18n} core={core} settingsStore={settingsStore} tradeI18n={tradeI18n} navryaCharacter={navryaCharacter} voiceText={voiceText} />);
 }

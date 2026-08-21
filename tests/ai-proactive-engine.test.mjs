@@ -43,6 +43,30 @@ test('Rule A fires CONFIRM_OVERRIDE when requested risk exceeds the linked strat
   assert.deepEqual(clone(finding.evidence), { requestedRiskPercent: 4, strategyMaxRiskPercent: 1, strategyId: 's1', strategyName: 'Conservative Scalper' });
 });
 
+// Persian Voice Quality gate: every rule's `message` was hardcoded English regardless of the
+// user's actual language - the single highest-impact fix found during this pass, since no
+// voice/prosody change can fix a reply spoken in the wrong language entirely. `language` defaults
+// to 'en' when omitted (every test above this one proves that default is exactly the original
+// English text, unchanged), and is threaded through explicitly here for fa/ar/es - preserving
+// every real number from `evidence` exactly, never rounding or dropping one for phrasing.
+test('Rule A message localizes to Persian/Arabic/Spanish when a language is given, preserving both percent values exactly; defaults to English when omitted', async () => {
+  const engine = await engineSandbox({});
+  const context = { strategy: { id: 's1', name: 'Conservative Scalper', maxRiskPerTradePercent: 1 } };
+  const withoutLanguage = engine.evaluate({ context, proposedFields: { riskPercent: '4' } });
+  assert.equal(withoutLanguage.findings[0].message, 'Your linked strategy caps risk at 1%. You are asking for 4%.');
+
+  const fa = engine.evaluate({ context, proposedFields: { riskPercent: '4' }, language: 'fa' });
+  assert.equal(fa.findings[0].message, 'سقف ریسک استراتژیت 1%‌ه، ولی الان 4% خواستی.');
+
+  const ar = engine.evaluate({ context, proposedFields: { riskPercent: '4' }, language: 'ar' });
+  assert.match(ar.findings[0].message, /1%/);
+  assert.match(ar.findings[0].message, /4%/);
+
+  const es = engine.evaluate({ context, proposedFields: { riskPercent: '4' }, language: 'es' });
+  assert.match(es.findings[0].message, /1%/);
+  assert.match(es.findings[0].message, /4%/);
+});
+
 test('Rule A does not fire when requested risk is exactly at the strategy limit', async () => {
   const engine = await engineSandbox({});
   const context = { strategy: { id: 's1', maxRiskPerTradePercent: 1 } };
@@ -298,4 +322,13 @@ test('confirmationReply() produces a concise, evidence-based message for both de
   const resolved = { proposedValue: 4, safeValue: 1 };
   assert.match(engine.confirmationReply('confirm', resolved), /4%/);
   assert.match(engine.confirmationReply('reject', resolved), /1%/);
+});
+
+test('confirmationReply() localizes to Persian when asked, preserving the exact override/safe values; defaults to English when no language is given', async () => {
+  const engine = await engineSandbox({});
+  const resolved = { proposedValue: 4, safeValue: 1 };
+  assert.equal(engine.confirmationReply('confirm', resolved), engine.confirmationReply('confirm', resolved, 'en'));
+  assert.match(engine.confirmationReply('confirm', resolved, 'fa'), /4%/);
+  assert.match(engine.confirmationReply('reject', resolved, 'fa'), /1%/);
+  assert.ok(/[؀-ۿ]/.test(engine.confirmationReply('confirm', resolved, 'fa')), 'must actually contain Persian script, not just fall back to English');
 });

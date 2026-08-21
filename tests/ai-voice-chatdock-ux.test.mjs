@@ -174,3 +174,18 @@ test('every one of the new voiceConsole* keys (the console\'s own chrome: captio
 test('Persian and Arabic (RTL languages) are unaffected by the new voice keys - direction() still resolves them to rtl, English/Spanish stay ltr', () => {
   assert.match(i18nSrc, /direction: function \(\) \{ return language\(\) === 'fa' \|\| language\(\) === 'ar' \? 'rtl' : 'ltr'; \}/);
 });
+
+// ---- Persian Voice Quality gate ----
+
+test('the deterministic ai-voice-text.js post-processing pass runs on whatever is actually spoken, right before speak() - never on the on-screen caption', () => {
+  const block = dockViewSrc.slice(dockViewSrc.indexOf('function onVoiceTranscript('), dockViewSrc.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession('));
+  assert.match(block, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\);/);
+  assert.match(block, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
+  assert.match(block, /setVoiceReplyCaption\(rawToSpeak \|\| ''\);/, 'the caption shown on screen must stay the RAW text - only what is spoken may differ (gate section 12)');
+  assert.match(block, /voiceRef\.current\.speak\(toSpeak\)/, 'speak() must receive the post-processed text, not the raw one');
+});
+
+test('ai-voice-text.js is loaded as a purely additive, optional dependency - a page without it keeps speaking the exact raw text as before this gate', () => {
+  assert.match(dockViewSrc, /const voiceText = window\.TradeJournalAIVoiceText;/);
+  assert.doesNotMatch(dockViewSrc, /if \(!i18n \|\| !core \|\| !settingsStore \|\| !voiceText\)/, 'voiceText must never be a hard mount-blocking dependency');
+});

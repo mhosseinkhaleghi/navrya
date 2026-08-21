@@ -225,6 +225,34 @@ field alongside the unchanged `reply` - a short, natural, TTS-phrased rendering 
 answer, in the same language. The written transcript (`reply`) is completely unaffected; only the
 spoken rendering is deliberately shorter. `speak()` is called with `voiceReply || reply`.
 
+## Persian Voice Quality pass (naturalness, on top of everything above)
+
+A later, separate pass ("pause all feature development, make Persian voice sound natural") added,
+purely additively, on top of the architecture above:
+
+- **`ai-voice-text.js`** (`public/pages/shared/`, new): a deterministic, voice-ONLY post-processing
+  layer (markup stripping, Persian number/timeframe spelling-out, a short pronunciation map) run in
+  `chatDockView.jsx` right before `speak()` - never touches the written `reply`/transcript. Zero
+  network, zero model calls.
+- **`voiceReply` gained a real Persian spoken-style contract** (`dockChat()`'s `voiceInstruction`,
+  language-gated) - previously only ever asked to be "shorter," now told written and spoken Persian
+  are different registers, with concrete before/after examples.
+- **The Realtime session's own `instructions` gained a Persian-only audio-delivery addendum**
+  (`mintRealtimeClientSecret()`) - delivery/prosody guidance only, never a change to the
+  transport's "never answer/decide/act" contract.
+- **A per-language voice map (`REALTIME_VOICE_BY_LANGUAGE`) now exists** - Persian resolves to
+  `marin` after a real human-listened Cedar-vs-Marin A/B; English/Arabic/Spanish stay on `cedar`.
+- **A real, pre-existing bug found and fixed, unrelated to voice choice/prosody**:
+  `ai-proactive-engine.js`'s five rule messages and `confirmationReply()` were hardcoded English
+  literals regardless of `i18n.language()` - Journey C's own safety/confirmation text was never
+  actually localized at all. Fixed by threading `language` through, defaulting to `'en'` so every
+  pre-existing caller is unaffected.
+
+Full detail, the real research on current OpenAI voice options and GPT-Live's API availability,
+exact number-normalization before/after tables, and the honest "known gap vs. a native speaker"
+assessment are in **`docs/ai/persian-voice-quality.md`** - this section is a pointer, not a
+restatement, matching this file's own convention for other sub-passes.
+
 ## How this was verified
 
 Every gate (E0-E5) was verified against the real OpenAI Realtime API in a real Chromium instance,

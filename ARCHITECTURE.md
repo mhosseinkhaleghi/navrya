@@ -1013,6 +1013,15 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   dedicated RTL viewport testing of the voice UI; per-language voice/TTS selection (one voice,
   `cedar`, used for all four languages); and production validation (everything above was verified
   against local dev servers only).
+- **Persian Voice Quality pass** (later, separate from the six E0-E5 gates above): a naturalness-
+  focused pass added a per-language voice map (Persian now resolves to `marin`, chosen after a real
+  human-listened Cedar-vs-Marin A/B across a smoke test and a 10-category validation set - see
+  `voice-ab-scratch/`; English/Arabic/Spanish stay on `cedar`), a Persian-only `voiceReply`
+  spoken-style contract, Persian-only Realtime prosody instructions, a deterministic voice-only
+  number/markup/pronunciation post-processing layer (`ai-voice-text.js`), and fixed a real,
+  pre-existing bug where Journey C's proactive-safety
+  messages were hardcoded English regardless of language. Full detail in
+  `docs/ai/persian-voice-quality.md`.
 
 ### 7.21 AI Copilot: Universal Domain Coverage & Destructive-Action Safety (Journey F)
 

@@ -9,6 +9,21 @@
   // which provider (or no provider) is in use. See docs/ai/proactive-engine.md for the full rule
   // catalog and severity policy.
 
+  // Persian Voice Quality gate: found while auditing every string this module hands to
+  // chat-dock-core.js's buildProactiveReply()/confirmationReply() for the spoken/written safety
+  // path (gate section 24: "safety language must still sound human") - every message below was
+  // hardcoded English ONLY, regardless of the user's actual language, so a Persian (or Arabic/
+  // Spanish) conversation hitting Journey C's own risk-cap confirmation spoke/wrote English back.
+  // Not a voice-specific bug (the WRITTEN reply was wrong too) but the single highest-impact fix
+  // for "Persian sounds natural" specifically because no prosody/voice change can fix a reply in
+  // the wrong language. `pick()` mirrors ai-i18n.js's own language-table shape one level down (this
+  // module deliberately has no load-time dependency on window.TradeJournalAII18n - only a fresh,
+  // call-time read, matching buildTradeContext()'s own "no module-load caching" convention - so
+  // this stays correct however this script happens to load relative to ai-i18n.js on a given page).
+  // `language` defaults to 'en' everywhere below so every pre-existing caller (this file's own test
+  // suite included) that doesn't pass one keeps the exact original English text, byte for byte.
+  function pick(language, table) { return table[language] || table.en; }
+
   var SEVERITY = { INFO: 'INFO', NUDGE: 'NUDGE', WARNING: 'WARNING', CONFIRM_OVERRIDE: 'CONFIRM_OVERRIDE', BLOCKED: 'BLOCKED' };
   // Severities that hold a field back from being live-applied until the user explicitly resolves
   // it - see chat-dock-core.js's own runProactiveCheck(). WARNING/NUDGE/INFO never block; they
@@ -31,7 +46,7 @@
   // real Risk field with a 1%-capped Strategy linked already succeeds today. Journey C adds the
   // first real gate, and it must match that same real, existing "allowed with awareness" policy,
   // not invent a stricter one the rest of the app doesn't actually have.
-  function ruleStrategyMaxRisk(context, proposedFields) {
+  function ruleStrategyMaxRisk(context, proposedFields, language) {
     var strategy = context.strategy;
     if (!strategy || strategy.maxRiskPerTradePercent === null || strategy.maxRiskPerTradePercent === undefined) return null;
     var requested = toNum(proposedFields.riskPercent);
@@ -41,12 +56,17 @@
       id: 'strategy-risk-limit', severity: SEVERITY.CONFIRM_OVERRIDE, domain: 'trade', field: 'riskPercent',
       evidence: { requestedRiskPercent: requested, strategyMaxRiskPercent: strategy.maxRiskPerTradePercent, strategyId: strategy.id, strategyName: strategy.name || null },
       requiresConfirmation: true,
-      message: 'Your linked strategy caps risk at ' + strategy.maxRiskPerTradePercent + '%. You are asking for ' + requested + '%.'
+      message: pick(language, {
+        en: 'Your linked strategy caps risk at ' + strategy.maxRiskPerTradePercent + '%. You are asking for ' + requested + '%.',
+        fa: 'سقف ریسک استراتژیت ' + strategy.maxRiskPerTradePercent + '%‌ه، ولی الان ' + requested + '% خواستی.',
+        ar: 'سقف الريسك في استراتيجيتك ' + strategy.maxRiskPerTradePercent + '%، لكنك طلبت الآن ' + requested + '%.',
+        es: 'El límite de riesgo de tu estrategia es ' + strategy.maxRiskPerTradePercent + '%, pero ahora pediste ' + requested + '%.'
+      })
     };
   }
 
   // ---- Rule B: opening another Trade would meet/exceed the Strategy's own concurrent-trade cap ----
-  function ruleMaxConcurrentTrades(context) {
+  function ruleMaxConcurrentTrades(context, proposedFields, language) {
     var strategy = context.strategy;
     if (!strategy || strategy.maxConcurrentTrades === null || strategy.maxConcurrentTrades === undefined) return null;
     if (context.activeTradeCount < strategy.maxConcurrentTrades) return null;
@@ -54,7 +74,12 @@
       id: 'strategy-max-concurrent-trades', severity: SEVERITY.WARNING, domain: 'trade', field: null,
       evidence: { activeTradeCount: context.activeTradeCount, strategyMaxConcurrentTrades: strategy.maxConcurrentTrades, strategyId: strategy.id },
       requiresConfirmation: false,
-      message: 'You already have ' + context.activeTradeCount + ' active trade(s) under this strategy\'s limit of ' + strategy.maxConcurrentTrades + '.'
+      message: pick(language, {
+        en: 'You already have ' + context.activeTradeCount + ' active trade(s) under this strategy\'s limit of ' + strategy.maxConcurrentTrades + '.',
+        fa: 'همین الان ' + context.activeTradeCount + ' معامله باز داری، که سقف این استراتژیه (' + strategy.maxConcurrentTrades + ').',
+        ar: 'لديك الآن ' + context.activeTradeCount + ' صفقة نشطة، وهو سقف هذه الاستراتيجية (' + strategy.maxConcurrentTrades + ').',
+        es: 'Ya tienes ' + context.activeTradeCount + ' operación(es) activa(s), el límite de esta estrategia es ' + strategy.maxConcurrentTrades + '.'
+      })
     };
   }
 
@@ -67,14 +92,19 @@
   // because trade.calculator currently allows a stopless submission. Never invents a requirement
   // NAVRYA doesn't otherwise have: only fires when the caller explicitly says submission is
   // imminent (readyToSubmit) - it does not fire on every partial, still-being-filled draft.
-  function ruleMissingStopLoss(context, proposedFields) {
+  function ruleMissingStopLoss(context, proposedFields, language) {
     if (!context.readyToSubmit) return null;
     var stop = toNum(proposedFields.stopLoss);
     if (stop !== null) return null;
     return {
       id: 'missing-stop-loss', severity: SEVERITY.WARNING, domain: 'trade', field: 'stopLoss',
       evidence: {}, requiresConfirmation: false,
-      message: 'Your plan does not yet include a stop loss.'
+      message: pick(language, {
+        en: 'Your plan does not yet include a stop loss.',
+        fa: 'پلنت هنوز حد ضرر نداره.',
+        ar: 'خطتك لا تتضمن وقف خسارة بعد.',
+        es: 'Tu plan aún no incluye un stop loss.'
+      })
     };
   }
 
@@ -86,7 +116,7 @@
   // labels this "revenge trading" (section 25's own explicit instruction) - only ever states the
   // two real, verified facts side by side; any interpretation of intent is left to the model's
   // own conversational explanation, never to this deterministic layer.
-  function ruleRiskEscalationAfterLosses(context, proposedFields) {
+  function ruleRiskEscalationAfterLosses(context, proposedFields, language) {
     var recent = context.recentTrades;
     if (!recent || recent.recentLosses < 2) return null;
     var requested = toNum(proposedFields.riskPercent);
@@ -96,7 +126,12 @@
       id: 'risk-escalation-after-losses', severity: SEVERITY.NUDGE, domain: 'trade', field: 'riskPercent',
       evidence: { recentLosses: recent.recentLosses, recentTradesCount: recent.count, requestedRiskPercent: requested, baselineRiskPercent: context.baselineRiskPercent },
       requiresConfirmation: false,
-      message: 'You have ' + recent.recentLosses + ' recent losses, and this is a higher risk than your usual ' + context.baselineRiskPercent + '%.'
+      message: pick(language, {
+        en: 'You have ' + recent.recentLosses + ' recent losses, and this is a higher risk than your usual ' + context.baselineRiskPercent + '%.',
+        fa: recent.recentLosses + ' تا از معاملات اخیرت ضرر بوده، و این ریسک از ریسک معمولت (' + context.baselineRiskPercent + '%) بیشتره.',
+        ar: 'لديك ' + recent.recentLosses + ' خسائر أخيرة، وهذا الريسك أعلى من المعتاد (' + context.baselineRiskPercent + '%).',
+        es: 'Tienes ' + recent.recentLosses + ' pérdidas recientes, y este riesgo es mayor que tu ' + context.baselineRiskPercent + '% habitual.'
+      })
     };
   }
 
@@ -106,7 +141,7 @@
   // buildTradeContext() below - never from casual chat language, never from trade.emotionLog's
   // own fabricated stressLevel:5 default (see that file's own comment on why). If NAVRYA has no
   // real recorded stress value, this rule simply never fires - it does not invent one.
-  function ruleElevatedStressWithRiskIncrease(context, proposedFields) {
+  function ruleElevatedStressWithRiskIncrease(context, proposedFields, language) {
     var psych = context.psychology;
     if (!psych || psych.currentStress === null || psych.currentStress === undefined) return null;
     if (psych.currentStress < 7) return null;
@@ -119,7 +154,12 @@
       id: 'elevated-stress-risk-increase', severity: SEVERITY.NUDGE, domain: 'psychology', field: 'riskPercent',
       evidence: { currentStress: psych.currentStress, source: psych.source, recordedAt: psych.recordedAt, requestedRiskPercent: requested },
       requiresConfirmation: false,
-      message: 'Your last check-in shows elevated stress (' + psych.currentStress + '/10), and you are increasing risk.'
+      message: pick(language, {
+        en: 'Your last check-in shows elevated stress (' + psych.currentStress + '/10), and you are increasing risk.',
+        fa: 'آخرین چک‌این‌ات استرس بالا نشون می‌ده (' + psych.currentStress + ' از ۱۰)، و داری ریسک رو هم بیشتر می‌کنی.',
+        ar: 'آخر تسجيل دخول لك يُظهر توتراً مرتفعاً (' + psych.currentStress + '/10)، وأنت ترفع الريسك أيضاً.',
+        es: 'Tu último registro muestra estrés elevado (' + psych.currentStress + '/10), y estás aumentando el riesgo.'
+      })
     };
   }
 
@@ -136,10 +176,15 @@
   function evaluate(input) {
     var context = (input && input.context) || {};
     var proposedFields = (input && input.proposedFields) || {};
+    // Persian Voice Quality gate: defaults to 'en' so any pre-existing caller that never passed a
+    // language (this file's own test suite included) gets byte-for-byte the same English text as
+    // before this pass - only chat-dock-core.js's own runProactiveCheck() actually threads the
+    // real i18n.language() through today.
+    var language = (input && input.language) || 'en';
     var findings = [];
     RULES.forEach(function (rule) {
       var finding;
-      try { finding = rule(context, proposedFields); } catch (_) { finding = null; }
+      try { finding = rule(context, proposedFields, language); } catch (_) { finding = null; }
       if (finding) findings.push(finding);
     });
     return { findings: findings };
@@ -268,11 +313,21 @@
     return resolved;
   }
 
-  function confirmationReply(decision, resolved) {
+  function confirmationReply(decision, resolved, language) {
     if (decision === 'confirm') {
-      return 'Understood - overriding to ' + resolved.proposedValue + '%. This is recorded as an explicit override; your strategy\'s own limit is unchanged.';
+      return pick(language, {
+        en: 'Understood - overriding to ' + resolved.proposedValue + '%. This is recorded as an explicit override; your strategy\'s own limit is unchanged.',
+        fa: 'باشه، رفت رو ' + resolved.proposedValue + '%. این به‌عنوان یه استثنای صریح ثبت می‌شه؛ سقف استراتژیت خودش دست‌نخورده می‌مونه.',
+        ar: 'تم - تجاوز الحد إلى ' + resolved.proposedValue + '%. يُسجَّل هذا كتجاوز صريح؛ حد استراتيجيتك يبقى دون تغيير.',
+        es: 'Entendido: se anula a ' + resolved.proposedValue + '%. Esto se registra como una anulación explícita; el límite de tu estrategia no cambia.'
+      });
     }
-    return 'Keeping ' + resolved.safeValue + '%, as your strategy limit requires.';
+    return pick(language, {
+      en: 'Keeping ' + resolved.safeValue + '%, as your strategy limit requires.',
+      fa: 'باشه، رو ' + resolved.safeValue + '% نگه داشتم، همون‌طور که سقف استراتژیت می‌گه.',
+      ar: 'تم الإبقاء على ' + resolved.safeValue + '%، كما يتطلب حد استراتيجيتك.',
+      es: 'Se mantiene en ' + resolved.safeValue + '%, según lo requiere el límite de tu estrategia.'
+    });
   }
 
   window.TradeJournalAIProactiveEngine = {
