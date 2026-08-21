@@ -88,7 +88,10 @@ test('the barge-in handler reuses the public, guarded interrupt() rather than ca
 const dockViewSource = await readFile(path.join(process.cwd(), 'navrya-src', 'chatDockView.jsx'), 'utf8');
 
 test('a voice-originated turn goes through the exact same submit()/core.sendChat() path a typed message uses - no parallel voice-only conversation logic', () => {
-  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,200}submitRef\.current\(transcriptText, \{ source: 'voice' \}\)/);
+  // {0,600}, not {0,200}: the latency pass (docs/ai/latency-architecture.md) added a
+  // transcript-to-reply timing stamp between the function opening and the real submitRef.current()
+  // call this test cares about - still the same single real call, just a few lines further down.
+  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}submitRef\.current\(transcriptText, \{ source: 'voice' \}\)/);
   assert.match(dockViewSource, /onFinalTranscript:\s*onVoiceTranscript/);
 });
 

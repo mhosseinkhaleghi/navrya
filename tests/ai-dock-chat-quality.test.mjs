@@ -38,10 +38,10 @@ function captureOpenAIRequest(replyPayload) {
 
 // --- reasoning/verbosity policy (sections 19-21/26) ---
 
-test('a plain Q&A turn (no activeProcess) uses reasoning.effort=medium and text.verbosity=high', async () => {
-  const getBody = captureOpenAIRequest({ reply: 'a full answer', action: null });
+test('a genuine open-ended Q&A turn (neither activeProcess nor availableActions) uses reasoning.effort=medium and text.verbosity=high - the one turn type that keeps the full, polished treatment', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'a full answer' });
   await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
-    await dockChat({ provider: 'openai', message: 'What is a Session?', language: 'en', availableActions: [{ id: 'session.create', requiredFields: [], optionalFields: [] }] });
+    await dockChat({ provider: 'openai', message: 'What is a Session?', language: 'en' });
   });
   const body = getBody();
   assert.deepEqual(body.reasoning, { effort: 'medium' });
@@ -52,6 +52,20 @@ test('a workflow slot-filling turn (activeProcess open) uses reasoning.effort=lo
   const getBody = captureOpenAIRequest({ reply: 'short', suggestions: [] });
   await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
     await dockChat({ provider: 'openai', message: 'New York', language: 'en', activeProcess: { id: 'session-create', allowlist: ['city', 'timeframe'] } });
+  });
+  const body = getBody();
+  assert.deepEqual(body.reasoning, { effort: 'low' });
+  assert.equal(body.text.verbosity, 'medium');
+});
+
+// Latency pass, section 12: previously shared the SAME tier as plain Q&A (both 'medium'/'high') -
+// measured to be needlessly slow for a routing decision (which offered action, if any, matches;
+// extract its fields) that has no more reason to want deep reasoning or a long answer than an
+// already-open form does. Fresh action discovery now gets the SAME light tier as activeProcess.
+test('a fresh action-discovery turn (availableActions offered, nothing open yet) uses reasoning.effort=low and text.verbosity=medium - the SAME light tier as an open workflow, not the full Q&A treatment', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'a full answer', action: null });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
+    await dockChat({ provider: 'openai', message: 'Start a New York session.', language: 'en', availableActions: [{ id: 'session.create', requiredFields: [], optionalFields: [] }] });
   });
   const body = getBody();
   assert.deepEqual(body.reasoning, { effort: 'low' });

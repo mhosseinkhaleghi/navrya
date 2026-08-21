@@ -50,7 +50,11 @@ async function coreSandbox(overrides) {
   // both are pure no-ops for any test that never registers a 'trade.calculator' action or never
   // supplies TradeJournalStrategyEducationStore/TradeJournalMentalHealthStore/matching text, so
   // every existing Journey A/B test below keeps proving exactly what it always proved.
-  if (overrides.withWorkflowEngine) files.push('ai-context-engine.js', 'ai-action-registry.js', 'ai-workflow-engine.js', 'ai-proactive-engine.js', 'ai-signal-router.js');
+  // Latency pass: ai-deterministic-extraction.js is what chat-dock-core.js's own single-
+  // missing-field slot-fill fast path calls through resolveSlotFillValue() - loaded alongside the
+  // rest of the Journey A/B trio so every withWorkflowEngine test exercises the real fast path,
+  // not a silent always-null stand-in that would make it look like it always falls through.
+  if (overrides.withWorkflowEngine) files.push('ai-context-engine.js', 'ai-action-registry.js', 'ai-workflow-engine.js', 'ai-proactive-engine.js', 'ai-signal-router.js', 'ai-deterministic-extraction.js');
   // Journey D: the three Knowledge Base modules, loaded independently of withWorkflowEngine (a
   // page can have one without the other in principle, and every existing test above that doesn't
   // set this flag keeps proving the exact pre-Journey-D request shape, with no productContext key
@@ -702,4 +706,168 @@ test('debugLastTurn() marks a therapist-mode turn distinctly, rather than showin
   const window = await coreSandbox({ mentalHealthStore, mentalHealthAI });
   await window.TradeJournalChatDockCore.sendChat({ text: 'I feel anxious', therapistMode: true, transcript: [] });
   assert.equal(window.TradeJournalChatDockCore.debugLastTurn().path, 'therapist');
+});
+
+// --- Latency pass: deterministic single-missing-field slot fast path (sections 4-6, 33) ---
+// H1's own required proof: a genuinely deterministic continuation must reach zero AI calls, not
+// merely a faster one - every test below uses coreSandbox()'s own DEFAULT fetch stub (which
+// throws if ever called at all - see coreSandbox()'s own `fetch: overrides.fetch || (async () =>
+// { throw ... })`), so a test passing at all IS the proof fetch was never reached.
+
+test('a workflow with exactly one missing field, answered with a short, unambiguous bare value, resolves with zero AI calls (fetch is never called)', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  const window = await coreSandbox({ withWorkflowEngine: true }); // no fetch override - default throws if called
+  registerFakeSessionCreate(window, spies);
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, [{ path: 'city', value: 'New York' }]);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: '5 minutes', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'workflow');
+  assert.deepEqual(clone(spies.applied), [['city', 'New York'], ['timeframe', '5m']]);
+  const debug = window.TradeJournalChatDockCore.debugLastTurn();
+  assert.equal(debug.path, 'slot-fill');
+  assert.equal(debug.field, 'timeframe');
+});
+
+test('a numeric-field slot fast path (e.g. a bare "65500" answering an exitPrice-shaped field) is language-agnostic - no label word or EN/FA text required, since a bare digit string is unambiguous in any of the four supported languages', async () => {
+  const spies = { applied: [] };
+  const window = await coreSandbox({ withWorkflowEngine: true });
+  window.TradeJournalAIProcessRegistry.register('trade-close-position', { allowlist: ['exitPrice'], isOpen: () => true, applyValue: (path, value) => spies.applied.push([path, value]) });
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'trade.close', requiredFields: ['exitPrice'], optionalFields: [], open: () => ({ processId: 'trade-close-position' }), submit: async () => ({}), resultContext: () => {} });
+  window.TradeJournalAIWorkflowEngine.start('trade.close', {}, []);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([], {});
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: '65500', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'workflow');
+  assert.deepEqual(clone(spies.applied), [['exitPrice', 65500]]);
+});
+
+test('ambiguous text with no confident extractable value for the one missing field falls straight through to the normal AI path - never guessed locally', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  let fetchCalled = false;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => { fetchCalled = true; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  registerFakeSessionCreate(window, spies);
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, [{ path: 'city', value: 'New York' }]);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'Change it', therapistMode: false, transcript: [] });
+
+  assert.equal(fetchCalled, true, 'a message with no confidently-extractable value must still reach the model, never be guessed at');
+});
+
+test('a message longer than the conservative length cap falls through to the AI path even if it happens to contain a valid-looking token, since something else could plausibly be riding along with it', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  let fetchCalled = false;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => { fetchCalled = true; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [{ path: 'timeframe', value: '5m', mode: 'replace' }], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  registerFakeSessionCreate(window, spies);
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, [{ path: 'city', value: 'New York' }]);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'Sorry, let\'s actually go with 5 minutes instead please', therapistMode: false, transcript: [] });
+
+  assert.equal(fetchCalled, true, 'a longer message must not be bare-matched, even though it contains a recognizable timeframe token');
+});
+
+test('a fully-known workflow (nothing left missing) is never mistaken for a one-missing-field slot fast path target - falls through to normal handling', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  let fetchCalled = false;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => { fetchCalled = true; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  registerFakeSessionCreate(window, spies);
+  window.TradeJournalAIWorkflowEngine.setSubmitGraceMs(20000); // long enough that the workflow is still 'pending-submit', not yet cleared, when the next message arrives
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, [{ path: 'city', value: 'New York' }]);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([{ path: 'city', value: 'New York' }, { path: 'timeframe', value: '5m' }], {});
+  assert.deepEqual(window.TradeJournalAIWorkflowEngine.current().missing, [], 'both required fields are already known going into the next turn');
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'ok', therapistMode: false, transcript: [] });
+
+  assert.equal(fetchCalled, true, 'nothing is missing, so there is no single field left for the slot fast path to even consider');
+});
+
+// --- Latency pass, section 15: destructive/consequential confirmations skip the correction grace
+// window entirely (an explicit yes/no has nothing left to "correct"), other actions are unaffected ---
+
+test('confirming a gate-field-only workflow (F37\'s existing fast path) completes with zero grace delay - submit() runs immediately, not after the normal SUBMIT_GRACE_MS window', async () => {
+  const spies = { submitted: null };
+  const window = await coreSandbox({ withWorkflowEngine: true });
+  window.TradeJournalAIProcessRegistry.register('pattern-delete-confirm', { allowlist: ['confirm'], isOpen: () => true });
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [],
+    open: () => ({ processId: 'pattern-delete-confirm' }),
+    submit: async (known) => { spies.submitted = known; return { deleted: true }; }, resultContext: () => {}
+  });
+  window.TradeJournalAIWorkflowEngine.setSubmitGraceMs(5000); // the normal, much longer grace window every other action keeps
+  window.TradeJournalAIWorkflowEngine.start('pattern.delete', {}, []);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([], {});
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'Yes.', therapistMode: false, transcript: [] });
+  // A single macrotask tick, not a real sleep - a 0ms setTimeout still needs one tick to actually
+  // fire (it is not synchronous), but this is nowhere close to enough time for the OLD 5000ms
+  // grace to have elapsed - so this still proves zero-grace scheduling, not merely "eventually".
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(clone(spies.submitted), { confirm: true }, 'submit() must have already run - zero grace for an explicit gate-field confirmation');
+  assert.equal(window.TradeJournalAIWorkflowEngine.current(), null, 'the workflow must already be cleared, not sitting in pending-submit');
+  // The engine's own grace setting must be restored afterward - a later, ordinary (non-gate)
+  // workflow in the same page session must keep its real correction window.
+  assert.equal(window.TradeJournalAIWorkflowEngine.getSubmitGraceMs(), 5000);
+});
+
+// --- Latency pass, section 16: history persistence must never block the reply ---
+
+test('appendExchange (an ongoing conversation) is fire-and-forget - sendChat() resolves without waiting for it, and a slow/never-resolving history call never delays or breaks the returned reply', async () => {
+  let appendCalled = false;
+  let resolveAppend;
+  const historyStore = {
+    appendExchange: (id, q, a, tokens) => { appendCalled = true; return new Promise((resolve) => { resolveAppend = resolve; }); },
+    startConversation: async () => { throw new Error('must not be called - a conversationId is already supplied'); }
+  };
+  const window = await coreSandbox({
+    historyStore,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'a real reply', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'anything', therapistMode: false, transcript: [], conversationId: 'conv-1' });
+
+  assert.equal(result.reply, 'a real reply', 'sendChat() must resolve with the real reply without ever awaiting appendExchange');
+  assert.equal(appendCalled, true, 'the history call must still have been made - fire-and-forget, not skipped');
+  assert.equal(result.conversationId, 'conv-1');
+  // Never actually resolved above (resolveAppend was captured but never called) - proves sendChat()
+  // truly did not await it, rather than merely resolving fast enough in practice.
+  assert.equal(typeof resolveAppend, 'function');
+});
+
+// --- Latency pass, section 12: turn-type-aware reasoning/verbosity tuning is exercised through
+// the same request body chat-dock-core.js actually sends (server-side coverage of the exact
+// tiers themselves lives in tests/ai-dock-chat-quality.test.mjs) ---
+
+test('debugLastLatency() reports a real AI call (turnType/provider/model/aiCallMade) after a normal network turn, and a zero-network record (aiCallMade:false) after a fast-path turn', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'ok', action: null, provider: 'openai', model: 'gpt-5.6', usage: { totalTokens: 3 }, serverTiming: { gatewayMs: 5, providerMs: 100, schemaBytes: 10, promptApproxChars: 40, historyMessages: 0 } }) })
+  });
+  registerFakeSessionCreate(window, spies);
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'what is a Pattern?', therapistMode: false, transcript: [] });
+  const networkLatency = window.TradeJournalChatDockCore.debugLastLatency();
+  assert.equal(networkLatency.aiCallMade, true);
+  assert.equal(networkLatency.provider, 'openai');
+
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, [{ path: 'city', value: 'New York' }]);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  await window.TradeJournalChatDockCore.sendChat({ text: '5 minutes', therapistMode: false, transcript: [] });
+  const fastPathLatency = window.TradeJournalChatDockCore.debugLastLatency();
+  assert.equal(fastPathLatency.aiCallMade, false);
+  assert.equal(fastPathLatency.provider, null);
+  assert.equal(fastPathLatency.providerMs, 0);
 });

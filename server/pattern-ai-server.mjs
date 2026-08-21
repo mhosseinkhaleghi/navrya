@@ -352,25 +352,35 @@ function reportProviderHealth(event) {
 // per-provider caller, and returns a normalized envelope. `source` (a short 'namespace.method'
 // label, one per handler below) is purely for the health-event feed/admin "recent AI events"
 // table - it plays no role in key/model resolution.
+// Latency diagnostics (section 1/36 of the latency pass): every timing figure returned here is a
+// duration in milliseconds, never a raw timestamp/prompt/key - reuses the exact latencyMs this
+// function already computed for the pre-existing provider-health event feed (section 37: "do not
+// build another provider-health database"), just also surfaces it back to the caller so
+// chat-dock-core.js's debugLastLatency() can report it without a second measurement.
 async function callProvider(providerInput, apiKeyOverride, modelOverride, payload, source) {
   const provider = resolveProviderName(providerInput);
   const startedAt = Date.now();
+  const keyResolveStartedAt = Date.now();
   try {
     let key = typeof apiKeyOverride === 'string' && apiKeyOverride.trim() ? apiKeyOverride.trim() : '';
+    let keyLookupMs = 0;
     if (!key) {
       const configured = await adminKeys();
       key = (configured && configured[provider]) || '';
+      keyLookupMs = Date.now() - keyResolveStartedAt;
     }
     if (!key) key = process.env[providerEnvKey[provider]] || '';
     if (!key) throw new Error(providerEnvKey[provider] + '_MISSING');
     const model = (typeof modelOverride === 'string' && modelOverride.trim())
       ? modelOverride.trim()
       : (process.env[providerEnvModel[provider]] || providerDefaultModel[provider]);
+    const providerCallStartedAt = Date.now();
     const outcome = provider === 'openai' ? await callOpenAI(payload, key, model)
       : provider === 'anthropic' ? await callAnthropic(payload, key, model)
       : await callOpenAICompatible(provider, payload, key, model);
-    reportProviderHealth({ provider, ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source });
-    return { data: outcome.data, usage: outcome.usage, provider, model };
+    const latencyMs = Date.now() - startedAt;
+    reportProviderHealth({ provider, ok: true, errorCode: null, latencyMs, source });
+    return { data: outcome.data, usage: outcome.usage, provider, model, latencyMs, keyLookupMs, providerCallMs: Date.now() - providerCallStartedAt };
   } catch (error) {
     reportProviderHealth({ provider, ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source });
     throw error;
@@ -923,6 +933,7 @@ async function analyzeTrade(body) {
 const DOCK_STYLE_INSTRUCTION = 'NAVRYA is a local trading JOURNAL and PLANNING tool - it has its own real Session/Trade/Strategy/Pattern features, but it is never connected to a live broker or exchange and never executes a real order. When a message reads as wanting to plan, size, or log a trade or session, that maps to using NAVRYA\'s own real feature (a registered action, if one is offered - see below) - never reply as a generic crypto/trading assistant describing how the user would do this on their own exchange; that is a different question than the one being asked here. For genuine questions, give a polished, useful answer rather than a terse one-liner: state the conclusion clearly, explain the relevant NAVRYA context or reasoning, mention material caveats, and suggest a useful next step when appropriate. Stay concise for simple confirmations or when the user\'s own question is simple - match your depth to theirs, don\'t pad. Write in plain text only - never markdown syntax (no "**bold**", no "# headers", no "*" bullets); use real paragraph breaks, and for a genuine list, one short "- item" per line, since that is exactly what actually renders cleanly here. Avoid generic filler ("Sure!", "Great question!") and avoid robotic one-line replies. Never claim a NAVRYA action occurred until the application actually confirms it - but this caution applies ONLY to the action you are selecting on THIS turn. Once you selected a NAVRYA action in an earlier turn of this same conversation and the user has since sent a new message, treat that earlier action as having completed successfully; never describe it as still pending, not yet saved, or unconfirmed, and never let it block, delay, or add a confirmation step in front of a new, unrelated action - the passage of even a few seconds of real time is enough for NAVRYA\'s own save to finish. Only the user\'s own words (e.g. them saying it failed or asking you to redo it) should ever suggest otherwise. Do not give personalized financial advice.';
 
 async function dockChat(body) {
+  const gatewayReceivedAt = Date.now();
   const language = languageNames[body.language] || languageNames.en;
   const history = (Array.isArray(body.chatHistory) ? body.chatHistory : []).slice(-24).map(historyItem);
   const activeProcess = body.activeProcess && Array.isArray(body.activeProcess.allowlist) && body.activeProcess.allowlist.length ? body.activeProcess : null;
@@ -980,19 +991,41 @@ async function dockChat(body) {
   // need to answer a genuine question) wants the fuller, richer treatment DOCK_STYLE_INSTRUCTION
   // above asks for. Neither is ever "max"/"low" globally - both are deliberate, measured choices,
   // not defaults left unset.
-  const turnTuning = activeProcess
-    ? { reasoningEffort: 'low', verbosity: 'medium' }
+  // Latency pass, section 12: action-routing/workflow turns (an open form, OR fresh action
+  // discovery - deciding which of a small offered set the user means and extracting its fields)
+  // both want the lightest reasoning/output profile that still extracts reliably; only a genuine
+  // open-ended Q&A turn (neither an open form nor an offered action catalog) keeps the fuller,
+  // richer treatment DOCK_STYLE_INSTRUCTION asks for. Previously availableActions shared the SAME
+  // tier as plain Q&A (both 'medium'/'high') - measured to be needlessly slow for a routing
+  // decision that, unlike Q&A, has no reason to want deep reasoning or a long answer.
+  const turnTuning = activeProcess ? { reasoningEffort: 'low', verbosity: 'medium' }
+    : availableActions ? { reasoningEffort: 'low', verbosity: 'medium' }
     : { reasoningEffort: 'medium', verbosity: 'high' };
-  const { data: result, usage, provider, model } = await callProvider(body.provider, body.apiKey, body.model, {
+  const turnType = activeProcess ? 'WORKFLOW_CONTINUATION' : availableActions ? 'NEW_ACTION' : 'SIMPLE_QA';
+  const requestFormat = dockChatFormatFor(activeProcess, availableActions, voiceSource);
+  const { data: result, usage, provider, model, latencyMs, keyLookupMs, providerCallMs } = await callProvider(body.provider, body.apiKey, body.model, {
     input: [
       { role: 'system', content: [{ type: 'input_text', text: systemText }] },
       ...history,
       { role: 'user', content: [{ type: 'input_text', text: userText }] }
     ],
     reasoning: { effort: turnTuning.reasoningEffort },
-    text: { format: dockChatFormatFor(activeProcess, availableActions, voiceSource), verbosity: turnTuning.verbosity }
+    text: { format: requestFormat, verbosity: turnTuning.verbosity }
   }, 'ai.chat');
-  return { reply: result.reply || '', voiceReply: voiceSource ? (result.voiceReply || '') : null, suggestions: result.suggestions || [], action: result.action || null, provider, model, usage };
+  // Latency pass, section 1/36: duration-only diagnostics threaded back to the client so
+  // chat-dock-core.js's debugLastLatency() can report a real server-side breakdown instead of
+  // treating the whole round trip as one opaque "network" number. Never a timestamp (client/server
+  // clocks are not assumed synchronized - see docs/ai/latency-architecture.md), never prompt/key
+  // content - the same duration/count-only posture debugLastTurn()/debugState() already established.
+  const serverTiming = {
+    gatewayMs: Date.now() - gatewayReceivedAt, providerMs: latencyMs, keyLookupMs: keyLookupMs || 0, providerCallMs,
+    turnType,
+    schemaBytes: JSON.stringify(requestFormat).length,
+    promptApproxChars: JSON.stringify(systemText).length + JSON.stringify(userText).length,
+    historyMessages: history.length,
+    availableActionCount: availableActions ? availableActions.length : 0
+  };
+  return { reply: result.reply || '', voiceReply: voiceSource ? (result.voiceReply || '') : null, suggestions: result.suggestions || [], action: result.action || null, provider, model, usage, serverTiming };
 }
 
 // Journey E (Realtime Voice): mints a short-lived OpenAI client secret so the browser can open

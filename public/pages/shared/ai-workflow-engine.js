@@ -255,7 +255,12 @@
     pruneIfAbandoned: pruneIfAbandoned,
     cancel: cancel,
     // Exposed for tests (and any future caller with a reason to tune it) rather than a
-    // hardcoded, unreachable constant - see SUBMIT_GRACE_MS's own comment above.
-    setSubmitGraceMs: function (ms) { SUBMIT_GRACE_MS = ms; }
+    // hardcoded, unreachable constant - see SUBMIT_GRACE_MS's own comment above. Latency pass,
+    // section 15: chat-dock-core.js's own gate-field confirm fast path temporarily zeroes this for
+    // the one applyKnownFields() call that completes a destructive/consequential confirmation (no
+    // "same-breath correction" concept applies to an explicit yes/no), then restores whatever it
+    // was - getSubmitGraceMs() lets it save/restore the real current value rather than assuming 3000.
+    setSubmitGraceMs: function (ms) { SUBMIT_GRACE_MS = ms; },
+    getSubmitGraceMs: function () { return SUBMIT_GRACE_MS; }
   };
 }());
