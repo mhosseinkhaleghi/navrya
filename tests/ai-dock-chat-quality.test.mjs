@@ -200,6 +200,27 @@ test('a voice-sourced turn (source: "voice") requires voiceReply in the schema, 
   assert.equal(result.voiceReply, 'a short spoken version');
 });
 
+// Persian Voice Quality gate, section 9-11: voiceReply was previously only ever told to be
+// "shorter" - never told written and spoken Persian are different registers. This addendum is
+// deliberately scoped to language 'fa' only (section 32/33: EN/AR/ES must be byte-for-byte
+// unaffected).
+test('a Persian voice-sourced turn gets the extra natural-spoken-Persian style instruction; English/Arabic/Spanish do not', async () => {
+  const getBodyFa = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok', action: null });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'یه سوال دارم', language: 'fa', source: 'voice' }));
+  const systemTextFa = getBodyFa().input[0].content[0].text;
+  assert.match(systemTextFa, /contemporary Iranian Persian/);
+  assert.match(systemTextFa, /never a fact, a trading number, a safety warning, or a confirmation requirement/);
+
+  for (const language of ['en', 'ar', 'es']) {
+    const getBody = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok', action: null });
+    await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+      dockChat({ provider: 'openai', message: 'hello', language, source: 'voice' }));
+    const systemText = getBody().input[0].content[0].text;
+    assert.doesNotMatch(systemText, /contemporary Iranian Persian/, `${language} must not receive the Persian-only style instruction`);
+  }
+});
+
 // Found via real Journey E voice testing in Arabic: a session-city field value came back
 // transliterated ("نيويورك") instead of NAVRYA's own canonical English form ("New York"), which
 // the client's normalizeSessionCity() then correctly refuses (never applies a value the real

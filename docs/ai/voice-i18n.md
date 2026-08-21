@@ -95,13 +95,28 @@ A simulated denied microphone permission produced the correct localized error, l
 ChatDock fully usable, and a retry click did not get stuck. All four languages and all four
 character dashboards were confirmed to expose and correctly drive the same real control.
 
+## Persian Voice Quality pass (update)
+
+A later pass (`docs/ai/persian-voice-quality.md`) added per-language voice-mapping
+*infrastructure* (`REALTIME_VOICE_BY_LANGUAGE`), a Persian-only `voiceReply` spoken-style contract,
+Persian-only Realtime prosody instructions, a deterministic voice-only number/markup/pronunciation
+post-processing layer, and fixed a real bug where Journey C's proactive-safety messages were
+hardcoded English regardless of language. Every one of these is explicitly gated to `fa` only and
+regression-tested to leave EN/AR/ES byte-for-byte unaffected - see that document for the full
+before/after detail. The item below has since been resolved by a real human-listened Cedar-vs-Marin
+A/B, run after this document's own original "Not verified" note was written - see
+`docs/ai/persian-voice-quality.md`'s Status section for the real result.
+
 ## Not verified
 
-- **Voice selection is not varied per language.** The Realtime session's TTS voice
-  (`REALTIME_VOICE = 'cedar'` in `mintRealtimeClientSecret()`) is fixed for all four languages.
-  Pronunciation/naturalness quality per language was not formally assessed beyond confirming
-  intelligible, on-topic spoken replies were produced (the content proof in
-  `docs/ai/voice-testing.md`), not a native-speaker quality review.
+- **Voice selection now varies by language, but only Persian has actually been listened to.**
+  `REALTIME_VOICE_BY_LANGUAGE` (`mintRealtimeClientSecret()`) maps Persian to `marin` (a real
+  Cedar-vs-Marin Persian A/B - `voice-ab-scratch/`, gitignored - was generated with the real
+  OpenAI Realtime API and listened to by the user, who clearly preferred Marin) and keeps
+  English/Arabic/Spanish on the original `cedar` default, unvalidated either way by this pass.
+  Pronunciation/naturalness quality for English/Arabic/Spanish still has not been assessed by a
+  native-speaker quality review beyond confirming intelligible, on-topic spoken replies were
+  produced (the content proof in `docs/ai/voice-testing.md`).
 - **A live, real-audio-triggered interrupt (barge-in) was not cleanly reproduced in the ChatDock
   Voice-UX repair pass's own test harness** - a two-phrase fake-microphone WAV timed to land the
   second utterance mid-reply did not register a second finalized transcript in this environment

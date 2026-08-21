@@ -93,6 +93,41 @@ test('passes the requested language into the input transcription config, default
   assert.deepEqual(bodyDefault.session.audio.input.transcription.languages, ['en']);
 });
 
+// ---- Persian Voice Quality gate ----
+
+test('the Realtime session instructions gain a Persian-only audio-delivery addendum - AUDIO STYLE guidance, never a business-logic change - while English/Arabic/Spanish keep the exact original instructions unchanged', async () => {
+  const getRequestFa = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language: 'fa' }));
+  const bodyFa = JSON.parse(getRequestFa().options.body);
+  assert.match(bodyFa.session.instructions, /fluent, contemporary Iranian Persian speech/);
+  assert.match(bodyFa.session.instructions, /never add, invent, or omit any claim or number/);
+  // The base transport-only sentence is still there, unchanged - this is an ADDITION, not a
+  // replacement of the "one brain" transcription/playback-only contract.
+  assert.match(bodyFa.session.instructions, /Never answer questions, never decide anything, never take an action yourself\./);
+
+  for (const language of ['en', 'ar', 'es']) {
+    const getRequest = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
+    await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language }));
+    const body = JSON.parse(getRequest().options.body);
+    assert.equal(
+      body.session.instructions,
+      'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says. When a separate system message asks you to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, and nothing else.',
+      `${language} instructions must be byte-for-byte the original string, unchanged by this gate`
+    );
+  }
+});
+
+test('the per-language voice map resolves Persian to marin (the real, human-listened Cedar-vs-Marin A/B winner) while English/Arabic/Spanish stay on the original, unchanged cedar default', async () => {
+  const expected = { fa: 'marin', ar: 'cedar', en: 'cedar', es: 'cedar' };
+  for (const language of Object.keys(expected)) {
+    const getRequest = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: { model: 'gpt-realtime-2.1' } });
+    const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language }));
+    const body = JSON.parse(getRequest().options.body);
+    assert.equal(body.session.audio.output.voice, expected[language], `${language} output voice`);
+    assert.equal(result.voice, expected[language], `${language} returned voice field`);
+  }
+});
+
 test('fails clearly with OPENAI_API_KEY_MISSING when no key is available from override, admin config, or env', async () => {
   captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
   await withEnv({ OPENAI_API_KEY: '' }, async () => {

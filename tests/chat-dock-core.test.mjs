@@ -54,7 +54,7 @@ async function coreSandbox(overrides) {
   // missing-field slot-fill fast path calls through resolveSlotFillValue() - loaded alongside the
   // rest of the Journey A/B trio so every withWorkflowEngine test exercises the real fast path,
   // not a silent always-null stand-in that would make it look like it always falls through.
-  if (overrides.withWorkflowEngine) files.push('ai-context-engine.js', 'ai-action-registry.js', 'ai-workflow-engine.js', 'ai-proactive-engine.js', 'ai-signal-router.js', 'ai-deterministic-extraction.js');
+  if (overrides.withWorkflowEngine) files.push('ai-context-engine.js', 'ai-action-registry.js', 'ai-workflow-engine.js', 'ai-proactive-engine.js', 'ai-signal-router.js', 'ai-deterministic-extraction.js', 'ai-voice-text.js');
   // Journey D: the three Knowledge Base modules, loaded independently of withWorkflowEngine (a
   // page can have one without the other in principle, and every existing test above that doesn't
   // set this flag keeps proving the exact pre-Journey-D request shape, with no productContext key
@@ -820,6 +820,73 @@ test('confirming a gate-field-only workflow (F37\'s existing fast path) complete
   // The engine's own grace setting must be restored afterward - a later, ordinary (non-gate)
   // workflow in the same page session must keep its real correction window.
   assert.equal(window.TradeJournalAIWorkflowEngine.getSubmitGraceMs(), 5000);
+});
+
+// --- Persian Voice Quality gate, section 22/23: the zero-network fast paths above must not
+// speak the same flat, formal string for every event - a Voice turn now gets a field-aware,
+// natural Persian acknowledgement (via ai-voice-text.js's spokenSlotFilled/spokenConfirmation),
+// while the WRITTEN reply shown in the transcript is completely unaffected (section 12). EN/AR/ES
+// get exactly the same behavior as before this gate (voiceReply: null, so chatDockView.jsx's own
+// `toSpeak = result.voiceReply || result.reply` falls back to the unchanged generic text).
+
+test('Persian slot-fill: the written reply stays the existing generic aiDockSlotFilled string, but voiceReply is a natural, field-aware Persian acknowledgement', async () => {
+  const spies = { applied: [] };
+  const window = await coreSandbox({ withWorkflowEngine: true });
+  window.document.documentElement.lang = 'fa';
+  registerFakeSessionCreate(window, spies);
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, [{ path: 'city', value: 'New York' }]);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: '5 minutes', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'workflow');
+  // chat-dock-core.js itself only decides the PHRASING (field-aware vs. generic) - the actual
+  // spoken-number spelling ("5m" -> "پنج دقیقه") is chatDockView.jsx's own toSpokenText() pass,
+  // applied just before speak() (see tests/ai-voice-text.test.mjs's own
+  // "spokenSlotFilled composes with number normalization downstream" test for that full chain).
+  assert.equal(result.reply, '5m ثبت شد.', 'the written reply keeps the existing generic, polished phrasing - never made colloquial');
+  assert.equal(result.voiceReply, 'اوکی، شد 5m.', 'the spoken form is field-aware phrasing distinct from the generic written reply');
+});
+
+test('English slot-fill: voiceReply is null (unchanged from before this gate) - chatDockView.jsx falls back to the same written reply for speech', async () => {
+  const spies = { applied: [] };
+  const window = await coreSandbox({ withWorkflowEngine: true }); // document.documentElement.lang defaults to 'en'
+  registerFakeSessionCreate(window, spies);
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, [{ path: 'city', value: 'New York' }]);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: '5 minutes', therapistMode: false, transcript: [] });
+
+  assert.equal(result.reply, 'Set to 5m.');
+  assert.equal(result.voiceReply, null);
+});
+
+test('Persian gate confirmation (Yes./No.): voiceReply speaks the directive\'s own natural phrasing, written reply unchanged', async () => {
+  const confirmWindow = await coreSandbox({ withWorkflowEngine: true });
+  confirmWindow.document.documentElement.lang = 'fa';
+  confirmWindow.TradeJournalAIProcessRegistry.register('pattern-delete-confirm', { allowlist: ['confirm'], isOpen: () => true });
+  confirmWindow.TradeJournalAIActionRegistry.registerAction({
+    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [],
+    open: () => ({ processId: 'pattern-delete-confirm' }), submit: async () => ({ deleted: true }), resultContext: () => {}
+  });
+  confirmWindow.TradeJournalAIWorkflowEngine.start('pattern.delete', {}, []);
+  await confirmWindow.TradeJournalAIWorkflowEngine.applyKnownFields([], {});
+  const confirmResult = await confirmWindow.TradeJournalChatDockCore.sendChat({ text: 'Yes.', therapistMode: false, transcript: [] });
+  assert.equal(confirmResult.reply, 'تأیید شد.');
+  assert.equal(confirmResult.voiceReply, 'باشه، تأیید شد.');
+
+  const rejectWindow = await coreSandbox({ withWorkflowEngine: true });
+  rejectWindow.document.documentElement.lang = 'fa';
+  rejectWindow.TradeJournalAIProcessRegistry.register('pattern-delete-confirm', { allowlist: ['confirm'], isOpen: () => true });
+  rejectWindow.TradeJournalAIActionRegistry.registerAction({
+    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [],
+    open: () => ({ processId: 'pattern-delete-confirm' }), submit: async () => ({ deleted: true }), resultContext: () => {}
+  });
+  rejectWindow.TradeJournalAIWorkflowEngine.start('pattern.delete', {}, []);
+  await rejectWindow.TradeJournalAIWorkflowEngine.applyKnownFields([], {});
+  const rejectResult = await rejectWindow.TradeJournalChatDockCore.sendChat({ text: 'No.', therapistMode: false, transcript: [] });
+  assert.equal(rejectResult.reply, 'باشه، لغو شد. چیزی حذف/منتشر/ارسال نشد.');
+  assert.equal(rejectResult.voiceReply, 'باشه، لغوش کردم.');
 });
 
 // --- Latency pass, section 16: history persistence must never block the reply ---

@@ -953,12 +953,21 @@ async function dockChat(body) {
   // ai-context-builder.js).
   const productContextText = buildProductContextText(body.productContext);
   const voiceSource = body.source === 'voice';
+  // Persian Voice Quality gate, section 9-11: the gap this pass found is that voiceReply was
+  // ONLY ever asked to be "shorter" - never told that written Persian and spoken Persian are
+  // different registers. This addendum is deliberately AUDIO-STYLE guidance only (never a fact/
+  // number/safety change - the last sentence says so explicitly, and DOCK_STYLE_INSTRUCTION's own
+  // "never invent a value" rule is untouched) and is appended only for language 'fa' - English/
+  // Arabic/Spanish keep the exact original voiceInstruction, byte for byte (section 32/33: no
+  // regression to the other three languages). See docs/ai/persian-voice-quality.md for the
+  // before/after examples this wording is drawn from.
+  const PERSIAN_VOICE_STYLE_INSTRUCTION = ' Since this reply is in Persian and voiceReply will be spoken aloud, write it as natural, contemporary Iranian Persian - the way a fluent native speaker actually talks one-to-one, never formal written Persian read aloud. Prefer conversational phrasing when it preserves meaning, for example "می‌خوای سشن نیویورک رو ادامه بدیم؟" rather than "آیا مایل هستید که فرایند ایجاد جلسه معاملاتی نیویورک را ادامه دهید؟", or "ریسکی که گفتی از سقف این استراتژی بیشتره" rather than "ریسک تعیین‌شده توسط شما از حداکثر ریسک مجاز استراتژی فراتر می‌رود". Use natural Persian contractions and pronouns, keep sentences short enough to speak comfortably, and avoid bureaucratic or textbook-formal constructions - but do not require slang either; sound like a calm, intelligent, warm, educated contemporary Iranian Persian speaker, never a newsreader, a legal notice, or translated English. Only the STYLE may change this way - never a fact, a trading number, a safety warning, or a confirmation requirement, all of which must carry over from `reply` exactly.'
   // Journey E: only ever true for a turn that started as a finalized Realtime transcript (see
   // chat-dock-core.js's sendChat()). Appended after the branch-specific instruction above so it
   // applies uniformly to all three (an open form's own reply can still occasionally be full-length
   // Q&A - see its own "if the message is unrelated to that form" fallback).
   const voiceInstruction = voiceSource
-    ? ' This turn came from spoken voice input and your reply will also be read aloud. Also return voiceReply: a short, natural spoken version of the same answer, in the same language - convey the same core point and any necessary caveat, but noticeably shorter than reading `reply` verbatim, phrased the way a person actually talks (no markdown, no bullet lists, no headers). reply itself is unaffected and stays the same full written answer.'
+    ? ' This turn came from spoken voice input and your reply will also be read aloud. Also return voiceReply: a short, natural spoken version of the same answer, in the same language - convey the same core point and any necessary caveat, but noticeably shorter than reading `reply` verbatim, phrased the way a person actually talks (no markdown, no bullet lists, no headers). reply itself is unaffected and stays the same full written answer.' + (body.language === 'fa' ? PERSIAN_VOICE_STYLE_INSTRUCTION : '')
     : '';
   // Found via real Journey E voice testing (Arabic): a field value for a fixed-choice option
   // (a session city, a timeframe) came back transliterated into the reply's own language (e.g.
@@ -1042,6 +1051,23 @@ const REALTIME_MODEL = 'gpt-realtime-2.1';
 const REALTIME_VOICE = 'cedar';
 const REALTIME_TRANSCRIBE_MODEL = 'gpt-live-transcribe';
 const REALTIME_LANGUAGES = ['fa', 'ar', 'en', 'es'];
+// Persian Voice Quality gate, section 8: per-language voice mapping. A real Cedar-vs-Marin
+// Persian A/B (voice-ab-scratch/, gitignored, real OpenAI Realtime API audio) was actually
+// listened to by the user, who clearly preferred Marin for Persian naturalness - confirmed across
+// a smoke test and a 10-category validation set (numbers/percent/prices/terminology/Journey C/
+// destructive-confirmation/correction/Q&A - see docs/ai/persian-voice-quality.md). Persian alone
+// is flipped to 'marin' as a result; English/Arabic/Spanish are deliberately left on the original,
+// still-unvalidated-for-Marin 'cedar' default (gate's own explicit rule: do not change EN/AR/ES
+// voice merely because Persian changed). Flipping any other language later is the same one-line
+// edit to this map alone.
+const REALTIME_VOICE_BY_LANGUAGE = { fa: 'marin', ar: REALTIME_VOICE, en: REALTIME_VOICE, es: REALTIME_VOICE };
+function voiceForLanguage(language) { return REALTIME_VOICE_BY_LANGUAGE[language] || REALTIME_VOICE; }
+// Persian Voice Quality gate, section 18: AUDIO DELIVERY guidance only (never business logic -
+// the Realtime session already has zero tools and is forbidden from deciding/answering anything;
+// this only shapes HOW a given sentence is spoken, never what NAVRYA decides to say). Scoped to
+// Persian alone for now, appended to (never replacing) the base transport-only instruction below -
+// English/Arabic/Spanish keep the exact original instructions string, unchanged.
+const REALTIME_PERSIAN_DELIVERY_INSTRUCTION = ' When the sentence you are asked to speak is in Persian, deliver it as fluent, contemporary Iranian Persian speech: natural Iranian rhythm and stress, a warm, calm, intelligent one-to-one conversational tone, a moderate pace with small natural pauses between thoughts, and without over-enunciating every word or sounding like a newsreader or formal written text being read aloud. Keep trading terminology familiar to Persian-speaking traders. This is only about HOW you say it - always preserve the given sentence\'s exact factual meaning, and never add, invent, or omit any claim or number.';
 // Found via real E1 multi-turn voice testing: a short, low-information spoken utterance like
 // "five minutes" (or its Persian/Arabic/Spanish equivalent) was occasionally mis-transcribed as a
 // DIFFERENT valid-looking value ("fifteen minutes") rather than gibberish - dangerous specifically
@@ -1071,14 +1097,14 @@ async function mintRealtimeClientSecret(body) {
         session: {
           type: 'realtime',
           model,
-          instructions: 'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says. When a separate system message asks you to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, and nothing else.',
+          instructions: 'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says. When a separate system message asks you to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, and nothing else.' + (language === 'fa' ? REALTIME_PERSIAN_DELIVERY_INSTRUCTION : ''),
           audio: {
             input: {
               format: { type: 'audio/pcm', rate: 24000 },
               transcription: { model: REALTIME_TRANSCRIBE_MODEL, languages: [language], prompt: REALTIME_TRANSCRIPTION_PROMPT, keywords: REALTIME_TRANSCRIPTION_KEYWORDS },
               turn_detection: { type: 'semantic_vad', eagerness: 'medium', create_response: false, interrupt_response: false }
             },
-            output: { format: { type: 'audio/pcm', rate: 24000 }, voice: REALTIME_VOICE }
+            output: { format: { type: 'audio/pcm', rate: 24000 }, voice: voiceForLanguage(language) }
           },
           tools: []
         },
@@ -1094,7 +1120,7 @@ async function mintRealtimeClientSecret(body) {
     reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.session' });
     return {
       value: data.value, expiresAt: data.expires_at,
-      model: (data.session && data.session.model) || model, voice: REALTIME_VOICE, language
+      model: (data.session && data.session.model) || model, voice: voiceForLanguage(language), language
     };
   } catch (error) {
     reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.session' });

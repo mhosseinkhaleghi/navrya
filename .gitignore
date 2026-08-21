@@ -4,3 +4,8 @@ uploads/
 .env
 dist/
 tailadmin-reference/
+# Persian Voice Quality gate: ad-hoc real-audio A/B tooling + generated WAV output - matches this
+# project's existing convention (docs/ai/voice-testing.md) of never committing verification
+# scratch scripts or generated audio/test artifacts.
+voice-ab-scratch/
+voice-review/

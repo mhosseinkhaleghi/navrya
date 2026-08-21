@@ -104,8 +104,9 @@ test('voice turns are serialized through a queue - never processed concurrently 
   assert.match(dockViewSource, /voiceTurnQueue\.current = voiceTurnQueue\.current[\s\S]{0,40}\.then\(/);
 });
 
-test('speak() is only ever called with what NAVRYA\'s own deterministic turn produced (voiceReply/reply from the submit() result), never anything the Realtime model decided on its own, and is awaited so the queue waits for it to actually finish', () => {
-  assert.match(dockViewSource, /const toSpeak = result && \(result\.voiceReply \|\| result\.reply\)/);
+test('speak() is only ever called with what NAVRYA\'s own deterministic turn produced (voiceReply/reply from the submit() result, then the Persian Voice Quality gate\'s own deterministic ai-voice-text.js post-processing - see ai-voice-chatdock-ux.test.mjs), never anything the Realtime model decided on its own, and is awaited so the queue waits for it to actually finish', () => {
+  assert.match(dockViewSource, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\)/);
+  assert.match(dockViewSource, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
   assert.match(dockViewSource, /await voiceRef\.current\.speak\(toSpeak\)/);
 });
 

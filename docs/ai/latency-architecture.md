@@ -216,6 +216,15 @@ per-turn one.
   measured data that connection setup, rather than provider generation time, was a material
   contributor.
 
+## Persian Voice Quality pass (later, unrelated to this pass's own optimizations)
+
+`docs/ai/persian-voice-quality.md`'s changes (a Persian `voiceReply` style addendum, a deterministic
+voice-only text post-processing layer, field-aware spoken acknowledgements) added zero network
+calls and zero model calls to any turn - confirmed by `tests/chat-dock-core.test.mjs`'s existing
+"resolves with zero AI calls (fetch is never called)" tests still passing unmodified after that
+pass. The deterministic fast paths documented below remain exactly as fast; the only addition is a
+synchronous string computation before `speak()`, not a new round trip.
+
 ## Voice
 
 No voice-specific code changed. Voice already funnels through the identical `sendChat()` pipeline

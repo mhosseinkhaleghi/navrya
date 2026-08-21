@@ -157,7 +157,7 @@
             recordZeroNetworkLatency('CONFIRMATION', t0, {});
             return {
               kind: 'proactive-resolved', decision: decision, finding: resolved,
-              reply: proactiveEngine.confirmationReply(decision, resolved),
+              reply: proactiveEngine.confirmationReply(decision, resolved, i18n.language()),
               workflow: workflowEngine ? workflowEngine.current() : null,
               activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
             };
@@ -194,7 +194,16 @@
         setLastTurnDebug({ path: 'gate-rejected', actionId: gateWorkflow.actionId, field: gateField });
         recordZeroNetworkLatency('CONFIRMATION', t0, { graceMs: 0 });
         return {
-          kind: 'workflow', reply: i18n.t('aiDockConfirmationCancelled'), workflow: null,
+          kind: 'workflow', reply: i18n.t('aiDockConfirmationCancelled'),
+          // Persian Voice Quality gate, section 22: a deterministic zero-network path has no
+          // model-produced voiceReply to fall back on - without this, Voice would speak the exact
+          // same written aiDockConfirmationCancelled string verbatim. voiceText.spokenConfirmation()
+          // returns null for any language/case it doesn't (yet) cover, so this is byte-for-byte
+          // `null` (identical to before this gate) for EN/AR/ES and any future case - the WRITTEN
+          // `reply` above is completely unaffected either way (section 12: never make written text
+          // colloquial).
+          voiceReply: (window.TradeJournalAIVoiceText && window.TradeJournalAIVoiceText.spokenConfirmation('cancelled', i18n.language())) || null,
+          workflow: null,
           activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
         };
       }
@@ -215,7 +224,9 @@
         setLastTurnDebug({ path: 'gate-confirmed', actionId: gateWorkflow.actionId, field: gateField });
         recordZeroNetworkLatency('CONFIRMATION', t0, { graceMs: 0 });
         return {
-          kind: 'workflow', reply: i18n.t('aiDockConfirmationAccepted'), workflow: gateResult,
+          kind: 'workflow', reply: i18n.t('aiDockConfirmationAccepted'),
+          voiceReply: (window.TradeJournalAIVoiceText && window.TradeJournalAIVoiceText.spokenConfirmation('accepted', i18n.language())) || null,
+          workflow: gateResult,
           activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
         };
       }
@@ -247,7 +258,9 @@
           setLastTurnDebug({ path: 'slot-fill', actionId: slotWorkflow.actionId, field: slotField });
           recordZeroNetworkLatency('WORKFLOW_CONTINUATION', t0, {});
           return {
-            kind: 'workflow', reply: i18n.t('aiDockSlotFilled', { value: String(slotValue) }), workflow: slotResult,
+            kind: 'workflow', reply: i18n.t('aiDockSlotFilled', { value: String(slotValue) }),
+            voiceReply: (window.TradeJournalAIVoiceText && window.TradeJournalAIVoiceText.spokenSlotFilled(slotField, slotValue, i18n.language())) || null,
+            workflow: slotResult,
             activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
           };
         }
@@ -676,7 +689,7 @@
       proposed[f.path] = value;
     });
     var context = proactiveEngine.buildTradeContext({ proposedFields: proposed, knownFields: known });
-    var evalResult = proactiveEngine.evaluate({ context: context, intendedAction: actionId, proposedFields: proposed });
+    var evalResult = proactiveEngine.evaluate({ context: context, intendedAction: actionId, proposedFields: proposed, language: i18n.language() });
     var blocking = evalResult.findings.filter(function (f) { return proactiveEngine.BLOCKING_SEVERITIES[f.severity]; });
     var fieldsToApply = fields;
     if (blocking.length) {
