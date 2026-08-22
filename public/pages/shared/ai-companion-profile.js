@@ -12,24 +12,15 @@
   // profile - never fed from, or written to, TradeJournalMentalHealthStore. See
   // docs/ai/companion-profile.md.
   //
-  // Persistence mirrors mental-health-store.js's Module 5 shape exactly (same "one document per
-  // user, no child tables" reasoning, same write-through-cache/sync-queue/reconcile-by-
-  // lastUpdatedAt pattern) since this is the same shape of problem at a much smaller scale - see
-  // server/db/migrations/018_companion_state.sql.
-  var KEY = 'tradejournal:companion-state:v1';
-  var MIGRATED_PREFIX = 'tradejournal:companion-state-migrated:v1:';
+  // Persistence mirrors mental-health-store.js's Module 5 shape (same "one document per user, no
+  // child tables" reasoning) - see server/db/migrations/018_companion_state.sql. As of Phase 2 of
+  // the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global Data Sync
+  // section), this also means the same server-replica.js in-memory replica, not localStorage.
+  var DOMAIN = 'companion-state';
+  function replica() { return window.TradeJournalServerReplica && window.TradeJournalServerReplica.domain(DOMAIN); }
 
   function now() { return new Date().toISOString(); }
 
-  // Item 4 (Journey G follow-up) originally closed the "switching dev users on the same browser
-  // must never leak one user's Companion preferences/goal/dismissals into another's" gap right
-  // here, by stamping/checking an in-document `_ownerUserId` on every read - but only ever hid a
-  // mismatched document in memory, never deleted it from storage. Superseded (Phase 1 of the
-  // local-first-to-server-authoritative migration): user-scope-guard.js is now the single place
-  // this is handled, for this document and five others, by actually deleting KEY from storage
-  // the moment it detects a different authenticated user - and it is the first shared <script> on
-  // every character page, so by the time this file's own IIFE runs, that has already happened.
-  // load()/write() below are plain again on purpose; do not re-add a second ownership check here.
   function empty() {
     var stamp = now();
     return {
@@ -58,93 +49,36 @@
     return out;
   }
 
-  // Used directly by migrateOrAdopt()/reconcile() themselves for the literal on-disk bytes (e.g.
-  // to compare a server copy's timestamp against local) - identical to load() now that ownership
-  // filtering lives in user-scope-guard.js instead, kept as a separate name for symmetry with the
-  // other synced stores' own readRaw()/read() split.
-  function readRaw() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      return normalize(raw ? JSON.parse(raw) : null);
-    } catch (_) { return empty(); }
+  function load() {
+    var domain = replica();
+    return normalize((domain && domain.get()) || null);
   }
 
-  function load() { return readRaw(); }
-
+  // Apply optimistically and return synchronously (unchanged contract) - the write's own Promise
+  // is .catch()-guarded since save()/write() never gave their caller a Promise to observe.
   function write(state) {
     var normalized = normalize(state);
     normalized.lastUpdatedAt = now();
-    localStorage.setItem(KEY, JSON.stringify(normalized));
-    window.dispatchEvent(new CustomEvent('tradejournal:companion-state-changed'));
-    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('companion-state', 'state', normalized);
+    if (replica()) replica().set(normalized).catch(function () {});
     return normalized;
   }
   function save(state) { return write(normalize(state)); }
 
-  // --- Server sync - mirrors mental-health-store.js's block exactly. ---
+  // Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+  // Data Sync section): reads/writes the in-memory server-replica directly - server-replica.js is
+  // loaded before this file in every character page's script order. There is no localStorage
+  // cache, no offline outbox, and no periodic reconciliation for Companion state any more.
   (function () {
-    var queue = window.TradeJournalSyncQueue;
-    if (!queue) return;
-    function devUser() { return window.TradeJournalDevUserSwitcher; }
-
-    queue.registerModule('companion-state', function (entry) {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) throw new Error('NO_CURRENT_USER');
-      return fetch('/api/sync/companion-state', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
-        body: JSON.stringify(entry.payload)
-      }).then(function (response) { if (!response.ok) throw new Error('SYNC_FAILED'); });
+    if (!window.TradeJournalServerReplica) return;
+    window.TradeJournalServerReplica.registerDocumentDomain(DOMAIN, {
+      hydrateUrl: '/api/sync/companion-state',
+      writeUrl: '/api/sync/companion-state',
+      extractDoc: function (body) { return body.state || null; },
+      // Unlike mental-health.mjs, routes.companion.mjs's own POST wraps the saved document as
+      // {state: saved} rather than returning it directly - see server-replica.js's own comment.
+      extractSaved: function (body) { return body && body.state; }
     });
-
-    function applyServerState(serverState) {
-      if (!serverState) return;
-      var normalized = normalize(serverState);
-      localStorage.setItem(KEY, JSON.stringify(normalized));
-      window.dispatchEvent(new CustomEvent('tradejournal:companion-state-changed'));
-    }
-
-    function fetchServerState(uid) {
-      return fetch('/api/sync/companion-state', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : { state: null }; })
-        .then(function (body) { return body.state || null; })
-        .catch(function () { return null; });
-    }
-
-    // First activation: adopt the server's copy outright if one exists (same "no prior local edit
-    // worth protecting yet" reasoning as every other Module 5-shaped first-activation check);
-    // otherwise push the local document up, but only if it actually diverges from a fresh default
-    // (a brand-new browser with nothing set yet has nothing meaningful to push).
-    function migrateOrAdopt() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      var flagKey = MIGRATED_PREFIX + uid;
-      if (localStorage.getItem(flagKey)) return reconcile();
-      fetchServerState(uid).then(function (serverState) {
-        if (serverState) { applyServerState(serverState); }
-        else {
-          var local = load();
-          var isDefault = JSON.stringify(normalize(local)) === JSON.stringify(Object.assign(empty(), { lastUpdatedAt: local.lastUpdatedAt }));
-          if (!isDefault) queue.enqueue('companion-state', 'state', local);
-        }
-        localStorage.setItem(flagKey, now());
-      });
-    }
-
-    // Steady-state (the `online` event): whichever copy's lastUpdatedAt is newer wins - same
-    // reasoning as mental-health-store.js's own reconcile (a single document has no per-record id
-    // to merge by, so this protects a just-made offline edit from a reconcile moments later).
-    function reconcile() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      fetchServerState(uid).then(function (serverState) {
-        if (!serverState) return;
-        var local = load();
-        if (new Date(serverState.lastUpdatedAt || 0).getTime() > new Date(local.lastUpdatedAt || 0).getTime()) applyServerState(serverState);
-      });
-    }
-
-    window.setTimeout(migrateOrAdopt, 0);
-    window.addEventListener('online', reconcile);
+    replica().hydrate();
   }());
 
   // --- Reads/mutations ---
@@ -182,7 +116,7 @@
   }
 
   window.TradeJournalAICompanionProfile = {
-    key: KEY, load: load, save: save, get: get,
+    load: load, save: save, get: get,
     preferences: preferences, initiativePreference: initiativePreference, setPreference: setPreference,
     setWalkthroughSeen: setWalkthroughSeen, hasSeenWalkthrough: hasSeenWalkthrough,
     setCurrentGoal: setCurrentGoal, currentGoal: currentGoal,

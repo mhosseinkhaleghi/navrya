@@ -312,17 +312,17 @@ test('the guard exposes the exact key lists it purges, so a future silent edit n
 // not need the module loaded to prove correct.
 // ============================================================================
 
-// Patterns, Strategies, Trades, and Mental Health Profile have all graduated out of this file's
-// scope in Phase 2 (see ARCHITECTURE.md's Global Data Sync section / the Phase 2 report): none of
-// those four stores touches localStorage at all any more - each reads/writes server-replica.js's
-// in-memory replica instead, so there is no tradejournal:patterns:v1/strategies:v2/trades:v1/
-// mental-health-profile:v2 key left for this guard to purge. Their own cross-account isolation
-// proofs now live in tests/patterns-sync.test.mjs, tests/strategies-sync.test.mjs,
-// tests/trades-sync.test.mjs, and tests/mental-health-sync.test.mjs instead (a fresh in-memory
-// replica per page load/module instance is never shared between accounts by construction - no
-// purge mechanism is even needed for a migrated domain). The Phase 1 stopgap this file tests
-// remains the real, live mechanism for every domain NOT yet migrated - Sessions and Companion
-// state below.
+// Patterns, Strategies, Trades, Mental Health Profile, and Companion state have all graduated out
+// of this file's scope in Phase 2 (see ARCHITECTURE.md's Global Data Sync section / the Phase 2
+// report): none of those five stores touches localStorage at all any more - each reads/writes
+// server-replica.js's in-memory replica instead, so there is no tradejournal:patterns:v1/
+// strategies:v2/trades:v1/mental-health-profile:v2/companion-state:v1 key left for this guard to
+// purge. Their own cross-account isolation proofs now live in tests/patterns-sync.test.mjs,
+// tests/strategies-sync.test.mjs, tests/trades-sync.test.mjs, tests/mental-health-sync.test.mjs,
+// and tests/companion-profile-sync.test.mjs instead (a fresh in-memory replica per page load/
+// module instance is never shared between accounts by construction - no purge mechanism is even
+// needed for a migrated domain). The Phase 1 stopgap this file tests remains the real, live
+// mechanism for the one domain NOT yet migrated - Sessions below.
 
 // ============================================================================
 // Script order - the enforcement point requested for Phase 1: the guard must run before any

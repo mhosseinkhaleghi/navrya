@@ -173,6 +173,28 @@ test('document domain: mutating the object after set() does not retroactively ch
   assert.equal(domain.get().intake.completed, false);
 });
 
+test('document domain: extractSaved lets a registration unwrap a POST response that wraps the saved document (e.g. routes.companion.mjs\'s {state: saved}, unlike routes.mental-health.mjs\'s own unwrapped shape)', async () => {
+  const localStorage = memoryStorage({ 'tradejournal:auth-token': 'user-1' });
+  const sandbox = {
+    window: {}, localStorage,
+    fetch: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) },
+    document: { body: { appendChild() {} }, documentElement: { lang: 'en' }, createElement: () => ({ setAttribute() {} }) },
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
+  };
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, addEventListener() {} });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
+  const replica = sandbox.window.TradeJournalServerReplica;
+  const domain = replica.registerDocumentDomain('wrapped', {
+    hydrateUrl: '/api/x', writeUrl: '/api/x',
+    extractDoc: (body) => body.state || null,
+    extractSaved: (body) => body && body.state
+  });
+  await domain.hydrate();
+  const saved = await domain.set({ currentGoal: 'strategies' });
+  assert.equal(saved.currentGoal, 'strategies', 'the wrapped {state: ...} response must be unwrapped correctly, not stored as-is');
+  assert.equal(domain.get().currentGoal, 'strategies');
+});
+
 test('no localStorage key is ever written by this module for any domain, in any scenario', async () => {
   const localStorage = memoryStorage();
   const { domain } = await loadDomainWithFetch({ localStorage, token: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ items: [{ id: 'x' }] }) } });
