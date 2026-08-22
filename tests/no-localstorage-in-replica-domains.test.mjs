@@ -25,12 +25,13 @@ import test from 'node:test';
 // its own narrower scope instead.
 const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
+const navryaSrc = (...parts) => path.join(root, 'navrya-src', ...parts);
 const source = (file) => readFile(shared(file), 'utf8');
 
 const STORAGE_CALL = /\b(localStorage|sessionStorage|indexedDB)\s*\.\s*\w+\s*\(/g;
 
-async function storageCalls(file) {
-  const text = await source(file);
+async function storageCallsAt(fullPath) {
+  const text = await readFile(fullPath, 'utf8');
   const lines = text.split(/\r?\n/);
   const calls = [];
   lines.forEach((line, index) => {
@@ -40,6 +41,8 @@ async function storageCalls(file) {
   });
   return calls;
 }
+async function storageCalls(file) { return storageCallsAt(shared(file)); }
+async function storageCallsInNavryaSrc(file) { return storageCallsAt(navryaSrc(file)); }
 
 test('server-replica.js never calls localStorage/sessionStorage/indexedDB except the one documented credential read - that is the entire point of this module', async () => {
   const calls = await storageCalls('server-replica.js');
@@ -117,4 +120,16 @@ test('ai-settings-store.js has no localStorage calls left for its own migrated f
 test('ai-usage-store.js has zero localStorage/sessionStorage/indexedDB calls - today()/thisMonth()/lifetime() read a server-hydrated baseline through server-replica.js now (Phase 8c), reconciled onto the same ai_usage_events table reportToServer() already wrote to before this migration', async () => {
   const calls = await storageCalls('ai-usage-store.js');
   assert.equal(calls.length, 0, JSON.stringify(calls));
+});
+
+test('panel-system.js has zero localStorage/sessionStorage/indexedDB calls - its old panel-grid load()/save() mechanism was confirmed dead (Phase 8d) and removed outright rather than migrated; the real, live panel-layout persistence lives in navrya-src/dashboardView.jsx instead', async () => {
+  const calls = await storageCalls('panel-system.js');
+  assert.equal(calls.length, 0, JSON.stringify(calls));
+});
+
+test('dashboardView.jsx and settingsView.jsx (the real dashboard-board persistence and its "Manage panels" consumer) have zero localStorage/sessionStorage/indexedDB calls - boardKey()/loadBoard()/saveBoard() read/write window.TradeJournalUserPreferences now (Phase 8d)', async () => {
+  const dashboardCalls = await storageCallsInNavryaSrc('dashboardView.jsx');
+  assert.equal(dashboardCalls.length, 0, JSON.stringify(dashboardCalls));
+  const settingsCalls = await storageCallsInNavryaSrc('settingsView.jsx');
+  assert.equal(settingsCalls.length, 0, JSON.stringify(settingsCalls));
 });
