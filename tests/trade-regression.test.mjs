@@ -189,38 +189,44 @@ test('trade store normalizes per-emotion intensity/tag details and clamps out-of
   assert.equal(migratedTags[0], 'legacy single tag');
 });
 
-async function strategyStore(localStorage) {
+// Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+// Data Sync section / the Phase 2 report) moved strategy-education-store.js off localStorage
+// entirely, onto server-replica.js's in-memory replica - this helper now loads that module too,
+// and a real fetch (defaulting to an empty-list GET so listSync() starts genuinely empty, exactly
+// like every other domain since the migration) rather than one that always throws.
+async function strategyStore(localStorage, fetchImpl) {
   const events = [];
   const sandbox = {
     window: {}, localStorage,
     document: { documentElement: { lang: 'en' } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    FileReader: class {}, fetch: async () => { throw new Error('not used'); }, URL
+    FileReader: class {}, fetch: fetchImpl || (async () => ({ ok: true, json: async () => ({ strategies: [] }) })), URL
   };
-  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent: event => events.push(event), TradeJournalStrategyEducationTypes: { numericPaths: ['riskManagement.maxRiskPerTradePercent','riskManagement.dailyDrawdownLimitPercent','riskManagement.totalDrawdownLimitPercent','riskManagement.maxConcurrentTrades','riskManagement.maxProfitCapPerTrade'] } });
+  sandbox.window = Object.assign(sandbox.window, {
+    localStorage, dispatchEvent: event => events.push(event), fetch: sandbox.fetch,
+    TradeJournalDevUserSwitcher: { currentUserId: () => localStorage.getItem('tradejournal:auth-token') },
+    TradeJournalStrategyEducationTypes: { numericPaths: ['riskManagement.maxRiskPerTradePercent','riskManagement.dailyDrawdownLimitPercent','riskManagement.totalDrawdownLimitPercent','riskManagement.maxConcurrentTrades','riskManagement.maxProfitCapPerTrade'] }
+  });
+  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('strategy-education-store.js'), sandbox, { filename: 'strategy-education-store.js' });
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle before the caller reads/writes
   return { store: sandbox.window.TradeJournalStrategyEducationStore, events };
 }
 
-test('strategy migration preserves the legacy singleton as an active generated strategy', async () => {
+test('a legacy pre-migration singleton left in localStorage is never adopted any more - Phase 2 removed the local-first-to-v2 migration path entirely, since Section 7.18\'s original server migration already ran for every real account', async () => {
   const localStorage = memoryStorage();
-  const legacy = { id: 'strategy-education-singleton', positionManagement: { entryRules: 'Wait for confirmation' }, riskManagement: { maxRiskPerTradePercent: 0.75 }, overallFramework: { description: 'Session framework' }, chatHistory: [{ id: 'old-chat', role: 'user', content: 'keep me' }] };
+  const legacy = { id: 'strategy-education-singleton', positionManagement: { entryRules: 'Wait for confirmation' } };
   localStorage.setItem('tradejournal:strategy-education:v1', JSON.stringify(legacy));
   const { store } = await strategyStore(localStorage);
-  const values = store.listSync();
-  assert.equal(values.length, 1);
-  assert.notEqual(values[0].id, 'strategy-education-singleton');
-  assert.equal(values[0].active, true);
-  assert.equal(values[0].positionManagement.entryRules, 'Wait for confirmation');
-  assert.equal(values[0].riskManagement.maxRiskPerTradePercent, 0.75);
-  assert.equal(values[0].chatHistory[0].id, 'old-chat');
-  assert.ok(localStorage.getItem('tradejournal:strategy-education:v1'));
-  assert.ok(localStorage.getItem('tradejournal:strategies:v2'));
+  assert.equal(store.listSync().length, 0, 'the legacy singleton is inert data now - only the server\'s own real strategies (from hydrate()) ever populate the list');
+  assert.equal(localStorage.getItem('tradejournal:strategies:v2'), null, 'nothing is ever written back to localStorage any more, migrated or not');
 });
 
-test('deleting a strategy orphans linked trades without deleting them', async () => {
+test('deleting a strategy orphans linked trades without deleting them (Trade Store is not migrated in this pass, so this still reads/writes localStorage directly)', async () => {
   const localStorage = memoryStorage();
-  const { store } = await strategyStore(localStorage);
+  const fetchImpl = async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ strategies: [] }) };
+  const { store } = await strategyStore(localStorage, fetchImpl);
   const strategy = store.create({ name: 'London playbook' });
   localStorage.setItem('tradejournal:trades:v1', JSON.stringify([{ id: 'trade-1', linkedStrategyId: strategy.id, status: 'open' }, { id: 'trade-2', linkedStrategyId: null, status: 'closed' }]));
   await store.remove(strategy.id);
@@ -232,7 +238,8 @@ test('deleting a strategy orphans linked trades without deleting them', async ()
 
 test('two active strategies keep risk, chat, and detection data isolated', async () => {
   const localStorage = memoryStorage();
-  const { store } = await strategyStore(localStorage);
+  const fetchImpl = async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ strategies: [] }) };
+  const { store } = await strategyStore(localStorage, fetchImpl);
   let first = store.create({ name: 'First', riskManagement: { maxRiskPerTradePercent: 0.5 } });
   let second = store.create({ name: 'Second', riskManagement: { maxRiskPerTradePercent: 1.25 } });
   first = store.addMessage(first, 'user', 'first only');
