@@ -1358,11 +1358,17 @@ function PrevSummaryPanel({ session, lang }) {
   );
 }
 
+// Phase 8a of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section) - reads/writes through window.TradeJournalUserPreferences (the generic
+// {user_id, pref_key -> value} replica-backed store), not localStorage. Synchronous read is safe
+// here the same way it was for the raw localStorage read this replaces: this panel only ever
+// mounts once a Live Session is opened, well after the app's own boot gate
+// (TradeJournalServerReplica.allReady()) has already resolved.
 function SimilarSessionsPanel({ session, character, lang }) {
   const [threshold, setThreshold] = React.useState(() => {
-    const raw = localStorage.getItem('tradejournal:session-similarity-threshold:v1');
-    const n = Number(raw);
-    return Number.isFinite(n) && raw !== null && raw !== '' ? n : 70;
+    const prefs = window.TradeJournalUserPreferences;
+    const value = prefs ? prefs.getPref('similarityThreshold', 70) : 70;
+    return typeof value === 'number' && Number.isFinite(value) ? value : 70;
   });
   const [matches, setMatches] = React.useState(null);
   React.useEffect(() => {
@@ -1384,7 +1390,7 @@ function SimilarSessionsPanel({ session, character, lang }) {
           <input type="number" className="navrya-tabular" value={threshold} onChange={(e) => {
             const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
             setThreshold(v);
-            localStorage.setItem('tradejournal:session-similarity-threshold:v1', String(v));
+            if (window.TradeJournalUserPreferences) window.TradeJournalUserPreferences.setPref('similarityThreshold', v);
           }} style={{ boxSizing: 'border-box', width: 64, height: 32, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.6)', color: 'var(--text-primary)', font: 'var(--type-body)', fontSize: 12, textAlign: 'center', outline: 'none' }} />
           <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>%</span>
         </label>

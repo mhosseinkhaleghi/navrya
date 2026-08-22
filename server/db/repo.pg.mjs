@@ -1491,6 +1491,85 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Phase 8a of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+  // Constraints section, 019_session_signatures_and_preferences.sql). Flat where the client
+  // actually compares/filters, jsonb where nothing queries into individual fields - see the
+  // migration file's own comment.
+  function mapSessionSignature(row) {
+    return {
+      id: row.id, sessionId: row.session_id, character: row.character, market: row.market,
+      timeframe: row.timeframe, date: row.date, movementSequence: row.movement_sequence,
+      patternIds: row.pattern_ids, strategyIds: row.strategy_ids, scenarioOutcomes: row.scenario_outcomes,
+      tradeSummary: row.trade_summary, fateSummaryText: row.fate_summary_text, createdAt: row.created_at
+    };
+  }
+  const sessionSignatures = {
+    async upsert(userId, record) {
+      if (!record || !record.id || !record.sessionId) throw new ApiError(400, 'VALIDATION_FAILED');
+      // Ownership pre-check before the INSERT ... ON CONFLICT, same as patterns/trading_sessions
+      // above - without it, ON CONFLICT (id) DO UPDATE would happily overwrite another user's
+      // row's content (the SET clause never touches user_id, but every other field would still
+      // silently change under a stranger's POST).
+      const { rows: ownerRows } = await pool.query('SELECT user_id FROM session_signatures WHERE id=$1', [record.id]);
+      if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_SIGNATURE_OWNER');
+      const { rows } = await pool.query(
+        `INSERT INTO session_signatures
+           (id, user_id, session_id, character, market, timeframe, date, movement_sequence, pattern_ids, strategy_ids, scenario_outcomes, trade_summary, fate_summary_text)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (id) DO UPDATE SET
+           session_id=$3, character=$4, market=$5, timeframe=$6, date=$7, movement_sequence=$8,
+           pattern_ids=$9, strategy_ids=$10, scenario_outcomes=$11, trade_summary=$12, fate_summary_text=$13
+         RETURNING *`,
+        [record.id, userId, String(record.sessionId), record.character || '', record.market || '',
+          record.timeframe || '', record.date || '', JSON.stringify(record.movementSequence || []),
+          JSON.stringify(record.patternIds || []), JSON.stringify(record.strategyIds || []),
+          JSON.stringify(record.scenarioOutcomes || []), JSON.stringify(record.tradeSummary || {}),
+          record.fateSummaryText || '']
+      );
+      return mapSessionSignature(rows[0]);
+    },
+    async listByUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM session_signatures WHERE user_id=$1 ORDER BY created_at DESC', [userId]);
+      return rows.map(mapSessionSignature);
+    },
+    async remove(userId, id) {
+      const { rows } = await pool.query('SELECT user_id FROM session_signatures WHERE id=$1', [id]);
+      if (!rows[0]) return;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_SIGNATURE_OWNER');
+      await pool.query('DELETE FROM session_signatures WHERE id=$1', [id]);
+    }
+  };
+
+  // Generic {user_id, pref_key -> value} store shared by every Phase 8 sub-module that is a
+  // small scalar/object setting rather than a growing list of its own records - see
+  // 019_session_signatures_and_preferences.sql's own comment. Modeled as a list domain from the
+  // client's perspective (one "record" per preference key, upserted/removed individually), the
+  // same generic server-replica.js contract every list-shaped domain already uses - no new
+  // client-side primitive needed for this shape.
+  function mapPreference(row) {
+    return { id: row.pref_key, value: row.value, updatedAt: row.updated_at };
+  }
+  const userPreferences = {
+    async upsert(userId, prefKey, value) {
+      const key = String(prefKey || '');
+      if (!key) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows } = await pool.query(
+        `INSERT INTO user_preferences (user_id, pref_key, value, updated_at) VALUES ($1,$2,$3,now())
+         ON CONFLICT (user_id, pref_key) DO UPDATE SET value=$3, updated_at=now()
+         RETURNING *`,
+        [userId, key, JSON.stringify(value ?? null)]
+      );
+      return mapPreference(rows[0]);
+    },
+    async listByUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM user_preferences WHERE user_id=$1 ORDER BY pref_key ASC', [userId]);
+      return rows.map(mapPreference);
+    },
+    async remove(userId, prefKey) {
+      await pool.query('DELETE FROM user_preferences WHERE user_id=$1 AND pref_key=$2', [userId, String(prefKey || '')]);
+    }
+  };
+
   // One row per conversation (017_ai_conversations.sql) - the global AI assistant dock's real,
   // multiple, resumable chat threads. `messages` stays a single jsonb array per row (same
   // "nothing queries into it individually" reasoning as mentalHealthProfile/strategies'
@@ -1552,5 +1631,5 @@ export function createPgRepo(pool) {
     return { backend: 'postgres', dbOk, migrations };
   }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences, health };
 }

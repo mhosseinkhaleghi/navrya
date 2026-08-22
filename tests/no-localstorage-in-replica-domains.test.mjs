@@ -4,18 +4,19 @@ import path from 'node:path';
 import test from 'node:test';
 
 // Enforcement pass for the local-first-to-server-authoritative migration (see ARCHITECTURE.md's
-// Global Data Sync section / the Phase 2 and Phase 3 reports). A real regression guard: any
-// future edit that reintroduces a localStorage/sessionStorage/indexedDB read or write into one of
-// the seven domains already migrated onto server-replica.js's in-memory replica - Patterns,
-// Strategy Education, Trade Store, Mental Health Profile, Companion state, Sessions, and the
-// replica module itself - fails this test immediately, rather than being discovered later as a
-// real data-isolation bug.
+// Global Data Sync section / the Phase 2, Phase 3, and Phase 8 reports). A real regression guard:
+// any future edit that reintroduces a localStorage/sessionStorage/indexedDB read or write into
+// one of the domains already migrated onto server-replica.js's in-memory replica - Patterns,
+// Strategy Education, Trade Store, Mental Health Profile, Companion state, Sessions,
+// user-preferences.js (Phase 8a), session-signature-store.js (Phase 8a, same caveat as
+// session-workspace-logic.js below), and the replica module itself - fails this test immediately,
+// rather than being discovered later as a real data-isolation bug.
 //
-// This is deliberately scoped to only the seven already-migrated files (plus
-// session-workspace-logic.js's own two documented, narrowly-allowed one-time local-recovery
-// functions - see its own test below), not a whole-repository sweep. Every Group B preference
-// (language, panel layout, AI settings, psychology settings, session signatures, the
-// account-profile XP dedupe bookkeeping, ...) remains legitimately, extensively
+// This is deliberately scoped to only the already-migrated files (plus
+// session-workspace-logic.js's and session-signature-store.js's own documented, narrowly-allowed
+// one-time/legacy local-recovery reads - see their own tests below), not a whole-repository
+// sweep. Every not-yet-migrated Phase 8 sub-module (panel layout, language, AI settings, app
+// settings) and the account-profile XP dedupe bookkeeping remain legitimately, extensively
 // localStorage-backed for now - see this same phase's report for the honest reasoning. A
 // repo-wide "zero localStorage outside one allowlist" test would either have to allowlist most of
 // the codebase today (providing little real protection beyond what's already true) or be actively
@@ -87,4 +88,15 @@ test("session-workspace-logic.js's only remaining storage calls belong to its tw
 test('ai-journey-steps.js has zero localStorage/sessionStorage/indexedDB calls - its own sessionsCache() reads window.TradeJournalWorkspace.list() now, same as every other cross-domain Sessions reader', async () => {
   const calls = await storageCalls('ai-journey-steps.js');
   assert.equal(calls.length, 0, JSON.stringify(calls));
+});
+
+test('user-preferences.js has zero localStorage/sessionStorage/indexedDB calls - every reference left in the file is prose in a comment', async () => {
+  const calls = await storageCalls('user-preferences.js');
+  assert.equal(calls.length, 0, JSON.stringify(calls));
+});
+
+test("session-signature-store.js's only remaining storage call is the documented, deliberate legacy per-character Sessions scan inside backfillFromLegacy() - genuinely dead in practice today (session-workspace-logic.js's own migration already merges/deletes those keys on every load), kept only as defensive recovery", async () => {
+  const calls = await storageCalls('session-signature-store.js');
+  assert.equal(calls.length, 1, JSON.stringify(calls));
+  assert.match(calls[0].text, /tradejournal:sessions:v1:'\s*\+\s*character/, `unexpected storage call in session-signature-store.js:${calls[0].line} - ${calls[0].text}`);
 });
