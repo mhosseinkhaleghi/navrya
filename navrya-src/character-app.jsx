@@ -1951,7 +1951,36 @@ export function mountCharacterApp(character) {
       });
     }
 
-    sessionsAdapter.resetOnce().finally(() => {
+    // Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+    // Data Sync section): the real boot gate. Every migrated domain's server-replica.js
+    // registration/hydrate() call already ran (its <script> tag loads earlier than this bundle's
+    // on every character page), so by the time allReady() is called here every one of those
+    // promises already exists - this just waits for them all to settle (success or failure)
+    // before the first real render, so a still-hydrating replica can never look like a genuinely
+    // empty account. A hard hydration failure renders an honest error state instead of the normal
+    // UI, directly into these same root elements, rather than silently proceeding with empty data.
+    const replicaReady = window.TradeJournalServerReplica ? window.TradeJournalServerReplica.allReady() : Promise.resolve();
+    Promise.all([sessionsAdapter.resetOnce(), replicaReady]).finally(() => {
+      const failed = window.TradeJournalServerReplica ? window.TradeJournalServerReplica.failedDomains() : [];
+      if (failed.length) {
+        const lang = String(document.documentElement.lang || 'en').toLowerCase();
+        const copy = {
+          fa: 'اتصال به سرور برای بارگذاری اطلاعات شما ناموفق بود. لطفاً صفحه را دوباره بارگذاری کنید.',
+          ar: 'فشل الاتصال بالخادم لتحميل بياناتك. يرجى إعادة تحميل الصفحة.',
+          en: 'Could not reach the server to load your data. Please reload the page.',
+          es: 'No se pudo conectar con el servidor para cargar tus datos. Recarga la página.'
+        };
+        const message = copy[lang] || copy.en;
+        [sidebarRoot, headerRoot, sessionsRoot].forEach((root) => {
+          if (!root) return;
+          root.innerHTML = '';
+          const banner = document.createElement('div');
+          banner.setAttribute('style', 'padding:32px;text-align:center;color:#ffd7d7;font-size:14px;');
+          banner.textContent = message;
+          root.appendChild(banner);
+        });
+        return;
+      }
       store.init();
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);
       createRoot(headerRoot).render(<HeaderApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);

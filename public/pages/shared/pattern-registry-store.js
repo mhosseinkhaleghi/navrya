@@ -1,8 +1,9 @@
 (function () {
   'use strict';
 
-  var STORAGE_KEY = 'tradejournal:patterns:v1';
   var MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+  var DOMAIN = 'patterns';
+  function replica() { return window.TradeJournalServerReplica && window.TradeJournalServerReplica.domain(DOMAIN); }
 
   function uid(prefix) {
     return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -69,146 +70,63 @@
 
   // A brand-new user's registry starts empty - no demo/starter patterns are pre-filled, matching
   // every other store in the app (sessions, strategies, trades all start empty for a new user).
+  //
+  // Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+  // Data Sync section): reads the in-memory server-replica directly - server-replica.js is loaded
+  // before this file in every character page's script order, and registers/hydrates this domain
+  // below. There is no localStorage cache, no offline outbox, and no local-first fallback for
+  // Patterns any more; see server-replica.js's own file header for the write/rollback contract.
   function read() {
-    try {
-      var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (Array.isArray(parsed)) return parsed.map(normalize);
-    } catch (_) { /* Corrupt/missing - start empty below. */ }
-    return [];
+    var domain = replica();
+    return domain ? domain.list().map(normalize) : [];
   }
 
-  function write(items) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    window.dispatchEvent(new CustomEvent('tradejournal:patterns-changed', { detail: { count: items.length } }));
-  }
-
-  // --- Server sync (Module 2 of the local-first-to-server migration; see ARCHITECTURE.md's
-  // Global Data Sync section, 7.18). Same shape as session-workspace-logic.js's own sync block:
-  // localStorage (read()/write() above) stays the source of instant, offline-capable reads and
-  // writes; this only pushes the same writes to the server in the background and reconciles the
-  // local cache from the server when reachable. TradeJournalDevUserSwitcher is looked up live
-  // inside each function (never cached in a top-level const) since dev-user-switcher.js's
-  // <script> tag loads after this file's in every character page's existing order. ---
   (function () {
-    var queue = window.TradeJournalSyncQueue;
-    if (!queue) return;
-    function devUser() { return window.TradeJournalDevUserSwitcher; }
-
-    queue.registerModule('patterns', function (entry) {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) throw new Error('NO_CURRENT_USER'); // stays queued, retried once a user exists
-      if (entry.action === 'delete') {
-        return fetch('/api/sync/patterns/' + encodeURIComponent(entry.recordId), { method: 'DELETE', headers: { 'x-dev-user-id': uid } })
-          .then(function (response) { if (!response.ok && response.status !== 404) throw new Error('SYNC_FAILED'); });
-      }
-      return fetch('/api/sync/patterns', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
-        body: JSON.stringify(entry.payload)
-      }).then(function (response) { if (!response.ok) throw new Error('SYNC_FAILED'); });
+    if (!window.TradeJournalServerReplica) return;
+    window.TradeJournalServerReplica.registerListDomain(DOMAIN, {
+      hydrateUrl: '/api/sync/patterns',
+      writeUrl: '/api/sync/patterns',
+      deleteUrlFor: function (id) { return '/api/sync/patterns/' + encodeURIComponent(id); },
+      extractList: function (body) { return body.patterns || []; }
     });
-
-    // TradeJournalImageStore.saveImage(id, blob, 'pattern') enqueues here once the IndexedDB
-    // write already landed (see addScreenshots() below) - mirrors session-workspace-logic.js's
-    // 'session-images' sender exactly, one category swapped for the other.
-    queue.registerModule('pattern-images', function (entry) {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) throw new Error('NO_CURRENT_USER');
-      return fetch('/api/sync/patterns/images', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
-        body: JSON.stringify({ dataUrl: entry.payload.dataUrl })
-      }).then(function (response) {
-        if (!response.ok) throw new Error('SYNC_FAILED');
-        return response.json();
-      }).then(function (result) {
-        var items = read();
-        var matched = null;
-        items.forEach(function (pattern) {
-          (pattern.referenceScreenshots || []).forEach(function (shot) {
-            if (shot.blobId === entry.recordId && !shot.imageUrl) { shot.imageUrl = result.url; matched = pattern; }
-          });
-        });
-        if (matched) { write(items); queue.enqueue('patterns', matched.id, matched); }
-      });
-    });
-
-    function mergeServerPatterns(serverPatterns) {
-      if (!Array.isArray(serverPatterns) || !serverPatterns.length) return;
-      var byId = {};
-      read().forEach(function (item) { byId[item.id] = item; });
-      serverPatterns.forEach(function (item) { byId[item.id] = item; }); // server wins on conflict
-      write(Object.keys(byId).map(function (id) { return byId[id]; }));
-    }
-
-    function reconcileFromServer() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      fetch('/api/sync/patterns', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : null; })
-        .then(function (result) { if (result) mergeServerPatterns(result.patterns); })
-        .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
-    }
-
-    // Checks the server FIRST: if it already has patterns (e.g. synced from a different browser
-    // for this same user), adopt them as the local cache outright; only if the server is
-    // genuinely empty does it push whatever local patterns exist up as this user's starting set.
-    function migrateOrAdopt() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      var flagKey = 'tradejournal:patterns-migrated:v1:' + uid;
-      if (localStorage.getItem(flagKey)) { reconcileFromServer(); return; }
-      fetch('/api/sync/patterns', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : null; })
-        .then(function (result) {
-          if (result && Array.isArray(result.patterns) && result.patterns.length) {
-            write(result.patterns);
-          } else {
-            read().forEach(function (pattern) { queue.enqueue('patterns', pattern.id, pattern); });
-          }
-          localStorage.setItem(flagKey, new Date().toISOString());
-        })
-        .catch(function () { /* offline - try again next time this runs (flag not yet set) */ });
-    }
-
-    // Deferred to the next tick (see session-workspace-logic.js's identical comment) -
-    // dev-user-switcher.js's <script> tag sits after this file's in the existing load order.
-    window.setTimeout(migrateOrAdopt, 0);
-    window.addEventListener('online', reconcileFromServer);
+    replica().hydrate();
   }());
 
   function listSync() { return read().sort(function (a, b) { return new Date(b.updatedAt) - new Date(a.updatedAt); }); }
 
   function find(id) { return listSync().find(function (item) { return item.id === id; }) || null; }
 
+  // save()/create() apply optimistically and return synchronously (the public contract every
+  // existing caller relies on) - replica().upsert() has already updated the in-memory list before
+  // it returns its Promise, so the value returned here is correct even though the POST to the
+  // server keeps running in the background. A failed POST rolls the in-memory copy back and shows
+  // a toast (server-replica.js does both) - the .catch() below is only there so that real failure
+  // doesn't surface as an unhandled promise rejection, since neither function's own signature ever
+  // gave its caller a Promise to observe in the first place.
   function save(pattern) {
-    var items = read();
     var value = normalize(pattern);
     value.updatedAt = now();
-    var index = items.findIndex(function (item) { return item.id === value.id; });
-    if (index > -1) items[index] = value;
-    else items.unshift(value);
-    write(items);
-    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('patterns', value.id, value);
+    if (replica()) replica().upsert(value).catch(function () {});
     return value;
   }
 
   function create() {
     var pattern = createPattern('', '', 70, []);
-    var items = read();
-    items.unshift(pattern);
-    write(items);
-    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('patterns', pattern.id, pattern);
+    if (replica()) replica().upsert(pattern).catch(function () {});
     return pattern;
   }
 
   async function remove(id) {
     var pattern = find(id);
     if (pattern && window.TradeJournalImageStore) {
+      // Legacy IndexedDB cleanup - harmless no-op for any screenshot added after Phase 2 (which
+      // no longer writes blobId at all, see addScreenshots() below), still correct for a
+      // screenshot added before this migration whose blob may still be sitting in IndexedDB.
       await Promise.all((pattern.referenceScreenshots || []).map(function (item) {
         return item.blobId ? window.TradeJournalImageStore.deleteImage(item.blobId) : Promise.resolve();
       }));
     }
-    write(read().filter(function (item) { return item.id !== id; }));
-    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('patterns', id, null, 'delete');
+    if (replica()) await replica().remove(id);
   }
 
   function fileDataUrl(file) {
@@ -220,6 +138,23 @@
     });
   }
 
+  // Phase 2 image pipeline: upload first, reference by the server's own /uploads/... URL - no
+  // IndexedDB, no blobId, no local blob store for a screenshot added after this migration. A
+  // failed upload falls back to embedding the raw dataUrl directly on the record (never written
+  // to disk on its own) - it still reaches the server as part of the pattern's own save() below,
+  // so there is no "unsynced local-only blob" risk the old IndexedDB+sync-queue pipeline had.
+  async function uploadScreenshot(dataUrl) {
+    var switcher = window.TradeJournalDevUserSwitcher;
+    var uid2 = switcher && switcher.currentUserId();
+    if (!uid2) throw new Error('NO_CURRENT_USER');
+    var response = await fetch('/api/sync/patterns/images', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid2 }, body: JSON.stringify({ dataUrl: dataUrl })
+    });
+    if (!response.ok) throw new Error('UPLOAD_FAILED');
+    var result = await response.json();
+    return result.url;
+  }
+
   async function addScreenshots(patternId, files) {
     var pattern = find(patternId);
     if (!pattern) throw new Error('PATTERN_NOT_FOUND');
@@ -229,13 +164,11 @@
       if (!file.type || file.type.indexOf('image/') !== 0) throw new Error('INVALID_IMAGE_TYPE');
       if (file.size > MAX_IMAGE_BYTES) throw new Error('IMAGE_TOO_LARGE');
       var image = { id: uid('screenshot'), fileName: file.name, uploadedAt: now(), note: '' };
+      var dataUrl = await fileDataUrl(file);
       try {
-        if (!window.TradeJournalImageStore) throw new Error('IMAGE_STORE_UNAVAILABLE');
-        image.blobId = uid('pattern-image');
-        await window.TradeJournalImageStore.saveImage(image.blobId, file, 'pattern');
+        image.imageUrl = await uploadScreenshot(dataUrl);
       } catch (_) {
-        image.blobId = undefined;
-        image.dataUrl = await fileDataUrl(file);
+        image.dataUrl = dataUrl;
       }
       pattern.referenceScreenshots.push(image);
       added.push(image);
@@ -248,6 +181,7 @@
     var pattern = find(patternId);
     if (!pattern) return;
     var image = pattern.referenceScreenshots.find(function (item) { return item.id === screenshotId; });
+    // Legacy IndexedDB cleanup only - a screenshot added after Phase 2 never has a blobId.
     if (image && image.blobId && window.TradeJournalImageStore) await window.TradeJournalImageStore.deleteImage(image.blobId);
     pattern.referenceScreenshots = pattern.referenceScreenshots.filter(function (item) { return item.id !== screenshotId; });
     save(pattern);
@@ -255,7 +189,9 @@
 
   async function screenshotUrl(image) {
     if (!image) return '';
+    if (image.imageUrl) return image.imageUrl;
     if (image.dataUrl) return image.dataUrl;
+    // Legacy fallback only - a screenshot added after Phase 2 never has a blobId.
     if (image.blobId && window.TradeJournalImageStore) return (await window.TradeJournalImageStore.loadImageUrl(image.blobId)) || '';
     return '';
   }
@@ -336,7 +272,6 @@
   }
 
   window.TradeJournalPatternStore = {
-    key: STORAGE_KEY,
     create: create,
     find: find,
     listSync: listSync,
