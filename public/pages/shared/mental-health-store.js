@@ -1,8 +1,8 @@
 (function () {
   'use strict';
-  var KEY = 'tradejournal:mental-health-profile:v2';
-  var LEGACY_KEY = 'tradejournal:mental-health-profile:v1';
   var USER_ID = 'local-trader';
+  var DOMAIN = 'mental-health';
+  function replica() { return window.TradeJournalServerReplica && window.TradeJournalServerReplica.domain(DOMAIN); }
 
   function uid(prefix) { return (prefix || 'mh') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9); }
   function now() { return new Date().toISOString(); }
@@ -107,102 +107,34 @@
     return record;
   }
 
+  // Apply optimistically and return synchronously (unchanged contract) - the write's own Promise
+  // is .catch()-guarded since save()/write() never gave their caller a Promise to observe.
   function write(profile) {
     profile.lastUpdatedAt = now();
-    localStorage.setItem(KEY, JSON.stringify(profile));
-    window.dispatchEvent(new CustomEvent('tradejournal:mental-health-changed'));
-    if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('mental-health', 'profile', profile);
+    if (replica()) replica().set(profile).catch(function () {});
     return profile;
   }
   function save(profile) { return write(normalize(profile)); }
 
-  // --- Server sync (Module 5, final module, of the local-first-to-server migration; see
-  // ARCHITECTURE.md's Global Data Sync section, 7.18). Same shape as the other four synced
-  // stores' sync blocks, adapted for a single-document store: every mutation in this file
-  // funnels through write() above (there is no separate create()/remove() the way the list-
-  // shaped modules have), so that one call site is the only enqueue hook this module needs.
-  // TradeJournalDevUserSwitcher is looked up live (never cached), for the same consistency
-  // reason as trade-store.js's identical comment.
+  // Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+  // Data Sync section): reads/writes the in-memory server-replica directly - server-replica.js
+  // is loaded before this file in every character page's script order. There is no localStorage
+  // cache, no offline outbox, and no local-first fallback for the Mental Health Profile any more.
+  // Every mutation in this file funnels through write() above (there is no separate create()/
+  // remove() the way the list-shaped modules have), so registration is all this block needs.
   (function () {
-    var queue = window.TradeJournalSyncQueue;
-    if (!queue) return;
-    function devUser() { return window.TradeJournalDevUserSwitcher; }
-
-    queue.registerModule('mental-health', function (entry) {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) throw new Error('NO_CURRENT_USER');
-      return fetch('/api/sync/mental-health', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
-        body: JSON.stringify(entry.payload)
-      }).then(function (response) { if (!response.ok) throw new Error('SYNC_FAILED'); });
+    if (!window.TradeJournalServerReplica) return;
+    window.TradeJournalServerReplica.registerDocumentDomain(DOMAIN, {
+      hydrateUrl: '/api/sync/mental-health',
+      writeUrl: '/api/sync/mental-health',
+      extractDoc: function (body) { return body.profile || null; }
     });
-
-    // Written straight to localStorage, bypassing write() above - going through write() here
-    // would re-enqueue the exact data that just arrived FROM the server, a pointless round trip
-    // (harmless, since it's idempotent, but wasteful on every single reconcile/migrate call).
-    function storeLocally(profile) {
-      var normalized = normalize(profile);
-      localStorage.setItem(KEY, JSON.stringify(normalized));
-      window.dispatchEvent(new CustomEvent('tradejournal:mental-health-changed'));
-      return normalized;
-    }
-
-    // There is no per-record id to merge by (unlike the four list-shaped modules) - this is one
-    // document, so "server wins on conflict" becomes "whichever copy's lastUpdatedAt is newer
-    // wins," which also protects a just-made offline edit from being clobbered by a reconcile
-    // that runs moments later.
-    function mergeServerProfile(serverProfile) {
-      if (!serverProfile) return;
-      var raw = localStorage.getItem(KEY);
-      var local = raw ? JSON.parse(raw) : null;
-      if (!local || !local.lastUpdatedAt || new Date(serverProfile.lastUpdatedAt || 0) > new Date(local.lastUpdatedAt)) storeLocally(serverProfile);
-    }
-
-    function reconcileFromServer() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      fetch('/api/sync/mental-health', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : null; })
-        .then(function (result) { if (result) mergeServerProfile(result.profile); })
-        .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
-    }
-
-    // Checks the server BEFORE deciding whether to push local data up - same "adopt vs. push"
-    // sequencing as the other four modules' migrateOrAdopt(). If there is no local profile yet
-    // either (a genuinely fresh browser that has never called save()), there is nothing to push;
-    // the flag is still set so this check doesn't repeat every page load.
-    function migrateOrAdopt() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      var flagKey = 'tradejournal:mental-health-migrated:v1:' + uid;
-      if (localStorage.getItem(flagKey)) { reconcileFromServer(); return; }
-      fetch('/api/sync/mental-health', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : null; })
-        .then(function (result) {
-          if (result && result.profile) {
-            storeLocally(result.profile);
-          } else {
-            var raw = localStorage.getItem(KEY);
-            if (raw) queue.enqueue('mental-health', 'profile', JSON.parse(raw));
-          }
-          localStorage.setItem(flagKey, new Date().toISOString());
-        })
-        .catch(function () { /* offline - try again next time this runs (flag not yet set) */ });
-    }
-
-    // Deferred to the next tick anyway (see trade-store.js's identical comment), for consistency
-    // with the other four synced stores, even though dev-user-switcher.js already loads before
-    // this file in the existing script order.
-    window.setTimeout(migrateOrAdopt, 0);
-    window.addEventListener('online', reconcileFromServer);
+    replica().hydrate();
   }());
+
   function load() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      if (raw) return normalize(JSON.parse(raw));
-      var legacy = localStorage.getItem(LEGACY_KEY);
-      return normalize(legacy ? JSON.parse(legacy) : {});
-    } catch (_) { return normalize({}); }
+    var domain = replica();
+    return normalize((domain && domain.get()) || {});
   }
 
   function getPath(profile, path) { return path.split('.').reduce(function (value, key) { return value && value[key]; }, profile); }
@@ -400,7 +332,7 @@
   }
 
   window.TradeJournalMentalHealthStore = {
-    key: KEY, uid: uid, now: now, load: load, save: save, normalize: normalize,
+    uid: uid, now: now, load: load, save: save, normalize: normalize,
     getPath: getPath, setPath: setPath,
     addMessage: addMessage, applySuggestion: applySuggestion,
     commitDraftThoughtRecord: commitDraftThoughtRecord, commitDraftTrigger: commitDraftTrigger, removeTrigger: removeTrigger,

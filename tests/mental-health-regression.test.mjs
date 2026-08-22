@@ -35,9 +35,30 @@ function baseSandbox(localStorage) {
   return sandbox;
 }
 
-async function mentalHealthOnly(localStorage) {
-  const sandbox = baseSandbox(localStorage || memoryStorage());
-  return loadInto(sandbox, ['mental-health.types.js', 'mental-health-i18n.js', 'mental-health-safety.js', 'mental-health-store.js', 'mental-health-ai.js', 'mental-health-cards.js', 'mental-health-scheduler.js', 'mental-health-report.js']);
+// Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+// Data Sync section / the Phase 2 report) moved mental-health-store.js off localStorage onto
+// server-replica.js's in-memory replica - this helper now loads that module first and provides a
+// real auth token + a fetch that resolves an empty hydrate, so load() starts with real, honest v2
+// defaults (exactly like every other domain since the migration) rather than throwing.
+// serverProfile stands in for whatever GET /api/sync/mental-health would really return for this
+// account - used by the legacy-v1-shape migration test below, which used to seed a raw v1 profile
+// directly into localStorage; there is no localStorage for this domain any more; the server is
+// the only place a pre-existing profile can come from now.
+async function mentalHealthOnly(localStorage, serverProfile) {
+  const store = localStorage || memoryStorage();
+  if (!store.getItem('tradejournal:auth-token')) store.setItem('tradejournal:auth-token', 'test-user');
+  const sandbox = baseSandbox(store);
+  // Only the replica's own hydrate/save traffic is stubbed to succeed - every other fetch (the AI
+  // education-card endpoint, etc.) keeps baseSandbox()'s original "not used" throw, so a test that
+  // relies on the AI server being genuinely unreachable (the local-fallback tests below) is unaffected.
+  sandbox.fetch = async (url, options) => {
+    if (url === '/api/sync/mental-health') return (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ profile: serverProfile || null }) };
+    throw new Error('not used');
+  };
+  sandbox.window.fetch = sandbox.fetch;
+  const window = await loadInto(sandbox, ['server-replica.js', 'mental-health.types.js', 'mental-health-i18n.js', 'mental-health-safety.js', 'mental-health-store.js', 'mental-health-ai.js', 'mental-health-cards.js', 'mental-health-scheduler.js', 'mental-health-report.js']);
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle before the caller reads/writes
+  return window;
 }
 
 // Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
@@ -282,14 +303,15 @@ test('all four character pages load the mental-health module set after psycholog
 });
 
 test('a v1 profile (no intake yet) migrates additively to v2: baseline is untouched, tradingExperienceYears/completed map into intake, and the rest is preserved under legacyBaselineV1', async () => {
-  const localStorage = memoryStorage();
+  // Phase 2 removed localStorage for this domain entirely - a pre-existing v1-shaped document can
+  // now only ever come back from the server itself (GET /api/sync/mental-health), never a local
+  // key. normalize()'s own additive-migration logic is what's under test here, unchanged by Phase 2.
   const v1Profile = {
     userId: 'local-trader', createdAt: '2025-01-01T00:00:00.000Z', lastUpdatedAt: '2025-01-01T00:00:00.000Z', version: 1,
     baseline: { initialStressLevel: 7, initialEmotionalRegulation: 4, tradingExperienceYears: 3, selfReportedWeaknesses: ['enters too early'], assessmentDate: '2025-01-01T00:00:00.000Z', completed: true },
     emotionalProfile: {}, triggerProfile: { triggers: [], autoDetectedTriggers: [] }, behavioralPatterns: {}, cognitiveProfile: { identifiedBiases: [], thoughtRecords: [] }, progressTracking: {}, activeInterventions: {}, healthReportCache: {}, chatHistory: [], educationCards: {}
   };
-  localStorage.setItem('tradejournal:mental-health-profile:v1', JSON.stringify(v1Profile));
-  const window = await mentalHealthOnly(localStorage);
+  const window = await mentalHealthOnly(memoryStorage(), v1Profile);
   const profile = window.TradeJournalMentalHealthStore.load();
   assert.equal(profile.version, 2);
   assert.equal(profile.baseline.initialStressLevel, 7, 'the original v1 baseline is left exactly as it was - existing charts and the cycle engine still read it');
@@ -445,13 +467,16 @@ class FakeNode {
 
 test('pre-session check-in fires once per session by wrapping TradeJournalEntryFlow.openEntry, regardless of whether the session already has chart-upload-derived entries; only a recorded check-in stops it firing again', async () => {
   const localStorage = memoryStorage();
+  localStorage.setItem('tradejournal:auth-token', 'test-user');
   const sandbox = baseSandbox(localStorage);
   Object.assign(sandbox, {
     document: { createElement: tag => new FakeNode(tag), createTextNode: text => { const node = new FakeNode('#text'); node.textContent = text; return node; }, documentElement: { lang: 'en' }, body: new FakeNode('body'), addEventListener() {} },
-    MutationObserver: class { observe() {} }
+    MutationObserver: class { observe() {} },
+    fetch: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ profile: null }) }
   });
-  sandbox.window = Object.assign(sandbox.window, { document: sandbox.document, TradeJournalPsychologyStore: undefined });
-  await loadInto(sandbox, ['mental-health.types.js', 'mental-health-i18n.js', 'mental-health-safety.js', 'mental-health-store.js']);
+  sandbox.window = Object.assign(sandbox.window, { document: sandbox.document, fetch: sandbox.fetch, TradeJournalPsychologyStore: undefined });
+  await loadInto(sandbox, ['server-replica.js', 'mental-health.types.js', 'mental-health-i18n.js', 'mental-health-safety.js', 'mental-health-store.js']);
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle first
 
   const calls = [];
   sandbox.window.TradeJournalEntryFlow = { openEntry: (api, session, type) => calls.push([session.id, type]) };
