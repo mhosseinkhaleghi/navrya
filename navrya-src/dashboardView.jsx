@@ -36,20 +36,32 @@ const CITIES = [
 ];
 
 // Board persistence - shared with navrya-src/settingsView.jsx's "Manage panels" panel, which
-// reads/writes the exact same localStorage record (via these same functions) rather than a
-// parallel copy, so a resize/hide/remove/AI-drafted-panel made from Settings is the same board
-// the actual Dashboard renders next time it mounts.
-export function boardKey(character) { return 'tradejournal:navrya-dashboard-board:v1:' + character; }
+// reads/writes the exact same preference (via these same functions) rather than a parallel copy,
+// so a resize/hide/remove/AI-drafted-panel made from Settings is the same board the actual
+// Dashboard renders next time it mounts.
+//
+// Phase 8d of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section): reads/writes through window.TradeJournalUserPreferences (Phase 8a's
+// generic {user_id, pref_key -> value} replica-backed store) instead of localStorage -
+// boardKey(character) is now a preference key, not a storage key, one whole-board-object
+// preference per character (same shape as before: {board, spans, hidden, custom}). getPref()'s
+// synchronous read is safe as the lazy useState(() => loadBoard(character)) initializer below -
+// this view only ever mounts once the app's own boot gate has resolved, well after
+// window.TradeJournalUserPreferences has hydrated.
+export function boardKey(character) { return 'dashboardBoard:' + character; }
 export function loadBoard(character) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(boardKey(character)));
-    if (saved && Array.isArray(saved.board)) {
-      return { board: saved.board, spans: saved.spans || {}, hidden: saved.hidden || {}, custom: saved.custom || {} };
-    }
-  } catch (_) { /* fall through to default */ }
+  const prefs = window.TradeJournalUserPreferences;
+  const saved = prefs ? prefs.getPref(boardKey(character), null) : null;
+  if (saved && Array.isArray(saved.board)) {
+    return { board: saved.board, spans: saved.spans || {}, hidden: saved.hidden || {}, custom: saved.custom || {} };
+  }
   return { board: DEFAULT_BOARD.slice(), spans: {}, hidden: {}, custom: {} };
 }
-export function saveBoard(character, value) { localStorage.setItem(boardKey(character), JSON.stringify(value)); window.dispatchEvent(new CustomEvent('tradejournal:dashboard-board-changed', { detail: { character } })); }
+export function saveBoard(character, value) {
+  const prefs = window.TradeJournalUserPreferences;
+  if (prefs) prefs.setPref(boardKey(character), value);
+  window.dispatchEvent(new CustomEvent('tradejournal:dashboard-board-changed', { detail: { character } }));
+}
 
 // One AI-drafted (or otherwise free-form) panel: a title/description note card, span 4, sparkle
 // icon - the same shape the design handoff's own "Drafts from the assistant" cards add to the
