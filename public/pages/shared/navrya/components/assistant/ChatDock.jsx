@@ -105,6 +105,11 @@ export function ChatDock({
   voiceState = 'idle', voiceMuted = false, voicePermissionDenied = false,
   onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, voiceErrorLabel, voiceLabels = {},
   getVoiceMediaStream, voiceHeardText, voiceReplyCaption,
+  // Journey G UX correction: the one real "the user just deliberately engaged with the dock"
+  // signal - fired alongside the existing local `focused` styling state, never replacing it.
+  // chatDockView.jsx uses this to gate the first-run Companion welcome card behind an explicit
+  // open gesture instead of showing it the instant the dock merely mounts.
+  onInputFocus,
   busy = false, width = 680, hint,
   models, model, onModelChange, mascot = true, children,
   dir = 'ltr',
@@ -239,7 +244,7 @@ export function ChatDock({
                   type="text" value={text}
                   placeholder={placeholder}
                   onChange={(e) => onValueChange && onValueChange(e.target.value)}
-                  onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+                  onFocus={() => { setFocused(true); if (onInputFocus) onInputFocus(); }} onBlur={() => setFocused(false)}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
                   aria-label={placeholder} disabled={busy}
                   style={{

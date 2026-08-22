@@ -1930,6 +1930,27 @@ export function mountCharacterApp(character) {
       });
     }
 
+    // Journey G (AI Companion & Journey Orchestration): the real executors behind the steps
+    // ai-journey-steps.js can't resolve through the Action Registry alone (no matching
+    // conversational action exists for these, or the target isn't a fresh entity to create). Every
+    // executor below calls a real, already-imported entry point - the exact same one its own
+    // TradeJournalNavryaXxx hook above already exposes - never a second, parallel open path.
+    if (window.TradeJournalAIJourneySteps) {
+      var journeySteps = window.TradeJournalAIJourneySteps;
+      journeySteps.registerExecutor('intake', () => openIntake());
+      journeySteps.registerExecutor('post_trade_reflection', (ctx) => { if (ctx.reflectionDueTrade) openPostTradeReflection(ctx.reflectionDueTrade); });
+      journeySteps.registerExecutor('open_trade_attention', (ctx) => { if (ctx.openTrade) openTradeDetails(ctx.openTrade); });
+      journeySteps.registerExecutor('scenario_plan', (ctx) => {
+        var openSession = (ctx.sessions || []).find((s) => s.status === 'open');
+        if (openSession) openLiveSession(openSession.id); else store.setActiveId('sessions');
+      });
+      journeySteps.registerExecutor('pattern_report', (ctx) => {
+        if (!ctx.reportablePattern) return;
+        if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+        location.hash = '#strategies/patterns/' + ctx.reportablePattern.id + '/report';
+      });
+    }
+
     sessionsAdapter.resetOnce().finally(() => {
       store.init();
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);

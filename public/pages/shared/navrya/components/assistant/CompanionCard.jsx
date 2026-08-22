@@ -1,0 +1,52 @@
+import React from 'react';
+import { ActionRow, MiniButton } from './ChatResponsePopover.jsx';
+
+// Journey G (AI Companion & Journey Orchestration). A compact card in the same glass-card visual
+// language ConversationHistoryDropdown/ChatResponsePopover already use (chatDockView.jsx) -
+// deliberately NOT a second chat surface, a toast, or a modal: it renders inline, above the
+// ChatDock's input bar, only while nothing else (a reply popover, the history dropdown, Therapist
+// Mode, an active Voice session) is showing - see chatDockView.jsx's own gating. `card` is
+// whatever window.TradeJournalAICompanionOrchestrator.currentCard() returned: either the one-time
+// `kind:'welcome'` first-run card (§16) or a `kind:'step'` card reflecting the live
+// ai-journey-engine.js nextBestStep() (§12/§17).
+export function CompanionCard({ card, i18n, onContinue, onExplain, onLater, onSkip, onStart, onWhatIs, onWelcomeLater }) {
+  if (!card) return null;
+  const wrapperStyle = {
+    width: '100%', maxWidth: 360, boxSizing: 'border-box',
+    borderRadius: 'var(--radius-14)', border: '1px solid rgba(244,234,215,.14)',
+    background: 'linear-gradient(180deg,rgba(244,234,215,.10),rgba(244,234,215,.035))',
+    backdropFilter: 'blur(26px) saturate(150%)', WebkitBackdropFilter: 'blur(26px) saturate(150%)',
+    boxShadow: 'var(--shadow-panel),inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 0 1px rgba(183,138,74,.18)',
+    padding: 14
+  };
+  const titleStyle = { font: 'var(--type-body-strong)', color: 'var(--text-primary)', marginBottom: 4 };
+  const whyStyle = { font: 'var(--type-caption)', color: 'var(--text-muted)', marginBottom: 10 };
+
+  if (card.kind === 'welcome') {
+    return (
+      <div style={wrapperStyle} data-companion-card="welcome">
+        <div style={titleStyle}>{card.title}</div>
+        <div style={whyStyle}>{card.why}</div>
+        <ActionRow>
+          <MiniButton kind="apply" icon="sparkles" onClick={onStart}>{card.startLabel}</MiniButton>
+          <MiniButton kind="neutral" icon="info" onClick={onWhatIs}>{card.whatIsLabel}</MiniButton>
+          <MiniButton kind="discard" icon="clock" onClick={onWelcomeLater}>{card.laterLabel}</MiniButton>
+        </ActionRow>
+      </div>
+    );
+  }
+
+  return (
+    <div style={wrapperStyle} data-companion-card={card.id}>
+      <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' }}>{i18n.t('companionWhyLabel')}</div>
+      <div style={titleStyle}>{card.title}</div>
+      <div style={whyStyle}>{card.why}</div>
+      <ActionRow>
+        <MiniButton kind="apply" icon="arrow-right" onClick={onContinue}>{i18n.t('companionContinue')}</MiniButton>
+        <MiniButton kind="neutral" icon="message-circle-question" onClick={onExplain}>{i18n.t('companionExplain')}</MiniButton>
+        {card.optional && <MiniButton kind="discard" icon="close" onClick={onSkip}>{i18n.t('companionSkip')}</MiniButton>}
+        <MiniButton kind="discard" icon="clock" onClick={onLater}>{i18n.t('companionLater')}</MiniButton>
+      </ActionRow>
+    </div>
+  );
+}

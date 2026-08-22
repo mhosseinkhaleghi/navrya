@@ -13,7 +13,7 @@ export function createMemoryRepo() {
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(),
-    mentalHealthProfiles: new Map(), aiChatHistory: new Map()
+    mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -913,6 +913,23 @@ export function createMemoryRepo() {
     }
   };
 
+  // Journey G (AI Companion & Journey Orchestration). Same one-document-per-user shape as
+  // mentalHealthProfile above, for the same reason - see 018_companion_state.sql's comment.
+  const companionState = {
+    async upsert(userId, companionStateBody) {
+      requireUser(userId);
+      if (!companionStateBody || typeof companionStateBody !== 'object') throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.companionState.get(userId);
+      const stamp = now();
+      state.companionState.set(userId, { userId, state: companionStateBody, createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp });
+      return clone(companionStateBody);
+    },
+    async get(userId) {
+      const record = state.companionState.get(userId);
+      return record ? clone(record.state) : null;
+    }
+  };
+
   // One row per conversation (017_ai_conversations.sql) - mirrors repo.pg.mjs's aiChatHistory
   // domain exactly. state.aiChatHistory is keyed by conversation id, not userId, since a user
   // can now have many.
@@ -957,5 +974,5 @@ export function createMemoryRepo() {
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, health };
 }

@@ -91,7 +91,10 @@ test('a voice-originated turn goes through the exact same submit()/core.sendChat
   // {0,600}, not {0,200}: the latency pass (docs/ai/latency-architecture.md) added a
   // transcript-to-reply timing stamp between the function opening and the real submitRef.current()
   // call this test cares about - still the same single real call, just a few lines further down.
-  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}submitRef\.current\(transcriptText, \{ source: 'voice' \}\)/);
+  // Journey G UX correction: submitRef.current()'s options now also carry
+  // awaitingCompanionOpeningReply (read-and-cleared from a ref right above this same call) - still
+  // the one real submit() call, an additive field, never a second/parallel path.
+  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}submitRef\.current\(transcriptText, \{ source: 'voice', awaitingCompanionOpeningReply: wasAwaitingCompanionOpeningReply \}\)/);
   assert.match(dockViewSource, /onFinalTranscript:\s*onVoiceTranscript/);
 });
 

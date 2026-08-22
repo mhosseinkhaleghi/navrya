@@ -69,7 +69,12 @@ const copy = {
     soundLabel: 'صدا', soundHint: 'نشانه شنیداری همراه با هر هشدار',
     tradingDefaultsTitle: 'پیش‌فرض‌های معاملاتی', riskPerTradeLabel: 'ریسک هر معامله', leverageCapLabel: 'سقف اهرم', tradesPerSessionLabel: 'معامله در هر سشن',
     defaultsNote: 'پیش‌فرض‌ها ماشین‌حساب و ثبت معامله را از پیش پر می‌کنند. هرگز سفارشی ثبت نمی‌کنند.',
-    decrease: 'کاهش', increase: 'افزایش'
+    decrease: 'کاهش', increase: 'افزایش',
+    companionTitle: 'همراه هوش مصنوعی', companionInitiativeLabel: 'میزان پیش‌قدمی', companionInitiativeHint: 'مشخص می‌کند همراه هوش مصنوعی چقدر خودش قدم بعدی را پیشنهاد بدهد.',
+    companionInitiativeLow: 'کم', companionInitiativeNormal: 'معمولی', companionInitiativeHigh: 'زیاد',
+    companionGoalLabel: 'هدف فعلی', companionGoalHint: 'روی کدام بخش می‌خواهی بیشتر تمرکز کنی؟ فقط اولویت پیشنهادها را بالا می‌برد؛ هیچ‌چیزی را کامل یا نادیده نمی‌کند.',
+    companionGoalNone: 'بدون هدف مشخص', companionGoalPatterns: 'ساختن دانش پترن', companionGoalStrategies: 'ساختن استراتژی',
+    companionGoalSessions: 'بهبود برنامه‌ریزی سشن', companionGoalTrades: 'بهبود برنامه‌ریزی معامله', companionGoalPsychology: 'بهبود عادت‌های جمع‌بندی و روان‌شناسی'
   },
   ar: {
     title: 'الإعدادات', subtitle: 'ابنِ لوحات مع المساعد، رتّب كل شاشة، وحدّد الشخصية والمنطقة والقواعد التي يعمل بها التطبيق.',
@@ -98,7 +103,12 @@ const copy = {
     soundLabel: 'الصوت', soundHint: 'تنبيه صوتي مع كل تنبيه',
     tradingDefaultsTitle: 'الإعدادات الافتراضية للتداول', riskPerTradeLabel: 'المخاطرة لكل صفقة', leverageCapLabel: 'سقف الرافعة', tradesPerSessionLabel: 'الصفقات لكل جلسة',
     defaultsNote: 'تملأ الإعدادات الافتراضية الحاسبة وسجل الصفقات مسبقاً. لا تُنفّذ أي أمر أبداً.',
-    decrease: 'إنقاص', increase: 'زيادة'
+    decrease: 'إنقاص', increase: 'زيادة',
+    companionTitle: 'رفيق الذكاء الاصطناعي', companionInitiativeLabel: 'مستوى المبادرة', companionInitiativeHint: 'يحدد مدى مبادرة الرفيق باقتراح الخطوة التالية من تلقاء نفسه.',
+    companionInitiativeLow: 'منخفضة', companionInitiativeNormal: 'عادية', companionInitiativeHigh: 'عالية',
+    companionGoalLabel: 'الهدف الحالي', companionGoalHint: 'على أي جزء تريد التركيز أكثر؟ يرفع فقط أولوية الاقتراحات؛ لا يُكمل أو يتجاهل أي شيء.',
+    companionGoalNone: 'بلا هدف محدد', companionGoalPatterns: 'بناء معرفة الأنماط', companionGoalStrategies: 'بناء الاستراتيجية',
+    companionGoalSessions: 'تحسين تخطيط الجلسات', companionGoalTrades: 'تحسين تخطيط الصفقات', companionGoalPsychology: 'تحسين عادات التأمل والصحة النفسية'
   },
   en: {
     title: 'Settings', subtitle: 'Build panels with the assistant, arrange every screen, and set the character, region and rules the app runs by.',
@@ -127,7 +137,12 @@ const copy = {
     soundLabel: 'Sound', soundHint: 'Audible cue with every alert',
     tradingDefaultsTitle: 'Trading defaults', riskPerTradeLabel: 'Risk per trade', leverageCapLabel: 'Leverage cap', tradesPerSessionLabel: 'Trades per session',
     defaultsNote: 'Defaults pre-fill the calculator and the trade log. They never place an order.',
-    decrease: 'Decrease', increase: 'Increase'
+    decrease: 'Decrease', increase: 'Increase',
+    companionTitle: 'AI companion', companionInitiativeLabel: 'Companion initiative', companionInitiativeHint: 'Controls how often the companion suggests a next step on its own.',
+    companionInitiativeLow: 'Low', companionInitiativeNormal: 'Normal', companionInitiativeHigh: 'High',
+    companionGoalLabel: 'Current goal', companionGoalHint: 'Which area do you want to focus on? Only raises that area\'s suggestion priority - it never completes or overrides anything.',
+    companionGoalNone: 'No specific goal', companionGoalPatterns: 'Build my Pattern knowledge', companionGoalStrategies: 'Build my Strategy',
+    companionGoalSessions: 'Improve Session planning', companionGoalTrades: 'Improve trade planning', companionGoalPsychology: 'Improve reflection / psychology habits'
   },
   es: {
     title: 'Ajustes', subtitle: 'Crea paneles con el asistente, organiza cada pantalla y define el personaje, la región y las reglas con las que funciona la app.',
@@ -156,7 +171,12 @@ const copy = {
     soundLabel: 'Sonido', soundHint: 'Aviso audible con cada alerta',
     tradingDefaultsTitle: 'Valores predeterminados de trading', riskPerTradeLabel: 'Riesgo por operación', leverageCapLabel: 'Tope de apalancamiento', tradesPerSessionLabel: 'Operaciones por sesión',
     defaultsNote: 'Los valores predeterminados prellenan la calculadora y el registro. Nunca ejecutan una orden.',
-    decrease: 'Disminuir', increase: 'Aumentar'
+    decrease: 'Disminuir', increase: 'Aumentar',
+    companionTitle: 'Compañero de IA', companionInitiativeLabel: 'Iniciativa del compañero', companionInitiativeHint: 'Controla con qué frecuencia el compañero sugiere un siguiente paso por su cuenta.',
+    companionInitiativeLow: 'Baja', companionInitiativeNormal: 'Normal', companionInitiativeHigh: 'Alta',
+    companionGoalLabel: 'Objetivo actual', companionGoalHint: '¿En qué área quieres enfocarte más? Solo aumenta la prioridad de esas sugerencias; nunca completa ni anula nada.',
+    companionGoalNone: 'Sin objetivo específico', companionGoalPatterns: 'Desarrollar mi conocimiento de Patrones', companionGoalStrategies: 'Desarrollar mi Estrategia',
+    companionGoalSessions: 'Mejorar la planificación de Sesiones', companionGoalTrades: 'Mejorar la planificación de operaciones', companionGoalPsychology: 'Mejorar hábitos de reflexión / psicología'
   }
 };
 function tr(lang, key, vars) {
@@ -583,6 +603,76 @@ function TradingDefaultsSection({ t, lang }) {
   );
 }
 
+// ============================================================================
+// Journey G (AI Companion & Journey Orchestration) - the one user-facing preference this gate
+// adds: how proactive the Companion card in the ChatDock is (§54 of the brief - "not a nagging
+// coach"). Reads/writes the real ai-companion-profile.js document; Low/Normal/High never bypasses
+// the safety/cooldown gating in ai-companion-orchestrator.js, only how often a NEW nudge appears.
+// ============================================================================
+// Item 3 (Journey G follow-up): a real set/change/clear surface for the currentGoal
+// ai-journey-engine.js already persists and prioritizes. Every option maps to a domain a real
+// step in ai-journey-steps.js actually uses ('patterns'/'strategies'/'sessions'/'trades'/
+// 'psychology') - never a capability that doesn't exist. Goes through
+// TradeJournalAICompanionOrchestrator.setCurrentGoal() (not the profile store directly) so the
+// same cooldown-reset + republish every other Companion interaction gets also applies here -
+// the Companion card reflects a freshly-set goal immediately, not after a cooldown window.
+function CompanionGoalSelect({ t }) {
+  const profileStore = window.TradeJournalAICompanionProfile;
+  const orchestrator = window.TradeJournalAICompanionOrchestrator;
+  const [goal, setGoal] = React.useState(() => (profileStore ? profileStore.currentGoal() : null));
+  const options = [
+    { value: '', label: t('companionGoalNone') },
+    { value: 'patterns', label: t('companionGoalPatterns') },
+    { value: 'strategies', label: t('companionGoalStrategies') },
+    { value: 'sessions', label: t('companionGoalSessions') },
+    { value: 'trades', label: t('companionGoalTrades') },
+    { value: 'psychology', label: t('companionGoalPsychology') }
+  ];
+  function change(value) {
+    const domainOrNull = value || null;
+    setGoal(domainOrNull);
+    if (orchestrator) orchestrator.setCurrentGoal(domainOrNull);
+    else if (profileStore) profileStore.setCurrentGoal(domainOrNull); // orchestrator not loaded yet (defensive fallback) - still persists/prioritizes correctly
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+        <span style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: 'var(--text-primary)' }}>{t('companionGoalLabel')}</span>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('companionGoalHint')}</span>
+      </div>
+      <Select value={goal || ''} options={options} onChange={change} width={220} />
+    </div>
+  );
+}
+
+function CompanionSection({ t }) {
+  const profileStore = window.TradeJournalAICompanionProfile;
+  const [initiative, setInitiative] = React.useState(() => (profileStore ? profileStore.initiativePreference() : 'normal'));
+  const options = [
+    { value: 'low', label: t('companionInitiativeLow') },
+    { value: 'normal', label: t('companionInitiativeNormal') },
+    { value: 'high', label: t('companionInitiativeHigh') }
+  ];
+  function change(value) {
+    setInitiative(value);
+    if (profileStore) profileStore.setPreference('initiativePreference', value);
+  }
+  return (
+    <SectionShell icon="assistant" title={t('companionTitle')}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+            <span style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: 'var(--text-primary)' }}>{t('companionInitiativeLabel')}</span>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('companionInitiativeHint')}</span>
+          </div>
+          <Select value={initiative} options={options} onChange={change} width={160} />
+        </div>
+        <CompanionGoalSelect t={t} />
+      </div>
+    </SectionShell>
+  );
+}
+
 export function SettingsView({ character, store }) {
   const lang = document.documentElement.lang || 'fa';
   const rtl = lang === 'fa' || lang === 'ar';
@@ -603,6 +693,7 @@ export function SettingsView({ character, store }) {
           <RegionLanguageSection t={t} lang={lang} store={store} />
           <AlertsSection t={t} lang={lang} />
           <TradingDefaultsSection t={t} lang={lang} />
+          <CompanionSection t={t} />
         </div>
       </div>
     </div>

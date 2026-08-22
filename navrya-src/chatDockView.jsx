@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatDock } from '../public/pages/shared/navrya/components/assistant/ChatDock.jsx';
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
+import { CompanionCard } from '../public/pages/shared/navrya/components/assistant/CompanionCard.jsx';
 import { createVoiceSession, VOICE_STATES } from './aiVoiceRealtime.js';
 
 function fieldLabel(tradeI18n, key) { return tradeI18n ? tradeI18n.t(key) : key; }
@@ -84,6 +85,27 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyList, setHistoryList] = React.useState([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
+  // Journey G (AI Companion & Journey Orchestration): the live Companion card - re-read from
+  // window.TradeJournalAICompanionOrchestrator.currentCard() (deterministic, zero-network) on
+  // mount and on its own `tradejournal:companion-updated` event. Rendering itself is additionally
+  // gated below (popover/historyOpen/therapistMode/voice all take precedence) - see
+  // docs/ai/companion-orchestration.md for why this is a render-time gate rather than the
+  // orchestrator trying to track those transient UI states itself.
+  const [companionCard, setCompanionCard] = React.useState(null);
+  // Journey G UX correction: the first-run welcome must never auto-pop just because the dock
+  // mounted (item 1) - it (and, unaffected, nothing else) is now gated behind a real, explicit
+  // "the user engaged with the dock" gesture: focusing the input, pressing Voice, or sending a
+  // message. A regular 'step' guidance card is NOT gated by this - it keeps showing through the
+  // pre-existing, cooldown-gated ai-companion-orchestrator.js mechanism (see the render gate
+  // below and docs/ai/companion-orchestration.md's "Voice Companion opening" section).
+  const [dockExplicitlyOpened, setDockExplicitlyOpened] = React.useState(false);
+  // True only while NAVRYA is speaking its own proactive Voice Companion opening (item 7/9) - a
+  // caller-level label layered on top of aiVoiceRealtime.js's own transport state (which stays a
+  // pure connecting->assistant_speaking->listening machine with no Companion-specific concept of
+  // its own - see that file's header comment). Used only to (a) let the CompanionCard render as a
+  // synchronized visual aid during the opening specifically, never for the rest of a Voice
+  // session, and (b) tests/diagnostics.
+  const [companionOpeningActive, setCompanionOpeningActive] = React.useState(false);
   // Journey E (Realtime Voice): the Voice button drives a real OpenAI Realtime WebRTC session
   // (navrya-src/aiVoiceRealtime.js). ChatDock.jsx renders every one of these states distinctly
   // (see its own VOICE_STATE_ICON/VOICE_STATE_DOT/VoiceStatusPill) directly off voiceState - it
@@ -120,6 +142,20 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     }
     window.addEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
     return () => window.removeEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
+  }, []);
+
+  // Journey G: refresh the Companion card on mount and whenever the orchestrator recomputes -
+  // never a poll (ai-companion-orchestrator.js only republishes on real product-state
+  // CustomEvents). refreshCompanion() is deliberately cheap/synchronous (ai-journey-engine.js
+  // makes zero network calls), so calling it eagerly here costs nothing.
+  React.useEffect(() => {
+    function refreshCompanion() {
+      const orchestrator = window.TradeJournalAICompanionOrchestrator;
+      setCompanionCard(orchestrator ? orchestrator.currentCard() : null);
+    }
+    refreshCompanion();
+    window.addEventListener('tradejournal:companion-updated', refreshCompanion);
+    return () => window.removeEventListener('tradejournal:companion-updated', refreshCompanion);
   }, []);
 
   function onModelChange(nextProvider) {
@@ -198,11 +234,28 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
 
   async function submit(value, options) {
     const source = (options && options.source) === 'voice' ? 'voice' : 'text';
+    // Sending any message is unambiguously an explicit engagement with the dock (item 1/14) -
+    // harmless to set unconditionally here even for a Voice-sourced turn, which already set it
+    // itself the moment Voice was pressed (toggleVoice()).
+    setDockExplicitlyOpened(true);
     setText('');
     setPopover((p) => ({ open: true, state: 'thinking', prompt: value, messages: p && p.messages }));
     setBusy(true);
     try {
-      const result = await core.sendChat({ text: value, therapistMode, transcript, conversationId: activeConversationId, source });
+      // Journey G, Item 1: a Companion "Explain" tap threads companionIntent:'explain' through so
+      // chat-dock-core.js (a) never lets an unrelated registered process elsewhere on the page
+      // hijack this one turn and (b) asks ai-journey-engine.js for a TEACHER-stance
+      // companionContext - the question text itself (value) is a real, per-step localized prompt
+      // (CompanionCard's own explainPrompt), never a synthetic "continue" message. explainStepId
+      // is passed through only as debug metadata (chat-dock-core.js's debugLastTurn()).
+      const result = await core.sendChat({
+        text: value, therapistMode, transcript, conversationId: activeConversationId, source,
+        companionIntent: options && options.companionIntent, explainStepId: options && options.explainStepId,
+        // Journey G UX correction, item 10: set for exactly the one voice turn that immediately
+        // follows a spoken Companion opening (see onVoiceTranscript below) - chat-dock-core.js's
+        // own deterministic Start/Later/Explain classifier only ever runs when this is true.
+        awaitingCompanionOpeningReply: options && options.awaitingCompanionOpeningReply
+      });
       const renderStampAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
       if (!result) { setBusy(false); return null; }
       if (result.kind === 'safety') {
@@ -286,14 +339,21 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // see docs/ai/latency-testing.md). Kept as its own small object, not folded into
   // chat-dock-core.js's debugLastLatency() (which knows nothing about the voice transport), since
   // it spans two modules this file already bridges.
+  // Journey G UX correction, item 10: true for exactly the one turn right after a Companion
+  // opening was spoken - read-and-cleared (not a React state, so it can never race a re-render)
+  // the instant the next transcript arrives, so only that ONE reply is ever treated specially,
+  // regardless of how it's classified (start/later/explain/ambiguous).
+  const awaitingCompanionOpeningReplyRef = React.useRef(false);
   let lastVoiceLatency = null;
   function onVoiceTranscript(transcriptText) {
     setVoiceHeardText(transcriptText);
+    const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef.current;
+    awaitingCompanionOpeningReplyRef.current = false;
     const transcriptAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     voiceTurnQueue.current = voiceTurnQueue.current
       .catch(() => {})
       .then(async () => {
-        const result = await submitRef.current(transcriptText, { source: 'voice' });
+        const result = await submitRef.current(transcriptText, { source: 'voice', awaitingCompanionOpeningReply: wasAwaitingCompanionOpeningReply });
         const replyAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         const rawToSpeak = result && (result.voiceReply || result.reply);
         // Persian Voice Quality gate: a final, deterministic, voice-ONLY pass (no model call, no
@@ -323,6 +383,57 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return voiceTurnQueue.current;
   }
 
+  // Journey G UX correction, items 2-9: the deterministic, zero-model-call Voice Companion
+  // opening. Architecture (unchanged elsewhere): Journey Engine supplies real facts -> Companion
+  // Orchestrator decides whether/what to say -> this function hands the EXACT text to the
+  // existing speak() mechanism -> the Realtime session speaks it verbatim, same as any other
+  // reply (docs/ai/companion-orchestration.md). Called only once per real connection, only from
+  // the voiceState effect below, itself only ever reachable after the user's own explicit Voice
+  // press (item 6's consent boundary) - never from page load/refresh/navigation/login.
+  const openingDeliveredForConnectionRef = React.useRef(false);
+  function deliverCompanionOpening() {
+    if (openingDeliveredForConnectionRef.current) return;
+    openingDeliveredForConnectionRef.current = true;
+    // Item 16: Therapist Mode suppresses a proactive Journey opening - this is transient UI state
+    // the orchestrator has no visibility into, so it is checked here, the same "product-state
+    // safety lives in the engine, transient-UI safety lives in the component" split the Text
+    // CompanionCard's own render gate already uses. Destructive/proactive-confirmation/workflow
+    // safety is checked inside voiceOpening() itself (ai-journey-engine.js's
+    // voiceOpeningContext()), the exact same gate nextBestStep() uses.
+    if (therapistMode) return;
+    const orchestrator = window.TradeJournalAICompanionOrchestrator;
+    if (!orchestrator || typeof orchestrator.voiceOpening !== 'function') return;
+    // Captured BEFORE voiceOpening() runs: for a genuinely fresh user, voiceOpening() itself marks
+    // the walkthrough seen as a side effect of deciding to speak it (so it never repeats on the
+    // next Voice press - item 13) - which means currentCard() would no longer return the welcome
+    // card by the time the speak() promise below actually resolves. Capturing it first is what
+    // lets the visual card (item 9) still show the real Start/What is NAVRYA?/Later card
+    // synchronized with the spoken greeting.
+    var preOpeningCard = orchestrator.currentCard();
+    var opening = orchestrator.voiceOpening(); // zero model calls - real Journey facts only
+    if (!opening || !opening.text) return; // safety blocked it, or nothing true to say - stay silent, never forced
+    // Routed through the SAME voiceTurnQueue every real turn already serializes through (this
+    // function only ever runs before any user turn has arrived, but a fast talker can still
+    // barge in the instant speak() starts - see aiVoiceRealtime.js's own TRANSPORT_SPEECH_STARTED
+    // handling, which already interrupts ANY ASSISTANT_SPEAKING playback, this opening included,
+    // via the existing barge-in path, no new code needed there). Serializing here is what stops
+    // that interrupting turn's own eventual speak() call from overlapping this one's still-
+    // resolving promise (found necessary for the identical reason documented on voiceTurnQueue's
+    // own declaration above).
+    voiceTurnQueue.current = voiceTurnQueue.current.catch(() => {}).then(async function () {
+      setCompanionCard(opening.kind === 'freshWelcome' && preOpeningCard ? preOpeningCard : orchestrator.currentCard());
+      setCompanionOpeningActive(true);
+      var toSpeak = voiceText ? voiceText.toSpokenText(opening.text, i18n.language()) : opening.text;
+      setVoiceReplyCaption(opening.text);
+      // The very next finalized transcript is a reply to THIS opening - see onVoiceTranscript's
+      // own read-and-clear of this ref.
+      awaitingCompanionOpeningReplyRef.current = true;
+      if (voiceRef.current) await voiceRef.current.speak(toSpeak);
+      setCompanionOpeningActive(false);
+    });
+    return voiceTurnQueue.current;
+  }
+
   React.useEffect(() => {
     voiceRef.current = createVoiceSession({
       language: i18n.language(),
@@ -342,10 +453,34 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Journey G UX correction, item 7: the real trigger point for the Voice Companion opening -
+  // aiVoiceRealtime.js's own connect() (a pure transport, untouched - see that file's header
+  // comment) already transitions CONNECTING -> LISTENING itself the instant session.connect()
+  // resolves; the FIRST time that specific transition is observed for a connection is the one,
+  // real "the session just became ready, nothing has been said yet" moment. Every LATER
+  // CONNECTING->LISTENING-shaped transition within the same connection (there isn't one - Voice
+  // only reaches CONNECTING once per connect() call) or ordinary USER_SPEAKING->LISTENING/
+  // ASSISTANT_SPEAKING->LISTENING transitions during a real conversation are excluded simply by
+  // openingDeliveredForConnectionRef already being set, never by watching `previous` for those.
+  const previousVoiceStateRef = React.useRef(VOICE_STATES.IDLE);
+  React.useEffect(() => {
+    const previous = previousVoiceStateRef.current;
+    previousVoiceStateRef.current = voiceState;
+    if (voiceState === VOICE_STATES.LISTENING && previous === VOICE_STATES.CONNECTING) deliverCompanionOpening();
+    // Reset for the NEXT connect() - disconnecting (a real disconnect, or the ERROR state a failed
+    // connect/session lands in) must not leave a stale "already delivered" flag that would
+    // silently skip the opening on a later, genuinely new connection.
+    if (voiceState === VOICE_STATES.IDLE || voiceState === VOICE_STATES.ERROR) openingDeliveredForConnectionRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceState]);
+
   function toggleVoice() {
     if (!voiceRef.current) return;
     const current = voiceRef.current.state();
     if (current === VOICE_STATES.IDLE || current === VOICE_STATES.ERROR) {
+      // Pressing Voice is itself an explicit "open the dock" gesture (item 1/6) - the consent
+      // boundary for everything that follows, spoken opening included.
+      setDockExplicitlyOpened(true);
       setVoicePermissionDenied(false);
       // i18n.language() reads document.documentElement.lang live (see ai-i18n.js) - it has no
       // change event, so the adapter's own language is re-synced right here, immediately before
@@ -410,6 +545,33 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     closePopover();
   }
 
+  // Journey G: Companion card actions. Continue is fully deterministic (§18) - it never goes
+  // through the model, it calls straight into the step's own real executor
+  // (ai-journey-steps.js/character-app.jsx). Explain is the one action that DOES go through the
+  // normal chat pipeline, in TEACHER stance, using the step's own real localized question.
+  const companionOrchestrator = window.TradeJournalAICompanionOrchestrator;
+  function companionContinue() { if (companionOrchestrator && companionCard) companionOrchestrator.continueStep(companionCard.id); }
+  function companionExplain() { if (companionCard) submit(companionCard.explainPrompt, { companionIntent: 'explain', explainStepId: companionCard.id }); }
+  function companionLater() { if (companionOrchestrator && companionCard) companionOrchestrator.laterStep(companionCard.id); }
+  function companionSkip() { if (companionOrchestrator && companionCard) companionOrchestrator.skipStep(companionCard.id); }
+  function welcomeStart() { if (companionOrchestrator) companionOrchestrator.startWalkthrough(); }
+  function welcomeWhatIs() {
+    if (companionOrchestrator) companionOrchestrator.startWalkthrough();
+    submit(i18n.t('companionWelcomeWhatIsNavrya'), { companionIntent: 'explain', explainStepId: 'orientation' });
+  }
+  function welcomeLater() { if (companionOrchestrator) companionOrchestrator.dismissWelcomeLater(); }
+  // Never shown over a reply/history/Therapist Mode - see docs/ai/companion-orchestration.md's
+  // render-time gate. Journey G UX correction, items 1/9: the WELCOME variant specifically also
+  // requires dockExplicitlyOpened (never auto-pops on ordinary page load - see that state's own
+  // declaration above); a real 'step' card is unaffected, still governed only by the pre-existing
+  // cooldown-gated orchestrator mechanism. Voice no longer unconditionally hides the card - it may
+  // render as a synchronized visual aid specifically while companionOpeningActive is true (the
+  // Voice Companion opening), and stays hidden for the rest of an ordinary Voice session exactly
+  // as before.
+  const companionCardAllowed = companionCard && (companionCard.kind !== 'welcome' || dockExplicitlyOpened);
+  const showCompanionCard = !!companionCardAllowed && !popover && !historyOpen && !therapistMode &&
+    (voiceState === VOICE_STATES.IDLE || companionOpeningActive);
+
   const reviewActions = popover && popover.state === 'review' && popover.reviewFields && popover.reviewFields.length
     ? (
       <ActionRow>
@@ -457,11 +619,19 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         therapistActive={therapistMode}
         therapistLabel={therapistMode ? i18n.t('aiDockTherapistOn') : i18n.t('aiDockTherapistOff')}
         models={models} model={providerId} onModelChange={onModelChange}
+        onInputFocus={() => setDockExplicitlyOpened(true)}
       >
         {historyOpen && (
           <ConversationHistoryDropdown
             i18n={i18n} loading={historyLoading} conversations={historyList}
             onPick={resumeConversation} onClose={() => setHistoryOpen(false)}
+          />
+        )}
+        {showCompanionCard && (
+          <CompanionCard
+            card={companionCard} i18n={i18n}
+            onContinue={companionContinue} onExplain={companionExplain} onLater={companionLater} onSkip={companionSkip}
+            onStart={welcomeStart} onWhatIs={welcomeWhatIs} onWelcomeLater={welcomeLater}
           />
         )}
         {popover && (

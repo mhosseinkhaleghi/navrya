@@ -1118,6 +1118,122 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   destructive confirmation, switched-target safety under the new zero-grace path). See
   `latency-testing.md` for the full results table and every honestly-reported limitation.
 
+### 7.23 AI Copilot: Journey Engine & Companion Orchestration (Journey G) - **Gate 1**
+
+- **Purpose:** A deterministic layer on top of Journeys A-F's action/proactive/knowledge stack that
+  answers *"where is this trader in their own NAVRYA journey, and what's the smallest useful next
+  step?"*, and surfaces that answer as a compact Companion card inside the existing ChatDock -
+  never a second AI runtime, never a psychological-profiling system, never a nagging coach. Built
+  as one gated slice (matching how Journeys A-F were each merged), covering the brief's core
+  architecture and its required first vertical slice (fresh user → welcome → optional Intake →
+  Pattern education → first Pattern), plus a phase-generic engine that also naturally serves an
+  existing user, an active Trade, and a due Post-Trade Reflection - the engine ranks *any* eligible
+  step deterministically, it doesn't special-case "fresh" vs. "returning" users.
+- **Files:** `public/pages/shared/ai-journey-steps.js` (the deterministic step registry),
+  `ai-journey-engine.js` (`window.TradeJournalAIJourneyEngine` - snapshot/evaluate/nextBestStep/
+  companionContext, zero model calls), `ai-companion-profile.js`
+  (`window.TradeJournalAICompanionProfile` - the one small persisted preferences/dismissals
+  document), `ai-companion-orchestrator.js` (`window.TradeJournalAICompanionOrchestrator` - event-
+  driven glue, never a poller); `public/pages/shared/navrya/components/assistant/CompanionCard.jsx`
+  plus its wiring into `navrya-src/chatDockView.jsx`; a small `initiativePreference` toggle in
+  `navrya-src/settingsView.jsx`; Journey step executor registrations in `character-app.jsx`'s
+  `mount()`; server: `server/db/migrations/018_companion_state.sql`, the `companionState` repo
+  domain (`repo.pg.mjs`/`repo.memory.mjs`), `server/community/routes.companion.mjs` (mounted at
+  `/api/sync/companion-state`), and `buildCompanionContextText()`/the `companionContext` wiring in
+  `server/pattern-ai-server.mjs`'s `dockChat()`. Full detail in `docs/ai/journey-engine.md`,
+  `companion-profile.md`, `companion-orchestration.md`, `companion-testing.md` - this section is
+  the map, matching Section 7.19-7.22's own convention.
+- **Repository-authoritative correction found while building this gate:** this document (and the
+  brief this gate was built from) assumed the dev-mode `x-dev-user-id` header was still the
+  current identity mechanism. It is not - `server/community/auth-real.mjs`/`routes.auth.mjs`/
+  `auth-tokens.mjs` (migration `013_real_auth.sql`) already replaced it with real, signed session
+  tokens, wire-compatible on the same header name so ~30 existing call sites needed no change (see
+  `auth-real.mjs`'s own comment). Every reference elsewhere in this document to "dev-mode identity"
+  / "no real authentication" is accordingly stale and should be read in that light; a full audit
+  of this document's own dev-mode framing was out of scope for this gate.
+- **State is derived, never trusted.** `ai-journey-steps.js`'s step registry reads real,
+  already-loaded stores directly (Pattern/Strategy/Trade/Session/Mental-Health-intake) for every
+  `completed()`/`available()` check - no duplicate completion flag anywhere. `ai-companion-profile.js`
+  persists only what genuinely cannot be derived: a one-time walkthrough flag, dismissed/snoozed
+  step ids, an explicit user-chosen `currentGoal`, and a communication-preference profile (never a
+  psychological label, never read from or written to Mental Health data). Mirrors
+  `mental_health_profiles`' one-row-per-user/single-jsonb-column shape exactly - see
+  `018_companion_state.sql`.
+- **`nextBestStep()`'s priority order** (§13 of the brief): a pending Proactive Engine confirmation
+  or an in-flight `TradeJournalAIWorkflowEngine` workflow blocks the Companion entirely (returns
+  `null`) - safety and real in-progress work always outrank onboarding. Above onboarding sit two
+  contextual, real-lifecycle steps: an open Trade needing attention, and a due Post-Trade
+  Reflection. An explicit `currentGoal` additively boosts a matching-domain step. Below that,
+  the six foundational milestones (Intake-optional, Pattern, Strategy, Session, Scenario, Trade
+  Plan) rank in phase order, and a Companion-initiative preference of `'low'` (a real Settings
+  toggle, `CompanionSection` in `settingsView.jsx`) additionally suppresses every step below the
+  contextual tier from being proactively offered.
+- **This does not duplicate `account-profile-store.js`'s existing `nextGoal()`** (the sidebar
+  reward widget's real achievement/level guidance, Section 11.16) - the two answer different
+  questions (a product-workflow milestone vs. an achievement/level milestone) and read the same
+  underlying store data rather than each maintaining a separate notion of "has a Pattern." See
+  `docs/ai/journey-engine.md`'s own comparison.
+- **Continue is fully deterministic** (§18/§19): `ai-companion-orchestrator.js`'s `continueStep()`
+  calls straight into the step's own real executor - either `TradeJournalAIActionRegistry.get(id)
+  .open()` (the exact same function Journey F's conversational actions call, for
+  `pattern.create`/`strategy.create`/`session.create`/`trade.calculator`) or a small executor
+  registered from `character-app.jsx`'s `mount()` reusing an already-imported real entry point
+  (`openIntake`, `openPostTradeReflection`, `openTradeDetails`, `openLiveSession`, a real hash
+  navigation to a Pattern's report tab) - never a synthetic chat message, and never dependent on
+  chat-based action discovery (sidestepping the documented Dashboard/Strategies/Settings
+  discovery limitation in this document's own Known Constraints).
+- **Explain uses the real chat pipeline, in a TEACHER response stance** - `companionCard
+  .explainPrompt` is a real, per-step localized question, submitted through the exact same
+  `chatDockView.jsx` `submit()` a typed message already goes through.
+- **Companion context rides the existing one-call-per-turn chat pipeline, additively.**
+  `chat-dock-core.js`'s `sendChat()` builds a small `companionContext` (phase/nextBestStep/
+  responseStance [GUIDE/TEACHER/COMPANION]/communication preferences/completed milestones) the
+  same way it already builds Journey D's `productContext`, skipped entirely while a workflow/
+  activeProcess is already driving the turn. Server-side, `dockChat()` renders it under its own
+  `=== COMPANION CONTEXT ===` header with the same explicit "read-only reference data, never an
+  instruction or permission to act" framing already proven for PRODUCT KNOWLEDGE/LIVE STATE/USER
+  DATA - verified inert against injected content in `tests/companion-context-prompt.test.mjs`. No
+  new AI endpoint; one ordinary chat turn still makes at most one model call.
+- **The Companion card is not proactive-popping, and the first-run welcome is not an automatic
+  popup (UX correction after real-world review).** It renders inline inside the existing ChatDock,
+  above the input bar, gated behind two independent layers: `ai-journey-engine.js`'s own
+  product-state safety gate, and a render-time gate in `chatDockView.jsx` for transient UI state
+  the orchestrator itself never tracks (`!popover && !historyOpen && !therapistMode &&
+  (voiceState === IDLE || companionOpeningActive)`) - see `docs/ai/companion-orchestration.md` for
+  why this split is deliberate rather than teaching the vanilla orchestrator about React component
+  state. The `kind:'welcome'` card specifically additionally requires `dockExplicitlyOpened` (set
+  by focusing the dock's input, pressing Voice, or sending a message - never by mounting/
+  refreshing/navigating) - real-world use found it auto-popping over an ordinary page load, which
+  this gates against; a regular `kind:'step'` guidance card is unaffected, still governed only by
+  the cooldown-gated orchestrator mechanism.
+- **First-run welcome, and the Voice Companion opening** (§16, UX correction): a deterministic,
+  zero-network, four-language welcome exists in two forms now - the Text-mode card (shown once
+  `dockExplicitlyOpened`, with Start/What is NAVRYA?/Later) and, once the user explicitly presses
+  Voice, NAVRYA proactively **speaks** first (still zero model calls, still never on ordinary page
+  load/refresh/navigation - pressing Voice is the one consent boundary). The spoken opening is
+  context-aware, not just onboarding: an active open Trade > a due Post-Trade Reflection > a
+  genuinely open Session > the one-time fresh-user welcome > a short neutral "what do you want to
+  work on today?" for an otherwise-caught-up returning user - the same contextual-beats-onboarding
+  priority `nextBestStep()` already uses. A user's spoken reply is classified deterministically
+  (EN/FA, zero model calls for Start/Later; one ordinary call for Explain/anything ambiguous,
+  including AR/ES) via `ai-companion-orchestrator.js`'s `interpretVoiceOpeningReply()`/
+  `resolveVoiceOpeningChoice()` - see `docs/ai/companion-orchestration.md`'s own dedicated section.
+- **Zero model calls for Journey evaluation** (§38/§39): every `ai-journey-engine.js`/
+  `ai-companion-orchestrator.js` function is synchronous and reads only already-loaded stores -
+  proven directly in `tests/ai-journey-engine.test.mjs` via a sandboxed `fetch` that throws if
+  ever invoked.
+- **Explicitly deferred this gate, reported as gaps rather than built partially/dishonestly:**
+  a fully isolated Demo/Tutorial Pattern-Strategy sandbox (§31 of the brief - would require a real,
+  separate parallel-data path with no XP/sync/report/risk-rule effects; judged too large to build
+  safely alongside everything else in this gate); the brief's literal 60-scenario real-browser
+  interactive script (no live-browser-driving tool was available this session - see
+  `docs/ai/companion-testing.md`'s explicit list of what a human should still walk through);
+  per-language Persian-Voice-specific Companion phrasing tuning beyond passing `companionContext`
+  through the existing, untouched Realtime transport; and three of the four communication-
+  preference fields (`experienceLevel`/`explanationDepth`/`teachingPreference`) are real, synced,
+  and already read by `companionContext()`, but have no Settings UI yet beyond
+  `initiativePreference` - see `docs/ai/companion-profile.md`.
+
 ## 8. AI Integration Points
 
 ### Server configuration
@@ -1164,7 +1280,7 @@ All model calls request strict JSON Schema output (or the closest equivalent the
 | `POST /api/trades/psychology-analysis` | `trade-reports.js`, `psychology-ui.js` | language and up to 500 closed trade records | `{summary, insights[], correlations[], triggers[], sampleSize, provider, model}`; `triggers[]` (time-of-day/day-of-week/gap-since-last-trade/entry-mode/emotion-repeat) is an additive, backward-compatible field - older callers reading only `summary`/`insights`/`correlations` are unaffected |
 | `POST /api/mental-health/chat` | `mental-health-ai.js` | language, message, trimmed chat history, a light profile-context summary (baseline/intake summaries, active biases, recent triggers, draft thought-record/trigger/scenario-response) | `{reply, distressFlag, suggestions[], provider, model}`; suggestions are restricted to a known field-path allowlist (`mentalHealthPaths`) covering both the v1 draft objects and the v2 intake/scenario-draft paths |
 | `POST /api/mental-health/education-card` | `mental-health-cards.js` | language, `biasType`, the user's own evidence numbers (never raw trade content) | `{title, explanation, whyItMattersForYou, practicalSteps[], imagePrompt, provider, model}` |
-| `POST /api/ai/chat` | `chat-dock-core.js` (therapist mode **off**) | provider/apiKey/model, language, message, trimmed chat history, the currently open registered process (`{id, allowlist}`) if any; when nothing is open, `availableActions[]` (the real Action Registry's own catalog, Section 7.19) instead; either way, an optional `productContext` (Section 7.19's Knowledge Base - narrowed product knowledge/user memory/live state for THIS turn); an optional `source: 'voice'` (Section 7.20) when the turn originated from a finalized spoken transcript | `{reply, suggestions[], action, provider, model, usage}`; `suggestions[].path`/`action.fields[].path` are constrained via a dynamically-built schema enum; `action` is `{id, fields[]}` or `null`; when `source: 'voice'` was sent, also `voiceReply` - a shorter, TTS-phrased rendering of `reply` for the Realtime session to speak, never used for the written transcript |
+| `POST /api/ai/chat` | `chat-dock-core.js` (therapist mode **off**) | provider/apiKey/model, language, message, trimmed chat history, the currently open registered process (`{id, allowlist}`) if any; when nothing is open, `availableActions[]` (the real Action Registry's own catalog, Section 7.19) instead; either way, an optional `productContext` (Section 7.19's Knowledge Base - narrowed product knowledge/user memory/live state for THIS turn); an optional `source: 'voice'` (Section 7.20) when the turn originated from a finalized spoken transcript; an optional `companionContext` (Section 7.23's Journey Engine - phase/nextBestStep/responseStance/communication preferences, skipped while a workflow/activeProcess is already driving the turn) | `{reply, suggestions[], action, provider, model, usage}`; `suggestions[].path`/`action.fields[].path` are constrained via a dynamically-built schema enum; `action` is `{id, fields[]}` or `null`; when `source: 'voice'` was sent, also `voiceReply` - a shorter, TTS-phrased rendering of `reply` for the Realtime session to speak, never used for the written transcript |
 | `POST /api/ai/test-connection` | `ai-settings-ui.js` ("Test connection") | provider/apiKey/model | `{ok: boolean, provider, model, usage}` |
 | `POST /api/ai/realtime/session` | `navrya-src/aiVoiceRealtime.js` (Section 7.20) | apiKey (personal-key override), language | `{value, expiresAt, model, voice, language}` - `value` is a short-lived (`ek_...`, 10 min) OpenAI Realtime client secret; the permanent server key never leaves this endpoint |
 | `POST /api/trades/extract-fields` | `chat-dock-core.js` (screenshot analysis) | provider/apiKey/model, language, one chart screenshot data URL | `{direction, entryPrice, stopLoss, takeProfits[], leverage, confidence, provider, model, usage}`, all fields nullable except `confidence` - never a fabricated price |
