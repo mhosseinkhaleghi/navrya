@@ -21,29 +21,19 @@
 
   function now() { return new Date().toISOString(); }
 
-  // Item 4 (Journey G follow-up): switching dev users on the same browser must never leak one
-  // user's Companion preferences/goal/dismissals into another's. This module's own localStorage
-  // key (like every other Section 7.18-shaped module's) is a single global key, not namespaced
-  // per user - and this app's real user-switch flow (dev-user-switcher.js's "Log out" button) is
-  // a full navigation to the login screen, never an in-place swap, so this module's own script
-  // scope IS re-initialized fresh on the next login. What it does NOT do on its own is clear
-  // localStorage - `logout()` only removes the auth token, deliberately (every local-first module
-  // in this app relies on the SAME "reconcile against the server on next load" recovery, not a
-  // logout-time wipe). `_ownerUserId` closes this at the one choke point every read already goes
-  // through (load()): a cached document whose stamped owner doesn't match whoever is CURRENTLY
-  // authenticated is never revealed - load() returns a fresh default instead, and migrateOrAdopt()
-  // below (which calls load() itself) then correctly treats that as "nothing local to push,"
-  // adopting the new user's own real server copy instead of leaking the previous user's cache.
-  function liveUserId() {
-    var switcher = window.TradeJournalDevUserSwitcher;
-    return switcher && typeof switcher.currentUserId === 'function' ? switcher.currentUserId() : null;
-  }
-
+  // Item 4 (Journey G follow-up) originally closed the "switching dev users on the same browser
+  // must never leak one user's Companion preferences/goal/dismissals into another's" gap right
+  // here, by stamping/checking an in-document `_ownerUserId` on every read - but only ever hid a
+  // mismatched document in memory, never deleted it from storage. Superseded (Phase 1 of the
+  // local-first-to-server-authoritative migration): user-scope-guard.js is now the single place
+  // this is handled, for this document and five others, by actually deleting KEY from storage
+  // the moment it detects a different authenticated user - and it is the first shared <script> on
+  // every character page, so by the time this file's own IIFE runs, that has already happened.
+  // load()/write() below are plain again on purpose; do not re-add a second ownership check here.
   function empty() {
     var stamp = now();
     return {
       version: 1, lastUpdatedAt: stamp,
-      _ownerUserId: null,
       walkthroughSeenAt: null,
       currentGoal: null,
       dismissedSteps: {}, // dedupeKey -> iso, permanently acknowledged ("Later" on a step's own card)
@@ -68,10 +58,10 @@
     return out;
   }
 
-  // Raw read, no ownership check - the one place migrateOrAdopt()/reconcile() themselves need the
-  // literal on-disk bytes (e.g. to compare a server copy's timestamp against local, or to decide
-  // whether adopting a server document should overwrite what's cached) without recursing through
-  // the ownership-filtered load() below.
+  // Used directly by migrateOrAdopt()/reconcile() themselves for the literal on-disk bytes (e.g.
+  // to compare a server copy's timestamp against local) - identical to load() now that ownership
+  // filtering lives in user-scope-guard.js instead, kept as a separate name for symmetry with the
+  // other synced stores' own readRaw()/read() split.
   function readRaw() {
     try {
       var raw = localStorage.getItem(KEY);
@@ -79,21 +69,11 @@
     } catch (_) { return empty(); }
   }
 
-  function load() {
-    var stored = readRaw();
-    var currentUid = liveUserId();
-    // Only enforced once someone is actually authenticated AND the cached document was itself
-    // stamped for a real (different) owner - a pre-login/anonymous cache, or a document this same
-    // user already owns, is returned as-is.
-    if (currentUid && stored._ownerUserId && stored._ownerUserId !== currentUid) return empty();
-    return stored;
-  }
+  function load() { return readRaw(); }
 
   function write(state) {
     var normalized = normalize(state);
     normalized.lastUpdatedAt = now();
-    var currentUid = liveUserId();
-    if (currentUid) normalized._ownerUserId = currentUid; // stamp on every real write, once a user exists
     localStorage.setItem(KEY, JSON.stringify(normalized));
     window.dispatchEvent(new CustomEvent('tradejournal:companion-state-changed'));
     if (window.TradeJournalSyncQueue) window.TradeJournalSyncQueue.enqueue('companion-state', 'state', normalized);
@@ -119,12 +99,6 @@
     function applyServerState(serverState) {
       if (!serverState) return;
       var normalized = normalize(serverState);
-      // Stamp with whoever is live right now, not whatever the server blob happened to carry
-      // (older data, or none at all) - this IS a real fetch scoped by req.currentUser.id
-      // server-side (see routes.companion.mjs), so it is always this user's own document; tagging
-      // it locally is what lets load() trust it on every subsequent synchronous read.
-      var currentUid = liveUserId();
-      if (currentUid) normalized._ownerUserId = currentUid;
       localStorage.setItem(KEY, JSON.stringify(normalized));
       window.dispatchEvent(new CustomEvent('tradejournal:companion-state-changed'));
     }

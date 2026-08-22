@@ -64,10 +64,13 @@ test('never persists a derivable fact - only walkthrough/dismiss/snooze/skip/goa
   const { store } = await loadCompanionProfile({ localStorage: memoryStorage(), currentUserId: null });
   store.setWalkthroughSeen();
   const stored = store.load();
-  // _ownerUserId (Item 4 of the Journey G follow-up) is the one exception - it is not a Journey
-  // fact at all, purely a local anti-leak bookkeeping tag (see load()'s own comment) - listed here
-  // deliberately rather than silently excluded, so this test stays an exhaustive allowlist.
-  assert.deepEqual(Object.keys(stored).sort(), ['_ownerUserId', 'currentGoal', 'dismissedSteps', 'lastUpdatedAt', 'preferences', 'skippedOptional', 'snoozedSteps', 'version', 'walkthroughSeenAt'].sort());
+  // _ownerUserId (Item 4 of the Journey G follow-up) used to be the one deliberate exception here
+  // - a local anti-leak bookkeeping tag, not a Journey fact. Phase 1 of the local-first-to-server-
+  // authoritative migration removed it: ownership is now enforced by user-scope-guard.js deleting
+  // this document outright on a mismatch, before this file ever loads, rather than by this module
+  // hiding a mismatched document in memory (see tests/user-scope-guard.test.mjs for that
+  // guarantee). This is back to a plain exhaustive allowlist of real Journey G facts only.
+  assert.deepEqual(Object.keys(stored).sort(), ['currentGoal', 'dismissedSteps', 'lastUpdatedAt', 'preferences', 'skippedOptional', 'snoozedSteps', 'version', 'walkthroughSeenAt'].sort());
 });
 
 test('initiativePreference defaults to normal and is validated against the known three values', async () => {
@@ -145,6 +148,21 @@ async function loadCombined(options) {
   return { queue: sandbox.window.TradeJournalSyncQueue, store: sandbox.window.TradeJournalAICompanionProfile, sandbox };
 }
 
+// Real script order (see the four character index.html files): user-scope-guard.js loads first
+// of all, then sync-queue.js, then this file - a `token` (standing in for the real signed
+// tradejournal:auth-token) is planted in localStorage BEFORE any script runs, exactly like a real
+// page load where the credential already exists from a prior login. Ownership is driven off that
+// token, the same value TradeJournalDevUserSwitcher.currentUserId() is stubbed to return, matching
+// how dev-user-switcher.js's real currentUserId() is itself just a read of that same key.
+async function loadWithGuard({ localStorage, token, fetchImpl }) {
+  if (token) localStorage.setItem('tradejournal:auth-token', token);
+  const sandbox = combinedSandbox({ localStorage, currentUserId: token, fetchImpl });
+  vm.runInNewContext(await source('user-scope-guard.js'), sandbox, { filename: 'user-scope-guard.js' });
+  vm.runInNewContext(await source('sync-queue.js'), sandbox, { filename: 'sync-queue.js' });
+  vm.runInNewContext(await source('ai-companion-profile.js'), sandbox, { filename: 'ai-companion-profile.js' });
+  return { guard: sandbox.window.TradeJournalUserScopeGuard, queue: sandbox.window.TradeJournalSyncQueue, store: sandbox.window.TradeJournalAICompanionProfile, sandbox };
+}
+
 test('app remains usable while the Community backend is offline - a mutation succeeds and is cached locally even though every fetch call rejects', async () => {
   const localStorage = memoryStorage();
   const { store } = await loadCombined({
@@ -205,19 +223,22 @@ test('a pending sync retries and succeeds once the backend returns - the real ou
   assert.equal(queue.pendingCount('companion-state'), 0, 'a delivered entry leaves the outbox');
 });
 
-test('switching dev users on the same browser does not leak the previous user\'s Companion preferences/goal/dismissals', async () => {
+test('switching users on the same browser does not leak the previous user\'s Companion preferences/goal/dismissals (Phase 1: enforced by user-scope-guard.js, not this module)', async () => {
   const localStorage = memoryStorage();
-  const userA = await loadCombined({ localStorage, currentUserId: 'user-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  const userA = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
   userA.store.setCurrentGoal('strategies');
   userA.store.dismissStep('journey:pattern_create');
   userA.store.setPreference('initiativePreference', 'high');
   assert.equal(userA.store.currentGoal(), 'strategies');
 
-  // A real user switch is a full logout+re-login navigation (dev-user-switcher.js's "Log out"
-  // button only clears the auth token, never localStorage - see ai-companion-profile.js's own
-  // comment on load()) - simulated here as a fresh module load with a DIFFERENT live user id,
-  // against the SAME localStorage user A's browser left behind, and no server data for B yet.
-  const userB = await loadCombined({ localStorage, currentUserId: 'user-B', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  // A real user switch is a full logout+re-login navigation into a brand-new iframe, which
+  // re-executes every <script> from scratch - simulated here as a fresh module load with a
+  // DIFFERENT auth token planted in the SAME localStorage user A's browser left behind, and no
+  // server data for B yet. user-scope-guard.js (loaded first, exactly as in the real page) is
+  // what must now catch this and purge KEY outright before ai-companion-profile.js ever reads it
+  // - not a check inside ai-companion-profile.js itself any more.
+  const userB = await loadWithGuard({ localStorage, token: 'token-B', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  assert.equal(localStorage.getItem('tradejournal:companion-state:v1'), null, 'the guard deletes the stale document from storage outright - never merely hides it in memory');
   assert.equal(userB.store.currentGoal(), null, 'user B must never see user A\'s goal');
   assert.equal(userB.store.isDismissed('journey:pattern_create'), false, 'user B must never see user A\'s dismissals');
   assert.equal(userB.store.initiativePreference(), 'normal', 'user B must see the real default, not user A\'s preference');
@@ -226,25 +247,33 @@ test('switching dev users on the same browser does not leak the previous user\'s
   userB.store.setCurrentGoal('trades');
   assert.equal(userB.store.currentGoal(), 'trades');
 
-  // Honest limitation, not a second bug: this app's local cache (like every other Section-7.18-
-  // shaped module's) is a single shared localStorage key, not namespaced per user - B's own write
-  // above physically overwrote the bytes A's browser was holding. Switching back to A must NEVER
-  // silently show B's data as if it were A's own (leak prevention - proven below); recovering A's
-  // OWN real data is the pre-existing, cross-device reconcile path already tested above
-  // ("the one-time activation adopts the server state outright"), now exercised for A specifically.
-  const backToA = await loadCombined({ localStorage, currentUserId: 'user-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  // Switching back to A (a third token, on the same browser) must never silently show B's data as
+  // if it were A's own - the guard purges again on this second mismatch, fail-closed, exactly as
+  // it did for B above. Recovering A's OWN real data is the pre-existing, cross-device reconcile
+  // path already tested above ("the one-time activation adopts the server state outright"), now
+  // exercised for A specifically.
+  const backToA = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
   assert.notEqual(backToA.store.currentGoal(), 'trades', 'A must never see B\'s goal either - the leak-prevention guarantee is symmetric');
   assert.equal(backToA.store.currentGoal(), null, 'immediately after switching back, before any reconcile completes, A\'s local cache is honestly empty/default - never silently wrong');
 
   // The actual recovery path: once A's own real data is fetched from the server (already synced
   // there from A's very first write above, via the outbox this same test file already proves
   // works), the existing first-activation adopt path restores it correctly.
-  const backToARestored = await loadCombined({
-    localStorage: memoryStorage(), currentUserId: 'user-A',
+  const backToARestored = await loadWithGuard({
+    localStorage: memoryStorage(), token: 'token-A',
     fetchImpl: async () => ({ ok: true, json: async () => ({ state: { lastUpdatedAt: '2026-01-01T00:00:00.000Z', currentGoal: 'strategies', dismissedSteps: {}, snoozedSteps: {}, skippedOptional: [], preferences: { initiativePreference: 'high' } } }) })
   });
   await flush(); // migrateOrAdopt()'s own fetch-then-apply chain is fire-and-forget - let it settle
   assert.equal(backToARestored.store.currentGoal(), 'strategies', 'A\'s own real data is recoverable via the existing server-reconcile path, just not preserved bit-for-bit in the shared local cache across an intervening user\'s session');
+});
+
+test('reloading as the SAME user does not purge - the guard only acts on an actual token mismatch', async () => {
+  const localStorage = memoryStorage();
+  const first = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  first.store.setCurrentGoal('strategies');
+
+  const second = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  assert.equal(second.store.currentGoal(), 'strategies', 'a same-user reload must not wipe the just-made local edit before it has synced');
 });
 
 test('the local-first Companion Profile API is entirely synchronous - no read/write returns a Promise', async () => {

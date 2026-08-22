@@ -54,7 +54,12 @@
   function loginWithGoogle(credential) {
     return handleAuthResponse(fetch('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential: credential }) }));
   }
-  function logout() { clearToken(); }
+  // Phase 1 of the local-first-to-server-authoritative migration: logout must purge every
+  // user-scoped local cache, not just the credential - see user-scope-guard.js (loaded first on
+  // every character page, so it is always available by the time a real logout click can happen).
+  // Called before clearToken() while every store/IndexedDB module is still fully loaded, so the
+  // purge can act directly instead of falling back to the boot-time pending-clear flag.
+  function logout() { if (window.TradeJournalUserScopeGuard) window.TradeJournalUserScopeGuard.purgeAll(); clearToken(); }
 
   // Pure check, no side effects: is the currently stored token one the server still accepts?
   // Cached per page load (not per call), same as before - costs a real network round trip.
