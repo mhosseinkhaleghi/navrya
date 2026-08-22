@@ -18,10 +18,44 @@
   function buildPartialFromSession(session,character){var value=buildSignatureFromSession(session,character);if(value){value.id='live-'+session.id;value.fateSummaryText='';}return value;}
   function upsert(signature){if(!signature||!signature.sessionId)return null;var rows=listSync(),index=rows.findIndex(function(item){return item.sessionId===signature.sessionId;});if(index>-1){signature.id=rows[index].id;rows[index]=signature;}else rows.unshift(signature);write(rows);return signature;}
   function captureClosedSession(session,character){if(!session||session.status!=='closed'||!session.fateSummary)return null;return upsert(buildSignatureFromSession(session,character));}
-  // Sessions now live in one shared account-wide bucket (tradejournal:sessions:v1:shared) - the
-  // per-character keys are scanned too since a browser that hasn't loaded any character page
-  // since the shared-storage migration (see sessionsAdapter.js) may still have them.
-  function backfill(){var rows=listSync(),known=new Set(rows.map(function(item){return item.sessionId;})),added=0;['shared'].concat(CHARACTERS).forEach(function(character){try{var sessions=JSON.parse(localStorage.getItem('tradejournal:sessions:v1:'+character))||[];sessions.forEach(function(session){if(session.status!=='closed'||!session.fateSummary||known.has(String(session.id)))return;var signature=buildSignatureFromSession(session,character==='shared'?session.character:character);rows.push(signature);known.add(String(session.id));added+=1;});}catch(_){/* Continue with other stores. */}});if(added)write(rows);return added;}
+  // Sessions migrated onto server-replica.js in Phase 3 (see ARCHITECTURE.md's Global Data Sync
+  // section) - the live bucket is scanned through window.TradeJournalWorkspace's own public
+  // list() now, not localStorage. The four per-character legacy keys are still scanned directly:
+  // genuinely dead in practice today (session-workspace-logic.js's own
+  // migrateLegacyPerCharacterSessions() already merges and deletes them on every load), kept only
+  // as defensive recovery for a browser that has somehow never run that merge.
+  function backfillFromLive(rows,known){
+    var workspace=window.TradeJournalWorkspace,sessions=workspace&&typeof workspace.list==='function'?workspace.list():[],added=0;
+    sessions.forEach(function(session){if(!session||session.status!=='closed'||!session.fateSummary||known.has(String(session.id)))return;var signature=buildSignatureFromSession(session,session.character);rows.push(signature);known.add(String(session.id));added+=1;});
+    return added;
+  }
+  function backfillFromLegacy(rows,known){
+    var added=0;
+    CHARACTERS.forEach(function(character){try{var sessions=JSON.parse(localStorage.getItem('tradejournal:sessions:v1:'+character))||[];sessions.forEach(function(session){if(session.status!=='closed'||!session.fateSummary||known.has(String(session.id)))return;var signature=buildSignatureFromSession(session,character);rows.push(signature);known.add(String(session.id));added+=1;});}catch(_){/* Continue with other stores. */}});
+    return added;
+  }
+  // The live bucket is only populated once server-replica.js has actually hydrated the
+  // 'sessions' domain from the server - a synchronous scan of it right now would always find
+  // nothing on a fresh page load. The legacy-key scan doesn't depend on that, so it still runs
+  // (and its count is still returned) synchronously, exactly as before; the live-bucket scan
+  // runs separately once TradeJournalServerReplica.allReady() (the same gate character-app.jsx's
+  // own boot sequence waits on) resolves, re-reading listSync() fresh at that point rather than
+  // reusing the pre-hydration snapshot, so it never clobbers a signature captureClosedSession()
+  // may have added for a session closed in the meantime.
+  function scanLiveOnceReady(){
+    function run(){var rows=listSync(),known=new Set(rows.map(function(item){return item.sessionId;}));if(backfillFromLive(rows,known))write(rows);}
+    if(window.TradeJournalServerReplica&&typeof window.TradeJournalServerReplica.allReady==='function'){
+      window.TradeJournalServerReplica.allReady().then(run).catch(function(){});
+    }else{
+      run();
+    }
+  }
+  function backfill(){
+    var rows=listSync(),known=new Set(rows.map(function(item){return item.sessionId;})),added=backfillFromLegacy(rows,known);
+    if(added)write(rows);
+    scanLiveOnceReady();
+    return added;
+  }
   window.TradeJournalSessionSignatureStore={key:KEY,listSync:listSync,save:upsert,captureClosedSession:captureClosedSession,buildSignatureFromSession:buildSignatureFromSession,buildPartialFromSession:buildPartialFromSession,backfill:backfill};
   (window.setTimeout||setTimeout)(backfill,0);
 }());

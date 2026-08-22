@@ -31,22 +31,24 @@
     };
   }
 
+  // Sessions migrated onto server-replica.js in Phase 3 (see ARCHITECTURE.md's Global Data Sync
+  // section) - reads through window.TradeJournalWorkspace's own public list(), the same real
+  // source every other cross-domain Sessions reader in this app now uses, rather than scanning
+  // localStorage directly (nothing is left there to scan).
+  function sessionsForScenarioLookup() {
+    var workspace = window.TradeJournalWorkspace;
+    return workspace && typeof workspace.list === 'function' ? workspace.list() : [];
+  }
+
   function scenarioUsage(patternId) {
     var count = 0;
-    for (var index = 0; index < localStorage.length; index += 1) {
-      var key = localStorage.key(index) || '';
-      if (key.indexOf('tradejournal:sessions:v1:') !== 0) continue;
-      try {
-        var sessions = JSON.parse(localStorage.getItem(key)) || [];
-        sessions.forEach(function (session) {
-          (session.entries || []).forEach(function (entry) {
-            (entry.scenarios || []).forEach(function (scenario) {
-              if (scenario.pattern && scenario.pattern.patternTagId === patternId) count += 1;
-            });
-          });
+    sessionsForScenarioLookup().forEach(function (session) {
+      (session.entries || []).forEach(function (entry) {
+        (entry.scenarios || []).forEach(function (scenario) {
+          if (scenario.pattern && scenario.pattern.patternTagId === patternId) count += 1;
         });
-      } catch (_) { /* Ignore unrelated or older local records. */ }
-    }
+      });
+    });
     return count;
   }
 
@@ -234,30 +236,28 @@
 
   function scenarioReport(patternId) {
     var rows = [];
-    // Sessions live in one shared account-wide bucket (tradejournal:sessions:v1:shared), not a
-    // per-character one - a pattern's usage/completion report must count every session
-    // regardless of which character was active when it was logged.
-    try {
-      var sessions = JSON.parse(localStorage.getItem('tradejournal:sessions:v1:shared')) || [];
-      sessions.forEach(function (session) {
-        (session.entries || []).forEach(function (entry) {
-          (entry.scenarios || []).forEach(function (scenario) {
-            if (!scenario.pattern || scenario.pattern.patternTagId !== patternId) return;
-            var stages = scenario.pattern.stages || [];
-            var completed = scenario.pattern.completedStageIds || [];
-            rows.push({
-              sessionId: session.id,
-              character: session.character || null,
-              scenarioId: scenario.id,
-              occurred: scenario.occurred === true,
-              stageCount: stages.length,
-              completedStageCount: completed.length,
-              completionPercent: stages.length ? Math.min(100, completed.length / stages.length * 100) : null
-            });
+    // Sessions live in one shared account-wide bucket, not a per-character one - a pattern's
+    // usage/completion report must count every session regardless of which character was active
+    // when it was logged. See sessionsForScenarioLookup() above for why this reads through
+    // window.TradeJournalWorkspace.list() rather than localStorage.
+    sessionsForScenarioLookup().forEach(function (session) {
+      (session.entries || []).forEach(function (entry) {
+        (entry.scenarios || []).forEach(function (scenario) {
+          if (!scenario.pattern || scenario.pattern.patternTagId !== patternId) return;
+          var stages = scenario.pattern.stages || [];
+          var completed = scenario.pattern.completedStageIds || [];
+          rows.push({
+            sessionId: session.id,
+            character: session.character || null,
+            scenarioId: scenario.id,
+            occurred: scenario.occurred === true,
+            stageCount: stages.length,
+            completedStageCount: completed.length,
+            completionPercent: stages.length ? Math.min(100, completed.length / stages.length * 100) : null
           });
         });
       });
-    } catch (_) { /* Ignore corrupt session records. */ }
+    });
     if (!rows.length) return { hasData: false, scenarios: [], detectionCount: null, averageCompletion: null, occurrenceRate: null, fullyCompletedCount: null };
     var completionRows = rows.filter(function (row) { return row.completionPercent !== null; });
     var completedCount = rows.filter(function (row) { return row.stageCount > 0 && row.completedStageCount >= row.stageCount; }).length;

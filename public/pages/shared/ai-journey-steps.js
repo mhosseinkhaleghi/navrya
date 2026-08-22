@@ -15,14 +15,13 @@
   var PHASES = ['ORIENTATION', 'KNOW_YOURSELF', 'KNOW_WHAT_YOU_SEE', 'KNOW_WHAT_YOU_DO', 'PLAN', 'EXECUTE', 'REFLECT', 'IMPROVE'];
 
   function sessionsCache() {
-    // Same shared, account-wide key account-profile-store.js's allSessions() already reads -
-    // Section 7.18 Module 1 scopes trading_sessions by user_id alone, and the client cache mirrors
-    // that as one shared local key, not four character-scoped ones.
-    try {
-      var raw = localStorage.getItem('tradejournal:sessions:v1:shared');
-      var list = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) ? list.filter(function (s) { return s && s.id; }) : [];
-    } catch (_) { return []; }
+    // Same shared, account-wide real source account-profile-store.js's allSessions() already
+    // reads - Section 7.18 Module 1 scopes trading_sessions by user_id alone, and the in-memory
+    // replica mirrors that as one shared list, not four character-scoped ones (Phase 3 migration,
+    // see ARCHITECTURE.md's Global Data Sync section).
+    var workspace = window.TradeJournalWorkspace;
+    var list = workspace && typeof workspace.list === 'function' ? workspace.list() : [];
+    return Array.isArray(list) ? list.filter(function (s) { return s && s.id; }) : [];
   }
 
   // Mirrors strategy-education's own completeness checks (account-profile-store.js's

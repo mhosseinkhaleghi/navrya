@@ -1,45 +1,20 @@
-// Ports session-library.js's read/normalize logic verbatim (same localStorage key, same
-// normalization rules) so the new NAVRYA Sessions view reads the exact same real data the
-// legacy view did - never a parallel or reinvented session store.
-const SESSION_KEY_PREFIX = 'tradejournal:sessions:v1:';
+// Phase 3 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+// Data Sync section): reads the in-memory server-replica directly, the exact same 'sessions'
+// domain public/pages/shared/session-workspace-logic.js registers (it loads first in every
+// character page's script order, so by the time this module's own code ever runs - well after
+// page load, once the NAVRYA bundle mounts - the domain is already registered). There is no
+// localStorage cache, no offline outbox, and no local-first fallback for Sessions any more; see
+// server-replica.js's own file header for the write/rollback contract.
 export const RESET_KEY = 'tradejournal:session-library-empty-reset:v1';
-const CHARACTERS = ['hunter', 'engineer', 'commander', 'sage'];
-// Sessions (and the chart images they reference) belong to the trader's account, not to
-// whichever character happened to be active when they were created - a session logged while
-// on Hunter must still be there after switching to Engineer. One shared bucket for every
-// character, instead of the old per-character key, fixes that. `character` is still accepted
-// by the functions below (existing callers keep passing it) but no longer affects the key.
-const SHARED_KEY = SESSION_KEY_PREFIX + 'shared';
-const SHARED_MIGRATION_FLAG = 'tradejournal:sessions-shared-migration:v1';
 
-// One-time merge of the four legacy per-character buckets into the shared one, newest-first,
-// deduped by id (a session that happens to exist in more than one legacy bucket - shouldn't
-// normally happen, but costs nothing to guard) - runs once per browser, guarded by
-// SHARED_MIGRATION_FLAG, then removes the now-empty legacy keys so nothing reads stale data.
-function migrateLegacyPerCharacterSessions() {
-  if (typeof localStorage === 'undefined' || localStorage.getItem(SHARED_MIGRATION_FLAG)) return;
-  const byId = {};
-  try { (JSON.parse(localStorage.getItem(SHARED_KEY)) || []).forEach((s) => { if (s && s.id) byId[s.id] = s; }); } catch (_) { /* start empty */ }
-  CHARACTERS.forEach((character) => {
-    try {
-      const items = JSON.parse(localStorage.getItem(SESSION_KEY_PREFIX + character)) || [];
-      items.forEach((s) => { if (s && s.id && !byId[s.id]) byId[s.id] = s; });
-    } catch (_) { /* continue merging the remaining legacy stores */ }
-  });
-  const merged = Object.values(byId).sort((a, b) => (Number(b.startedAt || b.createdAt) || 0) - (Number(a.startedAt || a.createdAt) || 0));
-  localStorage.setItem(SHARED_KEY, JSON.stringify(merged));
-  CHARACTERS.forEach((character) => localStorage.removeItem(SESSION_KEY_PREFIX + character));
-  localStorage.setItem(SHARED_MIGRATION_FLAG, new Date().toISOString());
-}
-migrateLegacyPerCharacterSessions();
+function domain() { return window.TradeJournalServerReplica && window.TradeJournalServerReplica.domain('sessions'); }
 
-export function storageKey() { return SHARED_KEY; }
-
+// `character` is still accepted by the functions below (existing callers keep passing it) but
+// has never affected which sessions are read/written - one shared, account-wide bucket for
+// every character, matching Section 7.18 Module 1's server-side scoping by user_id alone.
 export function readSessions(character) {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey(character))) || [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_) { return []; }
+  const live = domain();
+  return live ? live.list() : [];
 }
 
 export function entryCount(session) { return (session.entries || session.charts || []).length; }
@@ -63,7 +38,11 @@ export function isUsable(session) {
 export function sanitizeSessions(character, values) {
   const usable = values.filter(isUsable);
   if (usable.length !== values.length) {
-    localStorage.setItem(storageKey(character), JSON.stringify(usable));
+    const live = domain();
+    // Deletes each unusable record individually through the replica (and so on the server too),
+    // rather than the old bulk "overwrite the whole local list" - server-replica.js has no bulk
+    // write of its own, only per-record upsert/remove, matching every other migrated domain.
+    if (live) values.filter((s) => !isUsable(s)).forEach((s) => { if (s && s.id) live.remove(s.id).catch(() => {}); });
     window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed', { detail: { character, count: usable.length } }));
   }
   return usable;
@@ -143,7 +122,7 @@ export async function loadThumbnail(session) {
 
 // Writes a new session directly in the canonical shape session-library.js already reads
 // (id, name, market, timeframe, date, gregorianDate, jalali, status, startedAt, createdAt,
-// entries) - the same localStorage key, so it appears identically for every other piece of
+// entries) - through the same replica domain, so it appears identically for every other piece of
 // code that reads sessions (the workspace view, session-signature backfill, etc).
 export async function createSession(character, values) {
   const now = Date.now();
@@ -187,27 +166,25 @@ export async function createSession(character, values) {
     createdAt: now,
     entries
   };
-  const list = readSessions(character);
-  list.unshift(session);
-  localStorage.setItem(storageKey(character), JSON.stringify(list));
-  window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed', { detail: { character, count: list.length } }));
+  // Optimistic apply, fire-and-forget send (matches every other migrated domain's save()/
+  // create() - see server-replica.js's own file header): the record is already in the replica's
+  // in-memory list by the time upsert() returns its Promise, so this never blocks the dialog on
+  // the network the way an `await` here would (the old localStorage write never did either).
+  const live = domain();
+  if (live) live.upsert(session).catch(() => {});
+  window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed', { detail: { character, count: live ? live.list().length : 1 } }));
   return session;
 }
 
-// Same guarded one-time reset session-library.js already performs, ported verbatim (same
-// RESET_KEY) so an existing user's behavior is unchanged by this rewrite.
+// Historical one-time reset for a pre-server-sync bug where a fresh install could end up with
+// demo/seed session data sitting in localStorage (see the flag's own name, ported verbatim from
+// session-library.js). Kept as a guarded no-op: nothing writes session data to localStorage any
+// more (readSessions()/createSession() above are fully replica-backed), so a fresh account starts
+// empty from the server and there is nothing left here for this to clear - the seeding bug this
+// once fixed cannot recur. The RESET_KEY guard itself is kept only so character-app.jsx's boot
+// gate (`Promise.all([sessionsAdapter.resetOnce(), ...])`) keeps working unchanged, and so a
+// browser that already ran this once continues to short-circuit exactly as before.
 export async function resetOnce() {
   if (localStorage.getItem(RESET_KEY)) return;
-  const blobIds = [];
-  try {
-    const sessions = JSON.parse(localStorage.getItem(SHARED_KEY)) || [];
-    sessions.forEach((session) => (session.entries || []).forEach((entry) => { if (entry.imageBlobId) blobIds.push(entry.imageBlobId); }));
-  } catch (_) { /* nothing usable to collect blob ids from */ }
-  if (window.TradeJournalImageStore) {
-    await Promise.all(blobIds.map((id) => window.TradeJournalImageStore.deleteImage(id).catch(() => {})));
-  }
-  localStorage.removeItem(SHARED_KEY);
-  localStorage.removeItem('tradejournal:session-signatures:v1');
   localStorage.setItem(RESET_KEY, new Date().toISOString());
-  window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed', { detail: { reset: true } }));
 }

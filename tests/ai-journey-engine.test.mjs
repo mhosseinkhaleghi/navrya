@@ -53,6 +53,13 @@ async function buildSandbox(overrides = {}) {
     TradeJournalPatternStore: overrides.patternStore || { listSync: () => [] },
     TradeJournalStrategyEducationStore: overrides.strategyStore || { listSync: () => [] },
     TradeJournalTradeStore: overrides.tradeStore || { listSync: () => [] },
+    // Sessions migrated onto server-replica.js in Phase 3 (see ARCHITECTURE.md's Global Data
+    // Sync section) - ai-journey-steps.js's sessionsCache() now reads through
+    // window.TradeJournalWorkspace.list() instead of localStorage. This fake still sources from
+    // the same seeded 'tradejournal:sessions:v1:shared' fake-localStorage key every existing test
+    // in this file already seeds (see the memoryStorage(...) overrides below), so no individual
+    // test body needed to change - only this one piece of sandbox wiring.
+    TradeJournalWorkspace: overrides.workspace || { list: () => { try { return JSON.parse(localStorage.getItem('tradejournal:sessions:v1:shared')) || []; } catch (_) { return []; } } },
     TradeJournalAIWorkflowEngine: overrides.workflowEngine || { current: () => null },
     TradeJournalAIProactiveEngine: overrides.proactiveEngine || { pendingConfirmation: () => null },
     TradeJournalAIActionRegistry: overrides.actionRegistry || { get: () => null }
