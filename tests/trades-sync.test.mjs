@@ -122,24 +122,32 @@ test('the one-time activation pushes local trades up when the server has none ye
 
 test('deleting a strategy pushes each newly-orphaned trade onto the shared sync queue, so the server copy stops pointing at the deleted strategy id too', async () => {
   const localStorage = memoryStorage({
-    'tradejournal:trades:v1': JSON.stringify([{ id: 'trade-orphan', status: 'open', linkedStrategyId: 'strategy-to-delete' }, { id: 'trade-other', status: 'closed', linkedStrategyId: null }])
+    'tradejournal:trades:v1': JSON.stringify([{ id: 'trade-orphan', status: 'open', linkedStrategyId: 'strategy-to-delete' }, { id: 'trade-other', status: 'closed', linkedStrategyId: null }]),
+    // Strategy Education itself is migrated (Phase 2) onto server-replica.js, which resolves auth
+    // straight from this key - Trade Store is NOT migrated, so its own sync-queue-based
+    // orphanLinkedTrades() path (what this test actually covers) still needs
+    // TradeJournalSyncQueue/TradeJournalDevUserSwitcher exactly as before.
+    'tradejournal:auth-token': 'test-user'
   });
   const enqueueCalls = [];
   const sandbox = {
     window: {}, localStorage,
     document: { documentElement: { lang: 'en' } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    FileReader: class {}, fetch: async () => { throw new Error('not used'); }, URL
+    FileReader: class {}, fetch: async (url, options) => {
+      if (options && options.method === 'DELETE') return { ok: true, status: 204 };
+      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ strategies: [] }) }; // hydrate() - starts genuinely empty
+    }, URL
   };
   sandbox.window = Object.assign(sandbox.window, {
     localStorage, dispatchEvent() {}, setTimeout: (fn) => fn(), addEventListener() {},
     TradeJournalStrategyEducationTypes: { numericPaths: [] },
-    // No TradeJournalDevUserSwitcher on purpose - this test only cares about orphanLinkedTrades()'s
-    // own enqueue call, not the full strategies sync stack, so migrateOrAdopt()/reconcileFromServer()
-    // must bail out immediately (no currentUserId()) without making any fetch call.
     TradeJournalSyncQueue: { registerModule() {}, enqueue: (...args) => enqueueCalls.push(args) }
   });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('strategy-education-store.js'), sandbox, { filename: 'strategy-education-store.js' });
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle first, matching the real app's own boot-gate ordering
   const store = sandbox.window.TradeJournalStrategyEducationStore;
   const strategy = store.create({ id: 'strategy-to-delete', name: 'Doomed strategy' });
   await store.remove(strategy.id);
