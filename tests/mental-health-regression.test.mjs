@@ -40,9 +40,20 @@ async function mentalHealthOnly(localStorage) {
   return loadInto(sandbox, ['mental-health.types.js', 'mental-health-i18n.js', 'mental-health-safety.js', 'mental-health-store.js', 'mental-health-ai.js', 'mental-health-cards.js', 'mental-health-scheduler.js', 'mental-health-report.js']);
 }
 
+// Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+// Data Sync section / the Phase 2 report) moved trade-store.js off localStorage onto
+// server-replica.js's in-memory replica - this helper now loads that module first and provides a
+// real auth token + a fetch that resolves an empty hydrate (so listSync() starts genuinely empty,
+// exactly like every other domain since the migration) and echoes back any POSTed trade.
 async function withTrades(localStorage) {
-  const sandbox = baseSandbox(localStorage || memoryStorage());
-  return loadInto(sandbox, ['trade-store.js', 'mental-health.types.js', 'mental-health-i18n.js', 'mental-health-safety.js', 'mental-health-store.js', 'mental-health-collector.js', 'mental-health-cycle.js']);
+  const store = localStorage || memoryStorage();
+  if (!store.getItem('tradejournal:auth-token')) store.setItem('tradejournal:auth-token', 'test-user');
+  const sandbox = baseSandbox(store);
+  sandbox.fetch = async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) };
+  sandbox.window.fetch = sandbox.fetch;
+  const window = await loadInto(sandbox, ['server-replica.js', 'trade-store.js', 'mental-health.types.js', 'mental-health-i18n.js', 'mental-health-safety.js', 'mental-health-store.js', 'mental-health-collector.js', 'mental-health-cycle.js']);
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle before the caller reads/writes
+  return window;
 }
 
 function closedTrade(overrides) {

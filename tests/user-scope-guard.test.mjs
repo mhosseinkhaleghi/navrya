@@ -312,47 +312,16 @@ test('the guard exposes the exact key lists it purges, so a future silent edit n
 // not need the module loaded to prove correct.
 // ============================================================================
 
-// Patterns and Strategies both graduated out of this file's scope in Phase 2 (see
-// ARCHITECTURE.md's Global Data Sync section / the Phase 2 report): neither store touches
-// localStorage at all any more - each reads/writes server-replica.js's in-memory replica instead,
-// so there is no tradejournal:patterns:v1/strategies:v2 key left for this guard to purge. Their
-// own cross-account isolation proofs now live in tests/patterns-sync.test.mjs and
-// tests/strategies-sync.test.mjs instead (a fresh in-memory replica per page load/module instance
-// is never shared between accounts by construction - no purge mechanism is even needed for a
-// migrated domain). The Phase 1 stopgap this file tests remains the real, live mechanism for
-// every domain NOT yet migrated - Trades/Sessions/Mental Health/Companion state below.
-
-async function loadTradesWithGuard({ localStorage, token }) {
-  if (token) localStorage.setItem('tradejournal:auth-token', token);
-  const sandbox = {
-    window: {}, localStorage, atob,
-    document: { body: { dataset: {} } },
-    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    FileReader: class {}
-  };
-  sandbox.window = Object.assign(sandbox.window, {
-    localStorage, dispatchEvent() {}, addEventListener() {},
-    TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'hunter' },
-    TradeJournalDevUserSwitcher: { currentUserId: () => token || null }
-  });
-  vm.runInNewContext(await source('user-scope-guard.js'), sandbox, { filename: 'user-scope-guard.js' });
-  vm.runInNewContext(await source('trade-store.js'), sandbox, { filename: 'trade-store.js' });
-  return sandbox.window.TradeJournalTradeStore;
-}
-
-test('Trades: user A\'s trade is invisible to user B on the same browser after Phase 1', async () => {
-  const localStorage = memoryStorage();
-  const storeA = await loadTradesWithGuard({ localStorage, token: 'token-A' });
-  const draft = storeA.createDraft ? storeA.createDraft() : null;
-  // Fall back to writing a minimal real record through save() directly if createDraft() isn't
-  // the store's actual entry point - either way this exercises the real public write path.
-  if (draft) storeA.save(Object.assign(draft, { id: 'trade-a' }));
-  else storeA.save({ id: 'trade-a', status: 'hunting' });
-  assert.ok(storeA.listSync().find((t) => t.id === 'trade-a'));
-
-  const storeB = await loadTradesWithGuard({ localStorage, token: 'token-B' });
-  assert.equal(storeB.listSync().find((t) => t.id === 'trade-a'), undefined, 'user B must never see user A\'s trade');
-});
+// Patterns, Strategies, and Trades have all graduated out of this file's scope in Phase 2 (see
+// ARCHITECTURE.md's Global Data Sync section / the Phase 2 report): none of those three stores
+// touches localStorage at all any more - each reads/writes server-replica.js's in-memory replica
+// instead, so there is no tradejournal:patterns:v1/strategies:v2/trades:v1 key left for this
+// guard to purge. Their own cross-account isolation proofs now live in tests/patterns-sync.test.mjs,
+// tests/strategies-sync.test.mjs, and tests/trades-sync.test.mjs instead (a fresh in-memory
+// replica per page load/module instance is never shared between accounts by construction - no
+// purge mechanism is even needed for a migrated domain). The Phase 1 stopgap this file tests
+// remains the real, live mechanism for every domain NOT yet migrated - Sessions/Mental
+// Health/Companion state below.
 
 async function loadMentalHealthWithGuard({ localStorage, token }) {
   if (token) localStorage.setItem('tradejournal:auth-token', token);

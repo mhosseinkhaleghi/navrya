@@ -1,7 +1,6 @@
 (function () {
   'use strict';
 
-  var TRADE_KEY = 'tradejournal:trades:v1'; // Trade Store isn't migrated in this pass - orphanLinkedTrades() below still reads/writes it directly
   var MAX_BYTES = 20 * 1024 * 1024;
   var types = window.TradeJournalStrategyEducationTypes || { numericPaths: [] };
   var DOMAIN = 'strategies';
@@ -72,12 +71,23 @@
   // Promise is .catch()-guarded since neither function ever gave its caller a Promise to observe.
   function create(seed) { var strategy = normalize(Object.assign(empty(), seed || {})); if (!strategy.name) strategy.name = ''; if (replica()) replica().upsert(strategy).catch(function () {}); return strategy; }
   function save(value, options) { var strategy = normalize(value); strategy.updatedAt = now(); if (!(options && options.keepSummary)) strategy.aiUnderstandingSummary = localSummary(strategy); if (replica()) replica().upsert(strategy).catch(function () {}); return strategy; }
-  // Orphaned trades are also pushed onto the shared sync queue (Section 7.18 Module 4) so the
-  // server's copy of each trade stops pointing at a now-deleted strategy id too - without this,
-  // trades.linkedStrategyId is a plain, un-FK'd TEXT column server-side (see 009_trades.sql's
-  // reasoning) and would otherwise only drift back into sync the next time that trade happened
-  // to be saved for an unrelated reason.
-  function orphanLinkedTrades(strategyId) { try { var trades = JSON.parse(localStorage.getItem(TRADE_KEY) || '[]'); if (!Array.isArray(trades)) return; var changed = false, orphaned = []; trades.forEach(function (trade) { if (trade && trade.linkedStrategyId === strategyId) { trade.linkedStrategyId = null; trade.updatedAt = now(); changed = true; orphaned.push(trade); } }); if (changed) { localStorage.setItem(TRADE_KEY, JSON.stringify(trades)); window.dispatchEvent(new CustomEvent('tradejournal:trades-changed', { detail: { count: trades.length } })); if (window.TradeJournalSyncQueue) orphaned.forEach(function (trade) { window.TradeJournalSyncQueue.enqueue('trades', trade.id, trade); }); } } catch (_) { /* Preserve strategy deletion even if old trade data is malformed. */ } }
+  // Trade Store is migrated (Phase 2) onto its own server-replica.js domain - this now goes
+  // through its real public API (window.TradeJournalTradeStore) instead of reading/writing
+  // tradejournal:trades:v1 directly, which no longer exists as a localStorage key at all.
+  // tradeStore.save() already applies optimistically and pushes to the server itself (with
+  // rollback on failure), so there is no separate sync-queue push to do here any more - a real
+  // simplification, not just a like-for-like port. Looked up live (never cached), the same
+  // "TradeJournalDevUserSwitcher is looked up live" convention this file already uses, since
+  // trade-store.js's own <script> tag loads after this file's in the existing page order.
+  function orphanLinkedTrades(strategyId) {
+    var tradeStore = window.TradeJournalTradeStore;
+    if (!tradeStore) return;
+    try {
+      tradeStore.listSync().forEach(function (trade) {
+        if (trade && trade.linkedStrategyId === strategyId) tradeStore.save(Object.assign({}, trade, { linkedStrategyId: null }));
+      });
+    } catch (_) { /* Preserve strategy deletion even if trade data is malformed. */ }
+  }
   async function remove(id) { var strategy = find(id); if (!strategy) return; if (window.TradeJournalImageStore) { var files = [].concat(strategy.positionManagement.attachments || [], strategy.riskManagement.attachments || [], strategy.overallFramework.attachments || []); await Promise.all(files.map(function (item) { return item.blobId ? window.TradeJournalImageStore.deleteImage(item.blobId) : Promise.resolve(); })); } if (replica()) await replica().remove(id); orphanLinkedTrades(id); }
   function setActive(id, active) { var strategy = find(id); if (!strategy) return null; strategy.active = Boolean(active); return save(strategy, { keepSummary: true }); }
   function getPath(record, path) { return path.split('.').reduce(function (value, key) { return value && value[key]; }, record); }

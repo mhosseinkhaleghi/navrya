@@ -4,18 +4,16 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 
-// Unlike session-workspace-logic.js/pattern-registry-store.js/strategy-education-store.js
-// (static source assertions only - see tests/trading-sessions-sync.test.mjs's header comment),
-// trade-store.js is already proven vm-sandbox-testable by tests/trade-regression.test.mjs (it
-// never touches the DOM directly, only reads document.body.dataset), so this file exercises the
-// Module 4 sync wiring dynamically against a real vm context instead of regexing source text.
+// Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+// Data Sync section / the Phase 2 report) replaced Trade Store's local-first-cache-plus-offline-
+// outbox mechanism with server-replica.js's in-memory replica, the same way
+// tests/patterns-sync.test.mjs/tests/strategies-sync.test.mjs's own header comments describe for
+// their domains. This file replaces the old dynamic sync-queue-based tests with coverage against
+// the new replica mechanism.
 const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
 const source = (file) => readFile(shared(file), 'utf8');
 
-// migrateOrAdopt() is fired via the sandbox's synchronous setTimeout stub, but its own body is
-// still a real fetch().then() chain (a microtask) - a macrotask tick reliably lets it settle
-// before assertions run, the same way a real 'online' event handler's async work would.
 function flush() { return new Promise((resolve) => setImmediate(resolve)); }
 
 function memoryStorage(seed) {
@@ -23,149 +21,221 @@ function memoryStorage(seed) {
   return { getItem: (key) => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, String(value)), removeItem: (key) => values.delete(key), key: (index) => Array.from(values.keys())[index] || null, get length() { return values.size; } };
 }
 
-async function loadTradeStore({ localStorage, fetchImpl, currentUserId, saveImageImpl }) {
-  const senders = {};
-  const enqueueCalls = [];
+class FakeFileReader {
+  readAsDataURL() { this.result = 'data:image/png;base64,AA=='; if (this.onload) this.onload(); }
+}
+
+async function loadTradeStore({ localStorage, fetchImpl, currentUserId, patternStore }) {
   const fetchCalls = [];
   const fetchFn = async (url, options) => { fetchCalls.push([url, options]); return fetchImpl ? fetchImpl(url, options) : { ok: false, status: 500 }; };
+  if (currentUserId) localStorage.setItem('tradejournal:auth-token', currentUserId);
   const sandbox = {
     window: {}, localStorage,
     document: { body: { dataset: {} } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    FileReader: class {}, fetch: fetchFn
+    FileReader: FakeFileReader, fetch: fetchFn
   };
   sandbox.window = Object.assign(sandbox.window, {
-    localStorage, dispatchEvent() {}, setTimeout: (fn) => fn(), addEventListener() {},
+    localStorage, dispatchEvent() {}, addEventListener() {},
     TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'hunter' },
-    TradeJournalSyncQueue: { registerModule: (name, fn) => { senders[name] = fn; }, enqueue: (...args) => enqueueCalls.push(args) },
     TradeJournalDevUserSwitcher: { currentUserId: () => currentUserId || null },
-    TradeJournalImageStore: saveImageImpl ? { saveImage: saveImageImpl } : undefined
-  });
-  vm.runInNewContext(await source('trade-store.js'), sandbox, { filename: 'trade-store.js' });
-  return { store: sandbox.window.TradeJournalTradeStore, senders, enqueueCalls, fetchCalls, localStorage };
-}
-
-test('registers a trades sender that POSTs upserts to /api/sync/trades and DELETEs on the delete action', async () => {
-  const { senders, fetchCalls } = await loadTradeStore({ localStorage: memoryStorage(), currentUserId: 'user-1', fetchImpl: async () => ({ ok: true }) });
-  assert.ok(senders.trades, 'a trades sender must be registered');
-  await senders.trades({ action: undefined, recordId: 'trade-1', payload: { id: 'trade-1' } });
-  assert.equal(fetchCalls[fetchCalls.length - 1][0], '/api/sync/trades');
-  assert.equal(fetchCalls[fetchCalls.length - 1][1].method, 'POST');
-  await senders.trades({ action: 'delete', recordId: 'trade-1' });
-  const del = fetchCalls[fetchCalls.length - 1];
-  assert.equal(del[0], '/api/sync/trades/trade-1');
-  assert.equal(del[1].method, 'DELETE');
-});
-
-test('save() and remove() each enqueue to the sync queue right after their own write()', async () => {
-  const { store, enqueueCalls } = await loadTradeStore({ localStorage: memoryStorage(), currentUserId: null });
-  const trade = store.save(store.createDraft({ status: 'hunting' }));
-  const saveCall = enqueueCalls.find((call) => call[0] === 'trades' && call[1] === trade.id && call[2] === trade);
-  assert.ok(saveCall, 'save() must enqueue the exact saved trade under the trades module');
-  store.remove(trade.id);
-  const deleteCall = enqueueCalls.find((call) => call[0] === 'trades' && call[1] === trade.id && call[3] === 'delete');
-  assert.ok(deleteCall, 'remove() must enqueue a delete action for the removed trade id');
-});
-
-test("addScreenshots() passes 'trade' as the image-store category - every trade screenshot is already image-only by validation, unlike Strategy Education's mixed attachments", async () => {
-  const saveImageCalls = [];
-  const { store } = await loadTradeStore({
-    localStorage: memoryStorage(), currentUserId: null,
-    saveImageImpl: async (id, file, category) => { saveImageCalls.push([id, file, category]); }
-  });
-  const trade = store.save(store.createDraft({ status: 'open' }));
-  await store.addScreenshots(trade.id, [{ type: 'image/png', size: 10, name: 'a.png' }]);
-  assert.equal(saveImageCalls.length, 1);
-  assert.equal(saveImageCalls[0][2], 'trade');
-});
-
-test("the 'trade-images' sender patches the uploaded url onto the matching screenshot by blobId and re-enqueues the trade", async () => {
-  const seededTrade = {
-    id: 'trade-x', status: 'open', screenshots: [{ id: 'shot-1', blobId: 'blob-1', fileName: 'a.png', mimeType: 'image/png', uploadedAt: '2026-01-01T00:00:00.000Z' }]
-  };
-  const localStorage = memoryStorage({ 'tradejournal:trades:v1': JSON.stringify([seededTrade]) });
-  const { senders, enqueueCalls } = await loadTradeStore({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ url: '/uploads/trade/img-1.png' }) })
-  });
-  assert.ok(senders['trade-images'], "a 'trade-images' sender must be registered");
-  await senders['trade-images']({ recordId: 'blob-1', payload: { dataUrl: 'data:image/png;base64,x' } });
-  const stored = JSON.parse(localStorage.getItem('tradejournal:trades:v1'));
-  assert.equal(stored[0].screenshots[0].imageUrl, '/uploads/trade/img-1.png', 'the uploaded url must be patched onto the matching local screenshot');
-  const reEnqueued = enqueueCalls.find((call) => call[0] === 'trades' && call[1] === 'trade-x');
-  assert.ok(reEnqueued, 'the parent trade must be re-enqueued so the server learns the new imageUrl');
-});
-
-test('the one-time activation checks the server before deciding whether to push local trades up (adopts server data if present, else pushes local up)', async () => {
-  const localStorage = memoryStorage({ 'tradejournal:trades:v1': JSON.stringify([{ id: 'local-trade', status: 'hunting' }]) });
-  const { localStorage: after } = await loadTradeStore({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ trades: [{ id: 'server-trade', status: 'closed' }] }) })
-  });
-  await flush();
-  const stored = JSON.parse(after.getItem('tradejournal:trades:v1'));
-  assert.equal(stored.length, 1);
-  assert.equal(stored[0].id, 'server-trade', 'server data must be adopted outright when present, not merged with pre-existing local data');
-  assert.ok(after.getItem('tradejournal:trades-migrated:v1:user-1'), 'the migration flag must be set after a successful check');
-});
-
-test('the one-time activation pushes local trades up when the server has none yet', async () => {
-  const localStorage = memoryStorage({ 'tradejournal:trades:v1': JSON.stringify([{ id: 'local-trade', status: 'hunting' }]) });
-  const { enqueueCalls } = await loadTradeStore({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ trades: [] }) })
-  });
-  await flush();
-  const pushed = enqueueCalls.find((call) => call[0] === 'trades' && call[1] === 'local-trade');
-  assert.ok(pushed, 'a genuinely empty server must receive the pre-existing local trade, not be left as a permanent gap');
-});
-
-test('deleting a strategy pushes each newly-orphaned trade onto the shared sync queue, so the server copy stops pointing at the deleted strategy id too', async () => {
-  const localStorage = memoryStorage({
-    'tradejournal:trades:v1': JSON.stringify([{ id: 'trade-orphan', status: 'open', linkedStrategyId: 'strategy-to-delete' }, { id: 'trade-other', status: 'closed', linkedStrategyId: null }]),
-    // Strategy Education itself is migrated (Phase 2) onto server-replica.js, which resolves auth
-    // straight from this key - Trade Store is NOT migrated, so its own sync-queue-based
-    // orphanLinkedTrades() path (what this test actually covers) still needs
-    // TradeJournalSyncQueue/TradeJournalDevUserSwitcher exactly as before.
-    'tradejournal:auth-token': 'test-user'
-  });
-  const enqueueCalls = [];
-  const sandbox = {
-    window: {}, localStorage,
-    document: { documentElement: { lang: 'en' } },
-    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    FileReader: class {}, fetch: async (url, options) => {
-      if (options && options.method === 'DELETE') return { ok: true, status: 204 };
-      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) };
-      return { ok: true, json: async () => ({ strategies: [] }) }; // hydrate() - starts genuinely empty
-    }, URL
-  };
-  sandbox.window = Object.assign(sandbox.window, {
-    localStorage, dispatchEvent() {}, setTimeout: (fn) => fn(), addEventListener() {},
-    TradeJournalStrategyEducationTypes: { numericPaths: [] },
-    TradeJournalSyncQueue: { registerModule() {}, enqueue: (...args) => enqueueCalls.push(args) }
+    TradeJournalPatternStore: patternStore
   });
   vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
-  vm.runInNewContext(await source('strategy-education-store.js'), sandbox, { filename: 'strategy-education-store.js' });
-  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle first, matching the real app's own boot-gate ordering
-  const store = sandbox.window.TradeJournalStrategyEducationStore;
-  const strategy = store.create({ id: 'strategy-to-delete', name: 'Doomed strategy' });
-  await store.remove(strategy.id);
-  const orphanEnqueue = enqueueCalls.find((call) => call[0] === 'trades' && call[1] === 'trade-orphan');
-  assert.ok(orphanEnqueue, 'the orphaned trade must be pushed onto the trades sync queue');
-  assert.equal(orphanEnqueue[2].linkedStrategyId, null, 'the enqueued payload must reflect the nulled-out linkedStrategyId');
-  const untouchedEnqueue = enqueueCalls.find((call) => call[0] === 'trades' && call[1] === 'trade-other');
-  assert.equal(untouchedEnqueue, undefined, 'a trade that was never linked to the deleted strategy must not be re-synced');
+  vm.runInNewContext(await source('trade-store.js'), sandbox, { filename: 'trade-store.js' });
+  return { store: sandbox.window.TradeJournalTradeStore, replica: sandbox.window.TradeJournalServerReplica, fetchCalls, localStorage };
+}
+
+test('registers a trades list domain with server-replica.js and hydrates it at load time', async () => {
+  const localStorage = memoryStorage();
+  const { replica, fetchCalls } = await loadTradeStore({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ trades: [] }) }) });
+  assert.ok(replica.domain('trades'));
+  await flush();
+  assert.ok(fetchCalls.some((call) => call[0] === '/api/sync/trades' && (!call[1] || !call[1].method)));
 });
 
-test('all four character pages load sync-queue.js and dev-user-switcher.js before trade-store.js', async () => {
+test('a brand-new account with nothing on the server starts genuinely empty', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ trades: [] }) }) });
+  await flush();
+  assert.equal(store.listSync().length, 0);
+});
+
+test('save() applies optimistically and returns synchronously, then POSTs the record in the background', async () => {
+  const localStorage = memoryStorage();
+  const { store, fetchCalls } = await loadTradeStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) }
+  });
+  await flush();
+  const draft = store.createDraft({ status: 'hunting' });
+  const saved = store.save(draft);
+  assert.equal(saved.id, draft.id, 'save() returns synchronously');
+  assert.equal(store.listSync().length, 1, 'the optimistic write already applied before the network call resolves');
+  await flush();
+  const post = fetchCalls.find((call) => call[1] && call[1].method === 'POST');
+  assert.equal(post[0], '/api/sync/trades');
+  assert.equal(JSON.parse(post[1].body).id, draft.id);
+});
+
+test('a failed save() rolls back the optimistic write', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: false, status: 500 } : { ok: true, json: async () => ({ trades: [] }) }
+  });
+  await flush();
+  store.save(store.createDraft({ status: 'hunting' }));
+  await flush();
+  assert.equal(store.listSync().length, 0);
+});
+
+test('remove() DELETEs the real record', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      if (options && options.method === 'DELETE') return { ok: true, status: 204 };
+      return { ok: true, json: async () => ({ trades: [{ id: 'trade-1', status: 'hunting' }] }) };
+    }
+  });
+  await flush();
+  assert.equal(store.listSync().length, 1);
+  store.remove('trade-1');
+  await flush();
+  assert.equal(store.listSync().length, 0);
+});
+
+test('save() still records Pattern Registry usage deltas exactly as before - recordUsage() itself is unaffected, Patterns already migrated onto the same replica infrastructure', async () => {
+  const recordUsageCalls = [];
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) },
+    patternStore: { recordUsage: (id, delta) => recordUsageCalls.push([id, delta]) }
+  });
+  await flush();
+  const trade = store.save(store.createDraft({ status: 'hunting', linkedPatternIds: ['pattern-1'] }));
+  assert.ok(recordUsageCalls.some((call) => call[0] === 'pattern-1' && call[1] === 1));
+  store.save(Object.assign(trade, { linkedPatternIds: [] }));
+  assert.ok(recordUsageCalls.some((call) => call[0] === 'pattern-1' && call[1] === -1));
+});
+
+test("addScreenshots() uploads via POST /api/sync/trades/images and stores imageUrl - no IndexedDB, no blobId", async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      if (url === '/api/sync/trades/images') return { ok: true, json: async () => ({ url: '/uploads/trade/real.png' }) };
+      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ trades: [] }) };
+    }
+  });
+  await flush();
+  const trade = store.save(store.createDraft({ status: 'open' }));
+  const updated = await store.addScreenshots(trade.id, [{ type: 'image/png', size: 10, name: 'a.png' }]);
+  assert.equal(updated.screenshots[0].imageUrl, '/uploads/trade/real.png');
+  assert.equal(updated.screenshots[0].blobId, undefined);
+});
+
+test('addScreenshots() falls back to an embedded dataUrl when the upload fails', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      if (url === '/api/sync/trades/images') return { ok: false, status: 500 };
+      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ trades: [] }) };
+    }
+  });
+  await flush();
+  const trade = store.save(store.createDraft({ status: 'open' }));
+  const updated = await store.addScreenshots(trade.id, [{ type: 'image/png', size: 10, name: 'a.png' }]);
+  assert.equal(updated.screenshots[0].imageUrl, undefined);
+  assert.equal(updated.screenshots[0].dataUrl, 'data:image/png;base64,AA==');
+});
+
+test('screenshotUrl() prefers imageUrl over dataUrl', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ trades: [] }) }) });
+  await flush();
+  assert.equal(await store.screenshotUrl({ imageUrl: '/uploads/x.png', dataUrl: 'data:...' }), '/uploads/x.png');
+});
+
+test('no localStorage key is ever written for trades any more - Phase 2 removed the write-through cache entirely (trade-settings is unaffected - a Group B preference, still local-only for this pass)', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadTradeStore({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) } });
+  await flush();
+  store.save(store.createDraft({ status: 'hunting' }));
+  assert.equal(localStorage.getItem('tradejournal:trades:v1'), null);
+});
+
+test('cross-account isolation: user A\'s trade is invisible to user B on the same browser', async () => {
+  const localStorage = memoryStorage();
+  const a = await loadTradeStore({ localStorage, currentUserId: 'user-A', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) } });
+  await flush();
+  a.store.save(a.store.createDraft({ status: 'hunting' }));
+  assert.equal(a.store.listSync().length, 1);
+
+  const b = await loadTradeStore({ localStorage, currentUserId: 'user-B', fetchImpl: async () => ({ ok: true, json: async () => ({ trades: [] }) }) });
+  await flush();
+  assert.equal(b.store.listSync().length, 0);
+});
+
+// --- Strategy Education's orphanLinkedTrades() cross-domain behavior. Both Strategy Education
+// AND Trade Store are migrated (Phase 2) - orphanLinkedTrades() was found and fixed as part of
+// the Trade Store migration to go through the real window.TradeJournalTradeStore public API
+// (tradeStore.save(), which already applies optimistically and pushes to the server itself)
+// instead of reading/writing tradejournal:trades:v1 directly, which no longer exists as a
+// localStorage key - the old direct-localStorage version would have silently become a no-op the
+// moment Trade Store stopped writing that key, a real regression caught here, not left for a bug
+// report. There is no sync-queue involved in this path at all any more. ---
+
+test('deleting a strategy orphans linked trades through the real Trade Store API, pushing the updated record to the server - a trade never linked to the deleted strategy is left untouched', async () => {
+  const postedTrades = [];
+  const localStorage = memoryStorage({ 'tradejournal:auth-token': 'test-user' });
+  const sandbox = {
+    window: {}, localStorage,
+    document: { documentElement: { lang: 'en' }, body: { dataset: {} } },
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
+    FileReader: class {},
+    fetch: async (url, options) => {
+      if (options && options.method === 'DELETE') return { ok: true, status: 204 };
+      if (url === '/api/sync/trades' && options && options.method === 'POST') { postedTrades.push(JSON.parse(options.body)); return { ok: true, json: async () => JSON.parse(options.body) }; }
+      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) }; // strategies POST
+      if (url === '/api/sync/trades') return { ok: true, json: async () => ({ trades: [{ id: 'trade-orphan', status: 'open', linkedStrategyId: 'strategy-to-delete' }, { id: 'trade-other', status: 'closed', linkedStrategyId: null }] }) };
+      return { ok: true, json: async () => ({ strategies: [] }) };
+    }
+  };
+  sandbox.window = Object.assign(sandbox.window, {
+    localStorage, dispatchEvent() {}, addEventListener() {},
+    TradeJournalStrategyEducationTypes: { numericPaths: [] },
+    TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'hunter' },
+    TradeJournalDevUserSwitcher: { currentUserId: () => 'test-user' }
+  });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
+  vm.runInNewContext(await source('trade-store.js'), sandbox, { filename: 'trade-store.js' });
+  vm.runInNewContext(await source('strategy-education-store.js'), sandbox, { filename: 'strategy-education-store.js' });
+  await flush(); // let both domains' hydrate() settle first, matching the real app's own boot-gate ordering
+  const strategyStore = sandbox.window.TradeJournalStrategyEducationStore;
+  const tradeStore = sandbox.window.TradeJournalTradeStore;
+  const strategy = strategyStore.create({ id: 'strategy-to-delete', name: 'Doomed strategy' });
+  await strategyStore.remove(strategy.id);
+  await flush();
+
+  assert.equal(tradeStore.find('trade-orphan').linkedStrategyId, null, 'the orphaned trade\'s own in-memory record must be nulled out');
+  const orphanPost = postedTrades.find((trade) => trade.id === 'trade-orphan');
+  assert.ok(orphanPost, 'the orphaned trade must be pushed to the server via the real Trade Store save path');
+  assert.equal(orphanPost.linkedStrategyId, null);
+  assert.equal(postedTrades.some((trade) => trade.id === 'trade-other'), false, 'a trade that was never linked to the deleted strategy must not be re-synced');
+});
+
+test('server-replica.js loads before trade-store.js on all four character pages', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const queueIndex = html.indexOf('sync-queue.js');
-    const switcherIndex = html.indexOf('dev-user-switcher.js');
-    const storeIndex = html.indexOf('trade-store.js');
-    assert.ok(queueIndex > -1 && queueIndex < storeIndex, character + ': sync-queue.js before trade-store.js');
-    assert.ok(switcherIndex > -1 && switcherIndex < storeIndex, character + ': dev-user-switcher.js before trade-store.js');
+    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
+    const storeIndex = html.indexOf('<script src="../shared/trade-store.js">');
+    assert.ok(replicaIndex > -1 && replicaIndex < storeIndex, character + ': server-replica.js loads before trade-store.js');
   }
 });
 
