@@ -414,6 +414,27 @@ export function createMemoryRepo() {
         buckets.set(e.provider, (buckets.get(e.provider) || 0) + (e.totalTokens || 0));
       });
       return Array.from(buckets.entries()).map(([provider, totalTokens]) => ({ provider, totalTokens }));
+    },
+    // Phase 8c - mirrors repo.pg.mjs's summaryForUser() exactly, see its own comment.
+    async summaryForUser(userId) {
+      const todayKey = now().slice(0, 10);
+      const monthKey = now().slice(0, 7);
+      function emptyBucket() { return { promptTokens: 0, completionTokens: 0, totalTokens: 0, byProvider: {} }; }
+      function addInto(bucket, e) {
+        const promptTokens = e.promptTokens || 0, completionTokens = e.completionTokens || 0, totalTokens = e.totalTokens || 0;
+        bucket.promptTokens += promptTokens; bucket.completionTokens += completionTokens; bucket.totalTokens += totalTokens;
+        const perProvider = bucket.byProvider[e.provider] || { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
+        perProvider.promptTokens += promptTokens; perProvider.completionTokens += completionTokens; perProvider.totalTokens += totalTokens; perProvider.calls += 1;
+        bucket.byProvider[e.provider] = perProvider;
+      }
+      const mine = Array.from(state.usageEvents.values()).filter((e) => e.userId === userId);
+      const today = emptyBucket(), thisMonth = emptyBucket(), lifetime = emptyBucket();
+      mine.forEach((e) => {
+        if (e.createdAt.slice(0, 10) === todayKey) addInto(today, e);
+        if (e.createdAt.slice(0, 7) === monthKey) addInto(thisMonth, e);
+        addInto(lifetime, e);
+      });
+      return { todayKey, today, monthKey, thisMonth, lifetime };
     }
   };
 

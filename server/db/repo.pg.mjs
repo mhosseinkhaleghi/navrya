@@ -672,6 +672,38 @@ export function createPgRepo(pool) {
         [userId]
       );
       return rows.map((row) => ({ provider: row.provider, totalTokens: Number(row.total || 0) }));
+    },
+    // Phase 8c of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+    // Constraints section) - the user-facing counterpart to the admin-only aggregates above,
+    // scoped to one real user's own ai_usage_events rows (the same table reportToServer() in
+    // ai-usage-store.js already writes to on every real call - this is a read-side reconciliation,
+    // never a second usage ledger). `todayKey`/`monthKey` are returned alongside their own bucket
+    // so the client can detect a day/month rollover that happened while its tab stayed open and
+    // treat a stale key as "no data" rather than silently misattributing yesterday's totals to
+    // today - see ai-usage-store.js's own baseline() for the client-side half of that guard.
+    async summaryForUser(userId) {
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const monthKey = new Date().toISOString().slice(0, 7);
+      function toBucket(rows) {
+        const bucket = { promptTokens: 0, completionTokens: 0, totalTokens: 0, byProvider: {} };
+        rows.forEach((row) => {
+          const promptTokens = Number(row.prompt_tokens || 0), completionTokens = Number(row.completion_tokens || 0), totalTokens = Number(row.total_tokens || 0), calls = Number(row.calls || 0);
+          bucket.promptTokens += promptTokens; bucket.completionTokens += completionTokens; bucket.totalTokens += totalTokens;
+          bucket.byProvider[row.provider] = { promptTokens, completionTokens, totalTokens, calls };
+        });
+        return bucket;
+      }
+      const AGG = "provider, SUM(COALESCE(prompt_tokens,0)) AS prompt_tokens, SUM(COALESCE(completion_tokens,0)) AS completion_tokens, SUM(COALESCE(total_tokens,0)) AS total_tokens, COUNT(*) AS calls";
+      const [todayRows, monthRows, lifetimeRows] = await Promise.all([
+        pool.query(`SELECT ${AGG} FROM ai_usage_events WHERE user_id=$1 AND created_at >= $2::date GROUP BY provider`, [userId, todayKey]),
+        pool.query(`SELECT ${AGG} FROM ai_usage_events WHERE user_id=$1 AND to_char(created_at, 'YYYY-MM')=$2 GROUP BY provider`, [userId, monthKey]),
+        pool.query(`SELECT ${AGG} FROM ai_usage_events WHERE user_id=$1 GROUP BY provider`, [userId])
+      ]);
+      return {
+        todayKey, today: toBucket(todayRows.rows),
+        monthKey, thisMonth: toBucket(monthRows.rows),
+        lifetime: toBucket(lifetimeRows.rows)
+      };
     }
   };
 

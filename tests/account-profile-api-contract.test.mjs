@@ -158,3 +158,48 @@ test('GET /api/users/me/subscriptions only returns purchases of subscription-typ
   assert.equal(result.body.length, 1);
   assert.equal(result.body[0].listing.type, 'subscription');
 });
+
+// Phase 8c of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section) - GET /api/users/me/usage is the user-facing read side of the SAME
+// ai_usage_events table POST /api/users/usage-report already writes to (reconciliation, not a
+// second usage ledger).
+test('GET /api/users/me/usage requires auth and returns real zeroed buckets for a brand-new account', async () => {
+  const anonymous = await api('GET', '/api/users/me/usage');
+  assert.equal(anonymous.status, 401);
+
+  const user = await createUser('Usage Fresh');
+  const result = await api('GET', '/api/users/me/usage', { userId: user.id });
+  assert.equal(result.status, 200);
+  assert.ok(result.body.todayKey);
+  assert.ok(result.body.monthKey);
+  assert.deepEqual(result.body.today, { promptTokens: 0, completionTokens: 0, totalTokens: 0, byProvider: {} });
+  assert.deepEqual(result.body.thisMonth, { promptTokens: 0, completionTokens: 0, totalTokens: 0, byProvider: {} });
+  assert.deepEqual(result.body.lifetime, { promptTokens: 0, completionTokens: 0, totalTokens: 0, byProvider: {} });
+});
+
+test('POST /api/users/usage-report events show up correctly aggregated in GET /api/users/me/usage - today, thisMonth, and lifetime all include them, split by provider', async () => {
+  const user = await createUser('Usage Reporter');
+  await api('POST', '/api/users/usage-report', { userId: user.id, body: { provider: 'openai', promptTokens: 10, completionTokens: 5, totalTokens: 15, source: 'chatDock.chat' } });
+  await api('POST', '/api/users/usage-report', { userId: user.id, body: { provider: 'openai', promptTokens: 4, completionTokens: 2, totalTokens: 6, source: 'chatDock.chat' } });
+  await api('POST', '/api/users/usage-report', { userId: user.id, body: { provider: 'anthropic', promptTokens: 1, completionTokens: 1, totalTokens: 2, source: 'chatDock.chat' } });
+
+  const result = await api('GET', '/api/users/me/usage', { userId: user.id });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.today.totalTokens, 23);
+  assert.equal(result.body.today.byProvider.openai.calls, 2);
+  assert.equal(result.body.today.byProvider.openai.totalTokens, 21);
+  assert.equal(result.body.today.byProvider.anthropic.totalTokens, 2);
+  assert.equal(result.body.thisMonth.totalTokens, 23, 'the same events also count toward the current month');
+  assert.equal(result.body.lifetime.totalTokens, 23, 'and toward lifetime');
+});
+
+test("one user's usage-report events never appear in another user's GET /api/users/me/usage", async () => {
+  const userA = await createUser('Usage A');
+  const userB = await createUser('Usage B');
+  await api('POST', '/api/users/usage-report', { userId: userA.id, body: { provider: 'openai', promptTokens: 100, completionTokens: 100, totalTokens: 200, source: 'x' } });
+
+  const resultA = await api('GET', '/api/users/me/usage', { userId: userA.id });
+  const resultB = await api('GET', '/api/users/me/usage', { userId: userB.id });
+  assert.equal(resultA.body.lifetime.totalTokens, 200);
+  assert.equal(resultB.body.lifetime.totalTokens, 0, "user B must never see user A's usage");
+});

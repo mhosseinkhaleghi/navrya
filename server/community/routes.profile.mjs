@@ -198,6 +198,15 @@ export function router(repo) {
     res.json(await repo.xpEvents.listForUser(req.currentUser.id));
   }));
 
+  // Phase 8c of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+  // Constraints section) - the user-facing read side of the SAME ai_usage_events table
+  // POST /api/users/usage-report (routes.users.mjs) already writes to on every real AI call.
+  // Reconciliation, not a second usage ledger: repo.usageEvents.summaryForUser() is a pure
+  // aggregation query over those existing rows.
+  app.get('/me/usage', asyncHandler(async (req, res) => {
+    res.json(await repo.usageEvents.summaryForUser(req.currentUser.id));
+  }));
+
   // The client sends only the event's identity (type, sourceType/sourceId, dedupeKey) - never a
   // points value. Every award is looked up from POINTS_BY_TYPE, re-verified against the real
   // owning record when one exists, deduplicated, and capped, all server-side.
