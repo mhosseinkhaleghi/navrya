@@ -76,13 +76,31 @@ test('session signature backfill skips unfinished sessions and is idempotent', a
     { id: 'open-1', status: 'open', market: 'London', timeframe: '5m', entries: [] },
     { id: 'closed-no-fate', status: 'closed', market: 'London', timeframe: '5m', entries: [] }
   ]));
-  const sandbox = { window: {}, localStorage, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }, setTimeout: fn => fn(), Date, Set };
-  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {} });
+  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
+  // A minimal in-memory fake of the real /api/sync/session-signatures contract (see
+  // routes.session-signatures.mjs) - GET returns whatever has been POSTed so far, POST
+  // upserts by id. Phase 8a moved this store onto server-replica.js, same as every other
+  // migrated domain, so it needs server-replica.js loaded + a real auth token + a fetch mock,
+  // not just a fake localStorage.
+  let signatures = [];
+  const fetchImpl = async (url, options) => {
+    if (url === '/api/sync/session-signatures' && (!options || !options.method || options.method === 'GET')) return { ok: true, json: async () => ({ signatures }) };
+    if (url === '/api/sync/session-signatures' && options.method === 'POST') {
+      const record = JSON.parse(options.body);
+      signatures = signatures.filter((s) => s.id !== record.id).concat(record);
+      return { ok: true, json: async () => record };
+    }
+    throw new Error('unexpected fetch in session-signature backfill test: ' + url);
+  };
+  const sandbox = { window: {}, localStorage, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }, setTimeout: fn => fn(), Date, Set, fetch: fetchImpl };
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, fetch: sandbox.fetch });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('session-signature-store.js'), sandbox, { filename: 'session-signature-store.js' });
   const store = sandbox.window.TradeJournalSessionSignatureStore;
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() + the module's own auto-run backfill() settle
   assert.equal(store.listSync().length, 1);
   assert.equal(store.listSync()[0].sessionId, 'closed-1');
-  assert.equal(store.backfill(), 0);
+  assert.equal(await store.backfill(), 0);
   assert.equal(store.listSync().length, 1);
 });
 

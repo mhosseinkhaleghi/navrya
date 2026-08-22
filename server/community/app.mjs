@@ -17,6 +17,8 @@ import * as routesTrades from './routes.trades.mjs';
 import * as routesMentalHealth from './routes.mental-health.mjs';
 import * as routesAiChatHistory from './routes.ai-chat-history.mjs';
 import * as routesCompanion from './routes.companion.mjs';
+import * as routesSessionSignatures from './routes.session-signatures.mjs';
+import * as routesPreferences from './routes.preferences.mjs';
 
 // Shared-secret gate for the public preview deploy - BASIC_AUTH_USER/PASS are unset in local
 // dev (checkBasicAuth then always passes), and set as Render env vars once a real link is
@@ -103,6 +105,8 @@ export function createApp({ repo, uploadsDir }) {
   app.use('/api/sync/mental-health', routesMentalHealth.router(repo));
   app.use('/api/sync/ai-chat-history', routesAiChatHistory.router(repo));
   app.use('/api/sync/companion-state', routesCompanion.router(repo));
+  app.use('/api/sync/session-signatures', routesSessionSignatures.router(repo));
+  app.use('/api/sync/preferences', routesPreferences.router(repo));
   app.use('/api/admin', requireAdmin(repo), routesAdmin.router(repo));
 
   app.use(notFoundMiddleware);

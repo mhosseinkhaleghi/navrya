@@ -13,7 +13,8 @@ export function createMemoryRepo() {
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(),
-    mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map()
+    mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
+    sessionSignatures: new Map(), userPreferences: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -930,6 +931,66 @@ export function createMemoryRepo() {
     }
   };
 
+  // Phase 8a of the local-first-to-server-authoritative migration - see
+  // 019_session_signatures_and_preferences.sql's own comment. Mirrors repo.pg.mjs's
+  // sessionSignatures domain: keyed by the record's own id, deduped in practice by the client's
+  // own sessionId lookup before it ever calls upsert().
+  const sessionSignatures = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id || !record.sessionId) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.sessionSignatures.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_SIGNATURE_OWNER');
+      const stored = {
+        id: record.id, userId, sessionId: String(record.sessionId), character: record.character || '',
+        market: record.market || '', timeframe: record.timeframe || '', date: record.date || '',
+        movementSequence: record.movementSequence || [], patternIds: record.patternIds || [],
+        strategyIds: record.strategyIds || [], scenarioOutcomes: record.scenarioOutcomes || [],
+        tradeSummary: record.tradeSummary || {}, fateSummaryText: record.fateSummaryText || '',
+        createdAt: existing ? existing.createdAt : now()
+      };
+      state.sessionSignatures.set(record.id, stored);
+      return clone(stored);
+    },
+    async listByUser(userId) {
+      return Array.from(state.sessionSignatures.values())
+        .filter((s) => s.userId === userId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.sessionSignatures.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_SIGNATURE_OWNER');
+      state.sessionSignatures.delete(id);
+    }
+  };
+
+  // Generic {user_id, pref_key -> value} store - see 019_session_signatures_and_preferences.sql's
+  // own comment. Keyed by a composite "userId::prefKey" string since this Map has no natural
+  // compound key the way a real table's PRIMARY KEY (user_id, pref_key) does.
+  function preferenceMapKey(userId, prefKey) { return `${userId}::${prefKey}`; }
+  const userPreferences = {
+    async upsert(userId, prefKey, value) {
+      requireUser(userId);
+      const key = String(prefKey || '');
+      if (!key) throw new ApiError(400, 'VALIDATION_FAILED');
+      const stored = { id: key, value: value ?? null, updatedAt: now() };
+      state.userPreferences.set(preferenceMapKey(userId, key), stored);
+      return clone(stored);
+    },
+    async listByUser(userId) {
+      const prefix = `${userId}::`;
+      return Array.from(state.userPreferences.entries())
+        .filter(([mapKey]) => mapKey.startsWith(prefix))
+        .map(([, value]) => clone(value))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    },
+    async remove(userId, prefKey) {
+      state.userPreferences.delete(preferenceMapKey(userId, String(prefKey || '')));
+    }
+  };
+
   // One row per conversation (017_ai_conversations.sql) - mirrors repo.pg.mjs's aiChatHistory
   // domain exactly. state.aiChatHistory is keyed by conversation id, not userId, since a user
   // can now have many.
@@ -974,5 +1035,5 @@ export function createMemoryRepo() {
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences, health };
 }
