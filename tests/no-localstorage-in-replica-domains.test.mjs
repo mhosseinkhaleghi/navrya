@@ -9,8 +9,9 @@ import test from 'node:test';
 // one of the domains already migrated onto server-replica.js's in-memory replica - Patterns,
 // Strategy Education, Trade Store, Mental Health Profile, Companion state, Sessions,
 // user-preferences.js (Phase 8a), session-signature-store.js (Phase 8a, same caveat as
-// session-workspace-logic.js below), and the replica module itself - fails this test immediately,
-// rather than being discovered later as a real data-isolation bug.
+// session-workspace-logic.js below), psychology-store.js (Phase 8b), and the replica module
+// itself - fails this test immediately, rather than being discovered later as a real
+// data-isolation bug.
 //
 // This is deliberately scoped to only the already-migrated files (plus
 // session-workspace-logic.js's and session-signature-store.js's own documented, narrowly-allowed
@@ -99,4 +100,9 @@ test("session-signature-store.js's only remaining storage call is the documented
   const calls = await storageCalls('session-signature-store.js');
   assert.equal(calls.length, 1, JSON.stringify(calls));
   assert.match(calls[0].text, /tradejournal:sessions:v1:'\s*\+\s*character/, `unexpected storage call in session-signature-store.js:${calls[0].line} - ${calls[0].text}`);
+});
+
+test('psychology-store.js has zero localStorage/sessionStorage/indexedDB calls - settings()/saveSettings() read/write window.TradeJournalUserPreferences now (Phase 8b)', async () => {
+  const calls = await storageCalls('psychology-store.js');
+  assert.equal(calls.length, 0, JSON.stringify(calls));
 });

@@ -1,6 +1,12 @@
 (function(){
   'use strict';
-  var SETTINGS_KEY='tradejournal:psychology-settings:v1';
+  // Phase 8b of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+  // Constraints section): reads/writes through window.TradeJournalUserPreferences (the generic
+  // {user_id, pref_key -> value} replica-backed store built in Phase 8a), one preference key
+  // ('psychologySettings') holding the whole {breathing, postTradeReflection} object - the same
+  // atomic whole-object merge shape saveSettings() already had, just server-backed now instead of
+  // localStorage-backed. No localStorage anywhere in this file any more.
+  var PREF_KEY='psychologySettings';
   function n(value,fallback){var out=Number(value);return Number.isFinite(out)?out:fallback;}
   // `revenge`/`cooldown` (v1) are retired: the wizard-time revenge warning and the passive open-positions
   // cool-down card are unified into the post-trade reflection popup (mental-health-continuous.js), which
@@ -8,17 +14,17 @@
   function defaults(){return{breathing:{enabled:true,stressThreshold:8},postTradeReflection:{enabled:true,cooldownMinutes:15}};}
   function settings(){
     var base=defaults();
-    try{
-      var stored=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
-      return{
-        breathing:Object.assign({},base.breathing,stored.breathing||{},{stressThreshold:n((stored.breathing||{}).stressThreshold,base.breathing.stressThreshold)}),
-        postTradeReflection:Object.assign({},base.postTradeReflection,stored.postTradeReflection||{},{cooldownMinutes:n((stored.postTradeReflection||{}).cooldownMinutes,base.postTradeReflection.cooldownMinutes)})
-      };
-    }catch(_){return base;}
+    var prefs=window.TradeJournalUserPreferences;
+    var stored=(prefs?prefs.getPref(PREF_KEY,null):null)||{};
+    return{
+      breathing:Object.assign({},base.breathing,stored.breathing||{},{stressThreshold:n((stored.breathing||{}).stressThreshold,base.breathing.stressThreshold)}),
+      postTradeReflection:Object.assign({},base.postTradeReflection,stored.postTradeReflection||{},{cooldownMinutes:n((stored.postTradeReflection||{}).cooldownMinutes,base.postTradeReflection.cooldownMinutes)})
+    };
   }
   function saveSettings(value){
     var next=Object.assign({},settings(),value||{});
-    localStorage.setItem(SETTINGS_KEY,JSON.stringify(next));
+    var prefs=window.TradeJournalUserPreferences;
+    if(prefs)prefs.setPref(PREF_KEY,next);
     window.dispatchEvent(new CustomEvent('tradejournal:psychology-settings-changed'));
     return next;
   }
@@ -173,7 +179,6 @@
   }
 
   window.TradeJournalPsychologyStore={
-    key:SETTINGS_KEY,
     settings:settings,
     saveSettings:saveSettings,
     emotionalMirror:emotionalMirror,

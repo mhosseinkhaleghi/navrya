@@ -13,14 +13,25 @@ function memoryStorage() {
   return { getItem: key => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key), key: index => Array.from(values.keys())[index] || null, get length() { return values.size; } };
 }
 
-async function psychologyStore(localStorage) {
+// Phase 8b of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section) moved psychology-store.js's own settings()/saveSettings() off localStorage
+// onto window.TradeJournalUserPreferences (Phase 8a's shared preferences primitive), so this
+// helper now needs server-replica.js + user-preferences.js loaded, a real auth token, and a
+// minimal fetch mock answering /api/sync/preferences - same convention as every other migrated
+// domain's own regression-test sandbox fix (see tests/mental-health-regression.test.mjs).
+async function psychologyStore(localStorage, fetchImpl) {
+  localStorage = localStorage || memoryStorage();
+  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
   const sandbox = {
     window: {},
-    localStorage: localStorage || memoryStorage(),
+    localStorage, fetch: fetchImpl || (async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ preferences: [] }) }),
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
   };
-  sandbox.window = Object.assign(sandbox.window, { localStorage: sandbox.localStorage, dispatchEvent() {} });
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, addEventListener() {}, fetch: sandbox.fetch });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
+  vm.runInNewContext(await source('user-preferences.js'), sandbox, { filename: 'user-preferences.js' });
   vm.runInNewContext(await source('psychology-store.js'), sandbox, { filename: 'psychology-store.js' });
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle before the caller reads/writes
   return sandbox.window.TradeJournalPsychologyStore;
 }
 
