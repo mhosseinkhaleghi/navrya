@@ -312,29 +312,15 @@ test('the guard exposes the exact key lists it purges, so a future silent edit n
 // not need the module loaded to prove correct.
 // ============================================================================
 
-async function loadPatternsWithGuard({ localStorage, token }) {
-  if (token) localStorage.setItem('tradejournal:auth-token', token);
-  const sandbox = {
-    window: {}, localStorage, atob,
-    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
-  };
-  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, addEventListener() {}, TradeJournalDevUserSwitcher: { currentUserId: () => token || null } });
-  vm.runInNewContext(await source('user-scope-guard.js'), sandbox, { filename: 'user-scope-guard.js' });
-  vm.runInNewContext(await source('pattern-registry-store.js'), sandbox, { filename: 'pattern-registry-store.js' });
-  return sandbox.window.TradeJournalPatternStore;
-}
-
-test('Patterns: user A\'s pattern is invisible to user B on the same browser after Phase 1', async () => {
-  const localStorage = memoryStorage();
-  const storeA = await loadPatternsWithGuard({ localStorage, token: 'token-A' });
-  storeA.save(storeA.create());
-  const created = storeA.listSync()[0];
-  storeA.save(Object.assign(created, { name: 'A\'s private pattern' }));
-  assert.equal(storeA.listSync().length, 1);
-
-  const storeB = await loadPatternsWithGuard({ localStorage, token: 'token-B' });
-  assert.equal(storeB.listSync().length, 0, 'a fresh account on this browser must start genuinely empty, not see the previous user\'s pattern');
-});
+// Patterns graduated out of this file's scope in Phase 2 (see ARCHITECTURE.md's Global Data Sync
+// section / the Phase 2 report): pattern-registry-store.js no longer touches localStorage at
+// all - it reads/writes server-replica.js's in-memory replica instead, so there is no
+// tradejournal:patterns:v1 key left for this guard to purge, and the cross-account isolation
+// proof for Patterns now lives in tests/patterns-sync.test.mjs instead (a fresh in-memory replica
+// per page load/module instance is never shared between accounts by construction - no purge
+// mechanism is even needed for a migrated domain). The Phase 1 stopgap this file tests remains the
+// real, live mechanism for every domain NOT yet migrated - Strategies/Trades/Sessions/Mental
+// Health/Companion state below.
 
 async function loadStrategiesWithGuard({ localStorage, token }) {
   if (token) localStorage.setItem('tradejournal:auth-token', token);
