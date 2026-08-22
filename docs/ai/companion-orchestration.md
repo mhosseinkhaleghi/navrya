@@ -150,6 +150,22 @@ but only Strategies (`pattern-editor-{id}`/`strategy-editor-{id}`) and Settings
 id-agnostic (it never special-cases which process is open), so this is noted for accuracy, not
 because it changes what needed fixing.
 
+## A real bug found and fixed by real-browser verification: `currentCard()`'s safety ordering
+
+`currentCard()` used to check `welcomeCard()` before ever consulting the engine's own safety/
+workflow gate (`ai-journey-engine.js`'s `evaluate().blockers`, the same thing `nextBestStep()`
+already respects). Confirmed live: starting a real workflow directly
+(`window.TradeJournalAIWorkflowEngine.start('session.create', ...)`, zero AI calls) and reading
+`window.TradeJournalAICompanionOrchestrator.currentCard()` still returned the welcome card. Fixed
+with a `safetyBlocksCompanion()` check at the very top of `currentCard()`, before either card kind
+is considered - "safety always wins" now genuinely applies to the one-time welcome, not only to
+step cards. Re-verified live (both the function's return value and the real DOM render), and with
+two new regression tests in `tests/ai-companion-orchestrator.test.mjs`. This was found precisely
+because every one of this module's own pre-existing unit tests exercising the safety gate happened
+to also set `hasSeenWalkthrough: () => true`, so the one specific combination that exposed the bug
+(a genuinely fresh user *and* an active safety block) was never covered until a real browser
+session hit it directly.
+
 ## Explain uses the real chat pipeline, in TEACHER stance
 
 ```js

@@ -69,10 +69,29 @@
     };
   }
 
+  // Real-browser bug found and fixed (Journey G, second real-browser verification pass):
+  // currentCard() used to check welcomeCard() BEFORE ever consulting the engine, so the one-time
+  // welcome could still be returned - and, depending on the render-time popover gate's own timing
+  // in chatDockView.jsx, could visibly reappear - while a real destructive confirmation or an
+  // in-flight Workflow was active, since ai-journey-engine.js's own safety gate lives inside
+  // nextBestStep()/evaluate(), never reached by the short-circuit above it. Confirmed live: calling
+  // window.TradeJournalAICompanionOrchestrator.currentCard() while a real session.create workflow
+  // was in flight (started via window.TradeJournalAIWorkflowEngine.start(), zero AI calls) still
+  // returned the welcome card. Fixed by checking the SAME safety/workflow gate nextBestStep()
+  // itself uses - via evaluate().blockers - before EITHER card kind is ever considered, so "safety
+  // always wins" now genuinely applies to the welcome card too, not just step cards.
+  function safetyBlocksCompanion() {
+    var eng = engine();
+    if (!eng || typeof eng.evaluate !== 'function') return false;
+    var snapshot = eng.evaluate();
+    return !!(snapshot && Array.isArray(snapshot.blockers) && snapshot.blockers.length);
+  }
+
   // The live Companion card - null when nothing to offer right now (a legitimate, quiet outcome,
   // never forced). Never called from a timer; the UI (chatDockView.jsx) calls this on mount and on
   // every `tradejournal:companion-updated`/relevant transient-UI-state change.
   function currentCard() {
+    if (safetyBlocksCompanion()) return null;
     var welcome = welcomeCard();
     if (welcome) return welcome;
     var eng = engine();
