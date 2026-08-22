@@ -110,14 +110,13 @@
 
   // ============================== SESSION DOMAIN ==============================
   // Sessions live in one shared account-wide bucket, not a per-character one - reads the same
-  // key session-workspace-logic.js/sessionsAdapter.js write to (tradejournal:sessions:v1:shared),
-  // so XP/achievements count every session regardless of which character created it.
+  // real source session-workspace-logic.js/sessionsAdapter.js write to (migrated onto
+  // server-replica.js in Phase 3, see ARCHITECTURE.md's Global Data Sync section), so
+  // XP/achievements count every session regardless of which character created it.
   function allSessions() {
-    try {
-      var raw = localStorage.getItem('tradejournal:sessions:v1:shared');
-      var list = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) ? list.filter(function (s) { return s && s.id; }) : [];
-    } catch (_) { return []; }
+    var workspace = window.TradeJournalWorkspace;
+    var list = workspace && typeof workspace.list === 'function' ? workspace.list() : [];
+    return Array.isArray(list) ? list.filter(function (s) { return s && s.id; }) : [];
   }
   // "Complete" heuristics below approximate session-card-updates.js's own (unexported)
   // formCompletion()/completion() checks rather than duplicating their exact private logic -

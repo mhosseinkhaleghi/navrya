@@ -486,8 +486,11 @@ function barFillEl(pct, tone) {
 function statusOf(item) { return item.active !== false ? 'live' : 'draft'; }
 function isPatternKind(kind) { return kind === 'pattern'; }
 
+// Same real source session-workspace-logic.js/sessionsAdapter.js write to - migrated onto
+// server-replica.js in Phase 3 (see ARCHITECTURE.md's Global Data Sync section).
 function allSessions() {
-  try { return JSON.parse(localStorage.getItem('tradejournal:sessions:v1:shared')) || []; } catch (_) { return []; }
+  const workspace = window.TradeJournalWorkspace;
+  return workspace && typeof workspace.list === 'function' ? workspace.list() : [];
 }
 
 // Same real source pattern-registry-store.js's own scenarioReport() reads, extended with the

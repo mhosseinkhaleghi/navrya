@@ -4,22 +4,23 @@ import path from 'node:path';
 import test from 'node:test';
 
 // Enforcement pass for the local-first-to-server-authoritative migration (see ARCHITECTURE.md's
-// Global Data Sync section / the Phase 2 report). A real regression guard: any future edit that
-// reintroduces a localStorage/sessionStorage/indexedDB read or write into one of the six domains
-// already migrated onto server-replica.js's in-memory replica - Patterns, Strategy Education,
-// Trade Store, Mental Health Profile, Companion state, and the replica module itself - fails this
-// test immediately, rather than being discovered later as a real data-isolation bug.
+// Global Data Sync section / the Phase 2 and Phase 3 reports). A real regression guard: any
+// future edit that reintroduces a localStorage/sessionStorage/indexedDB read or write into one of
+// the seven domains already migrated onto server-replica.js's in-memory replica - Patterns,
+// Strategy Education, Trade Store, Mental Health Profile, Companion state, Sessions, and the
+// replica module itself - fails this test immediately, rather than being discovered later as a
+// real data-isolation bug.
 //
-// This is deliberately scoped to only the six already-migrated files, not a whole-repository
-// sweep. Sessions and every Group B preference (language, panel layout, AI settings, psychology
-// settings, session signatures, the account-profile XP dedupe bookkeeping, ...) remain
-// legitimately, extensively localStorage-backed for now - see this same phase's report for the
-// honest reasoning (Sessions specifically cannot be vm-sandbox-tested and has 5+ external raw
-// readers of its own storage key, a materially larger and riskier migration than any of the six
-// domains here). A repo-wide "zero localStorage outside one allowlist" test would either have to
-// allowlist most of the codebase today (providing little real protection beyond what's already
-// true) or be actively misleading about how much of this migration is actually complete - this
-// test is honest about its own narrower scope instead.
+// This is deliberately scoped to only the seven already-migrated files (plus
+// session-workspace-logic.js's own two documented, narrowly-allowed one-time local-recovery
+// functions - see its own test below), not a whole-repository sweep. Every Group B preference
+// (language, panel layout, AI settings, psychology settings, session signatures, the
+// account-profile XP dedupe bookkeeping, ...) remains legitimately, extensively
+// localStorage-backed for now - see this same phase's report for the honest reasoning. A
+// repo-wide "zero localStorage outside one allowlist" test would either have to allowlist most of
+// the codebase today (providing little real protection beyond what's already true) or be actively
+// misleading about how much of this migration is actually complete - this test is honest about
+// its own narrower scope instead.
 const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
 const source = (file) => readFile(shared(file), 'utf8');
@@ -44,15 +45,9 @@ test('server-replica.js never calls localStorage/sessionStorage/indexedDB except
   assert.match(calls[0].text, /localStorage\.getItem\('tradejournal:auth-token'\)/, 'the one permitted call must be reading the credential, nothing else');
 });
 
-test('pattern-registry-store.js has no localStorage calls left for its OWN domain (patterns) - the only remaining calls are the documented, deliberate cross-domain reads of Sessions data (not migrated in this phase)', async () => {
+test('pattern-registry-store.js has zero localStorage/sessionStorage/indexedDB calls - Sessions migrated in Phase 3, so even its old cross-domain scenario-usage scan of raw sessions data is gone (reads window.TradeJournalWorkspace.list() now, see trading-sessions-sync.test.mjs)', async () => {
   const calls = await storageCalls('pattern-registry-store.js');
-  calls.forEach((call) => {
-    // scenarioUsage()'s loop iterates every localStorage key looking for the tradejournal:sessions:v1:
-    // prefix, then reads that one key via a loop variable (`key`) rather than the literal string on
-    // this particular line - allowed alongside the literal-prefix check itself and the length/key()
-    // enumeration calls, since all four lines belong to that one documented, deliberate function.
-    assert.match(call.text, /tradejournal:sessions:v1:|localStorage\.length|localStorage\.key\(|localStorage\.getItem\(key\)/, `unexpected storage call in pattern-registry-store.js:${call.line} - ${call.text}`);
-  });
+  assert.equal(calls.length, 0, JSON.stringify(calls));
 });
 
 test('strategy-education-store.js has zero localStorage/sessionStorage/indexedDB calls - every reference left in the file is prose in a comment', async () => {
@@ -74,5 +69,22 @@ test('mental-health-store.js has zero localStorage/sessionStorage/indexedDB call
 
 test('ai-companion-profile.js has zero localStorage/sessionStorage/indexedDB calls - every reference left in the file is prose in a comment', async () => {
   const calls = await storageCalls('ai-companion-profile.js');
+  assert.equal(calls.length, 0, JSON.stringify(calls));
+});
+
+test("session-workspace-logic.js's only remaining storage calls belong to its two documented, narrowly-scoped one-time local-recovery functions (migrateLegacyPerCharacterSessions() and migrateExistingLocalSessions()) - reading/clearing pre-replica local data exactly once, never an ongoing cache", async () => {
+  const calls = await storageCalls('session-workspace-logic.js');
+  assert.ok(calls.length > 0, 'this file is expected to still have a few narrowly-scoped calls - if this ever hits zero, tighten this test to assert.equal(calls.length, 0) like the other fully-migrated files above');
+  calls.forEach((call) => {
+    assert.match(
+      call.text,
+      /FLAG|flagKey|\bkey\b|tradejournal:sessions:v1:'\s*\+\s*character|legacyLocal/,
+      `unexpected storage call in session-workspace-logic.js:${call.line} - ${call.text}`
+    );
+  });
+});
+
+test('ai-journey-steps.js has zero localStorage/sessionStorage/indexedDB calls - its own sessionsCache() reads window.TradeJournalWorkspace.list() now, same as every other cross-domain Sessions reader', async () => {
+  const calls = await storageCalls('ai-journey-steps.js');
   assert.equal(calls.length, 0, JSON.stringify(calls));
 });

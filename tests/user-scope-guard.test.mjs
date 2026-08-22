@@ -305,24 +305,33 @@ test('the guard exposes the exact key lists it purges, so a future silent edit n
 // user B on the very next simulated page load against the same browser.
 //
 // session-workspace-logic.js is deliberately excluded here - it is never vm-sandboxed anywhere
-// in this project's own test suite (it overrides Storage.prototype.setItem, registers a
-// MutationObserver, and drives setInterval render loops - see tests/trading-sessions-sync.test.mjs's
-// own header comment for why). Its storage key (tradejournal:sessions:v1:shared) is covered at
-// the key level by the guard's own unit tests above instead, which is content-agnostic and does
-// not need the module loaded to prove correct.
+// in this project's own test suite (it overrides no storage APIs any more, but still registers a
+// MutationObserver and drives setInterval render loops - see tests/trading-sessions-sync.test.mjs's
+// own header comment for why). Its legacy storage key (tradejournal:sessions:v1:shared, read only
+// by its own one-time local-recovery functions post-Phase 3) is covered at the key level by the
+// guard's own unit tests above instead, which is content-agnostic and does not need the module
+// loaded to prove correct. Sessions' real cross-account isolation proof (a session belonging to
+// another user cannot be fetched/upserted/deleted) lives server-side in
+// tests/trading-sessions-api-contract.test.mjs, and the replica's own hydrate/rollback contract in
+// tests/server-replica.test.mjs - together they cover what this file's Storage.prototype-heavy
+// module can't be dynamically sandboxed to prove directly.
 // ============================================================================
 
-// Patterns, Strategies, Trades, Mental Health Profile, and Companion state have all graduated out
-// of this file's scope in Phase 2 (see ARCHITECTURE.md's Global Data Sync section / the Phase 2
-// report): none of those five stores touches localStorage at all any more - each reads/writes
-// server-replica.js's in-memory replica instead, so there is no tradejournal:patterns:v1/
-// strategies:v2/trades:v1/mental-health-profile:v2/companion-state:v1 key left for this guard to
-// purge. Their own cross-account isolation proofs now live in tests/patterns-sync.test.mjs,
-// tests/strategies-sync.test.mjs, tests/trades-sync.test.mjs, tests/mental-health-sync.test.mjs,
-// and tests/companion-profile-sync.test.mjs instead (a fresh in-memory replica per page load/
-// module instance is never shared between accounts by construction - no purge mechanism is even
-// needed for a migrated domain). The Phase 1 stopgap this file tests remains the real, live
-// mechanism for the one domain NOT yet migrated - Sessions below.
+// Patterns, Strategies, Trades, Mental Health Profile, Companion state, and Sessions have all
+// graduated out of this file's scope (Phase 2 and Phase 3 - see ARCHITECTURE.md's Global Data
+// Sync section / their own phase reports): none of those six domains touches localStorage for its
+// own record data any more - each reads/writes server-replica.js's in-memory replica instead, so
+// there is no tradejournal:patterns:v1/strategies:v2/trades:v1/sessions:v1:shared/
+// mental-health-profile:v2/companion-state:v1 key left for this guard to purge in normal
+// operation (still defensively listed in EXACT_KEYS/MIGRATION_FLAG_PREFIXES below for any browser
+// that still has a stale pre-migration copy). Their own cross-account isolation proofs now live in
+// tests/patterns-sync.test.mjs, tests/strategies-sync.test.mjs, tests/trades-sync.test.mjs,
+// tests/mental-health-sync.test.mjs, tests/companion-profile-sync.test.mjs, and (Sessions, at the
+// server layer - see the note above) tests/trading-sessions-api-contract.test.mjs instead (a fresh
+// in-memory replica per page load/module instance is never shared between accounts by
+// construction - no purge mechanism is even needed for a migrated domain). The Phase 1 stopgap
+// this file tests is now pure defense-in-depth for every domain it lists: hygiene against a stale
+// pre-migration local copy, not the live correctness mechanism for any of them any more.
 
 // ============================================================================
 // Script order - the enforcement point requested for Phase 1: the guard must run before any

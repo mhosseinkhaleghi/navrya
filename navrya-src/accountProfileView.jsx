@@ -268,12 +268,14 @@ function romanToInt(s) {
 // achievementProgress() - not exported on window.TradeJournalAccountProfileStore, so this reads
 // the exact same real sources those private functions do, rather than reimplementing them
 // differently) ----
+// Same real source session-workspace-logic.js/sessionsAdapter.js write to - migrated onto
+// server-replica.js in Phase 3 (see ARCHITECTURE.md's Global Data Sync section), so this reads
+// window.TradeJournalWorkspace's own public list() rather than localStorage (nothing local left
+// to read).
 function allSessions() {
-  try {
-    const raw = localStorage.getItem('tradejournal:sessions:v1:shared');
-    const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list.filter((s) => s && s.id) : [];
-  } catch (_) { return []; }
+  const workspace = window.TradeJournalWorkspace;
+  const list = workspace && typeof workspace.list === 'function' ? workspace.list() : [];
+  return Array.isArray(list) ? list.filter((s) => s && s.id) : [];
 }
 function sentSet(key) {
   try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); } catch (_) { return new Set(); }

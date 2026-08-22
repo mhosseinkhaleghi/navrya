@@ -32,43 +32,72 @@
   const fa = function(){ return locale()==='fa'; };
   const text = function(faText,enText){ const current=locale();if(current==='fa')return faText;if((current==='ar'||current==='es')&&window.TradeJournalSessionI18n)return window.TradeJournalSessionI18n.translate(current,enText);return enText; };
   const id = function(prefix){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); };
-  const list = function(){ try{return JSON.parse(localStorage.getItem(key))||[];}catch(_){return [];} };
-  const persist = function(items){ localStorage.setItem(key,JSON.stringify(items)); };
+  // Phase 3 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+  // Data Sync section): reads the in-memory server-replica directly, exactly like Patterns/
+  // Strategy Education/Trade Store/Mental Health Profile/Companion state before it. There is no
+  // localStorage cache, no offline outbox, and no local-first fallback for Sessions any more;
+  // see server-replica.js's own file header for the write/rollback contract. `key` above is now
+  // read (never written) only by migrateLegacyPerCharacterSessions() and
+  // migrateExistingLocalSessions() below - both one-time, pre-replica local-data recovery paths.
+  function replica() { return window.TradeJournalServerReplica && window.TradeJournalServerReplica.domain('sessions'); }
+  const list = function(){ const domain=replica(); return domain?domain.list():[]; };
 
-  // --- Server sync (Module 1 of the local-first-to-server migration; see ARCHITECTURE.md's
-  // Global Data Sync section). localStorage (list()/persist() above) stays the source of
-  // instant, offline-capable reads and writes exactly as before - this only pushes the same
-  // writes to the server in the background, and pulls the server's copy down to reconcile the
-  // local cache when reachable (server wins on conflict, since it is now canonical). Reads
-  // elsewhere in this file stay synchronous: reconciliation runs ahead of read time (on load
-  // and on reconnect), not inside every list()/find() call, so no caller in this file changes. ---
   (function () {
-    const queue = window.TradeJournalSyncQueue;
-    if (!queue) return;
+    if (!window.TradeJournalServerReplica) return;
+    window.TradeJournalServerReplica.registerListDomain('sessions', {
+      hydrateUrl: '/api/sync/sessions',
+      writeUrl: '/api/sync/sessions',
+      deleteUrlFor: function (id) { return '/api/sync/sessions/' + encodeURIComponent(id); },
+      extractList: function (body) { return (body && body.sessions) || []; }
+    });
+    replica().hydrate();
+
     // Looked up live (never cached in a const) inside each function below, not once here at
     // IIFE-load time - dev-user-switcher.js's <script> tag sits after this file's in every
-    // character page's existing load order (ARCHITECTURE.md's documented dependency chain),
-    // so caching window.TradeJournalDevUserSwitcher now would permanently capture `undefined`.
+    // character page's existing load order (ARCHITECTURE.md's documented dependency chain), so
+    // caching window.TradeJournalDevUserSwitcher now would permanently capture `undefined`.
     function devUser() { return window.TradeJournalDevUserSwitcher; }
 
-    queue.registerModule('sessions', function (entry) {
-      const uid = devUser().currentUserId();
-      if (!uid) throw new Error('NO_CURRENT_USER'); // stays queued, retried once a user exists
-      if (entry.action === 'delete') {
-        return fetch('/api/sync/sessions/' + encodeURIComponent(entry.recordId), { method: 'DELETE', headers: { 'x-dev-user-id': uid } })
-          .then(function (response) { if (!response.ok && response.status !== 404) throw new Error('SYNC_FAILED'); });
-      }
-      return fetch('/api/sync/sessions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
-        body: JSON.stringify(entry.payload)
-      }).then(function (response) { if (!response.ok) throw new Error('SYNC_FAILED'); });
-    });
+    // One-time, idempotent push of whatever local sessions already existed before this domain
+    // ever hydrated from the server for this user/character - upsert-by-id on the server means a
+    // repeat run (e.g. a second tab, or this code re-running before the flag write lands) is
+    // always safe. Preserves the exact guarantee the old sync-queue-based
+    // migrateExistingLocalSessions() gave (see this phase's report): a session sitting only in
+    // this browser's local cache since before Sessions had server sync at all is never silently
+    // lost by this rewrite - it still reads from `key` (localStorage), the one legitimate
+    // remaining read of it, then clears it so it is never read again.
+    function migrateExistingLocalSessions() {
+      const switcher = devUser();
+      const uid = switcher && switcher.currentUserId();
+      const domain = replica();
+      if (!uid || !domain) return;
+      const flagKey = 'tradejournal:sessions-migrated:v1:' + layer.character + ':' + uid;
+      if (localStorage.getItem(flagKey)) return;
+      let legacyLocal;
+      try { legacyLocal = JSON.parse(localStorage.getItem(key)) || []; } catch (_) { legacyLocal = []; }
+      legacyLocal.forEach(function (session) { domain.upsert(session).catch(function () {}); });
+      localStorage.setItem(flagKey, new Date().toISOString());
+      localStorage.removeItem(key);
+    }
+
+    // Deferred to the next tick (this project's existing convention for "run once every script
+    // on the page has finished loading", e.g. ai-settings-ui.js's own setTimeout(render, 0)) -
+    // dev-user-switcher.js's <script> tag currently sits after this one, so calling this
+    // synchronously, right now, would always see no current user yet.
+    window.setTimeout(migrateExistingLocalSessions, 0);
 
     // TradeJournalImageStore.saveImage(id, blob, 'session') enqueues here once the IndexedDB
     // write already landed (see session-entry-flow.js). The entry that referenced this blob id
     // may already be saved without a resolved imageUrl by the time this upload completes - once
-    // it does, patch it into whichever local session/entry still carries that imageBlobId and
-    // re-enqueue that one session, so the link reaches the server too instead of staying local-only.
+    // it does, patch it into whichever replica-held session/entry still carries that imageBlobId
+    // and upsert that one session back through the replica, so the link reaches the server too
+    // instead of staying local-only. This is the one piece of the old sync-queue-based sessions
+    // pipeline server-replica.js has no generic equivalent for (a partial patch into a nested
+    // field, not a whole-record upsert) - everything else that pipeline used to do (the per-write
+    // push, the reconcile-from-server pull, the one-time bulk local migration) is now handled by
+    // server-replica.js itself, registered above.
+    const queue = window.TradeJournalSyncQueue;
+    if (!queue) return;
     queue.registerModule('session-images', function (entry) {
       const uid = devUser().currentUserId();
       if (!uid) throw new Error('NO_CURRENT_USER');
@@ -79,54 +108,17 @@
         if (!response.ok) throw new Error('SYNC_FAILED');
         return response.json();
       }).then(function (result) {
-        const sessions = list();
+        const domain = replica();
+        const sessions = domain ? domain.list() : [];
         let matched = null;
         sessions.forEach(function (session) {
           (session.entries || []).forEach(function (sessionEntry) {
             if (sessionEntry.imageBlobId === entry.recordId && !sessionEntry.imageUrl) { sessionEntry.imageUrl = result.url; matched = session; }
           });
         });
-        if (matched) { persist(sessions); queue.enqueue('sessions', matched.id, matched); }
+        if (matched && domain) return domain.upsert(matched);
       });
     });
-
-    function mergeServerSessions(serverSessions) {
-      if (!Array.isArray(serverSessions) || !serverSessions.length) return;
-      const byId = {};
-      list().forEach(function (item) { byId[item.id] = item; });
-      serverSessions.forEach(function (item) { byId[item.id] = item; }); // server wins on conflict
-      persist(Object.keys(byId).map(function (itemId) { return byId[itemId]; }));
-    }
-
-    function reconcileFromServer() {
-      const switcher = devUser();
-      const uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      fetch('/api/sync/sessions', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : null; })
-        .then(function (result) { if (result) mergeServerSessions(result.sessions); })
-        .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
-    }
-
-    // One-time, idempotent push of whatever local sessions already existed before this sync
-    // layer ever activated for this user/character - upsert-by-id on the server means a repeat
-    // run (e.g. a second tab, or this code re-running before the flag write lands) is always safe.
-    function migrateExistingLocalSessions() {
-      const switcher = devUser();
-      const uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      const flagKey = 'tradejournal:sessions-migrated:v1:' + layer.character + ':' + uid;
-      if (localStorage.getItem(flagKey)) return;
-      list().forEach(function (session) { queue.enqueue('sessions', session.id, session); });
-      localStorage.setItem(flagKey, new Date().toISOString());
-    }
-
-    // Deferred to the next tick (this project's existing convention for "run once every
-    // script on the page has finished loading", e.g. ai-settings-ui.js's own setTimeout(render,
-    // 0)) - dev-user-switcher.js's <script> tag currently sits after this one, so calling
-    // these synchronously, right now, would always see no current user yet.
-    window.setTimeout(function () { migrateExistingLocalSessions(); reconcileFromServer(); }, 0);
-    window.addEventListener('online', reconcileFromServer);
   }());
   const date = function(){ return new Date().toISOString().slice(0,10); };
   const time = function(value){ const code={fa:'fa-IR',ar:'ar-EG',es:'es-ES',en:'en-GB'}[locale()]||'en-GB';return new Intl.DateTimeFormat(code,{hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(value||Date.now())); };
@@ -182,7 +174,7 @@
     return session;
   }
   function find(idValue){ const items=list(); const found=items.find(function(item){return item.id===idValue;}); return found?normalize(found):null; }
-  function save(session){ const items=list(); const index=items.findIndex(function(item){return item.id===session.id;}); if(index>-1)items[index]=session; else items.unshift(session); persist(items); if(window.TradeJournalSyncQueue)window.TradeJournalSyncQueue.enqueue('sessions',session.id,session); if(window.TradeJournalSessionSignatureStore)window.TradeJournalSessionSignatureStore.captureClosedSession(session,layer.character); window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed',{detail:{sessionId:session.id}})); }
+  function save(session){ const domain=replica(); if(domain)domain.upsert(session).catch(function(){}); if(window.TradeJournalSessionSignatureStore)window.TradeJournalSessionSignatureStore.captureClosedSession(session,layer.character); window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed',{detail:{sessionId:session.id}})); }
   function scenarios(session){ return session.entries.reduce(function(all,entry){ return all.concat(entry.scenarios.map(function(s){return Object.assign(s,{entryId:entry.id});}));},[]); }
   function probability(s){ const h=s.probabilityHistory||[]; return Number(h.length?h[h.length-1].value:50); }
   function log(session,type,detail,scenarioId,counts){ session.activityLog.push({id:id('log'),type:type,detail:detail,scenarioId:scenarioId||null,loggedAt:Date.now(),countsTowardLoopUpdate:counts!==false}); }
@@ -297,13 +289,17 @@
       if(rings[0]){const elapsed=elapsedSince(session);const remaining=session.status==='closed'?0:intervalMs(session)-(elapsed%intervalMs(session));rings[0].textContent=clock(remaining);if(rings[1])rings[1].textContent=clock(elapsed);}
     },1000);
   };
-  const storageSet=Storage.prototype.setItem; Storage.prototype.setItem=function(storageKey,value){storageSet.call(this,storageKey,value);if(storageKey===key&&window.__swAwaitNew){window.__swAwaitNew=false;try{const newest=JSON.parse(value)[0];if(newest&&newest.id)setTimeout(function(){open(newest.id);},0);}catch(_){}}};
-  document.addEventListener('click',function(event){const button=event.target.closest&&event.target.closest('#newSession');if(!button)return;window.__swAwaitNew=true;},true);
+  // A Storage.prototype.setItem monkeypatch + '#newSession' click listener used to live here, to
+  // auto-open a session the instant the old vanilla-DOM "New Session" button's write landed in
+  // localStorage. No element with that id exists anywhere in the current NAVRYA UI (confirmed by
+  // repo-wide search) - already dead in practice before this migration - and now that save()
+  // writes through the replica instead of localStorage, the write it was watching for no longer
+  // happens either. Removed rather than left as misleading no-op code.
   new MutationObserver(function(){if(activeWorkspaceId&&document.querySelector('.session-page'))window.setTimeout(function(){open(activeWorkspaceId);},0);}).observe(document.documentElement,{attributes:true,attributeFilter:['lang','dir']});
   if(window.TradeJournalSessions)window.TradeJournalSessions.open=open;
   function reopenSession(idValue){const session=find(idValue);if(!session)return null;session.status='open';session.closedAt=null;save(session);open(session.id);return session;}
   function openReport(idValue){state[idValue]=state[idValue]||{view:'workspace',tab:'patterns',mode:'compact'};state[idValue].view='report';open(idValue);}
-  function removeSession(idValue){const items=list().filter(function(item){return item.id!==idValue;});persist(items);if(window.TradeJournalSyncQueue)window.TradeJournalSyncQueue.enqueue('sessions',idValue,null,'delete');if(activeWorkspaceId===idValue)activeWorkspaceId=null;window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed'));returnToLibrary();}
+  function removeSession(idValue){const domain=replica();if(domain)domain.remove(idValue).catch(function(){});if(activeWorkspaceId===idValue)activeWorkspaceId=null;window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed'));returnToLibrary();}
   function duplicateSession(idValue){const source=find(idValue);if(!source)return null;const copy=JSON.parse(JSON.stringify(source));copy.id=id('session');copy.name=(source.name||source.market||'Session')+' · Copy';copy.status='open';copy.startedAt=Date.now();copy.closedAt=null;delete copy.fateSummary;delete copy.previousSessionSummary;copy.entries=(copy.entries||[]).map(function(entry){entry.id=id('entry');entry.sessionId=copy.id;entry.scenarios=(entry.scenarios||[]).map(function(scenario){scenario.id=id('scenario');return scenario;});return entry;});save(copy);open(copy.id);return copy;}
   // save/log/id are exposed alongside the read/navigation surface above so
   // navrya-src/liveSessionView.jsx can mutate sessions through the exact same real
