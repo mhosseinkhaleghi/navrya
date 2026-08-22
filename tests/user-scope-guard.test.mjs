@@ -312,44 +312,17 @@ test('the guard exposes the exact key lists it purges, so a future silent edit n
 // not need the module loaded to prove correct.
 // ============================================================================
 
-// Patterns, Strategies, and Trades have all graduated out of this file's scope in Phase 2 (see
-// ARCHITECTURE.md's Global Data Sync section / the Phase 2 report): none of those three stores
-// touches localStorage at all any more - each reads/writes server-replica.js's in-memory replica
-// instead, so there is no tradejournal:patterns:v1/strategies:v2/trades:v1 key left for this
-// guard to purge. Their own cross-account isolation proofs now live in tests/patterns-sync.test.mjs,
-// tests/strategies-sync.test.mjs, and tests/trades-sync.test.mjs instead (a fresh in-memory
+// Patterns, Strategies, Trades, and Mental Health Profile have all graduated out of this file's
+// scope in Phase 2 (see ARCHITECTURE.md's Global Data Sync section / the Phase 2 report): none of
+// those four stores touches localStorage at all any more - each reads/writes server-replica.js's
+// in-memory replica instead, so there is no tradejournal:patterns:v1/strategies:v2/trades:v1/
+// mental-health-profile:v2 key left for this guard to purge. Their own cross-account isolation
+// proofs now live in tests/patterns-sync.test.mjs, tests/strategies-sync.test.mjs,
+// tests/trades-sync.test.mjs, and tests/mental-health-sync.test.mjs instead (a fresh in-memory
 // replica per page load/module instance is never shared between accounts by construction - no
 // purge mechanism is even needed for a migrated domain). The Phase 1 stopgap this file tests
-// remains the real, live mechanism for every domain NOT yet migrated - Sessions/Mental
-// Health/Companion state below.
-
-async function loadMentalHealthWithGuard({ localStorage, token }) {
-  if (token) localStorage.setItem('tradejournal:auth-token', token);
-  const sandbox = {
-    window: {}, localStorage, atob,
-    document: { documentElement: { lang: 'en' } },
-    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
-  };
-  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, addEventListener() {}, TradeJournalDevUserSwitcher: { currentUserId: () => token || null } });
-  vm.runInNewContext(await source('user-scope-guard.js'), sandbox, { filename: 'user-scope-guard.js' });
-  vm.runInNewContext(await source('mental-health-store.js'), sandbox, { filename: 'mental-health-store.js' });
-  return sandbox.window.TradeJournalMentalHealthStore;
-}
-
-test('Mental Health Profile: user A\'s intake/profile content is invisible to user B on the same browser after Phase 1', async () => {
-  const localStorage = memoryStorage();
-  const storeA = await loadMentalHealthWithGuard({ localStorage, token: 'token-A' });
-  const profile = storeA.load();
-  profile.intake.completed = true;
-  profile.intake.demographics.age = 42;
-  storeA.save(profile);
-  assert.equal(storeA.load().intake.demographics.age, 42);
-
-  const storeB = await loadMentalHealthWithGuard({ localStorage, token: 'token-B' });
-  const reloaded = storeB.load();
-  assert.equal(reloaded.intake.completed, false, 'a fresh account must never inherit the previous user\'s completed intake');
-  assert.equal(reloaded.intake.demographics.age, null);
-});
+// remains the real, live mechanism for every domain NOT yet migrated - Sessions and Companion
+// state below.
 
 // ============================================================================
 // Script order - the enforcement point requested for Phase 1: the guard must run before any

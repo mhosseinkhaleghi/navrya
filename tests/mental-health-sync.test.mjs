@@ -4,10 +4,14 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 
-// mental-health-store.js has no DOM references at all (confirmed - it's pure localStorage/
-// window logic), the same property that makes trade-store.js vm-sandbox-testable (see
-// tests/trades-sync.test.mjs's header comment) - so this file exercises the Module 5 sync
-// wiring dynamically too, instead of regexing source text.
+// Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+// Data Sync section / the Phase 2 report) replaced the Mental Health Profile's local-first-cache-
+// plus-offline-outbox mechanism with server-replica.js's in-memory document replica, the same way
+// tests/patterns-sync.test.mjs/tests/strategies-sync.test.mjs/tests/trades-sync.test.mjs's own
+// header comments describe for their domains. There is no more periodic "online event"
+// reconciliation at all in this architecture (nothing persists locally to reconcile against) - the
+// old "steady-state reconciliation keeps whichever copy has the newer lastUpdatedAt" tests are
+// retired along with that mechanism, not ported.
 const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
 const source = (file) => readFile(shared(file), 'utf8');
@@ -16,117 +20,144 @@ function memoryStorage(seed) {
   const values = new Map(Object.entries(seed || {}));
   return { getItem: (key) => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, String(value)), removeItem: (key) => values.delete(key), key: (index) => Array.from(values.keys())[index] || null, get length() { return values.size; } };
 }
-
 function flush() { return new Promise((resolve) => setImmediate(resolve)); }
 
 async function loadMentalHealthStore({ localStorage, fetchImpl, currentUserId }) {
-  const senders = {};
-  const enqueueCalls = [];
+  if (currentUserId) localStorage.setItem('tradejournal:auth-token', currentUserId);
   const fetchCalls = [];
   const fetchFn = async (url, options) => { fetchCalls.push([url, options]); return fetchImpl ? fetchImpl(url, options) : { ok: false, status: 500 }; };
-  const events = [];
   const sandbox = {
     window: {}, localStorage,
-    document: { documentElement: { lang: 'en' } },
+    document: { documentElement: { lang: 'en' }, body: { appendChild() {} }, createElement: () => ({ setAttribute() {} }) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     fetch: fetchFn
   };
-  sandbox.window = Object.assign(sandbox.window, {
-    localStorage, dispatchEvent: (event) => events.push(event), setTimeout: (fn) => fn(), addEventListener() {},
-    TradeJournalSyncQueue: { registerModule: (name, fn) => { senders[name] = fn; }, enqueue: (...args) => enqueueCalls.push(args) },
-    TradeJournalDevUserSwitcher: { currentUserId: () => currentUserId || null }
-  });
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, addEventListener() {} });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('mental-health-store.js'), sandbox, { filename: 'mental-health-store.js' });
-  return { store: sandbox.window.TradeJournalMentalHealthStore, senders, enqueueCalls, fetchCalls, events, localStorage };
+  return { store: sandbox.window.TradeJournalMentalHealthStore, replica: sandbox.window.TradeJournalServerReplica, fetchCalls, localStorage };
 }
 
-test('registers a mental-health sender that POSTs the whole profile document to /api/sync/mental-health', async () => {
-  const { senders, fetchCalls } = await loadMentalHealthStore({ localStorage: memoryStorage(), currentUserId: 'user-1', fetchImpl: async () => ({ ok: true }) });
-  assert.ok(senders['mental-health'], 'a mental-health sender must be registered');
-  await senders['mental-health']({ recordId: 'profile', payload: { userId: 'local-trader' } });
-  const call = fetchCalls[fetchCalls.length - 1];
-  assert.equal(call[0], '/api/sync/mental-health');
-  assert.equal(call[1].method, 'POST');
+test('registers a mental-health document domain with server-replica.js and hydrates it at load time', async () => {
+  const localStorage = memoryStorage();
+  const { replica, fetchCalls } = await loadMentalHealthStore({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ profile: null }) }) });
+  assert.ok(replica.domain('mental-health'));
+  await flush();
+  assert.ok(fetchCalls.some((call) => call[0] === '/api/sync/mental-health' && (!call[1] || !call[1].method)));
 });
 
-test('every mutation (save/addMessage/addRedFlag) funnels through write() and enqueues under the mental-health module with a fixed profile record id', async () => {
-  const { store, enqueueCalls } = await loadMentalHealthStore({ localStorage: memoryStorage(), currentUserId: null });
-  store.save(store.load());
+test('a brand-new account with no server profile yet gets real, honest v2 defaults - never an error, never a fabricated intake', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadMentalHealthStore({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ profile: null }) }) });
+  await flush();
+  const profile = store.load();
+  assert.equal(profile.version, 2);
+  assert.equal(profile.intake.completed, false);
+  assert.equal(profile.userId, 'local-trader', 'the internal userId tag stays untouched by this migration - real ownership comes only from the server session, per ARCHITECTURE.md\'s own documented decision');
+});
+
+test('hydrate() populates load() from the server GET response', async () => {
+  const localStorage = memoryStorage();
+  const serverProfile = { userId: 'local-trader', version: 2, intake: { completed: true, demographics: { age: 30 } } };
+  const { store } = await loadMentalHealthStore({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ profile: serverProfile }) }) });
+  await flush();
+  const profile = store.load();
+  assert.equal(profile.intake.completed, true);
+  assert.equal(profile.intake.demographics.age, 30);
+});
+
+test('save() applies optimistically and returns synchronously, then POSTs the whole document in the background', async () => {
+  const localStorage = memoryStorage();
+  const { store, fetchCalls } = await loadMentalHealthStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ profile: null }) }
+  });
+  await flush();
+  const profile = store.load();
+  profile.intake.completed = true;
+  const returned = store.save(profile);
+  assert.equal(returned.intake.completed, true, 'save() returns synchronously');
+  assert.equal(store.load().intake.completed, true, 'the optimistic write already applied before the network call resolves');
+  await flush();
+  const post = fetchCalls.find((call) => call[1] && call[1].method === 'POST');
+  assert.equal(post[0], '/api/sync/mental-health');
+  assert.equal(JSON.parse(post[1].body).intake.completed, true);
+});
+
+test('a failed save() rolls back the optimistic write to the last known-good document', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadMentalHealthStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: false, status: 500 } : { ok: true, json: async () => ({ profile: null }) }
+  });
+  await flush();
+  const profile = store.load();
+  profile.intake.completed = true;
+  store.save(profile);
+  assert.equal(store.load().intake.completed, true, 'applied optimistically');
+  await flush();
+  assert.equal(store.load().intake.completed, false, 'rolled back once the server rejected it');
+});
+
+test('every mutation (addMessage/addRedFlag/commitDraftTrigger/...) funnels through write(), applying immediately and pushing the whole document', async () => {
+  const localStorage = memoryStorage();
+  const { store, fetchCalls } = await loadMentalHealthStore({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ profile: null }) }
+  });
+  await flush();
   store.addMessage(store.load(), 'user', 'hello');
   store.addRedFlag(store.load(), 'revenge_trading', 'two trades in five minutes');
-  const calls = enqueueCalls.filter((call) => call[0] === 'mental-health');
-  assert.ok(calls.length >= 3, 'save(), addMessage(), and addRedFlag() must each enqueue once, since they all funnel through write()');
-  calls.forEach((call) => assert.equal(call[1], 'profile', 'the record id is a fixed constant - there is only ever one profile document'));
-});
-
-test('the one-time activation adopts the server profile outright when present, regardless of local timestamps', async () => {
-  const localStorage = memoryStorage({ 'tradejournal:mental-health-profile:v2': JSON.stringify({ userId: 'local-trader', lastUpdatedAt: '2026-06-01T00:00:00.000Z', baseline: { initialStressLevel: 1 } }) });
-  const serverProfile = { userId: 'local-trader', lastUpdatedAt: '2020-01-01T00:00:00.000Z', baseline: { initialStressLevel: 9 } };
-  const { localStorage: after } = await loadMentalHealthStore({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ profile: serverProfile }) })
-  });
   await flush();
-  const stored = JSON.parse(after.getItem('tradejournal:mental-health-profile:v2'));
-  assert.equal(stored.baseline.initialStressLevel, 9, 'first-activation adopts the server profile outright, even though it is chronologically older than the local one');
-  assert.ok(after.getItem('tradejournal:mental-health-migrated:v1:user-1'), 'the migration flag must be set after a successful check');
+  const profile = store.load();
+  assert.equal(profile.chatHistory.length, 1);
+  assert.equal(profile.redFlags.active.length, 1);
+  const posts = fetchCalls.filter((call) => call[1] && call[1].method === 'POST');
+  assert.ok(posts.length >= 2, 'addMessage() and addRedFlag() must each push the updated document');
 });
 
-test('the one-time activation pushes the local profile up when the server has none yet', async () => {
-  const localStorage = memoryStorage({ 'tradejournal:mental-health-profile:v2': JSON.stringify({ userId: 'local-trader', baseline: { initialStressLevel: 4 } }) });
-  const { enqueueCalls } = await loadMentalHealthStore({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ profile: null }) })
-  });
-  await flush();
-  const pushed = enqueueCalls.find((call) => call[0] === 'mental-health' && call[1] === 'profile');
-  assert.ok(pushed, 'a genuinely empty server must receive the pre-existing local profile');
-});
-
-test('the one-time activation pushes nothing when there is no local profile and the server has none either - there is nothing meaningful to push', async () => {
+test('no localStorage key is ever written for the Mental Health Profile any more - Phase 2 removed the write-through cache entirely', async () => {
   const localStorage = memoryStorage();
-  const { enqueueCalls } = await loadMentalHealthStore({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ profile: null }) })
-  });
+  const { store } = await loadMentalHealthStore({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ profile: null }) } });
   await flush();
-  const pushed = enqueueCalls.find((call) => call[0] === 'mental-health');
-  assert.equal(pushed, undefined, 'a brand-new browser with no saved profile yet must not push an empty/placeholder document');
+  store.save(store.load());
+  assert.equal(localStorage.getItem('tradejournal:mental-health-profile:v2'), null);
+  assert.equal(localStorage.getItem('tradejournal:mental-health-profile:v1'), null);
 });
 
-test('steady-state reconciliation (the online event) keeps whichever copy has the newer lastUpdatedAt, not always the server', async () => {
-  const newerLocal = memoryStorage({
-    'tradejournal:mental-health-profile:v2': JSON.stringify({ userId: 'local-trader', lastUpdatedAt: '2026-06-05T00:00:00.000Z', baseline: { initialStressLevel: 7 } }),
-    'tradejournal:mental-health-migrated:v1:user-1': '2026-01-01T00:00:00.000Z'
-  });
-  await loadMentalHealthStore({
-    localStorage: newerLocal, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ profile: { userId: 'local-trader', lastUpdatedAt: '2026-01-01T00:00:00.000Z', baseline: { initialStressLevel: 1 } } }) })
-  });
+test('cross-account isolation: user A\'s intake/profile content is invisible to user B on the same browser', async () => {
+  const localStorage = memoryStorage();
+  const a = await loadMentalHealthStore({ localStorage, currentUserId: 'user-A', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ profile: null }) } });
   await flush();
-  const stillLocal = JSON.parse(newerLocal.getItem('tradejournal:mental-health-profile:v2'));
-  assert.equal(stillLocal.baseline.initialStressLevel, 7, 'a newer local edit must survive a reconcile against an older server copy');
+  const profileA = a.store.load();
+  profileA.intake.completed = true;
+  profileA.intake.demographics.age = 42;
+  a.store.save(profileA);
+  assert.equal(a.store.load().intake.demographics.age, 42);
 
-  const olderLocal = memoryStorage({
-    'tradejournal:mental-health-profile:v2': JSON.stringify({ userId: 'local-trader', lastUpdatedAt: '2020-01-01T00:00:00.000Z', baseline: { initialStressLevel: 7 } }),
-    'tradejournal:mental-health-migrated:v1:user-1': '2026-01-01T00:00:00.000Z'
-  });
-  await loadMentalHealthStore({
-    localStorage: olderLocal, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ profile: { userId: 'local-trader', lastUpdatedAt: '2026-06-05T00:00:00.000Z', baseline: { initialStressLevel: 9 } } }) })
-  });
+  const b = await loadMentalHealthStore({ localStorage, currentUserId: 'user-B', fetchImpl: async () => ({ ok: true, json: async () => ({ profile: null }) }) });
   await flush();
-  const nowServer = JSON.parse(olderLocal.getItem('tradejournal:mental-health-profile:v2'));
-  assert.equal(nowServer.baseline.initialStressLevel, 9, 'a newer server copy must replace a stale local one during reconcile');
+  const profileB = b.store.load();
+  assert.equal(profileB.intake.completed, false, 'a fresh account must never inherit the previous user\'s completed intake');
+  assert.equal(profileB.intake.demographics.age, null);
 });
 
-test('all four character pages load sync-queue.js and dev-user-switcher.js before mental-health-store.js', async () => {
+test('a v1 profile shape returned by the server (src.baseline without src.intake) still migrates additively via normalize() - unaffected by this migration, since that logic lives inside normalize() itself, not in any localStorage fallback path', async () => {
+  const localStorage = memoryStorage();
+  const v1Shaped = { userId: 'local-trader', baseline: { tradingExperienceYears: 5, completed: true, assessmentDate: '2024-01-01T00:00:00.000Z' } };
+  const { store } = await loadMentalHealthStore({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ profile: v1Shaped }) }) });
+  await flush();
+  const profile = store.load();
+  assert.equal(profile.intake.completed, true);
+  assert.equal(profile.intake.tradingHistory.yearsTrading, 5);
+  assert.equal(profile.baseline.tradingExperienceYears, 5, 'baseline itself is left untouched');
+});
+
+test('server-replica.js loads before mental-health-store.js on all four character pages', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const queueIndex = html.indexOf('sync-queue.js');
-    const switcherIndex = html.indexOf('dev-user-switcher.js');
-    const storeIndex = html.indexOf('mental-health-store.js');
-    assert.ok(queueIndex > -1 && queueIndex < storeIndex, character + ': sync-queue.js before mental-health-store.js');
-    assert.ok(switcherIndex > -1 && switcherIndex < storeIndex, character + ': dev-user-switcher.js before mental-health-store.js');
+    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
+    const storeIndex = html.indexOf('<script src="../shared/mental-health-store.js">');
+    assert.ok(replicaIndex > -1 && replicaIndex < storeIndex, character + ': server-replica.js loads before mental-health-store.js');
   }
 });
