@@ -65,6 +65,30 @@ test('currentCard() is null (a legitimate quiet outcome) when the walkthrough is
   assert.equal(orchestrator.currentCard(), null);
 });
 
+// Real-browser bug found and fixed (second verification pass): currentCard() used to return the
+// welcome card unconditionally, before ever consulting the engine's own safety/workflow gate -
+// confirmed live by starting a real workflow via TradeJournalAIWorkflowEngine.start() and reading
+// window.TradeJournalAICompanionOrchestrator.currentCard() directly. "Safety always wins" must
+// apply to the welcome card exactly as it already does to a step card.
+test('currentCard() returns null while safety/workflow is active, even for a genuinely fresh user who has never seen the welcome card yet', async () => {
+  const { orchestrator } = await loadOrchestrator({
+    profileStore: { hasSeenWalkthrough: () => false },
+    journeyEngine: { nextBestStep: () => null, dedupeKeyFor: (id) => 'journey:' + id, executeStep: () => {}, evaluate: () => ({ blockers: ['safety_or_workflow_active'] }) }
+  });
+  assert.equal(orchestrator.currentCard(), null, 'the welcome card must never be returned while a real workflow/confirmation is active');
+});
+
+test('currentCard() resumes the welcome card normally once safety/workflow clears', async () => {
+  let blocked = true;
+  const { orchestrator } = await loadOrchestrator({
+    profileStore: { hasSeenWalkthrough: () => false },
+    journeyEngine: { nextBestStep: () => null, dedupeKeyFor: (id) => 'journey:' + id, executeStep: () => {}, evaluate: () => ({ blockers: blocked ? ['safety_or_workflow_active'] : [] }) }
+  });
+  assert.equal(orchestrator.currentCard(), null);
+  blocked = false;
+  assert.equal(orchestrator.currentCard().kind, 'welcome', 'must resume normally the instant safety/workflow clears');
+});
+
 test('startWalkthrough() marks it seen and republishes tradejournal:companion-updated', async () => {
   const calls = [];
   const { orchestrator, dispatched } = await loadOrchestrator({
