@@ -1,6 +1,19 @@
 (function () {
   'use strict';
-  var KEY = 'tradejournal:ai-settings:v1';
+  // Phase 8c of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+  // Constraints section): provider/model/voice/budget/therapistModeDefault now read/write through
+  // window.TradeJournalUserPreferences (Phase 8a's shared preferences primitive), one preference
+  // key ('aiSettings') holding the whole object, same atomic whole-object merge shape
+  // psychology-store.js's own Phase 8b migration already established.
+  //
+  // `persistApiKeyByProvider` (the "remember this engine's key" opt-in flag) and the entire BYOK
+  // mechanism below it (sessionKeys/BYOK_KEY/getKey/setKey/clearKey) are deliberately NOT part of
+  // this migration - explicit product decision: BYOK persistence is being removed entirely in
+  // Phase 8f, not moved server-side (storing a raw, unencrypted API credential server-side would
+  // be a real security regression, the same reasoning Section 7.18 originally kept BYOK
+  // client-only for). Migrating that flag now would be throwaway work Phase 8f immediately
+  // deletes, so it stays local-only for this one remaining sub-phase.
+  var PREF_KEY = 'aiSettings';
   var BYOK_KEY = 'tradejournal:ai-byok:v1';
 
   // BYO API keys are in-memory only for the session by default (never in localStorage) -
@@ -37,20 +50,26 @@
     };
   }
 
+  // The "remember this engine's key" opt-in flags are the one field of the old whole-object
+  // localStorage blob that stays local (see the file-top comment) - their own small dedicated
+  // key, separate from PREF_KEY, so a stale local copy can never shadow a real server value for
+  // every other field.
+  var LOCAL_PERSIST_FLAG_KEY = 'tradejournal:ai-persist-key-by-provider:v1';
+  function loadLocalPersistFlags() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_PERSIST_FLAG_KEY) || '{}'); } catch (_) { return {}; }
+  }
+  function writeLocalPersistFlags(value) { localStorage.setItem(LOCAL_PERSIST_FLAG_KEY, JSON.stringify(value)); }
+
   function load() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      var parsed = raw ? JSON.parse(raw) : {};
-      var base = defaults();
-      return Object.assign({}, base, parsed, {
-        modelByProvider: Object.assign({}, base.modelByProvider, parsed.modelByProvider || {}),
-        voiceByProvider: Object.assign({}, base.voiceByProvider, parsed.voiceByProvider || {}),
-        persistApiKeyByProvider: Object.assign({}, base.persistApiKeyByProvider, parsed.persistApiKeyByProvider || {}),
-        budgetByProvider: Object.assign({}, base.budgetByProvider, parsed.budgetByProvider || {})
-      });
-    } catch (_) {
-      return defaults();
-    }
+    var base = defaults();
+    var prefs = window.TradeJournalUserPreferences;
+    var stored = (prefs ? prefs.getPref(PREF_KEY, null) : null) || {};
+    return Object.assign({}, base, stored, {
+      modelByProvider: Object.assign({}, base.modelByProvider, stored.modelByProvider || {}),
+      voiceByProvider: Object.assign({}, base.voiceByProvider, stored.voiceByProvider || {}),
+      persistApiKeyByProvider: Object.assign({}, base.persistApiKeyByProvider, loadLocalPersistFlags()),
+      budgetByProvider: Object.assign({}, base.budgetByProvider, stored.budgetByProvider || {})
+    });
   }
 
   // Lets every mounted surface that reads "the current engine" (the ChatDock's own switcher, the
@@ -64,8 +83,19 @@
     }
   }
 
+  // `value` is always the full merged object (settings()'s own shape) - split across its two
+  // real backends: persistApiKeyByProvider to its own local key (see loadLocalPersistFlags()
+  // above), everything else to the server preference. Callers never see this split - saveSettings()
+  // still returns/round-trips the one whole object, matching this store's existing public contract.
   function write(value) {
-    localStorage.setItem(KEY, JSON.stringify(value));
+    writeLocalPersistFlags(value.persistApiKeyByProvider || {});
+    var prefs = window.TradeJournalUserPreferences;
+    if (prefs) {
+      prefs.setPref(PREF_KEY, {
+        provider: value.provider, modelByProvider: value.modelByProvider, voiceByProvider: value.voiceByProvider,
+        budgetByProvider: value.budgetByProvider, therapistModeDefault: value.therapistModeDefault
+      });
+    }
     notify(value);
     return value;
   }

@@ -106,3 +106,15 @@ test('psychology-store.js has zero localStorage/sessionStorage/indexedDB calls -
   const calls = await storageCalls('psychology-store.js');
   assert.equal(calls.length, 0, JSON.stringify(calls));
 });
+
+test('ai-settings-store.js has no localStorage calls left for its own migrated fields - the only remaining calls are the documented, deliberate local-only BYOK mechanism (LOCAL_PERSIST_FLAG_KEY/BYOK_KEY), explicitly deferred to Phase 8f (deletion, not migration)', async () => {
+  const calls = await storageCalls('ai-settings-store.js');
+  calls.forEach((call) => {
+    assert.match(call.text, /LOCAL_PERSIST_FLAG_KEY|BYOK_KEY/, `unexpected storage call in ai-settings-store.js:${call.line} - ${call.text}`);
+  });
+});
+
+test('ai-usage-store.js has zero localStorage/sessionStorage/indexedDB calls - today()/thisMonth()/lifetime() read a server-hydrated baseline through server-replica.js now (Phase 8c), reconciled onto the same ai_usage_events table reportToServer() already wrote to before this migration', async () => {
+  const calls = await storageCalls('ai-usage-store.js');
+  assert.equal(calls.length, 0, JSON.stringify(calls));
+});
