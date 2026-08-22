@@ -18,12 +18,27 @@ function memoryStorage(seed) {
   return { getItem: (key) => (values.has(key) ? values.get(key) : null), setItem: (key, value) => values.set(key, String(value)), removeItem: (key) => values.delete(key) };
 }
 
+// Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+// Data Sync section / the Phase 2 report) moved ai-companion-profile.js off localStorage onto
+// server-replica.js's in-memory document replica - this sandbox now loads that module too and
+// seeds a real auth token, so ai-companion-profile.js's own writes actually persist (in memory)
+// the way this file's tests already assume. The "fetch must never be called" guarantee this file
+// is built around is about ai-journey-engine.js's own synchronous evaluation functions (§38 of
+// the brief: nextBestStep()/evaluate() never make a network call) - it was never a claim that
+// ai-companion-profile.js itself is fetch-free, and that module now legitimately hydrates/writes
+// its own tiny document. The default fetch below only ever answers /api/sync/companion-state;
+// anything else still throws exactly as before, so that guarantee stays intact and observable.
 async function buildSandbox(overrides = {}) {
-  const document = { documentElement: { lang: overrides.lang || 'en' } };
+  const document = { documentElement: { lang: overrides.lang || 'en' }, body: { appendChild() {} }, createElement: () => ({ setAttribute() {} }) };
   const localStorage = overrides.localStorage || memoryStorage();
+  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
+  const defaultFetch = async (url, options) => {
+    if (url === '/api/sync/companion-state') return (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) };
+    throw new Error('ai-journey-engine.js must never call fetch on its own');
+  };
   const sandbox = {
     window: {}, document, localStorage,
-    fetch: overrides.fetch || (async () => { throw new Error('ai-journey-engine.js must never call fetch on its own'); }),
+    fetch: overrides.fetch || defaultFetch,
     Set, Math, JSON, console, Date, Promise, Array, Object, Number, String,
     setTimeout: (fn) => fn(), clearTimeout() {},
     CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } }
@@ -33,7 +48,7 @@ async function buildSandbox(overrides = {}) {
     setTimeout: (fn) => fn(), clearTimeout() {},
     addEventListener() {}, dispatchEvent() {},
     TradeJournalSyncQueue: { registerModule() {}, enqueue() {} },
-    TradeJournalDevUserSwitcher: { currentUserId: () => null },
+    TradeJournalDevUserSwitcher: { currentUserId: () => localStorage.getItem('tradejournal:auth-token') },
     TradeJournalMentalHealthStore: overrides.mentalHealthStore || { load: () => ({ intake: { completed: false } }) },
     TradeJournalPatternStore: overrides.patternStore || { listSync: () => [] },
     TradeJournalStrategyEducationStore: overrides.strategyStore || { listSync: () => [] },
@@ -42,9 +57,10 @@ async function buildSandbox(overrides = {}) {
     TradeJournalAIProactiveEngine: overrides.proactiveEngine || { pendingConfirmation: () => null },
     TradeJournalAIActionRegistry: overrides.actionRegistry || { get: () => null }
   });
-  for (const file of ['ai-i18n.js', 'ai-companion-profile.js', 'ai-journey-steps.js', 'ai-journey-engine.js']) {
+  for (const file of ['server-replica.js', 'ai-i18n.js', 'ai-companion-profile.js', 'ai-journey-steps.js', 'ai-journey-engine.js']) {
     vm.runInNewContext(await source(file), sandbox, { filename: file });
   }
+  await new Promise((resolve) => setImmediate(resolve)); // let ai-companion-profile.js's own hydrate() settle first
   return sandbox.window;
 }
 

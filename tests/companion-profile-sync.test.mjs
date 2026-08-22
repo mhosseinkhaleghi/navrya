@@ -4,9 +4,13 @@ import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
 
-// Journey G (AI Companion & Journey Orchestration) - mirrors tests/mental-health-sync.test.mjs's
-// own dynamic vm-sandbox convention for ai-companion-profile.js, the client store this feature's
-// one small persisted document funnels through (see that file's own header comment).
+// Journey G (AI Companion & Journey Orchestration). Phase 2 of the local-first-to-server-
+// authoritative migration (see ARCHITECTURE.md's Global Data Sync section / the Phase 2 report)
+// moved ai-companion-profile.js off localStorage onto server-replica.js's in-memory document
+// replica, the same way tests/mental-health-sync.test.mjs's own header comment describes for
+// Mental Health. There is no more sync-queue, no periodic reconciliation, and no
+// user-scope-guard.js purge concept for this domain any more - a fresh in-memory replica per page
+// load/module instance is never shared between accounts by construction.
 const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
 const source = (file) => readFile(shared(file), 'utf8');
@@ -18,266 +22,126 @@ function memoryStorage(seed) {
 function flush() { return new Promise((resolve) => setImmediate(resolve)); }
 
 async function loadCompanionProfile({ localStorage, fetchImpl, currentUserId }) {
-  const senders = {};
-  const enqueueCalls = [];
+  if (currentUserId) localStorage.setItem('tradejournal:auth-token', currentUserId);
   const fetchCalls = [];
   const fetchFn = async (url, options) => { fetchCalls.push([url, options]); return fetchImpl ? fetchImpl(url, options) : { ok: false, status: 500 }; };
-  const events = [];
   const sandbox = {
     window: {}, localStorage,
-    document: { documentElement: { lang: 'en' } },
+    document: { documentElement: { lang: 'en' }, body: { appendChild() {} }, createElement: () => ({ setAttribute() {} }) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     fetch: fetchFn
   };
-  sandbox.window = Object.assign(sandbox.window, {
-    localStorage, dispatchEvent: (event) => events.push(event), setTimeout: (fn) => fn(), addEventListener: () => {},
-    TradeJournalSyncQueue: { registerModule: (name, fn) => { senders[name] = fn; }, enqueue: (...args) => enqueueCalls.push(args) },
-    TradeJournalDevUserSwitcher: { currentUserId: () => currentUserId || null }
-  });
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, addEventListener() {} });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('ai-companion-profile.js'), sandbox, { filename: 'ai-companion-profile.js' });
-  return { store: sandbox.window.TradeJournalAICompanionProfile, senders, enqueueCalls, fetchCalls, events, localStorage };
+  return { store: sandbox.window.TradeJournalAICompanionProfile, replica: sandbox.window.TradeJournalServerReplica, fetchCalls, localStorage };
 }
 
-test('registers a companion-state sender that POSTs the whole document to /api/sync/companion-state', async () => {
-  const { senders, fetchCalls } = await loadCompanionProfile({ localStorage: memoryStorage(), currentUserId: 'user-1', fetchImpl: async () => ({ ok: true }) });
-  assert.ok(senders['companion-state'], 'a companion-state sender must be registered');
-  await senders['companion-state']({ recordId: 'state', payload: { version: 1 } });
-  const call = fetchCalls[fetchCalls.length - 1];
-  assert.equal(call[0], '/api/sync/companion-state');
-  assert.equal(call[1].method, 'POST');
+test('registers a companion-state document domain with server-replica.js and hydrates it at load time', async () => {
+  const localStorage = memoryStorage();
+  const { replica, fetchCalls } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  assert.ok(replica.domain('companion-state'));
+  await flush();
+  assert.ok(fetchCalls.some((call) => call[0] === '/api/sync/companion-state' && (!call[1] || !call[1].method)));
 });
 
-test('every mutation (setWalkthroughSeen/dismissStep/snoozeStep/skipOptionalStep/setPreference/setCurrentGoal) funnels through write() and enqueues once each', async () => {
-  const { store, enqueueCalls } = await loadCompanionProfile({ localStorage: memoryStorage(), currentUserId: null });
+test('a brand-new account with nothing on the server gets real defaults', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  await flush();
+  assert.equal(store.hasSeenWalkthrough(), false);
+  assert.equal(store.currentGoal(), null);
+  assert.equal(store.initiativePreference(), 'normal');
+});
+
+test('every mutation (setWalkthroughSeen/dismissStep/snoozeStep/skipOptionalStep/setPreference/setCurrentGoal) applies immediately and pushes the whole document, correctly unwrapping routes.companion.mjs\'s own {state: saved} POST response shape', async () => {
+  const localStorage = memoryStorage();
+  const posted = [];
+  const { store } = await loadCompanionProfile({
+    localStorage, currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      if (options && options.method === 'POST') { const body = JSON.parse(options.body); posted.push(body); return { ok: true, json: async () => ({ state: body }) }; }
+      return { ok: true, json: async () => ({ state: null }) };
+    }
+  });
+  await flush();
   store.setWalkthroughSeen();
   store.dismissStep('journey:pattern_create');
   store.snoozeStep('trade_plan', new Date().toISOString());
   store.skipOptionalStep('intake');
   store.setPreference('initiativePreference', 'high');
   store.setCurrentGoal('strategies');
-  const calls = enqueueCalls.filter((call) => call[0] === 'companion-state');
-  assert.equal(calls.length, 6);
-  calls.forEach((call) => assert.equal(call[1], 'state', 'the record id is a fixed constant - there is only ever one companion-state document'));
+  await flush();
+  assert.equal(posted.length, 6, 'each of the six mutations must push once');
+  const state = store.load();
+  assert.ok(state.walkthroughSeenAt);
+  assert.ok(state.dismissedSteps['journey:pattern_create']);
+  assert.ok(state.snoozedSteps.trade_plan);
+  assert.ok(state.skippedOptional.includes('intake'));
+  assert.equal(state.preferences.initiativePreference, 'high');
+  assert.equal(state.currentGoal, 'strategies');
 });
 
 test('never persists a derivable fact - only walkthrough/dismiss/snooze/skip/goal/preferences are ever written', async () => {
-  const { store } = await loadCompanionProfile({ localStorage: memoryStorage(), currentUserId: null });
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) } });
+  await flush();
   store.setWalkthroughSeen();
   const stored = store.load();
-  // _ownerUserId (Item 4 of the Journey G follow-up) used to be the one deliberate exception here
-  // - a local anti-leak bookkeeping tag, not a Journey fact. Phase 1 of the local-first-to-server-
-  // authoritative migration removed it: ownership is now enforced by user-scope-guard.js deleting
-  // this document outright on a mismatch, before this file ever loads, rather than by this module
-  // hiding a mismatched document in memory (see tests/user-scope-guard.test.mjs for that
-  // guarantee). This is back to a plain exhaustive allowlist of real Journey G facts only.
   assert.deepEqual(Object.keys(stored).sort(), ['currentGoal', 'dismissedSteps', 'lastUpdatedAt', 'preferences', 'skippedOptional', 'snoozedSteps', 'version', 'walkthroughSeenAt'].sort());
 });
 
 test('initiativePreference defaults to normal and is validated against the known three values', async () => {
-  const seeded = memoryStorage({ 'tradejournal:companion-state:v1': JSON.stringify({ preferences: { initiativePreference: 'invalid-value' } }) });
-  const { store } = await loadCompanionProfile({ localStorage: seeded, currentUserId: null });
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ state: { preferences: { initiativePreference: 'invalid-value' } } }) }) });
+  await flush();
   assert.equal(store.initiativePreference(), 'normal');
 });
 
-test('the one-time activation adopts the server state outright when present', async () => {
-  const localStorage = memoryStorage({ 'tradejournal:companion-state:v1': JSON.stringify({ lastUpdatedAt: '2026-06-01T00:00:00.000Z', currentGoal: 'local-goal' }) });
-  const serverState = { lastUpdatedAt: '2020-01-01T00:00:00.000Z', currentGoal: 'server-goal' };
-  const { localStorage: after } = await loadCompanionProfile({
+test('a failed write rolls back the optimistic change', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({
     localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ state: serverState }) })
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: false, status: 500 } : { ok: true, json: async () => ({ state: null }) }
   });
   await flush();
-  const stored = JSON.parse(after.getItem('tradejournal:companion-state:v1'));
-  assert.equal(stored.currentGoal, 'server-goal', 'first-activation adopts the server copy outright, even though it is chronologically older');
-  assert.ok(after.getItem('tradejournal:companion-state-migrated:v1:user-1'));
+  store.setCurrentGoal('strategies');
+  assert.equal(store.currentGoal(), 'strategies', 'applied optimistically');
+  await flush();
+  assert.equal(store.currentGoal(), null, 'rolled back once the server rejected it');
 });
 
-test('the one-time activation pushes nothing when both local and server are a genuinely fresh default - no meaningless first push', async () => {
+test('no localStorage key is ever written for Companion state any more - Phase 2 removed the write-through cache entirely', async () => {
   const localStorage = memoryStorage();
-  const { enqueueCalls } = await loadCompanionProfile({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) })
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) } });
+  await flush();
+  store.setCurrentGoal('strategies');
+  assert.equal(localStorage.getItem('tradejournal:companion-state:v1'), null);
+});
+
+test('cross-account isolation: user A\'s Companion goal/dismissals are invisible to user B on the same browser - structural now, no purge mechanism needed for a migrated domain', async () => {
+  const localStorage = memoryStorage();
+  const a = await loadCompanionProfile({
+    localStorage, currentUserId: 'user-A',
+    fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) }
   });
   await flush();
-  const pushed = enqueueCalls.find((call) => call[0] === 'companion-state');
-  assert.equal(pushed, undefined);
-});
+  a.store.setCurrentGoal('strategies');
+  a.store.dismissStep('journey:pattern_create');
+  a.store.setPreference('initiativePreference', 'high');
+  assert.equal(a.store.currentGoal(), 'strategies');
 
-test('once already activated, reconciliation keeps whichever copy has the newer lastUpdatedAt, not always the server', async () => {
-  const newerLocal = memoryStorage({
-    'tradejournal:companion-state:v1': JSON.stringify({ lastUpdatedAt: '2026-06-05T00:00:00.000Z', currentGoal: 'local-newer' }),
-    'tradejournal:companion-state-migrated:v1:user-1': '2026-01-01T00:00:00.000Z'
-  });
-  await loadCompanionProfile({
-    localStorage: newerLocal, currentUserId: 'user-1',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ state: { lastUpdatedAt: '2026-01-01T00:00:00.000Z', currentGoal: 'server-older' } }) })
-  });
+  const b = await loadCompanionProfile({ localStorage, currentUserId: 'user-B', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
   await flush();
-  const stillLocal = JSON.parse(newerLocal.getItem('tradejournal:companion-state:v1'));
-  assert.equal(stillLocal.currentGoal, 'local-newer', 'a newer local edit must survive a reconcile against an older server copy - the already-migrated flag routes this through reconcile(), not the adopt-outright first-activation path');
-});
-
-// ============================================================================
-// Item 4 of the Journey G follow-up: the complete local-first/sync contract, proven end to end
-// with the REAL sync-queue.js (not the stubbed registerModule/enqueue used above) - the exact
-// client flow is: a mutation writes to localStorage synchronously first (never blocked on
-// network) -> enqueues onto the shared outbox -> the outbox's own sender POSTs to
-// /api/sync/companion-state, retried with backoff on failure -> a later successful send removes
-// it from the outbox; reconciliation (first-activation adopt/push, or the `online`-event
-// reconcile-by-lastUpdatedAt) is a separate, independent read path layered on top.
-// ============================================================================
-function combinedSandbox({ localStorage, currentUserId, fetchImpl }) {
-  const sandbox = {
-    window: {}, localStorage,
-    document: { documentElement: { lang: 'en' }, hidden: false, addEventListener() {} },
-    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    setTimeout: (fn) => { fn(); return 0; }, clearTimeout() {},
-    fetch: fetchImpl,
-    Math, JSON, console, Date
-  };
-  sandbox.window = Object.assign(sandbox.window, {
-    localStorage, dispatchEvent: () => {}, addEventListener() {}, setTimeout: sandbox.setTimeout, fetch: fetchImpl,
-    TradeJournalDevUserSwitcher: { currentUserId: () => currentUserId || null }
-  });
-  return sandbox;
-}
-async function loadCombined(options) {
-  const sandbox = combinedSandbox(options);
-  vm.runInNewContext(await source('sync-queue.js'), sandbox, { filename: 'sync-queue.js' });
-  vm.runInNewContext(await source('ai-companion-profile.js'), sandbox, { filename: 'ai-companion-profile.js' });
-  return { queue: sandbox.window.TradeJournalSyncQueue, store: sandbox.window.TradeJournalAICompanionProfile, sandbox };
-}
-
-// Real script order (see the four character index.html files): user-scope-guard.js loads first
-// of all, then sync-queue.js, then this file - a `token` (standing in for the real signed
-// tradejournal:auth-token) is planted in localStorage BEFORE any script runs, exactly like a real
-// page load where the credential already exists from a prior login. Ownership is driven off that
-// token, the same value TradeJournalDevUserSwitcher.currentUserId() is stubbed to return, matching
-// how dev-user-switcher.js's real currentUserId() is itself just a read of that same key.
-async function loadWithGuard({ localStorage, token, fetchImpl }) {
-  if (token) localStorage.setItem('tradejournal:auth-token', token);
-  const sandbox = combinedSandbox({ localStorage, currentUserId: token, fetchImpl });
-  vm.runInNewContext(await source('user-scope-guard.js'), sandbox, { filename: 'user-scope-guard.js' });
-  vm.runInNewContext(await source('sync-queue.js'), sandbox, { filename: 'sync-queue.js' });
-  vm.runInNewContext(await source('ai-companion-profile.js'), sandbox, { filename: 'ai-companion-profile.js' });
-  return { guard: sandbox.window.TradeJournalUserScopeGuard, queue: sandbox.window.TradeJournalSyncQueue, store: sandbox.window.TradeJournalAICompanionProfile, sandbox };
-}
-
-test('app remains usable while the Community backend is offline - a mutation succeeds and is cached locally even though every fetch call rejects', async () => {
-  const localStorage = memoryStorage();
-  const { store } = await loadCombined({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async () => { throw new Error('network unreachable'); }
-  });
-  const saved = store.setCurrentGoal('strategies');
-  assert.equal(saved.currentGoal, 'strategies', 'the local write itself never throws or blocks on the network');
-  assert.equal(store.currentGoal(), 'strategies', 'reading it back works purely from the local cache');
-});
-
-test('dismiss/snooze/preferences/currentGoal all survive a simulated reload (a fresh module load reading the same localStorage)', async () => {
-  const localStorage = memoryStorage();
-  const first = await loadCombined({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
-  first.store.setCurrentGoal('trades');
-  first.store.dismissStep('journey:pattern_create');
-  first.store.snoozeStep('trade_plan', '2099-01-01T00:00:00.000Z');
-  first.store.setPreference('initiativePreference', 'high');
-
-  // A real page reload re-executes every <script> fresh - simulated here by loading the module a
-  // second time against the SAME underlying localStorage.
-  const second = await loadCombined({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
-  assert.equal(second.store.currentGoal(), 'trades');
-  assert.ok(second.store.isDismissed('journey:pattern_create'));
-  assert.ok(second.store.isSnoozed('trade_plan'));
-  assert.equal(second.store.initiativePreference(), 'high');
-});
-
-test('a pending sync retries and succeeds once the backend returns - the real outbox, not a stub', async () => {
-  const localStorage = memoryStorage();
-  let online = false;
-  const delivered = [];
-  const { store, queue } = await loadCombined({
-    localStorage, currentUserId: 'user-1',
-    fetchImpl: async (url, options) => {
-      if (!online) throw new Error('offline');
-      delivered.push(JSON.parse(options.body));
-      return { ok: true, json: async () => ({ state: JSON.parse(options.body) }) };
-    }
-  });
-  store.setCurrentGoal('sessions'); // enqueues; the immediate send attempt (online=false) is still in flight
-  // Same sequencing as tests/sync-queue.test.mjs's own "once connectivity returns" test: await the
-  // natural failure cycle to fully settle first (records attempts/backoff for real), THEN
-  // manipulate nextAttemptAt and flush again - editing it before the first failure has been
-  // recorded would just be overwritten by that failure's own writeAll().
-  await queue.flush();
-  assert.equal(queue.pendingCount('companion-state'), 1, 'a failed send leaves the write queued, never dropped');
-  assert.equal(delivered.length, 0);
-
-  online = true;
-  const raw = JSON.parse(localStorage.getItem('tradejournal:sync-queue:v1'));
-  raw[0].nextAttemptAt = 0; // simulate the backoff window having elapsed
-  localStorage.setItem('tradejournal:sync-queue:v1', JSON.stringify(raw));
-  await queue.flush();
-
-  assert.equal(delivered.length, 1, 'the retried send succeeds once the backend is reachable again');
-  assert.equal(delivered[0].currentGoal, 'sessions');
-  assert.equal(queue.pendingCount('companion-state'), 0, 'a delivered entry leaves the outbox');
-});
-
-test('switching users on the same browser does not leak the previous user\'s Companion preferences/goal/dismissals (Phase 1: enforced by user-scope-guard.js, not this module)', async () => {
-  const localStorage = memoryStorage();
-  const userA = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
-  userA.store.setCurrentGoal('strategies');
-  userA.store.dismissStep('journey:pattern_create');
-  userA.store.setPreference('initiativePreference', 'high');
-  assert.equal(userA.store.currentGoal(), 'strategies');
-
-  // A real user switch is a full logout+re-login navigation into a brand-new iframe, which
-  // re-executes every <script> from scratch - simulated here as a fresh module load with a
-  // DIFFERENT auth token planted in the SAME localStorage user A's browser left behind, and no
-  // server data for B yet. user-scope-guard.js (loaded first, exactly as in the real page) is
-  // what must now catch this and purge KEY outright before ai-companion-profile.js ever reads it
-  // - not a check inside ai-companion-profile.js itself any more.
-  const userB = await loadWithGuard({ localStorage, token: 'token-B', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
-  assert.equal(localStorage.getItem('tradejournal:companion-state:v1'), null, 'the guard deletes the stale document from storage outright - never merely hides it in memory');
-  assert.equal(userB.store.currentGoal(), null, 'user B must never see user A\'s goal');
-  assert.equal(userB.store.isDismissed('journey:pattern_create'), false, 'user B must never see user A\'s dismissals');
-  assert.equal(userB.store.initiativePreference(), 'normal', 'user B must see the real default, not user A\'s preference');
-
-  // User B's own new choice is correctly tagged to B, not silently merged with A's leftover cache.
-  userB.store.setCurrentGoal('trades');
-  assert.equal(userB.store.currentGoal(), 'trades');
-
-  // Switching back to A (a third token, on the same browser) must never silently show B's data as
-  // if it were A's own - the guard purges again on this second mismatch, fail-closed, exactly as
-  // it did for B above. Recovering A's OWN real data is the pre-existing, cross-device reconcile
-  // path already tested above ("the one-time activation adopts the server state outright"), now
-  // exercised for A specifically.
-  const backToA = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
-  assert.notEqual(backToA.store.currentGoal(), 'trades', 'A must never see B\'s goal either - the leak-prevention guarantee is symmetric');
-  assert.equal(backToA.store.currentGoal(), null, 'immediately after switching back, before any reconcile completes, A\'s local cache is honestly empty/default - never silently wrong');
-
-  // The actual recovery path: once A's own real data is fetched from the server (already synced
-  // there from A's very first write above, via the outbox this same test file already proves
-  // works), the existing first-activation adopt path restores it correctly.
-  const backToARestored = await loadWithGuard({
-    localStorage: memoryStorage(), token: 'token-A',
-    fetchImpl: async () => ({ ok: true, json: async () => ({ state: { lastUpdatedAt: '2026-01-01T00:00:00.000Z', currentGoal: 'strategies', dismissedSteps: {}, snoozedSteps: {}, skippedOptional: [], preferences: { initiativePreference: 'high' } } }) })
-  });
-  await flush(); // migrateOrAdopt()'s own fetch-then-apply chain is fire-and-forget - let it settle
-  assert.equal(backToARestored.store.currentGoal(), 'strategies', 'A\'s own real data is recoverable via the existing server-reconcile path, just not preserved bit-for-bit in the shared local cache across an intervening user\'s session');
-});
-
-test('reloading as the SAME user does not purge - the guard only acts on an actual token mismatch', async () => {
-  const localStorage = memoryStorage();
-  const first = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
-  first.store.setCurrentGoal('strategies');
-
-  const second = await loadWithGuard({ localStorage, token: 'token-A', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
-  assert.equal(second.store.currentGoal(), 'strategies', 'a same-user reload must not wipe the just-made local edit before it has synced');
+  assert.equal(b.store.currentGoal(), null, 'user B must never see user A\'s goal');
+  assert.equal(b.store.isDismissed('journey:pattern_create'), false, 'user B must never see user A\'s dismissals');
+  assert.equal(b.store.initiativePreference(), 'normal', 'user B must see the real default, not user A\'s preference');
 });
 
 test('the local-first Companion Profile API is entirely synchronous - no read/write returns a Promise', async () => {
-  const { store } = await loadCombined({ localStorage: memoryStorage(), currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ state: null }) }) });
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) } });
+  await flush();
   const calls = [
     () => store.load(), () => store.get(), () => store.preferences(), () => store.initiativePreference(),
     () => store.hasSeenWalkthrough(), () => store.currentGoal(), () => store.isDismissed('x'), () => store.isSnoozed('x'), () => store.isSkipped('x'),
@@ -287,13 +151,11 @@ test('the local-first Companion Profile API is entirely synchronous - no read/wr
   calls.forEach((fn) => { const result = fn(); assert.ok(!(result instanceof Promise), fn.toString() + ' must not return a Promise'); });
 });
 
-test('all four character pages load sync-queue.js and dev-user-switcher.js before ai-companion-profile.js', async () => {
+test('server-replica.js loads before ai-companion-profile.js on all four character pages', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const queueIndex = html.indexOf('sync-queue.js');
-    const switcherIndex = html.indexOf('dev-user-switcher.js');
-    const storeIndex = html.indexOf('ai-companion-profile.js');
-    assert.ok(queueIndex > -1 && queueIndex < storeIndex, character + ': sync-queue.js before ai-companion-profile.js');
-    assert.ok(switcherIndex > -1 && switcherIndex < storeIndex, character + ': dev-user-switcher.js before ai-companion-profile.js');
+    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
+    const storeIndex = html.indexOf('<script src="../shared/ai-companion-profile.js">');
+    assert.ok(replicaIndex > -1 && replicaIndex < storeIndex, character + ': server-replica.js loads before ai-companion-profile.js');
   }
 });

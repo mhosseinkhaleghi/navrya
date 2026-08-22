@@ -55,7 +55,7 @@
     node.setAttribute('style', 'position:fixed;bottom:24px;inset-inline:0;margin:0 auto;width:max-content;max-width:90vw;background:#3a1414;color:#ffd7d7;border:1px solid #7a2d2d;border-radius:10px;padding:10px 16px;font-size:13px;z-index:9999;');
     node.textContent = message;
     document.body.appendChild(node);
-    setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 3200);
+    if (typeof setTimeout === 'function') setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 3200);
   }
 
   function requestJson(url, options) {
@@ -212,6 +212,11 @@
   function registerDocumentDomain(name, config) {
     var state = { doc: null, hydrated: false, hydrationError: null, hydratePromise: null };
     var extractDoc = config.extractDoc || function (body) { return body[name] || null; };
+    // The two existing single-document routes don't agree on their own POST response shape
+    // (mental-health.mjs returns the saved document directly; companion.mjs wraps it as
+    // {state: saved}) - extractSaved lets each registration say which its own writeUrl uses,
+    // rather than this module guessing. Defaults to "the body itself" (the more common shape).
+    var extractSaved = config.extractSaved || function (body) { return body; };
 
     function get() { return deepClone(state.doc); } // same "never a live reference out" guarantee as list()/find() above
     function isHydrated() { return state.hydrated; }
@@ -248,8 +253,8 @@
       if (!token) { rollback(); toastSaveFailed(); return Promise.reject(new Error('NO_CURRENT_USER')); }
       return requestJson(config.writeUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': token }, body: JSON.stringify(doc)
-      }).then(function (saved) {
-        var reconciled = deepClone(saved) || applied;
+      }).then(function (body) {
+        var reconciled = deepClone(extractSaved(body)) || applied;
         if (state.doc === applied) setLocal(reconciled);
         return reconciled;
       }).catch(function (error) { rollback(); toastSaveFailed(); throw error; });
