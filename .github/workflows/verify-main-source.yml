@@ -1,0 +1,23 @@
+name: Verify main source
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  require-dev-ancestor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require main to match dev
+        run: |
+          git fetch --prune origin dev
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/dev)" ]; then
+            echo "main must only be fast-forwarded from dev."
+            exit 1
+          fi
