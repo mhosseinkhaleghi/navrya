@@ -1472,6 +1472,25 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Journey G (AI Companion & Journey Orchestration). Same one-row-per-user, whole-document jsonb
+  // shape as mentalHealthProfile above, for the same reason - see 018_companion_state.sql.
+  const companionState = {
+    async upsert(userId, companionStateBody) {
+      if (!companionStateBody || typeof companionStateBody !== 'object') throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows } = await pool.query(
+        `INSERT INTO companion_state (user_id, state, updated_at) VALUES ($1,$2,now())
+         ON CONFLICT (user_id) DO UPDATE SET state=$2, updated_at=now()
+         RETURNING state`,
+        [userId, JSON.stringify(companionStateBody)]
+      );
+      return rows[0].state;
+    },
+    async get(userId) {
+      const { rows } = await pool.query('SELECT state FROM companion_state WHERE user_id=$1', [userId]);
+      return rows[0] ? rows[0].state : null;
+    }
+  };
+
   // One row per conversation (017_ai_conversations.sql) - the global AI assistant dock's real,
   // multiple, resumable chat threads. `messages` stays a single jsonb array per row (same
   // "nothing queries into it individually" reasoning as mentalHealthProfile/strategies'
@@ -1533,5 +1552,5 @@ export function createPgRepo(pool) {
     return { backend: 'postgres', dbOk, migrations };
   }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, health };
+  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, health };
 }

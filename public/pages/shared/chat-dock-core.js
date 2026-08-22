@@ -99,6 +99,11 @@
     // dockChat()/DOCK_STYLE_INSTRUCTION in server/pattern-ai-server.mjs) so the spoken answer
     // doesn't read back a full written-Q&A-length reply verbatim.
     var source = (options && options.source) === 'voice' ? 'voice' : 'text';
+    // Item 1 (Journey G follow-up): an explicit Companion "Explain" tap - the user asked the
+    // Companion to explain its current step, never a request to fill or discover anything. See
+    // this variable's own use below (right before requestBody is built) and
+    // docs/ai/companion-orchestration.md's "Explain-only mode" section.
+    var companionIntent = (options && options.companionIntent) === 'explain' ? 'explain' : null;
     if (!text) return null;
 
     if (therapistMode) {
@@ -164,6 +169,32 @@
           }
         }
       }
+    }
+
+    // Journey G UX correction, item 10: a reply to a just-delivered Voice Companion opening
+    // (chatDockView.jsx sets options.awaitingCompanionOpeningReply for exactly one turn, right
+    // after speaking it - see ai-companion-orchestrator.js's voiceOpening()). A high-confidence
+    // deterministic match (EN/FA only, same scope as ai-proactive-engine.js's own
+    // interpretConfirmationText()/ai-deterministic-extraction.js) resolves Start/Later with ZERO
+    // network calls, the exact same real functions the visual CompanionCard's own Continue/Later
+    // buttons already call - never a hardcoded target (item 11: nextBestStep() decides). "What is
+    // NAVRYA?"-shaped replies, and anything ambiguous (including every AR/ES reply), fall straight
+    // through to the one ordinary AI turn below with companionContext still attached - never a
+    // second model call either way.
+    var companionOrchestrator = window.TradeJournalAICompanionOrchestrator;
+    if (options && options.awaitingCompanionOpeningReply && companionOrchestrator && typeof companionOrchestrator.interpretVoiceOpeningReply === 'function') {
+      var openingChoice = companionOrchestrator.interpretVoiceOpeningReply(text);
+      if (openingChoice === 'start' || openingChoice === 'later') {
+        var openingResolution = companionOrchestrator.resolveVoiceOpeningChoice(openingChoice);
+        setLastTurnDebug({ path: 'companion-opening-reply', choice: openingChoice });
+        recordZeroNetworkLatency('COMPANION_OPENING_REPLY', t0, {});
+        return {
+          kind: 'workflow', reply: openingResolution.text, voiceReply: openingResolution.text,
+          workflow: workflowEngine ? workflowEngine.current() : null,
+          activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+        };
+      }
+      if (openingChoice === 'explain') companionIntent = 'explain'; // TEACHER stance below, using the user's own real spoken question
     }
 
     // Journey F, F37: a workflow genuinely waiting on ONLY a yes/no gate field (confirm/
@@ -435,6 +466,16 @@
       if (catalog.length) availableActions = catalog;
     }
 
+    // Item 1 fix: an explicit Companion Explain turn must never be hijacked by an unrelated
+    // registered process elsewhere on the page (Dashboard/Strategies/Settings all keep real,
+    // legitimately-open inline registrations - see the extensive activeProcess exclusion logic
+    // above, which still cannot cover every future registration). This turn's own LOCAL view of
+    // activeProcess/availableActions is set aside here, after every exclusion rule above has
+    // already run - the real registration in TradeJournalAIProcessRegistry is never read again,
+    // never touched, closed, or mutated, so the existing form stays open and unchanged, and
+    // ordinary ChatDock behavior resumes on the very next turn (nothing global changed).
+    if (companionIntent === 'explain') { activeProcess = null; availableActions = null; }
+
     var tContextStart = now();
     var requestBody = {
       provider: active.provider, apiKey: settingsStore.getKey(active.provider), model: settingsStore.activeModel(),
@@ -443,6 +484,7 @@
     };
     if (availableActions) requestBody.availableActions = availableActions;
     if (source === 'voice') requestBody.source = 'voice';
+    if (companionIntent) requestBody.companionIntent = companionIntent;
     var tContextDone = now();
     // Journey D: the smallest-sufficient-context package for THIS turn (LAYER A product
     // knowledge + LAYER B user memory + LAYER C live state), built fresh every call - never
@@ -457,6 +499,21 @@
         var wireProductContext = shapeProductContextForWire(builtPackage);
         if (wireProductContext) requestBody.productContext = wireProductContext;
       } catch (_) { /* no-op - product knowledge is additive, never load-bearing */ }
+    }
+    // Journey G: the trimmed, read-only Companion package (phase/nextBestStep/responseStance/
+    // communication preferences - see ai-journey-engine.js's companionContext()) - purely
+    // additive/best-effort, same fallback posture as productContext above. Never sent while a
+    // workflow/activeProcess is already driving this turn (the model has no decision to make about
+    // "what's next" in that situation - see docs/ai/companion-orchestration.md).
+    var journeyEngine = window.TradeJournalAIJourneyEngine;
+    // An explicit Explain turn always gets companionContext, regardless of activeProcess/
+    // workflowBlocksDiscovery (both already forced null/moot for this turn above) - "companionContext
+    // still available" is unconditional for this intent, per Item 1's own requirement list.
+    if (journeyEngine && (companionIntent === 'explain' || (!activeProcess && !workflowBlocksDiscovery))) {
+      try {
+        var companionPackage = journeyEngine.companionContext({ explicitExplain: companionIntent === 'explain' });
+        if (companionPackage) requestBody.companionContext = companionPackage;
+      } catch (_) { /* no-op - Companion context is additive, never load-bearing */ }
     }
     var tProductContextDone = now();
     var requestBytes = 0;
@@ -543,6 +600,7 @@
     // tell apart from the outside - this makes every turn's own answer to that inspectable without
     // re-reading server logs or re-instrumenting the browser each time.
     setLastTurnDebug({
+      companionIntent: companionIntent,
       activeProcessBefore: activeProcess ? activeProcess.id : null,
       availableActionIds: availableActions ? availableActions.map(function (a) { return a.id; }) : null,
       modelActionId: (payload.action && payload.action.id) || null,
@@ -561,11 +619,13 @@
     // this function already took - approximate (a genuinely mixed turn, e.g. a correction that
     // ALSO carries a behavioral signal, only ever gets one label), documented as such rather than
     // implying more precision than a few branch checks actually give.
-    var networkTurnType = activeProcess && currentWorkflow && activeProcess.id === currentWorkflow.processId
-      ? 'WORKFLOW_CONTINUATION'
-      : (availableActions && payload.action && payload.action.id)
-        ? (payload.action.id === 'navigate.to' ? 'NAVIGATION' : 'NEW_ACTION')
-        : (requestBody.productContext ? 'PRODUCT_QA' : 'SIMPLE_QA');
+    var networkTurnType = companionIntent === 'explain'
+      ? 'COMPANION_EXPLAIN'
+      : activeProcess && currentWorkflow && activeProcess.id === currentWorkflow.processId
+        ? 'WORKFLOW_CONTINUATION'
+        : (availableActions && payload.action && payload.action.id)
+          ? (payload.action.id === 'navigate.to' ? 'NAVIGATION' : 'NEW_ACTION')
+          : (requestBody.productContext ? 'PRODUCT_QA' : 'SIMPLE_QA');
     if (source === 'voice') networkTurnType = /QA$/.test(networkTurnType) ? 'VOICE_QA' : 'VOICE_ACTION';
     var serverTiming = payload.serverTiming || {};
     var tWorkflowDone = now();
