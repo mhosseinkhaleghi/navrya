@@ -1,7 +1,9 @@
 (function(){
   'use strict';
-  var KEY='tradejournal:trades:v1', SETTINGS_KEY='tradejournal:trade-settings:v1', MAX_IMAGE_BYTES=15*1024*1024;
+  var SETTINGS_KEY='tradejournal:trade-settings:v1', MAX_IMAGE_BYTES=15*1024*1024; // settings stays localStorage-backed - a Group B preference, out of scope for this domain's own Phase 2 migration (see the Phase 2 report)
   var types=window.TradeJournalTradeTypes||{};
+  var DOMAIN='trades';
+  function replica(){return window.TradeJournalServerReplica&&window.TradeJournalServerReplica.domain(DOMAIN);}
   function uid(prefix){return (prefix||'trade')+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9);}
   function now(){return new Date().toISOString();}
   function n(value){if(value===null||value===undefined||value==='')return null;var out=Number(value);return Number.isFinite(out)?out:null;}
@@ -27,116 +29,42 @@
     base.conceptTags=array(base.conceptTags).map(String); base.linkedPatternIds=array(base.linkedPatternIds).map(String); base.linkedStrategyId=typeof base.linkedStrategyId==='string'&&base.linkedStrategyId?base.linkedStrategyId:null; base.aiPredictionLinks=array(base.aiPredictionLinks); base.screenshots=array(base.screenshots); base.emotionLog=array(base.emotionLog).map(function(x){return Object.assign({id:uid('emotion'),timestamp:stamp,stage:'entry',dominantEmotions:[],emotionDetails:[],stressLevel:5,focusQuality:5,planCommitment:5,wouldTakeIfNotForced:null,note:''},x,{dominantEmotions:array(x.dominantEmotions).slice(0,3),emotionDetails:array(x.emotionDetails).slice(0,3).map(function(d){d=d||{};var tags=Array.isArray(d.tags)?d.tags:(d.tag?[d.tag]:[]);return{emotion:String(d.emotion||''),intensity:clamp(d.intensity,1,10)||5,tags:tags.map(String).slice(0,8)};}),stressLevel:clamp(x.stressLevel,1,10)||5,focusQuality:clamp(x.focusQuality,1,10)||5,planCommitment:clamp(x.planCommitment,1,10)||5});});
     base.statusHistory=statusHistory(src.statusHistory,base.status,stamp); base.source=Object.assign({character:'hunter',sessionId:null,scenarioId:null},src.source||{}); base.createdAt=src.createdAt||stamp; base.updatedAt=stamp; return base;
   }
-  function read(){try{var value=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(value)?value.map(normalize):[];}catch(_){return[];}}
-  function write(values){localStorage.setItem(KEY,JSON.stringify(values));window.dispatchEvent(new CustomEvent('tradejournal:trades-changed',{detail:{count:values.length}}));return values;}
+  // Phase 2 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Global
+  // Data Sync section): reads the in-memory server-replica directly - server-replica.js is
+  // loaded before this file in every character page's script order. There is no localStorage
+  // cache, no offline outbox, and no local-first fallback for the Trade Store any more.
+  function read(){var domain=replica();return domain?domain.list().map(normalize):[];}
 
-  // --- Server sync (Module 4 of the local-first-to-server migration; see ARCHITECTURE.md's
-  // Global Data Sync section, 7.18). Same shape as strategy-education-store.js's own sync
-  // block: localStorage (read via read()/write() above) stays the source of instant,
-  // offline-capable reads and writes; this only pushes the same writes to the server in the
-  // background and reconciles the local cache from the server when reachable.
-  // TradeJournalDevUserSwitcher is looked up live rather than cached at the top of this file,
-  // for the same reason as Modules 1-3's stores, even though (unlike those three)
-  // dev-user-switcher.js's <script> tag already loads before this file's in the existing page
-  // order - keeping the lookup pattern identical across all four synced stores costs nothing
-  // and means none of them silently depends on a specific script-order relationship. ---
   (function () {
-    var queue = window.TradeJournalSyncQueue;
-    if (!queue) return;
-    function devUser() { return window.TradeJournalDevUserSwitcher; }
-
-    queue.registerModule('trades', function (entry) {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) throw new Error('NO_CURRENT_USER');
-      if (entry.action === 'delete') {
-        return fetch('/api/sync/trades/' + encodeURIComponent(entry.recordId), { method: 'DELETE', headers: { 'x-dev-user-id': uid } })
-          .then(function (response) { if (!response.ok && response.status !== 404) throw new Error('SYNC_FAILED'); });
-      }
-      return fetch('/api/sync/trades', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
-        body: JSON.stringify(entry.payload)
-      }).then(function (response) { if (!response.ok) throw new Error('SYNC_FAILED'); });
+    if (!window.TradeJournalServerReplica) return;
+    window.TradeJournalServerReplica.registerListDomain(DOMAIN, {
+      hydrateUrl: '/api/sync/trades',
+      writeUrl: '/api/sync/trades',
+      deleteUrlFor: function (id) { return '/api/sync/trades/' + encodeURIComponent(id); },
+      extractList: function (body) { return body.trades || []; }
     });
-
-    // Every trade screenshot is already image-only (addScreenshots() rejects non-image files
-    // before it ever runs), unlike Strategy Education's attachments - no category gating needed.
-    queue.registerModule('trade-images', function (entry) {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) throw new Error('NO_CURRENT_USER');
-      return fetch('/api/sync/trades/images', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid },
-        body: JSON.stringify({ dataUrl: entry.payload.dataUrl })
-      }).then(function (response) {
-        if (!response.ok) throw new Error('SYNC_FAILED');
-        return response.json();
-      }).then(function (result) {
-        var items = read();
-        var matched = null;
-        items.forEach(function (trade) {
-          (trade.screenshots || []).forEach(function (item) {
-            if (item.blobId === entry.recordId && !item.imageUrl) { item.imageUrl = result.url; matched = trade; }
-          });
-        });
-        if (matched) { write(items); queue.enqueue('trades', matched.id, matched); }
-      });
-    });
-
-    function mergeServerTrades(serverTrades) {
-      if (!Array.isArray(serverTrades) || !serverTrades.length) return;
-      var byId = {};
-      read().forEach(function (item) { byId[item.id] = item; });
-      serverTrades.forEach(function (item) { byId[item.id] = item; }); // server wins on conflict
-      write(Object.keys(byId).map(function (id) { return byId[id]; }));
-    }
-
-    function reconcileFromServer() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      fetch('/api/sync/trades', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : null; })
-        .then(function (result) { if (result) mergeServerTrades(result.trades); })
-        .catch(function () { /* offline - the local cache stands as-is until the next reconnect */ });
-    }
-
-    // Checks the server BEFORE deciding whether to push local data up - mirrors
-    // strategy-education-store.js's migrateOrAdopt() (see its comment): a legacy-migration or
-    // multi-device edge case could otherwise push a duplicate alongside already-synced trades.
-    function migrateOrAdopt() {
-      var switcher = devUser(); var uid = switcher && switcher.currentUserId();
-      if (!uid) return;
-      var flagKey = 'tradejournal:trades-migrated:v1:' + uid;
-      if (localStorage.getItem(flagKey)) { reconcileFromServer(); return; }
-      fetch('/api/sync/trades', { headers: { 'x-dev-user-id': uid } })
-        .then(function (response) { return response.ok ? response.json() : null; })
-        .then(function (result) {
-          if (result && Array.isArray(result.trades) && result.trades.length) {
-            write(result.trades);
-          } else {
-            listSync().forEach(function (trade) { queue.enqueue('trades', trade.id, trade); });
-          }
-          localStorage.setItem(flagKey, new Date().toISOString());
-        })
-        .catch(function () { /* offline - try again next time this runs (flag not yet set) */ });
-    }
-
-    // Deferred to the next tick anyway (see session-workspace-logic.js's identical comment),
-    // for consistency with the other three synced stores, even though dev-user-switcher.js
-    // already loads before this file in the existing script order.
-    window.setTimeout(migrateOrAdopt, 0);
-    window.addEventListener('online', reconcileFromServer);
+    replica().hydrate();
   }());
 
   function listSync(){return read().sort(function(a,b){return new Date(b.updatedAt)-new Date(a.updatedAt);});}
   function find(id){return listSync().find(function(item){return item.id===id;})||null;}
   function recordPatternDelta(before,after){var oldIds=before?before.linkedPatternIds||[]:[],newIds=after.linkedPatternIds||[];newIds.forEach(function(id){if(oldIds.indexOf(id)<0&&window.TradeJournalPatternStore)window.TradeJournalPatternStore.recordUsage(id,1);});oldIds.forEach(function(id){if(newIds.indexOf(id)<0&&window.TradeJournalPatternStore)window.TradeJournalPatternStore.recordUsage(id,-1);});}
-  function save(value){var items=read(),existing=items.find(function(x){return x.id===value.id;})||null,trade=normalize(value);trade.updatedAt=now();trade.statusHistory=statusHistory(trade.statusHistory,trade.status,trade.updatedAt);if(trade.status==='open'&&!trade.openedAt)trade.openedAt=trade.updatedAt;if((trade.status==='closed'||trade.status==='cancelled')&&!trade.closedAt)trade.closedAt=trade.updatedAt;var index=items.findIndex(function(x){return x.id===trade.id;});if(index>-1)items[index]=trade;else items.unshift(trade);recordPatternDelta(existing,trade);write(items);if(window.TradeJournalSyncQueue)window.TradeJournalSyncQueue.enqueue('trades',trade.id,trade);return trade;}
-  function remove(id){var trade=find(id);if(trade&&window.TradeJournalImageStore)(trade.screenshots||[]).forEach(function(x){if(x.blobId)window.TradeJournalImageStore.deleteImage(x.blobId);});write(read().filter(function(x){return x.id!==id;}));if(window.TradeJournalSyncQueue)window.TradeJournalSyncQueue.enqueue('trades',id,null,'delete');}
+  // Apply optimistically and return synchronously (unchanged contract) - the write's own Promise
+  // is .catch()-guarded since neither function ever gave its caller a Promise to observe.
+  function save(value){var existing=find(value.id)||null,trade=normalize(value);trade.updatedAt=now();trade.statusHistory=statusHistory(trade.statusHistory,trade.status,trade.updatedAt);if(trade.status==='open'&&!trade.openedAt)trade.openedAt=trade.updatedAt;if((trade.status==='closed'||trade.status==='cancelled')&&!trade.closedAt)trade.closedAt=trade.updatedAt;recordPatternDelta(existing,trade);if(replica())replica().upsert(trade).catch(function(){});return trade;}
+  function remove(id){var trade=find(id);if(trade&&window.TradeJournalImageStore)(trade.screenshots||[]).forEach(function(x){if(x.blobId)window.TradeJournalImageStore.deleteImage(x.blobId);});if(replica())replica().remove(id).catch(function(){});}
   function updateStatus(id,status,extra){var trade=find(id);if(!trade)return null;Object.assign(trade,extra||{});trade.status=status;return save(trade);}
   function addEmotion(id,value){var trade=find(id);if(!trade)return null;trade.emotionLog.push(Object.assign({id:uid('emotion'),timestamp:now(),stage:trade.status==='closed'?'exit':trade.status==='open'?'mid_trade':'entry',dominantEmotions:[],emotionDetails:[],stressLevel:5,focusQuality:5,planCommitment:5,wouldTakeIfNotForced:null,note:''},value||{}));return save(trade);}
   function findBySource(sessionId,scenarioId){return listSync().find(function(x){return x.source&&x.source.sessionId===sessionId&&x.source.scenarioId===scenarioId;})||null;}
   function fileDataUrl(file){return new Promise(function(resolve,reject){var reader=new FileReader();reader.onload=function(){resolve(String(reader.result||''));};reader.onerror=function(){reject(reader.error);};reader.readAsDataURL(file);});}
-  async function addScreenshots(id,files){var trade=find(id);if(!trade)throw new Error('TRADE_NOT_FOUND');for(var file of Array.from(files||[])){if(!/^image\//.test(file.type))throw new Error('INVALID_IMAGE_TYPE');if(file.size>MAX_IMAGE_BYTES)throw new Error('IMAGE_TOO_LARGE');var item={id:uid('trade-image'),fileName:file.name,uploadedAt:now(),mimeType:file.type};try{if(!window.TradeJournalImageStore)throw new Error('NO_IMAGE_STORE');item.blobId=uid('trade-blob');await window.TradeJournalImageStore.saveImage(item.blobId,file,'trade');}catch(_){item.dataUrl=await fileDataUrl(file);}trade.screenshots.push(item);}return save(trade);}
-  async function screenshotUrl(item){if(!item)return'';if(item.dataUrl)return item.dataUrl;if(item.blobId&&window.TradeJournalImageStore)return await window.TradeJournalImageStore.loadImageUrl(item.blobId)||'';return'';}
+  // Phase 2 image pipeline: upload first, reference by the server's own /uploads/... url
+  // (imageUrl) - no IndexedDB, no blobId for a screenshot added after this migration. A failed
+  // upload falls back to embedding the dataUrl directly on the record, which still reaches the
+  // server via the trade's own save() below. Every trade screenshot is already image-only by
+  // validation (unlike Strategy Education's mixed attachments), so there is no per-file branching.
+  async function uploadScreenshot(encodedDataUrl){var switcher=window.TradeJournalDevUserSwitcher;var uid2=switcher&&switcher.currentUserId();if(!uid2)throw new Error('NO_CURRENT_USER');var response=await fetch('/api/sync/trades/images',{method:'POST',headers:{'Content-Type':'application/json','x-dev-user-id':uid2},body:JSON.stringify({dataUrl:encodedDataUrl})});if(!response.ok)throw new Error('UPLOAD_FAILED');var result=await response.json();return result.url;}
+  async function addScreenshots(id,files){var trade=find(id);if(!trade)throw new Error('TRADE_NOT_FOUND');for(var file of Array.from(files||[])){if(!/^image\//.test(file.type))throw new Error('INVALID_IMAGE_TYPE');if(file.size>MAX_IMAGE_BYTES)throw new Error('IMAGE_TOO_LARGE');var item={id:uid('trade-image'),fileName:file.name,uploadedAt:now(),mimeType:file.type};var encoded=await fileDataUrl(file);try{item.imageUrl=await uploadScreenshot(encoded);}catch(_){item.dataUrl=encoded;}trade.screenshots.push(item);}return save(trade);}
+  async function screenshotUrl(item){if(!item)return'';if(item.imageUrl)return item.imageUrl;if(item.dataUrl)return item.dataUrl;if(item.blobId&&window.TradeJournalImageStore)return await window.TradeJournalImageStore.loadImageUrl(item.blobId)||'';return'';}
   // leverageCap/maxTradesPerSession (Settings' "Trading defaults" panel) join the same real,
   // persisted settings object the Calculator/Trade Log already read defaultRiskPercent from -
   // pre-fill defaults, same as every other field here, never an enforced ceiling (nothing in
@@ -145,5 +73,5 @@
   function saveSettings(value){var next=Object.assign(settings(),value||{});['takerFeePercent','makerFeePercent','accountBalance','defaultRiskPercent','leverageCap','maxTradesPerSession'].forEach(function(k){next[k]=n(next[k]);});localStorage.setItem(SETTINGS_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent('tradejournal:trade-settings-changed'));return next;}
   function filter(values,options){var o=options||{},from=o.from?new Date(o.from).getTime():-Infinity,to=o.to?new Date(o.to).getTime()+86400000:Infinity,q=String(o.query||'').toLowerCase();return (values||listSync()).filter(function(x){var time=new Date(x.createdAt).getTime();return time>=from&&time<=to&&(!o.status||x.status===o.status)&&(!o.direction||x.direction===o.direction)&&(!o.patternId||x.linkedPatternIds.indexOf(o.patternId)>-1)&&(!o.strategyId||x.linkedStrategyId===o.strategyId)&&(!q||JSON.stringify([x.session,x.status,x.direction,x.chartNote,x.conceptTags,x.linkedStrategyId]).toLowerCase().indexOf(q)>-1);});}
   function analytics(values){var list=values||listSync(),closed=list.filter(function(x){return x.status==='closed';}),opened=list.filter(function(x){return x.statusHistory.some(function(s){return s.status==='open';});}),tagged=list.filter(function(x){return x.linkedPatternIds.length;});var ai=[];list.forEach(function(x){(x.aiPredictionLinks||[]).forEach(function(p){if(typeof p.correct==='boolean')ai.push(p.correct);});});return{total:list.length,statuses:{hunting:list.filter(function(x){return x.status==='hunting';}).length,open:list.filter(function(x){return x.status==='open';}).length,closed:closed.length,cancelled:list.filter(function(x){return x.status==='cancelled';}).length},funnel:{detected:list.length,opened:opened.length,closed:closed.length,wins:closed.filter(function(x){return x.outcome==='win';}).length},tagged:tagged.length,untagged:list.length-tagged.length,aiAccuracy:ai.length?Math.round(ai.filter(Boolean).length/ai.length*100):null,aiSamples:ai.length};}
-  window.TradeJournalTradeStore={key:KEY,settingsKey:SETTINGS_KEY,uid:uid,now:now,createDraft:function(seed){return normalize(Object.assign(empty(seed),seed||{}));},normalize:normalize,listSync:listSync,find:find,save:save,remove:remove,updateStatus:updateStatus,addEmotion:addEmotion,findBySource:findBySource,addScreenshots:addScreenshots,screenshotUrl:screenshotUrl,settings:settings,saveSettings:saveSettings,detectSession:detectSession,filter:filter,analytics:analytics,maxImageBytes:MAX_IMAGE_BYTES,psychologyDataset:function(){return listSync().filter(function(x){return x.status==='closed';});}};
+  window.TradeJournalTradeStore={settingsKey:SETTINGS_KEY,uid:uid,now:now,createDraft:function(seed){return normalize(Object.assign(empty(seed),seed||{}));},normalize:normalize,listSync:listSync,find:find,save:save,remove:remove,updateStatus:updateStatus,addEmotion:addEmotion,findBySource:findBySource,addScreenshots:addScreenshots,screenshotUrl:screenshotUrl,settings:settings,saveSettings:saveSettings,detectSession:detectSession,filter:filter,analytics:analytics,maxImageBytes:MAX_IMAGE_BYTES,psychologyDataset:function(){return listSync().filter(function(x){return x.status==='closed';});}};
 }());

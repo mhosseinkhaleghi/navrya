@@ -141,15 +141,19 @@ test('all character pages load account profile modules in dependency order, link
 
 test('trade store preserves hunting to open to emotion to closed lifecycle', async () => {
   const localStorage = memoryStorage();
+  localStorage.setItem('tradejournal:auth-token', 'test-user');
   const events = [];
   const sandbox = {
     window: {}, localStorage,
     document: { body: { dataset: {} } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    FileReader: class {}
+    FileReader: class {},
+    fetch: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) }
   };
-  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent: event => events.push(event), TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'engineer' } });
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent: event => events.push(event), fetch: sandbox.fetch, TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'engineer' } });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('trade-store.js'), sandbox, { filename: 'trade-store.js' });
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle first
   const store = sandbox.window.TradeJournalTradeStore;
   let trade = store.createDraft({ status: 'hunting', source: { sessionId: 'session-1', scenarioId: 'scenario-1' } });
   trade = store.save(trade);
@@ -167,14 +171,18 @@ test('trade store preserves hunting to open to emotion to closed lifecycle', asy
 
 test('trade store normalizes per-emotion intensity/tag details and clamps out-of-range input', async () => {
   const localStorage = memoryStorage();
+  localStorage.setItem('tradejournal:auth-token', 'test-user');
   const sandbox = {
     window: {}, localStorage,
     document: { body: { dataset: {} } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    FileReader: class {}
+    FileReader: class {},
+    fetch: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) }
   };
-  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'hunter' } });
+  sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, fetch: sandbox.fetch, TradeJournalTradeTypes: { timeframes: ['1m', '5m'] }, TradeJournalPanelLayer: { character: 'hunter' } });
+  vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('trade-store.js'), sandbox, { filename: 'trade-store.js' });
+  await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle first
   const store = sandbox.window.TradeJournalTradeStore;
   let trade = store.save(store.createDraft({ status: 'open' }));
   trade = store.addEmotion(trade.id, { dominantEmotions: ['afraid'], emotionDetails: [{ emotion: 'afraid', intensity: 99, tags: ['ترس از ضرر', 'ترس از لیکویید شدن'] }], note: '' });
@@ -223,16 +231,20 @@ test('a legacy pre-migration singleton left in localStorage is never adopted any
   assert.equal(localStorage.getItem('tradejournal:strategies:v2'), null, 'nothing is ever written back to localStorage any more, migrated or not');
 });
 
-test('deleting a strategy orphans linked trades without deleting them (Trade Store is not migrated in this pass, so this still reads/writes localStorage directly)', async () => {
+// Trade Store is ALSO migrated (Phase 2) - orphanLinkedTrades() was found and fixed to go through
+// the real window.TradeJournalTradeStore public API instead of reading/writing
+// tradejournal:trades:v1 directly, which no longer exists as a localStorage key (the old direct
+// version would have silently become a no-op). The real, full cross-domain proof (both stores
+// loaded together, a trade actually orphaned end to end, and pushed to the server) now lives in
+// tests/trades-sync.test.mjs instead - this helper deliberately never loads trade-store.js, so
+// what it CAN still usefully prove is the defensive half: strategy deletion must never throw or
+// get skipped just because Trade Store happens not to be loaded on this page/in this sandbox.
+test('deleting a strategy still succeeds even when window.TradeJournalTradeStore is unavailable - orphanLinkedTrades() must never block the strategy\'s own deletion', async () => {
   const localStorage = memoryStorage();
   const fetchImpl = async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ strategies: [] }) };
   const { store } = await strategyStore(localStorage, fetchImpl);
   const strategy = store.create({ name: 'London playbook' });
-  localStorage.setItem('tradejournal:trades:v1', JSON.stringify([{ id: 'trade-1', linkedStrategyId: strategy.id, status: 'open' }, { id: 'trade-2', linkedStrategyId: null, status: 'closed' }]));
   await store.remove(strategy.id);
-  const trades = JSON.parse(localStorage.getItem('tradejournal:trades:v1'));
-  assert.equal(trades.length, 2);
-  assert.equal(trades[0].linkedStrategyId, null);
   assert.equal(store.find(strategy.id), null);
 });
 

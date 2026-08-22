@@ -88,8 +88,15 @@ test('a failed save() rolls back the optimistic write', async () => {
   assert.equal(store.listSync().length, 0);
 });
 
-test('remove() DELETEs the real record and orphans any linked trades (Trade Store is not migrated in this pass, so this still reads/writes localStorage directly)', async () => {
-  const localStorage = memoryStorage({ 'tradejournal:trades:v1': JSON.stringify([{ id: 'trade-1', linkedStrategyId: 'strategy-1' }]) });
+// Trade Store is ALSO migrated (Phase 2) - orphanLinkedTrades() now goes through the real
+// window.TradeJournalTradeStore public API instead of reading/writing tradejournal:trades:v1
+// directly, which no longer exists as a localStorage key at all. The real cross-domain proof
+// (both stores loaded together, a trade actually orphaned end to end and pushed to the server)
+// lives in tests/trades-sync.test.mjs instead - loadStrategies() here deliberately never loads
+// trade-store.js, so what this test can still usefully prove is the defensive half: strategy
+// removal must succeed regardless of whether Trade Store happens to be loaded.
+test('remove() DELETEs the real record, and succeeds even when window.TradeJournalTradeStore is unavailable (orphanLinkedTrades() must never block the strategy\'s own deletion)', async () => {
+  const localStorage = memoryStorage();
   const { store } = await loadStrategies({
     localStorage, currentUserId: 'user-1',
     fetchImpl: async (url, options) => {
@@ -101,8 +108,6 @@ test('remove() DELETEs the real record and orphans any linked trades (Trade Stor
   assert.equal(store.listSync().length, 1);
   await store.remove('strategy-1');
   assert.equal(store.listSync().length, 0);
-  const trades = JSON.parse(localStorage.getItem('tradejournal:trades:v1'));
-  assert.equal(trades[0].linkedStrategyId, null, 'the linked trade must be orphaned even though Trades itself is unaffected by this migration');
 });
 
 test("addAttachments(): an image-type file uploads directly to /api/sync/strategies/images and stores fileUrl - no IndexedDB, no blobId", async () => {
