@@ -14,10 +14,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Require main to match dev
+      - name: Require main to come from dev
         run: |
           git fetch --prune origin dev
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/dev)" ]; then
-            echo "main must only be fast-forwarded from dev."
+          if ! git merge-base --is-ancestor HEAD origin/dev; then
+            echo "main must only contain a revision from dev."
             exit 1
           fi

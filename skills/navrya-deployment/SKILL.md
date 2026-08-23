@@ -11,8 +11,8 @@ GitHub Actions owns releases. Caddy is an application container, not a Git deplo
 
 | Environment | Branch | Trigger | Host configuration |
 | --- | --- | --- | --- |
-| Production | `main` | Verified `dev` promotion | `APP_HOST=app.navrya.com`, `ADMIN_HOST=admin.navrya.com` |
-| Staging | `staging` | Guarded promotion from `dev` | `APP_HOST=staging.navrya.com`, `ADMIN_HOST=admin.staging.navrya.com` |
+| Production | `main` | Explicit guarded promotion from `dev` | `APP_HOST=app.navrya.com`, `ADMIN_HOST=admin.navrya.com` |
+| Staging | `staging` | Explicit guarded promotion from `dev` | `APP_HOST=staging.navrya.com`, `ADMIN_HOST=admin.staging.navrya.com` |
 
 Use a separate staging server. It prevents port 80/443, Docker volume, database, upload, and Caddy certificate conflicts with production. Do not run both environments on one host with the current Compose file.
 
@@ -21,16 +21,17 @@ Use a separate staging server. It prevents port 80/443, Docker volume, database,
 Production:
 
 ```text
-task branch -> scripts/push-to-dev.sh -> verify dev -> main -> deploy main
+task branch -> scripts/push-to-dev.sh -> verify dev
+explicit "publish production" -> scripts/promote-dev-to-production.sh -> main -> deploy main
 ```
 
 Staging:
 
 ```text
-verified dev -> scripts/promote-dev-to-staging.sh -> deploy staging
+explicit "publish staging" -> scripts/promote-dev-to-staging.sh -> deploy staging
 ```
 
-`staging` is a separately publishable snapshot, not a quality gate before the current automatic `dev -> main` production promotion. Changing that policy requires an explicit workflow redesign.
+`staging` and `main` are separately publishable snapshots. A `dev` push only verifies integration work. Never infer an environment release from "push to site", "deploy", or an equivalent ambiguous request: ask the user to choose `dev`, `staging`, or `production`.
 
 ## Deployment behavior
 
@@ -66,13 +67,13 @@ Create DNS A records for `staging.navrya.com` and `admin.staging.navrya.com` to 
 
 - Confirm the Actions run succeeded before reporting deployment success.
 - Run migrations through Compose only. Never run ad-hoc production SQL.
-- Never deploy a task branch directly.
+- Never deploy a task branch directly or publish an environment without the explicit user request.
 - Never use `git reset --hard` outside the workflow's scoped application checkout.
 - Do not change Caddy or restart containers manually for an ordinary release.
 
 ## References
 
 - `DEPLOYMENT.md` for server bootstrap and production secrets.
-- `.github/workflows/promote-dev.yml`, `deploy.yml`, and `deploy-staging.yml` for executable policy.
+- `.github/workflows/verify-dev.yml`, `deploy.yml`, and `deploy-staging.yml` for executable policy.
 - `docker-compose.production.yml`, `Dockerfile`, and `deploy/Caddyfile` for runtime behavior.
 - `docs/ai/realtime-deployment.md` for Voice-specific deployment constraints.

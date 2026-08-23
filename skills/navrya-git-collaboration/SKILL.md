@@ -26,13 +26,16 @@ Stop if the identity, SSH access, or worktree is wrong. Preserve unrelated local
 ## Branch model
 
 ```text
-task branch -> dev -> main -> production
+task branch -> dev
                   \
                    staging -> staging environment
+                  \
+                   main -> production
 ```
 
 - Start a task branch from current `origin/dev`: `feat/<scope>`, `fix/<scope>`, `chore/<scope>`, or `docs/<scope>`.
-- `dev` is the integration branch. `main` is production and is changed only by GitHub Actions after `dev` verification.
+- `dev` is the integration branch. Every developer and agent starts task branches from `dev` and promotes completed work back to `dev`.
+- `main` is production. It may move only from a verified `dev` revision after an explicit user request to publish production.
 - `staging` is a deploy-only snapshot of a selected `dev` commit. It can differ from production. Never develop or commit directly on it.
 - One task branch has one owner. Agents declare owned files before editing. Only the primary agent integrates, commits, and pushes.
 
@@ -73,9 +76,9 @@ When asked to push work to development, run only:
 scripts/push-to-dev.sh
 ```
 
-It rejects dirty or stale work, runs the full test/build gate, and fast-forwards `dev`. GitHub Actions then verifies `dev`, fast-forwards `main`, and deploys production.
+It rejects dirty or stale work, runs the full test/build gate, and fast-forwards `dev`. GitHub Actions then verifies `dev` only. It does not publish an environment.
 
-When asked to publish the current verified `dev` revision to staging, run only:
+Only after the explicit request "publish staging" or "push to staging", publish the current verified `dev` revision with:
 
 ```sh
 git switch dev
@@ -83,7 +86,15 @@ git pull --ff-only origin dev
 scripts/promote-dev-to-staging.sh
 ```
 
-Do not manually push a branch to `main`, SSH to a server to deploy, restart Caddy, or claim a release succeeded before its GitHub Actions run succeeds.
+Only after the explicit request "publish production" or "push to production", publish the current verified `dev` revision with:
+
+```sh
+git switch dev
+git pull --ff-only origin dev
+scripts/promote-dev-to-production.sh
+```
+
+Do not interpret "push to site", "deploy", or "push this" as a release target. Ask the user to choose `dev`, `staging`, or `production`. Do not manually push a branch to `main` or `staging`, SSH to a server to deploy, restart Caddy, or claim a release succeeded before its GitHub Actions run succeeds.
 
 ## Agent handoff
 

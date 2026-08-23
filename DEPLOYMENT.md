@@ -48,14 +48,16 @@ Add these repository Actions secrets:
 After the server bootstrap and secrets are complete, add the repository Actions variable
 `DEPLOY_ENABLED=true`. Until then, GitHub still runs tests/builds but safely skips deployment.
 
-Production starts only after the verified `dev -> main` promotion workflow. The workflow only
-replaces the checked-out application source; `.env`, PostgreSQL data, uploads, and Caddy's TLS
-state remain on server volumes.
+Production starts only when a user explicitly requests `publish production` or `push to production`.
+The release agent then runs `scripts/promote-dev-to-production.sh` from an up-to-date `dev`
+checkout. The workflow only replaces the checked-out application source; `.env`, PostgreSQL data,
+uploads, and Caddy's TLS state remain on server volumes.
 
 ## Staging
 
 Staging runs the same Docker Compose stack on a separate server from the `staging` branch. It is a
-separate deployment snapshot, not a gate before the current automatic production promotion.
+separate deployment snapshot, published only after an explicit `publish staging` or `push to
+staging` request. It is not a required gate before production.
 
 Create these DNS records for the staging server:
 
@@ -86,7 +88,7 @@ STAGING_SSH_KNOWN_HOSTS
 STAGING_DEPLOY_ENABLED=true
 ```
 
-Publish staging only through:
+Publish staging only through an explicit user request and:
 
 ```sh
 git switch dev
@@ -96,3 +98,14 @@ scripts/promote-dev-to-staging.sh
 
 The staging workflow tests, builds, migrates, and deploys `staging`. Caddy reads the two hostname
 variables from the server `.env`, so the same application image serves either environment.
+
+Publish production only through an explicit user request and:
+
+```sh
+git switch dev
+git pull --ff-only origin dev
+scripts/promote-dev-to-production.sh
+```
+
+Do not treat a general "push to site" request as permission to publish an environment. Ask whether
+the user means `dev`, `staging`, or `production`.

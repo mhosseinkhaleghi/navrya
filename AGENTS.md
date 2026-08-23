@@ -36,9 +36,11 @@ The relevant skill is the operating procedure. Implementation and focused tests 
 - Stage only task files and use small Conventional Commits.
 - Do not force-push `dev`, `staging`, or `main`.
 - Run `scripts/push-to-dev.sh` to promote a completed task. Do not manually push to `dev`.
-- GitHub Actions alone fast-forwards `main` from verified `dev` and deploys production.
-- Run `scripts/promote-dev-to-staging.sh` only to publish a selected verified `dev` commit to staging.
-- A request to “push to site” means: complete the task-branch commit, run `scripts/push-to-dev.sh`, wait for the GitHub Actions deployment, and report its result. It never means a direct `main` push or server SSH deployment.
+- A `dev` push runs verification only. It never publishes staging or production.
+- Run `scripts/promote-dev-to-staging.sh` only after the explicit request "publish staging" or "push to staging".
+- Run `scripts/promote-dev-to-production.sh` only after the explicit request "publish production" or "push to production".
+- Do not infer a production release from "push to site", "deploy", or "push this". Ask the user to choose `dev`, `staging`, or `production`.
+- Never manually push to `staging` or `main`, SSH to deploy, or restart Caddy. The guarded promotion scripts are the only release path.
 
 ## Collaboration
 
