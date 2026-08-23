@@ -2,10 +2,11 @@
 // market clocks, settings gear, level ring) and the old static Sessions toolbar/cards
 // (#newSession, .search-box, .star, .view-toggle) no longer exist in the DOM - all of that
 // logic moved into navrya-hunter-sessions-app.js. What's kept here is only what every OTHER
-// (still-legacy) tab on this page depends on: the toast element, and document.documentElement's
+// (still-legacy) tab on this page depends on: the toast element. document.documentElement's
 // lang/dir bootstrap (several modules - session-library's successor, psychology-store,
 // account-profile-i18n, mental-health-i18n - read document.documentElement.lang directly or via
-// a MutationObserver, so this must still run before those scripts do).
+// a MutationObserver) moved to boot-language-gate.js, the very first script on the page - see
+// its own comment below and in that file.
 const toast = document.querySelector('.toast');
 let toastTimer;
 
@@ -18,13 +19,11 @@ function showToast(message) {
 }
 window.TradeJournalShowToast = showToast;
 
-// Unified with the select (login) page's own key - a language chosen at login must carry
-// through into every character dashboard instead of each one defaulting to Persian on its own.
-// The old per-character key is kept only as a fallback for a browser that set it before this
-// fix shipped; the unified key then becomes canonical going forward.
-const savedLanguage = localStorage.getItem('tradejournal-language') || localStorage.getItem('hunter-language') || 'fa';
-localStorage.setItem('tradejournal-language', savedLanguage);
-document.documentElement.lang = savedLanguage;
-document.documentElement.dir = savedLanguage === 'fa' || savedLanguage === 'ar' ? 'rtl' : 'ltr';
+// Phase 8e of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section): lang/dir are now set by boot-language-gate.js, the very first script on
+// this page (before this file even loads) - it reads the real server-stored preference and
+// reveals the page only once known, instead of this file synchronously reading localStorage.
+// No code here needs the value directly; every later reader already reads
+// document.documentElement.lang/dir off the DOM, already set correctly by the time this runs.
 
 window.TradeJournalPanelCharacter = 'hunter';

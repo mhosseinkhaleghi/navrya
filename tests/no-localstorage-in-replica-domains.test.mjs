@@ -133,3 +133,14 @@ test('dashboardView.jsx and settingsView.jsx (the real dashboard-board persisten
   const settingsCalls = await storageCallsInNavryaSrc('settingsView.jsx');
   assert.equal(settingsCalls.length, 0, JSON.stringify(settingsCalls));
 });
+
+test("boot-language-gate.js's only storage call is the documented tradejournal:auth-token read (Phase 8e) - see tests/boot-language-gate.test.mjs for the full dynamic coverage of this file", async () => {
+  const calls = await storageCalls('boot-language-gate.js');
+  assert.equal(calls.length, 1, JSON.stringify(calls));
+  assert.match(calls[0].text, /localStorage\.getItem\('tradejournal:auth-token'\)/);
+});
+
+test("navrya-src/store.js has zero localStorage/sessionStorage/indexedDB calls - setLanguage() reads/writes window.TradeJournalUserPreferences now (Phase 8e)", async () => {
+  const calls = await storageCallsInNavryaSrc('store.js');
+  assert.equal(calls.length, 0, JSON.stringify(calls));
+});

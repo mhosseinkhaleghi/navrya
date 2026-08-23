@@ -1962,6 +1962,12 @@ export function mountCharacterApp(character) {
     const replicaReady = window.TradeJournalServerReplica ? window.TradeJournalServerReplica.allReady() : Promise.resolve();
     Promise.all([sessionsAdapter.resetOnce(), replicaReady]).finally(() => {
       const failed = window.TradeJournalServerReplica ? window.TradeJournalServerReplica.failedDomains() : [];
+      // Phase 8e: boot-language-gate.js (the very first script on this page, before this bundle
+      // even loads) surfaces its own hydration failure through this flag rather than a
+      // failedDomains() entry, since it runs before server-replica.js's 'preferences' domain is
+      // even registered - checked here so that failure is never silently shown as "everything is
+      // fine" just because the gate itself has no error UI of its own to render.
+      if (window.__TJ_LANGUAGE_HYDRATE_FAILED__) failed.push('language');
       if (failed.length) {
         const lang = String(document.documentElement.lang || 'en').toLowerCase();
         const copy = {
