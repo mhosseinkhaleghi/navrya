@@ -7,6 +7,16 @@
 // server-replica.js's own file header for the write/rollback contract.
 export const RESET_KEY = 'tradejournal:session-library-empty-reset:v1';
 
+// NewSessionDialog.jsx's own LOOP_INTERVALS - `loop` arrives here as one of these human-readable
+// labels (its <Select>'s value), never a bare number of minutes. Falls back to trying a plain
+// numeric string (e.g. if a future caller ever passes minutes directly) before giving up.
+const LOOP_LABEL_TO_MINUTES = { '15 min': 15, '30 min': 30, '1 hour': 60, '4 hours': 240 };
+function loopMinutesFrom(loop) {
+  if (Object.prototype.hasOwnProperty.call(LOOP_LABEL_TO_MINUTES, loop)) return LOOP_LABEL_TO_MINUTES[loop];
+  const n = Number(loop);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function domain() { return window.TradeJournalServerReplica && window.TradeJournalServerReplica.domain('sessions'); }
 
 // `character` is still accepted by the functions below (existing callers keep passing it) but
@@ -124,8 +134,17 @@ export async function loadThumbnail(session) {
 // (id, name, market, timeframe, date, gregorianDate, jalali, status, startedAt, createdAt,
 // entries) - through the same replica domain, so it appears identically for every other piece of
 // code that reads sessions (the workspace view, session-signature backfill, etc).
+//
+// updateIntervalMinutes/gracePeriodMinutes (`values.loop`/`values.grace` - collected by
+// NewSessionDialog.jsx's own fields, fillable by AI action session.create too, per
+// docs/ai/action-coverage-matrix.md's optionalFields list) were previously silently dropped here:
+// the object literal below never included them at all, so whatever the user picked in the dialog
+// (or the AI extracted from speech/text) never reached the server - every session silently fell
+// back to the DB layer's own hardcoded defaults (30/5, see repo.pg.mjs/repo.memory.mjs) instead.
 export async function createSession(character, values) {
   const now = Date.now();
+  const loopMinutes = loopMinutesFrom(values.loop);
+  const graceMinutes = Number(values.grace);
   // Real images (from NewSessionDialog's uploads, if any) are persisted the same way every
   // other chart upload in this app already is - TradeJournalImageStore (IndexedDB), with the
   // resulting imageBlobId stored on the entry - never a blob: URL saved directly into the
@@ -162,6 +181,8 @@ export async function createSession(character, values) {
     gregorianDate: values.gregorian,
     jalali: values.jalali,
     status: 'open',
+    ...(loopMinutes ? { updateIntervalMinutes: loopMinutes } : {}),
+    ...(Number.isFinite(graceMinutes) && graceMinutes >= 0 ? { gracePeriodMinutes: graceMinutes } : {}),
     startedAt: now,
     createdAt: now,
     entries
