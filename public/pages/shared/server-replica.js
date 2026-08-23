@@ -26,8 +26,16 @@
   var listDomains = {};
   var documentDomains = {};
 
-  function authToken() {
-    try { return localStorage.getItem('tradejournal:auth-token') || ''; } catch (_) { return ''; }
+  // Cookie-based sessions (ADR-0001) mean there is no client-readable credential to attach as a
+  // header any more - the browser sends the HttpOnly session cookie automatically on every
+  // same-origin request, and csrf-fetch-patch.js attaches the CSRF header for unsafe methods.
+  // This function keeps its old name/shape (a truthy/falsy "is there a current user" gate) so
+  // every call site below needs only a rename, not a rewrite: hydrate()/upsert()/remove() all
+  // still check "do we have an authenticated user before attempting this network call", they
+  // just no longer need to build a header from the answer.
+  function hasCurrentUser() {
+    var auth = window.__NAVRYA_AUTH__;
+    return Boolean(auth && auth.authenticated);
   }
 
   function notify(type, detail) {
@@ -96,15 +104,14 @@
 
     function hydrate() {
       if (state.hydratePromise) return state.hydratePromise;
-      var token = authToken();
-      if (!token) {
+      if (!hasCurrentUser()) {
         // No authenticated user yet - never treat this as "the account is empty." Hydration
         // simply has not run; isHydrated() stays false so a boot gate keeps waiting rather than
         // rendering a false-empty account.
         state.hydratePromise = Promise.resolve();
         return state.hydratePromise;
       }
-      state.hydratePromise = requestJson(config.hydrateUrl, { headers: { 'x-dev-user-id': token } })
+      state.hydratePromise = requestJson(config.hydrateUrl)
         .then(function (body) { setAllLocal((extractList(body) || []).map(deepClone)); state.hydrated = true; state.hydrationError = null; })
         .catch(function (error) { state.hydrated = true; state.hydrationError = error; });
       return state.hydratePromise;
@@ -139,7 +146,6 @@
       setAllLocal(nextItems); // synchronous optimistic apply
 
       return afterPending(item.id, function () {
-        var token = authToken();
         // Captured only once any earlier write to this same id has already settled - see the
         // block comment above for why this timing is what makes rollback below safe.
         var current = state.items.slice();
@@ -154,9 +160,9 @@
           setAllLocal(latest);
         }
 
-        if (!token) { rollback(); toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
+        if (!hasCurrentUser()) { rollback(); toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
         return requestJson(config.writeUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': token }, body: JSON.stringify(item)
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item)
         }).then(function (saved) {
           var latest = state.items.slice();
           var j = latest.findIndex(function (existing) { return existing.id === applied.id; });
@@ -181,7 +187,6 @@
       setAllLocal(state.items.filter(function (item) { return item.id !== id; })); // synchronous optimistic apply
 
       return afterPending(id, function () {
-        var token = authToken();
         function restoreIfStillAbsent() {
           if (removedNow === undefined) return;
           var current = state.items.slice();
@@ -189,8 +194,8 @@
           current.unshift(removedNow);
           setAllLocal(current);
         }
-        if (!token) { restoreIfStillAbsent(); toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
-        return requestJson(config.deleteUrlFor(id), { method: 'DELETE', headers: { 'x-dev-user-id': token } })
+        if (!hasCurrentUser()) { restoreIfStillAbsent(); toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
+        return requestJson(config.deleteUrlFor(id), { method: 'DELETE' })
           .catch(function (error) {
             if (error && error.status === 404) return; // already gone server-side - the local removal stands
             restoreIfStillAbsent();
@@ -229,9 +234,8 @@
 
     function hydrate() {
       if (state.hydratePromise) return state.hydratePromise;
-      var token = authToken();
-      if (!token) { state.hydratePromise = Promise.resolve(); return state.hydratePromise; }
-      state.hydratePromise = requestJson(config.hydrateUrl, { headers: { 'x-dev-user-id': token } })
+      if (!hasCurrentUser()) { state.hydratePromise = Promise.resolve(); return state.hydratePromise; }
+      state.hydratePromise = requestJson(config.hydrateUrl)
         .then(function (body) { setLocal(deepClone(extractDoc(body))); state.hydrated = true; state.hydrationError = null; })
         .catch(function (error) { state.hydrated = true; state.hydrationError = error; });
       return state.hydratePromise;
@@ -245,14 +249,13 @@
     // value is this call's own true previous value, deep-cloned so later local mutation can't
     // corrupt it retroactively.
     function set(doc) {
-      var token = authToken();
       var applied = deepClone(doc);
       var previous = state.doc;
       setLocal(applied);
       function rollback() { if (state.doc === applied) setLocal(previous); }
-      if (!token) { rollback(); toastSaveFailed(); return Promise.reject(new Error('NO_CURRENT_USER')); }
+      if (!hasCurrentUser()) { rollback(); toastSaveFailed(); return Promise.reject(new Error('NO_CURRENT_USER')); }
       return requestJson(config.writeUrl, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': token }, body: JSON.stringify(doc)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc)
       }).then(function (body) {
         var reconciled = deepClone(extractSaved(body)) || applied;
         if (state.doc === applied) setLocal(reconciled);

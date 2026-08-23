@@ -22,11 +22,14 @@ function flush() { return new Promise((resolve) => setImmediate(resolve)); }
 // each test below supplies its own fetch implementation via a fresh sandbox instead of mutating
 // a shared one, so tests never interfere with each other's in-flight per-record queues.
 async function loadDomainWithFetch({ localStorage, token, fetchImpl, kind }) {
-  if (token) localStorage.setItem('tradejournal:auth-token', token);
+  // Cookie-based sessions (ADR-0001): server-replica.js's hasCurrentUser() gate now reads
+  // window.__NAVRYA_AUTH__ (set once by boot-language-gate.js's real session check) instead of a
+  // localStorage credential - seed that directly rather than a fake auth-token value.
+  const authState = token ? { authenticated: true, userId: token, user: { id: token }, csrfToken: 'test-csrf' } : { authenticated: false, userId: null, user: null, csrfToken: null };
   const fetchCalls = [];
   const fetchFn = async (url, options) => { fetchCalls.push([url, options]); return fetchImpl(url, options); };
   const sandbox = {
-    window: {}, localStorage, fetch: fetchFn,
+    window: { __NAVRYA_AUTH__: authState }, localStorage, fetch: fetchFn,
     document: { body: { appendChild() {} }, documentElement: { lang: 'en' }, createElement: () => ({ setAttribute() {} }) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
   };
@@ -162,7 +165,7 @@ test('document domain: set() applies optimistically, rolls back on failure, and 
   assert.equal(JSON.stringify(domain.get()), JSON.stringify({ intake: { completed: true } }));
   await flush();
   assert.equal(domain.get(), null, 'a failed write must roll back to the last known-good document');
-  assert.equal(localStorage.length, 1, 'only the auth-token seed exists - the document itself is never written to localStorage');
+  assert.equal(localStorage.length, 0, 'the document itself is never written to localStorage - identity now lives in window.__NAVRYA_AUTH__, not a stored credential');
 });
 
 test('document domain: mutating the object after set() does not retroactively change what was stored', async () => {
@@ -174,9 +177,9 @@ test('document domain: mutating the object after set() does not retroactively ch
 });
 
 test('document domain: extractSaved lets a registration unwrap a POST response that wraps the saved document (e.g. routes.companion.mjs\'s {state: saved}, unlike routes.mental-health.mjs\'s own unwrapped shape)', async () => {
-  const localStorage = memoryStorage({ 'tradejournal:auth-token': 'user-1' });
+  const localStorage = memoryStorage();
   const sandbox = {
-    window: {}, localStorage,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'user-1', user: { id: 'user-1' }, csrfToken: 'test-csrf' } }, localStorage,
     fetch: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) },
     document: { body: { appendChild() {} }, documentElement: { lang: 'en' }, createElement: () => ({ setAttribute() {} }) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
@@ -201,5 +204,5 @@ test('no localStorage key is ever written by this module for any domain, in any 
   await domain.hydrate();
   domain.upsert({ id: 'y', name: 'y' });
   await flush();
-  assert.equal(localStorage.length, 1, 'only the auth-token seed this test itself planted exists - server-replica.js never calls localStorage.setItem');
+  assert.equal(localStorage.length, 0, 'server-replica.js never calls localStorage.setItem for any domain - identity lives in window.__NAVRYA_AUTH__ now, not a stored credential');
 });

@@ -44,10 +44,9 @@ async function storageCallsAt(fullPath) {
 async function storageCalls(file) { return storageCallsAt(shared(file)); }
 async function storageCallsInNavryaSrc(file) { return storageCallsAt(navryaSrc(file)); }
 
-test('server-replica.js never calls localStorage/sessionStorage/indexedDB except the one documented credential read - that is the entire point of this module', async () => {
+test('server-replica.js never calls localStorage/sessionStorage/indexedDB at all - identity now comes from window.__NAVRYA_AUTH__ (ADR-0001 cookie-based sessions), not a stored credential', async () => {
   const calls = await storageCalls('server-replica.js');
-  assert.equal(calls.length, 1, 'exactly one storage call is expected: reading the auth token to attach as the request header');
-  assert.match(calls[0].text, /localStorage\.getItem\('tradejournal:auth-token'\)/, 'the one permitted call must be reading the credential, nothing else');
+  assert.equal(calls.length, 0, JSON.stringify(calls));
 });
 
 test('pattern-registry-store.js has zero localStorage/sessionStorage/indexedDB calls - Sessions migrated in Phase 3, so even its old cross-domain scenario-usage scan of raw sessions data is gone (reads window.TradeJournalWorkspace.list() now, see trading-sessions-sync.test.mjs)', async () => {
@@ -134,10 +133,12 @@ test('dashboardView.jsx and settingsView.jsx (the real dashboard-board persisten
   assert.equal(settingsCalls.length, 0, JSON.stringify(settingsCalls));
 });
 
-test("boot-language-gate.js's only storage call is the documented tradejournal:auth-token read (Phase 8e) - see tests/boot-language-gate.test.mjs for the full dynamic coverage of this file", async () => {
+test("boot-language-gate.js no longer reads any credential from localStorage at all (ADR-0001 - identity comes from a real GET /api/auth/session response, not a stored token); its only remaining storage calls are the owner-mismatch purge mechanism it duplicates from user-scope-guard.js - see tests/boot-language-gate.test.mjs for the full dynamic coverage of this file", async () => {
   const calls = await storageCalls('boot-language-gate.js');
-  assert.equal(calls.length, 1, JSON.stringify(calls));
-  assert.match(calls[0].text, /localStorage\.getItem\('tradejournal:auth-token'\)/);
+  assert.ok(calls.length > 0, 'the purge mechanism itself still uses localStorage - if this ever hits zero, tighten this test');
+  calls.forEach((call) => {
+    assert.doesNotMatch(call.text, /auth-token/, `unexpected credential read in boot-language-gate.js:${call.line} - ${call.text}`);
+  });
 });
 
 test("navrya-src/store.js has zero localStorage/sessionStorage/indexedDB calls - setLanguage() reads/writes window.TradeJournalUserPreferences now (Phase 8e)", async () => {

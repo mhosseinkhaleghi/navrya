@@ -90,6 +90,9 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
   sandbox.window = Object.assign(sandbox.window, {
     document, localStorage: sandbox.localStorage, setTimeout: sandbox.setTimeout, setInterval: sandbox.setInterval, clearInterval: sandbox.clearInterval,
     requestAnimationFrame: (fn) => fn(),
+    // A real, non-file: origin - exercises the same targetOrigin branch a real https deployment
+    // takes (ADR-0001's postMessage hardening), not the file:// '*' exception.
+    location: { protocol: 'https:', origin: 'https://app.navrya.com' },
     parent: { postMessage() {} },
     TradeJournalDevUserSwitcher: {
       register: async () => ({ id: 'stub-id', displayName: 'Stub' }),
@@ -107,7 +110,7 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
       ...byId, langButtons, characterCards,
       hunterCard: characters.hunter.card, hunterSelect: characters.hunter.selectButton,
       engineerCard: characters.engineer.card, engineerSelect: characters.engineer.selectButton,
-      postMessages: []
+      postMessages: [], postMessageTargetOrigins: []
     }
   };
 }
@@ -118,7 +121,7 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
 // realm.
 async function load(localStorage, overridesFactory, isStoredUserValidImpl) {
   const { sandbox, els } = buildSandbox(localStorage, isStoredUserValidImpl);
-  sandbox.window.parent.postMessage = (message) => els.postMessages.push(message);
+  sandbox.window.parent.postMessage = (message, targetOrigin) => { els.postMessages.push(message); els.postMessageTargetOrigins.push(targetOrigin); };
   const context = vm.createContext(sandbox);
   if (overridesFactory) {
     const SandboxTypeError = vm.runInContext('TypeError', context);
@@ -249,6 +252,7 @@ test('clicking Enter after picking a character posts tradejournal:character-sele
   assert.equal(els.postMessages.length, 1);
   assert.equal(els.postMessages[0].type, 'tradejournal:character-selected');
   assert.equal(els.postMessages[0].character, 'engineer');
+  assert.equal(els.postMessageTargetOrigins[0], 'https://app.navrya.com', 'the real parent origin must be targeted explicitly, never the literal wildcard \'*\'');
 });
 
 test('Enter does nothing while no character is picked', async () => {
