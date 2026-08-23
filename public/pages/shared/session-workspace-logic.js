@@ -75,9 +75,26 @@
       if (localStorage.getItem(flagKey)) return;
       let legacyLocal;
       try { legacyLocal = JSON.parse(localStorage.getItem(key)) || []; } catch (_) { legacyLocal = []; }
-      legacyLocal.forEach(function (session) { domain.upsert(session).catch(function () {}); });
-      localStorage.setItem(flagKey, new Date().toISOString());
-      localStorage.removeItem(key);
+      if (!legacyLocal.length) { localStorage.setItem(flagKey, new Date().toISOString()); localStorage.removeItem(key); return; }
+      // HOTFIX: waits for every upsert to actually settle before touching localStorage, and only
+      // clears/flags-done what genuinely synced. The old code fired every upsert fire-and-forget
+      // (`.catch(function(){})`), then unconditionally set the "never run again" flag and deleted
+      // `key` right away regardless of whether any upsert had actually succeeded yet - a session
+      // whose upsert genuinely failed (a real server rejection, or a transient network blip) was
+      // then gone from BOTH localStorage (deleted) AND the server (server-replica.js's own
+      // upsert() rolls back a failed write), a silent, permanent data loss with the migration
+      // never retrying it. A session that still fails to sync is kept in `key` for the next load
+      // to retry (upsert-by-id is idempotent, so retrying an already-succeeded one alongside it
+      // would also be harmless, but keeping only the real stragglers is cleaner); the flag is only
+      // set once every legacy session has actually reached the server.
+      Promise.all(legacyLocal.map(function (session) {
+        return domain.upsert(session).then(function () { return true; }).catch(function () { return false; });
+      })).then(function (results) {
+        const stillLocal = legacyLocal.filter(function (_, index) { return !results[index]; });
+        if (stillLocal.length) { localStorage.setItem(key, JSON.stringify(stillLocal)); return; }
+        localStorage.setItem(flagKey, new Date().toISOString());
+        localStorage.removeItem(key);
+      });
     }
 
     // Deferred to the next tick (this project's existing convention for "run once every script
