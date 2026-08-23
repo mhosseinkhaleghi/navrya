@@ -55,7 +55,7 @@ test('deliverCompanionOpening() is triggered from exactly one place: the CONNECT
 });
 
 test('no duplicate opening: openingDeliveredForConnectionRef guards a second call within the same connection, and is reset back to false on IDLE/ERROR so a genuinely NEW connect() gets a fresh opening', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession'));
+  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('voiceRef.current = createVoiceSession({'));
   assert.match(fn, /if \(openingDeliveredForConnectionRef\.current\) return;/);
   assert.match(fn, /openingDeliveredForConnectionRef\.current = true;/);
   const effect = dockViewSource.slice(dockViewSource.indexOf('const previousVoiceStateRef'), dockViewSource.indexOf('function toggleVoice()'));
@@ -82,7 +82,7 @@ test('the render gate lets the CompanionCard show DURING companionOpeningActive 
 });
 
 test('for the fresh-welcome opening specifically, the visual card is captured BEFORE voiceOpening() marks the walkthrough seen, so the real Start/What is NAVRYA?/Later card still shows synchronized with the spoken greeting', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession'));
+  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('voiceRef.current = createVoiceSession({'));
   const preOpeningIndex = fn.indexOf('var preOpeningCard = orchestrator.currentCard();');
   const voiceOpeningIndex = fn.indexOf('var opening = orchestrator.voiceOpening();');
   assert.ok(preOpeningIndex > -1 && voiceOpeningIndex > -1 && preOpeningIndex < voiceOpeningIndex, 'currentCard() must be captured before voiceOpening() runs (and may mark the walkthrough seen)');
@@ -91,9 +91,16 @@ test('for the fresh-welcome opening specifically, the visual card is captured BE
 
 // --- Item 8: interruption reuses the EXISTING barge-in path - no second interruption system ---
 
-test('the Voice Companion opening is delivered via the exact same speak() call every other spoken reply already uses, so it is interruptible by the SAME existing barge-in handling - no new interruption code was added anywhere', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession'));
-  assert.match(fn, /voiceRef\.current\.speak\(toSpeak\)/);
+// Voice Mode performance pass: the opening's speech now goes through
+// playbackControllerRef.current.enqueue() (the same call every real turn's reply uses) instead of
+// a direct, awaited voiceRef.current.speak() - PlaybackController is what actually calls speak()
+// internally (see ai-voice-playback-controller.js). aiVoiceRealtime.js's own barge-in handling is
+// unchanged either way - it interrupts ANY ASSISTANT_SPEAKING playback regardless of what
+// initiated it.
+test('the Voice Companion opening is delivered via the exact same PlaybackController every real turn\'s reply already speaks through, so it is interruptible by the SAME existing barge-in handling - no new interruption code was added anywhere', () => {
+  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('voiceRef.current = createVoiceSession({'));
+  assert.match(fn, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ kind: 'companion-opening' \}\)/);
+  assert.doesNotMatch(fn, /voiceRef\.current\.speak\(/, 'deliverCompanionOpening() must never call speak() directly - only through PlaybackController, like every other reply');
   // aiVoiceRealtime.js's own barge-in handling (TRANSPORT_SPEECH_STARTED -> interrupt() while
   // ASSISTANT_SPEAKING) is untouched - it already covers ANY ASSISTANT_SPEAKING playback, this
   // opening included, since speak() sets that exact state for every call, not a special one.
@@ -101,9 +108,15 @@ test('the Voice Companion opening is delivered via the exact same speak() call e
   assert.doesNotMatch(voiceRealtimeSource, /companion|opening/i, 'aiVoiceRealtime.js stays a pure, Companion-unaware transport - no business rules were added to it');
 });
 
-test('the opening is routed through the SAME voiceTurnQueue every real voice turn already serializes through, so a barge-in mid-opening can never overlap a second speak() call', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession'));
-  assert.match(fn, /voiceTurnQueue\.current = voiceTurnQueue\.current\.catch\(\(\) => \{\}\)\.then\(/);
+// Voice Mode performance pass: PlaybackController's own internal one-at-a-time queue (see
+// tests/ai-voice-playback-controller.test.mjs) is what now guarantees the opening's speech and any
+// later real turn's reply never overlap - both are enqueue()'d onto the SAME controller instance,
+// so PlaybackController's own serialization (never voiceTurnQueue, which no longer exists) is what
+// prevents a barge-in-triggered second speak() call from overlapping this one.
+test('the opening is routed through the SAME PlaybackController every real voice turn already serializes speech through, so a barge-in mid-opening can never overlap a second speak() call', () => {
+  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('voiceRef.current = createVoiceSession({'));
+  assert.match(fn, /playbackControllerRef\.current\.enqueue\(/);
+  assert.doesNotMatch(dockViewSource, /voiceTurnQueue\.current/, 'the old coupled queue variable must be fully removed (a historical mention in a comment explaining the redesign is fine, an actual live reference is not)');
 });
 
 // --- Item 10: exactly one turn is ever treated as a reply to a Companion opening ---
@@ -111,14 +124,14 @@ test('the opening is routed through the SAME voiceTurnQueue every real voice tur
 test('awaitingCompanionOpeningReplyRef is set true only inside deliverCompanionOpening, and is read-and-cleared exactly once at the top of onVoiceTranscript - so only the ONE next transcript is ever special', () => {
   const setCalls = dockViewSource.match(/awaitingCompanionOpeningReplyRef\.current = true;/g) || [];
   assert.equal(setCalls.length, 1);
-  const onVoiceTranscriptBody = dockViewSource.slice(dockViewSource.indexOf('function onVoiceTranscript(transcriptText)'), dockViewSource.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession'));
+  const onVoiceTranscriptBody = dockViewSource.slice(dockViewSource.indexOf('function onVoiceTranscript(transcriptText)'), dockViewSource.indexOf('voiceRef.current = createVoiceSession({'));
   assert.match(onVoiceTranscriptBody, /const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef\.current;\s*\n\s*awaitingCompanionOpeningReplyRef\.current = false;/);
 });
 
 // --- Item 16: safety priority ---
 
 test('Therapist Mode suppresses the proactive Voice Companion opening entirely - checked before the orchestrator is ever consulted', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession'));
+  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('voiceRef.current = createVoiceSession({'));
   const therapistCheckIndex = fn.indexOf('if (therapistMode) return;');
   const orchestratorReadIndex = fn.indexOf('window.TradeJournalAICompanionOrchestrator');
   assert.ok(therapistCheckIndex > -1 && orchestratorReadIndex > -1 && therapistCheckIndex < orchestratorReadIndex, 'Therapist Mode must be checked BEFORE the orchestrator is ever consulted');

@@ -36,8 +36,8 @@ test('speak() always sends an explicit instructions override through requestResp
   assert.doesNotMatch(source, /session\.sendMessage\(/, 'sendMessage() would inject a fake user turn and let the model reason about its own reply - speak() must never use it');
 });
 
-test('the mic stream is only requested via getUserMedia at connect() time (no auto-enable on load), and disconnect() always stops its tracks', () => {
-  const connectIndex = source.indexOf('async function connect()');
+test('the mic stream is only requested via getUserMedia at connect() time (no auto-enable on load), and teardown always stops its tracks', () => {
+  const connectIndex = source.indexOf('async function connect(connectOptions)');
   const getUserMediaIndex = source.indexOf('getUserMedia');
   assert.ok(connectIndex > -1 && getUserMediaIndex > connectIndex, 'getUserMedia must only be requested inside connect(), never at module load');
   assert.match(source, /mediaStream\.getTracks\(\)\.forEach\(function \(track\) \{ track\.stop\(\); \}\)/);
@@ -87,30 +87,39 @@ test('the barge-in handler reuses the public, guarded interrupt() rather than ca
 
 const dockViewSource = await readFile(path.join(process.cwd(), 'navrya-src', 'chatDockView.jsx'), 'utf8');
 
+// Voice Mode performance pass: onVoiceTranscript no longer calls submitRef.current() (or
+// voiceRef.current.speak()) directly - it hands the transcript to TurnCoordinator
+// (ai-voice-turn-coordinator.js), whose own `submit` option (set up once, in the mount effect) is
+// what actually calls submitRef.current(text, {source:'voice', awaitingCompanionOpeningReply}).
+// Still the exact same real submit()/core.sendChat() call, one hop further away - see
+// tests/ai-voice-turn-coordinator.test.mjs for TurnCoordinator's own sequencing behavior.
 test('a voice-originated turn goes through the exact same submit()/core.sendChat() path a typed message uses - no parallel voice-only conversation logic', () => {
-  // {0,600}, not {0,200}: the latency pass (docs/ai/latency-architecture.md) added a
-  // transcript-to-reply timing stamp between the function opening and the real submitRef.current()
-  // call this test cares about - still the same single real call, just a few lines further down.
-  // Journey G UX correction: submitRef.current()'s options now also carry
-  // awaitingCompanionOpeningReply (read-and-cleared from a ref right above this same call) - still
-  // the one real submit() call, an additive field, never a second/parallel path.
-  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}submitRef\.current\(transcriptText, \{ source: 'voice', awaitingCompanionOpeningReply: wasAwaitingCompanionOpeningReply \}\)/);
+  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}turnCoordinatorRef\.current\.handleFinalTranscript\(transcriptText, \{/);
   assert.match(dockViewSource, /onFinalTranscript:\s*onVoiceTranscript/);
+  assert.match(dockViewSource, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/);
 });
 
 // Found via real E1 multi-turn browser testing: two finalized transcripts arriving close
 // together each independently raced core.sendChat()'s own read of workflow/activeProcess state,
 // producing duplicate session.create action turns instead of the second one filling the form the
-// first had just opened.
-test('voice turns are serialized through a queue - never processed concurrently ("one utterance -> one Copilot turn")', () => {
-  assert.match(dockViewSource, /const voiceTurnQueue = React\.useRef\(Promise\.resolve\(\)\)/);
-  assert.match(dockViewSource, /voiceTurnQueue\.current = voiceTurnQueue\.current[\s\S]{0,40}\.then\(/);
+// first had just opened. TurnCoordinator (ai-voice-turn-coordinator.js) is what serializes
+// submit() calls now - chatDockView.jsx's own job is just wiring onVoiceTranscript to it.
+test('voice turns are serialized through TurnCoordinator - never processed concurrently ("one utterance -> one Copilot turn")', () => {
+  assert.match(dockViewSource, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
+  assert.match(dockViewSource, /return turnCoordinatorRef\.current\.handleFinalTranscript\(/);
 });
 
-test('speak() is only ever called with what NAVRYA\'s own deterministic turn produced (voiceReply/reply from the submit() result, then the Persian Voice Quality gate\'s own deterministic ai-voice-text.js post-processing - see ai-voice-chatdock-ux.test.mjs), never anything the Realtime model decided on its own, and is awaited so the queue waits for it to actually finish', () => {
+// Voice Mode performance pass: speak() is no longer called (or awaited) directly by
+// chatDockView.jsx at all - the post-processed text is handed to
+// PlaybackControllerRef.current.enqueue(), fire-and-forget (never awaited), which is what
+// actually calls voiceRef.current.speak() internally (see ai-voice-playback-controller.js and its
+// own tests). The "await the queue" guarantee this test used to check is deliberately GONE - the
+// whole point of this pass was to stop a slow-to-speak reply from blocking the next turn.
+test('the text handed to PlaybackController is only ever what NAVRYA\'s own deterministic turn produced (voiceReply/reply from the submit() result, then the Persian Voice Quality gate\'s own deterministic ai-voice-text.js post-processing - see ai-voice-chatdock-ux.test.mjs), never anything the Realtime model decided on its own, and is never awaited (playback must never block the next turn)', () => {
   assert.match(dockViewSource, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\)/);
   assert.match(dockViewSource, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
-  assert.match(dockViewSource, /await voiceRef\.current\.speak\(toSpeak\)/);
+  assert.match(dockViewSource, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch \}\);/);
+  assert.doesNotMatch(dockViewSource, /await playbackControllerRef\.current\.enqueue/, 'enqueue() must never be awaited - that would recreate the exact coupling this pass removes');
 });
 
 // Found via real E1 multi-turn browser testing: speak() used to return immediately after sending
@@ -143,12 +152,16 @@ test("speak()'s settle listeners include 'audio_interrupted', not only 'audio_st
 // audio_stopped/audio_interrupted/error - so a speak() in flight when the user leaves Voice Mode,
 // or a reconnect calls disconnect(), previously had nothing left to ever settle it and sat
 // blocking the queue for the full 12s fallback regardless of how quickly disconnect() itself ran.
-test('disconnect() explicitly settles a pending speak() promise rather than relying on a session event close() never actually emits', () => {
+// Voice Mode performance pass: this cleanup moved into the shared teardownTransport() helper
+// (also used by the reconnect path) - disconnect() itself now just calls that helper.
+test('disconnect() (via teardownTransport()) explicitly settles a pending speak() promise rather than relying on a session event close() never actually emits', () => {
   assert.match(source, /var pendingSpeakSettle = null;/);
   assert.match(source, /pendingSpeakSettle = settle;/);
-  const disconnectBody = source.slice(source.indexOf('function disconnect()'), source.indexOf('function mute('));
-  assert.match(disconnectBody, /if \(pendingSpeakSettle\)/, 'disconnect() must check for and settle a pending speak() promise');
-  assert.match(disconnectBody, /pendingSpeakSettle = null/);
+  const disconnectBody = source.slice(source.indexOf('function disconnect()'), source.indexOf('// Orthogonal to `state`'));
+  assert.match(disconnectBody, /teardownTransport\(\);/, 'disconnect() must call the shared teardown helper');
+  const teardownBody = source.slice(source.indexOf('function teardownTransport()'), source.indexOf('// An unexpected drop'));
+  assert.match(teardownBody, /if \(pendingSpeakSettle\)/, 'teardownTransport() must check for and settle a pending speak() promise');
+  assert.match(teardownBody, /pendingSpeakSettle = null/);
 });
 
 test('the voice session\'s language is re-synced from the live i18n.language() immediately before every connect() - not only once at mount, which would miss a language switch made before the mic is first pressed', () => {
@@ -156,4 +169,87 @@ test('the voice session\'s language is re-synced from the live i18n.language() i
   const setLanguageIndex = toggleVoiceBody.indexOf('voiceRef.current.setLanguage(i18n.language())');
   const connectIndex = toggleVoiceBody.indexOf('voiceRef.current.connect()');
   assert.ok(setLanguageIndex > -1 && connectIndex > -1 && setLanguageIndex < connectIndex, 'setLanguage() must run before connect() inside toggleVoice()');
+});
+
+// --- Dynamic VAD (Voice Mode performance pass) ---
+
+test('setEagerness() is a no-op (never sends session.update) when the requested value is already the one in effect, or is not a real eagerness value', () => {
+  const fn = source.slice(source.indexOf('function setEagerness(next)'), source.indexOf('function setEagerness(next)') + 400);
+  assert.match(fn, /if \(!VALID_EAGERNESS\[next\] \|\| next === currentEagerness\) return false;/);
+});
+
+test("setEagerness() always resends create_response:false/interrupt_response:false alongside eagerness - a live update can never accidentally revert NAVRYA's own control over when the model may speak", () => {
+  const fn = source.slice(source.indexOf('function setEagerness(next)'), source.indexOf('function setEagerness(next)') + 700);
+  assert.match(fn, /updateSessionConfig\(\{ audio: \{ input: \{ turnDetection: \{ type: 'semantic_vad', eagerness: next, create_response: false, interrupt_response: false \} \} \} \}\)/);
+});
+
+test('a reconnect mints with whatever eagerness was last in effect, rather than silently reverting to medium mid-conversation; a fresh user-initiated connect() always starts at medium', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectBody, /if \(!isReconnect\) \{ reconnectAttempt = 0; clearReconnectTimer\(\); currentEagerness = 'medium'; \}/);
+  assert.match(connectBody, /fetchSession\(language, \{ signal: abortController && abortController\.signal, eagerness: currentEagerness \}\)/);
+});
+
+test('the effective turn_detection config the server actually acknowledges (session.updated) is captured separately from what was merely requested - never assumed', () => {
+  const fn = source.slice(source.indexOf('function onTransportEvent'), source.indexOf('function clearReconnectTimer'));
+  assert.match(fn, /TRANSPORT_SESSION_UPDATED/);
+  assert.match(fn, /effectiveTurnDetection/);
+});
+
+// --- Connection state machine: bounded exponential reconnect with jitter (Voice Mode performance pass) ---
+
+// Grounded against the installed SDK's own source: RealtimeSession never re-emits the
+// transport's own 'connection_change' event (verified - see this file's own header comment on
+// why this module listens on the local `transport` object directly, not session.on(...)).
+test('an unexpected connection drop is detected on the transport itself (not session.on), and only when it was not this module\'s own disconnect() that caused it', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectBody, /transport\.on\('connection_change', function \(status\) \{/);
+  assert.match(connectBody, /if \(myEpoch !== connectionEpoch \|\| intentionalDisconnect\) return;/);
+  assert.match(connectBody, /if \(status === 'disconnected'\) scheduleReconnect\(myEpoch\);/);
+});
+
+test('reconnect backoff is exponential (base * 2^(attempt-1)), bounded at a max delay, with jitter applied on top - never a fixed retry interval and never unbounded', () => {
+  const fn = source.slice(source.indexOf('function scheduleReconnect(myEpoch)'), source.indexOf('async function connect(connectOptions)'));
+  assert.match(fn, /var delay = Math\.min\(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS \* Math\.pow\(2, reconnectAttempt - 1\)\);/);
+  assert.match(fn, /var jitter = delay \* \(0\.5 \+ Math\.random\(\) \* 0\.5\);/);
+  assert.match(fn, /setTimeout\(function \(\) \{[\s\S]*?\}, jitter\);/);
+});
+
+test('reconnect gives up into ERROR after RECONNECT_MAX_ATTEMPTS - never retries forever', () => {
+  const fn = source.slice(source.indexOf('function scheduleReconnect(myEpoch)'), source.indexOf('async function connect(connectOptions)'));
+  assert.match(fn, /if \(reconnectAttempt >= RECONNECT_MAX_ATTEMPTS\) \{/);
+  assert.match(fn, /setState\(VOICE_STATES\.ERROR\);/);
+  assert.match(fn, /onError\(\{ code: 'VOICE_RECONNECT_EXHAUSTED', stage: 'reconnect' \}\);/);
+});
+
+test('a reconnect scheduled for an old connection is abandoned if a newer connect()/disconnect() has since run (connectionEpoch changed) - never fires against state that has already moved on', () => {
+  const fn = source.slice(source.indexOf('function scheduleReconnect(myEpoch)'), source.indexOf('async function connect(connectOptions)'));
+  assert.match(fn, /if \(myEpoch !== connectionEpoch\) return; \/\/ superseded by a newer connection already - not our concern any more/);
+  assert.match(fn, /if \(myEpoch !== connectionEpoch\) return; \/\/ a fresh connect\(\)\/disconnect\(\) happened while we were waiting/);
+});
+
+test('reconnect never touches TurnCoordinator/PlaybackController or replays a business side effect - it only ever calls connect() again, the same transport-only operation a manual retry would', () => {
+  const fn = source.slice(source.indexOf('function scheduleReconnect(myEpoch)'), source.indexOf('async function connect(connectOptions)'));
+  assert.match(fn, /connect\(\{ isReconnect: true \}\)/);
+  assert.doesNotMatch(fn, /submit|TurnCoordinator|PlaybackController|enqueue/i, 'reconnect must never re-trigger a business turn or a queued reply on its own');
+});
+
+test('disconnect() and a genuinely new connect() both bump connectionEpoch and clear any pending reconnect timer - a user manually retrying must not race a still-scheduled automatic reconnect', () => {
+  const disconnectBody = source.slice(source.indexOf('function disconnect()'), source.indexOf('// Orthogonal to `state`'));
+  assert.match(disconnectBody, /connectionEpoch \+= 1;/);
+  assert.match(disconnectBody, /clearReconnectTimer\(\);/);
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectBody, /var myEpoch = \+\+connectionEpoch;/);
+  assert.match(connectBody, /if \(!isReconnect\) \{ reconnectAttempt = 0; clearReconnectTimer\(\);/);
+});
+
+test('a successful (re)connection resets reconnectAttempt back to 0 - a later, separate drop starts its own backoff from the beginning, not continuing a previous run\'s escalated delay', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectBody, /reconnectAttempt = 0;\s*\n\s*setState\(VOICE_STATES\.LISTENING\);/);
+});
+
+test('chatDockView.jsx re-derives eagerness after every voice turn via the one configuration authority (ai-voice-eagerness.js), from the real post-turn workflow state - never a second, invented signal', () => {
+  const onResultBody = dockViewSource.slice(dockViewSource.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('), dockViewSource.indexOf('return () => { if (voiceRef.current)'));
+  assert.match(onResultBody, /window\.TradeJournalAIVoiceEagerness/);
+  assert.match(onResultBody, /eagernessModule\.deriveEagerness\(\{/);
+  assert.match(onResultBody, /voiceRef\.current\.setEagerness\(nextEagerness\)/);
 });

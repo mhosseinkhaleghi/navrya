@@ -62,8 +62,37 @@ test('grants the Realtime session zero tools and decouples turn-detection from a
   const { options } = getRequest();
   const body = JSON.parse(options.body);
   assert.deepEqual(body.session.tools, []);
+  assert.equal(body.session.audio.input.turn_detection.type, 'semantic_vad');
   assert.equal(body.session.audio.input.turn_detection.create_response, false);
   assert.equal(body.session.audio.input.turn_detection.interrupt_response, false);
+});
+
+// Dynamic VAD (Voice Mode performance pass): the initial mint accepts an eagerness hint (a
+// reconnect preserving whatever aiVoiceRealtime.js's own currentEagerness last was - live
+// mid-session changes go through a separate session.update the client sends directly, not this
+// route). Defaults to 'medium' - the same fixed value every mint used before this pass - when
+// omitted or invalid, never trusts an arbitrary client-supplied string verbatim.
+test('mintRealtimeClientSecret defaults turn_detection.eagerness to medium when none is supplied, and reports it back to the caller', async () => {
+  const getRequest = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language: 'en' }));
+  const body = JSON.parse(getRequest().options.body);
+  assert.equal(body.session.audio.input.turn_detection.eagerness, 'medium');
+  assert.equal(result.eagerness, 'medium');
+});
+
+test('mintRealtimeClientSecret honors a valid client-supplied eagerness hint', async () => {
+  const getRequest = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language: 'en', eagerness: 'high' }));
+  const body = JSON.parse(getRequest().options.body);
+  assert.equal(body.session.audio.input.turn_detection.eagerness, 'high');
+  assert.equal(result.eagerness, 'high');
+});
+
+test('mintRealtimeClientSecret rejects an invalid/unrecognized eagerness value by falling back to medium, rather than forwarding an arbitrary client string straight to the OpenAI API', async () => {
+  const getRequest = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language: 'en', eagerness: 'ludicrous speed' }));
+  const body = JSON.parse(getRequest().options.body);
+  assert.equal(body.session.audio.input.turn_detection.eagerness, 'medium');
 });
 
 // Found via real E1 multi-turn voice testing: a short utterance like "five minutes" was

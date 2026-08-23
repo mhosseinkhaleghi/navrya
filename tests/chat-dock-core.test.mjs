@@ -298,6 +298,35 @@ test('turn 1: with nothing open, sendChat offers availableActions, and an action
   assert.equal(spies.submitted, null);
 });
 
+// Voice Mode performance pass, task requirement: "'Yes, create a BTC trade' must be processed as
+// a full intent, not reduced to generic 'yes'." Proven here rather than reimplemented - the
+// mechanism already exists structurally: the Journey C pending-confirmation fast path
+// (chat-dock-core.js's own proactiveEngine.pendingConfirmation() check, right at the top of
+// sendChat(), before anything else) only ever intercepts text when something is ACTUALLY pending;
+// with nothing pending, a leading "Yes, ..." is never stripped or specially handled - the FULL,
+// untruncated sentence reaches the model via availableActions exactly like any other opener, so a
+// compound "Yes, <do the thing>" opener is not reducible to a bare "yes" at all - there is no bare
+// "yes" branch for it to fall into in the first place.
+test('a compound "Yes, <start something>" opener, with no confirmation pending, reaches the model as the full, untruncated sentence and correctly triggers real action-discovery - never intercepted or reduced to a generic yes/no', async () => {
+  const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      fetchCall = { url, body: JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ reply: 'Starting your New York session - what timeframe?', action: { id: 'session.create', fields: [{ path: 'city', value: 'New York' }] }, provider: 'openai', usage: { totalTokens: 5 } }) };
+    }
+  });
+  registerFakeSessionCreate(window, spies);
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'Yes, start a New York session', therapistMode: false, transcript: [] });
+
+  assert.equal(fetchCall.body.message, 'Yes, start a New York session', 'the full sentence, including the leading "Yes,", must reach the model unmodified - never truncated to a bare confirmation word');
+  assert.ok(Array.isArray(fetchCall.body.availableActions) && fetchCall.body.availableActions.some((a) => a.id === 'session.create'), 'availableActions must still be offered - a leading "Yes," with nothing pending must not suppress normal action-discovery');
+  assert.equal(result.kind, 'workflow', 'the compound opener must start a real workflow, not fall through as an unresolved bare confirmation');
+  assert.equal(spies.opened, 1);
+});
+
 test('turn 2: once the process is open, the same workflow auto-applies this turn\'s suggestions (never returned for manual Apply/Discard) and auto-submits once nothing required is missing', async () => {
   const spies = { applied: [], opened: 0, submitted: null, resultContext: null };
   const window = await coreSandbox({
