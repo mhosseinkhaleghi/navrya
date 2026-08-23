@@ -1044,13 +1044,16 @@ export function createMemoryRepo() {
       state.aiChatHistory.set(record.id, record);
       return clone(record);
     },
-    // tokens is INCREMENTED (this call's new tokens only), never replaced - mirrors
-    // repo.pg.mjs's total_tokens=total_tokens+$N exactly.
+    // Atomic append, mirrors repo.pg.mjs's `messages=messages || $3::jsonb` exactly: `messages`
+    // here is ONLY the new turn(s) being added, concatenated onto the real, current record - never
+    // a client-supplied full array replacing it (see repo.pg.mjs's own comment for the lost-update
+    // race this replaces). tokens is likewise INCREMENTED (this call's own new tokens only), never
+    // replaced.
     async appendAndSave(userId, id, { title, messages, tokens }) {
-      if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (!Array.isArray(messages) || !messages.length) throw new ApiError(400, 'VALIDATION_FAILED');
       const existing = state.aiChatHistory.get(id);
       if (!existing || existing.userId !== userId) return null;
-      const record = { ...existing, messages, title: title || existing.title, tokens: (existing.tokens || 0) + Math.max(0, Number(tokens) || 0), updatedAt: now() };
+      const record = { ...existing, messages: existing.messages.concat(messages), title: title || existing.title, tokens: (existing.tokens || 0) + Math.max(0, Number(tokens) || 0), updatedAt: now() };
       state.aiChatHistory.set(id, record);
       return clone(record);
     },

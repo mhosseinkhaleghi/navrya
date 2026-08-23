@@ -65,20 +65,22 @@ test('startConversation POSTs the first exchange with a derived title and return
   assert.deepEqual(events, ['tradejournal:ai-chat-history-changed']);
 });
 
-test('appendExchange fetches the current conversation, appends the new turn, and PATCHes the whole array plus this call\'s own token count', async () => {
+// Atomic append (security/correctness hardening pass): appendExchange used to GET the current
+// conversation, concatenate the new turn onto it client-side, then PATCH the whole array back - a
+// lost-update race between two near-simultaneous calls (two tabs, or a slow request straddling a
+// fast one), each reading the same base array and each silently overwriting the other's appended
+// turn. It now sends only this turn's own new messages; the server appends them atomically.
+test('appendExchange sends only this turn\'s own new messages (no GET first) and PATCHes just that delta plus this call\'s own token count', async () => {
   const calls = [];
   const { window, events } = await storeSandbox(async (url, options) => {
     calls.push({ url, method: options.method });
-    if ((options.method || 'GET') === 'GET') {
-      return jsonResponse(200, { id: 'conv-1', messages: [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }] });
-    }
     const body = JSON.parse(options.body);
     return jsonResponse(200, { id: 'conv-1', messages: body.messages, tokens: body.tokens });
   });
   const result = await window.TradeJournalAiChatHistoryStore.appendExchange('conv-1', 'follow-up question', 'follow-up answer', 12);
-  assert.equal(calls[0].method, 'GET');
-  assert.equal(calls[1].method, 'PATCH');
-  assert.equal(result.messages.length, 4, 'the two existing messages plus the new question+answer pair');
+  assert.equal(calls.length, 1, 'no GET round trip any more - a single PATCH is the whole call');
+  assert.equal(calls[0].method, 'PATCH');
+  assert.deepEqual(result.messages, [{ role: 'user', content: 'follow-up question' }, { role: 'assistant', content: 'follow-up answer' }], 'only the new turn is ever sent - appending onto the existing history is the server\'s own job now');
   assert.equal(result.tokens, 12);
   assert.deepEqual(events, ['tradejournal:ai-chat-history-changed']);
 });
