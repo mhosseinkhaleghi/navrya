@@ -59,42 +59,18 @@ Staging runs the same Docker Compose stack on a separate server from the `stagin
 separate deployment snapshot, published only after an explicit `publish staging` or `push to
 staging` request. It is not a required gate before production.
 
-### First staging activation
+### Configuration
 
-When the user requests `set up staging` or the first `publish staging`, the deployment agent owns
-the setup. It must first inspect the available server, DNS, and GitHub connections. If a connected
-account permits the action, complete it without asking the user to repeat routine setup steps:
-
-1. Provision or select a server separate from production, then verify SSH, Docker Engine, Docker
-   Compose, Git, and inbound ports 80 and 443.
-2. Clone this repository to `/opt/navrya`; create the staging-only `.env` from
-   `.env.production.example`; generate distinct staging secrets; and set the staging host values.
-3. Attach `staging.navrya.com` and `admin.staging.navrya.com` by creating DNS A records for the
-   staging server's public IPv4 address.
-4. Add the separate staging SSH secrets and `STAGING_DEPLOY_ENABLED=true` to the repository GitHub
-   configuration through the connected GitHub account.
-5. Publish the selected `dev` revision with `scripts/promote-dev-to-staging.sh`, wait for GitHub
-   Actions, and verify DNS, TLS, and both HTTPS hostnames.
-
-Never copy production databases, uploads, `.env` contents, SSH keys, or TLS volumes into staging.
-Record the verified staging URLs, branch/revision, server role or approved alias, Actions result,
-and remaining action in `HANDOFF.md`. Never record secrets, private keys, tokens, passwords, or
-full `.env` values.
-
-If the agent cannot complete a step, it must exhaust its available authenticated connections first.
-Then report the exact blocker, the required account or permission, the exact value or action needed,
-and the next verification it will run after the user resolves it. Do not give a vague "configure
-staging" response.
-
-Create these DNS records for the staging server:
+Use a server separate from production. Verify SSH, Git, Docker Engine, Docker Compose, and inbound
+ports 80 and 443 before deployment. Create these DNS records for the staging server:
 
 | Type | Name | Value |
 | --- | --- | --- |
 | A | `staging` | staging server public IPv4 |
 | A | `admin.staging` | staging server public IPv4 |
 
-Clone the repository to `/opt/navrya` on the staging server. Create an independent `.env` with
-different database, authentication, and internal secrets. Set:
+Clone the repository to `/opt/navrya` on the staging server. Create an independent `.env` from
+`.env.production.example` with different database, authentication, and internal secrets. Set:
 
 ```text
 APP_HOST=staging.navrya.com
@@ -115,7 +91,14 @@ STAGING_SSH_KNOWN_HOSTS
 STAGING_DEPLOY_ENABLED=true
 ```
 
-Publish staging only through an explicit user request and:
+### Agent-led first activation
+
+When the user requests `set up staging` or the first `publish staging`, the deployment agent owns
+the setup. It must inspect available authenticated server, DNS, and GitHub connections, then
+complete the configuration above when authority exists. It must not give a generic checklist for
+steps it can perform itself.
+
+After configuration, publish staging only through the explicit user request and:
 
 ```sh
 git switch dev
@@ -125,6 +108,15 @@ scripts/promote-dev-to-staging.sh
 
 The staging workflow tests, builds, migrates, and deploys `staging`. Caddy reads the two hostname
 variables from the server `.env`, so the same application image serves either environment.
+
+Verify DNS, TLS, and both HTTPS hosts before reporting success. Never copy production databases,
+uploads, `.env` contents, SSH keys, or TLS volumes into staging. Record only verified non-secret
+facts in `HANDOFF.md`: URLs, branch/revision, approved server role or alias, Actions result,
+blocker, and next action.
+
+If an action is unavailable, exhaust the agent's authenticated connections first. Then report one
+exact blocker: the missing account, permission, server value, or DNS action, plus the next
+verification to run after the user resolves it.
 
 Publish production only through an explicit user request and:
 

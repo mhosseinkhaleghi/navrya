@@ -1,4 +1,7 @@
-# Git Workflow
+# Contribution Quick Reference
+
+This is a human entry point. The full, canonical Git procedure is
+[`skills/navrya-git-collaboration/SKILL.md`](skills/navrya-git-collaboration/SKILL.md).
 
 ```text
 task branch -> dev
@@ -8,15 +11,12 @@ task branch -> dev
                    main -> production
 ```
 
-1. Start from current `dev`.
-2. Create one task branch.
-3. Fetch and rebase onto `origin/dev` before each new commit.
-4. Run `scripts/push-to-dev.sh` with Node.js 22 or newer when the task is ready.
-5. GitHub verifies `dev` only. A `dev` push never publishes an environment.
-6. Only when the user explicitly requests it, run `scripts/promote-dev-to-staging.sh` from an up-to-date `dev` checkout to publish staging.
-7. Only when the user explicitly requests it, run `scripts/promote-dev-to-production.sh` from an up-to-date `dev` checkout to publish production.
+1. Start from current `dev` and create one task branch.
+2. Fetch before each commit and rebase onto `origin/dev` when it advanced.
+3. Run `scripts/push-to-dev.sh` with Node.js 22 or newer when the task is ready.
+4. `dev` verifies code only. Publish staging or production only after the explicit user request and by using the guarded command in the canonical Git skill.
 
-Do not push directly to `dev`, `staging`, or `main`. Do not merge task work manually into `dev`. Do not treat "push to site" as a release target: ask the user to specify `dev`, `staging`, or `production`. See `AGENTS.md` and `skills/INDEX.md` for required rules.
+Do not push directly to `dev`, `staging`, or `main`. Do not merge task work manually into `dev`. Do not treat "push to site" as a release target: ask the user to specify `dev`, `staging`, or `production`.
 
 ## Required GitHub settings
 

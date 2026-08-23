@@ -12,6 +12,10 @@ Before task work, read:
 
 The relevant skill is the operating procedure. Implementation and focused tests are authoritative where historic documentation disagrees.
 
+## Documentation authority
+
+`docs/README.md` maps every documentation area to one canonical source. Update that source and link to it instead of copying operational rules into another document. `HANDOFF.md` is current state, not a replacement for policy or architecture documentation.
+
 ## Efficiency and maintainability
 
 - Start with targeted discovery: use `rg` to find the existing feature, store, API, event, test, and design contract before creating anything new.

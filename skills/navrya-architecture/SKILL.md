@@ -31,7 +31,7 @@ NAVRYA is a hybrid application. The active outer shell is `index.html` plus `src
 
 ## Read detailed references on demand
 
-- `ARCHITECTURE.md` for the system map, data shapes, public APIs, feature inventory, and known constraints.
+- `ARCHITECTURE.md` for the canonical system map, data shapes, public APIs, feature inventory, and known constraints.
 - `docs/ai/*.md` for AI, Copilot, deterministic extraction, context, knowledge, and Voice boundaries.
-- `public/pages/{hunter,engineer,commander,sage,select}/README.md` for page intent.
+- `public/pages/README.md` for shared static-page notes and the relevant per-page README for page-specific intent.
 - The actual source and focused tests are authoritative when historic prose differs from implementation.
