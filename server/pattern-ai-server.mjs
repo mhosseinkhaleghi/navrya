@@ -1201,8 +1201,18 @@ const REALTIME_PERSIAN_DELIVERY_INSTRUCTION = ' When the sentence you are asked 
 const REALTIME_TRANSCRIPTION_PROMPT = 'A user is speaking to NAVRYA, a trading journal and planning app, to create a trading Session or plan a Trade. They may say a market city (London, New York, Tokyo, Sydney) or a chart timeframe (five minutes, fifteen minutes, one hour, four hours, one day - i.e. 5m, 15m, 1h, 4h, 1D) in English, Persian (Farsi), Arabic, or Spanish, along with trading terms like entry price, stop loss, take profit, risk percent, long, or short.';
 const REALTIME_TRANSCRIPTION_KEYWORDS = ['New York', 'London', 'Tokyo', 'Sydney', '5m', '15m', '1h', '4h', '1D', 'five minutes', 'fifteen minutes', 'one hour', 'four hours', 'stop loss', 'take profit', 'entry price', 'risk percent'];
 
+// Dynamic VAD (Voice Mode performance pass): the initial eagerness a fresh connect() mints with -
+// a reconnect passes whatever aiVoiceRealtime.js's own currentEagerness last was (see that
+// file's own connect() comment), everything else defaults to 'medium'. Live mid-session changes
+// go through session.update instead (aiVoiceRealtime.js's setEagerness()) - this is only the
+// starting value. Validated against OpenAI's own documented enum, never trusted verbatim from an
+// arbitrary client-supplied string.
+const REALTIME_EAGERNESS_VALUES = ['low', 'medium', 'high', 'auto'];
+function eagernessFromBody(body) { return REALTIME_EAGERNESS_VALUES.includes(body.eagerness) ? body.eagerness : 'medium'; }
+
 async function mintRealtimeClientSecret(body) {
   const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
+  const eagerness = eagernessFromBody(body);
   const startedAt = Date.now();
   let key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey.trim() : '';
   try {
@@ -1225,7 +1235,7 @@ async function mintRealtimeClientSecret(body) {
             input: {
               format: { type: 'audio/pcm', rate: 24000 },
               transcription: { model: REALTIME_TRANSCRIBE_MODEL, languages: [language], prompt: REALTIME_TRANSCRIPTION_PROMPT, keywords: REALTIME_TRANSCRIPTION_KEYWORDS },
-              turn_detection: { type: 'semantic_vad', eagerness: 'medium', create_response: false, interrupt_response: false }
+              turn_detection: { type: 'semantic_vad', eagerness, create_response: false, interrupt_response: false }
             },
             output: { format: { type: 'audio/pcm', rate: 24000 }, voice: voiceForLanguage(language) }
           },
@@ -1243,7 +1253,8 @@ async function mintRealtimeClientSecret(body) {
     reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.session' });
     return {
       value: data.value, expiresAt: data.expires_at,
-      model: (data.session && data.session.model) || model, voice: voiceForLanguage(language), language
+      model: (data.session && data.session.model) || model, voice: voiceForLanguage(language), language,
+      eagerness
     };
   } catch (error) {
     reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.session' });

@@ -124,6 +124,21 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   const [voiceHeardText, setVoiceHeardText] = React.useState('');
   const [voiceReplyCaption, setVoiceReplyCaption] = React.useState('');
   const voiceRef = React.useRef(null);
+  // Voice Mode performance pass (feature/voice-mode-performance): conversationEpoch is bumped by
+  // startNewChat()/resumeConversation() - anything voice-related that captured an OLDER epoch
+  // (a still-in-flight turn's own business result, an already-queued-but-not-yet-spoken reply) is
+  // discarded rather than mutating a conversation the user has since moved on from.
+  // turnCoordinatorRef/playbackControllerRef are the split successors of the old voiceTurnQueue -
+  // see ai-voice-turn-coordinator.js/ai-voice-playback-controller.js for why the split exists: the
+  // OLD queue chained submit() (business/inference) and speak() (playback) into ONE serial
+  // promise per turn, so a second already-finalized transcript's own submit() could not even
+  // START until the FIRST turn's speech had finished playing. TurnCoordinator now serializes
+  // submit() calls only against each other; PlaybackController serializes speak() calls only
+  // against each other; chatDockView.jsx connects the two by handing a finished turn's text to
+  // PlaybackController.enqueue() - a fire-and-forget call TurnCoordinator never awaits.
+  const conversationEpochRef = React.useRef(0);
+  const turnCoordinatorRef = React.useRef(null);
+  const playbackControllerRef = React.useRef(null);
   const fileInputRef = React.useRef(null);
   const rtl = i18n.direction() === 'rtl';
   const historyStore = window.TradeJournalAiChatHistoryStore;
@@ -170,12 +185,20 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // releases any workflow/confirmation still in flight from the conversation just left behind
   // (core.resetConversationState()) - otherwise the very first message typed into this "new"
   // conversation could silently continue filling or confirming state that belongs to the old one.
+  //
+  // Voice Mode performance pass: also bumps conversationEpochRef and invalidates the playback
+  // queue - a voice turn whose own submit() is still in flight (TurnCoordinator checks the epoch
+  // again once it resolves - see ai-voice-turn-coordinator.js) or a reply already queued to be
+  // spoken (PlaybackController.invalidate() drops it and interrupts anything playing right now -
+  // see ai-voice-playback-controller.js) must never reach the new conversation.
   function startNewChat() {
     setTranscript([]);
     setActiveConversationId(null);
     setPopover(null);
     setHistoryOpen(false);
     if (core && typeof core.resetConversationState === 'function') core.resetConversationState();
+    conversationEpochRef.current += 1;
+    if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
   }
 
   async function toggleHistory() {
@@ -193,7 +216,10 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   // Loads a past conversation's full message list back into the live dock - the next message
-  // appends to this same server-side conversation instead of starting a new one.
+  // appends to this same server-side conversation instead of starting a new one. Voice Mode
+  // performance pass: switching to a different conversation is the same kind of "moved on" event
+  // startNewChat() guards against - bumps the epoch and invalidates queued/in-flight voice work
+  // the same way.
   async function resumeConversation(id) {
     setHistoryOpen(false);
     if (!historyStore) return;
@@ -201,6 +227,8 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       const record = await historyStore.get(id);
       if (!record) return;
       const messages = record.messages || [];
+      conversationEpochRef.current += 1;
+      if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
       setTranscript(messages.slice(-24));
       setActiveConversationId(record.id);
       setPopover({ open: true, state: 'answer', messages, suggestions: [], activeProcessId: null });
@@ -307,93 +335,79 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // and must never call a stale copy of submit() from the render it was constructed in.
   const submitRef = React.useRef(submit);
   submitRef.current = submit;
+  // Dynamic VAD (Voice Mode performance pass): read fresh inside the empty-deps mount effect's
+  // onResult callback below, the same reason submitRef exists - Therapist Mode can be toggled at
+  // any time, and the closure created once at mount must never see a stale value.
+  const therapistModeRef = React.useRef(therapistMode);
+  therapistModeRef.current = therapistMode;
 
-  async function fetchRealtimeSession(language) {
+  // Voice Mode performance pass: accepts aiVoiceRealtime.js's own AbortSignal (bounded by its
+  // CONNECT_TIMEOUT_MS) so a hung/slow token mint can actually be cancelled client-side, not just
+  // ignored - `signal` is optional (a caller/test that never supplies one gets the exact previous
+  // behavior, no timeout applied at the fetch layer itself). `eagerness` is aiVoiceRealtime.js's
+  // own currentEagerness (see its connect()'s own comment) - only actually differs from the
+  // server's 'medium' default on a reconnect that's preserving context.
+  async function fetchRealtimeSession(language, options) {
     const settingsForOpenAI = settingsStore.getKey('openai');
     const response = await fetch('/api/ai/realtime/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: settingsForOpenAI, language })
+      body: JSON.stringify({ apiKey: settingsForOpenAI, language, eagerness: options && options.eagerness }),
+      signal: options && options.signal
     });
     if (!response.ok) throw new Error('VOICE_SESSION_REQUEST_FAILED');
     return response.json();
   }
 
   // A finalized voice turn goes through the exact same submit() a typed message does - one
-  // brain, not two conversations. Once NAVRYA's own deterministic reply comes back, the
-  // Realtime session is told to speak that exact text (never its own improvised answer).
+  // brain, not two conversations. Once NAVRYA's own deterministic reply comes back, the reply
+  // text is handed to PlaybackController.enqueue() to have the Realtime session speak that exact
+  // text (never its own improvised answer) - fire-and-forget, never awaited here.
   //
-  // Found via real E1 multi-turn browser testing: aiVoiceRealtime.js's transcription-completed
-  // handler fires this function once per finalized transcript with no awareness of whether a
-  // PRIOR voice turn is still in flight. Two finalized transcripts arriving close together (a
-  // fast talker, or a queued backlog after a slow reply) each independently called submit() and
-  // both raced core.sendChat()'s own read of "is there already an open form/workflow" before
-  // either had finished starting one - producing duplicate session.create action turns instead of
-  // the second turn being recognized as filling the form the first one had just opened. Text
-  // input never had this problem (one input field, one submit at a time); voice needed the same
-  // guarantee explicitly. voiceTurnQueue serializes every voice-originated submit()+speak() cycle
-  // strictly one at a time, in arrival order - "one utterance -> one Copilot turn", never two
-  // turns processed concurrently.
-  const voiceTurnQueue = React.useRef(Promise.resolve());
+  // Found via real E1 multi-turn browser testing (pre-split architecture): aiVoiceRealtime.js's
+  // transcription-completed handler fires onVoiceTranscript once per finalized transcript with no
+  // awareness of whether a PRIOR voice turn is still in flight. Two finalized transcripts arriving
+  // close together (a fast talker, or a queued backlog after a slow reply) each independently
+  // called submit() and both raced core.sendChat()'s own read of "is there already an open form/
+  // workflow" before either had finished starting one - producing duplicate session.create action
+  // turns instead of the second turn being recognized as filling the form the first one had just
+  // opened. TurnCoordinator (ai-voice-turn-coordinator.js) still serializes submit() calls one at
+  // a time, in arrival order, to preserve that guarantee - it just no longer also waits for
+  // speech playback to finish first (see that module's own header comment for why that coupling
+  // was removed).
+  //
   // Latency pass, section 21/34: final transcript -> useful reply, and final transcript -> the
   // moment NAVRYA asks the Realtime session to speak it - the two numbers this layer can actually
   // observe. transcriptToSpeakRequestedMs is NOT "audio actually started" - the real first-audio-
   // byte moment happens inside aiVoiceRealtime.js's own speak()/response.create round trip, not
   // observable from here without deeper transport instrumentation (out of scope for this pass -
-  // see docs/ai/latency-testing.md). Kept as its own small object, not folded into
-  // chat-dock-core.js's debugLastLatency() (which knows nothing about the voice transport), since
-  // it spans two modules this file already bridges.
+  // see docs/ai/latency-testing.md).
   // Journey G UX correction, item 10: true for exactly the one turn right after a Companion
   // opening was spoken - read-and-cleared (not a React state, so it can never race a re-render)
   // the instant the next transcript arrives, so only that ONE reply is ever treated specially,
   // regardless of how it's classified (start/later/explain/ambiguous).
   const awaitingCompanionOpeningReplyRef = React.useRef(false);
-  let lastVoiceLatency = null;
   function onVoiceTranscript(transcriptText) {
     setVoiceHeardText(transcriptText);
     const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef.current;
     awaitingCompanionOpeningReplyRef.current = false;
     const transcriptAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    voiceTurnQueue.current = voiceTurnQueue.current
-      .catch(() => {})
-      .then(async () => {
-        const result = await submitRef.current(transcriptText, { source: 'voice', awaitingCompanionOpeningReply: wasAwaitingCompanionOpeningReply });
-        const replyAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        const rawToSpeak = result && (result.voiceReply || result.reply);
-        // Persian Voice Quality gate: a final, deterministic, voice-ONLY pass (no model call, no
-        // network - see ai-voice-text.js's own header comment) applied uniformly to every spoken
-        // turn regardless of source (a model-generated voiceReply, a Journey C proactive-safety
-        // message, or one of chat-dock-core.js's own zero-network acknowledgements) - strips any
-        // markdown that slipped past the model's own "plain text" instruction, and (Persian only,
-        // for now - section 32/33: no EN/AR/ES regression) spells out the small closed set of
-        // NAVRYA-owned numeric forms (timeframes, whole/half/quarter percents, whole-number
-        // prices) into natural spoken words. The CAPTION shown on screen stays the raw text - only
-        // what is actually spoken changes, matching section 12's "never make the written UI
-        // colloquial."
-        const toSpeak = rawToSpeak && voiceText ? voiceText.toSpokenText(rawToSpeak, i18n.language()) : rawToSpeak;
-        setVoiceReplyCaption(rawToSpeak || '');
-        lastVoiceLatency = { transcriptToReplyMs: Math.round(replyAt - transcriptAt), transcriptToSpeakRequestedMs: null };
-        // Awaited so the queue doesn't move on to the next turn until this one has actually
-        // finished being spoken (see aiVoiceRealtime.js's speak() for why that matters).
-        if (toSpeak && voiceRef.current) {
-          const speakCalledAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-          lastVoiceLatency.transcriptToSpeakRequestedMs = Math.round(speakCalledAt - transcriptAt);
-          window.TradeJournalChatDockVoiceLatency = lastVoiceLatency;
-          await voiceRef.current.speak(toSpeak);
-        } else {
-          window.TradeJournalChatDockVoiceLatency = lastVoiceLatency;
-        }
-      });
-    return voiceTurnQueue.current;
+    const connectionEpochAtTranscript = (voiceRef.current && voiceRef.current.connectionEpoch) ? voiceRef.current.connectionEpoch() : 0;
+    if (!turnCoordinatorRef.current) return;
+    return turnCoordinatorRef.current.handleFinalTranscript(transcriptText, {
+      awaitingCompanionOpeningReply: wasAwaitingCompanionOpeningReply,
+      transcriptAt: transcriptAt,
+      connectionEpoch: connectionEpochAtTranscript
+    });
   }
 
   // Journey G UX correction, items 2-9: the deterministic, zero-model-call Voice Companion
   // opening. Architecture (unchanged elsewhere): Journey Engine supplies real facts -> Companion
-  // Orchestrator decides whether/what to say -> this function hands the EXACT text to the
-  // existing speak() mechanism -> the Realtime session speaks it verbatim, same as any other
-  // reply (docs/ai/companion-orchestration.md). Called only once per real connection, only from
-  // the voiceState effect below, itself only ever reachable after the user's own explicit Voice
-  // press (item 6's consent boundary) - never from page load/refresh/navigation/login.
+  // Orchestrator decides whether/what to say -> this function hands the EXACT text to
+  // PlaybackController -> the Realtime session speaks it verbatim, same as any other reply
+  // (docs/ai/companion-orchestration.md). Called only once per real connection, only from the
+  // voiceState effect below, itself only ever reachable after the user's own explicit Voice press
+  // (item 6's consent boundary) - never from page load/refresh/navigation/login.
   const openingDeliveredForConnectionRef = React.useRef(false);
   function deliverCompanionOpening() {
     if (openingDeliveredForConnectionRef.current) return;
@@ -410,32 +424,29 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // Captured BEFORE voiceOpening() runs: for a genuinely fresh user, voiceOpening() itself marks
     // the walkthrough seen as a side effect of deciding to speak it (so it never repeats on the
     // next Voice press - item 13) - which means currentCard() would no longer return the welcome
-    // card by the time the speak() promise below actually resolves. Capturing it first is what
-    // lets the visual card (item 9) still show the real Start/What is NAVRYA?/Later card
-    // synchronized with the spoken greeting.
+    // card by the time playback actually starts. Capturing it first is what lets the visual card
+    // (item 9) still show the real Start/What is NAVRYA?/Later card synchronized with the spoken
+    // greeting.
     var preOpeningCard = orchestrator.currentCard();
     var opening = orchestrator.voiceOpening(); // zero model calls - real Journey facts only
     if (!opening || !opening.text) return; // safety blocked it, or nothing true to say - stay silent, never forced
-    // Routed through the SAME voiceTurnQueue every real turn already serializes through (this
-    // function only ever runs before any user turn has arrived, but a fast talker can still
-    // barge in the instant speak() starts - see aiVoiceRealtime.js's own TRANSPORT_SPEECH_STARTED
-    // handling, which already interrupts ANY ASSISTANT_SPEAKING playback, this opening included,
-    // via the existing barge-in path, no new code needed there). Serializing here is what stops
-    // that interrupting turn's own eventual speak() call from overlapping this one's still-
-    // resolving promise (found necessary for the identical reason documented on voiceTurnQueue's
-    // own declaration above).
-    voiceTurnQueue.current = voiceTurnQueue.current.catch(() => {}).then(async function () {
-      setCompanionCard(opening.kind === 'freshWelcome' && preOpeningCard ? preOpeningCard : orchestrator.currentCard());
-      setCompanionOpeningActive(true);
-      var toSpeak = voiceText ? voiceText.toSpokenText(opening.text, i18n.language()) : opening.text;
-      setVoiceReplyCaption(opening.text);
-      // The very next finalized transcript is a reply to THIS opening - see onVoiceTranscript's
-      // own read-and-clear of this ref.
-      awaitingCompanionOpeningReplyRef.current = true;
-      if (voiceRef.current) await voiceRef.current.speak(toSpeak);
-      setCompanionOpeningActive(false);
-    });
-    return voiceTurnQueue.current;
+    setCompanionCard(opening.kind === 'freshWelcome' && preOpeningCard ? preOpeningCard : orchestrator.currentCard());
+    setCompanionOpeningActive(true);
+    var toSpeak = voiceText ? voiceText.toSpokenText(opening.text, i18n.language()) : opening.text;
+    setVoiceReplyCaption(opening.text);
+    // The very next finalized transcript is a reply to THIS opening - see onVoiceTranscript's
+    // own read-and-clear of this ref. Set BEFORE enqueueing (not after playback finishes) so a
+    // fast barge-in mid-opening is still correctly treated as a reply to it.
+    awaitingCompanionOpeningReplyRef.current = true;
+    // Routed through the SAME PlaybackController every real turn's reply already speaks through
+    // (this function only ever runs before any user turn has arrived, but a fast talker can still
+    // barge in the instant playback starts - aiVoiceRealtime.js's own TRANSPORT_SPEECH_STARTED
+    // handling already interrupts ANY ASSISTANT_SPEAKING playback, this opening included, via the
+    // existing barge-in path). Tagged kind:'companion-opening' so the controller's onSettled
+    // callback below knows to clear companionOpeningActive once THIS entry (not some later real
+    // turn's reply) actually finishes/is skipped/is interrupted.
+    if (playbackControllerRef.current) playbackControllerRef.current.enqueue(toSpeak, { kind: 'companion-opening' });
+    else setCompanionOpeningActive(false);
   }
 
   React.useEffect(() => {
@@ -446,14 +457,81 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,
       // A denied getUserMedia prompt reports stage:'permission' (see aiVoiceRealtime.js's
-      // connect()) - every other failure mode (session/connect/interrupt/speak) falls back to the
-      // generic Voice error message instead.
+      // connect()) - every other failure mode (session/connect/interrupt/speak/reconnect) falls
+      // back to the generic Voice error message instead.
       onError: (detail) => {
         setVoicePermissionDenied(!!(detail && detail.stage === 'permission'));
         setVoiceState(VOICE_STATES.ERROR);
       }
     });
-    return () => { if (voiceRef.current) voiceRef.current.disconnect(); };
+    // Voice Mode performance pass: PlaybackController owns only speech - speak()/interrupt() are
+    // read fresh from voiceRef.current on every call (never captured once), so they stay correct
+    // across a reconnect (aiVoiceRealtime.js's own returned object identity never changes; only
+    // its internal session does). onSettled only ever does two things: clear
+    // companionOpeningActive once the entry tagged kind:'companion-opening' settles (that tag is
+    // set only where the greeting itself is enqueued, further down in this file - this mount
+    // effect never triggers the greeting on its own), and record the last-settled entry for
+    // debugLastVoicePlayback() (dev diagnostic, ids/timing only - never text content).
+    playbackControllerRef.current = window.TradeJournalAIVoicePlaybackController.create({
+      speak: (text) => voiceRef.current.speak(text),
+      interrupt: () => voiceRef.current.interrupt(),
+      onSettled: (entry) => {
+        if (entry.kind === 'companion-opening') setCompanionOpeningActive(false);
+        window.TradeJournalChatDockVoiceLastPlayback = { responseId: entry.responseId, turnId: entry.turnId || null, spoken: entry.spoken, reason: entry.reason || null };
+      }
+    });
+    // TurnCoordinator owns only submit() sequencing - getEpoch() is read fresh every time
+    // (conversationEpochRef.current), so a New Chat/conversation switch mid-flight is always seen
+    // by both the enqueue-time and resolve-time checks (see ai-voice-turn-coordinator.js).
+    turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create({
+      submit: (text, meta) => submitRef.current(text, { source: 'voice', awaitingCompanionOpeningReply: meta.awaitingCompanionOpeningReply }),
+      getEpoch: () => conversationEpochRef.current,
+      onResult: (result, meta) => {
+        // The conversation moved on (New Chat/switch) while this turn's own submit() was in
+        // flight, or submit() itself failed - never speak/caption a stale or absent result.
+        if (meta.discarded || !result) return;
+        const replyAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const rawToSpeak = result && (result.voiceReply || result.reply);
+        // Persian Voice Quality gate: a final, deterministic, voice-ONLY pass (no model call, no
+        // network - see ai-voice-text.js's own header comment) applied uniformly to every spoken
+        // turn regardless of source (a model-generated voiceReply, a Journey C proactive-safety
+        // message, or one of chat-dock-core.js's own zero-network acknowledgements) - strips any
+        // markdown that slipped past the model's own "plain text" instruction, and (Persian only,
+        // for now - section 32/33: no EN/AR/ES regression) spells out the small closed set of
+        // NAVRYA-owned numeric forms (timeframes, whole/half/quarter percents, whole-number
+        // prices) into natural spoken words. The CAPTION shown on screen stays the raw text - only
+        // what is actually spoken changes, matching section 12's "never make the written UI
+        // colloquial."
+        const toSpeak = rawToSpeak && voiceText ? voiceText.toSpokenText(rawToSpeak, i18n.language()) : rawToSpeak;
+        setVoiceReplyCaption(rawToSpeak || '');
+        const latency = { transcriptToReplyMs: Math.round(replyAt - meta.transcriptAt), transcriptToSpeakRequestedMs: null };
+        if (toSpeak && playbackControllerRef.current) {
+          const speakCalledAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+          latency.transcriptToSpeakRequestedMs = Math.round(speakCalledAt - meta.transcriptAt);
+          // Fire-and-forget - handing the reply to PlaybackController never blocks this callback,
+          // and TurnCoordinator's own queue has already moved on to the next turn by now anyway
+          // (its serialization only ever waited for submit() above, never for this).
+          playbackControllerRef.current.enqueue(toSpeak, { turnId: meta.turnId, connectionEpoch: meta.connectionEpoch });
+        }
+        window.TradeJournalChatDockVoiceLatency = latency;
+        // Dynamic VAD (Voice Mode performance pass): re-derive eagerness for the NEXT user turn
+        // from what NAVRYA is now waiting on (ai-voice-eagerness.js is the one configuration
+        // authority - see that file's own comment). setEagerness() itself is a no-op if the
+        // value is unchanged from what's already in effect, so a run of ordinary turns never
+        // sends a redundant session.update.
+        const eagernessModule = window.TradeJournalAIVoiceEagerness;
+        const workflowEngine = window.TradeJournalAIWorkflowEngine;
+        if (eagernessModule && voiceRef.current) {
+          const nextEagerness = eagernessModule.deriveEagerness({
+            workflow: workflowEngine ? workflowEngine.current() : null,
+            therapistMode: therapistModeRef.current,
+            companionIntent: null
+          });
+          voiceRef.current.setEagerness(nextEagerness);
+        }
+      }
+    });
+    return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
