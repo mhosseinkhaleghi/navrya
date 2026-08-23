@@ -14,7 +14,8 @@ export function createMemoryRepo() {
     adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
-    sessionSignatures: new Map(), userPreferences: new Map()
+    sessionSignatures: new Map(), userPreferences: new Map(),
+    authSessions: new Map(), externalIdentities: new Map(), securityEvents: new Map(), authTransactions: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -30,8 +31,8 @@ export function createMemoryRepo() {
       if (email && Array.from(state.users.values()).some((u) => u.email === email)) throw new ApiError(409, 'EMAIL_TAKEN');
       const record = {
         id: newId('user'), displayName: trimmed, avatarUrl: avatarUrl || null, bio: bio || null, role: 'user', suspendedAt: null,
-        email: email || null, emailVerified: false, phone: null, phoneVerified: false, profileRole: 'trader', kycStatus: 'not_started',
-        xpTotal: 0, avatarDataUrl: null, createdAt: now()
+        email: email || null, emailVerified: false, emailVerifiedAt: null, phone: null, phoneVerified: false, profileRole: 'trader', kycStatus: 'not_started',
+        xpTotal: 0, avatarDataUrl: null, totpEnabledAt: null, createdAt: now()
       };
       state.users.set(record.id, record);
       return clone(record);
@@ -89,6 +90,16 @@ export function createMemoryRepo() {
       if ('phone' in patch) record.phone = patch.phone || null;
       if ('profileRole' in patch) record.profileRole = patch.profileRole;
       if ('avatarDataUrl' in patch) record.avatarDataUrl = patch.avatarDataUrl || null;
+      return clone(record);
+    },
+    // The ONLY way emailVerified/emailVerifiedAt is ever written (020_auth_sessions.sql) - set
+    // once a real email-verification transaction (routes.auth.mjs) is consumed, never trusted
+    // from any client-supplied field on register/update.
+    async markEmailVerified(id) {
+      const record = state.users.get(id);
+      if (!record) throw new ApiError(404, 'USER_NOT_FOUND');
+      record.emailVerified = true;
+      record.emailVerifiedAt = now();
       return clone(record);
     },
     // The ONLY way kycStatus is ever written - mirrors repo.pg.mjs's updateKyc().
@@ -1051,10 +1062,147 @@ export function createMemoryRepo() {
     }
   };
 
+  // Real, server-side sessions (020_auth_sessions.sql) - mirrors repo.pg.mjs's authSessions
+  // domain exactly. Sessions are looked up by the SHA-256 hash of the raw cookie value, never
+  // by the raw value itself (see server/community/security/session-service.mjs) - this domain
+  // never sees a raw session id at all, only its hash, exactly like real Postgres storage would.
+  const authSessions = {
+    async create({ userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, ipHash, userAgent }) {
+      requireUser(userId);
+      const record = {
+        id: newId('asess'), userId, sessionHash, familyId, createdAt: now(), lastSeenAt: now(),
+        idleExpiresAt, absoluteExpiresAt, revokedAt: null, revokedReason: null, reauthAt: now(),
+        ipHash: ipHash || null, userAgent: userAgent || null
+      };
+      state.authSessions.set(record.id, record);
+      return clone(record);
+    },
+    async findByHash(sessionHash) {
+      const record = Array.from(state.authSessions.values()).find((s) => s.sessionHash === sessionHash);
+      return record ? clone(record) : null;
+    },
+    async touch(id, { lastSeenAt, idleExpiresAt } = {}) {
+      const record = state.authSessions.get(id);
+      if (!record) return;
+      record.lastSeenAt = lastSeenAt || now();
+      if (idleExpiresAt) record.idleExpiresAt = idleExpiresAt;
+    },
+    async markReauth(id) {
+      const record = state.authSessions.get(id);
+      if (record) record.reauthAt = now();
+    },
+    async revoke(id, reason) {
+      const record = state.authSessions.get(id);
+      if (record && !record.revokedAt) { record.revokedAt = now(); record.revokedReason = reason || 'logout'; }
+    },
+    async revokeAllForUser(userId, reason, { exceptId } = {}) {
+      let count = 0;
+      for (const record of state.authSessions.values()) {
+        if (record.userId === userId && !record.revokedAt && record.id !== exceptId) {
+          record.revokedAt = now(); record.revokedReason = reason || 'logout_all'; count += 1;
+        }
+      }
+      return count;
+    },
+    async revokeFamily(familyId, reason) {
+      for (const record of state.authSessions.values()) {
+        if (record.familyId === familyId && !record.revokedAt) { record.revokedAt = now(); record.revokedReason = reason || 'replay_detected'; }
+      }
+    },
+    async listActiveForUser(userId) {
+      return Array.from(state.authSessions.values())
+        .filter((s) => s.userId === userId && !s.revokedAt)
+        .sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt))
+        .map(clone);
+    },
+    async deleteExpired(before) {
+      let count = 0;
+      for (const [id, record] of state.authSessions) {
+        if (new Date(record.absoluteExpiresAt) < new Date(before)) { state.authSessions.delete(id); count += 1; }
+      }
+      return count;
+    }
+  };
+
+  // (issuer, subject) -> userId mapping for Google/generic-OIDC identities (020_auth_sessions.sql).
+  const externalIdentities = {
+    async findUserId(issuer, subject) {
+      const record = Array.from(state.externalIdentities.values()).find((r) => r.issuer === issuer && r.subject === subject);
+      return record ? record.userId : null;
+    },
+    async link({ userId, issuer, subject, emailAtLink }) {
+      requireUser(userId);
+      const existing = Array.from(state.externalIdentities.values()).find((r) => r.issuer === issuer && r.subject === subject);
+      if (existing && existing.userId !== userId) throw new ApiError(409, 'IDENTITY_ALREADY_LINKED');
+      if (existing) return clone(existing);
+      const record = { id: newId('extid'), userId, issuer, subject, emailAtLink: emailAtLink || null, linkedAt: now() };
+      state.externalIdentities.set(record.id, record);
+      return clone(record);
+    },
+    async listForUser(userId) {
+      return Array.from(state.externalIdentities.values()).filter((r) => r.userId === userId).map(clone);
+    }
+  };
+
+  const securityEvents = {
+    async record({ userId, type, ipHash, detail }) {
+      const record = { id: newId('sevt'), userId: userId || null, type, ipHash: ipHash || null, detail: detail || {}, createdAt: now() };
+      state.securityEvents.set(record.id, record);
+      return clone(record);
+    },
+    async listForUser(userId, { limit = 50 } = {}) {
+      return Array.from(state.securityEvents.values())
+        .filter((r) => r.userId === userId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, limit)
+        .map(clone);
+    },
+    async countRecentByType(type, { sinceMs }) {
+      const cutoff = Date.now() - sinceMs;
+      return Array.from(state.securityEvents.values()).filter((r) => r.type === type && new Date(r.createdAt).getTime() >= cutoff).length;
+    }
+  };
+
+  // Short-lived OIDC/password-reset/email-verify/legacy-exchange transactions (020_auth_sessions.sql).
+  const authTransactions = {
+    async create({ id, purpose, userId, tokenHash, payload, expiresAt }) {
+      const record = { id: id || newId('atxn'), purpose, userId: userId || null, tokenHash: tokenHash || null, payload: payload || {}, createdAt: now(), expiresAt, consumedAt: null };
+      state.authTransactions.set(record.id, record);
+      return clone(record);
+    },
+    async get(id) {
+      const record = state.authTransactions.get(id);
+      return record ? clone(record) : null;
+    },
+    async findByTokenHash(tokenHash) {
+      const record = Array.from(state.authTransactions.values()).find((r) => r.tokenHash === tokenHash);
+      return record ? clone(record) : null;
+    },
+    async consume(id) {
+      const record = state.authTransactions.get(id);
+      if (!record || record.consumedAt) return null;
+      if (new Date(record.expiresAt) < new Date()) return null;
+      record.consumedAt = now();
+      return clone(record);
+    },
+    async deleteExpired(before) {
+      let count = 0;
+      for (const [id, record] of state.authTransactions) {
+        if (new Date(record.expiresAt) < new Date(before)) { state.authTransactions.delete(id); count += 1; }
+      }
+      return count;
+    }
+  };
+
   // Mirrors repo.pg.mjs's health() shape for the admin Technical tab, so that tab works
   // unmodified under the zero-setup in-memory fallback too - there is no real "database" here
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences, health };
+  return {
+    users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
+    providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns,
+    strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    authSessions, externalIdentities, securityEvents, authTransactions, health
+  };
 }

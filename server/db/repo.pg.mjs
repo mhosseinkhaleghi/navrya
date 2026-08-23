@@ -4,9 +4,9 @@ import { ApiError } from '../community/errors.mjs';
 function mapUser(row) {
   return {
     id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url, bio: row.bio, role: row.role, suspendedAt: row.suspended_at,
-    email: row.email, emailVerified: row.email_verified, phone: row.phone, phoneVerified: row.phone_verified,
+    email: row.email, emailVerified: row.email_verified, emailVerifiedAt: row.email_verified_at, phone: row.phone, phoneVerified: row.phone_verified,
     profileRole: row.profile_role, kycStatus: row.kyc_status, xpTotal: row.xp_total, avatarDataUrl: row.avatar_data_url,
-    createdAt: row.created_at
+    totpEnabledAt: row.totp_enabled_at, createdAt: row.created_at
   };
 }
 function mapPost(row) { return { id: row.id, userId: row.user_id, content: row.content, images: row.images, createdAt: row.created_at, updatedAt: row.updated_at }; }
@@ -209,6 +209,12 @@ export function createPgRepo(pool) {
     async get(id) {
       const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [id]);
       return rows[0] ? mapUser(rows[0]) : null;
+    },
+    // The ONLY way emailVerified/emailVerifiedAt is ever written (020_auth_sessions.sql).
+    async markEmailVerified(id) {
+      const { rows } = await pool.query('UPDATE users SET email_verified=true, email_verified_at=now() WHERE id=$1 RETURNING *', [id]);
+      if (!rows[0]) throw new ApiError(404, 'USER_NOT_FOUND');
+      return mapUser(rows[0]);
     },
     async list() {
       const { rows } = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
@@ -1649,6 +1655,150 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Real, server-side sessions (020_auth_sessions.sql) - see server/community/security/
+  // session-service.mjs for the raw-id-vs-hash discipline (this domain only ever sees a hash).
+  function mapAuthSession(row) {
+    return {
+      id: row.id, userId: row.user_id, sessionHash: row.session_hash, familyId: row.family_id,
+      createdAt: row.created_at, lastSeenAt: row.last_seen_at, idleExpiresAt: row.idle_expires_at,
+      absoluteExpiresAt: row.absolute_expires_at, revokedAt: row.revoked_at, revokedReason: row.revoked_reason,
+      reauthAt: row.reauth_at, ipHash: row.ip_hash, userAgent: row.user_agent
+    };
+  }
+  const authSessions = {
+    async create({ userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, ipHash, userAgent }) {
+      const id = newId('asess');
+      const { rows } = await pool.query(
+        `INSERT INTO auth_sessions (id, user_id, session_hash, family_id, idle_expires_at, absolute_expires_at, ip_hash, user_agent)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [id, userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, ipHash || null, userAgent || null]
+      );
+      return mapAuthSession(rows[0]);
+    },
+    async findByHash(sessionHash) {
+      const { rows } = await pool.query('SELECT * FROM auth_sessions WHERE session_hash=$1', [sessionHash]);
+      return rows[0] ? mapAuthSession(rows[0]) : null;
+    },
+    async touch(id, { lastSeenAt, idleExpiresAt } = {}) {
+      await pool.query(
+        'UPDATE auth_sessions SET last_seen_at=$2, idle_expires_at=COALESCE($3, idle_expires_at) WHERE id=$1',
+        [id, lastSeenAt || new Date().toISOString(), idleExpiresAt || null]
+      );
+    },
+    async markReauth(id) {
+      await pool.query('UPDATE auth_sessions SET reauth_at=now() WHERE id=$1', [id]);
+    },
+    async revoke(id, reason) {
+      await pool.query('UPDATE auth_sessions SET revoked_at=now(), revoked_reason=$2 WHERE id=$1 AND revoked_at IS NULL', [id, reason || 'logout']);
+    },
+    async revokeAllForUser(userId, reason, { exceptId } = {}) {
+      const { rowCount } = await pool.query(
+        'UPDATE auth_sessions SET revoked_at=now(), revoked_reason=$2 WHERE user_id=$1 AND revoked_at IS NULL AND id IS DISTINCT FROM $3',
+        [userId, reason || 'logout_all', exceptId || null]
+      );
+      return rowCount;
+    },
+    async revokeFamily(familyId, reason) {
+      await pool.query('UPDATE auth_sessions SET revoked_at=now(), revoked_reason=$2 WHERE family_id=$1 AND revoked_at IS NULL', [familyId, reason || 'replay_detected']);
+    },
+    async listActiveForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM auth_sessions WHERE user_id=$1 AND revoked_at IS NULL ORDER BY last_seen_at DESC', [userId]);
+      return rows.map(mapAuthSession);
+    },
+    async deleteExpired(before) {
+      const { rowCount } = await pool.query('DELETE FROM auth_sessions WHERE absolute_expires_at < $1', [before]);
+      return rowCount;
+    }
+  };
+
+  function mapExternalIdentity(row) {
+    return { id: row.id, userId: row.user_id, issuer: row.issuer, subject: row.subject, emailAtLink: row.email_at_link, linkedAt: row.linked_at };
+  }
+  const externalIdentities = {
+    async findUserId(issuer, subject) {
+      const { rows } = await pool.query('SELECT user_id FROM external_identities WHERE issuer=$1 AND subject=$2', [issuer, subject]);
+      return rows[0] ? rows[0].user_id : null;
+    },
+    async link({ userId, issuer, subject, emailAtLink }) {
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO external_identities (id, user_id, issuer, subject, email_at_link) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+          [newId('extid'), userId, issuer, subject, emailAtLink || null]
+        );
+        return mapExternalIdentity(rows[0]);
+      } catch (error) {
+        if (error && error.code === '23505') {
+          const { rows } = await pool.query('SELECT * FROM external_identities WHERE issuer=$1 AND subject=$2', [issuer, subject]);
+          if (rows[0] && rows[0].user_id !== userId) throw new ApiError(409, 'IDENTITY_ALREADY_LINKED');
+          return mapExternalIdentity(rows[0]);
+        }
+        throw error;
+      }
+    },
+    async listForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM external_identities WHERE user_id=$1', [userId]);
+      return rows.map(mapExternalIdentity);
+    }
+  };
+
+  const securityEvents = {
+    async record({ userId, type, ipHash, detail }) {
+      const { rows } = await pool.query(
+        `INSERT INTO security_events (id, user_id, type, ip_hash, detail) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [newId('sevt'), userId || null, type, ipHash || null, JSON.stringify(detail || {})]
+      );
+      const row = rows[0];
+      return { id: row.id, userId: row.user_id, type: row.type, ipHash: row.ip_hash, detail: row.detail, createdAt: row.created_at };
+    },
+    async listForUser(userId, { limit = 50 } = {}) {
+      const { rows } = await pool.query('SELECT * FROM security_events WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2', [userId, limit]);
+      return rows.map((row) => ({ id: row.id, userId: row.user_id, type: row.type, ipHash: row.ip_hash, detail: row.detail, createdAt: row.created_at }));
+    },
+    async countRecentByType(type, { sinceMs }) {
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM security_events WHERE type=$1 AND created_at >= now() - ($2 || ' milliseconds')::interval`,
+        [type, String(sinceMs)]
+      );
+      return rows[0] ? rows[0].count : 0;
+    }
+  };
+
+  function mapAuthTransaction(row) {
+    return { id: row.id, purpose: row.purpose, userId: row.user_id, tokenHash: row.token_hash, payload: row.payload, createdAt: row.created_at, expiresAt: row.expires_at, consumedAt: row.consumed_at };
+  }
+  const authTransactions = {
+    async create({ id, purpose, userId, tokenHash, payload, expiresAt }) {
+      const { rows } = await pool.query(
+        `INSERT INTO auth_transactions (id, purpose, user_id, token_hash, payload, expires_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [id || newId('atxn'), purpose, userId || null, tokenHash || null, JSON.stringify(payload || {}), expiresAt]
+      );
+      return mapAuthTransaction(rows[0]);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM auth_transactions WHERE id=$1', [id]);
+      return rows[0] ? mapAuthTransaction(rows[0]) : null;
+    },
+    async findByTokenHash(tokenHash) {
+      const { rows } = await pool.query('SELECT * FROM auth_transactions WHERE token_hash=$1', [tokenHash]);
+      return rows[0] ? mapAuthTransaction(rows[0]) : null;
+    },
+    // Atomic claim: UPDATE ... WHERE consumed_at IS NULL AND expires_at > now() RETURNING * is a
+    // single round trip, so two concurrent requests racing to consume the SAME transaction id
+    // (a double-submitted OIDC callback, a reset link opened twice) can never both succeed -
+    // exactly the "simultaneous callbacks" concurrency case called out in the instructions.
+    async consume(id) {
+      const { rows } = await pool.query(
+        `UPDATE auth_transactions SET consumed_at=now() WHERE id=$1 AND consumed_at IS NULL AND expires_at > now() RETURNING *`,
+        [id]
+      );
+      return rows[0] ? mapAuthTransaction(rows[0]) : null;
+    },
+    async deleteExpired(before) {
+      const { rowCount } = await pool.query('DELETE FROM auth_transactions WHERE expires_at < $1', [before]);
+      return rowCount;
+    }
+  };
+
   // Backs the admin Technical tab's DB-connectivity check (a real SELECT 1) and applied-
   // migrations list. Not domain-scoped like everything else above, so it sits at the top
   // level of the returned repo object rather than inside one of the per-noun sub-objects.
@@ -1663,5 +1813,10 @@ export function createPgRepo(pool) {
     return { backend: 'postgres', dbOk, migrations };
   }
 
-  return { users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents, providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns, strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences, health };
+  return {
+    users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
+    providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns,
+    strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    authSessions, externalIdentities, securityEvents, authTransactions, health
+  };
 }
