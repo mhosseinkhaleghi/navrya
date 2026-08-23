@@ -28,9 +28,13 @@ class FakeFileReader {
 async function loadTradeStore({ localStorage, fetchImpl, currentUserId, patternStore }) {
   const fetchCalls = [];
   const fetchFn = async (url, options) => { fetchCalls.push([url, options]); return fetchImpl ? fetchImpl(url, options) : { ok: false, status: 500 }; };
-  if (currentUserId) localStorage.setItem('tradejournal:auth-token', currentUserId);
+  // Cookie-based sessions (ADR-0001): server-replica.js's hasCurrentUser() gate now reads
+  // window.__NAVRYA_AUTH__ instead of a localStorage credential.
+  const authState = currentUserId
+    ? { authenticated: true, userId: currentUserId, user: { id: currentUserId }, csrfToken: 'test-csrf' }
+    : { authenticated: false, userId: null, user: null, csrfToken: null };
   const sandbox = {
-    window: {}, localStorage,
+    window: { __NAVRYA_AUTH__: authState }, localStorage,
     document: { body: { dataset: {} } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     FileReader: FakeFileReader, fetch: fetchFn
@@ -193,9 +197,9 @@ test('cross-account isolation: user A\'s trade is invisible to user B on the sam
 
 test('deleting a strategy orphans linked trades through the real Trade Store API, pushing the updated record to the server - a trade never linked to the deleted strategy is left untouched', async () => {
   const postedTrades = [];
-  const localStorage = memoryStorage({ 'tradejournal:auth-token': 'test-user' });
+  const localStorage = memoryStorage();
   const sandbox = {
-    window: {}, localStorage,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, localStorage,
     document: { documentElement: { lang: 'en' }, body: { dataset: {} } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     FileReader: class {},

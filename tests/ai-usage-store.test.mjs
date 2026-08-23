@@ -27,7 +27,8 @@ function monthKey() { return new Date().toISOString().slice(0, 7); }
 
 async function usageSandbox({ localStorage, aiClients, usageSummary, fetchImpl } = {}) {
   localStorage = localStorage || memoryStorage();
-  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
+  // Cookie-based sessions (ADR-0001): server-replica.js's hasCurrentUser() gate now reads
+  // window.__NAVRYA_AUTH__ instead of a localStorage credential.
   const postedReports = [];
   const defaultUsageSummary = { todayKey: todayKey(), today: emptyBucket(), monthKey: monthKey(), thisMonth: emptyBucket(), lifetime: emptyBucket() };
   const fetchCalls = [];
@@ -39,14 +40,14 @@ async function usageSandbox({ localStorage, aiClients, usageSummary, fetchImpl }
     throw new Error('unexpected fetch in ai-usage-store test: ' + url);
   });
   const sandbox = {
-    window: {}, localStorage, Promise,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, localStorage, Promise,
     fetch: (url, options) => { fetchCalls.push([url, options]); return fetchFn(url, options); },
     document: { documentElement: { lang: 'en' } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
   };
   sandbox.window = Object.assign(sandbox.window, {
     localStorage, dispatchEvent() {}, addEventListener() {}, fetch: sandbox.fetch, document: sandbox.document,
-    TradeJournalDevUserSwitcher: { currentUserId: () => localStorage.getItem('tradejournal:auth-token') }
+    TradeJournalDevUserSwitcher: { currentUserId: () => 'test-user' }
   }, aiClients || {});
   vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('user-preferences.js'), sandbox, { filename: 'user-preferences.js' });

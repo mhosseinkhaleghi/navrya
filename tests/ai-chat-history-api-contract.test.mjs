@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
-import { testToken } from './helpers/auth-token.mjs';
+import { authHeadersFor } from './helpers/auth-token.mjs';
 
 // Real, multiple, resumable conversations for the global AI assistant dock - mounted at
 // /api/sync/ai-chat-history (server/community/routes.ai-chat-history.mjs), behind requireAuth.
@@ -18,17 +18,17 @@ after(() => new Promise((resolve) => server.close(resolve)));
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = testToken(userId);
+  if (userId) Object.assign(headers, await authHeadersFor(repo, userId));
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 async function createUser(name) { return repo.users.create({ displayName: name }); }
 
-test('a request with no x-dev-user-id is rejected with AUTH_TOKEN_REQUIRED', async () => {
+test('a request with no x-dev-user-id is rejected with AUTH_SESSION_REQUIRED', async () => {
   const result = await api('GET', '/api/sync/ai-chat-history');
   assert.equal(result.status, 401);
-  assert.equal(result.body.error, 'AUTH_TOKEN_REQUIRED');
+  assert.equal(result.body.error, 'AUTH_SESSION_REQUIRED');
 });
 
 test('POST creates a conversation from its first exchange, GET / lists it as a lightweight summary (no message bodies), GET /:id returns the full thread', async () => {

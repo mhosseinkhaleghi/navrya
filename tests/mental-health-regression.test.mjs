@@ -19,8 +19,11 @@ async function loadInto(sandbox, files) {
 }
 
 function baseSandbox(localStorage) {
+  // Cookie-based sessions (ADR-0001): server-replica.js's hasCurrentUser() gate now reads
+  // window.__NAVRYA_AUTH__ instead of a localStorage credential - every caller of this shared
+  // helper wants an authenticated 'test-user', matching what they used to seed by hand.
   const sandbox = {
-    window: {}, localStorage,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, localStorage,
     document: { body: { dataset: {} }, documentElement: { lang: 'en' } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     FileReader: class {},
@@ -46,7 +49,6 @@ function baseSandbox(localStorage) {
 // the only place a pre-existing profile can come from now.
 async function mentalHealthOnly(localStorage, serverProfile) {
   const store = localStorage || memoryStorage();
-  if (!store.getItem('tradejournal:auth-token')) store.setItem('tradejournal:auth-token', 'test-user');
   const sandbox = baseSandbox(store);
   // Only the replica's own hydrate/save traffic is stubbed to succeed - every other fetch (the AI
   // education-card endpoint, etc.) keeps baseSandbox()'s original "not used" throw, so a test that
@@ -68,7 +70,6 @@ async function mentalHealthOnly(localStorage, serverProfile) {
 // exactly like every other domain since the migration) and echoes back any POSTed trade.
 async function withTrades(localStorage) {
   const store = localStorage || memoryStorage();
-  if (!store.getItem('tradejournal:auth-token')) store.setItem('tradejournal:auth-token', 'test-user');
   const sandbox = baseSandbox(store);
   sandbox.fetch = async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ trades: [] }) };
   sandbox.window.fetch = sandbox.fetch;
@@ -467,7 +468,6 @@ class FakeNode {
 
 test('pre-session check-in fires once per session by wrapping TradeJournalEntryFlow.openEntry, regardless of whether the session already has chart-upload-derived entries; only a recorded check-in stops it firing again', async () => {
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:auth-token', 'test-user');
   const sandbox = baseSandbox(localStorage);
   Object.assign(sandbox, {
     document: { createElement: tag => new FakeNode(tag), createTextNode: text => { const node = new FakeNode('#text'); node.textContent = text; return node; }, documentElement: { lang: 'en' }, body: new FakeNode('body'), addEventListener() {} },

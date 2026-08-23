@@ -21,9 +21,10 @@ function memoryStorage() {
 // domain's own regression-test sandbox fix (see tests/mental-health-regression.test.mjs).
 async function psychologyStore(localStorage, fetchImpl) {
   localStorage = localStorage || memoryStorage();
-  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
+  // Cookie-based sessions (ADR-0001): server-replica.js's hasCurrentUser() gate now reads
+  // window.__NAVRYA_AUTH__ instead of a localStorage credential.
   const sandbox = {
-    window: {},
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } },
     localStorage, fetch: fetchImpl || (async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => JSON.parse(options.body) } : { ok: true, json: async () => ({ preferences: [] }) }),
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }
   };

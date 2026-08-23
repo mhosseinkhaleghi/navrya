@@ -28,11 +28,15 @@ class FakeFileReader {
 }
 
 async function loadPatterns({ localStorage, fetchImpl, currentUserId }) {
-  if (currentUserId) localStorage.setItem('tradejournal:auth-token', currentUserId);
+  // Cookie-based sessions (ADR-0001): server-replica.js's hasCurrentUser() gate now reads
+  // window.__NAVRYA_AUTH__ instead of a localStorage credential.
+  const authState = currentUserId
+    ? { authenticated: true, userId: currentUserId, user: { id: currentUserId }, csrfToken: 'test-csrf' }
+    : { authenticated: false, userId: null, user: null, csrfToken: null };
   const fetchCalls = [];
   const fetchFn = async (url, options) => { fetchCalls.push([url, options]); return fetchImpl ? fetchImpl(url, options) : { ok: false, status: 500 }; };
   const sandbox = {
-    window: {}, localStorage, fetch: fetchFn, FileReader: FakeFileReader,
+    window: { __NAVRYA_AUTH__: authState }, localStorage, fetch: fetchFn, FileReader: FakeFileReader,
     document: { body: { appendChild() {} }, documentElement: { lang: 'en' }, createElement: () => ({ setAttribute() {} }) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     setTimeout: (fn) => fn()
