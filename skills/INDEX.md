@@ -11,3 +11,5 @@ Read `AGENTS.md` and `HANDOFF.md` before every task. Then read the skills that m
 | AI, Copilot, or Voice work | `navrya-architecture`, `navrya-javascript-engineering`, then the relevant `docs/ai/*.md` file |
 
 The skills are concise operating instructions. The linked source documents and the implementation/tests are the detailed reference and final authority.
+
+For every task, use targeted discovery first. Search for the existing implementation, tests, store, API, event, and component contract before creating a new abstraction or loading broad documentation.

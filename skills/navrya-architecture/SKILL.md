@@ -20,11 +20,14 @@ NAVRYA is a hybrid application. The active outer shell is `index.html` plus `src
 
 ## Safe design rules
 
+- Before proposing new structure, search for the existing feature, store, route, event, test, and design contract. Extend the closest established pattern.
 - Reuse an existing store, public adapter, event, and API boundary. Do not introduce parallel state or duplicate persistence paths.
+- Keep one canonical owner for each domain model. Cross-feature use goes through a named public adapter, never another module's private storage or DOM state.
 - Preserve all four character pages and their script order. A shared script or CSS addition usually belongs in all four entry pages.
 - Keep character identity in theme tokens. Use logical CSS properties and implement all four language dictionaries: `fa`, `ar`, `en`, and `es`.
 - Keep AI credentials server-side. AI output must be validated and must not replace deterministic safety or confirmation rules.
 - Before changing a visible NAVRYA component, read its matching `public/pages/shared/navrya/components/**/*.prompt.md` design contract.
+- Do not create a competing component style, modal abstraction, state architecture, or backend service to solve a local task. Improve the existing pattern only when the task requires it and migration scope is explicit.
 
 ## Read detailed references on demand
 
