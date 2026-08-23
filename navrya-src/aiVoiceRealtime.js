@@ -72,6 +72,15 @@ export function createVoiceSession(options) {
   // .paused/.srcObject/track state - see audioDiagnostics() below.
   var audioEl = null;
   var handledItemIds = Object.create(null);
+  // The active speak()'s own settle function, if one is currently pending - see speak()'s own
+  // comment on why this exists alongside its session-event listeners: RealtimeSession.close()
+  // (called from disconnect() below) tears down transport state directly and emits none of
+  // audio_stopped/audio_interrupted/error (verified against the installed SDK's own source, not
+  // assumed), so a speak() in flight when the user leaves Voice Mode or a reconnect tears the
+  // session down would otherwise sit unsettled for the full 12s fallback with nothing left to
+  // resolve it either. disconnect() below settles it directly instead of relying on an event that
+  // this SDK version never sends for a close().
+  var pendingSpeakSettle = null;
   // Bounded ring buffer of recent raw event *types* only (never audio/transcript content) -
   // purely a dev diagnostic surfaced through debugState(), same privacy posture as
   // chat-dock-core.js's own debugLastTurn() (paths/ids, never values).
@@ -183,6 +192,10 @@ export function createVoiceSession(options) {
     isMuted = false;
     onMuteChange(isMuted);
     setState(VOICE_STATES.IDLE);
+    // See pendingSpeakSettle's own comment above - close() itself never settles an in-flight
+    // speak() promise, so do it explicitly here rather than leave the caller's voiceTurnQueue
+    // blocked on the 12s fallback for a session that no longer exists.
+    if (pendingSpeakSettle) { var settleNow = pendingSpeakSettle; pendingSpeakSettle = null; settleNow(); }
   }
 
   // Orthogonal to `state` - the user can mute while NAVRYA is speaking (to stop their own
@@ -215,14 +228,26 @@ export function createVoiceSession(options) {
   // Called only by the caller, only once NAVRYA's own deterministic turn produced a reply -
   // never invoked in response to anything the Realtime model itself decided.
   //
-  // Returns a Promise that resolves once this response has actually finished being spoken
-  // (session 'audio_stopped'), not just once the request was sent - found necessary via real E1
-  // multi-turn testing: the caller serializes voice turns through a queue (chatDockView.jsx's
-  // voiceTurnQueue) precisely so two turns are never in flight at once, but speak() itself used
-  // to return immediately, so a fast-resolving next turn's own speak() call could fire a second
-  // response.create while the first one's audio was still playing - the Realtime API rejects an
-  // overlapping response, which surfaced as a transient session error mid-conversation. A 12s
-  // safety timeout resolves anyway (never lets a lost/late audio_stopped event wedge the queue).
+  // Returns a Promise that resolves once this response is done occupying the session - either it
+  // actually finished being spoken ('audio_stopped'), or playback was cut short for any reason
+  // ('audio_interrupted' - barge-in via interrupt() above, or the SDK's own handling of a
+  // disconnect/session replacement mid-speech - or 'error') - not just once the request was sent.
+  // Found necessary via real E1 multi-turn testing: the caller serializes voice turns through a
+  // queue (chatDockView.jsx's voiceTurnQueue) precisely so two turns are never in flight at once,
+  // but speak() itself used to return immediately, so a fast-resolving next turn's own speak()
+  // call could fire a second response.create while the first one's audio was still playing - the
+  // Realtime API rejects an overlapping response, which surfaced as a transient session error
+  // mid-conversation.
+  //
+  // 'audio_interrupted' was originally missing from this list - only 'audio_stopped'/'error' were
+  // watched. A real barge-in (input_audio_buffer.speech_started while ASSISTANT_SPEAKING, above)
+  // calls interrupt() -> session.interrupt(), which the SDK surfaces as 'audio_interrupted', not
+  // 'audio_stopped' - so an in-flight speak() promise never saw ANY of the events it was actually
+  // listening for and sat unsettled for the full 12s fallback on every single barge-in, silently
+  // blocking voiceTurnQueue from dispatching the very next (already-finalized, already-waiting)
+  // turn for up to 12 real seconds - exactly the failure mode this queue design exists to prevent.
+  // The 12s timer remains only as a true last-resort diagnostic safety net for a genuinely lost/
+  // never-fired event, not the normal way an interruption gets noticed.
   function speak(text) {
     if (!session || !text) return Promise.resolve();
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
@@ -243,9 +268,12 @@ export function createVoiceSession(options) {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (pendingSpeakSettle === settle) pendingSpeakSettle = null;
         resolve();
       }
+      pendingSpeakSettle = settle;
       activeSession.once('audio_stopped', settle);
+      activeSession.once('audio_interrupted', settle);
       activeSession.once('error', settle);
     });
   }
