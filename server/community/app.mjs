@@ -3,6 +3,7 @@ import { requireAuth } from './auth-real.mjs';
 import { errorMiddleware, notFoundMiddleware } from './errors.mjs';
 import { requireAdmin } from '../admin/auth-admin.mjs';
 import * as routesAuth from './routes.auth.mjs';
+import * as routesAuthOidc from './routes.auth-oidc.mjs';
 import * as routesUsers from './routes.users.mjs';
 import * as routesPosts from './routes.posts.mjs';
 import * as routesMarketplace from './routes.marketplace.mjs';
@@ -19,13 +20,18 @@ import * as routesAiChatHistory from './routes.ai-chat-history.mjs';
 import * as routesCompanion from './routes.companion.mjs';
 import * as routesSessionSignatures from './routes.session-signatures.mjs';
 import * as routesPreferences from './routes.preferences.mjs';
+import { corsMiddleware, originCheck } from './security/origins.mjs';
+import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
+import { csrfProtection } from './security/csrf.mjs';
 
 // Shared-secret gate for the public preview deploy - BASIC_AUTH_USER/PASS are unset in local
 // dev (checkBasicAuth then always passes), and set as Render env vars once a real link is
 // handed to testers/investors, since neither this API nor pattern-ai-server.mjs has real user
 // authentication yet. /internal is exempt - it's server-to-server (pattern-ai-server.mjs's
 // admin-key bridge), already protected by its own x-internal-secret header, and never goes
-// through a browser.
+// through a browser. This is an ADDITIONAL layer on top of real per-user auth below, never a
+// substitute for it - it existed before real sessions did and is kept only for the "keep a
+// public preview link away from bots/crawlers" use case it was built for.
 function checkBasicAuth(req) {
   const user = process.env.BASIC_AUTH_USER;
   const pass = process.env.BASIC_AUTH_PASS;
@@ -46,22 +52,30 @@ function checkBasicAuth(req) {
 export function createApp({ repo, uploadsDir }) {
   const app = express();
 
-  // Mirrors pattern-ai-server.mjs's exact CORS/no-store header set, extended with the one
-  // header this API additionally reads.
-  app.use((req, res, next) => {
-    res.set({
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type, x-dev-user-id, Authorization',
-      'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-      'Cache-Control': 'no-store'
-    });
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
-  });
+  // Exactly the deployment topology's own reverse-proxy hop count (Caddy in front, one hop -
+  // see deploy/Caddyfile / docker-compose.production.yml), never "trust everything" - an
+  // unconfigured/forged X-Forwarded-For must never be trusted as the real client IP (that IP
+  // feeds rate-limit keys and security_events.ip_hash). Defaults to 0 (no proxy trusted) for
+  // local dev, where there genuinely is no reverse proxy in front of this process.
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 0));
+
+  app.use(securityHeaders());
+  app.use(corsMiddleware());
+  app.use(originCheck());
+  app.use(noStoreAuthResponses());
 
   // No DB query here - lets a smoke test hit /health with zero Postgres connectivity required,
   // and lets a hosting platform's health probe succeed without the shared-secret gate below.
+  // /livez is process-only liveness (never checks a dependency); /readyz is dependency-aware
+  // but never leaks paths/secrets/internal detail - just a boolean per dependency.
   app.get('/health', (req, res) => res.json({ ok: true, uploadsDir }));
+  app.get('/livez', (req, res) => res.json({ ok: true }));
+  app.get('/readyz', async (req, res) => {
+    let dbOk = false;
+    try { const health = await repo.health(); dbOk = Boolean(health.dbOk); } catch (_) { dbOk = false; }
+    const ready = dbOk;
+    res.status(ready ? 200 : 503).json({ ready, checks: { database: dbOk } });
+  });
 
   app.use((req, res, next) => {
     if (req.path.startsWith('/internal')) return next();
@@ -70,21 +84,44 @@ export function createApp({ repo, uploadsDir }) {
     res.status(401).json({ error: 'UNAUTHORIZED' });
   });
 
+  // Small body limit for auth endpoints specifically, applied BEFORE the general 60mb parser
+  // and BEFORE any expensive work (password hashing) - an oversized auth request body is
+  // rejected at the framing layer, never reaches assertPasswordPolicy/hashPassword. Mounted on
+  // the path prefix only; body-parser skips re-parsing an already-parsed body, so the general
+  // parser below is a no-op for these paths.
+  app.use('/api/auth', express.json({ limit: '32kb' }));
   // Base64 images inflate payloads ~33% over their binary size; 60mb comfortably covers a
   // handful of 15MB-capped images per request, well under the AI server's 100mb cap.
   app.use(express.json({ limit: '60mb' }));
-  app.use('/uploads', express.static(uploadsDir));
+  // Session/pattern/strategy/trade screenshots are private trading-journal/mental-health-adjacent
+  // media (Section 7.18) - never publicly reachable, unlike Community's own posts/listings
+  // images, which are public by product design (a feed post or a marketplace storefront image is
+  // meant to be visible to other users). This requires a real session before serving anything
+  // under those four category prefixes; everything else under /uploads stays public.
+  // Honest, named gap (see docs/auth/IMPLEMENTATION_STATUS.md): this enforces "a real logged-in
+  // NAVRYA user", not yet "the specific owner of this exact file" - a per-owner reverse-index
+  // check (or short-lived signed URLs) was judged too large an addition for this pass and is
+  // flagged as follow-up work, not silently skipped.
+  const PRIVATE_UPLOAD_CATEGORIES = new Set(['session', 'pattern', 'strategy', 'trade']);
+  app.use('/uploads', (req, res, next) => {
+    const category = req.path.split('/')[1];
+    if (!PRIVATE_UPLOAD_CATEGORIES.has(category)) return next();
+    return requireAuth(repo)(req, res, next);
+  }, express.static(uploadsDir));
 
   // Public - the admin frontend's login/test-mode gate reads this BEFORE anyone is
   // identified, to decide whether to show the "TEST MODE" banner or a real login screen.
-  app.get('/api/admin/config', (req, res) => res.json({ authEnforced: process.env.ADMIN_AUTH_ENFORCED === 'true' }));
-  // Server-to-server only (pattern-ai-server.mjs's admin-key bridge) - protected by its own
-  // shared-secret header inside the route, not by devUserAuth/requireAdmin, since there is no
-  // dev-user identity on this call at all.
+  app.get('/api/admin/config', (req, res) => res.json({ authEnforced: process.env.ADMIN_AUTH_ENFORCED !== 'false' }));
+  // Server-to-server only (pattern-ai-server.mjs's admin-key bridge and session-introspection
+  // caller) - protected by its own shared-secret header inside the route, not by
+  // requireAuth/requireAdmin, since there is no browser identity on this call at all.
   app.use('/internal', routesInternal.router(repo));
 
-  app.use('/api/auth', routesAuth.router(repo)); // register/login/google - bootstraps identity, no auth required yet
+  app.use('/api/auth', routesAuth.router(repo)); // register/login/google/logout/sessions/password/email - bootstraps identity, applies its own per-route auth+CSRF
+  app.use('/api/auth/oidc', routesAuthOidc.router(repo)); // generic OIDC start/callback
+
   app.use(requireAuth(repo));
+  app.use(csrfProtection()); // every route mounted below this line requires a valid session; unsafe methods also require a valid CSRF token
   app.use('/api/users', routesUsers.protectedRouter(repo));
   // Two segments after /users (/me/profile, /me/xp-events, ...) - never collides with the
   // single-segment GET /:id above, so mount order between the two doesn't matter.

@@ -39,13 +39,15 @@ test('running the community server with no DATABASE_URL configured lets a real a
     const response = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'fallback-tester@example.com', password: 'abcd', displayName: 'Fallback Tester' })
+      body: JSON.stringify({ email: 'fallback-tester@example.com', password: 'a genuinely long passphrase 42', displayName: 'Fallback Tester' })
     });
     const body = await response.json();
     assert.equal(response.status, 201, 'account creation must succeed with no DB configured, not fail with a network/offline error');
     assert.equal(body.user.displayName, 'Fallback Tester');
     assert.ok(body.user.id, 'a real user id must be returned');
-    assert.ok(body.token, 'a real session token must be returned so the browser can persist it and unlock the rest of the app');
+    assert.ok(body.csrfToken, 'a real CSRF token must be returned so the browser can attach it to its next state-changing request');
+    assert.ok(response.headers.get('set-cookie'), 'a real HttpOnly session cookie must be issued so the browser is authenticated - never a bearer token in the JSON body');
+    assert.doesNotMatch(JSON.stringify(body), /"token"/, 'no raw session credential should ever be returned in the response body');
   } finally {
     child.kill();
   }

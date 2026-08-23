@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
-import { testToken } from './helpers/auth-token.mjs';
+import { authHeadersFor } from './helpers/auth-token.mjs';
 
 // Mirrors community-api-contract.test.mjs's setup exactly: createApp() has zero import-time
 // side effects, so each server here gets its own memory repo and OS-assigned port.
 let server, baseUrl, repo;
 
 before(async () => {
-  delete process.env.ADMIN_AUTH_ENFORCED; // default/unset -> requireAdmin treats every identified dev-user as admin
+  delete process.env.ADMIN_AUTH_ENFORCED; // unset now means ENFORCED (fail-closed default) - createAdmin() grants real role='admin' for every test that needs to act as one
   repo = createMemoryRepo();
   server = createApp({ repo, uploadsDir: '/tmp' }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
@@ -19,7 +19,7 @@ after(() => new Promise((resolve) => server.close(resolve)));
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = testToken(userId);
+  if (userId) Object.assign(headers, await authHeadersFor(repo, userId));
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : null };
@@ -28,27 +28,42 @@ async function api(method, path, { body, userId } = {}) {
 async function createUser(name) {
   return repo.users.create({ displayName: name });
 }
+// Admin authorization is fail-CLOSED by default now (server/admin/auth-admin.mjs) - a caller
+// must have a real role='admin' row, not merely be "any identified user" the way the old
+// disabled-by-default behavior treated everyone. Every test below that needs to act as an
+// admin uses this helper instead of the plain createUser().
+async function createAdmin(name) {
+  const user = await repo.users.create({ displayName: name });
+  return repo.users.update(user.id, { role: 'admin' });
+}
 
-test('GET /api/admin/config reflects the ADMIN_AUTH_ENFORCED env flag live, without auth', async () => {
+test('GET /api/admin/config reflects the ADMIN_AUTH_ENFORCED env flag live, without auth - unset now means ENFORCED, not disabled', async () => {
   delete process.env.ADMIN_AUTH_ENFORCED;
   let result = await api('GET', '/api/admin/config');
   assert.equal(result.status, 200);
-  assert.equal(result.body.authEnforced, false);
-  process.env.ADMIN_AUTH_ENFORCED = 'true';
+  assert.equal(result.body.authEnforced, true, 'fail-closed by default: unset must report enforced, never the old fail-open default');
+  process.env.ADMIN_AUTH_ENFORCED = 'false';
   result = await api('GET', '/api/admin/config');
-  assert.equal(result.body.authEnforced, true);
+  assert.equal(result.body.authEnforced, false);
   delete process.env.ADMIN_AUTH_ENFORCED; // restore for every other test in this file
 });
 
-test('with enforcement disabled (the default), any identified dev-user can use admin routes with no role check', async () => {
+// Replaces the old "with enforcement disabled (the default), any identified dev-user can use
+// admin routes with no role check" test, which asserted the fail-open vulnerability itself as a
+// feature. Admin authorization is fail-closed unconditionally now (server/admin/auth-admin.mjs) -
+// this is the regression test for that fix: a real account with no admin role must be rejected
+// even with ADMIN_AUTH_ENFORCED left completely unset, the exact configuration that used to grant
+// every identified user admin access.
+test('with ADMIN_AUTH_ENFORCED left unset (no longer a fail-open default), a plain user is still rejected from admin routes', async () => {
+  delete process.env.ADMIN_AUTH_ENFORCED;
   const user = await createUser('Plain User');
   const result = await api('GET', '/api/admin/users', { userId: user.id });
-  assert.equal(result.status, 200);
-  assert.ok(Array.isArray(result.body.users));
+  assert.equal(result.status, 403);
+  assert.equal(result.body.error, 'ADMIN_ROLE_REQUIRED');
 });
 
 test('GET /api/admin/ai/keys never includes the raw apiKey value, for a set provider, an unset provider, or after a failed upsert attempt', async () => {
-  const admin = await createUser('Admin');
+  const admin = await createAdmin('Admin');
   await repo.adminKeys.upsert({ provider: 'openai', apiKey: 'sk-super-secret-value' });
   await assert.rejects(repo.adminKeys.upsert({ provider: 'anthropic', apiKey: '' })); // failed attempt - must never leave a leaked/partial row either
   const result = await api('GET', '/api/admin/ai/keys', { userId: admin.id });
@@ -63,7 +78,7 @@ test('GET /api/admin/ai/keys never includes the raw apiKey value, for a set prov
 });
 
 test('POST /api/admin/ai/keys sets a key (masked response only) and writes exactly one audit log row', async () => {
-  const admin = await createUser('Admin2');
+  const admin = await createAdmin('Admin2');
   const before = await repo.auditLog.list({ limit: 100 });
   const result = await api('POST', '/api/admin/ai/keys', { userId: admin.id, body: { provider: 'kimi', apiKey: 'kimi-secret-abc' } });
   assert.equal(result.status, 201);
@@ -76,7 +91,7 @@ test('POST /api/admin/ai/keys sets a key (masked response only) and writes exact
 });
 
 test('PATCH /api/admin/users/:id changes role/suspendedAt and writes one audit log row', async () => {
-  const admin = await createUser('Admin3');
+  const admin = await createAdmin('Admin3');
   const target = await createUser('Target User');
   const before = await repo.auditLog.list({ limit: 100 });
   const result = await api('PATCH', `/api/admin/users/${target.id}`, { userId: admin.id, body: { role: 'moderator' } });
@@ -88,7 +103,7 @@ test('PATCH /api/admin/users/:id changes role/suspendedAt and writes one audit l
 });
 
 test('POST /api/admin/ai/pricing writes one audit log row and GET /api/admin/finance/overview never fabricates a number when nothing is configured', async () => {
-  const admin = await createUser('Admin4');
+  const admin = await createAdmin('Admin4');
   const emptyFinance = await api('GET', '/api/admin/finance/overview', { userId: admin.id });
   assert.equal(emptyFinance.status, 200);
   const openaiCost = emptyFinance.body.aiCostByProvider.find((row) => row.provider === 'openai');
@@ -112,7 +127,7 @@ test('POST /api/admin/ai/pricing writes one audit log row and GET /api/admin/fin
 });
 
 test('PATCH /api/admin/marketplace/listings/:id can delist and feature a listing, and writes one audit log row per call', async () => {
-  const admin = await createUser('Admin5');
+  const admin = await createAdmin('Admin5');
   const seller = await createUser('Seller');
   const listing = await repo.listings.create({ sellerId: seller.id, type: 'pattern', sourceId: 'src-1', title: 'A pattern', previewContent: {}, fullContent: {}, evidenceAsOf: new Date().toISOString(), status: 'published' });
 
@@ -132,7 +147,7 @@ test('PATCH /api/admin/marketplace/listings/:id can delist and feature a listing
 });
 
 test('GET /api/admin/technical reports the memory backend honestly and never fabricates error-tracking data', async () => {
-  const admin = await createUser('Admin6');
+  const admin = await createAdmin('Admin6');
   const result = await api('GET', '/api/admin/technical', { userId: admin.id });
   assert.equal(result.status, 200);
   assert.equal(result.body.db.backend, 'memory');
@@ -151,7 +166,7 @@ test('with ADMIN_AUTH_ENFORCED=true, a non-admin role is rejected with 403 and a
     const enforcedBaseUrl = `http://127.0.0.1:${enforcedServer.address().port}`;
     async function enforcedApi(method, path, { body, userId } = {}) {
       const headers = { 'Content-Type': 'application/json' };
-      if (userId) headers['x-dev-user-id'] = testToken(userId);
+      if (userId) Object.assign(headers, await authHeadersFor(enforcedRepo, userId));
       const response = await fetch(enforcedBaseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
       const text = await response.text();
       return { status: response.status, body: text ? JSON.parse(text) : null };
@@ -173,7 +188,7 @@ test('with ADMIN_AUTH_ENFORCED=true, a non-admin role is rejected with 403 and a
 });
 
 test('GET /api/admin/users/:id includes identity, level, achievements, and subscriptions - everything a support agent needs on one screen', async () => {
-  const admin = await createUser('Admin7');
+  const admin = await createAdmin('Admin7');
   const target = await createUser('Support Target');
   await repo.users.updateProfile(target.id, { email: 'support-target@example.com', profileRole: 'mentor' });
   await repo.xpEvents.record({ userId: target.id, type: 'trade_closed', points: 100, meta: {} });
@@ -195,7 +210,7 @@ test('GET /api/admin/users/:id includes identity, level, achievements, and subsc
 });
 
 test('GET /api/admin/ai/usage defaults to a 30-day window and honors ?days=, excluding events older than the window', async () => {
-  const admin = await createUser('Admin9');
+  const admin = await createAdmin('Admin9');
   const target = await createUser('Usage Target');
   await repo.usageEvents.create({ userId: target.id, provider: 'openai', totalTokens: 200, source: 'ai.chat' });
 
@@ -211,7 +226,7 @@ test('GET /api/admin/ai/usage defaults to a 30-day window and honors ?days=, exc
 });
 
 test('GET /api/admin/users/:id includes usageByProvider - a per-provider breakdown, not just the one lifetime total', async () => {
-  const admin = await createUser('Admin10');
+  const admin = await createAdmin('Admin10');
   const target = await createUser('Provider Usage Target');
   await repo.usageEvents.create({ userId: target.id, provider: 'openai', totalTokens: 120, source: 'ai.chat' });
   await repo.usageEvents.create({ userId: target.id, provider: 'anthropic', totalTokens: 40, source: 'ai.chat' });
@@ -224,7 +239,7 @@ test('GET /api/admin/users/:id includes usageByProvider - a per-provider breakdo
 });
 
 test('GET /api/admin/ai/health reports unconfigured/unknown/healthy/disconnected per provider, never fabricating a status', async () => {
-  const admin = await createUser('Admin11');
+  const admin = await createAdmin('Admin11');
   // deepseek specifically: every other test in this file touches openai/anthropic/kimi at some
   // point, and this file's tests share one repo instance cumulatively (see `before()`) - deepseek
   // is the one provider guaranteed untouched, so this test's own progression (unconfigured ->
@@ -262,7 +277,7 @@ test('GET /api/admin/ai/health reports unconfigured/unknown/healthy/disconnected
 });
 
 test('PATCH /api/admin/users/:id/kyc changes kycStatus, rejects an invalid value, and writes one audit log row', async () => {
-  const admin = await createUser('Admin8');
+  const admin = await createAdmin('Admin8');
   const target = await createUser('KYC Target');
   const before = await repo.auditLog.list({ limit: 100 });
 
