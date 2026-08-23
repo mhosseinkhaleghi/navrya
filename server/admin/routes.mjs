@@ -1,5 +1,6 @@
 import express from 'express';
 import { ApiError, asyncHandler } from '../community/errors.mjs';
+import { requireRecentReauth } from './auth-admin.mjs';
 import {
   levelForXp, POINTS_BY_TYPE, DOMAIN_BY_TYPE, DOMAIN_DAILY_CAP, PER_SOURCE_MAX, PER_TYPE_PERIOD_CAP,
   RECURRING_DAILY_CAP_TOTAL, SOURCE_TOTAL_CAP
@@ -114,6 +115,16 @@ export function router(repo) {
     await repo.auditLog.create({ adminUserId: req.currentUser.id, action, targetType, targetId, details: details || {} });
   }
 
+  // Prevents removal/suspension/demotion of the LAST remaining active admin without a separate,
+  // explicit out-of-band recovery procedure (scripts/admin-grant.mjs) - otherwise a single
+  // careless or malicious PATCH could permanently lock every admin surface (including the one
+  // needed to undo it) with no way back in short of direct database access.
+  async function isOnlyActiveAdmin(userId) {
+    const users = await repo.users.list();
+    const activeAdmins = users.filter((u) => u.role === 'admin' && !u.suspendedAt);
+    return activeAdmins.length === 1 && activeAdmins[0].id === userId;
+  }
+
   app.get('/users', asyncHandler(async (req, res) => {
     await repo.sessions.sweepStale(ONLINE_SWEEP_THRESHOLD_MS);
     const [users, sessionAgg, usageAgg, purchaseAgg] = await Promise.all([
@@ -169,7 +180,10 @@ export function router(repo) {
     });
   }));
 
-  app.patch('/users/:id/kyc', asyncHandler(async (req, res) => {
+  // Step-up required (requireRecentReauth): KYC status is a real trust signal other systems key
+  // off of - changing it must follow a genuine recent reauthentication, not just an
+  // already-long-open admin session.
+  app.patch('/users/:id/kyc', requireRecentReauth(), asyncHandler(async (req, res) => {
     const existing = await repo.users.get(req.params.id);
     if (!existing) throw new ApiError(404, 'USER_NOT_FOUND');
     const body = req.body || {};
@@ -179,17 +193,34 @@ export function router(repo) {
     res.json(updated);
   }));
 
-  app.patch('/users/:id', asyncHandler(async (req, res) => {
+  // Step-up required. Also the final-admin protection: a role change away from 'admin' or a
+  // suspension applied to the LAST remaining active admin is rejected outright (409), rather
+  // than silently locking every admin surface including the one that would be needed to undo it.
+  app.patch('/users/:id', requireRecentReauth(), asyncHandler(async (req, res) => {
     const existing = await repo.users.get(req.params.id);
     if (!existing) throw new ApiError(404, 'USER_NOT_FOUND');
     const body = req.body || {};
     const patch = {};
     if (body.role !== undefined) {
       if (!['user', 'moderator', 'admin'].includes(body.role)) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (existing.role === 'admin' && body.role !== 'admin' && await isOnlyActiveAdmin(existing.id)) {
+        throw new ApiError(409, 'CANNOT_REMOVE_LAST_ADMIN');
+      }
       patch.role = body.role;
     }
-    if ('suspendedAt' in body) patch.suspendedAt = body.suspendedAt || null;
+    if ('suspendedAt' in body) {
+      if (body.suspendedAt && existing.role === 'admin' && await isOnlyActiveAdmin(existing.id)) {
+        throw new ApiError(409, 'CANNOT_SUSPEND_LAST_ADMIN');
+      }
+      patch.suspendedAt = body.suspendedAt || null;
+    }
     const updated = await repo.users.update(req.params.id, patch);
+    // A role change or suspension is a privilege-relevant change for the TARGET user - force
+    // every one of their other sessions to re-authenticate immediately, not just on next login.
+    if ('role' in patch || 'suspendedAt' in patch) {
+      const { revokeAllSessions } = await import('../community/security/session-service.mjs');
+      await revokeAllSessions(repo, req.params.id, 'role_change');
+    }
     await audit(req, 'user.update', 'user', req.params.id, { before: { role: existing.role, suspendedAt: existing.suspendedAt }, after: patch });
     res.json(updated);
   }));
@@ -205,7 +236,8 @@ export function router(repo) {
     }));
   }));
 
-  app.post('/ai/keys', asyncHandler(async (req, res) => {
+  // Step-up required: a provider API key is a real production credential.
+  app.post('/ai/keys', requireRecentReauth(), asyncHandler(async (req, res) => {
     const provider = req.body && req.body.provider;
     if (!KNOWN_PROVIDERS.includes(provider)) throw new ApiError(400, 'VALIDATION_FAILED');
     await repo.adminKeys.upsert({ provider, apiKey: req.body.apiKey, updatedBy: req.currentUser.id });

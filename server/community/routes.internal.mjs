@@ -1,26 +1,33 @@
 import express from 'express';
 import { asyncHandler } from './errors.mjs';
+import { resolveSessionByRawId } from './security/session-service.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 
 // Server-to-server only - never called by a browser. pattern-ai-server.mjs (a plain node:http
-// server with zero Postgres coupling by design) polls this route to resolve admin-configured
-// AI provider keys without ever touching the database directly itself. Protected by a shared
-// secret header rather than devUserAuth, since there is no dev-user identity on this call at
-// all. If INTERNAL_API_SECRET is unset (the common zero-setup dev case), this route is left
-// open - consistent with this app's existing "both servers bind to 127.0.0.1 only, not
-// production-hardened" stance already documented for every other endpoint.
+// server with zero Postgres coupling by design) polls /admin-ai-keys to resolve admin-configured
+// AI provider keys, and calls /session-introspect to verify a real user session before serving
+// ANY AI endpoint (ADR-0001 section 6) - without either route touching the database directly
+// itself. Protected by a shared secret header rather than requireAuth, since there is no
+// browser/cookie identity on either call at all - this is process-to-process.
+//
+// INTERNAL_API_SECRET unset is refused outright in production (fail closed - see the instruction
+// "missing internal-service authentication must fail startup in production"). Local/test-only, it
+// is left open and logged once, matching this app's existing zero-setup-dev conventions.
 export function router(repo) {
+  if (!process.env.INTERNAL_API_SECRET && process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: INTERNAL_API_SECRET must be set in production - it protects the session-introspection bridge the AI gateway uses to verify every caller is a real, non-suspended user.');
+  }
   const app = express.Router();
   let warnedOpen = false;
 
-  // Shared by both routes below - same secret, same "open in local dev, logged once" behavior.
+  // Shared by every route below - same secret, same "open in local dev, logged once" behavior.
   function secretOk(req) {
     const secret = process.env.INTERNAL_API_SECRET;
     if (!secret) {
       if (!warnedOpen) {
         warnedOpen = true;
-        console.warn('[admin] INTERNAL_API_SECRET is not set - /internal/* routes are reachable without a secret (local-only, not production-hardened)'); // eslint-disable-line no-console
+        console.warn('[internal] INTERNAL_API_SECRET is not set - /internal/* routes are reachable without a secret (local-only; production refuses to start this way)'); // eslint-disable-line no-console
       }
       return true;
     }
@@ -35,6 +42,21 @@ export function router(repo) {
     const result = {};
     KNOWN_PROVIDERS.forEach((provider) => { result[provider] = byProvider[provider] || null; });
     res.json(result);
+  }));
+
+  // The AI-gateway session-introspection bridge (ADR-0001 section 6). Takes the RAW session id
+  // the gateway parsed off its own incoming request's Cookie header (never a whole cookie header
+  // string, and never logged) and returns only the minimal shape the gateway needs to enforce
+  // identity/suspension - never the session record itself, never any other user field.
+  app.post('/session-introspect', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const rawSessionId = (req.body || {}).sessionId;
+    if (!rawSessionId) return res.json({ valid: false });
+    const record = await resolveSessionByRawId(repo, rawSessionId);
+    if (!record) return res.json({ valid: false });
+    const user = await repo.users.get(record.userId);
+    if (!user || user.suspendedAt) return res.json({ valid: false, suspended: Boolean(user && user.suspendedAt) });
+    res.json({ valid: true, userId: user.id, role: user.role });
   }));
 
   // pattern-ai-server.mjs fires this after every callProvider() outcome (success or failure) so

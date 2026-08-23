@@ -5,7 +5,7 @@ import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
-import { testToken } from './helpers/auth-token.mjs';
+import { authHeadersFor } from './helpers/auth-token.mjs';
 
 // server/community/app.mjs's createApp() has zero import-time side effects (no port bind, no
 // DB pool) - unlike server/community-api-server.mjs (the real entrypoint), so this file never
@@ -27,7 +27,7 @@ after(async () => {
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = testToken(userId);
+  if (userId) Object.assign(headers, await authHeadersFor(repo, userId));
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   const json = text ? JSON.parse(text) : null;
@@ -38,16 +38,25 @@ async function createUser(name) {
   return repo.users.create({ displayName: name });
 }
 
-test('a request with no x-dev-user-id is rejected with AUTH_TOKEN_REQUIRED', async () => {
+test('a request with no x-dev-user-id is rejected with AUTH_SESSION_REQUIRED', async () => {
   const result = await api('GET', '/api/community/posts');
   assert.equal(result.status, 401);
-  assert.equal(result.body.error, 'AUTH_TOKEN_REQUIRED');
+  assert.equal(result.body.error, 'AUTH_SESSION_REQUIRED');
 });
 
-test('a validly-signed token for a user id that no longer exists is rejected with AUTH_USER_NOT_FOUND', async () => {
-  const result = await api('GET', '/api/community/posts', { userId: 'user-does-not-exist' });
-  assert.equal(result.status, 401);
-  assert.equal(result.body.error, 'AUTH_USER_NOT_FOUND');
+// Session-based auth (server/community/security/session-service.mjs) has no equivalent of "a
+// validly-signed token whose subject user id was later deleted" any more: a session can only
+// ever be created for a real, already-existing user (repo.authSessions.create's requireUser
+// guard), and in real Postgres a user row's deletion CASCADEs to its auth_sessions rows
+// (020_auth_sessions.sql) - an orphaned session is structurally impossible now, not just
+// unlikely. The realistic equivalent risk is a forged/garbage session cookie value, which this
+// test covers instead.
+test('a request carrying an unrecognized/forged session cookie is rejected with AUTH_SESSION_REQUIRED, never a 500', async () => {
+  const { sessionCookieName } = await import('../server/community/security/cookies.mjs');
+  const response = await fetch(`${baseUrl}/api/community/posts`, { headers: { Cookie: `${sessionCookieName()}=totally-forged-value-not-a-real-session` } });
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error, 'AUTH_SESSION_REQUIRED');
 });
 
 test('posts + comments: create, list, comment, and only-author delete', async () => {

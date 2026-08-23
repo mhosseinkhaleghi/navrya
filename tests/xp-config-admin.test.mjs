@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
-import { testToken } from './helpers/auth-token.mjs';
+import { authHeadersFor } from './helpers/auth-token.mjs';
 import { getEffectiveXpConfig, invalidateXpConfigCache } from '../server/community/xp-config.mjs';
 import { POINTS_BY_TYPE } from '../server/community/xp-rules.mjs';
 import { LEVEL_REQUIREMENTS, blockersForLevel } from '../server/community/mastery-rules.mjs';
@@ -26,12 +26,16 @@ after(() => new Promise((resolve) => server.close(resolve)));
 
 async function api(method, path, { body, userId } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (userId) headers['x-dev-user-id'] = testToken(userId);
+  if (userId) Object.assign(headers, await authHeadersFor(repo, userId));
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 async function createUser(name) { return repo.users.create({ displayName: name }); }
+async function createAdmin(name) {
+  const user = await repo.users.create({ displayName: name });
+  return repo.users.update(user.id, { role: 'admin' });
+}
 
 test('repo.xpConfig.set/list/remove round-trips a natural-key override', async () => {
   const memRepo = createMemoryRepo();
@@ -83,7 +87,7 @@ test('blockersForLevel honors a custom requirementsTable when passed, defaults t
 });
 
 test('GET /api/admin/xp/config lists every type with default/current/overridden, and reflects a prior override', async () => {
-  const admin = await createUser('Config Admin');
+  const admin = await createAdmin('Config Admin');
   // A type not touched by any other test in this file - every test below shares one repo/server
   // instance (see the file-level before()), so each test uses its own dedicated type/level to
   // stay isolated rather than resetting shared state.
@@ -102,7 +106,7 @@ test('GET /api/admin/xp/config lists every type with default/current/overridden,
 });
 
 test('POST /api/admin/xp/config rejects an unknown type/category (never lets an admin invent a new XP source)', async () => {
-  const admin = await createUser('Config Admin 2');
+  const admin = await createAdmin('Config Admin 2');
   const badType = await api('POST', '/api/admin/xp/config', { userId: admin.id, body: { category: 'points', key: 'made_up_type', value: 5 } });
   assert.equal(badType.status, 400);
   assert.equal(badType.body.error, 'UNKNOWN_XP_CONFIG_TARGET');
@@ -111,7 +115,7 @@ test('POST /api/admin/xp/config rejects an unknown type/category (never lets an 
 });
 
 test('an admin override to a XP point value actually changes what POST /me/xp-events awards a trader, end to end', async () => {
-  const admin = await createUser('Config Admin 3');
+  const admin = await createAdmin('Config Admin 3');
   const trader = await createUser('Config Trader');
   await repo.trades.upsert(trader.id, { id: 't-before', status: 'hunting' });
   await repo.trades.upsert(trader.id, { id: 't-after', status: 'hunting' });
@@ -131,7 +135,7 @@ test('an admin override to a XP point value actually changes what POST /me/xp-ev
 });
 
 test('DELETE /api/admin/xp/config resets an override back to the code default, verified via the real award amount', async () => {
-  const admin = await createUser('Config Admin 4');
+  const admin = await createAdmin('Config Admin 4');
   const trader = await createUser('Config Trader 2');
   await repo.trades.upsert(trader.id, { id: 't-reset', status: 'hunting' });
   await api('POST', '/api/admin/xp/config', { userId: admin.id, body: { category: 'points', key: 'trade_calculation_valid', value: 1 } });
@@ -143,7 +147,7 @@ test('DELETE /api/admin/xp/config resets an override back to the code default, v
 });
 
 test('an admin override to a mastery requirement actually changes GET /me/mastery blockers, end to end', async () => {
-  const admin = await createUser('Config Admin 5');
+  const admin = await createAdmin('Config Admin 5');
   const trader = await createUser('Mastery Trader');
   await repo.xpEvents.record({ userId: trader.id, type: 'achievement:manual_test_bonus', domain: null, points: 150, meta: {} });
   const before2 = await api('GET', '/api/users/me/mastery', { userId: trader.id });
