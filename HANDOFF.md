@@ -14,5 +14,5 @@
 - Active integration: `feat/voice-auth-integration` (owner: Codex) replays the current leaf `origin/feature/voice-mode-performance` onto `origin/dev` at `b9bfd4f`. It includes cookie-session/OIDC authentication (including Google), AI gateway authorization, the server-replica data migration, and the Voice turn/playback performance split.
 - Integration resolution: retained the current production hostname template, removed the obsolete `ADMIN_BOOTSTRAP_EMAIL` promotion path, preserved the newer exact-tested-commit deployment guard, combined session-adapter coverage, and regenerated all four checked-in character bundles from source.
 - Validation (Node.js 22.23.2): `npm ci`, focused auth/voice/session tests (27 passed), full `npm test` (1,298 passed), `npm run build`, `npm audit --omit=dev --audit-level=high` (0 production vulnerabilities), and `git diff --check` all passed.
-- Remote state: the integration branch is local and unpushed; shared branches and historical remotes remain unchanged. No environment was promoted.
-- Next: review the integration branch, then run `scripts/push-to-dev.sh` only after an explicit request to promote it to `dev`.
+- Remote state: `dev` was promoted to `e07cd3c` and GitHub Actions `Verify dev #4` passed. Historical feature branches remain unchanged. No environment was promoted.
+- Next: configure the production server's `GOOGLE_CLIENT_ID` with the same public client ID, then explicitly request staging or production promotion when ready.
