@@ -6,6 +6,9 @@ services:
       context: .
       target: web
     restart: unless-stopped
+    environment:
+      APP_HOST: ${APP_HOST:-app.navrya.com}
+      ADMIN_HOST: ${ADMIN_HOST:-admin.navrya.com}
     ports:
       - '80:80'
       - '443:443'

@@ -1,4 +1,6 @@
-# Navrya production deployment
+# NAVRYA deployment environments
+
+## Production
 
 The production stack exposes:
 
@@ -46,6 +48,51 @@ Add these repository Actions secrets:
 After the server bootstrap and secrets are complete, add the repository Actions variable
 `DEPLOY_ENABLED=true`. Until then, GitHub still runs tests/builds but safely skips deployment.
 
-Every push to `main` runs tests and a production build before deploying. The workflow only
+Production starts only after the verified `dev -> main` promotion workflow. The workflow only
 replaces the checked-out application source; `.env`, PostgreSQL data, uploads, and Caddy's TLS
 state remain on server volumes.
+
+## Staging
+
+Staging runs the same Docker Compose stack on a separate server from the `staging` branch. It is a
+separate deployment snapshot, not a gate before the current automatic production promotion.
+
+Create these DNS records for the staging server:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| A | `staging` | staging server public IPv4 |
+| A | `admin.staging` | staging server public IPv4 |
+
+Clone the repository to `/opt/navrya` on the staging server. Create an independent `.env` with
+different database, authentication, and internal secrets. Set:
+
+```text
+APP_HOST=staging.navrya.com
+ADMIN_HOST=admin.staging.navrya.com
+```
+
+Do not place staging on the production host: both Compose stacks bind ports 80/443 and need
+independent Caddy, PostgreSQL, and upload volumes.
+
+Add these GitHub Actions secrets and variable:
+
+```text
+STAGING_SERVER_HOST
+STAGING_SERVER_PORT
+STAGING_SERVER_USER
+STAGING_SSH_PRIVATE_KEY
+STAGING_SSH_KNOWN_HOSTS
+STAGING_DEPLOY_ENABLED=true
+```
+
+Publish staging only through:
+
+```sh
+git switch dev
+git pull --ff-only origin dev
+scripts/promote-dev-to-staging.sh
+```
+
+The staging workflow tests, builds, migrates, and deploys `staging`. Caddy reads the two hostname
+variables from the server `.env`, so the same application image serves either environment.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "NAVRYA JavaScript Engineering"
+  short_description: "Implement and validate NAVRYA code in its established style."
+  default_prompt: "Implement a safe NAVRYA code change."

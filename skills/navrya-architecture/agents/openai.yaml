@@ -1,0 +1,4 @@
+interface:
+  display_name: "NAVRYA Architecture"
+  short_description: "Work within NAVRYA hybrid runtime and service boundaries."
+  default_prompt: "Plan a NAVRYA feature using the existing architecture."

@@ -1,0 +1,57 @@
+name: Test and deploy NAVRYA staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: navrya-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEPLOY_REF: staging
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: staging
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  deploy:
+    if: ${{ vars.STAGING_DEPLOY_ENABLED == 'true' }}
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy staging on the server
+        env:
+          SERVER_HOST: ${{ secrets.STAGING_SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.STAGING_SERVER_PORT }}
+          SERVER_USER: ${{ secrets.STAGING_SERVER_USER }}
+        run: |
+          ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" \
+            "set -eu; cd /opt/navrya; git fetch --prune origin $DEPLOY_REF; git checkout $DEPLOY_REF; git reset --hard origin/$DEPLOY_REF; docker compose --env-file .env -f docker-compose.production.yml build; docker compose --env-file .env -f docker-compose.production.yml run --rm migrate; docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans; docker image prune -f"

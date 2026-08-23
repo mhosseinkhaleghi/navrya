@@ -26,12 +26,12 @@
 	}
 }
 
-app.navrya.com {
+{$APP_HOST:app.navrya.com} {
 	import navrya_api
 	import navrya_static
 }
 
-admin.navrya.com {
+{$ADMIN_HOST:admin.navrya.com} {
 	import navrya_api
 	import navrya_static
 }

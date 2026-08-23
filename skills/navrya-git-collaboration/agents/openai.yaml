@@ -1,0 +1,4 @@
+interface:
+  display_name: "NAVRYA Git Collaboration"
+  short_description: "Safely synchronize, commit, and promote NAVRYA branches."
+  default_prompt: "Synchronize my NAVRYA branch and prepare it for promotion."

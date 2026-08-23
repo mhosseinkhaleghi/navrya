@@ -1,0 +1,4 @@
+interface:
+  display_name: "NAVRYA Deployment"
+  short_description: "Deploy verified staging or production NAVRYA revisions."
+  default_prompt: "Prepare a safe NAVRYA staging or production deployment."

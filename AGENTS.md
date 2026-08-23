@@ -1,65 +1,39 @@
-# Collaboration and Git Rules
+# NAVRYA Agent Contract
 
-These rules are mandatory for every human and agent working in this repository.
+These rules are mandatory for every human and agent in this repository.
 
-## Branch model
+## Read first
 
-- `main` is production. It is updated only by the `dev` promotion workflow.
-- `dev` is the shared integration branch.
-- Create one short-lived task branch from current `origin/dev`: `feat/<scope>`, `fix/<scope>`, `chore/<scope>`, or `docs/<scope>`.
-- Never commit directly to `main` or work directly on `dev`.
-- Do not mix unrelated tasks on one branch.
+Before task work, read:
 
-## Required preflight
+1. `HANDOFF.md`
+2. `skills/INDEX.md`
+3. Every skill selected by that index
 
-Before editing files or creating a branch, run:
+The relevant skill is the operating procedure. Implementation and focused tests are authoritative where historic documentation disagrees.
 
-```sh
-git config --get user.name
-git config --get user.email
-git fetch --prune origin
-git status --short --branch
-git push --dry-run origin HEAD:refs/heads/dev
-```
+## Non-negotiable Git policy
 
-If author identity, remote write access, or the working tree state is wrong, stop and resolve it before making changes. Do not create commits that cannot be pushed.
-
-Create the task branch only from an up-to-date `dev`:
-
-```sh
-git switch dev
-git pull --ff-only origin dev
-git switch -c feat/<scope>
-```
-
-## Sync and commits
-
-- Fetch before every new commit.
-- If `origin/dev` advanced, rebase the task branch onto it before committing. Resolve conflicts deliberately and run the affected checks again.
-- Never use `git pull` to create merge commits. Use `git pull --ff-only` for `dev` and `git rebase origin/dev` for task branches.
-- Stage only task files. Never revert or include unrelated user changes.
-- Make small, coherent Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, or `test:`.
+- Work only on a short-lived task branch created from current `origin/dev`.
+- Never commit directly to `dev`, `staging`, or `main`.
+- Fetch before every commit. Rebase the task branch onto `origin/dev` whenever it advanced.
+- Use `git pull --ff-only` for shared branches. Do not create merge commits.
+- Stage only task files and use small Conventional Commits.
+- Do not force-push `dev`, `staging`, or `main`.
+- Run `scripts/push-to-dev.sh` to promote a completed task. Do not manually push to `dev`.
+- GitHub Actions alone fast-forwards `main` from verified `dev` and deploys production.
+- Run `scripts/promote-dev-to-staging.sh` only to publish a selected verified `dev` commit to staging.
+- A request to “push to site” means: complete the task-branch commit, run `scripts/push-to-dev.sh`, wait for the GitHub Actions deployment, and report its result. It never means a direct `main` push or server SSH deployment.
 
 ## Collaboration
 
-- One task branch has one owner.
-- Agents must declare the files they own before editing. No concurrent editing of the same file.
-- Subagents report findings and patches to the primary agent. Only the primary agent integrates, commits, and pushes.
-- Record the active branch, owner, changed files, checks, and next action in `HANDOFF.md`.
+- One task branch has one owner. Declare files before editing and do not edit the same file concurrently.
+- Only the primary agent integrates, commits, and pushes shared work.
+- Update `HANDOFF.md` with active branch, owner, changed files, validation, remote state, and next action.
 
-## Promote to dev
+## Source documents
 
-When asked to push work to `dev`, run only:
-
-```sh
-scripts/push-to-dev.sh
-```
-
-The script fetches remotes, rejects a stale or dirty branch, requires both `dev` and `main` to be ancestors of the task branch, runs the full test and production build, then fast-forwards `dev`. A failed guard must be fixed, never bypassed.
-
-## Main and deployment
-
-- A successful `dev` push is verified and automatically fast-forwarded to `main` by GitHub Actions.
-- A direct `main` push is invalid and is detected by GitHub Actions.
-- Deployment always uses `main` after it has been promoted from `dev`.
-- Do not force-push `dev` or `main`. Do not force-push task branches unless the owner explicitly approves `--force-with-lease` after a rebase.
+- `skills/navrya-git-collaboration/SKILL.md`
+- `skills/navrya-deployment/SKILL.md`
+- `skills/navrya-architecture/SKILL.md`
+- `skills/navrya-javascript-engineering/SKILL.md`

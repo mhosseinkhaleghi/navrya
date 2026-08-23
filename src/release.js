@@ -16,8 +16,10 @@
   // target="_top" on the link (see the Settings-page admin link), not a bare anchor.
   function pageFromHash() {
     const hostname = window.location.hostname.toLowerCase();
-    if (hostname === 'admin.navrya.com') return 'admin';
-    if (hostname === 'app.navrya.com' && window.location.hash === '#/admin') return 'select';
+    const isAdminHost = hostname === 'admin.navrya.com' || hostname === 'admin.staging.navrya.com';
+    const isAppHost = hostname === 'app.navrya.com' || hostname === 'staging.navrya.com';
+    if (isAdminHost) return 'admin';
+    if (isAppHost && window.location.hash === '#/admin') return 'select';
     const dash = window.location.hash.match(/^#\/dashboard\/(hunter|engineer|commander|sage)$/);
     if (dash) return dash[1];
     if (window.location.hash === '#/admin') return 'admin';
