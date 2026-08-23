@@ -219,14 +219,19 @@ test('aiChatHistory.create/list/get round-trip a real conversation, with a runni
   assert.equal(fetched.messages.length, 2);
 });
 
-test('aiChatHistory.appendAndSave replaces the messages array wholesale but INCREMENTS tokens rather than replacing them', async () => {
+// Atomic append (security/correctness hardening pass): `messages` is now ONLY the new turn(s)
+// this call is adding - appendAndSave concatenates them onto the real, current stored array
+// server-side (mirrors repo.pg.mjs's own jsonb `||` UPDATE), never a client-supplied full array
+// replacing it wholesale (the old shape was a lost-update race between concurrent callers - see
+// tests/ai-chat-history-api-contract.test.mjs's own concurrent-PATCH regression test).
+test('aiChatHistory.appendAndSave concatenates only the new messages it is given onto the real, current array, and INCREMENTS tokens rather than replacing them', async () => {
   const repo = createMemoryRepo();
   const user = await seedUser(repo);
   const conv = await repo.aiChatHistory.create({ userId: user.id, provider: 'openai', title: 'T', messages: [{ role: 'user', content: 'a' }], tokens: 10 });
   const appended = await repo.aiChatHistory.appendAndSave(user.id, conv.id, {
-    messages: [{ role: 'user', content: 'a' }, { role: 'user', content: 'b' }, { role: 'assistant', content: 'c' }], tokens: 15
+    messages: [{ role: 'user', content: 'b' }, { role: 'assistant', content: 'c' }], tokens: 15
   });
-  assert.equal(appended.messages.length, 3);
+  assert.deepEqual(appended.messages, [{ role: 'user', content: 'a' }, { role: 'user', content: 'b' }, { role: 'assistant', content: 'c' }], 'the original message plus only the new delta');
   assert.equal(appended.tokens, 25, 'tokens must accumulate (10 + 15), never be replaced by the latest call\'s value alone');
 });
 

@@ -61,14 +61,17 @@
     return record;
   }
 
-  // Fetches the conversation's current messages, appends the new turn, and saves the whole array
-  // back - keeps the caller's own contract to a single call, same as the old addExchange().
+  // Sends only this turn's own new messages - the server appends them onto the real, current
+  // stored conversation atomically (jsonb concatenation server-side, see
+  // routes.ai-chat-history.mjs/repo.pg.mjs's own comments), rather than this function first GETing
+  // the conversation, concatenating client-side, and PATCHing the whole array back. That older
+  // shape was a lost-update race: two near-simultaneous calls (two tabs, or a slow request
+  // straddling a fast one) could each read the same base array and each overwrite the other's
+  // appended turn. Sending only the delta removes the race entirely, and also removes the GET
+  // round trip this used to make on every single ongoing-conversation turn.
   async function appendExchange(id, questionText, answerText, tokens) {
-    var current = await get(id);
-    var messages = (current ? current.messages : []).concat([
-      { role: 'user', content: questionText }, { role: 'assistant', content: answerText || '' }
-    ]);
-    var record = await request('PATCH', '/' + encodeURIComponent(id), { messages: messages, tokens: Math.max(0, Number(tokens) || 0) });
+    var newMessages = [{ role: 'user', content: questionText }, { role: 'assistant', content: answerText || '' }];
+    var record = await request('PATCH', '/' + encodeURIComponent(id), { messages: newMessages, tokens: Math.max(0, Number(tokens) || 0) });
     notifyChanged();
     return record;
   }

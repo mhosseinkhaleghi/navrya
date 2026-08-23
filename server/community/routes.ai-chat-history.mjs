@@ -26,9 +26,12 @@ export function router(repo) {
     res.status(201).json(record);
   }));
 
-  // Whole-array replace for messages, not a partial patch - the dock always sends its full
-  // accumulated transcript, same "replace nested data wholesale" convention every other migrated
-  // module uses. `tokens` is this call's new tokens only (incremented server-side), not a total.
+  // Atomic append, not a whole-array replace: `messages` is ONLY the new turn(s) this call is
+  // adding (typically one user+assistant pair) - the repo layer concatenates them onto the real,
+  // current row/record server-side (jsonb `||` in Postgres) instead of trusting a client-supplied
+  // full array to overwrite the column, which was a lost-update race between concurrent
+  // tabs/devices (see repo.aiChatHistory.appendAndSave's own comment). `tokens` is this call's new
+  // tokens only (incremented server-side), not a total.
   app.patch('/:id', asyncHandler(async (req, res) => {
     const body = req.body || {};
     if (!Array.isArray(body.messages) || !body.messages.length) throw new ApiError(400, 'VALIDATION_FAILED');

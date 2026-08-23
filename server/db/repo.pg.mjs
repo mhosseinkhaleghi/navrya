@@ -1638,12 +1638,22 @@ export function createPgRepo(pool) {
       );
       return mapConversation(rows[0]);
     },
-    // total_tokens is INCREMENTED (this call's new tokens only), never replaced - the client
-    // always sends the whole messages array but only the newest exchange's token count.
+    // Atomic append, not a whole-array replace: `messages` here is ONLY the new turn(s) being
+    // added, concatenated onto the real, current row value server-side via jsonb's own `||`
+    // operator inside a single UPDATE statement - Postgres serializes concurrent UPDATEs to the
+    // same row, so this is safe regardless of how many tabs/devices append at once. The previous
+    // shape (`SET messages=$3` with the client's own GET-then-concatenated full array) was a
+    // classic lost-update race: two near-simultaneous appends (two tabs, or a slow request that
+    // straddles a fast one) each read the same base array, each appended their own turn, and
+    // whichever PATCH's UPDATE committed last silently discarded the other tab's message from the
+    // stored history - it stayed visible in that tab's own local transcript state but vanished
+    // from what any later GET (a different tab, a different device, a page reload) would ever see
+    // again. total_tokens is likewise INCREMENTED (this call's own new tokens only), never
+    // replaced.
     async appendAndSave(userId, id, { title, messages, tokens }) {
-      if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (!Array.isArray(messages) || !messages.length) throw new ApiError(400, 'VALIDATION_FAILED');
       const { rows } = await pool.query(
-        `UPDATE ai_chat_history SET messages=$3, title=COALESCE($4, title), total_tokens=total_tokens+$5, updated_at=now()
+        `UPDATE ai_chat_history SET messages=messages || $3::jsonb, title=COALESCE($4, title), total_tokens=total_tokens+$5, updated_at=now()
          WHERE id=$1 AND user_id=$2 RETURNING *`,
         [id, userId, JSON.stringify(messages), title || null, Math.max(0, Number(tokens) || 0)]
       );

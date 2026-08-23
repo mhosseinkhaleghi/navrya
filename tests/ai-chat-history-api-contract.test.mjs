@@ -59,18 +59,46 @@ test('POST rejects an empty/missing messages array', async () => {
   assert.equal(result.status, 400);
 });
 
-test('PATCH /:id appends (whole-array replace of messages, but tokens accumulate) and updates updatedAt', async () => {
+// Atomic append (security/correctness hardening pass): PATCH's own `messages` field is now ONLY
+// the new turn(s) being added this call - the server concatenates them onto the real, current
+// stored array (see routes.ai-chat-history.mjs/repo.*.mjs's own comments), never a client-supplied
+// full array replacing it wholesale.
+test('PATCH /:id appends only the delta it is sent onto the real, current messages - not a whole-array replace - and tokens accumulate', async () => {
   const user = await createUser('Trader3');
   const created = await api('POST', '/api/sync/ai-chat-history', {
     userId: user.id, body: { provider: 'openai', title: 'T', messages: [{ role: 'user', content: 'a' }], tokens: 10 }
   });
   const appended = await api('PATCH', '/api/sync/ai-chat-history/' + created.body.id, {
     userId: user.id,
-    body: { messages: [{ role: 'user', content: 'a' }, { role: 'user', content: 'b' }, { role: 'assistant', content: 'c' }], tokens: 15 }
+    body: { messages: [{ role: 'user', content: 'b' }, { role: 'assistant', content: 'c' }], tokens: 15 }
   });
   assert.equal(appended.status, 200);
-  assert.equal(appended.body.messages.length, 3);
+  assert.deepEqual(appended.body.messages, [{ role: 'user', content: 'a' }, { role: 'user', content: 'b' }, { role: 'assistant', content: 'c' }], 'the original message plus only the new delta - a client resending an already-stored message would double it, which is exactly why the client no longer does that (see ai-chat-history-store.js)');
   assert.equal(appended.body.tokens, 25, 'tokens must accumulate across PATCH calls, not reset to the latest value');
+});
+
+// The actual regression this pass fixes: the OLD contract (client GETs, concatenates, PATCHes the
+// whole array back) lost a message whenever two appends to the same conversation raced - the
+// second PATCH's client-side snapshot didn't yet include the first append, so its own "whole
+// array" PATCH silently overwrote it. Two concurrent delta-only PATCHes (the new contract) must
+// both survive regardless of arrival order.
+test('two concurrent PATCH /:id appends to the same conversation both survive - the second never overwrites the first (the lost-update race this pass removes)', async () => {
+  const user = await createUser('Trader3b');
+  const created = await api('POST', '/api/sync/ai-chat-history', {
+    userId: user.id, body: { provider: 'openai', title: 'T', messages: [{ role: 'user', content: 'seed' }], tokens: 1 }
+  });
+  const [first, second] = await Promise.all([
+    api('PATCH', '/api/sync/ai-chat-history/' + created.body.id, { userId: user.id, body: { messages: [{ role: 'user', content: 'turn-a' }], tokens: 1 } }),
+    api('PATCH', '/api/sync/ai-chat-history/' + created.body.id, { userId: user.id, body: { messages: [{ role: 'user', content: 'turn-b' }], tokens: 1 } })
+  ]);
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  const final = await api('GET', '/api/sync/ai-chat-history/' + created.body.id, { userId: user.id });
+  const contents = final.body.messages.map((m) => m.content);
+  assert.ok(contents.includes('turn-a'), 'the first concurrent append must not be lost');
+  assert.ok(contents.includes('turn-b'), 'the second concurrent append must not be lost');
+  assert.equal(final.body.messages.length, 3, 'seed + both concurrent turns, never fewer');
+  assert.equal(final.body.tokens, 3, 'both concurrent appends\' own token counts must both be counted, not one overwriting the other');
 });
 
 test('a conversation belonging to another user cannot be fetched, appended to, or deleted - 404 in every case, never a leak', async () => {
