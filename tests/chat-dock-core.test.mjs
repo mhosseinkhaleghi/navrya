@@ -129,6 +129,50 @@ test('A6 ON: a flagged message stops at the safety gate - the assistant turn is 
   assert.equal(result.kind, 'safety');
 });
 
+test('A6 OFF: a flagged message never reaches the provider, and never depends on trading-context relevance', async () => {
+  const checkTextCalls = [];
+  const mentalHealthSafety = { checkText: (text) => { checkTextCalls.push(text); return { flagged: true, category: 'self_harm' }; } };
+  const window = await coreSandbox({
+    mentalHealthSafety,
+    fetch: async () => { throw new Error('/api/ai/chat must never be called for a safety-flagged message'); }
+  });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'a message with no trading context at all', therapistMode: false, transcript: [] });
+
+  assert.deepEqual(checkTextCalls, ['a message with no trading context at all']);
+  assert.equal(result.kind, 'safety');
+});
+
+test('A6 OFF: a flagged message never starts or mutates a workflow, even when the text also matches an offered action', async () => {
+  const mentalHealthSafety = { checkText: () => ({ flagged: true, category: 'self_harm' }) };
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    mentalHealthSafety,
+    fetch: async () => { throw new Error('/api/ai/chat must never be called for a safety-flagged message'); }
+  });
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'session.create', description: 'start a session', requiredFields: ['city'], available: () => true, open: () => ({ processId: 'session-create' }) });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'start a session, but I also want to hurt myself', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'safety');
+  assert.equal(window.TradeJournalAIWorkflowEngine.current(), null, 'no workflow may be started for a safety-flagged turn, regardless of what else the text contains');
+});
+
+test('resetConversationState() releases a mid-flight workflow and a pending Proactive Engine confirmation - what "New Chat" calls so neither leaks into the next conversation', async () => {
+  const window = await coreSandbox({ withWorkflowEngine: true });
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'session.create', description: 'start a session', requiredFields: ['city', 'timeframe'], available: () => true, open: () => ({ processId: 'session-create' }) });
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, []);
+  window.TradeJournalAIProactiveEngine.stageConfirmation({ ruleId: 'R1', actionId: 'trade.calculator', processId: 'trade-calculator', field: 'riskPercent', proposedValue: 4, safeValue: 1 });
+
+  assert.ok(window.TradeJournalAIWorkflowEngine.current(), 'sanity check: a workflow is genuinely in flight before reset');
+  assert.ok(window.TradeJournalAIProactiveEngine.pendingConfirmation(), 'sanity check: a confirmation is genuinely pending before reset');
+
+  window.TradeJournalChatDockCore.resetConversationState();
+
+  assert.equal(window.TradeJournalAIWorkflowEngine.current(), null, 'the old conversation\'s workflow must not survive into a new one');
+  assert.equal(window.TradeJournalAIProactiveEngine.pendingConfirmation(), null, 'the old conversation\'s pending confirmation must not survive into a new one');
+});
+
 test('analyzeScreenshot posts to /api/trades/extract-fields and records usage', async () => {
   const usageRecorded = [];
   let fetchCall = null;

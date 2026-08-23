@@ -166,12 +166,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   function closePopover() { setPopover((p) => (p ? { ...p, open: false } : p)); }
 
   // New Chat: clears the visible thread and the server-conversation link - the next message
-  // starts a brand-new conversation rather than appending to whatever was open before.
+  // starts a brand-new conversation rather than appending to whatever was open before. Also
+  // releases any workflow/confirmation still in flight from the conversation just left behind
+  // (core.resetConversationState()) - otherwise the very first message typed into this "new"
+  // conversation could silently continue filling or confirming state that belongs to the old one.
   function startNewChat() {
     setTranscript([]);
     setActiveConversationId(null);
     setPopover(null);
     setHistoryOpen(false);
+    if (core && typeof core.resetConversationState === 'function') core.resetConversationState();
   }
 
   async function toggleHistory() {
