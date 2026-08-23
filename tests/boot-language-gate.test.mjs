@@ -42,7 +42,7 @@ test('with no auth token, reveals immediately with the real fa/rtl default - nev
   const { root } = await runGate({ localStorage: memoryStorage() });
   assert.equal(root.lang, 'fa');
   assert.equal(root.dir, 'rtl');
-  assert.equal(root.style.visibility, '');
+  assert.equal(root.style.visibility, 'visible');
 });
 
 test('with a token and a real saved language preference, applies it and reveals', async () => {
@@ -57,7 +57,27 @@ test('with a token and a real saved language preference, applies it and reveals'
   });
   assert.equal(root.lang, 'es');
   assert.equal(root.dir, 'ltr');
-  assert.equal(root.style.visibility, '');
+  assert.equal(root.style.visibility, 'visible');
+});
+
+test("HOTFIX regression guard: reveal() must set visibility to the literal string 'visible', never clear it to '' - this was a real production bug (a permanent black screen on every character dashboard after login). The hiding rule (<style>html{visibility:hidden}</style>) is a stylesheet rule, not an inline style; clearing an inline style that was never set to 'hidden' in the first place is a no-op, and the stylesheet rule keeps applying forever. This test seeded root.style.visibility with a non-empty sentinel first, so a regression back to `visibility = ''` would still pass root.style.visibility !== 'sentinel' but MUST fail this exact assertion.", async () => {
+  const localStorage = memoryStorage();
+  const root = { lang: 'fa', dir: 'rtl', style: { visibility: 'hidden-sentinel' } };
+  const sandbox = {
+    window: {}, document: { documentElement: root }, localStorage,
+    fetch: async () => { throw new Error('fetch must not be called in this test'); },
+    AbortController: typeof AbortController === 'function' ? AbortController : undefined,
+    setTimeout: (fn) => { fn(); return 0; }, clearTimeout: () => {}
+  };
+  sandbox.window = Object.assign(sandbox.window, { localStorage });
+  vm.runInNewContext(await source('boot-language-gate.js'), sandbox, { filename: 'boot-language-gate.js' });
+  assert.equal(root.style.visibility, 'visible', "reveal() must explicitly set visibility to 'visible' - clearing to '' does not override the html{visibility:hidden} stylesheet rule");
+});
+
+test("the literal source text sets visibility = 'visible', and never clears it to '' - a static backstop for the same regression class in case the dynamic test above is ever weakened", async () => {
+  const text = await source('boot-language-gate.js');
+  assert.match(text, /root\.style\.visibility\s*=\s*'visible'/);
+  assert.doesNotMatch(text, /root\.style\.visibility\s*=\s*''/, "clearing to '' does not override the <style>html{visibility:hidden}</style> stylesheet rule - this is the exact bug that shipped a permanent black screen");
 });
 
 test('arabic resolves to rtl, same as Persian', async () => {
@@ -87,7 +107,7 @@ test('a hydration failure (non-ok response) reveals with the default AND sets th
     fetchImpl: async () => ({ ok: false, status: 500 })
   });
   assert.equal(root.lang, 'fa');
-  assert.equal(root.style.visibility, '');
+  assert.equal(root.style.visibility, 'visible');
   assert.equal(window.__TJ_LANGUAGE_HYDRATE_FAILED__, true);
 });
 
@@ -137,7 +157,7 @@ test('a timeout aborts the request and reveals with the default, marking the fai
   assert.ok(timeoutFn, 'a timeout callback must have been scheduled');
   timeoutFn();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(root.style.visibility, '');
+  assert.equal(root.style.visibility, 'visible');
   assert.equal(window.__TJ_LANGUAGE_HYDRATE_FAILED__, true);
 });
 
