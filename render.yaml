@@ -1,12 +1,25 @@
-# Render Blueprint - deploys the whole app (static frontend + both backend services +
-# Postgres) from one GitHub-connected repo. See https://render.com/docs/blueprint-spec.
+# DEPRECATED / NOT THE ACTIVE DEPLOYMENT PATH.
 #
-# First-time setup on Render:
+# The real, live NAVRYA deployment is the self-hosted Caddy + docker-compose stack driven by
+# .github/workflows/deploy.yml (SSH to the production host, docker compose build/migrate/up) -
+# see deploy/Caddyfile and docker-compose.production.yml. This file is a parallel, never-finished
+# Render Blueprint (see https://render.com/docs/blueprint-spec) kept for reference only. It still
+# has un-filled REPLACE_WITH_*_SERVICE_URL placeholders (step 3 below was never completed) and
+# must not be assumed usable as-is. If Render is ever adopted for real, treat this file as a
+# starting point to redo, not a working config - it does not add Redis (now required in
+# production for distributed rate limiting/AI quotas, see docker-compose.production.yml's own
+# `redis` service), and every env var below needs the same review docker-compose.production.yml
+# and .env.production.example already received.
+#
+# First-time setup on Render, if this is ever actually adopted:
 #   1. Dashboard -> New -> Blueprint -> select this repo/branch (main).
 #   2. Render prompts for every `sync: false` var below (AI provider keys, BASIC_AUTH_USER/PASS,
-#      INTERNAL_API_SECRET, GOOGLE_CLIENT_ID) - AI keys and GOOGLE_CLIENT_ID can be left blank
-#      for now and added later from each service's Environment tab with no code change or
-#      redeploy needed (Google sign-in returns a clean 503 until it's set).
+#      INTERNAL_API_SECRET, GOOGLE_CLIENT_ID, CSRF_SECRET, ENCRYPTION_KEY, ALLOWED_ORIGINS,
+#      REDIS_URL) - AI keys and GOOGLE_CLIENT_ID can be left blank for now and added later from
+#      each service's Environment tab with no code change or redeploy needed (Google sign-in
+#      returns a clean 503 until it's set); the others are REQUIRED before this will start under
+#      NODE_ENV=production (every one of them fails startup loudly if missing - see
+#      docs/auth/ADR-0001-authentication-architecture.md).
 #   3. IMPORTANT: after the first deploy, open tradejournal-web's Settings -> Redirects/Rewrites
 #      and replace the two placeholder destinations below (REPLACE_WITH_AI_SERVICE_URL,
 #      REPLACE_WITH_COMMUNITY_SERVICE_URL) with the real https://<service>.onrender.com URLs
@@ -14,6 +27,13 @@
 #      reference another service by name the way `envVars.fromService` can.
 #   4. BASIC_AUTH_USER/PASS must be set to the SAME values on both tradejournal-ai and
 #      tradejournal-community, or requests split across the two services will prompt twice.
+#   5. Render has no built-in Redis Blueprint resource as of this writing - provision a managed
+#      Redis instance separately and set REDIS_URL on both services below.
+#   6. There is no ADMIN_BOOTSTRAP_EMAIL any more (a real public-registration admin-takeover hole
+#      that used to be committed here as a plain value - removed entirely, not just blanked).
+#      Provision the first admin out of band once deployed: `node scripts/admin-grant.mjs
+#      --email=you@example.com --confirm=you@example.com` (run from a shell with DATABASE_URL set
+#      to the real database - e.g. Render's own Shell tab on the community service).
 
 services:
   - type: web
@@ -75,6 +95,8 @@ services:
     startCommand: node server/pattern-ai-server.mjs
     healthCheckPath: /health
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: HOST
         value: 0.0.0.0
       - key: PATTERN_AI_PORT
@@ -89,6 +111,16 @@ services:
         value: moonshot-v1-8k
       - key: DEEPSEEK_MODEL
         value: deepseek-chat
+      # Required in production (server/community/security/rate-limit.mjs) - the AI gateway's own
+      # per-user/global quota counters need a real, shared Redis, same as the Community service
+      # below. Render has no built-in Redis Blueprint resource - provision one separately and set
+      # this to its connection URL.
+      - key: REDIS_URL
+        sync: false
+      - key: AI_QUOTA_PER_USER_PER_HOUR
+        value: 200
+      - key: AI_QUOTA_GLOBAL_PER_HOUR
+        value: 20000
       # Leave blank at first deploy - the app degrades each AI feature to a clean 503 until a
       # key is added here later (no redeploy needed, Render restarts on env var save).
       - key: OPENAI_API_KEY
@@ -120,6 +152,8 @@ services:
       mountPath: /var/data/uploads
       sizeGB: 1
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: HOST
         value: 0.0.0.0
       - key: COMMUNITY_API_PORT
@@ -132,27 +166,61 @@ services:
           property: connectionString
       - key: PATTERN_AI_URL
         value: REPLACE_WITH_AI_SERVICE_URL
-      # Real per-user authentication now exists (server/community/routes.auth.mjs,
-      # auth-real.mjs) - every /api/admin route requires an actual role=admin account.
+      # Required in production - provision a managed Redis instance separately (Render has no
+      # built-in Redis Blueprint resource) and set this to its connection URL. Backs distributed
+      # rate limiting and AI quotas (server/community/security/rate-limit.mjs); the server refuses
+      # to start under NODE_ENV=production without it.
+      - key: REDIS_URL
+        sync: false
+      # Explicit, exact browser origins allowed to call this API with credentials (comma-
+      # separated, no wildcards) - server/community/security/origins.mjs. Required in production.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Render's own edge is the one reverse-proxy hop in front of this service.
+      - key: TRUST_PROXY_HOPS
+        value: 1
+      # Real per-user authentication (server/community/security/session-service.mjs) - every
+      # /api/admin route requires an actual role=admin account, and this can never be disabled
+      # under NODE_ENV=production (server/admin/auth-admin.mjs refuses to start otherwise).
       - key: ADMIN_AUTH_ENFORCED
         value: true
-      # Auto-promoted to role=admin the moment this email registers or first signs in with
-      # Google - only checked at account-creation time, not on every login.
-      - key: ADMIN_BOOTSTRAP_EMAIL
-        value: mhossein.khaleghi@gmail.com
-      # Signs/verifies session tokens (server/community/auth-tokens.mjs). Render generates a
-      # real random value once, on initial Blueprint creation, and it persists across syncs -
-      # not left blank like the AI-provider keys, since an unset value here just means "a new
-      # ephemeral secret every restart" (every session silently invalidated), a worse default
-      # for a real deploy than for local dev.
+      # There is no ADMIN_BOOTSTRAP_EMAIL any more - see this file's own top-of-file note and
+      # docs/auth/ADR-0001-authentication-architecture.md section 3 for why that auto-promotion
+      # path was removed entirely, not merely left blank. Provision the first admin out of band:
+      # node scripts/admin-grant.mjs --email=you@example.com --confirm=you@example.com
+      # Signs sessions (server/community/security/session-service.mjs). Render generates a real
+      # random value once, on initial Blueprint creation, and it persists across syncs - not left
+      # blank like the AI-provider keys, since an unset value here just means "a new ephemeral
+      # secret every restart" (every session silently invalidated), a worse default for a real
+      # deploy than for local dev.
       - key: AUTH_TOKEN_SECRET
         generateValue: true
+      # A DIFFERENT generated value from AUTH_TOKEN_SECRET above - signs the CSRF double-submit
+      # cookie (server/community/security/csrf.mjs).
+      - key: CSRF_SECRET
+        generateValue: true
+      # 32 bytes hex - only used for the optional self-hosted TOTP secret column. Render's
+      # generateValue produces a random string, not guaranteed to be valid hex of the right
+      # length - generate this one manually instead: `node -e
+      # "console.log(require('crypto').randomBytes(32).toString('hex'))"` and paste it in.
+      - key: ENCRYPTION_KEY
+        sync: false
       # Google OAuth Client ID (not a secret, but its exact value isn't known until you create
       # it in Google Cloud Console - see the plan's manual-steps checklist). Google sign-in
       # returns a clean 503 until this is set. The SAME value must also be placed in
       # public/pages/select/index.html's GOOGLE_CLIENT_ID constant (that page is static JS, not
       # Vite-processed, so it can't read this env var at runtime).
       - key: GOOGLE_CLIENT_ID
+        sync: false
+      # Generic OIDC (docs/auth/ADR-0001 section 1) - leave all four blank to run password +
+      # Google sign-in only.
+      - key: OIDC_ISSUER_URL
+        sync: false
+      - key: OIDC_CLIENT_ID
+        sync: false
+      - key: OIDC_CLIENT_SECRET
+        sync: false
+      - key: OIDC_REDIRECT_URI
         sync: false
       - key: INTERNAL_API_SECRET
         sync: false

@@ -11,5 +11,16 @@ services:
     volumes:
       - tradejournal_postgres_data:/var/lib/postgresql/data
 
+  # Optional for local dev - server/community/security/rate-limit.mjs and the AI gateway's own
+  # quota counters fall back to an in-memory store automatically when REDIS_URL is unset, so this
+  # is not required to run the app locally. Start it (`docker compose up -d redis`) and set
+  # REDIS_URL=redis://127.0.0.1:6379 in .env only if you want to exercise the real ioredis code
+  # path (e.g. before a change to rate-limit.mjs ships to production, where REDIS_URL is required).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
 volumes:
   tradejournal_postgres_data:
