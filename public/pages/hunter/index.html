@@ -2,6 +2,12 @@
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
+    <!-- Phase 8e (see ARCHITECTURE.md's Known Constraints section): hides the page until
+         boot-language-gate.js (the very next script, before anything else) has determined the
+         real server-stored language/direction and reveals it - prevents a flash of this file's
+         own fa/rtl default for a returning non-Persian user. -->
+    <style>html{visibility:hidden}</style>
+    <script src="../shared/boot-language-gate.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#020704" />
     <link rel="icon" href="../shared/navrya/assets/logo/navrya-favicon.svg" type="image/svg+xml" />

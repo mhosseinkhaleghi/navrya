@@ -337,6 +337,14 @@ test('the guard exposes the exact key lists it purges, so a future silent edit n
 // Script order - the enforcement point requested for Phase 1: the guard must run before any
 // other shared store's own top-level read(), which in this classic-script architecture means it
 // must be the very first shared <script> tag, immediately after app.js.
+//
+// Phase 8e added one script that runs even earlier than this, in <head>, before app.js itself:
+// boot-language-gate.js (see its own test below). This is deliberately not a violation of the
+// invariant this section enforces - that guard exists to run before any OTHER shared module's
+// own localStorage read of a user-scoped domain cache, and boot-language-gate.js never reads or
+// writes any of the EXACT_KEYS-scoped data this guard purges; its own one storage read is
+// tradejournal:auth-token, the exact same single documented exception the guard's own
+// currentUserId() already reads for the identical reason (a credential, not user data).
 // ============================================================================
 
 test('user-scope-guard.js is the first shared script on all four character pages, immediately after app.js and before every other shared module', async () => {

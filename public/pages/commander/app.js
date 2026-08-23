@@ -12,13 +12,8 @@ function showToast(message) {
 }
 window.TradeJournalShowToast = showToast;
 
-// Unified with the select (login) page's own key - a language chosen at login must carry
-// through into every character dashboard instead of each one defaulting to Persian on its own.
-// The old per-character key is kept only as a fallback for a browser that set it before this
-// fix shipped; the unified key then becomes canonical going forward.
-const savedLanguage = localStorage.getItem('tradejournal-language') || localStorage.getItem('commander-language') || 'fa';
-localStorage.setItem('tradejournal-language', savedLanguage);
-document.documentElement.lang = savedLanguage;
-document.documentElement.dir = savedLanguage === 'fa' || savedLanguage === 'ar' ? 'rtl' : 'ltr';
+// Phase 8e of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section): lang/dir are now set by boot-language-gate.js, the very first script on
+// this page (before this file even loads) - see hunter/app.js's own comment for the full detail.
 
 window.TradeJournalPanelCharacter = 'commander';

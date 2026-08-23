@@ -202,7 +202,15 @@ const translations = {
 };
 
 const languageNames = { en: 'English', fa: 'فارسی', ar: 'العربية', es: 'Español' };
-let activeLanguage = localStorage.getItem('tradejournal-language') || 'en';
+// Phase 8e of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section): this page authenticates separately from the character pages (its own
+// admin-role check, Section 7.16) and a language choice here was never meaningfully tied to a
+// specific trader's own preference either way - hardcoded to the same default this page already
+// used ('en', confirmed from the removed localStorage fallback and from
+// <html lang="en" dir="ltr">'s own first-paint default) rather than migrated. The language picker
+// still works for the rest of this one page load, it just never persists across a reload any
+// more (nothing replaces the old tradejournal-language key on this page).
+let activeLanguage = 'en';
 
 function t(key, vars) {
   let value = (translations[activeLanguage] && translations[activeLanguage][key]) || translations.en[key] || key;
@@ -219,7 +227,6 @@ function applyLanguage(language) {
   document.querySelectorAll('[data-language]').forEach((button) => button.classList.toggle('active', button.dataset.language === activeLanguage));
   const toggle = document.querySelector('#sidebarToggle');
   if (toggle) toggle.setAttribute('aria-label', t('sidebarToggleLabel'));
-  localStorage.setItem('tradejournal-language', activeLanguage);
 }
 
 let toastTimer;

@@ -2,9 +2,11 @@
   'use strict';
   // Real, persisted app-wide preferences for the Settings screen's Region & language, Alerts &
   // discipline and Character quick-switcher panels - the fields no other store already owns.
-  // Language itself is NOT duplicated here: navrya-src/store.js's setLanguage() (localStorage key
-  // 'tradejournal-language', shared with the login/select page) is the one real mechanism already
-  // driving the whole app's locale, so Settings calls that directly instead of a second copy.
+  // Language itself is NOT duplicated here: navrya-src/store.js's setLanguage() (Phase 8e -
+  // window.TradeJournalUserPreferences's 'language' key, server-backed, not localStorage) is the
+  // one real mechanism already driving the whole app's locale, so Settings calls that directly
+  // instead of a second copy. This file (region/alerts/quick-switcher) is itself still
+  // localStorage-backed, deferred to Phase 8f.
   // Cool-down lock is likewise NOT duplicated here - it is
   // TradeJournalMentalHealthStore's own real activeInterventions.cooldownTimerEnabled field,
   // which existed with no UI anywhere before this Settings screen.

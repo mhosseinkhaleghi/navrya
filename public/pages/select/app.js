@@ -156,7 +156,14 @@ const languageNames = { en: 'English', fa: 'فارسی', ar: 'العربية', e
 const CHARACTER_STORAGE_KEY = 'tradejournal:character';
 const SLIDE_INTERVAL_MS = 5000;
 
-let activeLanguage = localStorage.getItem('tradejournal-language') || 'en';
+// Phase 8e of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+// Constraints section): this page is pre-auth - there is no user_id yet to attach a language
+// preference to, so a per-user preference is meaningless here. Hardcoded to the same default
+// this page already used ('en', confirmed from the removed localStorage fallback and from
+// <html lang="en" dir="ltr">'s own first-paint default) rather than migrated - the language
+// picker below still works for the rest of this one page load, it just never persists across a
+// reload any more (nothing replaces the old tradejournal-language key on this page).
+let activeLanguage = 'en';
 let toastTimer;
 let mode = 'signin'; // 'signin' | 'signup'
 let slide = 0; // index into CHAR_META, drives the account-step showcase
@@ -218,7 +225,6 @@ function applyLanguage(language) {
   document.querySelectorAll('[data-i18n-placeholder]').forEach((node) => { node.placeholder = t[node.dataset.i18nPlaceholder] || ''; });
   document.querySelector('#currentLanguage').textContent = languageNames[language];
   document.querySelectorAll('[data-language]').forEach((button) => button.classList.toggle('active', button.dataset.language === language));
-  localStorage.setItem('tradejournal-language', language);
   renderMode();
   renderSlide();
 }

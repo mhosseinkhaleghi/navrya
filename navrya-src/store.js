@@ -8,9 +8,6 @@
 import * as sessionsAdapter from './sessionsAdapter.js';
 
 export function createStore(character) {
-  // Unified with the select (login) page's own key so a language switch made from inside a
-  // character dashboard is visible everywhere else too - the app, not just this one character.
-  const languageKey = 'tradejournal-language';
   const listeners = new Set();
 
   // useSyncExternalStore compares snapshots with Object.is - mutating one shared object in
@@ -35,10 +32,15 @@ export function createStore(character) {
   function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   function getState() { return state; }
 
+  // Phase 8e of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
+  // Constraints section): reads/writes through window.TradeJournalUserPreferences (Phase 8a's
+  // shared preferences primitive) under the 'language' key, not localStorage - real cross-device
+  // sync now, not just cross-tab-in-one-browser the old shared localStorage key gave. See
+  // boot-language-gate.js for the first-paint read of this same preference.
   function setLanguage(lang) {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'fa' || lang === 'ar' ? 'rtl' : 'ltr';
-    localStorage.setItem(languageKey, lang);
+    if (window.TradeJournalUserPreferences) window.TradeJournalUserPreferences.setPref('language', lang);
     set({ language: lang });
   }
 
