@@ -7,6 +7,8 @@ description: Safely synchronize, create, commit, rebase, and promote NAVRYA work
 
 Treat `main`, `dev`, and `staging` as shared deployment branches. Never commit directly to them.
 
+Use English for branch names, commit messages, handoff records, command notes, and Git-related reasoning. A non-English user request does not change the repository language; only the final response is returned in the user's requested language.
+
 ## Mandatory preflight
 
 Before editing, creating a branch, or committing, run:
@@ -44,12 +46,22 @@ git switch -c feat/<scope>
 
 ## Sync and commit
 
-Fetch before every commit. If `origin/dev` advanced, rebase the task branch before committing:
+Fetch before every commit. If `origin/dev` advanced after the task branch was last synchronized, rebase before committing. Rebase directly if the worktree is clean:
 
 ```sh
 git fetch --prune origin
 git rebase origin/dev
 ```
+
+If task edits are uncommitted, preserve them first, then rebase and restore them:
+
+```sh
+git stash push --include-untracked -m "pre-rebase <task>"
+git rebase origin/dev
+git stash pop
+```
+
+Do this only when `origin/dev` advanced. Do not stash or alter unrelated local work.
 
 Use `git pull --ff-only` on shared branches. Do not create merge commits. Stage only task files and use small Conventional Commits. Do not force-push `dev`, `staging`, or `main`. A task-branch owner may use `--force-with-lease` only after an approved rebase.
 

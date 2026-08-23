@@ -20,11 +20,18 @@ The relevant skill is the operating procedure. Implementation and focused tests 
 - Make the smallest coherent change. Do not rewrite, reformat, or refactor unrelated code.
 - Read only task-relevant skills and references. Keep reports compact, avoid repeated summaries, and record durable context once in `HANDOFF.md` or the relevant skill.
 
+## Working and response language
+
+- Accept requests in any language. Translate non-English requests into English before planning or implementation.
+- Use English for reasoning, task tracking, progress updates, code, identifiers, comments, filenames, branches, commits, tests, and internal documentation.
+- Preserve a non-English language only when the task specifically creates, translates, or validates localized product content.
+- Write the final user-facing response only in the language the user used most recently, or in the language they explicitly request. Do not duplicate the response in English unless asked.
+
 ## Non-negotiable Git policy
 
 - Work only on a short-lived task branch created from current `origin/dev`.
 - Never commit directly to `dev`, `staging`, or `main`.
-- Fetch before every commit. Rebase the task branch onto `origin/dev` whenever it advanced.
+- Fetch before every commit. If `origin/dev` advanced after the task branch was last synchronized, rebase before committing. When task edits are uncommitted, safely stash them, rebase, and restore them before the commit.
 - Use `git pull --ff-only` for shared branches. Do not create merge commits.
 - Stage only task files and use small Conventional Commits.
 - Do not force-push `dev`, `staging`, or `main`.

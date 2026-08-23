@@ -9,6 +9,7 @@ Use Node.js 22 or newer. This repository uses JavaScript with JSDoc, React 18, V
 
 ## Implementation rules
 
+- Use English for code, identifiers, comments, tests, API contracts, filenames, and implementation documentation. Preserve another language only for intentional localized product content.
 - Read the local file and its tests before editing. Match its existing style. Avoid repository-wide formatting changes.
 - Use `rg` before adding code. Find and reuse the existing component, helper, adapter, store, event, API route, or test pattern before introducing a new one.
 - Character-dashboard modules use strict IIFEs and `window.TradeJournal...` APIs. Do not add ESM imports to only one character page.
