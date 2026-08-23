@@ -4,7 +4,7 @@
 // server's GOOGLE_CLIENT_ID env var at runtime - the same literal value must be set both here
 // and in that env var. Until replaced, the Google button shows a clear "not configured" error
 // instead of silently failing.
-const GOOGLE_CLIENT_ID = 'REPLACE_WITH_GOOGLE_CLIENT_ID';
+const GOOGLE_CLIENT_ID = '489913421542-h84g1e2brk41mpfc5bmgem15jlk1bc5l.apps.googleusercontent.com';
 
 // The design system's fourth character accent is keyed "master" (see characters.css), but this
 // app's routing/postMessage contract (src/release.js, App.jsx) has always called that character
