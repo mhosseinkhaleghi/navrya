@@ -131,7 +131,15 @@ export async function createSession(character, values) {
   // resulting imageBlobId stored on the entry - never a blob: URL saved directly into the
   // session object, since those don't survive a page reload.
   const entries = await Promise.all((values.uploads || []).map(async (upload) => {
-    const entry = { id: 'entry-' + now + '-' + upload.timeframe, timeframe: upload.timeframe, hasImage: true, scenarios: [] };
+    // HOTFIX: `type` was missing here entirely - the server's trading_session_entries.type
+    // column is NOT NULL with a CHECK ('chart','movement','fate') constraint, so every session
+    // created with at least one chart upload failed its POST /api/sync/sessions with a real
+    // constraint-violation 500, got rolled back by server-replica.js's upsert() (removed from
+    // the local list outright, since a brand-new record has no "previous" state to revert to),
+    // and so both silently failed to save AND was never openable afterward. These uploads are
+    // always chart images (NewSessionDialog's UPLOAD_SLOTS), matching the type this file's own
+    // normalize() elsewhere already defaults an omitted entry.type to.
+    const entry = { id: 'entry-' + now + '-' + upload.timeframe, type: 'chart', timeframe: upload.timeframe, hasImage: true, scenarios: [] };
     if (window.TradeJournalImageStore) {
       const blobId = 'img-' + now + '-' + upload.timeframe;
       try {

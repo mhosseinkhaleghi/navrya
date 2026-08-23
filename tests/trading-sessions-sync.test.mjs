@@ -50,8 +50,15 @@ test('the one-time local-to-server migration is gated by a per-character-per-use
   assert.match(text, /function migrateExistingLocalSessions\(\)/);
   assert.match(text, /tradejournal:sessions-migrated:v1:'\s*\+\s*layer\.character\s*\+\s*':'\s*\+\s*uid/);
   assert.match(text, /if\s*\(localStorage\.getItem\(flagKey\)\)\s*return;/);
-  assert.match(text, /legacyLocal\.forEach\(function\s*\(session\)\s*\{\s*domain\.upsert\(session\)\.catch\(function\s*\(\)\s*\{\}\);/);
+  assert.match(text, /Promise\.all\(legacyLocal\.map\(function\s*\(session\)\s*\{\s*return domain\.upsert\(session\)\.then\(function\s*\(\)\s*\{\s*return true;\s*\}\)\.catch\(function\s*\(\)\s*\{\s*return false;\s*\}\);/);
   assert.match(text, /localStorage\.removeItem\(key\);/);
+});
+
+test("HOTFIX regression guard: migrateExistingLocalSessions() no longer clears `key` / sets the 'done' flag until every upsert has actually settled, and keeps only the sessions that genuinely failed for a retry next load - real production data-loss bug fixed alongside sessionsAdapter.js's own createSession() type omission (the exact scenario that was silently losing sessions: an upsert 500s, server-replica.js rolls it back, and the old code had already deleted the only other copy from localStorage and marked migration done forever)", async () => {
+  const text = await source('session-workspace-logic.js');
+  assert.doesNotMatch(text, /legacyLocal\.forEach\(function\s*\(session\)\s*\{\s*domain\.upsert\(session\)\.catch\(function\s*\(\)\s*\{\}\);\s*\}\);\s*localStorage\.setItem\(flagKey/, 'the old fire-and-forget-then-unconditionally-clear shape must be gone');
+  assert.match(text, /const stillLocal\s*=\s*legacyLocal\.filter\(function\s*\(_,\s*index\)\s*\{\s*return\s*!results\[index\];\s*\}\);/);
+  assert.match(text, /if\s*\(stillLocal\.length\)\s*\{\s*localStorage\.setItem\(key,\s*JSON\.stringify\(stillLocal\)\);\s*return;\s*\}/);
 });
 
 test('there is no more reconcile-from-server / bidirectional sync-queue "sessions" module - hydrate() is now the only pull from the server, matching every other migrated domain', async () => {

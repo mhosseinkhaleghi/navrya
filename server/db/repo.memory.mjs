@@ -644,6 +644,16 @@ export function createMemoryRepo() {
   // cross-scenario querying, but the in-memory fake only needs to reproduce the same reads/
   // writes, not the same physical layout - see its own comment for why those columns are real
   // there. Scoped by user_id alone (not by character - see the migration file's comment).
+  // HOTFIX defense-in-depth, mirrored from repo.pg.mjs's own normalizeTradingEntryType(): the
+  // real Postgres schema enforces trading_session_entries.type NOT NULL + CHECK (chart/movement/
+  // fate) and trading_sessions.market NOT NULL - this in-memory fake enforced neither, which is
+  // exactly why a real client bug (an entry with no `type`) shipped a production 500 that the
+  // full API contract test suite (running against this repo) never caught. Mirroring the same
+  // defaulting here means this repo's own behavior actually matches what repo.pg.mjs does, so a
+  // test against either backend proves the same thing.
+  const VALID_TRADING_ENTRY_TYPES = ['chart', 'movement', 'fate'];
+  function normalizeTradingEntryType(type) { return VALID_TRADING_ENTRY_TYPES.indexOf(type) > -1 ? type : 'chart'; }
+
   const tradingSessions = {
     async upsert(userId, record) {
       requireUser(userId);
@@ -653,7 +663,7 @@ export function createMemoryRepo() {
       const stamp = now();
       const stored = {
         id: record.id, userId, character: String(record.character || 'hunter'),
-        name: record.name || null, market: record.market || null, timeframe: record.timeframe || null,
+        name: record.name || null, market: record.market || 'London', timeframe: record.timeframe || null,
         date: record.date || null, jalali: record.jalali || null,
         startedAt: record.startedAt ? new Date(record.startedAt).toISOString() : (existing ? existing.startedAt : stamp),
         closedAt: record.closedAt ? new Date(record.closedAt).toISOString() : null,
@@ -667,7 +677,7 @@ export function createMemoryRepo() {
         finalEntryId: record.finalEntryId || null,
         entries: (record.entries || []).map(function (entry) {
           return {
-            id: entry.id, sessionId: record.id, type: entry.type,
+            id: entry.id, sessionId: record.id, type: normalizeTradingEntryType(entry.type),
             createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : stamp,
             hasImage: !!entry.hasImage, imageBlobId: entry.imageBlobId || null, imageUrl: entry.imageUrl || null,
             timeframe: entry.timeframe || null, market: entry.market || null, tradingSession: entry.tradingSession || null,
