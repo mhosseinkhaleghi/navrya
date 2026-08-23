@@ -59,6 +59,33 @@ Staging runs the same Docker Compose stack on a separate server from the `stagin
 separate deployment snapshot, published only after an explicit `publish staging` or `push to
 staging` request. It is not a required gate before production.
 
+### First staging activation
+
+When the user requests `set up staging` or the first `publish staging`, the deployment agent owns
+the setup. It must first inspect the available server, DNS, and GitHub connections. If a connected
+account permits the action, complete it without asking the user to repeat routine setup steps:
+
+1. Provision or select a server separate from production, then verify SSH, Docker Engine, Docker
+   Compose, Git, and inbound ports 80 and 443.
+2. Clone this repository to `/opt/navrya`; create the staging-only `.env` from
+   `.env.production.example`; generate distinct staging secrets; and set the staging host values.
+3. Attach `staging.navrya.com` and `admin.staging.navrya.com` by creating DNS A records for the
+   staging server's public IPv4 address.
+4. Add the separate staging SSH secrets and `STAGING_DEPLOY_ENABLED=true` to the repository GitHub
+   configuration through the connected GitHub account.
+5. Publish the selected `dev` revision with `scripts/promote-dev-to-staging.sh`, wait for GitHub
+   Actions, and verify DNS, TLS, and both HTTPS hostnames.
+
+Never copy production databases, uploads, `.env` contents, SSH keys, or TLS volumes into staging.
+Record the verified staging URLs, branch/revision, server role or approved alias, Actions result,
+and remaining action in `HANDOFF.md`. Never record secrets, private keys, tokens, passwords, or
+full `.env` values.
+
+If the agent cannot complete a step, it must exhaust its available authenticated connections first.
+Then report the exact blocker, the required account or permission, the exact value or action needed,
+and the next verification it will run after the user resolves it. Do not give a vague "configure
+staging" response.
+
 Create these DNS records for the staging server:
 
 | Type | Name | Value |

@@ -39,6 +39,18 @@ The deployment workflow checks out the requested branch at `/opt/navrya`, resets
 
 `deploy/Caddyfile` terminates TLS, serves the built static client, proxies AI API routes to `pattern-ai`, and proxies remaining API/uploads routes to `community-api`. It uses `APP_HOST` and `ADMIN_HOST` from the server `.env` so one image supports either environment.
 
+## First-time staging setup and memory
+
+An explicit user request to "set up staging" or "publish staging" authorizes the staging setup when it does not already exist. Treat it as an implementation task, not a request for generic instructions.
+
+1. Inspect the available authenticated server, DNS, and GitHub connections and confirm whether a separate staging host, staging DNS records, repository secrets, and `STAGING_DEPLOY_ENABLED=true` already exist.
+2. If absent and the connection allows it, provision or select a separate server; install or verify Git, Docker Engine, Docker Compose, and ports 80/443; clone the repo to `/opt/navrya`; and create a staging-only `.env` with distinct secrets and staging hostnames.
+3. Create the DNS A records for `staging.navrya.com` and `admin.staging.navrya.com`, pointed at the staging server. Configure the named staging GitHub secrets and deployment variable through the connected GitHub account.
+4. Run the guarded staging promotion, wait for the workflow, and verify both HTTPS hosts and Caddy TLS before reporting success.
+5. Record only verified, non-secret operational facts in `HANDOFF.md`: staging URLs, branch/revision, server role or approved alias, Actions result, current blocker, and next action. Never record tokens, private keys, passwords, full `.env` values, or secret host credentials.
+
+If an action cannot be completed, first use every available authenticated connection. Then give the user one exact blocker: the missing account access, permission, server value, or DNS action, plus the precise next check the agent will perform after it is supplied. Do not replace implementation with a vague setup checklist.
+
 ## Required GitHub configuration
 
 Production requires `DEPLOY_ENABLED=true` and these repository secrets:

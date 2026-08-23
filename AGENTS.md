@@ -39,6 +39,7 @@ The relevant skill is the operating procedure. Implementation and focused tests 
 - A `dev` push runs verification only. It never publishes staging or production.
 - Run `scripts/promote-dev-to-staging.sh` only after the explicit request "publish staging" or "push to staging".
 - Run `scripts/promote-dev-to-production.sh` only after the explicit request "publish production" or "push to production".
+- When staging does not exist, an explicit "set up staging" or "publish staging" request authorizes the deployment agent to provision the separate staging environment, attach its staging DNS names, configure GitHub deployment credentials, and publish staging. It must record only non-secret verified facts in `HANDOFF.md`.
 - Do not infer a production release from "push to site", "deploy", or "push this". Ask the user to choose `dev`, `staging`, or `production`.
 - Never manually push to `staging` or `main`, SSH to deploy, or restart Caddy. The guarded promotion scripts are the only release path.
 
