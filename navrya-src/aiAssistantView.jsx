@@ -249,7 +249,6 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   const avgTokens = chats.length ? Math.round(chats.reduce((sum, c) => sum + (c.tokens || 0), 0) / chats.length) : 0;
 
   const key = settingsStore.getKey(model);
-  const remember = !!settings.persistApiKeyByProvider[model];
   const voice = !!settings.voiceByProvider[model];
   const reveal = !!revealByProvider[model];
   const keyStatus = keyStatusByProvider[model];
@@ -526,12 +525,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
                   {reveal ? i18n.t('aiAsstHide') : i18n.t('aiAsstShow')}
                 </Button>
                 <Button variant="secondary" icon="sparkle" onClick={testConnection} disabled={keyStatus === 'testing'}>{i18n.t('aiTestConnection')}</Button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 11 }}>
-                  <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{i18n.t('aiAsstRemember')}</span>
-                  <BigToggle checked={remember} onChange={(v) => settingsStore.setPersistApiKey(model, v)} ariaLabel={i18n.t('aiAsstRemember')} />
-                </div>
               </div>
-              {remember && <Notice tone="warning">{i18n.t('aiKeyPersistWarning')}</Notice>}
               {keyMessage && <span style={{ font: 'var(--type-caption)', color: keyMessage.ok ? 'var(--success)' : 'var(--danger)' }}>{keyMessage.text}</span>}
             </div>
           </Panel>

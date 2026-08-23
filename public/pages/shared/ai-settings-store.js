@@ -6,22 +6,27 @@
   // key ('aiSettings') holding the whole object, same atomic whole-object merge shape
   // psychology-store.js's own Phase 8b migration already established.
   //
-  // `persistApiKeyByProvider` (the "remember this engine's key" opt-in flag) and the entire BYOK
-  // mechanism below it (sessionKeys/BYOK_KEY/getKey/setKey/clearKey) are deliberately NOT part of
-  // this migration - explicit product decision: BYOK persistence is being removed entirely in
-  // Phase 8f, not moved server-side (storing a raw, unencrypted API credential server-side would
-  // be a real security regression, the same reasoning Section 7.18 originally kept BYOK
-  // client-only for). Migrating that flag now would be throwaway work Phase 8f immediately
-  // deletes, so it stays local-only for this one remaining sub-phase.
+  // Phase 8f (security hardening pass): the BYOK "remember this engine's key" mechanism
+  // (persistApiKeyByProvider, BYOK_KEY, loadByok/writeByok, setPersistApiKey) has been removed
+  // entirely, not moved server-side or encrypted - storing a raw, unencrypted API credential
+  // anywhere persistent (browser localStorage or a server record) is a real security exposure
+  // (a stolen/compromised profile, another local OS user, or an XSS bug could read a live,
+  // billable OpenAI/Anthropic/etc. key straight off disk). A BYO API key now lives only in
+  // `sessionKeys` below - in memory, for the lifetime of this page - and is gone the moment the
+  // tab/page is closed or reloaded, matching every other credential in this app after the
+  // cookie-session auth migration (see docs/auth/IMPLEMENTATION_STATUS.md section 5).
   var PREF_KEY = 'aiSettings';
-  var BYOK_KEY = 'tradejournal:ai-byok:v1';
+  var LEGACY_BYOK_KEY = 'tradejournal:ai-byok:v1';
+  var LEGACY_PERSIST_FLAG_KEY = 'tradejournal:ai-persist-key-by-provider:v1';
 
-  // BYO API keys are in-memory only for the session by default (never in localStorage) -
-  // opt-in persistence is the only path that writes them anywhere, and it writes to the
-  // separate BYOK_KEY, never into the settings object itself. Persistence is now a per-provider
-  // choice (persistApiKeyByProvider), matching the AI Assistant screen's per-engine REMEMBER
-  // toggle - remembering ChatGPT's key must never also remember Claude's.
   var sessionKeys = {};
+
+  // One-time cleanup: purge any raw key a previous version of this app already wrote to
+  // localStorage under the old opt-in "remember this key" mechanism. Best-effort - a private/
+  // locked-down browsing context that throws on localStorage access must not break module load.
+  (function purgeLegacyPersistedByok() {
+    try { localStorage.removeItem(LEGACY_BYOK_KEY); localStorage.removeItem(LEGACY_PERSIST_FLAG_KEY); } catch (_) { /* no-op */ }
+  }());
 
   // trait/knockout are ModelGlyph's own presentation hints (idle-loop animation, black-on-white
   // knockout-to-parchment) - kept on the one canonical catalog entry per engine so chatDockView.jsx
@@ -44,21 +49,10 @@
       provider: 'openai',
       modelByProvider: perProviderMap(function (p) { return p.models[0]; }),
       voiceByProvider: perProviderMap(function (p) { return !!p.supportsVoice; }),
-      persistApiKeyByProvider: perProviderMap(false),
       budgetByProvider: perProviderMap(null),
       therapistModeDefault: false
     };
   }
-
-  // The "remember this engine's key" opt-in flags are the one field of the old whole-object
-  // localStorage blob that stays local (see the file-top comment) - their own small dedicated
-  // key, separate from PREF_KEY, so a stale local copy can never shadow a real server value for
-  // every other field.
-  var LOCAL_PERSIST_FLAG_KEY = 'tradejournal:ai-persist-key-by-provider:v1';
-  function loadLocalPersistFlags() {
-    try { return JSON.parse(localStorage.getItem(LOCAL_PERSIST_FLAG_KEY) || '{}'); } catch (_) { return {}; }
-  }
-  function writeLocalPersistFlags(value) { localStorage.setItem(LOCAL_PERSIST_FLAG_KEY, JSON.stringify(value)); }
 
   function load() {
     var base = defaults();
@@ -67,7 +61,6 @@
     return Object.assign({}, base, stored, {
       modelByProvider: Object.assign({}, base.modelByProvider, stored.modelByProvider || {}),
       voiceByProvider: Object.assign({}, base.voiceByProvider, stored.voiceByProvider || {}),
-      persistApiKeyByProvider: Object.assign({}, base.persistApiKeyByProvider, loadLocalPersistFlags()),
       budgetByProvider: Object.assign({}, base.budgetByProvider, stored.budgetByProvider || {})
     });
   }
@@ -83,12 +76,7 @@
     }
   }
 
-  // `value` is always the full merged object (settings()'s own shape) - split across its two
-  // real backends: persistApiKeyByProvider to its own local key (see loadLocalPersistFlags()
-  // above), everything else to the server preference. Callers never see this split - saveSettings()
-  // still returns/round-trips the one whole object, matching this store's existing public contract.
   function write(value) {
-    writeLocalPersistFlags(value.persistApiKeyByProvider || {});
     var prefs = window.TradeJournalUserPreferences;
     if (prefs) {
       prefs.setPref(PREF_KEY, {
@@ -105,60 +93,27 @@
   function saveSettings(patch) {
     var current = load();
     var next = Object.assign({}, current, patch || {});
-    ['modelByProvider', 'voiceByProvider', 'persistApiKeyByProvider', 'budgetByProvider'].forEach(function (field) {
+    ['modelByProvider', 'voiceByProvider', 'budgetByProvider'].forEach(function (field) {
       if (patch && patch[field]) next[field] = Object.assign({}, current[field], patch[field]);
     });
     return write(next);
   }
 
-  function loadByok() {
-    try { var raw = localStorage.getItem(BYOK_KEY); return raw ? JSON.parse(raw) : {}; }
-    catch (_) { return {}; }
-  }
-  function writeByok(value) { localStorage.setItem(BYOK_KEY, JSON.stringify(value)); }
-
-  // Restore persisted keys into memory once, at load time, only for providers the user had
-  // already opted into remembering on a previous visit - never read implicitly otherwise.
-  (function restorePersisted() {
-    var remember = settings().persistApiKeyByProvider;
-    var byok = loadByok();
-    Object.keys(byok).forEach(function (provider) { if (remember[provider]) sessionKeys[provider] = byok[provider]; });
-  }());
-
   function getKey(provider) { return sessionKeys[provider] || ''; }
 
+  // In-memory only, for the lifetime of this page - see the file-top comment. No localStorage
+  // read/write anywhere in this function on purpose.
   function setKey(provider, value) {
     sessionKeys[provider] = value || '';
-    if (settings().persistApiKeyByProvider[provider]) {
-      var byok = loadByok();
-      byok[provider] = value || '';
-      writeByok(byok);
-    }
-    // The key itself never lives in the persisted settings object (see the file-top comment), so
-    // it has no natural write() call to piggyback its change-notification on - notify by hand, so
-    // a controlled key TextField re-renders on every keystroke exactly like every other
-    // per-provider field here.
+    // The key itself never lives in the persisted settings object, so it has no natural write()
+    // call to piggyback its change-notification on - notify by hand, so a controlled key
+    // TextField re-renders on every keystroke exactly like every other per-provider field here.
     notify(settings());
   }
 
   function clearKey(provider) {
     delete sessionKeys[provider];
-    var byok = loadByok();
-    delete byok[provider];
-    writeByok(byok);
-  }
-
-  // Atomic per-provider toggle: flips that provider's persisted flag AND immediately syncs its
-  // current in-memory key into (or out of) BYOK_KEY, so the two never drift out of sync -
-  // mirrors the previous global setPersistApiKey()'s exact guarantee, just scoped to one engine.
-  function setPersistApiKey(provider, value) {
-    var patch = { persistApiKeyByProvider: {} };
-    patch.persistApiKeyByProvider[provider] = !!value;
-    saveSettings(patch);
-    var byok = loadByok();
-    if (value) byok[provider] = sessionKeys[provider] || '';
-    else delete byok[provider];
-    writeByok(byok);
+    notify(settings());
   }
 
   function setVoice(provider, value) {
@@ -185,7 +140,7 @@
   window.TradeJournalAISettingsStore = {
     settings: settings, saveSettings: saveSettings,
     getKey: getKey, setKey: setKey, clearKey: clearKey,
-    setPersistApiKey: setPersistApiKey, setVoice: setVoice, setBudget: setBudget,
+    setVoice: setVoice, setBudget: setBudget,
     providerCatalog: providerCatalog, activeProvider: activeProvider, activeModel: activeModel
   };
 }());

@@ -122,13 +122,7 @@
     };
     var testRow = el('div', 'tj-ai-test-row'); testRow.append(testBtn, testResult);
 
-    var persistWarning = el('small', 'tj-hint', i18n.t('aiKeyPersistWarning'));
-    persistWarning.hidden = !settings.persistApiKey;
-    var persistWrap = el('label', 'tj-yesno-inline');
-    var persistBox = document.createElement('input'); persistBox.type = 'checkbox'; persistBox.checked = settings.persistApiKey;
-    persistBox.onchange = function () { settingsStore.setPersistApiKey(persistBox.checked); persistWarning.hidden = !persistBox.checked; };
-    persistWrap.append(persistBox, document.createTextNode(i18n.t('aiKeyPersistToggle')));
-    card.append(keyWrap, testRow, persistWrap, persistWarning);
+    card.append(keyWrap, testRow);
 
     // Voice mode - a genuinely disabled control for unsupported providers (A0: don't fake it).
     var voiceRow = el('div', 'tj-field'), voiceControls = el('div', 'tj-yesno-inline');
