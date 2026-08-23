@@ -107,10 +107,17 @@ test('getMediaStream() is a purely additive, read-only accessor for the same str
   assert.match(voiceSrc, /getMediaStream: function \(\) \{ return mediaStream; \}/);
 });
 
-test('disconnect() clears the audio element reference and resets mute back to false - a fresh connect() must never inherit stale audio/mute state from a previous session', () => {
+// Voice Mode performance pass: audioEl cleanup moved into the shared teardownTransport() helper
+// (also used by the reconnect path, which needs the identical cleanup without touching `state`
+// or the reconnect timer the way the public disconnect() does) - disconnect() itself still calls
+// it, and still resets mute (a disconnect concern specifically, not shared with a mid-reconnect
+// teardown, which must keep whatever mute the user had set for when the reconnect succeeds).
+test('disconnect() tears down the audio element via teardownTransport() and resets mute back to false - a fresh connect() must never inherit stale audio/mute state from a previous session', () => {
   const disconnectFn = voiceSrc.slice(voiceSrc.indexOf('function disconnect()'), voiceSrc.indexOf('// Orthogonal to `state`'));
-  assert.match(disconnectFn, /audioEl = null/);
+  assert.match(disconnectFn, /teardownTransport\(\);/);
   assert.match(disconnectFn, /isMuted = false/);
+  const teardownFn = voiceSrc.slice(voiceSrc.indexOf('function teardownTransport()'), voiceSrc.indexOf('// An unexpected drop'));
+  assert.match(teardownFn, /audioEl = null/);
 });
 
 test('no browser SpeechSynthesis is ever used as a second, competing voice engine - the Realtime WebRTC audio-output path is the only spoken-audio path, per the explicit "do not add a second engine" requirement', () => {
@@ -118,9 +125,11 @@ test('no browser SpeechSynthesis is ever used as a second, competing voice engin
   assert.doesNotMatch(dockViewSrc, /speechSynthesis|SpeechSynthesisUtterance/i);
 });
 
-test('the Voice session is created exactly once per ChatDock mount (empty-deps effect) and torn down on unmount - no duplicate session/listeners on a remount', () => {
+test('the Voice session, TurnCoordinator, and PlaybackController are all created exactly once per ChatDock mount (empty-deps effect) and torn down on unmount - no duplicate session/listeners/queues on a remount', () => {
   const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('voiceRef.current = createVoiceSession({'), dockViewSrc.indexOf('function toggleVoice()'));
-  assert.match(effectBlock, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); \};/);
+  assert.match(effectBlock, /playbackControllerRef\.current = window\.TradeJournalAIVoicePlaybackController\.create\(/);
+  assert.match(effectBlock, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
+  assert.match(effectBlock, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); \};/);
   assert.match(effectBlock, /\}, \[\]\);/);
 });
 
@@ -177,12 +186,16 @@ test('Persian and Arabic (RTL languages) are unaffected by the new voice keys - 
 
 // ---- Persian Voice Quality gate ----
 
-test('the deterministic ai-voice-text.js post-processing pass runs on whatever is actually spoken, right before speak() - never on the on-screen caption', () => {
-  const block = dockViewSrc.slice(dockViewSrc.indexOf('function onVoiceTranscript('), dockViewSrc.indexOf('React.useEffect(() => {\n    voiceRef.current = createVoiceSession('));
+// Voice Mode performance pass: this logic moved from inside onVoiceTranscript's own
+// voiceTurnQueue callback into TurnCoordinator's onResult callback (still in chatDockView.jsx,
+// still built from the exact same submit() result) - the post-processing/caption/speak-request
+// behavior itself is unchanged, only where it's wired.
+test('the deterministic ai-voice-text.js post-processing pass runs on whatever is actually spoken, right before it is handed to PlaybackController - never on the on-screen caption', () => {
+  const block = dockViewSrc.slice(dockViewSrc.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('), dockViewSrc.indexOf('return () => { if (voiceRef.current)'));
   assert.match(block, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\);/);
   assert.match(block, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
   assert.match(block, /setVoiceReplyCaption\(rawToSpeak \|\| ''\);/, 'the caption shown on screen must stay the RAW text - only what is spoken may differ (gate section 12)');
-  assert.match(block, /voiceRef\.current\.speak\(toSpeak\)/, 'speak() must receive the post-processed text, not the raw one');
+  assert.match(block, /playbackControllerRef\.current\.enqueue\(toSpeak, /, 'the post-processed text, not the raw one, must be handed to PlaybackController');
 });
 
 test('ai-voice-text.js is loaded as a purely additive, optional dependency - a page without it keeps speaking the exact raw text as before this gate', () => {
