@@ -1,4 +1,19 @@
 import http from 'node:http';
+import { parseCookie } from 'cookie';
+import { sessionCookieName } from './community/security/cookies.mjs';
+import { resolveRateLimitStore } from './community/security/rate-limit.mjs';
+import { sha256Hex } from './community/security/crypto-util.mjs';
+// Note on CORS here: this gateway's `Access-Control-Allow-Origin: '*'` (see json() below) is
+// deliberately NOT tightened to an allowlist in this pass. Since identity now travels as a
+// HttpOnly, host-only session cookie (never a bearer header a cross-origin script could attach
+// itself), a real browser will never send that cookie to this gateway from a different origin
+// regardless of what this response header says - the credential simply never reaches a
+// cross-origin request. `verifySession()` above is what actually protects every route; this
+// header only affects whether a cross-origin script can READ a (cookie-less, so already
+// worthless) response. Tightening it to server/community/security/origins.mjs's allowlist is a
+// reasonable follow-up but was not done here to avoid threading `request` through every one of
+// this file's ~20 `json()` call sites for a defense-in-depth improvement with low marginal value
+// given the above.
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || process.env.PATTERN_AI_PORT || 8787);
@@ -62,6 +77,78 @@ async function adminKeys() {
     adminKeyCache = { data: adminKeyCache.data, fetchedAt: Date.now() };
   }
   return adminKeyCache.data || {};
+}
+
+// ADR-0001 section 6 / 7: every AI endpoint requires a REAL, verified, non-suspended user
+// session before any body is read for real work, any provider key is selected, any provider is
+// called, any usage is recorded, or any Realtime credential is minted. This gateway is
+// deliberately Postgres-free (see adminKeys() above for the same reasoning) - it verifies a
+// session by asking the Community API's own internal /session-introspect route, the same
+// process-to-process bridge pattern /internal/admin-ai-keys already established, protected by
+// the same INTERNAL_API_SECRET shared secret.
+//
+// Critically asymmetric from adminKeys()'s soft-fail-open-to-cache behavior: a session-
+// introspection failure (network error, Community API down, timeout) must NEVER be treated as
+// "valid" - an unreachable identity service means every caller is rejected, not admitted. Only
+// the RESULT for a given raw session id is cached briefly (by its hash, never the raw value) to
+// avoid a network round trip on every single request from an already-verified browser tab.
+const sessionCache = new Map(); // hash -> { result, expiresAt }
+const SESSION_CACHE_TTL_MS = 15000;
+
+function rawSessionIdFromRequest(request) {
+  const header = request.headers.cookie;
+  if (!header) return null;
+  try {
+    const parsed = parseCookie(header);
+    return parsed[sessionCookieName()] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function verifySession(request) {
+  const rawId = rawSessionIdFromRequest(request);
+  if (!rawId) return { valid: false };
+  const cacheKey = sha256Hex(rawId);
+  const cached = sessionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  let result = { valid: false };
+  try {
+    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/internal/session-introspect';
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
+    const response = await fetch(url, {
+      method: 'POST', headers, body: JSON.stringify({ sessionId: rawId }), signal: AbortSignal.timeout(3000)
+    });
+    result = response.ok ? await response.json() : { valid: false };
+  } catch (_) {
+    result = { valid: false }; // fail CLOSED - an unreachable identity service must never be treated as "everyone is valid"
+  }
+  sessionCache.set(cacheKey, { result, expiresAt: Date.now() + SESSION_CACHE_TTL_MS });
+  return result;
+}
+
+// Server-authoritative, Redis-backed (in-memory in dev/test) quota - never trusts a client-
+// supplied usage total. Two independent ceilings: a per-user hourly cap and a global hourly cap
+// shared across every user, both configurable so an operator can tune them without a code change.
+const HOUR_MS = 60 * 60 * 1000;
+
+async function checkAiQuota(userId) {
+  // Read live, not cached at module load - lets an operator (or a test) change the ceiling
+  // without a process restart, and keeps this in sync with how every other env-driven knob in
+  // this file already behaves (checked per-call, e.g. BASIC_AUTH_USER/PASS above).
+  const perUserLimit = Number(process.env.AI_QUOTA_PER_USER_PER_HOUR || 200);
+  const globalLimit = Number(process.env.AI_QUOTA_GLOBAL_PER_HOUR || 20000);
+  const store = resolveRateLimitStore();
+  const userKey = `ai-quota:user:${userId}`;
+  const globalKey = 'ai-quota:global';
+  const [userResult, globalResult] = await Promise.all([
+    store.incr(userKey, HOUR_MS),
+    store.incr(globalKey, HOUR_MS)
+  ]);
+  if (userResult.count > perUserLimit) return { ok: false, reason: 'AI_QUOTA_USER_EXCEEDED', retryAfterMs: userResult.resetAt - Date.now() };
+  if (globalResult.count > globalLimit) return { ok: false, reason: 'AI_QUOTA_GLOBAL_EXCEEDED', retryAfterMs: globalResult.resetAt - Date.now() };
+  return { ok: true };
 }
 
 function json(response, status, body) {
@@ -1192,8 +1279,27 @@ async function extractTradeFields(body) {
   };
 }
 
+// Fail closed at startup, not at the first request - this gateway's entire identity story
+// depends on reaching the Community API's /internal/session-introspect with a real shared
+// secret; running in production without one would silently make every AI endpoint unreachable
+// (verifySession's fail-closed default) rather than obviously misconfigured.
+if (process.env.NODE_ENV === 'production') {
+  const missing = [];
+  if (!process.env.INTERNAL_API_SECRET) missing.push('INTERNAL_API_SECRET');
+  if (!process.env.REDIS_URL) missing.push('REDIS_URL');
+  if (missing.length) {
+    throw new Error(`FATAL: NODE_ENV=production but the following required environment variables are not set: ${missing.join(', ')}. See .env.production.example.`);
+  }
+  // Resolves (and starts connecting) the real Redis-backed AI-quota store now, so a
+  // misconfigured/unreachable REDIS_URL is caught at startup rather than on the first request.
+  resolveRateLimitStore();
+}
+
 const server = http.createServer(async (request, response) => {
   if (request.method === 'OPTIONS') return json(response, 204, {});
+  // /livez: process-only liveness, never checks a dependency - matches the Community API's own
+  // convention (server/community/app.mjs).
+  if (request.method === 'GET' && request.url === '/livez') return json(response, 200, { ok: true });
   if (request.method === 'GET' && request.url === '/health') {
     return json(response, 200, {
       ok: true,
@@ -1202,8 +1308,30 @@ const server = http.createServer(async (request, response) => {
       version: process.env.RENDER_GIT_COMMIT ? process.env.RENDER_GIT_COMMIT.slice(0, 12) : (process.env.npm_package_version || null)
     });
   }
+  // /readyz: dependency-aware - this gateway's one real external dependency it can meaningfully
+  // check without side effects is the Community API's own session-introspection bridge.
+  if (request.method === 'GET' && request.url === '/readyz') {
+    let communityApiOk = false;
+    try {
+      const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/livez';
+      const probe = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      communityApiOk = probe.ok;
+    } catch (_) { communityApiOk = false; }
+    return json(response, communityApiOk ? 200 : 503, { ready: communityApiOk, checks: { communityApi: communityApiOk } });
+  }
   if (!checkBasicAuth(request)) return requireBasicAuth(response);
   if (request.method !== 'POST') return json(response, 404, { error: 'NOT_FOUND' });
+
+  // Real application identity, verified BEFORE reading the (potentially 100MB) body, selecting a
+  // provider key, calling any provider, recording usage, or minting a Realtime credential -
+  // ADR-0001 section 6/7. An anonymous or suspended caller never reaches any of that.
+  const session = await verifySession(request);
+  if (!session.valid) return json(response, 401, { error: session.suspended ? 'ACCOUNT_SUSPENDED' : 'AUTH_SESSION_REQUIRED' });
+  const quota = await checkAiQuota(session.userId);
+  if (!quota.ok) {
+    response.setHeader('Retry-After', String(Math.max(1, Math.ceil(quota.retryAfterMs / 1000))));
+    return json(response, 429, { error: quota.reason });
+  }
 
   try {
     const body = await readBody(request);
@@ -1233,6 +1361,20 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, host, () => {
   console.log(`Pattern AI server: http://${host}:${port}`);
 });
+
+// Graceful shutdown - see server/community-api-server.mjs's identical rationale. This process
+// holds no database connection of its own to drain (by design), so closing the HTTP server (no
+// new connections accepted, in-flight requests allowed to finish) is the whole story here.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[pattern-ai] ${signal} received, shutting down gracefully...`);
+  server.close((error) => { process.exit(error ? 1 : 0); });
+  setTimeout(() => { console.warn('[pattern-ai] graceful shutdown timed out, forcing exit'); process.exit(1); }, 10000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default server;
 export { callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText, historyItem, dockChat, mintRealtimeClientSecret };
