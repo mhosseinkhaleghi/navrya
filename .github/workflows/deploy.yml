@@ -96,4 +96,4 @@ jobs:
             # image available for a fast rollback instead of deleting it the moment this
             # deploy succeeds. See scripts/rollback.sh for the one-command rollback path.
             docker image prune -f --filter "until=24h"
-REMOTE_SCRIPT
+          REMOTE_SCRIPT
