@@ -487,7 +487,15 @@ function ChartEntryModal({ session, lang, onClose, onSubmit }) {
   const [previewUrl, setPreviewUrl] = React.useState('');
   const [timeframe, setTimeframe] = React.useState(session.timeframe || '5m');
   const [market, setMarket] = React.useState(sessionsAdapter.displayCity(session.market) === 'New York' ? 'NewYork' : (session.market || 'London'));
-  const [date, setDate] = React.useState(session.date || new Date().toISOString().slice(0, 10));
+  // HOTFIX: session.date used to come out of NewSessionDialog's own hardcoded, non-ISO default
+  // ('08/01/2026', fixed alongside this) for any session whose creator never touched the date
+  // field - fed straight into the real <input type="date"> below, which requires exactly
+  // 'yyyy-MM-dd' and silently rejects anything else (a real browser console warning, and the
+  // field visibly failing to show the date it was given). Validating the format here, not just
+  // fixing the default going forward, means an existing session created before this fix still
+  // opens this modal correctly instead of carrying the bug forward.
+  const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const [date, setDate] = React.useState(isIsoDate(session.date) ? session.date : new Date().toISOString().slice(0, 10));
   const [note, setNote] = React.useState('');
   const [related, setRelated] = React.useState([]);
   const [error, setError] = React.useState('');

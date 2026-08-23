@@ -23,10 +23,21 @@ const DEFAULT_LABELS = {
   graceMinutes: 'Update grace period (minutes)'
 };
 
+// HOTFIX: the two date defaults below used to be hardcoded, stale mock strings
+// ('08/01/2026'/'۱۴۰۵/۰۵/۱۰') left over from an early design mockup - every session created
+// without the user manually touching the date fields silently recorded that literal fake date,
+// regardless of when it was actually created (a real data-integrity bug, not just cosmetic).
+// '08/01/2026' also isn't ISO 'yyyy-MM-dd', so any later real <input type="date"> that received
+// it as a value (liveSessionView.jsx's chart-entry modal, seeded from session.date) triggered a
+// native browser format warning and silently failed to display it. Both are now computed fresh,
+// for real, every time the dialog is used - see todayIso()/todayJalali() below.
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+function todayJalali() { return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+
 /* New-session dialog — optional chart uploads, session settings, one primary action. */
 export function NewSessionDialog({
   open = true, eyebrow, onClose, onCreate, labels,
-  defaults = { city: 'London', timeframe: '5m', gregorian: '08/01/2026', jalali: '۱۴۰۵/۰۵/۱۰', loop: '30 min', grace: '5' },
+  defaults = { city: 'London', timeframe: '5m', gregorian: todayIso(), jalali: todayJalali(), loop: '30 min', grace: '5' },
   style, ...rest
 }) {
   const t = { ...DEFAULT_LABELS, ...labels };

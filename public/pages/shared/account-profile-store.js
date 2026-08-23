@@ -515,11 +515,28 @@
     }).catch(function () { return null; });
   }
 
-  window.addEventListener('tradejournal:trades-changed', onTradesChangedXp);
-  window.addEventListener('tradejournal:sessions-changed', onSessionsChangedXp);
-  window.addEventListener('tradejournal:patterns-changed', onPatternsChangedXp);
-  window.addEventListener('tradejournal:strategy-education-changed', onStrategiesChangedXp);
-  window.addEventListener('tradejournal:mental-health-changed', onMentalHealthChangedXp);
+  // HOTFIX: each of these five *-changed events is dispatched synchronously by its own store's
+  // save()/write() (trade-store.js, session-workspace-logic.js, pattern-registry-store.js,
+  // strategy-education-store.js, mental-health-store.js) BEFORE that same call's own
+  // fire-and-forget replica upsert()/set() has actually reached the server - see each store's own
+  // save() for the exact "apply locally, dispatch the event, POST in the background" shape. Firing
+  // the XP scan synchronously on the event races that still-in-flight write: a brand-new
+  // record's own XP award (sourceType/sourceId pointing straight at it) can reach
+  // POST /api/users/me/xp-events before the record it references has actually landed, and
+  // legitimately 404 SOURCE_NOT_FOUND server-side (routes.profile.mjs's verifySourceAndState()).
+  // No XP is actually lost - the enqueue() below already goes through sync-queue.js's own
+  // retry-with-backoff, which resolves this on its own a couple seconds later once the source
+  // record exists - but every new session/trade/pattern/strategy/reflection was needlessly
+  // failing its first send, alarming-looking in the console for no real reason. A short defer
+  // gives that record's own POST a realistic head start to land first; it is a reduction in how
+  // often the race happens, not a guarantee (a slow connection can still lose the race) - the
+  // sync-queue retry remains the real correctness backstop, unchanged.
+  function deferred(fn) { return function () { setTimeout(fn, 300); }; }
+  window.addEventListener('tradejournal:trades-changed', deferred(onTradesChangedXp));
+  window.addEventListener('tradejournal:sessions-changed', deferred(onSessionsChangedXp));
+  window.addEventListener('tradejournal:patterns-changed', deferred(onPatternsChangedXp));
+  window.addEventListener('tradejournal:strategy-education-changed', deferred(onStrategiesChangedXp));
+  window.addEventListener('tradejournal:mental-health-changed', deferred(onMentalHealthChangedXp));
   window.addEventListener('tradejournal:listing-published', onListingPublished);
   window.addEventListener('tradejournal:listing-purchased', onListingPurchased);
   window.addEventListener('tradejournal:listing-evidence-refreshed', onListingEvidenceRefreshed);
