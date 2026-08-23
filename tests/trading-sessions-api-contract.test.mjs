@@ -101,6 +101,26 @@ test('re-POSTing the same session id is an idempotent upsert, not a duplicate, a
   assert.equal(list.body.sessions.length, 1, 're-upserting the same id must never create a second session record');
 });
 
+test("HOTFIX regression guard: an entry with a missing/invalid `type` no longer breaks the whole session upsert - real production bug (navrya-src/sessionsAdapter.js's createSession() sent chart-upload entries with no `type` at all; trading_session_entries.type is NOT NULL CHECK (chart/movement/fate) in real Postgres, so the entire upsert 500'd and rolled back, silently losing the session). Normalizes to 'chart', mirroring session-workspace-logic.js's own client-side normalize() fallback", async () => {
+  const user = await createUser('Hunter NoType');
+  const session = sampleSession('session-no-type');
+  delete session.entries[0].type;
+  session.entries.push({ id: 'session-no-type-entry-2', type: 'not-a-real-type', createdAt: '2026-01-01T07:06:00.000Z', hasImage: false, relatedScenarioIds: [], scenarios: [] });
+  const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(created.status, 200, 'a missing/invalid entry.type must never 500 the whole session write');
+  assert.equal(created.body.entries[0].type, 'chart', 'a missing type defaults to chart');
+  assert.equal(created.body.entries[1].type, 'chart', 'an unrecognized type also defaults to chart rather than being rejected outright');
+});
+
+test('HOTFIX regression guard: a session with a missing/empty `market` no longer breaks the upsert - trading_sessions.market is NOT NULL in real Postgres, and record.market || null used to feed that constraint a real NULL', async () => {
+  const user = await createUser('Hunter NoMarket');
+  const session = sampleSession('session-no-market');
+  session.market = '';
+  const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(created.status, 200, 'a missing/empty market must never 500 the whole session write');
+  assert.ok(created.body.market, 'market must fall back to a real, non-empty default');
+});
+
 test('a session belonging to another user cannot be fetched, upserted, or deleted', async () => {
   const owner = await createUser('Owner');
   const stranger = await createUser('Stranger');

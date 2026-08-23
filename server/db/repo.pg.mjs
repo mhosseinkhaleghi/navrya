@@ -71,6 +71,20 @@ function mapTradingSessionEntry(row, scenarios) {
 function mapActivityLogItem(row) {
   return { id: row.id, sessionId: row.session_id, type: row.type, detail: row.detail, scenarioId: row.scenario_id, loggedAt: row.logged_at, countsTowardLoopUpdate: row.counts_toward_loop_update };
 }
+// HOTFIX defense-in-depth: trading_session_entries.type is NOT NULL with a
+// CHECK (type IN ('chart','movement','fate')) constraint (006_trading_sessions.sql). A real
+// client bug (navrya-src/sessionsAdapter.js's createSession(), fixed alongside this) once sent
+// entries with no `type` at all, which threw a raw constraint-violation error - the whole
+// upsert() transaction (session + every entry + every scenario) rolled back and the request
+// 500'd, with no test catching it because tests/trading-sessions-api-contract.test.mjs always
+// set `type` explicitly and the in-memory repo (repo.memory.mjs) never enforced this constraint
+// to begin with. Normalizing here, mirroring the exact fallback
+// public/pages/shared/session-workspace-logic.js's own normalize() already uses client-side
+// (`entry.type = entry.type || 'chart'`), means ANY future caller that omits/mistypes this field
+// degrades to a sensible default instead of losing the whole session's write.
+const VALID_TRADING_ENTRY_TYPES = ['chart', 'movement', 'fate'];
+function normalizeTradingEntryType(type) { return VALID_TRADING_ENTRY_TYPES.indexOf(type) > -1 ? type : 'chart'; }
+
 function mapTradingSession(row, entries, activityLog) {
   return {
     id: row.id, userId: row.user_id, character: row.character, name: row.name, market: row.market,
@@ -1051,7 +1065,10 @@ export function createPgRepo(pool) {
              update_interval_minutes=$12, grace_period_minutes=$13, fate_summary=$14, previous_session_summary=$15,
              ai_session_analysis=$16, ai_session_analysis_result=$17, final_entry_id=$18, updated_at=now()
            RETURNING *`,
-          [record.id, userId, String(record.character || 'hunter'), record.name || null, record.market || null,
+          // market is NOT NULL (006_trading_sessions.sql) - a bare `|| null` here is what a real
+          // NOT-NULL constraint violation looks like the moment any caller sends an empty/missing
+          // market, same defense-in-depth reasoning as normalizeTradingEntryType() above.
+          [record.id, userId, String(record.character || 'hunter'), record.name || null, record.market || 'London',
             record.timeframe || null, record.date || null, record.jalali || null, startedAt, closedAt,
             record.status === 'closed' ? 'closed' : 'open', Number(record.updateIntervalMinutes) || 30,
             Number(record.gracePeriodMinutes) || 5, JSON.stringify(record.fateSummary ?? null),
@@ -1069,7 +1086,7 @@ export function createPgRepo(pool) {
                trading_session, gregorian_date, note, movement_note, related_scenario_ids, ai_analysis_result)
              VALUES ($1,$2,$3,COALESCE($4,now()),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
              RETURNING *`,
-            [entry.id, record.id, entry.type, entry.createdAt ? new Date(entry.createdAt).toISOString() : null,
+            [entry.id, record.id, normalizeTradingEntryType(entry.type), entry.createdAt ? new Date(entry.createdAt).toISOString() : null,
               !!entry.hasImage, entry.imageBlobId || null, entry.imageUrl || null, entry.timeframe || null,
               entry.market || null, entry.tradingSession || null, entry.gregorianDate || null, entry.note || null,
               entry.movementNote || null, JSON.stringify(Array.isArray(entry.relatedScenarioIds) ? entry.relatedScenarioIds : []),
