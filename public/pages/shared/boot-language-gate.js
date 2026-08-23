@@ -29,7 +29,14 @@
     root.lang = known;
     root.dir = known === 'fa' || known === 'ar' ? 'rtl' : 'ltr';
   }
-  function reveal() { root.style.visibility = ''; }
+  // Hotfix (found via real-browser testing, not a code trace): this MUST set 'visible', never
+  // clear to '' - the hiding rule is a stylesheet rule (<style>html{visibility:hidden}</style> in
+  // <head>), not an inline style. Clearing an inline style that was never set to begin with is a
+  // no-op; the stylesheet rule keeps applying and the page stays invisible forever. Setting the
+  // inline style to the literal value 'visible' is what actually outranks the stylesheet rule
+  // (inline style always wins over any <style>-block rule, regardless of its specificity). This
+  // was the real root cause of a black screen on every character dashboard after login.
+  function reveal() { root.style.visibility = 'visible'; }
 
   // Surfaced explicitly, not left to chance: character-app.jsx's own boot-gate failure banner
   // (TradeJournalServerReplica.failedDomains()) checks this flag too, so a real

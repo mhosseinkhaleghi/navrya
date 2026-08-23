@@ -79,8 +79,24 @@
     if (target && value) target.textContent = value;
   }
   function showCustom(page, activeView) { currentView='custom'; setActiveNav(activeView || 'library'); legacyChildren.forEach(function(child){child.hidden=true;}); content.classList.add('panel-mode'); if(panelPage)panelPage.remove(); panelPage=page; content.append(panelPage); }
+  // Hotfix (found via real-browser testing, not a code trace): Phase 8d's "zero callers of
+  // register() anywhere in the repo" claim was wrong - session-system.js, trade-open-positions.js,
+  // trade-reports.js, pattern-registry.js, and strategy-education.js each still call
+  // layer.register(...) unconditionally at their own module load time (two of them BEFORE their
+  // own window.TradeJournal* export statement), because that grep evidently missed these plain
+  // shared/*.js files, which are loaded directly via <script src> on every character page, never
+  // bundled through Vite/dist. With register() gone, every one of those five scripts threw an
+  // uncaught TypeError on every single page load - and for session-system.js/trade-reports.js
+  // specifically, the crash landed BEFORE their own export line, so window.TradeJournalSessions
+  // and window.TradeJournalTradeReports were never defined at all (breaking, among other things,
+  // the Pattern/Strategy Report tabs that call into TradeJournalTradeReports.patternSummary()).
+  // Restoring register() as a real, harmless no-op is safe, not a partial revert of the Phase 8d
+  // deletion: render()'s panel-grid branch never reads registered panel data any more either way
+  // (see its own comment above), so a no-op here is behaviorally identical to what these five
+  // files already silently got the moment that branch was rewritten - it just no longer crashes.
+  function register() {}
   const observer=new MutationObserver(function(){document.querySelectorAll('[data-panel-label]').forEach(function(el){el.textContent=copy().settings;});syncRank();syncMarketClocks();if(['dashboard','sessions','strategies','settings'].indexOf(currentView)>-1)render(currentView);});observer.observe(root,{attributes:true,attributeFilter:['lang']});
   document.querySelectorAll('[data-panel-label]').forEach(function(el){el.textContent=copy().settings;});
   syncRank(); syncMarketClocks(); window.setInterval(syncMarketClocks,30000);
-  window.TradeJournalPanelLayer={character:character,theme:theme,show:showCustom,render:render};
+  window.TradeJournalPanelLayer={character:character,theme:theme,show:showCustom,render:render,register:register};
 }());
