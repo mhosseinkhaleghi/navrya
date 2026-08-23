@@ -106,6 +106,24 @@
     var companionIntent = (options && options.companionIntent) === 'explain' ? 'explain' : null;
     if (!text) return null;
 
+    // P0 safety preflight: mental-health-safety.js's checkText() is the one authoritative,
+    // deterministic (no network, no model call) self-harm/crisis gate every psychology-adjacent
+    // surface in this app must go through - it must run unconditionally, before therapist-mode
+    // routing, before the Journey C proactive-confirmation fast path, before /api/ai/chat, and
+    // before any workflow/field mutation. Previously this text only ever reached checkText() via
+    // runSignalRouting() below, which (a) ran after the provider call and after workflow fields
+    // were already live-applied, and (b) only calls checkText() at all when
+    // ai-signal-router.js's own classify() first judges the message "trading-relevant" (an active
+    // trade workflow/session, trading vocabulary, or a loss reference) - so a crisis message with
+    // none of those present skipped the safety check entirely, not just late. This preflight is
+    // independent of that relevance gate on purpose: safety must never depend on whether the
+    // message also happens to look like it's about trading.
+    var safetyPreflight = window.TradeJournalMentalHealthSafety;
+    if (safetyPreflight && typeof safetyPreflight.checkText === 'function') {
+      var preflightCheck = safetyPreflight.checkText(text);
+      if (preflightCheck && preflightCheck.flagged) return { kind: 'safety' };
+    }
+
     if (therapistMode) {
       setLastTurnDebug({ path: 'therapist' });
       var mhStore = window.TradeJournalMentalHealthStore, mhAi = window.TradeJournalMentalHealthAI;
@@ -819,6 +837,27 @@
     if (registry) registry.applyValue(processId, path, value, mode);
   }
 
+  // Workflow isolation: ai-workflow-engine.js's `current` and ai-proactive-engine.js's own
+  // pending-confirmation slot are both page-wide singletons, not scoped to a conversation id -
+  // by design, since only one workflow/confirmation can ever be genuinely "in flight" against the
+  // real, single set of open UI on the page at a time (see ai-workflow-engine.js's own file-top
+  // comment). "New Chat" (chatDockView.jsx's startNewChat()) previously only cleared the visible
+  // transcript and activeConversationId, leaving a mid-flight workflow/confirmation from the
+  // conversation just left behind fully intact - the very next message typed into the brand-new
+  // conversation could still silently continue filling/confirming it (e.g. a still-open
+  // trade.open workflow's `submit()` firing against a "yes" meant for the new conversation
+  // instead). Both engines already expose a real, idempotent way to release their own state
+  // (cancel()/clearConfirmation()) for exactly this kind of "the user has moved on" case - this
+  // just calls both, unconditionally, so a genuinely new conversation always starts from a clean
+  // slate. Real, currently-open UI (a modal the user still has open by hand) is untouched - only
+  // the AI's own claim on driving it is released.
+  function resetConversationState() {
+    var workflowEngine = window.TradeJournalAIWorkflowEngine;
+    var proactiveEngine = window.TradeJournalAIProactiveEngine;
+    if (workflowEngine && typeof workflowEngine.cancel === 'function') workflowEngine.cancel();
+    if (proactiveEngine && typeof proactiveEngine.clearConfirmation === 'function') proactiveEngine.clearConfirmation();
+  }
+
   // A7: explicit, click-initiated action - never auto-detected - consistent with every other
   // AI trigger in this app being click-initiated.
   async function analyzeScreenshot(dataUrl) {
@@ -871,6 +910,7 @@
     providerLabel: providerLabel,
     sendChat: sendChat,
     applySuggestion: applySuggestion,
+    resetConversationState: resetConversationState,
     analyzeScreenshot: analyzeScreenshot,
     applyExtractionToWizard: applyExtractionToWizard,
     debugLastTurn: debugLastTurn,
