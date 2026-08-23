@@ -253,6 +253,135 @@ exact number-normalization before/after tables, and the honest "known gap vs. a 
 assessment are in **`docs/ai/persian-voice-quality.md`** - this section is a pointer, not a
 restatement, matching this file's own convention for other sub-passes.
 
+## Voice Mode performance pass (`feature/voice-mode-performance`)
+
+A later, separate pass on top of everything above ("harden Voice Mode's connection lifecycle and
+stop playback from blocking the next turn"). Scope: architecture and reliability only - the "one
+brain" design, the confirmation/action pipeline, and text/voice continuity above are all
+unchanged. Builds on `feature/auth-security-hardening`'s own AI hardening pass (safety preflight
+ordering, BYOK, atomic history append, the 12s `speak()` stall fix - see that branch's own commits
+for detail); this pass does not redo or regress any of that.
+
+### TurnCoordinator / PlaybackController split
+
+`chatDockView.jsx`'s old `voiceTurnQueue` chained `submit()` (business/inference - the ChatDock
+core call that reaches Context Engine/Action Registry/Workflow Engine/Proactive Engine) and
+`speak()` (playback) into **one** serial promise per turn. A second, already-finalized transcript
+arriving while the first turn's reply was still being spoken could not even start its own
+`submit()` until that speech finished - so a long spoken reply silently delayed recognizing the
+user's very next utterance.
+
+Split into two independently-testable, dependency-injected plain modules
+(`public/pages/shared/ai-voice-turn-coordinator.js` / `ai-voice-playback-controller.js`, loaded the
+same way every other shared `ai-*.js` module is):
+
+- **TurnCoordinator** serializes `submit()` calls against *each other only* (preserving the real
+  reason the queue existed - two turns racing `sendChat()`'s own "is a workflow already open"
+  check produced duplicate action-discovery turns) - never against playback.
+- **PlaybackController** owns speech only: its own one-at-a-time queue, `interrupt()` (stops
+  current playback and drops everything still queued), and `invalidate()` (bumps an internal
+  epoch so a stale entry can never be spoken, even one already queued when the bump happened).
+
+`chatDockView.jsx` connects them by handing a resolved turn's text to
+`playbackControllerRef.current.enqueue()` - fire-and-forget, never awaited, so TurnCoordinator's
+own queue moves on to the next turn immediately regardless of how long that reply takes to speak.
+
+### turnId / responseId / conversationEpoch / connectionEpoch
+
+- **turnId**: assigned by TurnCoordinator per finalized transcript.
+- **responseId**: assigned by PlaybackController per `enqueue()` call.
+- **conversationEpoch**: a ref in `chatDockView.jsx` (`conversationEpochRef`), bumped by
+  `startNewChat()` and `resumeConversation()` (switching to a different past conversation is the
+  same kind of "moved on" event). TurnCoordinator reads it fresh both when a turn is enqueued and
+  again once `submit()` resolves - a turn whose epoch changed mid-flight is reported `discarded`
+  and never reaches the transcript/caption/playback. Both callers also call
+  `playbackControllerRef.current.invalidate()`, so anything already queued to be spoken from the
+  old conversation is dropped too, not just future turns.
+- **connectionEpoch**: owned by `aiVoiceRealtime.js`, bumped once per genuine connection attempt
+  (fresh connect or reconnect). Every session/transport event listener closes over the epoch value
+  active when it was registered and checks it before mutating state, so an event from a session
+  that's since been superseded can never do so.
+
+### Connection state machine and reconnect
+
+`RECONNECTING` existed in `VOICE_STATES` from the original Journey E pass but was never actually
+entered - there was no automatic reconnect at all. This pass adds it for real:
+
+- **Bounded exponential backoff with jitter** (`RECONNECT_BASE_DELAY_MS`=500,
+  `RECONNECT_MAX_DELAY_MS`=8000, `RECONNECT_MAX_ATTEMPTS`=5, jitter 50-100% of the computed delay)
+  on an *unexpected* drop only - detected on the WebRTC transport's own `connection_change` event.
+  Grounded against the installed `@openai/agents-realtime` SDK's own source (not assumed):
+  `RealtimeSession` never re-emits `connection_change` (its `#setEventListeners()` only forwards
+  raw server-sent events with a `.type` field via a wildcard listener, a fixed list of named
+  transport events that does not include it), so this listens directly on the local `transport`
+  object this module already constructs, not `session.on(...)`.
+- Reconnect never touches TurnCoordinator/PlaybackController or replays a business side effect -
+  it only calls `connect()` again, the same transport-only operation a manual retry would be.
+- **One overall deadline** (`CONNECT_TIMEOUT_MS`=15000) bounds the whole attempt (mic + token mint
+  + SDP/ICE + session ack combined) via `Promise.race` against a single shared deadline promise,
+  not a fresh timer per phase - the installed SDK's `session.connect()` has no `AbortSignal` of
+  its own, so a timeout here stops the client from waiting, not the underlying negotiation, and
+  the same cleanup path a failed `connect()` already used runs regardless.
+- **Mic readiness and token minting run in parallel**, not sequentially - independent until both
+  are needed to actually build the transport.
+- A fresh, user-initiated `connect()` always mints at server-default eagerness (`medium`); a
+  reconnect mints with whatever eagerness was last in effect, so a network hiccup mid-confirmation
+  doesn't silently revert the session to a slower default right when a quick yes/no is expected.
+
+### Dynamic semantic VAD eagerness
+
+`turn_detection.eagerness` was a fixed `'medium'` at mint time. Now:
+
+- `public/pages/shared/ai-voice-eagerness.js`'s `deriveEagerness()` is the **one configuration
+  authority** - a pure, deterministic function from real post-turn workflow state (never a second,
+  invented signal): `'high'` when exactly one short, closed-form field remains (a yes/no gate -
+  `confirm`/`confirmDelete`/`confirmPublish`/`send`/`publish` - or a short slot like
+  city/timeframe/a price/a percent); `'low'` for a remaining long-form field (note/description/
+  evidence/problem/trigger/reviewText), an explicit Companion "Explain" turn, or Therapist Mode;
+  `'medium'` otherwise.
+- `chatDockView.jsx` re-derives it after every voice turn and calls `aiVoiceRealtime.js`'s
+  `setEagerness()`, which sends a live `session.update` (`session.transport.updateSessionConfig()`)
+  rather than reconnecting - and is a no-op if the requested value is already in effect, so an
+  ordinary run of turns never sends a redundant update. `create_response`/`interrupt_response` are
+  resent as `false` on every call, never eagerness alone, so a live update can never accidentally
+  revert the "NAVRYA always decides before the model may speak" contract.
+- The effective value is verified from the real `session.updated` acknowledgement
+  (`onTransportEvent`'s handling of `TRANSPORT_SESSION_UPDATED`), surfaced through
+  `debugState().effectiveTurnDetection` - never assumed from what was merely requested.
+- **Not run**: benchmarking these three tiers against a real Persian speech fixture corpus (pauses,
+  fillers, corrections, code-switching, trading terminology) requires real OpenAI Realtime API
+  audio and was not attempted in this pass (no rotated, valid credential available in this
+  sandboxed session) - the rule set above is a reasoned default, not a tuned one. Re-run
+  `voice-ab-scratch/`-style real-audio validation (see `docs/ai/persian-voice-quality.md`) before
+  trusting these tiers' exact values in production.
+
+### Before/after: acceptance gates
+
+Measured in `tests/voice-latency-gates.test.mjs`, against the real `TurnCoordinator`/
+`PlaybackController` code under deterministic, documented mock I/O timing (no real OpenAI/WebRTC
+credentials used or required) - see that file for the exact methodology and reasoning behind each
+mock latency value. Representative run:
+
+| Gate | Requirement | Measured |
+|---|---|---|
+| Final-transcript -> submit() dispatch | p95 <= 100ms | p50=0ms p95=0ms max=1ms |
+| Interruption -> local audio cutoff | p95 <= 250ms | p50=0ms p95=1ms max=1ms |
+| Next turn blocked by prior playback | never | second turn dispatched 0ms after arrival, while a 3000ms reply was still playing |
+| Before/after improvement (old coupled queue vs. the split) | >=40% | old: +3128ms, new: +123ms -> **96%** |
+
+"Before" reconstructs the literal shape of the removed `voiceTurnQueue` coupling (chain
+`submit()` then `await speak()` per turn) under the identical mock timings, for a direct,
+apples-to-apples comparison - not a hypothetical baseline.
+
+The already-existing 12-second-stall fix (`audio_interrupted` added to `speak()`'s settle
+listeners, `disconnect()` explicitly settling a pending `speak()`) shipped on
+`feature/auth-security-hardening` before this pass started and is unchanged - this pass's own
+tests (`tests/ai-voice-realtime-adapter.test.mjs`) re-verify it stays fixed, not re-fix it.
+
+Real OpenAI Realtime API / WebRTC measurements were **not run** in this pass (no rotated, valid
+credential available in this sandboxed session) - clearly labeled as such rather than fabricated,
+per this task's own instruction.
+
 ## How this was verified
 
 Every gate (E0-E5) was verified against the real OpenAI Realtime API in a real Chromium instance,
@@ -261,6 +390,15 @@ text event standing in for audio) - see **`docs/ai/voice-testing.md`** for the f
 (how the test audio was generated and sequenced, the tooling built to do it, and the complete
 per-gate bug list) and **`docs/ai/voice-i18n.md`** for how the four supported languages flow
 through transcription, extraction, and spoken replies.
+
+The Voice Mode performance pass above was verified with real behavioral tests against the real
+modules (`tests/ai-voice-turn-coordinator.test.mjs`, `tests/ai-voice-playback-controller.test.mjs`,
+`tests/ai-voice-eagerness.test.mjs`, `tests/voice-latency-gates.test.mjs`) and static-source
+regression guards for the JSX/SDK-facing code that has no DOM/render harness in this repo
+(`tests/ai-voice-realtime-adapter.test.mjs`, `tests/voice-conversation-isolation.test.mjs`,
+`tests/ai-realtime-voice-session.test.mjs`) - not against a real browser/WebRTC connection. Real
+credentials were not available in this sandboxed session; production/real-browser validation of
+this specific pass remains an open item (see `docs/ai/realtime-deployment.md`).
 
 ## Deployment
 
