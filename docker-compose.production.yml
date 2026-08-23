@@ -29,10 +29,14 @@ services:
     command: ['node', 'server/pattern-ai-server.mjs']
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       HOST: 0.0.0.0
       PATTERN_AI_PORT: 8787
       COMMUNITY_API_URL: http://community-api:8788
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      REDIS_URL: redis://redis:6379
+      AI_QUOTA_PER_USER_PER_HOUR: ${AI_QUOTA_PER_USER_PER_HOUR:-200}
+      AI_QUOTA_GLOBAL_PER_HOUR: ${AI_QUOTA_GLOBAL_PER_HOUR:-20000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -41,6 +45,9 @@ services:
       KIMI_MODEL: ${KIMI_MODEL:-moonshot-v1-8k}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8787/health']
       interval: 15s
@@ -55,20 +62,38 @@ services:
     command: ['node', 'server/community-api-server.mjs']
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       HOST: 0.0.0.0
       COMMUNITY_API_PORT: 8788
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
       UPLOADS_DIR: /app/uploads
       PATTERN_AI_URL: http://pattern-ai:8787
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
+      CSRF_SECRET: ${CSRF_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       ADMIN_AUTH_ENFORCED: 'true'
-      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL}
+      # No ADMIN_BOOTSTRAP_EMAIL - that auto-promotion path was removed entirely (see
+      # docs/auth/ADR-0001-authentication-architecture.md section 3). Provision the first admin
+      # out of band: node scripts/admin-grant.mjs --email=... --confirm=...
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      LEGACY_AUTH_SUNSET_AT: ${LEGACY_AUTH_SUNSET_AT:-}
+      EMAIL_WEBHOOK_URL: ${EMAIL_WEBHOOK_URL:-}
+      EMAIL_WEBHOOK_SECRET: ${EMAIL_WEBHOOK_SECRET:-}
+      CSP_ENFORCE: ${CSP_ENFORCE:-false}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8788/health']
@@ -76,6 +101,18 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'no', '--maxmemory', '256mb', '--maxmemory-policy', 'allkeys-lru']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   migrate:
     build:
@@ -109,3 +146,4 @@ volumes:
   caddy_config:
   postgres_data:
   uploads_data:
+  redis_data:

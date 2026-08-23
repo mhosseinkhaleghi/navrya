@@ -12,16 +12,11 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  DEPLOY_REF: main
-
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -29,6 +24,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
 
   deploy:
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}
@@ -47,11 +43,57 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy verified ref on the server
+      # Deploys the EXACT commit `verify` just tested - never `origin/main`, which could have
+      # moved if a second push landed between `verify` finishing and this step running. This is
+      # the fix for the tested-commit/deployed-commit race: `github.sha` is fixed for this whole
+      # workflow run, so the remote checkout below can never silently deploy a different, untested
+      # commit than the one that just passed CI.
+      - name: Deploy the tested commit on the server
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_SHA: ${{ github.sha }}
         run: |
-          ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" \
-            "set -eu; cd /opt/navrya; git fetch --prune origin $DEPLOY_REF; git checkout $DEPLOY_REF; git reset --hard origin/$DEPLOY_REF; docker compose --env-file .env -f docker-compose.production.yml build; docker compose --env-file .env -f docker-compose.production.yml run --rm migrate; docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans; docker image prune -f"
+          ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" "DEPLOY_SHA='$DEPLOY_SHA' bash -s" <<'REMOTE_SCRIPT'
+            set -eu
+            cd /opt/navrya
+
+            # Record what was running before this deploy, so scripts/rollback.sh has a real
+            # target - never inferred after the fact from git log, which could be ambiguous if
+            # this same commit was deployed more than once.
+            if [ -f .last-deployed-sha ]; then
+              cp .last-deployed-sha .previous-deployed-sha
+            fi
+
+            git fetch --prune origin
+            # Verify the commit the workflow tested is actually reachable before touching
+            # anything running - fails loudly instead of silently deploying nothing/wrong.
+            git cat-file -e "${DEPLOY_SHA}^{commit}"
+            git checkout --detach "${DEPLOY_SHA}"
+
+            # Preflight: refuse to proceed if required production secrets are missing from the
+            # server's own .env - fails BEFORE touching the running containers, not after.
+            set -a; . ./.env; set +a
+            : "${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET missing in server .env}"
+            : "${CSRF_SECRET:?CSRF_SECRET missing in server .env}"
+            : "${INTERNAL_API_SECRET:?INTERNAL_API_SECRET missing in server .env}"
+            : "${ALLOWED_ORIGINS:?ALLOWED_ORIGINS missing in server .env}"
+
+            docker compose --env-file .env -f docker-compose.production.yml build
+            docker compose --env-file .env -f docker-compose.production.yml run --rm migrate
+            docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans
+
+            # Post-deploy smoke check against the real running containers - a broken deploy is
+            # caught here, before this script records it as "the last known-good deploy".
+            sleep 5
+            docker compose --env-file .env -f docker-compose.production.yml exec -T community-api wget -qO- http://127.0.0.1:8788/readyz
+            docker compose --env-file .env -f docker-compose.production.yml exec -T pattern-ai wget -qO- http://127.0.0.1:8787/health
+
+            echo "${DEPLOY_SHA}" > .last-deployed-sha
+
+            # Prune only images older than 24h - keeps yesterday's (and this deploy's previous)
+            # image available for a fast rollback instead of deleting it the moment this
+            # deploy succeeds. See scripts/rollback.sh for the one-command rollback path.
+            docker image prune -f --filter "until=24h"
+REMOTE_SCRIPT
