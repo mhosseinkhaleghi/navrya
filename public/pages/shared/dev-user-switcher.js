@@ -1,12 +1,21 @@
 (function () {
   'use strict';
   // Filename/global kept as-is on purpose (window.TradeJournalDevUserSwitcher, method names
-  // currentUserId/ensureUser/isStoredUserValid) - 19 other files reference this exact global by
-  // name and ~30 call sites already build `{'x-dev-user-id': uid}` request headers directly.
-  // None of that needs to change: the header still carries a string under that name, it's just
-  // a signed session token now (see server/community/auth-real.mjs) instead of a raw user id.
-  var KEY = 'tradejournal:auth-token';
-
+  // currentUserId/ensureUser/isStoredUserValid/register/login/loginWithGoogle/logout) - every
+  // existing call site across this codebase (community-store.js, trade-store.js,
+  // pattern-registry-store.js, navrya-src's communityAvatar.jsx/messagesView.jsx/
+  // marketplaceView.jsx, ...) already reaches identity through this exact API and needs no
+  // change: what changes is HOW this module knows the current user, not the shape it exposes.
+  //
+  // There is no credential in localStorage any more (ADR-0001 section 2/5). Identity comes from
+  // window.__NAVRYA_AUTH__, set once by boot-language-gate.js's own early GET /api/auth/session
+  // call (credentials:'include' - the HttpOnly session cookie rides along automatically), and
+  // kept live here on register/login/loginWithGoogle/logout. currentUserId() now returns the
+  // REAL internal user id (previously it returned the raw bearer token itself, which silently
+  // broke every "is this mine?" comparison across the app - communityView.jsx's
+  // `currentUserId() === post.author.id`, marketplaceView.jsx's `... === listing.sellerId`,
+  // messagesView.jsx's `message.senderId === currentUserId()` - all of those are now correct
+  // automatically, with no change needed at any of those call sites).
   function el(tag, className, text) { var node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
   function button(text, className) { var b = el('button', className || '', text); b.type = 'button'; return b; }
   function icons(root) { if (window.TradeJournalIcons) window.TradeJournalIcons.schedule(root || document); }
@@ -22,72 +31,110 @@
   };
   function t(key) { var l = lang(); return (copy[l] && copy[l][key]) || copy.en[key] || key; }
 
-  function currentUserId() { try { return localStorage.getItem(KEY) || ''; } catch (_) { return ''; } }
-  function setToken(token) { try { localStorage.setItem(KEY, token); } catch (_) { /* no-op if storage is unavailable */ } }
-  function clearToken() { try { localStorage.removeItem(KEY); } catch (_) { /* no-op */ } }
+  function authState() { return window.__NAVRYA_AUTH__ || { authenticated: false, userId: null, user: null, csrfToken: null }; }
+  function currentUserId() { return authState().userId || ''; }
+  function setAuthState(next) { window.__NAVRYA_AUTH__ = next; }
 
-  function fetchMe() { return fetch('/api/users/me', { headers: { 'x-dev-user-id': currentUserId() } }); }
+  // On the four character pages, boot-language-gate.js (loaded first, in <head>) already started
+  // the one early GET /api/auth/session call and will populate window.__NAVRYA_AUTH_READY__/
+  // window.__NAVRYA_AUTH__ well before this script's own body runs. The select/character-chooser
+  // and admin pages load this file WITHOUT boot-language-gate.js (they have no language-flash
+  // concern to gate on), so this module is self-sufficient: if nothing has started that request
+  // yet, it starts the identical one itself, exactly once.
+  if (!window.__NAVRYA_AUTH_READY__) {
+    window.__NAVRYA_AUTH_READY__ = fetch('/api/auth/session', { credentials: 'include' })
+      .then(function (response) { return response.ok ? response.json() : { authenticated: false }; })
+      .then(function (body) {
+        var auth = {
+          authenticated: Boolean(body && body.authenticated),
+          userId: body && body.user ? body.user.id : null,
+          user: (body && body.user) || null,
+          csrfToken: (body && body.csrfToken) || null
+        };
+        setAuthState(auth);
+        return auth;
+      })
+      .catch(function () {
+        var auth = { authenticated: false, userId: null, user: null, csrfToken: null };
+        setAuthState(auth);
+        return auth;
+      });
+  }
 
-  // Shared by register()/login()/loginWithGoogle() - all three of routes.auth.mjs's endpoints
-  // return the same {user, token} shape on success, or {error} on failure.
+  // Cross-tab logout (instruction: "notify other tabs with BroadcastChannel"). Every tab with
+  // this script loaded joins the same channel; a tab that did NOT initiate the logout still
+  // purges its own in-memory/local caches and returns to the account route.
+  var CHANNEL_NAME = 'tradejournal-auth';
+  var channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANNEL_NAME) : null;
+  function broadcastLogout() { if (channel) channel.postMessage({ type: 'logout' }); }
+  if (channel) {
+    channel.onmessage = function (event) {
+      if (event && event.data && event.data.type === 'logout') applyLocalLogoutEffects();
+    };
+  }
+
+  function applyLocalLogoutEffects() {
+    setAuthState({ authenticated: false, userId: null, user: null, csrfToken: null });
+    if (window.TradeJournalUserScopeGuard) window.TradeJournalUserScopeGuard.purgeAll();
+    window.top.location.hash = '/';
+  }
+
   function handleAuthResponse(fetchPromise) {
     return fetchPromise.then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (body) {
-        if (!response.ok || !body || !body.token || !body.user) {
+        if (!response.ok || !body || !body.user) {
           var error = new Error((body && body.error) || 'AUTH_FAILED');
           error.status = response.status;
           error.code = body && body.error;
           throw error;
         }
-        setToken(body.token);
+        setAuthState({ authenticated: true, userId: body.user.id, user: body.user, csrfToken: body.csrfToken || null });
         return body.user;
       });
     });
   }
 
   function register(payload) {
-    return handleAuthResponse(fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    return handleAuthResponse(fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) }));
   }
   function login(payload) {
-    return handleAuthResponse(fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }));
+    return handleAuthResponse(fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) }));
   }
   function loginWithGoogle(credential) {
-    return handleAuthResponse(fetch('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential: credential }) }));
+    return handleAuthResponse(fetch('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ credential: credential }) }));
   }
-  // Phase 1 of the local-first-to-server-authoritative migration: logout must purge every
-  // user-scoped local cache, not just the credential - see user-scope-guard.js (loaded first on
-  // every character page, so it is always available by the time a real logout click can happen).
-  // Called before clearToken() while every store/IndexedDB module is still fully loaded, so the
-  // purge can act directly instead of falling back to the boot-time pending-clear flag.
-  function logout() { if (window.TradeJournalUserScopeGuard) window.TradeJournalUserScopeGuard.purgeAll(); clearToken(); }
 
-  // Pure check, no side effects: is the currently stored token one the server still accepts?
-  // Cached per page load (not per call), same as before - costs a real network round trip.
-  var validityCheck = null;
+  // Attempts real server-side revocation FIRST (the session must actually die, not just look
+  // logged-out locally), then purges every user-scoped local cache, then tells other tabs, then
+  // navigates to the login route - in that order, so a slow/failed network call never leaves
+  // stale local data behind, and a purge never runs before the thing it's protecting against
+  // (a still-valid server session) has actually been asked to end.
+  function logout() {
+    var csrf = authState().csrfToken;
+    var request = csrf
+      ? fetch('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'x-csrf-token': csrf } }).catch(function () { /* best-effort - see below */ })
+      : Promise.resolve();
+    return request.then(function () {
+      if (window.TradeJournalUserScopeGuard) window.TradeJournalUserScopeGuard.purgeAll();
+      setAuthState({ authenticated: false, userId: null, user: null, csrfToken: null });
+      broadcastLogout();
+      window.top.location.hash = '/';
+    });
+  }
+
+  // Waits for boot-language-gate.js's own early session check if it hasn't resolved yet (this
+  // script loads later in the existing page order, so in practice it almost always already
+  // has), then reports whether a real session exists. No more self-healing/auto-bootstrap - a
+  // caller with no session simply gets `false`/a rejection, same contract as before.
   function isStoredUserValid() {
-    if (!currentUserId()) return Promise.resolve(false);
-    if (!validityCheck) {
-      validityCheck = fetchMe().then(function (response) { return response.ok; })
-        .catch(function () { return true; }); // server unreachable - fail open, let the real call surface its own honest error
-    }
-    return validityCheck;
+    var ready = window.__NAVRYA_AUTH_READY__ || Promise.resolve(authState());
+    return ready.then(function (auth) { return Boolean(auth && auth.authenticated); });
   }
-
-  // Same validation, used by the deep API-call plumbing throughout the app (every store's
-  // request() calls this before attaching x-dev-user-id) - unlike the old dev-mode version,
-  // there is no self-healing auto-bootstrap anymore: without a credential there is nothing
-  // sensible to fall back to, so this simply rejects and lets each caller's existing
-  // .catch()/error handling take over (most already fail silently for background calls like
-  // heartbeats).
-  var pending = null;
   function ensureUser() {
-    if (!pending) {
-      pending = isStoredUserValid().then(function (valid) {
-        if (valid) return currentUserId();
-        throw new Error('NOT_AUTHENTICATED');
-      });
-    }
-    return pending;
+    return isStoredUserValid().then(function (valid) {
+      if (valid) return currentUserId();
+      throw new Error('NOT_AUTHENTICATED');
+    });
   }
 
   function buildCard() {
@@ -102,27 +149,18 @@
 
     var logoutBtn = button(t('logoutBtn'), 'tj-secondary');
     logoutBtn.onclick = function () {
-      logout();
-      toast(t('loggedOut'), 'success');
-      // This card lives inside a character page's iframe; the login screen is the outer
-      // shell's default route (src/release.js), so the navigation must target the top window.
-      window.top.location.hash = '/';
+      logout().then(function () { toast(t('loggedOut'), 'success'); });
     };
     card.append(logoutBtn);
 
-    // Discoverability only, not a security boundary by itself (see server/admin/auth-admin.mjs
-    // for the real gate). target="_top" is required, not stylistic: this card lives inside a
-    // character page's iframe, and #/admin is a route on the OUTER shell, not this iframe's own
-    // document - a bare same-document href would silently change only the iframe's hash.
     var adminLink = el('a', 'tj-dev-user-admin-link', t('adminLink'));
     adminLink.href = '#/admin';
     if (window.location && window.location.hostname === 'app.navrya.com') adminLink.href = 'https://admin.navrya.com';
     adminLink.target = '_top';
     card.append(adminLink);
 
-    fetchMe().then(function (response) { return response.ok ? response.json() : null; }).then(function (user) {
-      currentName.textContent = user ? user.displayName + (user.email ? ' (' + user.email + ')' : '') : '—';
-    }).catch(function () { currentName.textContent = '—'; });
+    var user = authState().user;
+    currentName.textContent = user ? user.displayName + (user.email ? ' (' + user.email + ')' : '') : '—';
 
     return card;
   }

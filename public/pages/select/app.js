@@ -414,7 +414,13 @@ backBtn.addEventListener('click', () => goToStep('account'));
 enterBtn.addEventListener('click', () => {
   if (!selectedCharacter) return;
   try { localStorage.setItem(CHARACTER_STORAGE_KEY, selectedCharacter); } catch (_) { /* storage blocked */ }
-  window.parent.postMessage({ type: 'tradejournal:character-selected', character: selectedCharacter }, '*');
+  // Target the real parent origin explicitly (never '*') so a malicious/unexpected parent frame
+  // can never receive this message - src/release.js's own listener additionally verifies
+  // event.source is its own currently-mounted iframe before acting on it. `file://` pages have no
+  // meaningful origin to target, so '*' is unavoidable there specifically (this app explicitly
+  // supports being opened directly as a file).
+  const targetOrigin = window.location.protocol === 'file:' ? '*' : window.location.origin;
+  window.parent.postMessage({ type: 'tradejournal:character-selected', character: selectedCharacter }, targetOrigin);
 });
 
 // ---------- Boot ----------
