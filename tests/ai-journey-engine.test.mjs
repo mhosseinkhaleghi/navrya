@@ -31,13 +31,14 @@ function memoryStorage(seed) {
 async function buildSandbox(overrides = {}) {
   const document = { documentElement: { lang: overrides.lang || 'en' }, body: { appendChild() {} }, createElement: () => ({ setAttribute() {} }) };
   const localStorage = overrides.localStorage || memoryStorage();
-  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
+  // Cookie-based sessions (ADR-0001): server-replica.js's hasCurrentUser() gate now reads
+  // window.__NAVRYA_AUTH__ instead of a localStorage credential.
   const defaultFetch = async (url, options) => {
     if (url === '/api/sync/companion-state') return (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) };
     throw new Error('ai-journey-engine.js must never call fetch on its own');
   };
   const sandbox = {
-    window: {}, document, localStorage,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, document, localStorage,
     fetch: overrides.fetch || defaultFetch,
     Set, Math, JSON, console, Date, Promise, Array, Object, Number, String,
     setTimeout: (fn) => fn(), clearTimeout() {},
@@ -48,7 +49,7 @@ async function buildSandbox(overrides = {}) {
     setTimeout: (fn) => fn(), clearTimeout() {},
     addEventListener() {}, dispatchEvent() {},
     TradeJournalSyncQueue: { registerModule() {}, enqueue() {} },
-    TradeJournalDevUserSwitcher: { currentUserId: () => localStorage.getItem('tradejournal:auth-token') },
+    TradeJournalDevUserSwitcher: { currentUserId: () => 'test-user' },
     TradeJournalMentalHealthStore: overrides.mentalHealthStore || { load: () => ({ intake: { completed: false } }) },
     TradeJournalPatternStore: overrides.patternStore || { listSync: () => [] },
     TradeJournalStrategyEducationStore: overrides.strategyStore || { listSync: () => [] },

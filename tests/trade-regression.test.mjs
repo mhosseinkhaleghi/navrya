@@ -76,12 +76,11 @@ test('session signature backfill skips unfinished sessions and is idempotent', a
     { id: 'open-1', status: 'open', market: 'London', timeframe: '5m', entries: [] },
     { id: 'closed-no-fate', status: 'closed', market: 'London', timeframe: '5m', entries: [] }
   ]));
-  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
   // A minimal in-memory fake of the real /api/sync/session-signatures contract (see
   // routes.session-signatures.mjs) - GET returns whatever has been POSTed so far, POST
   // upserts by id. Phase 8a moved this store onto server-replica.js, same as every other
-  // migrated domain, so it needs server-replica.js loaded + a real auth token + a fetch mock,
-  // not just a fake localStorage.
+  // migrated domain, so it needs server-replica.js loaded + a real authenticated
+  // window.__NAVRYA_AUTH__ (ADR-0001) + a fetch mock, not just a fake localStorage.
   let signatures = [];
   const fetchImpl = async (url, options) => {
     if (url === '/api/sync/session-signatures' && (!options || !options.method || options.method === 'GET')) return { ok: true, json: async () => ({ signatures }) };
@@ -92,7 +91,7 @@ test('session signature backfill skips unfinished sessions and is idempotent', a
     }
     throw new Error('unexpected fetch in session-signature backfill test: ' + url);
   };
-  const sandbox = { window: {}, localStorage, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }, setTimeout: fn => fn(), Date, Set, fetch: fetchImpl };
+  const sandbox = { window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, localStorage, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } }, setTimeout: fn => fn(), Date, Set, fetch: fetchImpl };
   sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, fetch: sandbox.fetch });
   vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('session-signature-store.js'), sandbox, { filename: 'session-signature-store.js' });
@@ -159,10 +158,9 @@ test('all character pages load account profile modules in dependency order, link
 
 test('trade store preserves hunting to open to emotion to closed lifecycle', async () => {
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:auth-token', 'test-user');
   const events = [];
   const sandbox = {
-    window: {}, localStorage,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, localStorage,
     document: { body: { dataset: {} } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     FileReader: class {},
@@ -189,9 +187,8 @@ test('trade store preserves hunting to open to emotion to closed lifecycle', asy
 
 test('trade store normalizes per-emotion intensity/tag details and clamps out-of-range input', async () => {
   const localStorage = memoryStorage();
-  localStorage.setItem('tradejournal:auth-token', 'test-user');
   const sandbox = {
-    window: {}, localStorage,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, localStorage,
     document: { body: { dataset: {} } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     FileReader: class {},
@@ -223,17 +220,16 @@ test('trade store normalizes per-emotion intensity/tag details and clamps out-of
 async function strategyStore(localStorage, fetchImpl) {
   const events = [];
   const sandbox = {
-    window: {}, localStorage,
+    window: { __NAVRYA_AUTH__: { authenticated: true, userId: 'test-user', user: { id: 'test-user' }, csrfToken: 'test-csrf' } }, localStorage,
     document: { documentElement: { lang: 'en' } },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
     FileReader: class {}, fetch: fetchImpl || (async () => ({ ok: true, json: async () => ({ strategies: [] }) })), URL
   };
   sandbox.window = Object.assign(sandbox.window, {
     localStorage, dispatchEvent: event => events.push(event), fetch: sandbox.fetch,
-    TradeJournalDevUserSwitcher: { currentUserId: () => localStorage.getItem('tradejournal:auth-token') },
+    TradeJournalDevUserSwitcher: { currentUserId: () => 'test-user' },
     TradeJournalStrategyEducationTypes: { numericPaths: ['riskManagement.maxRiskPerTradePercent','riskManagement.dailyDrawdownLimitPercent','riskManagement.totalDrawdownLimitPercent','riskManagement.maxConcurrentTrades','riskManagement.maxProfitCapPerTrade'] }
   });
-  if (!localStorage.getItem('tradejournal:auth-token')) localStorage.setItem('tradejournal:auth-token', 'test-user');
   vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
   vm.runInNewContext(await source('strategy-education-store.js'), sandbox, { filename: 'strategy-education-store.js' });
   await new Promise((resolve) => setImmediate(resolve)); // let hydrate() settle before the caller reads/writes
