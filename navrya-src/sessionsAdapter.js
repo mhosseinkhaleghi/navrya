@@ -152,7 +152,12 @@ export async function createSession(character, values) {
   // resulting imageBlobId stored on the entry - never a blob: URL saved directly into the
   // session object, since those don't survive a page reload.
   const entries = await Promise.all((values.uploads || []).map(async (upload) => {
-    const entry = { id: 'entry-' + now + '-' + upload.timeframe, timeframe: upload.timeframe, hasImage: true, scenarios: [] };
+    // HOTFIX: `type` was missing here entirely - every entry read/rendered/filtered elsewhere in
+    // this codebase (account-profile-store.js's XP trigger, liveSessionView.jsx's note-field
+    // branch, etc.) checks entry.type === 'chart'/'movement'/'fate' and silently mistreats an
+    // entry with none of those. These uploads are always chart images (NewSessionDialog's
+    // UPLOAD_SLOTS), matching what every other entry-creation path in this app already sets.
+    const entry = { id: 'entry-' + now + '-' + upload.timeframe, type: 'chart', timeframe: upload.timeframe, hasImage: true, scenarios: [] };
     if (window.TradeJournalImageStore) {
       const blobId = 'img-' + now + '-' + upload.timeframe;
       try {
