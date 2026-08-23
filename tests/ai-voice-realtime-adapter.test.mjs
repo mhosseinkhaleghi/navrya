@@ -125,6 +125,32 @@ test('speak() returns a Promise that only resolves once the response has actuall
   assert.match(source, /setTimeout\(function \(\) \{ settle\(\); \}, 12000\)/);
 });
 
+// Regression: 'audio_interrupted' was missing from speak()'s own settle listeners. Verified
+// against the installed @openai/agents-realtime SDK's own source
+// (node_modules/@openai/agents-realtime/dist/openaiRealtimeWebsocket.mjs /
+// realtimeSession.mjs) that a real barge-in (interrupt() -> session.interrupt()) surfaces as
+// 'audio_interrupted', never 'audio_stopped' - so a barge-in during assistant playback left an
+// in-flight speak() promise listening for events that would never fire, silently blocking
+// voiceTurnQueue's dispatch of the very next (already-finalized) turn for the full 12s fallback
+// on every single interruption - exactly the "no 12-second stall" failure mode this queue design
+// exists to prevent.
+test("speak()'s settle listeners include 'audio_interrupted', not only 'audio_stopped'/'error' - a barge-in must settle the pending speak() immediately, not fall through to the 12s fallback", () => {
+  assert.match(source, /activeSession\.once\('audio_interrupted', settle\)/);
+});
+
+// Regression: the installed SDK's RealtimeSession.close() (node_modules/@openai/agents-realtime/
+// dist/realtimeSession.mjs) tears down transport state directly and emits none of
+// audio_stopped/audio_interrupted/error - so a speak() in flight when the user leaves Voice Mode,
+// or a reconnect calls disconnect(), previously had nothing left to ever settle it and sat
+// blocking the queue for the full 12s fallback regardless of how quickly disconnect() itself ran.
+test('disconnect() explicitly settles a pending speak() promise rather than relying on a session event close() never actually emits', () => {
+  assert.match(source, /var pendingSpeakSettle = null;/);
+  assert.match(source, /pendingSpeakSettle = settle;/);
+  const disconnectBody = source.slice(source.indexOf('function disconnect()'), source.indexOf('function mute('));
+  assert.match(disconnectBody, /if \(pendingSpeakSettle\)/, 'disconnect() must check for and settle a pending speak() promise');
+  assert.match(disconnectBody, /pendingSpeakSettle = null/);
+});
+
 test('the voice session\'s language is re-synced from the live i18n.language() immediately before every connect() - not only once at mount, which would miss a language switch made before the mic is first pressed', () => {
   const toggleVoiceBody = dockViewSource.slice(dockViewSource.indexOf('function toggleVoice'), dockViewSource.indexOf('function applySuggestion'));
   const setLanguageIndex = toggleVoiceBody.indexOf('voiceRef.current.setLanguage(i18n.language())');
