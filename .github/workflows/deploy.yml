@@ -80,15 +80,29 @@ jobs:
             : "${INTERNAL_API_SECRET:?INTERNAL_API_SECRET missing in server .env}"
             : "${ALLOWED_ORIGINS:?ALLOWED_ORIGINS missing in server .env}"
 
-            docker compose --env-file .env -f docker-compose.production.yml build
+            # Application services can use Docker's normal content-addressed cache, but the web
+            # image is rebuilt cold. A previous successful release left Caddy serving an older
+            # checked-in character bundle even though the repository checkout had advanced.
+            docker compose --env-file .env -f docker-compose.production.yml build pattern-ai community-api migrate
+            docker compose --env-file .env -f docker-compose.production.yml build --no-cache web
             docker compose --env-file .env -f docker-compose.production.yml run --rm migrate
             docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans
+            docker compose --env-file .env -f docker-compose.production.yml up -d --no-deps --force-recreate web
 
             # Post-deploy smoke check against the real running containers - a broken deploy is
             # caught here, before this script records it as "the last known-good deploy".
             sleep 5
             docker compose --env-file .env -f docker-compose.production.yml exec -T community-api wget -qO- http://127.0.0.1:8788/readyz
             docker compose --env-file .env -f docker-compose.production.yml exec -T pattern-ai wget -qO- http://127.0.0.1:8787/health
+
+            # Prove that Caddy is running the image built in this release, rather than merely
+            # returning HTTP 200 from a stale container. The character bundle is a stable static
+            # asset present in every production image, so matching hashes is release-agnostic.
+            web_image_id="$(docker compose --env-file .env -f docker-compose.production.yml images -q web)"
+            built_web_hash="$(docker run --rm --entrypoint sha256sum "$web_image_id" /srv/pages/shared/navrya-hunter-sessions-app.js | awk '{print $1}')"
+            running_web_hash="$(docker compose --env-file .env -f docker-compose.production.yml exec -T web sha256sum /srv/pages/shared/navrya-hunter-sessions-app.js | awk '{print $1}')"
+            test -n "$built_web_hash"
+            test "$running_web_hash" = "$built_web_hash"
 
             echo "${DEPLOY_SHA}" > .last-deployed-sha
 
