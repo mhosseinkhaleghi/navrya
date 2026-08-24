@@ -130,8 +130,25 @@
               <input type="email" id="emailInput" autocomplete="email" data-i18n-placeholder="emailFieldPlaceholder" placeholder="trader@navrya.app" />
             </label>
             <label class="field">
-              <span class="field-row"><span data-i18n="passwordLabel">Password</span><span class="forgot" data-i18n="forgotPassword">Forgot?</span></span>
+              <span class="field-row"><span data-i18n="passwordLabel">Password</span><span class="forgot" id="forgotLink" data-i18n="forgotPassword">Forgot?</span></span>
               <input type="password" id="passwordInput" autocomplete="current-password" placeholder="••••••••" />
+              <div class="pw-checklist" id="passwordChecklist" hidden>
+                <div class="pw-strength-track" aria-hidden="true"><span class="pw-strength-fill" id="passwordStrengthFill"></span></div>
+                <ul class="pw-req-list">
+                  <li class="pw-req" id="pwReqLength">
+                    <span class="pw-req-mark"><svg class="pw-req-check" width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7" /></svg></span>
+                    <span data-i18n="pwReqLength">At least 15 characters</span>
+                  </li>
+                  <li class="pw-req" id="pwReqCommon">
+                    <span class="pw-req-mark"><svg class="pw-req-check" width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7" /></svg></span>
+                    <span data-i18n="pwReqCommon">Not a common or predictable password</span>
+                  </li>
+                  <li class="pw-req" id="pwReqIdentifier">
+                    <span class="pw-req-mark"><svg class="pw-req-check" width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7" /></svg></span>
+                    <span data-i18n="pwReqIdentifier">Doesn't contain your name or email</span>
+                  </li>
+                </ul>
+              </div>
             </label>
           </div>
 
