@@ -16,6 +16,11 @@ test('migration cannot consume the remaining SSH heredoc release commands', () =
   assert.match(workflow, /run --rm -T migrate <\/dev\/null/);
 });
 
+test('the complete remote release is parsed before any command can consume SSH stdin', () => {
+  assert.match(workflow, /deploy_release\(\) \{/);
+  assert.match(workflow, /deploy_release <\/dev\/null/);
+});
+
 test('production deploy proves the running web bundle matches the freshly built image', () => {
   assert.match(workflow, /built_web_hash=/);
   assert.match(workflow, /running_web_hash=/);

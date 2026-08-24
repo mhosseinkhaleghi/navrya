@@ -56,6 +56,10 @@ jobs:
           DEPLOY_SHA: ${{ github.sha }}
         run: |
           ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" "DEPLOY_SHA='$DEPLOY_SHA' bash -s" <<'REMOTE_SCRIPT'
+            # Bash parses a complete function definition before executing it. Running that
+            # function with stdin closed prevents any nested Docker command from consuming the
+            # remaining SSH heredoc and silently truncating the release.
+            deploy_release() {
             set -eu
             cd /opt/navrya
 
@@ -112,4 +116,6 @@ jobs:
             # image available for a fast rollback instead of deleting it the moment this
             # deploy succeeds. See scripts/rollback.sh for the one-command rollback path.
             docker image prune -f --filter "until=24h"
+            }
+            deploy_release </dev/null
           REMOTE_SCRIPT
