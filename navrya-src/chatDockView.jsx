@@ -8,6 +8,30 @@ import { createVoiceSession, VOICE_STATES } from './aiVoiceRealtime.js';
 function fieldLabel(tradeI18n, key) { return tradeI18n ? tradeI18n.t(key) : key; }
 function fieldNumber(tradeI18n, value) { return tradeI18n ? tradeI18n.number(value, { maximumFractionDigits: 4 }) : String(value); }
 
+// fix/voice-mode-hosted-connection (Phase 3): maps aiVoiceRealtime.js's sanitized connect()
+// failure stage to a localized i18n key. Every key here already exists in all four languages
+// (public/pages/shared/ai-i18n.js) - a stage this map doesn't recognize (or no stage at all)
+// falls back to the pre-existing generic 'voiceDockError' message, unchanged behavior for every
+// non-connection failure mode (reconnect exhaustion, an in-call session error, interrupt/speak).
+const VOICE_ERROR_STAGE_I18N_KEY = {
+  microphone_permission: 'voiceDockErrorPermissionDenied',
+  session_auth: 'voiceDockErrorSessionAuth',
+  session_quota: 'voiceDockErrorSessionQuota',
+  key_missing: 'voiceDockErrorKeyMissing',
+  key_rejected: 'voiceDockErrorKeyRejected',
+  model_unavailable: 'voiceDockErrorModelUnavailable',
+  token_mint_timeout: 'voiceDockErrorMintTimeout',
+  sdp_exchange: 'voiceDockErrorSdpExchange',
+  sdp_relay_timeout: 'voiceDockErrorSdpTimeout',
+  ice_connection: 'voiceDockErrorIceConnection',
+  data_channel: 'voiceDockErrorDataChannel',
+  session_ack: 'voiceDockErrorSessionAck'
+};
+function voiceErrorMessageForStage(i18nApi, stage) {
+  const key = VOICE_ERROR_STAGE_I18N_KEY[stage] || 'voiceDockError';
+  return i18nApi.t(key);
+}
+
 function fileDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -113,10 +137,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // state for it.
   const [voiceState, setVoiceState] = React.useState(VOICE_STATES.IDLE);
   const [voiceMuted, setVoiceMuted] = React.useState(false);
-  // Which localized error message to show - a denied microphone permission gets its own clearer
-  // message (spec: "DENY -> clear localized error", not the same generic "something went wrong"
-  // every other Voice failure mode falls back to).
-  const [voicePermissionDenied, setVoicePermissionDenied] = React.useState(false);
+  // fix/voice-mode-hosted-connection (Phase 3): the sanitized stage aiVoiceRealtime.js's connect()
+  // classified the most recent failure into (see that file's classifyMintFailureStage()/
+  // classifySdpFailureStage()) - never a raw error message, credential, or upstream detail, only
+  // one of the fixed stage labels. `voicePermissionDenied` is derived from it (kept as its own
+  // boolean since ChatDock.jsx/VoiceConsole.jsx already branch on it for more than just the
+  // message - e.g. a "grant access" affordance) rather than replaced outright.
+  const [voiceErrorStage, setVoiceErrorStage] = React.useState(null);
+  const voicePermissionDenied = voiceErrorStage === 'microphone_permission';
   // Voice Mode console (ChatDock.jsx/VoiceConsole.jsx): the real, finalized text NAVRYA just
   // heard (shown during PROCESSING) and the real reply text it's about to speak (timed-revealed
   // during ASSISTANT_SPEAKING) - both set right where onVoiceTranscript already has them, never
@@ -355,7 +383,26 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       body: JSON.stringify({ apiKey: settingsForOpenAI, language, eagerness: options && options.eagerness }),
       signal: options && options.signal
     });
-    if (!response.ok) throw new Error('VOICE_SESSION_REQUEST_FAILED');
+    if (!response.ok) {
+      // fix/voice-mode-hosted-connection: this used to collapse every failure (a 401 session
+      // problem, a 429 quota problem, a 503 missing-key problem, a real OpenAI-side
+      // REALTIME_TOKEN_FAILED_* rejection) into one indistinguishable 'VOICE_SESSION_REQUEST_FAILED'
+      // string, which is exactly what hid the real production failure behind a generic message
+      // (docs/ai/voice-mode-performance-gap-matrix.md). The real server error code/status is now
+      // preserved on the thrown Error so aiVoiceRealtime.js's connect() can classify it into one
+      // of the stage-aware diagnostics (session_auth/session_quota/key_missing/key_rejected/...)
+      // instead of a single opaque failure - never surfaced to the user beyond that sanitized
+      // stage, and the raw response body is never read/logged here.
+      let code = 'VOICE_SESSION_REQUEST_FAILED';
+      try {
+        const body = await response.json();
+        if (body && typeof body.error === 'string' && body.error) code = body.error;
+      } catch (_parseError) { /* non-JSON error body - keep the generic code */ }
+      const error = new Error(code);
+      error.code = code;
+      error.status = response.status;
+      throw error;
+    }
     return response.json();
   }
 
@@ -456,11 +503,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,
-      // A denied getUserMedia prompt reports stage:'permission' (see aiVoiceRealtime.js's
-      // connect()) - every other failure mode (session/connect/interrupt/speak/reconnect) falls
-      // back to the generic Voice error message instead.
+      // Every failure aiVoiceRealtime.js's connect() reports now carries a sanitized stage label
+      // (see that file's classifyMintFailureStage()/classifySdpFailureStage()) - stored as-is and
+      // resolved to a localized message below (voiceErrorMessageForStage). A failure mode this
+      // dock doesn't specifically recognize (e.g. 'reconnect', 'interrupt', 'speak', 'session' -
+      // none of which are connection-diagnostic stages) still falls back to the original generic
+      // Voice error message, unchanged from before this pass.
       onError: (detail) => {
-        setVoicePermissionDenied(!!(detail && detail.stage === 'permission'));
+        setVoiceErrorStage((detail && detail.stage) || null);
         setVoiceState(VOICE_STATES.ERROR);
       }
     });
@@ -563,7 +613,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // Pressing Voice is itself an explicit "open the dock" gesture (item 1/6) - the consent
       // boundary for everything that follows, spoken opening included.
       setDockExplicitlyOpened(true);
-      setVoicePermissionDenied(false);
+      setVoiceErrorStage(null);
       // i18n.language() reads document.documentElement.lang live (see ai-i18n.js) - it has no
       // change event, so the adapter's own language is re-synced right here, immediately before
       // every connect(), rather than through a React effect keyed on the i18n object (which never
@@ -672,7 +722,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
         onVoiceToggle={toggleVoice} onVoiceMuteToggle={toggleVoiceMute} onVoiceInterrupt={interruptVoice}
-        voiceErrorLabel={voicePermissionDenied ? i18n.t('voiceDockErrorPermissionDenied') : i18n.t('voiceDockError')}
+        voiceErrorLabel={voiceErrorMessageForStage(i18n, voiceErrorStage)}
         getVoiceMediaStream={() => voiceRef.current && voiceRef.current.getMediaStream()}
         voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
         voiceLabels={{

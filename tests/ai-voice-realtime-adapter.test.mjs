@@ -253,3 +253,66 @@ test('chatDockView.jsx re-derives eagerness after every voice turn via the one c
   assert.match(onResultBody, /eagernessModule\.deriveEagerness\(\{/);
   assert.match(onResultBody, /voiceRef\.current\.setEagerness\(nextEagerness\)/);
 });
+
+// ---- fix/voice-mode-hosted-connection: Phase 3 stage-aware connection diagnostics ----
+// Adds classification of WHERE within the existing, unchanged connect() pipeline a given attempt
+// failed - never widens CONNECT_TIMEOUT_MS, never changes the reconnect policy/epoch guards
+// (all asserted unchanged above), only labels the failure more usefully than the single generic
+// stage:'connect' this file used before.
+
+test('connect() tracks which phase (mint vs. sdp) is in flight, and the catch block classifies the failure by phase rather than a single hardcoded stage', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectBody, /var phase = 'mint';/);
+  assert.match(connectBody, /phase = 'sdp';/);
+  assert.match(connectBody, /var failedStage = phase === 'mint'\s*\n\s*\? classifyMintFailureStage\(connectError, timedOut\)\s*\n\s*: classifySdpFailureStage\(connectError, timedOut, transport\);/);
+  assert.doesNotMatch(connectBody, /stage: 'connect'/, 'the old single hardcoded "connect" stage must be gone, replaced by real classification');
+});
+
+test('a denied/never-answered microphone prompt is always classified as microphone_permission, whether actively denied or timed out waiting for it', () => {
+  const micCatchBody = source.slice(source.indexOf('} catch (permissionError) {'), source.indexOf('if (!isReconnect) setState(VOICE_STATES.CONNECTING);'));
+  assert.match(micCatchBody, /stage: 'microphone_permission'/);
+  assert.doesNotMatch(micCatchBody, /stage: 'permission'/, 'must use the canonical stage name, not the old ad-hoc one');
+});
+
+test('classifyMintFailureStage: a timeout during the token-mint phase is token_mint_timeout, distinct from every non-timeout mint failure', () => {
+  const fn = source.slice(source.indexOf('function classifyMintFailureStage'), source.indexOf('function classifySdpFailureStage'));
+  assert.match(fn, /if \(timedOut\) return 'token_mint_timeout';/);
+});
+
+test('classifyMintFailureStage: maps the real server error codes fetchRealtimeSession() now preserves (chatDockView.jsx) to the correct canonical stage', () => {
+  const fn = source.slice(source.indexOf('function classifyMintFailureStage'), source.indexOf('function classifySdpFailureStage'));
+  assert.match(fn, /status === 401 \|\| code === 'AUTH_SESSION_REQUIRED' \|\| code === 'ACCOUNT_SUSPENDED'\) return 'session_auth';/);
+  assert.match(fn, /status === 429 \|\| \/_429\$\/\.test\(code\) \|\| \/QUOTA\/i\.test\(code\)\) return 'session_quota';/);
+  assert.match(fn, /status === 503 \|\| \/_API_KEY_MISSING\$\/\.test\(code\) \|\| code === 'REALTIME_LEASE_STORE_FAILED'\) return 'key_missing';/);
+  assert.match(fn, /REALTIME_TOKEN_FAILED_\/\.test\(code\)/);
+  assert.match(fn, /return 'key_rejected';/);
+  assert.match(fn, /return 'model_unavailable';/);
+});
+
+test('classifySdpFailureStage: distinguishes "the SDP relay call itself never got a Location/callId back" from "the relay succeeded but ICE/the data channel never finished" using the transport\'s own real connectionState getter - never a guess', () => {
+  const fn = source.slice(source.indexOf('function classifySdpFailureStage'), source.indexOf('  async function connect(connectOptions)'));
+  assert.match(fn, /var gotCallId = !!\(state && state\.callId\);/);
+  assert.match(fn, /if \(timedOut\) return gotCallId \? 'ice_connection' : 'sdp_relay_timeout';/);
+  assert.match(fn, /if \(\/Realtime call request failed with status\/\.test\(message\)\) return 'sdp_exchange';/);
+  assert.match(fn, /return dataChannelState === 'open' \? 'session_ack' : \(dataChannelState \? 'data_channel' : 'ice_connection'\);/);
+});
+
+test('classifyMintFailureStage/classifySdpFailureStage are pure and read no browser/DOM global - they only ever inspect their own arguments', () => {
+  const mintFn = source.slice(source.indexOf('function classifyMintFailureStage'), source.indexOf('function classifySdpFailureStage'));
+  // Ends right at classifySdpFailureStage's own closing brace, not at the next function - the
+  // comment block immediately following it (documenting the unrelated `fetchSession` parameter)
+  // legitimately mentions `fetch()` in prose and must not be swept into this function's own body.
+  const sdpFn = source.slice(source.indexOf('function classifySdpFailureStage'), source.indexOf("// `fetchSession` is injected"));
+  for (const fn of [mintFn, sdpFn]) {
+    assert.doesNotMatch(fn, /document\.|window\.|navigator\.|fetch\(/, 'a pure classifier must never itself touch the network or the DOM');
+  }
+});
+
+test('fetchRealtimeSession (chatDockView.jsx) preserves the real server error code/status on a failed mint instead of collapsing every failure into one opaque VOICE_SESSION_REQUEST_FAILED string - the exact production bug this fix addresses', () => {
+  const fn = dockViewSource.slice(dockViewSource.indexOf('async function fetchRealtimeSession'), dockViewSource.indexOf('// A finalized voice turn goes through'));
+  assert.match(fn, /const error = new Error\(code\);/);
+  assert.match(fn, /error\.code = code;/);
+  assert.match(fn, /error\.status = response\.status;/);
+  assert.match(fn, /const body = await response\.json\(\);/);
+  assert.match(fn, /if \(body && typeof body\.error === 'string' && body\.error\) code = body\.error;/);
+});

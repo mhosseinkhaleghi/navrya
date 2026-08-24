@@ -68,10 +68,43 @@ test('chatDockView.jsx wires the real Voice control to the real Journey E adapte
   assert.match(dockViewSrc, /function toggleVoiceMute\(\) \{[\s\S]*?voiceRef\.current\.mute\(!voiceRef\.current\.isMuted\(\)\);/);
 });
 
-test('a denied microphone permission gets its own distinct, clearer localized error message than every other Voice failure mode - stage:\'permission\' is checked explicitly', () => {
-  assert.match(dockViewSrc, /voicePermissionDenied/);
-  assert.match(dockViewSrc, /detail && detail\.stage === 'permission'/);
-  assert.match(dockViewSrc, /voiceErrorLabel=\{voicePermissionDenied \? i18n\.t\('voiceDockErrorPermissionDenied'\) : i18n\.t\('voiceDockError'\)\}/);
+// fix/voice-mode-hosted-connection (Phase 3): a denied microphone permission is still its own
+// distinct, clearer localized error message - now derived from the sanitized stage
+// aiVoiceRealtime.js's connect() reports (stage:'microphone_permission', one of the twelve
+// canonical Voice Mode diagnostic stages) rather than a dedicated boolean the dock set directly.
+// Every other connection-failure stage (session_auth/session_quota/key_missing/key_rejected/
+// model_unavailable/token_mint_timeout/sdp_exchange/sdp_relay_timeout/ice_connection/
+// data_channel/session_ack) now also gets its own distinct localized message - see
+// VOICE_ERROR_STAGE_I18N_KEY/voiceErrorMessageForStage below.
+test('a denied microphone permission gets its own distinct, clearer localized error message than every other Voice failure mode - stage:\'microphone_permission\' is checked explicitly', () => {
+  assert.match(dockViewSrc, /voicePermissionDenied = voiceErrorStage === 'microphone_permission'/);
+  assert.match(dockViewSrc, /setVoiceErrorStage\(\(detail && detail\.stage\) \|\| null\)/);
+  assert.match(dockViewSrc, /voiceErrorLabel=\{voiceErrorMessageForStage\(i18n, voiceErrorStage\)\}/);
+});
+
+test('every one of the twelve canonical Voice Mode connection-diagnostic stages resolves to a real, distinct i18n key, with a safe fallback to the pre-existing generic message for anything unrecognized', () => {
+  const stages = [
+    'microphone_permission', 'session_auth', 'session_quota', 'key_missing', 'key_rejected',
+    'model_unavailable', 'token_mint_timeout', 'sdp_exchange', 'sdp_relay_timeout',
+    'ice_connection', 'data_channel', 'session_ack'
+  ];
+  for (const stage of stages) {
+    assert.match(dockViewSrc, new RegExp(`${stage}: 'voiceDockError`), `stage '${stage}' must map to a real voiceDockError* i18n key`);
+  }
+  assert.match(dockViewSrc, /VOICE_ERROR_STAGE_I18N_KEY\[stage\] \|\| 'voiceDockError'/);
+});
+
+test('every new stage-specific Voice error message exists in all four supported languages (fa/ar/en/es), never falling back to English or a missing key', () => {
+  const keys = [
+    'voiceDockErrorSessionAuth', 'voiceDockErrorSessionQuota', 'voiceDockErrorKeyMissing',
+    'voiceDockErrorKeyRejected', 'voiceDockErrorModelUnavailable', 'voiceDockErrorMintTimeout',
+    'voiceDockErrorSdpExchange', 'voiceDockErrorSdpTimeout', 'voiceDockErrorIceConnection',
+    'voiceDockErrorDataChannel', 'voiceDockErrorSessionAck'
+  ];
+  for (const key of keys) {
+    const occurrences = (i18nSrc.match(new RegExp(`${key}:`, 'g')) || []).length;
+    assert.equal(occurrences, 4, `${key} must be declared exactly once in each of the four language blocks (fa/ar/en/es), found ${occurrences}`);
+  }
 });
 
 test('mute state is tracked via the adapter\'s own onMuteChange callback (React state stays a mirror of the real adapter, never a second independent source of truth)', () => {
@@ -92,7 +125,19 @@ test('debugState()\'s own muted field is refreshed by BOTH a real state transiti
 test('a real, inspectable <audio> element is handed to the transport (not left for the SDK to create invisibly) - the only way to OBJECTIVELY prove assistant audio is actually playing, not just that the state machine says so', () => {
   assert.match(voiceSrc, /audioEl = document\.createElement\('audio'\)/);
   assert.match(voiceSrc, /audioEl\.autoplay = true/);
-  assert.match(voiceSrc, /new OpenAIRealtimeWebRTC\(\{ mediaStream: mediaStream, audioElement: audioEl \}\)/);
+  assert.match(voiceSrc, /mediaStream: mediaStream, audioElement: audioEl/);
+});
+
+// fix/voice-mode-hosted-connection: production evidence showed the browser posting the SDP offer
+// directly to https://api.openai.com/v1/realtime/calls (net::ERR_FAILED, no response at all -
+// docs/ai/voice-mode-performance-gap-matrix.md), because OpenAIRealtimeWebRTC defaults to that
+// upstream whenever no `baseUrl` is given (verified against the installed SDK's own source,
+// node_modules/@openai/agents-realtime/dist/openaiRealtimeWebRtc.mjs). The fix must be an
+// ABSOLUTE same-origin URL, never a bare relative path - the SDK's own connect() does
+// `new URL(baseUrl)`, which throws immediately on a relative string.
+test('the WebRTC transport is constructed with an absolute, same-origin baseUrl pointing at NAVRYA\'s own SDP relay - the browser must never be given the bare OpenAI upstream to call directly', () => {
+  assert.match(voiceSrc, /new OpenAIRealtimeWebRTC\(\{[\s\S]{0,200}baseUrl:\s*new URL\('\/api\/ai\/realtime\/call', window\.location\.origin\)\.href/);
+  assert.doesNotMatch(voiceSrc, /new OpenAIRealtimeWebRTC\(\{\s*mediaStream: mediaStream, audioElement: audioEl\s*\}\)/, 'must not construct the transport with no baseUrl at all - that is exactly the direct-to-OpenAI production bug this fixes');
 });
 
 test('audioDiagnostics() reports playback/track metadata only (paused state, live track presence) - never the audio content itself', () => {

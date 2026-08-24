@@ -73,6 +73,51 @@ function transportErrorCode(error) {
   return 'VOICE_UNKNOWN_ERROR';
 }
 
+// Phase 3 (fix/voice-mode-hosted-connection): classifies a connect()-time failure into one of
+// NAVRYA's canonical, sanitized Voice Mode diagnostic stages so the UI can show something more
+// useful than one generic "Voice failed" message - never by widening CONNECT_TIMEOUT_MS or the
+// reconnect policy (both untouched), only by labeling WHERE within the existing, unchanged
+// pipeline a given attempt actually failed. Pure functions, no side effects, so they can be
+// exercised by static source assertion the same way the rest of this file already is (see this
+// file's own header comment on why a real browser is this module's actual proof).
+//
+// `error.code`/`error.status` come from chatDockView.jsx's fetchRealtimeSession(), which now
+// preserves the server's own sanitized error code/HTTP status instead of collapsing every mint
+// failure into one opaque string (see that file's own comment on the bug this fixes).
+function classifyMintFailureStage(error, timedOut) {
+  if (timedOut) return 'token_mint_timeout';
+  var code = String((error && (error.code || error.message)) || '');
+  var status = error && error.status;
+  if (status === 401 || code === 'AUTH_SESSION_REQUIRED' || code === 'ACCOUNT_SUSPENDED') return 'session_auth';
+  if (status === 429 || /_429$/.test(code) || /QUOTA/i.test(code)) return 'session_quota';
+  if (status === 503 || /_API_KEY_MISSING$/.test(code) || code === 'REALTIME_LEASE_STORE_FAILED') return 'key_missing';
+  if (/REALTIME_TOKEN_FAILED_/.test(code)) {
+    if (/model/i.test(code)) return 'model_unavailable';
+    if (/_401|_403/.test(code)) return 'key_rejected';
+    return 'key_rejected';
+  }
+  return 'sdp_exchange'; // unclassified mint-side failure - closest real bucket to "never even started the exchange"
+}
+
+// `transportInstance.connectionState` (a real, already-public getter on OpenAIRealtimeWebRTC) is
+// the only signal this module has for distinguishing "the SDP relay call itself failed/hung"
+// from "the relay succeeded (we got a real Location/callId back) but ICE/the data channel never
+// finished" - verified directly against the installed SDK's own source
+// (node_modules/@openai/agents-realtime/dist/openaiRealtimeWebRtc.mjs): `callId` is set
+// immediately after a successful SDP POST, strictly before setRemoteDescription/ICE begins. This
+// is a best-effort heuristic, not a precise ICE/DTLS state machine - documented as such rather
+// than overclaiming granularity the SDK does not expose.
+function classifySdpFailureStage(error, timedOut, transportInstance) {
+  var message = String((error && error.message) || '');
+  var state = transportInstance && transportInstance.connectionState;
+  var gotCallId = !!(state && state.callId);
+  var dataChannelState = state && state.dataChannel && state.dataChannel.readyState;
+  if (timedOut) return gotCallId ? 'ice_connection' : 'sdp_relay_timeout';
+  if (/Realtime call request failed with status/.test(message)) return 'sdp_exchange';
+  if (gotCallId) return dataChannelState === 'open' ? 'session_ack' : (dataChannelState ? 'data_channel' : 'ice_connection');
+  return 'sdp_exchange';
+}
+
 // `fetchSession` is injected (async (language, {signal}) => {value, model, voice, language}) so
 // this module has zero knowledge of the real HTTP endpoint - the caller owns that (and the
 // per-request personal API key / provider settings), keeping this file a pure transport with
@@ -289,13 +334,22 @@ export function createVoiceSession(options) {
     } catch (permissionError) {
       if (myEpoch !== connectionEpoch) return; // superseded mid-flight (disconnect()/a newer connect() already ran)
       setState(VOICE_STATES.ERROR);
-      onError({ code: transportErrorCode(permissionError), stage: timedOut ? 'connect' : 'permission' });
+      // 'microphone_permission' whether the browser prompt was actively denied or simply never
+      // answered before the shared deadline elapsed - both are the same real diagnostic bucket
+      // from the user's point of view ("Voice never got mic access").
+      onError({ code: transportErrorCode(permissionError), stage: 'microphone_permission' });
       throw permissionError;
     }
     if (!isReconnect) setState(VOICE_STATES.CONNECTING);
+    // Tracks which phase of the remaining pipeline is currently in flight, purely for
+    // classifyMintFailureStage()/classifySdpFailureStage() below if the shared catch block is
+    // reached - never read anywhere else, never affects control flow, timing, or the epoch guards
+    // already in place on every await below.
+    var phase = 'mint';
     try {
       var creds = await Promise.race([credsPromise, deadline]);
       if (myEpoch !== connectionEpoch) return; // superseded while the mint was in flight
+      phase = 'sdp';
       var agent = new RealtimeAgent({
         name: 'navrya-voice-transport',
         instructions: 'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says. When a separate system message asks you to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, and nothing else.',
@@ -304,7 +358,22 @@ export function createVoiceSession(options) {
       });
       audioEl = document.createElement('audio');
       audioEl.autoplay = true;
-      transport = new OpenAIRealtimeWebRTC({ mediaStream: mediaStream, audioElement: audioEl });
+      // fix/voice-mode-hosted-connection: without an explicit baseUrl, this SDK version's
+      // OpenAIRealtimeWebRTC posts the SDP offer straight from the browser to
+      // `https://api.openai.com/v1/realtime/calls` (see its own constructor:
+      // `this.#url = options.baseUrl ?? 'https://api.openai.com/v1/realtime/calls'` in
+      // node_modules/@openai/agents-realtime/dist/openaiRealtimeWebRtc.mjs) - a real, observed
+      // production failure (net::ERR_FAILED, no response at all; see
+      // docs/ai/voice-mode-performance-gap-matrix.md). `connect()` itself then does
+      // `new URL(baseUrl)` on whatever is passed here, so a bare relative path like
+      // '/api/ai/realtime/call' would throw immediately ("Invalid URL") - this must be an
+      // absolute, same-origin URL. The relay endpoint (server/pattern-ai-server.mjs's
+      // handleRealtimeCallRelay) forwards the exact same SDP + ephemeral Bearer credential to the
+      // exact same OpenAI upstream; nothing about the SDP/ICE/negotiation semantics changes here.
+      transport = new OpenAIRealtimeWebRTC({
+        mediaStream: mediaStream, audioElement: audioEl,
+        baseUrl: new URL('/api/ai/realtime/call', window.location.origin).href
+      });
       // Direct transport-level listener, not session.on(...) - RealtimeSession never re-emits
       // 'connection_change' (see this file's own header comment). Only ever acts while this is
       // still the current connection (myEpoch check) and only for an UNEXPECTED drop, never one
@@ -333,9 +402,12 @@ export function createVoiceSession(options) {
       setState(VOICE_STATES.LISTENING);
     } catch (connectError) {
       if (myEpoch !== connectionEpoch) return; // a newer connect()/disconnect() already superseded this attempt
+      var failedStage = phase === 'mint'
+        ? classifyMintFailureStage(connectError, timedOut)
+        : classifySdpFailureStage(connectError, timedOut, transport);
       teardownTransport();
       setState(VOICE_STATES.ERROR);
-      onError({ code: transportErrorCode(connectError), stage: 'connect' });
+      onError({ code: transportErrorCode(connectError), stage: failedStage });
       throw connectError;
     }
   }
