@@ -51,6 +51,29 @@ export function createRedisRateLimitStore(redisClient) {
   };
 }
 
+// Resolved once per process, shared by every Redis-backed consumer in this process (rate
+// limiting here, and the Realtime SDP-relay lease store in realtime-lease-store.mjs) - one
+// connection, not one per feature. `undefined` means "not yet resolved", `null` means "resolved,
+// and REDIS_URL is genuinely unset" (a real, cacheable answer, not just an empty initial state -
+// see the `!== undefined` check below, which would loop forever re-checking `null` otherwise).
+let cachedRedisClient;
+export function resolveRedisClient() {
+  if (cachedRedisClient !== undefined) return cachedRedisClient;
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    cachedRedisClient = null;
+    return cachedRedisClient;
+  }
+  // Lazy import: keeps `ioredis` out of the module graph entirely for pure in-memory dev/test
+  // runs (this is a top-level await-free lazy require pattern already used elsewhere in this
+  // codebase, e.g. passwords.mjs's argon2 loader).
+  const IORedis = requireIoRedisSync();
+  const client = new IORedis(redisUrl, { lazyConnect: false, maxRetriesPerRequest: 2 });
+  client.on('error', (error) => console.error('[redis] connection error:', error.message)); // eslint-disable-line no-console
+  cachedRedisClient = client;
+  return cachedRedisClient;
+}
+
 // Resolved once per process, reused by every rate-limited route. Production (NODE_ENV=production)
 // refuses to fall back to memory - see the instruction's completion criterion: "production
 // starts with ... missing Redis" must never happen silently. Local/test explicitly gets memory,
@@ -58,14 +81,8 @@ export function createRedisRateLimitStore(redisClient) {
 let cachedStore = null;
 export function resolveRateLimitStore() {
   if (cachedStore) return cachedStore;
-  const redisUrl = process.env.REDIS_URL;
-  if (redisUrl) {
-    // Lazy import: keeps `ioredis` out of the module graph entirely for pure in-memory dev/test
-    // runs (this is a top-level await-free lazy require pattern already used elsewhere in this
-    // codebase, e.g. passwords.mjs's argon2 loader).
-    const IORedis = requireIoRedisSync();
-    const client = new IORedis(redisUrl, { lazyConnect: false, maxRetriesPerRequest: 2 });
-    client.on('error', (error) => console.error('[rate-limit] Redis connection error:', error.message)); // eslint-disable-line no-console
+  const client = resolveRedisClient();
+  if (client) {
     cachedStore = createRedisRateLimitStore(client);
     return cachedStore;
   }
@@ -97,6 +114,7 @@ function loadIoRedisCtor() {
 
 export function __setRateLimitStoreForTests(store) { cachedStore = store; }
 export function __resetRateLimitStoreForTests() { cachedStore = null; }
+export function __resetRedisClientForTests() { cachedRedisClient = undefined; }
 
 function normalizeIdentifier(value) {
   return String(value || '').trim().toLowerCase();
