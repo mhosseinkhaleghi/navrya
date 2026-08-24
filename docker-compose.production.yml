@@ -39,6 +39,11 @@ services:
       AI_QUOTA_GLOBAL_PER_HOUR: ${AI_QUOTA_GLOBAL_PER_HOUR:-20000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6}
+      # fix/voice-mode-hosted-connection: was missing entirely from this file - mintRealtimeClientSecret()
+      # (server/pattern-ai-server.mjs) already falls back to a hardcoded default (gpt-realtime-2.1)
+      # when unset, so this was never a hard failure, but a production deployment had no way to pin
+      # a different Realtime model without a code change. Leave unset to keep the built-in default.
+      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
       KIMI_API_KEY: ${KIMI_API_KEY:-}
