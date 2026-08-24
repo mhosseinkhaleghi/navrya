@@ -12,7 +12,7 @@ export function createMemoryRepo() {
     threads: new Map(), messages: new Map(), reports: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
-    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(),
+    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(), accounts: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
     authSessions: new Map(), externalIdentities: new Map(), securityEvents: new Map(), authTransactions: new Map()
@@ -671,6 +671,16 @@ export function createMemoryRepo() {
       if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
       const existing = state.tradingSessions.get(record.id);
       if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_SESSION_OWNER');
+      // Defect #5: same optional-but-verified accountId contract as repo.pg.mjs's upsert() -
+      // never mandatory (a session is a journal concept, not a money-attribution one like a
+      // trade), but a supplied accountId must resolve to this user's own account, and an
+      // archived account can never be a NEW assignment (defect #3).
+      if (record.accountId) {
+        const account = state.accounts.get(record.accountId);
+        if (!account || account.userId !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+        const isNewAssignment = !existing || existing.accountId !== record.accountId;
+        if (isNewAssignment && account.status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
+      }
       const stamp = now();
       const stored = {
         id: record.id, userId, character: String(record.character || 'hunter'),
@@ -685,7 +695,7 @@ export function createMemoryRepo() {
         previousSessionSummary: record.previousSessionSummary ?? null,
         aiSessionAnalysis: record.aiSessionAnalysis || null,
         aiSessionAnalysisResult: record.aiSessionAnalysisResult ?? null,
-        finalEntryId: record.finalEntryId || null,
+        finalEntryId: record.finalEntryId || null, accountId: record.accountId || null,
         entries: (record.entries || []).map(function (entry) {
           return {
             id: entry.id, sessionId: record.id, type: normalizeTradingEntryType(entry.type),
@@ -880,6 +890,32 @@ export function createMemoryRepo() {
       if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
       const existing = state.trades.get(record.id);
       if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
+      // Defect #1: a brand-new trade (no existing record with this id yet) must carry a real
+      // accountId once the user owns at least one active account - client validation alone is
+      // not enough, since the real save path is this one. `existing` already-created trades are
+      // never retroactively forced to pick one (a trade created before the user's first account,
+      // or via any other legitimate accountless path, keeps accountId:null forever - "legacy" is
+      // about existing records, not a moving target).
+      if (!record.accountId && !existing) {
+        const hasActiveAccount = Array.from(state.accounts.values()).some((a) => a.userId === userId && a.status === 'active');
+        if (hasActiveAccount) throw new ApiError(400, 'ACCOUNT_REQUIRED');
+      }
+      // A trade's accountId must resolve to an account this same user owns - collapsing
+      // existence and ownership into one lookup, the same SOURCE_VERIFIERS idiom
+      // routes.profile.mjs already uses for session/pattern/strategy source ids.
+      if (record.accountId) {
+        const account = state.accounts.get(record.accountId);
+        if (!account || account.userId !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+        // Archived accounts are read-only for NEW assignment (defect #3): a brand-new trade, or
+        // an existing trade being re-pointed onto this account, is rejected outright. A trade
+        // that already carried this exact accountId before it was archived is left alone - the
+        // archived account still owns its real trade history, and every other field on that
+        // trade (chart note, emotion log, ...) must stay editable; only re-ASSIGNING the link is
+        // blocked, matching "an archived account may keep its historical trades and remain
+        // viewable" - it just may never be freshly chosen again.
+        const isNewAssignment = !existing || existing.accountId !== record.accountId;
+        if (isNewAssignment && account.status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
+      }
       const stamp = now();
       const source = record.source || {};
       const stored = {
@@ -899,7 +935,9 @@ export function createMemoryRepo() {
         timeframeTrends: Array.isArray(record.timeframeTrends) ? record.timeframeTrends : [],
         conceptTags: Array.isArray(record.conceptTags) ? record.conceptTags : [],
         linkedPatternIds: Array.isArray(record.linkedPatternIds) ? record.linkedPatternIds : [],
-        linkedStrategyId: record.linkedStrategyId || null, chartNote: record.chartNote || '',
+        linkedStrategyId: record.linkedStrategyId || null, accountId: record.accountId || null,
+        instrument: typeof record.instrument === 'string' && record.instrument.trim() ? record.instrument.trim() : null,
+        chartNote: record.chartNote || '',
         statusHistory: Array.isArray(record.statusHistory) ? record.statusHistory : [],
         source: { character: source.character || null, sessionId: source.sessionId || null, scenarioId: source.scenarioId || null },
         aiPredictionLinks: Array.isArray(record.aiPredictionLinks) ? record.aiPredictionLinks : [],
@@ -934,6 +972,85 @@ export function createMemoryRepo() {
       if (!record) return;
       if (record.userId !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
       state.trades.delete(id);
+    }
+  };
+
+  // NAVRYA Accounts domain (021_accounts.sql). No equity/balance/P&L/connection-state field
+  // here on purpose - see the migration file's own comment: this app has no real broker/prop
+  // API integration, so every account is manual by construction and every performance figure is
+  // derived client-side from starting_balance plus the account's own trades, never stored.
+  // Real IANA-zone validation (Node's Intl matches the browser's) - an unrecognized string is
+  // rejected back to the safe UTC default server-side too, never trusted verbatim from a client.
+  function isValidTz(tz) { if (!tz || typeof tz !== 'string') return false; try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch (_) { return false; } }
+  function normalizeRules(kind, rules) {
+    const r = rules || {};
+    const num = (v) => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+    const resetHour = (v) => { const h = num(v); return h === null ? 0 : Math.max(0, Math.min(23, Math.round(h))); };
+    const reset = {
+      dailyResetTimezone: isValidTz(r.dailyResetTimezone) ? r.dailyResetTimezone : 'UTC',
+      dailyResetHour: resetHour(r.dailyResetHour),
+      dailyLossBasis: ['realized', 'realized_and_open'].indexOf(r.dailyLossBasis) > -1 ? r.dailyLossBasis : 'realized'
+    };
+    if (kind === 'personal') {
+      return {
+        kind: 'personal',
+        dailyLossCap: num(r.dailyLossCap), maxRiskPerTradePercent: num(r.maxRiskPerTradePercent),
+        monthlyGoalPercent: num(r.monthlyGoalPercent), maxOpenPositions: num(r.maxOpenPositions),
+        hardFloor: num(r.hardFloor), ...reset
+      };
+    }
+    return {
+      kind: 'prop',
+      profitTargetPercent: num(r.profitTargetPercent), dailyLossLimitPercent: num(r.dailyLossLimitPercent),
+      maxDrawdownPercent: num(r.maxDrawdownPercent), drawdownType: r.drawdownType === 'trailing' ? 'trailing' : 'static',
+      minTradingDays: num(r.minTradingDays), consistencyCapPercent: num(r.consistencyCapPercent),
+      maxLotSize: num(r.maxLotSize), maxOpenPositions: num(r.maxOpenPositions), maxRiskPerTradePercent: num(r.maxRiskPerTradePercent), ...reset
+    };
+  }
+  const accounts = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.accounts.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+      const stamp = now();
+      const kind = record.kind === 'personal' ? 'personal' : 'prop';
+      const status = record.status === 'archived' ? 'archived' : 'active';
+      const stored = {
+        id: record.id, userId, kind,
+        firm: String(record.firm || '').trim(), program: record.program || null, platform: record.platform || null,
+        numberMasked: record.numberMasked || null,
+        status, archivedAt: status === 'archived' ? (record.archivedAt || stamp) : null,
+        currency: ['USD', 'EUR', 'GBP', 'AUD'].indexOf(record.currency) > -1 ? record.currency : 'USD',
+        startDate: record.startDate || stamp.slice(0, 10),
+        startingBalance: Number(record.startingBalance) || 0,
+        rules: normalizeRules(kind, record.rules),
+        createdAt: existing ? existing.createdAt : (record.createdAt || stamp), updatedAt: stamp
+      };
+      state.accounts.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.accounts.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.accounts.values()).filter((a) => a.userId === userId).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(clone);
+    },
+    // Archives rather than hard-deletes whenever any trade still references the account -
+    // trade history must never be silently orphaned/lost. An account nothing ever traded
+    // against (the "I made this by mistake" case) is genuinely removed.
+    async remove(userId, id) {
+      const record = state.accounts.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+      const referenced = Array.from(state.trades.values()).some((t) => t.accountId === id);
+      if (referenced) {
+        record.status = 'archived'; record.archivedAt = now(); record.updatedAt = record.archivedAt;
+        return;
+      }
+      state.accounts.delete(id);
     }
   };
 
@@ -1215,7 +1332,7 @@ export function createMemoryRepo() {
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health
   };
 }

@@ -807,6 +807,10 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       stopLoss: plan.stopLoss || null,
       takeProfits: plan.takeProfit ? [{ price: plan.takeProfit, portionPercent: 100 }] : [],
       linkedPatternIds: patternId ? [patternId] : [],
+      // Defect #5: a trade started from this session prefills the session's own accountId (still
+      // just a starting point - TradeLogModal's own Select lets the trader change it before
+      // saving, same as every other AI/prefilled field in this app).
+      accountId: session.accountId || null,
       source: { character, sessionId: session.id, scenarioId: scenario.id }
     }, { onSave: (value) => applyTradeUpdate(value) });
   }
@@ -2074,7 +2078,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           <div style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <DashboardPanel session={session} lang={lang} dash={dash} onSetDash={setDash} indexById={indexById} onSelectEntry={selectEntry}
               onToggleStage={toggleStage} onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')}
-              openPositions={openPositions} onLogTrade={() => openLogWizard({ source: { character, sessionId: session.id } }, { onSave: rerender })} />
+              openPositions={openPositions} onLogTrade={() => openLogWizard({ accountId: session.accountId || null, source: { character, sessionId: session.id } }, { onSave: rerender })} />
             <PrevSummaryPanel session={session} lang={lang} />
             <SimilarSessionsPanel session={session} character={character} lang={lang} />
           </div>

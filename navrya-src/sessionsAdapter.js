@@ -186,6 +186,11 @@ export async function createSession(character, values) {
     status: 'open',
     ...(loopMinutes ? { updateIntervalMinutes: loopMinutes } : {}),
     ...(Number.isFinite(graceMinutes) && graceMinutes >= 0 ? { gracePeriodMinutes: graceMinutes } : {}),
+    // Defect #5: optional account scoping, picked in NewSessionDialog.jsx's account Select when
+    // the user owns at least one active account - never mandatory (a session can stay unassigned
+    // exactly like a legacy one always could), and the server (repo.*.tradingSessions.upsert)
+    // re-verifies ownership/archived-status the same way it already does for trades.
+    accountId: values.accountId || null,
     startedAt: now,
     createdAt: now,
     entries

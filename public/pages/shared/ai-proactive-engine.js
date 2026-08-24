@@ -163,7 +163,144 @@
     };
   }
 
-  var RULES = [ruleStrategyMaxRisk, ruleMaxConcurrentTrades, ruleMissingStopLoss, ruleRiskEscalationAfterLosses, ruleElevatedStressWithRiskIncrease];
+  // ---- Rule F: no active account exists yet, and a trade is close to being submitted ----
+  // Accounts domain defect #8. Deliberately gated on readyToSubmit (same restraint
+  // ruleMissingStopLoss above uses) - firing on every keystroke while the account list is
+  // legitimately empty would be noise, not guidance. INFO only: NAVRYA never blocks an
+  // accountless trade from the AI side (the server's own ACCOUNT_REQUIRED check only applies
+  // once at least one active account exists - see server/db/repo.*.mjs's trades.upsert()), so an
+  // AI-filled submit for a genuinely account-less user must stay fully unblocked.
+  function ruleNoAccountOnboarding(context, proposedFields, language) {
+    if (!context.readyToSubmit) return null;
+    if (context.hasActiveAccounts) return null;
+    if (context.accountId) return null;
+    return {
+      id: 'account-onboarding', severity: SEVERITY.INFO, domain: 'account', field: null,
+      evidence: {}, requiresConfirmation: false,
+      message: pick(language, {
+        en: 'You do not have a trading account set up yet - adding one lets NAVRYA track your real balance and risk against it.',
+        fa: 'هنوز حساب معاملاتی‌ای تنظیم نکردی - با اضافه‌کردنش، ناوریا می‌تونه موجودی و ریسک واقعیت رو دنبال کنه.',
+        ar: 'لا يوجد لديك حساب تداول بعد - إضافة واحد يتيح لناڤريا تتبع رصيدك ومخاطرك الحقيقيين.',
+        es: 'Aún no tienes una cuenta de trading configurada - añadir una permite que NAVRYA siga tu saldo y riesgo reales.'
+      })
+    };
+  }
+
+  // ---- Rule G: the selected account is archived - AI-side heads-up, never the enforcement ----
+  // Real enforcement is server-side (ACCOUNT_ARCHIVED, defect #3) and the visible Select already
+  // excludes archived accounts from its own options - this only covers the narrow case of an
+  // account that WAS active when picked earlier in the same conversation and has since been
+  // archived elsewhere (another tab, the Accounts screen). Never silently proceeds as if nothing
+  // is wrong.
+  function ruleAccountArchivedSelection(context, proposedFields, language) {
+    if (!context.accountArchived) return null;
+    return {
+      id: 'account-archived-selection', severity: SEVERITY.WARNING, domain: 'account', field: 'accountId',
+      evidence: { accountId: context.accountId }, requiresConfirmation: false,
+      message: pick(language, {
+        en: 'That account is archived - it can no longer be selected for a new trade. Pick an active account.',
+        fa: 'اون حساب آرشیو شده - دیگه نمی‌شه برای معامله جدید انتخابش کرد. یه حساب فعال انتخاب کن.',
+        ar: 'هذا الحساب مؤرشف - لم يعد بالإمكان اختياره لصفقة جديدة. اختر حساباً نشطاً.',
+        es: 'Esa cuenta está archivada - ya no se puede seleccionar para una nueva operación. Elige una cuenta activa.'
+      })
+    };
+  }
+
+  // ---- Rule H: the proposed risk against the linked account's OWN real, computed daily
+  // allowance (accounts-engine.js's evaluatePretrade - the exact same deterministic function the
+  // visible Pre-trade Check tab already uses, never a second, parallel risk calculation) ----
+  function ruleAccountPretradeRisk(context, proposedFields, language) {
+    var pretrade = context.accountPretrade;
+    if (!pretrade || pretrade.riskAmount === null) return null;
+    if (pretrade.basisInsufficient) {
+      return {
+        id: 'account-daily-loss-basis-insufficient', severity: SEVERITY.NUDGE, domain: 'account', field: null,
+        evidence: { accountId: context.accountId }, requiresConfirmation: false,
+        message: pick(language, {
+          en: 'This account\'s daily-loss rule counts floating P/L on an open position, and NAVRYA cannot verify that right now - it cannot confirm this trade is inside the limit.',
+          fa: 'قانون ضرر روزانه این حساب سود/زیان شناور یه پوزیشن باز رو هم حساب می‌کنه، و ناوریا الان نمی‌تونه اونو تأیید کنه - نمی‌تونه بگه این معامله داخل سقفه یا نه.',
+          ar: 'قاعدة الخسارة اليومية لهذا الحساب تحتسب الربح/الخسارة العائم لمركز مفتوح، ولا يمكن لناڤريا التحقق من ذلك الآن - لا يمكنها تأكيد أن هذه الصفقة ضمن الحد.',
+          es: 'La regla de pérdida diaria de esta cuenta cuenta el P/L flotante de una posición abierta, y NAVRYA no puede verificarlo ahora - no puede confirmar que esta operación está dentro del límite.'
+        })
+      };
+    }
+    if (pretrade.tone === 'bad') {
+      return {
+        // field must match whichever path the caller actually proposed (riskAmount in "amount"
+        // mode, riskPercent in "percent" mode) - chat-dock-core.js's runProactiveCheck() filters
+        // the blocked value out of fieldsToApply by exact path match, so naming the wrong one
+        // here would hold back nothing and let the unconfirmed risky value apply anyway.
+        id: 'account-daily-loss-exceeded', severity: SEVERITY.CONFIRM_OVERRIDE, domain: 'account', field: context.accountRiskField || 'riskAmount',
+        evidence: {
+          accountId: context.accountId, requestedRiskAmount: pretrade.riskAmount, requestedRiskPercent: proposedFields ? toNum(proposedFields.riskPercent) : null,
+          allowanceLeft: pretrade.allowanceLeft, allowanceAmount: pretrade.allowanceAmount
+        },
+        requiresConfirmation: true,
+        message: pick(language, {
+          en: 'This trade risks ' + pretrade.riskAmount.toFixed(2) + ' against only ' + (pretrade.allowanceLeft || 0).toFixed(2) + ' left of this account\'s daily allowance.',
+          fa: 'این معامله ' + pretrade.riskAmount.toFixed(2) + ' ریسک داره، در حالی که فقط ' + (pretrade.allowanceLeft || 0).toFixed(2) + ' از سقف روزانه این حساب مونده.',
+          ar: 'هذه الصفقة تخاطر بمبلغ ' + pretrade.riskAmount.toFixed(2) + ' مقابل ' + (pretrade.allowanceLeft || 0).toFixed(2) + ' فقط المتبقي من المخصص اليومي لهذا الحساب.',
+          es: 'Esta operación arriesga ' + pretrade.riskAmount.toFixed(2) + ' contra solo ' + (pretrade.allowanceLeft || 0).toFixed(2) + ' restantes de la asignación diaria de esta cuenta.'
+        })
+      };
+    }
+    if (pretrade.tone === 'warn') {
+      return {
+        id: 'account-daily-loss-close', severity: SEVERITY.WARNING, domain: 'account', field: null,
+        evidence: { accountId: context.accountId, requestedRiskAmount: pretrade.riskAmount, allowanceLeft: pretrade.allowanceLeft },
+        requiresConfirmation: false,
+        message: pick(language, {
+          en: 'This uses a large share of what is left of this account\'s daily allowance (' + (pretrade.allowanceLeft || 0).toFixed(2) + ' remaining).',
+          fa: 'این معامله بخش بزرگی از سقف روزانه باقی‌مونده این حساب رو مصرف می‌کنه (' + (pretrade.allowanceLeft || 0).toFixed(2) + ' باقی‌مونده).',
+          ar: 'هذا يستخدم حصة كبيرة مما تبقى من المخصص اليومي لهذا الحساب (' + (pretrade.allowanceLeft || 0).toFixed(2) + ' متبقٍ).',
+          es: 'Esto usa una parte grande de lo que queda de la asignación diaria de esta cuenta (' + (pretrade.allowanceLeft || 0).toFixed(2) + ' restante).'
+        })
+      };
+    }
+    return null;
+  }
+
+  // ---- Rule I: the linked account is already sitting in DANGER/VIOLATED on its own real,
+  // configured rules - independent of whatever risk is being proposed right now ----
+  function ruleAccountWorstState(context, proposedFields, language) {
+    var state = context.accountWorstRuleState;
+    if (state !== 'danger' && state !== 'violated') return null;
+    return {
+      id: 'account-worst-state-' + state, severity: state === 'violated' ? SEVERITY.WARNING : SEVERITY.NUDGE, domain: 'account', field: null,
+      evidence: { accountId: context.accountId, state: state }, requiresConfirmation: false,
+      message: pick(language, {
+        en: 'This account is currently in ' + (state === 'violated' ? 'a violated' : 'a danger') + ' state on one of its own rules.',
+        fa: 'این حساب الان روی یکی از قوانین خودش در وضعیت ' + (state === 'violated' ? 'نقض‌شده' : 'خطر') + ' قرار داره.',
+        ar: 'هذا الحساب حالياً في حالة ' + (state === 'violated' ? 'مخالفة' : 'خطر') + ' على إحدى قواعده الخاصة.',
+        es: 'Esta cuenta está actualmente en un estado de ' + (state === 'violated' ? 'incumplimiento' : 'peligro') + ' en una de sus propias reglas.'
+      })
+    };
+  }
+
+  // ---- Rule J: real, evidence-backed behaviour signal on THIS account (accounts-engine.js's
+  // computeDiscipline - never derived from profitability, only fires above its own minimum real
+  // sample size, exactly like the visible Behaviour tab) ----
+  function ruleAccountDisciplineSignal(context, proposedFields, language) {
+    var d = context.accountDiscipline;
+    if (!d || d.score === null) return null;
+    if (!d.riskRuleViolations && !d.revengeCount) return null;
+    return {
+      id: 'account-discipline-signal', severity: SEVERITY.NUDGE, domain: 'account', field: null,
+      evidence: { accountId: context.accountId, riskRuleViolations: d.riskRuleViolations, riskRuleSample: d.riskRuleSample, revengeCount: d.revengeCount, revengeSample: d.revengeSample },
+      requiresConfirmation: false,
+      message: pick(language, {
+        en: 'On this account, ' + d.riskRuleViolations + ' of your last ' + d.riskRuleSample + ' trades exceeded your own risk rule, and ' + d.revengeCount + ' were re-entries within 10 minutes of a loss.',
+        fa: 'توی این حساب، ' + d.riskRuleViolations + ' تا از ' + d.riskRuleSample + ' معامله اخیرت از قانون ریسک خودت رد شده، و ' + d.revengeCount + ' تاشون ظرف ۱۰ دقیقه بعد یه ضرر دوباره وارد شدن.',
+        ar: 'في هذا الحساب، ' + d.riskRuleViolations + ' من آخر ' + d.riskRuleSample + ' صفقة تجاوزت قاعدة المخاطرة الخاصة بك، و' + d.revengeCount + ' كانت دخولاً جديداً خلال 10 دقائق من خسارة.',
+        es: 'En esta cuenta, ' + d.riskRuleViolations + ' de tus últimas ' + d.riskRuleSample + ' operaciones superaron tu propia regla de riesgo, y ' + d.revengeCount + ' fueron reentradas dentro de los 10 minutos posteriores a una pérdida.'
+      })
+    };
+  }
+
+  var RULES = [
+    ruleStrategyMaxRisk, ruleMaxConcurrentTrades, ruleMissingStopLoss, ruleRiskEscalationAfterLosses, ruleElevatedStressWithRiskIncrease,
+    ruleNoAccountOnboarding, ruleAccountArchivedSelection, ruleAccountPretradeRisk, ruleAccountWorstState, ruleAccountDisciplineSignal
+  ];
 
   // input: {context, intendedAction, proposedFields, verifiedSignals}. verifiedSignals (from
   // ai-signal-router.js) are not currently consumed by any rule's OWN trigger condition below -
@@ -201,6 +338,20 @@
   var RECENT_TRADES_WINDOW = 5;
   var STRESS_RECENCY_MS = 24 * 60 * 60 * 1000; // a check-in older than this is not "current"
 
+  // Same worst-of-configured-rules reduction accountsView.jsx's own worstState() uses - a small
+  // local copy, matching this app's established per-module self-contained-helper convention
+  // (dashboardView.jsx's own AccountsPanel keeps an identical small copy for the same reason).
+  function worstRuleState(groups) {
+    var order = ['violated', 'danger', 'insufficient', 'watch', 'progress', 'safe'];
+    var worst = null;
+    (groups || []).forEach(function (g) {
+      (g.items || []).forEach(function (item) {
+        if (worst === null || order.indexOf(item.state) < order.indexOf(worst)) worst = item.state;
+      });
+    });
+    return worst;
+  }
+
   function buildTradeContext(opts) {
     var o = opts || {};
     var proposedFields = o.proposedFields || {};
@@ -208,6 +359,8 @@
     var tradeStore = window.TradeJournalTradeStore;
     var strategyStore = window.TradeJournalStrategyEducationStore;
     var mentalHealthStore = window.TradeJournalMentalHealthStore;
+    var accountsStore = window.TradeJournalAccountsStore;
+    var accountsEngine = window.TradeJournalAccountsEngine;
 
     var strategyId = proposedFields.linkedStrategyId || knownFields.linkedStrategyId || null;
     var strategy = null;
@@ -252,9 +405,45 @@
       }
     }
 
+    // Accounts domain defect #8: every figure here comes straight from accounts-engine.js's own
+    // deterministic functions (computeMetrics/evaluatePretrade/evaluateRules/computeDiscipline) -
+    // the exact same calls the real Accounts UI's Overview/Pre-trade/Behaviour tabs already make.
+    // Nothing here is a second, parallel risk calculation, and an account NAVRYA cannot resolve
+    // (no accountId proposed, or the store/engine is not loaded) produces honest nulls, never a
+    // fabricated figure.
+    var accountId = proposedFields.accountId || knownFields.accountId || null;
+    var hasActiveAccounts = false, accountArchived = false, accountPretrade = null, accountWorstRuleState = null, accountDiscipline = null;
+    if (accountsStore && typeof accountsStore.listSync === 'function') {
+      hasActiveAccounts = accountsStore.listSync().some(function (a) { return a.status === 'active'; });
+    }
+    if (accountId && accountsStore && accountsEngine && typeof accountsStore.find === 'function') {
+      var account = accountsStore.find(accountId);
+      if (account) {
+        accountArchived = account.status === 'archived';
+        var accountTrades = tradeStore && typeof tradeStore.listSync === 'function' ? tradeStore.listSync() : [];
+        var accountMetrics = accountsEngine.computeMetrics(account, accountTrades);
+        // riskAmount arrives directly when the calculator is in "amount" mode; in "percent" mode
+        // it must be derived from this SAME account's real equity, never a different balance
+        // (defect #2's own "real equity drives every calculation" rule) - mirrors exactly how
+        // tradeCalculatorModal.jsx's own computeOut() converts between the two modes.
+        var riskAmount = toNum(proposedFields.riskAmount);
+        var accountRiskField = 'riskAmount';
+        if (riskAmount === null) {
+          var riskPercentInput = toNum(proposedFields.riskPercent);
+          if (riskPercentInput !== null && accountMetrics.equity) { riskAmount = accountMetrics.equity * (riskPercentInput / 100); accountRiskField = 'riskPercent'; }
+        }
+        if (riskAmount !== null) accountPretrade = accountsEngine.evaluatePretrade(account, accountMetrics, { riskAmount: riskAmount });
+        accountWorstRuleState = worstRuleState(accountsEngine.evaluateRules(account, accountMetrics).groups);
+        accountDiscipline = accountsEngine.computeDiscipline(account, accountTrades);
+      }
+    }
+
     return {
       strategy: strategy, recentTrades: recentTrades, baselineRiskPercent: baselineRiskPercent,
-      activeTradeCount: activeTradeCount, psychology: psychology, readyToSubmit: !!o.readyToSubmit
+      activeTradeCount: activeTradeCount, psychology: psychology, readyToSubmit: !!o.readyToSubmit,
+      accountId: accountId, hasActiveAccounts: hasActiveAccounts, accountArchived: accountArchived,
+      accountPretrade: accountPretrade, accountRiskField: accountPretrade ? accountRiskField : null,
+      accountWorstRuleState: accountWorstRuleState, accountDiscipline: accountDiscipline
     };
   }
 
@@ -313,7 +502,29 @@
     return resolved;
   }
 
+  // Accounts domain defect #8: a confirmable finding can now originate from an account rule
+  // (ruleAccountPretradeRisk's 'account-daily-loss-exceeded'), not only the original Strategy
+  // rule - resolved.ruleId (staged verbatim in stageConfirmation() above) tells us which real
+  // limit this confirmation is actually about, so the reply names the right one instead of always
+  // saying "your strategy's own limit" regardless of what was really confirmed.
   function confirmationReply(decision, resolved, language) {
+    var isAccountRule = resolved && String(resolved.ruleId || '').indexOf('account-') === 0;
+    if (isAccountRule) {
+      if (decision === 'confirm') {
+        return pick(language, {
+          en: 'Understood - proceeding with this trade\'s risk against the account\'s daily allowance. This is recorded as an explicit override; the account\'s own rule is unchanged.',
+          fa: 'باشه، با همین ریسک نسبت به سقف روزانه حساب ادامه می‌دم. این به‌عنوان یه استثنای صریح ثبت می‌شه؛ قانون خود حساب دست‌نخورده می‌مونه.',
+          ar: 'تم - المتابعة بمخاطرة هذه الصفقة مقابل المخصص اليومي للحساب. يُسجَّل هذا كتجاوز صريح؛ قاعدة الحساب نفسها تبقى دون تغيير.',
+          es: 'Entendido - se procede con el riesgo de esta operación frente a la asignación diaria de la cuenta. Esto se registra como una anulación explícita; la regla propia de la cuenta no cambia.'
+        });
+      }
+      return pick(language, {
+        en: 'Keeping the trade within this account\'s real daily allowance, as its own rule requires.',
+        fa: 'معامله رو داخل سقف روزانه واقعی این حساب نگه داشتم، همون‌طور که قانون خودش می‌گه.',
+        ar: 'تم الإبقاء على الصفقة ضمن المخصص اليومي الحقيقي لهذا الحساب، كما تتطلب قاعدته الخاصة.',
+        es: 'Se mantiene la operación dentro de la asignación diaria real de esta cuenta, según lo requiere su propia regla.'
+      });
+    }
     if (decision === 'confirm') {
       return pick(language, {
         en: 'Understood - overriding to ' + resolved.proposedValue + '%. This is recorded as an explicit override; your strategy\'s own limit is unchanged.',

@@ -32,6 +32,13 @@ async function api(method, path, { body, userId } = {}) {
 async function createUser(name) {
   return repo.users.create({ displayName: name });
 }
+function propAccount(id, overrides) {
+  return Object.assign({
+    id, kind: 'prop', firm: 'Atlas Funding', status: 'active', currency: 'USD',
+    startDate: '2026-08-01', startingBalance: 100000,
+    rules: { profitTargetPercent: 10, dailyLossLimitPercent: 5, maxDrawdownPercent: 10, drawdownType: 'static' }
+  }, overrides || {});
+}
 
 function sampleSession(id) {
   return {
@@ -144,6 +151,64 @@ test('DELETE removes the session and its child rows are gone too (no orphaned sc
   assert.equal(deleted.status, 204);
   const list = await api('GET', '/api/sync/sessions', { userId: user.id });
   assert.equal(list.body.sessions.length, 0);
+});
+
+// ---- Defect #5: sessions are optionally, but verifiably, account-scoped ----
+
+test('a session can be created with a real accountId, and it round-trips through GET', async () => {
+  const user = await createUser('Hunter AccountA');
+  await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('sess-acct-a') });
+  const session = sampleSession('session-acct-1');
+  session.accountId = 'sess-acct-a';
+  const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(created.status, 200);
+  assert.equal(created.body.accountId, 'sess-acct-a');
+  const fetched = await api('GET', '/api/sync/sessions/session-acct-1', { userId: user.id });
+  assert.equal(fetched.body.accountId, 'sess-acct-a');
+});
+
+test('a session with no accountId at all stays honestly unscoped - never mandatory the way a trade is', async () => {
+  const user = await createUser('Hunter NoAccount');
+  const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: sampleSession('session-acct-2') });
+  assert.equal(created.status, 200, 'unlike a trade, a session is never rejected for missing accountId');
+  assert.equal(created.body.accountId, null);
+});
+
+test("a session cannot be created pointing at another user's account - NOT_ACCOUNT_OWNER", async () => {
+  const owner = await createUser('Account Owner');
+  const stranger = await createUser('Session Stranger');
+  await api('POST', '/api/sync/accounts', { userId: owner.id, body: propAccount('sess-acct-owner') });
+  const session = sampleSession('session-acct-3');
+  session.accountId = 'sess-acct-owner';
+  const result = await api('POST', '/api/sync/sessions', { userId: stranger.id, body: session });
+  assert.equal(result.status, 403);
+  assert.equal(result.body.error, 'NOT_ACCOUNT_OWNER');
+});
+
+test('a session can never be freshly assigned to an archived account - ACCOUNT_ARCHIVED (defect #3, mirrored for sessions)', async () => {
+  const user = await createUser('Hunter Archived');
+  await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('sess-acct-arch', { status: 'archived' }) });
+  const session = sampleSession('session-acct-4');
+  session.accountId = 'sess-acct-arch';
+  const result = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(result.status, 403);
+  assert.equal(result.body.error, 'ACCOUNT_ARCHIVED');
+});
+
+test('a session already pointing at an account that is later archived stays fully editable (re-saving unrelated fields does not re-trigger ACCOUNT_ARCHIVED)', async () => {
+  const user = await createUser('Hunter Grandfathered');
+  await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('sess-acct-gf') });
+  const session = sampleSession('session-acct-5');
+  session.accountId = 'sess-acct-gf';
+  await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+
+  await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('sess-acct-gf', { status: 'archived' }) });
+
+  const resaved = { ...session, status: 'closed' };
+  const result = await api('POST', '/api/sync/sessions', { userId: user.id, body: resaved });
+  assert.equal(result.status, 200, 'a trade/session that already carried this exact accountId before archiving must stay editable');
+  assert.equal(result.body.status, 'closed');
+  assert.equal(result.body.accountId, 'sess-acct-gf');
 });
 
 test('POST /api/sync/sessions/images uploads a base64 chart image under the session category', async () => {

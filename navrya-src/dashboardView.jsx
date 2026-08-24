@@ -9,6 +9,7 @@ import * as sessionsAdapter from './sessionsAdapter.js';
 import { openLogWizard } from './tradeLogModal.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { ManualAccountModal } from './accountsView.jsx';
 
 // ============================================================================
 // Redesign of the Dashboard (Session tools' home screen) against the design handoff
@@ -27,7 +28,7 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 // ============================================================================
 
 export const SPANS = [3, 4, 6, 8, 12];
-const DEFAULT_BOARD = ['session', 'psych', 'weather', 'positions', 'chart', 'sessions', 'strategies', 'patterns', 'reward'];
+const DEFAULT_BOARD = ['accounts', 'session', 'psych', 'weather', 'positions', 'chart', 'sessions', 'strategies', 'patterns', 'reward'];
 const CITIES = [
   { market: 'london', city: 'LONDON', off: 0, from: 7, to: 16 },
   { market: 'new-york', city: 'NEW YORK', off: -5, from: 13, to: 22 },
@@ -99,6 +100,11 @@ const copy = {
     catVideoTitle: 'آکادمی', catVideoMeta: 'به‌زودی', catVideoDesc: 'یک اسلات ویدیوی آموزشی — هنوز به بک‌اندی وصل نیست.',
     catBannerTitle: 'بنر کمپین', catBannerMeta: 'اسلات ادمین', catBannerDesc: 'تصویر تبلیغاتی مدیریت‌شده از پنل ادمین — هنوز پیکربندی نشده.',
     catWatchlistTitle: 'واچ‌لیست بازار', catWatchlistMeta: 'قیمت زنده', catWatchlistDesc: 'نمادهایی که دنبال می‌کنی — هنوز به منبع قیمت زنده وصل نیست.',
+    catAccountsTitle: 'حساب‌ها', catAccountsMeta: 'ریسک زنده', catAccountsDesc: 'موجودی واقعی، وضعیت ریسک و اقدامات سریع برای حساب‌های فعال.',
+    noAccountsYet: 'هنوز حسابی ثبت نشده', noAccountsNote: 'یک حساب پراپ یا شخصی اضافه کن تا موجودی و ریسک واقعی‌ات اینجا دنبال شود.',
+    createFirstAccount: 'افزودن حساب', viewAllAccounts: 'مشاهده همه حساب‌ها',
+    personalAccount: 'حساب شخصی', propAccount: 'حساب پراپ‌فرم', equity: 'موجودی', todayPl: 'سود/زیان امروز',
+    state_safe: 'ایمن', state_progress: 'در حال پیشرفت', state_watch: 'مراقبت', state_danger: 'خطر', state_violated: 'نقض‌شده', state_insufficient: 'تأییدناپذیر',
     complete: 'کامل', identityGoals: 'هویت و اهداف', riskTemperament: 'خلق‌وخوی ریسک', emotionalTriggers: 'محرک‌های احساسی', patternLibrary: 'کتابخانه الگو', dailyRoutine: 'روتین روزانه',
     continueDossier: 'ادامه پرونده', index: 'شاخص', last7Sessions: '۷ سشن اخیر', noWeatherData: 'هنوز داده‌ی کافی از ثبت احساس نیست.',
     reasonPatterns: 'الگوهای دلیل احساسی', noReasonPatterns: 'هنوز دلیلی برای احساسات ثبت نشده.', samples: '{n} معامله',
@@ -131,6 +137,11 @@ const copy = {
     catVideoTitle: 'الأكاديمية', catVideoMeta: 'قريباً', catVideoDesc: 'فتحة درس فيديو — غير متصلة بأي بيانات بعد.',
     catBannerTitle: 'بانر الحملة', catBannerMeta: 'فتحة الإدارة', catBannerDesc: 'صورة ترويجية تديرها لوحة الإدارة — لم تُهيَّأ بعد.',
     catWatchlistTitle: 'قائمة المراقبة', catWatchlistMeta: 'سعر مباشر', catWatchlistDesc: 'الرموز التي تتابعها — غير متصلة بمصدر أسعار مباشر بعد.',
+    catAccountsTitle: 'الحسابات', catAccountsMeta: 'مخاطر مباشرة', catAccountsDesc: 'الرصيد الحقيقي وحالة المخاطر وإجراءات سريعة للحسابات النشطة.',
+    noAccountsYet: 'لم يتم تسجيل أي حساب بعد', noAccountsNote: 'أضف حساب تمويل أو حساب شخصي لمتابعة رصيدك ومخاطرك الحقيقية هنا.',
+    createFirstAccount: 'إضافة حساب', viewAllAccounts: 'عرض كل الحسابات',
+    personalAccount: 'حساب شخصي', propAccount: 'حساب تمويل', equity: 'الرصيد', todayPl: 'ربح/خسارة اليوم',
+    state_safe: 'آمن', state_progress: 'قيد التقدم', state_watch: 'مراقبة', state_danger: 'خطر', state_violated: 'مخالف', state_insufficient: 'غير قابل للتحقق',
     complete: 'مكتمل', identityGoals: 'الهوية والأهداف', riskTemperament: 'مزاج المخاطرة', emotionalTriggers: 'المحفزات العاطفية', patternLibrary: 'مكتبة الأنماط', dailyRoutine: 'الروتين اليومي',
     continueDossier: 'متابعة الملف', index: 'المؤشر', last7Sessions: 'آخر ٧ جلسات', noWeatherData: 'لا توجد بيانات كافية من سجلات المشاعر بعد.',
     reasonPatterns: 'أنماط الأسباب العاطفية', noReasonPatterns: 'لا توجد أسباب مسجلة للمشاعر بعد.', samples: '{n} صفقة',
@@ -163,6 +174,11 @@ const copy = {
     catVideoTitle: 'Academy', catVideoMeta: 'coming soon', catVideoDesc: 'A video lesson slot — not wired to any data yet.',
     catBannerTitle: 'Campaign banner', catBannerMeta: 'admin slot', catBannerDesc: 'Full-width promotional image managed by the admin — not configured yet.',
     catWatchlistTitle: 'Market watchlist', catWatchlistMeta: 'live price', catWatchlistDesc: 'Instruments you follow — not wired to a live price source yet.',
+    catAccountsTitle: 'Accounts', catAccountsMeta: 'live risk', catAccountsDesc: 'Real balance, risk state and quick actions for your active accounts.',
+    noAccountsYet: 'No accounts yet', noAccountsNote: 'Add a prop-firm or personal account to follow your real balance and risk right here.',
+    createFirstAccount: 'Add account', viewAllAccounts: 'View all accounts',
+    personalAccount: 'Personal account', propAccount: 'Prop firm account', equity: 'Equity', todayPl: "Today's P/L",
+    state_safe: 'Safe', state_progress: 'In progress', state_watch: 'Watch', state_danger: 'Danger', state_violated: 'Violated', state_insufficient: 'Cannot verify',
     complete: 'complete', identityGoals: 'Identity & goals', riskTemperament: 'Risk temperament', emotionalTriggers: 'Emotional triggers', patternLibrary: 'Pattern library', dailyRoutine: 'Daily routine',
     continueDossier: 'Continue the dossier', index: 'index', last7Sessions: 'Last 7 sessions', noWeatherData: 'Not enough emotion-log data yet.',
     reasonPatterns: 'Emotional reason patterns', noReasonPatterns: 'No emotion reasons logged yet.', samples: '{n} trades',
@@ -195,6 +211,11 @@ const copy = {
     catVideoTitle: 'Academia', catVideoMeta: 'próximamente', catVideoDesc: 'Un espacio de lección en vídeo — aún sin datos conectados.',
     catBannerTitle: 'Banner de campaña', catBannerMeta: 'espacio admin', catBannerDesc: 'Imagen promocional gestionada por el panel admin — aún sin configurar.',
     catWatchlistTitle: 'Lista de seguimiento', catWatchlistMeta: 'precio en vivo', catWatchlistDesc: 'Instrumentos que sigues — aún sin fuente de precios en vivo.',
+    catAccountsTitle: 'Cuentas', catAccountsMeta: 'riesgo en vivo', catAccountsDesc: 'Saldo real, estado de riesgo y acciones rápidas para tus cuentas activas.',
+    noAccountsYet: 'Aún no hay cuentas', noAccountsNote: 'Añade una cuenta de prop firm o personal para seguir aquí tu saldo y riesgo reales.',
+    createFirstAccount: 'Añadir cuenta', viewAllAccounts: 'Ver todas las cuentas',
+    personalAccount: 'Cuenta personal', propAccount: 'Cuenta de prop firm', equity: 'Equidad', todayPl: 'P/L de hoy',
+    state_safe: 'Segura', state_progress: 'En progreso', state_watch: 'Vigilar', state_danger: 'Peligro', state_violated: 'Incumplida', state_insufficient: 'No verificable',
     complete: 'completo', identityGoals: 'Identidad y metas', riskTemperament: 'Temperamento de riesgo', emotionalTriggers: 'Detonantes emocionales', patternLibrary: 'Biblioteca de patrones', dailyRoutine: 'Rutina diaria',
     continueDossier: 'Continuar el expediente', index: 'índice', last7Sessions: 'Últimas 7 sesiones', noWeatherData: 'Aún no hay suficientes datos de emociones.',
     reasonPatterns: 'Patrones de razones emocionales', noReasonPatterns: 'Aún no hay razones emocionales registradas.', samples: '{n} operaciones',
@@ -239,6 +260,7 @@ function sessionCityLabel(session) { return SESSION_CITY_LABEL[session] || sessi
 // ============================================================================
 export function catalog(t) {
   return {
+    accounts: { title: t('catAccountsTitle'), icon: 'wallet', span: 6, desc: t('catAccountsDesc') },
     psych: { title: t('catPsychTitle'), icon: 'psychology', span: 4, desc: t('catPsychDesc') },
     weather: { title: t('catWeatherTitle'), icon: 'streak', span: 4, desc: t('catWeatherDesc') },
     session: { title: t('catSessionTitle'), icon: 'status', span: 4, desc: t('catSessionDesc') },
@@ -280,6 +302,131 @@ function NotConnectedNote({ t }) {
 // ============================================================================
 // Panel bodies - each is a pure function of real store data.
 // ============================================================================
+
+// Accounts block (defect #7): zero-account onboarding CTA opening the real create-account modal
+// (never a fake broker-connect flow), or a real card per ACTIVE account - actual equity via
+// accounts-engine.js (starting balance + that account's own real closed trades, same computation
+// the Accounts Portfolio itself uses), its worst real compliance-rule state, and real remaining
+// daily allowance where a rule is configured and verifiable. Archived accounts never appear here
+// (they are read-only history, not something needing dashboard attention). Each account renders
+// as its OWN card in its OWN currency - this panel never sums balances across accounts, since a
+// cross-currency total would need a live FX rate this app does not have (see the accounts domain's
+// standing "insufficient data over fabricated numbers" rule).
+function useDashboardAccounts() {
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => {
+    function onChange() { setTick((x) => x + 1); }
+    window.addEventListener('tradejournal:replica-accounts-changed', onChange);
+    window.addEventListener('tradejournal:replica-trades-changed', onChange);
+    return () => {
+      window.removeEventListener('tradejournal:replica-accounts-changed', onChange);
+      window.removeEventListener('tradejournal:replica-trades-changed', onChange);
+    };
+  }, []);
+  const accountsStore = window.TradeJournalAccountsStore;
+  const tradeStore = window.TradeJournalTradeStore;
+  return React.useMemo(() => ({
+    accounts: accountsStore ? accountsStore.listSync() : [],
+    trades: tradeStore ? tradeStore.listSync() : []
+  }), [tick, accountsStore, tradeStore]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+const ACCOUNT_STATE_TONE = { safe: 'success', progress: 'accent', watch: 'warning', danger: 'danger', violated: 'danger', insufficient: 'accent' };
+// Same worst-of-configured-rules reduction accountsView.jsx's own worstState() uses - kept as its
+// own small copy here rather than exported/shared, matching this app's established per-view
+// self-contained i18n/logic convention (each navrya-src/*View.jsx owns its own small helpers).
+function worstAccountState(groups) {
+  const order = ['violated', 'danger', 'insufficient', 'watch', 'progress', 'safe'];
+  let worst = null;
+  (groups || []).forEach((g) => g.items.forEach((item) => {
+    if (worst === null || order.indexOf(item.state) < order.indexOf(worst)) worst = item.state;
+  }));
+  return worst;
+}
+function accountMoney(lang, currency, n) {
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return '—';
+  const v = Number(n);
+  const locale = { fa: 'fa-IR', ar: 'ar-EG', en: 'en-GB', es: 'es-ES' }[lang] || 'en-GB';
+  return (v < 0 ? '−' : '') + digits(lang, Math.abs(v).toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 })) + ' ' + (currency || 'USD');
+}
+// Deep link into a specific account's own detail view - reuses the exact same
+// window.TradeJournalNavryaAccountsHub.open(id) global character-app.jsx's own AI account.open
+// action already calls (accountsView.jsx's AccountsRoot registers it in a useEffect once it
+// mounts), rather than inventing a second, parallel navigation channel. render('accounts') mounts
+// a brand-new AccountsRoot root, so the hub is not registered yet on the same synchronous tick -
+// pollFor mirrors character-app.jsx's own polling convention (50ms steps, ~2s timeout) for this
+// exact same real cross-root-mount timing gap.
+function pollForAccountsHub(onReady) {
+  let attempts = 0;
+  const poll = setInterval(() => {
+    attempts += 1;
+    const hub = window.TradeJournalNavryaAccountsHub;
+    if (hub) { clearInterval(poll); onReady(hub); } else if (attempts > 40) { clearInterval(poll); }
+  }, 50);
+}
+function goToAccounts(accountId) {
+  const layer = window.TradeJournalPanelLayer;
+  if (layer && layer.render) layer.render('accounts');
+  if (accountId) pollForAccountsHub((hub) => hub.open(accountId));
+}
+function AccountsPanel({ t, lang }) {
+  const [showCreate, setShowCreate] = React.useState(false);
+  const { accounts, trades } = useDashboardAccounts();
+  const engine = window.TradeJournalAccountsEngine;
+  const active = accounts.filter((a) => a.status === 'active');
+  if (!engine) return <NotConnectedNote t={t} />;
+  if (!active.length) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 160, textAlign: 'center', padding: '14px 4px' }}>
+        <span style={{ width: 48, height: 48, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--gold-warm)' }}>
+          <Icon name="wallet" size={24} />
+        </span>
+        <span style={{ font: 'var(--type-body)', fontWeight: 600, color: 'var(--text-primary)' }}>{t('noAccountsYet')}</span>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', maxWidth: 300 }}>{t('noAccountsNote')}</span>
+        <Button variant="primary" icon="wallet" onClick={() => setShowCreate(true)}>{t('createFirstAccount')}</Button>
+        {showCreate && <ManualAccountModal lang={lang} onClose={() => setShowCreate(false)} onSaved={() => setShowCreate(false)} />}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {active.map((account) => {
+          const metrics = engine.computeMetrics(account, trades);
+          const rules = engine.evaluateRules(account, metrics);
+          const worst = worstAccountState(rules.groups);
+          const tone = worst ? ACCOUNT_STATE_TONE[worst] || 'accent' : null;
+          return (
+            <div
+              key={account.id} role="button" tabIndex={0}
+              onClick={() => goToAccounts(account.id)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') goToAccounts(account.id); }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 13, borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+                  <span dir="auto" style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.firm || (account.kind === 'personal' ? t('personalAccount') : t('propAccount'))}</span>
+                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{account.kind === 'personal' ? t('personalAccount') : (account.program || t('propAccount'))}</span>
+                </div>
+                {tone && <Chip tone={tone} dot>{t('state_' + worst)}</Chip>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px,1fr))', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)' }}>
+                  <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('equity')}</span>
+                  <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-username)', color: 'var(--text-primary)' }}>{accountMoney(lang, account.currency, metrics.equity)}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)' }}>
+                  <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('todayPl')}</span>
+                  <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-username)', color: metrics.todayPL === null ? 'var(--text-muted)' : metrics.todayPL >= 0 ? 'var(--success)' : 'var(--danger)' }}>{metrics.todayPL === null ? '—' : accountMoney(lang, account.currency, metrics.todayPL)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <Button variant="secondary" icon="wallet" fullWidth onClick={() => goToAccounts()}>{t('viewAllAccounts')}</Button>
+    </div>
+  );
+}
 
 // Psychology dossier: five real completion signals from the mental-health profile (intake +
 // psychological-profile fields) plus the real Pattern Registry count for "pattern library" -
@@ -511,19 +658,22 @@ function PositionsPanel({ t, lang }) {
   const tradeStore = window.TradeJournalTradeStore;
   const tradeUi = window.TradeJournalTradeUI;
   const tradeI18n = window.TradeJournalTradeI18n;
+  const accountsStore = window.TradeJournalAccountsStore;
   if (!tradeStore) return <NotConnectedNote t={t} />;
   const trades = tradeStore.listSync().filter((tr) => tr.status === 'hunting' || tr.status === 'open');
   if (!trades.length) return <EmptyPanelNote icon="execution" title={t('noOpenPositions')} note={t('noOpenPositionsNote')} />;
+  const accountName = (id) => { const a = id && accountsStore ? accountsStore.find(id) : null; return a ? a.firm : null; };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {trades.map((trade) => {
         const tp = trade.takeProfits && trade.takeProfits[0] ? trade.takeProfits[0].price : null;
+        const linkedAccount = accountName(trade.accountId);
         return (
           <div key={trade.id} style={{ display: 'flex', flexDirection: 'column', gap: 11, padding: 13, borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
                 <span style={{ font: 'var(--type-username)', letterSpacing: '.06em', color: 'var(--text-primary)' }}>{sessionCityLabel(trade.session)}</span>
-                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{tradeI18n ? tradeI18n.date(trade.createdAt, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{tradeI18n ? tradeI18n.date(trade.createdAt, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}{linkedAccount ? ' · ' + linkedAccount : ''}</span>
               </div>
               <Chip tone={trade.direction === 'short' ? 'danger' : 'accent'}>{tradeI18n ? tradeI18n.t(trade.direction) : trade.direction}</Chip>
               <Chip tone={trade.status === 'open' ? 'success' : 'accent'} dot>{tradeUi ? tradeUi.statusLabel(trade.status) : trade.status}</Chip>
@@ -761,6 +911,7 @@ export function resolveCustomEntry(id, customMap) {
 function panelBody(id, ctx) {
   const { t, lang, character, now, custom } = ctx;
   switch (id) {
+    case 'accounts': return <AccountsPanel t={t} lang={lang} />;
     case 'psych': return <PsychPanel t={t} lang={lang} />;
     case 'weather': return <WeatherPanel t={t} lang={lang} />;
     case 'session': return <OpenSessionPanel t={t} lang={lang} character={character} now={now} />;

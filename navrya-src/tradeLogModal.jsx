@@ -4,8 +4,10 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
+import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 import { useAssistantMotion } from '../public/pages/shared/navrya/components/assistant/motion.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { ManualAccountModal } from './accountsView.jsx';
 
 // ============================================================================
 // Redesign of the "Log a Trade" wizard (Session tools · trade journal) against the design
@@ -723,6 +725,13 @@ function TradeLogModal({ seed, options, onClose }) {
     chartNote: baseTrade.chartNote || ''
   }));
   const [strategyId, setStrategyId] = React.useState(baseTrade.linkedStrategyId || '');
+  // Accounts domain integration: baseTrade.accountId already carries through from `seed` (the
+  // calculator's own handoff, or the AI's normalizeField-resolved value) via createDraft()'s
+  // Object.assign-preserving normalize() - see trade-store.js. instrument follows the same path.
+  const [accountId, setAccountId] = React.useState(baseTrade.accountId || '');
+  const [instrument, setInstrument] = React.useState(baseTrade.instrument || '');
+  const [accountError, setAccountError] = React.useState(false);
+  const [showCreateAccount, setShowCreateAccount] = React.useState(false);
   const [patternDraft, setPatternDraft] = React.useState('');
   const lastEmotion = baseTrade.emotionLog.length ? baseTrade.emotionLog[baseTrade.emotionLog.length - 1] : null;
   const [emotion, setEmotion] = React.useState(() => ({
@@ -805,6 +814,8 @@ function TradeLogModal({ seed, options, onClose }) {
         if (path === 'marginMode') { setField('margin', value); return; }
         if (path === 'primaryTimeframe') { setField('primaryTimeframe', value); return; }
         if (path === 'chartNote') { setField('chartNote', value); return; }
+        if (path === 'accountId') { handleAccount(value || ''); return; }
+        if (path === 'instrument') { setInstrument(value || ''); return; }
       }
     });
     return () => { mounted = false; };
@@ -835,6 +846,45 @@ function TradeLogModal({ seed, options, onClose }) {
         const tradeUi = window.TradeJournalTradeUI;
         if (tradeUi) tradeUi.toast(t('strategyRiskLoaded'), 'success');
       }
+    }
+  }
+
+  const accountsStore = window.TradeJournalAccountsStore;
+  const activeAccounts = accountsStore ? accountsStore.listActive() : [];
+  // Once at least one active account exists, "No account" is a misleading normal-path option
+  // (defect #1) - it disappears from the list entirely rather than staying selectable.
+  const accountOptions = activeAccounts.length
+    ? activeAccounts.map((a) => ({ value: a.id, label: a.firm }))
+    : [{ value: '', label: t('noAccount') }];
+  // Only a brand-new trade (never yet saved) is gated - an already-existing trade (this wizard
+  // re-opened to edit a hunting/open trade, possibly a legacy one with accountId already null)
+  // is never retroactively forced to pick one.
+  const accountRequired = !existingRef.current && activeAccounts.length > 0 && !accountId;
+  // BUG FIX (defect #2, found via real browser verification): this handler pre-filled riskPercent
+  // from the account's own rule but never touched `balance` at all - unlike
+  // tradeCalculatorModal.jsx's own handleAccount() (which does `setBalance(String(metrics.equity))`
+  // unconditionally), picking an account here left step 1's Account Balance field exactly as it
+  // was (usually still the global Trade Settings default), so riskAmount/positionSize kept
+  // deriving from the WRONG balance even after a real account was selected - the exact
+  // double-counting/wrong-equity failure defect #2 exists to prevent. Now mirrors the Calculator
+  // exactly: balance is always refreshed to the account's own real computed equity
+  // (accounts-engine.js's computeMetrics - starting balance + that account's own real closed
+  // trades) the moment an account is chosen, same as riskPercent's own pre-fill-only-not-locked
+  // contract below.
+  function handleAccount(id) {
+    setAccountId(id);
+    const engine = window.TradeJournalAccountsEngine;
+    if (!id || !accountsStore || !engine) return;
+    const account = accountsStore.find(id);
+    if (!account) return;
+    const trades = tradeStore ? tradeStore.listSync() : [];
+    const metrics = engine.computeMetrics(account, trades);
+    setField('balance', String(metrics.equity));
+    const maxRisk = account.rules && account.rules.maxRiskPerTradePercent;
+    if (maxRisk !== null && maxRisk !== undefined && !trade.riskPercent && !trade.riskAmount) {
+      setField('riskPercent', String(maxRisk));
+      const tradeUi = window.TradeJournalTradeUI;
+      if (tradeUi) tradeUi.toast(t('accountRiskLoaded'), 'success');
     }
   }
 
@@ -938,6 +988,8 @@ function TradeLogModal({ seed, options, onClose }) {
     baseTrade.conceptTags = trade.conceptTags;
     baseTrade.linkedPatternIds = trade.linkedPatternIds;
     baseTrade.linkedStrategyId = trade.linkedStrategyId;
+    baseTrade.accountId = accountId || null;
+    baseTrade.instrument = instrument || null;
     baseTrade.chartNote = trade.chartNote;
     const merged = mergeEmotionIntoTrade();
     if (merged) baseTrade.emotionLog = merged;
@@ -946,7 +998,15 @@ function TradeLogModal({ seed, options, onClose }) {
     const source = {
       direction: baseTrade.direction, marginMode: baseTrade.marginMode, entryPrice: baseTrade.entryPrice, stopLoss: baseTrade.stopLoss,
       slDistancePercent: baseTrade.slDistancePercent, riskPercent: baseTrade.riskPercent, riskAmount: baseTrade.riskAmount, leverage: baseTrade.leverage,
-      positionSize: baseTrade.positionSize, marginRequired: baseTrade.marginRequired, accountBalance: settings.accountBalance,
+      // Real bug fix (defect #2, found via real browser/code audit): this used to read
+      // settings.accountBalance (the global Trade Settings default) here, ignoring both
+      // whatever the trader actually typed/left in step 1's own visible balance field AND the
+      // selected account's real derived equity that handleAccount() already pre-filled into it -
+      // the wizard's own live preview and the trade actually SAVED could silently disagree.
+      // trade.balance (state) is the single source of truth for this save, exactly as it already
+      // is for the step 1 preview and for the identical accountBalance:toNum(f.balance) pattern
+      // used elsewhere in this same file for a screenshot-extracted draft.
+      positionSize: baseTrade.positionSize, marginRequired: baseTrade.marginRequired, accountBalance: toNum(trade.balance),
       takeProfits: baseTrade.takeProfits, feeType: baseTrade.commission.feeType, feePercent: baseTrade.commission.feePercent
     };
     const manual = new Set();
@@ -961,6 +1021,7 @@ function TradeLogModal({ seed, options, onClose }) {
   }
 
   function quickLog() {
+    if (accountRequired) { setAccountError(true); return; }
     let saved = buildTradeForSave(trade.tradeState, 'quick');
     saved.disciplineImpact = -1;
     saved = tradeStore.save(saved);
@@ -972,6 +1033,7 @@ function TradeLogModal({ seed, options, onClose }) {
 
   function finish() {
     if (saving) return;
+    if (accountRequired) { setAccountError(true); return; }
     setSaving(true);
     let saved = buildTradeForSave(selectedStatus, 'full');
     saved = tradeStore.save(saved);
@@ -1101,9 +1163,22 @@ function TradeLogModal({ seed, options, onClose }) {
               <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('autoDetected')}</span>
             </span>
             <span style={{ flex: 1 }} />
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: accountError && accountRequired ? 'var(--danger)' : 'var(--text-muted)' }}>{t('account')}{activeAccounts.length && !existingRef.current ? ' *' : ''}</span>
+            {activeAccounts.length ? (
+              <Select value={accountId} options={accountOptions} onChange={(id) => { setAccountError(false); handleAccount(id); }} icon="wallet" width={200} placeholder={t('chooseAccount')} />
+            ) : (
+              <Button variant="secondary" size="sm" icon="wallet" onClick={() => setShowCreateAccount(true)}>{t('setUpFirstAccount')}</Button>
+            )}
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('strategy')}</span>
             <Select value={strategyId} options={strategyOptions} onChange={handleStrategy} icon="strategies" width={220} />
+            <input type="text" value={instrument} onChange={(e) => setInstrument(e.target.value.toUpperCase())} placeholder={t('instrumentPlaceholder')} aria-label={t('instrument')}
+              style={{ height: 44, width: 110, boxSizing: 'border-box', padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }} />
           </div>
+          {accountError && accountRequired && (
+            <div style={{ padding: '10px 20px 0' }}>
+              <Notice tone="danger" icon="close">{t('accountRequiredError')}</Notice>
+            </div>
+          )}
 
           {/* Body */}
           <div className="navrya-scroll" style={{ minHeight: 300, maxHeight: '58vh', boxSizing: 'border-box', padding: 18, background: 'var(--ink-950)', overflowY: 'auto' }}>
@@ -1150,6 +1225,13 @@ function TradeLogModal({ seed, options, onClose }) {
           </div>
         )}
       </Panel>
+      {showCreateAccount && (
+        <ManualAccountModal
+          lang={document.documentElement.lang || 'fa'} editing={null}
+          onClose={() => setShowCreateAccount(false)}
+          onSaved={(id) => { setShowCreateAccount(false); setAccountError(false); handleAccount(id); }}
+        />
+      )}
     </div>
   );
 }

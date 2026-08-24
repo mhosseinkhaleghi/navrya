@@ -32,6 +32,7 @@
   function domainsForActiveId(activeId) {
     if (activeId === 'dashboard') return ['dashboard'];
     if (activeId === 'sessions') return ['sessions', 'trade-planning'];
+    if (activeId === 'accounts') return ['trading-accounts', 'trade-planning'];
     if (activeId === 'strategies') return ['strategies', 'patterns', 'trade-planning'];
     if (activeId === 'settings') return ['settings'];
     return [];
@@ -76,6 +77,7 @@
     var resolvedTradeId = opts.activeTradeId || resolveActiveIdByPrefix('trade-details-');
     var resolvedStrategyId = opts.activeStrategyId || resolveActiveIdByPrefix('strategy-editor-');
     var resolvedPatternId = opts.activePatternId || resolveActiveIdByPrefix('pattern-editor-');
+    var resolvedAccountId = opts.activeAccountId || resolveActiveIdByPrefix('account-detail-');
 
     var registry = window.TradeJournalAIKnowledgeRegistry;
     var pageDomainIds = domainsForActiveId(activeId).concat(domainsForHash(hash));
@@ -99,6 +101,7 @@
       tradeId: resolvedTradeId || null,
       strategyId: resolvedStrategyId || null,
       patternId: resolvedPatternId || null,
+      accountId: resolvedAccountId || null,
       workflow: currentContext.workflow || null
     };
 
@@ -122,6 +125,9 @@
       }
       if (domainIdSet['trade-planning'] && resolvedTradeId) {
         memory.getRelevantTrades(message, { activeTradeId: resolvedTradeId }).forEach(function (t) { userMemory.push({ type: 'trade', data: t }); });
+      }
+      if (domainIdSet['trading-accounts'] && resolvedAccountId) {
+        memory.getRelevantAccounts(message, { activeAccountId: resolvedAccountId }).forEach(function (a) { userMemory.push({ type: 'account', data: a }); });
       }
       if (domainIdSet.psychology || domainIdSet['trade-planning']) {
         memory.getRelevantPsychologyContext().forEach(function (p) { userMemory.push({ type: 'psychology', data: p }); });

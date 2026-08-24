@@ -151,10 +151,14 @@ function TradeDetailsModal({ trade, onClose, onChanged }) {
   const ladder = ladderPct(trade);
   const patterns = (patternStore ? patternStore.listSync() : []).filter((p) => (trade.linkedPatternIds || []).indexOf(p.id) > -1);
   const strategy = trade.linkedStrategyId && strategyStore ? strategyStore.find(trade.linkedStrategyId) : null;
+  const accountsStore = window.TradeJournalAccountsStore;
+  const account = trade.accountId && accountsStore ? accountsStore.find(trade.accountId) : null;
   const sessionCity = SESSION_CITY_LABEL[trade.session] || trade.session;
   const context = [
     { label: t('session'), value: sessionCity + (trade.createdAt ? ' · ' + ti.date(trade.createdAt, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '') },
+    { label: t('account'), value: account ? account.firm : t('noAccount') },
     { label: t('strategy'), value: strategy ? strategy.name : t('noStrategy') },
+    { label: t('instrument'), value: trade.instrument || '—' },
     { label: t('timeframe'), value: trade.primaryTimeframe || '—' },
     { label: t('thesis'), value: trade.chartNote || t('noThesis') }
   ];

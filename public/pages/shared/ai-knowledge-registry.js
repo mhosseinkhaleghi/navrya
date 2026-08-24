@@ -148,6 +148,26 @@
     verifiedAgainst: ['navrya-src/tradeCalculatorModal.jsx', 'navrya-src/dashboardView.jsx', 'navrya-src/strategiesHubView.jsx', 'public/pages/shared/trade.types.js']
   });
 
+  // Deliberately id 'trading-accounts', not 'accounts' or 'account' - the 'account' domain
+  // registered below (in this same file) is the user's own profile/XP/subscriptions page, an
+  // entirely different real page (#account/profile). Confusing the two would either silently
+  // collide (registerKnowledgeDomain() rejects a duplicate id) or genuinely mislead the user
+  // between "my profile" and "my prop-firm/personal trading accounts."
+  registerKnowledgeDomain({
+    id: 'trading-accounts',
+    title: 'Accounts (Prop Firm / Personal)',
+    description: 'A prop-firm seat or personal trading book, its own rules (loss limits, targets, drawdown, position constraints for a prop account; self-set caps/goals for a personal one), and an account-aware pre-trade check. Every account is manual - NAVRYA has no live broker/prop-firm API integration, so equity, today\'s P/L, total P/L, and open risk are always derived from the account\'s starting balance plus its own real, stored trades, never a live feed.',
+    routes: ["activeId: 'accounts' (Portfolio), then an account's own Overview/Rules & compliance/Pre-trade check/Performance/Behaviour tabs"],
+    entities: ['Account {id,kind:"prop"|"personal",firm,program,platform,numberMasked,status:"active"|"archived",currency,startDate,startingBalance,rules}', 'Trade.accountId links a Trade to one owned Account'],
+    workflows: ['create/edit an account by hand (also available via chat: account.create/account.edit)', 'open an existing account (also available via chat: account.open)', 'run a pre-trade check against an account\'s real rules', 'filter trades/positions by account'],
+    capabilities: ['every rule state (SAFE/IN PROGRESS/WATCH/DANGER/VIOLATED) and every pre-trade verdict is computed by the real, deterministic accounts-engine.js from the account\'s configured rules and its own real trades - never an LLM judgment, and never shown as a number when the account has not configured that rule or has too little trade history yet (shown as insufficient data instead)'],
+    terms: ['account', 'prop firm', 'prop account', 'personal account', 'daily loss limit', 'drawdown', 'profit target', 'trading days', 'consistency', 'pre-trade check', 'risk runway', 'hard floor', 'daily allowance'],
+    relationships: ['Trade.accountId links a Trade to one owned Account (never another user\'s)', 'an account can be linked from many Trades, and a Trade\'s Strategy/Pattern links are independent of its Account link'],
+    relatedDomains: ['trade-planning', 'strategies', 'patterns'],
+    notes: 'There is no "pass probability" number anywhere in this domain unless a real, documented predictive model backs one - today none does, so the Overview tab always shows "insufficient data" there rather than a guess. There is also no broker/prop-firm connection wizard - "connect" flows are intentionally not offered; only "create account manually" is.',
+    verifiedAgainst: ['navrya-src/accountsView.jsx', 'public/pages/shared/accounts.types.js', 'public/pages/shared/accounts-engine.js', 'public/pages/shared/accounts-store.js']
+  });
+
   registerKnowledgeDomain({
     id: 'strategies',
     title: 'Strategies',

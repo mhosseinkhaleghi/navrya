@@ -92,7 +92,7 @@ function mapTradingSession(row, entries, activityLog) {
     status: row.status, updateIntervalMinutes: row.update_interval_minutes, gracePeriodMinutes: row.grace_period_minutes,
     fateSummary: row.fate_summary, previousSessionSummary: row.previous_session_summary,
     aiSessionAnalysis: row.ai_session_analysis, aiSessionAnalysisResult: row.ai_session_analysis_result,
-    finalEntryId: row.final_entry_id, entries: entries || [], activityLog: activityLog || [],
+    finalEntryId: row.final_entry_id, accountId: row.account_id, entries: entries || [], activityLog: activityLog || [],
     createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
@@ -166,12 +166,52 @@ function mapTrade(row, screenshots, emotionLog) {
     outcome: row.outcome, pnl: row.pnl == null ? null : Number(row.pnl), pnlPercent: row.pnl_percent == null ? null : Number(row.pnl_percent),
     session: row.session, primaryTimeframe: row.primary_timeframe, timeframeTrends: row.timeframe_trends || [],
     conceptTags: row.concept_tags || [], linkedPatternIds: row.linked_pattern_ids || [], linkedStrategyId: row.linked_strategy_id,
+    accountId: row.account_id, instrument: row.instrument,
     chartNote: row.chart_note, statusHistory: row.status_history || [],
     source: { character: row.source_character, sessionId: row.source_session_id, scenarioId: row.source_scenario_id },
     aiPredictionLinks: row.ai_prediction_links || [], aiInitialAnalysis: row.ai_initial_analysis,
     disciplineImpact: row.discipline_impact == null ? 0 : Number(row.discipline_impact),
     screenshots: screenshots || [], emotionLog: emotionLog || [],
     createdAt: row.created_at, updatedAt: row.updated_at, openedAt: row.opened_at, closedAt: row.closed_at
+  };
+}
+
+// NAVRYA Accounts domain (021_accounts.sql). See repo.memory.mjs's identical normalizeRules()
+// for why rules is one jsonb blob rather than ~10 nullable columns.
+// Real IANA-zone validation (Node's Intl matches the browser's) - an unrecognized string is
+// rejected back to the safe UTC default server-side too, never trusted verbatim from a client.
+function isValidTz(tz) { if (!tz || typeof tz !== 'string') return false; try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch (_) { return false; } }
+function normalizeRules(kind, rules) {
+  const r = rules || {};
+  const num = (v) => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+  const resetHour = (v) => { const h = num(v); return h === null ? 0 : Math.max(0, Math.min(23, Math.round(h))); };
+  const reset = {
+    dailyResetTimezone: isValidTz(r.dailyResetTimezone) ? r.dailyResetTimezone : 'UTC',
+    dailyResetHour: resetHour(r.dailyResetHour),
+    dailyLossBasis: ['realized', 'realized_and_open'].indexOf(r.dailyLossBasis) > -1 ? r.dailyLossBasis : 'realized'
+  };
+  if (kind === 'personal') {
+    return {
+      kind: 'personal',
+      dailyLossCap: num(r.dailyLossCap), maxRiskPerTradePercent: num(r.maxRiskPerTradePercent),
+      monthlyGoalPercent: num(r.monthlyGoalPercent), maxOpenPositions: num(r.maxOpenPositions),
+      hardFloor: num(r.hardFloor), ...reset
+    };
+  }
+  return {
+    kind: 'prop',
+    profitTargetPercent: num(r.profitTargetPercent), dailyLossLimitPercent: num(r.dailyLossLimitPercent),
+    maxDrawdownPercent: num(r.maxDrawdownPercent), drawdownType: r.drawdownType === 'trailing' ? 'trailing' : 'static',
+    minTradingDays: num(r.minTradingDays), consistencyCapPercent: num(r.consistencyCapPercent),
+    maxLotSize: num(r.maxLotSize), maxOpenPositions: num(r.maxOpenPositions), maxRiskPerTradePercent: num(r.maxRiskPerTradePercent), ...reset
+  };
+}
+function mapAccount(row) {
+  return {
+    id: row.id, userId: row.user_id, kind: row.kind, firm: row.firm, program: row.program, platform: row.platform,
+    numberMasked: row.number_masked, status: row.status, archivedAt: row.archived_at, currency: row.currency,
+    startDate: row.start_date, startingBalance: row.starting_balance == null ? 0 : Number(row.starting_balance),
+    rules: row.rules || {}, createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
 
@@ -1048,8 +1088,20 @@ export function createPgRepo(pool) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const { rows: ownerRows } = await client.query('SELECT user_id FROM trading_sessions WHERE id=$1', [record.id]);
+        const { rows: ownerRows } = await client.query('SELECT user_id, account_id FROM trading_sessions WHERE id=$1', [record.id]);
         if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_SESSION_OWNER');
+
+        // Defect #5: a session's accountId is additive and optional (never mandatory the way a
+        // trade's is - see 022_sessions_accounts.sql's comment), but when one IS supplied it must
+        // still resolve to a real account this same user owns, and an archived account can never
+        // be a NEW assignment (defect #3 - "never selectable for ... session"), mirroring the
+        // trades.upsert() checks above field-for-field.
+        if (record.accountId) {
+          const { rows: accountOwnerRows } = await client.query('SELECT user_id, status FROM accounts WHERE id=$1', [record.accountId]);
+          if (!accountOwnerRows[0] || accountOwnerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+          const isNewAssignment = !ownerRows[0] || ownerRows[0].account_id !== record.accountId;
+          if (isNewAssignment && accountOwnerRows[0].status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
+        }
 
         const startedAt = record.startedAt ? new Date(record.startedAt).toISOString() : null;
         const closedAt = record.closedAt ? new Date(record.closedAt).toISOString() : null;
@@ -1057,13 +1109,13 @@ export function createPgRepo(pool) {
           `INSERT INTO trading_sessions
             (id, user_id, character, name, market, timeframe, date, jalali, started_at, closed_at, status,
              update_interval_minutes, grace_period_minutes, fate_summary, previous_session_summary,
-             ai_session_analysis, ai_session_analysis_result, final_entry_id, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,now()),$10,$11,$12,$13,$14,$15,$16,$17,$18,now())
+             ai_session_analysis, ai_session_analysis_result, final_entry_id, account_id, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,now()),$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
            ON CONFLICT (id) DO UPDATE SET
              character=$3, name=$4, market=$5, timeframe=$6, date=$7, jalali=$8,
              started_at=COALESCE($9, trading_sessions.started_at), closed_at=$10, status=$11,
              update_interval_minutes=$12, grace_period_minutes=$13, fate_summary=$14, previous_session_summary=$15,
-             ai_session_analysis=$16, ai_session_analysis_result=$17, final_entry_id=$18, updated_at=now()
+             ai_session_analysis=$16, ai_session_analysis_result=$17, final_entry_id=$18, account_id=$19, updated_at=now()
            RETURNING *`,
           // market is NOT NULL (006_trading_sessions.sql) - a bare `|| null` here is what a real
           // NOT-NULL constraint violation looks like the moment any caller sends an empty/missing
@@ -1073,7 +1125,7 @@ export function createPgRepo(pool) {
             record.status === 'closed' ? 'closed' : 'open', Number(record.updateIntervalMinutes) || 30,
             Number(record.gracePeriodMinutes) || 5, JSON.stringify(record.fateSummary ?? null),
             JSON.stringify(record.previousSessionSummary ?? null), record.aiSessionAnalysis || null,
-            JSON.stringify(record.aiSessionAnalysisResult ?? null), record.finalEntryId || null]
+            JSON.stringify(record.aiSessionAnalysisResult ?? null), record.finalEntryId || null, record.accountId || null]
         );
 
         await client.query('DELETE FROM trading_session_entries WHERE session_id=$1', [record.id]);
@@ -1412,27 +1464,46 @@ export function createPgRepo(pool) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const { rows: ownerRows } = await client.query('SELECT user_id FROM trades WHERE id=$1', [record.id]);
+        const { rows: ownerRows } = await client.query('SELECT user_id, account_id FROM trades WHERE id=$1', [record.id]);
         if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
+        // Defect #1: see repo.memory.mjs's identical check for the full reasoning - a brand-new
+        // trade must carry a real accountId once the user owns at least one active account.
+        if (!record.accountId && !ownerRows[0]) {
+          const { rows: activeRows } = await client.query("SELECT 1 FROM accounts WHERE user_id=$1 AND status='active' LIMIT 1", [userId]);
+          if (activeRows[0]) throw new ApiError(400, 'ACCOUNT_REQUIRED');
+        }
+        // Same existence-collapses-with-ownership check as repo.memory.mjs - see 021_accounts.sql's
+        // comment on trades.account_id for why this is a hard FK, not the loose linked_strategy_id
+        // convention.
+        if (record.accountId) {
+          const { rows: accountOwnerRows } = await client.query('SELECT user_id, status FROM accounts WHERE id=$1', [record.accountId]);
+          if (!accountOwnerRows[0] || accountOwnerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+          // Archived accounts are read-only for NEW assignment (defect #3) - see
+          // repo.memory.mjs's identical check for the full reasoning. A trade already carrying
+          // this exact account_id before it was archived is left alone; only a fresh/changed
+          // assignment onto an archived account is rejected.
+          const isNewAssignment = !ownerRows[0] || ownerRows[0].account_id !== record.accountId;
+          if (isNewAssignment && accountOwnerRows[0].status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
+        }
 
         const { rows: tradeRows } = await client.query(
           `INSERT INTO trades
             (id, user_id, status, direction, entry_mode, entry_price, stop_loss, take_profits, sl_distance_percent,
              risk_percent, risk_amount, leverage, position_size, margin_required, liquidation_price, rr, margin_mode,
              commission, breakeven_percent, exit_price, outcome, pnl, pnl_percent, session, primary_timeframe,
-             timeframe_trends, concept_tags, linked_pattern_ids, linked_strategy_id, chart_note, status_history,
+             timeframe_trends, concept_tags, linked_pattern_ids, linked_strategy_id, account_id, instrument, chart_note, status_history,
              source_character, source_session_id, source_scenario_id, ai_prediction_links, ai_initial_analysis,
              discipline_impact, opened_at, closed_at, updated_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,
-                   $28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,now())
+                   $28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,now())
            ON CONFLICT (id) DO UPDATE SET
              status=$3, direction=$4, entry_mode=$5, entry_price=$6, stop_loss=$7, take_profits=$8, sl_distance_percent=$9,
              risk_percent=$10, risk_amount=$11, leverage=$12, position_size=$13, margin_required=$14, liquidation_price=$15,
              rr=$16, margin_mode=$17, commission=$18, breakeven_percent=$19, exit_price=$20, outcome=$21, pnl=$22,
              pnl_percent=$23, session=$24, primary_timeframe=$25, timeframe_trends=$26, concept_tags=$27,
-             linked_pattern_ids=$28, linked_strategy_id=$29, chart_note=$30, status_history=$31, source_character=$32,
-             source_session_id=$33, source_scenario_id=$34, ai_prediction_links=$35, ai_initial_analysis=$36,
-             discipline_impact=$37, opened_at=$38, closed_at=$39, updated_at=now()
+             linked_pattern_ids=$28, linked_strategy_id=$29, account_id=$30, instrument=$31, chart_note=$32, status_history=$33,
+             source_character=$34, source_session_id=$35, source_scenario_id=$36, ai_prediction_links=$37, ai_initial_analysis=$38,
+             discipline_impact=$39, opened_at=$40, closed_at=$41, updated_at=now()
            RETURNING *`,
           [record.id, userId,
             ['hunting', 'open', 'closed', 'cancelled'].indexOf(record.status) > -1 ? record.status : 'hunting',
@@ -1444,7 +1515,9 @@ export function createPgRepo(pool) {
             record.breakevenPercent ?? null, record.exitPrice ?? null, record.outcome || null, record.pnl ?? null,
             record.pnlPercent ?? null, record.session || 'london', record.primaryTimeframe || null,
             JSON.stringify(record.timeframeTrends || []), JSON.stringify(record.conceptTags || []),
-            JSON.stringify(record.linkedPatternIds || []), record.linkedStrategyId || null, record.chartNote || '',
+            JSON.stringify(record.linkedPatternIds || []), record.linkedStrategyId || null,
+            record.accountId || null, (typeof record.instrument === 'string' && record.instrument.trim()) ? record.instrument.trim() : null,
+            record.chartNote || '',
             JSON.stringify(record.statusHistory || []), source.character || null, source.sessionId || null,
             source.scenarioId || null, JSON.stringify(record.aiPredictionLinks || []), JSON.stringify(record.aiInitialAnalysis ?? null),
             Number(record.disciplineImpact || 0), record.openedAt ? new Date(record.openedAt).toISOString() : null,
@@ -1503,6 +1576,54 @@ export function createPgRepo(pool) {
       if (!rows[0]) return;
       if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
       await pool.query('DELETE FROM trades WHERE id=$1', [id]); // cascades to screenshots/emotion log
+    }
+  };
+
+  // NAVRYA Accounts domain (021_accounts.sql). See repo.memory.mjs's identical implementation
+  // for the reasoning (no equity/balance/connection-state column - derived client-side only).
+  const accounts = {
+    async upsert(userId, record) {
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows: ownerRows } = await pool.query('SELECT user_id FROM accounts WHERE id=$1', [record.id]);
+      if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+      const kind = record.kind === 'personal' ? 'personal' : 'prop';
+      const status = record.status === 'archived' ? 'archived' : 'active';
+      const { rows } = await pool.query(
+        `INSERT INTO accounts
+           (id, user_id, kind, firm, program, platform, number_masked, status, archived_at, currency, start_date, starting_balance, rules, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
+         ON CONFLICT (id) DO UPDATE SET
+           kind=$3, firm=$4, program=$5, platform=$6, number_masked=$7, status=$8, archived_at=$9,
+           currency=$10, start_date=$11, starting_balance=$12, rules=$13, updated_at=now()
+         RETURNING *`,
+        [record.id, userId, kind, String(record.firm || '').trim(), record.program || null, record.platform || null,
+          record.numberMasked || null, status, status === 'archived' ? (record.archivedAt ? new Date(record.archivedAt).toISOString() : new Date().toISOString()) : null,
+          ['USD', 'EUR', 'GBP', 'AUD'].indexOf(record.currency) > -1 ? record.currency : 'USD',
+          record.startDate || new Date().toISOString().slice(0, 10), Number(record.startingBalance) || 0,
+          JSON.stringify(normalizeRules(kind, record.rules))]
+      );
+      return mapAccount(rows[0]);
+    },
+    async get(userId, id) {
+      const { rows } = await pool.query('SELECT * FROM accounts WHERE id=$1 AND user_id=$2', [id, userId]);
+      return rows[0] ? mapAccount(rows[0]) : null;
+    },
+    async listByUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM accounts WHERE user_id=$1 ORDER BY updated_at DESC', [userId]);
+      return rows.map(mapAccount);
+    },
+    // Archives rather than hard-deletes whenever any trade still references the account -
+    // trade history must never be silently orphaned/lost.
+    async remove(userId, id) {
+      const { rows } = await pool.query('SELECT user_id FROM accounts WHERE id=$1', [id]);
+      if (!rows[0]) return;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ACCOUNT_OWNER');
+      const { rows: referencing } = await pool.query('SELECT id FROM trades WHERE account_id=$1 LIMIT 1', [id]);
+      if (referencing.length) {
+        await pool.query(`UPDATE accounts SET status='archived', archived_at=now(), updated_at=now() WHERE id=$1`, [id]);
+        return;
+      }
+      await pool.query('DELETE FROM accounts WHERE id=$1', [id]);
     }
   };
 
@@ -1843,7 +1964,7 @@ export function createPgRepo(pool) {
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, trades, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health
   };
 }

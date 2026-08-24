@@ -165,3 +165,48 @@ test('normalizeField() passes an unrecognized path straight through unchanged', 
   const t = await actionsSandbox();
   assert.equal(t.normalizeField('somethingElse', 'raw-value'), 'raw-value');
 });
+
+// ---- resolveAccountId() - stricter than resolveStrategyId/resolvePatternIds on purpose: an
+// account is a real money/ownership boundary, so an ambiguous match must return null, never a
+// first-match guess. See ai-trade-actions.js's own comment on this deliberate divergence. ----
+
+test('resolveAccountId() matches a single exact (case-insensitive) firm name', async () => {
+  const t = await actionsSandbox();
+  const list = [{ id: 'a1', firm: 'Atlas Funding' }, { id: 'a2', firm: 'Vertex Capital' }];
+  assert.equal(t.resolveAccountId('atlas funding', list), 'a1');
+});
+
+test('resolveAccountId() falls back to a single partial match', async () => {
+  const t = await actionsSandbox();
+  const list = [{ id: 'a1', firm: 'Atlas Funding' }, { id: 'a2', firm: 'Vertex Capital' }];
+  assert.equal(t.resolveAccountId('atlas', list), 'a1');
+});
+
+test('resolveAccountId() returns null (never a guess) when the name is unmatched, or when the list/name is empty', async () => {
+  const t = await actionsSandbox();
+  const list = [{ id: 'a1', firm: 'Atlas Funding' }];
+  assert.equal(t.resolveAccountId('quorum', list), null);
+  assert.equal(t.resolveAccountId('atlas', []), null);
+  assert.equal(t.resolveAccountId('', list), null);
+});
+
+test('resolveAccountId() returns null on an ambiguous partial match across two different accounts - it must ask, never guess', async () => {
+  const t = await actionsSandbox();
+  const list = [{ id: 'a1', firm: 'Atlas Funding' }, { id: 'a2', firm: 'Atlas Capital' }];
+  assert.equal(t.resolveAccountId('atlas', list), null, 'two accounts both contain "atlas" - this must not silently pick the first one');
+});
+
+test('resolveAccountId() returns null even on an ambiguous EXACT match (two accounts named identically)', async () => {
+  const t = await actionsSandbox();
+  const list = [{ id: 'a1', firm: 'IC Markets' }, { id: 'a2', firm: 'IC Markets' }];
+  assert.equal(t.resolveAccountId('ic markets', list), null);
+});
+
+test('normalizeField() dispatches accountId through resolveAccountId and instrument through uppercasing', async () => {
+  const t = await actionsSandbox();
+  const lookups = { accounts: [{ id: 'a1', firm: 'Atlas Funding' }] };
+  assert.equal(t.normalizeField('accountId', 'Atlas Funding', lookups), 'a1');
+  assert.equal(t.normalizeField('accountId', 'nonexistent firm', lookups), null);
+  assert.equal(t.normalizeField('instrument', 'xauusd'), 'XAUUSD');
+  assert.equal(t.normalizeField('instrument', ''), null);
+});
