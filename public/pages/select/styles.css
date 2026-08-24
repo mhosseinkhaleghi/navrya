@@ -157,6 +157,51 @@ svg.icon { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: 
 .field input::placeholder { color: var(--text-disabled); }
 .field[hidden] { display: none; }
 
+/* ---------- Password requirements checklist (sign-up only) ---------- */
+.pw-checklist {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 14px; border-radius: var(--radius-8); border: var(--frame-outer); background: rgba(244, 234, 215, .03);
+  opacity: 0; transform: translateY(-6px);
+  transition: opacity var(--dur-expand) var(--ease-out), transform var(--dur-expand) var(--ease-out);
+}
+.pw-checklist[hidden] { display: none; }
+.pw-checklist.is-open { opacity: 1; transform: translateY(0); }
+.pw-checklist.shake { animation: pwShake 380ms var(--ease-standard); }
+@keyframes pwShake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+
+.pw-strength-track { height: 3px; border-radius: var(--radius-pill); background: rgba(244, 234, 215, .08); overflow: hidden; }
+.pw-strength-fill {
+  display: block; height: 100%; width: 0%; border-radius: var(--radius-pill);
+  background: var(--danger); transition: width var(--dur-progress) var(--ease-out), background-color var(--dur-progress) var(--ease-out);
+}
+.pw-strength-fill[data-level="partial"] { background: var(--warning); }
+.pw-strength-fill[data-level="full"] { background: var(--success); }
+
+.pw-req-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pw-req { display: flex; align-items: center; gap: 9px; font: var(--type-caption); color: var(--text-muted); transition: color var(--dur-hover) var(--ease-out); }
+.pw-req-mark {
+  flex: none; width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center;
+  border: 1.5px solid var(--text-disabled);
+  transition: border-color var(--dur-expand) var(--ease-out), background-color var(--dur-expand) var(--ease-out), transform var(--dur-expand) cubic-bezier(.34, 1.56, .64, 1);
+}
+.pw-req-check {
+  opacity: 0; transform: scale(.4); stroke: var(--ink-950); stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round;
+  transition: opacity var(--dur-hover) var(--ease-out), transform var(--dur-expand) cubic-bezier(.34, 1.56, .64, 1);
+}
+.pw-req.is-met { color: var(--parchment); }
+.pw-req.is-met .pw-req-mark { border-color: var(--success); background: var(--success); transform: scale(1.1); }
+.pw-req.is-met .pw-req-check { opacity: 1; transform: scale(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pw-checklist, .pw-req-mark, .pw-req-check, .pw-strength-fill { transition: none; }
+  .pw-checklist.shake { animation: none; }
+}
+
 .auth-error { min-height: 16px; margin: 0; color: var(--danger); font: var(--type-caption); }
 
 .btn-primary {
@@ -306,7 +351,7 @@ html[dir="rtl"] .head-copy, html[dir="rtl"] .journey-note, html[dir="rtl"] .card
 html[dir="rtl"] .rank-intro, html[dir="rtl"] .picked-text, html[dir="rtl"] .showcase-heading,
 html[dir="rtl"] .showcase-traits, html[dir="rtl"] .trait-row span { direction: rtl; text-align: right; unicode-bidi: plaintext; }
 html[dir="rtl"] .field-row, html[dir="rtl"] .trait-row, html[dir="rtl"] .card-name,
-html[dir="rtl"] .showcase-eyebrow { direction: rtl; }
+html[dir="rtl"] .showcase-eyebrow, html[dir="rtl"] .pw-req { direction: rtl; }
 html[dir="rtl"] .card-name, html[dir="rtl"] .showcase-heading { text-align: center; }
 html[dir="rtl"] .language-menu { right: 0; left: auto; }
 html[dir="rtl"] .language-menu button { text-align: right; }

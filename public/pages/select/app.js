@@ -29,6 +29,7 @@ const translations = {
     traderNameLabel: 'Trader name', traderNamePlaceholder: 'Rayan Land',
     emailLabel: 'Email', emailFieldPlaceholder: 'trader@navrya.app',
     passwordLabel: 'Password', forgotPassword: 'Forgot?',
+    pwReqLength: 'At least 15 characters', pwReqCommon: 'Not a common or predictable password', pwReqIdentifier: 'Doesn’t contain your name or email',
     continueLabelSignin: 'Continue', continueLabelSignup: 'Create account',
     switchPromptSignin: 'No account yet?', switchPromptSignup: 'Already trading with NAVRYA?',
     switchActionSignin: 'Sign up', switchActionSignup: 'Sign in',
@@ -47,9 +48,11 @@ const translations = {
     sageName: 'The Sage', sageRole: 'Market Sage', sageRank: 'Grand Market Sage · IV', sageMotto: 'The goal is not profit; it is understanding.', sageBullet1: 'Continuous deep learning', sageBullet2: 'Build patterns and laws', sageBullet3: 'Focus on the market’s essence', sageBullet4: 'Search for market wisdom',
     authErrorOffline: 'Could not reach the server. Is the community backend running? (npm run dev:community-api)',
     authSuccess: 'You’re in — pick your character.', googleNotConfigured: 'Google sign-in is not configured yet.', googleError: 'Google sign-in failed.',
-    err_INVALID_EMAIL: 'Enter a valid email address.', err_PASSWORD_TOO_SHORT: 'Password must be at least 4 characters.', err_VALIDATION_FAILED: 'Please fill in every field.',
+    err_INVALID_EMAIL: 'Enter a valid email address.', err_PASSWORD_TOO_SHORT: 'Password must be at least 15 characters.', err_VALIDATION_FAILED: 'Please fill in every field.',
     err_EMAIL_TAKEN: 'An account with this email already exists — log in instead.', err_INVALID_CREDENTIALS: 'Incorrect email or password.', err_ACCOUNT_SUSPENDED: 'This account has been suspended.',
-    err_EMAIL_ALREADY_REGISTERED: 'This email already has a password account — log in with email/password instead.'
+    err_EMAIL_ALREADY_REGISTERED: 'This email already has a password account — log in with email/password instead.',
+    err_PASSWORD_REQUIREMENTS_UNMET: 'Your password needs to meet every requirement below.', err_PASSWORD_TOO_COMMON: 'This password is too common — choose something more unique.',
+    err_PASSWORD_CONTAINS_IDENTIFIER: 'Your password can’t contain your name or email.', err_PASSWORD_TOO_LONG: 'That password is too long.'
   },
   fa: {
     brandTagline: 'ثبت کن. تحلیل کن. استاد شو.',
@@ -62,6 +65,7 @@ const translations = {
     traderNameLabel: 'نام معامله‌گر', traderNamePlaceholder: 'رایان لند',
     emailLabel: 'ایمیل', emailFieldPlaceholder: 'trader@navrya.app',
     passwordLabel: 'رمز عبور', forgotPassword: 'فراموشی رمز؟',
+    pwReqLength: 'حداقل ۱۵ کاراکتر', pwReqCommon: 'رمز عبور رایج یا قابل‌حدس نباشد', pwReqIdentifier: 'شامل نام یا ایمیل تو نباشد',
     continueLabelSignin: 'ادامه', continueLabelSignup: 'ساخت حساب',
     switchPromptSignin: 'حساب کاربری نداری؟', switchPromptSignup: 'قبلاً با NAVRYA معامله می‌کنی؟',
     switchActionSignin: 'ثبت‌نام', switchActionSignup: 'ورود',
@@ -80,9 +84,11 @@ const translations = {
     sageName: 'استاد', sageRole: 'استاد بازار', sageRank: 'استاد بزرگ بازار · IV', sageMotto: 'هدف سود نیست؛ هدف فهم بازار است.', sageBullet1: 'یادگیری عمیق و مداوم', sageBullet2: 'ساخت الگوها و قوانین', sageBullet3: 'تمرکز بر جوهر بازار', sageBullet4: 'جست‌وجوی خرد بازار',
     authErrorOffline: 'اتصال به سرور برقرار نشد. سرور بخش انجمن اجرا شده؟ (npm run dev:community-api)',
     authSuccess: 'آماده‌ای — شخصیتت را انتخاب کن.', googleNotConfigured: 'ورود با گوگل هنوز تنظیم نشده است.', googleError: 'ورود با گوگل ناموفق بود.',
-    err_INVALID_EMAIL: 'یک ایمیل معتبر وارد کن.', err_PASSWORD_TOO_SHORT: 'رمز عبور باید حداقل ۴ کاراکتر باشد.', err_VALIDATION_FAILED: 'همهٔ فیلدها را پر کن.',
+    err_INVALID_EMAIL: 'یک ایمیل معتبر وارد کن.', err_PASSWORD_TOO_SHORT: 'رمز عبور باید حداقل ۱۵ کاراکتر باشد.', err_VALIDATION_FAILED: 'همهٔ فیلدها را پر کن.',
     err_EMAIL_TAKEN: 'حسابی با این ایمیل قبلاً ساخته شده — به‌جای آن وارد شو.', err_INVALID_CREDENTIALS: 'ایمیل یا رمز عبور اشتباه است.', err_ACCOUNT_SUSPENDED: 'این حساب مسدود شده است.',
-    err_EMAIL_ALREADY_REGISTERED: 'این ایمیل قبلاً با رمز عبور ثبت شده — با ایمیل/رمز وارد شو.'
+    err_EMAIL_ALREADY_REGISTERED: 'این ایمیل قبلاً با رمز عبور ثبت شده — با ایمیل/رمز وارد شو.',
+    err_PASSWORD_REQUIREMENTS_UNMET: 'رمز عبور باید همهٔ الزامات زیر را داشته باشد.', err_PASSWORD_TOO_COMMON: 'این رمز عبور بسیار رایج است — رمزی منحصربه‌فردتر انتخاب کن.',
+    err_PASSWORD_CONTAINS_IDENTIFIER: 'رمز عبور نباید شامل نام یا ایمیل تو باشد.', err_PASSWORD_TOO_LONG: 'این رمز عبور بیش‌ازحد طولانی است.'
   },
   ar: {
     brandTagline: 'سجّل. حلّل. أتقن.',
@@ -95,6 +101,7 @@ const translations = {
     traderNameLabel: 'اسم المتداول', traderNamePlaceholder: 'رايان لاند',
     emailLabel: 'البريد الإلكتروني', emailFieldPlaceholder: 'trader@navrya.app',
     passwordLabel: 'كلمة المرور', forgotPassword: 'نسيت كلمة المرور؟',
+    pwReqLength: 'ما لا يقل عن 15 حرفًا', pwReqCommon: 'ليست كلمة مرور شائعة أو يسهل تخمينها', pwReqIdentifier: 'لا تحتوي على اسمك أو بريدك الإلكتروني',
     continueLabelSignin: 'متابعة', continueLabelSignup: 'إنشاء الحساب',
     switchPromptSignin: 'ليس لديك حساب؟', switchPromptSignup: 'تتداول بالفعل مع NAVRYA؟',
     switchActionSignin: 'إنشاء حساب', switchActionSignup: 'تسجيل الدخول',
@@ -113,9 +120,11 @@ const translations = {
     sageName: 'الحكيم', sageRole: 'حكيم السوق', sageRank: 'الحكيم الأعظم للسوق · IV', sageMotto: 'الهدف ليس الربح بل الفهم.', sageBullet1: 'تعلم عميق مستمر', sageBullet2: 'بناء الأنماط والقوانين', sageBullet3: 'التركيز على جوهر السوق', sageBullet4: 'البحث عن حكمة السوق',
     authErrorOffline: 'تعذر الوصول إلى الخادم. هل خادم المجتمع يعمل؟ (npm run dev:community-api)',
     authSuccess: 'أنت جاهز — اختر شخصيتك.', googleNotConfigured: 'تسجيل الدخول عبر Google غير مُهيأ بعد.', googleError: 'فشل تسجيل الدخول عبر Google.',
-    err_INVALID_EMAIL: 'أدخل بريدًا إلكترونيًا صالحًا.', err_PASSWORD_TOO_SHORT: 'يجب أن تتكون كلمة المرور من 4 أحرف على الأقل.', err_VALIDATION_FAILED: 'يرجى ملء كل الحقول.',
+    err_INVALID_EMAIL: 'أدخل بريدًا إلكترونيًا صالحًا.', err_PASSWORD_TOO_SHORT: 'يجب أن تتكون كلمة المرور من 15 حرفًا على الأقل.', err_VALIDATION_FAILED: 'يرجى ملء كل الحقول.',
     err_EMAIL_TAKEN: 'يوجد حساب بهذا البريد الإلكتروني بالفعل — سجّل الدخول بدلاً من ذلك.', err_INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.', err_ACCOUNT_SUSPENDED: 'هذا الحساب موقوف.',
-    err_EMAIL_ALREADY_REGISTERED: 'هذا البريد الإلكتروني مسجل بالفعل بكلمة مرور — سجّل الدخول بالبريد الإلكتروني وكلمة المرور بدلاً من ذلك.'
+    err_EMAIL_ALREADY_REGISTERED: 'هذا البريد الإلكتروني مسجل بالفعل بكلمة مرور — سجّل الدخول بالبريد الإلكتروني وكلمة المرور بدلاً من ذلك.',
+    err_PASSWORD_REQUIREMENTS_UNMET: 'يجب أن تستوفي كلمة المرور جميع المتطلبات أدناه.', err_PASSWORD_TOO_COMMON: 'كلمة المرور هذه شائعة جدًا — اختر كلمة أكثر تميزًا.',
+    err_PASSWORD_CONTAINS_IDENTIFIER: 'لا يمكن أن تحتوي كلمة المرور على اسمك أو بريدك الإلكتروني.', err_PASSWORD_TOO_LONG: 'كلمة المرور هذه طويلة جدًا.'
   },
   es: {
     brandTagline: 'Registra. Analiza. Domina.',
@@ -128,6 +137,7 @@ const translations = {
     traderNameLabel: 'Nombre de trader', traderNamePlaceholder: 'Rayan Land',
     emailLabel: 'Correo electrónico', emailFieldPlaceholder: 'trader@navrya.app',
     passwordLabel: 'Contraseña', forgotPassword: '¿Olvidaste?',
+    pwReqLength: 'Al menos 15 caracteres', pwReqCommon: 'Que no sea una contraseña común o predecible', pwReqIdentifier: 'Que no contenga tu nombre o correo electrónico',
     continueLabelSignin: 'Continuar', continueLabelSignup: 'Crear cuenta',
     switchPromptSignin: '¿No tienes una cuenta?', switchPromptSignup: '¿Ya operas con NAVRYA?',
     switchActionSignin: 'Regístrate', switchActionSignup: 'Iniciar sesión',
@@ -146,9 +156,11 @@ const translations = {
     sageName: 'El sabio', sageRole: 'Sabio del mercado', sageRank: 'Gran Sabio del Mercado · IV', sageMotto: 'La meta no es el beneficio; es comprender.', sageBullet1: 'Aprendizaje profundo continuo', sageBullet2: 'Crea patrones y leyes', sageBullet3: 'Enfoque en la esencia del mercado', sageBullet4: 'Busca sabiduría de mercado',
     authErrorOffline: 'No se pudo conectar con el servidor. ¿Está corriendo el backend de comunidad? (npm run dev:community-api)',
     authSuccess: 'Listo — elige tu personaje.', googleNotConfigured: 'El inicio de sesión con Google aún no está configurado.', googleError: 'Error al iniciar sesión con Google.',
-    err_INVALID_EMAIL: 'Introduce un correo electrónico válido.', err_PASSWORD_TOO_SHORT: 'La contraseña debe tener al menos 4 caracteres.', err_VALIDATION_FAILED: 'Completa todos los campos.',
+    err_INVALID_EMAIL: 'Introduce un correo electrónico válido.', err_PASSWORD_TOO_SHORT: 'La contraseña debe tener al menos 15 caracteres.', err_VALIDATION_FAILED: 'Completa todos los campos.',
     err_EMAIL_TAKEN: 'Ya existe una cuenta con este correo — inicia sesión en su lugar.', err_INVALID_CREDENTIALS: 'Correo o contraseña incorrectos.', err_ACCOUNT_SUSPENDED: 'Esta cuenta ha sido suspendida.',
-    err_EMAIL_ALREADY_REGISTERED: 'Este correo ya tiene una cuenta con contraseña — inicia sesión con correo/contraseña en su lugar.'
+    err_EMAIL_ALREADY_REGISTERED: 'Este correo ya tiene una cuenta con contraseña — inicia sesión con correo/contraseña en su lugar.',
+    err_PASSWORD_REQUIREMENTS_UNMET: 'Tu contraseña debe cumplir todos los requisitos siguientes.', err_PASSWORD_TOO_COMMON: 'Esta contraseña es demasiado común — elige algo más único.',
+    err_PASSWORD_CONTAINS_IDENTIFIER: 'Tu contraseña no puede contener tu nombre o correo electrónico.', err_PASSWORD_TOO_LONG: 'Esa contraseña es demasiado larga.'
   }
 };
 
@@ -193,6 +205,10 @@ const nameField = el('nameField');
 const nameInput = el('nameInput');
 const emailInput = el('emailInput');
 const passwordInput = el('passwordInput');
+const forgotLink = el('forgotLink');
+const passwordChecklist = el('passwordChecklist');
+const passwordStrengthFill = el('passwordStrengthFill');
+const pwReqRows = { length: el('pwReqLength'), common: el('pwReqCommon'), identifier: el('pwReqIdentifier') };
 const authError = el('authError');
 const continueBtn = el('continueBtn');
 const continueLabel = el('continueLabel');
@@ -292,6 +308,94 @@ function startSlideTimer() {
 }
 function stopSlideTimer() { window.clearInterval(slideTimer); slideTimer = null; }
 
+// ---------- Password requirements checklist (sign-up only) ----------
+// Advisory/UX-only mirror of the REAL policy enforced server-side
+// (server/community/security/passwords.mjs + common-passwords.mjs) - kept in sync by hand since
+// this static page has no build step to share an ES module with the server. The server is always
+// the real authority; this only lets a trader see and fix a problem before ever submitting.
+const PASSWORD_MIN_LENGTH = 15;
+const COMMON_PASSWORDS = new Set([
+  '123456', '123456789', 'qwerty', 'password', '12345', '12345678', '111111', '1234567',
+  'sunshine', 'qwerty123', 'iloveyou', '1q2w3e4r', '000000', 'qwertyuiop', '123123', 'zaq12wsx',
+  'dragon', 'password1', 'football', 'baseball', 'welcome', 'letmein', 'monkey', 'abc123',
+  'starwars', '123321', 'mustang', 'access', 'shadow', 'master', 'jennifer', 'jordan23',
+  '696969', 'hunter2', 'trustno1', 'batman', 'superman', 'princess', 'flower', 'passw0rd',
+  'admin123', 'charlie', 'donald', 'michael', 'freedom', 'whatever', 'qazwsx', 'michelle',
+  'daniel', 'ginger', 'chelsea', 'summer', 'winter', 'jessica', 'matthew', 'andrew', 'joshua',
+  'passw0rd!', 'p@ssw0rd', 'p@ssword', 'password123', 'password1!', 'iloveyou1', 'welcome123',
+  'changeme', 'letmein123', '1qaz2wsx', 'qwerty12345', 'aaaaaaaa', 'zxcvbnm', 'asdfghjkl',
+  'nicole', 'ashley', 'amanda', 'tigger', 'cheese', 'computer', 'internet', 'service',
+  'canada', 'liverpool', 'arsenal', 'chelsea1', 'newyork', 'london123', 'trading123',
+  'crypto123', 'bitcoin1', 'password!', 'passwordpassword', '12345678910', '1234567890',
+  'qwerty1234', 'iloveyou123', 'admin1234', 'letmein1234', 'welcometoNAVRYA', 'navrya123'
+]);
+function normalizePassword(value) { return String(value || '').toLowerCase().replace(/[\s._-]/g, ''); }
+const NORMALIZED_COMMON_PASSWORDS = new Set(Array.from(COMMON_PASSWORDS, normalizePassword));
+function isSequential(value) {
+  if (value.length < 6) return false;
+  let ascending = true;
+  let descending = true;
+  for (let i = 1; i < value.length; i += 1) {
+    const diff = value.charCodeAt(i) - value.charCodeAt(i - 1);
+    if (diff !== 1) ascending = false;
+    if (diff !== -1) descending = false;
+  }
+  return ascending || descending;
+}
+function isCommonPassword(password) {
+  const normalized = normalizePassword(password);
+  if (NORMALIZED_COMMON_PASSWORDS.has(normalized)) return true;
+  if (/^(.)\1+$/.test(normalized)) return true;
+  return isSequential(normalized);
+}
+
+function passwordRequirementStatus() {
+  const password = passwordInput.value;
+  const hasValue = password.length > 0;
+  const lowered = password.toLowerCase();
+  const emailLocal = (emailInput.value.trim().split('@')[0] || '');
+  const name = nameInput.value.trim();
+  const containsEmail = emailLocal.length >= 5 && lowered.includes(emailLocal.toLowerCase());
+  const containsName = name.length >= 5 && lowered.includes(name.toLowerCase());
+  return {
+    length: hasValue && [...password].length >= PASSWORD_MIN_LENGTH,
+    common: hasValue && !isCommonPassword(password),
+    identifier: hasValue && !containsEmail && !containsName
+  };
+}
+
+function renderPasswordChecklist() {
+  const status = passwordRequirementStatus();
+  Object.keys(pwReqRows).forEach((key) => { pwReqRows[key].classList.toggle('is-met', status[key]); });
+  const total = Object.keys(status).length;
+  const met = Object.values(status).filter(Boolean).length;
+  passwordStrengthFill.style.width = (met / total * 100) + '%';
+  passwordStrengthFill.dataset.level = met === total ? 'full' : met > 0 ? 'partial' : 'empty';
+  return status;
+}
+
+function togglePasswordChecklist(visible) {
+  if (visible) {
+    passwordChecklist.hidden = false;
+    window.requestAnimationFrame(() => passwordChecklist.classList.add('is-open'));
+  } else {
+    passwordChecklist.classList.remove('is-open');
+    window.setTimeout(() => { if (!passwordChecklist.classList.contains('is-open')) passwordChecklist.hidden = true; }, 220);
+  }
+}
+function shakePasswordChecklist() {
+  passwordChecklist.classList.remove('shake');
+  void passwordChecklist.offsetWidth; // restart the animation even if it was already showing
+  passwordChecklist.classList.add('shake');
+}
+passwordInput.addEventListener('focus', () => { if (mode === 'signup') togglePasswordChecklist(true); renderPasswordChecklist(); });
+passwordInput.addEventListener('input', () => {
+  renderPasswordChecklist();
+  if (mode === 'signup' && passwordInput.value) togglePasswordChecklist(true);
+});
+passwordInput.addEventListener('blur', () => { if (!passwordInput.value) togglePasswordChecklist(false); });
+[emailInput, nameInput].forEach((input) => input.addEventListener('input', () => { if (mode === 'signup' && passwordInput.value) renderPasswordChecklist(); }));
+
 // ---------- Account step: sign in / sign up form ----------
 function renderMode() {
   const t = copy();
@@ -302,6 +406,8 @@ function renderMode() {
   authCardSub.textContent = signup ? t.authSubSignup : t.authSubSignin;
   googleLabel.textContent = signup ? t.googleSignupLabel : t.googleSigninLabel;
   nameField.hidden = !signup;
+  forgotLink.hidden = signup;
+  if (!signup) togglePasswordChecklist(false);
   passwordInput.autocomplete = signup ? 'new-password' : 'current-password';
   continueLabel.textContent = signup ? t.continueLabelSignup : t.continueLabelSignin;
   switchPrompt.textContent = signup ? t.switchPromptSignup : t.switchPromptSignin;
@@ -335,6 +441,14 @@ async function submitAuth() {
   authError.textContent = '';
   try {
     if (mode === 'signup') {
+      const status = renderPasswordChecklist();
+      if (!(status.length && status.common && status.identifier)) {
+        togglePasswordChecklist(true);
+        shakePasswordChecklist();
+        authError.textContent = copy().err_PASSWORD_REQUIREMENTS_UNMET;
+        passwordInput.focus();
+        return;
+      }
       await switcher.register({ displayName: nameInput.value.trim(), email: emailInput.value.trim(), password: passwordInput.value });
     } else {
       await switcher.login({ email: emailInput.value.trim(), password: passwordInput.value });
