@@ -3,6 +3,7 @@ import { parseCookie } from 'cookie';
 import { sessionCookieName } from './community/security/cookies.mjs';
 import { resolveRateLimitStore } from './community/security/rate-limit.mjs';
 import { sha256Hex } from './community/security/crypto-util.mjs';
+import { resolveRealtimeLeaseStore } from './community/security/realtime-lease-store.mjs';
 // Note on CORS here: this gateway's `Access-Control-Allow-Origin: '*'` (see json() below) is
 // deliberately NOT tightened to an allowlist in this pass. Since identity now travels as a
 // HttpOnly, host-only session cookie (never a bearer header a cross-origin script could attach
@@ -178,6 +179,40 @@ function readBody(request) {
     request.on('end', () => {
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); }
       catch { reject(new Error('INVALID_JSON')); }
+    });
+    request.on('error', reject);
+  });
+}
+
+// Dedicated raw-body reader for the SDP relay (server/pattern-ai-server.mjs's
+// handleRealtimeCallRelay) - deliberately separate from readBody() above (which parses JSON and
+// is bounded at 100MB, the general request-body ceiling every other /api/ai/* route uses). An SDP
+// offer is a small text blob (real-world offers are a few KB); a strict, much smaller ceiling
+// here means a misbehaving/malicious sender can never hold this route's per-connection buffer
+// open anywhere near as long as a legitimate 100MB JSON upload elsewhere in this file is allowed
+// to.
+function readRawBody(request, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let tooLarge = false;
+    request.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        // Deliberately never request.destroy() here (unlike readBody() above, which does, for
+        // the general 100MB JSON reader) - an abrupt mid-stream socket close makes many HTTP
+        // clients (including the real browser fetch() the SDK uses to relay SDP) surface a raw
+        // connection-reset error instead of ever seeing the clean 413 this route wants to return.
+        // Bytes past the ceiling are simply never buffered (bounded memory use is preserved) - the
+        // connection is allowed to finish naturally so a normal HTTP response can still be sent.
+        tooLarge = true;
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      if (tooLarge) { reject(new Error('REQUEST_TOO_LARGE')); return; }
+      resolve(Buffer.concat(chunks));
     });
     request.on('error', reject);
   });
@@ -1210,7 +1245,16 @@ const REALTIME_TRANSCRIPTION_KEYWORDS = ['New York', 'London', 'Tokyo', 'Sydney'
 const REALTIME_EAGERNESS_VALUES = ['low', 'medium', 'high', 'auto'];
 function eagernessFromBody(body) { return REALTIME_EAGERNESS_VALUES.includes(body.eagerness) ? body.eagerness : 'medium'; }
 
-async function mintRealtimeClientSecret(body) {
+// `userId` is the caller's own verified NAVRYA session identity (server/pattern-ai-server.mjs's
+// dispatcher passes `session.userId`, already resolved via verifySession() before this function
+// is ever reached) - never trusted from the request body. It is used only to bind the minted
+// ek_ credential to this user in the Realtime SDP-relay lease store (see
+// server/community/security/realtime-lease-store.mjs) so POST /api/ai/realtime/call can later
+// verify the same user is the one relaying it. The existing tests that call this function
+// directly with no second argument (mintRealtimeClientSecret({language:'en'})) are unaffected -
+// `userId` is simply `undefined` there, which the lease store happily stores like any other value
+// since nothing in this file's own tests exercises the relay lease itself.
+async function mintRealtimeClientSecret(body, userId) {
   const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
   const eagerness = eagernessFromBody(body);
   const startedAt = Date.now();
@@ -1251,6 +1295,17 @@ async function mintRealtimeClientSecret(body) {
     }
     const data = await response.json();
     reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.session' });
+    // Bind the minted credential to this user before it ever reaches the browser - fail the mint
+    // itself (loudly, with a distinct code) rather than hand back a token the relay endpoint can
+    // never honor later. `expires_after.seconds: 600` above is the requested upstream TTL; the
+    // real `data.expires_at` (epoch seconds, OpenAI's own authoritative value) is what the lease
+    // is actually bound to, clamped to a sane floor/ceiling in case of clock skew.
+    const ttlMs = Math.min(15 * 60 * 1000, Math.max(1000, Number(data.expires_at) * 1000 - Date.now())) || 10 * 60 * 1000;
+    try {
+      await resolveRealtimeLeaseStore().set(sha256Hex(data.value), userId, ttlMs);
+    } catch (leaseError) {
+      throw new Error('REALTIME_LEASE_STORE_FAILED');
+    }
     return {
       value: data.value, expiresAt: data.expires_at,
       model: (data.session && data.session.model) || model, voice: voiceForLanguage(language), language,
@@ -1260,6 +1315,128 @@ async function mintRealtimeClientSecret(body) {
     reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.session' });
     throw error;
   }
+}
+
+// Same-origin SDP relay (fix/voice-mode-hosted-connection). The installed @openai/agents-realtime
+// SDK talks to a fixed upstream (`https://api.openai.com/v1/realtime/calls`) directly from the
+// browser unless given a `baseUrl` override (navrya-src/aiVoiceRealtime.js now passes an absolute
+// same-origin URL pointing here). Production evidence showed that direct browser->OpenAI POST
+// failing with `net::ERR_FAILED` and no response at all - this endpoint exists so the SAME SDP
+// exchange happens over a network path (browser -> NAVRYA's own origin -> OpenAI, server-to-
+// server) that does not depend on a browser being able to reach api.openai.com directly.
+//
+// This is deliberately NOT a general-purpose proxy: the upstream URL is a hardcoded constant
+// (REALTIME_CALL_UPSTREAM), never derived from any request input, and the only bytes forwarded
+// are the raw SDP body and a freshly-constructed Content-Type/Authorization header pair - never
+// the caller's own header set relayed verbatim.
+const REALTIME_CALL_UPSTREAM = 'https://api.openai.com/v1/realtime/calls';
+const REALTIME_RELAY_TIMEOUT_MS = 10000;
+const MAX_SDP_BYTES = 64 * 1024;
+
+function isTimeoutLikeError(error) {
+  return error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
+// Never the raw upstream status/body verbatim in what a browser or a log ever sees (requirement:
+// "never return or log ... raw upstream bodies") - a small, stable, sanitized code per bucket.
+function sanitizedUpstreamError(status) {
+  if (status === 401 || status === 403) return 'REALTIME_UPSTREAM_UNAUTHORIZED';
+  if (status === 429) return 'REALTIME_UPSTREAM_RATE_LIMITED';
+  if (status >= 500) return 'REALTIME_UPSTREAM_UNAVAILABLE';
+  return 'REALTIME_UPSTREAM_ERROR';
+}
+
+async function handleRealtimeCallRelay(request, response) {
+  // 1) A real, non-suspended NAVRYA user session, verified via the same session cookie every
+  // other /api/ai/* route requires - BEFORE any SDP is read. This route intentionally does not
+  // go through checkBasicAuth() (see the dispatcher's own comment at its call site): the SDK
+  // sends this exact request's Authorization header as `Bearer ek_...` (the ephemeral Realtime
+  // credential), which can never simultaneously be a `Basic ...` header - the two schemes are
+  // mutually exclusive on one header. This route is not weaker for it: it requires a verified
+  // session cookie AND a single-use, server-bound ephemeral-credential lease (step 4 below),
+  // which is a strictly narrower admission than the one shared preview-deploy password every
+  // other route still requires unchanged.
+  const session = await verifySession(request);
+  if (!session.valid) return json(response, 401, { error: session.suspended ? 'ACCOUNT_SUSPENDED' : 'AUTH_SESSION_REQUIRED' });
+
+  // 2) Only application/sdp is ever accepted.
+  const contentType = String(request.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  if (contentType !== 'application/sdp') return json(response, 415, { error: 'REALTIME_SDP_CONTENT_TYPE_REQUIRED' });
+
+  // 3) Only an ephemeral `Bearer ek_...` credential is ever accepted - a standard `sk-` key (or
+  // anything else) never matches this pattern and is rejected the same way a missing header is,
+  // with no more specific error that would help calibrate an attack.
+  const authHeader = String(request.headers['authorization'] || '').trim();
+  const bearerMatch = /^Bearer\s+(ek_[A-Za-z0-9_.-]+)$/.exec(authHeader);
+  if (!bearerMatch) return json(response, 401, { error: 'REALTIME_BEARER_INVALID' });
+  const bearerToken = bearerMatch[1];
+
+  // 4) Fail closed: the bearer must be a token THIS server minted for THIS authenticated user,
+  // consumed atomically (single-use) so a captured/replayed token, or a second concurrent request
+  // racing the first, can never be relayed twice off the same lease.
+  let leaseUserId = null;
+  try {
+    leaseUserId = await resolveRealtimeLeaseStore().consumeIfValid(sha256Hex(bearerToken));
+  } catch (_leaseError) {
+    leaseUserId = null; // an unreachable/erroring lease store must fail closed, never open
+  }
+  if (!leaseUserId || leaseUserId !== session.userId) return json(response, 401, { error: 'REALTIME_LEASE_INVALID' });
+
+  // 5) Read the raw SDP body through the dedicated, tightly-bounded reader - never the general
+  // 100MB JSON body reader every other route uses.
+  let sdpBuffer;
+  try {
+    sdpBuffer = await readRawBody(request, MAX_SDP_BYTES);
+  } catch (bodyError) {
+    if (bodyError.message === 'REQUEST_TOO_LARGE') return json(response, 413, { error: 'REALTIME_SDP_TOO_LARGE' });
+    return json(response, 400, { error: 'REALTIME_SDP_READ_FAILED' });
+  }
+  if (!sdpBuffer.length) return json(response, 400, { error: 'REALTIME_SDP_EMPTY' });
+
+  // 6) Forward only the required headers and the raw SDP bytes - a bounded timeout, redirects
+  // disabled (an upstream 3xx is never followed; it falls through to the generic upstream-error
+  // mapping below like any other non-2xx status).
+  const startedAt = Date.now();
+  let upstream;
+  try {
+    upstream = await fetch(REALTIME_CALL_UPSTREAM, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'Content-Type': 'application/sdp', Authorization: `Bearer ${bearerToken}` },
+      body: sdpBuffer,
+      signal: AbortSignal.timeout(REALTIME_RELAY_TIMEOUT_MS)
+    });
+  } catch (networkError) {
+    const code = isTimeoutLikeError(networkError) ? 'REALTIME_RELAY_TIMEOUT' : 'REALTIME_RELAY_FAILED';
+    reportProviderHealth({ provider: 'openai', ok: false, errorCode: code, latencyMs: Date.now() - startedAt, source: 'ai.voice.relay' });
+    return json(response, 504, { error: code });
+  }
+
+  if (!upstream.ok) {
+    // The upstream body is deliberately never read or forwarded here - see this function's own
+    // header comment on never returning/logging a raw upstream body.
+    const code = sanitizedUpstreamError(upstream.status);
+    reportProviderHealth({ provider: 'openai', ok: false, errorCode: code, latencyMs: Date.now() - startedAt, source: 'ai.voice.relay' });
+    const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+    const retryAfter = upstream.headers.get('retry-after');
+    if (upstream.status === 429 && retryAfter) headers['Retry-After'] = retryAfter;
+    response.writeHead(502, headers);
+    response.end(JSON.stringify({ error: code }));
+    return;
+  }
+
+  // 7) Success: return exactly what the installed SDK needs - the raw SDP answer body, the
+  // upstream status, Content-Type, and the Location header it reads for callId - plus a safe
+  // correlation id where the upstream provides one, and no caching.
+  const answerSdp = await upstream.text();
+  reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.relay' });
+  const outHeaders = { 'Content-Type': 'application/sdp', 'Cache-Control': 'no-store' };
+  const location = upstream.headers.get('location');
+  if (location) outHeaders['Location'] = location;
+  const requestId = upstream.headers.get('x-request-id');
+  if (requestId) outHeaders['X-Upstream-Request-Id'] = requestId;
+  response.writeHead(upstream.status, outHeaders);
+  response.end(answerSdp);
 }
 
 async function testConnection(body) {
@@ -1303,7 +1480,12 @@ if (process.env.NODE_ENV === 'production') {
   }
   // Resolves (and starts connecting) the real Redis-backed AI-quota store now, so a
   // misconfigured/unreachable REDIS_URL is caught at startup rather than on the first request.
+  // resolveRealtimeLeaseStore() shares that exact same connection (resolveRedisClient() is
+  // cached process-wide) - calling it here costs nothing extra and confirms the SDP-relay lease
+  // path is wired to the real store, not a per-process memory fallback, before any real request
+  // arrives.
   resolveRateLimitStore();
+  resolveRealtimeLeaseStore();
 }
 
 const server = http.createServer(async (request, response) => {
@@ -1316,6 +1498,15 @@ const server = http.createServer(async (request, response) => {
       ok: true,
       model: process.env.OPENAI_MODEL || providerDefaultModel.openai,
       configured: Boolean(process.env.OPENAI_API_KEY),
+      // fix/voice-mode-hosted-connection (Phase 4): a non-sensitive readiness signal for
+      // server-funded Voice Mode - never calls OpenAI (this is a generic liveness check, not a
+      // dependency probe; /readyz already owns dependency checks). Deliberately the same
+      // env-only limitation `configured` above already has: an admin-configured key (Section
+      // 7.16) or a BYOK key make Voice Mode work too but are not reflected here, since checking
+      // either would mean a network call or a Postgres-backed lookup this endpoint intentionally
+      // never makes. This app supports BYOK-only operation by design (docs/ai/realtime-deployment.md) -
+      // `false` here means "no server-funded key," not "Voice Mode is broken."
+      realtimeConfigured: Boolean(process.env.OPENAI_API_KEY),
       version: process.env.RENDER_GIT_COMMIT ? process.env.RENDER_GIT_COMMIT.slice(0, 12) : (process.env.npm_package_version || null)
     });
   }
@@ -1330,6 +1521,19 @@ const server = http.createServer(async (request, response) => {
     } catch (_) { communityApiOk = false; }
     return json(response, communityApiOk ? 200 : 503, { ready: communityApiOk, checks: { communityApi: communityApiOk } });
   }
+  // The same-origin SDP relay is handled BEFORE checkBasicAuth() - see handleRealtimeCallRelay()'s
+  // own header comment for why (the SDK's Authorization header on this exact request always
+  // carries the ephemeral `Bearer ek_...` credential, never `Basic` credentials, so the two
+  // mechanisms cannot coexist on one header). Every other route below is unaffected - this is a
+  // route-specific carve-out, not a change to checkBasicAuth() or to any other route's gate.
+  if (request.method === 'POST' && request.url === '/api/ai/realtime/call') {
+    try {
+      return await handleRealtimeCallRelay(request, response);
+    } catch (_relayError) {
+      return json(response, 500, { error: 'REALTIME_RELAY_FAILED' });
+    }
+  }
+
   if (!checkBasicAuth(request)) return requireBasicAuth(response);
   if (request.method !== 'POST') return json(response, 404, { error: 'NOT_FOUND' });
 
@@ -1358,7 +1562,7 @@ const server = http.createServer(async (request, response) => {
     if (request.url === '/api/mental-health/education-card') return json(response, 200, await mentalHealthEducationCard(body));
     if (request.url === '/api/ai/chat') return json(response, 200, await dockChat(body));
     if (request.url === '/api/ai/test-connection') return json(response, 200, await testConnection(body));
-    if (request.url === '/api/ai/realtime/session') return json(response, 200, await mintRealtimeClientSecret(body));
+    if (request.url === '/api/ai/realtime/session') return json(response, 200, await mintRealtimeClientSecret(body, session.userId));
     return json(response, 404, { error: 'NOT_FOUND' });
   } catch (error) {
     const status = error.message === 'REQUEST_TOO_LARGE' ? 413
@@ -1388,4 +1592,4 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default server;
-export { callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText, historyItem, dockChat, mintRealtimeClientSecret };
+export { callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText, historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody };
