@@ -90,6 +90,37 @@
     return { id: t.id, status: t.status, direction: t.direction, entryPrice: t.entryPrice, stopLoss: t.stopLoss, riskPercent: t.riskPercent, outcome: t.outcome, linkedStrategyId: t.linkedStrategyId };
   }
 
+  // context: {activeAccountId?, query?}. Returns at most one Account's own COMPACT rules/risk
+  // summary - real numbers from accounts-engine.js (never a live feed, never fabricated), never
+  // the account's masked number or any credential (there are none - every account is manual),
+  // and never that account's full trade history or emotion log (see getRelevantTrades/
+  // getRelevantPsychologyContext for those, pulled separately and just as narrowly if the
+  // relevant domain is actually active). Resolution: the linked-account id, then a firm-name
+  // match, same order/precedent as getRelevantStrategies above; null resolves to [] rather than
+  // a guess.
+  function getRelevantAccounts(query, context) {
+    var store = window.TradeJournalAccountsStore;
+    var engine = window.TradeJournalAccountsEngine;
+    var tradeStore = window.TradeJournalTradeStore;
+    if (!store || typeof store.listActive !== 'function' || !engine) return [];
+    var list = store.listActive();
+    var ctx = context || {};
+    var byFirm = list.map(function (a) { return { id: a.id, name: a.firm }; });
+    var resolvedId = ctx.activeAccountId || (byNameLike(byFirm, query || ctx.query) || {}).id;
+    var account = resolvedId ? byId(list, resolvedId) : null;
+    if (!account) return [];
+    var trades = tradeStore && typeof tradeStore.listSync === 'function' ? tradeStore.listSync() : [];
+    var metrics = engine.computeMetrics(account, trades);
+    var ruleResult = engine.evaluateRules(account, metrics);
+    var rulesSummary = [];
+    ruleResult.groups.forEach(function (g) { g.items.forEach(function (r) { rulesSummary.push({ name: r.name, state: r.state, current: r.current }); }); });
+    return [{
+      id: account.id, firm: account.firm, kind: account.kind, currency: account.currency, status: account.status,
+      equity: metrics.equity, todayPL: metrics.hasTradesToday ? metrics.todayPL : null, totalPL: metrics.hasClosedTrades ? metrics.totalPL : null,
+      rulesSummary: rulesSummary
+    }];
+  }
+
   // Privacy minimization (section 21): the ONLY function here that reads Psychology data, and it
   // returns exactly the same minimal, validated shape ai-proactive-engine.js's own
   // buildTradeContext() already uses - never the full profile, never unrelated intake answers.
@@ -118,6 +149,7 @@
     getRelevantPatterns: getRelevantPatterns,
     getRelevantSessions: getRelevantSessions,
     getRelevantTrades: getRelevantTrades,
+    getRelevantAccounts: getRelevantAccounts,
     getRelevantPsychologyContext: getRelevantPsychologyContext
   };
 }());

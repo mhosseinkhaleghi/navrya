@@ -18,7 +18,9 @@ async function memorySandbox(overrides) {
     TradeJournalWorkspace: (overrides || {}).workspace,
     TradeJournalTradeStore: (overrides || {}).tradeStore,
     TradeJournalMentalHealthStore: (overrides || {}).mentalHealthStore,
-    TradeJournalAIProactiveEngine: (overrides || {}).proactiveEngine
+    TradeJournalAIProactiveEngine: (overrides || {}).proactiveEngine,
+    TradeJournalAccountsStore: (overrides || {}).accountsStore,
+    TradeJournalAccountsEngine: (overrides || {}).accountsEngine
   });
   vm.runInNewContext(await source('ai-user-memory.js'), sandbox, { filename: 'ai-user-memory.js' });
   return sandbox.window.TradeJournalAIUserMemory;
@@ -32,6 +34,44 @@ test('getRelevantStrategies() resolves the active linked strategy by id, never a
   const result = memory.getRelevantStrategies(null, { activeStrategyId: 's1' });
   assert.equal(result.length, 1);
   assert.equal(result[0].id, 's1');
+});
+
+// ---- Account memory ----
+
+function fakeAccountsEngine() {
+  return {
+    computeMetrics: (account) => ({ equity: account.startingBalance, hasTradesToday: false, todayPL: null, hasClosedTrades: false, totalPL: null }),
+    evaluateRules: () => ({ groups: [{ title: 'Loss limits', items: [{ name: 'Daily loss limit', state: 'safe', current: '0 used today' }] }] })
+  };
+}
+
+test('getRelevantAccounts() resolves the active account by id, returning a compact rules/risk summary only', async () => {
+  const accountsStore = { listActive: () => [{ id: 'a1', firm: 'Atlas Funding', kind: 'prop', currency: 'USD', status: 'active', startingBalance: 100000 }, { id: 'a2', firm: 'Vertex Capital', kind: 'prop', currency: 'USD', status: 'active', startingBalance: 50000 }] };
+  const memory = await memorySandbox({ accountsStore, accountsEngine: fakeAccountsEngine() });
+  const result = memory.getRelevantAccounts(null, { activeAccountId: 'a1' });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, 'a1');
+  assert.equal(result[0].equity, 100000);
+  assert.ok(Array.isArray(result[0].rulesSummary));
+  assert.equal(result[0].rulesSummary[0].name, 'Daily loss limit');
+  assert.equal(Object.prototype.hasOwnProperty.call(result[0], 'numberMasked'), false, 'never expose the masked account number in AI context');
+});
+
+test('getRelevantAccounts() falls back to a firm-name match when no active id is given', async () => {
+  const accountsStore = { listActive: () => [{ id: 'a1', firm: 'Atlas Funding', kind: 'prop', currency: 'USD', status: 'active', startingBalance: 100000 }] };
+  const memory = await memorySandbox({ accountsStore, accountsEngine: fakeAccountsEngine() });
+  assert.equal(memory.getRelevantAccounts('atlas funding', {}).length, 1);
+});
+
+test('getRelevantAccounts() never implicitly substitutes a different account - no match means empty, not a guess', async () => {
+  const accountsStore = { listActive: () => [{ id: 'a1', firm: 'Atlas Funding', kind: 'prop', currency: 'USD', status: 'active', startingBalance: 100000 }] };
+  const memory = await memorySandbox({ accountsStore, accountsEngine: fakeAccountsEngine() });
+  assert.deepEqual(clone(memory.getRelevantAccounts('quorum funded', {})), []);
+});
+
+test('getRelevantAccounts() returns [] safely with no store present', async () => {
+  const memory = await memorySandbox({});
+  assert.deepEqual(clone(memory.getRelevantAccounts('atlas', { activeAccountId: 'a1' })), []);
 });
 
 test('getRelevantStrategies() falls back to a name match when no active id is given', async () => {

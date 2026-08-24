@@ -83,6 +83,24 @@
     return found ? [found.id] : null;
   }
 
+  // Account resolution is deliberately STRICTER than resolveStrategyId/resolvePatternIds above:
+  // this app's product brief requires account names to "resolve deterministically; ambiguous
+  // matches must ask the user, never guess" - unlike a Strategy/Pattern link (a soft tag), an
+  // account is a real money/ownership boundary, so a >1-match "first one wins" guess here would
+  // be a real misattribution risk, not just a mildly wrong label. An exact case-insensitive match
+  // on `firm` wins only when it is the SINGLE exact match; a >1 exact match (two accounts
+  // deliberately named the same) or a >1 partial match both resolve to null - never a guess.
+  function resolveAccountId(raw, list) {
+    var name = String(raw || '').trim().toLowerCase();
+    if (!name) return null;
+    var items = list || [];
+    var exact = items.filter(function (a) { return String(a.firm || '').trim().toLowerCase() === name; });
+    if (exact.length === 1) return exact[0].id;
+    if (exact.length > 1) return null;
+    var partial = items.filter(function (a) { return String(a.firm || '').trim().toLowerCase().indexOf(name) > -1; });
+    return partial.length === 1 ? partial[0].id : null;
+  }
+
   // lookups: {strategies: [{id,name}], patterns: [{id,name}]} - only read for the two fields that
   // need them, so a caller with neither store available can still normalize every other field.
   function normalizeField(path, value, lookups) {
@@ -94,6 +112,8 @@
     if (path === 'takeProfits') return normalizeTakeProfits(value);
     if (path === 'linkedStrategyId') return resolveStrategyId(value, look.strategies);
     if (path === 'linkedPatternIds') return resolvePatternIds(value, look.patterns);
+    if (path === 'accountId') return resolveAccountId(value, look.accounts);
+    if (path === 'instrument') { var text = String(value == null ? '' : value).trim(); return text ? text.toUpperCase() : null; }
     return value;
   }
 
@@ -105,6 +125,7 @@
     normalizeTakeProfits: normalizeTakeProfits,
     resolveStrategyId: resolveStrategyId,
     resolvePatternIds: resolvePatternIds,
+    resolveAccountId: resolveAccountId,
     normalizeField: normalizeField
   };
 }());

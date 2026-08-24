@@ -49,7 +49,7 @@ export function createStore(character) {
   function setActiveId(id) {
     const layer = window.TradeJournalPanelLayer;
     if (id === 'sessions') { if (layer) layer.render('library'); set({ activeId: id }); return; }
-    if (id === 'dashboard' || id === 'strategies' || id === 'settings') { if (layer) layer.render(id); set({ activeId: id }); return; }
+    if (id === 'dashboard' || id === 'strategies' || id === 'settings' || id === 'accounts') { if (layer) layer.render(id); set({ activeId: id }); return; }
     const hashById = { psychology: '#mindset', 'ai-assistant': '#ai-settings', community: '#community', subscription: '#account/profile/subscriptions' };
     if (hashById[id]) location.hash = hashById[id];
     set({ activeId: id });

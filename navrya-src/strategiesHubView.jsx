@@ -97,9 +97,9 @@ const copy = {
     addToCart: 'افزودن به سبد', oneTimePayment: 'پرداخت یک‌باره', publishFooterNote: 'با انتشار، قواعد بازارچهٔ ناوریا را می‌پذیرید.',
     saving: 'در حال ذخیره…',
     tabPositions: 'پوزیشن‌ها', positionsTitle: 'پوزیشن‌ها', positionsSubtitle: 'فهرست کامل معاملات، با فیلتر و جستجو روی همه‌ی وضعیت‌ها.',
-    positionsSearchPlaceholder: 'جستجو در معاملات…', positionsAllStatuses: 'همه وضعیت‌ها', positionsAllDirections: 'همه جهت‌ها', positionsAllPatterns: 'همه الگوها',
+    positionsSearchPlaceholder: 'جستجو در معاملات…', positionsAllStatuses: 'همه وضعیت‌ها', positionsAllDirections: 'همه جهت‌ها', positionsAllPatterns: 'همه الگوها', positionsAllAccounts: 'همه حساب‌ها',
     positionsFrom: 'از تاریخ', positionsTo: 'تا تاریخ',
-    positionsHeadDate: 'تاریخ', positionsHeadDirection: 'جهت', positionsHeadPattern: 'الگو', positionsHeadStatus: 'وضعیت', positionsHeadRR: 'RR',
+    positionsHeadDate: 'تاریخ', positionsHeadDirection: 'جهت', positionsHeadPattern: 'الگو', positionsHeadAccount: 'حساب', positionsHeadStatus: 'وضعیت', positionsHeadRR: 'RR',
     positionsHeadOutcome: 'نتیجه', positionsHeadPnl: 'سود و زیان', positionsHeadMood: 'حال‌وهوا', positionsHeadActions: 'عملیات',
     positionsEmptyTitle: 'هنوز معامله‌ای ثبت نشده است', positionsEmptyBody: 'معاملات از ماشین‌حساب یا ثبت معامله اینجا ظاهر می‌شوند.',
     positionsResultLine: '{n} معامله', positionsEdit: 'ویرایش', positionsDetails: 'جزئیات', positionsNoPattern: '—', positionsNoMood: '—'
@@ -178,9 +178,9 @@ const copy = {
     addToCart: 'أضف إلى السلة', oneTimePayment: 'دفعة واحدة', publishFooterNote: 'بالنشر، أنت توافق على قواعد سوق ناوريا.',
     saving: 'جارٍ الحفظ…',
     tabPositions: 'الصفقات', positionsTitle: 'الصفقات', positionsSubtitle: 'قائمة كاملة بالصفقات، مع فلترة وبحث عبر كل الحالات.',
-    positionsSearchPlaceholder: 'البحث في الصفقات…', positionsAllStatuses: 'كل الحالات', positionsAllDirections: 'كل الاتجاهات', positionsAllPatterns: 'كل الأنماط',
+    positionsSearchPlaceholder: 'البحث في الصفقات…', positionsAllStatuses: 'كل الحالات', positionsAllDirections: 'كل الاتجاهات', positionsAllPatterns: 'كل الأنماط', positionsAllAccounts: 'كل الحسابات',
     positionsFrom: 'من تاريخ', positionsTo: 'إلى تاريخ',
-    positionsHeadDate: 'التاريخ', positionsHeadDirection: 'الاتجاه', positionsHeadPattern: 'النمط', positionsHeadStatus: 'الحالة', positionsHeadRR: 'RR',
+    positionsHeadDate: 'التاريخ', positionsHeadDirection: 'الاتجاه', positionsHeadPattern: 'النمط', positionsHeadAccount: 'الحساب', positionsHeadStatus: 'الحالة', positionsHeadRR: 'RR',
     positionsHeadOutcome: 'النتيجة', positionsHeadPnl: 'الربح والخسارة', positionsHeadMood: 'الحالة المزاجية', positionsHeadActions: 'الإجراءات',
     positionsEmptyTitle: 'لم تُسجَّل أي صفقة بعد', positionsEmptyBody: 'تظهر الصفقات هنا من حاسبة الصفقة أو تسجيل صفقة.',
     positionsResultLine: '{n} صفقة', positionsEdit: 'تعديل', positionsDetails: 'التفاصيل', positionsNoPattern: '—', positionsNoMood: '—'
@@ -259,9 +259,9 @@ const copy = {
     addToCart: 'Add to cart', oneTimePayment: 'One-time payment', publishFooterNote: 'Publishing means you accept the NAVRYA marketplace rules.',
     saving: 'Saving…',
     tabPositions: 'Positions', positionsTitle: 'Positions', positionsSubtitle: 'The full trade list, filterable and searchable across every status.',
-    positionsSearchPlaceholder: 'Search trades…', positionsAllStatuses: 'All statuses', positionsAllDirections: 'All directions', positionsAllPatterns: 'All patterns',
+    positionsSearchPlaceholder: 'Search trades…', positionsAllStatuses: 'All statuses', positionsAllDirections: 'All directions', positionsAllPatterns: 'All patterns', positionsAllAccounts: 'All accounts',
     positionsFrom: 'From', positionsTo: 'To',
-    positionsHeadDate: 'Date', positionsHeadDirection: 'Direction', positionsHeadPattern: 'Pattern', positionsHeadStatus: 'Status', positionsHeadRR: 'RR',
+    positionsHeadDate: 'Date', positionsHeadDirection: 'Direction', positionsHeadPattern: 'Pattern', positionsHeadAccount: 'Account', positionsHeadStatus: 'Status', positionsHeadRR: 'RR',
     positionsHeadOutcome: 'Outcome', positionsHeadPnl: 'P&L', positionsHeadMood: 'Mood', positionsHeadActions: 'Actions',
     positionsEmptyTitle: 'No trades logged yet', positionsEmptyBody: 'Trades from the calculator or Log Trade appear here.',
     positionsResultLine: '{n} trades', positionsEdit: 'Edit', positionsDetails: 'Details', positionsNoPattern: '—', positionsNoMood: '—'
@@ -340,9 +340,9 @@ const copy = {
     addToCart: 'Añadir al carrito', oneTimePayment: 'Pago único', publishFooterNote: 'Al publicar, aceptas las reglas del mercado NAVRYA.',
     saving: 'Guardando…',
     tabPositions: 'Posiciones', positionsTitle: 'Posiciones', positionsSubtitle: 'La lista completa de operaciones, con filtro y búsqueda en todos los estados.',
-    positionsSearchPlaceholder: 'Buscar operaciones…', positionsAllStatuses: 'Todos los estados', positionsAllDirections: 'Todas las direcciones', positionsAllPatterns: 'Todos los patrones',
+    positionsSearchPlaceholder: 'Buscar operaciones…', positionsAllStatuses: 'Todos los estados', positionsAllDirections: 'Todas las direcciones', positionsAllPatterns: 'Todos los patrones', positionsAllAccounts: 'Todas las cuentas',
     positionsFrom: 'Desde', positionsTo: 'Hasta',
-    positionsHeadDate: 'Fecha', positionsHeadDirection: 'Dirección', positionsHeadPattern: 'Patrón', positionsHeadStatus: 'Estado', positionsHeadRR: 'RR',
+    positionsHeadDate: 'Fecha', positionsHeadDirection: 'Dirección', positionsHeadPattern: 'Patrón', positionsHeadAccount: 'Cuenta', positionsHeadStatus: 'Estado', positionsHeadRR: 'RR',
     positionsHeadOutcome: 'Resultado', positionsHeadPnl: 'P&L', positionsHeadMood: 'Estado de ánimo', positionsHeadActions: 'Acciones',
     positionsEmptyTitle: 'Aún no hay operaciones registradas', positionsEmptyBody: 'Las operaciones de la calculadora o de Registrar operación aparecen aquí.',
     positionsResultLine: '{n} operaciones', positionsEdit: 'Editar', positionsDetails: 'Detalles', positionsNoPattern: '—', positionsNoMood: '—'
@@ -750,22 +750,28 @@ function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
   const tradeUi = window.TradeJournalTradeUI;
   const tradeI18n = window.TradeJournalTradeI18n;
   const patternStore = window.TradeJournalPatternStore;
+  const accountsStore = window.TradeJournalAccountsStore;
   const [query, setQuery] = React.useState('');
   const [status, setStatus] = React.useState('');
   const [direction, setDirection] = React.useState('');
   const [patternId, setPatternId] = React.useState('');
+  const [accountId, setAccountId] = React.useState('');
   const [from, setFrom] = React.useState('');
   const [to, setTo] = React.useState('');
 
   const allPatterns = patternStore ? patternStore.listSync() : [];
-  const trades = tradeStore ? tradeStore.filter(tradeStore.listSync(), { query, status, direction, patternId, from, to }) : [];
+  const allAccounts = accountsStore ? accountsStore.listSync() : [];
+  const filterOpts = { query, status, direction, patternId, from, to };
+  if (accountId) filterOpts.accountId = accountId === '__unassigned__' ? null : accountId;
+  const trades = tradeStore ? tradeStore.filter(tradeStore.listSync(), filterOpts) : [];
   const patternName = (id) => { const p = allPatterns.find((x) => x.id === id); return p ? p.name : id; };
+  const accountName = (id) => { const a = allAccounts.find((x) => x.id === id); return a ? a.firm : '—'; };
   const statusLabel = (value) => (tradeUi && tradeUi.statusLabel ? tradeUi.statusLabel(value) : value);
   const outcomeLabel = (value) => (tradeUi && tradeUi.outcomeLabel ? tradeUi.outcomeLabel(value) : (value || '—'));
   const directionLabel = (value) => tr(lang, value === 'short' ? 'directionShort' : 'directionLong');
 
   const selectStyle = { height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5, outline: 'none' };
-  const columns = '1fr .8fr 1.1fr .9fr .6fr .8fr .9fr 1fr .8fr';
+  const columns = '1fr .8fr 1.1fr .9fr .9fr .6fr .8fr .9fr 1fr .8fr';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -795,6 +801,10 @@ function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
           <option value="">{tr(lang, 'positionsAllPatterns')}</option>
           {allPatterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
+        <select value={accountId} onChange={(e) => setAccountId(e.target.value)} style={selectStyle}>
+          <option value="">{tr(lang, 'positionsAllAccounts')}</option>
+          {allAccounts.map((a) => <option key={a.id} value={a.id}>{a.firm}</option>)}
+        </select>
         <input type="date" value={from} title={tr(lang, 'positionsFrom')} onChange={(e) => setFrom(e.target.value)} style={selectStyle} />
         <input type="date" value={to} title={tr(lang, 'positionsTo')} onChange={(e) => setTo(e.target.value)} style={selectStyle} />
         <span style={{ marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'positionsResultLine', { n: digits(lang, trades.length) })}</span>
@@ -811,7 +821,7 @@ function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
         <Panel variant="base" padding={0}>
           <div style={{ overflowX: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: columns, gap: 0, minWidth: 920 }}>
-              {[tr(lang, 'positionsHeadDate'), tr(lang, 'positionsHeadDirection'), tr(lang, 'positionsHeadPattern'), tr(lang, 'positionsHeadStatus'), tr(lang, 'positionsHeadRR'), tr(lang, 'positionsHeadOutcome'), tr(lang, 'positionsHeadPnl'), tr(lang, 'positionsHeadMood'), tr(lang, 'positionsHeadActions')].map((th) => (
+              {[tr(lang, 'positionsHeadDate'), tr(lang, 'positionsHeadDirection'), tr(lang, 'positionsHeadPattern'), tr(lang, 'positionsHeadAccount'), tr(lang, 'positionsHeadStatus'), tr(lang, 'positionsHeadRR'), tr(lang, 'positionsHeadOutcome'), tr(lang, 'positionsHeadPnl'), tr(lang, 'positionsHeadMood'), tr(lang, 'positionsHeadActions')].map((th) => (
                 <span key={th} style={{ padding: '9px 14px', fontSize: 10.5, letterSpacing: '.07em', color: 'var(--text-dim)', borderBottom: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)' }}>{th}</span>
               ))}
               {trades.map((trade) => {
@@ -828,6 +838,7 @@ function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
                     <span className="navrya-tabular" dir="ltr" style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-hairline)', textAlign: 'right' }}>{new Date(trade.createdAt).toLocaleDateString(localeCode(lang))}</span>
                     <span style={{ padding: '11px 14px', fontSize: 12.5, color: trade.direction === 'short' ? 'var(--danger)' : 'var(--success)', borderBottom: '1px solid var(--border-hairline)' }}>{directionLabel(trade.direction)}</span>
                     <span dir="auto" style={{ padding: '11px 14px', fontSize: 12.5, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-hairline)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{names}</span>
+                    <span dir="auto" style={{ padding: '11px 14px', fontSize: 12.5, color: trade.accountId ? 'var(--text-primary)' : 'var(--text-dim)', borderBottom: '1px solid var(--border-hairline)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{accountName(trade.accountId)}</span>
                     <span style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-hairline)' }}>{statusLabel(trade.status)}</span>
                     <span className="navrya-tabular" dir="ltr" style={{ padding: '11px 14px', fontSize: 12.5, fontWeight: 600, color: rColor, borderBottom: '1px solid var(--border-hairline)' }}>{rr === null ? '—' : '1:' + digits(lang, round1(rr))}</span>
                     <span style={{ padding: '11px 14px', fontSize: 12, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-hairline)' }}>{outcomeLabel(trade.outcome)}</span>

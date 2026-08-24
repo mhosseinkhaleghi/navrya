@@ -20,7 +20,7 @@ const DEFAULT_LABELS = {
   uploadNotice: 'Chart uploads are optional. Add scenarios and notes after creation.',
   uploadChart: 'Upload chart image', tradingSession: 'Trading session', primaryTimeframe: 'Primary timeframe',
   gregorianDate: 'Gregorian date', jalaliDate: 'Jalali date', loopInterval: 'Loop / update interval',
-  graceMinutes: 'Update grace period (minutes)'
+  graceMinutes: 'Update grace period (minutes)', sessionAccount: 'Account', sessionNoAccount: 'No account'
 };
 
 // HOTFIX: the two date defaults below used to be hardcoded, stale mock strings
@@ -34,10 +34,16 @@ const DEFAULT_LABELS = {
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function todayJalali() { return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
 
-/* New-session dialog — optional chart uploads, session settings, one primary action. */
+/* New-session dialog — optional chart uploads, session settings, one primary action.
+   `accountOptions`: [{value, label}] of the user's real ACTIVE accounts only (defect #3 - an
+   archived account is never selectable here), supplied by the caller (character-app.jsx, reading
+   window.TradeJournalAccountsStore.listActive()) - this component never invents account data of
+   its own. Omitted/empty means "this user has no accounts yet", in which case the whole field is
+   hidden rather than shown with a single fake "No account" option - defect #5 scoping is entirely
+   opt-in and must never suggest there is something to pick when there is nothing real to pick. */
 export function NewSessionDialog({
-  open = true, eyebrow, onClose, onCreate, labels,
-  defaults = { city: 'London', timeframe: '5m', gregorian: todayIso(), jalali: todayJalali(), loop: '30 min', grace: '5' },
+  open = true, eyebrow, onClose, onCreate, labels, accountOptions,
+  defaults = { city: 'London', timeframe: '5m', gregorian: todayIso(), jalali: todayJalali(), loop: '30 min', grace: '5', accountId: '' },
   style, ...rest
 }) {
   const t = { ...DEFAULT_LABELS, ...labels };
@@ -47,6 +53,8 @@ export function NewSessionDialog({
   const [jalali, setJalali] = React.useState(defaults.jalali);
   const [loop, setLoop] = React.useState(defaults.loop);
   const [grace, setGrace] = React.useState(defaults.grace);
+  const [accountId, setAccountId] = React.useState(defaults.accountId || '');
+  const hasAccounts = Array.isArray(accountOptions) && accountOptions.length > 0;
   // Keyed by UPLOAD_SLOTS timeframe - {file, previewUrl}. previewUrl is an object URL for the
   // in-dialog preview only; the real persisted image is handled by the caller (onCreate), which
   // reads .file back out and stores it via TradeJournalImageStore, mirroring how every other
@@ -92,7 +100,7 @@ export function NewSessionDialog({
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('session-create', {
-      allowlist: ['city', 'timeframe', 'gregorian', 'jalali', 'loop', 'grace'],
+      allowlist: ['city', 'timeframe', 'gregorian', 'jalali', 'loop', 'grace', 'accountId'],
       isOpen: () => openRef.current && mountedRef.current,
       activeStep: () => 'form',
       applyValue: (path, value) => {
@@ -102,13 +110,17 @@ export function NewSessionDialog({
         else if (path === 'jalali') setJalali(String(value));
         else if (path === 'loop') setLoop(String(value));
         else if (path === 'grace') setGrace(String(value));
+        // Strict resolution only - the AI passes a real account id it already resolved by name
+        // (never a raw typed name here); an id that isn't one of this user's real active
+        // accounts is silently ignored rather than setting something unselectable.
+        else if (path === 'accountId') { if (hasAccounts && accountOptions.some((o) => o.value === value)) setAccountId(String(value)); }
       },
       submit: () => onCreate && onCreate({
-        city, timeframe, gregorian, jalali, loop, grace,
+        city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null,
         uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
       })
     });
-  }, [city, timeframe, gregorian, jalali, loop, grace, uploads, onCreate]);
+  }, [city, timeframe, gregorian, jalali, loop, grace, accountId, hasAccounts, accountOptions, uploads, onCreate]);
 
   function selectFile(slot, file) {
     setUploads((prev) => {
@@ -128,7 +140,7 @@ export function NewSessionDialog({
           <Button
             variant="primary"
             onClick={() => onCreate && onCreate({
-              city, timeframe, gregorian, jalali, loop, grace,
+              city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null,
               uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
             })}
           >
@@ -165,6 +177,17 @@ export function NewSessionDialog({
           <Select value={loop} onChange={setLoop} options={LOOP_INTERVALS} width="100%" />
         </label>
         <TextField label={t.graceMinutes} value={grace} onChange={setGrace} type="number" />
+        {hasAccounts ? (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+            <FieldLabel>{t.sessionAccount}</FieldLabel>
+            <Select
+              value={accountId}
+              onChange={setAccountId}
+              options={[{ value: '', label: t.sessionNoAccount }, ...accountOptions]}
+              width="100%"
+            />
+          </label>
+        ) : null}
       </div>
     </Modal>
   );

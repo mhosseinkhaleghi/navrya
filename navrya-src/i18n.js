@@ -4,7 +4,7 @@
 // defaults, so every component still works standalone with its original English text.
 export const NAVRYA_STRINGS = {
   en: {
-    navSessions: 'Sessions', navDashboard: 'Dashboard', navStrategies: 'Strategies', navPsychology: 'Psychology',
+    navSessions: 'Sessions', navDashboard: 'Dashboard', navAccounts: 'Accounts', navStrategies: 'Strategies', navPsychology: 'Psychology',
     navSubscription: 'Subscription', navAiAssistant: 'AI Assistant', navCommunity: 'Community', navSettings: 'Settings',
     navMore: 'More tools', activeLabel: 'ACTIVE', collapseSidebar: 'Collapse sidebar', expandSidebar: 'Expand sidebar',
     collapseHeader: 'Collapse header', expandHeader: 'Expand header', nextShort: 'Next',
@@ -20,6 +20,7 @@ export const NAVRYA_STRINGS = {
     uploadNotice: 'Chart uploads are optional. Add scenarios and notes after creation.',
     uploadChart: 'Upload chart image', tradingSession: 'Trading session', primaryTimeframe: 'Primary timeframe',
     gregorianDate: 'Gregorian date', jalaliDate: 'Jalali date', loopInterval: 'Loop / update interval', graceMinutes: 'Update grace period (minutes)',
+    sessionAccount: 'Account', sessionNoAccount: 'No account',
     canvasHint: 'Resize cards and build your own panel arrangement from this page.',
     noPanels: 'No panels are active in this section.', insufficientData: 'Insufficient data.', noData: 'No data',
     overview: 'Today overview', totalTrades: 'Total trades', wins: 'Wins',
@@ -35,7 +36,7 @@ export const NAVRYA_STRINGS = {
     charTitle: { hunter: 'THE HUNTER', commander: 'THE COMMANDER', engineer: 'THE MARKET ENGINEER', master: 'THE MARKET MASTER' }
   },
   fa: {
-    navSessions: 'سشن‌ها', navDashboard: 'داشبورد', navStrategies: 'استراتژی‌ها', navPsychology: 'روانشناسی',
+    navSessions: 'سشن‌ها', navDashboard: 'داشبورد', navAccounts: 'حساب‌ها', navStrategies: 'استراتژی‌ها', navPsychology: 'روانشناسی',
     navSubscription: 'اشتراک', navAiAssistant: 'هوش مصنوعی', navCommunity: 'تالار گفتگو', navSettings: 'تنظیمات',
     navMore: 'ابزارهای بیشتر', activeLabel: 'فعال', collapseSidebar: 'جمع کردن نوار کناری', expandSidebar: 'باز کردن نوار کناری',
     collapseHeader: 'جمع کردن هدر', expandHeader: 'باز کردن هدر', nextShort: 'بعدی',
@@ -51,6 +52,7 @@ export const NAVRYA_STRINGS = {
     uploadNotice: 'آپلود چارت اختیاری است. پس از ایجاد می‌توانید سناریو و یادداشت اضافه کنید.',
     uploadChart: 'آپلود تصویر چارت', tradingSession: 'سشن معاملاتی', primaryTimeframe: 'تایم‌فریم اصلی',
     gregorianDate: 'تاریخ میلادی', jalaliDate: 'تاریخ شمسی', loopInterval: 'لوپ / بازه به‌روزرسانی', graceMinutes: 'مهلت به‌روزرسانی (دقیقه)',
+    sessionAccount: 'حساب', sessionNoAccount: 'بدون حساب',
     canvasHint: 'کارت‌ها را از همین صفحه بزرگ یا کوچک کن و ترتیب پنل‌های شخصی‌ات را بساز.',
     noPanels: 'پنلی در این بخش فعال نیست.', insufficientData: 'داده کافی نیست.', noData: 'بدون داده',
     overview: 'نمای کلی امروز', totalTrades: 'مجموع معاملات', wins: 'برد‌ها',
@@ -63,7 +65,7 @@ export const NAVRYA_STRINGS = {
     charTitle: { hunter: 'شکارچی', commander: 'فرمانده', engineer: 'مهندس بازار', master: 'استاد بزرگ بازار' }
   },
   ar: {
-    navSessions: 'الجلسات', navDashboard: 'لوحة التحكم', navStrategies: 'الاستراتيجيات', navPsychology: 'علم النفس',
+    navSessions: 'الجلسات', navDashboard: 'لوحة التحكم', navAccounts: 'الحسابات', navStrategies: 'الاستراتيجيات', navPsychology: 'علم النفس',
     navSubscription: 'الاشتراك', navAiAssistant: 'الذكاء الاصطناعي', navCommunity: 'المجتمع', navSettings: 'الإعدادات',
     navMore: 'أدوات إضافية', activeLabel: 'نشط', collapseSidebar: 'طي الشريط الجانبي', expandSidebar: 'فتح الشريط الجانبي',
     collapseHeader: 'طي الترويسة', expandHeader: 'فتح الترويسة', nextShort: 'التالي',
@@ -79,6 +81,7 @@ export const NAVRYA_STRINGS = {
     uploadNotice: 'رفع المخططات اختياري. يمكنك إضافة سيناريوهات وملاحظات بعد الإنشاء.',
     uploadChart: 'رفع صورة المخطط', tradingSession: 'جلسة التداول', primaryTimeframe: 'الإطار الزمني الأساسي',
     gregorianDate: 'التاريخ الميلادي', jalaliDate: 'التاريخ الشمسي', loopInterval: 'حلقة / فترة التحديث', graceMinutes: 'مهلة التحديث (دقائق)',
+    sessionAccount: 'الحساب', sessionNoAccount: 'بدون حساب',
     canvasHint: 'يمكنك تكبير أو تصغير البطاقات من هنا وبناء ترتيب اللوحات الخاص بك.',
     noPanels: 'لا توجد لوحات نشطة في هذا القسم.', insufficientData: 'بيانات غير كافية.', noData: 'لا توجد بيانات',
     overview: 'نظرة اليوم', totalTrades: 'إجمالي الصفقات', wins: 'الصفقات الرابحة',
@@ -91,7 +94,7 @@ export const NAVRYA_STRINGS = {
     charTitle: { hunter: 'الصياد', commander: 'القائد', engineer: 'مهندس السوق', master: 'الحكيم الأعظم للسوق' }
   },
   es: {
-    navSessions: 'Sesiones', navDashboard: 'Panel', navStrategies: 'Estrategias', navPsychology: 'Psicología',
+    navSessions: 'Sesiones', navDashboard: 'Panel', navAccounts: 'Cuentas', navStrategies: 'Estrategias', navPsychology: 'Psicología',
     navSubscription: 'Suscripción', navAiAssistant: 'Asistente IA', navCommunity: 'Comunidad', navSettings: 'Ajustes',
     navMore: 'Más herramientas', activeLabel: 'ACTIVO', collapseSidebar: 'Contraer barra lateral', expandSidebar: 'Expandir barra lateral',
     collapseHeader: 'Contraer encabezado', expandHeader: 'Expandir encabezado', nextShort: 'Siguiente',
@@ -107,6 +110,7 @@ export const NAVRYA_STRINGS = {
     uploadNotice: 'La carga de gráficos es opcional. Puedes añadir escenarios y notas después de crear la sesión.',
     uploadChart: 'Subir imagen del gráfico', tradingSession: 'Sesión de trading', primaryTimeframe: 'Marco temporal principal',
     gregorianDate: 'Fecha gregoriana', jalaliDate: 'Fecha jalalí', loopInterval: 'Bucle / intervalo de actualización', graceMinutes: 'Margen de actualización (minutos)',
+    sessionAccount: 'Cuenta', sessionNoAccount: 'Sin cuenta',
     canvasHint: 'Cambia el tamaño de las tarjetas y crea tu propia disposición de paneles desde aquí.',
     noPanels: 'No hay paneles activos en esta sección.', insufficientData: 'Datos insuficientes.', noData: 'Sin datos',
     overview: 'Resumen de hoy', totalTrades: 'Operaciones totales', wins: 'Ganadas',

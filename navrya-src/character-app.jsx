@@ -27,6 +27,7 @@ import { renderAccountProfile } from './accountProfileView.jsx';
 import { openIntake } from './mentalHealthIntakeModal.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { openLogWizard } from './tradeLogModal.jsx';
+import { useAccounts } from './accountsView.jsx';
 import { openClosePosition } from './closePositionModal.jsx';
 import { openEmotion } from './logEmotionModal.jsx';
 import { openTradeDetails } from './tradeDetailsModal.jsx';
@@ -50,6 +51,7 @@ function navItems(t) {
   return [
     { id: 'sessions', icon: 'sessions', label: t.navSessions },
     { id: 'dashboard', icon: 'dashboard', label: t.navDashboard },
+    { id: 'accounts', icon: 'wallet', label: t.navAccounts },
     { id: 'strategies', icon: 'strategies', label: t.navStrategies },
     { id: 'psychology', icon: 'psychology', label: t.navPsychology },
     { id: 'subscription', icon: 'subscription', label: t.navSubscription },
@@ -221,6 +223,12 @@ function SessionsApp({ character, navryaCharacter, store }) {
   // same root, whenever a session is open - the cross-root signal (liveSessionSignal.js) exists
   // only so HeaderApp (a separate createRoot tree) can hide the character header at the same time.
   const liveSessionId = React.useSyncExternalStore(subscribeLiveSession, getLiveSessionId);
+  // Defect #5: Session Start's account picker only ever lists this user's real ACTIVE accounts
+  // (never archived - defect #3) - the same live, event-driven useAccounts() hook the Accounts
+  // Portfolio itself uses, so a session created right after a new account elsewhere reflects it
+  // without a page reload.
+  const sessionAccounts = useAccounts().filter((a) => a.status === 'active');
+  const sessionAccountOptions = sessionAccounts.map((a) => ({ value: a.id, label: a.firm }));
   const cards = s.sessions.map((session) => {
     const props = sessionsAdapter.toCardProps(session);
     return {
@@ -254,8 +262,10 @@ function SessionsApp({ character, navryaCharacter, store }) {
               dialogTitle: t.dialogTitle, createWithoutChart: t.createWithoutChart, cancel: t.cancel,
               uploadNotice: t.uploadNotice, uploadChart: t.uploadChart, tradingSession: t.tradingSession,
               primaryTimeframe: t.primaryTimeframe, gregorianDate: t.gregorianDate, jalaliDate: t.jalaliDate,
-              loopInterval: t.loopInterval, graceMinutes: t.graceMinutes
-            }
+              loopInterval: t.loopInterval, graceMinutes: t.graceMinutes,
+              sessionAccount: t.sessionAccount, sessionNoAccount: t.sessionNoAccount
+            },
+            accountOptions: sessionAccountOptions
           }}
         />
       )}
@@ -451,19 +461,29 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'session.create', domain: 'sessions', riskLevel: 'low',
-        description: 'Create a new trading session',
+        description: 'Create a new trading session. accountId (optional) links it to one of the user\'s real active accounts by name.',
         aliases: ['start session', 'new session', 'open a session', 'start a session'],
         requiredFields: ['city', 'timeframe'],
-        optionalFields: ['gregorian', 'jalali', 'loop', 'grace'],
+        optionalFields: ['gregorian', 'jalali', 'loop', 'grace', 'accountId'],
         available: () => true,
         open: () => {
           if (getLiveSessionId()) closeLiveSession();
           if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
           window.dispatchEvent(new CustomEvent('tradejournal:ai-open-new-session'));
         },
+        // accountId resolution is the exact same STRICT, ask-rather-than-guess
+        // TradeJournalAITradeActions.resolveAccountId() trade.calculator's own accountId field
+        // already uses (see that action's own normalizeField below) - an ambiguous or unmatched
+        // account name resolves to null (field stays unfilled) rather than a guessed account.
         normalizeField: (path, value) => {
           if (path === 'city') return normalizeSessionCity(value);
           if (path === 'timeframe') return normalizeSessionTimeframe(value);
+          if (path === 'accountId') {
+            var helpers = window.TradeJournalAITradeActions;
+            var accountsStore = window.TradeJournalAccountsStore;
+            if (!helpers) return null;
+            return helpers.resolveAccountId(value, accountsStore && typeof accountsStore.listActive === 'function' ? accountsStore.listActive() : []);
+          }
           return value;
         },
         submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('session-create'),
@@ -520,7 +540,7 @@ export function mountCharacterApp(character) {
         description: 'Plan and create a brand-new Trade (direction, entry, stop, target, risk) - this is the ONLY action that creates a Trade. "Open this trade"/"mark it open" about an EXISTING, already-visible Hunting Trade is a different action (trade.open, a lifecycle status change) - never this one; use this one whenever no specific existing Trade is already in view. linkedStrategyId/linkedPatternIds: pass the Strategy/Pattern NAME exactly as the user said it (e.g. "Conservative Scalper") - NAVRYA resolves the real id from that name itself; never invent or omit it for lacking a real id. IMPORTANT - riskPercent (and every other field): extraction and safety policy are two different, separate jobs, and enforcing policy is never your job here, even once. Put the exact riskPercent number the user literally typed into the suggestion/fields array on every single turn they state one, with zero exceptions - including a message that also mentions anger, recent losses, or stress in the same breath. NAVRYA itself runs a real, deterministic check on that number after you extract it and will pause for explicit confirmation if it conflicts with anything - that downstream check is the ONLY thing allowed to hold the value back, and it can only do that if you hand the number over first. Silently re-suggesting the OLD value, or leaving the field out of your suggestion, is a bug: it skips NAVRYA own real safety check entirely and is far less safe than extracting the number and letting NAVRYA evaluate it. You may still say in your own reply that you are concerned - just also extract the number.',
         aliases: ['take a long', 'take a short', 'go long', 'go short', 'open a trade', 'start a trade', 'size a trade', 'plan a trade', 'open a position', 'open a long position', 'open a short position'],
         requiredFields: ['direction', 'entryPrice', 'stopLoss', 'riskPercent', 'takeProfits'],
-        optionalFields: ['leverage', 'marginMode', 'accountBalance', 'riskAmount', 'linkedStrategyId', 'linkedPatternIds'],
+        optionalFields: ['leverage', 'marginMode', 'accountBalance', 'riskAmount', 'linkedStrategyId', 'linkedPatternIds', 'accountId', 'instrument'],
         available: () => true,
         // Session/Scenario context is inherited here, once, from the real snapshot the workflow
         // engine already passed into start() - never asked for as a chat field (there is nothing
@@ -537,15 +557,27 @@ export function mountCharacterApp(character) {
             if (entities.sessionId) registry.applyValue('trade-calculator', 'sourceSessionId', entities.sessionId, 'replace');
             if (entities.scenarioId) registry.applyValue('trade-calculator', 'sourceScenarioId', entities.scenarioId, 'replace');
           }
+          // accountsView.jsx's AccountDetail registers 'account-detail-{id}' purely for context
+          // while a real account is on screen (same "registered purely so this can be read back"
+          // precedent as tradeDetailsModal.jsx's own 'trade-details-{id}') - resolved directly
+          // here (context here is ai-context-engine.js's own raw snapshot, which has no concept
+          // of an active Account) rather than through ai-context-builder.js, mirroring exactly
+          // how resolveActiveIdByPrefix() itself works.
+          if (registry && typeof registry.openIdsWithPrefix === 'function') {
+            var openAccountIds = registry.openIdsWithPrefix('account-detail-');
+            if (openAccountIds.length) registry.applyValue('trade-calculator', 'accountId', openAccountIds[0].slice('account-detail-'.length), 'replace');
+          }
         },
         normalizeField: (path, value) => {
           var helpers = window.TradeJournalAITradeActions;
           if (!helpers) return value;
           var strategyStore = window.TradeJournalStrategyEducationStore;
           var patternStore = window.TradeJournalPatternStore;
+          var accountsStore = window.TradeJournalAccountsStore;
           return helpers.normalizeField(path, value, {
             strategies: strategyStore && typeof strategyStore.listActive === 'function' ? strategyStore.listActive() : [],
-            patterns: patternStore && typeof patternStore.listForScenarios === 'function' ? patternStore.listForScenarios() : []
+            patterns: patternStore && typeof patternStore.listForScenarios === 'function' ? patternStore.listForScenarios() : [],
+            accounts: accountsStore && typeof accountsStore.listActive === 'function' ? accountsStore.listActive() : []
           });
         },
         // Delegates straight to the calculator's own registered submit() (see
@@ -595,6 +627,7 @@ export function mountCharacterApp(character) {
     var NAVIGATE_TARGETS = {
       dashboard: () => store.setActiveId('dashboard'),
       sessions: () => store.setActiveId('sessions'),
+      accounts: () => store.setActiveId('accounts'),
       strategies: () => store.setActiveId('strategies'),
       patterns: () => store.setActiveId('strategies'),
       settings: () => store.setActiveId('settings'),
@@ -606,6 +639,7 @@ export function mountCharacterApp(character) {
     var NAVIGATE_ALIASES = {
       home: 'dashboard', main: 'dashboard',
       session: 'sessions', trading: 'sessions',
+      'prop-firm': 'accounts', propfirm: 'accounts', wallet: 'accounts',
       strategy: 'strategies', pattern: 'patterns',
       setting: 'settings', preferences: 'settings',
       mindset: 'psychology', mental: 'psychology',
@@ -635,7 +669,7 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'navigate.to', domain: 'navigation', riskLevel: 'low',
-        description: 'Navigate to a real page/section of NAVRYA. Valid domainId values: dashboard, sessions, strategies, patterns, settings, psychology, ai-assistant, community, account. There is no single dedicated page for "reports"/"trading calendar" (legacy, unreachable from current navigation), "trade-planning"/"open positions" (spans three real surfaces, not one page), or "character" (switching the active character is done from Settings) - if asked to go to one of those, say plainly that no such page exists rather than calling this action.',
+        description: 'Navigate to a real page/section of NAVRYA. Valid domainId values: dashboard, sessions, accounts, strategies, patterns, settings, psychology, ai-assistant, community, account. "accounts" is the prop-firm/personal trading Accounts ledger; "account" (singular) is the user\'s own profile/subscription page - do not confuse the two. There is no single dedicated page for "reports"/"trading calendar" (legacy, unreachable from current navigation), "trade-planning"/"open positions" (spans three real surfaces, not one page), or "character" (switching the active character is done from Settings) - if asked to go to one of those, say plainly that no such page exists rather than calling this action.',
         aliases: ['take me to', 'go to', 'navigate to', 'open the', 'show me the'],
         requiredFields: ['domainId'], optionalFields: [],
         available: () => true,
@@ -835,6 +869,120 @@ export function mountCharacterApp(character) {
               );
             },
             () => resolve(null) // the Strategies Hub never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+    }
+
+    // Accounts domain (prop-firm/personal trading accounts - navrya-src/accountsView.jsx).
+    // account.create/account.edit mirror pattern.create/pattern.edit's shape (poll for the real
+    // hub, open a real visible form, poll for that form's own process registration) with one
+    // deliberate difference: neither ever declares/forwards a `submit`. accounts-view.jsx's
+    // ManualAccountModal registers 'account-manual-form' with no `submit` of its own, so
+    // TradeJournalAIProcessRegistry.submit('account-manual-form') is always a safe no-op - only
+    // the human clicking "Create account"/"Save changes" in that visible form ever calls
+    // window.TradeJournalAccountsStore.save(). Matches the product brief precisely: "AI can fill
+    // a visible form but cannot silently save, archive, delete, bypass risk controls, or claim a
+    // rule is satisfied."
+    if (window.TradeJournalAIActionRegistry) {
+      var ACCOUNT_FIELDS = (window.TradeJournalAccountsTypes && window.TradeJournalAccountsTypes.manualAccountPaths) || [];
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'account.create', domain: 'accounts', riskLevel: 'low',
+        description: 'Open the real "create account" form for a new prop-firm or personal trading Account (this is the Accounts ledger - distinct from the user\'s own profile, see navigate.to). Every account here is manual - NAVRYA has no live broker/prop-firm connection, so this only opens the visible form and fills the fields you are given; the account itself is never created until the human clicks "Create account" themselves, even once every field is filled.',
+        aliases: ['create an account', 'new account', 'add an account', 'create a prop account', 'add a personal account', 'set up a trading account'],
+        requiredFields: [], optionalFields: ACCOUNT_FIELDS,
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'accounts') store.setActiveId('accounts');
+          pollFor(
+            () => window.TradeJournalNavryaAccountsHub,
+            (hub) => {
+              hub.createNew();
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('account-manual-form').open,
+                () => resolve({ processId: 'account-manual-form' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      // Mirrors pattern.edit/strategy.edit: accountName is resolution-only (never applied to the
+      // real form), and resolution goes through ai-trade-actions.js's resolveAccountId() - see
+      // that function's own comment on why it is stricter than resolveStrategyId/resolvePatternIds
+      // (an account is a real money boundary; an ambiguous name must never be guessed).
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'account.edit', domain: 'accounts', riskLevel: 'low',
+        description: 'Open an EXISTING trading Account\'s rules for editing, by its firm/label name. accountName identifies which existing Account to open - it is never a rename. Only select this once the user has actually named which existing Account they mean; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing.',
+        aliases: ['edit an account', 'edit the account', 'update account rules', 'change the account rules', 'open the account settings'],
+        requiredFields: ['accountName'], optionalFields: ACCOUNT_FIELDS,
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var nameField = (initialFields || []).filter((f) => f && f.path === 'accountName')[0];
+          var accountName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';
+          if (!accountName) { resolve(null); return; }
+          var accountsStore = window.TradeJournalAccountsStore;
+          var helpers = window.TradeJournalAITradeActions;
+          var list = accountsStore ? accountsStore.listActive() : [];
+          var targetId = helpers ? helpers.resolveAccountId(accountName, list) : null;
+          if (!targetId) { resolve(null); return; } // zero or ambiguous - never guess
+          if (store.getState().activeId !== 'accounts') store.setActiveId('accounts');
+          pollFor(
+            () => window.TradeJournalNavryaAccountsHub,
+            (hub) => {
+              hub.editExisting(targetId);
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('account-manual-form').open,
+                () => resolve({ processId: 'account-manual-form' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      // Pure navigation (open/select an existing Account to view it) - never a mutation, so
+      // unlike account.create/account.edit this has no reason to withhold a real effect from
+      // open() itself.
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'account.open', domain: 'accounts', riskLevel: 'low',
+        description: 'Open an EXISTING trading Account by its firm/label name to view its overview, rules, pre-trade check, performance and behaviour tabs. A real navigation only, never a mutation. accountName identifies which existing Account to open; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing.',
+        aliases: ['open my account', 'open the account', 'show me my account', 'go to my account', 'view account', 'select account'],
+        requiredFields: ['accountName'], optionalFields: [],
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var nameField = (initialFields || []).filter((f) => f && f.path === 'accountName')[0];
+          var accountName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';
+          if (!accountName) { resolve(null); return; }
+          var accountsStore = window.TradeJournalAccountsStore;
+          var helpers = window.TradeJournalAITradeActions;
+          var list = accountsStore ? accountsStore.listActive() : [];
+          var targetId = helpers ? helpers.resolveAccountId(accountName, list) : null;
+          if (!targetId) { resolve(null); return; } // zero or ambiguous - never guess
+          if (store.getState().activeId !== 'accounts') store.setActiveId('accounts');
+          pollFor(
+            () => window.TradeJournalNavryaAccountsHub,
+            (hub) => {
+              hub.open(targetId);
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('account-detail-' + targetId).open,
+                () => resolve({ processId: 'account-detail-' + targetId }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
           );
         }),
         submit: () => undefined,

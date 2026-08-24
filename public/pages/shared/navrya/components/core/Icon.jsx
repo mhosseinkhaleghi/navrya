@@ -3,7 +3,7 @@ import React from 'react';
 /* NAVRYA icon slugs → Lucide icon names. One shared family, 24×24 grid, 2px round strokes.
    Lucide is a documented substitution for the unreleased NAVRYA master pack (see readme.md → ICONOGRAPHY). */
 export const NAVRYA_ICONS = {
-  sessions: 'Clock', dashboard: 'LayoutGrid', strategies: 'Waypoints', psychology: 'Brain',
+  sessions: 'Clock', dashboard: 'LayoutGrid', wallet: 'Wallet', strategies: 'Waypoints', psychology: 'Brain',
   subscription: 'Crown', 'ai-assistant': 'Briefcase', community: 'MessagesSquare', settings: 'Settings',
   more: 'MoreHorizontal', quote: 'Quote', reward: 'Package', collapse: 'ChevronsLeft', expand: 'ChevronsRight',
   'scroll-down': 'ChevronDown', chevron: 'ChevronDown', 'active-arrow': 'ChevronRight', progress: 'CircleDashed',

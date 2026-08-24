@@ -15,6 +15,7 @@ import * as routesTradingSessions from './routes.trading-sessions.mjs';
 import * as routesPatterns from './routes.patterns.mjs';
 import * as routesStrategies from './routes.strategies.mjs';
 import * as routesTrades from './routes.trades.mjs';
+import * as routesAccounts from './routes.accounts.mjs';
 import * as routesMentalHealth from './routes.mental-health.mjs';
 import * as routesAiChatHistory from './routes.ai-chat-history.mjs';
 import * as routesCompanion from './routes.companion.mjs';
@@ -139,6 +140,7 @@ export function createApp({ repo, uploadsDir }) {
   app.use('/api/sync/patterns', routesPatterns.router(repo, uploadsDir));
   app.use('/api/sync/strategies', routesStrategies.router(repo, uploadsDir));
   app.use('/api/sync/trades', routesTrades.router(repo, uploadsDir));
+  app.use('/api/sync/accounts', routesAccounts.router(repo));
   app.use('/api/sync/mental-health', routesMentalHealth.router(repo));
   app.use('/api/sync/ai-chat-history', routesAiChatHistory.router(repo));
   app.use('/api/sync/companion-state', routesCompanion.router(repo));

@@ -15,7 +15,9 @@ async function engineSandbox(overrides) {
   sandbox.window = Object.assign(sandbox.window, {
     TradeJournalTradeStore: overrides.tradeStore,
     TradeJournalStrategyEducationStore: overrides.strategyStore,
-    TradeJournalMentalHealthStore: overrides.mentalHealthStore
+    TradeJournalMentalHealthStore: overrides.mentalHealthStore,
+    TradeJournalAccountsStore: overrides.accountsStore,
+    TradeJournalAccountsEngine: overrides.accountsEngine
   });
   vm.runInNewContext(await source('ai-proactive-engine.js'), sandbox, { filename: 'ai-proactive-engine.js' });
   return sandbox.window.TradeJournalAIProactiveEngine;
@@ -123,11 +125,13 @@ test('Rule B does not fire below the cap, or with no strategy/no cap set', async
 
 test('Rule C only fires when readyToSubmit is true and stopLoss is genuinely absent', async () => {
   const engine = await engineSandbox({});
-  assert.deepEqual(findingIds(engine.evaluate({ context: { readyToSubmit: false }, proposedFields: {} })), [], 'never fires on a still-in-progress draft');
-  const fired = engine.evaluate({ context: { readyToSubmit: true }, proposedFields: {} });
+  // hasActiveAccounts: true keeps this test isolated from Rule F (account-onboarding), which also
+  // gates on readyToSubmit - this test is about the stop-loss rule alone.
+  assert.deepEqual(findingIds(engine.evaluate({ context: { readyToSubmit: false, hasActiveAccounts: true }, proposedFields: {} })), [], 'never fires on a still-in-progress draft');
+  const fired = engine.evaluate({ context: { readyToSubmit: true, hasActiveAccounts: true }, proposedFields: {} });
   assert.deepEqual(findingIds(fired), ['missing-stop-loss']);
   assert.equal(fired.findings[0].severity, 'WARNING');
-  assert.deepEqual(findingIds(engine.evaluate({ context: { readyToSubmit: true }, proposedFields: { stopLoss: '65000' } })), [], 'does not fire once a real stop is present');
+  assert.deepEqual(findingIds(engine.evaluate({ context: { readyToSubmit: true, hasActiveAccounts: true }, proposedFields: { stopLoss: '65000' } })), [], 'does not fire once a real stop is present');
 });
 
 // ---- Rule D - risk escalation after verified recent losses ----
@@ -173,6 +177,111 @@ test('Rule E does not fire below the stress threshold, without a real psychology
   assert.deepEqual(findingIds(engine.evaluate({ context: { psychology: { currentStress: 5 }, baselineRiskPercent: 1 }, proposedFields: { riskPercent: '4' } })), []);
   assert.deepEqual(findingIds(engine.evaluate({ context: { psychology: null, baselineRiskPercent: 1 }, proposedFields: { riskPercent: '4' } })), []);
   assert.deepEqual(findingIds(engine.evaluate({ context: { psychology: { currentStress: 9 }, baselineRiskPercent: 5 }, proposedFields: { riskPercent: '4' } })), []);
+});
+
+// ---- Rule F - no active account yet, only near submission (defect #8) ----
+
+test('Rule F fires INFO only once the trade is genuinely ready to submit, never on every keystroke while the account list is honestly empty', async () => {
+  const engine = await engineSandbox({});
+  // stopLoss is supplied throughout so Rule C (missing-stop-loss) never fires alongside this -
+  // this test is about the account-onboarding rule alone.
+  const notReady = engine.evaluate({ context: { hasActiveAccounts: false, accountId: null, readyToSubmit: false }, proposedFields: { stopLoss: '65000' } });
+  assert.deepEqual(findingIds(notReady), []);
+  const ready = engine.evaluate({ context: { hasActiveAccounts: false, accountId: null, readyToSubmit: true }, proposedFields: { stopLoss: '65000' } });
+  assert.deepEqual(findingIds(ready), ['account-onboarding']);
+  assert.equal(ready.findings[0].severity, 'INFO');
+});
+
+test('Rule F never fires once real active accounts exist, or once one is already selected', async () => {
+  const engine = await engineSandbox({});
+  const fields = { stopLoss: '65000' };
+  assert.deepEqual(findingIds(engine.evaluate({ context: { hasActiveAccounts: true, accountId: null, readyToSubmit: true }, proposedFields: fields })), []);
+  assert.deepEqual(findingIds(engine.evaluate({ context: { hasActiveAccounts: false, accountId: 'acc-1', readyToSubmit: true }, proposedFields: fields })), []);
+});
+
+// ---- Rule G - selected account is archived (defect #3, AI-side heads-up) ----
+
+test('Rule G fires WARNING when the linked account is archived, and never blocks (real enforcement is server-side)', async () => {
+  const engine = await engineSandbox({});
+  const result = engine.evaluate({ context: { accountArchived: true, accountId: 'acc-1' }, proposedFields: {} });
+  assert.deepEqual(findingIds(result), ['account-archived-selection']);
+  assert.equal(result.findings[0].severity, 'WARNING');
+  assert.equal(engine.BLOCKING_SEVERITIES.WARNING, undefined);
+});
+
+// ---- Rule H - proposed risk against the linked account's real daily allowance ----
+
+test('Rule H fires CONFIRM_OVERRIDE, with a field matching whichever path was actually proposed, when the account\'s real evaluatePretrade tone is "bad"', async () => {
+  const engine = await engineSandbox({});
+  const context = { accountPretrade: { tone: 'bad', riskAmount: 600, allowanceLeft: 400, allowanceAmount: 500, basisInsufficient: false }, accountId: 'acc-1', accountRiskField: 'riskPercent' };
+  const result = engine.evaluate({ context, proposedFields: { riskPercent: '6' } });
+  assert.deepEqual(findingIds(result), ['account-daily-loss-exceeded']);
+  assert.equal(result.findings[0].severity, 'CONFIRM_OVERRIDE');
+  assert.equal(result.findings[0].requiresConfirmation, true);
+  assert.equal(result.findings[0].field, 'riskPercent', 'must match accountRiskField, not a hardcoded literal, or chat-dock-core.js would hold back the wrong path');
+});
+
+test('Rule H fires WARNING (non-blocking) when the tone is "warn", and NUDGE with no blocking when the daily-loss basis is honestly unverifiable', async () => {
+  const engine = await engineSandbox({});
+  const warnResult = engine.evaluate({ context: { accountPretrade: { tone: 'warn', riskAmount: 300, allowanceLeft: 400, allowanceAmount: 500, basisInsufficient: false }, accountId: 'acc-1' }, proposedFields: {} });
+  assert.deepEqual(findingIds(warnResult), ['account-daily-loss-close']);
+  assert.equal(warnResult.findings[0].severity, 'WARNING');
+  assert.equal(warnResult.findings[0].requiresConfirmation, false);
+
+  const insufficientResult = engine.evaluate({ context: { accountPretrade: { tone: 'unknown', riskAmount: 300, allowanceLeft: null, allowanceAmount: null, basisInsufficient: true }, accountId: 'acc-1' }, proposedFields: {} });
+  assert.deepEqual(findingIds(insufficientResult), ['account-daily-loss-basis-insufficient']);
+  assert.equal(insufficientResult.findings[0].severity, 'NUDGE');
+});
+
+test('Rule H does not fire with no accountPretrade at all (no account linked, or no risk amount proposed yet)', async () => {
+  const engine = await engineSandbox({});
+  assert.deepEqual(findingIds(engine.evaluate({ context: { accountPretrade: null }, proposedFields: {} })), []);
+});
+
+// ---- Rule I - account already sitting in DANGER/VIOLATED on its own rules ----
+
+test('Rule I fires for danger/violated regardless of the risk currently being proposed, and never for safe/watch/progress/insufficient', async () => {
+  const engine = await engineSandbox({});
+  assert.deepEqual(findingIds(engine.evaluate({ context: { accountWorstRuleState: 'violated', accountId: 'acc-1' }, proposedFields: {} })), ['account-worst-state-violated']);
+  assert.deepEqual(findingIds(engine.evaluate({ context: { accountWorstRuleState: 'danger', accountId: 'acc-1' }, proposedFields: {} })), ['account-worst-state-danger']);
+  ['safe', 'watch', 'progress', 'insufficient', null].forEach((state) => {
+    assert.deepEqual(findingIds(engine.evaluate({ context: { accountWorstRuleState: state, accountId: 'acc-1' }, proposedFields: {} })), []);
+  });
+});
+
+// ---- Rule J - real, evidence-backed behaviour signal (never derived from profitability) ----
+
+test('Rule J fires NUDGE only with real evidence (a computed score) AND at least one real violation/revenge instance', async () => {
+  const engine = await engineSandbox({});
+  const withEvidence = engine.evaluate({ context: { accountDiscipline: { score: 40, riskRuleViolations: 2, riskRuleSample: 5, revengeCount: 1, revengeSample: 4 }, accountId: 'acc-1' }, proposedFields: {} });
+  assert.deepEqual(findingIds(withEvidence), ['account-discipline-signal']);
+  assert.equal(withEvidence.findings[0].severity, 'NUDGE');
+
+  const belowSample = engine.evaluate({ context: { accountDiscipline: { score: null, sampleSize: 2 }, accountId: 'acc-1' }, proposedFields: {} });
+  assert.deepEqual(findingIds(belowSample), [], 'never fires below computeDiscipline\'s own real minimum sample size (score stays null)');
+
+  const cleanRecord = engine.evaluate({ context: { accountDiscipline: { score: 90, riskRuleViolations: 0, revengeCount: 0 }, accountId: 'acc-1' }, proposedFields: {} });
+  assert.deepEqual(findingIds(cleanRecord), [], 'a real, evidence-backed CLEAN record must never manufacture a signal');
+});
+
+// ---- confirmationReply() names the right real limit depending on which rule was confirmed ----
+
+test('confirmationReply() names the account\'s own daily allowance (not "your strategy") when the resolved finding came from an account rule', async () => {
+  const engine = await engineSandbox({});
+  const resolved = { ruleId: 'account-daily-loss-exceeded', field: 'riskAmount', proposedValue: 600, safeValue: null };
+  const confirmMsg = engine.confirmationReply('confirm', resolved, 'en');
+  assert.match(confirmMsg, /account/i);
+  assert.doesNotMatch(confirmMsg, /strategy/i);
+  const rejectMsg = engine.confirmationReply('reject', resolved, 'en');
+  assert.match(rejectMsg, /account/i);
+  assert.doesNotMatch(rejectMsg, /strategy/i);
+});
+
+test('confirmationReply() still names "strategy" for the original Strategy rule - no regression from the account-rule branch', async () => {
+  const engine = await engineSandbox({});
+  const resolved = { ruleId: 'strategy-risk-limit', field: 'riskPercent', proposedValue: 4, safeValue: 1 };
+  const msg = engine.confirmationReply('confirm', resolved, 'en');
+  assert.match(msg, /strategy/i);
 });
 
 test('unverified/model-inferred verifiedSignals never cause a rule to fire on their own - only real context data does', async () => {
@@ -266,7 +375,82 @@ test('buildTradeContext() only uses a validated, RECENT pre-session check-in for
 test('buildTradeContext() never throws when no stores are present on the page at all', async () => {
   const engine = await engineSandbox({});
   const ctx = engine.buildTradeContext({ proposedFields: {} });
-  assert.deepEqual(clone(ctx), { strategy: null, recentTrades: null, baselineRiskPercent: null, activeTradeCount: 0, psychology: null, readyToSubmit: false });
+  assert.deepEqual(clone(ctx), {
+    strategy: null, recentTrades: null, baselineRiskPercent: null, activeTradeCount: 0, psychology: null, readyToSubmit: false,
+    accountId: null, hasActiveAccounts: false, accountArchived: false, accountPretrade: null, accountRiskField: null,
+    accountWorstRuleState: null, accountDiscipline: null
+  });
+});
+
+// ---- buildTradeContext(): real accounts-engine.js integration (defect #8) ----
+
+function fakeAccountsEngine() {
+  return {
+    computeMetrics: (account, trades) => {
+      const closed = trades.filter((t) => t.accountId === account.id && t.status === 'closed');
+      const totalPL = closed.reduce((s, t) => s + t.pnl, 0);
+      return { equity: account.startingBalance + totalPL, dayStartEquity: account.startingBalance, dailyLossUsed: 0, dailyLossBasisInsufficient: false };
+    },
+    evaluatePretrade: (account, metrics, opts) => {
+      const allowanceAmount = account.rules && account.rules.dailyLossLimitPercent ? metrics.dayStartEquity * (account.rules.dailyLossLimitPercent / 100) : null;
+      const allowanceLeft = allowanceAmount !== null ? allowanceAmount : null;
+      const riskAmount = opts.riskAmount;
+      let tone = 'unknown';
+      if (allowanceLeft !== null && riskAmount >= allowanceLeft) tone = 'bad';
+      else if (allowanceLeft !== null && riskAmount / allowanceLeft >= 0.6) tone = 'warn';
+      else if (allowanceLeft !== null) tone = 'ok';
+      return { tone, riskAmount, allowanceLeft, allowanceAmount, basisInsufficient: false };
+    },
+    evaluateRules: (account, metrics) => ({ groups: account.__ruleGroups || [] }),
+    computeDiscipline: (account, trades) => account.__discipline || { score: null, sampleSize: 0 }
+  };
+}
+
+test('buildTradeContext() resolves the linked account\'s real pretrade verdict via accounts-engine.js, never a fabricated one', async () => {
+  const account = { id: 'acc-1', status: 'active', startingBalance: 10000, rules: { dailyLossLimitPercent: 5 } };
+  const accountsStore = { listSync: () => [account], find: (id) => (id === 'acc-1' ? account : null) };
+  const engine = await engineSandbox({ tradeStore: { listSync: () => [] }, accountsStore, accountsEngine: fakeAccountsEngine() });
+  const ctx = engine.buildTradeContext({ proposedFields: { accountId: 'acc-1', riskAmount: '600' } });
+  assert.equal(ctx.accountId, 'acc-1');
+  assert.equal(ctx.hasActiveAccounts, true);
+  assert.equal(ctx.accountArchived, false);
+  assert.equal(ctx.accountPretrade.tone, 'bad', '600 risked against a 500 (5% of 10,000) allowance is a real breach');
+  assert.equal(ctx.accountRiskField, 'riskAmount');
+});
+
+test('buildTradeContext() derives riskAmount from riskPercent using the linked account\'s own real equity when only a percent is proposed - never a different balance', async () => {
+  const account = { id: 'acc-1', status: 'active', startingBalance: 10000, rules: { dailyLossLimitPercent: 5 } };
+  const accountsStore = { listSync: () => [account], find: (id) => (id === 'acc-1' ? account : null) };
+  const engine = await engineSandbox({ tradeStore: { listSync: () => [] }, accountsStore, accountsEngine: fakeAccountsEngine() });
+  const ctx = engine.buildTradeContext({ proposedFields: { accountId: 'acc-1', riskPercent: '6' } });
+  assert.equal(ctx.accountPretrade.riskAmount, 600, '6% of the real 10,000 equity is 600, never a percent applied to some other balance');
+  assert.equal(ctx.accountRiskField, 'riskPercent', 'the blocked field must match whichever path was actually proposed');
+});
+
+test('buildTradeContext() reports accountArchived: true for an archived linked account, and hasActiveAccounts stays about OTHER active accounts', async () => {
+  const archived = { id: 'acc-1', status: 'archived', startingBalance: 10000, rules: {} };
+  const active = { id: 'acc-2', status: 'active', startingBalance: 5000, rules: {} };
+  const accountsStore = { listSync: () => [archived, active], find: (id) => [archived, active].find((a) => a.id === id) || null };
+  const engine = await engineSandbox({ tradeStore: { listSync: () => [] }, accountsStore, accountsEngine: fakeAccountsEngine() });
+  const ctx = engine.buildTradeContext({ proposedFields: { accountId: 'acc-1' } });
+  assert.equal(ctx.accountArchived, true);
+  assert.equal(ctx.hasActiveAccounts, true, 'a different account is still active - this is about the LINKED account only, not the whole list');
+});
+
+test('buildTradeContext() reports accountWorstRuleState from the account\'s own real evaluated rule groups, worst-of-all', async () => {
+  const account = { id: 'acc-1', status: 'active', startingBalance: 10000, rules: {}, __ruleGroups: [{ items: [{ state: 'watch' }, { state: 'violated' }] }] };
+  const accountsStore = { listSync: () => [account], find: () => account };
+  const engine = await engineSandbox({ tradeStore: { listSync: () => [] }, accountsStore, accountsEngine: fakeAccountsEngine() });
+  const ctx = engine.buildTradeContext({ proposedFields: { accountId: 'acc-1' } });
+  assert.equal(ctx.accountWorstRuleState, 'violated');
+});
+
+test('buildTradeContext() reports accountId: null / hasActiveAccounts from real data even with no accountId proposed', async () => {
+  const engine = await engineSandbox({ tradeStore: { listSync: () => [] }, accountsStore: { listSync: () => [{ status: 'active' }], find: () => null }, accountsEngine: fakeAccountsEngine() });
+  const ctx = engine.buildTradeContext({ proposedFields: {} });
+  assert.equal(ctx.accountId, null);
+  assert.equal(ctx.hasActiveAccounts, true);
+  assert.equal(ctx.accountPretrade, null);
 });
 
 // ---- pending confirmation state ----

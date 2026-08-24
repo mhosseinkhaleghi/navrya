@@ -117,8 +117,13 @@ function PreSessionCheckInModal({ session, onDone }) {
   function save() {
     if (saving) return;
     setSaving(true);
+    // Defect #5: the check-in inherits the session's own accountId (if the trader picked one at
+    // Session Start) - never a separate picker here, since a check-in is always already scoped
+    // to a specific, already-open session. Legacy/unscoped sessions (accountId null) produce a
+    // legacy/unscoped check-in, honestly, same as before.
     mh.addPreSessionCheckIn(mh.load(), session.id, {
-      sleepQuality, currentStressLevel, somethingToProveToday, significantPersonalEvent: significantPersonalEvent || null
+      sleepQuality, currentStressLevel, somethingToProveToday, significantPersonalEvent: significantPersonalEvent || null,
+      accountId: session.accountId || null
     });
     close();
   }

@@ -150,11 +150,14 @@ export async function createSession(character, values) {
   // resulting imageBlobId stored on the entry - never a blob: URL saved directly into the
   // session object, since those don't survive a page reload.
   const entries = await Promise.all((values.uploads || []).map(async (upload) => {
-    // HOTFIX: `type` was missing here entirely - every entry read/rendered/filtered elsewhere in
-    // this codebase (account-profile-store.js's XP trigger, liveSessionView.jsx's note-field
-    // branch, etc.) checks entry.type === 'chart'/'movement'/'fate' and silently mistreats an
-    // entry with none of those. These uploads are always chart images (NewSessionDialog's
-    // UPLOAD_SLOTS), matching what every other entry-creation path in this app already sets.
+    // HOTFIX: `type` was missing here entirely - the server's trading_session_entries.type
+    // column is NOT NULL with a CHECK ('chart','movement','fate') constraint, so every session
+    // created with at least one chart upload failed its POST /api/sync/sessions with a real
+    // constraint-violation 500, got rolled back by server-replica.js's upsert() (removed from
+    // the local list outright, since a brand-new record has no "previous" state to revert to),
+    // and so both silently failed to save AND was never openable afterward. These uploads are
+    // always chart images (NewSessionDialog's UPLOAD_SLOTS), matching the type this file's own
+    // normalize() elsewhere already defaults an omitted entry.type to.
     const entry = { id: 'entry-' + now + '-' + upload.timeframe, type: 'chart', timeframe: upload.timeframe, hasImage: true, scenarios: [] };
     if (window.TradeJournalImageStore) {
       const blobId = 'img-' + now + '-' + upload.timeframe;
@@ -183,6 +186,11 @@ export async function createSession(character, values) {
     status: 'open',
     ...(loopMinutes ? { updateIntervalMinutes: loopMinutes } : {}),
     ...(Number.isFinite(graceMinutes) && graceMinutes >= 0 ? { gracePeriodMinutes: graceMinutes } : {}),
+    // Defect #5: optional account scoping, picked in NewSessionDialog.jsx's account Select when
+    // the user owns at least one active account - never mandatory (a session can stay unassigned
+    // exactly like a legacy one always could), and the server (repo.*.tradingSessions.upsert)
+    // re-verifies ownership/archived-status the same way it already does for trades.
+    accountId: values.accountId || null,
     startedAt: now,
     createdAt: now,
     entries

@@ -1,6 +1,7 @@
 import { renderStrategiesHub } from './strategiesHubView.jsx';
 import { renderDashboard } from './dashboardView.jsx';
 import { renderSettings } from './settingsView.jsx';
+import { renderAccounts } from './accountsView.jsx';
 
 // panel-system.js's render('dashboard'|'strategies'|'settings') calls into this file via
 // window.TradeJournalNavryaCanvas.render (see character-app.jsx's mountCharacterApp) - these are
@@ -14,5 +15,6 @@ export function renderCanvas(character, view) {
   if (view === 'strategies') return renderStrategiesHub(character);
   if (view === 'dashboard') return renderDashboard(character);
   if (view === 'settings') return renderSettings(character);
+  if (view === 'accounts') return renderAccounts(character);
   return null;
 }

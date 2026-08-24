@@ -8,6 +8,7 @@ import { Select } from '../public/pages/shared/navrya/components/forms/Select.js
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 import { useAssistantMotion } from '../public/pages/shared/navrya/components/assistant/motion.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { ManualAccountModal } from './accountsView.jsx';
 
 // ============================================================================
 // Redesign of the Trade Calculator (Session tools · position sizing) against the design handoff
@@ -308,7 +309,7 @@ function computeOut(state) {
   return { valid: true, source, r, entry: e, stop: s, balance: bal, qty, tpAvg, wSum, rr, bad, rw };
 }
 
-function TradeCalculatorModal({ onClose }) {
+function TradeCalculatorModal({ onClose, initialSeed }) {
   const i18n = window.TradeJournalTradeI18n;
   const tradeStore = window.TradeJournalTradeStore;
   const t = i18n.t;
@@ -327,6 +328,17 @@ function TradeCalculatorModal({ onClose }) {
   // the same "every accepted value updates the real visible UI" rule every other AI-filled field
   // here already follows - never an invisible, AI-only field.
   const [patternId, setPatternId] = React.useState('');
+  // Accounts domain integration (navrya-src/accountsView.jsx): the Pre-trade check tab's "Open
+  // calculator with this account" button, and account.open's own trade.calculator open()
+  // wiring in character-app.jsx, both seed this via `initialSeed.accountId` - the "Open
+  // calculator must pass the selected account as an explicit seed/context" requirement.
+  // Selecting an account here only ever pre-fills accountBalance/riskPercent from that
+  // account's own real, already-entered rules (handleAccount() below) - it never overwrites a
+  // risk value the trader already typed, and never mutates the account itself.
+  const [accountId, setAccountId] = React.useState((initialSeed && initialSeed.accountId) || '');
+  const [instrument, setInstrument] = React.useState((initialSeed && initialSeed.instrument) || '');
+  const [accountError, setAccountError] = React.useState(false);
+  const [showCreateAccount, setShowCreateAccount] = React.useState(false);
   // sourceSessionId/sourceScenarioId: real Trade.source fields (the same ones
   // liveSessionView.jsx's own "Start Trade"/scenario buttons already set via
   // openLogWizard({source:{sessionId,scenarioId}})), threaded through here so a Trade started by
@@ -406,7 +418,7 @@ function TradeCalculatorModal({ onClose }) {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('trade-calculator', {
-      allowlist: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'riskAmount', 'leverage', 'feeType', 'feePercent', 'takeProfits', 'linkedStrategyId', 'linkedPatternIds', 'sourceSessionId', 'sourceScenarioId', 'pendingEmotionSignal', 'riskOverride'],
+      allowlist: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'riskAmount', 'leverage', 'feeType', 'feePercent', 'takeProfits', 'linkedStrategyId', 'linkedPatternIds', 'sourceSessionId', 'sourceScenarioId', 'pendingEmotionSignal', 'riskOverride', 'accountId', 'instrument'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
         if (path === 'direction') { setDir(value === 'short' ? 'short' : 'long'); return; }
@@ -420,6 +432,8 @@ function TradeCalculatorModal({ onClose }) {
         if (path === 'feeType') { handleFeeType(value === 'maker' ? 'maker' : 'taker'); return; }
         if (path === 'feePercent') { setFeePercent(value === '' || value == null ? '' : String(value)); return; }
         if (path === 'linkedStrategyId') { handleStrategy(value || ''); return; }
+        if (path === 'accountId') { handleAccount(value || ''); return; }
+        if (path === 'instrument') { setInstrument(value || ''); return; }
         // linkedPatternIds: this MVP's own visible Linked Pattern control (see patternId state
         // above) only ever manages one pattern at a time - applied as the first id in whatever
         // array the action resolved, matching the same "one real dropdown, one real value" shape
@@ -448,6 +462,12 @@ function TradeCalculatorModal({ onClose }) {
       // persistence function the wizard's own quick-log path also calls - never a parallel one.
       submit: () => {
         if (!out.valid) return undefined;
+        // Defect #1 applies to AI/voice-driven submission too - never a bypass. If the
+        // conversation never resolved/asked for an account and the user has active ones, this
+        // is a safe no-op (the server would reject it anyway); the visible form's own inline
+        // error surfaces so the human sees exactly what is missing, and the model sees no
+        // created entity to report success on.
+        if (activeAccounts.length > 0 && !accountId) { setAccountError(true); return undefined; }
         const tradeUi = window.TradeJournalTradeUI;
         if (!tradeUi) return undefined;
         const seed = { status: 'hunting', linkedStrategyId: strategyId || null, linkedPatternIds: patternId ? [patternId] : [] };
@@ -467,6 +487,8 @@ function TradeCalculatorModal({ onClose }) {
         const draft = tradeUi.applyCalculatedToTrade(tradeStore.createDraft(seed), out.r, out.source);
         draft.linkedStrategyId = strategyId || null;
         draft.linkedPatternIds = patternId ? [patternId] : [];
+        draft.accountId = accountId || null;
+        draft.instrument = instrument || null;
         const saved = tradeStore.save(draft);
         onClose();
         return saved;
@@ -484,7 +506,7 @@ function TradeCalculatorModal({ onClose }) {
     // included rather than its individual inputs (entry/stop/risk/leverage/tps/...) since it is
     // recomputed fresh every render already - a broader but always-correct proxy for "did
     // anything submit() reads change".
-  }, [strategyId, patternId, sourceSessionId, sourceScenarioId, pendingEmotionSignal, riskOverride, out]);
+  }, [strategyId, patternId, accountId, instrument, sourceSessionId, sourceScenarioId, pendingEmotionSignal, riskOverride, out]);
 
   // The risk-amount field always reflects the live solved value while the trader is driving it
   // from the percent side, so switching between the two never shows a stale number.
@@ -570,13 +592,37 @@ function TradeCalculatorModal({ onClose }) {
     }
   }
 
+  // Pre-fills accountBalance from the account's real, derived equity (accounts-engine.js -
+  // starting balance plus that account's own real closed trades, never a live feed) and
+  // riskPercent from its own configured maxRiskPerTradePercent rule, when one exists - both are
+  // only ever a starting point the trader can still change; neither is enforced here (real
+  // enforcement is the account's own Pre-trade check tab and ai-proactive-engine.js).
+  function handleAccount(id) {
+    setAccountId(id);
+    const accountsStore = window.TradeJournalAccountsStore;
+    const engine = window.TradeJournalAccountsEngine;
+    if (!id || !accountsStore || !engine) return;
+    const account = accountsStore.find(id);
+    if (!account) return;
+    const trades = tradeStore.listSync();
+    const metrics = engine.computeMetrics(account, trades);
+    setBalance(String(metrics.equity));
+    const maxRisk = account.rules && account.rules.maxRiskPerTradePercent;
+    if (maxRisk !== null && maxRisk !== undefined) {
+      setRisk(maxRisk);
+      setRiskMode('percent');
+      const tradeUi = window.TradeJournalTradeUI;
+      if (tradeUi) tradeUi.toast(t('accountRiskLoaded'), 'success');
+    }
+  }
+
   function handleFeeType(type) {
     setFeeType(type);
     setFeePercent(String(type === 'maker' ? settings.makerFeePercent : settings.takerFeePercent));
   }
 
   function handleReset() {
-    setDir('long'); setMargin('isolated'); setStrategyId('');
+    setDir('long'); setMargin('isolated'); setStrategyId(''); setAccountId(''); setInstrument('');
     setEntry(''); setStop('');
     setBalance(settings.accountBalance !== null && settings.accountBalance !== undefined ? String(settings.accountBalance) : '');
     setRisk(settings.defaultRiskPercent || 1); setRiskAmountInput(''); setRiskMode('percent'); setLeverage('10');
@@ -593,6 +639,11 @@ function TradeCalculatorModal({ onClose }) {
   function handleLogTrade() {
     const tradeUi = window.TradeJournalTradeUI;
     if (!tradeUi || !out.valid) return;
+    // Defect #1: once the user owns at least one active account, a brand-new trade requires a
+    // real accountId - the server enforces this too (ACCOUNT_REQUIRED), this is just the
+    // earlier, friendlier client-side gate. A legacy accountless trade is never affected - this
+    // only ever blocks a NEW save, and only when a real active account actually exists to pick.
+    if (accountRequired) { setAccountError(true); return; }
     const trade = tradeUi.applyCalculatedToTrade(tradeStore.createDraft({ status: 'hunting', linkedStrategyId: strategyId || null, linkedPatternIds: patternId ? [patternId] : [] }), out.r, out.source);
     trade.linkedStrategyId = strategyId || null;
     // Consistency with the AI submit() path above: this modal now has a real, visible pattern
@@ -600,13 +651,23 @@ function TradeCalculatorModal({ onClose }) {
     // - the wizard's own step 3 (StepSeen) still lets them add/remove further patterns before
     // sealing it.
     trade.linkedPatternIds = patternId ? [patternId] : [];
+    trade.accountId = accountId || null;
+    trade.instrument = instrument || null;
     onClose();
     tradeUi.openWizard(trade);
   }
 
   const strategyStore = window.TradeJournalStrategyEducationStore;
   const activeStrategies = strategyStore ? strategyStore.listActive() : [];
+  const accountsStore = window.TradeJournalAccountsStore;
+  const activeAccounts = accountsStore ? accountsStore.listActive() : [];
   const strategyOptions = [{ value: '', label: t('noStrategy') }].concat(activeStrategies.map((s) => ({ value: s.id, label: s.name })));
+  // Once at least one active account exists, "No account" is a misleading normal-path option
+  // (defect #1) - it disappears from the list entirely rather than staying selectable.
+  const accountOptions = activeAccounts.length
+    ? activeAccounts.map((a) => ({ value: a.id, label: a.firm }))
+    : [{ value: '', label: t('noAccount') }];
+  const accountRequired = activeAccounts.length > 0 && !accountId;
   // Journey B: a real, visible Linked Pattern control - see the patternId state declaration above
   // for why this exists now (AI-resolved pattern linking must be visibly confirmable, same as
   // every other AI-filled field here). listForScenarios() is the same real Pattern Registry
@@ -666,6 +727,14 @@ function TradeCalculatorModal({ onClose }) {
           <div style={{ width: 252, flex: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('calcChartScreenshot')}</span>
             <ScreenshotImport img={img} onPick={pickFile} onUndo={undoImport} t={t} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: accountError && accountRequired ? 'var(--danger)' : 'var(--text-muted)' }}>{t('account')}{activeAccounts.length > 0 ? ' *' : ''}</span>
+            {activeAccounts.length ? (
+              <Select value={accountId} options={accountOptions} onChange={(id) => { setAccountError(false); handleAccount(id); }} icon="wallet" width={200} placeholder={t('chooseAccount')} />
+            ) : (
+              <Button variant="secondary" size="sm" icon="wallet" onClick={() => setShowCreateAccount(true)}>{t('setUpFirstAccount')}</Button>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('strategy')}</span>
@@ -902,6 +971,12 @@ function TradeCalculatorModal({ onClose }) {
           </Panel>
         </div>
 
+        {accountError && accountRequired && (
+          <div style={{ padding: '0 20px 12px' }}>
+            <Notice tone="danger" icon="close">{t('accountRequiredError')}</Notice>
+          </div>
+        )}
+
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', flexWrap: 'wrap' }}>
           <Button variant="ghost" icon="rotate-ccw" onClick={handleReset}>{t('calcReset')}</Button>
@@ -910,6 +985,14 @@ function TradeCalculatorModal({ onClose }) {
           <Button variant="secondary" icon="close" onClick={onClose}>{t('close')}</Button>
           <Button variant="primary" icon="new-session" disabled={!out.valid} onClick={handleLogTrade}>{t('registerTrade')}</Button>
         </div>
+
+        {showCreateAccount && (
+          <ManualAccountModal
+            lang={document.documentElement.lang || 'fa'} editing={null}
+            onClose={() => setShowCreateAccount(false)}
+            onSaved={(id) => { setShowCreateAccount(false); setAccountError(false); handleAccount(id); }}
+          />
+        )}
 
         <input
           type="file" accept="image/png,image/jpeg,image/webp" ref={fileInputRef}
@@ -931,7 +1014,7 @@ function TradeCalculatorModal({ onClose }) {
   );
 }
 
-export function openCalculator() {
+export function openCalculator(seed) {
   const i18n = window.TradeJournalTradeI18n;
   const tradeStore = window.TradeJournalTradeStore;
   const calc = window.TradeJournalTradeCalculator;
@@ -957,6 +1040,6 @@ export function openCalculator() {
   // openCalculator() returns, guaranteeing the same synchronous-registration contract every
   // other imperatively-mounted AI-drivable modal here relies on - it changes nothing for a human
   // opening this by hand (a plain, empty commit either way).
-  flushSync(() => { root.render(<TradeCalculatorModal onClose={close} />); });
+  flushSync(() => { root.render(<TradeCalculatorModal onClose={close} initialSeed={seed || null} />); });
   return close;
 }
