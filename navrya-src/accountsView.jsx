@@ -51,6 +51,8 @@ const copy = {
     accEquity: 'Equity', accToday: 'Today', accTotal: 'Total P/L',
     healthAwaiting: 'AWAITING TRADES', healthOk: 'ON TRACK', healthWatch: 'NEEDS ATTENTION', healthDanger: 'AT RISK', healthArchived: 'ARCHIVED',
     ctaOpen: 'Open account', ctaEdit: 'Edit rules',
+    dailyLossUsedLabel: 'Daily loss used', toPass: '{amount} to pass', leftToday: '{amount} left today', targetReached: 'Target reached',
+    cardNoRuleNote: 'No rules configured on this account yet.', cardInsufficientNote: 'Cannot verify against this rule right now - see Rules & compliance.',
     ledgerAccount: 'Account', ledgerStatus: 'Status', ledgerEquity: 'Equity', ledgerToday: 'Today', ledgerTotal: 'Total P/L', ledgerTarget: 'Target', ledgerRisk: 'Risk used', ledgerHealth: 'Health',
     back: 'Back to accounts', pretradeBtn: 'Pre-trade check', editAccountBtn: 'Edit account', archivedChip: 'ARCHIVED', manualChip: 'MANUAL',
     tabOverview: 'Overview', tabRulesProp: 'Rules & compliance', tabRulesPersonal: 'Goals & limits', tabPretrade: 'Pre-trade check', tabPerformance: 'Performance', tabBehaviour: 'Behaviour',
@@ -115,6 +117,8 @@ const copy = {
     accEquity: 'اکوییتی', accToday: 'امروز', accTotal: 'سود/زیان کل',
     healthAwaiting: 'در انتظار معامله', healthOk: 'روی مسیر', healthWatch: 'نیازمند توجه', healthDanger: 'در خطر', healthArchived: 'بایگانی‌شده',
     ctaOpen: 'باز کردن حساب', ctaEdit: 'ویرایش قوانین',
+    dailyLossUsedLabel: 'ضرر روزانه مصرف‌شده', toPass: '{amount} تا قبولی', leftToday: '{amount} باقی‌مانده امروز', targetReached: 'هدف محقق شد',
+    cardNoRuleNote: 'هنوز قانونی روی این حساب تنظیم نشده.', cardInsufficientNote: 'الان نمی‌شه این قانون رو تأیید کرد - به تب قوانین و تطابق سر بزن.',
     ledgerAccount: 'حساب', ledgerStatus: 'وضعیت', ledgerEquity: 'اکوییتی', ledgerToday: 'امروز', ledgerTotal: 'سود/زیان کل', ledgerTarget: 'هدف', ledgerRisk: 'ریسک مصرف‌شده', ledgerHealth: 'سلامت',
     back: 'بازگشت به حساب‌ها', pretradeBtn: 'چک پیش از معامله', editAccountBtn: 'ویرایش حساب', archivedChip: 'بایگانی', manualChip: 'دستی',
     tabOverview: 'نمای کلی', tabRulesProp: 'قوانین و انطباق', tabRulesPersonal: 'اهداف و محدودیت‌ها', tabPretrade: 'چک پیش از معامله', tabPerformance: 'عملکرد', tabBehaviour: 'رفتار',
@@ -179,6 +183,8 @@ const copy = {
     accEquity: 'الحقوق', accToday: 'اليوم', accTotal: 'إجمالي الربح/الخسارة',
     healthAwaiting: 'بانتظار الصفقات', healthOk: 'على المسار', healthWatch: 'يحتاج متابعة', healthDanger: 'في خطر', healthArchived: 'مؤرشف',
     ctaOpen: 'فتح الحساب', ctaEdit: 'تعديل القواعد',
+    dailyLossUsedLabel: 'الخسارة اليومية المستخدمة', toPass: '{amount} للنجاح', leftToday: '{amount} متبقٍ اليوم', targetReached: 'تم تحقيق الهدف',
+    cardNoRuleNote: 'لا توجد قواعد مُعدّة على هذا الحساب بعد.', cardInsufficientNote: 'لا يمكن التحقق من هذه القاعدة الآن - راجع تبويب القواعد والامتثال.',
     ledgerAccount: 'الحساب', ledgerStatus: 'الحالة', ledgerEquity: 'الحقوق', ledgerToday: 'اليوم', ledgerTotal: 'إجمالي الربح/الخسارة', ledgerTarget: 'الهدف', ledgerRisk: 'المخاطرة المستخدمة', ledgerHealth: 'السلامة',
     back: 'العودة للحسابات', pretradeBtn: 'فحص ما قبل الصفقة', editAccountBtn: 'تعديل الحساب', archivedChip: 'مؤرشف', manualChip: 'يدوي',
     tabOverview: 'نظرة عامة', tabRulesProp: 'القواعد والامتثال', tabRulesPersonal: 'الأهداف والحدود', tabPretrade: 'فحص ما قبل الصفقة', tabPerformance: 'الأداء', tabBehaviour: 'السلوك',
@@ -243,6 +249,8 @@ const copy = {
     accEquity: 'Patrimonio', accToday: 'Hoy', accTotal: 'P/L total',
     healthAwaiting: 'ESPERANDO OPERACIONES', healthOk: 'EN CAMINO', healthWatch: 'REQUIERE ATENCIÓN', healthDanger: 'EN RIESGO', healthArchived: 'ARCHIVADA',
     ctaOpen: 'Abrir cuenta', ctaEdit: 'Editar reglas',
+    dailyLossUsedLabel: 'Pérdida diaria usada', toPass: '{amount} para aprobar', leftToday: '{amount} restante hoy', targetReached: 'Meta alcanzada',
+    cardNoRuleNote: 'Aún no hay reglas configuradas en esta cuenta.', cardInsufficientNote: 'No se puede verificar esta regla ahora - revisa Reglas y cumplimiento.',
     ledgerAccount: 'Cuenta', ledgerStatus: 'Estado', ledgerEquity: 'Patrimonio', ledgerToday: 'Hoy', ledgerTotal: 'P/L total', ledgerTarget: 'Objetivo', ledgerRisk: 'Riesgo usado', ledgerHealth: 'Salud',
     back: 'Volver a cuentas', pretradeBtn: 'Verificación previa', editAccountBtn: 'Editar cuenta', archivedChip: 'ARCHIVADA', manualChip: 'MANUAL',
     tabOverview: 'Resumen', tabRulesProp: 'Reglas y cumplimiento', tabRulesPersonal: 'Metas y límites', tabPretrade: 'Verificación previa', tabPerformance: 'Rendimiento', tabBehaviour: 'Comportamiento',
@@ -372,7 +380,6 @@ export function useAccounts() {
 // create/edit modal's live preview, per ACCOUNTS_HANDOFF.md section 5b's "same component, not a
 // separate mock" rule. ----
 function AccountCard({ lang, account, metrics, ruleResult, onOpen }) {
-  const engine = window.TradeJournalAccountsEngine;
   const worst = worstState(ruleResult.groups);
   const meta = worst ? STATE_META[worst] : null;
   const archived = account.status === 'archived';
@@ -382,21 +389,53 @@ function AccountCard({ lang, account, metrics, ruleResult, onOpen }) {
     : worst === 'watch' ? { key: 'healthWatch', color: 'var(--warning)', icon: 'honour' }
     : { key: 'healthOk', color: 'var(--success)', icon: 'shield' };
   const mark = String(account.firm || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'NA';
+
+  // Bar 1: real progress toward the account's own configured target/goal - never a fabricated
+  // percentage. Bar 2: real daily-loss allowance used, honestly marked when NAVRYA cannot verify
+  // it (defect #4's dailyLossBasisInsufficient). Phrasing ("X% · $Y to pass" / "X% · $Y left
+  // today") matches the design handoff's card language, computed only from real metrics.
+  const targetPct = account.kind === 'prop' ? metrics.profitProgressPercent : null;
+  const targetAmount = account.kind === 'prop' && account.rules.profitTargetPercent !== null ? metrics.profitTargetAmount : null;
+  const goalAmount = account.kind === 'personal' && account.rules.monthlyGoalPercent !== null ? metrics.monthStartEquity * (account.rules.monthlyGoalPercent / 100) : null;
   const primaryBar = account.kind === 'prop'
-    ? (account.rules.profitTargetPercent !== null && metrics.profitTargetAmount
-      ? { label: tr(lang, 'manTarget'), pct: Math.max(0, Math.min(100, metrics.profitProgressPercent || 0)), right: pctText(lang, metrics.profitProgressPercent, 0) }
-      : null)
-    : (account.rules.monthlyGoalPercent !== null
-      ? { label: tr(lang, 'manGoal'), pct: 0, right: account.rules.monthlyGoalPercent + '%' }
-      : null);
-  const riskBar = (account.kind === 'prop' ? account.rules.dailyLossLimitPercent : account.rules.dailyLossCap) !== null
-    ? (function () {
-      const allowance = account.kind === 'prop' ? metrics.dayStartEquity * (account.rules.dailyLossLimitPercent / 100) : account.rules.dailyLossCap;
-      const pct = allowance > 0 ? Math.max(0, Math.min(100, (metrics.dailyLossUsed / allowance) * 100)) : 0;
-      return { label: tr(lang, account.kind === 'prop' ? 'manDaily' : 'manDailyCap'), pct, right: pctText(lang, pct, 0) };
-    }())
+    ? (targetAmount ? (function () {
+        const pct = Math.max(0, Math.min(100, targetPct || 0));
+        const remaining = targetAmount - (metrics.profitAmount || 0);
+        return { label: tr(lang, 'manTarget'), pct, right: pctText(lang, pct, 0) + ' · ' + (remaining > 0 ? tr(lang, 'toPass', { amount: money(lang, account.currency, remaining) }) : tr(lang, 'targetReached')) };
+      }()) : null)
+    : (goalAmount ? (function () {
+        const booked = metrics.monthPL || 0;
+        const pct = goalAmount > 0 ? Math.max(0, Math.min(100, (booked / goalAmount) * 100)) : 0;
+        const remaining = goalAmount - booked;
+        return { label: tr(lang, 'manGoal'), pct, right: pctText(lang, pct, 0) + ' · ' + (remaining > 0 ? tr(lang, 'toPass', { amount: money(lang, account.currency, remaining) }) : tr(lang, 'targetReached')) };
+      }()) : null);
+  const dailyRuleConfigured = (account.kind === 'prop' ? account.rules.dailyLossLimitPercent : account.rules.dailyLossCap) !== null;
+  const riskBar = dailyRuleConfigured
+    ? (metrics.dailyLossBasisInsufficient
+      ? { label: tr(lang, 'dailyLossUsedLabel'), pct: null, right: tr(lang, 'insufficientData'), insufficient: true }
+      : (function () {
+        const allowance = account.kind === 'prop' ? metrics.dayStartEquity * (account.rules.dailyLossLimitPercent / 100) : account.rules.dailyLossCap;
+        const pct = allowance > 0 ? Math.max(0, Math.min(100, (metrics.dailyLossUsed / allowance) * 100)) : 0;
+        const remaining = Math.max(0, allowance - metrics.dailyLossUsed);
+        return { label: tr(lang, 'dailyLossUsedLabel'), pct, right: pctText(lang, pct, 0) + ' · ' + tr(lang, 'leftToday', { amount: money(lang, account.currency, remaining) }) };
+      }()))
     : null;
   const bars = [primaryBar, riskBar].filter(Boolean);
+
+  // Footer note: the real note attached to this account's own worst-state rule row (evidence,
+  // not a generic sentence) - falls back to an honest "no rules configured"/"cannot verify"
+  // message rather than inventing a status the underlying data doesn't support.
+  let footerNote = null;
+  if (worst) {
+    ruleResult.groups.some((g) => {
+      const row = g.items.find((i) => i.state === worst && i.note);
+      if (row) { footerNote = row.note; return true; }
+      return false;
+    });
+    if (!footerNote && worst === 'insufficient') footerNote = tr(lang, 'cardInsufficientNote');
+  } else if (!ruleResult.hasAnyRuleConfigured) {
+    footerNote = tr(lang, 'cardNoRuleNote');
+  }
 
   return (
     <Panel variant={archived ? 'quiet' : meta && (worst === 'danger' || worst === 'violated') ? 'raised' : 'base'} ornament padding={0}
@@ -405,12 +444,18 @@ function AccountCard({ lang, account, metrics, ruleResult, onOpen }) {
         <span style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.6)', font: 'var(--type-display-md)', letterSpacing: '.06em', color: 'var(--gold-warm)' }}>{mark}</span>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ font: 'var(--type-username)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.firm || tr(lang, 'unassigned')}</span>
-          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{account.program || '—'}</span>
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{account.program || tr(lang, account.kind === 'personal' ? 'manKindPersonal' : 'manKindProp')}</span>
         </div>
-        <Chip tone={archived ? 'neutral' : 'accent'} dot>{archived ? tr(lang, 'archivedChip') : tr(lang, 'manualChip')}</Chip>
+        {/* Real worst-rule-state chip, colored/labeled from STATE_META (never a fabricated
+            "CHALLENGE"/"FUNDED" broker-phase badge - this app has no live broker feed to know
+            that). Archived and no-rules-configured both stay their own honest neutral chips. */}
+        <Chip tone={archived ? 'neutral' : meta ? undefined : 'accent'} dot
+          style={meta && !archived ? { borderColor: meta.frame, background: 'color-mix(in srgb, ' + meta.color + ' 12%, transparent)', color: meta.color } : undefined}>
+          {archived ? tr(lang, 'archivedChip') : meta ? tr(lang, meta.key) : tr(lang, 'manualChip')}
+        </Chip>
       </header>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px 12px', font: 'var(--type-caption)', color: 'var(--text-dim)', flexWrap: 'wrap' }}>
-        <span>{account.platform || '—'}</span><span aria-hidden="true">·</span><span className="navrya-tabular">{account.numberMasked || '—'}</span>
+        <span>{account.platform || '—'}</span><span aria-hidden="true">·</span><span className="navrya-tabular">{account.numberMasked || '—'}</span><span aria-hidden="true">·</span><span>{account.currency}</span>
       </div>
       <div style={{ display: 'flex', borderTop: '1px solid var(--border-hairline)', borderBottom: '1px solid var(--border-hairline)' }}>
         {[
@@ -431,10 +476,10 @@ function AccountCard({ lang, account, metrics, ruleResult, onOpen }) {
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{b.label}</span>
                 <span style={{ flex: 1 }} />
-                <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-primary)' }}>{b.right}</span>
+                <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: b.insufficient ? 'var(--info)' : 'var(--text-primary)' }}>{b.right}</span>
               </div>
               <div style={{ position: 'relative', height: 8, borderRadius: 4, overflow: 'hidden', background: 'rgba(244,234,215,.06)', border: '1px solid ' + (archived ? 'var(--border-hairline)' : 'transparent'), borderStyle: archived ? 'dashed' : 'solid' }}>
-                <span style={{ position: 'absolute', insetInlineStart: 0, top: 0, bottom: 0, borderRadius: 4, width: b.pct + '%', background: 'var(--char-accent)' }} />
+                {b.pct !== null && <span style={{ position: 'absolute', insetInlineStart: 0, top: 0, bottom: 0, borderRadius: 4, width: b.pct + '%', background: 'var(--char-accent)' }} />}
               </div>
             </div>
           ))}
@@ -445,6 +490,7 @@ function AccountCard({ lang, account, metrics, ruleResult, onOpen }) {
           <span style={{ display: 'flex', alignItems: 'center', gap: 7, font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: health.color }}>
             <Icon name={health.icon} size={14} />{tr(lang, health.key)}
           </span>
+          {footerNote && <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{footerNote}</span>}
         </div>
         {onOpen && <Button size="sm" variant="secondary" iconAfter="chevron-right" onClick={onOpen}>{tr(lang, account.status === 'active' && !metrics.hasAnyTrades ? 'ctaEdit' : 'ctaOpen')}</Button>}
       </footer>
@@ -768,11 +814,11 @@ function RulesTab({ lang, account, ruleResult }) {
             <span style={{ font: 'var(--type-section-label)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{tr(lang, RULE_GROUP_KEY[g.title] || g.title)}</span>
             <span style={{ flex: 1, height: 1, background: 'var(--border-hairline)' }} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>
             {g.items.map((r) => {
               const meta = STATE_META[r.state] || STATE_META.safe;
               return (
-                <Panel key={r.name} variant="base" padding={16} style={{ borderColor: meta.frame, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <Panel key={r.name} variant="base" padding={16} style={{ borderColor: meta.frame, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     <span style={{ color: meta.color, paddingTop: 1 }}><Icon name={meta.icon} size={16} /></span>
                     <span style={{ flex: 1, minWidth: 0, font: 'var(--type-username)', color: 'var(--text-primary)' }}>{r.name}</span>
