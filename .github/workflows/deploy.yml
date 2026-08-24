@@ -85,7 +85,9 @@ jobs:
             # checked-in character bundle even though the repository checkout had advanced.
             docker compose --env-file .env -f docker-compose.production.yml build pattern-ai community-api migrate
             docker compose --env-file .env -f docker-compose.production.yml build --no-cache web
-            docker compose --env-file .env -f docker-compose.production.yml run --rm migrate
+            # The remote script itself arrives on stdin via the SSH heredoc. Detach the migration
+            # container from that stream so it cannot consume every release command that follows.
+            docker compose --env-file .env -f docker-compose.production.yml run --rm -T migrate </dev/null
             docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans
             docker compose --env-file .env -f docker-compose.production.yml up -d --no-deps --force-recreate web
 

@@ -12,6 +12,10 @@ test('production deploy cold-builds and force-recreates the static web service',
   assert.match(workflow, /up -d --no-deps --force-recreate web/);
 });
 
+test('migration cannot consume the remaining SSH heredoc release commands', () => {
+  assert.match(workflow, /run --rm -T migrate <\/dev\/null/);
+});
+
 test('production deploy proves the running web bundle matches the freshly built image', () => {
   assert.match(workflow, /built_web_hash=/);
   assert.match(workflow, /running_web_hash=/);
