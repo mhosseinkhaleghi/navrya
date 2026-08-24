@@ -50,12 +50,13 @@ function characterCard(id) {
 }
 
 function buildSandbox(localStorage, isStoredUserValidImpl) {
-  const ids = ['stepChipAccount', 'stepChipCharacter', 'stepAccount', 'stepCharacter', 'showcaseMedia', 'showcaseCount', 'showcaseBody', 'showcaseRole', 'showcaseTitle', 'showcaseQuote', 'showcaseTrait0', 'showcaseTrait1', 'showcaseTrait2', 'showcaseTrait3', 'authCardTitle', 'authCardSub', 'tabSignin', 'tabSignup', 'googleBtn', 'googleLabel', 'nameField', 'nameInput', 'emailInput', 'passwordInput', 'authError', 'continueBtn', 'continueLabel', 'switchPrompt', 'switchAction', 'pickedBar', 'pickedCrest', 'pickedTitle', 'pickedPlaceholder', 'backBtn', 'enterBtn', 'languageButton', 'languageMenu', 'currentLanguage', 'toast'];
+  const ids = ['stepChipAccount', 'stepChipCharacter', 'stepAccount', 'stepCharacter', 'showcaseMedia', 'showcaseCount', 'showcaseBody', 'showcaseRole', 'showcaseTitle', 'showcaseQuote', 'showcaseTrait0', 'showcaseTrait1', 'showcaseTrait2', 'showcaseTrait3', 'authCardTitle', 'authCardSub', 'tabSignin', 'tabSignup', 'googleBtn', 'googleLabel', 'nameField', 'nameInput', 'emailInput', 'passwordInput', 'forgotLink', 'passwordChecklist', 'passwordStrengthFill', 'pwReqLength', 'pwReqCommon', 'pwReqIdentifier', 'authError', 'continueBtn', 'continueLabel', 'switchPrompt', 'switchAction', 'pickedBar', 'pickedCrest', 'pickedTitle', 'pickedPlaceholder', 'backBtn', 'enterBtn', 'languageButton', 'languageMenu', 'currentLanguage', 'toast'];
   const byId = {};
   for (const id of ids) byId[id] = new FakeNode('div');
   byId.stepCharacter.hidden = true; // matches index.html's `hidden` attribute
   byId.pickedCrest.hidden = true;
   byId.nameField.hidden = true;
+  byId.passwordChecklist.hidden = true;
   byId.languageMenu.hidden = true;
   byId.enterBtn.disabled = true;
 
@@ -184,11 +185,27 @@ test('switching to Sign up and submitting calls register() with the display name
   fire(els.tabSignup, 'click');
   els.nameInput.value = 'Alex';
   els.emailInput.value = 'alex@example.com';
-  els.passwordInput.value = 'abcd';
+  // Must satisfy the real client-side password checklist (app.js's passwordRequirementStatus) -
+  // 15+ chars, not a common/predictable password, no name/email substring - or submitAuth() now
+  // blocks the call before it ever reaches register().
+  els.passwordInput.value = 'CorrectHorse42Battery!';
   await Promise.all(fire(els.continueBtn, 'click'));
   assert.equal(calledWith.displayName, 'Alex');
   assert.equal(calledWith.email, 'alex@example.com');
   assert.equal(els.stepCharacter.hidden, false);
+});
+
+test("switching to Sign up and submitting with a password that fails the checklist never calls register(), and shows the unmet-requirements error", async () => {
+  let called = false;
+  const els = await load(memoryStorage(), () => ({ register: async () => { called = true; return { id: 'new-3' }; } }));
+  fire(els.tabSignup, 'click');
+  els.nameInput.value = 'Alex';
+  els.emailInput.value = 'alex@example.com';
+  els.passwordInput.value = 'abcd';
+  await Promise.all(fire(els.continueBtn, 'click'));
+  assert.equal(called, false, 'register() must never be called for a password the checklist itself flags as invalid');
+  assert.match(els.authError.textContent, /every requirement/);
+  assert.equal(els.stepAccount.hidden, false, 'stays on the account step so the user can fix the password');
 });
 
 test('a server-rejected login shows a translated message for a known error code, not the raw code, and stays on the Account step', async () => {
