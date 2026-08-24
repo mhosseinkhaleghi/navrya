@@ -5,6 +5,37 @@ Mode overhaul brief, checked against the actual code/tests on `feature/voice-mod
 (built on `feature/auth-security-hardening` @ `5823ba7`) as of this pass. Every row cites a real
 file/line or test name — no claim here is asserted without a pointer to the thing that proves it.
 
+## CORRECTION (fix/voice-mode-hosted-connection) — this doc's own root-cause diagnosis below was wrong
+
+**This document's "Real validation" and "Known gaps" sections below concluded the direct
+browser→`https://api.openai.com/v1/realtime/calls` SDP-exchange failure was "a sandbox network
+policy on outbound browser traffic, not an application bug, and not something a further code
+change in this repository can fix." That conclusion was incorrect, and it is corrected here rather
+than rewritten in place, per this repository's own established convention of appending corrections
+instead of erasing the historical record (see `ARCHITECTURE.md`'s Known Constraints section for
+the same pattern applied elsewhere).**
+
+The same failure shape (`net::ERR_FAILED`, no HTTP response, no remote SDP answer) was
+independently confirmed present in **real production**, not merely in this pass's own sandboxed
+test environment - ruling out "sandbox-specific network policy" as the actual cause. The real root
+cause: `navrya-src/aiVoiceRealtime.js` constructed `OpenAIRealtimeWebRTC` with no `baseUrl` option,
+so the installed `@openai/agents-realtime` SDK's own constructor
+(`node_modules/@openai/agents-realtime/dist/openaiRealtimeWebRtc.mjs`) defaulted to POSTing the
+SDP offer **directly from the browser** to `https://api.openai.com/v1/realtime/calls` - a
+cross-origin request with no application-layer control over it. Any environment (a CI sandbox, a
+corporate network, or - as production evidence showed - the live deployment itself) where a
+browser cannot reach that one OpenAI endpoint directly will reproduce this exact failure,
+regardless of server-side network reachability (which is why `mintRealtimeClientSecret()`'s
+server-to-server calls to OpenAI always worked fine in every environment - only the browser's own
+direct leg failed).
+
+**This was fixable by a code change, and was fixed**: `aiVoiceRealtime.js` now passes an absolute,
+same-origin `baseUrl` (`new URL('/api/ai/realtime/call', window.location.origin).href`), and a new
+same-origin relay endpoint (`POST /api/ai/realtime/call`, `server/pattern-ai-server.mjs`'s
+`handleRealtimeCallRelay`) forwards the SDP + ephemeral credential to OpenAI server-to-server. See
+`docs/ai/realtime-deployment.md`'s "Same-origin SDP relay" section for the full design, and this
+repository's `fix/voice-mode-hosted-connection` branch for the change itself.
+
 ## Numbered requirements
 
 | # | Requirement | Status | Evidence |
@@ -93,9 +124,13 @@ fine) and NOT a code defect in this pass's own implementation - it is specifical
 initiated HTTPS request to this one endpoint being blocked at the network level in this sandboxed
 environment, while the identical general domain is reachable from Node.js/curl in the same
 environment (both independently verified working earlier in this pass - real model list fetch,
-real `mintRealtimeClientSecret()` call). Root-caused, not merely observed to fail: this is a
+real `mintRealtimeClientSecret()` call). Root-caused, not merely observed to fail: ~~this is a
 sandbox network policy on outbound browser traffic, not an application bug, and not something a
-further code change in this repository can fix.
+further code change in this repository can fix.~~ **[CORRECTED, see the top of this document]**
+The real root cause was `OpenAIRealtimeWebRTC` being constructed with no `baseUrl`, defaulting to
+a direct browser→OpenAI POST - a real, fixable application bug, later confirmed present in
+production too (not sandbox-specific), and fixed on `fix/voice-mode-hosted-connection` via a
+same-origin SDP relay.
 
 **What this run still genuinely proves, despite never reaching LISTENING**: the reconnect-
 exhaustion path (item 4 above) worked correctly under a REAL, unplanned failure - 5 real backed-
@@ -113,16 +148,19 @@ new code. All remain **not run** - see Known gaps below.
 
 ## Known gaps (not closed this pass)
 
-- **Real browser WebRTC media path could not be reached in this sandboxed environment.** The
-  SDK's own SDP-exchange call (`POST https://api.openai.com/v1/realtime/calls`, made directly by
-  the browser) fails with `net::ERR_FAILED` before any response - a browser-specific outbound
-  network restriction in this sandbox, confirmed NOT to affect server-side/CLI requests to the
-  same domain (both independently verified working). This blocks reaching `LISTENING` state or
-  observing real audio-driven VAD behavior from this environment; it is an infrastructure/sandbox
-  constraint, not a code defect - see the Real validation section above for the full diagnosis.
-  Re-running `voice-ab-scratch/pw/vad-eagerness-real-check.mjs` from an environment where a
-  browser can reach `api.openai.com/v1/realtime/calls` directly (a real desktop/laptop, or a CI
-  runner without this specific outbound restriction) would be the natural next step.
+- **CORRECTED by `fix/voice-mode-hosted-connection` - this was NOT a sandbox-only constraint.**
+  ~~Real browser WebRTC media path could not be reached in this sandboxed environment... an
+  infrastructure/sandbox constraint, not a code defect.~~ The same failure was independently
+  confirmed in real production. Root cause: `OpenAIRealtimeWebRTC` was constructed with no
+  `baseUrl`, so the SDK defaulted to a direct browser→OpenAI POST - fixed via a same-origin SDP
+  relay (`navrya-src/aiVoiceRealtime.js`'s `baseUrl` override + `POST /api/ai/realtime/call`,
+  `server/pattern-ai-server.mjs`). See this document's own top-of-file CORRECTION section and
+  `docs/ai/realtime-deployment.md` for the full design. Re-running
+  `voice-ab-scratch/pw/vad-eagerness-real-check.mjs` (if still relevant) would now exercise the
+  fixed same-origin path rather than the old direct-to-OpenAI one - real audio-driven VAD/LISTENING
+  verification with a real OpenAI key and a real browser remains the honest open item (no such key
+  was available in the environment `fix/voice-mode-hosted-connection` was built in either - see
+  its own final report for what was and wasn't verified).
 - **Warm the connection when Voice Mode opens** (before mic consent): not implemented -
   `connect()` still only fires on the explicit Voice-button press.
 - **Full real Persian VAD benchmark corpus** (multi-category, pauses/code-switching/corrections):
