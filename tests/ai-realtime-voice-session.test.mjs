@@ -82,6 +82,64 @@ test('reports ttsProvider:"elevenlabs" (with only voiceId/modelId, never the API
   assert.doesNotMatch(JSON.stringify(result), /sk-elevenlabs-secret/);
 });
 
+// ElevenLabs voice-provider follow-up (character/gender redesign): every test above forces the
+// admin-config bridge to fail (neutralVoiceProviderConfigResponse), so only the emergency-env and
+// null tiers were ever actually exercised - the real admin-managed (character, gender) resolution
+// path had no coverage at all. These two prove it end to end.
+test('reports ttsProvider:"elevenlabs" when a real admin character+gender config resolves, and stays isolated to that exact combination', async () => {
+  __resetVoiceConfigCacheForTests();
+  captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: { model: 'gpt-realtime-2.1' } });
+  globalThis.fetch = async (url, options) => {
+    const urlString = String(url);
+    if (urlString.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    if (urlString.includes(VOICE_PROVIDER_CONFIG_URL)) {
+      return {
+        ok: true,
+        json: async () => ({
+          version: 1,
+          characters: { 'hunter:male': { enabled: true, provider: 'elevenlabs', apiKey: 'sk-admin-secret', voiceId: 'v-hunter-male', modelId: 'eleven_v3', voiceSettings: {} } }
+        })
+      };
+    }
+    return { ok: true, json: async () => ({ value: 'ek_test', expires_at: 1, session: { model: 'gpt-realtime-2.1' } }) };
+  };
+  const configured = await withEnv({ OPENAI_API_KEY: 'test-key', ELEVENLABS_EMERGENCY_ENV_FALLBACK: 'false' }, () =>
+    mintRealtimeClientSecret({ language: 'en', character: 'hunter', gender: 'male' }));
+  assert.equal(configured.ttsProvider, 'elevenlabs');
+  assert.deepEqual(configured.elevenLabs, { voiceId: 'v-hunter-male', modelId: 'eleven_v3' });
+  assert.doesNotMatch(JSON.stringify(configured), /sk-admin-secret/, 'the admin-managed API key must never reach the browser response');
+
+  // A DIFFERENT character/gender combination the admin never configured must fall straight
+  // through to OpenAI - one enabled entry must never leak into an unrelated combination.
+  __resetVoiceConfigCacheForTests();
+  const unconfigured = await withEnv({ OPENAI_API_KEY: 'test-key', ELEVENLABS_EMERGENCY_ENV_FALLBACK: 'false' }, () =>
+    mintRealtimeClientSecret({ language: 'en', character: 'commander', gender: 'female' }));
+  assert.equal(unconfigured.ttsProvider, 'openai');
+  assert.equal(unconfigured.elevenLabs, null);
+});
+
+test('an unrecognized character/gender in the request body falls back to the documented defaults (hunter/male) rather than throwing or silently matching every config', async () => {
+  __resetVoiceConfigCacheForTests();
+  globalThis.fetch = async (url) => {
+    const urlString = String(url);
+    if (urlString.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    if (urlString.includes(VOICE_PROVIDER_CONFIG_URL)) {
+      return {
+        ok: true,
+        json: async () => ({
+          version: 1,
+          characters: { 'hunter:male': { enabled: true, provider: 'elevenlabs', apiKey: 'sk-admin-secret', voiceId: 'v-default', modelId: 'eleven_v3', voiceSettings: {} } }
+        })
+      };
+    }
+    return { ok: true, json: async () => ({ value: 'ek_test', expires_at: 1, session: { model: 'gpt-realtime-2.1' } }) };
+  };
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key', ELEVENLABS_EMERGENCY_ENV_FALLBACK: 'false' }, () =>
+    mintRealtimeClientSecret({ language: 'en', character: 'not-a-real-character', gender: 'unspecified' }));
+  assert.equal(result.ttsProvider, 'elevenlabs');
+  assert.deepEqual(result.elevenLabs, { voiceId: 'v-default', modelId: 'eleven_v3' });
+});
+
 test('a resolveElevenLabsForLanguage() failure (e.g. the internal bridge being unreachable) never breaks minting the Realtime credential itself - falls back to ttsProvider:"openai"', async () => {
   __resetVoiceConfigCacheForTests(); // force a real refetch instead of racing an earlier test's still-warm cache
   let seenUrl = null;

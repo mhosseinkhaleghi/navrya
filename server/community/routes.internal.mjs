@@ -80,32 +80,37 @@ export function router(repo) {
       const client = resolveRedisClient();
       version = client ? Number(await client.get(VOICE_CONFIG_VERSION_KEY)) || 0 : Date.now();
     } catch (_) { version = Date.now(); }
-    const [configs, credentials] = await Promise.all([repo.voiceLanguageConfigs.list(), repo.voiceProviderCredentials.list()]);
-    const languages = {};
+    // Keyed by character+gender (server/admin/routes.voice-providers.mjs's own domain, replacing
+    // the old per-language-only voiceLanguageConfigs) - a character's voice is the same across
+    // every language now; the actual reply's real language is still sent to ElevenLabs as
+    // language_code at synthesis time, just no longer part of the admin config key.
+    const [configs, credentials] = await Promise.all([repo.voiceCharacterConfigs.list(), repo.voiceProviderCredentials.list()]);
+    const characters = {};
     for (const config of configs) {
-      if (!config.enabled || !config.credentialId) { languages[config.languageCode] = { enabled: false }; continue; }
+      const key = config.character + ':' + config.gender;
+      if (!config.enabled || !config.credentialId) { characters[key] = { enabled: false }; continue; }
       const credentialMeta = credentials.find((c) => c.id === config.credentialId);
       // Fail closed: an enabled config pointing at a disabled/missing/never-validated-successfully
       // credential is reported as not-enabled to the runtime bridge, never silently synthesized -
       // the caller (pattern-ai) falls back exactly as it would for "no config at all".
-      if (!credentialMeta || !credentialMeta.enabled) { languages[config.languageCode] = { enabled: false }; continue; }
+      if (!credentialMeta || !credentialMeta.enabled) { characters[key] = { enabled: false }; continue; }
       let decrypted;
       try {
         decrypted = await repo.voiceProviderCredentials.get(config.credentialId, { includeDecrypted: true });
       } catch (_) {
         // decryptSecret() throws on a wrong/missing ENCRYPTION_KEY or a malformed envelope - fail
-        // closed for this one language rather than 500ing the whole bridge response, so a single
-        // corrupted row can never take down every other language's own working configuration.
-        languages[config.languageCode] = { enabled: false };
+        // closed for this one entry rather than 500ing the whole bridge response, so a single
+        // corrupted row can never take down every other character/gender's own working config.
+        characters[key] = { enabled: false };
         continue;
       }
-      languages[config.languageCode] = {
+      characters[key] = {
         enabled: true, provider: config.provider, apiKey: decrypted.apiKey, voiceId: config.voiceId, modelId: config.modelId,
-        languageCode: config.languageCode, voiceSettings: config.voiceSettings || {},
+        character: config.character, gender: config.gender, voiceSettings: config.voiceSettings || {},
         fallbackProvider: config.fallbackProvider, fallbackVoice: config.fallbackVoice
       };
     }
-    res.json({ version, languages });
+    res.json({ version, characters });
   }));
 
   // pattern-ai-server.mjs fires this after every callProvider() outcome (success or failure) so

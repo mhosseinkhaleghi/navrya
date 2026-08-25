@@ -103,7 +103,9 @@ async function voiceProviderConfig() {
     const headers = process.env.INTERNAL_API_SECRET ? { 'x-internal-secret': process.env.INTERNAL_API_SECRET } : {};
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
     const body = response.ok ? await response.json() : null;
-    voiceConfigCache = { data: body ? body.languages : null, version: body ? body.version : null, fetchedAt: Date.now() };
+    // Keyed by 'character:gender' (e.g. 'hunter:male') - see routes.internal.mjs's own comment on
+    // why character replaced language as the admin config's key.
+    voiceConfigCache = { data: body ? body.characters : null, version: body ? body.version : null, fetchedAt: Date.now() };
   } catch (_) {
     voiceConfigCache = { data: voiceConfigCache.data, version: voiceConfigCache.version, fetchedAt: Date.now() };
   }
@@ -113,15 +115,29 @@ async function voiceProviderConfig() {
 // real refetch instead of racing this module's own short cache TTL.
 function __resetVoiceConfigCacheForTests() { voiceConfigCache = { data: null, version: null, fetchedAt: 0 }; }
 
-// Runtime precedence (Persian Voice Quality gate's ElevenLabs follow-up - see
-// docs/ai/persian-voice-quality.md and docs/ai/elevenlabs-voice-providers.md):
-//   1. An enabled, valid admin-managed ElevenLabs configuration for this language (DB, via the
-//      bridge above).
+// The 4 fixed NAVRYA character skins (navrya-src/characters.js) - same independent-constant
+// precedent as REALTIME_LANGUAGES below (no shared browser/server module bundling in this app).
+const VOICE_CHARACTERS = ['hunter', 'commander', 'engineer', 'sage'];
+const VOICE_GENDERS = ['male', 'female'];
+// Used when a client request omits character/gender (e.g. before user-preferences.js has
+// hydrated) - 'hunter' matches currentCharacter.js's own client-side default; 'male' is an
+// arbitrary but fixed baseline so behavior is deterministic rather than undefined.
+const DEFAULT_VOICE_CHARACTER = 'hunter';
+const DEFAULT_VOICE_GENDER = 'male';
+
+// Runtime precedence (Persian Voice Quality gate's ElevenLabs follow-up, extended for per-
+// character/gender voice routing - see docs/ai/persian-voice-quality.md and
+// docs/ai/elevenlabs-voice-providers.md):
+//   1. An enabled, valid admin-managed ElevenLabs configuration for this (character, gender) (DB,
+//      via the bridge above) - the same voice/model pair is used across every language, matching
+//      the multilingual-capable model (eleven_v3) already used for Persian.
 //   2. An explicitly-enabled emergency environment fallback (ELEVENLABS_EMERGENCY_ENV_FALLBACK=
-//      'true' AND the language-specific env vars are actually set) - deliberately opt-in only, so
-//      an admin-managed configuration is never silently shadowed by a stale/forgotten env var
-//      once real DB-backed config exists (mission requirement: "do not silently revive stale
-//      environment credentials unless an explicit emergency-env-fallback option is enabled").
+//      'true' AND the language-specific env vars are actually set) - keyed by LANGUAGE only, not
+//      character/gender (it predates this feature and remains a bootstrap-only escape hatch) -
+//      deliberately opt-in only, so an admin-managed configuration is never silently shadowed by a
+//      stale/forgotten env var once real DB-backed config exists (mission requirement: "do not
+//      silently revive stale environment credentials unless an explicit emergency-env-fallback
+//      option is enabled").
 //   3. null - caller falls back to the existing OpenAI Realtime voice for this language, exactly
 //      as it already does today.
 // Only Persian has emergency env vars today (inherited from the original isolated test-card
@@ -136,16 +152,23 @@ function emergencyEnvVoiceIdFor(language) {
   if (language === 'fa') return process.env.ELEVENLABS_VOICE_ID_FA;
   return null;
 }
-async function resolveElevenLabsForLanguage(language) {
+async function resolveVoiceForCharacterGender(character, gender) {
   const config = await voiceProviderConfig();
-  const languageConfig = config && config[language];
-  if (languageConfig && languageConfig.enabled && languageConfig.apiKey && languageConfig.voiceId) {
-    return {
-      source: 'admin', apiKey: languageConfig.apiKey, voiceId: languageConfig.voiceId,
-      modelId: languageConfig.modelId || 'eleven_v3', languageCode: languageConfig.languageCode || language,
-      voiceSettings: languageConfig.voiceSettings || {}
-    };
+  const entry = config && config[character + ':' + gender];
+  if (entry && entry.enabled && entry.apiKey && entry.voiceId) {
+    return { source: 'admin', apiKey: entry.apiKey, voiceId: entry.voiceId, modelId: entry.modelId || 'eleven_v3', voiceSettings: entry.voiceSettings || {} };
   }
+  return null;
+}
+// Combines character+gender admin resolution with the language-only emergency fallback into the
+// one 3-tier precedence every caller (mint, speak, admin test) needs - `languageCode` in the
+// returned object is always the REQUESTED language (never baked into the admin config any more),
+// ready to hand straight to elevenlabs-client.mjs's synthesize().
+async function resolveElevenLabsForRequest({ character, gender, language }) {
+  const resolvedCharacter = VOICE_CHARACTERS.includes(character) ? character : DEFAULT_VOICE_CHARACTER;
+  const resolvedGender = VOICE_GENDERS.includes(gender) ? gender : DEFAULT_VOICE_GENDER;
+  const admin = await resolveVoiceForCharacterGender(resolvedCharacter, resolvedGender);
+  if (admin) return { ...admin, languageCode: language };
   if (String(process.env.ELEVENLABS_EMERGENCY_ENV_FALLBACK || '').toLowerCase() === 'true') {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     const voiceId = emergencyEnvVoiceIdFor(language);
@@ -1347,6 +1370,13 @@ function eagernessFromBody(body) { return REALTIME_EAGERNESS_VALUES.includes(bod
 // since nothing in this file's own tests exercises the relay lease itself.
 async function mintRealtimeClientSecret(body, userId) {
   const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
+  // Client-reported, same trust level as `language` above (a personalization preference, not a
+  // security-sensitive value - resolveElevenLabsForRequest() itself still validates both against
+  // the fixed VOICE_CHARACTERS/VOICE_GENDERS lists, falling back to the documented defaults for
+  // anything else) - see navrya-src/chatDockView.jsx's own fetchRealtimeSession for where these
+  // come from (currentNavryaCharacter() and the user's voiceGenderPreference).
+  const character = body.character;
+  const gender = body.gender;
   const eagerness = eagernessFromBody(body);
   const startedAt = Date.now();
   let key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey.trim() : '';
@@ -1404,7 +1434,7 @@ async function mintRealtimeClientSecret(body, userId) {
     // 1/2 of the runtime precedence actually resolved to something usable, and never carries the
     // API key itself (chatDockView.jsx's own speak path calls POST /api/ai/voice/speak with plain
     // text - the key stays server-side always, see that route's own comment).
-    const elevenLabs = await resolveElevenLabsForLanguage(language).catch(() => null);
+    const elevenLabs = await resolveElevenLabsForRequest({ character, gender, language }).catch(() => null);
     return {
       value: data.value, expiresAt: data.expires_at,
       model: (data.session && data.session.model) || model, voice: voiceForLanguage(language), language,
@@ -1625,12 +1655,16 @@ function recordCircuitResult(languageCode, success) {
 // Hardened replacement for the old isolated /api/ai/voice/test-tts-fa (mission: "Replace or
 // harden it"). Real differences from the old version: admin-only (checked here, defense in depth
 // beyond the dispatcher's own session check below), supports every configured language (not only
-// fa), uses the admin-managed/emergency-env runtime precedence (resolveElevenLabsForLanguage())
+// fa), uses the admin-managed/emergency-env runtime precedence (resolveElevenLabsForRequest())
 // instead of raw env vars read directly, rate-limited at the dispatcher via the generic AI quota
 // PLUS its own tighter admin-side rate limiter (server/admin/routes.voice-providers.mjs's
 // testSampleLimiter covers the admin-UI path; this function is also reachable directly and
 // enforces its own admin check regardless of caller), and NEVER logs/returns the raw upstream
-// error body - only a small, fixed, sanitized code (ElevenLabsError.code).
+// error body - only a small, fixed, sanitized code (ElevenLabsError.code). Superseded for the
+// admin UI's own "generate test sample" button by /voice-providers/test-sample (which takes an
+// explicit credential/voice/model, bypassing character/gender resolution entirely) - this route
+// still works standalone, defaulting to DEFAULT_VOICE_CHARACTER/DEFAULT_VOICE_GENDER when the
+// caller does not specify either.
 async function adminTestVoiceProviderTts(body, session) {
   if (!session || session.role !== 'admin') throw new Error('ADMIN_REQUIRED');
   const languageCode = REALTIME_LANGUAGES.includes(body.language) ? body.language : null;
@@ -1638,7 +1672,7 @@ async function adminTestVoiceProviderTts(body, session) {
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   if (!text) throw new Error('TEXT_REQUIRED');
   if (text.length > ELEVENLABS_TEST_TEXT_MAX) throw new Error('TEXT_TOO_LONG');
-  const resolved = await resolveElevenLabsForLanguage(languageCode);
+  const resolved = await resolveElevenLabsForRequest({ character: body.character, gender: body.gender, language: languageCode });
   if (!resolved) throw new Error('ELEVENLABS_NOT_CONFIGURED');
   const startedAt = Date.now();
   try {
@@ -1682,7 +1716,7 @@ async function speakWithVoiceProvider(body) {
   if (text.length > ELEVENLABS_SPEAK_TEXT_MAX) return { fallback: true, reason: 'TEXT_TOO_LONG' };
   if (isCircuitOpen(languageCode)) return { fallback: true, reason: 'CIRCUIT_OPEN' };
 
-  const resolved = await resolveElevenLabsForLanguage(languageCode);
+  const resolved = await resolveElevenLabsForRequest({ character: body.character, gender: body.gender, language: languageCode });
   if (!resolved) return { fallback: true, reason: 'NOT_CONFIGURED' };
 
   const startedAt = Date.now();
@@ -1846,6 +1880,6 @@ export default server;
 export {
   callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
   historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
-  adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForLanguage, voiceProviderConfig,
+  adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests
 };

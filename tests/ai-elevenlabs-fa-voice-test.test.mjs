@@ -10,7 +10,7 @@ import test, { after, afterEach } from 'node:test';
 // path a real Community-API-unreachable moment would hit, and keeps every test in this file
 // deterministic (the module-level cache settles to "empty" once and stays that way).
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { adminTestVoiceProviderTts, speakWithVoiceProvider, pcm16ToWav } = serverModule;
+const { adminTestVoiceProviderTts, speakWithVoiceProvider, pcm16ToWav, __resetVoiceConfigCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -167,6 +167,42 @@ test('an upstream failure resolves {fallback:true, reason:<sanitized code>} rath
   const result = await withEnv(EMERGENCY_ENV, () => speakWithVoiceProvider({ language: 'fa', text: 'سلام' }));
   assert.equal(result.fallback, true);
   assert.equal(result.reason, 'UPSTREAM_ERROR');
+});
+
+// ElevenLabs voice-provider follow-up (character/gender redesign): every test above forces the
+// admin-config bridge to a non-ok response (stubUpstream's own header comment), so the real
+// admin-managed (character, gender) resolution tier had no coverage in this file at all - only
+// the emergency-env tier was ever exercised. This proves it end to end, with the emergency
+// fallback deliberately left OFF so success can only mean the admin path actually resolved.
+test('a real admin character+gender config (not the emergency env fallback) resolves and speaks successfully', async () => {
+  __resetVoiceConfigCacheForTests();
+  let seenTtsUrl = null;
+  globalThis.fetch = async (url, options) => {
+    const urlString = String(url);
+    if (urlString.includes('/internal/voice-provider-config')) {
+      return {
+        ok: true,
+        json: async () => ({
+          version: 1,
+          characters: { 'commander:female': { enabled: true, provider: 'elevenlabs', apiKey: 'sk-admin-secret', voiceId: 'v-commander-female', modelId: 'eleven_v3', voiceSettings: {} } }
+        })
+      };
+    }
+    if (urlString.includes('/internal/voice-tts-usage-event')) return { ok: false };
+    if (!urlString.startsWith('https://api.elevenlabs.io')) return { ok: false };
+    seenTtsUrl = urlString;
+    assert.equal(options.headers['xi-api-key'], 'sk-admin-secret');
+    return {
+      ok: true,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'audio/mpeg' : null) }
+    };
+  };
+  const result = await withEnv({ ELEVENLABS_EMERGENCY_ENV_FALLBACK: 'false' }, () =>
+    speakWithVoiceProvider({ language: 'en', character: 'commander', gender: 'female', text: 'hello' }));
+  assert.equal(result.fallback, false);
+  assert.ok(seenTtsUrl && seenTtsUrl.includes('v-commander-female'), 'must synthesize with the admin-configured voice for this exact character+gender');
+  assert.doesNotMatch(JSON.stringify(result), /sk-admin-secret/, 'the admin-managed API key must never appear in the response');
 });
 
 test('the circuit breaker opens after repeated failures and short-circuits to fallback without a further network call', async () => {
