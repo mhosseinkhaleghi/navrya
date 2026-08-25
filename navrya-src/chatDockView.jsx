@@ -145,6 +145,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // message - e.g. a "grant access" affordance) rather than replaced outright.
   const [voiceErrorStage, setVoiceErrorStage] = React.useState(null);
   const voicePermissionDenied = voiceErrorStage === 'microphone_permission';
+  // fix/voice-mode-turn-ux (Part D): true only for the PROCESSING stretch caused by the user's own
+  // "End message" click (finishUserTurn()), not an ordinary VAD-driven turn reaching PROCESSING the
+  // normal way - purely a label distinction ("Ending message…" vs the generic "Processing…"), the
+  // button's own disabled-processing rendering is identical either way. Cleared the moment voiceState
+  // leaves PROCESSING for any reason (a real transcript arriving, the manual-finish timeout falling
+  // back to LISTENING, or a fatal error) - see the previousVoiceStateRef effect below.
+  const [voiceManualFinishPending, setVoiceManualFinishPending] = React.useState(false);
   // Voice Mode console (ChatDock.jsx/VoiceConsole.jsx): the real, finalized text NAVRYA just
   // heard (shown during PROCESSING) and the real reply text it's about to speak (timed-revealed
   // during ASSISTANT_SPEAKING) - both set right where onVoiceTranscript already has them, never
@@ -227,6 +234,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     if (core && typeof core.resetConversationState === 'function') core.resetConversationState();
     conversationEpochRef.current += 1;
     if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
+    // fix/voice-mode-turn-ux: New Chat is a "the user has moved on" moment for the voice-specific
+    // caption (Part C req 7) and any manual "End message" commit still awaiting its server ack
+    // (Part D req 14) exactly the same way it already is for the playback queue above.
+    setVoiceReplyCaption('');
+    if (voiceRef.current) voiceRef.current.cancelManualFinish();
   }
 
   async function toggleHistory() {
@@ -257,6 +269,8 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       const messages = record.messages || [];
       conversationEpochRef.current += 1;
       if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
+      setVoiceReplyCaption('');
+      if (voiceRef.current) voiceRef.current.cancelManualFinish();
       setTranscript(messages.slice(-24));
       setActiveConversationId(record.id);
       setPopover({ open: true, state: 'answer', messages, suggestions: [], activeProcessId: null });
@@ -480,7 +494,6 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     setCompanionCard(opening.kind === 'freshWelcome' && preOpeningCard ? preOpeningCard : orchestrator.currentCard());
     setCompanionOpeningActive(true);
     var toSpeak = voiceText ? voiceText.toSpokenText(opening.text, i18n.language()) : opening.text;
-    setVoiceReplyCaption(opening.text);
     // The very next finalized transcript is a reply to THIS opening - see onVoiceTranscript's
     // own read-and-clear of this ref. Set BEFORE enqueueing (not after playback finishes) so a
     // fast barge-in mid-opening is still correctly treated as a reply to it.
@@ -491,8 +504,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // handling already interrupts ANY ASSISTANT_SPEAKING playback, this opening included, via the
     // existing barge-in path). Tagged kind:'companion-opening' so the controller's onSettled
     // callback below knows to clear companionOpeningActive once THIS entry (not some later real
-    // turn's reply) actually finishes/is skipped/is interrupted.
-    if (playbackControllerRef.current) playbackControllerRef.current.enqueue(toSpeak, { kind: 'companion-opening' });
+    // turn's reply) actually finishes/is skipped/is interrupted. `caption` (Part C) is published by
+    // onAudioStart exactly when this entry's own audio genuinely starts, not here at enqueue time.
+    if (playbackControllerRef.current) playbackControllerRef.current.enqueue(toSpeak, { kind: 'companion-opening', caption: opening.text });
     else setCompanionOpeningActive(false);
   }
 
@@ -512,21 +526,48 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       onError: (detail) => {
         setVoiceErrorStage((detail && detail.stage) || null);
         setVoiceState(VOICE_STATES.ERROR);
-      }
+      },
+      // fix/voice-mode-turn-ux (Part A/B): pure relays into PlaybackController, read fresh via
+      // playbackControllerRef.current on every call (never captured once) so they stay correct
+      // across a reconnect (this createVoiceSession() instance is only ever created once per dock
+      // mount; PlaybackController's own instance is created right below, in the same effect, so by
+      // the time any of these three callbacks can actually fire - only ever after a real connect() -
+      // playbackControllerRef.current already points at it).
+      onOutputAudioBufferEvent: (type, responseId) => {
+        const pc = playbackControllerRef.current;
+        if (!pc) return;
+        if (type === 'output_audio_buffer.started') pc.notifyAudioBufferStarted(responseId);
+        else if (type === 'output_audio_buffer.stopped') pc.notifyAudioBufferStopped(responseId);
+        else if (type === 'output_audio_buffer.cleared') pc.notifyAudioBufferCleared(responseId);
+      },
+      onResponseCreated: (responseId) => { if (playbackControllerRef.current) playbackControllerRef.current.setCurrentResponseId(responseId); },
+      // The ONE place a real barge-in ever reaches PlaybackController - aiVoiceRealtime.js itself
+      // never calls its own transport-level interrupt() in response to a barge-in any more (see
+      // that file's own onTransportEvent comment); this is what replaces that direct, queue-
+      // bypassing call with the controller-owned path (Part B).
+      onBargeIn: () => { if (playbackControllerRef.current) playbackControllerRef.current.interrupt(); }
     });
     // Voice Mode performance pass: PlaybackController owns only speech - speak()/interrupt() are
     // read fresh from voiceRef.current on every call (never captured once), so they stay correct
     // across a reconnect (aiVoiceRealtime.js's own returned object identity never changes; only
-    // its internal session does). onSettled only ever does two things: clear
-    // companionOpeningActive once the entry tagged kind:'companion-opening' settles (that tag is
-    // set only where the greeting itself is enqueued, further down in this file - this mount
-    // effect never triggers the greeting on its own), and record the last-settled entry for
-    // debugLastVoicePlayback() (dev diagnostic, ids/timing only - never text content).
+    // its internal session does).
+    //
+    // fix/voice-mode-turn-ux (Part A/C): onAudioStart fires once per entry, exactly when ITS OWN
+    // real output-audio buffer genuinely starts (never at enqueue/speak-call time) - publishing the
+    // caption here, not from the business-result callback further down, is what stops a later
+    // turn's result from overwriting a still-playing/still-queued earlier reply's caption before
+    // its own audio has even started (Part C's core fix). onSettled now also always calls
+    // voiceRef.current.markPlaybackEnded() - the one place `state` is moved back to LISTENING once
+    // PlaybackController has genuinely finished with the current entry, for any reason (a real
+    // output-audio-buffer stop, an interrupt, an error, or its own bounded watchdog fallback) -
+    // never the SDK's own high-level audio_stopped any more (see aiVoiceRealtime.js's own comment).
     playbackControllerRef.current = window.TradeJournalAIVoicePlaybackController.create({
       speak: (text) => voiceRef.current.speak(text),
       interrupt: () => voiceRef.current.interrupt(),
+      onAudioStart: (entry) => { if (entry.caption) setVoiceReplyCaption(entry.caption); },
       onSettled: (entry) => {
         if (entry.kind === 'companion-opening') setCompanionOpeningActive(false);
+        if (voiceRef.current) voiceRef.current.markPlaybackEnded();
         window.TradeJournalChatDockVoiceLastPlayback = { responseId: entry.responseId, turnId: entry.turnId || null, spoken: entry.spoken, reason: entry.reason || null };
       }
     });
@@ -553,15 +594,19 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         // what is actually spoken changes, matching section 12's "never make the written UI
         // colloquial."
         const toSpeak = rawToSpeak && voiceText ? voiceText.toSpokenText(rawToSpeak, i18n.language()) : rawToSpeak;
-        setVoiceReplyCaption(rawToSpeak || '');
         const latency = { transcriptToReplyMs: Math.round(replyAt - meta.transcriptAt), transcriptToSpeakRequestedMs: null };
         if (toSpeak && playbackControllerRef.current) {
           const speakCalledAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           latency.transcriptToSpeakRequestedMs = Math.round(speakCalledAt - meta.transcriptAt);
+          // fix/voice-mode-turn-ux (Part C): the caption is no longer set here, at business-result
+          // time - it is carried on the entry itself and published by PlaybackController's own
+          // onAudioStart callback below, exactly when THIS entry's real audio genuinely starts
+          // playing. Setting it here would let a later turn's result overwrite the caption for a
+          // still-playing or still-queued earlier reply before its own audio has even started.
           // Fire-and-forget - handing the reply to PlaybackController never blocks this callback,
           // and TurnCoordinator's own queue has already moved on to the next turn by now anyway
           // (its serialization only ever waited for submit() above, never for this).
-          playbackControllerRef.current.enqueue(toSpeak, { turnId: meta.turnId, connectionEpoch: meta.connectionEpoch });
+          playbackControllerRef.current.enqueue(toSpeak, { turnId: meta.turnId, connectionEpoch: meta.connectionEpoch, caption: rawToSpeak || '' });
         }
         window.TradeJournalChatDockVoiceLatency = latency;
         // Dynamic VAD (Voice Mode performance pass): re-derive eagerness for the NEXT user turn
@@ -603,6 +648,17 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // connect/session lands in) must not leave a stale "already delivered" flag that would
     // silently skip the opening on a later, genuinely new connection.
     if (voiceState === VOICE_STATES.IDLE || voiceState === VOICE_STATES.ERROR) openingDeliveredForConnectionRef.current = false;
+    // fix/voice-mode-turn-ux (Part C, requirements 6/7): the assistant caption is cleared exactly
+    // when real user speech genuinely begins (any transition INTO USER_SPEAKING - this covers both
+    // an ordinary turn and a barge-in interrupting a reply mid-playback, since both are the exact
+    // same speech_started-driven transition), and on disconnect/a fatal error (IDLE/ERROR). It is
+    // deliberately NOT cleared on PROCESSING/ASSISTANT_SPEAKING/LISTENING/RECONNECTING transitions -
+    // "Stop reply" without the user having spoken again must leave the caption visible (requirement
+    // 8), and it must stay visible through LISTENING after playback ends (requirement 5).
+    if (voiceState === VOICE_STATES.USER_SPEAKING || voiceState === VOICE_STATES.IDLE || voiceState === VOICE_STATES.ERROR) {
+      setVoiceReplyCaption('');
+    }
+    if (voiceState !== VOICE_STATES.PROCESSING) setVoiceManualFinishPending(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceState]);
 
@@ -631,11 +687,24 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     voiceRef.current.mute(!voiceRef.current.isMuted());
   }
 
-  // VoiceConsole's centre pill button - real only during ASSISTANT_SPEAKING (barge-in), the one
-  // live phase with an actual transport action to call.
+  // VoiceConsole's centre pill button, ASSISTANT_SPEAKING mode ("Stop reply"). fix/voice-mode-
+  // turn-ux (Part B): routed through PlaybackController, never aiVoiceRealtime.js's own transport-
+  // level interrupt() directly - a direct call here was the original "Stop reply leaves queued
+  // replies alive" bug, since only PlaybackController itself knows about anything still queued.
   function interruptVoice() {
+    if (!playbackControllerRef.current) return;
+    playbackControllerRef.current.interrupt();
+  }
+
+  // VoiceConsole's centre pill button, USER_SPEAKING mode ("End message" - Part D). Finishes only
+  // the current spoken utterance early; never disconnects, never closes the conversation, never
+  // touches conversation history. aiVoiceRealtime.js's own finishUserTurn() already enforces every
+  // real precondition (connected/USER_SPEAKING/an active utterance/no manual commit already
+  // pending) and its own bounded timeout - this is a thin pass-through, exactly like every other
+  // voice control here.
+  function endVoiceMessage() {
     if (!voiceRef.current) return;
-    voiceRef.current.interrupt();
+    if (voiceRef.current.finishUserTurn()) setVoiceManualFinishPending(true);
   }
 
   function applySuggestion(item) {
@@ -721,7 +790,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         placeholder={i18n.t('aiDockPlaceholder')}
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
+        voiceManualFinishPending={voiceManualFinishPending}
         onVoiceToggle={toggleVoice} onVoiceMuteToggle={toggleVoiceMute} onVoiceInterrupt={interruptVoice}
+        onVoiceEndMessage={endVoiceMessage}
         voiceErrorLabel={voiceErrorMessageForStage(i18n, voiceErrorStage)}
         getVoiceMediaStream={() => voiceRef.current && voiceRef.current.getMediaStream()}
         voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
@@ -739,6 +810,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
           captionDenied: i18n.t('voiceConsoleCaptionDenied'), listeningPlaceholder: i18n.t('voiceConsoleListeningPlaceholder'),
           heardLabel: i18n.t('voiceConsoleHeardLabel'), replyLabel: i18n.t('voiceConsoleReplyLabel'),
           type: i18n.t('voiceConsoleType'), stopReply: i18n.t('voiceConsoleStopReply'),
+          endMessage: i18n.t('voiceConsoleEndMessage'), endingMessage: i18n.t('voiceConsoleEndingMessage'),
           captionsOn: i18n.t('voiceConsoleCaptionsOn'), captionsOff: i18n.t('voiceConsoleCaptionsOff'),
           minimize: i18n.t('voiceConsoleMinimize'), expand: i18n.t('voiceConsoleExpand'), close: i18n.t('voiceConsoleClose'),
           deniedTitle: i18n.t('voiceConsoleDeniedTitle'), deniedBody: i18n.t('voiceConsoleDeniedBody'), retry: i18n.t('voiceConsoleRetry')
