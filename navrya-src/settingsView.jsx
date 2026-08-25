@@ -72,6 +72,7 @@ const copy = {
     decrease: 'کاهش', increase: 'افزایش',
     companionTitle: 'همراه هوش مصنوعی', companionInitiativeLabel: 'میزان پیش‌قدمی', companionInitiativeHint: 'مشخص می‌کند همراه هوش مصنوعی چقدر خودش قدم بعدی را پیشنهاد بدهد.',
     companionInitiativeLow: 'کم', companionInitiativeNormal: 'معمولی', companionInitiativeHigh: 'زیاد',
+    voiceGenderTitle: 'صدای شخصیت‌ها', voiceGenderHint: 'وقتی حالت صوتی فعال است، هر شخصیت با صدای زن یا مرد صحبت می‌کند؟', voiceGenderMale: 'مرد', voiceGenderFemale: 'زن',
     companionGoalLabel: 'هدف فعلی', companionGoalHint: 'روی کدام بخش می‌خواهی بیشتر تمرکز کنی؟ فقط اولویت پیشنهادها را بالا می‌برد؛ هیچ‌چیزی را کامل یا نادیده نمی‌کند.',
     companionGoalNone: 'بدون هدف مشخص', companionGoalPatterns: 'ساختن دانش پترن', companionGoalStrategies: 'ساختن استراتژی',
     companionGoalSessions: 'بهبود برنامه‌ریزی سشن', companionGoalTrades: 'بهبود برنامه‌ریزی معامله', companionGoalPsychology: 'بهبود عادت‌های جمع‌بندی و روان‌شناسی'
@@ -106,6 +107,7 @@ const copy = {
     decrease: 'إنقاص', increase: 'زيادة',
     companionTitle: 'رفيق الذكاء الاصطناعي', companionInitiativeLabel: 'مستوى المبادرة', companionInitiativeHint: 'يحدد مدى مبادرة الرفيق باقتراح الخطوة التالية من تلقاء نفسه.',
     companionInitiativeLow: 'منخفضة', companionInitiativeNormal: 'عادية', companionInitiativeHigh: 'عالية',
+    voiceGenderTitle: 'صوت الشخصيات', voiceGenderHint: 'عند تفعيل الوضع الصوتي، هل تتحدث كل شخصية بصوت رجل أم امرأة؟', voiceGenderMale: 'رجل', voiceGenderFemale: 'امرأة',
     companionGoalLabel: 'الهدف الحالي', companionGoalHint: 'على أي جزء تريد التركيز أكثر؟ يرفع فقط أولوية الاقتراحات؛ لا يُكمل أو يتجاهل أي شيء.',
     companionGoalNone: 'بلا هدف محدد', companionGoalPatterns: 'بناء معرفة الأنماط', companionGoalStrategies: 'بناء الاستراتيجية',
     companionGoalSessions: 'تحسين تخطيط الجلسات', companionGoalTrades: 'تحسين تخطيط الصفقات', companionGoalPsychology: 'تحسين عادات التأمل والصحة النفسية'
@@ -140,6 +142,7 @@ const copy = {
     decrease: 'Decrease', increase: 'Increase',
     companionTitle: 'AI companion', companionInitiativeLabel: 'Companion initiative', companionInitiativeHint: 'Controls how often the companion suggests a next step on its own.',
     companionInitiativeLow: 'Low', companionInitiativeNormal: 'Normal', companionInitiativeHigh: 'High',
+    voiceGenderTitle: 'Character voices', voiceGenderHint: 'When Voice Mode is on, does each character speak with a male or female voice?', voiceGenderMale: 'Male', voiceGenderFemale: 'Female',
     companionGoalLabel: 'Current goal', companionGoalHint: 'Which area do you want to focus on? Only raises that area\'s suggestion priority - it never completes or overrides anything.',
     companionGoalNone: 'No specific goal', companionGoalPatterns: 'Build my Pattern knowledge', companionGoalStrategies: 'Build my Strategy',
     companionGoalSessions: 'Improve Session planning', companionGoalTrades: 'Improve trade planning', companionGoalPsychology: 'Improve reflection / psychology habits'
@@ -174,6 +177,7 @@ const copy = {
     decrease: 'Disminuir', increase: 'Aumentar',
     companionTitle: 'Compañero de IA', companionInitiativeLabel: 'Iniciativa del compañero', companionInitiativeHint: 'Controla con qué frecuencia el compañero sugiere un siguiente paso por su cuenta.',
     companionInitiativeLow: 'Baja', companionInitiativeNormal: 'Normal', companionInitiativeHigh: 'Alta',
+    voiceGenderTitle: 'Voces de los personajes', voiceGenderHint: 'Cuando el Modo de Voz está activo, ¿cada personaje habla con voz masculina o femenina?', voiceGenderMale: 'Masculina', voiceGenderFemale: 'Femenina',
     companionGoalLabel: 'Objetivo actual', companionGoalHint: '¿En qué área quieres enfocarte más? Solo aumenta la prioridad de esas sugerencias; nunca completa ni anula nada.',
     companionGoalNone: 'Sin objetivo específico', companionGoalPatterns: 'Desarrollar mi conocimiento de Patrones', companionGoalStrategies: 'Desarrollar mi Estrategia',
     companionGoalSessions: 'Mejorar la planificación de Sesiones', companionGoalTrades: 'Mejorar la planificación de operaciones', companionGoalPsychology: 'Mejorar hábitos de reflexión / psicología'
@@ -358,6 +362,47 @@ function CharacterSection({ t, lang, character }) {
             })}
           </div>
         </div>
+      </div>
+    </SectionShell>
+  );
+}
+
+// ============================================================================
+// Voice gender per character - one male/female pick per character (CHARS' own app id, e.g.
+// 'sage'), applied globally across every language, read by the live Voice Mode via
+// chatDockView.jsx's own voiceGenderPreference(). Persisted through the shared user-preferences.js
+// primitive (public/pages/shared/user-preferences.js), the same server-synced store every other
+// Phase 8 preference already uses - never a client-only/localStorage-only value. Purely a
+// personalization pick: which admin-configured voice (if any) actually gets used is still decided
+// server-side by resolveElevenLabsForRequest() - a character with no voice configured for the
+// chosen gender simply falls back to the existing OpenAI voice, exactly like a disabled language
+// already does.
+// ============================================================================
+function VoiceGenderSection({ t }) {
+  const store = window.TradeJournalUserPreferences;
+  const [prefs, setPrefs] = React.useState(() => (store ? store.getPref('voiceGenderPreference', {}) : {}));
+  const nameKey = { hunter: 'hunterName', commander: 'commanderName', engineer: 'engineerName', sage: 'sageName' };
+  const options = [
+    { value: 'male', label: t('voiceGenderMale') },
+    { value: 'female', label: t('voiceGenderFemale') }
+  ];
+  function change(characterId, value) {
+    const next = { ...prefs, [characterId]: value };
+    setPrefs(next);
+    if (store) store.setPref('voiceGenderPreference', next);
+  }
+  return (
+    <SectionShell icon="assistant" title={t('voiceGenderTitle')} right={<span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('voiceGenderHint')}</span>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {CHARS.map((c) => (
+          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: c.swatch }} />
+              <span style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: 'var(--text-primary)' }}>{t(nameKey[c.id])}</span>
+            </div>
+            <Select value={prefs[c.id] || 'male'} options={options} onChange={(v) => change(c.id, v)} width={140} />
+          </div>
+        ))}
       </div>
     </SectionShell>
   );
@@ -690,6 +735,7 @@ export function SettingsView({ character, store }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <CharacterSection t={t} lang={lang} character={character} />
+          <VoiceGenderSection t={t} />
           <RegionLanguageSection t={t} lang={lang} store={store} />
           <AlertsSection t={t} lang={lang} />
           <TradingDefaultsSection t={t} lang={lang} />
