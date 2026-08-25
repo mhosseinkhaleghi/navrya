@@ -6,7 +6,7 @@ import test, { after, afterEach } from 'node:test';
 // exported mintRealtimeClientSecret() against a stubbed OpenAI /v1/realtime/client_secrets
 // response, never a reimplementation of its logic.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { mintRealtimeClientSecret } = serverModule;
+const { mintRealtimeClientSecret, __resetVoiceConfigCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -16,6 +16,12 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 
 const HEALTH_EVENT_URL = '/internal/ai-health-event';
 const neutralHealthEventResponse = { ok: true, json: async () => ({}) };
+// ElevenLabs voice-provider follow-up: mintRealtimeClientSecret() now also resolves
+// resolveElevenLabsForLanguage() (to report ttsProvider in its own response), which calls
+// voiceProviderConfig() - one more internal bridge URL every test below must look straight
+// through, the same way it already does for the health-event beacon.
+const VOICE_PROVIDER_CONFIG_URL = '/internal/voice-provider-config';
+const neutralVoiceProviderConfigResponse = { ok: false };
 
 function withEnv(vars, fn) {
   const originals = {};
@@ -30,6 +36,7 @@ function captureRealtimeRequest(replyPayload) {
   let seenOptions = null;
   globalThis.fetch = async (url, options) => {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    if (String(url).includes(VOICE_PROVIDER_CONFIG_URL)) return neutralVoiceProviderConfigResponse;
     seenUrl = String(url);
     seenOptions = options;
     return { ok: true, json: async () => replyPayload };
@@ -54,6 +61,41 @@ test('never leaks the permanent server API key into the response, only the short
     mintRealtimeClientSecret({ language: 'en' }));
   const serialized = JSON.stringify(result);
   assert.doesNotMatch(serialized, /sk-super-secret-real-key/);
+});
+
+test('reports ttsProvider:"openai" (and no elevenLabs block) when no admin config/emergency fallback resolves anything - OpenAI remains the sole conversation brain AND sole voice regardless', async () => {
+  captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: { model: 'gpt-realtime-2.1' } });
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key', ELEVENLABS_EMERGENCY_ENV_FALLBACK: 'false' }, () =>
+    mintRealtimeClientSecret({ language: 'fa' }));
+  assert.equal(result.ttsProvider, 'openai');
+  assert.equal(result.elevenLabs, null);
+});
+
+test('reports ttsProvider:"elevenlabs" (with only voiceId/modelId, never the API key) when the emergency env fallback resolves for Persian', async () => {
+  captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: { model: 'gpt-realtime-2.1' } });
+  const result = await withEnv({
+    OPENAI_API_KEY: 'test-key', ELEVENLABS_EMERGENCY_ENV_FALLBACK: 'true',
+    ELEVENLABS_API_KEY: 'sk-elevenlabs-secret', ELEVENLABS_VOICE_ID_FA: 'buzGl6hokx2gx74EYLO0'
+  }, () => mintRealtimeClientSecret({ language: 'fa' }));
+  assert.equal(result.ttsProvider, 'elevenlabs');
+  assert.deepEqual(result.elevenLabs, { voiceId: 'buzGl6hokx2gx74EYLO0', modelId: 'eleven_v3' });
+  assert.doesNotMatch(JSON.stringify(result), /sk-elevenlabs-secret/);
+});
+
+test('a resolveElevenLabsForLanguage() failure (e.g. the internal bridge being unreachable) never breaks minting the Realtime credential itself - falls back to ttsProvider:"openai"', async () => {
+  __resetVoiceConfigCacheForTests(); // force a real refetch instead of racing an earlier test's still-warm cache
+  let seenUrl = null;
+  globalThis.fetch = async (url) => {
+    seenUrl = String(url);
+    if (String(url).includes('/internal/voice-provider-config')) throw new Error('ECONNREFUSED');
+    if (String(url).includes('/internal/ai-health-event')) return { ok: true, json: async () => ({}) };
+    return { ok: true, json: async () => ({ value: 'ek_test', expires_at: 1, session: { model: 'gpt-realtime-2.1' } }) };
+  };
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key', ELEVENLABS_EMERGENCY_ENV_FALLBACK: 'false' }, () =>
+    mintRealtimeClientSecret({ language: 'fa' }));
+  assert.equal(result.value, 'ek_test', 'the actual Realtime credential must still mint successfully');
+  assert.equal(result.ttsProvider, 'openai');
+  assert.ok(seenUrl, 'sanity check: the stub was actually reached');
 });
 
 test('grants the Realtime session zero tools and decouples turn-detection from auto-response (create_response/interrupt_response both false) - NAVRYA must approve every spoken reply', async () => {

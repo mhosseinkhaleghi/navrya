@@ -1,8 +1,10 @@
 import express from 'express';
 import { asyncHandler } from './errors.mjs';
 import { resolveSessionByRawId } from './security/session-service.mjs';
+import { resolveRedisClient } from './security/rate-limit.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
+const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
 
 // Server-to-server only - never called by a browser. pattern-ai-server.mjs (a plain node:http
 // server with zero Postgres coupling by design) polls /admin-ai-keys to resolve admin-configured
@@ -59,6 +61,53 @@ export function router(repo) {
     res.json({ valid: true, userId: user.id, role: user.role });
   }));
 
+  // pattern-ai-server.mjs's runtime ElevenLabs config bridge - the ONE place a decrypted
+  // ElevenLabs API key is allowed to leave this process, and only to the DB-free AI gateway over
+  // this shared-secret-protected, server-to-server hop (same "never touches Postgres/
+  // ENCRYPTION_KEY itself" boundary the existing /admin-ai-keys route already established -
+  // decryption happens HERE, where ENCRYPTION_KEY actually lives, never in pattern-ai). `version`
+  // is the Redis-backed invalidation counter admin writes bump (server/admin/
+  // routes.voice-providers.mjs's bumpVoiceConfigVersion()) - pattern-ai's own cache compares this
+  // against its last-seen value to refetch almost immediately after an admin change, across every
+  // replica, without needing a shared pub/sub channel. Falls back to Date.now() (never a fixed
+  // constant) when Redis is unavailable, so a dev/test environment without REDIS_URL still gets a
+  // monotonically-changing value every call - correct behavior there is simply "always refetch",
+  // which is fine at dev/test scale.
+  app.get('/voice-provider-config', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    let version;
+    try {
+      const client = resolveRedisClient();
+      version = client ? Number(await client.get(VOICE_CONFIG_VERSION_KEY)) || 0 : Date.now();
+    } catch (_) { version = Date.now(); }
+    const [configs, credentials] = await Promise.all([repo.voiceLanguageConfigs.list(), repo.voiceProviderCredentials.list()]);
+    const languages = {};
+    for (const config of configs) {
+      if (!config.enabled || !config.credentialId) { languages[config.languageCode] = { enabled: false }; continue; }
+      const credentialMeta = credentials.find((c) => c.id === config.credentialId);
+      // Fail closed: an enabled config pointing at a disabled/missing/never-validated-successfully
+      // credential is reported as not-enabled to the runtime bridge, never silently synthesized -
+      // the caller (pattern-ai) falls back exactly as it would for "no config at all".
+      if (!credentialMeta || !credentialMeta.enabled) { languages[config.languageCode] = { enabled: false }; continue; }
+      let decrypted;
+      try {
+        decrypted = await repo.voiceProviderCredentials.get(config.credentialId, { includeDecrypted: true });
+      } catch (_) {
+        // decryptSecret() throws on a wrong/missing ENCRYPTION_KEY or a malformed envelope - fail
+        // closed for this one language rather than 500ing the whole bridge response, so a single
+        // corrupted row can never take down every other language's own working configuration.
+        languages[config.languageCode] = { enabled: false };
+        continue;
+      }
+      languages[config.languageCode] = {
+        enabled: true, provider: config.provider, apiKey: decrypted.apiKey, voiceId: config.voiceId, modelId: config.modelId,
+        languageCode: config.languageCode, voiceSettings: config.voiceSettings || {},
+        fallbackProvider: config.fallbackProvider, fallbackVoice: config.fallbackVoice
+      };
+    }
+    res.json({ version, languages });
+  }));
+
   // pattern-ai-server.mjs fires this after every callProvider() outcome (success or failure) so
   // the Admin AI tab can show real per-provider health/uptime instead of just token totals - see
   // ARCHITECTURE.md 7.16 follow-up and 016_ai_provider_health.sql. Deliberately tolerant: a
@@ -70,6 +119,23 @@ export function router(repo) {
     const record = await repo.providerHealth.record({
       provider: body.provider, ok: Boolean(body.ok), errorCode: body.errorCode || null,
       latencyMs: body.latencyMs, source: body.source || null
+    });
+    res.status(201).json(record);
+  }));
+
+  // Same fire-and-forget pattern as /ai-health-event above, for the SEPARATE voice_tts_usage_events
+  // domain (never the LLM ai_provider_health_events/usage_events tables - ElevenLabs is a voice
+  // provider, not an LLM token provider). pattern-ai-server.mjs's live-Voice-Mode speak path and
+  // its admin test-TTS path both call this after every real ElevenLabs request, success or
+  // failure - the caller never awaits it, so a malformed/missing field here must never surface as
+  // a failure on the actual voice/speak response the user is waiting on.
+  app.post('/voice-tts-usage-event', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const record = await repo.voiceTtsUsage.record({
+      languageCode: body.languageCode, provider: body.provider || 'elevenlabs', credentialId: body.credentialId || null,
+      source: body.source || 'live_voice_mode', characters: body.characters, characterCost: body.characterCost,
+      success: Boolean(body.success), errorCode: body.errorCode || null, latencyMs: body.latencyMs
     });
     res.status(201).json(record);
   }));

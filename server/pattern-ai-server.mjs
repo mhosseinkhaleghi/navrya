@@ -4,6 +4,8 @@ import { sessionCookieName } from './community/security/cookies.mjs';
 import { resolveRateLimitStore } from './community/security/rate-limit.mjs';
 import { sha256Hex } from './community/security/crypto-util.mjs';
 import { resolveRealtimeLeaseStore } from './community/security/realtime-lease-store.mjs';
+import * as elevenlabs from './community/elevenlabs-client.mjs';
+import { ElevenLabsError } from './community/elevenlabs-client.mjs';
 // Note on CORS here: this gateway's `Access-Control-Allow-Origin: '*'` (see json() below) is
 // deliberately NOT tightened to an allowlist in this pass. Since identity now travels as a
 // HttpOnly, host-only session cookie (never a bearer header a cross-origin script could attach
@@ -78,6 +80,84 @@ async function adminKeys() {
     adminKeyCache = { data: adminKeyCache.data, fetchedAt: Date.now() };
   }
   return adminKeyCache.data || {};
+}
+
+// Same bridge shape as adminKeys() above, but Redis-version-aware: the internal route
+// (/internal/voice-provider-config) returns a monotonically-increasing `version` (bumped by
+// server/admin/routes.voice-providers.mjs on every credential/language-config write, shared
+// across every replica via Redis - see that route's own comment). This cache is refetched
+// whenever EITHER the short TTL elapses OR the last-seen version looks stale is not knowable
+// without asking, so this still polls on a TTL like adminKeys() - the real win is TTL can stay
+// short (a real production change is reflected within one interval) without hammering the
+// Community API, since a cheap version-only comparison isn't actually available without a second
+// round trip. A short, dedicated TTL (much shorter than adminKeys()'s 60s, since a wrong/stale
+// voice selection is directly audible to a real user, not just a background admin metric) is the
+// simplest correct mechanism here; the Redis version is still recorded/logged for observability
+// and to make a future push-based invalidation path a pure addition, not a redesign.
+let voiceConfigCache = { data: null, version: null, fetchedAt: 0 };
+const VOICE_CONFIG_CACHE_TTL_MS = 10000;
+async function voiceProviderConfig() {
+  if (Date.now() - voiceConfigCache.fetchedAt < VOICE_CONFIG_CACHE_TTL_MS) return voiceConfigCache.data || {};
+  try {
+    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/internal/voice-provider-config';
+    const headers = process.env.INTERNAL_API_SECRET ? { 'x-internal-secret': process.env.INTERNAL_API_SECRET } : {};
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+    const body = response.ok ? await response.json() : null;
+    voiceConfigCache = { data: body ? body.languages : null, version: body ? body.version : null, fetchedAt: Date.now() };
+  } catch (_) {
+    voiceConfigCache = { data: voiceConfigCache.data, version: voiceConfigCache.version, fetchedAt: Date.now() };
+  }
+  return voiceConfigCache.data || {};
+}
+// Matches rate-limit.mjs's own __resetRateLimitStoreForTests() convention - lets a test force a
+// real refetch instead of racing this module's own short cache TTL.
+function __resetVoiceConfigCacheForTests() { voiceConfigCache = { data: null, version: null, fetchedAt: 0 }; }
+
+// Runtime precedence (Persian Voice Quality gate's ElevenLabs follow-up - see
+// docs/ai/persian-voice-quality.md and docs/ai/elevenlabs-voice-providers.md):
+//   1. An enabled, valid admin-managed ElevenLabs configuration for this language (DB, via the
+//      bridge above).
+//   2. An explicitly-enabled emergency environment fallback (ELEVENLABS_EMERGENCY_ENV_FALLBACK=
+//      'true' AND the language-specific env vars are actually set) - deliberately opt-in only, so
+//      an admin-managed configuration is never silently shadowed by a stale/forgotten env var
+//      once real DB-backed config exists (mission requirement: "do not silently revive stale
+//      environment credentials unless an explicit emergency-env-fallback option is enabled").
+//   3. null - caller falls back to the existing OpenAI Realtime voice for this language, exactly
+//      as it already does today.
+// Only Persian has emergency env vars today (inherited from the original isolated test-card
+// feature) - a literal `process.env.ELEVENLABS_VOICE_ID_FA` reference (never a dynamic
+// process.env[name] lookup) is deliberate: tests/deployment-config-elevenlabs.test.mjs statically
+// greps this file for every `process.env.ELEVENLABS_*` it actually reads to verify
+// docker-compose.production.yml forwards it - a dynamic lookup would be invisible to that real
+// regression guard, exactly the kind of var-silently-not-forwarded bug it exists to catch. Add
+// another `if (language === '..')` branch here, with its own literal env var, if a future
+// language ever needs its own emergency fallback - never a generic map keyed dynamically.
+function emergencyEnvVoiceIdFor(language) {
+  if (language === 'fa') return process.env.ELEVENLABS_VOICE_ID_FA;
+  return null;
+}
+async function resolveElevenLabsForLanguage(language) {
+  const config = await voiceProviderConfig();
+  const languageConfig = config && config[language];
+  if (languageConfig && languageConfig.enabled && languageConfig.apiKey && languageConfig.voiceId) {
+    return {
+      source: 'admin', apiKey: languageConfig.apiKey, voiceId: languageConfig.voiceId,
+      modelId: languageConfig.modelId || 'eleven_v3', languageCode: languageConfig.languageCode || language,
+      voiceSettings: languageConfig.voiceSettings || {}
+    };
+  }
+  if (String(process.env.ELEVENLABS_EMERGENCY_ENV_FALLBACK || '').toLowerCase() === 'true') {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const voiceId = emergencyEnvVoiceIdFor(language);
+    if (apiKey && voiceId) {
+      return {
+        source: 'emergency_env', apiKey, voiceId,
+        modelId: process.env.ELEVENLABS_MODEL_ID_FA || 'eleven_v3', languageCode: process.env.ELEVENLABS_LANGUAGE_CODE_FA || language,
+        voiceSettings: {}
+      };
+    }
+  }
+  return null;
 }
 
 // ADR-0001 section 6 / 7: every AI endpoint requires a REAL, verified, non-suspended user
@@ -465,6 +545,17 @@ function reportProviderHealth(event) {
     if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
     fetch(url, { method: 'POST', headers, body: JSON.stringify(event), signal: AbortSignal.timeout(3000) }).catch(() => {});
   } catch (_) { /* never let health reporting break or delay the real AI call */ }
+}
+
+// Same fire-and-forget posture as reportProviderHealth() above, for the separate
+// voice_tts_usage_events domain (server/community/routes.internal.mjs's /voice-tts-usage-event).
+function reportVoiceTtsUsage(event) {
+  try {
+    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/internal/voice-tts-usage-event';
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
+    fetch(url, { method: 'POST', headers, body: JSON.stringify(event), signal: AbortSignal.timeout(3000) }).catch(() => {});
+  } catch (_) { /* never let usage reporting break or delay the real TTS response */ }
 }
 
 // The single entry point every handler below calls instead of callOpenAI directly.
@@ -1306,10 +1397,20 @@ async function mintRealtimeClientSecret(body, userId) {
     } catch (leaseError) {
       throw new Error('REALTIME_LEASE_STORE_FAILED');
     }
+    // ElevenLabs voice-provider follow-up: OpenAI remains the sole conversation brain (VAD/STT/
+    // reasoning/workflow) regardless - only which engine actually SPEAKS the reply can change per
+    // language. Reported here (not decided client-side) so the browser never has to guess/poll a
+    // second endpoint just to know which speak path to use; `elevenLabs` is present only when tier
+    // 1/2 of the runtime precedence actually resolved to something usable, and never carries the
+    // API key itself (chatDockView.jsx's own speak path calls POST /api/ai/voice/speak with plain
+    // text - the key stays server-side always, see that route's own comment).
+    const elevenLabs = await resolveElevenLabsForLanguage(language).catch(() => null);
     return {
       value: data.value, expiresAt: data.expires_at,
       model: (data.session && data.session.model) || model, voice: voiceForLanguage(language), language,
-      eagerness
+      eagerness,
+      ttsProvider: elevenLabs ? 'elevenlabs' : 'openai',
+      elevenLabs: elevenLabs ? { voiceId: elevenLabs.voiceId, modelId: elevenLabs.modelId } : null
     };
   } catch (error) {
     reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.session' });
@@ -1467,13 +1568,8 @@ async function extractTradeFields(body) {
   };
 }
 
-// Isolated, flag-gated Persian voice-output test (see .env.example). Deliberately NOT part of
-// the multi-provider chat gateway above - ElevenLabs is not in providerEnvKey/providerDefaultModel
-// and this never touches callProvider/dockChat/adminKeys/Realtime Voice. Fully reversible: with
-// ELEVENLABS_FA_ENABLED unset or anything other than 'true', the endpoint always 404s below,
-// with no other route or existing voice path affected.
-const ELEVENLABS_TEST_TEXT_MAX = 500;
-
+// pcm16ToWav is kept for any caller still wrapping raw PCM (e.g. a future admin diagnostic) -
+// current ElevenLabs calls below default to mp3 output, which needs no container wrapping at all.
 function pcm16ToWav(pcm, sampleRate, channels) {
   const bitDepth = 16;
   const blockAlign = channels * (bitDepth / 8);
@@ -1495,56 +1591,120 @@ function pcm16ToWav(pcm, sampleRate, channels) {
   return Buffer.concat([header, pcm]);
 }
 
-async function testElevenLabsFaTts(body) {
-  if (String(process.env.ELEVENLABS_FA_ENABLED || '').toLowerCase() !== 'true') {
-    throw new Error('ELEVENLABS_FA_TEST_DISABLED');
-  }
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) throw new Error('ELEVENLABS_API_KEY_MISSING');
-  const voiceId = process.env.ELEVENLABS_VOICE_ID_FA;
-  if (!voiceId) throw new Error('ELEVENLABS_VOICE_ID_FA_MISSING');
-  const modelId = process.env.ELEVENLABS_MODEL_ID_FA || 'eleven_v3';
-  const languageCode = process.env.ELEVENLABS_LANGUAGE_CODE_FA || 'fa';
-  const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT || 'pcm_24000';
+const ELEVENLABS_TEST_TEXT_MAX = 500;
+// A live Voice Mode reply's own voiceReply is already the short, TTS-phrased rendering (see
+// docs/ai/persian-voice-quality.md) - this ceiling is a hard safety bound, not a normal length.
+const ELEVENLABS_SPEAK_TEXT_MAX = 2000;
 
+// Minimal in-process circuit breaker, per language - mission requirement ("Implement bounded
+// timeouts, abort propagation and a circuit breaker" / fallback trigger "open circuit breaker").
+// Deliberately simple (consecutive-failure count + a fixed cooldown), matching this codebase's
+// own stated "correct enough at this app's scale, trivial to reason about" bar for its other
+// in-process state (e.g. rate-limit.mjs's own fixed-window counter, not a sliding log). Per-
+// process, not shared across replicas - a real cross-replica breaker would need Redis the same
+// way rate-limit.mjs's store does, judged unnecessary for a first version: a single replica
+// tripping its own breaker still protects that replica's users, and ElevenLabs' own real failure
+// modes (401/insufficient credits/5xx) are typically account-wide, not per-replica-flaky, so the
+// blast radius of "wrong per-replica breaker state" is small.
+const elevenLabsCircuit = new Map();
+const CIRCUIT_FAILURE_THRESHOLD = 3;
+const CIRCUIT_COOLDOWN_MS = 30000;
+function isCircuitOpen(languageCode) {
+  const state = elevenLabsCircuit.get(languageCode);
+  return Boolean(state && state.openUntil && state.openUntil > Date.now());
+}
+function recordCircuitResult(languageCode, success) {
+  const state = elevenLabsCircuit.get(languageCode) || { failures: 0, openUntil: 0 };
+  if (success) { state.failures = 0; state.openUntil = 0; } else {
+    state.failures += 1;
+    if (state.failures >= CIRCUIT_FAILURE_THRESHOLD) state.openUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+  }
+  elevenLabsCircuit.set(languageCode, state);
+}
+
+// Hardened replacement for the old isolated /api/ai/voice/test-tts-fa (mission: "Replace or
+// harden it"). Real differences from the old version: admin-only (checked here, defense in depth
+// beyond the dispatcher's own session check below), supports every configured language (not only
+// fa), uses the admin-managed/emergency-env runtime precedence (resolveElevenLabsForLanguage())
+// instead of raw env vars read directly, rate-limited at the dispatcher via the generic AI quota
+// PLUS its own tighter admin-side rate limiter (server/admin/routes.voice-providers.mjs's
+// testSampleLimiter covers the admin-UI path; this function is also reachable directly and
+// enforces its own admin check regardless of caller), and NEVER logs/returns the raw upstream
+// error body - only a small, fixed, sanitized code (ElevenLabsError.code).
+async function adminTestVoiceProviderTts(body, session) {
+  if (!session || session.role !== 'admin') throw new Error('ADMIN_REQUIRED');
+  const languageCode = REALTIME_LANGUAGES.includes(body.language) ? body.language : null;
+  if (!languageCode) throw new Error('UNSUPPORTED_LANGUAGE');
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   if (!text) throw new Error('TEXT_REQUIRED');
   if (text.length > ELEVENLABS_TEST_TEXT_MAX) throw new Error('TEXT_TOO_LONG');
+  const resolved = await resolveElevenLabsForLanguage(languageCode);
+  if (!resolved) throw new Error('ELEVENLABS_NOT_CONFIGURED');
+  const startedAt = Date.now();
+  try {
+    const result = await elevenlabs.synthesize(resolved.apiKey, resolved.voiceId, {
+      text, modelId: resolved.modelId, languageCode: resolved.languageCode, voiceSettings: resolved.voiceSettings
+    });
+    reportVoiceTtsUsage({
+      languageCode, provider: 'elevenlabs', source: 'admin_test', characters: text.length,
+      characterCost: result.characterCost, success: true, latencyMs: Date.now() - startedAt
+    });
+    return {
+      ok: true, audioBase64: result.buffer.toString('base64'), mimeType: result.contentType, languageCode,
+      configSource: resolved.source, textLength: text.length, latencyMs: Date.now() - startedAt, creditsConsumed: true
+    };
+  } catch (error) {
+    const code = error instanceof ElevenLabsError ? error.code : 'REQUEST_FAILED';
+    reportVoiceTtsUsage({
+      languageCode, provider: 'elevenlabs', source: 'admin_test', characters: text.length,
+      success: false, errorCode: code, latencyMs: Date.now() - startedAt
+    });
+    throw new Error('ELEVENLABS_' + code); // sanitized code only - never error.message/upstream body
+  }
+}
+
+// The real live-Voice-Mode speech endpoint (docs/ai/elevenlabs-voice-providers.md). Called by
+// chatDockView.jsx's own speak() path ONLY when mintRealtimeClientSecret()'s response reported
+// ttsProvider:'elevenlabs' for the active language - OpenAI remains the sole conversation
+// brain/transcription/turn-detection regardless; this endpoint only ever renders NAVRYA's own
+// already-decided reply text to audio, exactly like the existing OpenAI
+// `session.transport.requestResponse({instructions: 'Speak exactly...'})` path does, just over a
+// same-origin authenticated HTTP call instead of the WebRTC data channel. Never throws an HTTP
+// error for an ordinary fallback condition (missing config/circuit open/upstream failure) - it
+// always resolves 200 with `{fallback: true, reason}` so the caller can fall back to the existing
+// OpenAI voice exactly once, without treating a routine fallback as a request failure the client
+// needs its own separate error-handling branch for.
+async function speakWithVoiceProvider(body) {
+  const languageCode = REALTIME_LANGUAGES.includes(body.language) ? body.language : null;
+  if (!languageCode) return { fallback: true, reason: 'UNSUPPORTED_LANGUAGE' };
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (!text) return { fallback: true, reason: 'TEXT_REQUIRED' };
+  if (text.length > ELEVENLABS_SPEAK_TEXT_MAX) return { fallback: true, reason: 'TEXT_TOO_LONG' };
+  if (isCircuitOpen(languageCode)) return { fallback: true, reason: 'CIRCUIT_OPEN' };
+
+  const resolved = await resolveElevenLabsForLanguage(languageCode);
+  if (!resolved) return { fallback: true, reason: 'NOT_CONFIGURED' };
 
   const startedAt = Date.now();
-  let response;
   try {
-    response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${encodeURIComponent(outputFormat)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
-        body: JSON.stringify({ text, model_id: modelId, language_code: languageCode }),
-        signal: AbortSignal.timeout(30000)
-      }
-    );
+    const result = await elevenlabs.synthesize(resolved.apiKey, resolved.voiceId, {
+      text, modelId: resolved.modelId, languageCode: resolved.languageCode, voiceSettings: resolved.voiceSettings
+    });
+    recordCircuitResult(languageCode, true);
+    reportVoiceTtsUsage({
+      languageCode, provider: 'elevenlabs', source: 'live_voice_mode', characters: text.length,
+      characterCost: result.characterCost, success: true, latencyMs: Date.now() - startedAt
+    });
+    return { fallback: false, audioBase64: result.buffer.toString('base64'), mimeType: result.contentType, latencyMs: Date.now() - startedAt };
   } catch (error) {
-    throw new Error('ELEVENLABS_REQUEST_FAILED' + (error && error.name === 'TimeoutError' ? '_TIMEOUT' : ''));
+    const code = error instanceof ElevenLabsError ? error.code : 'REQUEST_FAILED';
+    recordCircuitResult(languageCode, false);
+    reportVoiceTtsUsage({
+      languageCode, provider: 'elevenlabs', source: 'live_voice_mode', characters: text.length,
+      success: false, errorCode: code, latencyMs: Date.now() - startedAt
+    });
+    return { fallback: true, reason: code };
   }
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error('ELEVENLABS_' + response.status + (errText ? ': ' + errText.slice(0, 200) : ''));
-  }
-  const pcm = Buffer.from(await response.arrayBuffer());
-  const sampleRateMatch = /(\d+)$/.exec(outputFormat);
-  const sampleRate = sampleRateMatch ? Number(sampleRateMatch[1]) : 24000;
-  const wav = pcm16ToWav(pcm, sampleRate, 1);
-  return {
-    ok: true,
-    audioBase64: wav.toString('base64'),
-    mimeType: 'audio/wav',
-    sampleRate,
-    voiceId,
-    modelId,
-    languageCode,
-    textLength: text.length,
-    latencyMs: Date.now() - startedAt
-  };
 }
 
 // Fail closed at startup, not at the first request - this gateway's entire identity story
@@ -1643,14 +1803,21 @@ const server = http.createServer(async (request, response) => {
     if (request.url === '/api/ai/chat') return json(response, 200, await dockChat(body));
     if (request.url === '/api/ai/test-connection') return json(response, 200, await testConnection(body));
     if (request.url === '/api/ai/realtime/session') return json(response, 200, await mintRealtimeClientSecret(body, session.userId));
-    if (request.url === '/api/ai/voice/test-tts-fa') return json(response, 200, await testElevenLabsFaTts(body));
+    // Admin-only hardened replacement for the old isolated /api/ai/voice/test-tts-fa (see
+    // adminTestVoiceProviderTts()'s own header comment for what changed and why).
+    if (request.url === '/api/ai/voice/test-tts') return json(response, 200, await adminTestVoiceProviderTts(body, session));
+    // Live Voice Mode's own speak path - any real, verified, non-suspended session (not admin-only:
+    // every end user using Voice Mode reaches this), same auth/quota gate as every route above.
+    if (request.url === '/api/ai/voice/speak') return json(response, 200, await speakWithVoiceProvider(body));
     return json(response, 404, { error: 'NOT_FOUND' });
   } catch (error) {
     const status = error.message === 'REQUEST_TOO_LARGE' ? 413
       : error.message === 'INVALID_JSON' ? 400
       : /_API_KEY_MISSING$/.test(error.message || '') ? 503
-      : error.message === 'ELEVENLABS_VOICE_ID_FA_MISSING' ? 503
-      : error.message === 'ELEVENLABS_FA_TEST_DISABLED' ? 404
+      : error.message === 'ADMIN_REQUIRED' ? 403
+      : error.message === 'UNSUPPORTED_LANGUAGE' ? 400
+      : error.message === 'ELEVENLABS_NOT_CONFIGURED' ? 503
+      : error.message === 'ELEVENLABS_INVALID_CREDENTIAL' ? 503
       : error.message === 'TEXT_REQUIRED' || error.message === 'TEXT_TOO_LONG' ? 400
       : 500;
     return json(response, status, { error: error.message || 'PATTERN_AI_FAILED' });
@@ -1676,4 +1843,9 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default server;
-export { callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText, historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, testElevenLabsFaTts, pcm16ToWav };
+export {
+  callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
+  historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
+  adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForLanguage, voiceProviderConfig,
+  __resetVoiceConfigCacheForTests
+};
