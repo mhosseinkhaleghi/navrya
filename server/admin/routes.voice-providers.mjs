@@ -13,6 +13,13 @@ import { ElevenLabsError } from '../community/elevenlabs-client.mjs';
 // precedent). Following that same established precedent here: one more independent, explicitly
 // commented constant, not a new shared registry.
 const SUPPORTED_LANGUAGES = ['fa', 'ar', 'en', 'es'];
+// The 4 fixed NAVRYA character skins (navrya-src/characters.js) - same "one more independent,
+// explicitly commented constant" precedent as SUPPORTED_LANGUAGES above (no shared browser/server
+// module bundling exists in this app). A user can be on a different character in every open tab
+// (see currentCharacter.js) - character is never a permanent per-account field, so voice routing
+// is keyed by character itself, not by user.
+const SUPPORTED_CHARACTERS = ['hunter', 'commander', 'engineer', 'sage'];
+const SUPPORTED_GENDERS = ['male', 'female'];
 const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
 
 // Bumped on every credential/language-config write so pattern-ai-server.mjs's runtime config
@@ -31,6 +38,12 @@ async function bumpVoiceConfigVersion() {
 
 function assertSupportedLanguage(languageCode) {
   if (!SUPPORTED_LANGUAGES.includes(languageCode)) throw new ApiError(400, 'UNSUPPORTED_LANGUAGE');
+}
+function assertSupportedCharacter(character) {
+  if (!SUPPORTED_CHARACTERS.includes(character)) throw new ApiError(400, 'UNSUPPORTED_CHARACTER');
+}
+function assertSupportedGender(gender) {
+  if (!SUPPORTED_GENDERS.includes(gender)) throw new ApiError(400, 'UNSUPPORTED_GENDER');
 }
 
 // Maps a thrown ElevenLabsError to an HTTP status + sanitized error code - the ONLY place upstream
@@ -182,35 +195,48 @@ export function router(repo) {
     res.json({ byLanguage, recent, days });
   }));
 
-  // --- Per-language configuration ---
+  // --- Per-character, per-gender configuration ---
+  // Replaces per-language-only routing (voiceLanguageConfigs/'/languages' - the table itself is
+  // left in place, just no longer read/written here): a character's voice is now the same across
+  // every language (a multilingual-capable model/voice pair is expected, matching the eleven_v3
+  // model already used for Persian) - language remains a real parameter of the actual synthesis
+  // call, just not part of the admin config key any more. See docs/ai/elevenlabs-voice-providers.md.
 
-  app.get('/languages', asyncHandler(async (req, res) => {
-    const rows = await repo.voiceLanguageConfigs.list();
-    const byLanguage = {};
-    rows.forEach((row) => { byLanguage[row.languageCode] = row; });
-    // Always returns one entry per SUPPORTED_LANGUAGES, even for a language with no saved config
-    // yet, so the admin UI never has to special-case "not configured" vs. "configured but empty".
-    res.json(SUPPORTED_LANGUAGES.map((languageCode) => byLanguage[languageCode] || {
-      languageCode, provider: 'elevenlabs', credentialId: null, voiceId: null, modelId: null, enabled: false,
-      voiceSettings: {}, fallbackProvider: 'openai', fallbackVoice: null, updatedBy: null, createdAt: null, updatedAt: null
-    }));
+  app.get('/characters', asyncHandler(async (req, res) => {
+    const rows = await repo.voiceCharacterConfigs.list();
+    const byKey = {};
+    rows.forEach((row) => { byKey[row.character + ':' + row.gender] = row; });
+    // Always returns one entry per (character, gender) combination, even for one with no saved
+    // config yet, so the admin UI never has to special-case "not configured" vs. "configured but
+    // empty" - same convention as the old per-language list.
+    const entries = [];
+    SUPPORTED_CHARACTERS.forEach((character) => {
+      SUPPORTED_GENDERS.forEach((gender) => {
+        entries.push(byKey[character + ':' + gender] || {
+          character, gender, provider: 'elevenlabs', credentialId: null, voiceId: null, modelId: null, enabled: false,
+          voiceSettings: {}, fallbackProvider: 'openai', fallbackVoice: null, updatedBy: null, createdAt: null, updatedAt: null
+        });
+      });
+    });
+    res.json(entries);
   }));
 
-  app.put('/languages/:code', asyncHandler(async (req, res) => {
-    assertSupportedLanguage(req.params.code);
+  app.put('/characters/:character/:gender', asyncHandler(async (req, res) => {
+    assertSupportedCharacter(req.params.character);
+    assertSupportedGender(req.params.gender);
     const body = req.body || {};
     if (body.credentialId) {
       const credential = await repo.voiceProviderCredentials.get(body.credentialId);
       if (!credential) throw new ApiError(400, 'CREDENTIAL_NOT_FOUND');
     }
-    const record = await repo.voiceLanguageConfigs.upsert({
-      languageCode: req.params.code, provider: 'elevenlabs', credentialId: body.credentialId || null,
+    const record = await repo.voiceCharacterConfigs.upsert({
+      character: req.params.character, gender: req.params.gender, provider: 'elevenlabs', credentialId: body.credentialId || null,
       voiceId: body.voiceId || null, modelId: body.modelId || null, enabled: Boolean(body.enabled),
       voiceSettings: body.voiceSettings || {}, fallbackProvider: body.fallbackProvider || 'openai',
       fallbackVoice: body.fallbackVoice || null, updatedBy: req.currentUser.id
     });
     await bumpVoiceConfigVersion();
-    await audit(req, 'voiceProvider.language.save', 'voiceLanguageConfig', req.params.code, {
+    await audit(req, 'voiceProvider.character.save', 'voiceCharacterConfig', req.params.character + ':' + req.params.gender, {
       enabled: record.enabled, voiceId: record.voiceId, modelId: record.modelId, hasCredential: Boolean(record.credentialId)
     });
     res.json(record);
@@ -266,37 +292,59 @@ export function router(repo) {
     }
   }));
 
-  // --- Health (TTS health kept separate from analytics permission, per language) ---
+  // --- Health (TTS health kept separate from analytics permission, per character+gender) ---
 
   app.get('/health', asyncHandler(async (req, res) => {
     const [credentials, configs, usage] = await Promise.all([
-      repo.voiceProviderCredentials.list(), repo.voiceLanguageConfigs.list(),
+      repo.voiceProviderCredentials.list(), repo.voiceCharacterConfigs.list(),
+      // Local usage is still recorded per-language (voice_tts_usage_events.language_code - the
+      // real language spoken, not the character) - aggregated across every language here since
+      // health is reported per character+gender now, not per language.
       repo.voiceTtsUsage.aggregateByLanguage({ since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() })
     ]);
-    const usageByLanguage = {};
-    usage.forEach((row) => { usageByLanguage[row.languageCode] = row; });
     const credentialsById = {};
     credentials.forEach((row) => { credentialsById[row.id] = row; });
-
-    const languages = SUPPORTED_LANGUAGES.map((languageCode) => {
-      const config = configs.find((c) => c.languageCode === languageCode) || null;
-      const credential = config && config.credentialId ? credentialsById[config.credentialId] : null;
-      const dayUsage = usageByLanguage[languageCode] || { requestCount: 0, successRatePercent: null, avgLatencyMs: 0, lastSuccessAt: null, lastErrorCode: null };
-      let status;
-      if (!config || !config.enabled) status = 'disabled';
-      else if (!credential) status = 'unconfigured';
-      else if (credential.validationStatus === 'invalid') status = 'invalid_credential';
-      else if (dayUsage.requestCount > 0 && dayUsage.successRatePercent != null && dayUsage.successRatePercent < 80) status = 'degraded';
-      else status = 'ready';
-      return {
-        languageCode, status, enabled: Boolean(config && config.enabled),
-        credentialLabel: credential ? credential.label : null, credentialValidationStatus: credential ? credential.validationStatus : null,
-        voiceId: config ? config.voiceId : null, modelId: config ? config.modelId : null,
-        fallbackProvider: config ? config.fallbackProvider : 'openai', fallbackVoice: config ? config.fallbackVoice : null,
-        last24h: dayUsage, dataSource: 'local', lastRefreshedAt: new Date().toISOString()
-      };
+    const totalUsage = { requestCount: 0, successCount: 0, latencySum: 0, lastSuccessAt: null, lastErrorCode: null };
+    usage.forEach((row) => {
+      totalUsage.requestCount += row.requestCount;
+      totalUsage.successCount += row.successCount;
+      totalUsage.latencySum += (row.avgLatencyMs || 0) * row.requestCount;
+      if (row.lastSuccessAt && (!totalUsage.lastSuccessAt || row.lastSuccessAt > totalUsage.lastSuccessAt)) totalUsage.lastSuccessAt = row.lastSuccessAt;
+      if (row.lastErrorCode) totalUsage.lastErrorCode = row.lastErrorCode;
     });
-    res.json({ languages });
+
+    const characters = [];
+    SUPPORTED_CHARACTERS.forEach((character) => {
+      SUPPORTED_GENDERS.forEach((gender) => {
+        const config = configs.find((c) => c.character === character && c.gender === gender) || null;
+        const credential = config && config.credentialId ? credentialsById[config.credentialId] : null;
+        // Voice usage is not currently broken out per character+gender (voice_tts_usage_events has
+        // no character/gender column - it records the real language spoken, which stays true
+        // regardless of which character/gender voice rendered it) - the combined 24h total across
+        // every ElevenLabs speech is shown for every entry, same real numbers, never fabricated.
+        let status;
+        if (!config || !config.enabled) status = 'disabled';
+        else if (!credential) status = 'unconfigured';
+        else if (credential.validationStatus === 'invalid') status = 'invalid_credential';
+        else status = 'ready';
+        characters.push({
+          character, gender, status, enabled: Boolean(config && config.enabled),
+          credentialLabel: credential ? credential.label : null, credentialValidationStatus: credential ? credential.validationStatus : null,
+          voiceId: config ? config.voiceId : null, modelId: config ? config.modelId : null,
+          fallbackProvider: config ? config.fallbackProvider : 'openai', fallbackVoice: config ? config.fallbackVoice : null,
+          dataSource: 'local', lastRefreshedAt: new Date().toISOString()
+        });
+      });
+    });
+    res.json({
+      characters,
+      overallUsage24h: {
+        requestCount: totalUsage.requestCount,
+        successRatePercent: totalUsage.requestCount > 0 ? Math.round((totalUsage.successCount / totalUsage.requestCount) * 100) : null,
+        avgLatencyMs: totalUsage.requestCount > 0 ? Math.round(totalUsage.latencySum / totalUsage.requestCount) : 0,
+        lastSuccessAt: totalUsage.lastSuccessAt, lastErrorCode: totalUsage.lastErrorCode
+      }
+    });
   }));
 
   // Admin-only, rate-limited, short test sample. Explicitly records that this call spends real

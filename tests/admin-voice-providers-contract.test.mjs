@@ -185,10 +185,10 @@ test('PATCH with a blank/omitted apiKey retains the current key; a real replacem
   assert.equal(decrypted.apiKey, 'sk-brand-new-value-2222');
 });
 
-test('DELETE is a separate, explicit action (never implied by a blank-key PATCH) and clears (never breaks) any language config that referenced it', async () => {
+test('DELETE is a separate, explicit action (never implied by a blank-key PATCH) and clears (never breaks) any character config that referenced it', async () => {
   const admin = await createAdmin('Admin E');
   const record = await createCredential(admin.id, 'To Be Deleted');
-  const save = await api('PUT', '/api/admin/voice-providers/languages/fa', { userId: admin.id, body: { enabled: true, credentialId: record.id, voiceId: 'v1', modelId: 'eleven_v3' } });
+  const save = await api('PUT', '/api/admin/voice-providers/characters/hunter/male', { userId: admin.id, body: { enabled: true, credentialId: record.id, voiceId: 'v1', modelId: 'eleven_v3' } });
   assert.equal(save.status, 200);
   assert.equal(save.body.credentialId, record.id);
 
@@ -196,9 +196,9 @@ test('DELETE is a separate, explicit action (never implied by a blank-key PATCH)
   assert.equal(del.status, 200);
   assert.equal(del.body.deleted, true);
 
-  const languages = await api('GET', '/api/admin/voice-providers/languages', { userId: admin.id });
-  const fa = languages.body.find((l) => l.languageCode === 'fa');
-  assert.equal(fa.credentialId, null, 'the language config must fall back to no credential, never a dangling reference');
+  const characters = await api('GET', '/api/admin/voice-providers/characters', { userId: admin.id });
+  const hunterMale = characters.body.find((c) => c.character === 'hunter' && c.gender === 'male');
+  assert.equal(hunterMale.credentialId, null, 'the character config must fall back to no credential, never a dangling reference');
 
   const redelete = await api('DELETE', `/api/admin/voice-providers/credentials/${record.id}`, { userId: admin.id });
   assert.equal(redelete.status, 404);
@@ -291,45 +291,48 @@ test('GET upstream-usage treats a missing analytics permission (403) as ANALYTIC
   assert.equal(result.body.reason, 'ANALYTICS_PERMISSION_UNAVAILABLE');
 });
 
-// --- Per-language configuration ---
+// --- Per-character, per-gender configuration ---
 
-test('GET /languages always returns one entry per supported language, with the documented default shape for a language nothing has configured yet', async () => {
+test('GET /characters always returns one entry per (character, gender) combination, with the documented default shape for one nothing has configured yet', async () => {
   const admin = await createAdmin('Admin J');
-  const result = await api('GET', '/api/admin/voice-providers/languages', { userId: admin.id });
+  const result = await api('GET', '/api/admin/voice-providers/characters', { userId: admin.id });
   assert.equal(result.status, 200);
-  const codes = result.body.map((l) => l.languageCode).sort();
-  assert.deepEqual(codes, ['ar', 'en', 'es', 'fa']);
-  // 'ar' is never touched by any earlier test in this file - its entry proves the real
-  // "never has to special-case not-configured" default shape, independent of whatever other
-  // languages earlier tests in this shared-repo suite (see admin-api-contract.test.mjs's own
+  const keys = result.body.map((c) => c.character + ':' + c.gender).sort();
+  assert.deepEqual(keys, ['commander:female', 'commander:male', 'engineer:female', 'engineer:male', 'hunter:female', 'hunter:male', 'sage:female', 'sage:male']);
+  // 'engineer:female' is never touched by any earlier test in this file - its entry proves the
+  // real "never has to special-case not-configured" default shape, independent of whatever other
+  // combinations earlier tests in this shared-repo suite (see admin-api-contract.test.mjs's own
   // convention) have since configured.
-  const ar = result.body.find((l) => l.languageCode === 'ar');
-  assert.equal(ar.enabled, false);
-  assert.equal(ar.credentialId, null);
-  assert.equal(ar.provider, 'elevenlabs');
-  assert.equal(ar.fallbackProvider, 'openai');
+  const engineerFemale = result.body.find((c) => c.character === 'engineer' && c.gender === 'female');
+  assert.equal(engineerFemale.enabled, false);
+  assert.equal(engineerFemale.credentialId, null);
+  assert.equal(engineerFemale.provider, 'elevenlabs');
+  assert.equal(engineerFemale.fallbackProvider, 'openai');
 });
 
-test('PUT /languages/:code rejects an unsupported language code and a nonexistent credentialId, before ever touching the config table', async () => {
+test('PUT /characters/:character/:gender rejects an unsupported character, an unsupported gender, and a nonexistent credentialId, before ever touching the config table', async () => {
   const admin = await createAdmin('Admin K');
-  const badLanguage = await api('PUT', '/api/admin/voice-providers/languages/de', { userId: admin.id, body: { enabled: true } });
-  assert.equal(badLanguage.status, 400);
-  assert.equal(badLanguage.body.error, 'UNSUPPORTED_LANGUAGE');
-  const badCredential = await api('PUT', '/api/admin/voice-providers/languages/fa', { userId: admin.id, body: { enabled: true, credentialId: 'does-not-exist' } });
+  const badCharacter = await api('PUT', '/api/admin/voice-providers/characters/wizard/male', { userId: admin.id, body: { enabled: true } });
+  assert.equal(badCharacter.status, 400);
+  assert.equal(badCharacter.body.error, 'UNSUPPORTED_CHARACTER');
+  const badGender = await api('PUT', '/api/admin/voice-providers/characters/hunter/nonbinary', { userId: admin.id, body: { enabled: true } });
+  assert.equal(badGender.status, 400);
+  assert.equal(badGender.body.error, 'UNSUPPORTED_GENDER');
+  const badCredential = await api('PUT', '/api/admin/voice-providers/characters/hunter/male', { userId: admin.id, body: { enabled: true, credentialId: 'does-not-exist' } });
   assert.equal(badCredential.status, 400);
   assert.equal(badCredential.body.error, 'CREDENTIAL_NOT_FOUND');
 });
 
-test('PUT /languages/:code round-trips a real, valid save', async () => {
+test('PUT /characters/:character/:gender round-trips a real, valid save', async () => {
   const admin = await createAdmin('Admin L');
   const record = await createCredential(admin.id);
-  const save = await api('PUT', '/api/admin/voice-providers/languages/es', { userId: admin.id, body: { enabled: true, credentialId: record.id, voiceId: 'voice-es-1', modelId: 'eleven_v3' } });
+  const save = await api('PUT', '/api/admin/voice-providers/characters/sage/female', { userId: admin.id, body: { enabled: true, credentialId: record.id, voiceId: 'voice-sage-f', modelId: 'eleven_v3' } });
   assert.equal(save.status, 200);
-  const get = await api('GET', '/api/admin/voice-providers/languages', { userId: admin.id });
-  const es = get.body.find((l) => l.languageCode === 'es');
-  assert.equal(es.enabled, true);
-  assert.equal(es.credentialId, record.id);
-  assert.equal(es.voiceId, 'voice-es-1');
+  const get = await api('GET', '/api/admin/voice-providers/characters', { userId: admin.id });
+  const sageFemale = get.body.find((c) => c.character === 'sage' && c.gender === 'female');
+  assert.equal(sageFemale.enabled, true);
+  assert.equal(sageFemale.credentialId, record.id);
+  assert.equal(sageFemale.voiceId, 'voice-sage-f');
 });
 
 // --- Voice/model catalogs ---
@@ -378,23 +381,24 @@ test('POST /validate-combo flags a model that does not support the requested lan
 
 // --- Health derivation ---
 
-test('GET /health derives disabled/unconfigured/invalid_credential/ready correctly from real config + credential + usage state', async () => {
+test('GET /health derives disabled/unconfigured/invalid_credential/ready correctly from real config + credential state, per (character, gender)', async () => {
   const admin = await createAdmin('Admin Q');
   const goodCred = await createCredential(admin.id, 'Healthy Cred');
   const badCred = await createCredential(admin.id, 'Bad Cred');
   await repo.voiceProviderCredentials.recordValidation(badCred.id, { status: 'invalid', error: 'INVALID_CREDENTIAL' });
 
-  await api('PUT', '/api/admin/voice-providers/languages/fa', { userId: admin.id, body: { enabled: false } }); // stays default-disabled
-  await api('PUT', '/api/admin/voice-providers/languages/ar', { userId: admin.id, body: { enabled: true, credentialId: null } }); // enabled, no credential
-  await api('PUT', '/api/admin/voice-providers/languages/es', { userId: admin.id, body: { enabled: true, credentialId: badCred.id, voiceId: 'v', modelId: 'm' } });
-  await api('PUT', '/api/admin/voice-providers/languages/en', { userId: admin.id, body: { enabled: true, credentialId: goodCred.id, voiceId: 'v', modelId: 'm' } });
+  await api('PUT', '/api/admin/voice-providers/characters/hunter/male', { userId: admin.id, body: { enabled: false } }); // stays default-disabled
+  await api('PUT', '/api/admin/voice-providers/characters/commander/male', { userId: admin.id, body: { enabled: true, credentialId: null } }); // enabled, no credential
+  await api('PUT', '/api/admin/voice-providers/characters/engineer/male', { userId: admin.id, body: { enabled: true, credentialId: badCred.id, voiceId: 'v', modelId: 'm' } });
+  await api('PUT', '/api/admin/voice-providers/characters/sage/male', { userId: admin.id, body: { enabled: true, credentialId: goodCred.id, voiceId: 'v', modelId: 'm' } });
 
   const health = await api('GET', '/api/admin/voice-providers/health', { userId: admin.id });
-  const byLang = {}; health.body.languages.forEach((l) => { byLang[l.languageCode] = l; });
-  assert.equal(byLang.fa.status, 'disabled');
-  assert.equal(byLang.ar.status, 'unconfigured');
-  assert.equal(byLang.es.status, 'invalid_credential');
-  assert.equal(byLang.en.status, 'ready');
+  const byKey = {}; health.body.characters.forEach((c) => { byKey[c.character + ':' + c.gender] = c; });
+  assert.equal(byKey['hunter:male'].status, 'disabled');
+  assert.equal(byKey['commander:male'].status, 'unconfigured');
+  assert.equal(byKey['engineer:male'].status, 'invalid_credential');
+  assert.equal(byKey['sage:male'].status, 'ready');
+  assert.ok(health.body.overallUsage24h, 'must also report a combined-across-languages 24h usage summary');
 });
 
 // --- Test-sample (admin-only, records real credit consumption) ---
@@ -441,18 +445,18 @@ test('POST /test-sample without real text or a real credentialId is rejected bef
   assert.equal(called, false);
 });
 
-test('multiple credentials can exist at once and be shared or split independently across languages', async () => {
+test('multiple credentials can exist at once and be shared or split independently across character+gender combinations', async () => {
   const admin = await createAdmin('Admin T');
   const shared = await createCredential(admin.id, 'Shared Account');
-  const solo = await createCredential(admin.id, 'Persian-Only Account');
-  await api('PUT', '/api/admin/voice-providers/languages/en', { userId: admin.id, body: { enabled: true, credentialId: shared.id, voiceId: 'v', modelId: 'm' } });
-  await api('PUT', '/api/admin/voice-providers/languages/es', { userId: admin.id, body: { enabled: true, credentialId: shared.id, voiceId: 'v', modelId: 'm' } });
-  await api('PUT', '/api/admin/voice-providers/languages/fa', { userId: admin.id, body: { enabled: true, credentialId: solo.id, voiceId: 'v', modelId: 'm' } });
-  const languages = await api('GET', '/api/admin/voice-providers/languages', { userId: admin.id });
-  const byLang = {}; languages.body.forEach((l) => { byLang[l.languageCode] = l; });
-  assert.equal(byLang.en.credentialId, shared.id);
-  assert.equal(byLang.es.credentialId, shared.id);
-  assert.equal(byLang.fa.credentialId, solo.id);
+  const solo = await createCredential(admin.id, 'Sage-Only Account');
+  await api('PUT', '/api/admin/voice-providers/characters/hunter/male', { userId: admin.id, body: { enabled: true, credentialId: shared.id, voiceId: 'v', modelId: 'm' } });
+  await api('PUT', '/api/admin/voice-providers/characters/commander/female', { userId: admin.id, body: { enabled: true, credentialId: shared.id, voiceId: 'v', modelId: 'm' } });
+  await api('PUT', '/api/admin/voice-providers/characters/sage/female', { userId: admin.id, body: { enabled: true, credentialId: solo.id, voiceId: 'v', modelId: 'm' } });
+  const characters = await api('GET', '/api/admin/voice-providers/characters', { userId: admin.id });
+  const byKey = {}; characters.body.forEach((c) => { byKey[c.character + ':' + c.gender] = c; });
+  assert.equal(byKey['hunter:male'].credentialId, shared.id);
+  assert.equal(byKey['commander:female'].credentialId, shared.id);
+  assert.equal(byKey['sage:female'].credentialId, solo.id);
   const credentials = await api('GET', '/api/admin/voice-providers/credentials', { userId: admin.id });
   assert.ok(credentials.body.length >= 2);
 });
