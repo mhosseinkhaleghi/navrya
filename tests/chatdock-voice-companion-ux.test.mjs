@@ -99,12 +99,14 @@ test('for the fresh-welcome opening specifically, the visual card is captured BE
 // initiated it.
 test('the Voice Companion opening is delivered via the exact same PlaybackController every real turn\'s reply already speaks through, so it is interruptible by the SAME existing barge-in handling - no new interruption code was added anywhere', () => {
   const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf('voiceRef.current = createVoiceSession({'));
-  assert.match(fn, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ kind: 'companion-opening' \}\)/);
+  assert.match(fn, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ kind: 'companion-opening', caption: opening\.text \}\)/);
   assert.doesNotMatch(fn, /voiceRef\.current\.speak\(/, 'deliverCompanionOpening() must never call speak() directly - only through PlaybackController, like every other reply');
-  // aiVoiceRealtime.js's own barge-in handling (TRANSPORT_SPEECH_STARTED -> interrupt() while
-  // ASSISTANT_SPEAKING) is untouched - it already covers ANY ASSISTANT_SPEAKING playback, this
-  // opening included, since speak() sets that exact state for every call, not a special one.
-  assert.match(voiceRealtimeSource, /if \(state === VOICE_STATES\.ASSISTANT_SPEAKING\) interrupt\(\);/);
+  // fix/voice-mode-turn-ux (Part B): aiVoiceRealtime.js's own barge-in handling now notifies the
+  // caller via onBargeIn() (routed to PlaybackController.interrupt() - the controller-owned path)
+  // instead of calling its own transport-level interrupt() directly, but the coverage is identical:
+  // it already fires for ANY ASSISTANT_SPEAKING playback, this opening included, since speak() sets
+  // that exact state for every call, not a special one for the opening.
+  assert.match(voiceRealtimeSource, /if \(wasAssistantSpeaking\) onBargeIn\(\);/);
   assert.doesNotMatch(voiceRealtimeSource, /companion|opening/i, 'aiVoiceRealtime.js stays a pure, Companion-unaware transport - no business rules were added to it');
 });
 

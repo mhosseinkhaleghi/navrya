@@ -206,6 +206,8 @@ test('every one of the new voiceConsole* keys (the console\'s own chrome: captio
     'voiceConsoleAnalysing', 'voiceConsoleCaptionConnecting', 'voiceConsoleCaptionListening', 'voiceConsoleCaptionUserSpeaking',
     'voiceConsoleCaptionProcessing', 'voiceConsoleCaptionSpeaking', 'voiceConsoleCaptionMuted', 'voiceConsoleCaptionDenied',
     'voiceConsoleListeningPlaceholder', 'voiceConsoleHeardLabel', 'voiceConsoleReplyLabel', 'voiceConsoleType', 'voiceConsoleStopReply',
+    // fix/voice-mode-turn-ux (Part D, "End message"):
+    'voiceConsoleEndMessage', 'voiceConsoleEndingMessage',
     'voiceConsoleCaptionsOn', 'voiceConsoleCaptionsOff', 'voiceConsoleMinimize', 'voiceConsoleExpand', 'voiceConsoleClose',
     'voiceConsoleDeniedTitle', 'voiceConsoleDeniedBody', 'voiceConsoleRetry'
   ];
@@ -235,12 +237,23 @@ test('Persian and Arabic (RTL languages) are unaffected by the new voice keys - 
 // voiceTurnQueue callback into TurnCoordinator's onResult callback (still in chatDockView.jsx,
 // still built from the exact same submit() result) - the post-processing/caption/speak-request
 // behavior itself is unchanged, only where it's wired.
-test('the deterministic ai-voice-text.js post-processing pass runs on whatever is actually spoken, right before it is handed to PlaybackController - never on the on-screen caption', () => {
+// fix/voice-mode-turn-ux (Part C): the caption is no longer set directly at business-result time -
+// it is carried on the PlaybackController entry itself (`caption: rawToSpeak`) and published by
+// PlaybackController's own onAudioStart callback exactly when THAT entry's real audio genuinely
+// starts playing (see the onAudioStart test below) - never merely when a later turn's business
+// result becomes ready, which could otherwise overwrite a still-playing/still-queued earlier
+// reply's caption before its own audio has even started.
+test('the deterministic ai-voice-text.js post-processing pass runs on whatever is actually spoken, right before it is handed to PlaybackController - the caption is carried on the entry, not set directly here', () => {
   const block = dockViewSrc.slice(dockViewSrc.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('), dockViewSrc.indexOf('return () => { if (voiceRef.current)'));
   assert.match(block, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\);/);
   assert.match(block, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
-  assert.match(block, /setVoiceReplyCaption\(rawToSpeak \|\| ''\);/, 'the caption shown on screen must stay the RAW text - only what is spoken may differ (gate section 12)');
-  assert.match(block, /playbackControllerRef\.current\.enqueue\(toSpeak, /, 'the post-processed text, not the raw one, must be handed to PlaybackController');
+  assert.doesNotMatch(block, /setVoiceReplyCaption\(rawToSpeak \|\| ''\);/, 'the caption must not be set directly here any more - see PlaybackController\'s own onAudioStart wiring instead');
+  assert.match(block, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '' \}\);/, 'the post-processed text is spoken; the RAW text is carried as the entry\'s own caption (gate section 12: only what is spoken may differ)');
+});
+
+test('PlaybackController.onAudioStart publishes the caption exactly when an entry\'s own real audio starts playing - never at enqueue/business-result time', () => {
+  const block = dockViewSrc.slice(dockViewSrc.indexOf('playbackControllerRef.current = window.TradeJournalAIVoicePlaybackController.create('), dockViewSrc.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('));
+  assert.match(block, /onAudioStart: \(entry\) => \{ if \(entry\.caption\) setVoiceReplyCaption\(entry\.caption\); \}/);
 });
 
 test('ai-voice-text.js is loaded as a purely additive, optional dependency - a page without it keeps speaking the exact raw text as before this gate', () => {

@@ -183,7 +183,12 @@ export function ChatResponsePopover({
         )}
       </header>
 
-      {!collapsed && <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* fix/voice-mode-turn-ux (Part E req 10): the whole body - not merely the messages thread
+          below - is now its own viewport-constrained, scrollable region. Before this, a reply with
+          many suggestions/meta chips/review fields but few or no `messages` had no bound of its own
+          at all and could push the popover (and the header/close controls above it, which stay
+          OUTSIDE this wrapper and therefore always stay reachable) off-screen on a short viewport. */}
+      {!collapsed && <div className="navrya-scroll" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '60vh', overflowY: 'auto', boxSizing: 'border-box' }}>
         {prompt && (thinking || !messages) && (
           <div style={{
             font: 'var(--type-caption)', color: 'var(--text-muted)', paddingLeft: 10,

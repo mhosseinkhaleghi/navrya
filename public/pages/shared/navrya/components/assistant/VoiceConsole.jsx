@@ -206,35 +206,36 @@ function CaptionBox({ label, text, caret, tone }) {
 /* Full console panel - shown for the entire lifetime of a voice session unless minimized. */
 export function VoiceConsole({
   voiceState, voiceMuted, model, elapsedSeconds, dotColor, phaseLabel, phaseCaption,
-  voicePermissionDenied, voiceHeardText, voiceReplyCaption,
-  onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, onMinimize,
+  voicePermissionDenied, voiceHeardText, voiceReplyCaption, voiceManualFinishPending,
+  onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,
   getVoiceMediaStream, strings
 }) {
   useAssistantMotion();
   useVoiceConsoleMotion();
   const [captionsOn, setCaptionsOn] = React.useState(true);
-  const [replyShown, setReplyShown] = React.useState('');
 
   const denied = voiceState === 'error' && voicePermissionDenied;
   const errored = voiceState === 'error' && !voicePermissionDenied;
   const thinking = voiceState === 'processing';
   const replying = voiceState === 'assistant_speaking';
+  const userSpeaking = voiceState === 'user_speaking';
   const showMeter = !denied && !errored && !thinking;
-  const showHeard = !denied && !errored && !replying && captionsOn;
-  const showReply = replying && captionsOn;
-  const mainActionable = replying;
-
-  React.useEffect(() => {
-    if (!replying || !voiceReplyCaption) { setReplyShown(''); return undefined; }
-    let i = 0;
-    setReplyShown('');
-    const iv = setInterval(() => {
-      i += 2;
-      if (i >= voiceReplyCaption.length) { setReplyShown(voiceReplyCaption); clearInterval(iv); return; }
-      setReplyShown(voiceReplyCaption.slice(0, i));
-    }, 34);
-    return () => clearInterval(iv);
-  }, [replying, voiceReplyCaption]);
+  // fix/voice-mode-turn-ux (Part C): the reply caption is no longer tied to the transient
+  // `replying` (ASSISTANT_SPEAKING) state alone - it stays visible through LISTENING/INTERRUPTED
+  // too, for as long as chatDockView.jsx itself still has real text to show (that file is the one
+  // place the caption is ever cleared - real next-user-speech, New Chat, disconnect, fatal error;
+  // see its own comment). `showHeard`'s own "empty listening placeholder" box is suppressed
+  // whenever a real reply caption is already being shown in its place, so the two never stack.
+  const showReply = !denied && !errored && captionsOn && !!voiceReplyCaption &&
+    (voiceState === 'assistant_speaking' || voiceState === 'listening' || voiceState === 'interrupted');
+  const showHeard = !denied && !errored && !replying && captionsOn && !showReply;
+  // fix/voice-mode-turn-ux (Part D): the centre pill button now has a real action in TWO live
+  // phases, not one - ASSISTANT_SPEAKING ("Stop reply", unchanged) and USER_SPEAKING ("End
+  // message", new). PROCESSING/LISTENING keep the existing disabled-state rendering.
+  const mainActionable = replying || userSpeaking;
+  const mainActionHandler = replying ? onVoiceInterrupt : userSpeaking ? onVoiceEndMessage : undefined;
+  const mainActionLabel = replying ? strings.stopReply : userSpeaking ? strings.endMessage : (thinking && voiceManualFinishPending ? strings.endingMessage : phaseLabel);
+  const mainActionIcon = replying ? 'square' : userSpeaking ? 'send' : 'check';
 
   React.useEffect(() => {
     function isEditable(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); }
@@ -289,29 +290,39 @@ export function VoiceConsole({
         </button>
       </div>
 
-      <div style={{ position: 'relative', padding: '20px 22px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <span aria-hidden="true" style={{ width: 9, height: 9, flex: 'none', borderRadius: 999, background: dotColor, animation: 'navrya-halo 1150ms var(--ease-standard) infinite' }} />
-          <span style={{ font: 'var(--type-display-md)', fontSize: 19, fontWeight: 700, color: 'var(--parchment)' }}>{phaseLabel}</span>
-          <span aria-hidden="true" style={{ width: 1, height: 16, background: 'var(--border-hairline)' }} />
-          <span style={{ font: 'var(--type-body)', fontSize: 13, color: 'var(--text-muted)' }}>{phaseCaption}</span>
+      {/* fix/voice-mode-turn-ux (Part E req 13): the meter/caption area - not the header or the
+          footer controls below, both of which stay outside this wrapper and therefore always
+          reachable - is its own bounded, scrollable region so a short viewport (or a long reply
+          caption) can never push the mute/main-action/captions-toggle controls off-screen. */}
+      <div className="navrya-scroll" style={{ maxHeight: '46vh', overflowY: 'auto', boxSizing: 'border-box' }}>
+        <div style={{ position: 'relative', padding: '20px 22px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <span aria-hidden="true" style={{ width: 9, height: 9, flex: 'none', borderRadius: 999, background: dotColor, animation: 'navrya-halo 1150ms var(--ease-standard) infinite' }} />
+            <span style={{ font: 'var(--type-display-md)', fontSize: 19, fontWeight: 700, color: 'var(--parchment)' }}>{phaseLabel}</span>
+            <span aria-hidden="true" style={{ width: 1, height: 16, background: 'var(--border-hairline)' }} />
+            <span style={{ font: 'var(--type-body)', fontSize: 13, color: 'var(--text-muted)' }}>{phaseCaption}</span>
+          </div>
+
+          {showMeter && <VoiceMeter voiceState={voiceState} muted={voiceMuted} getVoiceMediaStream={getVoiceMediaStream} count={48} height={68} color={dotColor} />}
+          {thinking && <ThinkingIndicator model={model} label={strings.analysing} />}
+          {denied && <DeniedCard strings={strings} onRetry={onVoiceToggle} />}
+          {errored && <DeniedCard strings={{ deniedTitle: strings.errorLabel, deniedBody: strings.errorLabel, retry: strings.retry }} onRetry={onVoiceToggle} />}
         </div>
 
-        {showMeter && <VoiceMeter voiceState={voiceState} muted={voiceMuted} getVoiceMediaStream={getVoiceMediaStream} count={48} height={68} color={dotColor} />}
-        {thinking && <ThinkingIndicator model={model} label={strings.analysing} />}
-        {denied && <DeniedCard strings={strings} onRetry={onVoiceToggle} />}
-        {errored && <DeniedCard strings={{ deniedTitle: strings.errorLabel, deniedBody: strings.errorLabel, retry: strings.retry }} onRetry={onVoiceToggle} />}
+        {showHeard && (
+          <CaptionBox
+            label={thinking ? strings.heardLabel : strings.listeningPlaceholder}
+            text={thinking ? (voiceHeardText || '') : ''}
+            caret={!thinking}
+            tone="heard"
+          />
+        )}
+        {/* fix/voice-mode-turn-ux (Part C req 10): renders the full text directly - the previous
+            char-by-char typewriter reset to '' the instant `replying` went false (entering
+            LISTENING), which would have made the reply appear to vanish right as this requirement
+            says it must stay visible. An instant, complete reveal can never be truncated/disappear. */}
+        {showReply && <CaptionBox label={strings.replyLabel} text={voiceReplyCaption} caret={false} tone="reply" />}
       </div>
-
-      {showHeard && (
-        <CaptionBox
-          label={thinking ? strings.heardLabel : strings.listeningPlaceholder}
-          text={thinking ? (voiceHeardText || '') : ''}
-          caret={!thinking}
-          tone="heard"
-        />
-      )}
-      {showReply && <CaptionBox label={strings.replyLabel} text={replyShown} caret={false} tone="reply" />}
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
         <button
@@ -329,7 +340,7 @@ export function VoiceConsole({
         </button>
         <span style={{ flex: 1 }} />
         <button
-          type="button" onClick={mainActionable ? onVoiceInterrupt : undefined} aria-label={mainActionable ? strings.stopReply : phaseLabel} disabled={!mainActionable}
+          type="button" onClick={mainActionable ? mainActionHandler : undefined} aria-label={mainActionLabel} disabled={!mainActionable}
           style={{
             height: 56, flex: 'none', padding: '0 24px', borderRadius: 'var(--radius-pill)', display: 'flex', alignItems: 'center', gap: 10,
             cursor: mainActionable ? 'pointer' : 'default', border: '1px solid transparent',
@@ -339,8 +350,8 @@ export function VoiceConsole({
             font: 'var(--type-nav)'
           }}
         >
-          <Icon name={mainActionable ? 'square' : 'check'} size={20} />
-          {mainActionable ? strings.stopReply : phaseLabel}
+          <Icon name={mainActionIcon} size={20} />
+          {mainActionLabel}
         </button>
         <span style={{ flex: 1 }} />
         <button

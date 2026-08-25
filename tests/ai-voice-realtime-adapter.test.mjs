@@ -43,10 +43,17 @@ test('the mic stream is only requested via getUserMedia at connect() time (no au
   assert.match(source, /mediaStream\.getTracks\(\)\.forEach\(function \(track\) \{ track\.stop\(\); \}\)/);
 });
 
-test('a speech-started event while the assistant is talking triggers a real interrupt() call (barge-in), not just a state label change', () => {
+// fix/voice-mode-turn-ux (Part B): a real barge-in no longer calls this module's own transport-
+// level interrupt() directly - it notifies the caller via onBargeIn(), which chatDockView.jsx
+// wires straight to PlaybackController.interrupt() (the one controller-owned, idempotent
+// interruption path - see that module's own tests). This is what stops "Stop reply"/barge-in from
+// bypassing PlaybackController's queue, the original Part B bug.
+test('a speech-started event while the assistant is talking triggers the caller-owned onBargeIn() callback (never this module\'s own transport-level interrupt() directly)', () => {
   const idx = source.indexOf('TRANSPORT_SPEECH_STARTED');
-  const block = source.slice(source.indexOf('function onTransportEvent'), source.indexOf('async function connect'));
-  assert.match(block, /if \(state === VOICE_STATES\.ASSISTANT_SPEAKING\) interrupt\(\);/);
+  const block = source.slice(source.indexOf('function onTransportEvent'), source.indexOf('function clearReconnectTimer'));
+  assert.match(block, /var wasAssistantSpeaking = state === VOICE_STATES\.ASSISTANT_SPEAKING;/);
+  assert.match(block, /setState\(VOICE_STATES\.USER_SPEAKING\);/);
+  assert.match(block, /if \(wasAssistantSpeaking\) onBargeIn\(\);/);
   assert.ok(idx > -1);
 });
 
@@ -77,10 +84,11 @@ test('speak(), interrupt(), and mute() are all guarded against a dropped connect
   assert.match(muteBody, /try \{ session\.mute/);
 });
 
-test('the barge-in handler reuses the public, guarded interrupt() rather than calling session.interrupt() directly (a dropped connection at exactly that moment must fail the same safe way)', () => {
-  const handlerBody = source.slice(source.indexOf('function onTransportEvent'), source.indexOf('async function connect'));
-  assert.doesNotMatch(handlerBody, /session\.interrupt\(\)/, 'must not call session.interrupt() directly - only the guarded interrupt() wrapper');
-  assert.match(handlerBody, /if \(state === VOICE_STATES\.ASSISTANT_SPEAKING\) interrupt\(\);/);
+test('the barge-in handler never calls session.interrupt() or this module\'s own interrupt() directly - it only ever notifies the caller via onBargeIn(), which the caller routes through PlaybackController (which itself calls the guarded interrupt() exactly once)', () => {
+  const handlerBody = source.slice(source.indexOf('function onTransportEvent'), source.indexOf('function clearReconnectTimer'));
+  assert.doesNotMatch(handlerBody, /session\.interrupt\(\)/, 'must not call session.interrupt() directly');
+  assert.doesNotMatch(handlerBody, /\binterrupt\(\);/, 'must not call this module\'s own transport-level interrupt() directly either - only via onBargeIn()');
+  assert.match(handlerBody, /if \(wasAssistantSpeaking\) onBargeIn\(\);/);
 });
 
 // --- chatDockView.jsx wiring: one brain, not two conversations ---
@@ -118,7 +126,7 @@ test('voice turns are serialized through TurnCoordinator - never processed concu
 test('the text handed to PlaybackController is only ever what NAVRYA\'s own deterministic turn produced (voiceReply/reply from the submit() result, then the Persian Voice Quality gate\'s own deterministic ai-voice-text.js post-processing - see ai-voice-chatdock-ux.test.mjs), never anything the Realtime model decided on its own, and is never awaited (playback must never block the next turn)', () => {
   assert.match(dockViewSource, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\)/);
   assert.match(dockViewSource, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
-  assert.match(dockViewSource, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch \}\);/);
+  assert.match(dockViewSource, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '' \}\);/);
   assert.doesNotMatch(dockViewSource, /await playbackControllerRef\.current\.enqueue/, 'enqueue() must never be awaited - that would recreate the exact coupling this pass removes');
 });
 
