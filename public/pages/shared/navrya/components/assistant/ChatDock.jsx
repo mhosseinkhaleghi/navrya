@@ -103,7 +103,11 @@ export function ChatDock({
   // VoiceConsole/VoiceMiniBar (see the top-of-file comment) - the labels/callbacks below are
   // exactly what those components need to stay a thin, stateless presentation layer.
   voiceState = 'idle', voiceMuted = false, voicePermissionDenied = false,
-  onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, voiceErrorLabel, voiceLabels = {},
+  // fix/voice-mode-turn-ux (Part D): true only while the current PROCESSING stretch was caused by
+  // the user's own "End message" click, not an ordinary VAD-driven turn - see chatDockView.jsx's
+  // own comment on why this is tracked separately from the generic PROCESSING/`thinking` state.
+  voiceManualFinishPending = false,
+  onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, voiceErrorLabel, voiceLabels = {},
   getVoiceMediaStream, voiceHeardText, voiceReplyCaption,
   // Journey G UX correction: the one real "the user just deliberately engaged with the dock"
   // signal - fired alongside the existing local `focused` styling state, never replacing it.
@@ -170,6 +174,44 @@ export function ChatDock({
     return () => observer.disconnect();
   }, []);
 
+  // fix/voice-mode-turn-ux (Part E): the response/companion/history surface (`children` below) used
+  // to center itself independently (`left:16,right:16,margin:'0 auto',maxWidth:width`) while the
+  // dock ROW visually sits inside a wider outer box that also reserves a start-side lane for the
+  // mascot column - and that lane is not a fixed 52px: ModelMascot renders a real text label (the
+  // provider name, e.g. "DeepSeek") BELOW the glyph with `whiteSpace:'nowrap'`, on a `flex:'none'`
+  // wrapper with no explicit width, so the lane's real rendered width is
+  // `max(52px, textWidth(providerName))`, not the hardcoded 66px (52 + the 14px gap) this file used
+  // to assume. The dock row's own visible content is therefore genuinely off-center relative to the
+  // outer box (and to the independently-centered popover) by however much the real mascot lane
+  // exceeds 52px, on whichever side the mascot renders (which itself flips with RTL/LTR).
+  //
+  // The fix: measure the row's OWN real rendered rect (getBoundingClientRect - already exactly
+  // where the browser placed it, correctly accounting for the real mascot lane width, RTL/LTR, and
+  // anything else affecting layout) and position the popover using those same physical left/width
+  // values directly, instead of recomputing centering independently. A ResizeObserver alone is not
+  // enough here (it only fires when the observed element's own BOX SIZE changes, not when it merely
+  // moves - e.g. a pure viewport resize that re-centers an already-at-max-width row) - paired with a
+  // window resize/orientation listener for that case.
+  const [dockSurfaceRect, setDockSurfaceRect] = React.useState(null);
+  React.useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return undefined;
+    function measure() {
+      const rect = el.getBoundingClientRect();
+      setDockSurfaceRect({ left: rect.left, width: rect.width });
+    }
+    measure();
+    let observer = null;
+    if (typeof ResizeObserver !== 'undefined') { observer = new ResizeObserver(measure); observer.observe(el); }
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+    };
+  }, [dir]);
+
   // Publishes the dock's own real reserved bottom footprint - its own `bottom` margin + the row's
   // real height + the popover's own gap AND typical-short-reply allowance (see the top-of-file
   // comment) - as a CSS custom property on the document root, so any other fixed-positioned UI on
@@ -191,9 +233,20 @@ export function ChatDock({
     <React.Fragment>
       {children && (
         <div
+          data-navrya-assistant="response-surface"
           style={{
-            position: 'fixed', left: 16, right: 16, bottom: 24 + rowHeight + 12, margin: '0 auto',
-            zIndex: 70, maxWidth: width, pointerEvents: 'none'
+            position: 'fixed', bottom: 24 + rowHeight + 12, boxSizing: 'border-box',
+            zIndex: 70, pointerEvents: 'none',
+            // fix/voice-mode-turn-ux (Part E): once the real dock row rect has been measured, this
+            // surface is pinned to those EXACT physical left/width values - its left/right edges
+            // then match the real, visible dock input surface within, in practice, well under 1px
+            // (both read from the browser's own layout in the same tick). Before the first
+            // measurement (or in a legacy/test render with no ResizeObserver support at all), it
+            // falls back to the previous independent-centering behavior so nothing ever renders at
+            // 0-width/off-screen.
+            ...(dockSurfaceRect
+              ? { left: dockSurfaceRect.left, width: dockSurfaceRect.width }
+              : { left: 16, right: 16, margin: '0 auto', maxWidth: width })
           }}
         >
           <div style={{ pointerEvents: 'auto' }}>{children}</div>
@@ -213,7 +266,7 @@ export function ChatDock({
             button in the same bottom-of-viewport band this raised z-index now shares with it. */}
         {withMascot && <ModelMascot model={active} size={52} style={{ flex: 'none', paddingBottom: 2, pointerEvents: 'none' }} />}
 
-        <div ref={rowRef} style={{ flex: 1, minWidth: 0 }}>
+        <div ref={rowRef} data-navrya-assistant="dock-surface" style={{ flex: 1, minWidth: 0 }}>
           {idle && (
             <div
               data-navrya-chat-dock=""
@@ -285,11 +338,14 @@ export function ChatDock({
               voiceState={voiceState} voiceMuted={voiceMuted} model={active} elapsedSeconds={voiceElapsed}
               dotColor={dotColor} phaseLabel={phaseLabel} phaseCaption={phaseCaption}
               voicePermissionDenied={voicePermissionDenied} voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
+              voiceManualFinishPending={voiceManualFinishPending}
               onVoiceToggle={onVoiceToggle} onVoiceMuteToggle={onVoiceMuteToggle} onVoiceInterrupt={onVoiceInterrupt}
+              onVoiceEndMessage={onVoiceEndMessage}
               onMinimize={() => setVoiceMinimized(true)} getVoiceMediaStream={getVoiceMediaStream}
               strings={{
                 minimize: voiceLabels.minimize, expand: voiceLabels.expand, close: voiceLabels.close,
                 mute: voiceLabels.mute, unmute: voiceLabels.unmute, type: voiceLabels.type, stopReply: voiceLabels.stopReply,
+                endMessage: voiceLabels.endMessage, endingMessage: voiceLabels.endingMessage,
                 captionsOn: voiceLabels.captionsOn, captionsOff: voiceLabels.captionsOff, analysing: voiceLabels.analysing,
                 listeningPlaceholder: voiceLabels.listeningPlaceholder, heardLabel: voiceLabels.heardLabel, replyLabel: voiceLabels.replyLabel,
                 deniedTitle: voiceLabels.deniedTitle, deniedBody: voiceLabels.deniedBody, retry: voiceLabels.retry,
