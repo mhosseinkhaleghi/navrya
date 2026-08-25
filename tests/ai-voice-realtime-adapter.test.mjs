@@ -179,6 +179,25 @@ test('fetchVoiceProviderSpeak POSTs to the same-origin /api/ai/voice/speak endpo
   assert.match(dockViewSource, /fetchSpeakAudio: fetchVoiceProviderSpeak/);
 });
 
+// ElevenLabs voice-provider follow-up (per-character/gender voice routing): both the mint and
+// speak requests must report which character is active and which gender the user prefers for it -
+// the server resolves the actual voice from these (never trusted for anything security-sensitive,
+// same posture as the existing client-reported `language`).
+test('both fetchRealtimeSession and fetchVoiceProviderSpeak report character (voiceCharacter()) and gender (voiceGenderPreference()) in their request bodies', () => {
+  assert.match(dockViewSource, /body: JSON\.stringify\(\{ apiKey: settingsForOpenAI, language, eagerness: options && options\.eagerness, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
+  assert.match(dockViewSource, /body: JSON\.stringify\(\{ language, text, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
+});
+
+test('voiceCharacter() maps the design-system\'s "master" skin id back to the product\'s own "sage" character id - every other voice-provider surface (admin config, user preferences) speaks in terms of hunter/commander/engineer/sage, never master', () => {
+  assert.match(dockViewSource, /function voiceCharacter\(\) \{ return navryaCharacter === 'master' \? 'sage' : navryaCharacter; \}/);
+});
+
+test('voiceGenderPreference() reads the per-character gender pick from window.TradeJournalUserPreferences (the shared, server-synced preferences store), never a client-only/localStorage-only value', () => {
+  const body = dockViewSource.slice(dockViewSource.indexOf('function voiceGenderPreference()'), dockViewSource.indexOf('async function fetchRealtimeSession'));
+  assert.match(body, /window\.TradeJournalUserPreferences/);
+  assert.match(body, /getPref\('voiceGenderPreference', \{\}\)/);
+});
+
 // Voice Mode performance pass: speak() is no longer called (or awaited) directly by
 // chatDockView.jsx at all - the post-processed text is handed to
 // PlaybackControllerRef.current.enqueue(), fire-and-forget (never awaited), which is what

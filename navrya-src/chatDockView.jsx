@@ -389,12 +389,31 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // behavior, no timeout applied at the fetch layer itself). `eagerness` is aiVoiceRealtime.js's
   // own currentEagerness (see its connect()'s own comment) - only actually differs from the
   // server's 'medium' default on a reconnect that's preserving context.
+  // ElevenLabs voice-provider follow-up (per-character/gender voice routing): `navryaCharacter`
+  // (this component's own prop) is already translated to the design-system's 4th-skin id ('master')
+  // for 'sage' - see navrya-src/characters.js's own comment on why the two systems name it
+  // differently. The server-side admin config (server/admin/routes.voice-providers.mjs) and every
+  // other product-facing surface use the app's own 4 character ids ('hunter'/'commander'/
+  // 'engineer'/'sage'), so this maps back at the one point a voice request is actually built.
+  function voiceCharacter() { return navryaCharacter === 'master' ? 'sage' : navryaCharacter; }
+  // Reads the same per-account preference settingsView.jsx's VoiceGenderSection writes via
+  // window.TradeJournalUserPreferences (public/pages/shared/user-preferences.js) - one gender pick
+  // per character, applied globally regardless of which language is active. A caller before the
+  // preferences replica has hydrated (or one who never set a preference at all) gets `undefined`
+  // for that character, which the server's own resolveElevenLabsForRequest() already treats as
+  // "use the documented default" - never a thrown error client-side.
+  function voiceGenderPreference() {
+    const store = window.TradeJournalUserPreferences;
+    const prefs = store ? store.getPref('voiceGenderPreference', {}) : {};
+    return (prefs || {})[voiceCharacter()];
+  }
+
   async function fetchRealtimeSession(language, options) {
     const settingsForOpenAI = settingsStore.getKey('openai');
     const response = await fetch('/api/ai/realtime/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: settingsForOpenAI, language, eagerness: options && options.eagerness }),
+      body: JSON.stringify({ apiKey: settingsForOpenAI, language, eagerness: options && options.eagerness, character: voiceCharacter(), gender: voiceGenderPreference() }),
       signal: options && options.signal
     });
     if (!response.ok) {
@@ -434,7 +453,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     const response = await fetch('/api/ai/voice/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language, text })
+      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() })
     });
     if (!response.ok) throw new Error('VOICE_SPEAK_REQUEST_FAILED');
     return response.json();
