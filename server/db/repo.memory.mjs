@@ -14,7 +14,7 @@ export function createMemoryRepo() {
     threads: new Map(), messages: new Map(), reports: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), auditLog: new Map(),
-    voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceTtsUsage: new Map(),
+    voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(), accounts: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
@@ -589,6 +589,7 @@ export function createMemoryRepo() {
     },
     async delete(id) {
       Array.from(state.voiceLanguageConfigs.values()).forEach((cfg) => { if (cfg.credentialId === id) cfg.credentialId = null; });
+      Array.from(state.voiceCharacterConfigs.values()).forEach((cfg) => { if (cfg.credentialId === id) cfg.credentialId = null; });
       return state.voiceProviderCredentials.delete(id);
     },
     async list() { return Array.from(state.voiceProviderCredentials.values()).map((r) => shapeVoiceCredential(r)); },
@@ -609,6 +610,31 @@ export function createMemoryRepo() {
         updatedBy: updatedBy || null, createdAt: (state.voiceLanguageConfigs.get(languageCode) || {}).createdAt || now(), updatedAt: now()
       };
       state.voiceLanguageConfigs.set(languageCode, record);
+      return clone(record);
+    }
+  };
+
+  // Per-character, per-gender voice routing (024_voice_character_gender.sql) - see
+  // repo.pg.mjs's own header comment for the same domain object.
+  function characterGenderKey(character, gender) { return character + ':' + gender; }
+  const voiceCharacterConfigs = {
+    async list() {
+      return Array.from(state.voiceCharacterConfigs.values())
+        .sort((a, b) => (a.character + a.gender).localeCompare(b.character + b.gender)).map(clone);
+    },
+    async get(character, gender) {
+      const record = state.voiceCharacterConfigs.get(characterGenderKey(character, gender));
+      return record ? clone(record) : null;
+    },
+    async upsert({ character, gender, provider, credentialId, voiceId, modelId, enabled, voiceSettings, fallbackProvider, fallbackVoice, updatedBy }) {
+      const key = characterGenderKey(character, gender);
+      const record = {
+        character, gender, provider: provider || 'elevenlabs', credentialId: credentialId || null, voiceId: voiceId || null,
+        modelId: modelId || null, enabled: Boolean(enabled), voiceSettings: voiceSettings || {},
+        fallbackProvider: fallbackProvider || 'openai', fallbackVoice: fallbackVoice || null,
+        updatedBy: updatedBy || null, createdAt: (state.voiceCharacterConfigs.get(key) || {}).createdAt || now(), updatedAt: now()
+      };
+      state.voiceCharacterConfigs.set(key, record);
       return clone(record);
     }
   };
@@ -1456,7 +1482,7 @@ export function createMemoryRepo() {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceTtsUsage,
+    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health

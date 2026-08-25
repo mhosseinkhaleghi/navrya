@@ -58,6 +58,14 @@ function mapVoiceLanguageConfig(row) {
     updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
+function mapVoiceCharacterConfig(row) {
+  return {
+    character: row.character, gender: row.gender, provider: row.provider, credentialId: row.credential_id,
+    voiceId: row.voice_id, modelId: row.model_id, enabled: row.enabled, voiceSettings: row.voice_settings || {},
+    fallbackProvider: row.fallback_provider, fallbackVoice: row.fallback_voice,
+    updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
 function mapVoiceTtsUsageEvent(row) {
   return {
     id: row.id, languageCode: row.language_code, provider: row.provider, credentialId: row.credential_id,
@@ -963,6 +971,7 @@ export function createPgRepo(pool) {
     // new one, and falls back per the documented runtime precedence in the meantime.
     async delete(id) {
       await pool.query('UPDATE admin_voice_language_configs SET credential_id = NULL WHERE credential_id = $1', [id]);
+      await pool.query('UPDATE admin_voice_character_configs SET credential_id = NULL WHERE credential_id = $1', [id]);
       const { rowCount } = await pool.query('DELETE FROM admin_voice_provider_credentials WHERE id = $1', [id]);
       return rowCount > 0;
     },
@@ -1000,6 +1009,35 @@ export function createPgRepo(pool) {
           Boolean(enabled), JSON.stringify(voiceSettings || {}), fallbackProvider || 'openai', fallbackVoice || null, updatedBy || null]
       );
       return mapVoiceLanguageConfig(rows[0]);
+    }
+  };
+
+  // Per-character, per-gender voice routing (024_voice_character_gender.sql) - the mechanism the
+  // live Voice Mode actually resolves against; voiceLanguageConfigs above is left functional but
+  // unused by the runtime/admin UI going forward. character is one of the 4 fixed app skins
+  // ('hunter'|'commander'|'engineer'|'sage' - navrya-src/characters.js), gender is 'male'|'female'.
+  const voiceCharacterConfigs = {
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM admin_voice_character_configs ORDER BY character ASC, gender ASC');
+      return rows.map(mapVoiceCharacterConfig);
+    },
+    async get(character, gender) {
+      const { rows } = await pool.query('SELECT * FROM admin_voice_character_configs WHERE character = $1 AND gender = $2', [character, gender]);
+      return rows[0] ? mapVoiceCharacterConfig(rows[0]) : null;
+    },
+    async upsert({ character, gender, provider, credentialId, voiceId, modelId, enabled, voiceSettings, fallbackProvider, fallbackVoice, updatedBy }) {
+      const { rows } = await pool.query(
+        `INSERT INTO admin_voice_character_configs
+           (character, gender, provider, credential_id, voice_id, model_id, enabled, voice_settings, fallback_provider, fallback_voice, updated_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),now())
+         ON CONFLICT (character, gender) DO UPDATE SET
+           provider=$3, credential_id=$4, voice_id=$5, model_id=$6, enabled=$7, voice_settings=$8,
+           fallback_provider=$9, fallback_voice=$10, updated_by=$11, updated_at=now()
+         RETURNING *`,
+        [character, gender, provider || 'elevenlabs', credentialId || null, voiceId || null, modelId || null,
+          Boolean(enabled), JSON.stringify(voiceSettings || {}), fallbackProvider || 'openai', fallbackVoice || null, updatedBy || null]
+      );
+      return mapVoiceCharacterConfig(rows[0]);
     }
   };
 
@@ -2145,7 +2183,7 @@ export function createPgRepo(pool) {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceTtsUsage,
+    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health
