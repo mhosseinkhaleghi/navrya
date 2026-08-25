@@ -50,6 +50,18 @@ services:
       KIMI_MODEL: ${KIMI_MODEL:-moonshot-v1-8k}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      # Isolated, flag-gated Persian voice-output test (testElevenLabsFaTts(), POST
+      # /api/ai/voice/test-tts-fa) - not one of the providers above, never touches
+      # callProvider/dockChat/Realtime Voice. ELEVENLABS_FA_ENABLED defaults to disabled (the
+      # endpoint always 404s) regardless of the other values below. ELEVENLABS_API_KEY and
+      # ELEVENLABS_VOICE_ID_FA have NO runtime default - both must be set explicitly before
+      # enabling, or the endpoint fails closed with a clear *_MISSING error.
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_FA_ENABLED: ${ELEVENLABS_FA_ENABLED:-false}
+      ELEVENLABS_VOICE_ID_FA: ${ELEVENLABS_VOICE_ID_FA:-}
+      ELEVENLABS_MODEL_ID_FA: ${ELEVENLABS_MODEL_ID_FA:-eleven_v3}
+      ELEVENLABS_LANGUAGE_CODE_FA: ${ELEVENLABS_LANGUAGE_CODE_FA:-fa}
+      ELEVENLABS_OUTPUT_FORMAT: ${ELEVENLABS_OUTPUT_FORMAT:-pcm_24000}
     depends_on:
       redis:
         condition: service_healthy

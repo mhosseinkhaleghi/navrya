@@ -27,7 +27,7 @@ const ENABLED_ENV = {
   ELEVENLABS_FA_ENABLED: 'true',
   ELEVENLABS_API_KEY: 'test-elevenlabs-key',
   ELEVENLABS_VOICE_ID_FA: 'buzGl6hokx2gx74EYLO0',
-  ELEVENLABS_MODEL_ID_FA: 'eleven_v3_conversational',
+  ELEVENLABS_MODEL_ID_FA: 'eleven_v3',
   ELEVENLABS_LANGUAGE_CODE_FA: 'fa',
   ELEVENLABS_OUTPUT_FORMAT: 'pcm_24000'
 };
@@ -102,8 +102,19 @@ test('calls the real ElevenLabs text-to-speech endpoint with the configured voic
   assert.equal(options.headers.Authorization, undefined);
   const body = JSON.parse(options.body);
   assert.equal(body.text, 'سلام، این یک آزمایش است.');
-  assert.equal(body.model_id, 'eleven_v3_conversational');
+  assert.equal(body.model_id, 'eleven_v3');
   assert.equal(body.language_code, 'fa');
+});
+
+// Caught in review: an earlier draft defaulted to 'eleven_v3_conversational', which is not a
+// real model id on the current /v1/text-to-speech endpoint. ELEVENLABS_MODEL_ID_FA is optional
+// (unlike ELEVENLABS_VOICE_ID_FA, which has no default at all - see the dedicated test above),
+// so the fallback value itself has to be correct for a deploy that never sets it explicitly.
+test('defaults ELEVENLABS_MODEL_ID_FA to the real, current eleven_v3 model id when the env var is not set', async () => {
+  const getRequest = stubElevenLabsAudio(Buffer.from([1, 2, 3, 4]));
+  await withEnv(Object.assign({}, ENABLED_ENV, { ELEVENLABS_MODEL_ID_FA: '' }), () => testElevenLabsFaTts({ text: 'سلام' }));
+  const body = JSON.parse(getRequest().options.body);
+  assert.equal(body.model_id, 'eleven_v3');
 });
 
 test('never leaks the real ElevenLabs API key into the response envelope', async () => {

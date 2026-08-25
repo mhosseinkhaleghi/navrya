@@ -1503,7 +1503,7 @@ async function testElevenLabsFaTts(body) {
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY_MISSING');
   const voiceId = process.env.ELEVENLABS_VOICE_ID_FA;
   if (!voiceId) throw new Error('ELEVENLABS_VOICE_ID_FA_MISSING');
-  const modelId = process.env.ELEVENLABS_MODEL_ID_FA || 'eleven_v3_conversational';
+  const modelId = process.env.ELEVENLABS_MODEL_ID_FA || 'eleven_v3';
   const languageCode = process.env.ELEVENLABS_LANGUAGE_CODE_FA || 'fa';
   const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT || 'pcm_24000';
 
