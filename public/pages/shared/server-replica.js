@@ -66,6 +66,19 @@
     if (typeof setTimeout === 'function') setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 3200);
   }
 
+  // `keepalive: true` on every write below (never on the plain GET in hydrate()) is what keeps a
+  // create/save/delete alive when the character switcher tears down this iframe a moment later -
+  // switching character replaces the whole iframe (src/release.js's `key={page}`), which aborts
+  // any in-flight fetch the old document started, exactly the way a tab close/navigation would.
+  // There is no offline outbox any more (Phase 2's whole point - see this file's header), so an
+  // aborted write used to be gone for good, with no local copy to retry from: a session/account
+  // saved in one character and switched away from fast enough would silently never reach the
+  // server, then correctly (but confusingly) not appear under any other character either, since
+  // every character reads the same, honestly-empty, server-side list. keepalive hands the
+  // request to the browser's own network stack so it still completes after the document is gone;
+  // it's capped at a 64KB body by spec, which every write here comfortably fits (session/pattern/
+  // strategy image bytes are already uploaded separately through TradeJournalImageStore, never
+  // inlined into this JSON body except as a last-resort data-URL fallback - see sessionsAdapter.js).
   function requestJson(url, options) {
     return fetch(url, options).then(function (response) {
       if (!response.ok) { var error = new Error('REPLICA_REQUEST_FAILED'); error.status = response.status; throw error; }
@@ -162,7 +175,7 @@
 
         if (!hasCurrentUser()) { rollback(); toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
         return requestJson(config.writeUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item)
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item), keepalive: true
         }).then(function (saved) {
           var latest = state.items.slice();
           var j = latest.findIndex(function (existing) { return existing.id === applied.id; });
@@ -195,7 +208,7 @@
           setAllLocal(current);
         }
         if (!hasCurrentUser()) { restoreIfStillAbsent(); toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
-        return requestJson(config.deleteUrlFor(id), { method: 'DELETE' })
+        return requestJson(config.deleteUrlFor(id), { method: 'DELETE', keepalive: true })
           .catch(function (error) {
             if (error && error.status === 404) return; // already gone server-side - the local removal stands
             restoreIfStillAbsent();
@@ -255,7 +268,7 @@
       function rollback() { if (state.doc === applied) setLocal(previous); }
       if (!hasCurrentUser()) { rollback(); toastSaveFailed(); return Promise.reject(new Error('NO_CURRENT_USER')); }
       return requestJson(config.writeUrl, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc), keepalive: true
       }).then(function (body) {
         var reconciled = deepClone(extractSaved(body)) || applied;
         if (state.doc === applied) setLocal(reconciled);
