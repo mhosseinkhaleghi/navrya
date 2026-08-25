@@ -420,6 +420,26 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return response.json();
   }
 
+  // ElevenLabs voice-provider follow-up: injected into aiVoiceRealtime.js as fetchSpeakAudio, the
+  // same pattern as fetchRealtimeSession above - that module keeps zero knowledge of the real HTTP
+  // endpoint. Only reached when mintRealtimeClientSecret()'s own response (fetchRealtimeSession's
+  // return value) reported ttsProvider:'elevenlabs' for the active language; the server resolves
+  // which credential/voice/model to use itself (never trusted from this request) and the API key
+  // never leaves it. Deliberately never throws for an ordinary fallback condition - the server
+  // always answers 200 with {fallback:true, reason} for those (missing config, circuit open,
+  // upstream failure, ...); only a genuine transport failure (network error, non-2xx, malformed
+  // body) rejects here, and aiVoiceRealtime.js's own speakViaElevenLabs() treats that exactly the
+  // same as an explicit fallback - same text, once, through the existing OpenAI voice path.
+  async function fetchVoiceProviderSpeak(language, text) {
+    const response = await fetch('/api/ai/voice/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language, text })
+    });
+    if (!response.ok) throw new Error('VOICE_SPEAK_REQUEST_FAILED');
+    return response.json();
+  }
+
   // A finalized voice turn goes through the exact same submit() a typed message does - one
   // brain, not two conversations. Once NAVRYA's own deterministic reply comes back, the reply
   // text is handed to PlaybackController.enqueue() to have the Realtime session speak that exact
@@ -514,6 +534,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     voiceRef.current = createVoiceSession({
       language: i18n.language(),
       fetchSession: fetchRealtimeSession,
+      fetchSpeakAudio: fetchVoiceProviderSpeak,
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,

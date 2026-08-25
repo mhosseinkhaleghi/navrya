@@ -166,6 +166,12 @@ export function createVoiceSession(options) {
   var onError = (options && options.onError) || function () {};
   var onMuteChange = (options && options.onMuteChange) || function () {};
   var fetchSession = options && options.fetchSession;
+  // ElevenLabs voice-provider follow-up: injected the same way fetchSession is (this module keeps
+  // zero knowledge of the real HTTP endpoint - see this file's own header comment) - async
+  // (language, text) => {fallback:true, reason} | {fallback:false, audioBase64, mimeType}. Optional:
+  // a caller that never supplies this simply always uses the existing OpenAI speak path, exactly
+  // the previous behavior.
+  var fetchSpeakAudio = options && options.fetchSpeakAudio;
   var language = (options && options.language) || 'en';
   // fix/voice-mode-turn-ux: this module still owns NO business/playback-queue logic of its own
   // (unchanged architecture, see this file's own header comment) - these three are pure relays so
@@ -209,6 +215,26 @@ export function createVoiceSession(options) {
   // purely a dev diagnostic surfaced through debugState(), same privacy posture as
   // chat-dock-core.js's own debugLastTurn() (paths/ids, never values).
   var recentEventTypes = [];
+
+  // ElevenLabs voice-provider follow-up: which engine speaks assistant replies for the CURRENT
+  // session, decided server-side (server/pattern-ai-server.mjs's mintRealtimeClientSecret()) and
+  // read fresh from creds.ttsProvider/creds.elevenLabs at the end of every connect() (initial and
+  // reconnect alike) - never decided client-side. OpenAI remains the sole conversation brain
+  // (VAD/STT/reasoning) regardless of this value; it only changes which transport speak() uses to
+  // render NAVRYA's already-decided reply text to audio (see this file's own header comment).
+  var currentTtsProvider = 'openai';
+  var currentElevenLabsVoice = null; // {voiceId, modelId} or null - never the API key itself
+  // A plain <audio> element, deliberately NOT the WebRTC transport's own `audioEl` (that one is
+  // owned by OpenAIRealtimeWebRTC and only ever carries realtime model audio) - ElevenLabs speech
+  // is fetched as a same-origin HTTP response (POST /api/ai/voice/speak) and played back through
+  // this separate element instead. Lazily created on first use, reused across turns/reconnects,
+  // torn down alongside everything else in teardownTransport().
+  var elevenLabsAudioEl = null;
+  // Non-null only while ElevenLabs audio is actually playing right now - the ONE thing interrupt()
+  // needs to stop immediately on a real barge-in/"Stop reply", since this audio is entirely outside
+  // the OpenAI session's own transport-level interrupt() and would otherwise keep playing straight
+  // through a cancellation. Cleared the instant it's used or the entry settles for any other reason.
+  var elevenLabsStopFn = null;
 
   // connectionEpoch: bumped once per genuine new connection attempt (every connect() call,
   // reconnect or not). Listeners registered against a specific session/transport instance close
@@ -429,6 +455,13 @@ export function createVoiceSession(options) {
     transport = null;
     if (mediaStream) { mediaStream.getTracks().forEach(function (track) { track.stop(); }); mediaStream = null; }
     audioEl = null;
+    // ElevenLabs voice-provider follow-up: a torn-down session (disconnect(), or a reconnect about
+    // to retry) must never leave ElevenLabs audio audibly playing on into it - that audio lives
+    // entirely outside session.close() above (it was never part of the WebRTC transport), so it
+    // needs its own explicit stop here. elevenLabsStopFn (non-null only while actually playing)
+    // both halts playback and settles the in-flight speak() promise; pendingSpeakSettle below is
+    // still the fallback for the (impossible once this runs, but defensive) case it was already null.
+    if (elevenLabsStopFn) { var stopEl = elevenLabsStopFn; elevenLabsStopFn = null; stopEl(); }
     handledItemIds = Object.create(null);
     // See pendingSpeakSettle's own comment above - close() itself never settles an in-flight
     // speak() promise, so do it explicitly here rather than leave the caller's playback queue
@@ -517,6 +550,12 @@ export function createVoiceSession(options) {
     try {
       var creds = await Promise.race([credsPromise, deadline]);
       if (myEpoch !== connectionEpoch) return; // superseded while the mint was in flight
+      // ElevenLabs voice-provider follow-up: read fresh from every mint (initial connect AND
+      // reconnect) - an admin can change/disable a language's config between the two, and the
+      // reconnected session must speak according to whatever is configured NOW, not whatever was
+      // true when the dock first mounted.
+      currentTtsProvider = creds.ttsProvider === 'elevenlabs' ? 'elevenlabs' : 'openai';
+      currentElevenLabsVoice = creds.elevenLabs || null;
       phase = 'sdp';
       var agent = new RealtimeAgent({
         name: 'navrya-voice-transport',
@@ -676,6 +715,12 @@ export function createVoiceSession(options) {
   // own onSettled, itself already synchronous with this call) is what moves `state` back to
   // LISTENING when appropriate.
   function interrupt() {
+    // ElevenLabs voice-provider follow-up: stop first, unconditionally - this audio is entirely
+    // outside the OpenAI session below, so session.interrupt() alone would never touch it, and a
+    // barge-in must cancel whichever engine is actually speaking (mission requirement: "Barge-in
+    // must immediately cancel/stop/settle"). A no-op when nothing ElevenLabs is currently playing,
+    // exactly like session.interrupt() itself already safely no-ops when nothing is active.
+    if (elevenLabsStopFn) { var stopEl = elevenLabsStopFn; elevenLabsStopFn = null; stopEl(); }
     if (!session) return;
     try {
       session.interrupt();
@@ -712,7 +757,12 @@ export function createVoiceSession(options) {
   // for up to 12 real seconds - exactly the failure mode this queue design exists to prevent. The
   // 12s timer remains only as a true last-resort diagnostic safety net for a genuinely lost/
   // never-fired event, not the normal way an interruption gets noticed.
-  function speak(text) {
+  // ElevenLabs voice-provider follow-up: the OpenAI Realtime path, unchanged in every particular
+  // (same instructions template, same 12s last-resort watchdog, same audio_stopped/audio_interrupted/
+  // error settlement) - only renamed and split out of speak() so it can also serve as the
+  // exactly-once fallback target from speakViaElevenLabs() below (mission requirement: a fallback
+  // must use "the same text, only once, never duplicated").
+  function speakViaOpenAI(text) {
     if (!session || !text) return Promise.resolve();
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
     try {
@@ -740,6 +790,95 @@ export function createVoiceSession(options) {
       activeSession.once('audio_interrupted', settle);
       activeSession.once('error', settle);
     });
+  }
+
+  // ElevenLabs voice-provider follow-up: plays a same-origin-fetched audio response through a
+  // plain <audio> element (never the WebRTC transport). Relays synthetic output_audio_buffer.*
+  // events through the exact same onOutputAudioBufferEvent callback the real WebRTC path uses
+  // (event.type strings match verbatim) - PlaybackController
+  // (public/pages/shared/ai-voice-playback-controller.js) does not know or care which transport
+  // produced them, so captions (onAudioStart, fired from .started) and settlement (from .stopped/
+  // .cleared) both keep working unmodified. `responseId` is always null here (there is no OpenAI
+  // response for this turn at all) - notifyAudioBufferStarted/Stopped/Cleared already treat a null
+  // id as "always matches" (opportunistic correlation only, see that module's own comment).
+  function playElevenLabsAudio(result, myEpoch) {
+    if (!elevenLabsAudioEl) elevenLabsAudioEl = document.createElement('audio');
+    var el = elevenLabsAudioEl;
+    el.src = 'data:' + (result.mimeType || 'audio/mpeg') + ';base64,' + result.audioBase64;
+    return new Promise(function (resolve) {
+      var settled = false;
+      // Same 12s last-resort safety net as speakViaOpenAI's own watchdog - a genuinely stuck/never-
+      // firing 'ended'/'error' event must never block the playback queue forever.
+      var timer = setTimeout(function () { settle(false); }, 12000);
+      function settle(natural) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        el.removeEventListener('ended', onEnded);
+        el.removeEventListener('error', onPlaybackError);
+        if (pendingSpeakSettle === settleFromTeardown) pendingSpeakSettle = null;
+        if (elevenLabsStopFn === stopNow) elevenLabsStopFn = null;
+        if (myEpoch === connectionEpoch) {
+          onOutputAudioBufferEvent(natural ? TRANSPORT_OUTPUT_AUDIO_BUFFER_STOPPED : TRANSPORT_OUTPUT_AUDIO_BUFFER_CLEARED, null);
+        }
+        resolve();
+      }
+      function onEnded() { settle(true); }
+      // A real decode/network error mid-playback still must not leave the entry unsettled - not a
+      // fatal Voice Mode error (the reply text itself is already correct; only its audio failed),
+      // so this resolves the same as a natural stop rather than routing through onError()/ERROR state.
+      function onPlaybackError() { settle(true); }
+      function stopNow() { try { el.pause(); el.currentTime = 0; } catch (_e) { /* best-effort */ } settle(false); }
+      el.addEventListener('ended', onEnded);
+      el.addEventListener('error', onPlaybackError);
+      // disconnect()/teardownTransport() settles an in-flight entry directly (see that function's
+      // own comment) - registered as the SAME stop function interrupt()/teardown call, so a
+      // mid-playback teardown both silences the audio and settles this promise in one call.
+      function settleFromTeardown() { stopNow(); }
+      pendingSpeakSettle = settleFromTeardown;
+      elevenLabsStopFn = stopNow;
+      var playPromise = el.play();
+      var reportStarted = function () { if (myEpoch === connectionEpoch && elevenLabsStopFn === stopNow) onOutputAudioBufferEvent(TRANSPORT_OUTPUT_AUDIO_BUFFER_STARTED, null); };
+      if (playPromise && typeof playPromise.then === 'function') {
+        // A play() rejection (e.g. browser autoplay policy) still must not leave this unsettled -
+        // treated as a finished (non-fatal) turn, same posture as onPlaybackError above.
+        playPromise.then(reportStarted).catch(function () { settle(true); });
+      } else {
+        reportStarted();
+      }
+    });
+  }
+
+  // ElevenLabs voice-provider follow-up: fetches this turn's audio from the server-side adapter
+  // (POST /api/ai/voice/speak, injected via fetchSpeakAudio - key stays server-side always) and
+  // plays it, falling back to the existing OpenAI voice path EXACTLY ONCE, with the SAME text, on
+  // any non-success outcome (`{fallback:true}` from the endpoint itself - never an HTTP error for
+  // an ordinary fallback condition, see that route's own comment - or a network/parse failure on
+  // the request). Never both engines speak the same reply (mission: "Never two audio outputs for
+  // one response").
+  function speakViaElevenLabs(text) {
+    setState(VOICE_STATES.ASSISTANT_SPEAKING);
+    var myEpoch = connectionEpoch;
+    return Promise.resolve().then(function () {
+      return fetchSpeakAudio(language, text);
+    }).then(function (result) {
+      if (myEpoch !== connectionEpoch) return; // superseded mid-fetch - never play stale audio into a torn-down/superseded session
+      if (!result || result.fallback) return speakViaOpenAI(text);
+      return playElevenLabsAudio(result, myEpoch);
+    }, function () {
+      // The fetch/parse itself failed (network error, non-2xx, malformed JSON) - same exactly-once
+      // fallback contract as an explicit {fallback:true} response.
+      if (myEpoch !== connectionEpoch) return;
+      return speakViaOpenAI(text);
+    });
+  }
+
+  function speak(text) {
+    if (!session || !text) return Promise.resolve();
+    if (currentTtsProvider === 'elevenlabs' && currentElevenLabsVoice && typeof fetchSpeakAudio === 'function') {
+      return speakViaElevenLabs(text);
+    }
+    return speakViaOpenAI(text);
   }
 
   function setLanguage(nextLanguage) { language = nextLanguage || 'en'; }

@@ -76,7 +76,10 @@ test('the ten documented voice states are all present (idle/requesting_permissio
 // "WebRTC data channel is not connected" exception instead of failing into the same ERROR
 // state/onError() path every other failure mode already uses.
 test('speak(), interrupt(), and mute() are all guarded against a dropped connection - a throw from the transport fails into the ERROR state/onError(), never an uncaught exception', () => {
-  const speakBody = source.slice(source.indexOf('function speak(text)'), source.indexOf('function setLanguage'));
+  // ElevenLabs voice-provider follow-up: speak() is now a thin dispatcher (OpenAI vs. ElevenLabs
+  // per the resolved ttsProvider) - the actual guarded requestResponse() call lives in
+  // speakViaOpenAI(), which speak() always still reaches on the OpenAI path/fallback.
+  const speakBody = source.slice(source.indexOf('function speakViaOpenAI(text)'), source.indexOf('function playElevenLabsAudio'));
   assert.match(speakBody, /try \{[\s\S]*?requestResponse\([\s\S]*?\} catch \(requestError\) \{[\s\S]*?setState\(VOICE_STATES\.ERROR\)/);
   const interruptBody = source.slice(source.indexOf('function interrupt()'), source.indexOf('// Called only by the caller'));
   assert.match(interruptBody, /try \{[\s\S]*?session\.interrupt\(\)[\s\S]*?\} catch \(interruptError\) \{[\s\S]*?setState\(VOICE_STATES\.ERROR\)/);
@@ -89,6 +92,56 @@ test('the barge-in handler never calls session.interrupt() or this module\'s own
   assert.doesNotMatch(handlerBody, /session\.interrupt\(\)/, 'must not call session.interrupt() directly');
   assert.doesNotMatch(handlerBody, /\binterrupt\(\);/, 'must not call this module\'s own transport-level interrupt() directly either - only via onBargeIn()');
   assert.match(handlerBody, /if \(wasAssistantSpeaking\) onBargeIn\(\);/);
+});
+
+// --- ElevenLabs voice-provider follow-up: speak() provider routing/fallback (static-source
+// guards, same convention as the rest of this file - real playback is only provable in a real
+// browser; see docs/ai/elevenlabs-voice-providers.md's own manual verification steps) ---
+
+test('speak() routes to ElevenLabs only when the resolved config actually supports it, and always falls back to the OpenAI path otherwise - never decided by anything other than the server-reported ttsProvider/elevenLabs', () => {
+  const speakBody = source.slice(source.indexOf('function speak(text)'), source.length);
+  assert.match(speakBody, /if \(currentTtsProvider === 'elevenlabs' && currentElevenLabsVoice && typeof fetchSpeakAudio === 'function'\) \{\s*return speakViaElevenLabs\(text\);/);
+  assert.match(speakBody, /return speakViaOpenAI\(text\);\s*\}/);
+});
+
+test('currentTtsProvider/currentElevenLabsVoice are read fresh from every connect() (initial and reconnect), never decided client-side or cached across a config change', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('} catch (connectError) {'));
+  assert.match(connectBody, /currentTtsProvider = creds\.ttsProvider === 'elevenlabs' \? 'elevenlabs' : 'openai';/);
+  assert.match(connectBody, /currentElevenLabsVoice = creds\.elevenLabs \|\| null;/);
+});
+
+test('speakViaElevenLabs falls back to the exact same text through speakViaOpenAI exactly once - on an explicit {fallback:true} response AND on a rejected/failed fetch alike - and playElevenLabsAudio only ever runs on the one remaining, mutually exclusive success branch', () => {
+  const body = source.slice(source.indexOf('function speakViaElevenLabs(text)'), source.indexOf('function speak(text)'));
+  assert.match(body, /if \(!result \|\| result\.fallback\) return speakViaOpenAI\(text\);\s*return playElevenLabsAudio\(result, myEpoch\);/,
+    'the success callback must be a single if/return followed by exactly one further statement - fallback OR play, never both for the same outcome');
+  assert.match(body, /\}, function \(\) \{[\s\S]*?return speakViaOpenAI\(text\);\s*\}\);/,
+    'the rejection branch must also fall back to speakViaOpenAI(text) - not swallow the failure silently');
+});
+
+test('playElevenLabsAudio relays synthetic output_audio_buffer.started/stopped/cleared through the SAME onOutputAudioBufferEvent callback the real WebRTC path uses, so PlaybackController captions/settlement keep working unmodified regardless of which engine spoke', () => {
+  const body = source.slice(source.indexOf('function playElevenLabsAudio'), source.indexOf('function speakViaElevenLabs'));
+  assert.match(body, /onOutputAudioBufferEvent\(natural \? TRANSPORT_OUTPUT_AUDIO_BUFFER_STOPPED : TRANSPORT_OUTPUT_AUDIO_BUFFER_CLEARED, null\)/);
+  assert.match(body, /onOutputAudioBufferEvent\(TRANSPORT_OUTPUT_AUDIO_BUFFER_STARTED, null\)/);
+});
+
+test('interrupt() stops any in-flight ElevenLabs audio unconditionally, before (and regardless of) the OpenAI session.interrupt() call - a barge-in must cancel whichever engine is actually speaking', () => {
+  const interruptBody = source.slice(source.indexOf('function interrupt()'), source.indexOf('// Called only by the caller'));
+  // Searches for the real call statement (with its trailing semicolon) rather than the bare
+  // 'session.interrupt()' substring, which this function's own explanatory comment also mentions
+  // in prose (twice) ahead of the real code - a plain substring search would match the comment.
+  const stopIdx = interruptBody.indexOf('if (elevenLabsStopFn)');
+  const sessionIdx = interruptBody.indexOf('session.interrupt();');
+  assert.ok(stopIdx > -1 && sessionIdx > -1 && stopIdx < sessionIdx, 'the ElevenLabs stop must run before session.interrupt(), and must not be gated on `session` being truthy');
+});
+
+test('teardownTransport() stops any in-flight ElevenLabs audio - a disconnect()/reconnect must never leave ElevenLabs speech audibly playing into a torn-down session', () => {
+  const body = source.slice(source.indexOf('function teardownTransport()'), source.indexOf('function scheduleReconnect'));
+  assert.match(body, /if \(elevenLabsStopFn\) \{ var stopEl = elevenLabsStopFn; elevenLabsStopFn = null; stopEl\(\); \}/);
+});
+
+test('fetchSpeakAudio is an optional injected dependency (same pattern as fetchSession) - createVoiceSession never hardcodes the real HTTP endpoint for it', () => {
+  assert.match(source, /var fetchSpeakAudio = options && options\.fetchSpeakAudio;/);
+  assert.doesNotMatch(source, /fetch\(['"]\/api\/ai\/voice\/speak['"]/, 'aiVoiceRealtime.js must stay a pure transport with zero knowledge of the real endpoint - chatDockView.jsx owns that fetch');
 });
 
 // --- chatDockView.jsx wiring: one brain, not two conversations ---
@@ -115,6 +168,15 @@ test('a voice-originated turn goes through the exact same submit()/core.sendChat
 test('voice turns are serialized through TurnCoordinator - never processed concurrently ("one utterance -> one Copilot turn")', () => {
   assert.match(dockViewSource, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
   assert.match(dockViewSource, /return turnCoordinatorRef\.current\.handleFinalTranscript\(/);
+});
+
+// ElevenLabs voice-provider follow-up: chatDockView.jsx owns the real HTTP call (aiVoiceRealtime.js
+// stays a pure transport, see this file's own test above) - POST /api/ai/voice/speak, same-origin,
+// same session-cookie auth every other /api/ai/* route uses. Only reached at all when the mint
+// response reported ttsProvider:'elevenlabs'; the key never leaves the server.
+test('fetchVoiceProviderSpeak POSTs to the same-origin /api/ai/voice/speak endpoint and is wired into createVoiceSession as fetchSpeakAudio', () => {
+  assert.match(dockViewSource, /async function fetchVoiceProviderSpeak\(language, text\)[\s\S]{0,400}fetch\('\/api\/ai\/voice\/speak', \{/);
+  assert.match(dockViewSource, /fetchSpeakAudio: fetchVoiceProviderSpeak/);
 });
 
 // Voice Mode performance pass: speak() is no longer called (or awaited) directly by
