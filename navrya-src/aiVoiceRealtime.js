@@ -44,6 +44,24 @@ var TRANSPORT_TRANSCRIPTION_COMPLETED = 'conversation.item.input_audio_transcrip
 var TRANSPORT_SPEECH_STARTED = 'input_audio_buffer.speech_started';
 var TRANSPORT_SPEECH_STOPPED = 'input_audio_buffer.speech_stopped';
 var TRANSPORT_SESSION_UPDATED = 'session.updated';
+// fix/voice-mode-turn-ux: the raw WebRTC output-buffer lifecycle - grounded directly against the
+// installed SDK's own source (node_modules/@openai/agents-realtime/dist/openaiRealtimeBase.mjs):
+// the high-level `audio_stopped` RealtimeSession event is derived ONLY from the raw
+// `response.output_audio.done` message (generation-complete, not playback-complete - WebRTC may
+// still have buffered audio audibly playing after it). These three raw events are the real
+// browser-side playback lifecycle instead, and (verified against openaiRealtimeEvents.mjs's own
+// zod schemas) are NOT specially handled by the SDK - they flow through unmodified via
+// RealtimeSession's own `'*'` -> `transport_event` relay, which is what onTransportEvent below
+// already listens to. `output_audio_buffer.started`/`.stopped` use `.passthrough()` schemas (a
+// `response_id` MAY be present if the server sends one); `.cleared` is a strict schema with no
+// such field at all - never assume it exists on any of the three.
+var TRANSPORT_OUTPUT_AUDIO_BUFFER_STARTED = 'output_audio_buffer.started';
+var TRANSPORT_OUTPUT_AUDIO_BUFFER_STOPPED = 'output_audio_buffer.stopped';
+var TRANSPORT_OUTPUT_AUDIO_BUFFER_CLEARED = 'output_audio_buffer.cleared';
+// Raw response-lifecycle/manual-turn-finish events (fix/voice-mode-turn-ux) - also plain
+// transport_event passthroughs, never specially parsed by the SDK.
+var TRANSPORT_RESPONSE_CREATED = 'response.created';
+var TRANSPORT_INPUT_AUDIO_BUFFER_COMMITTED = 'input_audio_buffer.committed';
 
 // Bounds the whole connect() attempt (mic + token mint + SDP/ICE + session ack combined) - a
 // hung negotiation must fail loudly and free the UI/state machine, never spin forever. This SDK
@@ -60,6 +78,11 @@ var CONNECT_TIMEOUT_MS = 15000;
 var RECONNECT_BASE_DELAY_MS = 500;
 var RECONNECT_MAX_DELAY_MS = 8000;
 var RECONNECT_MAX_ATTEMPTS = 5;
+// fix/voice-mode-turn-ux (Part D, "End message"): bounds a manual input_audio_buffer.commit round
+// trip (client commit -> server input_audio_buffer.committed ack). Deliberately much shorter than
+// CONNECT_TIMEOUT_MS/the 12s speak() fallback - this is a same-connection, already-open-data-
+// channel client/server ack, not a fresh negotiation or a full model generation.
+var MANUAL_FINISH_TIMEOUT_MS = 6000;
 
 var lastDebugState = null;
 function setDebugState(patch) { lastDebugState = Object.assign({ at: new Date().toISOString() }, patch); }
@@ -71,6 +94,20 @@ function transportErrorCode(error) {
   if (error && error.name) return error.name;
   if (error && error.message) return String(error.message).slice(0, 120);
   return 'VOICE_UNKNOWN_ERROR';
+}
+
+// fix/voice-mode-turn-ux (Part D req #12): a manual input_audio_buffer.commit can lose a genuine
+// race against the server's own semantic-VAD auto-commit for the exact same turn (the user
+// stopped talking a moment before the click; the server already committed and started
+// transcribing by the time our own commit request arrives, so it targets an already-empty
+// buffer). OpenAI's Realtime API surfaces this as a real error event - matched here by pattern
+// (code/message/type mentioning both "commit" and "empty"), since no live API access was
+// available in this pass to capture the exact literal error code - documented as a best-effort
+// heuristic rather than an assumed-exact string match, the same posture classifySdpFailureStage()
+// above already takes for a different SDK-shape uncertainty.
+function looksLikeEmptyBufferCommitError(error) {
+  var text = String((error && (error.code || error.type || error.message)) || '').toLowerCase();
+  return text.indexOf('commit') !== -1 && text.indexOf('empty') !== -1;
 }
 
 // Phase 3 (fix/voice-mode-hosted-connection): classifies a connect()-time failure into one of
@@ -130,6 +167,20 @@ export function createVoiceSession(options) {
   var onMuteChange = (options && options.onMuteChange) || function () {};
   var fetchSession = options && options.fetchSession;
   var language = (options && options.language) || 'en';
+  // fix/voice-mode-turn-ux: this module still owns NO business/playback-queue logic of its own
+  // (unchanged architecture, see this file's own header comment) - these three are pure relays so
+  // the caller's PlaybackController (public/pages/shared/ai-voice-playback-controller.js) can be
+  // the one place a real interruption is decided and real-audio-lifecycle state is tracked.
+  // `onOutputAudioBufferEvent(type, responseId)` relays the three raw output_audio_buffer.* events
+  // verbatim; `onResponseCreated(responseId)` relays the real server response id (opportunistic -
+  // see PlaybackController's own comment on why this is never the sole correlation mechanism);
+  // `onBargeIn()` fires when a real barge-in is detected (speech started while the assistant was
+  // genuinely speaking) - the caller is expected to route this straight into
+  // PlaybackController.interrupt(), never call this module's own transport-level interrupt()
+  // directly (that direct-call bypass was the original Part B bug).
+  var onOutputAudioBufferEvent = (options && options.onOutputAudioBufferEvent) || function () {};
+  var onResponseCreated = (options && options.onResponseCreated) || function () {};
+  var onBargeIn = (options && options.onBargeIn) || function () {};
 
   var state = VOICE_STATES.IDLE;
   var session = null;
@@ -181,6 +232,31 @@ export function createVoiceSession(options) {
   // any eagerness hint applied yet.
   var currentEagerness = 'medium';
 
+  // fix/voice-mode-turn-ux (Part D, "End message"): the item id VAD's own speech_started most
+  // recently reported - the one real, live signal finishUserTurn() uses to know a genuine active
+  // user utterance actually exists to finish. Not required to equal whatever item id the eventual
+  // input_audio_buffer.committed response reports (see that handler's own comment - the two can
+  // legitimately differ).
+  var activeSpeechItemId = null;
+  // Non-null only while a manual finishUserTurn() commit is awaiting its server ack/transcript.
+  // {clientEventId, committedItemId, timeoutTimer} - see finishUserTurn()/clearPendingManualFinish()
+  // below for the full state machine.
+  var pendingManualFinish = null;
+  var manualFinishCounter = 0;
+  // True only while THIS module has temporarily disabled the outbound mic track for a manual
+  // finish in flight (Part D req #16) - deliberately never the same flag as `isMuted` (the user's
+  // own real, visible preference), and always restored to `!isMuted` (whatever that preference
+  // currently is, even if the user toggled it during the hold) once cleared.
+  var micHeldForManualFinish = false;
+  // Grace window after a manual finish was last cleared (success OR the race path below) during
+  // which a late-arriving empty-buffer-commit error is still recognized as belonging to that same
+  // activation - see the 'error' listener's own comment for why this is needed in addition to
+  // checking pendingManualFinish itself (the transcription-completed path can legitimately clear
+  // pendingManualFinish BEFORE this module's own now-superfluous commit request's error response
+  // arrives, since only one user turn is ever in flight and finishUserTurn() is the only place in
+  // this codebase that ever sends input_audio_buffer.commit at all).
+  var lastManualFinishClearedAt = 0;
+
   // Shared by setState() and mute() below - found via real browser testing: debugState() only
   // ever refreshed from inside setState(), so muting (which changes nothing about `state` itself)
   // left the diagnostic's own `muted` field silently stale at whatever it was during the last real
@@ -214,6 +290,42 @@ export function createVoiceSession(options) {
     };
   }
 
+  // fix/voice-mode-turn-ux (Part A): the ONE place `state` is ever moved OUT of ASSISTANT_SPEAKING/
+  // INTERRUPTED back to LISTENING - called by the caller's PlaybackController the moment it has
+  // genuinely settled the currently-speaking entry (a real output_audio_buffer.stopped/.cleared, an
+  // interrupt, an error, or - last resort - its own bounded watchdog fallback; see that module's
+  // own comment). Guarded so a delayed/stale settlement can never clobber a state the user has
+  // since, for real, moved on to (USER_SPEAKING from a fresh barge-in, PROCESSING from a manual
+  // finish, RECONNECTING/ERROR from a real connection problem) - task requirement: a stale event
+  // must never overwrite USER_SPEAKING or PROCESSING.
+  function markPlaybackEnded() {
+    if (state === VOICE_STATES.ASSISTANT_SPEAKING || state === VOICE_STATES.INTERRUPTED) setState(VOICE_STATES.LISTENING);
+  }
+
+  function holdMicForManualFinish() {
+    if (micHeldForManualFinish || !mediaStream) return;
+    micHeldForManualFinish = true;
+    mediaStream.getAudioTracks().forEach(function (track) { track.enabled = false; });
+  }
+  // Always restores to `!isMuted` - the user's REAL, current mute preference at the moment this
+  // runs, even if they toggled mute while the hold was active (mute()'s own session.mute() call
+  // already won in the meantime, exactly as it should; this is a safety re-assertion, never a
+  // second source of truth for mute state).
+  function releaseMicHold() {
+    if (!micHeldForManualFinish) return;
+    micHeldForManualFinish = false;
+    if (mediaStream) mediaStream.getAudioTracks().forEach(function (track) { track.enabled = !isMuted; });
+  }
+
+  function clearPendingManualFinish() {
+    if (!pendingManualFinish) return;
+    if (pendingManualFinish.timeoutTimer) clearTimeout(pendingManualFinish.timeoutTimer);
+    pendingManualFinish = null;
+    lastManualFinishClearedAt = Date.now();
+    releaseMicHold();
+  }
+  var EMPTY_BUFFER_COMMIT_ERROR_GRACE_MS = 2000;
+
   function onTransportEvent(event) {
     if (!event || typeof event.type !== 'string') return;
     recentEventTypes.push(event.type);
@@ -221,8 +333,18 @@ export function createVoiceSession(options) {
     if (event.type === TRANSPORT_TRANSCRIPTION_COMPLETED) {
       var itemId = event.item_id;
       var transcript = String(event.transcript || '').trim();
+      // fix/voice-mode-turn-ux (Part D): a manual finishUserTurn() is resolved the instant ANY
+      // finalized transcription arrives while one is pending - this app only ever has one user
+      // turn in flight at a time (TurnCoordinator/PlaybackController both serialize strictly), so
+      // there is no other transcript this could legitimately belong to. Resolved unconditionally
+      // (not gated on matching pendingManualFinish.committedItemId to this event's itemId) since a
+      // real committed item id is only ever a best-effort correlation aid, never a hard
+      // requirement - see finishUserTurn()'s own comment. Existing dedup (handledItemIds) below is
+      // completely untouched either way.
+      if (pendingManualFinish) clearPendingManualFinish();
       if (!transcript || (itemId && handledItemIds[itemId])) return;
       if (itemId) handledItemIds[itemId] = true;
+      activeSpeechItemId = null;
       // ABSOLUTE rule (Journey E spec): only a finalized transcript may ever reach NAVRYA's
       // state. Interim/delta transcripts are never listened to here at all.
       setState(VOICE_STATES.PROCESSING);
@@ -230,14 +352,54 @@ export function createVoiceSession(options) {
       return;
     }
     if (event.type === TRANSPORT_SPEECH_STARTED) {
-      // Reuses the guarded, public interrupt() below rather than calling the session directly,
-      // so a connection dropped at exactly this moment fails the same safe way every other call does.
-      if (state === VOICE_STATES.ASSISTANT_SPEAKING) interrupt();
+      activeSpeechItemId = event.item_id || null;
+      // State moves to USER_SPEAKING FIRST, before onBargeIn() runs - onBargeIn() synchronously
+      // drives the caller's PlaybackController.interrupt(), which synchronously settles the
+      // currently-speaking entry and (via markPlaybackEnded()) would otherwise try to move state
+      // back to LISTENING; doing this in the other order would mean brand-new USER_SPEAKING gets
+      // transiently written, then immediately overwritten by that settlement's own LISTENING
+      // transition, before finally being overwritten again by this function's own USER_SPEAKING -
+      // the end result is the same, but reordering avoids that confusing double-write entirely
+      // (markPlaybackEnded()'s own guard already can't fire once state genuinely is USER_SPEAKING).
+      var wasAssistantSpeaking = state === VOICE_STATES.ASSISTANT_SPEAKING;
       setState(VOICE_STATES.USER_SPEAKING);
+      // Routes through the caller's own PlaybackController - never this module's own transport-
+      // level interrupt() directly (that direct call bypassing the queue was the original Part B
+      // bug). The caller (chatDockView.jsx) wires onBargeIn straight to
+      // playbackController.interrupt(), which itself calls back into this module's interrupt()
+      // exactly once, settles the current entry locally/immediately, and drops the queue.
+      if (wasAssistantSpeaking) onBargeIn();
       return;
     }
     if (event.type === TRANSPORT_SPEECH_STOPPED) {
       if (state === VOICE_STATES.USER_SPEAKING) setState(VOICE_STATES.LISTENING);
+      return;
+    }
+    if (event.type === TRANSPORT_OUTPUT_AUDIO_BUFFER_STARTED || event.type === TRANSPORT_OUTPUT_AUDIO_BUFFER_STOPPED || event.type === TRANSPORT_OUTPUT_AUDIO_BUFFER_CLEARED) {
+      // Pure relay - PlaybackController (public/pages/shared/ai-voice-playback-controller.js) is
+      // the one place that decides what a real output-audio-buffer lifecycle event means for
+      // playback/caption/state. `response_id` is read defensively (verified against the SDK's own
+      // schemas: present on started/stopped only via passthrough, never on cleared) - see this
+      // file's own header comment.
+      onOutputAudioBufferEvent(event.type, event.response_id || null);
+      return;
+    }
+    if (event.type === TRANSPORT_RESPONSE_CREATED) {
+      var createdResponseId = event.response && event.response.id;
+      if (createdResponseId) onResponseCreated(createdResponseId);
+      return;
+    }
+    if (event.type === TRANSPORT_INPUT_AUDIO_BUFFER_COMMITTED) {
+      // fix/voice-mode-turn-ux (Part D req #9): bind whatever item id the server actually reports
+      // to the pending manual finish, WITHOUT requiring it to equal activeSpeechItemId (the
+      // provisional id speech_started reported) - grounded in the installed SDK's own
+      // input_audio_buffer.committed schema, which carries no field correlating it back to a
+      // specific client-sent commit event id at all; the server's item id is simply authoritative.
+      // Only ever binds once per pending manual finish (a second/duplicate committed event, or one
+      // with no pending manual finish at all, is a harmless no-op here).
+      if (pendingManualFinish && !pendingManualFinish.committedItemId) {
+        pendingManualFinish.committedItemId = event.item_id || null;
+      }
       return;
     }
     if (event.type === TRANSPORT_SESSION_UPDATED) {
@@ -257,6 +419,12 @@ export function createVoiceSession(options) {
   // and reconnectTimer themselves, since they mean different things (IDLE + no future retry vs.
   // RECONNECTING + a scheduled retry).
   function teardownTransport() {
+    // fix/voice-mode-turn-ux (Part D req #14): a manual finish awaiting its server ack can never
+    // meaningfully resolve once the transport it was sent over is gone - clear it (and release any
+    // mic hold) BEFORE the tracks it might still reference are stopped below, on every real
+    // teardown path (a genuine disconnect() and a reconnect about to retry both call this).
+    clearPendingManualFinish();
+    activeSpeechItemId = null;
     if (session) { try { session.close(); } catch (_e) { /* already closed */ } session = null; }
     transport = null;
     if (mediaStream) { mediaStream.getTracks().forEach(function (track) { track.stop(); }); mediaStream = null; }
@@ -384,11 +552,46 @@ export function createVoiceSession(options) {
       });
       session = new RealtimeSession(agent, { model: creds.model, transport: transport });
       session.on('transport_event', onTransportEvent);
-      session.on('audio_start', function () { if (myEpoch === connectionEpoch) setState(VOICE_STATES.ASSISTANT_SPEAKING); });
-      session.on('audio_stopped', function () { if (myEpoch === connectionEpoch) setState(VOICE_STATES.LISTENING); });
-      session.on('audio_interrupted', function () { if (myEpoch === connectionEpoch) setState(VOICE_STATES.INTERRUPTED); });
+      // fix/voice-mode-turn-ux (Part A): neither 'audio_start' nor 'audio_stopped' drives `state`
+      // any more - both are derived by the SDK from response-generation-lifecycle events
+      // (response.output_audio.done for audio_stopped - verified against
+      // node_modules/@openai/agents-realtime/dist/openaiRealtimeBase.mjs), not from real WebRTC
+      // playback-buffer state. speak() below still sets ASSISTANT_SPEAKING immediately at call
+      // time (an intentional, optimistic "about to speak" signal); the real exit back to LISTENING
+      // now only ever happens through markPlaybackEnded(), driven by the caller's PlaybackController
+      // once it has observed a genuine output_audio_buffer.stopped/.cleared (see onTransportEvent's
+      // own TRANSPORT_OUTPUT_AUDIO_BUFFER_* handling) or settled the entry for any other real
+      // reason (interrupt/error/its own bounded watchdog). 'audio_interrupted' is kept only as a
+      // defensive, already-guarded call into the SAME function - by the time this SDK-level event
+      // could arrive, PlaybackController's own synchronous interrupt() path has almost always
+      // already settled things (see that module's own comment on why it never waits for this
+      // event); this is a harmless no-op in the ordinary case, not a second source of truth.
+      session.on('audio_interrupted', function () { if (myEpoch === connectionEpoch) markPlaybackEnded(); });
       session.on('error', function (e) {
         if (myEpoch !== connectionEpoch) return;
+        // fix/voice-mode-turn-ux (Part D req #12): a manual finishUserTurn() commit losing a real
+        // race against the server's own VAD auto-commit for the same turn surfaces as exactly this
+        // kind of error. finishUserTurn() is the only place in this codebase that ever sends
+        // input_audio_buffer.commit, so this specific error shape is - by construction - always a
+        // response to a manual finish attempt; it is only ever swallowed as recoverable, though,
+        // when there is real evidence the auto path is already handling this same turn: either a
+        // committed ack is already bound to the still-pending manual finish, or a manual finish was
+        // resolved (via that same real transcript arriving) within the last
+        // EMPTY_BUFFER_COMMIT_ERROR_GRACE_MS - not merely because a manual finish was attempted at
+        // some unbounded point in the past. Any other error shape always falls through to the
+        // existing, unchanged generic session-error handling below - never silently swallowed.
+        var withinManualFinishGrace = (Date.now() - lastManualFinishClearedAt) < EMPTY_BUFFER_COMMIT_ERROR_GRACE_MS;
+        var manualFinishRaceEvidence = (pendingManualFinish && pendingManualFinish.committedItemId) || withinManualFinishGrace;
+        if (manualFinishRaceEvidence && looksLikeEmptyBufferCommitError(e && e.error)) {
+          // Deliberately never touches `state` here - if the real auto-committed transcript is (or
+          // already has been) delivered through the normal onFinalTranscript pipeline, that path
+          // alone already owns every state transition from here on (still PROCESSING while it's in
+          // flight, or further along already); forcing LISTENING here could wrongly clobber a
+          // turn that is genuinely still being handled. The bounded finishUserTurn() timeout is
+          // what recovers state if, despite this evidence, no transcript genuinely ever arrives.
+          clearPendingManualFinish();
+          return;
+        }
         setState(VOICE_STATES.ERROR);
         onError({ code: transportErrorCode(e && e.error), stage: 'session' });
       });
@@ -461,11 +664,21 @@ export function createVoiceSession(options) {
   // unguarded, so a call made just after that happened threw a raw, uncaught
   // "WebRTC data channel is not connected" exception instead of failing gracefully into the
   // existing ERROR state/onError() path every other failure mode already uses.
+  //
+  // fix/voice-mode-turn-ux (Part B): this is now PURELY the transport-level action (send
+  // response.cancel + output_audio_buffer.clear, via the installed SDK's own session.interrupt())
+  // - it no longer touches `state` itself. The caller's PlaybackController is the one place a real
+  // interruption is decided and the currently-speaking entry is settled; this function is only
+  // ever invoked as PlaybackController's own injected `interrupt` callback (see chatDockView.jsx's
+  // wiring), never called directly by anything else in this module or its caller any more - the
+  // direct-call bypass that used to leave PlaybackController's own queue/current entry untouched
+  // was the original bug this fix addresses. markPlaybackEnded() (driven by PlaybackController's
+  // own onSettled, itself already synchronous with this call) is what moves `state` back to
+  // LISTENING when appropriate.
   function interrupt() {
     if (!session) return;
     try {
       session.interrupt();
-      setState(VOICE_STATES.LISTENING);
     } catch (interruptError) {
       setState(VOICE_STATES.ERROR);
       onError({ code: transportErrorCode(interruptError), stage: 'interrupt' });
@@ -477,8 +690,13 @@ export function createVoiceSession(options) {
   //
   // Returns a Promise that resolves once this response is done occupying the session - either it
   // actually finished being spoken ('audio_stopped'), or playback was cut short for any reason
-  // ('audio_interrupted' - barge-in via interrupt() above, or the SDK's own handling of a
-  // disconnect/session replacement mid-speech - or 'error') - not just once the request was sent.
+  // ('audio_interrupted' - a barge-in or "Stop reply", both now routed through PlaybackController
+  // which calls this module's own guarded interrupt() -> session.interrupt(), or the SDK's own
+  // handling of a disconnect/session replacement mid-speech - or 'error') - not just once the
+  // request was sent. fix/voice-mode-turn-ux: this remains a genuine safety-net fallback only -
+  // PlaybackController's own generation-tracked settlement (driven by real
+  // output_audio_buffer.stopped/.cleared or its own synchronous interrupt()) is the PRIMARY
+  // settlement path now; see that module's own comment.
   // Found necessary via real E1 multi-turn testing: the caller serializes voice turns through a
   // queue precisely so two turns are never in flight at once, but speak() itself used to return
   // immediately, so a fast-resolving next turn's own speak() call could fire a second
@@ -526,6 +744,50 @@ export function createVoiceSession(options) {
 
   function setLanguage(nextLanguage) { language = nextLanguage || 'en'; }
 
+  // fix/voice-mode-turn-ux (Part D): "End message" - finalizes ONLY the user's current spoken
+  // utterance early (a manual input_audio_buffer.commit), never the whole Voice session/
+  // conversation. Sends exactly one raw client event through the already-open transport and
+  // nothing else - no response.create (NAVRYA's own TurnCoordinator/business pipeline, reached the
+  // normal way once the resulting transcript arrives via TRANSPORT_TRANSCRIPTION_COMPLETED above,
+  // remains the sole source of the assistant's actual reply). The session's own
+  // semantic_vad/create_response:false/interrupt_response:false configuration (server/pattern-ai-
+  // server.mjs's mintRealtimeClientSecret(), untouched by this function) is completely unaffected -
+  // this only ever asks the server to close out the CURRENT buffer early, exactly what the server
+  // itself would eventually do on its own via VAD silence detection.
+  function finishUserTurn() {
+    if (!session) return false;
+    if (state !== VOICE_STATES.USER_SPEAKING) return false;
+    if (pendingManualFinish) return false; // already in flight - no double-submit
+    if (!activeSpeechItemId) return false; // no real active utterance to finish
+    var myEpoch = connectionEpoch;
+    manualFinishCounter += 1;
+    var clientEventId = 'manual-commit-' + myEpoch + '-' + manualFinishCounter + '-' + Date.now();
+    try {
+      session.transport.sendEvent({ type: 'input_audio_buffer.commit', event_id: clientEventId });
+    } catch (sendError) {
+      onError({ code: transportErrorCode(sendError), stage: 'manual_finish' });
+      return false;
+    }
+    pendingManualFinish = { clientEventId: clientEventId, committedItemId: null, timeoutTimer: null };
+    holdMicForManualFinish();
+    // Immediately signals "ending current message" (task requirement) and structurally prevents a
+    // repeated click - the precondition check above already rejects a second finishUserTurn() call
+    // while pendingManualFinish/state !== USER_SPEAKING.
+    setState(VOICE_STATES.PROCESSING);
+    pendingManualFinish.timeoutTimer = setTimeout(function () {
+      if (myEpoch !== connectionEpoch || !pendingManualFinish) return;
+      clearPendingManualFinish();
+      if (state === VOICE_STATES.PROCESSING) setState(VOICE_STATES.LISTENING);
+      onError({ code: 'VOICE_MANUAL_FINISH_TIMEOUT', stage: 'manual_finish' });
+    }, MANUAL_FINISH_TIMEOUT_MS);
+    return true;
+  }
+
+  // Clears any in-flight manual finish without waiting for its own timeout - used by the caller on
+  // New Chat/conversation switch (chatDockView.jsx), on top of the automatic clearing this module
+  // already does on its own reconnect/disconnect/epoch-change paths (see teardownTransport()).
+  function cancelManualFinish() { clearPendingManualFinish(); }
+
   return {
     connect: connect,
     disconnect: disconnect,
@@ -533,6 +795,16 @@ export function createVoiceSession(options) {
     interrupt: interrupt,
     speak: speak,
     setLanguage: setLanguage,
+    // fix/voice-mode-turn-ux: called by the caller's PlaybackController.onSettled (Part A/B) once
+    // it has genuinely settled the currently-speaking entry, for any reason - moves `state` back
+    // to LISTENING only if it is still ASSISTANT_SPEAKING/INTERRUPTED (see this function's own
+    // comment on why a stale settlement must never clobber a real, newer state).
+    markPlaybackEnded: markPlaybackEnded,
+    // fix/voice-mode-turn-ux (Part D, "End message"): finishes only the current user utterance -
+    // see finishUserTurn()'s own comment for the full precondition/state-machine contract.
+    finishUserTurn: finishUserTurn,
+    cancelManualFinish: cancelManualFinish,
+    hasPendingManualFinish: function () { return !!pendingManualFinish; },
     state: function () { return state; },
     isMuted: function () { return isMuted; },
     audioDiagnostics: audioDiagnostics,
