@@ -8,6 +8,7 @@ import {
 import { ACHIEVEMENTS } from '../community/achievement-rules.mjs';
 import { LEVEL_REQUIREMENTS } from '../community/mastery-rules.mjs';
 import { getEffectiveXpConfig, invalidateXpConfigCache, SERVER_ONLY_ACHIEVEMENT_POINTS } from '../community/xp-config.mjs';
+import { router as voiceProvidersRouter } from './routes.voice-providers.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 const SORTABLE_COLUMNS = ['displayName', 'createdAt', 'lastLoginAt', 'isOnline', 'hoursOnline', 'purchaseCount', 'totalMockSpent', 'totalTokensUsed'];
@@ -453,6 +454,12 @@ export function router(repo) {
       remainingBudgetByProvider
     });
   }));
+
+  // Voice Providers (ElevenLabs) - a large enough surface (credentials, per-language routing,
+  // catalogs, health, usage, paid test samples) to warrant its own file; mounted here so it
+  // inherits this router's own requireAdmin (applied at the /api/admin mount in app.mjs) for free,
+  // exactly like every route above it.
+  app.use('/voice-providers', voiceProvidersRouter(repo));
 
   return app;
 }
