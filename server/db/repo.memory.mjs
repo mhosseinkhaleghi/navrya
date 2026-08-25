@@ -1,5 +1,7 @@
 import { newId } from './id.mjs';
 import { ApiError } from '../community/errors.mjs';
+import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
+import { encryptionKeyHex } from '../community/security/secrets.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -11,7 +13,9 @@ export function createMemoryRepo() {
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
-    adminKeys: new Map(), auditLog: new Map(), xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
+    adminKeys: new Map(), auditLog: new Map(),
+    voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceTtsUsage: new Map(),
+    xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(), accounts: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
@@ -522,6 +526,115 @@ export function createMemoryRepo() {
     },
     async list({ limit } = {}) {
       return Array.from(state.auditLog.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, limit || 50).map(clone);
+    }
+  };
+
+  function voiceKeyHintFor(apiKey) {
+    const trimmed = String(apiKey || '');
+    return trimmed.length >= 4 ? '…' + trimmed.slice(-4) : '…';
+  }
+  // Same shape/behavior as repo.pg.mjs's mapVoiceCredential - real encryption here too (not a
+  // plaintext stand-in), since this is the exact backend the contract test suite exercises for
+  // "encrypted-at-rest"/"wrong ENCRYPTION_KEY" behavior.
+  function shapeVoiceCredential(record, { includeDecrypted } = {}) {
+    const base = {
+      id: record.id, provider: record.provider, label: record.label, keyHint: record.keyHint, enabled: record.enabled,
+      validationStatus: record.validationStatus, validationError: record.validationError, validatedAt: record.validatedAt,
+      updatedBy: record.updatedBy, createdAt: record.createdAt, updatedAt: record.updatedAt
+    };
+    if (includeDecrypted) base.apiKey = decryptSecret(record.apiKeyEncrypted, encryptionKeyHex());
+    return clone(base);
+  }
+
+  const voiceProviderCredentials = {
+    async create({ provider, label, apiKey, updatedBy }) {
+      const trimmed = String(apiKey || '').trim();
+      if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
+      const record = {
+        id: newId('voiceCred'), provider: provider || 'elevenlabs', label: String(label || '').trim() || 'Untitled profile',
+        apiKeyEncrypted: encryptSecret(trimmed, encryptionKeyHex()), keyHint: voiceKeyHintFor(trimmed), enabled: true,
+        validationStatus: 'unknown', validationError: null, validatedAt: null,
+        updatedBy: updatedBy || null, createdAt: now(), updatedAt: now()
+      };
+      state.voiceProviderCredentials.set(record.id, record);
+      return shapeVoiceCredential(record);
+    },
+    async replace(id, { label, apiKey, enabled, updatedBy }) {
+      const record = state.voiceProviderCredentials.get(id);
+      if (!record) throw new ApiError(404, 'CREDENTIAL_NOT_FOUND');
+      if (label != null) record.label = String(label).trim() || 'Untitled profile';
+      if (enabled != null) record.enabled = Boolean(enabled);
+      const trimmed = apiKey != null ? String(apiKey).trim() : '';
+      if (trimmed) {
+        record.apiKeyEncrypted = encryptSecret(trimmed, encryptionKeyHex());
+        record.keyHint = voiceKeyHintFor(trimmed);
+        record.validationStatus = 'unknown'; record.validationError = null; record.validatedAt = null;
+      }
+      record.updatedBy = updatedBy || null; record.updatedAt = now();
+      return shapeVoiceCredential(record);
+    },
+    async recordValidation(id, { status, error }) {
+      const record = state.voiceProviderCredentials.get(id);
+      if (!record) return null;
+      record.validationStatus = status; record.validationError = error || null; record.validatedAt = now(); record.updatedAt = now();
+      return shapeVoiceCredential(record);
+    },
+    async delete(id) {
+      Array.from(state.voiceLanguageConfigs.values()).forEach((cfg) => { if (cfg.credentialId === id) cfg.credentialId = null; });
+      return state.voiceProviderCredentials.delete(id);
+    },
+    async list() { return Array.from(state.voiceProviderCredentials.values()).map((r) => shapeVoiceCredential(r)); },
+    async get(id, { includeDecrypted } = {}) {
+      const record = state.voiceProviderCredentials.get(id);
+      return record ? shapeVoiceCredential(record, { includeDecrypted }) : null;
+    }
+  };
+
+  const voiceLanguageConfigs = {
+    async list() { return Array.from(state.voiceLanguageConfigs.values()).sort((a, b) => a.languageCode.localeCompare(b.languageCode)).map(clone); },
+    async get(languageCode) { const record = state.voiceLanguageConfigs.get(languageCode); return record ? clone(record) : null; },
+    async upsert({ languageCode, provider, credentialId, voiceId, modelId, enabled, voiceSettings, fallbackProvider, fallbackVoice, updatedBy }) {
+      const record = {
+        languageCode, provider: provider || 'elevenlabs', credentialId: credentialId || null, voiceId: voiceId || null,
+        modelId: modelId || null, enabled: Boolean(enabled), voiceSettings: voiceSettings || {},
+        fallbackProvider: fallbackProvider || 'openai', fallbackVoice: fallbackVoice || null,
+        updatedBy: updatedBy || null, createdAt: (state.voiceLanguageConfigs.get(languageCode) || {}).createdAt || now(), updatedAt: now()
+      };
+      state.voiceLanguageConfigs.set(languageCode, record);
+      return clone(record);
+    }
+  };
+
+  const voiceTtsUsage = {
+    async record({ languageCode, provider, credentialId, source, characters, characterCost, success, errorCode, latencyMs }) {
+      const record = {
+        id: newId('voiceTts'), languageCode, provider, credentialId: credentialId || null, source,
+        characters: Math.max(0, Math.round(Number(characters) || 0)),
+        characterCost: characterCost == null ? null : Math.round(Number(characterCost)),
+        success: Boolean(success), errorCode: errorCode || null,
+        latencyMs: latencyMs == null ? null : Math.round(Number(latencyMs)), createdAt: now()
+      };
+      state.voiceTtsUsage.set(record.id, record);
+      return clone(record);
+    },
+    async aggregateByLanguage({ since } = {}) {
+      const sinceMs = since ? new Date(since).getTime() : 0;
+      const byLang = {};
+      Array.from(state.voiceTtsUsage.values()).filter((e) => new Date(e.createdAt).getTime() >= sinceMs).forEach((e) => {
+        const bucket = byLang[e.languageCode] || (byLang[e.languageCode] = { languageCode: e.languageCode, requestCount: 0, totalCharacters: 0, successCount: 0, latencySum: 0, lastSuccessAt: null, lastErrorCode: null });
+        bucket.requestCount += 1; bucket.totalCharacters += e.characters; bucket.latencySum += e.latencyMs || 0;
+        if (e.success) { bucket.successCount += 1; if (!bucket.lastSuccessAt || e.createdAt > bucket.lastSuccessAt) bucket.lastSuccessAt = e.createdAt; }
+        else bucket.lastErrorCode = e.errorCode;
+      });
+      return Object.values(byLang).map((b) => ({
+        languageCode: b.languageCode, requestCount: b.requestCount, totalCharacters: b.totalCharacters, successCount: b.successCount,
+        successRatePercent: b.requestCount > 0 ? Math.round((b.successCount / b.requestCount) * 100) : null,
+        avgLatencyMs: b.requestCount > 0 ? Math.round(b.latencySum / b.requestCount) : 0,
+        lastSuccessAt: b.lastSuccessAt, lastErrorCode: b.lastErrorCode
+      }));
+    },
+    async recent({ limit } = {}) {
+      return Array.from(state.voiceTtsUsage.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, limit || 50).map(clone);
     }
   };
 
@@ -1331,7 +1444,8 @@ export function createMemoryRepo() {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns,
+    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceTtsUsage,
+    xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health
   };

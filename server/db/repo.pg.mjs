@@ -1,5 +1,7 @@
 import { newId } from './id.mjs';
 import { ApiError } from '../community/errors.mjs';
+import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
+import { encryptionKeyHex } from '../community/security/secrets.mjs';
 
 function mapUser(row) {
   return {
@@ -33,6 +35,42 @@ function mapHealthEvent(row) { return { id: row.id, provider: row.provider, ok: 
 function mapProviderPricing(row) { return { provider: row.provider, promptPricePer1k: row.prompt_price_per_1k == null ? null : Number(row.prompt_price_per_1k), completionPricePer1k: row.completion_price_per_1k == null ? null : Number(row.completion_price_per_1k), monthlyTokenBudget: row.monthly_token_budget, updatedAt: row.updated_at }; }
 function mapAdminKey(row) { return { provider: row.provider, apiKey: row.api_key, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
 function mapAuditLog(row) { return { id: row.id, adminUserId: row.admin_user_id, action: row.action, targetType: row.target_type, targetId: row.target_id, details: row.details, createdAt: row.created_at }; }
+// `includeDecrypted` is ONLY ever passed true by the one internal-service bridge route that
+// hands a runtime config to the DB-free pattern-ai gateway (server/community/routes.internal.mjs)
+// - every admin-facing/browser-facing caller must leave it false (the default) so a raw key can
+// never reach an HTTP response by omission. Fails closed: decryptSecret() itself throws (not
+// returns null/plaintext-garbage) on a wrong/missing ENCRYPTION_KEY or a malformed envelope - see
+// crypto-util.mjs.
+function mapVoiceCredential(row, { includeDecrypted } = {}) {
+  const base = {
+    id: row.id, provider: row.provider, label: row.label, keyHint: row.key_hint, enabled: row.enabled,
+    validationStatus: row.validation_status, validationError: row.validation_error, validatedAt: row.validated_at,
+    updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at
+  };
+  if (includeDecrypted) base.apiKey = decryptSecret(row.api_key_encrypted, encryptionKeyHex());
+  return base;
+}
+function mapVoiceLanguageConfig(row) {
+  return {
+    languageCode: row.language_code, provider: row.provider, credentialId: row.credential_id,
+    voiceId: row.voice_id, modelId: row.model_id, enabled: row.enabled, voiceSettings: row.voice_settings || {},
+    fallbackProvider: row.fallback_provider, fallbackVoice: row.fallback_voice,
+    updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+function mapVoiceTtsUsageEvent(row) {
+  return {
+    id: row.id, languageCode: row.language_code, provider: row.provider, credentialId: row.credential_id,
+    source: row.source, characters: row.characters, characterCost: row.character_cost, success: row.success,
+    errorCode: row.error_code, latencyMs: row.latency_ms, createdAt: row.created_at
+  };
+}
+// Last-4-characters-only hint, never anything that could help reconstruct the real key - matches
+// the mission's "masked identifier only, such as last four characters" requirement exactly.
+function voiceKeyHintFor(apiKey) {
+  const trimmed = String(apiKey || '');
+  return trimmed.length >= 4 ? '…' + trimmed.slice(-4) : '…';
+}
 function mapXpEvent(row) {
   return {
     id: row.id, userId: row.user_id, type: row.type, domain: row.domain, points: row.points,
@@ -863,6 +901,136 @@ export function createPgRepo(pool) {
     async list({ limit } = {}) {
       const { rows } = await pool.query('SELECT * FROM admin_audit_log ORDER BY created_at DESC LIMIT $1', [limit || 50]);
       return rows.map(mapAuditLog);
+    }
+  };
+
+  // Admin-managed, encrypted ElevenLabs voice-provider credentials (023_voice_providers.sql) -
+  // see that migration's own header comment for why this is a separate domain from adminKeys.
+  const voiceProviderCredentials = {
+    async create({ provider, label, apiKey, updatedBy }) {
+      const trimmed = String(apiKey || '').trim();
+      if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
+      const id = newId('voiceCred');
+      const encrypted = encryptSecret(trimmed, encryptionKeyHex());
+      const { rows } = await pool.query(
+        `INSERT INTO admin_voice_provider_credentials (id, provider, label, api_key_encrypted, key_hint, updated_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,now(),now()) RETURNING *`,
+        [id, provider || 'elevenlabs', String(label || '').trim() || 'Untitled profile', encrypted, voiceKeyHintFor(trimmed), updatedBy || null]
+      );
+      return mapVoiceCredential(rows[0]);
+    },
+    // A blank/omitted apiKey retains the existing encrypted value untouched - only ever
+    // re-encrypts and re-hints when a real new key is actually supplied (mission requirement:
+    // "a blank key during a normal configuration update must retain the current key"). Any real
+    // key replacement resets validation_status back to 'unknown' - the OLD key's validation result
+    // must never be presented as if it verified the NEW one.
+    async replace(id, { label, apiKey, enabled, updatedBy }) {
+      const trimmed = apiKey != null ? String(apiKey).trim() : '';
+      const sets = ['updated_at = now()', 'updated_by = $2'];
+      const values = [id, updatedBy || null];
+      let idx = 3;
+      if (label != null) { sets.push(`label = $${idx}`); values.push(String(label).trim() || 'Untitled profile'); idx += 1; }
+      if (enabled != null) { sets.push(`enabled = $${idx}`); values.push(Boolean(enabled)); idx += 1; }
+      if (trimmed) {
+        sets.push(`api_key_encrypted = $${idx}`); values.push(encryptSecret(trimmed, encryptionKeyHex())); idx += 1;
+        sets.push(`key_hint = $${idx}`); values.push(voiceKeyHintFor(trimmed)); idx += 1;
+        sets.push("validation_status = 'unknown'", 'validation_error = NULL', 'validated_at = NULL');
+      }
+      const { rows } = await pool.query(`UPDATE admin_voice_provider_credentials SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, values);
+      if (!rows[0]) throw new ApiError(404, 'CREDENTIAL_NOT_FOUND');
+      return mapVoiceCredential(rows[0]);
+    },
+    async recordValidation(id, { status, error }) {
+      const { rows } = await pool.query(
+        `UPDATE admin_voice_provider_credentials SET validation_status=$2, validation_error=$3, validated_at=now(), updated_at=now() WHERE id=$1 RETURNING *`,
+        [id, status, error || null]
+      );
+      return rows[0] ? mapVoiceCredential(rows[0]) : null;
+    },
+    // Explicit, separate action from replace() (mission: "key deletion must be an explicit
+    // separate action") - never implied by an empty-string PATCH. Detaches (never cascades to
+    // delete) any language config still pointing at this credential, so a language's own
+    // enabled/voice/model choice survives; it simply loses its credential until an admin picks a
+    // new one, and falls back per the documented runtime precedence in the meantime.
+    async delete(id) {
+      await pool.query('UPDATE admin_voice_language_configs SET credential_id = NULL WHERE credential_id = $1', [id]);
+      const { rowCount } = await pool.query('DELETE FROM admin_voice_provider_credentials WHERE id = $1', [id]);
+      return rowCount > 0;
+    },
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM admin_voice_provider_credentials ORDER BY created_at ASC');
+      return rows.map((row) => mapVoiceCredential(row));
+    },
+    // includeDecrypted must NEVER be set true by any admin/browser-facing route - only the
+    // internal-service bridge (server/community/routes.internal.mjs) is allowed to pass it.
+    async get(id, { includeDecrypted } = {}) {
+      const { rows } = await pool.query('SELECT * FROM admin_voice_provider_credentials WHERE id = $1', [id]);
+      return rows[0] ? mapVoiceCredential(rows[0], { includeDecrypted }) : null;
+    }
+  };
+
+  const voiceLanguageConfigs = {
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM admin_voice_language_configs ORDER BY language_code ASC');
+      return rows.map(mapVoiceLanguageConfig);
+    },
+    async get(languageCode) {
+      const { rows } = await pool.query('SELECT * FROM admin_voice_language_configs WHERE language_code = $1', [languageCode]);
+      return rows[0] ? mapVoiceLanguageConfig(rows[0]) : null;
+    },
+    async upsert({ languageCode, provider, credentialId, voiceId, modelId, enabled, voiceSettings, fallbackProvider, fallbackVoice, updatedBy }) {
+      const { rows } = await pool.query(
+        `INSERT INTO admin_voice_language_configs
+           (language_code, provider, credential_id, voice_id, model_id, enabled, voice_settings, fallback_provider, fallback_voice, updated_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),now())
+         ON CONFLICT (language_code) DO UPDATE SET
+           provider=$2, credential_id=$3, voice_id=$4, model_id=$5, enabled=$6, voice_settings=$7,
+           fallback_provider=$8, fallback_voice=$9, updated_by=$10, updated_at=now()
+         RETURNING *`,
+        [languageCode, provider || 'elevenlabs', credentialId || null, voiceId || null, modelId || null,
+          Boolean(enabled), JSON.stringify(voiceSettings || {}), fallbackProvider || 'openai', fallbackVoice || null, updatedBy || null]
+      );
+      return mapVoiceLanguageConfig(rows[0]);
+    }
+  };
+
+  // Real TTS usage/events - deliberately never written into the LLM usage_events/token tables
+  // (mission: "a separate TTS usage/event table rather than writing characters into LLM token
+  // tables" - ElevenLabs bills in characters, an entirely different unit and cost model).
+  const voiceTtsUsage = {
+    async record({ languageCode, provider, credentialId, source, characters, characterCost, success, errorCode, latencyMs }) {
+      const id = newId('voiceTts');
+      const { rows } = await pool.query(
+        `INSERT INTO voice_tts_usage_events (id, language_code, provider, credential_id, source, characters, character_cost, success, error_code, latency_ms, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now()) RETURNING *`,
+        [id, languageCode, provider, credentialId || null, source, Math.max(0, Math.round(Number(characters) || 0)),
+          characterCost == null ? null : Math.round(Number(characterCost)), Boolean(success), errorCode || null,
+          latencyMs == null ? null : Math.round(Number(latencyMs))]
+      );
+      return mapVoiceTtsUsageEvent(rows[0]);
+    },
+    async aggregateByLanguage({ since } = {}) {
+      const { rows } = await pool.query(
+        `SELECT language_code,
+                COUNT(*)::int AS request_count,
+                COALESCE(SUM(characters),0)::int AS total_characters,
+                COALESCE(SUM(CASE WHEN success THEN 1 ELSE 0 END),0)::int AS success_count,
+                COALESCE(AVG(latency_ms),0)::float AS avg_latency_ms,
+                MAX(CASE WHEN success THEN created_at END) AS last_success_at,
+                MAX(CASE WHEN NOT success THEN error_code END) AS last_error_code
+         FROM voice_tts_usage_events WHERE created_at >= $1 GROUP BY language_code`,
+        [since || new Date(0).toISOString()]
+      );
+      return rows.map((row) => ({
+        languageCode: row.language_code, requestCount: row.request_count, totalCharacters: row.total_characters,
+        successCount: row.success_count,
+        successRatePercent: row.request_count > 0 ? Math.round((row.success_count / row.request_count) * 100) : null,
+        avgLatencyMs: Math.round(row.avg_latency_ms), lastSuccessAt: row.last_success_at, lastErrorCode: row.last_error_code
+      }));
+    },
+    async recent({ limit } = {}) {
+      const { rows } = await pool.query('SELECT * FROM voice_tts_usage_events ORDER BY created_at DESC LIMIT $1', [limit || 50]);
+      return rows.map(mapVoiceTtsUsageEvent);
     }
   };
 
@@ -1963,7 +2131,8 @@ export function createPgRepo(pool) {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, auditLog, xpEvents, achievements, xpConfig, tradingSessions, patterns,
+    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceTtsUsage,
+    xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health
   };
