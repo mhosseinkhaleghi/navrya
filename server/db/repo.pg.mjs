@@ -71,6 +71,15 @@ function voiceKeyHintFor(apiKey) {
   const trimmed = String(apiKey || '');
   return trimmed.length >= 4 ? '…' + trimmed.slice(-4) : '…';
 }
+// Found via real production testing (a pasted key that read back as "Invalid" from the admin
+// panel): a copy/paste from some sources (browser dashboards, PDFs, rich-text) can carry invisible
+// unicode - zero-width space/joiner/non-joiner, a BOM, a non-breaking space - that plain .trim()
+// never touches, silently corrupting the key sent as the xi-api-key header while looking completely
+// normal in a text input. Stripped once here, at the one place every ElevenLabs credential is ever
+// written, so every downstream read (validate, TTS, voices/models lookups) is unaffected.
+function sanitizeApiKey(apiKey) {
+  return String(apiKey || '').replace(new RegExp("[​‌‍﻿ ]", 'g'), '').trim();
+}
 function mapXpEvent(row) {
   return {
     id: row.id, userId: row.user_id, type: row.type, domain: row.domain, points: row.points,
@@ -908,7 +917,7 @@ export function createPgRepo(pool) {
   // see that migration's own header comment for why this is a separate domain from adminKeys.
   const voiceProviderCredentials = {
     async create({ provider, label, apiKey, updatedBy }) {
-      const trimmed = String(apiKey || '').trim();
+      const trimmed = sanitizeApiKey(apiKey);
       if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
       const id = newId('voiceCred');
       const encrypted = encryptSecret(trimmed, encryptionKeyHex());
@@ -925,7 +934,7 @@ export function createPgRepo(pool) {
     // key replacement resets validation_status back to 'unknown' - the OLD key's validation result
     // must never be presented as if it verified the NEW one.
     async replace(id, { label, apiKey, enabled, updatedBy }) {
-      const trimmed = apiKey != null ? String(apiKey).trim() : '';
+      const trimmed = apiKey != null ? sanitizeApiKey(apiKey) : '';
       const sets = ['updated_at = now()', 'updated_by = $2'];
       const values = [id, updatedBy || null];
       let idx = 3;

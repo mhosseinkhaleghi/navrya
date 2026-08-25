@@ -533,6 +533,14 @@ export function createMemoryRepo() {
     const trimmed = String(apiKey || '');
     return trimmed.length >= 4 ? '…' + trimmed.slice(-4) : '…';
   }
+  // Found via real production testing (a pasted key that read back as "Invalid" from the admin
+  // panel): a copy/paste from some sources (browser dashboards, PDFs, rich-text) can carry
+  // invisible unicode - zero-width space/joiner/non-joiner, a BOM, a non-breaking space - that
+  // plain .trim() never touches, silently corrupting the key while looking completely normal in
+  // a text input. Same fix as repo.pg.mjs's own sanitizeApiKey().
+  function sanitizeApiKey(apiKey) {
+    return String(apiKey || '').replace(new RegExp("[​‌‍﻿ ]", 'g'), '').trim();
+  }
   // Same shape/behavior as repo.pg.mjs's mapVoiceCredential - real encryption here too (not a
   // plaintext stand-in), since this is the exact backend the contract test suite exercises for
   // "encrypted-at-rest"/"wrong ENCRYPTION_KEY" behavior.
@@ -548,7 +556,7 @@ export function createMemoryRepo() {
 
   const voiceProviderCredentials = {
     async create({ provider, label, apiKey, updatedBy }) {
-      const trimmed = String(apiKey || '').trim();
+      const trimmed = sanitizeApiKey(apiKey);
       if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
       const record = {
         id: newId('voiceCred'), provider: provider || 'elevenlabs', label: String(label || '').trim() || 'Untitled profile',
@@ -564,7 +572,7 @@ export function createMemoryRepo() {
       if (!record) throw new ApiError(404, 'CREDENTIAL_NOT_FOUND');
       if (label != null) record.label = String(label).trim() || 'Untitled profile';
       if (enabled != null) record.enabled = Boolean(enabled);
-      const trimmed = apiKey != null ? String(apiKey).trim() : '';
+      const trimmed = apiKey != null ? sanitizeApiKey(apiKey) : '';
       if (trimmed) {
         record.apiKeyEncrypted = encryptSecret(trimmed, encryptionKeyHex());
         record.keyHint = voiceKeyHintFor(trimmed);

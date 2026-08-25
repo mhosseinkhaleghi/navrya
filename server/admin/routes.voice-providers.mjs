@@ -114,12 +114,23 @@ export function router(repo) {
       res.json({ ...updated, subscriptionTier: result.subscriptionTier });
     } catch (error) {
       if (!(error instanceof ElevenLabsError)) throw error;
-      // A 403 here means the key is real but scope-restricted, NOT invalid (mission requirement) -
-      // recorded as its own distinct status so the admin UI can show a different, accurate badge.
-      const status = error.code === 'RESTRICTED_SCOPE' ? 'restricted' : 'invalid';
-      const updated = await repo.voiceProviderCredentials.recordValidation(req.params.id, { status, error: error.code });
-      await audit(req, 'voiceProvider.credential.validate', 'voiceProviderCredential', req.params.id, { status });
-      res.json(updated);
+      // Found via real production testing: only a 401 (the key itself is really wrong/revoked) is
+      // genuine proof of "invalid". A 403 means real-but-scope-restricted (mission requirement -
+      // recorded as its own distinct status). Everything else here (RATE_LIMITED, TIMEOUT,
+      // NETWORK_ERROR, UPSTREAM_ERROR/5xx) is a TRANSIENT condition that says nothing about whether
+      // the key is actually good - the previous version of this handler stamped every one of these
+      // as 'invalid' too, which could permanently mislabel a perfectly real key after one network
+      // blip or an ElevenLabs-side 5xx. Those cases now leave the stored validationStatus completely
+      // untouched (never downgraded, never upgraded) and report the real sanitized reason so the
+      // admin can just retry, instead of a misleading "Invalid" badge.
+      if (error.code === 'INVALID_CREDENTIAL' || error.code === 'RESTRICTED_SCOPE') {
+        const status = error.code === 'RESTRICTED_SCOPE' ? 'restricted' : 'invalid';
+        const updated = await repo.voiceProviderCredentials.recordValidation(req.params.id, { status, error: error.code });
+        await audit(req, 'voiceProvider.credential.validate', 'voiceProviderCredential', req.params.id, { status });
+        return res.json(updated);
+      }
+      await audit(req, 'voiceProvider.credential.validate', 'voiceProviderCredential', req.params.id, { status: 'inconclusive', reason: error.code });
+      res.status(statusForElevenLabsError(error)).json({ error: error.code, inconclusive: true });
     }
   }));
 

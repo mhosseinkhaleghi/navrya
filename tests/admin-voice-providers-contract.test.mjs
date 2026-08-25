@@ -124,6 +124,20 @@ test('POST /credentials creates a credential whose response never includes apiKe
   assert.equal(record.validationStatus, 'unknown');
 });
 
+// Found via real production testing: a pasted key that read back as "Invalid" turned out to carry
+// invisible unicode (zero-width space/joiner, BOM, non-breaking space) that plain .trim() never
+// strips - built from raw codepoints here, never a literal invisible character in this file's own
+// source, for the same reason the fix itself avoids that (see repo.pg.mjs's sanitizeApiKey()).
+test('a real key surrounded/interleaved with invisible unicode (zero-width space, BOM, non-breaking space) is stored and later used exactly as if those characters were never pasted', async () => {
+  const admin = await createAdmin('Admin A2');
+  const invisible = [0x200B, 0x200C, 0x200D, 0xFEFF, 0x00A0].map((cp) => String.fromCharCode(cp)).join('');
+  const dirtyKey = 'sk-real-key' + invisible + '-abcd1234' + invisible;
+  const record = await createCredential(admin.id, 'Pasted From Dashboard', dirtyKey);
+  const decrypted = await repo.voiceProviderCredentials.get(record.id, { includeDecrypted: true });
+  assert.equal(decrypted.apiKey, 'sk-real-key-abcd1234');
+  assert.equal(record.keyHint, '…1234');
+});
+
 test('GET /credentials never leaks the raw key anywhere in the response body, and the stored value really is AES-GCM ciphertext', async () => {
   const admin = await createAdmin('Admin B');
   await createCredential(admin.id, 'Leak Check', 'sk-should-never-appear-plainly');
@@ -213,6 +227,33 @@ test('a 401 upstream is recorded as invalid; a 403 upstream is recorded as restr
   stubElevenLabs({ '/v1/user': { status: 403 } });
   const restrictedResult = await api('POST', `/api/admin/voice-providers/credentials/${restrictedCred.id}/validate`, { userId: admin.id });
   assert.equal(restrictedResult.body.validationStatus, 'restricted');
+});
+
+// Found via real production testing: the previous version of this handler stamped ANY ElevenLabs
+// error - not just a genuine 401 - as validationStatus:'invalid', which could permanently mislabel
+// a perfectly real key after nothing worse than a single network blip or an ElevenLabs-side 5xx.
+test('a transient upstream failure (timeout, network error, rate limit, 5xx) during validate never overwrites the stored validationStatus - only a real 401/403 is definitive', async () => {
+  const admin = await createAdmin('Admin G2');
+  const record = await createCredential(admin.id, 'Previously Unknown');
+  assert.equal(record.validationStatus, 'unknown');
+
+  stubElevenLabs({ '/v1/user': () => { throw new Error('boom'); } }); // simulates a network-level failure inside elevenLabsRequest
+  const failed = await api('POST', `/api/admin/voice-providers/credentials/${record.id}/validate`, { userId: admin.id });
+  assert.equal(failed.status, 502);
+  assert.equal(failed.body.inconclusive, true);
+
+  const after = await api('GET', '/api/admin/voice-providers/credentials', { userId: admin.id });
+  const stillUnknown = after.body.find((c) => c.id === record.id);
+  assert.equal(stillUnknown.validationStatus, 'unknown', 'a transient failure must never downgrade a real key to invalid');
+
+  // A genuinely valid credential must also stay 'valid' through a later transient blip, never
+  // silently flipped to 'invalid' by an unrelated network hiccup on a subsequent validate click.
+  stubElevenLabs({ '/v1/user': { body: {} } });
+  await api('POST', `/api/admin/voice-providers/credentials/${record.id}/validate`, { userId: admin.id });
+  stubElevenLabs({ '/v1/user': { status: 429 } });
+  await api('POST', `/api/admin/voice-providers/credentials/${record.id}/validate`, { userId: admin.id });
+  const stillValid = (await api('GET', '/api/admin/voice-providers/credentials', { userId: admin.id })).body.find((c) => c.id === record.id);
+  assert.equal(stillValid.validationStatus, 'valid');
 });
 
 test('the validate rate limiter allows 10 requests per minute per admin session and 429s the 11th', async () => {
