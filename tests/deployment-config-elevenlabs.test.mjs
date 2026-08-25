@@ -52,17 +52,12 @@ test('every ELEVENLABS_* var wired into docker-compose.production.yml is documen
   }
 });
 
-test('ELEVENLABS_VOICE_ID_FA has no default anywhere in the deploy chain - not in server code, not in docker-compose.production.yml - so a missing value fails loudly (ELEVENLABS_VOICE_ID_FA_MISSING) instead of the endpoint silently using a stale hardcoded voice id', () => {
-  assert.match(
-    serverSource,
-    /const voiceId = process\.env\.ELEVENLABS_VOICE_ID_FA;\s*\n\s*if \(!voiceId\) throw new Error\('ELEVENLABS_VOICE_ID_FA_MISSING'\);/,
-    'server/pattern-ai-server.mjs no longer treats ELEVENLABS_VOICE_ID_FA as required with no default - if this changed intentionally, update this test and docker-compose.production.yml together'
-  );
+test('ELEVENLABS_VOICE_ID_FA has no default anywhere in the deploy chain - docker-compose.production.yml must not bake in a fallback voice id, so a missing value falls through to the OpenAI voice fallback instead of an admin unknowingly using a stale hardcoded voice id', () => {
   const patternAiBlock = patternAiServiceBlock(composeSource);
   assert.match(
     patternAiBlock,
     /ELEVENLABS_VOICE_ID_FA:\s*\$\{ELEVENLABS_VOICE_ID_FA:-\}/,
-    'docker-compose.production.yml must not bake in a fallback voice id here - ELEVENLABS_VOICE_ID_FA must come from the real server .env or fail closed'
+    'docker-compose.production.yml must not bake in a fallback voice id here'
   );
 });
 
@@ -71,4 +66,28 @@ test('the ElevenLabs request defaults to the real, current model id (eleven_v3) 
   assert.doesNotMatch(serverSource, /eleven_v3_conversational/, 'the invalid model id should not reappear anywhere in the server source');
   assert.doesNotMatch(composeSource, /eleven_v3_conversational/);
   assert.doesNotMatch(envExampleSource, /eleven_v3_conversational/);
+});
+
+// Admin-managed ElevenLabs credentials (023_voice_providers.sql) are encrypted with the SAME
+// ENCRYPTION_KEY that already protects users.totp_secret_enc - this feature is a second real
+// consumer of that key, not a new secret. The production preflight (.github/workflows/deploy.yml)
+// must verify it explicitly now, the same way it already verifies AUTH_TOKEN_SECRET/CSRF_SECRET/
+// INTERNAL_API_SECRET/ALLOWED_ORIGINS - mission requirement: "Ensure production preflight
+// explicitly verifies ENCRYPTION_KEY because encrypted admin credentials depend on it."
+test('the production deploy workflow explicitly preflights ENCRYPTION_KEY before touching any running container, now that encrypted admin voice-provider credentials depend on it', () => {
+  const deployWorkflow = readFileSync(path.join(repoRoot, '.github/workflows/deploy.yml'), 'utf8');
+  assert.match(
+    deployWorkflow,
+    /:\s*"\$\{ENCRYPTION_KEY:\?ENCRYPTION_KEY missing/,
+    '.github/workflows/deploy.yml must preflight-check ENCRYPTION_KEY the same way it already does for AUTH_TOKEN_SECRET/CSRF_SECRET/INTERNAL_API_SECRET/ALLOWED_ORIGINS'
+  );
+});
+
+test('ENCRYPTION_KEY is forwarded to community-api (where the encrypted admin_voice_provider_credentials/users.totp_secret_enc columns are actually decrypted) - never to pattern-ai, which stays DB-free by design and only ever receives already-decrypted runtime config over the internal bridge', () => {
+  const communityApiStart = composeSource.indexOf('\n  community-api:');
+  const redisStart = composeSource.indexOf('\n  redis:');
+  assert.ok(communityApiStart !== -1 && redisStart !== -1 && redisStart > communityApiStart);
+  const communityApiBlock = composeSource.slice(communityApiStart, redisStart);
+  assert.match(communityApiBlock, /ENCRYPTION_KEY:\s*\$\{ENCRYPTION_KEY\}/);
+  assert.doesNotMatch(patternAiServiceBlock(composeSource), /ENCRYPTION_KEY/, 'pattern-ai must never receive ENCRYPTION_KEY directly - it has no database access to decrypt anything with it');
 });

@@ -83,6 +83,11 @@ jobs:
             : "${CSRF_SECRET:?CSRF_SECRET missing in server .env}"
             : "${INTERNAL_API_SECRET:?INTERNAL_API_SECRET missing in server .env}"
             : "${ALLOWED_ORIGINS:?ALLOWED_ORIGINS missing in server .env}"
+            # ElevenLabs voice-provider feature: admin_voice_provider_credentials.api_key_encrypted
+            # (and users.totp_secret_enc before it) both depend on this at read/write time - a
+            # missing/wrong key must fail this preflight, never surface later as an opaque
+            # decryption error on a real admin trying to save a credential.
+            : "${ENCRYPTION_KEY:?ENCRYPTION_KEY missing in server .env}"
 
             # Application services can use Docker's normal content-addressed cache, but the web
             # image is rebuilt cold. A previous successful release left Caddy serving an older
