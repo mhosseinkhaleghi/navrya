@@ -337,6 +337,9 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
     if (u.indexOf('/ai/pricing') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     if (u.indexOf('/finance/overview') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ mockRevenue: { total: 0, mock: true }, aiCostByProvider: [], remainingBudgetByProvider: [] }) });
     if (u.indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(topUsersResponse) });
+    if (u.indexOf('/voice-providers/credentials') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (u.indexOf('/voice-providers/languages') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (u.indexOf('/voice-providers/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ languages: [] }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
   };
   const { app } = await load({ count: 0 }, fetchImpl);
@@ -361,6 +364,7 @@ test('the AI tab still renders key/pricing management when the newer usage/healt
     if (u.indexOf('/ai/health') > -1 || u.indexOf('/ai/usage') > -1 || u.indexOf('/finance/overview') > -1 || u.indexOf('/api/admin/users') > -1) return Promise.resolve(failing);
     if (u.indexOf('/ai/keys') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([{ provider: 'openai', isSet: true, updatedAt: null }, { provider: 'anthropic', isSet: false, updatedAt: null }, { provider: 'kimi', isSet: false, updatedAt: null }, { provider: 'deepseek', isSet: false, updatedAt: null }]) });
     if (u.indexOf('/ai/pricing') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (u.indexOf('/voice-providers/') > -1) return Promise.resolve(failing);
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
   };
   const { app } = await load({ count: 0 }, fetchImpl);

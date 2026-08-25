@@ -135,6 +135,17 @@ table.admin-table tbody tr:hover { background:rgba(255,255,255,.025); }
 .badge.status-idle { color:#ffc94a; background:rgba(255,201,74,.08); border:1px solid #6c521d; }
 .badge.status-disconnected { color:#ff7581; background:rgba(255,117,129,.12); border:1px solid #7d2633; }
 .badge.status-unconfigured, .badge.status-unknown { color:var(--muted); background:rgba(255,255,255,.05); border:1px solid var(--line); }
+/* Voice Providers (ElevenLabs admin) - credential validation + per-language health badges reuse
+   the same green/amber/red/gray language as the rows above. */
+.badge.status-valid, .badge.status-ready { color:#4fcf7a; background:rgba(79,207,122,.12); border:1px solid #2e6b45; }
+.badge.status-invalid, .badge.status-invalid_credential { color:#ff7581; background:rgba(255,117,129,.12); border:1px solid #7d2633; }
+.badge.status-restricted { color:#ffc94a; background:rgba(255,201,74,.12); border:1px solid #6c521d; }
+.badge.status-disabled { color:var(--muted); background:rgba(255,255,255,.05); border:1px solid var(--line); }
+
+.admin-btn-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.field-check { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); margin:8px 0; }
+.field-check input { width:16px; height:16px; }
+.admin-voice-test-audio { display:block; margin-top:10px; max-width:100%; }
 
 .admin-pagination { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:13px; color:var(--muted); }
 
