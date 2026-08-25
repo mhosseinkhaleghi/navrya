@@ -46,7 +46,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     vpCredentialsTitle: 'Credential profiles', vpAddCredential: 'Add credential profile', vpLabelPlaceholder: 'Profile name (e.g. Primary ElevenLabs Account)', vpKeyPlaceholder: 'Paste the ElevenLabs API key', vpReplaceKeyHint: 'Leave blank to keep the current key', vpSaveCredential: 'Save profile', vpNoCredentials: 'No credential profiles yet.',
     vpKeyHint: 'Key ends in {hint}', vpValidate: 'Validate', vpValidating: 'Validating…', vpDelete: 'Delete', vpDeleteConfirm: 'Delete this credential profile? Any language using it will fall back until a new one is selected.', vpDeleted: 'Credential deleted.',
     vpEnabled: 'Enabled', vpDisabled: 'Disabled', vpValidationUnknown: 'Not validated yet', vpValidationValid: 'Valid', vpValidationInvalid: 'Invalid', vpValidationRestricted: 'Restricted (scope/IP)', vpLastValidated: 'Last validated {date}', vpNeverValidated: 'Never validated', vpValidationErrorCode: 'Reason: {code}', vpValidateInconclusive: 'Could not reach ElevenLabs right now ({code}) - this does not mean the key is invalid. Try validating again.',
-    vpLanguagesTitle: 'Language routing', vpLanguageEnable: 'Use ElevenLabs for this language', vpCredentialSelect: 'Credential profile', vpNoCredentialSelected: 'No credential selected',
+    vpCharactersTitle: 'Character voice routing', vpCharacterEnable: 'Use ElevenLabs for this character', vpCredentialSelect: 'Credential profile', vpNoCredentialSelected: 'No credential selected',
+    vpCharacterHunter: 'Hunter', vpCharacterCommander: 'Commander', vpCharacterEngineer: 'Engineer', vpCharacterSage: 'Sage', vpGenderMale: 'Male', vpGenderFemale: 'Female', vpTestLanguage: 'Test language',
     vpVoiceSearch: 'Search voices…', vpVoiceId: 'Voice ID', vpLoadVoices: 'Load voices', vpModelSelect: 'Model', vpLoadModels: 'Load models', vpFallback: 'OpenAI fallback', vpSaveLanguage: 'Save', vpSaved: 'Saved.',
     vpTestSample: 'Generate test sample', vpTestGenerating: 'Generating…', vpTestCreditsWarning: 'This generates real audio and consumes ElevenLabs credits.', vpTestTextPlaceholder: 'Short sample text',
     vpHealthTitle: 'Health & usage', vpStatusReady: 'Ready', vpStatusDisabled: 'Disabled', vpStatusUnconfigured: 'Not configured', vpStatusInvalidCredential: 'Invalid credential', vpStatusDegraded: 'Degraded',
@@ -106,7 +107,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     vpCredentialsTitle: 'پروفایل‌های کلید', vpAddCredential: 'افزودن پروفایل کلید', vpLabelPlaceholder: 'نام پروفایل (مثلاً حساب اصلی ElevenLabs)', vpKeyPlaceholder: 'کلید API ElevenLabs را وارد کن', vpReplaceKeyHint: 'برای نگه‌داشتن کلید فعلی، خالی بگذار', vpSaveCredential: 'ذخیرهٔ پروفایل', vpNoCredentials: 'هنوز پروفایل کلیدی ثبت نشده است.',
     vpKeyHint: 'کلید با {hint} تمام می‌شود', vpValidate: 'اعتبارسنجی', vpValidating: 'در حال اعتبارسنجی…', vpDelete: 'حذف', vpDeleteConfirm: 'این پروفایل کلید حذف شود؟ هر زبانی که از آن استفاده می‌کند، تا انتخاب یک پروفایل جدید به حالت پیش‌فرض برمی‌گردد.', vpDeleted: 'کلید حذف شد.',
     vpEnabled: 'فعال', vpDisabled: 'غیرفعال', vpValidationUnknown: 'هنوز اعتبارسنجی نشده', vpValidationValid: 'معتبر', vpValidationInvalid: 'نامعتبر', vpValidationRestricted: 'محدودشده (دسترسی/IP)', vpLastValidated: 'آخرین اعتبارسنجی {date}', vpNeverValidated: 'هرگز اعتبارسنجی نشده', vpValidationErrorCode: 'دلیل: {code}', vpValidateInconclusive: 'در حال حاضر امکان اتصال به ElevenLabs نبود ({code}) - این به معنای نامعتبر بودن کلید نیست. دوباره اعتبارسنجی کن.',
-    vpLanguagesTitle: 'مسیردهی زبان‌ها', vpLanguageEnable: 'استفاده از ElevenLabs برای این زبان', vpCredentialSelect: 'پروفایل کلید', vpNoCredentialSelected: 'کلیدی انتخاب نشده',
+    vpCharactersTitle: 'مسیردهی صدای شخصیت‌ها', vpCharacterEnable: 'استفاده از ElevenLabs برای این شخصیت', vpCredentialSelect: 'پروفایل کلید', vpNoCredentialSelected: 'کلیدی انتخاب نشده',
+    vpCharacterHunter: 'شکارچی', vpCharacterCommander: 'فرمانده', vpCharacterEngineer: 'مهندس', vpCharacterSage: 'حکیم', vpGenderMale: 'مرد', vpGenderFemale: 'زن', vpTestLanguage: 'زبان آزمایش',
     vpVoiceSearch: 'جست‌وجوی صداها…', vpVoiceId: 'شناسهٔ صدا', vpLoadVoices: 'بارگذاری صداها', vpModelSelect: 'مدل', vpLoadModels: 'بارگذاری مدل‌ها', vpFallback: 'پشتیبان OpenAI', vpSaveLanguage: 'ذخیره', vpSaved: 'ذخیره شد.',
     vpTestSample: 'ساخت نمونهٔ آزمایشی', vpTestGenerating: 'در حال ساخت…', vpTestCreditsWarning: 'این کار صدای واقعی می‌سازد و از اعتبار ElevenLabs کم می‌کند.', vpTestTextPlaceholder: 'متن کوتاه نمونه',
     vpHealthTitle: 'سلامت و مصرف', vpStatusReady: 'آماده', vpStatusDisabled: 'غیرفعال', vpStatusUnconfigured: 'تنظیم نشده', vpStatusInvalidCredential: 'کلید نامعتبر', vpStatusDegraded: 'افت کیفیت',
@@ -166,7 +168,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     vpCredentialsTitle: 'ملفات المفاتيح', vpAddCredential: 'إضافة ملف مفتاح', vpLabelPlaceholder: 'اسم الملف (مثال: حساب ElevenLabs الرئيسي)', vpKeyPlaceholder: 'أدخل مفتاح API الخاص بـ ElevenLabs', vpReplaceKeyHint: 'اتركه فارغًا للاحتفاظ بالمفتاح الحالي', vpSaveCredential: 'حفظ الملف', vpNoCredentials: 'لا توجد ملفات مفاتيح بعد.',
     vpKeyHint: 'المفتاح ينتهي بـ {hint}', vpValidate: 'تحقّق', vpValidating: 'جارٍ التحقّق…', vpDelete: 'حذف', vpDeleteConfirm: 'هل تريد حذف ملف المفتاح هذا؟ أي لغة تستخدمه ستعود إلى الوضع الافتراضي حتى يتم اختيار ملف جديد.', vpDeleted: 'تم حذف المفتاح.',
     vpEnabled: 'مفعّل', vpDisabled: 'معطّل', vpValidationUnknown: 'لم يتم التحقّق بعد', vpValidationValid: 'صالح', vpValidationInvalid: 'غير صالح', vpValidationRestricted: 'مقيّد (صلاحيات/IP)', vpLastValidated: 'آخر تحقّق {date}', vpNeverValidated: 'لم يتم التحقّق مطلقًا', vpValidationErrorCode: 'السبب: {code}', vpValidateInconclusive: 'تعذّر الوصول إلى ElevenLabs الآن ({code}) - هذا لا يعني أن المفتاح غير صالح. حاول التحقّق مرة أخرى.',
-    vpLanguagesTitle: 'توجيه اللغات', vpLanguageEnable: 'استخدام ElevenLabs لهذه اللغة', vpCredentialSelect: 'ملف المفتاح', vpNoCredentialSelected: 'لم يتم اختيار مفتاح',
+    vpCharactersTitle: 'توجيه صوت الشخصيات', vpCharacterEnable: 'استخدام ElevenLabs لهذه الشخصية', vpCredentialSelect: 'ملف المفتاح', vpNoCredentialSelected: 'لم يتم اختيار مفتاح',
+    vpCharacterHunter: 'الصياد', vpCharacterCommander: 'القائد', vpCharacterEngineer: 'المهندس', vpCharacterSage: 'الحكيم', vpGenderMale: 'رجل', vpGenderFemale: 'امرأة', vpTestLanguage: 'لغة الاختبار',
     vpVoiceSearch: 'البحث عن الأصوات…', vpVoiceId: 'معرّف الصوت', vpLoadVoices: 'تحميل الأصوات', vpModelSelect: 'النموذج', vpLoadModels: 'تحميل النماذج', vpFallback: 'الاحتياطي من OpenAI', vpSaveLanguage: 'حفظ', vpSaved: 'تم الحفظ.',
     vpTestSample: 'إنشاء عيّنة اختبار', vpTestGenerating: 'جارٍ الإنشاء…', vpTestCreditsWarning: 'هذا سينشئ صوتًا حقيقيًا ويستهلك من رصيد ElevenLabs.', vpTestTextPlaceholder: 'نص عيّنة قصير',
     vpHealthTitle: 'الحالة والاستخدام', vpStatusReady: 'جاهز', vpStatusDisabled: 'معطّل', vpStatusUnconfigured: 'غير مُهيّأ', vpStatusInvalidCredential: 'مفتاح غير صالح', vpStatusDegraded: 'أداء متدهور',
@@ -226,7 +229,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     vpCredentialsTitle: 'Perfiles de credenciales', vpAddCredential: 'Añadir perfil de credencial', vpLabelPlaceholder: 'Nombre del perfil (p. ej., Cuenta principal de ElevenLabs)', vpKeyPlaceholder: 'Introduce la clave API de ElevenLabs', vpReplaceKeyHint: 'Déjalo vacío para conservar la clave actual', vpSaveCredential: 'Guardar perfil', vpNoCredentials: 'Aún no hay perfiles de credenciales.',
     vpKeyHint: 'La clave termina en {hint}', vpValidate: 'Validar', vpValidating: 'Validando…', vpDelete: 'Eliminar', vpDeleteConfirm: '¿Eliminar este perfil de credencial? Cualquier idioma que lo use volverá al estado predeterminado hasta que se seleccione un nuevo perfil.', vpDeleted: 'Clave eliminada.',
     vpEnabled: 'Habilitado', vpDisabled: 'Deshabilitado', vpValidationUnknown: 'Aún no validado', vpValidationValid: 'Válido', vpValidationInvalid: 'No válido', vpValidationRestricted: 'Restringido (permisos/IP)', vpLastValidated: 'Última validación {date}', vpNeverValidated: 'Nunca validado', vpValidationErrorCode: 'Motivo: {code}', vpValidateInconclusive: 'No se pudo contactar con ElevenLabs ahora mismo ({code}) - esto no significa que la clave sea inválida. Vuelve a validar.',
-    vpLanguagesTitle: 'Enrutamiento de idiomas', vpLanguageEnable: 'Usar ElevenLabs para este idioma', vpCredentialSelect: 'Perfil de credencial', vpNoCredentialSelected: 'Ninguna credencial seleccionada',
+    vpCharactersTitle: 'Enrutamiento de voz por personaje', vpCharacterEnable: 'Usar ElevenLabs para este personaje', vpCredentialSelect: 'Perfil de credencial', vpNoCredentialSelected: 'Ninguna credencial seleccionada',
+    vpCharacterHunter: 'Cazador', vpCharacterCommander: 'Comandante', vpCharacterEngineer: 'Ingeniero', vpCharacterSage: 'Sabio', vpGenderMale: 'Masculino', vpGenderFemale: 'Femenino', vpTestLanguage: 'Idioma de prueba',
     vpVoiceSearch: 'Buscar voces…', vpVoiceId: 'ID de voz', vpLoadVoices: 'Cargar voces', vpModelSelect: 'Modelo', vpLoadModels: 'Cargar modelos', vpFallback: 'Alternativa de OpenAI', vpSaveLanguage: 'Guardar', vpSaved: 'Guardado.',
     vpTestSample: 'Generar muestra de prueba', vpTestGenerating: 'Generando…', vpTestCreditsWarning: 'Esto generará audio real y consumirá créditos de ElevenLabs.', vpTestTextPlaceholder: 'Texto corto de muestra',
     vpHealthTitle: 'Estado y uso', vpStatusReady: 'Listo', vpStatusDisabled: 'Deshabilitado', vpStatusUnconfigured: 'Sin configurar', vpStatusInvalidCredential: 'Credencial no válida', vpStatusDegraded: 'Degradado',
@@ -534,9 +538,9 @@ function aiTab() {
     // sections above: an operator managing LLM keys must not be blocked by a voice-provider
     // migration not having run yet on this environment.
     api('/voice-providers/credentials').catch(() => []),
-    api('/voice-providers/languages').catch(() => []),
-    api('/voice-providers/health').catch(() => ({ languages: [] }))
-  ]).then(([keys, pricing, usage, health, finance, topUsers, vpCredentials, vpLanguages, vpHealth]) => {
+    api('/voice-providers/characters').catch(() => []),
+    api('/voice-providers/health').catch(() => ({ characters: [] }))
+  ]).then(([keys, pricing, usage, health, finance, topUsers, vpCredentials, vpCharacters, vpHealth]) => {
     const wrap = el('div');
     wrap.append(statRow([statCard('key-round', keys.filter((k) => k.isSet).length + ' / ' + KNOWN_PROVIDERS.length, t('statProvidersConfigured'))]));
     const grid = el('div', 'admin-grid');
@@ -615,7 +619,7 @@ function aiTab() {
     });
     wrap.append(grid);
 
-    wrap.append(voiceProvidersSection({ credentials: vpCredentials, languages: vpLanguages, health: vpHealth }));
+    wrap.append(voiceProvidersSection({ credentials: vpCredentials, characters: vpCharacters, health: vpHealth }));
 
     const chartCard = el('div', 'admin-card');
     chartCard.append(el('h3', '', t('aiTrendTitle')));
@@ -714,9 +718,9 @@ function aiTab() {
 // re-displays a stored key - only a masked last-4-characters hint (keyHint) ever comes back.
 function voiceProvidersSection(data) {
   const credentials = data.credentials || [];
-  const languages = data.languages || [];
-  const healthByLanguage = {};
-  (data.health.languages || []).forEach((row) => { healthByLanguage[row.languageCode] = row; });
+  const characters = data.characters || [];
+  const healthByKey = {};
+  (data.health.characters || []).forEach((row) => { healthByKey[row.character + ':' + row.gender] = row; });
 
   const section = el('div');
   section.append(el('h3', '', t('voiceProvidersTitle')));
@@ -747,12 +751,30 @@ function voiceProvidersSection(data) {
   credCard.append(labelField.wrap, keyField.wrap, el('p', 'hint', t('vpReplaceKeyHint')), saveCredBtn);
   section.append(credCard);
 
-  const langCard = el('div', 'admin-card');
-  langCard.append(el('h3', '', t('vpLanguagesTitle')));
-  const langGrid = el('div', 'admin-grid');
-  languages.forEach((config) => langGrid.append(voiceLanguageCard(config, credentials, healthByLanguage[config.languageCode])));
-  langCard.append(langGrid);
-  section.append(langCard);
+  const charCard = el('div', 'admin-card');
+  charCard.append(el('h3', '', t('vpCharactersTitle')));
+  const charGrid = el('div', 'admin-grid');
+  characters.forEach((config) => charGrid.append(voiceCharacterCard(config, credentials, healthByKey[config.character + ':' + config.gender])));
+  charCard.append(charGrid);
+  section.append(charCard);
+
+  // Real usage is recorded per language (voice_tts_usage_events - which language was actually
+  // spoken), not per character+gender, so this is shown once, combined across every character,
+  // rather than duplicated identically on all 8 cards above.
+  const usage = data.health.overallUsage24h;
+  if (usage) {
+    const usageCard = el('div', 'admin-card');
+    usageCard.append(el('h3', '', t('vpHealthTitle')));
+    usageCard.append(el('p', 'hint',
+      t('vpRequests24h') + ': ' + fmtNumber(usage.requestCount)
+      + (usage.requestCount > 0
+        ? ' · ' + t('vpSuccessRate') + ': ' + (usage.successRatePercent == null ? '—' : usage.successRatePercent + '%')
+          + ' · ' + t('vpAvgLatency') + ': ' + fmtNumber(usage.avgLatencyMs) + ' ms'
+        : ' (' + t('vpNoUsageYet') + ')')));
+    if (usage.lastSuccessAt) usageCard.append(el('p', 'hint', t('vpLastSuccess') + ': ' + fmtDate(usage.lastSuccessAt)));
+    if (usage.lastErrorCode) usageCard.append(el('p', 'hint', t('vpLastError') + ': ' + usage.lastErrorCode));
+    section.append(usageCard);
+  }
 
   return section;
 }
@@ -824,10 +846,13 @@ function voiceCredentialCard(cred) {
   return card;
 }
 
-function voiceLanguageCard(config, credentials, healthRow) {
+const VP_CHARACTER_NAME_KEY = { hunter: 'vpCharacterHunter', commander: 'vpCharacterCommander', engineer: 'vpCharacterEngineer', sage: 'vpCharacterSage' };
+const VP_GENDER_KEY = { male: 'vpGenderMale', female: 'vpGenderFemale' };
+
+function voiceCharacterCard(config, credentials, healthRow) {
   const card = el('div', 'admin-card');
   const head = el('div', 'admin-ai-card-head');
-  head.append(el('h3', '', languageNames[config.languageCode] || config.languageCode));
+  head.append(el('h3', '', t(VP_CHARACTER_NAME_KEY[config.character] || config.character) + ' · ' + t(VP_GENDER_KEY[config.gender] || config.gender)));
   const status = (healthRow && healthRow.status) || (config.enabled ? 'unconfigured' : 'disabled');
   const statusKey = 'vpStatus' + status.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
   head.append(el('span', 'badge status-' + status, t(statusKey)));
@@ -836,7 +861,7 @@ function voiceLanguageCard(config, credentials, healthRow) {
   const enableLabel = el('label', 'field-check');
   const enableCheckbox = document.createElement('input');
   enableCheckbox.type = 'checkbox'; enableCheckbox.checked = Boolean(config.enabled);
-  enableLabel.append(enableCheckbox, document.createTextNode(t('vpLanguageEnable')));
+  enableLabel.append(enableCheckbox, document.createTextNode(t('vpCharacterEnable')));
   card.append(enableLabel);
 
   const credentialSelect = selectField(t('vpCredentialSelect'),
@@ -846,7 +871,7 @@ function voiceLanguageCard(config, credentials, healthRow) {
 
   const voiceIdField = field(t('vpVoiceId'), 'text', config.voiceId || '');
   const voiceDatalist = document.createElement('datalist');
-  const voiceDatalistId = 'vp-voices-' + config.languageCode;
+  const voiceDatalistId = 'vp-voices-' + config.character + '-' + config.gender;
   voiceDatalist.id = voiceDatalistId;
   voiceIdField.input.setAttribute('list', voiceDatalistId);
   voiceIdField.input.placeholder = t('vpVoiceSearch');
@@ -902,7 +927,7 @@ function voiceLanguageCard(config, credentials, healthRow) {
   saveBtn.type = 'button';
   saveBtn.onclick = () => {
     saveBtn.disabled = true;
-    api('/voice-providers/languages/' + config.languageCode, { method: 'PUT', body: JSON.stringify({
+    api('/voice-providers/characters/' + config.character + '/' + config.gender, { method: 'PUT', body: JSON.stringify({
       enabled: enableCheckbox.checked,
       credentialId: credentialSelect.select.value || null,
       voiceId: voiceIdField.input.value.trim() || null,
@@ -916,10 +941,13 @@ function voiceLanguageCard(config, credentials, healthRow) {
 
   // Short paid test sample - a fresh explicit click every time, never triggered just by loading
   // this card or by saving the config above (mission: never spend credits without an explicit
-  // admin action, and always show the credits warning right next to the trigger).
+  // admin action, and always show the credits warning right next to the trigger). A character's
+  // voice is no longer tied to one language (a single multilingual-capable voice/model pair is
+  // expected to serve every language), so the admin picks which language to test pronunciation in.
+  const testLanguageSelect = selectField(t('vpTestLanguage'), Object.keys(languageNames).map((code) => ({ value: code, text: languageNames[code] })), activeLanguage in languageNames ? activeLanguage : 'en');
   const testTextField = field(t('vpTestTextPlaceholder'), 'text', '');
-  if (config.languageCode === 'fa' || config.languageCode === 'ar') testTextField.input.dir = 'rtl';
-  card.append(el('p', 'hint', t('vpTestCreditsWarning')), testTextField.wrap);
+  testTextField.input.dir = (activeLanguage === 'fa' || activeLanguage === 'ar') ? 'rtl' : 'ltr';
+  card.append(testLanguageSelect.wrap, el('p', 'hint', t('vpTestCreditsWarning')), testTextField.wrap);
   const testBtn = el('button', 'btn btn-secondary btn-sm', t('vpTestSample'));
   testBtn.type = 'button';
   const testAudio = document.createElement('audio');
@@ -931,7 +959,7 @@ function voiceLanguageCard(config, credentials, healthRow) {
     const modelId = modelSelect.select.value;
     if (!text || !credentialId || !voiceId || !modelId) { showToast(t('vpValidateFirst'), 'danger'); return; }
     testBtn.disabled = true; testBtn.textContent = t('vpTestGenerating');
-    api('/voice-providers/test-sample', { method: 'POST', body: JSON.stringify({ languageCode: config.languageCode, credentialId, voiceId, modelId, text }) })
+    api('/voice-providers/test-sample', { method: 'POST', body: JSON.stringify({ languageCode: testLanguageSelect.select.value, credentialId, voiceId, modelId, text }) })
       .then((body) => {
         testAudio.src = 'data:' + body.mimeType + ';base64,' + body.audioBase64;
         testAudio.hidden = false;
@@ -942,17 +970,7 @@ function voiceLanguageCard(config, credentials, healthRow) {
   };
   card.append(testBtn, testAudio);
 
-  if (healthRow) {
-    const requestCount = healthRow.last24h.requestCount;
-    card.append(el('p', 'hint',
-      t('vpRequests24h') + ': ' + fmtNumber(requestCount)
-      + (requestCount > 0
-        ? ' · ' + t('vpSuccessRate') + ': ' + (healthRow.last24h.successRatePercent == null ? '—' : healthRow.last24h.successRatePercent + '%')
-          + ' · ' + t('vpAvgLatency') + ': ' + fmtNumber(Math.round(healthRow.last24h.avgLatencyMs)) + ' ms'
-        : ' (' + t('vpNoUsageYet') + ')')));
-    if (healthRow.last24h.lastSuccessAt) card.append(el('p', 'hint', t('vpLastSuccess') + ': ' + fmtDate(healthRow.last24h.lastSuccessAt)));
-    if (healthRow.last24h.lastErrorCode) card.append(el('p', 'hint', t('vpLastError') + ': ' + healthRow.last24h.lastErrorCode));
-  }
+  if (healthRow && healthRow.credentialLabel) card.append(el('p', 'hint', healthRow.credentialLabel + ' · ' + t('vpValidation' + (healthRow.credentialValidationStatus || 'unknown').charAt(0).toUpperCase() + (healthRow.credentialValidationStatus || 'unknown').slice(1))));
 
   return card;
 }

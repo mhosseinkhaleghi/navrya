@@ -338,8 +338,8 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
     if (u.indexOf('/finance/overview') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ mockRevenue: { total: 0, mock: true }, aiCostByProvider: [], remainingBudgetByProvider: [] }) });
     if (u.indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(topUsersResponse) });
     if (u.indexOf('/voice-providers/credentials') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-    if (u.indexOf('/voice-providers/languages') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-    if (u.indexOf('/voice-providers/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ languages: [] }) });
+    if (u.indexOf('/voice-providers/characters') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (u.indexOf('/voice-providers/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ characters: [], overallUsage24h: null }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
   };
   const { app } = await load({ count: 0 }, fetchImpl);
@@ -355,6 +355,65 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
   assert.match(texts, /4,200|4200/, 'the top-users table must render the real token total');
   const testButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test now');
   assert.equal(testButtons.length, 4, 'every one of the four providers must have its own Test now action');
+});
+
+// ElevenLabs voice-provider follow-up (character/gender redesign): the two tests above only ever
+// exercise the EMPTY-data path for Voice Providers (voiceCharacterCard() is never actually called
+// with a real config), which would miss a real bug in the rewritten card-building code (a typo in
+// a field name, a reference to a var that no longer exists, etc.) - this renders one real
+// credential and all 8 (character, gender) entries with real data.
+test('the Voice Providers section renders real credential and per-character/gender cards without error, with the combined 24h usage summary shown once', async () => {
+  const credentialsResponse = [{ id: 'cred-1', label: 'Primary ElevenLabs Account', keyHint: '…ab12', enabled: true, validationStatus: 'valid', validationError: null, validatedAt: '2026-08-20T10:00:00Z' }];
+  const CHARACTER_IDS = ['hunter', 'commander', 'engineer', 'sage'];
+  const GENDER_IDS = ['male', 'female'];
+  const charactersResponse = [];
+  const healthCharacters = [];
+  CHARACTER_IDS.forEach((character) => {
+    GENDER_IDS.forEach((gender) => {
+      const enabled = character === 'hunter' && gender === 'male';
+      charactersResponse.push({
+        character, gender, provider: 'elevenlabs', credentialId: enabled ? 'cred-1' : null,
+        voiceId: enabled ? 'voice-hunter-male' : null, modelId: enabled ? 'eleven_v3' : null, enabled,
+        voiceSettings: {}, fallbackProvider: 'openai', fallbackVoice: null, updatedBy: null, createdAt: null, updatedAt: null
+      });
+      healthCharacters.push({
+        character, gender, status: enabled ? 'ready' : 'disabled', enabled,
+        credentialLabel: enabled ? 'Primary ElevenLabs Account' : null, credentialValidationStatus: enabled ? 'valid' : null,
+        voiceId: enabled ? 'voice-hunter-male' : null, modelId: enabled ? 'eleven_v3' : null,
+        fallbackProvider: 'openai', fallbackVoice: null, dataSource: 'local', lastRefreshedAt: '2026-08-20T10:00:00Z'
+      });
+    });
+  });
+  const healthResponse = {
+    characters: healthCharacters,
+    overallUsage24h: { requestCount: 12, successRatePercent: 92, avgLatencyMs: 340, lastSuccessAt: '2026-08-20T09:55:00Z', lastErrorCode: 'RATE_LIMITED' }
+  };
+  const fetchImpl = (url) => {
+    const u = String(url);
+    if (u.indexOf('/ai/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ providers: [], recent: [] }) });
+    if (u.indexOf('/ai/usage') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ byProviderAndDay: [], byUser: {}, days: 14 }) });
+    if (u.indexOf('/ai/keys') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (u.indexOf('/ai/pricing') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    if (u.indexOf('/finance/overview') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ mockRevenue: { total: 0, mock: true }, aiCostByProvider: [], remainingBudgetByProvider: [] }) });
+    if (u.indexOf('/api/admin/users') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ users: [] }) });
+    if (u.indexOf('/voice-providers/credentials') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(credentialsResponse) });
+    if (u.indexOf('/voice-providers/characters') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(charactersResponse) });
+    if (u.indexOf('/voice-providers/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(healthResponse) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
+  };
+  const { app } = await load({ count: 0 }, fetchImpl);
+  const node = await app.aiTab();
+  const texts = findAll(node, () => true).map((n) => n.textContent).join(' | ');
+  assert.match(texts, /Primary ElevenLabs Account/, 'the real credential label must render');
+  assert.match(texts, /Hunter/, 'a character display name must render');
+  assert.match(texts, /Commander/, 'every one of the 4 characters must render, not just the enabled one');
+  assert.match(texts, /Male/, 'a gender label must render');
+  assert.match(texts, /Female/, 'both gender cards per character must render');
+  // Overall usage (requestCount:12) must appear exactly once - never duplicated per character card.
+  const usageOccurrences = (texts.match(/12/g) || []).length;
+  assert.ok(usageOccurrences >= 1 && usageOccurrences <= 2, 'the combined 24h usage summary must render once, not once per character/gender card');
+  const characterCards = findAll(node, (n) => n.tagName === 'h3' && /Hunter|Commander|Engineer|Sage/.test(n.textContent));
+  assert.equal(characterCards.length, 8, 'all 4 characters x 2 genders = 8 cards must render');
 });
 
 test('the AI tab still renders key/pricing management when the newer usage/health/finance/topUsers sections fail (e.g. a migration not yet applied)', async () => {
