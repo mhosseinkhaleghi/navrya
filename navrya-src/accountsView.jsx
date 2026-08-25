@@ -438,10 +438,10 @@ function AccountCard({ lang, account, metrics, ruleResult, onOpen }) {
   }
 
   return (
-    <Panel variant={archived ? 'quiet' : meta && (worst === 'danger' || worst === 'violated') ? 'raised' : 'base'} ornament padding={0}
+    <Panel variant={archived ? 'quiet' : meta && (worst === 'danger' || worst === 'violated') ? 'raised' : 'base'} ornament texture textureOpacity={0.04} padding={0}
       style={{ borderColor: meta && !archived ? meta.frame : undefined, background: archived ? 'rgba(28,10,10,.35)' : undefined }}>
       <header style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 16px 12px' }}>
-        <span style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.6)', font: 'var(--type-display-md)', letterSpacing: '.06em', color: 'var(--gold-warm)' }}>{mark}</span>
+        <span style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.6)', font: 'var(--type-display-md)', letterSpacing: '.06em', color: 'var(--char-accent)' }}>{mark}</span>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ font: 'var(--type-username)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.firm || tr(lang, 'unassigned')}</span>
           <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{account.program || tr(lang, account.kind === 'personal' ? 'manKindPersonal' : 'manKindProp')}</span>
@@ -571,7 +571,9 @@ function PortfolioView({ lang, accounts, allTrades, onOpenAccount, onCreateManua
       </Panel>
 
       {attention.length > 0 && (
-        <Panel variant="base" style={{ borderColor: 'rgba(255,176,32,.45)', background: 'rgba(255,176,32,.06)' }} padding="14px 16px">
+        <Panel variant="base" style={{ position: 'relative', borderColor: 'rgba(255,176,32,.45)', background: 'rgba(255,176,32,.06)', overflow: 'hidden' }} padding="14px 16px">
+          <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, width: 14, height: 14, margin: 4, borderLeft: '1px solid var(--warning)', borderTop: '1px solid var(--warning)' }} />
+          <span aria-hidden="true" style={{ position: 'absolute', right: 0, bottom: 0, width: 14, height: 14, margin: 4, borderRight: '1px solid var(--warning)', borderBottom: '1px solid var(--warning)' }} />
           <div style={{ display: 'flex', gap: 14 }}>
             <span style={{ color: 'var(--warning)', paddingTop: 2 }}><Icon name="honour" size={20} /></span>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -579,13 +581,23 @@ function PortfolioView({ lang, accounts, allTrades, onOpenAccount, onCreateManua
                 {digits(lang, attention.length)} {tr(lang, attention.length === 1 ? 'attentionHeadingOne' : 'attentionHeading')}
               </span>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {attention.map((c) => (
-                  <button key={c.account.id} type="button" onClick={() => onOpenAccount(c.account.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)' }}>
-                    <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--danger)' }}>{c.account.firm}</span>
-                    <Icon name="chevron-right" size={15} />
-                  </button>
-                ))}
+                {attention.map((c) => {
+                  const worst = worstState(c.ruleResult.groups);
+                  let evidence = null;
+                  c.ruleResult.groups.some((g) => {
+                    const row = g.items.find((i) => i.state === worst && i.note);
+                    if (row) { evidence = row.note; return true; }
+                    return false;
+                  });
+                  return (
+                    <button key={c.account.id} type="button" onClick={() => onOpenAccount(c.account.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', textAlign: 'start' }}>
+                      <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--danger)' }}>{c.account.firm}</span>
+                      {evidence && <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{evidence}</span>}
+                      <Icon name="chevron-right" size={15} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -613,11 +625,11 @@ function PortfolioView({ lang, accounts, allTrades, onOpenAccount, onCreateManua
             return (
               <section key={kind} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ color: 'var(--gold-warm)', display: 'flex' }}><Icon name={icon} size={16} /></span>
+                  <span style={{ color: 'var(--char-accent)', display: 'flex' }}><Icon name={icon} size={16} /></span>
                   <span style={{ font: 'var(--type-section-label)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{title}</span>
                   <span style={{ flex: 1, height: 1, background: 'var(--border-hairline)' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 14 }}>
                   {items.map((c) => (
                     <AccountCard key={c.account.id} lang={lang} account={c.account} metrics={c.metrics} ruleResult={c.ruleResult} onOpen={() => onOpenAccount(c.account.id)} />
                   ))}
@@ -633,28 +645,51 @@ function PortfolioView({ lang, accounts, allTrades, onOpenAccount, onCreateManua
         <Panel variant="base" padding={0} style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '2.4fr 1fr 1fr 1fr 1fr 1.1fr 1.1fr 1fr', minWidth: 960 }}>
-              {[tr(lang, 'ledgerAccount'), tr(lang, 'ledgerStatus'), tr(lang, 'ledgerEquity'), tr(lang, 'ledgerToday'), tr(lang, 'ledgerTotal'), tr(lang, 'ledgerTarget'), tr(lang, 'ledgerRisk'), tr(lang, 'ledgerHealth')].map((h) => (
-                <span key={h} style={{ padding: '10px 14px', font: 'var(--type-section-label)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.5)' }}>{h}</span>
+              {[tr(lang, 'ledgerAccount'), tr(lang, 'ledgerStatus'), tr(lang, 'ledgerEquity'), tr(lang, 'ledgerToday'), tr(lang, 'ledgerTotal'), tr(lang, 'ledgerTarget'), tr(lang, 'ledgerRisk'), tr(lang, 'ledgerHealth')].map((h, i) => (
+                <span key={h} style={{ padding: '10px 14px', font: 'var(--type-section-label)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.5)', textAlign: i >= 2 ? 'end' : 'start' }}>{h}</span>
               ))}
               {filtered.map((c) => {
                 const worst = worstState(c.ruleResult.groups);
                 const meta = worst ? STATE_META[worst] : STATE_META.safe;
-                const target = c.account.kind === 'prop' ? c.metrics.profitProgressPercent : null;
-                const riskPct = (c.account.kind === 'prop' ? c.account.rules.dailyLossLimitPercent : c.account.rules.dailyLossCap) !== null
-                  ? Math.min(100, (c.metrics.dailyLossUsed / ((c.account.kind === 'prop' ? c.metrics.dayStartEquity * (c.account.rules.dailyLossLimitPercent / 100) : c.account.rules.dailyLossCap) || 1)) * 100) : null;
+                const archived = c.account.status === 'archived';
+                const health = !c.metrics.hasAnyTrades ? { key: 'healthAwaiting', color: 'var(--info)' }
+                  : archived ? { key: 'healthArchived', color: 'var(--text-muted)' }
+                  : worst === 'violated' || worst === 'danger' ? { key: 'healthDanger', color: 'var(--danger)' }
+                  : worst === 'watch' ? { key: 'healthWatch', color: 'var(--warning)' }
+                  : { key: 'healthOk', color: 'var(--success)' };
+                const mark = String(c.account.firm || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'NA';
+                const targetPct = c.account.kind === 'prop' ? c.metrics.profitProgressPercent : null;
+                const riskAllowance = (c.account.kind === 'prop' ? c.account.rules.dailyLossLimitPercent : c.account.rules.dailyLossCap) !== null
+                  ? (c.account.kind === 'prop' ? c.metrics.dayStartEquity * (c.account.rules.dailyLossLimitPercent / 100) : c.account.rules.dailyLossCap) : null;
+                const riskPct = riskAllowance !== null ? Math.max(0, Math.min(100, (c.metrics.dailyLossUsed / (riskAllowance || 1)) * 100)) : null;
                 return (
-                  <React.Fragment key={c.account.id}>
-                    <button type="button" onClick={() => onOpenAccount(c.account.id)} style={{ gridColumn: '1 / -1', display: 'contents', border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'start', color: 'inherit', font: 'inherit' }}>
-                      <span style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', color: 'var(--text-primary)' }}>{c.account.firm}</span>
-                      <span style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', color: meta.color, textTransform: 'uppercase', font: 'var(--type-caption)' }}>{tr(lang, meta.key)}</span>
-                      <span className="navrya-tabular" style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', textAlign: 'end' }}>{money(lang, c.account.currency, c.metrics.equity)}</span>
-                      <span className="navrya-tabular" style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', textAlign: 'end' }}>{c.metrics.hasTradesToday ? money(lang, c.account.currency, c.metrics.todayPL) : tr(lang, 'none')}</span>
-                      <span className="navrya-tabular" style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', textAlign: 'end' }}>{c.metrics.hasClosedTrades ? money(lang, c.account.currency, c.metrics.totalPL) : tr(lang, 'none')}</span>
-                      <span className="navrya-tabular" style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', textAlign: 'end' }}>{target === null ? tr(lang, 'none') : pctText(lang, target, 0)}</span>
-                      <span className="navrya-tabular" style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', textAlign: 'end' }}>{riskPct === null ? tr(lang, 'none') : pctText(lang, riskPct, 0)}</span>
-                      <span style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-hairline)', color: meta.color, textTransform: 'uppercase', font: 'var(--type-caption)', textAlign: 'end' }}>{tr(lang, meta.key)}</span>
-                    </button>
-                  </React.Fragment>
+                  <button key={c.account.id} type="button" onClick={() => onOpenAccount(c.account.id)}
+                    style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '2.4fr 1fr 1fr 1fr 1fr 1.1fr 1.1fr 1fr', alignItems: 'center', padding: '13px 16px', cursor: 'pointer', textAlign: 'start', border: 'none', borderTop: '1px solid var(--border-hairline)', background: 'transparent', color: 'inherit', font: 'inherit' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <span style={{ width: 30, height: 30, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 6, border: '1px solid var(--divider-gold)', font: 'var(--type-caption)', letterSpacing: '.06em', color: meta ? meta.color : 'var(--char-accent)', borderColor: meta ? meta.frame : 'var(--divider-gold)' }}>{mark}</span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                        <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.account.firm}</span>
+                        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{c.account.program || tr(lang, c.account.kind === 'personal' ? 'manKindPersonal' : 'manKindProp')}</span>
+                      </span>
+                    </span>
+                    <span style={{ font: 'var(--type-caption)', letterSpacing: '.08em', textTransform: 'uppercase', color: archived ? 'var(--text-muted)' : meta ? meta.color : 'var(--text-muted)' }}>{archived ? tr(lang, 'archivedChip') : meta ? tr(lang, meta.key) : tr(lang, 'manualChip')}</span>
+                    <span className="navrya-tabular" style={{ textAlign: 'end' }}>{money(lang, c.account.currency, c.metrics.equity)}</span>
+                    <span className="navrya-tabular" style={{ textAlign: 'end', color: c.metrics.hasTradesToday ? (c.metrics.todayPL >= 0 ? 'var(--success)' : 'var(--danger)') : 'var(--text-dim)' }}>{c.metrics.hasTradesToday ? money(lang, c.account.currency, c.metrics.todayPL) : tr(lang, 'none')}</span>
+                    <span className="navrya-tabular" style={{ textAlign: 'end', color: c.metrics.hasClosedTrades ? (c.metrics.totalPL >= 0 ? 'var(--success)' : 'var(--danger)') : 'var(--text-dim)' }}>{c.metrics.hasClosedTrades ? money(lang, c.account.currency, c.metrics.totalPL) : tr(lang, 'none')}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, paddingInlineStart: 16 }}>
+                      <span style={{ position: 'relative', flex: 1, height: 6, borderRadius: 3, background: 'rgba(244,234,215,.06)', overflow: 'hidden' }}>
+                        {targetPct !== null && <span style={{ position: 'absolute', insetInlineStart: 0, top: 0, bottom: 0, width: Math.max(0, Math.min(100, targetPct)) + '%', background: 'var(--char-accent)' }} />}
+                      </span>
+                      <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', minWidth: 34, textAlign: 'end' }}>{targetPct === null ? tr(lang, 'none') : pctText(lang, targetPct, 0)}</span>
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, paddingInlineStart: 16 }}>
+                      <span style={{ position: 'relative', flex: 1, height: 6, borderRadius: 3, background: 'rgba(244,234,215,.06)', overflow: 'hidden' }}>
+                        {riskPct !== null && <span style={{ position: 'absolute', insetInlineStart: 0, top: 0, bottom: 0, width: riskPct + '%', background: engine.limitState(riskPct) === 'safe' ? 'var(--char-accent)' : engine.limitState(riskPct) === 'watch' ? 'var(--warning)' : 'var(--danger)' }} />}
+                      </span>
+                      <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', minWidth: 34, textAlign: 'end' }}>{riskPct === null ? tr(lang, 'none') : pctText(lang, riskPct, 0)}</span>
+                    </span>
+                    <span style={{ font: 'var(--type-caption)', letterSpacing: '.08em', textTransform: 'uppercase', textAlign: 'end', color: health.color }}>{tr(lang, health.key)}</span>
+                  </button>
                 );
               })}
             </div>
@@ -1235,7 +1270,7 @@ function AccountDetail({ lang, account, allTrades, tab, setTab, onBack, onEdit }
         <button type="button" onClick={onBack} aria-label={tr(lang, 'back')} style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}>
           <Icon name="arrow-left" size={18} />
         </button>
-        <span style={{ width: 52, height: 52, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)', font: 'var(--type-display-lg)', letterSpacing: '.06em', color: 'var(--gold-warm)' }}>{mark}</span>
+        <span style={{ width: 52, height: 52, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)', font: 'var(--type-display-lg)', letterSpacing: '.06em', color: 'var(--char-accent)' }}>{mark}</span>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <h1 style={{ margin: 0, font: 'var(--type-display-lg)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase', color: 'var(--parchment)' }}>{account.firm}</h1>
