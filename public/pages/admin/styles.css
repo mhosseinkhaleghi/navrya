@@ -81,6 +81,7 @@ input, select, textarea { font:inherit; color:inherit; }
 .field { display:grid; gap:6px; font-size:12px; color:var(--muted); }
 .field input, .field select { height:38px; padding:0 12px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.03); color:var(--text); }
 .field input:focus, .field select:focus { outline:0; border-color:var(--violet); }
+.admin-voice-test-audio { margin-inline-start:10px; vertical-align:middle; }
 
 /* ---------- Stat cards (Gentelella "tile" pattern) - always real computed data ---------- */
 .admin-stat-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:18px; }

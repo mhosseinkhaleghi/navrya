@@ -42,6 +42,7 @@ const translations = {
     subscriptionsLabel: 'Subscriptions', noSubscriptions: 'No subscriptions.', mockBadge: 'mock', purchasedOnLabel: 'Purchased {date}',
     aiHealthLabel: 'Health', statusHealthy: 'Healthy', statusDegraded: 'Degraded', statusIdle: 'Idle', statusDisconnected: 'Disconnected', statusUnconfigured: 'Not configured', statusUnknown: 'Not tested yet',
     aiTestNow: 'Test now', aiTestingNow: 'Testing…', aiTestOk: 'Connection OK.', aiLastChecked: 'Last checked {date}', aiLastErrorLabel: 'Last error: {error}',
+    aiVoiceTestTitle: 'Persian Voice Test (ElevenLabs)', aiVoiceTestHint: 'Isolated test only - does not affect the live Realtime Voice pipeline. Disabled unless ELEVENLABS_FA_ENABLED=true is set on the server.', aiVoiceTestPlaceholder: 'Persian text to speak', aiVoiceTestBtn: 'Speak', aiVoiceTestingNow: 'Generating…', aiVoiceTestTextRequired: 'Enter some Persian text first.',
     aiTodayTokensLabel: 'Today', aiMonthTokensLabel: 'This month', aiEstCostLabel: 'Est. cost',
     aiTrendTitle: 'Daily usage (last 14 days)', aiTrendEmpty: 'No usage in this window yet.',
     aiRecentEventsTitle: 'Recent AI events', aiRecentEventsEmpty: 'No AI calls recorded yet.',
@@ -92,6 +93,7 @@ const translations = {
     subscriptionsLabel: 'اشتراک‌ها', noSubscriptions: 'اشتراکی وجود ندارد.', mockBadge: 'آزمایشی', purchasedOnLabel: 'خریداری‌شده در {date}',
     aiHealthLabel: 'سلامت', statusHealthy: 'سالم', statusDegraded: 'ناپایدار', statusIdle: 'بی‌فعالیت', statusDisconnected: 'قطع شده', statusUnconfigured: 'پیکربندی نشده', statusUnknown: 'هنوز تست نشده',
     aiTestNow: 'تست همین حالا', aiTestingNow: 'در حال تست…', aiTestOk: 'اتصال برقرار است.', aiLastChecked: 'آخرین بررسی {date}', aiLastErrorLabel: 'آخرین خطا: {error}',
+    aiVoiceTestTitle: 'آزمایش صدای فارسی (ElevenLabs)', aiVoiceTestHint: 'فقط یک آزمایش مجزاست و روی مسیر صدای زندهٔ Realtime تأثیری ندارد. تا وقتی ELEVENLABS_FA_ENABLED=true روی سرور تنظیم نشده باشد، غیرفعال است.', aiVoiceTestPlaceholder: 'متن فارسی برای تبدیل به گفتار', aiVoiceTestBtn: 'پخش صدا', aiVoiceTestingNow: 'در حال تولید…', aiVoiceTestTextRequired: 'ابتدا متنی فارسی وارد کنید.',
     aiTodayTokensLabel: 'امروز', aiMonthTokensLabel: 'این ماه', aiEstCostLabel: 'هزینهٔ تخمینی',
     aiTrendTitle: 'مصرف روزانه (۱۴ روز اخیر)', aiTrendEmpty: 'در این بازه مصرفی ثبت نشده است.',
     aiRecentEventsTitle: 'رویدادهای اخیر هوش مصنوعی', aiRecentEventsEmpty: 'هنوز هیچ فراخوانی هوش مصنوعی ثبت نشده است.',
@@ -142,6 +144,7 @@ const translations = {
     subscriptionsLabel: 'الاشتراكات', noSubscriptions: 'لا توجد اشتراكات.', mockBadge: 'تجريبي', purchasedOnLabel: 'تم الشراء في {date}',
     aiHealthLabel: 'الحالة', statusHealthy: 'سليم', statusDegraded: 'غير مستقر', statusIdle: 'خامل', statusDisconnected: 'منقطع', statusUnconfigured: 'غير مهيّأ', statusUnknown: 'لم يُختبر بعد',
     aiTestNow: 'اختبار الآن', aiTestingNow: 'جارٍ الاختبار…', aiTestOk: 'الاتصال يعمل.', aiLastChecked: 'آخر فحص {date}', aiLastErrorLabel: 'آخر خطأ: {error}',
+    aiVoiceTestTitle: 'اختبار الصوت الفارسي (ElevenLabs)', aiVoiceTestHint: 'اختبار معزول فقط - لا يؤثر على مسار الصوت اللحظي الحي. معطّل ما لم يتم ضبط ELEVENLABS_FA_ENABLED=true على الخادم.', aiVoiceTestPlaceholder: 'نص فارسي للنطق', aiVoiceTestBtn: 'نطق', aiVoiceTestingNow: 'جارٍ التوليد…', aiVoiceTestTextRequired: 'أدخل نصًا فارسيًا أولاً.',
     aiTodayTokensLabel: 'اليوم', aiMonthTokensLabel: 'هذا الشهر', aiEstCostLabel: 'التكلفة التقديرية',
     aiTrendTitle: 'الاستخدام اليومي (آخر 14 يومًا)', aiTrendEmpty: 'لا يوجد استخدام في هذه الفترة بعد.',
     aiRecentEventsTitle: 'أحداث الذكاء الاصطناعي الأخيرة', aiRecentEventsEmpty: 'لا توجد استدعاءات مسجّلة بعد.',
@@ -192,6 +195,7 @@ const translations = {
     subscriptionsLabel: 'Suscripciones', noSubscriptions: 'Sin suscripciones.', mockBadge: 'simulado', purchasedOnLabel: 'Comprado el {date}',
     aiHealthLabel: 'Estado', statusHealthy: 'Saludable', statusDegraded: 'Inestable', statusIdle: 'Inactivo', statusDisconnected: 'Desconectado', statusUnconfigured: 'No configurado', statusUnknown: 'Aún no probado',
     aiTestNow: 'Probar ahora', aiTestingNow: 'Probando…', aiTestOk: 'Conexión correcta.', aiLastChecked: 'Última verificación {date}', aiLastErrorLabel: 'Último error: {error}',
+    aiVoiceTestTitle: 'Prueba de voz en persa (ElevenLabs)', aiVoiceTestHint: 'Prueba aislada únicamente - no afecta la canalización de voz en tiempo real activa. Deshabilitada a menos que ELEVENLABS_FA_ENABLED=true esté configurado en el servidor.', aiVoiceTestPlaceholder: 'Texto en persa para hablar', aiVoiceTestBtn: 'Hablar', aiVoiceTestingNow: 'Generando…', aiVoiceTestTextRequired: 'Introduce primero un texto en persa.',
     aiTodayTokensLabel: 'Hoy', aiMonthTokensLabel: 'Este mes', aiEstCostLabel: 'Costo estimado',
     aiTrendTitle: 'Uso diario (últimos 14 días)', aiTrendEmpty: 'Aún no hay uso en este período.',
     aiRecentEventsTitle: 'Eventos recientes de IA', aiRecentEventsEmpty: 'Aún no hay llamadas registradas.',
@@ -568,6 +572,39 @@ function aiTab() {
       grid.append(card);
     });
     wrap.append(grid);
+
+    // Isolated Persian voice-output test (ElevenLabs) - not one of KNOWN_PROVIDERS, does not
+    // read/write ai/keys or ai/pricing, and never touches the live Realtime Voice pipeline.
+    // The server-side endpoint always 404s unless ELEVENLABS_FA_ENABLED=true is set - this card
+    // just surfaces the one, plainly reversible trigger for it.
+    const voiceCard = el('div', 'admin-card');
+    voiceCard.append(el('h3', '', t('aiVoiceTestTitle')));
+    voiceCard.append(el('p', 'hint', t('aiVoiceTestHint')));
+    const voiceField = field(t('aiVoiceTestPlaceholder'), 'text', 'سلام، این یک آزمایش صدای فارسی است.');
+    voiceField.input.dir = 'rtl';
+    voiceCard.append(voiceField.wrap);
+    const voiceBtn = el('button', 'btn btn-primary btn-sm', t('aiVoiceTestBtn'));
+    voiceBtn.type = 'button';
+    const voiceAudio = document.createElement('audio');
+    voiceAudio.controls = true;
+    voiceAudio.className = 'admin-voice-test-audio';
+    voiceAudio.hidden = true;
+    voiceBtn.onclick = () => {
+      const text = voiceField.input.value.trim();
+      if (!text) { showToast(t('aiVoiceTestTextRequired'), 'danger'); return; }
+      voiceBtn.disabled = true; voiceBtn.textContent = t('aiVoiceTestingNow');
+      fetch('/api/ai/voice/test-tts-fa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+        .then((response) => response.json().catch(() => ({})).then((body) => { if (!response.ok || !body.ok) throw new Error(body.error || 'FAILED'); return body; }))
+        .then((body) => {
+          voiceAudio.src = 'data:' + body.mimeType + ';base64,' + body.audioBase64;
+          voiceAudio.hidden = false;
+          if (typeof voiceAudio.play === 'function') voiceAudio.play().catch(() => {});
+        })
+        .catch((error) => showToast(error.message, 'danger'))
+        .finally(() => { voiceBtn.disabled = false; voiceBtn.textContent = t('aiVoiceTestBtn'); });
+    };
+    voiceCard.append(voiceBtn, voiceAudio);
+    wrap.append(voiceCard);
 
     const chartCard = el('div', 'admin-card');
     chartCard.append(el('h3', '', t('aiTrendTitle')));

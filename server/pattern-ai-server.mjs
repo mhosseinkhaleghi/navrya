@@ -1467,6 +1467,86 @@ async function extractTradeFields(body) {
   };
 }
 
+// Isolated, flag-gated Persian voice-output test (see .env.example). Deliberately NOT part of
+// the multi-provider chat gateway above - ElevenLabs is not in providerEnvKey/providerDefaultModel
+// and this never touches callProvider/dockChat/adminKeys/Realtime Voice. Fully reversible: with
+// ELEVENLABS_FA_ENABLED unset or anything other than 'true', the endpoint always 404s below,
+// with no other route or existing voice path affected.
+const ELEVENLABS_TEST_TEXT_MAX = 500;
+
+function pcm16ToWav(pcm, sampleRate, channels) {
+  const bitDepth = 16;
+  const blockAlign = channels * (bitDepth / 8);
+  const byteRate = sampleRate * blockAlign;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8, 'ascii');
+  header.write('fmt ', 12, 'ascii');
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitDepth, 34);
+  header.write('data', 36, 'ascii');
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+async function testElevenLabsFaTts(body) {
+  if (String(process.env.ELEVENLABS_FA_ENABLED || '').toLowerCase() !== 'true') {
+    throw new Error('ELEVENLABS_FA_TEST_DISABLED');
+  }
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) throw new Error('ELEVENLABS_API_KEY_MISSING');
+  const voiceId = process.env.ELEVENLABS_VOICE_ID_FA;
+  if (!voiceId) throw new Error('ELEVENLABS_VOICE_ID_FA_MISSING');
+  const modelId = process.env.ELEVENLABS_MODEL_ID_FA || 'eleven_v3_conversational';
+  const languageCode = process.env.ELEVENLABS_LANGUAGE_CODE_FA || 'fa';
+  const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT || 'pcm_24000';
+
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (!text) throw new Error('TEXT_REQUIRED');
+  if (text.length > ELEVENLABS_TEST_TEXT_MAX) throw new Error('TEXT_TOO_LONG');
+
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${encodeURIComponent(outputFormat)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
+        body: JSON.stringify({ text, model_id: modelId, language_code: languageCode }),
+        signal: AbortSignal.timeout(30000)
+      }
+    );
+  } catch (error) {
+    throw new Error('ELEVENLABS_REQUEST_FAILED' + (error && error.name === 'TimeoutError' ? '_TIMEOUT' : ''));
+  }
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error('ELEVENLABS_' + response.status + (errText ? ': ' + errText.slice(0, 200) : ''));
+  }
+  const pcm = Buffer.from(await response.arrayBuffer());
+  const sampleRateMatch = /(\d+)$/.exec(outputFormat);
+  const sampleRate = sampleRateMatch ? Number(sampleRateMatch[1]) : 24000;
+  const wav = pcm16ToWav(pcm, sampleRate, 1);
+  return {
+    ok: true,
+    audioBase64: wav.toString('base64'),
+    mimeType: 'audio/wav',
+    sampleRate,
+    voiceId,
+    modelId,
+    languageCode,
+    textLength: text.length,
+    latencyMs: Date.now() - startedAt
+  };
+}
+
 // Fail closed at startup, not at the first request - this gateway's entire identity story
 // depends on reaching the Community API's /internal/session-introspect with a real shared
 // secret; running in production without one would silently make every AI endpoint unreachable
@@ -1563,11 +1643,15 @@ const server = http.createServer(async (request, response) => {
     if (request.url === '/api/ai/chat') return json(response, 200, await dockChat(body));
     if (request.url === '/api/ai/test-connection') return json(response, 200, await testConnection(body));
     if (request.url === '/api/ai/realtime/session') return json(response, 200, await mintRealtimeClientSecret(body, session.userId));
+    if (request.url === '/api/ai/voice/test-tts-fa') return json(response, 200, await testElevenLabsFaTts(body));
     return json(response, 404, { error: 'NOT_FOUND' });
   } catch (error) {
     const status = error.message === 'REQUEST_TOO_LARGE' ? 413
       : error.message === 'INVALID_JSON' ? 400
       : /_API_KEY_MISSING$/.test(error.message || '') ? 503
+      : error.message === 'ELEVENLABS_VOICE_ID_FA_MISSING' ? 503
+      : error.message === 'ELEVENLABS_FA_TEST_DISABLED' ? 404
+      : error.message === 'TEXT_REQUIRED' || error.message === 'TEXT_TOO_LONG' ? 400
       : 500;
     return json(response, status, { error: error.message || 'PATTERN_AI_FAILED' });
   }
@@ -1592,4 +1676,4 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default server;
-export { callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText, historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody };
+export { callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText, historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, testElevenLabsFaTts, pcm16ToWav };
