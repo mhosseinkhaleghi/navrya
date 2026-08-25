@@ -1982,12 +1982,17 @@ export function createPgRepo(pool) {
     };
   }
   const authSessions = {
-    async create({ userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, ipHash, userAgent }) {
+    // reauthAt is explicit (never a column default - see migration 020, which leaves reauth_at
+    // with no DEFAULT at all) so a genuine login/step-up moment (session-service.mjs's createSession,
+    // reauth:true) actually persists reauth_at=now(), and an explicitly non-reauth session
+    // (reauth:false) persists NULL - both previously silently lost, since the old caller only
+    // mutated the already-returned row.
+    async create({ userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, reauthAt, ipHash, userAgent }) {
       const id = newId('asess');
       const { rows } = await pool.query(
-        `INSERT INTO auth_sessions (id, user_id, session_hash, family_id, idle_expires_at, absolute_expires_at, ip_hash, user_agent)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [id, userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, ipHash || null, userAgent || null]
+        `INSERT INTO auth_sessions (id, user_id, session_hash, family_id, idle_expires_at, absolute_expires_at, reauth_at, ip_hash, user_agent)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [id, userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, reauthAt || null, ipHash || null, userAgent || null]
       );
       return mapAuthSession(rows[0]);
     },

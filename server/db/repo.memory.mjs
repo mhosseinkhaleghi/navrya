@@ -1310,11 +1310,15 @@ export function createMemoryRepo() {
   // by the raw value itself (see server/community/security/session-service.mjs) - this domain
   // never sees a raw session id at all, only its hash, exactly like real Postgres storage would.
   const authSessions = {
-    async create({ userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, ipHash, userAgent }) {
+    // reauthAt: undefined (no other caller in this codebase passes it) keeps the previous default
+    // (now()); session-service.mjs's createSession() always passes it explicitly now (now() for a
+    // real reauth moment, null otherwise) - see that module's own comment on the bug this fixes.
+    async create({ userId, sessionHash, familyId, idleExpiresAt, absoluteExpiresAt, reauthAt, ipHash, userAgent }) {
       requireUser(userId);
       const record = {
         id: newId('asess'), userId, sessionHash, familyId, createdAt: now(), lastSeenAt: now(),
-        idleExpiresAt, absoluteExpiresAt, revokedAt: null, revokedReason: null, reauthAt: now(),
+        idleExpiresAt, absoluteExpiresAt, revokedAt: null, revokedReason: null,
+        reauthAt: reauthAt !== undefined ? reauthAt : now(),
         ipHash: ipHash || null, userAgent: userAgent || null
       };
       state.authSessions.set(record.id, record);

@@ -30,16 +30,26 @@ export async function createSession(repo, { userId, req, familyId, reauth = true
   const rawId = randomToken(32);
   const idleExpiresAt = new Date(Date.now() + IDLE_MS).toISOString();
   const absoluteExpiresAt = new Date(Date.now() + ABSOLUTE_MS).toISOString();
+  // ElevenLabs voice-provider follow-up: found via real contract testing of the new
+  // requireRecentReauth()-gated credential routes - this used to mutate the record repo.authSessions
+  // .create() already RETURNED (a clone in repo.memory.mjs, a freshly-mapped row in repo.pg.mjs),
+  // which never touched what was actually persisted. repo.memory.mjs's own create() happened to
+  // default reauthAt to now() regardless, masking the bug there; repo.pg.mjs's INSERT never included
+  // reauth_at at all (the column has no DB default - see migration 020), so on real Postgres every
+  // session's reauth_at was silently NULL from creation, and every requireRecentReauth()-gated route
+  // (AI key save, user role/KYC edit, and now every ElevenLabs credential write) would have
+  // permanently 401'd for a real admin who never happened to also change their password. Passing
+  // reauthAt explicitly into create() below is what actually persists it, on both backends.
   const record = await repo.authSessions.create({
     userId,
     sessionHash: sha256Hex(rawId),
     familyId: familyId || randomToken(12),
     idleExpiresAt,
     absoluteExpiresAt,
+    reauthAt: reauth ? new Date().toISOString() : null,
     ipHash: hashIp(clientIp(req), sessionSigningSecret()),
     userAgent: req ? String(req.headers['user-agent'] || '').slice(0, 256) : null
   });
-  if (!reauth) record.reauthAt = null;
   return { rawId, record };
 }
 
