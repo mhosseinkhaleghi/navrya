@@ -4,6 +4,8 @@ import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
+import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
+import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
 // React rewrite of the "Strategies" screen per the design handoff: a single index (Patterns /
@@ -30,6 +32,7 @@ const copy = {
     summaryPatterns: 'الگوی ثبت‌شده', summaryDetections: 'کل تشخیص‌ها', summaryAvgRealization: 'میانگین تحقق',
     tabPatterns: 'ثبت الگوها', tabStrategies: 'استراتژی‌ها',
     fromEvent: 'ساخت از یک رویداد', newPattern: 'الگوی جدید', newStrategy: 'استراتژی جدید',
+    newPatternInstrumentsHint: 'دست‌کم یک ابزار معاملاتی را که این الگو برای آن معتبر است انتخاب یا اضافه کنید.', createPatternCta: 'ایجاد الگو', instrumentsLabel: 'ابزارها',
     searchPlaceholder: 'جستجو در نام یا توضیحات…', sortRecent: 'اخیر', sortRealization: 'بیشترین تحقق', sortUsage: 'بیشترین استفاده',
     resultLine: '{n} مورد · مرتب‌سازی: {sort}', statusLive: 'فعال', statusDraft: 'پیش‌نویس', marketplaceBadge: 'بازارچه',
     statStages: 'مراحل', statDetections: 'تشخیص', statLinkedTrades: 'معاملهٔ لینک‌شده', trendLabel: 'روند تحقق · ۱۲ هفته',
@@ -111,6 +114,7 @@ const copy = {
     summaryPatterns: 'نمط مسجّل', summaryDetections: 'إجمالي الاكتشافات', summaryAvgRealization: 'متوسط التحقق',
     tabPatterns: 'سجل الأنماط', tabStrategies: 'الاستراتيجيات',
     fromEvent: 'إنشاء من حدث', newPattern: 'نمط جديد', newStrategy: 'استراتيجية جديدة',
+    newPatternInstrumentsHint: 'اختر أو أضف أداة واحدة على الأقل ينطبق عليها هذا النمط.', createPatternCta: 'إنشاء النمط', instrumentsLabel: 'الأدوات',
     searchPlaceholder: 'ابحث بالاسم أو الوصف…', sortRecent: 'الأحدث', sortRealization: 'الأعلى تحققاً', sortUsage: 'الأكثر استخداماً',
     resultLine: '{n} عنصر · الترتيب: {sort}', statusLive: 'نشط', statusDraft: 'مسودة', marketplaceBadge: 'السوق',
     statStages: 'المراحل', statDetections: 'الاكتشافات', statLinkedTrades: 'صفقة مرتبطة', trendLabel: 'اتجاه التحقق · ١٢ أسبوع',
@@ -192,6 +196,7 @@ const copy = {
     summaryPatterns: 'Registered patterns', summaryDetections: 'Total detections', summaryAvgRealization: 'Avg. realization',
     tabPatterns: 'Pattern registry', tabStrategies: 'Strategies',
     fromEvent: 'Build from an event', newPattern: 'New pattern', newStrategy: 'New strategy',
+    newPatternInstrumentsHint: 'Select or add at least one instrument this pattern applies to.', createPatternCta: 'Create pattern', instrumentsLabel: 'Instruments',
     searchPlaceholder: 'Search by name or description…', sortRecent: 'Recent', sortRealization: 'Highest realization', sortUsage: 'Most used',
     resultLine: '{n} items · Sorted by: {sort}', statusLive: 'Live', statusDraft: 'Draft', marketplaceBadge: 'Marketplace',
     statStages: 'Stages', statDetections: 'Detections', statLinkedTrades: 'Linked trades', trendLabel: 'Realization trend · 12 weeks',
@@ -273,6 +278,7 @@ const copy = {
     summaryPatterns: 'Patrones registrados', summaryDetections: 'Detecciones totales', summaryAvgRealization: 'Realización media',
     tabPatterns: 'Registro de patrones', tabStrategies: 'Estrategias',
     fromEvent: 'Crear desde un evento', newPattern: 'Nuevo patrón', newStrategy: 'Nueva estrategia',
+    newPatternInstrumentsHint: 'Selecciona o añade al menos un instrumento al que se aplica este patrón.', createPatternCta: 'Crear patrón', instrumentsLabel: 'Instrumentos',
     searchPlaceholder: 'Buscar por nombre o descripción…', sortRecent: 'Reciente', sortRealization: 'Mayor realización', sortUsage: 'Más usados',
     resultLine: '{n} elementos · Orden: {sort}', statusLive: 'Activo', statusDraft: 'Borrador', marketplaceBadge: 'Mercado',
     statStages: 'Etapas', statDetections: 'Detecciones', statLinkedTrades: 'Operación vinculada', trendLabel: 'Tendencia de realización · 12 semanas',
@@ -668,6 +674,13 @@ function ItemCard({ item, kind, lang, onOpen, onReport, onShare, onDelete }) {
               {listed && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 20, padding: '0 7px', borderRadius: 5, fontSize: 10, color: 'var(--gold-warm)', border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.1)' }}>{tr(lang, 'marketplaceBadge')}</span>}
             </span>
             <span dir="auto" style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{desc}</span>
+            {isPatternKind(kind) && (item.instruments || []).length > 0 && (
+              <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {item.instruments.map((code) => (
+                  <span key={code} style={{ display: 'inline-flex', alignItems: 'center', height: 18, padding: '0 7px', borderRadius: 5, fontSize: 9.5, letterSpacing: '.04em', color: 'var(--char-accent)', border: '1px solid color-mix(in srgb, var(--char-accent) 45%, transparent)', background: 'var(--char-active-surface)' }}>{code}</span>
+                ))}
+              </span>
+            )}
           </div>
           <span style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 9px', borderRadius: 6, fontSize: 10.5, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.5)', color: 'var(--text-muted)' }}>
             {/* Was a fixed var(--success) green regardless of character - on every non-hunter
@@ -1022,6 +1035,12 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
           // value elsewhere), never silently clamped to the nearest boundary.
           var n = Number(value);
           if (Number.isFinite(n) && n >= 0 && n <= 100) patch({ completionThreshold: Math.round(n) });
+        } else if (path === 'instruments' && allowlist.indexOf('instruments') > -1) {
+          // Strict resolution only - character-app.jsx's pattern.edit action resolves spoken
+          // instrument names against the user's real catalog before this ever runs (same "never
+          // a raw guess" contract as every other AI-filled field); an unresolved value arrives
+          // here as an empty array and is ignored rather than clearing what's already selected.
+          if (Array.isArray(value) && value.length) patch({ instruments: value });
         }
       }
     });
@@ -1058,6 +1077,10 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
             <input type="range" min="0" max="100" step="5" value={pattern.completionThreshold} onChange={(e) => patch({ completionThreshold: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--char-accent)', cursor: 'pointer' }} />
             <span style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'thresholdHelp')}</span>
           </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'instrumentsLabel')} *</span>
+            <InstrumentPicker multiple value={pattern.instruments || []} onChange={(v) => patch({ instruments: v })} width="100%" />
+          </label>
         </div>
       </Panel>
 
@@ -1627,7 +1650,10 @@ function PublishForm({ lang, kind, item, listing, onClose, onSaved }) {
 
   function buildContent(freeCount) {
     if (isPatternKind(kind)) {
-      return { previewContent: { freeCount, stages: item.stages.slice(0, freeCount).map((s) => s.text) }, fullContent: { stages: item.stages.map((s) => s.text), completionThreshold: item.completionThreshold } };
+      return {
+        previewContent: { freeCount, instruments: item.instruments || [], stages: item.stages.slice(0, freeCount).map((s) => s.text) },
+        fullContent: { instruments: item.instruments || [], stages: item.stages.map((s) => s.text), completionThreshold: item.completionThreshold }
+      };
     }
     return { previewContent: { freeCount, framework: (item.overallFramework.description || '').slice(0, 240) }, fullContent: { positionManagement: item.positionManagement, riskManagement: item.riskManagement, overallFramework: item.overallFramework } };
   }
@@ -1827,6 +1853,9 @@ function DetailView({ lang, kind, item, dtab, setDtab, onBack, onSave, onAiSteps
             <span style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--char-accent)' }}>{isP ? tr(lang, 'eyebrowPattern') : tr(lang, 'eyebrowStrategy')}</span>
             <h1 dir="auto" style={{ margin: 0, fontSize: 27, lineHeight: 1.3, fontWeight: 700, color: 'var(--parchment)' }}>{item.name || '—'}</h1>
             <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+              {isP && (item.instruments || []).map((code) => (
+                <span key={code} style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 9px', borderRadius: 6, fontSize: 11, color: 'var(--char-accent)', border: '1px solid color-mix(in srgb, var(--char-accent) 45%, transparent)', background: 'var(--char-active-surface)' }}>{code}</span>
+              ))}
               {chips.map((c) => <span key={c} style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 9px', borderRadius: 6, fontSize: 11, color: 'var(--text-muted)', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.5)' }}>{c}</span>)}
             </span>
           </div>
@@ -1885,6 +1914,11 @@ function StrategiesHub({ character }) {
   const [dtab, setDtab] = React.useState('details');
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState(tr(lang, 'sortRecent'));
+  // Instrument Catalog domain: a brand-new pattern must explicitly carry at least one instrument
+  // before it is persisted - PatternStore.create() now returns null without one, so the real
+  // "New pattern" button (IndexView's onNew, wired below) can no longer create-then-open
+  // immediately the way it used to. null = closed, an array (possibly empty) = this modal open.
+  const [newPatternInstruments, setNewPatternInstruments] = React.useState(null);
 
   const patterns = window.TradeJournalPatternStore ? window.TradeJournalPatternStore.listSync() : [];
   const strategies = window.TradeJournalStrategyEducationStore ? window.TradeJournalStrategyEducationStore.listSync() : [];
@@ -1909,8 +1943,14 @@ function StrategiesHub({ character }) {
   }
 
   function createNew() {
-    if (tab === 'patterns') { const p = window.TradeJournalPatternStore.create(); openItem('pattern', p.id, 'details'); }
-    else { const s = window.TradeJournalStrategyEducationStore.create(); openItem('strategy', s.id, 'details'); }
+    if (tab === 'patterns') { setNewPatternInstruments([]); return; }
+    const s = window.TradeJournalStrategyEducationStore.create(); openItem('strategy', s.id, 'details');
+  }
+  function confirmNewPattern() {
+    const p = window.TradeJournalPatternStore.create(newPatternInstruments);
+    if (!p) return;
+    setNewPatternInstruments(null);
+    openItem('pattern', p.id, 'details');
   }
   // Journey F (pattern.create): a dedicated function, not a reuse of createNew() above -
   // createNew() branches on the `tab` state variable, which a caller outside this component
@@ -1997,6 +2037,20 @@ function StrategiesHub({ character }) {
       <div style={container}>
         <IndexView lang={lang} tab={tab} setTab={setTab} query={query} setQuery={setQuery} sort={sort} setSort={setSort}
           patterns={patterns} strategies={strategies} onOpen={openItem} onDelete={removeItem} onNew={createNew} onFromEvent={fromEvent} />
+        {newPatternInstruments !== null && (
+          <Modal
+            title={tr(lang, 'newPattern')} onClose={() => setNewPatternInstruments(null)}
+            footer={(
+              <React.Fragment>
+                <Button variant="primary" disabled={!newPatternInstruments.length} onClick={confirmNewPattern}>{tr(lang, 'createPatternCta')}</Button>
+                <Button variant="ghost" onClick={() => setNewPatternInstruments(null)}>{tr(lang, 'cancel')}</Button>
+              </React.Fragment>
+            )}
+          >
+            <p style={{ margin: '0 0 12px', font: 'var(--type-body)', color: 'var(--text-muted)' }}>{tr(lang, 'newPatternInstrumentsHint')}</p>
+            <InstrumentPicker multiple value={newPatternInstruments} onChange={setNewPatternInstruments} width="100%" />
+          </Modal>
+        )}
       </div>
     );
   }
