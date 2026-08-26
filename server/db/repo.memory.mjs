@@ -3,6 +3,7 @@ import { ApiError } from '../community/errors.mjs';
 import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
+import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -21,12 +22,43 @@ export function createMemoryRepo() {
     instrumentCatalog: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
-    authSessions: new Map(), externalIdentities: new Map(), securityEvents: new Map(), authTransactions: new Map()
+    authSessions: new Map(), externalIdentities: new Map(), securityEvents: new Map(), authTransactions: new Map(),
+    commercialConfigOverrides: new Map(), commercialConfigVersions: new Map(), markupRules: new Map(),
+    providerModelPricing: new Map(), walletAccounts: new Map(), walletLedger: new Map(), walletReservations: new Map(),
+    quotaLocks: new Map(), analysisSymbols: new Map(),
+    subscriptions: new Map(), paymentTransactions: new Map(), paymentEvents: new Map(),
+    storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
   function requireUser(userId) { if (!state.users.has(userId)) throw new ApiError(400, 'USER_NOT_FOUND'); }
   function now() { return new Date().toISOString(); }
+  // Commercial System Slice 1 - see repo.pg.mjs's identical-purpose helper for the full
+  // reasoning (reads the admin override directly rather than through commercial-config.mjs, since
+  // that module takes a `repo` this factory function hasn't finished building yet).
+  function resolveSignupPromoRetailUsd() {
+    const override = state.commercialConfigOverrides.get('wallet:signupPromoRetailUsd');
+    const amount = override && override.value && Number(override.value.amount);
+    return Number.isFinite(amount) && amount >= 0 ? amount : WALLET_DEFAULTS.signupPromoRetailUsd;
+  }
+  function grantSignupPromoCredit(userId) {
+    const amountUsd = resolveSignupPromoRetailUsd();
+    const amountMicroUsd = Math.round(amountUsd * 1000000);
+    if (amountMicroUsd <= 0) return;
+    const idempotencyKey = 'signup-promo:' + userId;
+    if (Array.from(state.walletLedger.values()).some((entry) => entry.idempotencyKey === idempotencyKey)) return;
+    if (!state.walletAccounts.has(userId)) state.walletAccounts.set(userId, { userId, paidBalanceMicroUsd: 0, promoBalanceMicroUsd: 0, createdAt: now(), updatedAt: now() });
+    const account = state.walletAccounts.get(userId);
+    account.promoBalanceMicroUsd += amountMicroUsd;
+    account.updatedAt = now();
+    const entry = {
+      id: newId('walletLedger'), userId, type: 'PROMO_CREDIT', cashDeltaMicroUsd: 0, promoDeltaMicroUsd: amountMicroUsd,
+      providerCostMicroUsd: null, retailChargeMicroUsd: null, markupPercent: null, retailMultiplier: null,
+      provider: null, model: null, feature: null, sourceAction: 'signup', adminUserId: null,
+      idempotencyKey, metadata: { amountUsd }, createdAt: now()
+    };
+    state.walletLedger.set(entry.id, entry);
+  }
   // Instrument Catalog domain (025_instrument_catalog.sql) - see repo.pg.mjs's identical helper
   // for the full reasoning (plain code string, not a foreign id, checked at the application layer).
   function assertInstrumentInCatalog(userId, codes) {
@@ -46,9 +78,10 @@ export function createMemoryRepo() {
       const record = {
         id: newId('user'), displayName: trimmed, avatarUrl: avatarUrl || null, bio: bio || null, role: 'user', suspendedAt: null,
         email: email || null, emailVerified: false, emailVerifiedAt: null, phone: null, phoneVerified: false, profileRole: 'trader', kycStatus: 'not_started',
-        xpTotal: 0, avatarDataUrl: null, totpEnabledAt: null, createdAt: now()
+        xpTotal: 0, avatarDataUrl: null, totpEnabledAt: null, plan: 'free', createdAt: now()
       };
       state.users.set(record.id, record);
+      grantSignupPromoCredit(record.id);
       return clone(record);
     },
     // Auth-only lookups - mirror repo.pg.mjs's methods of the same name. passwordHash/googleId
@@ -1276,6 +1309,411 @@ export function createMemoryRepo() {
     }
   };
 
+  // ---------------------------------------------------------------------------------------------
+  // Commercial System Slice 1 - mirrors repo.pg.mjs's identical-named domains exactly (same
+  // method surface, same business rules), re-implemented over plain Maps.
+  // ---------------------------------------------------------------------------------------------
+  const commercialConfig = {
+    async list() { return Array.from(state.commercialConfigOverrides.values()).sort((a, b) => (a.configKey < b.configKey ? -1 : 1)).map(clone); },
+    async get(configKey) {
+      const row = state.commercialConfigOverrides.get(configKey);
+      return row ? clone(row) : null;
+    },
+    async publish(configKey, value, { updatedBy, changeSummary } = {}) {
+      const previous = state.commercialConfigOverrides.get(configKey);
+      const record = { configKey, value: value ?? null, updatedBy: updatedBy || null, updatedAt: now() };
+      state.commercialConfigOverrides.set(configKey, record);
+      const version = {
+        id: newId('commercialConfigVersion'), configKey, changedBy: updatedBy || null, changeSummary: changeSummary || null,
+        previousValue: previous ? previous.value : null, newValue: value ?? null, changedAt: now()
+      };
+      state.commercialConfigVersions.set(version.id, version);
+      return clone(record);
+    },
+    async listVersions({ configKey, limit } = {}) {
+      return Array.from(state.commercialConfigVersions.values())
+        .filter((v) => !configKey || v.configKey === configKey)
+        .sort((a, b) => (a.changedAt < b.changedAt ? 1 : -1)).slice(0, limit || 100).map(clone);
+    }
+  };
+
+  const markupRules = {
+    async list() { return Array.from(state.markupRules.values()).map(clone); },
+    async upsert({ scopeType, scopeKey, markupPercent, enabled }) {
+      const existing = Array.from(state.markupRules.values()).find((r) => r.scopeType === scopeType && r.scopeKey === scopeKey);
+      const record = {
+        id: existing ? existing.id : newId('markupRule'), scopeType, scopeKey, markupPercent: Number(markupPercent), enabled: enabled !== false,
+        createdAt: existing ? existing.createdAt : now(), updatedAt: now()
+      };
+      state.markupRules.set(record.id, record);
+      return clone(record);
+    },
+    async remove(id) { state.markupRules.delete(id); }
+  };
+
+  const providerModelPricing = {
+    async list() { return Array.from(state.providerModelPricing.values()).map(clone); },
+    async get(provider, model) {
+      const row = state.providerModelPricing.get(provider + ':' + model);
+      return row ? clone(row) : null;
+    },
+    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, currency, enabled }) {
+      const key = provider + ':' + model;
+      const record = {
+        provider, model, promptPricePer1k: promptPricePer1k ?? null, completionPricePer1k: completionPricePer1k ?? null,
+        currency: currency || 'USD', enabled: enabled !== false, effectiveFrom: null, effectiveUntil: null, updatedAt: now()
+      };
+      state.providerModelPricing.set(key, record);
+      return clone(record);
+    },
+    async remove(provider, model) { state.providerModelPricing.delete(provider + ':' + model); }
+  };
+
+  const wallet = {
+    async getAccount(userId) {
+      if (!state.walletAccounts.has(userId)) state.walletAccounts.set(userId, { userId, paidBalanceMicroUsd: 0, promoBalanceMicroUsd: 0, createdAt: now(), updatedAt: now() });
+      return clone(state.walletAccounts.get(userId));
+    },
+    async reserve(userId, { estimatedRetailMicroUsd, provider, model, feature }) {
+      await wallet.getAccount(userId);
+      const account = state.walletAccounts.get(userId);
+      const pending = Array.from(state.walletReservations.values())
+        .filter((r) => r.userId === userId && r.status === 'pending')
+        .reduce((sum, r) => sum + r.estimatedRetailMicroUsd, 0);
+      const availableMicroUsd = account.paidBalanceMicroUsd + account.promoBalanceMicroUsd - pending;
+      if (availableMicroUsd < estimatedRetailMicroUsd) return { ok: false, reason: 'WALLET_INSUFFICIENT_BALANCE', availableMicroUsd, estimatedRetailMicroUsd };
+      const reservation = {
+        id: newId('walletReservation'), userId, status: 'pending', estimatedRetailMicroUsd,
+        provider: provider || null, model: model || null, feature: feature || null, createdAt: now(), resolvedAt: null
+      };
+      state.walletReservations.set(reservation.id, reservation);
+      return { ok: true, reservation: clone(reservation) };
+    },
+    async settle(reservationId, { providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, provider, model, feature, idempotencyKey }) {
+      const reservation = state.walletReservations.get(reservationId);
+      if (!reservation) throw new ApiError(404, 'WALLET_RESERVATION_NOT_FOUND');
+      if (idempotencyKey) {
+        const existing = Array.from(state.walletLedger.values()).find((e) => e.idempotencyKey === idempotencyKey);
+        if (existing) return { ok: true, alreadySettled: true, ledgerEntry: clone(existing) };
+      }
+      if (reservation.status !== 'pending') return { ok: true, alreadySettled: true, ledgerEntry: null };
+      const account = state.walletAccounts.get(reservation.userId);
+      const promoSpend = Math.max(0, Math.min(account.promoBalanceMicroUsd, retailChargeMicroUsd));
+      const paidSpend = retailChargeMicroUsd - promoSpend;
+      account.promoBalanceMicroUsd -= promoSpend;
+      account.paidBalanceMicroUsd -= paidSpend;
+      account.updatedAt = now();
+      reservation.status = 'settled';
+      reservation.resolvedAt = now();
+      const entry = {
+        id: newId('walletLedger'), userId: reservation.userId, type: 'AI_SETTLEMENT',
+        cashDeltaMicroUsd: -paidSpend, promoDeltaMicroUsd: -promoSpend,
+        providerCostMicroUsd: providerCostMicroUsd ?? null, retailChargeMicroUsd: retailChargeMicroUsd ?? null,
+        markupPercent: markupPercent ?? null, retailMultiplier: retailMultiplier ?? null,
+        provider: provider || null, model: model || null, feature: feature || null, sourceAction: 'ai-settlement',
+        adminUserId: null, idempotencyKey: idempotencyKey || null, metadata: { reservationId }, createdAt: now()
+      };
+      state.walletLedger.set(entry.id, entry);
+      return { ok: true, ledgerEntry: clone(entry) };
+    },
+    async release(reservationId) {
+      const reservation = state.walletReservations.get(reservationId);
+      if (!reservation || reservation.status !== 'pending') return { ok: true, alreadyResolved: true };
+      reservation.status = 'released';
+      reservation.resolvedAt = now();
+      const entry = {
+        id: newId('walletLedger'), userId: reservation.userId, type: 'AI_RELEASE', cashDeltaMicroUsd: 0, promoDeltaMicroUsd: 0,
+        providerCostMicroUsd: null, retailChargeMicroUsd: null, markupPercent: null, retailMultiplier: null,
+        provider: reservation.provider, model: reservation.model, feature: reservation.feature, sourceAction: 'ai-release',
+        adminUserId: null, idempotencyKey: null, metadata: { reservationId }, createdAt: now()
+      };
+      state.walletLedger.set(entry.id, entry);
+      return { ok: true };
+    },
+    async grant(userId, { type, cashDeltaMicroUsd = 0, promoDeltaMicroUsd = 0, adminUserId, sourceAction, idempotencyKey, metadata }) {
+      if (idempotencyKey && Array.from(state.walletLedger.values()).some((e) => e.idempotencyKey === idempotencyKey)) return { ok: true, duplicate: true };
+      await wallet.getAccount(userId);
+      const account = state.walletAccounts.get(userId);
+      account.paidBalanceMicroUsd += cashDeltaMicroUsd;
+      account.promoBalanceMicroUsd += promoDeltaMicroUsd;
+      account.updatedAt = now();
+      const entry = {
+        id: newId('walletLedger'), userId, type, cashDeltaMicroUsd, promoDeltaMicroUsd,
+        providerCostMicroUsd: null, retailChargeMicroUsd: null, markupPercent: null, retailMultiplier: null,
+        provider: null, model: null, feature: null, sourceAction: sourceAction || null,
+        adminUserId: adminUserId || null, idempotencyKey: idempotencyKey || null, metadata: metadata || {}, createdAt: now()
+      };
+      state.walletLedger.set(entry.id, entry);
+      return { ok: true, ledgerEntry: clone(entry) };
+    },
+    async ledgerForUser(userId, { limit } = {}) {
+      return Array.from(state.walletLedger.values()).filter((e) => e.userId === userId)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 50).map(clone);
+    },
+    async recentLedger({ limit } = {}) {
+      return Array.from(state.walletLedger.values()).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 100).map(clone);
+    }
+  };
+
+  // Single-process async mutex keyed by (userId, resourceType) - the in-memory-repo equivalent of
+  // repo.pg.mjs's pg_advisory_xact_lock-based quota.withCreateLock. Correct for this repo's own
+  // use (tests, local dev without Postgres): every await point inside `fn` is still cooperative
+  // JS, so chaining onto the previous holder's promise serializes concurrent callers for the
+  // same key exactly like the pg version's lock does across connections.
+  const quota = {
+    async withCreateLock(userId, resourceType, fn) {
+      const key = userId + ':' + resourceType;
+      const previous = state.quotaLocks.get(key) || Promise.resolve();
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      state.quotaLocks.set(key, previous.then(() => gate));
+      await previous;
+      try {
+        return await fn();
+      } finally {
+        release();
+      }
+    }
+  };
+
+  const analysisSymbols = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id || !record.symbol) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.analysisSymbols.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
+      const stored = { id: record.id, userId, symbol: String(record.symbol).trim().toUpperCase(), createdAt: existing ? existing.createdAt : now() };
+      state.analysisSymbols.set(record.id, stored);
+      return clone(stored);
+    },
+    async listByUser(userId) {
+      return Array.from(state.analysisSymbols.values()).filter((s) => s.userId === userId).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.analysisSymbols.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
+      state.analysisSymbols.delete(id);
+    }
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Commercial System Slice 2 - mirrors repo.pg.mjs's identical-named domains exactly (same
+  // method surface, same business rules), re-implemented over plain Maps.
+  // ---------------------------------------------------------------------------------------------
+  const subscriptions = {
+    async create({ userId, planId, provider, externalCustomerId, externalSubscriptionId, status, currentPeriodStart, currentPeriodEnd, cancelAtPeriodEnd, priceAmountMicroUsd, currency, paymentTransactionId }) {
+      const stamp = now();
+      const record = {
+        id: newId('subscription'), userId, planId, provider: provider || 'manual',
+        externalCustomerId: externalCustomerId || null, externalSubscriptionId: externalSubscriptionId || null,
+        status, currentPeriodStart: currentPeriodStart || null, currentPeriodEnd: currentPeriodEnd || null,
+        cancelAtPeriodEnd: Boolean(cancelAtPeriodEnd), priceAmountMicroUsd: priceAmountMicroUsd || 0, currency: currency || 'USD',
+        paymentTransactionId: paymentTransactionId || null, createdAt: stamp, updatedAt: stamp
+      };
+      state.subscriptions.set(record.id, record);
+      return clone(record);
+    },
+    async get(id) {
+      const record = state.subscriptions.get(id);
+      return record ? clone(record) : null;
+    },
+    async getByPaymentTransactionId(transactionId) {
+      const record = Array.from(state.subscriptions.values()).find((sub) => sub.paymentTransactionId === transactionId);
+      return record ? clone(record) : null;
+    },
+    async update(id, patch) {
+      const record = state.subscriptions.get(id);
+      if (!record) throw new ApiError(404, 'SUBSCRIPTION_NOT_FOUND');
+      Object.assign(record, patch, { updatedAt: now() });
+      return clone(record);
+    },
+    // Mirrors repo.pg.mjs's identical query - period_end is the universal gate, computed at read
+    // time, no background expiry job. See 031_subscriptions.sql's comment for the full reasoning.
+    async getActiveForUser(userId) {
+      const nowMs = Date.now();
+      const candidates = Array.from(state.subscriptions.values()).filter((sub) => {
+        if (sub.userId !== userId) return false;
+        if (!sub.currentPeriodEnd || new Date(sub.currentPeriodEnd).getTime() <= nowMs) return false;
+        if (sub.status === 'active' || sub.status === 'past_due') return true;
+        if (sub.status === 'canceled' && sub.cancelAtPeriodEnd) return true;
+        return false;
+      });
+      if (!candidates.length) return null;
+      candidates.sort((a, b) => new Date(b.currentPeriodEnd) - new Date(a.currentPeriodEnd));
+      return clone(candidates[0]);
+    },
+    async listForUser(userId) {
+      return Array.from(state.subscriptions.values()).filter((sub) => sub.userId === userId)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone);
+    },
+    async adminStats() {
+      const nowMs = Date.now();
+      const stats = { activePlus: 0, activePersonalized: 0, pastDue: 0, canceling: 0, expired: 0, mrrMicroUsd: 0 };
+      Array.from(state.subscriptions.values())
+        .filter((sub) => (sub.currentPeriodEnd && new Date(sub.currentPeriodEnd).getTime() > nowMs) || sub.status === 'past_due' || sub.status === 'canceled')
+        .forEach((sub) => {
+          if (sub.status === 'active' && !sub.cancelAtPeriodEnd) {
+            if (sub.planId === 'plus') stats.activePlus += 1;
+            if (sub.planId === 'personalized') stats.activePersonalized += 1;
+            stats.mrrMicroUsd += sub.priceAmountMicroUsd;
+          }
+          if (sub.status === 'past_due') stats.pastDue += 1;
+          if (sub.status === 'active' && sub.cancelAtPeriodEnd) stats.canceling += 1;
+          if (sub.status === 'expired') stats.expired += 1;
+        });
+      return stats;
+    }
+  };
+
+  const paymentTransactions = {
+    async create({ userId, type, provider, externalTransactionId, amountMicroUsd, currency, productId, metadata }) {
+      const stamp = now();
+      const record = {
+        id: newId('paymentTx'), userId, type, provider: provider || 'manual', externalTransactionId: externalTransactionId || null,
+        status: 'pending', amountMicroUsd, currency: currency || 'USD', productId: productId || null, metadata: metadata || {},
+        createdAt: stamp, confirmedAt: null
+      };
+      state.paymentTransactions.set(record.id, record);
+      return clone(record);
+    },
+    async get(id) {
+      const record = state.paymentTransactions.get(id);
+      return record ? clone(record) : null;
+    },
+    async setStatus(id, status, { confirmedAt } = {}) {
+      const record = state.paymentTransactions.get(id);
+      if (!record) return null;
+      record.status = status;
+      record.confirmedAt = confirmedAt || null;
+      return clone(record);
+    },
+    async listForUser(userId, { limit } = {}) {
+      return Array.from(state.paymentTransactions.values()).filter((t) => t.userId === userId)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 50).map(clone);
+    },
+    async listAll({ status, limit } = {}) {
+      return Array.from(state.paymentTransactions.values()).filter((t) => !status || t.status === status)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 200).map(clone);
+    },
+    async findRefundFor(originalTransactionId) {
+      const record = Array.from(state.paymentTransactions.values())
+        .find((t) => t.type === 'refund' && t.metadata && t.metadata.originalTransactionId === originalTransactionId);
+      return record ? clone(record) : null;
+    }
+  };
+
+  const paymentEvents = {
+    async recordIfNew({ provider, externalEventId, transactionId }) {
+      const key = provider + ':' + externalEventId;
+      if (state.paymentEvents.has(key)) return { isNew: false };
+      state.paymentEvents.set(key, { id: newId('paymentEvent'), provider, externalEventId, transactionId: transactionId || null, processedAt: now(), createdAt: now() });
+      return { isNew: true };
+    }
+  };
+
+  const storageProducts = {
+    // Mirrors repo.pg.mjs's lazy self-seed exactly - see that method's own comment.
+    async list() {
+      if (state.storageProducts.size === 0) {
+        DEFAULT_STORAGE_PRODUCTS.forEach((product) => {
+          state.storageProducts.set(product.id, {
+            id: product.id, name: product.name, capacityBytes: product.capacityBytes,
+            priceAmountMicroUsd: Math.round(product.priceAmountUsd * 1000000), currency: 'USD',
+            validityDays: product.validityDays, enabled: true, displayOrder: product.displayOrder,
+            stackingAllowed: true, purchaseLimit: null, updatedAt: now()
+          });
+        });
+      }
+      return Array.from(state.storageProducts.values()).sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)).map(clone);
+    },
+    // Mirrors repo.pg.mjs's identical get() - ensures the lazy self-seed has run first.
+    async get(id) {
+      await storageProducts.list();
+      const record = state.storageProducts.get(id);
+      return record ? clone(record) : null;
+    },
+    async upsert({ id, name, capacityBytes, priceAmountMicroUsd, currency, validityDays, enabled, displayOrder, stackingAllowed, purchaseLimit }) {
+      const rowId = id || newId('storageProduct');
+      const record = {
+        id: rowId, name, capacityBytes, priceAmountMicroUsd, currency: currency || 'USD', validityDays,
+        enabled: enabled !== false, displayOrder: displayOrder || 0, stackingAllowed: stackingAllowed !== false,
+        purchaseLimit: purchaseLimit || null, updatedAt: now()
+      };
+      state.storageProducts.set(rowId, record);
+      return clone(record);
+    }
+  };
+
+  const storageEntitlements = {
+    async create({ userId, productId, capacityBytesSnapshot, pricePaidSnapshotMicroUsd, currency, validityDaysSnapshot, expiresAt, paymentTransactionId }) {
+      const record = {
+        id: newId('storageEntitlement'), userId, productId: productId || null, capacityBytesSnapshot,
+        pricePaidSnapshotMicroUsd, currency: currency || 'USD', validityDaysSnapshot, startsAt: now(), expiresAt,
+        status: 'active', paymentTransactionId: paymentTransactionId || null, createdAt: now()
+      };
+      state.storageEntitlements.set(record.id, record);
+      return clone(record);
+    },
+    async listForUser(userId) {
+      return Array.from(state.storageEntitlements.values()).filter((e) => e.userId === userId)
+        .sort((a, b) => new Date(b.expiresAt) - new Date(a.expiresAt)).map(clone);
+    },
+    async sumActiveCapacityForUser(userId) {
+      const nowMs = Date.now();
+      return Array.from(state.storageEntitlements.values())
+        .filter((e) => e.userId === userId && new Date(e.expiresAt).getTime() > nowMs)
+        .reduce((sum, e) => sum + e.capacityBytesSnapshot, 0);
+    },
+    async get(id) {
+      const record = state.storageEntitlements.get(id);
+      return record ? clone(record) : null;
+    },
+    // Mirrors repo.pg.mjs's revoke() - moves expires_at to now() rather than deleting the row or
+    // introducing a new status concept; the existing read-time expiry gate does the rest.
+    async revoke(id) {
+      const record = state.storageEntitlements.get(id);
+      if (!record) return null;
+      record.expiresAt = now();
+      record.status = 'expired';
+      return clone(record);
+    },
+    async getByPaymentTransactionId(transactionId) {
+      const record = Array.from(state.storageEntitlements.values()).find((e) => e.paymentTransactionId === transactionId);
+      return record ? clone(record) : null;
+    }
+  };
+
+  const storageObjects = {
+    async record({ userId, objectKey, sizeBytes, mimeType, category, sourceDomain, sourceRecordId }) {
+      const record = {
+        id: newId('storageObject'), userId, objectKey, sizeBytes, mimeType: mimeType || null, category,
+        sourceDomain: sourceDomain || null, sourceRecordId: sourceRecordId || null, createdAt: now(), deletedAt: null
+      };
+      state.storageObjects.set(record.id, record);
+      return clone(record);
+    },
+    async sumActiveBytesForUser(userId) {
+      return Array.from(state.storageObjects.values())
+        .filter((o) => o.userId === userId && !o.deletedAt)
+        .reduce((sum, o) => sum + o.sizeBytes, 0);
+    },
+    async get(id) {
+      const record = state.storageObjects.get(id);
+      return record ? clone(record) : null;
+    },
+    async listActiveForUser(userId) {
+      return Array.from(state.storageObjects.values()).filter((o) => o.userId === userId && !o.deletedAt)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone);
+    },
+    async markDeleted(id) {
+      const record = state.storageObjects.get(id);
+      if (!record) return null;
+      record.deletedAt = now();
+      return clone(record);
+    }
+  };
+
   // Module 5 (final module) of the local-first-to-server migration. One document per user, no
   // child tables, no list - see the migration file's comment. Stored (and returned) verbatim as
   // the client sent it; this repo layer only owns the user_id-scoped upsert/read, never
@@ -1565,6 +2003,8 @@ export function createMemoryRepo() {
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
-    authSessions, externalIdentities, securityEvents, authTransactions, health
+    authSessions, externalIdentities, securityEvents, authTransactions, health,
+    commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
+    subscriptions, paymentTransactions, paymentEvents, storageProducts, storageEntitlements, storageObjects
   };
 }

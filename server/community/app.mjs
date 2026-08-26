@@ -22,6 +22,10 @@ import * as routesAiChatHistory from './routes.ai-chat-history.mjs';
 import * as routesCompanion from './routes.companion.mjs';
 import * as routesSessionSignatures from './routes.session-signatures.mjs';
 import * as routesPreferences from './routes.preferences.mjs';
+import * as routesAnalysisSymbols from './routes.analysis-symbols.mjs';
+import * as routesWallet from './routes.wallet.mjs';
+import * as routesSubscriptions from './routes.subscriptions.mjs';
+import * as routesStorage from './routes.storage.mjs';
 import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
 import { csrfProtection } from './security/csrf.mjs';
@@ -148,6 +152,10 @@ export function createApp({ repo, uploadsDir }) {
   app.use('/api/sync/companion-state', routesCompanion.router(repo));
   app.use('/api/sync/session-signatures', routesSessionSignatures.router(repo));
   app.use('/api/sync/preferences', routesPreferences.router(repo));
+  app.use('/api/sync/analysis-symbols', routesAnalysisSymbols.router(repo));
+  app.use('/api/sync/wallet', routesWallet.router(repo));
+  app.use('/api/sync/subscriptions', routesSubscriptions.router(repo));
+  app.use('/api/sync/storage', routesStorage.router(repo, uploadsDir));
   app.use('/api/admin', requireAdmin(repo), routesAdmin.router(repo));
 
   app.use(notFoundMiddleware);

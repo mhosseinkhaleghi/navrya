@@ -3,10 +3,15 @@
 // violations (already purchased, purchase required to rate, etc.) so route handlers behave
 // identically regardless of which repository backend is injected.
 export class ApiError extends Error {
-  constructor(status, code, message) {
+  // `details` is an optional plain object merged into the JSON error response alongside `error`
+  // (e.g. STORAGE_QUOTA_EXCEEDED's {usedBytes, quotaBytes, requiredBytes} - spec section 9).
+  // Additive and optional - every existing call site that only ever passed (status, code,
+  // message) is unaffected.
+  constructor(status, code, message, details) {
     super(message || code);
     this.status = status;
     this.code = code;
+    this.details = details || null;
   }
 }
 
@@ -21,7 +26,7 @@ export function notFoundMiddleware(req, res) {
 }
 
 export function errorMiddleware(err, req, res, next) { // eslint-disable-line no-unused-vars
-  if (err instanceof ApiError) return res.status(err.status).json({ error: err.code });
+  if (err instanceof ApiError) return res.status(err.status).json({ error: err.code, ...(err.details || {}) });
   if (err && (err.type === 'entity.too.large' || err.status === 413)) return res.status(413).json({ error: 'REQUEST_TOO_LARGE' });
   if (err instanceof SyntaxError && 'body' in err) return res.status(400).json({ error: 'INVALID_JSON' });
   console.error(err); // eslint-disable-line no-console

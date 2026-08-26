@@ -3,6 +3,55 @@ import { ApiError } from '../community/errors.mjs';
 import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
+import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
+
+// Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
+// amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
+// module takes a `repo` object as its argument and this helper runs INSIDE repo.pg.mjs itself,
+// before the repo object it would need exists. Falls back to the code default on any error
+// (including "table not migrated yet" during a rolling deploy) so registration can never fail
+// because of this best-effort read.
+async function resolveSignupPromoRetailUsd(pool) {
+  try {
+    const { rows } = await pool.query(`SELECT value FROM commercial_config_overrides WHERE config_key='wallet:signupPromoRetailUsd'`);
+    const amount = rows[0] && rows[0].value && Number(rows[0].value.amount);
+    return Number.isFinite(amount) && amount >= 0 ? amount : WALLET_DEFAULTS.signupPromoRetailUsd;
+  } catch (_) {
+    return WALLET_DEFAULTS.signupPromoRetailUsd;
+  }
+}
+
+// Grants the one-time signup promo credit (spec section 22/23) - called from every
+// users.create() path (password register / Google / generic OIDC all funnel through this one
+// function), so there is exactly one place that could ever grant it, and it only ever runs at
+// creation time - never a backfill for pre-existing accounts (spec section 73's explicit
+// caution). idempotency_key ('signup-promo:{userId}') makes an accidental second call for the
+// same user a safe no-op via wallet_ledger's UNIQUE constraint, never a double grant.
+async function grantSignupPromoCredit(pool, userId) {
+  const amountUsd = await resolveSignupPromoRetailUsd(pool);
+  const amountMicroUsd = Math.round(amountUsd * 1000000);
+  if (amountMicroUsd <= 0) return;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+    await client.query(
+      'UPDATE wallet_accounts SET promo_balance_micro_usd = promo_balance_micro_usd + $2, updated_at=now() WHERE user_id=$1',
+      [userId, amountMicroUsd]
+    );
+    await client.query(
+      `INSERT INTO wallet_ledger (id, user_id, type, promo_delta_micro_usd, source_action, idempotency_key, metadata)
+       VALUES ($1,$2,'PROMO_CREDIT',$3,'signup',$4,$5)`,
+      [newId('walletLedger'), userId, amountMicroUsd, 'signup-promo:' + userId, JSON.stringify({ amountUsd })]
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (!(error && error.code === '23505')) throw error; // already granted for this user - safe no-op
+  } finally {
+    client.release();
+  }
+}
 
 // Instrument Catalog domain (025_instrument_catalog.sql). Shared by tradingSessions/trades/
 // patterns/sessionSignatures below - every one of them stores the plain normalized code string
@@ -23,7 +72,7 @@ function mapUser(row) {
     id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url, bio: row.bio, role: row.role, suspendedAt: row.suspended_at,
     email: row.email, emailVerified: row.email_verified, emailVerifiedAt: row.email_verified_at, phone: row.phone, phoneVerified: row.phone_verified,
     profileRole: row.profile_role, kycStatus: row.kyc_status, xpTotal: row.xp_total, avatarDataUrl: row.avatar_data_url,
-    totpEnabledAt: row.totp_enabled_at, createdAt: row.created_at
+    totpEnabledAt: row.totp_enabled_at, plan: row.plan, createdAt: row.created_at
   };
 }
 function mapPost(row) { return { id: row.id, userId: row.user_id, content: row.content, images: row.images, createdAt: row.created_at, updatedAt: row.updated_at }; }
@@ -310,7 +359,9 @@ export function createPgRepo(pool) {
           'INSERT INTO users (id, display_name, avatar_url, bio, email) VALUES ($1,$2,$3,$4,$5) RETURNING *',
           [id, trimmed, avatarUrl || null, bio || null, email || null]
         );
-        return mapUser(rows[0]);
+        const user = mapUser(rows[0]);
+        await grantSignupPromoCredit(pool, user.id);
+        return user;
       } catch (error) {
         if (error && error.code === '23505') throw new ApiError(409, 'EMAIL_TAKEN');
         throw error;
@@ -367,8 +418,8 @@ export function createPgRepo(pool) {
       if (!existing) throw new ApiError(404, 'USER_NOT_FOUND');
       const merged = { ...existing, ...patch };
       const { rows } = await pool.query(
-        'UPDATE users SET display_name=$2, avatar_url=$3, bio=$4, role=$5, suspended_at=$6 WHERE id=$1 RETURNING *',
-        [id, merged.displayName, merged.avatarUrl, merged.bio, merged.role, merged.suspendedAt]
+        'UPDATE users SET display_name=$2, avatar_url=$3, bio=$4, role=$5, suspended_at=$6, plan=$7 WHERE id=$1 RETURNING *',
+        [id, merged.displayName, merged.avatarUrl, merged.bio, merged.role, merged.suspendedAt, merged.plan]
       );
       return mapUser(rows[0]);
     },
@@ -1943,6 +1994,644 @@ export function createPgRepo(pool) {
     }
   };
 
+  // ---------------------------------------------------------------------------------------------
+  // Commercial System Slice 1 (026-029_*.sql) - see server/commercial/*.mjs for the business
+  // logic (entitlement resolution, markup resolution, wallet reserve/settle/release orchestration)
+  // that calls these; this layer stays pure persistence, mirroring every other domain above.
+  // ---------------------------------------------------------------------------------------------
+  function mapCommercialConfigOverride(row) { return { configKey: row.config_key, value: row.value, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
+  function mapCommercialConfigVersion(row) {
+    return { id: row.id, configKey: row.config_key, changedBy: row.changed_by, changeSummary: row.change_summary, previousValue: row.previous_value, newValue: row.new_value, changedAt: row.changed_at };
+  }
+  const commercialConfig = {
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM commercial_config_overrides ORDER BY config_key ASC');
+      return rows.map(mapCommercialConfigOverride);
+    },
+    async get(configKey) {
+      const { rows } = await pool.query('SELECT * FROM commercial_config_overrides WHERE config_key=$1', [configKey]);
+      return rows[0] ? mapCommercialConfigOverride(rows[0]) : null;
+    },
+    // Upserts the override AND appends an immutable version row in one transaction (spec section
+    // 43's Configuration History) - a publish and its own history entry are atomic, never one
+    // without the other.
+    async publish(configKey, value, { updatedBy, changeSummary } = {}) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: beforeRows } = await client.query('SELECT value FROM commercial_config_overrides WHERE config_key=$1', [configKey]);
+        const previousValue = beforeRows[0] ? beforeRows[0].value : null;
+        const { rows } = await client.query(
+          `INSERT INTO commercial_config_overrides (config_key, value, updated_by, updated_at) VALUES ($1,$2,$3,now())
+           ON CONFLICT (config_key) DO UPDATE SET value=$2, updated_by=$3, updated_at=now()
+           RETURNING *`,
+          [configKey, JSON.stringify(value ?? null), updatedBy || null]
+        );
+        await client.query(
+          `INSERT INTO commercial_config_versions (id, config_key, changed_by, change_summary, previous_value, new_value)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [newId('commercialConfigVersion'), configKey, updatedBy || null, changeSummary || null, JSON.stringify(previousValue), JSON.stringify(value ?? null)]
+        );
+        await client.query('COMMIT');
+        return mapCommercialConfigOverride(rows[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async listVersions({ configKey, limit } = {}) {
+      const { rows } = configKey
+        ? await pool.query('SELECT * FROM commercial_config_versions WHERE config_key=$1 ORDER BY changed_at DESC LIMIT $2', [configKey, limit || 100])
+        : await pool.query('SELECT * FROM commercial_config_versions ORDER BY changed_at DESC LIMIT $1', [limit || 100]);
+      return rows.map(mapCommercialConfigVersion);
+    }
+  };
+
+  function mapMarkupRule(row) {
+    return { id: row.id, scopeType: row.scope_type, scopeKey: row.scope_key, markupPercent: Number(row.markup_percent), enabled: row.enabled, createdAt: row.created_at, updatedAt: row.updated_at };
+  }
+  const markupRules = {
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM ai_markup_rules ORDER BY scope_type ASC, scope_key ASC');
+      return rows.map(mapMarkupRule);
+    },
+    async upsert({ scopeType, scopeKey, markupPercent, enabled }) {
+      const { rows } = await pool.query(
+        `INSERT INTO ai_markup_rules (id, scope_type, scope_key, markup_percent, enabled, updated_at)
+         VALUES ($1,$2,$3,$4,$5,now())
+         ON CONFLICT (scope_type, scope_key) DO UPDATE SET markup_percent=$4, enabled=$5, updated_at=now()
+         RETURNING *`,
+        [newId('markupRule'), scopeType, scopeKey, markupPercent, enabled !== false]
+      );
+      return mapMarkupRule(rows[0]);
+    },
+    async remove(id) {
+      await pool.query('DELETE FROM ai_markup_rules WHERE id=$1', [id]);
+    }
+  };
+
+  function mapProviderModelPricing(row) {
+    return {
+      provider: row.provider, model: row.model,
+      promptPricePer1k: row.prompt_price_per_1k == null ? null : Number(row.prompt_price_per_1k),
+      completionPricePer1k: row.completion_price_per_1k == null ? null : Number(row.completion_price_per_1k),
+      currency: row.currency, enabled: row.enabled, effectiveFrom: row.effective_from, effectiveUntil: row.effective_until,
+      updatedAt: row.updated_at
+    };
+  }
+  const providerModelPricing = {
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM provider_model_pricing ORDER BY provider ASC, model ASC');
+      return rows.map(mapProviderModelPricing);
+    },
+    async get(provider, model) {
+      const { rows } = await pool.query('SELECT * FROM provider_model_pricing WHERE provider=$1 AND model=$2', [provider, model]);
+      return rows[0] ? mapProviderModelPricing(rows[0]) : null;
+    },
+    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, currency, enabled }) {
+      const { rows } = await pool.query(
+        `INSERT INTO provider_model_pricing (provider, model, prompt_price_per_1k, completion_price_per_1k, currency, enabled, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,now())
+         ON CONFLICT (provider, model) DO UPDATE SET prompt_price_per_1k=$3, completion_price_per_1k=$4, currency=$5, enabled=$6, updated_at=now()
+         RETURNING *`,
+        [provider, model, promptPricePer1k ?? null, completionPricePer1k ?? null, currency || 'USD', enabled !== false]
+      );
+      return mapProviderModelPricing(rows[0]);
+    },
+    async remove(provider, model) {
+      await pool.query('DELETE FROM provider_model_pricing WHERE provider=$1 AND model=$2', [provider, model]);
+    }
+  };
+
+  function mapWalletAccount(row) {
+    return { userId: row.user_id, paidBalanceMicroUsd: Number(row.paid_balance_micro_usd), promoBalanceMicroUsd: Number(row.promo_balance_micro_usd), createdAt: row.created_at, updatedAt: row.updated_at };
+  }
+  function mapWalletLedgerEntry(row) {
+    return {
+      id: row.id, userId: row.user_id, type: row.type,
+      cashDeltaMicroUsd: Number(row.cash_delta_micro_usd), promoDeltaMicroUsd: Number(row.promo_delta_micro_usd),
+      providerCostMicroUsd: row.provider_cost_micro_usd == null ? null : Number(row.provider_cost_micro_usd),
+      retailChargeMicroUsd: row.retail_charge_micro_usd == null ? null : Number(row.retail_charge_micro_usd),
+      markupPercent: row.markup_percent == null ? null : Number(row.markup_percent),
+      retailMultiplier: row.retail_multiplier == null ? null : Number(row.retail_multiplier),
+      provider: row.provider, model: row.model, feature: row.feature, sourceAction: row.source_action,
+      adminUserId: row.admin_user_id, idempotencyKey: row.idempotency_key, metadata: row.metadata, createdAt: row.created_at
+    };
+  }
+  function mapWalletReservation(row) {
+    return {
+      id: row.id, userId: row.user_id, status: row.status, estimatedRetailMicroUsd: Number(row.estimated_retail_micro_usd),
+      provider: row.provider, model: row.model, feature: row.feature, createdAt: row.created_at, resolvedAt: row.resolved_at
+    };
+  }
+  const wallet = {
+    async getAccount(userId) {
+      const { rows } = await pool.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING RETURNING *', [userId]);
+      if (rows[0]) return mapWalletAccount(rows[0]);
+      const { rows: existing } = await pool.query('SELECT * FROM wallet_accounts WHERE user_id=$1', [userId]);
+      return mapWalletAccount(existing[0]);
+    },
+    // Places a hold for an upcoming AI call. "Available" is the stored balance minus every OTHER
+    // still-pending reservation for this user - reserving never mutates wallet_accounts itself
+    // (only settle()/release()/grant() do), so a caller that crashes before resolving its own
+    // reservation cannot permanently lock funds away from a later request; it just leaves an
+    // orphaned 'pending' row that ages out of relevance once nothing still adds it to the pending
+    // sum's meaning (no background sweep in this slice - see the migration's own comment).
+    async reserve(userId, { estimatedRetailMicroUsd, provider, model, feature }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        const { rows: accountRows } = await client.query('SELECT * FROM wallet_accounts WHERE user_id=$1 FOR UPDATE', [userId]);
+        const account = accountRows[0];
+        const { rows: pendingRows } = await client.query(
+          `SELECT COALESCE(SUM(estimated_retail_micro_usd),0) AS pending FROM wallet_reservations WHERE user_id=$1 AND status='pending'`,
+          [userId]
+        );
+        const balanceMicroUsd = Number(account.paid_balance_micro_usd) + Number(account.promo_balance_micro_usd);
+        const availableMicroUsd = balanceMicroUsd - Number(pendingRows[0].pending);
+        if (availableMicroUsd < estimatedRetailMicroUsd) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'WALLET_INSUFFICIENT_BALANCE', availableMicroUsd, estimatedRetailMicroUsd };
+        }
+        const { rows } = await client.query(
+          `INSERT INTO wallet_reservations (id, user_id, status, estimated_retail_micro_usd, provider, model, feature)
+           VALUES ($1,$2,'pending',$3,$4,$5,$6) RETURNING *`,
+          [newId('walletReservation'), userId, estimatedRetailMicroUsd, provider || null, model || null, feature || null]
+        );
+        await client.query('COMMIT');
+        return { ok: true, reservation: mapWalletReservation(rows[0]) };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // Resolves a reservation into a real charge, spending promo balance before paid (spec section
+    // 23). Idempotent by idempotencyKey - a retried settle for a reservation that is no longer
+    // 'pending' returns the already-recorded ledger entry instead of writing (or charging) again.
+    async settle(reservationId, { providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, provider, model, feature, idempotencyKey }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: reservationRows } = await client.query('SELECT * FROM wallet_reservations WHERE id=$1 FOR UPDATE', [reservationId]);
+        const reservation = reservationRows[0];
+        if (!reservation) { await client.query('ROLLBACK'); throw new ApiError(404, 'WALLET_RESERVATION_NOT_FOUND'); }
+        if (reservation.status !== 'pending') {
+          const { rows: existingLedger } = await client.query('SELECT * FROM wallet_ledger WHERE idempotency_key=$1', [idempotencyKey || null]);
+          await client.query('COMMIT');
+          return { ok: true, alreadySettled: true, ledgerEntry: existingLedger[0] ? mapWalletLedgerEntry(existingLedger[0]) : null };
+        }
+        const userId = reservation.user_id;
+        const { rows: accountRows } = await client.query('SELECT * FROM wallet_accounts WHERE user_id=$1 FOR UPDATE', [userId]);
+        const account = accountRows[0];
+        const promoSpend = Math.max(0, Math.min(Number(account.promo_balance_micro_usd), retailChargeMicroUsd));
+        const paidSpend = retailChargeMicroUsd - promoSpend;
+        await client.query(
+          `UPDATE wallet_accounts SET promo_balance_micro_usd = promo_balance_micro_usd - $2, paid_balance_micro_usd = paid_balance_micro_usd - $3, updated_at=now() WHERE user_id=$1`,
+          [userId, promoSpend, paidSpend]
+        );
+        await client.query(`UPDATE wallet_reservations SET status='settled', resolved_at=now() WHERE id=$1`, [reservationId]);
+        let ledgerRow;
+        try {
+          const { rows } = await client.query(
+            `INSERT INTO wallet_ledger
+               (id, user_id, type, cash_delta_micro_usd, promo_delta_micro_usd, provider_cost_micro_usd, retail_charge_micro_usd,
+                markup_percent, retail_multiplier, provider, model, feature, source_action, idempotency_key, metadata)
+             VALUES ($1,$2,'AI_SETTLEMENT',$3,$4,$5,$6,$7,$8,$9,$10,$11,'ai-settlement',$12,$13) RETURNING *`,
+            [newId('walletLedger'), userId, -paidSpend, -promoSpend, providerCostMicroUsd ?? null, retailChargeMicroUsd,
+              markupPercent ?? null, retailMultiplier ?? null, provider || null, model || null, feature || null,
+              idempotencyKey || null, JSON.stringify({ reservationId })]
+          );
+          ledgerRow = rows[0];
+        } catch (error) {
+          if (error && error.code === '23505') {
+            await client.query('ROLLBACK');
+            const { rows: existingLedger } = await pool.query('SELECT * FROM wallet_ledger WHERE idempotency_key=$1', [idempotencyKey]);
+            return { ok: true, alreadySettled: true, ledgerEntry: existingLedger[0] ? mapWalletLedgerEntry(existingLedger[0]) : null };
+          }
+          throw error;
+        }
+        await client.query('COMMIT');
+        return { ok: true, ledgerEntry: mapWalletLedgerEntry(ledgerRow) };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // A failed/aborted provider call never charges the user (spec section 27) - releases the hold
+    // with zero balance movement. Idempotent: releasing an already-resolved reservation is a
+    // no-op, not an error.
+    async release(reservationId) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: reservationRows } = await client.query('SELECT * FROM wallet_reservations WHERE id=$1 FOR UPDATE', [reservationId]);
+        const reservation = reservationRows[0];
+        if (!reservation || reservation.status !== 'pending') { await client.query('COMMIT'); return { ok: true, alreadyResolved: true }; }
+        await client.query(`UPDATE wallet_reservations SET status='released', resolved_at=now() WHERE id=$1`, [reservationId]);
+        await client.query(
+          `INSERT INTO wallet_ledger (id, user_id, type, provider, model, feature, source_action, metadata)
+           VALUES ($1,$2,'AI_RELEASE',$3,$4,$5,'ai-release',$6)`,
+          [newId('walletLedger'), reservation.user_id, reservation.provider, reservation.model, reservation.feature, JSON.stringify({ reservationId })]
+        );
+        await client.query('COMMIT');
+        return { ok: true };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // Direct balance movement not tied to an AI reservation - Admin credit/debit (spec section
+    // 50). idempotencyKey lets a caller retry defensively without ever double-crediting.
+    async grant(userId, { type, cashDeltaMicroUsd = 0, promoDeltaMicroUsd = 0, adminUserId, sourceAction, idempotencyKey, metadata }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        await client.query(
+          `UPDATE wallet_accounts SET paid_balance_micro_usd = paid_balance_micro_usd + $2, promo_balance_micro_usd = promo_balance_micro_usd + $3, updated_at=now() WHERE user_id=$1`,
+          [userId, cashDeltaMicroUsd, promoDeltaMicroUsd]
+        );
+        let rows;
+        try {
+          ({ rows } = await client.query(
+            `INSERT INTO wallet_ledger (id, user_id, type, cash_delta_micro_usd, promo_delta_micro_usd, admin_user_id, source_action, idempotency_key, metadata)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+            [newId('walletLedger'), userId, type, cashDeltaMicroUsd, promoDeltaMicroUsd, adminUserId || null, sourceAction || null, idempotencyKey || null, JSON.stringify(metadata || {})]
+          ));
+        } catch (error) {
+          if (error && error.code === '23505') { await client.query('ROLLBACK'); return { ok: true, duplicate: true }; }
+          throw error;
+        }
+        await client.query('COMMIT');
+        return { ok: true, ledgerEntry: mapWalletLedgerEntry(rows[0]) };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async ledgerForUser(userId, { limit } = {}) {
+      const { rows } = await pool.query('SELECT * FROM wallet_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2', [userId, limit || 50]);
+      return rows.map(mapWalletLedgerEntry);
+    },
+    async recentLedger({ limit } = {}) {
+      const { rows } = await pool.query('SELECT * FROM wallet_ledger ORDER BY created_at DESC LIMIT $1', [limit || 100]);
+      return rows.map(mapWalletLedgerEntry);
+    }
+  };
+
+  // Race-condition-safe "may this user create one more X" gate (spec section 53). A transaction-
+  // scoped Postgres advisory lock (auto-released at COMMIT/ROLLBACK, same primitive
+  // server/db/migrate.mjs already uses for its own schema-migration lock) keyed by
+  // (userId, resourceType) - concurrent callers for the SAME key block on the lock acquisition
+  // itself, so the count-check inside `fn` and its caller's subsequent insert (which happens on
+  // a different pooled connection, but only AFTER this lock is held and only COMMITted here once
+  // `fn` resolves) can never race to both pass the same count check.
+  const quota = {
+    async withCreateLock(userId, resourceType, fn) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [userId + ':' + resourceType]);
+        const result = await fn();
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+  };
+
+  // The "Active Analysis Symbols" entitlement primitive (030_analysis_symbols.sql) - see that
+  // migration's comment for why this is a new table rather than a retrofit of an existing
+  // feature. No dedupe-by-symbol constraint (unlike instrumentCatalog's per-user unique code) -
+  // this is intentionally minimal since nothing in the product yet reads/writes it.
+  function mapAnalysisSymbol(row) { return { id: row.id, userId: row.user_id, symbol: row.symbol, createdAt: row.created_at }; }
+  const analysisSymbols = {
+    async upsert(userId, record) {
+      if (!record || !record.id || !record.symbol) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows: ownerRows } = await pool.query('SELECT user_id FROM user_analysis_symbols WHERE id=$1', [record.id]);
+      if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
+      const { rows } = await pool.query(
+        `INSERT INTO user_analysis_symbols (id, user_id, symbol) VALUES ($1,$2,$3)
+         ON CONFLICT (id) DO UPDATE SET symbol=$3 RETURNING *`,
+        [record.id, userId, String(record.symbol).trim().toUpperCase()]
+      );
+      return mapAnalysisSymbol(rows[0]);
+    },
+    async listByUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM user_analysis_symbols WHERE user_id=$1 ORDER BY created_at ASC', [userId]);
+      return rows.map(mapAnalysisSymbol);
+    },
+    async remove(userId, id) {
+      const { rows } = await pool.query('SELECT user_id FROM user_analysis_symbols WHERE id=$1', [id]);
+      if (!rows[0]) return;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
+      await pool.query('DELETE FROM user_analysis_symbols WHERE id=$1', [id]);
+    }
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Commercial System Slice 2 (031-035_*.sql) - subscriptions, payment transactions, storage
+  // products/entitlements/objects. See server/commercial/*-service.mjs for the business logic
+  // (activation, snapshotting, quota math) that calls these; this layer stays pure persistence.
+  // ---------------------------------------------------------------------------------------------
+  function mapSubscription(row) {
+    return {
+      id: row.id, userId: row.user_id, planId: row.plan_id, provider: row.provider,
+      externalCustomerId: row.external_customer_id, externalSubscriptionId: row.external_subscription_id,
+      status: row.status, currentPeriodStart: row.current_period_start, currentPeriodEnd: row.current_period_end,
+      cancelAtPeriodEnd: row.cancel_at_period_end, priceAmountMicroUsd: Number(row.price_amount_micro_usd),
+      currency: row.currency, paymentTransactionId: row.payment_transaction_id, createdAt: row.created_at, updatedAt: row.updated_at
+    };
+  }
+  const subscriptions = {
+    async create({ userId, planId, provider, externalCustomerId, externalSubscriptionId, status, currentPeriodStart, currentPeriodEnd, cancelAtPeriodEnd, priceAmountMicroUsd, currency, paymentTransactionId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO user_subscriptions
+           (id, user_id, plan_id, provider, external_customer_id, external_subscription_id, status,
+            current_period_start, current_period_end, cancel_at_period_end, price_amount_micro_usd, currency, payment_transaction_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [newId('subscription'), userId, planId, provider || 'manual', externalCustomerId || null, externalSubscriptionId || null,
+          status, currentPeriodStart || null, currentPeriodEnd || null, Boolean(cancelAtPeriodEnd), priceAmountMicroUsd || 0, currency || 'USD',
+          paymentTransactionId || null]
+      );
+      return mapSubscription(rows[0]);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM user_subscriptions WHERE id=$1', [id]);
+      return rows[0] ? mapSubscription(rows[0]) : null;
+    },
+    // Validation Gate - lets refund reversal (server/commercial/payment-service.mjs) find the
+    // EXACT subscription a given transaction produced, rather than guessing via "the user's
+    // current active subscription" (wrong the moment the plan has changed again since purchase).
+    async getByPaymentTransactionId(transactionId) {
+      const { rows } = await pool.query('SELECT * FROM user_subscriptions WHERE payment_transaction_id=$1', [transactionId]);
+      return rows[0] ? mapSubscription(rows[0]) : null;
+    },
+    async update(id, patch) {
+      const existing = await subscriptions.get(id);
+      if (!existing) throw new ApiError(404, 'SUBSCRIPTION_NOT_FOUND');
+      const merged = { ...existing, ...patch };
+      const { rows } = await pool.query(
+        `UPDATE user_subscriptions SET status=$2, current_period_start=$3, current_period_end=$4,
+           cancel_at_period_end=$5, price_amount_micro_usd=$6, currency=$7, external_subscription_id=$8,
+           external_customer_id=$9, payment_transaction_id=$10, updated_at=now()
+         WHERE id=$1 RETURNING *`,
+        [id, merged.status, merged.currentPeriodStart, merged.currentPeriodEnd, merged.cancelAtPeriodEnd,
+          merged.priceAmountMicroUsd, merged.currency, merged.externalSubscriptionId, merged.externalCustomerId, merged.paymentTransactionId]
+      );
+      return mapSubscription(rows[0]);
+    },
+    // The single source of truth for "which subscription (if any) currently confers its plan" -
+    // period_end is the universal gate (computed at read time, no background expiry job - see
+    // 031_subscriptions.sql's own comment): active/past_due while unexpired is a grace period,
+    // canceled only still counts if cancelAtPeriodEnd was set and the period hasn't ended yet.
+    async getActiveForUser(userId) {
+      const { rows } = await pool.query(
+        `SELECT * FROM user_subscriptions
+         WHERE user_id=$1 AND current_period_end > now()
+           AND (status IN ('active','past_due') OR (status='canceled' AND cancel_at_period_end))
+         ORDER BY current_period_end DESC LIMIT 1`,
+        [userId]
+      );
+      return rows[0] ? mapSubscription(rows[0]) : null;
+    },
+    async listForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM user_subscriptions WHERE user_id=$1 ORDER BY created_at DESC', [userId]);
+      return rows.map(mapSubscription);
+    },
+    // Admin stats (spec section 18) - counts real rows only, never a mock/estimated figure.
+    async adminStats() {
+      const { rows } = await pool.query(
+        `SELECT plan_id, status, cancel_at_period_end, price_amount_micro_usd
+         FROM user_subscriptions WHERE current_period_end > now() OR status IN ('past_due','canceled')`
+      );
+      const stats = { activePlus: 0, activePersonalized: 0, pastDue: 0, canceling: 0, expired: 0, mrrMicroUsd: 0 };
+      rows.forEach((row) => {
+        if (row.status === 'active' && !row.cancel_at_period_end) {
+          if (row.plan_id === 'plus') stats.activePlus += 1;
+          if (row.plan_id === 'personalized') stats.activePersonalized += 1;
+          stats.mrrMicroUsd += Number(row.price_amount_micro_usd);
+        }
+        if (row.status === 'past_due') stats.pastDue += 1;
+        if (row.status === 'active' && row.cancel_at_period_end) stats.canceling += 1;
+        if (row.status === 'expired') stats.expired += 1;
+      });
+      return stats;
+    }
+  };
+
+  function mapPaymentTransaction(row) {
+    return {
+      id: row.id, userId: row.user_id, type: row.type, provider: row.provider, externalTransactionId: row.external_transaction_id,
+      status: row.status, amountMicroUsd: Number(row.amount_micro_usd), currency: row.currency, productId: row.product_id,
+      metadata: row.metadata, createdAt: row.created_at, confirmedAt: row.confirmed_at
+    };
+  }
+  const paymentTransactions = {
+    async create({ userId, type, provider, externalTransactionId, amountMicroUsd, currency, productId, metadata }) {
+      const { rows } = await pool.query(
+        `INSERT INTO payment_transactions (id, user_id, type, provider, external_transaction_id, status, amount_micro_usd, currency, product_id, metadata)
+         VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,$8,$9) RETURNING *`,
+        [newId('paymentTx'), userId, type, provider || 'manual', externalTransactionId || null, amountMicroUsd, currency || 'USD', productId || null, JSON.stringify(metadata || {})]
+      );
+      return mapPaymentTransaction(rows[0]);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM payment_transactions WHERE id=$1', [id]);
+      return rows[0] ? mapPaymentTransaction(rows[0]) : null;
+    },
+    async setStatus(id, status, { confirmedAt } = {}) {
+      const { rows } = await pool.query(
+        'UPDATE payment_transactions SET status=$2, confirmed_at=$3 WHERE id=$1 RETURNING *',
+        [id, status, confirmedAt || null]
+      );
+      return rows[0] ? mapPaymentTransaction(rows[0]) : null;
+    },
+    // Validation Gate (spec section 21/22) - a refund transaction records which original
+    // transaction it reverses in its own metadata; this is how ManualBillingProvider.refund()
+    // refuses a second refund attempt for the same original rather than creating a duplicate
+    // pending refund transaction.
+    async findRefundFor(originalTransactionId) {
+      const { rows } = await pool.query(
+        `SELECT * FROM payment_transactions WHERE type='refund' AND metadata->>'originalTransactionId'=$1 LIMIT 1`,
+        [originalTransactionId]
+      );
+      return rows[0] ? mapPaymentTransaction(rows[0]) : null;
+    },
+    async listForUser(userId, { limit } = {}) {
+      const { rows } = await pool.query('SELECT * FROM payment_transactions WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2', [userId, limit || 50]);
+      return rows.map(mapPaymentTransaction);
+    },
+    async listAll({ status, limit } = {}) {
+      const { rows } = status
+        ? await pool.query('SELECT * FROM payment_transactions WHERE status=$1 ORDER BY created_at DESC LIMIT $2', [status, limit || 200])
+        : await pool.query('SELECT * FROM payment_transactions ORDER BY created_at DESC LIMIT $1', [limit || 200]);
+      return rows.map(mapPaymentTransaction);
+    }
+  };
+
+  // Idempotency guard for provider events (spec section 15) - a (provider, externalEventId) pair
+  // can only ever be recorded once; `ON CONFLICT DO NOTHING` + checking `rows.length` is how the
+  // caller (server/commercial/payment-service.mjs) learns whether THIS call was the one that
+  // actually got to process the event, or a harmless replay.
+  const paymentEvents = {
+    async recordIfNew({ provider, externalEventId, transactionId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO payment_events (id, provider, external_event_id, transaction_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (provider, external_event_id) DO NOTHING RETURNING *`,
+        [newId('paymentEvent'), provider, externalEventId, transactionId || null]
+      );
+      return { isNew: rows.length > 0 };
+    }
+  };
+
+  function mapStorageProduct(row) {
+    return {
+      id: row.id, name: row.name, capacityBytes: Number(row.capacity_bytes), priceAmountMicroUsd: Number(row.price_amount_micro_usd),
+      currency: row.currency, validityDays: row.validity_days, enabled: row.enabled, displayOrder: row.display_order,
+      stackingAllowed: row.stacking_allowed, purchaseLimit: row.purchase_limit, updatedAt: row.updated_at
+    };
+  }
+  const storageProducts = {
+    // Lazily self-seeds the 3 default products (spec section 6) on first call, rather than a
+    // migration-level INSERT (this repo's migrations never seed rows) - fixed ids make this
+    // idempotent, and every row (including the defaults) is a real, independently editable row
+    // from the moment it's inserted, never a synthetic/merged value.
+    async list() {
+      const { rows: countRows } = await pool.query('SELECT COUNT(*)::int AS count FROM storage_products');
+      if (countRows[0].count === 0) {
+        for (const product of DEFAULT_STORAGE_PRODUCTS) {
+          await pool.query(
+            `INSERT INTO storage_products (id, name, capacity_bytes, price_amount_micro_usd, currency, validity_days, display_order)
+             VALUES ($1,$2,$3,$4,'USD',$5,$6) ON CONFLICT (id) DO NOTHING`,
+            [product.id, product.name, product.capacityBytes, Math.round(product.priceAmountUsd * 1000000), product.validityDays, product.displayOrder]
+          );
+        }
+      }
+      const { rows } = await pool.query('SELECT * FROM storage_products ORDER BY display_order ASC, name ASC');
+      return rows.map(mapStorageProduct);
+    },
+    // Ensures the lazy self-seed (see list()'s own comment) has run even when a caller looks up a
+    // single default product's id before ever calling list() on this process/repo - otherwise a
+    // fresh install's very first purchase attempt would 404 on 'storage-25' before it exists.
+    async get(id) {
+      await storageProducts.list();
+      const { rows } = await pool.query('SELECT * FROM storage_products WHERE id=$1', [id]);
+      return rows[0] ? mapStorageProduct(rows[0]) : null;
+    },
+    async upsert({ id, name, capacityBytes, priceAmountMicroUsd, currency, validityDays, enabled, displayOrder, stackingAllowed, purchaseLimit }) {
+      const rowId = id || newId('storageProduct');
+      const { rows } = await pool.query(
+        `INSERT INTO storage_products (id, name, capacity_bytes, price_amount_micro_usd, currency, validity_days, enabled, display_order, stacking_allowed, purchase_limit, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())
+         ON CONFLICT (id) DO UPDATE SET name=$2, capacity_bytes=$3, price_amount_micro_usd=$4, currency=$5,
+           validity_days=$6, enabled=$7, display_order=$8, stacking_allowed=$9, purchase_limit=$10, updated_at=now()
+         RETURNING *`,
+        [rowId, name, capacityBytes, priceAmountMicroUsd, currency || 'USD', validityDays, enabled !== false, displayOrder || 0, stackingAllowed !== false, purchaseLimit || null]
+      );
+      return mapStorageProduct(rows[0]);
+    }
+  };
+
+  function mapStorageEntitlement(row) {
+    return {
+      id: row.id, userId: row.user_id, productId: row.product_id, capacityBytesSnapshot: Number(row.capacity_bytes_snapshot),
+      pricePaidSnapshotMicroUsd: Number(row.price_paid_snapshot_micro_usd), currency: row.currency,
+      validityDaysSnapshot: row.validity_days_snapshot, startsAt: row.starts_at, expiresAt: row.expires_at,
+      status: row.status, paymentTransactionId: row.payment_transaction_id, createdAt: row.created_at
+    };
+  }
+  const storageEntitlements = {
+    async create({ userId, productId, capacityBytesSnapshot, pricePaidSnapshotMicroUsd, currency, validityDaysSnapshot, expiresAt, paymentTransactionId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO storage_entitlements (id, user_id, product_id, capacity_bytes_snapshot, price_paid_snapshot_micro_usd, currency, validity_days_snapshot, expires_at, payment_transaction_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [newId('storageEntitlement'), userId, productId || null, capacityBytesSnapshot, pricePaidSnapshotMicroUsd, currency || 'USD', validityDaysSnapshot, expiresAt, paymentTransactionId || null]
+      );
+      return mapStorageEntitlement(rows[0]);
+    },
+    async listForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM storage_entitlements WHERE user_id=$1 ORDER BY expires_at DESC', [userId]);
+      return rows.map(mapStorageEntitlement);
+    },
+    async sumActiveCapacityForUser(userId) {
+      const { rows } = await pool.query('SELECT COALESCE(SUM(capacity_bytes_snapshot),0) AS total FROM storage_entitlements WHERE user_id=$1 AND expires_at > now()', [userId]);
+      return Number(rows[0].total);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM storage_entitlements WHERE id=$1', [id]);
+      return rows[0] ? mapStorageEntitlement(rows[0]) : null;
+    },
+    // Validation Gate (spec section 20) - a fully refunded storage purchase revokes its
+    // entitlement immediately by moving expires_at to now(), reusing the exact same read-time
+    // expiry gate sumActiveCapacityForUser()/the storage quota resolver already trust - no new
+    // "revoked" status concept needed. Files are never touched (spec: "Do NOT delete files").
+    async revoke(id) {
+      const { rows } = await pool.query(
+        `UPDATE storage_entitlements SET expires_at=now(), status='expired' WHERE id=$1 RETURNING *`,
+        [id]
+      );
+      return rows[0] ? mapStorageEntitlement(rows[0]) : null;
+    },
+    async getByPaymentTransactionId(transactionId) {
+      const { rows } = await pool.query('SELECT * FROM storage_entitlements WHERE payment_transaction_id=$1', [transactionId]);
+      return rows[0] ? mapStorageEntitlement(rows[0]) : null;
+    }
+  };
+
+  function mapStorageObject(row) {
+    return {
+      id: row.id, userId: row.user_id, objectKey: row.object_key, sizeBytes: Number(row.size_bytes), mimeType: row.mime_type,
+      category: row.category, sourceDomain: row.source_domain, sourceRecordId: row.source_record_id,
+      createdAt: row.created_at, deletedAt: row.deleted_at
+    };
+  }
+  const storageObjects = {
+    async record({ userId, objectKey, sizeBytes, mimeType, category, sourceDomain, sourceRecordId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO storage_objects (id, user_id, object_key, size_bytes, mime_type, category, source_domain, source_record_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [newId('storageObject'), userId, objectKey, sizeBytes, mimeType || null, category, sourceDomain || null, sourceRecordId || null]
+      );
+      return mapStorageObject(rows[0]);
+    },
+    async sumActiveBytesForUser(userId) {
+      const { rows } = await pool.query('SELECT COALESCE(SUM(size_bytes),0) AS total FROM storage_objects WHERE user_id=$1 AND deleted_at IS NULL', [userId]);
+      return Number(rows[0].total);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM storage_objects WHERE id=$1', [id]);
+      return rows[0] ? mapStorageObject(rows[0]) : null;
+    },
+    async listActiveForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM storage_objects WHERE user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC', [userId]);
+      return rows.map(mapStorageObject);
+    },
+    // Validation Gate (spec section 15) - marks the metadata deleted; the caller
+    // (server/community/routes.storage.mjs) is responsible for having already deleted the real
+    // file via ObjectStorageProvider.delete() first. Idempotent: marking an already-deleted row
+    // deleted again is harmless (deleted_at simply moves forward).
+    async markDeleted(id) {
+      const { rows } = await pool.query('UPDATE storage_objects SET deleted_at=now() WHERE id=$1 RETURNING *', [id]);
+      return rows[0] ? mapStorageObject(rows[0]) : null;
+    }
+  };
+
   // Module 5 (final module) of the local-first-to-server migration. One row per user, the
   // entire client profile stored (and returned) verbatim as a single jsonb column - no child
   // tables, no transaction needed (a single-row upsert can't partially fail the way a
@@ -2294,6 +2983,8 @@ export function createPgRepo(pool) {
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
-    authSessions, externalIdentities, securityEvents, authTransactions, health
+    authSessions, externalIdentities, securityEvents, authTransactions, health,
+    commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
+    subscriptions, paymentTransactions, paymentEvents, storageProducts, storageEntitlements, storageObjects
   };
 }

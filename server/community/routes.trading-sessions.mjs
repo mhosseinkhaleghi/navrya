@@ -1,6 +1,9 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
-import { saveImage } from '../storage/storage.mjs';
+import { decodedByteLength } from '../storage/storage.mjs';
+import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provider.mjs';
+import { assertStorageAvailable, recordStorageObject } from '../commercial/storage-service.mjs';
+import { createWithQuota } from '../commercial/quota.mjs';
 
 // Module 1 of the local-first-to-server migration (see ARCHITECTURE.md's Global Data Sync
 // section). Mounted at /api/sync/sessions, behind devUserAuth like every other /api/sync/*
@@ -9,6 +12,7 @@ import { saveImage } from '../storage/storage.mjs';
 // gateway on a different port/process for their existing analysis endpoints).
 export function router(repo, uploadsDir) {
   const app = express.Router();
+  const objectStorage = new LocalDiskObjectStorageProvider({ uploadsDir });
 
   // Full reconciliation pull - the client merges this into its local write-through cache on
   // load and on reconnect (see session-workspace-logic.js's reconcileFromServer()).
@@ -29,7 +33,10 @@ export function router(repo, uploadsDir) {
   app.post('/', asyncHandler(async (req, res) => {
     const record = req.body || {};
     if (!record.id) throw new ApiError(400, 'VALIDATION_FAILED');
-    const saved = await repo.tradingSessions.upsert(req.currentUser.id, record);
+    const existing = await repo.tradingSessions.get(req.currentUser.id, record.id);
+    const saved = existing
+      ? await repo.tradingSessions.upsert(req.currentUser.id, record)
+      : await createWithQuota('sessions', req.currentUser.id, repo, () => repo.tradingSessions.upsert(req.currentUser.id, record));
     res.status(200).json(saved);
   }));
 
@@ -45,7 +52,9 @@ export function router(repo, uploadsDir) {
   // concurrent session upsert's own delete+reinsert of the same entry.
   app.post('/images', asyncHandler(async (req, res) => {
     const { dataUrl } = req.body || {};
-    const url = await saveImage(dataUrl, { uploadsDir, category: 'session' });
+    await assertStorageAvailable(repo, req.currentUser.id, decodedByteLength(dataUrl));
+    const { url, objectKey, sizeBytes, mimeType } = await objectStorage.put(dataUrl, { category: 'session' });
+    await recordStorageObject(repo, { userId: req.currentUser.id, objectKey, sizeBytes, mimeType, category: 'session' });
     res.status(201).json({ url });
   }));
 

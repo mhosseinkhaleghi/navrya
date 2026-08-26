@@ -13,8 +13,9 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 
 // React rewrite of the Account Profile destination (sidebar "اشتراک", #account/profile[/tab])
 // per the design handoff: a persistent "dossier band" (rank/level/XP/next-reward) above a tab
-// bar (Identity / Level & Progress / Achievements / Role - Subscription is intentionally left as
-// a stub for now, per instruction, since no real billing system exists to back it).
+// bar (Identity / Level & Progress / Achievements / Role / Subscription). Subscription originally
+// shipped as a stub (no real billing existed yet); it now renders the real Commercial System
+// Plan/Wallet/Storage panels (Validation Gate fix - see SubscriptionTab's own comment).
 //
 // Every store call is the exact same real API account-profile-ui.js already used
 // (window.TradeJournalAccountProfileStore, ProfileXPRules, ProfileAchievements) - only the
@@ -1089,8 +1090,135 @@ function RoleTab({ lang, profile, onSaved }) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Subscription tab (stub - no real billing system exists yet, per instruction)
+// Subscription tab - Commercial System Validation Gate finding: this tab was still showing the
+// pre-Slice-1 "not connected to a real billing system yet" stub even after Slices 1/2 built a
+// real Wallet/Subscription/Storage backend, because a SEPARATE, no-longer-mounted file
+// (navrya-src/subscriptionsView.jsx, written during Slice 1/2 without first confirming which
+// component tree the live app actually renders) was updated instead of this one - the real one.
+// Fixed here, in place, against the live component. subscriptionsView.jsx's own additions are
+// now dead code and should be removed in a follow-up cleanup pass rather than silently left to
+// confuse the next reader into thinking IT is what's live.
 // ---------------------------------------------------------------------------------------------
+
+function fmtMicroUsd(microUsd) { return '$' + (microUsd / 1000000).toFixed(2); }
+function fmtBytesGb(bytes) { return (bytes / 1073741824).toFixed(bytes % 1073741824 === 0 ? 0 : 1) + ' GB'; }
+
+function WalletPanel() {
+  const [wallet, setWallet] = React.useState(null);
+  const [amount, setAmount] = React.useState('10');
+  const [note, setNote] = React.useState('');
+  function reload() { fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {}); }
+  React.useEffect(reload, []);
+  function requestTopUp() {
+    fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: Number(amount) }) })
+      .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
+      .then(() => setNote('Top-up requested - pending Admin confirmation (manual/test billing).'))
+      .catch((error) => setNote('Could not submit the top-up request: ' + error.message));
+  }
+  if (!wallet) return null;
+  return (
+    <Panel variant="base" ornament padding="20px 22px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>AI Wallet</span>
+        <strong style={{ fontSize: 22, color: 'var(--parchment)' }}>{fmtMicroUsd(wallet.totalBalanceMicroUsd)}</strong>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Promo {fmtMicroUsd(wallet.promoBalanceMicroUsd)} · Paid {fmtMicroUsd(wallet.paidBalanceMicroUsd)}</span>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          <div style={{ width: 110 }}><TextField label="Amount (USD)" value={amount} onChange={setAmount} type="number" /></div>
+          <Button variant="primary" size="sm" onClick={requestTopUp}>Request Top-Up</Button>
+        </div>
+        {!!note && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{note}</span>}
+      </div>
+    </Panel>
+  );
+}
+
+function PlanPanel() {
+  const [data, setData] = React.useState(null);
+  const [note, setNote] = React.useState('');
+  function reload() { fetch('/api/sync/subscriptions').then((r) => r.json()).then(setData).catch(() => setData({ plan: 'free', subscription: null })); }
+  React.useEffect(reload, []);
+  function upgrade(planId) {
+    fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
+      .then(() => setNote('Upgrade requested - pending Admin confirmation (manual/test billing).')).catch(() => setNote('Could not submit the upgrade request.'));
+  }
+  function cancelSub(id) { fetch('/api/sync/subscriptions/' + id + '/cancel', { method: 'POST' }).then(reload); }
+  function reactivateSub(id) { fetch('/api/sync/subscriptions/' + id + '/reactivate', { method: 'POST' }).then(reload); }
+  if (!data) return null;
+  const planLabel = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);
+  const upgradeTargets = data.plan === 'free' ? ['plus', 'personalized'] : data.plan === 'plus' ? ['personalized'] : [];
+  return (
+    <Panel variant="base" ornament padding="20px 22px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Plan</span>
+            <strong style={{ fontSize: 22, color: 'var(--parchment)' }}>{planLabel}</strong>
+          </div>
+          {data.subscription && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>
+              <div>{fmtMicroUsd(data.subscription.priceAmountMicroUsd)} / mo</div>
+              <div>{data.subscription.cancelAtPeriodEnd ? 'Canceling - active until ' : 'Renews '}{new Date(data.subscription.currentPeriodEnd).toLocaleDateString()}</div>
+            </div>
+          )}
+        </div>
+        {!!upgradeTargets.length && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {upgradeTargets.map((planId) => (
+              <Button key={planId} variant="primary" size="sm" onClick={() => upgrade(planId)}>Upgrade to {planId.charAt(0).toUpperCase() + planId.slice(1)}</Button>
+            ))}
+          </div>
+        )}
+        {data.subscription && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            {data.subscription.cancelAtPeriodEnd
+              ? <Button variant="secondary" size="sm" onClick={() => reactivateSub(data.subscription.id)}>Reactivate</Button>
+              : <Button variant="secondary" size="sm" onClick={() => cancelSub(data.subscription.id)}>Cancel at period end</Button>}
+          </div>
+        )}
+        {!!note && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{note}</span>}
+      </div>
+    </Panel>
+  );
+}
+
+function StoragePanel() {
+  const [storage, setStorage] = React.useState(null);
+  const [products, setProducts] = React.useState([]);
+  const [note, setNote] = React.useState('');
+  function reload() {
+    fetch('/api/sync/storage').then((r) => r.json()).then(setStorage).catch(() => {});
+    fetch('/api/sync/storage/products').then((r) => r.json()).then((d) => setProducts(d.products || [])).catch(() => {});
+  }
+  React.useEffect(reload, []);
+  function requestPurchase(productId) {
+    fetch('/api/sync/storage/purchase-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId }) })
+      .then(() => setNote('Purchase requested - pending Admin confirmation (manual/test billing).')).catch(() => setNote('Could not submit the purchase request.'));
+  }
+  if (!storage) return null;
+  return (
+    <Panel variant="base" ornament padding="20px 22px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Storage</span>
+        <strong style={{ fontSize: 22, color: 'var(--parchment)' }}>{fmtBytesGb(storage.usedBytes)} / {fmtBytesGb(storage.quotaBytes)}</strong>
+        {!!(storage.entitlements && storage.entitlements.length) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {storage.entitlements.map((e) => (
+              <span key={e.id} style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{fmtBytesGb(e.capacityBytesSnapshot)} - expires {new Date(e.expiresAt).toLocaleDateString()}</span>
+            ))}
+          </div>
+        )}
+        {!!products.length && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {products.map((p) => (
+              <Button key={p.id} variant="secondary" size="sm" onClick={() => requestPurchase(p.id)}>{p.name} - {fmtMicroUsd(p.priceAmountMicroUsd)}</Button>
+            ))}
+          </div>
+        )}
+        {!!note && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{note}</span>}
+      </div>
+    </Panel>
+  );
+}
 
 function SubscriptionTab({ lang, i18n }) {
   const [subs, setSubs] = React.useState(null);
@@ -1100,13 +1228,9 @@ function SubscriptionTab({ lang, i18n }) {
   }, []);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Panel variant="quiet" padding="26px 20px">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
-          <span style={{ width: 46, height: 46, borderRadius: 10, display: 'grid', placeItems: 'center', color: 'var(--gold-warm)', border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.08)' }}><Icon name="crown" size={22} /></span>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--parchment)' }}>{tr(lang, 'subComingTitle')}</span>
-          <span style={{ fontSize: 12.5, color: 'var(--text-dim)', lineHeight: 1.9, maxWidth: '52ch' }}>{tr(lang, 'subComingBody')}</span>
-        </div>
-      </Panel>
+      <PlanPanel />
+      <WalletPanel />
+      <StoragePanel />
       {subs && subs.length > 0 && (
         <Panel variant="base" ornament padding="20px 22px">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

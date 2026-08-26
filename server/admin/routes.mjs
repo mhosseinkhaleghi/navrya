@@ -9,6 +9,7 @@ import { ACHIEVEMENTS } from '../community/achievement-rules.mjs';
 import { LEVEL_REQUIREMENTS } from '../community/mastery-rules.mjs';
 import { getEffectiveXpConfig, invalidateXpConfigCache, SERVER_ONLY_ACHIEVEMENT_POINTS } from '../community/xp-config.mjs';
 import { router as voiceProvidersRouter } from './routes.voice-providers.mjs';
+import { router as commercialRouter } from './routes.commercial.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 const SORTABLE_COLUMNS = ['displayName', 'createdAt', 'lastLoginAt', 'isOnline', 'hoursOnline', 'purchaseCount', 'totalMockSpent', 'totalTokensUsed'];
@@ -460,6 +461,10 @@ export function router(repo) {
   // inherits this router's own requireAdmin (applied at the /api/admin mount in app.mjs) for free,
   // exactly like every route above it.
   app.use('/voice-providers', voiceProvidersRouter(repo));
+
+  // Commercial System Slice 1 (Plans/Wallet/Markup/Provider-Model-Pricing/per-user credit-debit) -
+  // same "own file, mounted here to inherit requireAdmin for free" pattern as voice-providers above.
+  app.use('/commercial', commercialRouter(repo));
 
   return app;
 }

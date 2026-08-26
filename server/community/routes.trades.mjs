@@ -1,12 +1,15 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
-import { saveImage } from '../storage/storage.mjs';
+import { decodedByteLength } from '../storage/storage.mjs';
+import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provider.mjs';
+import { assertStorageAvailable, recordStorageObject } from '../commercial/storage-service.mjs';
 
 // Module 4 of the local-first-to-server migration (see ARCHITECTURE.md's Global Data Sync
 // section, 7.18). Mounted at /api/sync/trades, behind devUserAuth - see
 // routes.trading-sessions.mjs's comment for why /api/sync/* is its own prefix.
 export function router(repo, uploadsDir) {
   const app = express.Router();
+  const objectStorage = new LocalDiskObjectStorageProvider({ uploadsDir });
 
   app.get('/', asyncHandler(async (req, res) => {
     res.json({ trades: await repo.trades.listByUser(req.currentUser.id) });
@@ -34,7 +37,9 @@ export function router(repo, uploadsDir) {
 
   app.post('/images', asyncHandler(async (req, res) => {
     const { dataUrl } = req.body || {};
-    const url = await saveImage(dataUrl, { uploadsDir, category: 'trade' });
+    await assertStorageAvailable(repo, req.currentUser.id, decodedByteLength(dataUrl));
+    const { url, objectKey, sizeBytes, mimeType } = await objectStorage.put(dataUrl, { category: 'trade' });
+    await recordStorageObject(repo, { userId: req.currentUser.id, objectKey, sizeBytes, mimeType, category: 'trade' });
     res.status(201).json({ url });
   }));
 

@@ -13,9 +13,13 @@ after(async () => { await rm(uploadsDir, { recursive: true, force: true }); });
 const tinyPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 test('a valid image data URL is decoded, re-encoded (never stored byte-for-byte verbatim), and written to disk under the given category', async () => {
-  const url = await saveImage(`data:image/png;base64,${tinyPngBase64}`, { uploadsDir, category: 'posts' });
+  const { url, sizeBytes, mimeType } = await saveImage(`data:image/png;base64,${tinyPngBase64}`, { uploadsDir, category: 'posts' });
   assert.match(url, /^\/uploads\/posts\/img-.+\.png$/);
+  assert.equal(mimeType, 'image/png');
   const written = await readFile(path.join(uploadsDir, 'posts', path.basename(url)));
+  // Commercial System Slice 2 - sizeBytes must be the REAL final on-disk size (storage-quota
+  // enforcement is built on this being trustworthy), not a client-supplied or pre-encode number.
+  assert.equal(sizeBytes, written.byteLength);
   // Deliberately NOT a byte-for-byte comparison against the input - every accepted image is
   // decoded and re-encoded through sharp (see storage.mjs's own comment on why), so the stored
   // bytes are expected to differ from the upload even for an already-valid PNG. What must be
@@ -62,9 +66,9 @@ test('an oversized image is rejected with IMAGE_TOO_LARGE', async () => {
 });
 
 test('saveImages caps the batch at 6 images and ignores anything beyond that, rather than failing the whole request', async () => {
-  const urls = await saveImages(new Array(9).fill(`data:image/png;base64,${tinyPngBase64}`), { uploadsDir, category: 'listings' });
-  assert.equal(urls.length, 6);
-  urls.forEach((url) => assert.match(url, /^\/uploads\/listings\//));
+  const results = await saveImages(new Array(9).fill(`data:image/png;base64,${tinyPngBase64}`), { uploadsDir, category: 'listings' });
+  assert.equal(results.length, 6);
+  results.forEach(({ url, sizeBytes }) => { assert.match(url, /^\/uploads\/listings\//); assert.ok(sizeBytes > 0); });
 });
 
 test('saveImages returns an empty array for a missing/non-array input rather than throwing', async () => {

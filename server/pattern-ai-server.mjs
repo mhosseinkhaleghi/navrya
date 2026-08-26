@@ -255,6 +255,66 @@ async function checkAiQuota(userId) {
   return { ok: true };
 }
 
+// Commercial System Slice 1 - the AI Wallet bridge. This process stays deliberately DB-free (see
+// this file's own header/routes.internal.mjs's comment) - the real reserve/settle/release logic
+// (markup resolution, provider-cost pricing, the wallet ledger itself) lives in
+// server/commercial/wallet-service.mjs, reached only over this same INTERNAL_API_SECRET-protected
+// bridge every other admin-key/session/health call in this file already uses.
+//
+// Only routes that call a real LLM provider are wallet-billed (AI_BILLED_ROUTES below) - Voice
+// Mode/TTS (a separate provider, ElevenLabs) and /api/ai/test-connection /
+// /api/ai/realtime/session (no metered provider usage of their own) are deliberately excluded;
+// see the Commercial System Slice 1 plan's "explicitly out of scope this slice" note for voice
+// wallet settlement as a named, not-silently-dropped follow-up gap.
+const AI_BILLED_ROUTES = {
+  '/api/patterns/generate-stages': 'patternGenerateStages',
+  '/api/patterns/chat': 'patternChat',
+  '/api/strategy-education/summarize': 'strategyEducationSummarize',
+  '/api/strategy-education/chat': 'strategyEducationChat',
+  '/api/strategy-education/from-event': 'strategyFromEvent',
+  '/api/trades/analyze': 'tradeAnalyze',
+  '/api/trades/psychology-analysis': 'tradePsychologyAnalysis',
+  '/api/trades/extract-fields': 'tradeExtractFields',
+  '/api/mental-health/chat': 'mentalHealthChat',
+  '/api/mental-health/education-card': 'mentalHealthEducationCard',
+  '/api/ai/chat': 'aiChat'
+};
+
+async function internalWalletCall(path, payload) {
+  const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + path;
+  const headers = { 'Content-Type': 'application/json' };
+  if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
+  const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) });
+  return response.ok ? await response.json() : { ok: false, reason: 'WALLET_SERVICE_UNAVAILABLE' };
+}
+
+// Fail CLOSED, same posture as verifySession() above - an unreachable Community API must never
+// be treated as "the user has funds", or every AI call would silently become free the moment the
+// billing service is down.
+async function reserveWalletFundsForCall({ userId, feature, provider, model, payload }) {
+  try {
+    return await internalWalletCall('/internal/wallet/reserve', { userId, feature, provider, model, payload });
+  } catch (_) {
+    return { ok: false, reason: 'WALLET_SERVICE_UNAVAILABLE' };
+  }
+}
+
+// Never lets a settlement-reporting failure surface as a failure on the AI response the user is
+// already holding - same "the caller never awaits/depends on this for its own success" posture
+// as reportProviderHealth() below, just still awaited here so a crash/restart can't interleave
+// with the in-flight response write.
+async function settleWalletFundsForCall({ reservationId, provider, model, feature, usage }) {
+  try {
+    await internalWalletCall('/internal/wallet/settle', { reservationId, provider, model, feature, usage });
+  } catch (_) { /* best-effort - the reservation ages out as an unresolved 'pending' row rather than blocking the response */ }
+}
+
+async function releaseWalletFundsForCall(reservationId) {
+  try {
+    await internalWalletCall('/internal/wallet/release', { reservationId });
+  } catch (_) { /* best-effort, see settleWalletFundsForCall's comment */ }
+}
+
 function json(response, status, body) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -1827,29 +1887,52 @@ const server = http.createServer(async (request, response) => {
     return json(response, 429, { error: quota.reason });
   }
 
+  let walletReservationId = null;
   try {
     const body = await readBody(request);
-    if (request.url === '/api/patterns/generate-stages') return json(response, 200, await generateStages(body));
-    if (request.url === '/api/patterns/chat') return json(response, 200, await trainingChat(body));
-    if (request.url === '/api/strategy-education/summarize') return json(response, 200, await summarizeStrategyEducation(body));
-    if (request.url === '/api/strategy-education/chat') return json(response, 200, await strategyEducationChat(body));
-    if (request.url === '/api/strategy-education/from-event') return json(response, 200, await strategyFromEvent(body));
-    if (request.url === '/api/trades/analyze') return json(response, 200, await analyzeTrade(body));
-    if (request.url === '/api/trades/psychology-analysis') return json(response, 200, await psychologyAnalysis(body));
-    if (request.url === '/api/trades/extract-fields') return json(response, 200, await extractTradeFields(body));
-    if (request.url === '/api/mental-health/chat') return json(response, 200, await mentalHealthChat(body));
-    if (request.url === '/api/mental-health/education-card') return json(response, 200, await mentalHealthEducationCard(body));
-    if (request.url === '/api/ai/chat') return json(response, 200, await dockChat(body));
-    if (request.url === '/api/ai/test-connection') return json(response, 200, await testConnection(body));
-    if (request.url === '/api/ai/realtime/session') return json(response, 200, await mintRealtimeClientSecret(body, session.userId));
+
+    // Commercial System Slice 1 - wallet-gate ONLY a platform-key-funded call to a real LLM
+    // provider (AI_BILLED_ROUTES). A BYOK call (the client's own body.apiKey, checked here the
+    // same way callProvider() itself resolves it) costs NAVRYA nothing to serve and is
+    // deliberately never billed - this app supports BYOK-only operation by design (see
+    // callProvider()'s own key-resolution order above).
+    const billedFeature = AI_BILLED_ROUTES[request.url];
+    const isByok = typeof body.apiKey === 'string' && body.apiKey.trim().length > 0;
+    if (billedFeature && !isByok) {
+      const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: body.provider, model: body.model, payload: body });
+      if (!gate.ok) {
+        const status = gate.reason === 'WALLET_INSUFFICIENT_BALANCE' ? 402 : 503;
+        return json(response, status, { error: gate.reason || 'WALLET_SERVICE_UNAVAILABLE' });
+      }
+      walletReservationId = gate.reservationId;
+    }
+
+    let result;
+    if (request.url === '/api/patterns/generate-stages') result = await generateStages(body);
+    else if (request.url === '/api/patterns/chat') result = await trainingChat(body);
+    else if (request.url === '/api/strategy-education/summarize') result = await summarizeStrategyEducation(body);
+    else if (request.url === '/api/strategy-education/chat') result = await strategyEducationChat(body);
+    else if (request.url === '/api/strategy-education/from-event') result = await strategyFromEvent(body);
+    else if (request.url === '/api/trades/analyze') result = await analyzeTrade(body);
+    else if (request.url === '/api/trades/psychology-analysis') result = await psychologyAnalysis(body);
+    else if (request.url === '/api/trades/extract-fields') result = await extractTradeFields(body);
+    else if (request.url === '/api/mental-health/chat') result = await mentalHealthChat(body);
+    else if (request.url === '/api/mental-health/education-card') result = await mentalHealthEducationCard(body);
+    else if (request.url === '/api/ai/chat') result = await dockChat(body);
+    else if (request.url === '/api/ai/test-connection') result = await testConnection(body);
+    else if (request.url === '/api/ai/realtime/session') result = await mintRealtimeClientSecret(body, session.userId);
     // Admin-only hardened replacement for the old isolated /api/ai/voice/test-tts-fa (see
     // adminTestVoiceProviderTts()'s own header comment for what changed and why).
-    if (request.url === '/api/ai/voice/test-tts') return json(response, 200, await adminTestVoiceProviderTts(body, session));
+    else if (request.url === '/api/ai/voice/test-tts') result = await adminTestVoiceProviderTts(body, session);
     // Live Voice Mode's own speak path - any real, verified, non-suspended session (not admin-only:
     // every end user using Voice Mode reaches this), same auth/quota gate as every route above.
-    if (request.url === '/api/ai/voice/speak') return json(response, 200, await speakWithVoiceProvider(body));
-    return json(response, 404, { error: 'NOT_FOUND' });
+    else if (request.url === '/api/ai/voice/speak') result = await speakWithVoiceProvider(body);
+    else return json(response, 404, { error: 'NOT_FOUND' });
+
+    if (walletReservationId) await settleWalletFundsForCall({ reservationId: walletReservationId, provider: result && result.provider, model: result && result.model, feature: billedFeature, usage: result && result.usage });
+    return json(response, 200, result);
   } catch (error) {
+    if (walletReservationId) await releaseWalletFundsForCall(walletReservationId); // failed calls are never charged (spec section 27)
     const status = error.message === 'REQUEST_TOO_LARGE' ? 413
       : error.message === 'INVALID_JSON' ? 400
       : /_API_KEY_MISSING$/.test(error.message || '') ? 503

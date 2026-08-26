@@ -1,5 +1,6 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
+import { createWithQuota } from '../commercial/quota.mjs';
 
 // NAVRYA Accounts domain (021_accounts.sql). Mounted at /api/sync/accounts, behind the same
 // requireAuth()+csrfProtection() chain every other /api/sync/* route sits behind in app.mjs -
@@ -22,7 +23,10 @@ export function router(repo) {
   app.post('/', asyncHandler(async (req, res) => {
     const record = req.body || {};
     if (!record.id) throw new ApiError(400, 'VALIDATION_FAILED');
-    const saved = await repo.accounts.upsert(req.currentUser.id, record);
+    const existing = await repo.accounts.get(req.currentUser.id, record.id);
+    const saved = existing
+      ? await repo.accounts.upsert(req.currentUser.id, record)
+      : await createWithQuota('accounts', req.currentUser.id, repo, () => repo.accounts.upsert(req.currentUser.id, record));
     res.status(200).json(saved);
   }));
 

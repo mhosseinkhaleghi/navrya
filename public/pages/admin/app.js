@@ -4,7 +4,22 @@ const translations = {
     loginHint: 'Sign in with your admin account.', emailLabel: 'Email', passwordLabel: 'Password', loginSubmit: 'Log in',
     gateErrorNotAdmin: 'This account does not have admin access.', gateErrorInvalidCredentials: 'Incorrect email or password.',
     enforcementWarning: 'Warning: ADMIN_AUTH_ENFORCED is not set on the server - every account currently has admin access. Set ADMIN_AUTH_ENFORCED=true.',
-    tabUsers: 'Users', tabAI: 'AI', tabTechnical: 'Technical', tabXP: 'XP & Segmentation', tabMarketplace: 'Marketplace', tabFinancial: 'Financial',
+    tabUsers: 'Users', tabAI: 'AI', tabTechnical: 'Technical', tabXP: 'XP & Segmentation', tabMarketplace: 'Marketplace', tabFinancial: 'Financial', tabCommercial: 'Commercial',
+    comSubPlans: 'Plans', comSubWallet: 'Wallet', comSubHistory: 'Configuration History',
+    comUnlimited: 'Unlimited', comStorageBytes: 'Storage (bytes)', comLimitPatterns: 'Patterns', comLimitStrategies: 'Strategies', comLimitAccounts: 'Connected Accounts', comLimitSessions: 'Sessions', comLimitAnalysisSymbols: 'Analysis Symbols',
+    comFeatureWallet: 'Wallet enabled', comFeatureAi: 'AI (wallet-based)', comFeatureVoice: 'Voice (wallet-based)', comFeatureAiPanelBuilder: 'AI Panel Builder',
+    comSavePlan: 'Save plan', comMarkupPercent: 'Global markup %', comMultiplier: 'Multiplier', comGrossMargin: 'Gross margin', comMinTopUp: 'Minimum top-up (USD)', comSignupPromo: 'Signup promo credit (USD, retail)', comSaveWalletRules: 'Save wallet rules',
+    comSimulatorTitle: 'AI Pricing Simulator', comProviderCost: 'Provider cost (USD)', comRetail: 'Retail', comProfit: 'Gross profit',
+    comMarkupRulesTitle: 'Markup overrides', comScopeType: 'Scope type', comScopeKey: 'Scope key (feature/provider/model name)', comAddRule: 'Add override', comRemove: 'Remove', comNoRules: 'No overrides - the global markup applies to everything.',
+    comProviderPricingTitle: 'Provider model pricing', comModel: 'Model', comPromptPrice: 'Prompt $/1K', comCompletionPrice: 'Completion $/1K', comAddPricing: 'Add model pricing', comNoModelPricing: 'No model-specific pricing - the provider-level rate (AI tab) applies.',
+    comCreditDebitTitle: 'Grant / debit a user’s wallet', comUserId: 'User ID', comAmountUsd: 'Amount (USD)', comBalanceType: 'Balance', comBalancePaid: 'Paid', comBalancePromo: 'Promo', comReason: 'Reason (internal note)', comCredit: 'Credit', comDebit: 'Debit',
+    comLedgerTitle: 'Recent wallet ledger', comLedgerEmpty: 'No wallet activity yet.', comColTime: 'Time', comColUser: 'User', comColType: 'Type', comColCash: 'Cash Δ', comColPromo: 'Promo Δ', comColProviderModel: 'Provider / model', comColFeature: 'Feature',
+    comHistoryTitle: 'Published configuration changes', comHistoryEmpty: 'No changes published yet.', comColKey: 'Config key', comColChangedBy: 'Changed by', comColSummary: 'Summary',
+    comSubSubscriptions: 'Subscriptions', comSubStorage: 'Storage', comSubTransactions: 'Transactions',
+    comPlanPrice: 'Price (USD / month)',
+    comStatActivePlus: 'Active Plus', comStatActivePersonalized: 'Active Personalized', comStatPastDue: 'Past due', comStatCanceling: 'Canceling', comStatExpired: 'Expired', comStatMrr: 'MRR',
+    comStorageProductsTitle: 'Storage Add-on Products', comProductName: 'Name', comProductPrice: 'Price (USD)', comCapacityGb: 'Capacity (GB)', comValidityDays: 'Validity (days)', comDisplayOrder: 'Display order', comEnabled: 'Enabled', comAddProduct: 'Add product', comSaveProduct: 'Save',
+    comTransactionsTitle: 'Payment Transactions', comColType: 'Type', comColAmount: 'Amount', comColStatus: 'Status', comColProduct: 'Product', comColConfirmed: 'Confirmed', comConfirm: 'Confirm', comFail: 'Fail', comRefund: 'Refund', comNoTransactions: 'No transactions yet.',
     loading: 'Loading…', errorGeneric: 'Something went wrong.', retry: 'Retry',
     usersSearchPlaceholder: 'Search by name…',
     colDisplayName: 'Display name', colJoined: 'Joined', colLastLogin: 'Last login', colOnline: 'Online', colHoursOnline: 'Hours online', colPurchases: 'Purchases', colTokensUsed: 'Tokens used', colRole: 'Role', colActions: 'Actions',
@@ -292,6 +307,9 @@ const switcher = window.TradeJournalDevUserSwitcher;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 function fmtNumber(value) { return value === null || value === undefined || Number.isNaN(Number(value)) ? '—' : numberFormat.format(Number(value)); }
 function fmtDate(value) { if (!value) return '—'; try { return new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); } catch (_) { return '—'; } }
+// Commercial System Slice 1 - money is integer microUSD everywhere server-side (never a float);
+// this is the ONE place it ever becomes a display string.
+function fmtMicroUsd(microUsd) { return microUsd === null || microUsd === undefined ? '—' : '$' + (Number(microUsd) / 1000000).toFixed(4); }
 
 // Every fetch below attaches x-dev-user-id (bootstrapped once via switcher.ensureUser() in
 // boot()) since /api/admin/* sits behind the same devUserAuth as the rest of Community -
@@ -1249,10 +1267,421 @@ function financialTab() {
 
 // --- Routing / boot ---
 
-const tabBuilders = { users: usersTab, ai: aiTab, technical: technicalTab, xp: xpTab, marketplace: marketplaceTab, financial: financialTab };
+// --- Commercial tab (Slice 1: Plans / Wallet / Configuration History) ---
+// Deliberately English-only for now (t() falls back to the English string on any other active
+// language, per its own definition above) - a full four-language pass for this brand-new admin
+// surface is out of scope for this slice; every OTHER tab's existing translations are untouched.
+let commercialSubTab = 'plans';
+function commercialSubNav(active) {
+  const nav = el('div', 'admin-btn-row');
+  [
+    ['plans', t('comSubPlans')], ['wallet', t('comSubWallet')], ['subscriptions', t('comSubSubscriptions')],
+    ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['history', t('comSubHistory')]
+  ].forEach(([id, label]) => {
+    const btn = el('button', 'btn btn-secondary btn-sm' + (id === active ? ' active' : ''), label);
+    btn.type = 'button';
+    btn.onclick = () => { commercialSubTab = id; renderTab(); };
+    nav.append(btn);
+  });
+  return nav;
+}
+
+const RESOURCE_LIMIT_KEYS = ['patterns', 'strategies', 'accounts', 'sessions', 'analysisSymbols'];
+const RESOURCE_LIMIT_LABELS = { patterns: 'comLimitPatterns', strategies: 'comLimitStrategies', accounts: 'comLimitAccounts', sessions: 'comLimitSessions', analysisSymbols: 'comLimitAnalysisSymbols' };
+const PLAN_FEATURE_KEYS = ['wallet', 'ai', 'voice', 'aiPanelBuilder'];
+const PLAN_FEATURE_LABELS = { wallet: 'comFeatureWallet', ai: 'comFeatureAi', voice: 'comFeatureVoice', aiPanelBuilder: 'comFeatureAiPanelBuilder' };
+
+function commercialPlansSubTab() {
+  return api('/commercial/plans').then((data) => {
+    const wrap = el('div', 'admin-grid');
+    ['free', 'plus', 'personalized'].forEach((plan) => {
+      const planConfig = data.plans[plan];
+      const card = el('div', 'admin-card');
+      card.append(el('h3', '', plan.charAt(0).toUpperCase() + plan.slice(1)));
+
+      const limitInputs = {};
+      RESOURCE_LIMIT_KEYS.forEach((key) => {
+        const row = el('div', 'admin-btn-row');
+        const numberField = field(t(RESOURCE_LIMIT_LABELS[key]), 'number', planConfig.limits[key]);
+        const unlimitedCheckbox = document.createElement('input');
+        unlimitedCheckbox.type = 'checkbox';
+        unlimitedCheckbox.checked = planConfig.limits[key] === null;
+        numberField.input.disabled = unlimitedCheckbox.checked;
+        unlimitedCheckbox.onchange = () => { numberField.input.disabled = unlimitedCheckbox.checked; };
+        const unlimitedLabel = el('label', 'field-check');
+        unlimitedLabel.append(unlimitedCheckbox, el('span', '', t('comUnlimited')));
+        row.append(numberField.wrap, unlimitedLabel);
+        limitInputs[key] = { input: numberField.input, unlimitedCheckbox };
+        card.append(row);
+      });
+
+      const storageField = field(t('comStorageBytes'), 'number', planConfig.storageBytes);
+      card.append(storageField.wrap);
+
+      // Free has no price to edit - it's fixed at $0 (spec section 1).
+      const priceField = plan !== 'free' ? field(t('comPlanPrice'), 'number', planConfig.price.amountUsd) : null;
+      if (priceField) card.append(priceField.wrap);
+
+      const featureInputs = {};
+      PLAN_FEATURE_KEYS.forEach((key) => {
+        const featureLabel = el('label', 'field-check');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = Boolean(planConfig.features[key]);
+        featureLabel.append(checkbox, el('span', '', t(PLAN_FEATURE_LABELS[key])));
+        featureInputs[key] = checkbox;
+        card.append(featureLabel);
+      });
+
+      const saveBtn = el('button', 'btn btn-primary', t('comSavePlan'));
+      saveBtn.type = 'button';
+      saveBtn.onclick = () => {
+        const limits = {};
+        RESOURCE_LIMIT_KEYS.forEach((key) => { limits[key] = limitInputs[key].unlimitedCheckbox.checked ? null : Number(limitInputs[key].input.value); });
+        const features = {};
+        PLAN_FEATURE_KEYS.forEach((key) => { features[key] = featureInputs[key].checked; });
+        const payload = { limits, storageBytes: Number(storageField.input.value), features };
+        if (priceField) payload.price = { amountUsd: Number(priceField.input.value), billingInterval: 'month' };
+        api('/commercial/plans/' + plan, { method: 'PATCH', body: JSON.stringify(payload) })
+          .then(() => showToast(t('saved'))).catch((error) => showToast(error.message, 'danger'));
+      };
+      card.append(saveBtn);
+      wrap.append(card);
+    });
+    return wrap;
+  });
+}
+
+function commercialWalletSubTab() {
+  return Promise.all([
+    api('/commercial/wallet-rules'), api('/commercial/markup-rules'), api('/commercial/provider-pricing'), api('/commercial/ledger')
+  ]).then(([walletRules, markupRulesData, pricingData, ledgerData]) => {
+    const wrap = el('div', 'admin-grid');
+
+    const rulesCard = el('div', 'admin-card');
+    rulesCard.append(el('h3', '', t('comSubWallet')));
+    const markupField = field(t('comMarkupPercent'), 'number', walletRules.markupPercent);
+    const minTopUpField = field(t('comMinTopUp'), 'number', walletRules.minimumTopUpUsd);
+    const signupPromoField = field(t('comSignupPromo'), 'number', walletRules.signupPromoRetailUsd);
+    const preview = el('p', 'hint');
+    function updatePreview() {
+      const percent = Number(markupField.input.value) || 0;
+      const multiplier = 1 + percent / 100;
+      const margin = multiplier > 0 ? (multiplier - 1) / multiplier * 100 : 0;
+      preview.textContent = t('comMultiplier') + ': ' + multiplier.toFixed(2) + '× · ' + t('comGrossMargin') + ': ' + margin.toFixed(2) + '%';
+    }
+    markupField.input.oninput = updatePreview;
+    updatePreview();
+    const saveRulesBtn = el('button', 'btn btn-primary', t('comSaveWalletRules'));
+    saveRulesBtn.type = 'button';
+    saveRulesBtn.onclick = () => {
+      api('/commercial/wallet-rules', { method: 'PATCH', body: JSON.stringify({
+        markupPercent: Number(markupField.input.value), minimumTopUpUsd: Number(minTopUpField.input.value), signupPromoRetailUsd: Number(signupPromoField.input.value)
+      }) }).then(() => showToast(t('saved'))).catch((error) => showToast(error.message, 'danger'));
+    };
+    rulesCard.append(markupField.wrap, preview, minTopUpField.wrap, signupPromoField.wrap, saveRulesBtn);
+    wrap.append(rulesCard);
+
+    // AI Pricing Simulator (spec section 45) - purely client-side against the CURRENT (unsaved)
+    // markup field value, so an admin can explore before publishing.
+    const simCard = el('div', 'admin-card');
+    simCard.append(el('h3', '', t('comSimulatorTitle')));
+    const simCostField = field(t('comProviderCost'), 'number', 0.10);
+    const simResult = el('p', 'hint');
+    function updateSim() {
+      const cost = Number(simCostField.input.value) || 0;
+      const percent = Number(markupField.input.value) || 0;
+      const multiplier = 1 + percent / 100;
+      const retail = cost * multiplier;
+      simResult.textContent = t('comRetail') + ': $' + retail.toFixed(4) + ' · ' + t('comProfit') + ': $' + (retail - cost).toFixed(4);
+    }
+    simCostField.input.oninput = updateSim;
+    markupField.input.addEventListener('input', updateSim);
+    updateSim();
+    simCard.append(simCostField.wrap, simResult);
+    wrap.append(simCard);
+
+    const markupCard = el('div', 'admin-card');
+    markupCard.append(el('h3', '', t('comMarkupRulesTitle')));
+    if (!markupRulesData.rules.length) markupCard.append(el('p', 'hint', t('comNoRules')));
+    markupRulesData.rules.forEach((rule) => {
+      const row = el('div', 'admin-btn-row');
+      row.append(el('span', '', rule.scopeType + ': ' + rule.scopeKey + ' → ' + rule.markupPercent + '%'));
+      const removeBtn = el('button', 'btn btn-secondary btn-sm', t('comRemove'));
+      removeBtn.type = 'button';
+      removeBtn.onclick = () => api('/commercial/markup-rules/' + rule.id, { method: 'DELETE' }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+      row.append(removeBtn);
+      markupCard.append(row);
+    });
+    const scopeTypeSelect = document.createElement('select');
+    ['feature', 'provider', 'model', 'feature_model'].forEach((value) => { const opt = document.createElement('option'); opt.value = value; opt.textContent = value; scopeTypeSelect.append(opt); });
+    const scopeKeyField = field(t('comScopeKey'), 'text', '');
+    const rulePercentField = field(t('comMarkupPercent'), 'number', 200);
+    const addRuleBtn = el('button', 'btn btn-secondary', t('comAddRule'));
+    addRuleBtn.type = 'button';
+    addRuleBtn.onclick = () => {
+      api('/commercial/markup-rules', { method: 'POST', body: JSON.stringify({ scopeType: scopeTypeSelect.value, scopeKey: scopeKeyField.input.value, markupPercent: Number(rulePercentField.input.value), enabled: true }) })
+        .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+    };
+    markupCard.append(scopeTypeSelect, scopeKeyField.wrap, rulePercentField.wrap, addRuleBtn);
+    wrap.append(markupCard);
+
+    const pricingCard = el('div', 'admin-card');
+    pricingCard.append(el('h3', '', t('comProviderPricingTitle')));
+    if (!pricingData.rows.length) pricingCard.append(el('p', 'hint', t('comNoModelPricing')));
+    pricingData.rows.forEach((row) => {
+      const line = el('div', 'admin-btn-row');
+      line.append(el('span', '', row.provider + ' / ' + row.model + ' — ' + t('comPromptPrice') + ': ' + (row.promptPricePer1k ?? '—') + ', ' + t('comCompletionPrice') + ': ' + (row.completionPricePer1k ?? '—')));
+      const removeBtn = el('button', 'btn btn-secondary btn-sm', t('comRemove'));
+      removeBtn.type = 'button';
+      removeBtn.onclick = () => api('/commercial/provider-pricing/' + row.provider + '/' + row.model, { method: 'DELETE' }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+      line.append(removeBtn);
+      pricingCard.append(line);
+    });
+    const providerSelect = document.createElement('select');
+    KNOWN_PROVIDERS.forEach((provider) => { const opt = document.createElement('option'); opt.value = provider; opt.textContent = provider; providerSelect.append(opt); });
+    const modelField = field(t('comModel'), 'text', '');
+    const promptPriceField = field(t('comPromptPrice'), 'number', '');
+    const completionPriceField = field(t('comCompletionPrice'), 'number', '');
+    const addPricingBtn = el('button', 'btn btn-secondary', t('comAddPricing'));
+    addPricingBtn.type = 'button';
+    addPricingBtn.onclick = () => {
+      api('/commercial/provider-pricing', { method: 'POST', body: JSON.stringify({
+        provider: providerSelect.value, model: modelField.input.value, promptPricePer1k: promptPriceField.input.value || null, completionPricePer1k: completionPriceField.input.value || null
+      }) }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+    };
+    pricingCard.append(providerSelect, modelField.wrap, promptPriceField.wrap, completionPriceField.wrap, addPricingBtn);
+    wrap.append(pricingCard);
+
+    // Admin credit/debit (spec section 50) - no user search/autocomplete in this slice, an admin
+    // pastes a known user id directly (visible in the Users tab's own row detail).
+    const creditCard = el('div', 'admin-card');
+    creditCard.append(el('h3', '', t('comCreditDebitTitle')));
+    const userIdField = field(t('comUserId'), 'text', '');
+    const amountField = field(t('comAmountUsd'), 'number', '');
+    const balanceSelect = document.createElement('select');
+    [['paid', t('comBalancePaid')], ['promo', t('comBalancePromo')]].forEach(([value, label]) => { const opt = document.createElement('option'); opt.value = value; opt.textContent = label; balanceSelect.append(opt); });
+    const reasonField = field(t('comReason'), 'text', '');
+    function submitCreditDebit(action) {
+      const userId = userIdField.input.value.trim();
+      if (!userId) return;
+      api('/commercial/users/' + userId + '/' + action, { method: 'POST', body: JSON.stringify({ amountUsd: Number(amountField.input.value), balanceType: balanceSelect.value, reason: reasonField.input.value }) })
+        .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+    }
+    const creditBtn = el('button', 'btn btn-primary', t('comCredit'));
+    creditBtn.type = 'button';
+    creditBtn.onclick = () => submitCreditDebit('credit');
+    const debitBtn = el('button', 'btn btn-secondary', t('comDebit'));
+    debitBtn.type = 'button';
+    debitBtn.onclick = () => submitCreditDebit('debit');
+    creditCard.append(userIdField.wrap, amountField.wrap, balanceSelect, reasonField.wrap, creditBtn, debitBtn);
+    wrap.append(creditCard);
+
+    const ledgerCard = el('div', 'admin-card');
+    ledgerCard.append(el('h3', '', t('comLedgerTitle')));
+    if (!ledgerData.entries.length) {
+      ledgerCard.append(el('p', 'hint', t('comLedgerEmpty')));
+    } else {
+      const table = document.createElement('table');
+      table.className = 'admin-table';
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      [t('comColTime'), t('comColUser'), t('comColType'), t('comColCash'), t('comColPromo'), t('comColProviderModel'), t('comColFeature')].forEach((label) => headRow.append(el('th', '', label)));
+      thead.append(headRow);
+      table.append(thead);
+      const tbody = document.createElement('tbody');
+      ledgerData.entries.forEach((entry) => {
+        const row = document.createElement('tr');
+        [
+          fmtDate(entry.createdAt), entry.userId, entry.type, fmtMicroUsd(entry.cashDeltaMicroUsd), fmtMicroUsd(entry.promoDeltaMicroUsd),
+          [entry.provider, entry.model].filter(Boolean).join(' / ') || '—', entry.feature || '—'
+        ].forEach((value) => row.append(el('td', '', String(value))));
+        tbody.append(row);
+      });
+      table.append(tbody);
+      ledgerCard.append(table);
+    }
+    wrap.append(ledgerCard);
+
+    return wrap;
+  });
+}
+
+function commercialHistorySubTab() {
+  return api('/commercial/versions').then((data) => {
+    const wrap = el('div', 'admin-card');
+    wrap.append(el('h3', '', t('comHistoryTitle')));
+    if (!data.versions.length) {
+      wrap.append(el('p', 'hint', t('comHistoryEmpty')));
+      return wrap;
+    }
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    [t('comColTime'), t('comColKey'), t('comColChangedBy'), t('comColSummary')].forEach((label) => headRow.append(el('th', '', label)));
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = document.createElement('tbody');
+    data.versions.forEach((version) => {
+      const row = document.createElement('tr');
+      [fmtDate(version.changedAt), version.configKey, version.changedBy || '—', version.changeSummary || '—'].forEach((value) => row.append(el('td', '', String(value))));
+      tbody.append(row);
+    });
+    table.append(tbody);
+    wrap.append(table);
+    return wrap;
+  });
+}
+
+// Slice 2 - Subscription stats (spec section 18). Real rows only, same statCard() tile helper
+// already used by usersTab/aiTab (see its own comment: "every value passed in must already be
+// real, computed from the same response the table/cards below it render from").
+function commercialSubscriptionsSubTab() {
+  return api('/commercial/subscriptions').then((data) => {
+    const wrap = el('div', 'admin-stat-row');
+    const s = data.stats;
+    wrap.append(
+      statCard('crown', fmtNumber(s.activePlus), t('comStatActivePlus')),
+      statCard('sparkles', fmtNumber(s.activePersonalized), t('comStatActivePersonalized')),
+      statCard('alert-triangle', fmtNumber(s.pastDue), t('comStatPastDue')),
+      statCard('clock', fmtNumber(s.canceling), t('comStatCanceling')),
+      statCard('x-circle', fmtNumber(s.expired), t('comStatExpired')),
+      statCard('banknote', fmtMicroUsd(s.mrrMicroUsd), t('comStatMrr'))
+    );
+    return wrap;
+  });
+}
+
+// Slice 2 - Storage Add-on product catalog (spec section 6/19). Capacity is shown/edited in GB
+// for readability, converted to/from bytes only at the API boundary. displayOrder is a plain
+// numeric field - no drag-to-reorder pattern exists anywhere else in this admin panel to imitate
+// (confirmed before building this), so this is the simplest fit consistent with every other
+// numeric admin field.
+const GB_BYTES = 1073741824;
+function commercialStorageSubTab() {
+  return api('/commercial/storage-products').then((products) => {
+    const wrap = el('div', 'admin-grid');
+    products.products.sort((a, b) => a.displayOrder - b.displayOrder).forEach((product) => {
+      const card = el('div', 'admin-card');
+      card.append(el('h3', '', product.name));
+      const nameField = field(t('comProductName'), 'text', product.name);
+      const capacityField = field(t('comCapacityGb'), 'number', product.capacityBytes / GB_BYTES);
+      const priceField = field(t('comProductPrice'), 'number', product.priceAmountMicroUsd / 1000000);
+      const validityField = field(t('comValidityDays'), 'number', product.validityDays);
+      const orderField = field(t('comDisplayOrder'), 'number', product.displayOrder);
+      const enabledLabel = el('label', 'field-check');
+      const enabledCheckbox = document.createElement('input');
+      enabledCheckbox.type = 'checkbox';
+      enabledCheckbox.checked = product.enabled;
+      enabledLabel.append(enabledCheckbox, el('span', '', t('comEnabled')));
+      const saveBtn = el('button', 'btn btn-primary', t('comSaveProduct'));
+      saveBtn.type = 'button';
+      saveBtn.onclick = () => {
+        api('/commercial/storage-products/' + product.id, { method: 'PATCH', body: JSON.stringify({
+          name: nameField.input.value, capacityBytes: Number(capacityField.input.value) * GB_BYTES,
+          priceAmountUsd: Number(priceField.input.value), validityDays: Number(validityField.input.value),
+          displayOrder: Number(orderField.input.value), enabled: enabledCheckbox.checked
+        }) }).then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+      };
+      card.append(nameField.wrap, capacityField.wrap, priceField.wrap, validityField.wrap, orderField.wrap, enabledLabel, saveBtn);
+      wrap.append(card);
+    });
+
+    const addCard = el('div', 'admin-card');
+    addCard.append(el('h3', '', t('comAddProduct')));
+    const newName = field(t('comProductName'), 'text', '');
+    const newCapacity = field(t('comCapacityGb'), 'number', 25);
+    const newPrice = field(t('comProductPrice'), 'number', 4.99);
+    const newValidity = field(t('comValidityDays'), 'number', 90);
+    const newOrder = field(t('comDisplayOrder'), 'number', products.products.length + 1);
+    const addBtn = el('button', 'btn btn-secondary', t('comAddProduct'));
+    addBtn.type = 'button';
+    addBtn.onclick = () => {
+      api('/commercial/storage-products', { method: 'POST', body: JSON.stringify({
+        name: newName.input.value, capacityBytes: Number(newCapacity.input.value) * GB_BYTES,
+        priceAmountUsd: Number(newPrice.input.value), validityDays: Number(newValidity.input.value), displayOrder: Number(newOrder.input.value)
+      }) }).then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    addCard.append(newName.wrap, newCapacity.wrap, newPrice.wrap, newValidity.wrap, newOrder.wrap, addBtn);
+    wrap.append(addCard);
+
+    return wrap;
+  });
+}
+
+// Slice 2 - Transactions (spec section 20). Confirm/Fail are the ONLY way a
+// pending Manual/Test transaction ever resolves in this slice - no real payment gateway exists
+// yet, so this table IS the admin console for it.
+function commercialTransactionsSubTab() {
+  return api('/commercial/transactions').then((data) => {
+    const wrap = el('div', 'admin-card');
+    wrap.append(el('h3', '', t('comTransactionsTitle')));
+    if (!data.transactions.length) {
+      wrap.append(el('p', 'hint', t('comNoTransactions')));
+      return wrap;
+    }
+    const tableWrap = el('div', 'admin-table-wrap');
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    [t('comColUser'), t('comColType'), t('comColAmount'), t('comColStatus'), t('comColProduct'), t('comColTime'), t('comColConfirmed'), t('colActions')]
+      .forEach((label) => headRow.append(el('th', '', label)));
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = document.createElement('tbody');
+    data.transactions.forEach((transaction) => {
+      const row = document.createElement('tr');
+      [transaction.userId, transaction.type, fmtMicroUsd(transaction.amountMicroUsd), transaction.status, transaction.productId || '—', fmtDate(transaction.createdAt), fmtDate(transaction.confirmedAt)]
+        .forEach((value) => row.append(el('td', '', String(value))));
+      const actionsTd = document.createElement('td');
+      if (transaction.status === 'pending') {
+        const confirmBtn = el('button', 'btn btn-primary btn-sm', t('comConfirm'));
+        confirmBtn.type = 'button';
+        confirmBtn.onclick = () => api('/commercial/transactions/' + transaction.id + '/confirm', { method: 'POST' })
+          .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+        const failBtn = el('button', 'btn btn-secondary btn-sm', t('comFail'));
+        failBtn.type = 'button';
+        failBtn.onclick = () => api('/commercial/transactions/' + transaction.id + '/fail', { method: 'POST' })
+          .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+        actionsTd.append(confirmBtn, failBtn);
+      } else if (transaction.status === 'confirmed') {
+        // Validation Gate finding: the backend refund route/reversal logic (spec section 19/20)
+        // existed with automated coverage but no admin UI button to trigger it - closed here.
+        const refundBtn = el('button', 'btn btn-secondary btn-sm', t('comRefund'));
+        refundBtn.type = 'button';
+        refundBtn.onclick = () => api('/commercial/transactions/' + transaction.id + '/refund', { method: 'POST' })
+          .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+        actionsTd.append(refundBtn);
+      }
+      row.append(actionsTd);
+      tbody.append(row);
+    });
+    table.append(tbody);
+    tableWrap.append(table);
+    wrap.append(tableWrap);
+    return wrap;
+  });
+}
+
+const COMMERCIAL_SUB_TAB_BUILDERS = {
+  plans: commercialPlansSubTab, wallet: commercialWalletSubTab, subscriptions: commercialSubscriptionsSubTab,
+  storage: commercialStorageSubTab, transactions: commercialTransactionsSubTab, history: commercialHistorySubTab
+};
+function commercialTab() {
+  const builder = COMMERCIAL_SUB_TAB_BUILDERS[commercialSubTab] || commercialPlansSubTab;
+  return builder().then((body) => {
+    const wrap = el('div');
+    wrap.append(commercialSubNav(commercialSubTab), body);
+    return wrap;
+  });
+}
+
+const tabBuilders = { users: usersTab, ai: aiTab, technical: technicalTab, xp: xpTab, marketplace: marketplaceTab, financial: financialTab, commercial: commercialTab };
 
 function route() {
-  const match = location.hash.match(/^#\/admin\/(users|ai|technical|xp|marketplace|financial)$/);
+  const match = location.hash.match(/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial)$/);
   return match ? match[1] : 'users';
 }
 
@@ -1305,7 +1734,7 @@ function startApp() {
   try { if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1') layout.classList.add('collapsed'); } catch (_) { /* no-op */ }
   loadCurrentUserLabel();
   icons(document);
-  if (!/^#\/admin\/(users|ai|technical|xp|marketplace|financial)$/.test(location.hash)) location.hash = '#/admin/users';
+  if (!/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial)$/.test(location.hash)) location.hash = '#/admin/users';
   else renderTab();
 }
 

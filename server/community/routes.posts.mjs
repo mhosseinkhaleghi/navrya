@@ -43,7 +43,7 @@ export function router(repo, uploadsDir) {
     const { content, images } = req.body || {};
     if (!content && !(images && images.length)) throw new ApiError(400, 'VALIDATION_FAILED');
     const savedImages = await saveImages(images, { uploadsDir, category: 'posts' });
-    const post = await repo.posts.create({ userId: req.currentUser.id, content, images: savedImages });
+    const post = await repo.posts.create({ userId: req.currentUser.id, content, images: savedImages.map((image) => image.url) });
     res.status(201).json({ ...post, author: req.currentUser, commentCount: 0, likeCount: 0, likedByMe: false, firstLiker: null });
   }));
 

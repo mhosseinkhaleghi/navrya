@@ -2,6 +2,8 @@ import express from 'express';
 import { asyncHandler } from './errors.mjs';
 import { resolveSessionByRawId } from './security/session-service.mjs';
 import { resolveRedisClient } from './security/rate-limit.mjs';
+import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
+import { reserveForAiCall, settleAiCall, releaseAiCall } from '../commercial/wallet-service.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
@@ -143,6 +145,37 @@ export function router(repo) {
       success: Boolean(body.success), errorCode: body.errorCode || null, latencyMs: body.latencyMs
     });
     res.status(201).json(record);
+  }));
+
+  // Commercial System Slice 1's Wallet bridge - server/pattern-ai-server.mjs (deliberately
+  // DB-free) calls these three around every platform-key-funded provider call
+  // (reserve -> callProvider() -> settle on success / release on failure or thrown error, per
+  // spec section 27), and /entitlements to check the `ai` feature flag before even attempting a
+  // reservation. Same secretOk() gate as every other route in this file - server-to-server only.
+  app.post('/wallet/reserve', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const result = await reserveForAiCall(repo, { userId: body.userId, feature: body.feature, provider: body.provider, model: body.model, payload: body.payload });
+    res.json(result);
+  }));
+
+  app.post('/wallet/settle', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const result = await settleAiCall(repo, { reservationId: body.reservationId, provider: body.provider, model: body.model, feature: body.feature, usage: body.usage });
+    res.json(result);
+  }));
+
+  app.post('/wallet/release', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const result = await releaseAiCall(repo, body.reservationId);
+    res.json(result);
+  }));
+
+  app.get('/entitlements/:userId', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    res.json(await resolveUserEntitlements(req.params.userId, repo));
   }));
 
   return app;

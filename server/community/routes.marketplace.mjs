@@ -37,8 +37,8 @@ export function router(repo, uploadsDir) {
     // 'subscription' added for the Account Profile feature (Section 5/1 of the migration) -
     // widens the existing type enum rather than introducing a parallel listing_type column.
     if (!['pattern', 'strategy', 'subscription'].includes(body.type)) throw new ApiError(400, 'VALIDATION_FAILED');
-    const screenshots = await saveImages(body.screenshots, { uploadsDir, category: 'listings' });
-    const listing = await repo.listings.create({ ...body, sellerId: req.currentUser.id, screenshots });
+    const savedScreenshots = await saveImages(body.screenshots, { uploadsDir, category: 'listings' });
+    const listing = await repo.listings.create({ ...body, sellerId: req.currentUser.id, screenshots: savedScreenshots.map((image) => image.url) });
     res.status(201).json(listing);
   }));
 
