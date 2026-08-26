@@ -153,6 +153,38 @@ test('a session belonging to another user cannot be fetched, upserted, or delete
   assert.equal(strangerDelete.status, 403);
 });
 
+// ---- Instrument Catalog domain ----
+
+test('a brand-new session with no instrument is rejected with INSTRUMENT_REQUIRED', async () => {
+  const user = await createUser('No Instrument Session');
+  await seedInstrument(user.id);
+  const session = sampleSession('session-no-instrument');
+  delete session.instrument;
+  const result = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'INSTRUMENT_REQUIRED');
+});
+
+test('a brand-new session whose instrument is not in the user\'s own catalog is rejected with INSTRUMENT_NOT_IN_CATALOG', async () => {
+  const user = await createUser('Uncataloged Instrument Session');
+  // Deliberately no seedInstrument() call.
+  const result = await api('POST', '/api/sync/sessions', { userId: user.id, body: sampleSession('session-uncataloged') });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'INSTRUMENT_NOT_IN_CATALOG');
+});
+
+test('editing an already-existing session never gets retroactively forced to pick an instrument', async () => {
+  const user = await createUser('Legacy Session Editor');
+  await seedInstrument(user.id);
+  const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: sampleSession('session-legacy-instrument') });
+  assert.equal(created.status, 200);
+  const legacy = sampleSession('session-legacy-instrument');
+  delete legacy.instrument;
+  legacy.status = 'closed';
+  const edited = await api('POST', '/api/sync/sessions', { userId: user.id, body: legacy });
+  assert.equal(edited.status, 200, 'omitting instrument on an edit of a pre-existing session must never be rejected');
+});
+
 test('DELETE removes the session and its child rows are gone too (no orphaned scenario/entry rows reachable)', async () => {
   const user = await createUser('Hunter Three');
   await seedInstrument(user.id);

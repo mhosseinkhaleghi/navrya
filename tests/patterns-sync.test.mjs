@@ -203,6 +203,57 @@ test('no localStorage key is ever written for patterns any more - Phase 2 remove
   assert.equal(localStorage.getItem('tradejournal:patterns:v1'), null, 'Phase 1\'s guard key may still exist defensively for pre-Phase-2 browsers, but nothing writes it any more');
 });
 
+// ---- Instrument Catalog domain: mandatory instrument + listForInstrument() scoping ----
+
+test('create() persists nothing and returns null when no instrument is supplied - a brand-new pattern can no longer be created blank-then-filled-in for this field', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadPatterns({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ patterns: [] }) }) });
+  await flush();
+  assert.equal(store.create(), null);
+  assert.equal(store.create([]), null);
+  assert.equal(store.listSync().length, 0);
+});
+
+test('listForInstrument(): a BTC-only pattern is excluded when querying XAU, and vice versa', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadPatterns({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ patterns: [] }) }) });
+  await flush();
+  const xauPattern = store.save(Object.assign(store.create(['XAUUSD']), { name: 'Gold Sweep' }));
+  const btcPattern = store.save(Object.assign(store.create(['BTCUSDT']), { name: 'BTC Sweep' }));
+  const forXau = store.listForInstrument('XAUUSD').map((p) => p.id);
+  const forBtc = store.listForInstrument('BTCUSDT').map((p) => p.id);
+  assert.ok(forXau.includes(xauPattern.id) && !forXau.includes(btcPattern.id), 'XAU query includes the XAU pattern, excludes the BTC-only one');
+  assert.ok(forBtc.includes(btcPattern.id) && !forBtc.includes(xauPattern.id), 'BTC query includes the BTC pattern, excludes the XAU-only one');
+});
+
+test('listForInstrument(): a multi-instrument pattern is included for every one of its instruments', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadPatterns({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ patterns: [] }) }) });
+  await flush();
+  const pattern = store.save(Object.assign(store.create(['XAUUSD', 'BTCUSDT']), { name: 'Universal Sweep' }));
+  assert.ok(store.listForInstrument('XAUUSD').some((p) => p.id === pattern.id));
+  assert.ok(store.listForInstrument('BTCUSDT').some((p) => p.id === pattern.id));
+  assert.equal(store.listForInstrument('EURUSD').some((p) => p.id === pattern.id), false, 'a third, unrelated instrument still excludes it');
+});
+
+test('listForInstrument(): an unassigned/legacy pattern (empty instruments array) is never selectable for any instrument', async () => {
+  const localStorage = memoryStorage();
+  const serverPattern = { id: 'legacy-pattern', name: 'Pre-migration pattern', stages: [] }; // no instruments field at all, as a real legacy record would have
+  const { store } = await loadPatterns({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ patterns: [serverPattern] }) }) });
+  await flush();
+  assert.equal(store.find('legacy-pattern').instruments.length, 0, 'normalize() never invents a default instrument for a legacy record');
+  assert.equal(store.listForInstrument('XAUUSD').some((p) => p.id === 'legacy-pattern'), false);
+});
+
+test('listForInstrument() returns nothing for an empty/invalid instrument argument, never the whole registry', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadPatterns({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ patterns: [] }) }) });
+  await flush();
+  store.save(Object.assign(store.create(['XAUUSD']), { name: 'Gold Sweep' }));
+  assert.equal(store.listForInstrument('').length, 0);
+  assert.equal(store.listForInstrument(null).length, 0);
+});
+
 test('server-replica.js loads before pattern-registry-store.js on all four character pages', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');

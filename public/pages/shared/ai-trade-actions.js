@@ -88,7 +88,7 @@
   // here, not imported, for the same reason every other normalizeXxx() in this file is
   // self-contained (this module's own header: "no window.TradeJournal* reads of their own
   // beyond the lookup lists explicitly passed in", so it stays testable in a bare vm sandbox).
-  var INSTRUMENT_CODE_PATTERN = /^[A-Z0-9](?:[A-Z0-9._-]{0,18}[A-Z0-9])?$/;
+  var INSTRUMENT_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{0,18}[A-Z0-9]$/;
   function normalizeInstrumentCode(raw) {
     var text = String(raw == null ? '' : raw).trim().replace(/\s+/g, '').toUpperCase();
     return INSTRUMENT_CODE_PATTERN.test(text) ? text : null;

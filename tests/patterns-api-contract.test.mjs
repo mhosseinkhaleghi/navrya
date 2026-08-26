@@ -114,6 +114,38 @@ test('a pattern belonging to another user cannot be fetched, upserted, or delete
   assert.equal(strangerDelete.status, 403);
 });
 
+// ---- Instrument Catalog domain ----
+
+test('a brand-new pattern with an empty instruments array is rejected with PATTERN_INSTRUMENT_REQUIRED', async () => {
+  const user = await createUser('No Instrument Pattern');
+  await seedInstrument(user.id);
+  const body = samplePattern('pattern-no-instruments');
+  body.instruments = [];
+  const result = await api('POST', '/api/sync/patterns', { userId: user.id, body });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'PATTERN_INSTRUMENT_REQUIRED');
+});
+
+test('a brand-new pattern whose instrument is not in the user\'s own catalog is rejected with INSTRUMENT_NOT_IN_CATALOG', async () => {
+  const user = await createUser('Uncataloged Instrument Pattern');
+  // Deliberately no seedInstrument() call.
+  const result = await api('POST', '/api/sync/patterns', { userId: user.id, body: samplePattern('pattern-uncataloged') });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'INSTRUMENT_NOT_IN_CATALOG');
+});
+
+test('editing an already-existing pattern never gets retroactively forced to keep an instrument assigned', async () => {
+  const user = await createUser('Legacy Pattern Editor');
+  await seedInstrument(user.id);
+  const created = await api('POST', '/api/sync/patterns', { userId: user.id, body: samplePattern('pattern-legacy-instrument') });
+  assert.equal(created.status, 200);
+  const edited = samplePattern('pattern-legacy-instrument');
+  edited.instruments = [];
+  edited.usageCount = 9;
+  const result = await api('POST', '/api/sync/patterns', { userId: user.id, body: edited });
+  assert.equal(result.status, 200, 'clearing instruments on an edit of a pre-existing pattern must never be rejected');
+});
+
 test('DELETE removes the pattern and its child rows', async () => {
   const user = await createUser('Hunter Three');
   await seedInstrument(user.id);

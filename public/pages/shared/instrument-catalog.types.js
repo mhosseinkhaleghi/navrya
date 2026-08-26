@@ -10,7 +10,7 @@
   // trim -> strip internal whitespace -> uppercase -> validate. Deliberately no alias table -
   // "BTC" never becomes "BTCUSDT" here or anywhere else; an unrecognized/invalid code returns
   // null rather than a guess.
-  var CODE_PATTERN = /^[A-Z0-9](?:[A-Z0-9._-]{0,18}[A-Z0-9])?$/;
+  var CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{0,18}[A-Z0-9]$/;
 
   function normalizeCode(raw) {
     var text = String(raw == null ? '' : raw).trim().replace(/\s+/g, '').toUpperCase();

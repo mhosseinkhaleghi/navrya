@@ -131,6 +131,84 @@ test('DELETE removes the trade and its child rows', async () => {
   assert.equal(list.body.trades.length, 0);
 });
 
+// ---- Instrument Catalog domain ----
+
+test('a brand-new trade with no instrument is rejected with INSTRUMENT_REQUIRED', async () => {
+  const user = await createUser('No Instrument Trader');
+  await seedInstrument(user.id);
+  const body = sampleTrade('trade-no-instrument');
+  delete body.instrument;
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'INSTRUMENT_REQUIRED');
+});
+
+test('a brand-new trade whose instrument is not in the user\'s own catalog is rejected with INSTRUMENT_NOT_IN_CATALOG - never silently accepted', async () => {
+  const user = await createUser('Uncataloged Instrument Trader');
+  // Deliberately no seedInstrument() call - this user's catalog is empty.
+  const body = sampleTrade('trade-uncataloged');
+  body.instrument = 'XAUUSD';
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'INSTRUMENT_NOT_IN_CATALOG');
+});
+
+test('editing an already-existing trade never gets retroactively forced to pick an instrument', async () => {
+  const user = await createUser('Legacy Instrument Editor');
+  await seedInstrument(user.id);
+  const created = await api('POST', '/api/sync/trades', { userId: user.id, body: sampleTrade('trade-legacy-instrument') });
+  assert.equal(created.status, 200);
+  const edited = await api('POST', '/api/sync/trades', {
+    userId: user.id,
+    body: { id: 'trade-legacy-instrument', status: 'hunting', direction: 'long', entryMode: 'full', chartNote: 'edited later' }
+  });
+  assert.equal(edited.status, 200, 'omitting instrument on an edit of a pre-existing trade must never be rejected');
+});
+
+test('a trade sourced from a Session whose instrument differs is rejected with TRADE_SESSION_INSTRUMENT_MISMATCH', async () => {
+  const user = await createUser('Mismatch Trader');
+  await seedInstrument(user.id, 'XAUUSD');
+  await seedInstrument(user.id, 'BTCUSDT');
+  await api('POST', '/api/sync/sessions', {
+    userId: user.id,
+    body: { id: 'session-for-mismatch', character: 'hunter', market: 'London', instrument: 'XAUUSD', timeframe: '5m', status: 'open' }
+  });
+  const body = sampleTrade('trade-mismatch');
+  body.instrument = 'BTCUSDT';
+  body.source = { character: 'hunter', sessionId: 'session-for-mismatch', scenarioId: null };
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'TRADE_SESSION_INSTRUMENT_MISMATCH');
+});
+
+test('a trade sourced from a Session with the SAME instrument is accepted', async () => {
+  const user = await createUser('Matching Source Trader');
+  await seedInstrument(user.id, 'XAUUSD');
+  await api('POST', '/api/sync/sessions', {
+    userId: user.id,
+    body: { id: 'session-for-match', character: 'hunter', market: 'London', instrument: 'XAUUSD', timeframe: '5m', status: 'open' }
+  });
+  const body = sampleTrade('trade-match');
+  body.instrument = 'XAUUSD';
+  body.source = { character: 'hunter', sessionId: 'session-for-match', scenarioId: null };
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body });
+  assert.equal(result.status, 200);
+});
+
+test('a trade sourced from a Session with no instrument yet imposes no equality constraint - the trade\'s own instrument still comes from the real catalog', async () => {
+  const user = await createUser('Unclassified Source Trader');
+  await seedInstrument(user.id, 'XAUUSD');
+  await api('POST', '/api/sync/sessions', {
+    userId: user.id,
+    body: { id: 'session-unclassified', character: 'hunter', market: 'London', timeframe: '5m', status: 'open' }
+  });
+  const body = sampleTrade('trade-from-unclassified');
+  body.instrument = 'XAUUSD';
+  body.source = { character: 'hunter', sessionId: 'session-unclassified', scenarioId: null };
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body });
+  assert.equal(result.status, 200);
+});
+
 test('POST /api/sync/trades/images uploads a base64 image screenshot under the trade category', async () => {
   const user = await createUser('Hunter Four');
   const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';

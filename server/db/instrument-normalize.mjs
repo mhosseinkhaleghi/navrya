@@ -5,7 +5,7 @@
 // header comment). Keep both algorithms identical: trim -> strip internal whitespace -> uppercase
 // -> validate. Deliberately no alias table - "BTC" never becomes "BTCUSDT" here or anywhere else;
 // an unrecognized/invalid code returns null rather than a guess.
-const CODE_PATTERN = /^[A-Z0-9](?:[A-Z0-9._-]{0,18}[A-Z0-9])?$/;
+const CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{0,18}[A-Z0-9]$/;
 
 export function normalizeInstrumentCode(raw) {
   const text = String(raw == null ? '' : raw).trim().replace(/\s+/g, '').toUpperCase();
