@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import * as sessionsAdapter from './sessionsAdapter.js';
@@ -38,7 +39,7 @@ const SPAN_MIN = 180; // decorative pacing window shared by both pulse rings and
 
 const copy = {
   fa: {
-    back: 'بازگشت', settingsTitle: 'تنظیمات سشن', sessionOpen: 'باز', sessionClosed: 'بسته', instrumentUnassigned: 'نماد مشخص نشده',
+    back: 'بازگشت', settingsTitle: 'تنظیمات سشن', sessionOpen: 'باز', sessionClosed: 'بسته', instrumentUnassigned: 'نماد مشخص نشده', instrumentUnassignedHint: 'برای مشخص کردن نماد این سشن کلیک کنید',
     viewTimeline: 'تایم‌لاین', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
     pulseEntries: 'ورودی‌ها', pulseEntriesUnit: 'چارت و حرکت', pulseScenarios: 'سناریوها', pulseScenariosUnit: 'ثبت‌شده',
     pulsePatterns: 'الگوها', pulsePatternsUnit: 'تگ‌شده', pulsePositions: 'پوزیشن‌ها', pulsePositionsUnit: 'باز',
@@ -97,7 +98,7 @@ const copy = {
     noOpenPositions: 'هیچ پوزیشن بازی نیست', closeAction2: 'بستن پوزیشن', logEmotionShort: 'ثبت احساس', analyzing: 'در حال تحلیل کامل سشن...'
   },
   ar: {
-    back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة',
+    back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
     viewTimeline: 'الخط الزمني', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
     pulseEntries: 'الإدخالات', pulseEntriesUnit: 'رسم وحركة', pulseScenarios: 'السيناريوهات', pulseScenariosUnit: 'مسجّلة',
     pulsePatterns: 'الأنماط', pulsePatternsUnit: 'موسومة', pulsePositions: 'الصفقات', pulsePositionsUnit: 'مفتوحة',
@@ -156,7 +157,7 @@ const copy = {
     noOpenPositions: 'لا توجد صفقة مفتوحة', closeAction2: 'إغلاق الصفقة', logEmotionShort: 'تسجيل شعور', analyzing: 'جارٍ تحليل الجلسة بالكامل...'
   },
   en: {
-    back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set',
+    back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
     viewTimeline: 'Timeline', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
     pulseEntries: 'Entries', pulseEntriesUnit: 'chart & move', pulseScenarios: 'Scenarios', pulseScenariosUnit: 'logged',
     pulsePatterns: 'Patterns', pulsePatternsUnit: 'tagged', pulsePositions: 'Positions', pulsePositionsUnit: 'open',
@@ -215,7 +216,7 @@ const copy = {
     noOpenPositions: 'No open positions', closeAction2: 'Close position', logEmotionShort: 'Log emotion', analyzing: 'Analyzing the complete session...'
   },
   es: {
-    back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir',
+    back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
     viewTimeline: 'Línea temporal', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
     pulseEntries: 'Entradas', pulseEntriesUnit: 'gráfico y movimiento', pulseScenarios: 'Escenarios', pulseScenariosUnit: 'registrados',
     pulsePatterns: 'Patrones', pulsePatternsUnit: 'etiquetados', pulsePositions: 'Posiciones', pulsePositionsUnit: 'abiertas',
@@ -619,8 +620,9 @@ function Ring({ pct, color, value, label }) {
   );
 }
 
-function CommandBar({ session, lang, view, onBack, onSetView }) {
+function CommandBar({ session, lang, view, onBack, onSetView, onSetInstrument }) {
   const isOpen = session.status !== 'closed';
+  const [editingInstrument, setEditingInstrument] = React.useState(false);
   return (
     <div style={{ position: 'sticky', top: 8, zIndex: 40, display: 'flex', alignItems: 'center', gap: 14, padding: '9px 14px', border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.88)', backdropFilter: 'blur(6px)', boxShadow: 'var(--shadow-panel)' }}>
       <button type="button" onClick={onBack} title={tr(lang, 'back')} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 36, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-body)', fontSize: 12 }}>
@@ -637,8 +639,29 @@ function CommandBar({ session, lang, view, onBack, onSetView }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
         <Chip tone={isOpen ? 'success' : 'neutral'} dot>{isOpen ? tr(lang, 'sessionOpen') : tr(lang, 'sessionClosed')}</Chip>
         {/* Instrument Catalog domain: the real financial symbol, distinct from market/city above -
-            an unclassified legacy session shows an honest placeholder, never a guessed value. */}
-        <Chip tone={session.instrument ? 'accent' : 'neutral'}>{session.instrument || tr(lang, 'instrumentUnassigned')}</Chip>
+            an unclassified legacy session shows an honest placeholder, never a guessed value, but
+            stays clickable so it can actually be classified (the task's own "clear edit path" for
+            legacy data) rather than staying stuck unassigned forever. */}
+        {editingInstrument ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <InstrumentPicker
+              value={session.instrument || null}
+              onChange={(code) => { setEditingInstrument(false); if (code && onSetInstrument) onSetInstrument(code); }}
+              width={160}
+            />
+            <button type="button" onClick={() => setEditingInstrument(false)} title={tr(lang, 'cancel')} style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
+              <Icon name="close" size={14} />
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button" onClick={() => setEditingInstrument(true)}
+            title={session.instrument ? undefined : tr(lang, 'instrumentUnassignedHint')}
+            style={{ border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }}
+          >
+            <Chip tone={session.instrument ? 'accent' : 'neutral'}>{session.instrument || tr(lang, 'instrumentUnassigned')}</Chip>
+          </button>
+        )}
         <Chip tone="neutral">{session.timeframe || '—'}</Chip>
         <Chip tone="neutral">{tr(lang, 'intervalChip', { n: session.updateIntervalMinutes })}</Chip>
       </span>
@@ -2010,7 +2033,10 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // the filter-chip row instead of trailing after it.
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ fontFamily: 'var(--font-ui)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <CommandBar session={session} lang={lang} view={view} onBack={onBack} onSetView={setView} />
+      <CommandBar
+        session={session} lang={lang} view={view} onBack={onBack} onSetView={setView}
+        onSetInstrument={(code) => persist((s) => { s.instrument = code; }, 'instrument_classified', code)}
+      />
       <PulseBand session={session} lang={lang} positionsOpen={positionsOpen} onFate={() => withPreSessionCheckIn(() => setFateStep('entry'))} />
 
       {view === 'timeline' ? (
