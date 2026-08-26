@@ -117,8 +117,9 @@ test('POST /api/admin/xp/config rejects an unknown type/category (never lets an 
 test('an admin override to a XP point value actually changes what POST /me/xp-events awards a trader, end to end', async () => {
   const admin = await createAdmin('Config Admin 3');
   const trader = await createUser('Config Trader');
-  await repo.trades.upsert(trader.id, { id: 't-before', status: 'hunting' });
-  await repo.trades.upsert(trader.id, { id: 't-after', status: 'hunting' });
+  await repo.instrumentCatalog.upsert(trader.id, { id: 'instr-' + trader.id, code: 'XAUUSD' });
+  await repo.trades.upsert(trader.id, { id: 't-before', status: 'hunting', instrument: 'XAUUSD' });
+  await repo.trades.upsert(trader.id, { id: 't-after', status: 'hunting', instrument: 'XAUUSD' });
   const before2 = await api('POST', '/api/users/me/xp-events', { userId: trader.id, body: { type: 'trade_calculation_valid', sourceType: 'trade', sourceId: 't-before', dedupeKey: 'trade.calc:t-before' } });
   assert.equal(before2.status, 201);
   assert.equal(before2.body.xpTotal, POINTS_BY_TYPE.trade_calculation_valid);
@@ -137,7 +138,8 @@ test('an admin override to a XP point value actually changes what POST /me/xp-ev
 test('DELETE /api/admin/xp/config resets an override back to the code default, verified via the real award amount', async () => {
   const admin = await createAdmin('Config Admin 4');
   const trader = await createUser('Config Trader 2');
-  await repo.trades.upsert(trader.id, { id: 't-reset', status: 'hunting' });
+  await repo.instrumentCatalog.upsert(trader.id, { id: 'instr-' + trader.id, code: 'XAUUSD' });
+  await repo.trades.upsert(trader.id, { id: 't-reset', status: 'hunting', instrument: 'XAUUSD' });
   await api('POST', '/api/admin/xp/config', { userId: admin.id, body: { category: 'points', key: 'trade_calculation_valid', value: 1 } });
   const reset = await api('DELETE', '/api/admin/xp/config?category=points&key=trade_calculation_valid', { userId: admin.id });
   assert.equal(reset.status, 200);

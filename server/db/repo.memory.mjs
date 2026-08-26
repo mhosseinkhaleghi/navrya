@@ -2,6 +2,7 @@ import { newId } from './id.mjs';
 import { ApiError } from '../community/errors.mjs';
 import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
+import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -17,6 +18,7 @@ export function createMemoryRepo() {
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(), accounts: new Map(),
+    instrumentCatalog: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
     authSessions: new Map(), externalIdentities: new Map(), securityEvents: new Map(), authTransactions: new Map()
@@ -25,6 +27,14 @@ export function createMemoryRepo() {
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
   function requireUser(userId) { if (!state.users.has(userId)) throw new ApiError(400, 'USER_NOT_FOUND'); }
   function now() { return new Date().toISOString(); }
+  // Instrument Catalog domain (025_instrument_catalog.sql) - see repo.pg.mjs's identical helper
+  // for the full reasoning (plain code string, not a foreign id, checked at the application layer).
+  function assertInstrumentInCatalog(userId, codes) {
+    const wanted = normalizeInstrumentCodes(Array.isArray(codes) ? codes : [codes]);
+    if (!wanted.length) return;
+    const known = new Set(Array.from(state.instrumentCatalog.values()).filter((item) => item.userId === userId).map((item) => item.code));
+    if (wanted.some((code) => !known.has(code))) throw new ApiError(400, 'INSTRUMENT_NOT_IN_CATALOG');
+  }
   // Mirrors repo.pg.mjs's ONLINE_THRESHOLD_SECONDS - 3x the 45s client heartbeat interval.
   const ONLINE_THRESHOLD_MS = 135000;
 
@@ -828,6 +838,12 @@ export function createMemoryRepo() {
         const isNewAssignment = !existing || existing.accountId !== record.accountId;
         if (isNewAssignment && account.status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
       }
+      // Instrument Catalog domain (025_instrument_catalog.sql) - see repo.pg.mjs's identical
+      // upsert() checks for the full reasoning (mandatory for a brand-new session only, catalog
+      // membership required, never retroactively forced onto a pre-existing NULL row).
+      const instrument = normalizeInstrumentCode(record.instrument);
+      if (!existing && !instrument) throw new ApiError(400, 'INSTRUMENT_REQUIRED');
+      if (instrument) assertInstrumentInCatalog(userId, instrument);
       const stamp = now();
       const stored = {
         id: record.id, userId, character: String(record.character || 'hunter'),
@@ -842,7 +858,7 @@ export function createMemoryRepo() {
         previousSessionSummary: record.previousSessionSummary ?? null,
         aiSessionAnalysis: record.aiSessionAnalysis || null,
         aiSessionAnalysisResult: record.aiSessionAnalysisResult ?? null,
-        finalEntryId: record.finalEntryId || null, accountId: record.accountId || null,
+        finalEntryId: record.finalEntryId || null, accountId: record.accountId || null, instrument,
         entries: (record.entries || []).map(function (entry) {
           return {
             id: entry.id, sessionId: record.id, type: normalizeTradingEntryType(entry.type),
@@ -916,12 +932,19 @@ export function createMemoryRepo() {
       if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
       const existing = state.patterns.get(record.id);
       if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_PATTERN_OWNER');
+      // Instrument Catalog domain (025_instrument_catalog.sql) - see repo.pg.mjs's identical
+      // upsert() check for the full reasoning (a brand-new pattern must explicitly carry at
+      // least one instrument before it is ever persisted).
+      const instruments = normalizeInstrumentCodes(record.instruments);
+      if (!existing && !instruments.length) throw new ApiError(400, 'PATTERN_INSTRUMENT_REQUIRED');
+      if (instruments.length) assertInstrumentInCatalog(userId, instruments);
       const stamp = now();
       const stored = {
         id: record.id, userId,
         name: record.name || '', description: record.description || '',
         completionThreshold: Math.max(0, Math.min(100, Number(record.completionThreshold ?? 70))),
         usageCount: Math.max(0, Number(record.usageCount || 0)), isPublic: Boolean(record.isPublic),
+        instruments,
         stages: (record.stages || []).map(function (item, index) {
           return { id: item.id, patternId: record.id, order: Number(item.order || index + 1), text: item.text || '' };
         }),
@@ -1063,8 +1086,20 @@ export function createMemoryRepo() {
         const isNewAssignment = !existing || existing.accountId !== record.accountId;
         if (isNewAssignment && account.status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
       }
-      const stamp = now();
+      // Instrument Catalog domain (025_instrument_catalog.sql) - see repo.pg.mjs's identical
+      // upsert() checks for the full reasoning (mandatory for a brand-new trade only, catalog
+      // membership required, and a sourced trade must match its source session's instrument).
+      const instrument = normalizeInstrumentCode(record.instrument);
+      if (!existing && !instrument) throw new ApiError(400, 'INSTRUMENT_REQUIRED');
+      if (instrument) assertInstrumentInCatalog(userId, instrument);
       const source = record.source || {};
+      if (source.sessionId) {
+        const sourceSession = state.tradingSessions.get(source.sessionId);
+        if (sourceSession && sourceSession.userId === userId && sourceSession.instrument && sourceSession.instrument !== instrument) {
+          throw new ApiError(400, 'TRADE_SESSION_INSTRUMENT_MISMATCH');
+        }
+      }
+      const stamp = now();
       const stored = {
         id: record.id, userId,
         status: ['hunting', 'open', 'closed', 'cancelled'].indexOf(record.status) > -1 ? record.status : 'hunting',
@@ -1083,7 +1118,7 @@ export function createMemoryRepo() {
         conceptTags: Array.isArray(record.conceptTags) ? record.conceptTags : [],
         linkedPatternIds: Array.isArray(record.linkedPatternIds) ? record.linkedPatternIds : [],
         linkedStrategyId: record.linkedStrategyId || null, accountId: record.accountId || null,
-        instrument: typeof record.instrument === 'string' && record.instrument.trim() ? record.instrument.trim() : null,
+        instrument,
         chartNote: record.chartNote || '',
         statusHistory: Array.isArray(record.statusHistory) ? record.statusHistory : [],
         source: { character: source.character || null, sessionId: source.sessionId || null, scenarioId: source.scenarioId || null },
@@ -1201,6 +1236,46 @@ export function createMemoryRepo() {
     }
   };
 
+  // Instrument Catalog domain (025_instrument_catalog.sql) - see repo.pg.mjs's identical
+  // instrumentCatalog for the full reasoning. No archive-vs-delete distinction needed (nothing
+  // else holds a foreign key to this row's own id - every consumer stores the plain code string).
+  const instrumentCatalog = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const code = normalizeInstrumentCode(record.code);
+      if (!code) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.instrumentCatalog.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_INSTRUMENT_OWNER');
+      // "Codes must be unique per user after normalization" - a duplicate add (or a rename onto
+      // an already-used code) is a real 409, never a silent second row, mirroring the DB unique
+      // index repo.pg.mjs relies on for the same rule.
+      const duplicate = Array.from(state.instrumentCatalog.values()).some((item) => item.userId === userId && item.code === code && item.id !== record.id);
+      if (duplicate) throw new ApiError(409, 'INSTRUMENT_ALREADY_EXISTS');
+      const stamp = now();
+      const stored = {
+        id: record.id, userId, code, displayName: record.displayName || null,
+        createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
+      };
+      state.instrumentCatalog.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.instrumentCatalog.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.instrumentCatalog.values()).filter((item) => item.userId === userId).sort((a, b) => a.code.localeCompare(b.code)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.instrumentCatalog.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_INSTRUMENT_OWNER');
+      state.instrumentCatalog.delete(id);
+    }
+  };
+
   // Module 5 (final module) of the local-first-to-server migration. One document per user, no
   // child tables, no list - see the migration file's comment. Stored (and returned) verbatim as
   // the client sent it; this repo layer only owns the user_id-scoped upsert/read, never
@@ -1247,12 +1322,17 @@ export function createMemoryRepo() {
       if (!record || !record.id || !record.sessionId) throw new ApiError(400, 'VALIDATION_FAILED');
       const existing = state.sessionSignatures.get(record.id);
       if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_SIGNATURE_OWNER');
+      // Instrument Catalog domain (025_instrument_catalog.sql) - see repo.pg.mjs's identical
+      // check for the full reasoning (defensive consistency check, not a hard "required" gate -
+      // signatures are server-derived, never directly user-authored).
+      const instrument = normalizeInstrumentCode(record.instrument);
+      if (instrument) assertInstrumentInCatalog(userId, instrument);
       const stored = {
         id: record.id, userId, sessionId: String(record.sessionId), character: record.character || '',
         market: record.market || '', timeframe: record.timeframe || '', date: record.date || '',
         movementSequence: record.movementSequence || [], patternIds: record.patternIds || [],
         strategyIds: record.strategyIds || [], scenarioOutcomes: record.scenarioOutcomes || [],
-        tradeSummary: record.tradeSummary || {}, fateSummaryText: record.fateSummaryText || '',
+        tradeSummary: record.tradeSummary || {}, fateSummaryText: record.fateSummaryText || '', instrument,
         createdAt: existing ? existing.createdAt : now()
       };
       state.sessionSignatures.set(record.id, stored);
@@ -1484,7 +1564,7 @@ export function createMemoryRepo() {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health
   };
 }

@@ -32,6 +32,11 @@ async function api(method, path, { body, userId } = {}) {
 async function createUser(name) {
   return repo.users.create({ displayName: name });
 }
+// Instrument Catalog domain: a brand-new trade now requires a real, cataloged instrument -
+// every fixture trade below needs one seeded for its own user first.
+async function seedInstrument(userId, code = 'XAUUSD') {
+  return repo.instrumentCatalog.upsert(userId, { id: 'instr-' + userId + '-' + code, code });
+}
 
 function propAccount(id) {
   return {
@@ -117,10 +122,11 @@ test('DELETE removes an account with no trades against it', async () => {
 
 test('DELETE archives (does not delete) an account that trades still reference', async () => {
   const user = await createUser('Archive Not Delete');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('acct-e') });
   await api('POST', '/api/sync/trades', {
     userId: user.id,
-    body: { id: 'trade-linked', status: 'closed', direction: 'long', entryMode: 'full', accountId: 'acct-e', outcome: 'win', pnl: 120 }
+    body: { id: 'trade-linked', status: 'closed', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-e', outcome: 'win', pnl: 120 }
   });
 
   const deleted = await api('DELETE', '/api/sync/accounts/acct-e', { userId: user.id });
@@ -150,9 +156,10 @@ test('a trade cannot be attached to an account owned by another user', async () 
 
 test('a trade with accountId:null is unassigned, never rejected', async () => {
   const user = await createUser('Unassigned Trader');
+  await seedInstrument(user.id);
   const result = await api('POST', '/api/sync/trades', {
     userId: user.id,
-    body: { id: 'trade-unassigned', status: 'hunting', direction: 'long', entryMode: 'full', accountId: null }
+    body: { id: 'trade-unassigned', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: null }
   });
   assert.equal(result.status, 200);
   assert.equal(result.body.accountId, null);
@@ -170,26 +177,29 @@ test('a brand-new trade with no accountId is rejected once the user owns an acti
 
 test('a brand-new trade with no accountId succeeds when the user has zero accounts at all', async () => {
   const user = await createUser('Zero Account Trader');
-  const result = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-mand-2', status: 'hunting', direction: 'long', entryMode: 'full', accountId: null } });
+  await seedInstrument(user.id);
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-mand-2', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: null } });
   assert.equal(result.status, 200);
   assert.equal(result.body.accountId, null);
 });
 
 test('a brand-new trade with no accountId succeeds when the user\'s only account is archived', async () => {
   const user = await createUser('Archived Only Trader');
+  await seedInstrument(user.id);
   const created = await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('acct-mand-3') });
-  await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-linked-mand', status: 'closed', direction: 'long', entryMode: 'full', accountId: 'acct-mand-3', outcome: 'win', pnl: 10 } });
+  await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-linked-mand', status: 'closed', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-mand-3', outcome: 'win', pnl: 10 } });
   await api('DELETE', '/api/sync/accounts/acct-mand-3', { userId: user.id }); // archives (a trade references it)
   const fetched = await api('GET', '/api/sync/accounts/acct-mand-3', { userId: user.id });
   assert.equal(fetched.body.status, 'archived');
-  const result = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-mand-3', status: 'hunting', direction: 'long', entryMode: 'full', accountId: null } });
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-mand-3', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: null } });
   assert.equal(result.status, 200, 'an archived-only account must not count as "an active account exists"');
 });
 
 test('EDITING an already-existing trade never gets retroactively forced to pick an account', async () => {
   const user = await createUser('Legacy Trade Editor');
+  await seedInstrument(user.id);
   // A trade created back when the user had zero accounts (accountId:null, allowed).
-  const created = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-legacy-1', status: 'hunting', direction: 'long', entryMode: 'full', accountId: null } });
+  const created = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-legacy-1', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: null } });
   assert.equal(created.status, 200);
   // The user creates their first account AFTER that trade already existed.
   await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('acct-mand-4') });
@@ -204,37 +214,40 @@ test('EDITING an already-existing trade never gets retroactively forced to pick 
 
 test('assigning a NEW trade to an archived account is rejected with ACCOUNT_ARCHIVED', async () => {
   const user = await createUser('Archive Assign Trader');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('acct-arch-1') });
-  await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-seed', status: 'closed', direction: 'long', entryMode: 'full', accountId: 'acct-arch-1', outcome: 'win', pnl: 5 } });
+  await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-seed', status: 'closed', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-arch-1', outcome: 'win', pnl: 5 } });
   await api('DELETE', '/api/sync/accounts/acct-arch-1', { userId: user.id }); // archives (referenced by trade-arch-seed)
 
-  const result = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-new', status: 'hunting', direction: 'long', entryMode: 'full', accountId: 'acct-arch-1' } });
+  const result = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-new', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-arch-1' } });
   assert.equal(result.status, 403);
   assert.equal(result.body.error, 'ACCOUNT_ARCHIVED');
 });
 
 test('re-pointing an EXISTING trade onto an archived account is rejected, but a trade that already pointed there stays editable', async () => {
   const user = await createUser('Archive Repoint Trader');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('acct-arch-2') });
   await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('acct-arch-3') });
-  await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-a', status: 'closed', direction: 'long', entryMode: 'full', accountId: 'acct-arch-2', outcome: 'win', pnl: 5 } });
+  await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-a', status: 'closed', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-arch-2', outcome: 'win', pnl: 5 } });
   await api('DELETE', '/api/sync/accounts/acct-arch-2', { userId: user.id }); // archives
 
   // Editing trade-arch-a WITHOUT changing its accountId must still succeed.
-  const sameAccount = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-a', status: 'closed', direction: 'long', entryMode: 'full', accountId: 'acct-arch-2', outcome: 'win', pnl: 5, chartNote: 'still editable' } });
+  const sameAccount = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-a', status: 'closed', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-arch-2', outcome: 'win', pnl: 5, chartNote: 'still editable' } });
   assert.equal(sameAccount.status, 200);
   assert.equal(sameAccount.body.chartNote, 'still editable');
 
   // Re-pointing a DIFFERENT trade onto the now-archived account must fail.
-  const repoint = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-b', status: 'hunting', direction: 'long', entryMode: 'full', accountId: 'acct-arch-3' } });
+  const repoint = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-b', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-arch-3' } });
   assert.equal(repoint.status, 200);
-  const changeToArchived = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-b', status: 'hunting', direction: 'long', entryMode: 'full', accountId: 'acct-arch-2' } });
+  const changeToArchived = await api('POST', '/api/sync/trades', { userId: user.id, body: { id: 'trade-arch-b', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', accountId: 'acct-arch-2' } });
   assert.equal(changeToArchived.status, 403);
   assert.equal(changeToArchived.body.error, 'ACCOUNT_ARCHIVED');
 });
 
 test('a trade instrument field round-trips', async () => {
   const user = await createUser('Instrument Trader');
+  await seedInstrument(user.id);
   const result = await api('POST', '/api/sync/trades', {
     userId: user.id,
     body: { id: 'trade-instrument', status: 'hunting', direction: 'long', entryMode: 'full', instrument: 'XAUUSD' }

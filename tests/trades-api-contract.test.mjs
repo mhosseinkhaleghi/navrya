@@ -32,10 +32,14 @@ async function api(method, path, { body, userId } = {}) {
 async function createUser(name) {
   return repo.users.create({ displayName: name });
 }
+// Instrument Catalog domain: a brand-new trade now requires a real, cataloged instrument.
+async function seedInstrument(userId, code = 'XAUUSD') {
+  return repo.instrumentCatalog.upsert(userId, { id: 'instr-' + userId + '-' + code, code });
+}
 
 function sampleTrade(id) {
   return {
-    id, status: 'closed', direction: 'long', entryMode: 'full', entryPrice: 100, stopLoss: 95,
+    id, status: 'closed', direction: 'long', entryMode: 'full', instrument: 'XAUUSD', entryPrice: 100, stopLoss: 95,
     takeProfits: [{ price: 110, portionPercent: 100 }], slDistancePercent: 5, riskPercent: 1, riskAmount: 100,
     leverage: 10, positionSize: 2000, marginRequired: 200, liquidationPrice: 90.5, rr: 2, marginMode: 'isolated',
     commission: { feeType: 'taker', feePercent: 0.06, totalCommission: 1.2 }, breakevenPercent: 0.12,
@@ -61,6 +65,7 @@ test('a request with no x-dev-user-id is rejected with AUTH_SESSION_REQUIRED', a
 
 test('POST upserts a full trade (screenshots + emotion log + status history + ai prediction links) and GET reassembles it identically', async () => {
   const user = await createUser('Hunter One');
+  await seedInstrument(user.id);
   const created = await api('POST', '/api/sync/trades', { userId: user.id, body: sampleTrade('trade-a') });
   assert.equal(created.status, 200);
   assert.equal(created.body.entryPrice, 100);
@@ -84,6 +89,7 @@ test('POST upserts a full trade (screenshots + emotion log + status history + ai
 
 test('re-POSTing the same trade id is an idempotent upsert, not a duplicate, and fully replaces screenshots/emotion log', async () => {
   const user = await createUser('Hunter Two');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/trades', { userId: user.id, body: sampleTrade('trade-b') });
 
   const changed = sampleTrade('trade-b');
@@ -101,6 +107,7 @@ test('re-POSTing the same trade id is an idempotent upsert, not a duplicate, and
 test('a trade belonging to another user cannot be fetched, upserted, or deleted', async () => {
   const owner = await createUser('Owner');
   const stranger = await createUser('Stranger');
+  await seedInstrument(owner.id);
   await api('POST', '/api/sync/trades', { userId: owner.id, body: sampleTrade('trade-c') });
 
   const strangerFetch = await api('GET', '/api/sync/trades/trade-c', { userId: stranger.id });
@@ -116,6 +123,7 @@ test('a trade belonging to another user cannot be fetched, upserted, or deleted'
 
 test('DELETE removes the trade and its child rows', async () => {
   const user = await createUser('Hunter Three');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/trades', { userId: user.id, body: sampleTrade('trade-d') });
   const deleted = await api('DELETE', '/api/sync/trades/trade-d', { userId: user.id });
   assert.equal(deleted.status, 204);

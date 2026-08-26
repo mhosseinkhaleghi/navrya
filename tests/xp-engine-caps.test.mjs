@@ -39,7 +39,8 @@ test('a repeated dedupeKey is skipped (reason:duplicate) and never double-awards
   // first_pattern_bonus is also in ONCE_PER_USER_TYPES, so a repeat is caught earlier (hasType)
   // - use a type that is NOT once-per-user to actually exercise the dedupe-key path itself.
   // trade_calculation_valid is server-verified against a real owned trade record.
-  await repo.trades.upsert(user.id, { id: 't1', status: 'hunting' });
+  await repo.instrumentCatalog.upsert(user.id, { id: 'instr-' + user.id, code: 'XAUUSD' });
+  await repo.trades.upsert(user.id, { id: 't1', status: 'hunting', instrument: 'XAUUSD' });
   const a = await api('POST', '/api/users/me/xp-events', { userId: user.id, body: { type: 'trade_calculation_valid', sourceType: 'trade', sourceId: 't1', dedupeKey: 'trade.calc:t1' } });
   assert.equal(a.status, 201);
   assert.equal(a.body.xpTotal, 17);
@@ -53,7 +54,8 @@ test('a repeated dedupeKey is skipped (reason:duplicate) and never double-awards
 
 test('PER_SOURCE_MAX caps a per-session type at its declared maximum, even across different dedupeKeys', async () => {
   const user = await createUser('Cap Tester');
-  const session = await repo.tradingSessions.upsert(user.id, { id: 's1', market: 'London', timeframe: '15m', date: '2026-01-01', entries: [] });
+  await repo.instrumentCatalog.upsert(user.id, { id: 'instr-' + user.id, code: 'XAUUSD' });
+  const session = await repo.tradingSessions.upsert(user.id, { id: 's1', market: 'London', instrument: 'XAUUSD', timeframe: '15m', date: '2026-01-01', entries: [] });
   assert.ok(session.id);
   for (let i = 1; i <= 4; i += 1) {
     await api('POST', '/api/users/me/xp-events', { userId: user.id, body: { type: 'session_chart_entry_added', sourceType: 'session', sourceId: 's1', dedupeKey: 'session.entry:e' + i } });
@@ -65,7 +67,8 @@ test('PER_SOURCE_MAX caps a per-session type at its declared maximum, even acros
 test('an event tied to a sourceId the user does not own (or that does not exist) is rejected, never silently awarded', async () => {
   const owner = await createUser('Owner');
   const other = await createUser('Other');
-  await repo.trades.upsert(owner.id, { id: 'trade-owned', status: 'closed', exitPrice: 100, pnl: 5 });
+  await repo.instrumentCatalog.upsert(owner.id, { id: 'instr-' + owner.id, code: 'XAUUSD' });
+  await repo.trades.upsert(owner.id, { id: 'trade-owned', status: 'closed', instrument: 'XAUUSD', exitPrice: 100, pnl: 5 });
 
   const missing = await api('POST', '/api/users/me/xp-events', { userId: owner.id, body: { type: 'trade_closed_with_pnl', sourceType: 'trade', sourceId: 'does-not-exist', dedupeKey: 'trade.closed:does-not-exist' } });
   assert.equal(missing.status, 404);
@@ -82,7 +85,8 @@ test('an event tied to a sourceId the user does not own (or that does not exist)
 
 test('trade_closed_with_pnl requires the trade to actually be closed with a real exit price and P&L, not just exist', async () => {
   const user = await createUser('State Tester');
-  await repo.trades.upsert(user.id, { id: 'trade-open', status: 'open' });
+  await repo.instrumentCatalog.upsert(user.id, { id: 'instr-' + user.id, code: 'XAUUSD' });
+  await repo.trades.upsert(user.id, { id: 'trade-open', status: 'open', instrument: 'XAUUSD' });
   const result = await api('POST', '/api/users/me/xp-events', { userId: user.id, body: { type: 'trade_closed_with_pnl', sourceType: 'trade', sourceId: 'trade-open', dedupeKey: 'trade.closed:trade-open' } });
   assert.equal(result.status, 409);
   assert.equal(result.body.error, 'STATE_NOT_ELIGIBLE');
@@ -95,14 +99,15 @@ test('trade_closed_with_pnl requires the trade to actually be closed with a real
 
 test('pattern_report_generated requires a real 5-sample minimum, verified server-side against actual scenario data, not trusted from the client', async () => {
   const user = await createUser('Report Tester');
-  await repo.patterns.upsert(user.id, { id: 'pat1', name: 'Sweep', description: 'x', stages: [{ id: 'st1', order: 1, text: 'a' }] });
+  await repo.instrumentCatalog.upsert(user.id, { id: 'instr-' + user.id, code: 'XAUUSD' });
+  await repo.patterns.upsert(user.id, { id: 'pat1', name: 'Sweep', description: 'x', instruments: ['XAUUSD'], stages: [{ id: 'st1', order: 1, text: 'a' }] });
 
   const tooFew = await api('POST', '/api/users/me/xp-events', { userId: user.id, body: { type: 'pattern_report_generated', sourceType: 'pattern', sourceId: 'pat1', dedupeKey: 'pattern.report:pat1' } });
   assert.equal(tooFew.status, 409);
   assert.equal(tooFew.body.error, 'INSUFFICIENT_SAMPLES');
 
   await repo.tradingSessions.upsert(user.id, {
-    id: 'sess1', market: 'London', timeframe: '15m', date: '2026-01-01',
+    id: 'sess1', market: 'London', instrument: 'XAUUSD', timeframe: '15m', date: '2026-01-01',
     entries: [{ id: 'entry1', type: 'chart', scenarios: Array.from({ length: 5 }, (_, i) => ({ id: 'scn' + i, pattern: { patternTagId: 'pat1' } })) }]
   });
   const enough = await api('POST', '/api/users/me/xp-events', { userId: user.id, body: { type: 'pattern_report_generated', sourceType: 'pattern', sourceId: 'pat1', dedupeKey: 'pattern.report:pat1' } });

@@ -2,6 +2,21 @@ import { newId } from './id.mjs';
 import { ApiError } from '../community/errors.mjs';
 import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
+import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
+
+// Instrument Catalog domain (025_instrument_catalog.sql). Shared by tradingSessions/trades/
+// patterns/sessionSignatures below - every one of them stores the plain normalized code string
+// directly (never the catalog row's own id, see that migration's comment), so membership is a
+// query against this one table rather than a DB foreign key. `queryable` is either a checked-out
+// transaction `client` (tradingSessions/trades/patterns already run inside one) or the bare
+// `pool` (sessionSignatures never opens its own transaction) - both expose the same `.query()`.
+async function assertInstrumentInCatalog(queryable, userId, codes) {
+  const wanted = normalizeInstrumentCodes(Array.isArray(codes) ? codes : [codes]);
+  if (!wanted.length) return;
+  const { rows } = await queryable.query('SELECT code FROM instrument_catalog WHERE user_id=$1 AND code = ANY($2)', [userId, wanted]);
+  const known = new Set(rows.map((row) => row.code));
+  if (wanted.some((code) => !known.has(code))) throw new ApiError(400, 'INSTRUMENT_NOT_IN_CATALOG');
+}
 
 function mapUser(row) {
   return {
@@ -147,7 +162,7 @@ function mapTradingSession(row, entries, activityLog) {
     status: row.status, updateIntervalMinutes: row.update_interval_minutes, gracePeriodMinutes: row.grace_period_minutes,
     fateSummary: row.fate_summary, previousSessionSummary: row.previous_session_summary,
     aiSessionAnalysis: row.ai_session_analysis, aiSessionAnalysisResult: row.ai_session_analysis_result,
-    finalEntryId: row.final_entry_id, accountId: row.account_id, entries: entries || [], activityLog: activityLog || [],
+    finalEntryId: row.final_entry_id, accountId: row.account_id, instrument: row.instrument, entries: entries || [], activityLog: activityLog || [],
     createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
@@ -162,6 +177,7 @@ function mapPattern(row, stages, referenceScreenshots, chatHistory) {
   return {
     id: row.id, userId: row.user_id, name: row.name, description: row.description,
     completionThreshold: row.completion_threshold, usageCount: row.usage_count, isPublic: row.is_public,
+    instruments: row.instruments || [],
     stages: stages || [], referenceScreenshots: referenceScreenshots || [], chatHistory: chatHistory || [],
     createdAt: row.created_at, updatedAt: row.updated_at
   };
@@ -268,6 +284,10 @@ function mapAccount(row) {
     startDate: row.start_date, startingBalance: row.starting_balance == null ? 0 : Number(row.starting_balance),
     rules: row.rules || {}, createdAt: row.created_at, updatedAt: row.updated_at
   };
+}
+
+function mapInstrumentCatalog(row) {
+  return { id: row.id, userId: row.user_id, code: row.code, displayName: row.display_name, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 // "Online" threshold for sessions.aggregateByUser(): 3x the client heartbeat interval
@@ -1318,29 +1338,41 @@ export function createPgRepo(pool) {
           if (isNewAssignment && accountOwnerRows[0].status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
         }
 
+        // Instrument Catalog domain (025_instrument_catalog.sql): mandatory for a brand-new
+        // session only (`!ownerRows[0]`, the same gate trades.upsert()'s ACCOUNT_REQUIRED check
+        // already uses) - never retroactively forced onto a pre-existing NULL row from before
+        // this migration. A supplied instrument must already be in this user's catalog (fail
+        // closed, no silent alias guessing).
+        const instrument = normalizeInstrumentCode(record.instrument);
+        if (!ownerRows[0] && !instrument) throw new ApiError(400, 'INSTRUMENT_REQUIRED');
+        if (instrument) await assertInstrumentInCatalog(client, userId, instrument);
+
         const startedAt = record.startedAt ? new Date(record.startedAt).toISOString() : null;
         const closedAt = record.closedAt ? new Date(record.closedAt).toISOString() : null;
         const { rows: sessionRows } = await client.query(
           `INSERT INTO trading_sessions
             (id, user_id, character, name, market, timeframe, date, jalali, started_at, closed_at, status,
              update_interval_minutes, grace_period_minutes, fate_summary, previous_session_summary,
-             ai_session_analysis, ai_session_analysis_result, final_entry_id, account_id, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,now()),$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
+             ai_session_analysis, ai_session_analysis_result, final_entry_id, account_id, instrument, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,now()),$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,now())
            ON CONFLICT (id) DO UPDATE SET
              character=$3, name=$4, market=$5, timeframe=$6, date=$7, jalali=$8,
              started_at=COALESCE($9, trading_sessions.started_at), closed_at=$10, status=$11,
              update_interval_minutes=$12, grace_period_minutes=$13, fate_summary=$14, previous_session_summary=$15,
-             ai_session_analysis=$16, ai_session_analysis_result=$17, final_entry_id=$18, account_id=$19, updated_at=now()
+             ai_session_analysis=$16, ai_session_analysis_result=$17, final_entry_id=$18, account_id=$19, instrument=$20, updated_at=now()
            RETURNING *`,
           // market is NOT NULL (006_trading_sessions.sql) - a bare `|| null` here is what a real
           // NOT-NULL constraint violation looks like the moment any caller sends an empty/missing
           // market, same defense-in-depth reasoning as normalizeTradingEntryType() above.
+          // instrument, unlike market, is nullable and never defaulted (see the migration's
+          // comment) - an update to a pre-existing row that still has no instrument keeps it null.
           [record.id, userId, String(record.character || 'hunter'), record.name || null, record.market || 'London',
             record.timeframe || null, record.date || null, record.jalali || null, startedAt, closedAt,
             record.status === 'closed' ? 'closed' : 'open', Number(record.updateIntervalMinutes) || 30,
             Number(record.gracePeriodMinutes) || 5, JSON.stringify(record.fateSummary ?? null),
             JSON.stringify(record.previousSessionSummary ?? null), record.aiSessionAnalysis || null,
-            JSON.stringify(record.aiSessionAnalysisResult ?? null), record.finalEntryId || null, record.accountId || null]
+            JSON.stringify(record.aiSessionAnalysisResult ?? null), record.finalEntryId || null, record.accountId || null,
+            instrument]
         );
 
         await client.query('DELETE FROM trading_session_entries WHERE session_id=$1', [record.id]);
@@ -1461,15 +1493,23 @@ export function createPgRepo(pool) {
         const { rows: ownerRows } = await client.query('SELECT user_id FROM patterns WHERE id=$1', [record.id]);
         if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_PATTERN_OWNER');
 
+        // Instrument Catalog domain (025_instrument_catalog.sql): a brand-new pattern must
+        // explicitly carry at least one instrument before it is ever persisted (no more
+        // "create blank pattern, edit after" for this field specifically) - never retroactively
+        // forced onto a pre-existing pattern whose instruments array is still empty/legacy.
+        const instruments = normalizeInstrumentCodes(record.instruments);
+        if (!ownerRows[0] && !instruments.length) throw new ApiError(400, 'PATTERN_INSTRUMENT_REQUIRED');
+        if (instruments.length) await assertInstrumentInCatalog(client, userId, instruments);
+
         const { rows: patternRows } = await client.query(
-          `INSERT INTO patterns (id, user_id, name, description, completion_threshold, usage_count, is_public, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+          `INSERT INTO patterns (id, user_id, name, description, completion_threshold, usage_count, is_public, instruments, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
            ON CONFLICT (id) DO UPDATE SET
-             name=$3, description=$4, completion_threshold=$5, usage_count=$6, is_public=$7, updated_at=now()
+             name=$3, description=$4, completion_threshold=$5, usage_count=$6, is_public=$7, instruments=$8, updated_at=now()
            RETURNING *`,
           [record.id, userId, record.name || '', record.description || '',
             Math.max(0, Math.min(100, Number(record.completionThreshold ?? 70))),
-            Math.max(0, Number(record.usageCount || 0)), Boolean(record.isPublic)]
+            Math.max(0, Number(record.usageCount || 0)), Boolean(record.isPublic), instruments]
         );
 
         await client.query('DELETE FROM pattern_stages WHERE pattern_id=$1', [record.id]);
@@ -1701,6 +1741,24 @@ export function createPgRepo(pool) {
           if (isNewAssignment && accountOwnerRows[0].status === 'archived') throw new ApiError(403, 'ACCOUNT_ARCHIVED');
         }
 
+        // Instrument Catalog domain (025_instrument_catalog.sql): mandatory for a brand-new
+        // trade only, same ACCOUNT_REQUIRED-style gate as above - never retroactively forced onto
+        // a pre-existing trade. A supplied instrument must already be in this user's catalog.
+        const instrument = normalizeInstrumentCode(record.instrument);
+        if (!ownerRows[0] && !instrument) throw new ApiError(400, 'INSTRUMENT_REQUIRED');
+        if (instrument) await assertInstrumentInCatalog(client, userId, instrument);
+        // A trade sourced from a live Session must never silently drift onto a different
+        // instrument than the one it was actually logged under - this is the concrete "never
+        // compare/attribute BTC against XAU" guarantee at the write boundary. Only enforced when
+        // the source session itself has a real instrument (a legacy/unassigned session imposes
+        // no equality constraint - nothing real to match against).
+        if (source.sessionId) {
+          const { rows: sourceSessionRows } = await client.query('SELECT instrument FROM trading_sessions WHERE id=$1 AND user_id=$2', [source.sessionId, userId]);
+          if (sourceSessionRows[0] && sourceSessionRows[0].instrument && sourceSessionRows[0].instrument !== instrument) {
+            throw new ApiError(400, 'TRADE_SESSION_INSTRUMENT_MISMATCH');
+          }
+        }
+
         const { rows: tradeRows } = await client.query(
           `INSERT INTO trades
             (id, user_id, status, direction, entry_mode, entry_price, stop_loss, take_profits, sl_distance_percent,
@@ -1731,7 +1789,7 @@ export function createPgRepo(pool) {
             record.pnlPercent ?? null, record.session || 'london', record.primaryTimeframe || null,
             JSON.stringify(record.timeframeTrends || []), JSON.stringify(record.conceptTags || []),
             JSON.stringify(record.linkedPatternIds || []), record.linkedStrategyId || null,
-            record.accountId || null, (typeof record.instrument === 'string' && record.instrument.trim()) ? record.instrument.trim() : null,
+            record.accountId || null, instrument,
             record.chartNote || '',
             JSON.stringify(record.statusHistory || []), source.character || null, source.sessionId || null,
             source.scenarioId || null, JSON.stringify(record.aiPredictionLinks || []), JSON.stringify(record.aiInitialAnalysis ?? null),
@@ -1842,6 +1900,49 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Instrument Catalog domain (025_instrument_catalog.sql). No archive-vs-delete distinction
+  // like accounts.remove() needs - nothing else holds a foreign key to this row's own id, since
+  // every consumer stores the plain code string, not this id (see the migration's comment).
+  const instrumentCatalog = {
+    async upsert(userId, record) {
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const code = normalizeInstrumentCode(record.code);
+      if (!code) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows: ownerRows } = await pool.query('SELECT user_id FROM instrument_catalog WHERE id=$1', [record.id]);
+      if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_INSTRUMENT_OWNER');
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO instrument_catalog (id, user_id, code, display_name, updated_at)
+           VALUES ($1,$2,$3,$4,now())
+           ON CONFLICT (id) DO UPDATE SET code=$3, display_name=$4, updated_at=now()
+           RETURNING *`,
+          [record.id, userId, code, record.displayName || null]
+        );
+        return mapInstrumentCatalog(rows[0]);
+      } catch (error) {
+        // "Codes must be unique per user after normalization" - a duplicate add (or a rename onto
+        // an already-used code) hits instrument_catalog_user_code_idx and surfaces here as a real
+        // 409, never a silent second row.
+        if (error && error.code === '23505') throw new ApiError(409, 'INSTRUMENT_ALREADY_EXISTS');
+        throw error;
+      }
+    },
+    async get(userId, id) {
+      const { rows } = await pool.query('SELECT * FROM instrument_catalog WHERE id=$1 AND user_id=$2', [id, userId]);
+      return rows[0] ? mapInstrumentCatalog(rows[0]) : null;
+    },
+    async listByUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM instrument_catalog WHERE user_id=$1 ORDER BY code ASC', [userId]);
+      return rows.map(mapInstrumentCatalog);
+    },
+    async remove(userId, id) {
+      const { rows } = await pool.query('SELECT user_id FROM instrument_catalog WHERE id=$1', [id]);
+      if (!rows[0]) return;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_INSTRUMENT_OWNER');
+      await pool.query('DELETE FROM instrument_catalog WHERE id=$1', [id]);
+    }
+  };
+
   // Module 5 (final module) of the local-first-to-server migration. One row per user, the
   // entire client profile stored (and returned) verbatim as a single jsonb column - no child
   // tables, no transaction needed (a single-row upsert can't partially fail the way a
@@ -1891,7 +1992,7 @@ export function createPgRepo(pool) {
       id: row.id, sessionId: row.session_id, character: row.character, market: row.market,
       timeframe: row.timeframe, date: row.date, movementSequence: row.movement_sequence,
       patternIds: row.pattern_ids, strategyIds: row.strategy_ids, scenarioOutcomes: row.scenario_outcomes,
-      tradeSummary: row.trade_summary, fateSummaryText: row.fate_summary_text, createdAt: row.created_at
+      tradeSummary: row.trade_summary, fateSummaryText: row.fate_summary_text, instrument: row.instrument, createdAt: row.created_at
     };
   }
   const sessionSignatures = {
@@ -1903,19 +2004,26 @@ export function createPgRepo(pool) {
       // silently change under a stranger's POST).
       const { rows: ownerRows } = await pool.query('SELECT user_id FROM session_signatures WHERE id=$1', [record.id]);
       if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_SIGNATURE_OWNER');
+      // Instrument Catalog domain (025_instrument_catalog.sql): signatures are server-derived
+      // from a real session (session-signature-store.js's buildSignatureFromSession()), never
+      // directly user-authored, so this is a defensive consistency check rather than a hard
+      // "required" gate - a signature backfilled from a legacy, instrument-less session stays
+      // null, which session-signature-engine.js's compare() already treats as fail-closed.
+      const instrument = normalizeInstrumentCode(record.instrument);
+      if (instrument) await assertInstrumentInCatalog(pool, userId, instrument);
       const { rows } = await pool.query(
         `INSERT INTO session_signatures
-           (id, user_id, session_id, character, market, timeframe, date, movement_sequence, pattern_ids, strategy_ids, scenario_outcomes, trade_summary, fate_summary_text)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           (id, user_id, session_id, character, market, timeframe, date, movement_sequence, pattern_ids, strategy_ids, scenario_outcomes, trade_summary, fate_summary_text, instrument)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (id) DO UPDATE SET
            session_id=$3, character=$4, market=$5, timeframe=$6, date=$7, movement_sequence=$8,
-           pattern_ids=$9, strategy_ids=$10, scenario_outcomes=$11, trade_summary=$12, fate_summary_text=$13
+           pattern_ids=$9, strategy_ids=$10, scenario_outcomes=$11, trade_summary=$12, fate_summary_text=$13, instrument=$14
          RETURNING *`,
         [record.id, userId, String(record.sessionId), record.character || '', record.market || '',
           record.timeframe || '', record.date || '', JSON.stringify(record.movementSequence || []),
           JSON.stringify(record.patternIds || []), JSON.stringify(record.strategyIds || []),
           JSON.stringify(record.scenarioOutcomes || []), JSON.stringify(record.tradeSummary || {}),
-          record.fateSummaryText || '']
+          record.fateSummaryText || '', instrument]
       );
       return mapSessionSignature(rows[0]);
     },
@@ -2185,7 +2293,7 @@ export function createPgRepo(pool) {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, trades, accounts, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health
   };
 }

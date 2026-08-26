@@ -32,10 +32,15 @@ async function api(method, path, { body, userId } = {}) {
 async function createUser(name) {
   return repo.users.create({ displayName: name });
 }
+// Instrument Catalog domain: a brand-new pattern now requires a real, cataloged instrument.
+async function seedInstrument(userId, code = 'XAUUSD') {
+  return repo.instrumentCatalog.upsert(userId, { id: 'instr-' + userId + '-' + code, code });
+}
 
 function samplePattern(id) {
   return {
     id, name: 'UTAD WYCKOF', description: 'Wyckoff UTAD structure', completionThreshold: 70, usageCount: 3, isPublic: false,
+    instruments: ['XAUUSD'],
     stages: [
       { id: id + '-stage-1', order: 1, text: 'Strong spike move' },
       { id: id + '-stage-2', order: 2, text: 'Counter-direction accumulation' }
@@ -58,6 +63,7 @@ test('a request with no x-dev-user-id is rejected with AUTH_SESSION_REQUIRED', a
 
 test('POST upserts a full nested pattern (stages + screenshots + chat history) and GET reassembles it identically', async () => {
   const user = await createUser('Hunter One');
+  await seedInstrument(user.id);
   const created = await api('POST', '/api/sync/patterns', { userId: user.id, body: samplePattern('pattern-a') });
   assert.equal(created.status, 200);
   assert.equal(created.body.stages.length, 2);
@@ -76,6 +82,7 @@ test('POST upserts a full nested pattern (stages + screenshots + chat history) a
 
 test('re-POSTing the same pattern id is an idempotent upsert, not a duplicate, and fully replaces stages/screenshots/chat', async () => {
   const user = await createUser('Hunter Two');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/patterns', { userId: user.id, body: samplePattern('pattern-b') });
 
   const changed = samplePattern('pattern-b');
@@ -93,6 +100,7 @@ test('re-POSTing the same pattern id is an idempotent upsert, not a duplicate, a
 test('a pattern belonging to another user cannot be fetched, upserted, or deleted', async () => {
   const owner = await createUser('Owner');
   const stranger = await createUser('Stranger');
+  await seedInstrument(owner.id);
   await api('POST', '/api/sync/patterns', { userId: owner.id, body: samplePattern('pattern-c') });
 
   const strangerFetch = await api('GET', '/api/sync/patterns/pattern-c', { userId: stranger.id });
@@ -108,6 +116,7 @@ test('a pattern belonging to another user cannot be fetched, upserted, or delete
 
 test('DELETE removes the pattern and its child rows', async () => {
   const user = await createUser('Hunter Three');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/patterns', { userId: user.id, body: samplePattern('pattern-d') });
   const deleted = await api('DELETE', '/api/sync/patterns/pattern-d', { userId: user.id });
   assert.equal(deleted.status, 204);

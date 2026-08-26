@@ -32,6 +32,10 @@ async function api(method, path, { body, userId } = {}) {
 async function createUser(name) {
   return repo.users.create({ displayName: name });
 }
+// Instrument Catalog domain: a brand-new session now requires a real, cataloged instrument.
+async function seedInstrument(userId, code = 'XAUUSD') {
+  return repo.instrumentCatalog.upsert(userId, { id: 'instr-' + userId + '-' + code, code });
+}
 function propAccount(id, overrides) {
   return Object.assign({
     id, kind: 'prop', firm: 'Atlas Funding', status: 'active', currency: 'USD',
@@ -42,7 +46,7 @@ function propAccount(id, overrides) {
 
 function sampleSession(id) {
   return {
-    id, character: 'hunter', market: 'London', timeframe: '5m', date: '2026-01-01', jalali: '۱۴۰۴/۱۰/۱۱',
+    id, character: 'hunter', market: 'London', instrument: 'XAUUSD', timeframe: '5m', date: '2026-01-01', jalali: '۱۴۰۴/۱۰/۱۱',
     startedAt: '2026-01-01T07:00:00.000Z', status: 'open', updateIntervalMinutes: 30, gracePeriodMinutes: 5,
     entries: [
       {
@@ -72,6 +76,7 @@ test('a request with no x-dev-user-id is rejected with AUTH_SESSION_REQUIRED', a
 
 test('POST upserts a full nested session (entries + scenarios + activity log) and GET reassembles it identically', async () => {
   const user = await createUser('Hunter One');
+  await seedInstrument(user.id);
   const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: sampleSession('session-a') });
   assert.equal(created.status, 200);
   assert.equal(created.body.id, 'session-a');
@@ -92,6 +97,7 @@ test('POST upserts a full nested session (entries + scenarios + activity log) an
 
 test('re-POSTing the same session id is an idempotent upsert, not a duplicate, and fully replaces the child rows', async () => {
   const user = await createUser('Hunter Two');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/sessions', { userId: user.id, body: sampleSession('session-b') });
 
   const changed = sampleSession('session-b');
@@ -110,6 +116,7 @@ test('re-POSTing the same session id is an idempotent upsert, not a duplicate, a
 
 test("HOTFIX regression guard: an entry with a missing/invalid `type` no longer breaks the whole session upsert - real production bug (navrya-src/sessionsAdapter.js's createSession() sent chart-upload entries with no `type` at all; trading_session_entries.type is NOT NULL CHECK (chart/movement/fate) in real Postgres, so the entire upsert 500'd and rolled back, silently losing the session). Normalizes to 'chart', mirroring session-workspace-logic.js's own client-side normalize() fallback", async () => {
   const user = await createUser('Hunter NoType');
+  await seedInstrument(user.id);
   const session = sampleSession('session-no-type');
   delete session.entries[0].type;
   session.entries.push({ id: 'session-no-type-entry-2', type: 'not-a-real-type', createdAt: '2026-01-01T07:06:00.000Z', hasImage: false, relatedScenarioIds: [], scenarios: [] });
@@ -121,6 +128,7 @@ test("HOTFIX regression guard: an entry with a missing/invalid `type` no longer 
 
 test('HOTFIX regression guard: a session with a missing/empty `market` no longer breaks the upsert - trading_sessions.market is NOT NULL in real Postgres, and record.market || null used to feed that constraint a real NULL', async () => {
   const user = await createUser('Hunter NoMarket');
+  await seedInstrument(user.id);
   const session = sampleSession('session-no-market');
   session.market = '';
   const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
@@ -131,6 +139,7 @@ test('HOTFIX regression guard: a session with a missing/empty `market` no longer
 test('a session belonging to another user cannot be fetched, upserted, or deleted', async () => {
   const owner = await createUser('Owner');
   const stranger = await createUser('Stranger');
+  await seedInstrument(owner.id);
   await api('POST', '/api/sync/sessions', { userId: owner.id, body: sampleSession('session-c') });
 
   const strangerFetch = await api('GET', '/api/sync/sessions/session-c', { userId: stranger.id });
@@ -146,6 +155,7 @@ test('a session belonging to another user cannot be fetched, upserted, or delete
 
 test('DELETE removes the session and its child rows are gone too (no orphaned scenario/entry rows reachable)', async () => {
   const user = await createUser('Hunter Three');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/sessions', { userId: user.id, body: sampleSession('session-d') });
   const deleted = await api('DELETE', '/api/sync/sessions/session-d', { userId: user.id });
   assert.equal(deleted.status, 204);
@@ -157,6 +167,7 @@ test('DELETE removes the session and its child rows are gone too (no orphaned sc
 
 test('a session can be created with a real accountId, and it round-trips through GET', async () => {
   const user = await createUser('Hunter AccountA');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('sess-acct-a') });
   const session = sampleSession('session-acct-1');
   session.accountId = 'sess-acct-a';
@@ -169,6 +180,7 @@ test('a session can be created with a real accountId, and it round-trips through
 
 test('a session with no accountId at all stays honestly unscoped - never mandatory the way a trade is', async () => {
   const user = await createUser('Hunter NoAccount');
+  await seedInstrument(user.id);
   const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: sampleSession('session-acct-2') });
   assert.equal(created.status, 200, 'unlike a trade, a session is never rejected for missing accountId');
   assert.equal(created.body.accountId, null);
@@ -197,6 +209,7 @@ test('a session can never be freshly assigned to an archived account - ACCOUNT_A
 
 test('a session already pointing at an account that is later archived stays fully editable (re-saving unrelated fields does not re-trigger ACCOUNT_ARCHIVED)', async () => {
   const user = await createUser('Hunter Grandfathered');
+  await seedInstrument(user.id);
   await api('POST', '/api/sync/accounts', { userId: user.id, body: propAccount('sess-acct-gf') });
   const session = sampleSession('session-acct-5');
   session.accountId = 'sess-acct-gf';
