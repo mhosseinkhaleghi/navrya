@@ -43,6 +43,7 @@ async function loadPatterns({ localStorage, fetchImpl, currentUserId }) {
   };
   sandbox.window = Object.assign(sandbox.window, { localStorage, dispatchEvent() {}, addEventListener() {}, TradeJournalDevUserSwitcher: { currentUserId: () => currentUserId || null } });
   vm.runInNewContext(await source('server-replica.js'), sandbox, { filename: 'server-replica.js' });
+  vm.runInNewContext(await source('instrument-catalog.types.js'), sandbox, { filename: 'instrument-catalog.types.js' });
   vm.runInNewContext(await source('pattern-registry-store.js'), sandbox, { filename: 'pattern-registry-store.js' });
   return { store: sandbox.window.TradeJournalPatternStore, replica: sandbox.window.TradeJournalServerReplica, fetchCalls, localStorage };
 }
@@ -109,7 +110,7 @@ test('a failed save() rolls the in-memory list back to what it was before the op
     fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: false, status: 500 } : { ok: true, json: async () => ({ patterns: [] }) }
   });
   await flush();
-  store.save(store.create());
+  store.save(store.create(['XAUUSD']));
   assert.equal(store.listSync().length, 1);
   await flush();
   assert.equal(store.listSync().length, 0, 'a failed write must roll back, not leave a record the server never actually saved');
@@ -141,7 +142,7 @@ test("addScreenshots() uploads via POST /api/sync/patterns/images and stores the
     }
   });
   await flush();
-  const pattern = store.save(store.create());
+  const pattern = store.save(store.create(['XAUUSD']));
   const file = { name: 'chart.png', type: 'image/png', size: 1000 };
   const added = await store.addScreenshots(pattern.id, [file]);
   assert.equal(added[0].imageUrl, '/uploads/pattern/real-file.png');
@@ -159,7 +160,7 @@ test("addScreenshots() falls back to embedding the raw dataUrl when the upload f
     }
   });
   await flush();
-  const pattern = store.save(store.create());
+  const pattern = store.save(store.create(['XAUUSD']));
   const file = { name: 'chart.png', type: 'image/png', size: 1000 };
   const added = await store.addScreenshots(pattern.id, [file]);
   assert.equal(added[0].imageUrl, undefined);
@@ -182,7 +183,7 @@ test('cross-account isolation: user A\'s pattern is invisible to user B on the s
   };
   const a = await loadPatterns({ localStorage, currentUserId: 'user-A', fetchImpl: userAFetch });
   await flush();
-  a.store.save(a.store.create());
+  a.store.save(a.store.create(['XAUUSD']));
   assert.equal(a.store.listSync().length, 1, 'user A\'s own write applied to their own in-memory replica');
 
   // A real account switch is a full page/iframe reload (a fresh vm context here, matching a fresh
@@ -198,7 +199,7 @@ test('no localStorage key is ever written for patterns any more - Phase 2 remove
   const localStorage = memoryStorage();
   const { store } = await loadPatterns({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ patterns: [] }) }) });
   await flush();
-  store.save(store.create());
+  store.save(store.create(['XAUUSD']));
   assert.equal(localStorage.getItem('tradejournal:patterns:v1'), null, 'Phase 1\'s guard key may still exist defensively for pre-Phase-2 browsers, but nothing writes it any more');
 });
 

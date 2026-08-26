@@ -6,6 +6,7 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
 import { SearchField } from '../public/pages/shared/navrya/components/forms/SearchField.jsx';
 import { UploadField } from '../public/pages/shared/navrya/components/forms/UploadField.jsx';
+import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { ChatThread } from '../public/pages/shared/navrya/components/feedback/ChatThread.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { Toggle } from '../public/pages/shared/navrya/components/forms/Toggle.jsx';
@@ -59,6 +60,7 @@ function PatternRow({ pattern, i18n }) {
         <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <strong dir="auto" style={{ font: 'var(--type-body)', color: 'var(--parchment)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pattern.name || i18n.t('unnamed')}</strong>
           <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {(pattern.instruments || []).map((code) => <Chip key={code} tone="accent">{code}</Chip>)}
             <Chip>{i18n.t('usage', { count: i18n.number(pattern.usageCount) })}</Chip>
             <Chip>{i18n.t('thresholdBadge', { count: i18n.number(pattern.completionThreshold) })}</Chip>
             <Chip>{i18n.t('images', { count: i18n.number(pattern.referenceScreenshots.length) })}</Chip>
@@ -73,12 +75,19 @@ function PatternRow({ pattern, i18n }) {
 
 function PatternList({ i18n }) {
   const [query, setQuery] = React.useState('');
+  const [newInstruments, setNewInstruments] = React.useState(null);
   const patterns = window.TradeJournalPatternStore.listSync();
   const q = query.trim().toLocaleLowerCase(i18n.locale());
   const filtered = q ? patterns.filter((p) => p.name.toLocaleLowerCase(i18n.locale()).indexOf(q) > -1) : patterns;
 
-  function addPattern() {
-    const pattern = window.TradeJournalPatternStore.create();
+  // Instrument Catalog domain: a brand-new pattern must explicitly carry at least one
+  // instrument before it is persisted - no more "create blank pattern, edit after" for this
+  // field specifically. This small modal is the one new step; name/description/stages still
+  // stay editable-after in the real editor, unchanged.
+  function confirmNewPattern() {
+    const pattern = window.TradeJournalPatternStore.create(newInstruments);
+    if (!pattern) return;
+    setNewInstruments(null);
     navigateProfile(pattern.id, 'details');
   }
 
@@ -93,9 +102,23 @@ function PatternList({ i18n }) {
       </div>
       <StrategyModuleTabs active="patterns" />
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <Button variant="primary" icon="plus" onClick={addPattern}>{i18n.t('addPattern')}</Button>
+        <Button variant="primary" icon="plus" onClick={() => setNewInstruments([])}>{i18n.t('addPattern')}</Button>
         <SearchField value={query} onChange={setQuery} placeholder={i18n.t('search')} style={{ flex: 1, minWidth: 200 }} />
       </div>
+      {newInstruments !== null && (
+        <Modal
+          title={i18n.t('newPatternTitle')} onClose={() => setNewInstruments(null)}
+          footer={(
+            <React.Fragment>
+              <Button variant="primary" disabled={!newInstruments.length} onClick={confirmNewPattern}>{i18n.t('createPatternCta')}</Button>
+              <Button variant="ghost" onClick={() => setNewInstruments(null)}>{i18n.t('cancel')}</Button>
+            </React.Fragment>
+          )}
+        >
+          <p style={{ margin: '0 0 12px', font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('newPatternInstrumentsHint')}</p>
+          <InstrumentPicker multiple value={newInstruments} onChange={setNewInstruments} width="100%" />
+        </Modal>
+      )}
       {!filtered.length ? (
         <Panel variant="base" radius={12} style={{ padding: 24, textAlign: 'center' }}>
           <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t(q ? 'emptySearch' : 'empty')}</span>
@@ -154,6 +177,11 @@ function PatternEditor({ pattern, i18n, ai, onChat }) {
       applyValue: (path, value) => {
         if (path === 'name') pattern.name = value;
         else if (path === 'description') pattern.description = value;
+        // Strict resolution only - character-app.jsx's pattern.create/edit actions resolve
+        // spoken instrument names against the user's real catalog before this ever runs (same
+        // "never a raw guess" contract as accountId/linkedPatternIds); an unresolved value
+        // arrives here as an empty array and is ignored rather than clearing what's selected.
+        else if (path === 'instruments') { if (Array.isArray(value) && value.length) pattern.instruments = value; }
         else return;
         touch();
       }
@@ -244,6 +272,10 @@ function PatternEditor({ pattern, i18n, ai, onChat }) {
           label={i18n.t('threshold')} type="number" value={String(pattern.completionThreshold)} hint={i18n.t('thresholdHelp')}
           onChange={(v) => setField('completionThreshold', Math.max(0, Math.min(100, Number(v) || 0)))}
         />
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('instruments')} *</span>
+          <InstrumentPicker multiple value={pattern.instruments} onChange={(v) => setField('instruments', v)} width="100%" />
+        </label>
       </Panel>
 
       <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -416,8 +448,8 @@ function PatternSharing({ pattern, i18n }) {
   }
   function buildContent(previewCount) {
     return {
-      previewContent: { name: pattern.name, description: pattern.description, stages: pattern.stages.slice(0, previewCount) },
-      fullContent: { name: pattern.name, description: pattern.description, stages: pattern.stages, completionThreshold: pattern.completionThreshold }
+      previewContent: { name: pattern.name, description: pattern.description, instruments: pattern.instruments, stages: pattern.stages.slice(0, previewCount) },
+      fullContent: { name: pattern.name, description: pattern.description, instruments: pattern.instruments, stages: pattern.stages, completionThreshold: pattern.completionThreshold }
     };
   }
   function refreshStatus() {
@@ -498,6 +530,7 @@ function PatternProfile({ i18n, ai, patternId, tab }) {
           <div>
             <strong dir="auto" style={{ font: 'var(--type-body)', fontSize: 17, color: 'var(--parchment)' }}>{pattern.name || i18n.t('unnamed')}</strong>
             <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+              {(pattern.instruments || []).map((code) => <Chip key={code} tone="accent">{code}</Chip>)}
               <Chip>{i18n.t('usage', { count: i18n.number(pattern.usageCount) })}</Chip>
               <Chip>{i18n.t('stages', { count: i18n.number(pattern.stages.length) })}</Chip>
             </div>

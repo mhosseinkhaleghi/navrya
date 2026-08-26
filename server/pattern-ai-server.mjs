@@ -364,6 +364,7 @@ function patternContext(body) {
     name: String(body.name || ''),
     description: String(body.description || ''),
     completionThreshold: Number(body.completionThreshold || 70),
+    instruments: Array.isArray(body.instruments) ? body.instruments : [],
     stages: Array.isArray(body.stages) ? body.stages : []
   });
 }
@@ -1159,14 +1160,18 @@ async function analyzeTrade(body) {
   const language = languageNames[body.language] || languageNames.en;
   const trade = body.trade || {};
   const context = {
-    direction: trade.direction, entryPrice: trade.entryPrice, stopLoss: trade.stopLoss,
+    direction: trade.direction, instrument: trade.instrument || null, entryPrice: trade.entryPrice, stopLoss: trade.stopLoss,
     takeProfits: trade.takeProfits || [], riskPercent: trade.riskPercent, rr: trade.rr,
     primaryTimeframe: trade.primaryTimeframe, timeframeTrends: trade.timeframeTrends || [],
     conceptTags: trade.conceptTags || [], linkedPatternIds: trade.linkedPatternIds || [], linkedStrategyId: trade.linkedStrategyId || null, chartNote: trade.chartNote || ''
   };
   const { data: result, usage, provider, model } = await callProvider(body.provider, body.apiKey, body.model, {
     input: [
-      { role: 'system', content: [{ type: 'input_text', text: `You are a trading-journal chart reviewer. Respond only in ${language}. Describe only what is visible or supplied, separate observations from uncertainties, and do not give personalized financial advice or invent prices.` }] },
+      // Instrument Catalog domain: pattern/session similarity in NAVRYA is a real, deterministic,
+      // exact-instrument-only match computed client-side (session-signature-engine.js) - never
+      // something this model performs or approximates itself, and never inferred across a
+      // different instrument than the one actually supplied here.
+      { role: 'system', content: [{ type: 'input_text', text: `You are a trading-journal chart reviewer. Respond only in ${language}. Describe only what is visible or supplied, separate observations from uncertainties, and do not give personalized financial advice or invent prices. Any pattern or session comparison you mention applies only to the exact instrument given in this trade's own context - never infer or assume similarity to a different instrument.` }] },
       { role: 'user', content: [{ type: 'input_text', text: `Trade context:\n${JSON.stringify(context)}` }, ...imageContent(body.images)] }
     ],
     text: { format: tradeAnalysisFormat }

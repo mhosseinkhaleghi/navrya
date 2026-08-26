@@ -6,6 +6,7 @@ import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
+import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { useAssistantMotion } from '../public/pages/shared/navrya/components/assistant/motion.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
@@ -338,6 +339,7 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
   const [accountId, setAccountId] = React.useState((initialSeed && initialSeed.accountId) || '');
   const [instrument, setInstrument] = React.useState((initialSeed && initialSeed.instrument) || '');
   const [accountError, setAccountError] = React.useState(false);
+  const [instrumentError, setInstrumentError] = React.useState(false);
   const [showCreateAccount, setShowCreateAccount] = React.useState(false);
   // sourceSessionId/sourceScenarioId: real Trade.source fields (the same ones
   // liveSessionView.jsx's own "Start Trade"/scenario buttons already set via
@@ -622,7 +624,7 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
   }
 
   function handleReset() {
-    setDir('long'); setMargin('isolated'); setStrategyId(''); setAccountId(''); setInstrument('');
+    setDir('long'); setMargin('isolated'); setStrategyId(''); setAccountId(''); setInstrument(''); setInstrumentError(false);
     setEntry(''); setStop('');
     setBalance(settings.accountBalance !== null && settings.accountBalance !== undefined ? String(settings.accountBalance) : '');
     setRisk(settings.defaultRiskPercent || 1); setRiskAmountInput(''); setRiskMode('percent'); setLeverage('10');
@@ -644,6 +646,9 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
     // earlier, friendlier client-side gate. A legacy accountless trade is never affected - this
     // only ever blocks a NEW save, and only when a real active account actually exists to pick.
     if (accountRequired) { setAccountError(true); return; }
+    // Instrument Catalog domain: mandatory for every new trade, the server enforces this too
+    // (INSTRUMENT_REQUIRED) - this is just the earlier, friendlier client-side gate.
+    if (!instrument) { setInstrumentError(true); return; }
     const trade = tradeUi.applyCalculatedToTrade(tradeStore.createDraft({ status: 'hunting', linkedStrategyId: strategyId || null, linkedPatternIds: patternId ? [patternId] : [] }), out.r, out.source);
     trade.linkedStrategyId = strategyId || null;
     // Consistency with the AI submit() path above: this modal now has a real, visible pattern
@@ -670,10 +675,11 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
   const accountRequired = activeAccounts.length > 0 && !accountId;
   // Journey B: a real, visible Linked Pattern control - see the patternId state declaration above
   // for why this exists now (AI-resolved pattern linking must be visibly confirmable, same as
-  // every other AI-filled field here). listForScenarios() is the same real Pattern Registry
-  // lookup tradeLogModal.jsx's own pattern picker already uses.
+  // every other AI-filled field here). Instrument Catalog domain: scoped to the trade's own
+  // instrument via listForInstrument() - a pattern never valid for BTC must never be offered on
+  // an XAU trade, and vice versa. No instrument chosen yet means no pattern is offered.
   const patternStore = window.TradeJournalPatternStore;
-  const patterns = patternStore ? patternStore.listForScenarios() : [];
+  const patterns = patternStore && instrument ? patternStore.listForInstrument(instrument) : [];
   const patternOptions = [{ value: '', label: t('noPattern') }].concat(patterns.map((p) => ({ value: p.id, label: p.name })));
 
   const ladder = buildLadder(i18n, t, out, tps);
@@ -743,6 +749,13 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('logReviewPatternsLabel')}</span>
             <Select value={patternId} options={patternOptions} onChange={setPatternId} icon="scenarios" width={220} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: instrumentError ? 'var(--danger)' : 'var(--text-muted)' }}>{t('instrument')} *</span>
+            {/* Instrument Catalog domain: locked read-only once a source Session supplied it -
+                a Trade sourced from a Session must match its instrument exactly (see
+                repo.pg.mjs's TRADE_SESSION_INSTRUMENT_MISMATCH), never re-typed to something else. */}
+            <InstrumentPicker value={instrument || null} onChange={(v) => { setInstrumentError(false); setInstrument(v || ''); }} disabled={!!sourceSessionId} width={220} />
           </div>
           <button
             type="button" onClick={onClose} aria-label={t('close')}

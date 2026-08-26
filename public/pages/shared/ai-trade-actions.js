@@ -83,6 +83,39 @@
     return found ? [found.id] : null;
   }
 
+  // Instrument Catalog domain: same trim/strip-whitespace/uppercase/validate algorithm as
+  // instrument-catalog.types.js (client) and instrument-normalize.mjs (server) - duplicated
+  // here, not imported, for the same reason every other normalizeXxx() in this file is
+  // self-contained (this module's own header: "no window.TradeJournal* reads of their own
+  // beyond the lookup lists explicitly passed in", so it stays testable in a bare vm sandbox).
+  var INSTRUMENT_CODE_PATTERN = /^[A-Z0-9](?:[A-Z0-9._-]{0,18}[A-Z0-9])?$/;
+  function normalizeInstrumentCode(raw) {
+    var text = String(raw == null ? '' : raw).trim().replace(/\s+/g, '').toUpperCase();
+    return INSTRUMENT_CODE_PATTERN.test(text) ? text : null;
+  }
+  // Same strict "resolve against the user's real catalog, or leave unfilled" contract as
+  // resolveAccountId directly above - never invents/adds a new catalog entry from spoken text
+  // alone (that is only ever an explicit InstrumentPicker "Add" action); a code that normalizes
+  // fine but isn't actually in this user's catalog still resolves to null.
+  function resolveInstrument(raw, list) {
+    var code = normalizeInstrumentCode(raw);
+    if (!code) return null;
+    var found = (list || []).find(function (item) { return item.code === code; });
+    return found ? found.code : null;
+  }
+  // Accepts one instrument or several in the same message ("XAU and BTC"), same separator
+  // convention as normalizeTakeProfits() above - used by pattern.create/pattern.edit's
+  // multi-instrument field.
+  function resolveInstruments(raw, list) {
+    var parts = Array.isArray(raw) ? raw : String(raw == null ? '' : raw).split(/[,/]| and /i).map(function (s) { return s.trim(); }).filter(Boolean);
+    var resolved = [];
+    parts.forEach(function (part) {
+      var code = resolveInstrument(part, list);
+      if (code && resolved.indexOf(code) === -1) resolved.push(code);
+    });
+    return resolved;
+  }
+
   // Account resolution is deliberately STRICTER than resolveStrategyId/resolvePatternIds above:
   // this app's product brief requires account names to "resolve deterministically; ambiguous
   // matches must ask the user, never guess" - unlike a Strategy/Pattern link (a soft tag), an
@@ -113,7 +146,8 @@
     if (path === 'linkedStrategyId') return resolveStrategyId(value, look.strategies);
     if (path === 'linkedPatternIds') return resolvePatternIds(value, look.patterns);
     if (path === 'accountId') return resolveAccountId(value, look.accounts);
-    if (path === 'instrument') { var text = String(value == null ? '' : value).trim(); return text ? text.toUpperCase() : null; }
+    if (path === 'instrument') return resolveInstrument(value, look.instrumentCatalog);
+    if (path === 'instruments') return resolveInstruments(value, look.instrumentCatalog);
     return value;
   }
 
@@ -126,6 +160,8 @@
     resolveStrategyId: resolveStrategyId,
     resolvePatternIds: resolvePatternIds,
     resolveAccountId: resolveAccountId,
+    resolveInstrument: resolveInstrument,
+    resolveInstruments: resolveInstruments,
     normalizeField: normalizeField
   };
 }());

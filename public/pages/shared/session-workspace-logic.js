@@ -177,6 +177,11 @@
   }
   function normalize(session){
     session.status=session.status||(session.closedAt?'closed':'open'); session.updateIntervalMinutes=Number(session.updateIntervalMinutes||session.loop||30); session.gracePeriodMinutes=Number(session.gracePeriodMinutes||session.grace||5); session.activityLog=session.activityLog||[];
+    // Instrument Catalog domain: normalized here, never defaulted/guessed - a session created
+    // before this domain existed (or left unclassified) stays instrument:null forever, same
+    // "never invent a default" rule market/city already follows for legacy data.
+    var instrumentTypes=window.TradeJournalInstrumentCatalogTypes;
+    session.instrument=(instrumentTypes&&instrumentTypes.normalizeCode(session.instrument))||null;
     if(!session.entries){ session.entries=(session.charts||[]).map(function(chart){return {id:chart.id||id('entry'),type:'chart',createdAt:chart.createdAt||session.startedAt||Date.now(),preview:chart.preview||'assets/chart-main.webp',timeframe:chart.timeframe||session.timeframe||'5m',market:chart.market||session.market||'London',note:chart.note||'',scenarios:chart.scenarios||[]};}); }
     session.entries.forEach(function(entry){
       entry.scenarios=entry.scenarios||[]; entry.createdAt=entry.createdAt||Date.now(); entry.type=entry.type||'chart';

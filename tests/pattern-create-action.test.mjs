@@ -21,8 +21,11 @@ test('pattern.create is registered with the right domain, required/optional fiel
   const block = match[0];
   assert.match(block, /entityAlreadyPersisted: true/, 'submit() is already a no-op - the real Pattern persists the instant open() creates it; see ai-workflow-engine.js\'s own comment on why this must never schedule a submit');
   assert.match(block, /domain: 'patterns'/);
-  assert.match(block, /requiredFields: \['name'\]/);
-  assert.match(block, /optionalFields: \['description', 'completionThreshold'\]/);
+  // Instrument Catalog domain: a brand-new pattern requires at least one real, cataloged
+  // instrument before it is ever persisted - name/description/completionThreshold stay optional
+  // (still editable-after in the real editor, unchanged from before this domain).
+  assert.match(block, /requiredFields: \['instruments'\]/);
+  assert.match(block, /optionalFields: \['name', 'description', 'completionThreshold'\]/);
   assert.match(block, /'create a pattern'/);
   assert.match(block, /'new pattern'/);
 });
@@ -55,15 +58,16 @@ test('pattern.create\'s open() waits for the real "pattern-editor-{id}" registra
 });
 
 test('StrategiesHub exposes a real window hook (TradeJournalNavryaPatternHub) that creates a Pattern through the same real PatternStore.create() the "New pattern" button already uses - not a second creation path', () => {
-  assert.match(hubSrc, /function createNewPattern\(\) \{ const p = window\.TradeJournalPatternStore\.create\(\);/);
+  assert.match(hubSrc, /function createNewPattern\(instruments\) \{/);
+  assert.match(hubSrc, /const p = window\.TradeJournalPatternStore\.create\(instruments\);/);
   assert.match(hubSrc, /window\.TradeJournalNavryaPatternHub = \{ createNew: createNewPattern, openExisting: openExistingPattern \}/);
   // Must be torn down on unmount (StrategiesHub is a per-view root - see canvasApp.jsx) so a
   // stale hook from a previous mount is never called after the real view has gone away.
   assert.match(hubSrc, /delete window\.TradeJournalNavryaPatternHub/);
 });
 
-test('completionThreshold is on the real Pattern AI-fill allowlist', () => {
-  assert.match(patternTypesSrc, /patternStagePaths: \['name', 'description', 'completionThreshold'\]/);
+test('completionThreshold and instruments are both on the real Pattern AI-fill allowlist', () => {
+  assert.match(patternTypesSrc, /patternStagePaths: \['name', 'description', 'completionThreshold', 'instruments'\]/);
 });
 
 // Pure-logic proof of the actual clamp/reject behavior, re-derived from the file's own real

@@ -93,9 +93,8 @@ export function formatLastUpdate(session) {
 }
 
 // Maps a real, normalized session onto the flat shape SessionLibrary/SessionCard expect.
-// `instrument` has no real backing field at the session level in this codebase (only trades
-// carry an instrument) - shown as an honest '—' rather than invented, per the
-// "insufficient data over fabricated numbers" standard used throughout this app.
+// `instrument` is the real Instrument Catalog domain field (session.instrument) - '—' only for
+// a legacy/unclassified session that genuinely has none, never invented.
 export function toCardProps(session) {
   return {
     id: session.id,
@@ -104,7 +103,7 @@ export function toCardProps(session) {
     city: displayCity(session.market),
     timeframe: session.timeframe || '—',
     summary: entryCount(session) + ' entries · ' + scenarioCount(session) + ' scenarios',
-    instrument: '—',
+    instrument: session.instrument || '—',
     lastUpdate: formatLastUpdate(session),
     showDetail: true,
     // Sort-only fields (SessionLibrary reads these to order the grid; stripped before they
@@ -175,10 +174,16 @@ export async function createSession(character, values) {
     });
     return entry;
   }));
+  const instrumentTypes = window.TradeJournalInstrumentCatalogTypes;
   const session = {
     id: 'session-' + now,
     name: values.city,
     market: values.city === 'New York' ? 'NewYork' : values.city,
+    // Instrument Catalog domain: mandatory going forward - NewSessionDialog.jsx's InstrumentPicker
+    // requires a real, cataloged code before its Create button is even enabled, so `values.instrument`
+    // is always present by the time this runs. Normalized defensively rather than trusted verbatim,
+    // same as every other value here.
+    instrument: (instrumentTypes && instrumentTypes.normalizeCode(values.instrument)) || null,
     timeframe: values.timeframe,
     date: values.gregorian,
     gregorianDate: values.gregorian,

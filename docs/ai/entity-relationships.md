@@ -6,14 +6,31 @@ field in `ai-knowledge-registry.js` carries its own slice of this graph; this do
 whole, for anyone (human or AI) trying to understand how NAVRYA's real entities connect.
 
 ```
-Session
+InstrumentCatalogEntry {id, code, displayName}  (user-owned; code is unique per user after normalization)
+ ├─ Session.instrument ──────────────────────────────────────────────────────── one exact code, or null (unclassified)
+ ├─ Trade.instrument ─────────────────────────────────────────────────────────── one exact code, or null (unclassified)
+ └─ Pattern.instruments[] ───────────────────────────────────────────────────── zero or more exact codes ([] = unassigned/legacy)
+    (a code is only ever added explicitly through an InstrumentPicker - never inferred from a
+     name, city, or market; two entities are only ever compared/matched/reported on together when
+     their instrument is exactly equal - market/city is never a substitute)
+
+Session {id, name, market, instrument, timeframe, date, status, entries[]}
  ├─ has many → SessionEntry {id, timeframe, hasImage, scenarios[]}
  │              └─ has many → Scenario {id, title, occurred, strategy, pattern:{patternTagId, stages[], completionThreshold}}
- │                             └─ Scenario.pattern.patternTagId ──────────────→ Pattern
+ │                             └─ Scenario.pattern.patternTagId ──────────────→ Pattern (only a Pattern whose
+ │                                                                                instruments include this Session's own instrument)
+ ├─ has one (derived, server-side) → SessionSignature {id, sessionId, character, market, instrument,
+ │              timeframe, date, movementSequence[], patternIds[], strategyIds[], scenarioOutcomes[],
+ │              tradeSummary, fateSummaryText} - the real record session-signature-engine.js compares
+ │              sessions by; instrument equality is a hard eligibility gate (fail closed - a signature
+ │              or live session with no instrument never matches anything), market/city is only ever a
+ │              secondary score component
  │
  └─ Trade.source.{sessionId, scenarioId} ←───────────────────────────────────── Trade
                                                                                   (a Trade started from a Scenario carries
-                                                                                   this back-link; a Trade started any
+                                                                                   this back-link and MUST share that
+                                                                                   Session's own instrument - the server
+                                                                                   rejects a mismatch; a Trade started any
                                                                                    other way has source: null)
 
 Strategy {id, name, positionManagement, riskManagement:{maxRiskPerTradePercent,
@@ -24,12 +41,13 @@ Strategy {id, name, positionManagement, riskManagement:{maxRiskPerTradePercent,
  │               ai-proactive-engine.js's Rule A checks a requested trade risk against)
  └─ can be published as → MarketplaceListing {type:'strategy', sourceId: Strategy.id}
 
-Pattern {id, name, description, completionThreshold, stages:[{id,order,text}], usageCount}
- ├─ Trade.linkedPatternIds ─────────────────────────────────────────────────── Trade (many-to-many)
+Pattern {id, name, description, completionThreshold, instruments[], stages:[{id,order,text}], usageCount}
+ ├─ Trade.linkedPatternIds ─────────────────────────────────────────────────── Trade (many-to-many, only
+ │                                                                              among Patterns sharing the Trade's instrument)
  └─ can be published as → MarketplaceListing {type:'pattern', sourceId: Pattern.id}
 
-Trade {id, status, direction, entryPrice, stopLoss, takeProfits[], riskPercent,
-       linkedStrategyId, linkedPatternIds[], source, emotionLog[]}
+Trade {id, status, direction, instrument, entryPrice, stopLoss, takeProfits[], riskPercent,
+       linkedStrategyId, linkedPatternIds[], accountId, source, emotionLog[]}
  └─ Trade.emotionLog ────────────────────────────────────────────────────────→ feeds the
                                                                                  Psychology domain's
                                                                                  tag mirror (never the
@@ -67,10 +85,11 @@ AccountProfile {displayName, email, profileRole, kycStatus, xpTotal, level}
 
 ## Known real gaps in this graph (not silently omitted)
 
-- **No `Trade.symbol`/instrument field exists** anywhere in the real `Trade` model — a Trade is
-  sized and risk-managed, never tied to a specific instrument name (already documented in Journey
-  B's own report; repeated here since it is a real, structural absence from this graph, not an
-  oversight).
+- **A record created before the Instrument Catalog domain shipped has no instrument** — `Session.
+  instrument`/`Trade.instrument` are `null` and `Pattern.instruments` is `[]` for anything that
+  predates this domain, or that a user has deliberately left unclassified. Such a record stays
+  fully viewable, but is excluded from similarity, pattern selection, and any instrument-scoped
+  report until it is explicitly classified — never defaulted or guessed onto a real instrument.
 - **`reports`** (legacy Reports/All Trades/Trading Calendar) has no live entities of its own — the
   real, current app replaced it with the Dashboard's own chart panel and the Strategies Hub's
   Positions tab.

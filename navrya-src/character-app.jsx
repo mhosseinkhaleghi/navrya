@@ -263,7 +263,7 @@ function SessionsApp({ character, navryaCharacter, store }) {
               uploadNotice: t.uploadNotice, uploadChart: t.uploadChart, tradingSession: t.tradingSession,
               primaryTimeframe: t.primaryTimeframe, gregorianDate: t.gregorianDate, jalaliDate: t.jalaliDate,
               loopInterval: t.loopInterval, graceMinutes: t.graceMinutes,
-              sessionAccount: t.sessionAccount, sessionNoAccount: t.sessionNoAccount
+              sessionAccount: t.sessionAccount, sessionNoAccount: t.sessionNoAccount, instrument: t.instrument
             },
             accountOptions: sessionAccountOptions
           }}
@@ -461,9 +461,9 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'session.create', domain: 'sessions', riskLevel: 'low',
-        description: 'Create a new trading session. accountId (optional) links it to one of the user\'s real active accounts by name.',
+        description: 'Create a new trading session. instrument (required) is a real, exact instrument code from the user\'s own Instrument Catalog (e.g. XAUUSD, BTCUSDT) - never a guessed/aliased symbol. accountId (optional) links it to one of the user\'s real active accounts by name.',
         aliases: ['start session', 'new session', 'open a session', 'start a session'],
-        requiredFields: ['city', 'timeframe'],
+        requiredFields: ['city', 'timeframe', 'instrument'],
         optionalFields: ['gregorian', 'jalali', 'loop', 'grace', 'accountId'],
         available: () => true,
         open: () => {
@@ -471,10 +471,10 @@ export function mountCharacterApp(character) {
           if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
           window.dispatchEvent(new CustomEvent('tradejournal:ai-open-new-session'));
         },
-        // accountId resolution is the exact same STRICT, ask-rather-than-guess
-        // TradeJournalAITradeActions.resolveAccountId() trade.calculator's own accountId field
-        // already uses (see that action's own normalizeField below) - an ambiguous or unmatched
-        // account name resolves to null (field stays unfilled) rather than a guessed account.
+        // accountId/instrument resolution is the exact same STRICT, ask-rather-than-guess
+        // TradeJournalAITradeActions.resolveAccountId()/resolveInstrument() trade.calculator's
+        // own fields already use (see that action's own normalizeField below) - an ambiguous or
+        // unmatched value resolves to null (field stays unfilled) rather than a guess.
         normalizeField: (path, value) => {
           if (path === 'city') return normalizeSessionCity(value);
           if (path === 'timeframe') return normalizeSessionTimeframe(value);
@@ -483,6 +483,12 @@ export function mountCharacterApp(character) {
             var accountsStore = window.TradeJournalAccountsStore;
             if (!helpers) return null;
             return helpers.resolveAccountId(value, accountsStore && typeof accountsStore.listActive === 'function' ? accountsStore.listActive() : []);
+          }
+          if (path === 'instrument') {
+            var tradeHelpers = window.TradeJournalAITradeActions;
+            var catalogStore = window.TradeJournalInstrumentCatalogStore;
+            if (!tradeHelpers) return null;
+            return tradeHelpers.resolveInstrument(value, catalogStore && typeof catalogStore.listSync === 'function' ? catalogStore.listSync() : []);
           }
           return value;
         },
@@ -539,8 +545,11 @@ export function mountCharacterApp(character) {
         //    plainly that extraction and policy are different jobs, and this one is never its job.
         description: 'Plan and create a brand-new Trade (direction, entry, stop, target, risk) - this is the ONLY action that creates a Trade. "Open this trade"/"mark it open" about an EXISTING, already-visible Hunting Trade is a different action (trade.open, a lifecycle status change) - never this one; use this one whenever no specific existing Trade is already in view. linkedStrategyId/linkedPatternIds: pass the Strategy/Pattern NAME exactly as the user said it (e.g. "Conservative Scalper") - NAVRYA resolves the real id from that name itself; never invent or omit it for lacking a real id. IMPORTANT - riskPercent (and every other field): extraction and safety policy are two different, separate jobs, and enforcing policy is never your job here, even once. Put the exact riskPercent number the user literally typed into the suggestion/fields array on every single turn they state one, with zero exceptions - including a message that also mentions anger, recent losses, or stress in the same breath. NAVRYA itself runs a real, deterministic check on that number after you extract it and will pause for explicit confirmation if it conflicts with anything - that downstream check is the ONLY thing allowed to hold the value back, and it can only do that if you hand the number over first. Silently re-suggesting the OLD value, or leaving the field out of your suggestion, is a bug: it skips NAVRYA own real safety check entirely and is far less safe than extracting the number and letting NAVRYA evaluate it. You may still say in your own reply that you are concerned - just also extract the number.',
         aliases: ['take a long', 'take a short', 'go long', 'go short', 'open a trade', 'start a trade', 'size a trade', 'plan a trade', 'open a position', 'open a long position', 'open a short position'],
-        requiredFields: ['direction', 'entryPrice', 'stopLoss', 'riskPercent', 'takeProfits'],
-        optionalFields: ['leverage', 'marginMode', 'accountBalance', 'riskAmount', 'linkedStrategyId', 'linkedPatternIds', 'accountId', 'instrument'],
+        // instrument is required, but a Trade sourced from an active Session is prefilled (and
+        // then locked in the UI - see tradeCalculatorModal.jsx) from that session's own real
+        // instrument below, in open() - the model is never asked to state it again in that case.
+        requiredFields: ['direction', 'entryPrice', 'stopLoss', 'riskPercent', 'takeProfits', 'instrument'],
+        optionalFields: ['leverage', 'marginMode', 'accountBalance', 'riskAmount', 'linkedStrategyId', 'linkedPatternIds', 'accountId'],
         available: () => true,
         // Session/Scenario context is inherited here, once, from the real snapshot the workflow
         // engine already passed into start() - never asked for as a chat field (there is nothing
@@ -556,6 +565,14 @@ export function mountCharacterApp(character) {
           if (registry && entities) {
             if (entities.sessionId) registry.applyValue('trade-calculator', 'sourceSessionId', entities.sessionId, 'replace');
             if (entities.scenarioId) registry.applyValue('trade-calculator', 'sourceScenarioId', entities.scenarioId, 'replace');
+            // Instrument Catalog domain: a Trade sourced from a live Session must carry that
+            // session's own instrument, never a different one the model separately extracted -
+            // prefilled here (then locked read-only in tradeCalculatorModal.jsx) the same way
+            // session.scenario.edit's open() already reads a session via window.TradeJournalWorkspace.
+            if (entities.sessionId) {
+              var sourceSession = window.TradeJournalWorkspace && window.TradeJournalWorkspace.find(entities.sessionId);
+              if (sourceSession && sourceSession.instrument) registry.applyValue('trade-calculator', 'instrument', sourceSession.instrument, 'replace');
+            }
           }
           // accountsView.jsx's AccountDetail registers 'account-detail-{id}' purely for context
           // while a real account is on screen (same "registered purely so this can be read back"
@@ -574,10 +591,12 @@ export function mountCharacterApp(character) {
           var strategyStore = window.TradeJournalStrategyEducationStore;
           var patternStore = window.TradeJournalPatternStore;
           var accountsStore = window.TradeJournalAccountsStore;
+          var catalogStore = window.TradeJournalInstrumentCatalogStore;
           return helpers.normalizeField(path, value, {
             strategies: strategyStore && typeof strategyStore.listActive === 'function' ? strategyStore.listActive() : [],
             patterns: patternStore && typeof patternStore.listForScenarios === 'function' ? patternStore.listForScenarios() : [],
-            accounts: accountsStore && typeof accountsStore.listActive === 'function' ? accountsStore.listActive() : []
+            accounts: accountsStore && typeof accountsStore.listActive === 'function' ? accountsStore.listActive() : [],
+            instrumentCatalog: catalogStore && typeof catalogStore.listSync === 'function' ? catalogStore.listSync() : []
           });
         },
         // Delegates straight to the calculator's own registered submit() (see
@@ -724,16 +743,28 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'pattern.create', domain: 'patterns', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Create a new market Pattern definition in NAVRYA (name, optional description, optional completion threshold percentage from 0 to 100). Opens the real Pattern editor immediately.',
+        description: 'Create a new market Pattern definition in NAVRYA (name, optional description, optional completion threshold percentage from 0 to 100). instruments (required) is one or more real, exact instrument codes from the user\'s own Instrument Catalog (e.g. XAUUSD, BTCUSDT) this pattern applies to - never a guessed/aliased symbol, and never invented if the user has not actually named one. Opens the real Pattern editor immediately once at least one instrument is resolved.',
         aliases: ['create a pattern', 'new pattern', 'make a pattern', 'add a pattern', 'create a new pattern', 'define a pattern'],
-        requiredFields: ['name'], optionalFields: ['description', 'completionThreshold'],
+        requiredFields: ['instruments'], optionalFields: ['name', 'description', 'completionThreshold'],
         available: () => true,
-        open: () => new Promise((resolve) => {
+        // Deliberately requires instruments on the SAME turn the action is selected (same
+        // "F53: resolve now, from what was actually said this turn, never guess" contract as
+        // pattern.edit's own patternName below) - a brand-new pattern can no longer be persisted
+        // blank-then-filled-in for this one field, so there is nothing real to create yet if no
+        // instrument resolved. This action's own description steers the model to ask which
+        // instrument(s) first instead of guessing.
+        open: (context, initialFields) => new Promise((resolve) => {
+          var instrumentsField = (initialFields || []).filter((f) => f && f.path === 'instruments')[0];
+          var helpers = window.TradeJournalAITradeActions;
+          var catalogStore = window.TradeJournalInstrumentCatalogStore;
+          var catalog = catalogStore && typeof catalogStore.listSync === 'function' ? catalogStore.listSync() : [];
+          var instruments = helpers && instrumentsField ? helpers.resolveInstruments(instrumentsField.value, catalog) : [];
+          if (!instruments.length) { resolve(null); return; }
           if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
           pollFor(
             () => window.TradeJournalNavryaPatternHub,
             (hub) => {
-              var created = hub.createNew();
+              var created = hub.createNew(instruments);
               if (!created || !created.id) { resolve(null); return; }
               var processId = 'pattern-editor-' + created.id;
               var registry = window.TradeJournalAIProcessRegistry;
@@ -766,10 +797,17 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'pattern.edit', domain: 'patterns', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Open an EXISTING market Pattern by name so its name, description, or completion threshold percentage (0-100) can be edited. patternName identifies which existing Pattern to open - it is never a rename. Only select this action once the user has actually named which existing Pattern they mean; if they have not, ask them which Pattern first instead of guessing.',
+        description: 'Open an EXISTING market Pattern by name so its name, description, completion threshold percentage (0-100), or instrument list can be edited. patternName identifies which existing Pattern to open - it is never a rename. instruments, if the user asks to change which instruments this pattern applies to, must be real, exact codes from the user\'s own Instrument Catalog - never guessed. Only select this action once the user has actually named which existing Pattern they mean; if they have not, ask them which Pattern first instead of guessing.',
         aliases: ['edit a pattern', 'edit the pattern', 'update a pattern', 'change the pattern', 'open the pattern'],
-        requiredFields: ['patternName'], optionalFields: ['name', 'description', 'completionThreshold'],
+        requiredFields: ['patternName'], optionalFields: ['name', 'description', 'completionThreshold', 'instruments'],
         available: () => true,
+        normalizeField: (path, value) => {
+          if (path !== 'instruments') return value;
+          var helpers = window.TradeJournalAITradeActions;
+          var catalogStore = window.TradeJournalInstrumentCatalogStore;
+          if (!helpers) return [];
+          return helpers.resolveInstruments(value, catalogStore && typeof catalogStore.listSync === 'function' ? catalogStore.listSync() : []);
+        },
         open: (context, initialFields) => new Promise((resolve) => {
           var nameField = (initialFields || []).filter((f) => f && f.path === 'patternName')[0];
           var patternName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';

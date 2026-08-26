@@ -9,6 +9,7 @@ import { NewSessionDialog } from './NewSessionDialog.jsx';
 
 export const SESSION_FILTERS = ['All sessions', 'London', 'New York', 'Tokyo', 'Sydney'];
 export const SESSION_SORTS = ['Newest', 'Oldest', 'Most entries'];
+export const ALL_INSTRUMENTS = 'All instruments';
 
 /* The Session Library ledger module — heading + CTA, command toolbar, session field. */
 export function SessionLibrary({
@@ -18,10 +19,22 @@ export function SessionLibrary({
   sessions = [], edition, onNewSession, style, ...rest
 }) {
   const [filter, setFilter] = React.useState(SESSION_FILTERS[0]);
+  const [instrumentFilter, setInstrumentFilter] = React.useState(ALL_INSTRUMENTS);
   const [sort, setSort] = React.useState(SESSION_SORTS[0]);
   const [query, setQuery] = React.useState('');
   const [view, setView] = React.useState('grid');
   const [dialog, setDialog] = React.useState(false);
+
+  // Instrument Catalog domain: populated from the catalog itself plus any instrument already
+  // assigned to a real session, so a code the user added but hasn't used in a session yet still
+  // appears - a legacy/unclassified session (instrument '—') is filtered out by any real choice,
+  // never lumped in as if it matched every instrument.
+  const instrumentOptions = React.useMemo(() => {
+    const catalogStore = window.TradeJournalInstrumentCatalogStore;
+    const catalogCodes = catalogStore ? catalogStore.listSync().map((item) => item.code) : [];
+    const sessionCodes = sessions.map((s) => s.instrument).filter((code) => code && code !== '—');
+    return [ALL_INSTRUMENTS, ...Array.from(new Set([...catalogCodes, ...sessionCodes])).sort()];
+  }, [sessions]);
 
   // Lets the AI Action Registry's session.create action open this dialog from outside this root
   // (its own open/known-field state is private useState, same as every other NAVRYA dialog) - the
@@ -36,8 +49,9 @@ export function SessionLibrary({
   const visible = sessions
     .filter((s) => {
       const cityOk = filter === 'All sessions' || s.city === filter;
+      const instrumentOk = instrumentFilter === ALL_INSTRUMENTS || s.instrument === instrumentFilter;
       const q = query.trim().toLowerCase();
-      return cityOk && (!q || (s.title || '').toLowerCase().includes(q));
+      return cityOk && instrumentOk && (!q || (s.title || '').toLowerCase().includes(q));
     })
     .slice()
     .sort((a, b) => {
@@ -64,6 +78,7 @@ export function SessionLibrary({
       <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
         <Button variant="primary" icon="new-session" iconAfter="plus" onClick={() => setDialog(true)}>{newSessionLabel}</Button>
         <Select value={filter} onChange={setFilter} options={SESSION_FILTERS} icon="filter" width={190} />
+        <Select value={instrumentFilter} onChange={setInstrumentFilter} options={instrumentOptions} icon="target" width={170} />
         <SearchField value={query} onChange={setQuery} style={{ flex: '1 1 220px', minWidth: 200 }} />
         <Select value={sort} onChange={setSort} options={SESSION_SORTS} icon="sort" width={180} />
         <ViewToggle value={view} onChange={setView} style={{ marginInlineStart: 'auto' }} />

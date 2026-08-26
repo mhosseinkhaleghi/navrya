@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
 // React rewrite of the "Strategies" screen per the design handoff: a single index (Patterns /
@@ -64,7 +65,7 @@ const copy = {
     suggestionTitle: 'تغییر پیشنهادی هوش مصنوعی', suggestionApply: 'اعمال تغییر', suggestionDismiss: 'رد کردن',
     composerPlaceholder: 'یک قاعده یا نکته دربارهٔ این {kind} بنویسید…', send: 'ارسال', sending: 'در حال ارسال…',
     kindPattern: 'الگو', kindStrategy: 'استراتژی', chatEmpty: 'هنوز گفتگویی ثبت نشده است. اولین پیام را بفرستید.',
-    kpiDetections: 'تعداد تشخیص', kpiAvgStepCompletion: 'میانگین تکمیل مراحل', kpiRealization: 'نرخ تحقق',
+    kpiDetections: 'تعداد تشخیص', kpiAvgStepCompletion: 'میانگین تکمیل مراحل', kpiRealization: 'نرخ تحقق', reportInstrument: 'نماد گزارش',
     kpiLinkedTrades: 'معاملات لینک‌شده', kpiWinRate: 'نرخ برد', kpiAvgRR: 'میانگین RR', last90Days: 'در ۹۰ روز',
     funnelTitle: 'قیف تشخیص تا تحقق', funnelDetected: 'تشخیص‌شده', funnelStagesDone: 'مراحل تکمیل',
     funnelConfirmed: 'تأیید شده', funnelLinked: 'معاملهٔ لینک‌شده', funnelStart: 'شروع قیف', funnelDrop: '−{n}٪ ریزش',
@@ -145,7 +146,7 @@ const copy = {
     suggestionTitle: 'تغيير مقترح من الذكاء الاصطناعي', suggestionApply: 'تطبيق التغيير', suggestionDismiss: 'رفض',
     composerPlaceholder: 'اكتب قاعدة أو ملاحظة حول هذا ال{kind}…', send: 'إرسال', sending: 'جارٍ الإرسال…',
     kindPattern: 'نمط', kindStrategy: 'استراتيجية', chatEmpty: 'لا توجد محادثة بعد. أرسل أول رسالة.',
-    kpiDetections: 'عدد الاكتشافات', kpiAvgStepCompletion: 'متوسط اكتمال المراحل', kpiRealization: 'نسبة التحقق',
+    kpiDetections: 'عدد الاكتشافات', kpiAvgStepCompletion: 'متوسط اكتمال المراحل', kpiRealization: 'نسبة التحقق', reportInstrument: 'أداة التقرير',
     kpiLinkedTrades: 'الصفقات المرتبطة', kpiWinRate: 'نسبة الفوز', kpiAvgRR: 'متوسط RR', last90Days: 'خلال ٩٠ يوماً',
     funnelTitle: 'قمع الاكتشاف حتى التحقق', funnelDetected: 'تم اكتشافه', funnelStagesDone: 'مراحل مكتملة',
     funnelConfirmed: 'مؤكَّد', funnelLinked: 'صفقة مرتبطة', funnelStart: 'بداية القمع', funnelDrop: '−{n}٪ انخفاض',
@@ -226,7 +227,7 @@ const copy = {
     suggestionTitle: 'AI-suggested change', suggestionApply: 'Apply change', suggestionDismiss: 'Dismiss',
     composerPlaceholder: 'Write a rule or note about this {kind}…', send: 'Send', sending: 'Sending…',
     kindPattern: 'pattern', kindStrategy: 'strategy', chatEmpty: 'No conversation yet. Send the first message.',
-    kpiDetections: 'Detection count', kpiAvgStepCompletion: 'Avg. stage completion', kpiRealization: 'Realization rate',
+    kpiDetections: 'Detection count', kpiAvgStepCompletion: 'Avg. stage completion', kpiRealization: 'Realization rate', reportInstrument: 'Report instrument',
     kpiLinkedTrades: 'Linked trades', kpiWinRate: 'Win rate', kpiAvgRR: 'Average RR', last90Days: 'in 90 days',
     funnelTitle: 'Detection-to-realization funnel', funnelDetected: 'Detected', funnelStagesDone: 'Stages completed',
     funnelConfirmed: 'Confirmed', funnelLinked: 'Linked to a trade', funnelStart: 'Funnel start', funnelDrop: '−{n}% drop',
@@ -307,7 +308,7 @@ const copy = {
     suggestionTitle: 'Cambio sugerido por la IA', suggestionApply: 'Aplicar cambio', suggestionDismiss: 'Descartar',
     composerPlaceholder: 'Escribe una regla o nota sobre esta {kind}…', send: 'Enviar', sending: 'Enviando…',
     kindPattern: 'patrón', kindStrategy: 'estrategia', chatEmpty: 'Aún no hay conversación. Envía el primer mensaje.',
-    kpiDetections: 'Número de detecciones', kpiAvgStepCompletion: 'Finalización media de etapas', kpiRealization: 'Tasa de realización',
+    kpiDetections: 'Número de detecciones', kpiAvgStepCompletion: 'Finalización media de etapas', kpiRealization: 'Tasa de realización', reportInstrument: 'Instrumento del informe',
     kpiLinkedTrades: 'Operaciones vinculadas', kpiWinRate: 'Tasa de acierto', kpiAvgRR: 'RR medio', last90Days: 'en 90 días',
     funnelTitle: 'Embudo de detección a realización', funnelDetected: 'Detectado', funnelStagesDone: 'Etapas completadas',
     funnelConfirmed: 'Confirmado', funnelLinked: 'Vinculado a una operación', funnelStart: 'Inicio del embudo', funnelDrop: '−{n}% caída',
@@ -496,16 +497,20 @@ function allSessions() {
 // Same real source pattern-registry-store.js's own scenarioReport() reads, extended with the
 // per-scenario stage-id membership and the owning session's real date, since the store's own
 // aggregate function doesn't expose either (needed for the trend chart and per-step bars below).
-function patternDetectionRows(patternId) {
+// Instrument Catalog domain: `instrument`, when supplied, scopes detections to ONE instrument -
+// a multi-instrument pattern's XAU and BTC outcome data must never be blended into one number
+// (ReportTab below always passes the currently selected instrument for a pattern).
+function patternDetectionRows(patternId, instrument) {
   const rows = [];
   allSessions().forEach((session) => {
+    if (instrument && session.instrument !== instrument) return;
     const sessionDate = session.startedAt || session.createdAt;
     (session.entries || []).forEach((entry) => {
       (entry.scenarios || []).forEach((scenario) => {
         if (!scenario.pattern || scenario.pattern.patternTagId !== patternId) return;
         const stages = scenario.pattern.stages || [];
         const completed = scenario.pattern.completedStageIds || [];
-        rows.push({ sessionDate, occurred: scenario.occurred === true, stages, completedStageIds: completed });
+        rows.push({ sessionDate, occurred: scenario.occurred === true, stages, completedStageIds: completed, instrument: session.instrument });
       });
     });
   });
@@ -544,10 +549,15 @@ function movingAverage(vals, k) {
   return vals.map((_, i) => { const a = Math.max(0, i - k); const slice = vals.slice(a, i + 1); return Math.round(slice.reduce((x, y) => x + y, 0) / slice.length); });
 }
 
-function linkedTradesFor(kind, id) {
+// Instrument Catalog domain: `instrument`, when supplied, scopes linked trades to ONE instrument
+// - see patternDetectionRows()'s own comment for why (a multi-instrument pattern's linked trades
+// must never be blended across instruments in one report).
+function linkedTradesFor(kind, id, instrument) {
   const store = window.TradeJournalTradeStore;
   if (!store) return [];
-  return store.filter(null, isPatternKind(kind) ? { patternId: id } : { strategyId: id });
+  const options = isPatternKind(kind) ? { patternId: id } : { strategyId: id };
+  if (instrument) options.instrument = instrument;
+  return store.filter(null, options);
 }
 
 function rDistribution(trades) {
@@ -1373,7 +1383,14 @@ function KpiTile({ icon, label, value, note }) {
 
 function ReportTab({ lang, kind, item }) {
   const isP = isPatternKind(kind);
-  const trades = linkedTradesFor(kind, item.id);
+  // Instrument Catalog domain: a pattern assigned to more than one instrument reports on exactly
+  // ONE at a time - defaults to the first assigned instrument, switchable below, so this report's
+  // numbers are never a blend of e.g. XAU and BTC outcomes. Strategies have no instrument list of
+  // their own (linkedTradesFor's own instrument arg stays undefined = unscoped, unchanged).
+  const patternInstruments = isP ? (item.instruments || []) : [];
+  const [selectedInstrument, setSelectedInstrument] = React.useState(patternInstruments[0] || null);
+  const reportInstrument = isP ? selectedInstrument : null;
+  const trades = linkedTradesFor(kind, item.id, reportInstrument);
   const closedTrades = trades.filter((t) => t.status === 'closed');
   const wins = closedTrades.filter((t) => t.outcome === 'win').length;
   const winRate = closedTrades.length ? Math.round((wins / closedTrades.length) * 100) : null;
@@ -1382,7 +1399,7 @@ function ReportTab({ lang, kind, item }) {
 
   let detCount, stagesCompletedCount, confirmedCount, avgStepCompletion, realizationRate, trendVals, qualityBuckets;
   if (isP) {
-    const rows = patternDetectionRows(item.id);
+    const rows = patternDetectionRows(item.id, reportInstrument);
     detCount = rows.length;
     stagesCompletedCount = rows.filter((r) => r.stages.length && r.completedStageIds.length >= r.stages.length).length;
     confirmedCount = rows.filter((r) => r.occurred).length;
@@ -1422,7 +1439,7 @@ function ReportTab({ lang, kind, item }) {
   const qualityTotal = qualityBuckets.reduce((a, b) => a + b.value, 0) || 1;
 
   const stepBars = isP ? item.stages.map((stage) => {
-    const rows = patternDetectionRows(item.id).filter((r) => r.stages.some((s) => s.id === stage.id));
+    const rows = patternDetectionRows(item.id, reportInstrument).filter((r) => r.stages.some((s) => s.id === stage.id));
     const done = rows.filter((r) => r.completedStageIds.indexOf(stage.id) > -1).length;
     const pct = rows.length ? Math.round((done / rows.length) * 100) : 0;
     return { label: stage.text, pct };
@@ -1433,6 +1450,12 @@ function ReportTab({ lang, kind, item }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {patternInstruments.length > 1 && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{tr(lang, 'reportInstrument')}</span>
+          <Select value={selectedInstrument} onChange={setSelectedInstrument} options={patternInstruments} width={160} />
+        </label>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(178px,1fr))', gap: 12 }}>
         <KpiTile icon="ScanSearch" label={tr(lang, 'kpiDetections')} value={digits(lang, detCount)} note={tr(lang, 'last90Days')} />
         <KpiTile icon="ListChecks" label={tr(lang, 'kpiAvgStepCompletion')} value={avgStepCompletion === null ? '—' : digits(lang, avgStepCompletion) + '٪'} />
@@ -1896,7 +1919,15 @@ function StrategiesHub({ character }) {
   // still see the pre-update value). Creates and opens immediately regardless of whichever tab
   // is currently showing, then syncs the visible tab to match - the same real
   // PatternStore.create() the "New pattern" button already calls, never a second creation path.
-  function createNewPattern() { const p = window.TradeJournalPatternStore.create(); setTab('patterns'); openItem('pattern', p.id, 'details'); return p; }
+  // Instrument Catalog domain: store.create() now requires at least one real, cataloged
+  // instrument and returns null without it - character-app.jsx's pattern.create action resolves
+  // that list itself (never guessing) before ever calling this, but a null here still means
+  // nothing was created, so the tab/navigation side effects are skipped too.
+  function createNewPattern(instruments) {
+    const p = window.TradeJournalPatternStore.create(instruments);
+    if (!p) return null;
+    setTab('patterns'); openItem('pattern', p.id, 'details'); return p;
+  }
   // pattern.edit (Journey F): opens an EXISTING Pattern the action's own open() already resolved
   // by name - never creates anything, just the same setTab/openItem navigation createNewPattern()
   // already does for a brand-new one.

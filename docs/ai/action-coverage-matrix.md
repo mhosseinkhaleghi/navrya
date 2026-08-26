@@ -87,11 +87,11 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 
 | id | domain | requiredFields | optionalFields | target process |
 |---|---|---|---|---|
-| `session.create` | sessions | city, timeframe | gregorian, jalali, loop, grace | `session-create` |
-| `trade.calculator` | trades | direction, entryPrice, stopLoss, riskPercent, takeProfits | leverage, marginMode, accountBalance, riskAmount, linkedStrategyId, linkedPatternIds | `trade-calculator` |
+| `session.create` | sessions | city, timeframe, instrument | gregorian, jalali, loop, grace, accountId | `session-create` (instrument resolved strictly against the user's own Instrument Catalog - never guessed) |
+| `trade.calculator` | trades | direction, entryPrice, stopLoss, riskPercent, takeProfits, instrument | leverage, marginMode, accountBalance, riskAmount, linkedStrategyId, linkedPatternIds, accountId | `trade-calculator` (instrument is prefilled-then-implicitly-satisfied when a source Session already supplies one; otherwise resolved strictly against the catalog) |
 | `navigate.to` | navigation | domainId | - | `navigate-to` (no fillable fields - exists only so the Workflow Engine has a liveness check) |
-| `pattern.create` (F1) | patterns | name | description, completionThreshold | `pattern-editor-{id}` (dynamic - the real id only exists once open() creates the Pattern) |
-| `pattern.edit` (F2) | patterns | patternName (resolution-only, never applied to the real UI) | name, description, completionThreshold | `pattern-editor-{id}` (dynamic - resolved by exact, case-insensitive name match; zero/ambiguous matches resolve nothing, never guessed) |
+| `pattern.create` (F1) | patterns | instruments | name, description, completionThreshold | `pattern-editor-{id}` (dynamic - open() resolves `instruments` against the catalog on the SAME turn and creates nothing, resolving null, until at least one resolves; the real id only exists once open() creates the Pattern) |
+| `pattern.edit` (F2) | patterns | patternName (resolution-only, never applied to the real UI) | name, description, completionThreshold, instruments (resolved strictly against the catalog) | `pattern-editor-{id}` (dynamic - resolved by exact, case-insensitive name match; zero/ambiguous matches resolve nothing, never guessed) |
 | `strategy.create` (F15) | strategies | name | full real Strategy allowlist | `strategy-editor-{id}` |
 | `strategy.edit` (F15) | strategies | strategyName (resolution-only) | name + full real Strategy allowlist | `strategy-editor-{id}` |
 | `session.chartEntry.create` (F19) | sessions | - | timeframe, market, date, note | `live-session-chart-entry` (fixed id, entityAlreadyPersisted - a real modal the user explicitly closes; **never auto-submits - the real form's own `file` requirement is not, and must never become, AI-fillable; see F19 notes below**) |

@@ -120,16 +120,30 @@
   });
 
   registerKnowledgeDomain({
+    id: 'instrument-catalog',
+    title: 'Instrument Catalog',
+    description: 'A user-owned list of exact instrument codes (e.g. XAUUSD, BTCUSDT) - the single source of truth for the `instrument` field every Session, Trade, and Pattern now carries. A code is added explicitly (typed into a picker and confirmed) - it is never inferred, aliased, or guessed from a name, city, or market. Market/city (e.g. "New York", "London") is a workspace/timezone concept and is never a substitute for instrument - two entities can only ever be compared, matched, or reported on together when their instrument is exactly equal.',
+    routes: ['no standalone page - grown and consumed entirely through the InstrumentPicker control inside session/trade/pattern creation and editing'],
+    entities: ['InstrumentCatalogEntry {id,code,displayName}'],
+    workflows: ['type a new code into any InstrumentPicker and explicitly add it', 'pick an existing code from the catalog'],
+    capabilities: ['the server rejects a brand-new Session/Trade/Pattern whose instrument is not already in this catalog for that user - never a silent guess or auto-added value'],
+    terms: ['instrument', 'symbol', 'ticker', 'instrument catalog'],
+    relationships: ['TradingSession.instrument, Trade.instrument, and Pattern.instruments[] each reference a code from this catalog', 'a legacy record predating this domain has instrument null/[] and is excluded from similarity, pattern selection, and instrument-scoped reports until explicitly classified'],
+    relatedDomains: ['sessions', 'trade-planning', 'patterns'],
+    verifiedAgainst: ['public/pages/shared/instrument-catalog.types.js', 'public/pages/shared/instrument-catalog-store.js', 'server/db/repo.pg.mjs', 'server/db/migrations/025_instrument_catalog.sql']
+  });
+
+  registerKnowledgeDomain({
     id: 'sessions',
     title: 'Trading Sessions',
     description: 'Plan and observe a trading session: add chart/movement entries, define Scenarios (a hypothesis with stages and a completion threshold, optionally tagged to a saved Pattern), track probability over time, and start a real Trade from a Scenario.',
     routes: ["activeId: 'sessions'", 'a specific open session has no hash - it is in-memory (getLiveSessionId/openLiveSession)'],
-    entities: ['Session {id,name,market,timeframe,date,status,entries[]}', 'SessionEntry {id,timeframe,hasImage,scenarios[]}', 'Scenario {id,title,occurred,strategy,pattern:{patternTagId,stages[],completionThreshold}}'],
-    workflows: ['create a new session (also available via chat: session.create)', 'open/view report/duplicate/delete a session', 'add a chart or movement entry', 'add a Scenario, toggle its stages, change its probability, mark it occurred', 'Start Trade from a Scenario (links the new Trade\'s source to this session+scenario)', 'end the session'],
-    capabilities: ['a similar-past-session recommender ("session signature" fate-matching) surfaces inside an open session'],
-    terms: ['session', 'scenario', 'entry', 'chart entry', 'movement entry', 'probability', 'fate summary', 'live session'],
-    relationships: ['Session has many SessionEntry, each has many Scenario', 'Scenario.pattern.patternTagId links to a Pattern', 'Trade.source.{sessionId,scenarioId} links a Trade back to the Session/Scenario it was opened from'],
-    relatedDomains: ['patterns', 'strategies', 'trade-planning', 'psychology'],
+    entities: ['Session {id,name,market,instrument,timeframe,date,status,entries[]}', 'SessionEntry {id,timeframe,hasImage,scenarios[]}', 'Scenario {id,title,occurred,strategy,pattern:{patternTagId,stages[],completionThreshold}}'],
+    workflows: ['create a new session, selecting or adding one Instrument Catalog code (also available via chat: session.create)', 'open/view report/duplicate/delete a session', 'add a chart or movement entry', 'add a Scenario, toggle its stages, change its probability, mark it occurred', 'Start Trade from a Scenario (links the new Trade\'s source to this session+scenario, and requires the same instrument)', 'end the session'],
+    capabilities: ['a similar-past-session recommender ("session signature" fate-matching) surfaces inside an open session, gated by exact instrument match - market/city is never a substitute for instrument, and a session with no instrument yet never matches anything'],
+    terms: ['session', 'scenario', 'entry', 'chart entry', 'movement entry', 'probability', 'fate summary', 'live session', 'instrument'],
+    relationships: ['Session has many SessionEntry, each has many Scenario', 'Scenario.pattern.patternTagId links to a Pattern', 'Trade.source.{sessionId,scenarioId} links a Trade back to the Session/Scenario it was opened from (the Trade must share that Session\'s instrument)', 'Session.instrument is one code from the user\'s own Instrument Catalog'],
+    relatedDomains: ['patterns', 'strategies', 'trade-planning', 'psychology', 'instrument-catalog'],
     verifiedAgainst: ['navrya-src/liveSessionView.jsx', 'navrya-src/sessionEntryCardsView.jsx', 'navrya-src/sessionsAdapter.js', 'navrya-src/character-app.jsx']
   });
 
@@ -138,12 +152,12 @@
     title: 'Trade Planning & Open Positions',
     description: 'Size and open a Trade (direction, entry, stop, target, risk, leverage) through the real Trade Calculator, then track it through hunting/open/closed status. There is no single "Open Positions" page - open/hunting trades surface in three real places: the Dashboard\'s Positions panel, an open Session\'s own Positions tab, and the Strategies Hub\'s Positions view (which actually lists every trade, any status, not only open ones).',
     routes: ["Dashboard's Positions panel", "an open Session's Positions tab", "activeId: 'strategies', tab: 'positions'"],
-    entities: ['Trade {id,status,direction,entryPrice,stopLoss,takeProfits[],riskPercent,linkedStrategyId,linkedPatternIds[],source,emotionLog[]}'],
-    workflows: ['plan/open a trade (also available via chat: trade.calculator)', 'log an emotion against an open/hunting trade', 'close a position', 'cancel a hunting trade'],
-    capabilities: ['every derived number (position size, margin, liquidation, R:R) is computed by the real Trade Calculator - never estimated by the AI'],
-    terms: ['trade', 'position', 'entry', 'stop loss', 'take profit', 'risk percent', 'leverage', 'margin mode', 'hunting', 'open position'],
-    relationships: ['Trade.linkedStrategyId links to a Strategy', 'Trade.linkedPatternIds links to Patterns', 'Trade.source links back to a Session/Scenario', 'Trade.emotionLog feeds the Psychology domain\'s tag mirror'],
-    relatedDomains: ['sessions', 'strategies', 'patterns', 'psychology'],
+    entities: ['Trade {id,status,direction,instrument,entryPrice,stopLoss,takeProfits[],riskPercent,linkedStrategyId,linkedPatternIds[],accountId,source,emotionLog[]}'],
+    workflows: ['plan/open a trade, selecting or adding one Instrument Catalog code (also available via chat: trade.calculator)', 'log an emotion against an open/hunting trade', 'close a position', 'cancel a hunting trade'],
+    capabilities: ['every derived number (position size, margin, liquidation, R:R) is computed by the real Trade Calculator - never estimated by the AI', 'instrument is mandatory for a brand-new Trade and, when the Trade is sourced from a Session, must exactly match that Session\'s own instrument - the server rejects a mismatch'],
+    terms: ['trade', 'position', 'entry', 'stop loss', 'take profit', 'risk percent', 'leverage', 'margin mode', 'hunting', 'open position', 'instrument'],
+    relationships: ['Trade.linkedStrategyId links to a Strategy', 'Trade.linkedPatternIds links to Patterns whose own instruments include this Trade\'s instrument', 'Trade.source links back to a Session/Scenario (same instrument required)', 'Trade.emotionLog feeds the Psychology domain\'s tag mirror', 'Trade.instrument is one code from the user\'s own Instrument Catalog'],
+    relatedDomains: ['sessions', 'strategies', 'patterns', 'psychology', 'instrument-catalog'],
     notes: 'No standalone "Open Positions" page/route exists - this is deliberately a cross-cutting domain, not one screen.',
     verifiedAgainst: ['navrya-src/tradeCalculatorModal.jsx', 'navrya-src/dashboardView.jsx', 'navrya-src/strategiesHubView.jsx', 'public/pages/shared/trade.types.js']
   });
@@ -187,11 +201,11 @@
     title: 'Patterns (Pattern Registry)',
     description: 'A Pattern is a saved, named setup with an ordered list of stages and a completion threshold - used to tag a Session\'s Scenario, tracked for usage/quality over time, and (like a Strategy) has its own AI chat, report, and marketplace publishing.',
     routes: ["activeId: 'strategies', tab: 'patterns'"],
-    entities: ['Pattern {id,name,description,completionThreshold,stages:[{id,order,text}],usageCount}'],
-    workflows: ['create/edit/delete a pattern', 'add/remove/reorder stages', 'upload reference screenshots', 'chat with AI, write steps with AI', 'view the pattern\'s own report', 'publish a pattern to the Community marketplace'],
-    terms: ['pattern', 'stage', 'completion threshold', 'pattern registry'],
-    relationships: ['Scenario.pattern.patternTagId links a Session\'s Scenario to a Pattern', 'Trade.linkedPatternIds links a Trade to one or more Patterns', 'a Pattern can be published as a MarketplaceListing'],
-    relatedDomains: ['sessions', 'trade-planning', 'community'],
+    entities: ['Pattern {id,name,description,completionThreshold,instruments:[code],stages:[{id,order,text}],usageCount}'],
+    workflows: ['create a pattern - requires selecting or adding at least one Instrument Catalog code before it is ever saved (also available via chat: pattern.create)', 'edit/delete a pattern, including its instrument list', 'add/remove/reorder stages', 'upload reference screenshots', 'chat with AI, write steps with AI', 'view the pattern\'s own report, one instrument at a time when it applies to more than one', 'publish a pattern to the Community marketplace'],
+    terms: ['pattern', 'stage', 'completion threshold', 'pattern registry', 'instrument'],
+    relationships: ['Scenario.pattern.patternTagId links a Session\'s Scenario to a Pattern (only offered when the Pattern\'s instruments include the Session\'s own instrument)', 'Trade.linkedPatternIds links a Trade to one or more Patterns sharing its instrument', 'a Pattern can be published as a MarketplaceListing', 'a Pattern with an empty instruments list is legacy/unassigned and is never selectable anywhere until classified'],
+    relatedDomains: ['sessions', 'trade-planning', 'community', 'instrument-catalog'],
     verifiedAgainst: ['navrya-src/strategiesHubView.jsx', 'public/pages/shared/pattern-registry.types.js']
   });
 

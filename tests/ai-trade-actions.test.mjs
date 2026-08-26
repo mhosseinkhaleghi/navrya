@@ -202,11 +202,24 @@ test('resolveAccountId() returns null even on an ambiguous EXACT match (two acco
   assert.equal(t.resolveAccountId('ic markets', list), null);
 });
 
-test('normalizeField() dispatches accountId through resolveAccountId and instrument through uppercasing', async () => {
+test('normalizeField() dispatches accountId through resolveAccountId and instrument/instruments through the strict catalog resolver', async () => {
   const t = await actionsSandbox();
-  const lookups = { accounts: [{ id: 'a1', firm: 'Atlas Funding' }] };
+  const lookups = { accounts: [{ id: 'a1', firm: 'Atlas Funding' }], instrumentCatalog: [{ code: 'XAUUSD' }, { code: 'BTCUSDT' }] };
   assert.equal(t.normalizeField('accountId', 'Atlas Funding', lookups), 'a1');
   assert.equal(t.normalizeField('accountId', 'nonexistent firm', lookups), null);
-  assert.equal(t.normalizeField('instrument', 'xauusd'), 'XAUUSD');
+  assert.equal(t.normalizeField('instrument', 'xauusd', lookups), 'XAUUSD');
   assert.equal(t.normalizeField('instrument', ''), null);
+  assert.equal(t.normalizeField('instrument', 'euraud', lookups), null, 'never resolves a code that is not in the catalog - no guessing');
+  assert.deepEqual(clone(t.normalizeField('instruments', 'xauusd and btcusdt', lookups)), ['XAUUSD', 'BTCUSDT']);
+  assert.deepEqual(clone(t.normalizeField('instruments', 'euraud', lookups)), []);
+});
+
+test('resolveInstrument never invents a catalog entry, and resolveInstruments dedupes/normalizes a spoken list', async () => {
+  const t = await actionsSandbox();
+  const list = [{ code: 'XAUUSD' }];
+  assert.equal(t.resolveInstrument('xauusd', list), 'XAUUSD');
+  assert.equal(t.resolveInstrument('btcusdt', list), null);
+  assert.equal(t.resolveInstrument('', list), null);
+  assert.deepEqual(clone(t.resolveInstruments('xauusd, xauusd', list)), ['XAUUSD']);
+  assert.deepEqual(clone(t.resolveInstruments(['xauusd', 'btcusdt'], list)), ['XAUUSD']);
 });

@@ -62,6 +62,11 @@ function language() {
 }
 function tr(key) { return copy[language()][key] || copy.en[key] || key; }
 function uid(prefix) { return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); }
+// Every registered pattern regardless of instrument - used only to RESOLVE an already-stored
+// scenario.pattern.patternTagId back to its real record (patternFor()/normalizeScenario() below),
+// never to offer a NEW selection. Instrument-scoping a historical lookup would make an existing
+// scenario's already-assigned pattern look "not found" the moment its instrument metadata
+// doesn't line up, which is not what "unassigned/legacy patterns are excluded" means here.
 function availablePatterns() {
   const registry = window.TradeJournalPatternStore;
   if (registry && typeof registry.listForScenarios === 'function') {
@@ -69,6 +74,14 @@ function availablePatterns() {
     if (values && values.length) return values;
   }
   return patternCatalog;
+}
+// Instrument Catalog domain: the actual "offer a pattern to newly select" surface - only patterns
+// whose instruments include the session's own instrument. No instrument known yet (a legacy/
+// unclassified session) offers nothing, matching PatternStore.listForInstrument()'s own contract.
+function selectablePatterns(instrument) {
+  const registry = window.TradeJournalPatternStore;
+  if (!instrument || !registry || typeof registry.listForInstrument !== 'function') return [];
+  return registry.listForInstrument(instrument);
 }
 function recordPatternUsage(patternId, delta) {
   const registry = window.TradeJournalPatternStore;
@@ -225,12 +238,12 @@ function openScenarioModal(api, session, entry) {
     const grid = Object.assign(document.createElement('div'), { className: 'sw-modal-grid swc-new-scenario' });
     function add(name, label, type, value, wide) { const item = api.field(label, type, value, wide); fields[name] = item; grid.append(item.wrap); }
     add('title', tr('title'), 'text', tr('scenarioTitle'), true); add('description', tr('description'), 'textarea', '', true); add('evidence', tr('evidence'), 'textarea', '', true); add('problem', tr('problem'), 'textarea', '', true); add('trigger', tr('trigger'), 'textarea', '', true); add('invalidation', tr('invalidation'), 'text', '', true);
-    fields.pattern = api.field(tr('patternTag'), 'select'); fields.pattern.input.append(new Option(tr('noPattern'), '')); availablePatterns().forEach(function (item) { fields.pattern.input.append(new Option(item.name, item.id)); }); grid.append(fields.pattern.wrap);
+    fields.pattern = api.field(tr('patternTag'), 'select'); fields.pattern.input.append(new Option(tr('noPattern'), '')); selectablePatterns(session.instrument).forEach(function (item) { fields.pattern.input.append(new Option(item.name, item.id)); }); grid.append(fields.pattern.wrap);
     add('probability', tr('probability'), 'range', '50'); fields.probability.input.min = '0'; fields.probability.input.max = '100'; add('plan', tr('actionPlan'), 'textarea', '', true);
     fields.position = api.field(tr('positionType'), 'select'); fields.position.input.append(new Option('—', ''), new Option('Long', 'Long'), new Option('Short', 'Short')); grid.append(fields.position.wrap);
     add('entries', tr('entries'), 'text', ''); add('stop', tr('stop'), 'number', ''); add('target', tr('target'), 'number', ''); body.append(grid);
   }, function (_, overlay) {
-    const selected = availablePatterns().find(function (item) { return item.id === fields.pattern.input.value; });
+    const selected = selectablePatterns(session.instrument).find(function (item) { return item.id === fields.pattern.input.value; });
     const scenario = normalizeScenario({ id: uid('scenario'), entryId: entry.id, index: entry.scenarios.length + 1, title: fields.title.input.value || tr('scenarioTitle'), description: fields.description.input.value, evidence: fields.evidence.input.value, invalidationTagIds: fields.invalidation.input.value.split(/[,،]/).map(function (item) { return item.trim(); }).filter(Boolean), invalidationNote: '', problem: fields.problem.input.value, trigger: fields.trigger.input.value, probabilityHistory: [{ value: Number(fields.probability.input.value), loggedAt: new Date().toISOString() }], executionPlan: { actionPlan: fields.plan.input.value, positionType: fields.position.input.value || null, entryPrices: fields.entries.input.value.split(',').map(function (item) { return Number(item.trim()); }).filter(function (value) { return !Number.isNaN(value); }), stopLoss: fields.stop.input.value ? Number(fields.stop.input.value) : null, takeProfit: fields.target.input.value ? Number(fields.target.input.value) : null, positionStatus: null }, occurred: false, pattern: selected ? { patternTagId: selected.id, name: selected.name, completionThreshold: Number(selected.positionThreshold || selected.completionThreshold || 70), stages: selected.stages.map(function (stage) { return { id: stage.id, index: stage.index, label: stage.label }; }), completedStageIds: [] } : undefined }, entry, entry.scenarios.length);
     if (selected) recordPatternUsage(selected.id, 1);
     entry.scenarios.push(scenario); api.log(session, 'scenario_added', tr('newScenario'), scenario.id, true); api.save(session); overlay.remove(); expandedScenarios[scenario.id] = true; api.open(session.id);
@@ -413,7 +426,7 @@ function ScenarioCard({ api, session, entry, scenario }) {
   function toggleOpen() { expandedScenarios[scenario.id] = !open; tick(); }
   function remove(event) { event.stopPropagation(); if (!window.confirm(tr('deleteConfirm'))) return; entry.scenarios = entry.scenarios.filter((item) => item.id !== scenario.id); saveAndOpen(api, session, 'scenario_deleted', tr('deleteConfirm'), scenario.id, false); }
   function selectPattern(value) {
-    const selected = availablePatterns().find((item) => item.id === value);
+    const selected = selectablePatterns(session.instrument).find((item) => item.id === value);
     const previousId = scenario.pattern && scenario.pattern.patternTagId;
     scenario.pattern = selected ? { patternTagId: selected.id, name: selected.name, completionThreshold: Number(selected.positionThreshold || selected.completionThreshold || 70), stages: selected.stages.map((stage) => ({ id: stage.id, index: stage.index, label: stage.label })), completedStageIds: [] } : undefined;
     if (selected && selected.id !== previousId) recordPatternUsage(selected.id, 1);
@@ -502,7 +515,7 @@ function ScenarioCard({ api, session, entry, scenario }) {
               style={{ height: 38, boxSizing: 'border-box', padding: '0 10px', borderRadius: 7, border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-primary)', font: 'var(--type-body)', fontSize: 12 }}
             >
               <option value="">{tr('noPattern')}</option>
-              {availablePatterns().map((item) => <option key={item.id} value={item.id}>{item.name} ({item.stages.length})</option>)}
+              {selectablePatterns(session.instrument).map((item) => <option key={item.id} value={item.id}>{item.name} ({item.stages.length})</option>)}
             </select>
             {pattern && (
               <React.Fragment>

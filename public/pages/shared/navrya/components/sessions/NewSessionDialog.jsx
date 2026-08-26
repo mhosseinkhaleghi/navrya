@@ -5,6 +5,7 @@ import { Button } from '../forms/Button.jsx';
 import { Select } from '../forms/Select.jsx';
 import { TextField } from '../forms/TextField.jsx';
 import { UploadField } from '../forms/UploadField.jsx';
+import { InstrumentPicker } from '../forms/InstrumentPicker.jsx';
 
 export const TIMEFRAMES = ['5m', '15m', '1h', '4h', '1D'];
 export const SESSION_CITIES = ['London', 'New York', 'Tokyo', 'Sydney'];
@@ -20,7 +21,8 @@ const DEFAULT_LABELS = {
   uploadNotice: 'Chart uploads are optional. Add scenarios and notes after creation.',
   uploadChart: 'Upload chart image', tradingSession: 'Trading session', primaryTimeframe: 'Primary timeframe',
   gregorianDate: 'Gregorian date', jalaliDate: 'Jalali date', loopInterval: 'Loop / update interval',
-  graceMinutes: 'Update grace period (minutes)', sessionAccount: 'Account', sessionNoAccount: 'No account'
+  graceMinutes: 'Update grace period (minutes)', sessionAccount: 'Account', sessionNoAccount: 'No account',
+  instrument: 'Instrument'
 };
 
 // HOTFIX: the two date defaults below used to be hardcoded, stale mock strings
@@ -43,7 +45,7 @@ function todayJalali() { return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { 
    opt-in and must never suggest there is something to pick when there is nothing real to pick. */
 export function NewSessionDialog({
   open = true, eyebrow, onClose, onCreate, labels, accountOptions,
-  defaults = { city: 'London', timeframe: '5m', gregorian: todayIso(), jalali: todayJalali(), loop: '30 min', grace: '5', accountId: '' },
+  defaults = { city: 'London', timeframe: '5m', gregorian: todayIso(), jalali: todayJalali(), loop: '30 min', grace: '5', accountId: '', instrument: '' },
   style, ...rest
 }) {
   const t = { ...DEFAULT_LABELS, ...labels };
@@ -54,6 +56,9 @@ export function NewSessionDialog({
   const [loop, setLoop] = React.useState(defaults.loop);
   const [grace, setGrace] = React.useState(defaults.grace);
   const [accountId, setAccountId] = React.useState(defaults.accountId || '');
+  // Instrument Catalog domain: mandatory - creating a session requires selecting or adding
+  // exactly one real, cataloged instrument. Never defaulted/guessed.
+  const [instrument, setInstrument] = React.useState(defaults.instrument || null);
   const hasAccounts = Array.isArray(accountOptions) && accountOptions.length > 0;
   // Keyed by UPLOAD_SLOTS timeframe - {file, previewUrl}. previewUrl is an object URL for the
   // in-dialog preview only; the real persisted image is handled by the caller (onCreate), which
@@ -100,7 +105,7 @@ export function NewSessionDialog({
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('session-create', {
-      allowlist: ['city', 'timeframe', 'gregorian', 'jalali', 'loop', 'grace', 'accountId'],
+      allowlist: ['city', 'timeframe', 'gregorian', 'jalali', 'loop', 'grace', 'accountId', 'instrument'],
       isOpen: () => openRef.current && mountedRef.current,
       activeStep: () => 'form',
       applyValue: (path, value) => {
@@ -114,13 +119,17 @@ export function NewSessionDialog({
         // (never a raw typed name here); an id that isn't one of this user's real active
         // accounts is silently ignored rather than setting something unselectable.
         else if (path === 'accountId') { if (hasAccounts && accountOptions.some((o) => o.value === value)) setAccountId(String(value)); }
+        // Same strict contract as accountId above - character-app.jsx's session.create action
+        // resolves a spoken instrument name against the user's real catalog itself (never a raw
+        // guess here); a value that fails that resolution stays unfilled rather than accepted.
+        else if (path === 'instrument') { if (value) setInstrument(String(value)); }
       },
       submit: () => onCreate && onCreate({
-        city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null,
+        city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null, instrument,
         uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
       })
     });
-  }, [city, timeframe, gregorian, jalali, loop, grace, accountId, hasAccounts, accountOptions, uploads, onCreate]);
+  }, [city, timeframe, gregorian, jalali, loop, grace, accountId, instrument, hasAccounts, accountOptions, uploads, onCreate]);
 
   function selectFile(slot, file) {
     setUploads((prev) => {
@@ -139,8 +148,9 @@ export function NewSessionDialog({
         <React.Fragment>
           <Button
             variant="primary"
+            disabled={!instrument}
             onClick={() => onCreate && onCreate({
-              city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null,
+              city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null, instrument,
               uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
             })}
           >
@@ -169,6 +179,10 @@ export function NewSessionDialog({
         <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
           <FieldLabel>{t.primaryTimeframe}</FieldLabel>
           <Select value={timeframe} onChange={setTimeframe} options={TIMEFRAMES} width="100%" />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+          <FieldLabel>{t.instrument} *</FieldLabel>
+          <InstrumentPicker value={instrument} onChange={setInstrument} width="100%" />
         </label>
         <TextField label={t.gregorianDate} value={gregorian} onChange={setGregorian} />
         <TextField label={t.jalaliDate} value={jalali} onChange={setJalali} dir="rtl" />

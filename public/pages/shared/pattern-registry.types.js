@@ -24,6 +24,7 @@
  * @property {string} name
  * @property {string} description
  * @property {number} completionThreshold
+ * @property {string[]} instruments
  * @property {PatternStage[]} stages
  * @property {PatternScreenshot[]} referenceScreenshots
  * @property {number} usageCount
@@ -43,6 +44,8 @@
     // and generateStages()/chat() already have their own dedicated stage-suggestion path.
     // completionThreshold added for Journey F's pattern.create (F9/F10) - clamped into the real
     // slider's own [0,100] range in strategiesHubView.jsx's applyValue(), never trusted as-is.
-    patternStagePaths: ['name', 'description', 'completionThreshold']
+    // instruments added for the Instrument Catalog domain - resolved (never guessed) the same
+    // strict way accountId/linkedPatternIds already are, see ai-trade-actions.js's resolveInstruments().
+    patternStagePaths: ['name', 'description', 'completionThreshold', 'instruments']
   });
 }());

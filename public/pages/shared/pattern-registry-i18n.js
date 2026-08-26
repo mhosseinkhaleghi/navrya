@@ -22,7 +22,8 @@
     occurrenceRate: 'نرخ تحقق', linkedTrades: 'معاملات لینک‌شده', winRate: 'نرخ برد', averageRr: 'میانگین RR',
     detectionFunnel: 'قیف تشخیص تا تحقق', detected: 'تشخیص‌شده', stagesCompleted: 'مراحل تکمیل‌شده', occurred: 'تحقق‌یافته',
     insufficientData: 'داده کافی نیست', publicPattern: 'این الگو را عمومی نمایش بده', sharingSoon: 'بازارچه در دسترس نیست.',
-    notListedYet: 'هنوز در بازارچه ثبت نشده است.', listedBadge: 'در بازارچه ثبت شده', editListing: 'ویرایش آگهی', refreshEvidence: 'به‌روزرسانی شواهد'
+    notListedYet: 'هنوز در بازارچه ثبت نشده است.', listedBadge: 'در بازارچه ثبت شده', editListing: 'ویرایش آگهی', refreshEvidence: 'به‌روزرسانی شواهد',
+    instruments: 'ابزارها', newPatternTitle: 'الگوی جدید', newPatternInstrumentsHint: 'دست‌کم یک ابزار معاملاتی را که این الگو برای آن معتبر است انتخاب یا اضافه کنید.', createPatternCta: 'ایجاد الگو'
   });
   Object.assign(messages.ar, {
     details: 'التفاصيل', report: 'التقرير', sharing: 'المشاركة', profileBack: 'العودة إلى قائمة الأنماط',
@@ -30,7 +31,8 @@
     occurrenceRate: 'معدل التحقق', linkedTrades: 'الصفقات المرتبطة', winRate: 'نسبة الفوز', averageRr: 'متوسط RR',
     detectionFunnel: 'قمع الاكتشاف إلى التحقق', detected: 'مكتشف', stagesCompleted: 'المراحل المكتملة', occurred: 'متحقق',
     insufficientData: 'لا توجد بيانات كافية', publicPattern: 'عرض هذا النمط للعامة', sharingSoon: 'السوق غير متاح حالياً.',
-    notListedYet: 'لم يُدرج في السوق بعد.', listedBadge: 'مُدرج في السوق', editListing: 'تعديل الإعلان', refreshEvidence: 'تحديث البيانات'
+    notListedYet: 'لم يُدرج في السوق بعد.', listedBadge: 'مُدرج في السوق', editListing: 'تعديل الإعلان', refreshEvidence: 'تحديث البيانات',
+    instruments: 'الأدوات', newPatternTitle: 'نمط جديد', newPatternInstrumentsHint: 'اختر أو أضف أداة واحدة على الأقل ينطبق عليها هذا النمط.', createPatternCta: 'إنشاء النمط'
   });
   Object.assign(messages.en, {
     details: 'Details', report: 'Report', sharing: 'Sharing', profileBack: 'Back to pattern list',
@@ -38,7 +40,8 @@
     occurrenceRate: 'Occurrence rate', linkedTrades: 'Linked trades', winRate: 'Win rate', averageRr: 'Average RR',
     detectionFunnel: 'Detection to occurrence funnel', detected: 'Detected', stagesCompleted: 'Stages completed', occurred: 'Occurred',
     insufficientData: 'Insufficient data', publicPattern: 'Display this pattern publicly', sharingSoon: 'Marketplace is unavailable right now.',
-    notListedYet: 'Not listed on the marketplace yet.', listedBadge: 'Listed on marketplace', editListing: 'Edit listing', refreshEvidence: 'Refresh evidence'
+    notListedYet: 'Not listed on the marketplace yet.', listedBadge: 'Listed on marketplace', editListing: 'Edit listing', refreshEvidence: 'Refresh evidence',
+    instruments: 'Instruments', newPatternTitle: 'New pattern', newPatternInstrumentsHint: 'Select or add at least one instrument this pattern applies to.', createPatternCta: 'Create pattern'
   });
   Object.assign(messages.es, {
     details: 'Detalles', report: 'Informe', sharing: 'Compartir', profileBack: 'Volver a la lista de patrones',
@@ -46,7 +49,8 @@
     occurrenceRate: 'Tasa de cumplimiento', linkedTrades: 'Operaciones vinculadas', winRate: 'Tasa de acierto', averageRr: 'RR medio',
     detectionFunnel: 'Embudo de detección a cumplimiento', detected: 'Detectado', stagesCompleted: 'Etapas completadas', occurred: 'Cumplido',
     insufficientData: 'Datos insuficientes', publicPattern: 'Mostrar este patrón públicamente', sharingSoon: 'El mercado no está disponible en este momento.',
-    notListedYet: 'Aún no está en el mercado.', listedBadge: 'Publicado en el mercado', editListing: 'Editar anuncio', refreshEvidence: 'Actualizar evidencia'
+    notListedYet: 'Aún no está en el mercado.', listedBadge: 'Publicado en el mercado', editListing: 'Editar anuncio', refreshEvidence: 'Actualizar evidencia',
+    instruments: 'Instrumentos', newPatternTitle: 'Nuevo patrón', newPatternInstrumentsHint: 'Selecciona o añade al menos un instrumento al que se aplica este patrón.', createPatternCta: 'Crear patrón'
   });
 
   function language() {

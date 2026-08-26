@@ -5,6 +5,7 @@ import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
+import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { useAssistantMotion } from '../public/pages/shared/navrya/components/assistant/motion.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
@@ -731,6 +732,7 @@ function TradeLogModal({ seed, options, onClose }) {
   const [accountId, setAccountId] = React.useState(baseTrade.accountId || '');
   const [instrument, setInstrument] = React.useState(baseTrade.instrument || '');
   const [accountError, setAccountError] = React.useState(false);
+  const [instrumentError, setInstrumentError] = React.useState(false);
   const [showCreateAccount, setShowCreateAccount] = React.useState(false);
   const [patternDraft, setPatternDraft] = React.useState('');
   const lastEmotion = baseTrade.emotionLog.length ? baseTrade.emotionLog[baseTrade.emotionLog.length - 1] : null;
@@ -860,6 +862,9 @@ function TradeLogModal({ seed, options, onClose }) {
   // re-opened to edit a hunting/open trade, possibly a legacy one with accountId already null)
   // is never retroactively forced to pick one.
   const accountRequired = !existingRef.current && activeAccounts.length > 0 && !accountId;
+  // Instrument Catalog domain: mandatory for every brand-new trade (the server enforces this too
+  // - INSTRUMENT_REQUIRED) - never retroactively forced onto a pre-existing trade being edited.
+  const instrumentRequired = !existingRef.current && !instrument;
   // BUG FIX (defect #2, found via real browser verification): this handler pre-filled riskPercent
   // from the account's own rule but never touched `balance` at all - unlike
   // tradeCalculatorModal.jsx's own handleAccount() (which does `setBalance(String(metrics.equity))`
@@ -888,21 +893,25 @@ function TradeLogModal({ seed, options, onClose }) {
     }
   }
 
+  // Instrument Catalog domain: patterns are scoped to this trade's own instrument via
+  // listForInstrument() - a pattern never valid for this instrument must never be offered.
   const patternStore = window.TradeJournalPatternStore;
-  const patterns = patternStore ? patternStore.listForScenarios() : [];
+  const patterns = patternStore && instrument ? patternStore.listForInstrument(instrument) : [];
   function onAddPattern() {
     const name = patternDraft.trim();
-    if (!name || !patternStore) return;
+    if (!name || !patternStore || !instrument) return;
     const existing = patterns.find((p) => p.name === name);
     let pattern = existing;
     if (!pattern) {
-      pattern = patternStore.create();
+      // A quick-created pattern inherits the active instrument - never persisted unassigned.
+      pattern = patternStore.create([instrument]);
+      if (!pattern) return;
       pattern.name = name;
       pattern = patternStore.save(pattern);
     }
     setPatternDraft('');
     // togglePattern's own setState is what triggers the re-render that picks up the freshly
-    // saved pattern from patternStore.listForScenarios() on the next render.
+    // saved pattern from patternStore.listForInstrument() on the next render.
     if (trade.linkedPatternIds.indexOf(pattern.id) === -1) togglePattern(pattern.id);
   }
 
@@ -1022,6 +1031,7 @@ function TradeLogModal({ seed, options, onClose }) {
 
   function quickLog() {
     if (accountRequired) { setAccountError(true); return; }
+    if (instrumentRequired) { setInstrumentError(true); return; }
     let saved = buildTradeForSave(trade.tradeState, 'quick');
     saved.disciplineImpact = -1;
     saved = tradeStore.save(saved);
@@ -1034,6 +1044,7 @@ function TradeLogModal({ seed, options, onClose }) {
   function finish() {
     if (saving) return;
     if (accountRequired) { setAccountError(true); return; }
+    if (instrumentRequired) { setInstrumentError(true); return; }
     setSaving(true);
     let saved = buildTradeForSave(selectedStatus, 'full');
     saved = tradeStore.save(saved);
@@ -1171,12 +1182,23 @@ function TradeLogModal({ seed, options, onClose }) {
             )}
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('strategy')}</span>
             <Select value={strategyId} options={strategyOptions} onChange={handleStrategy} icon="strategies" width={220} />
-            <input type="text" value={instrument} onChange={(e) => setInstrument(e.target.value.toUpperCase())} placeholder={t('instrumentPlaceholder')} aria-label={t('instrument')}
-              style={{ height: 44, width: 110, boxSizing: 'border-box', padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }} />
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: instrumentError ? 'var(--danger)' : 'var(--text-muted)' }}>{t('instrument')} *</span>
+            {/* Instrument Catalog domain: locked read-only once sourced from a Session - a Trade
+                sourced from a Session must match its instrument exactly (repo.pg.mjs's
+                TRADE_SESSION_INSTRUMENT_MISMATCH), never re-typed to something else here. */}
+            <InstrumentPicker
+              value={instrument || null} onChange={(v) => { setInstrumentError(false); setInstrument(v || ''); }}
+              disabled={!!(baseTrade.source && baseTrade.source.sessionId)} width={140}
+            />
           </div>
           {accountError && accountRequired && (
             <div style={{ padding: '10px 20px 0' }}>
               <Notice tone="danger" icon="close">{t('accountRequiredError')}</Notice>
+            </div>
+          )}
+          {instrumentError && (
+            <div style={{ padding: '10px 20px 0' }}>
+              <Notice tone="danger" icon="close">{t('instrumentRequiredError')}</Notice>
             </div>
           )}
 

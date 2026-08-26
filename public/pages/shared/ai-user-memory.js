@@ -46,7 +46,7 @@
     var ctx = context || {};
     var found = (ctx.activePatternId && byId(list, ctx.activePatternId)) || byNameLike(list, query || ctx.query);
     if (!found) return [];
-    return [{ id: found.id, name: found.name, description: found.description, completionThreshold: found.completionThreshold, stages: found.stages }];
+    return [{ id: found.id, name: found.name, description: found.description, completionThreshold: found.completionThreshold, instruments: found.instruments || [], stages: found.stages }];
   }
 
   // context: {activeSessionId?, market?, recentCount?}. "Show me my last New York session" ->
@@ -62,12 +62,15 @@
     var ctx = context || {};
     if (ctx.activeSessionId) {
       var active = typeof workspace.find === 'function' ? workspace.find(ctx.activeSessionId) : byId(workspace.list(), ctx.activeSessionId);
-      return active ? [{ id: active.id, name: active.name, market: active.market, timeframe: active.timeframe, status: active.status }] : [];
+      return active ? [{ id: active.id, name: active.name, market: active.market, instrument: active.instrument || null, timeframe: active.timeframe, status: active.status }] : [];
     }
     var list = workspace.list();
     var filtered = ctx.market ? list.filter(function (s) { return s.market === ctx.market; }) : list;
+    // Instrument Catalog domain: an explicit ctx.instrument (e.g. "my recent XAU sessions")
+    // narrows the same way ctx.market already does - never blends a different instrument in.
+    if (ctx.instrument) filtered = filtered.filter(function (s) { return s.instrument === ctx.instrument; });
     filtered = filtered.slice().sort(function (a, b) { return new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt); });
-    return filtered.slice(0, ctx.recentCount || 3).map(function (s) { return { id: s.id, name: s.name, market: s.market, timeframe: s.timeframe, status: s.status, date: s.date }; });
+    return filtered.slice(0, ctx.recentCount || 3).map(function (s) { return { id: s.id, name: s.name, market: s.market, instrument: s.instrument || null, timeframe: s.timeframe, status: s.status, date: s.date }; });
   }
 
   // context: {activeTradeId?, status?, recentCount?}. Deterministic structured Trade analytics -
@@ -87,7 +90,7 @@
     return filtered.slice(0, ctx.recentCount || 5).map(tradeSummary);
   }
   function tradeSummary(t) {
-    return { id: t.id, status: t.status, direction: t.direction, entryPrice: t.entryPrice, stopLoss: t.stopLoss, riskPercent: t.riskPercent, outcome: t.outcome, linkedStrategyId: t.linkedStrategyId };
+    return { id: t.id, status: t.status, direction: t.direction, instrument: t.instrument || null, entryPrice: t.entryPrice, stopLoss: t.stopLoss, riskPercent: t.riskPercent, outcome: t.outcome, linkedStrategyId: t.linkedStrategyId };
   }
 
   // context: {activeAccountId?, query?}. Returns at most one Account's own COMPACT rules/risk

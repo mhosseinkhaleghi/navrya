@@ -38,7 +38,7 @@ const SPAN_MIN = 180; // decorative pacing window shared by both pulse rings and
 
 const copy = {
   fa: {
-    back: 'بازگشت', settingsTitle: 'تنظیمات سشن', sessionOpen: 'باز', sessionClosed: 'بسته',
+    back: 'بازگشت', settingsTitle: 'تنظیمات سشن', sessionOpen: 'باز', sessionClosed: 'بسته', instrumentUnassigned: 'نماد مشخص نشده',
     viewTimeline: 'تایم‌لاین', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
     pulseEntries: 'ورودی‌ها', pulseEntriesUnit: 'چارت و حرکت', pulseScenarios: 'سناریوها', pulseScenariosUnit: 'ثبت‌شده',
     pulsePatterns: 'الگوها', pulsePatternsUnit: 'تگ‌شده', pulsePositions: 'پوزیشن‌ها', pulsePositionsUnit: 'باز',
@@ -97,7 +97,7 @@ const copy = {
     noOpenPositions: 'هیچ پوزیشن بازی نیست', closeAction2: 'بستن پوزیشن', logEmotionShort: 'ثبت احساس', analyzing: 'در حال تحلیل کامل سشن...'
   },
   ar: {
-    back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة',
+    back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة',
     viewTimeline: 'الخط الزمني', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
     pulseEntries: 'الإدخالات', pulseEntriesUnit: 'رسم وحركة', pulseScenarios: 'السيناريوهات', pulseScenariosUnit: 'مسجّلة',
     pulsePatterns: 'الأنماط', pulsePatternsUnit: 'موسومة', pulsePositions: 'الصفقات', pulsePositionsUnit: 'مفتوحة',
@@ -156,7 +156,7 @@ const copy = {
     noOpenPositions: 'لا توجد صفقة مفتوحة', closeAction2: 'إغلاق الصفقة', logEmotionShort: 'تسجيل شعور', analyzing: 'جارٍ تحليل الجلسة بالكامل...'
   },
   en: {
-    back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed',
+    back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set',
     viewTimeline: 'Timeline', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
     pulseEntries: 'Entries', pulseEntriesUnit: 'chart & move', pulseScenarios: 'Scenarios', pulseScenariosUnit: 'logged',
     pulsePatterns: 'Patterns', pulsePatternsUnit: 'tagged', pulsePositions: 'Positions', pulsePositionsUnit: 'open',
@@ -215,7 +215,7 @@ const copy = {
     noOpenPositions: 'No open positions', closeAction2: 'Close position', logEmotionShort: 'Log emotion', analyzing: 'Analyzing the complete session...'
   },
   es: {
-    back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada',
+    back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir',
     viewTimeline: 'Línea temporal', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
     pulseEntries: 'Entradas', pulseEntriesUnit: 'gráfico y movimiento', pulseScenarios: 'Escenarios', pulseScenariosUnit: 'registrados',
     pulsePatterns: 'Patrones', pulsePatternsUnit: 'etiquetados', pulsePositions: 'Posiciones', pulsePositionsUnit: 'abiertas',
@@ -636,6 +636,9 @@ function CommandBar({ session, lang, view, onBack, onSetView }) {
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
         <Chip tone={isOpen ? 'success' : 'neutral'} dot>{isOpen ? tr(lang, 'sessionOpen') : tr(lang, 'sessionClosed')}</Chip>
+        {/* Instrument Catalog domain: the real financial symbol, distinct from market/city above -
+            an unclassified legacy session shows an honest placeholder, never a guessed value. */}
+        <Chip tone={session.instrument ? 'accent' : 'neutral'}>{session.instrument || tr(lang, 'instrumentUnassigned')}</Chip>
         <Chip tone="neutral">{session.timeframe || '—'}</Chip>
         <Chip tone="neutral">{tr(lang, 'intervalChip', { n: session.updateIntervalMinutes })}</Chip>
       </span>
@@ -786,7 +789,10 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
   const info = patternInfo(scenario);
   const plan = scenario.executionPlan || {};
   const completionPct = scenarioCompletion(scenario);
-  const registeredPatterns = window.TradeJournalPatternStore ? window.TradeJournalPatternStore.listForScenarios() : [];
+  // Instrument Catalog domain: scoped to this session's own instrument via listForInstrument() -
+  // a pattern never valid for this instrument must never be offered here. No instrument known
+  // yet (a legacy/unclassified session) offers nothing until it is classified.
+  const registeredPatterns = window.TradeJournalPatternStore && session.instrument ? window.TradeJournalPatternStore.listForInstrument(session.instrument) : [];
   const tradeStore = window.TradeJournalTradeStore;
   const tradeUi = window.TradeJournalTradeUI;
   // Same trade this scenario's "Log Trade" button would have registered (or that a earlier
@@ -819,6 +825,10 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       // just a starting point - TradeLogModal's own Select lets the trader change it before
       // saving, same as every other AI/prefilled field in this app).
       accountId: session.accountId || null,
+      // Instrument Catalog domain: a Trade sourced from this Session must carry that session's
+      // own instrument - prefilled here, then locked read-only in tradeLogModal.jsx (a legacy
+      // instrument-less session leaves this null; the trader must classify it before logging).
+      instrument: session.instrument || null,
       source: { character, sessionId: session.id, scenarioId: scenario.id }
     }, { onSave: (value) => applyTradeUpdate(value) });
   }
@@ -1357,8 +1367,18 @@ function DashboardPanel({ session, lang, dash, onSetDash, indexById, onSelectEnt
 }
 
 function PrevSummaryPanel({ session, lang }) {
-  const others = (window.TradeJournalWorkspace ? window.TradeJournalWorkspace.list() : []).filter((s) => s.id !== session.id);
-  const prev = others.length ? others[0] : null;
+  const all = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.list() : [];
+  // Instrument Catalog domain: "previous session" means the true chronological previous session
+  // with the EXACT SAME instrument - fail closed to no candidate (never another session just
+  // because it happens to be next in the list) whenever this session has no instrument yet, or
+  // no earlier session shares it. This is the concrete "never show a BTC summary while viewing an
+  // XAU session" guarantee.
+  const currentTime = sessionsAdapter.sessionTimestamp(session);
+  const candidates = session.instrument
+    ? all.filter((s) => s.id !== session.id && s.instrument === session.instrument && sessionsAdapter.sessionTimestamp(s) < currentTime)
+      .sort((a, b) => sessionsAdapter.sessionTimestamp(b) - sessionsAdapter.sessionTimestamp(a))
+    : [];
+  const prev = candidates[0] || null;
   const summary = prev && (prev.fateSummary || prev.previousSessionSummary);
   return (
     <Panel variant="base" padding="14px">
@@ -1411,7 +1431,7 @@ function SimilarSessionsPanel({ session, character, lang }) {
         ) : matches.map((m) => (
           <div key={m.sessionId} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <strong style={{ fontSize: 11, color: 'var(--text-primary)', flex: 1, minWidth: 0 }}>{[m.market, m.date].filter(Boolean).join(' · ')}</strong>
+              <strong style={{ fontSize: 11, color: 'var(--text-primary)', flex: 1, minWidth: 0 }}>{[m.instrument, m.market, m.date].filter(Boolean).join(' · ')}</strong>
               <span className="navrya-tabular" style={{ fontSize: 11, color: m.similarity >= threshold ? 'var(--success)' : 'var(--text-muted)' }}>{m.similarity}%</span>
             </span>
             {m.fateSummaryText && <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', lineHeight: 1.6 }}>{m.fateSummaryText}</span>}
@@ -2086,7 +2106,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           <div style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <DashboardPanel session={session} lang={lang} dash={dash} onSetDash={setDash} indexById={indexById} onSelectEntry={selectEntry}
               onToggleStage={toggleStage} onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')}
-              openPositions={openPositions} onLogTrade={() => openLogWizard({ accountId: session.accountId || null, source: { character, sessionId: session.id } }, { onSave: rerender })} />
+              openPositions={openPositions} onLogTrade={() => openLogWizard({ accountId: session.accountId || null, instrument: session.instrument || null, source: { character, sessionId: session.id } }, { onSave: rerender })} />
             <PrevSummaryPanel session={session} lang={lang} />
             <SimilarSessionsPanel session={session} character={character} lang={lang} />
           </div>

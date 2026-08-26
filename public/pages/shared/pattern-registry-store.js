@@ -13,7 +13,17 @@
 
   function stage(text, order) { return { id: uid('stage'), order: order, text: text }; }
 
-  function createPattern(name, description, threshold, stageTexts) {
+  function normalizeCodes(values) {
+    var types = window.TradeJournalInstrumentCatalogTypes;
+    var seen = {}, out = [];
+    (values || []).forEach(function (raw) {
+      var code = types ? types.normalizeCode(raw) : null;
+      if (code && !seen[code]) { seen[code] = true; out.push(code); }
+    });
+    return out;
+  }
+
+  function createPattern(name, description, threshold, stageTexts, instruments) {
     var createdAt = now();
     return {
       id: uid('pattern'),
@@ -26,6 +36,7 @@
       chatHistory: [],
       isPublic: false,
       active: true,
+      instruments: normalizeCodes(instruments),
       createdAt: createdAt,
       updatedAt: createdAt
     };
@@ -61,6 +72,7 @@
       return { id: item.id || uid('stage'), order: index + 1, text: item.text || item.label || '' };
     });
     pattern.referenceScreenshots = pattern.referenceScreenshots || [];
+    pattern.instruments = normalizeCodes(pattern.instruments);
     pattern.usageCount = Math.max(Number(pattern.usageCount || 0), scenarioUsage(pattern.id));
     pattern.chatHistory = pattern.chatHistory || [];
     pattern.isPublic = Boolean(pattern.isPublic);
@@ -112,8 +124,15 @@
     return value;
   }
 
-  function create() {
-    var pattern = createPattern('', '', 70, []);
+  // Instrument Catalog domain: a brand-new pattern must explicitly carry at least one real,
+  // cataloged instrument before it is ever persisted - unlike name/description/stages, which
+  // still stay editable-after (blank-then-fill-in via the editor). Returns null (no server write
+  // at all) rather than persisting an unassigned pattern when the caller has not actually
+  // collected one yet.
+  function create(instruments) {
+    var codes = normalizeCodes(instruments);
+    if (!codes.length) return null;
+    var pattern = createPattern('', '', 70, [], codes);
     if (replica()) replica().upsert(pattern).catch(function () {});
     return pattern;
   }
@@ -221,9 +240,22 @@
         name: pattern.name || '',
         positionThreshold: pattern.completionThreshold,
         completionThreshold: pattern.completionThreshold,
+        instruments: pattern.instruments || [],
         stages: pattern.stages.map(function (item, index) { return { id: item.id, index: index + 1, label: item.text }; })
       };
     }).filter(function (pattern) { return pattern.name; });
+  }
+
+  // Instrument Catalog domain: the one public adapter every consumer (ScenarioEditor,
+  // sessionEntryCardsView.jsx, the Trade Log/Calculator pattern pickers) uses to scope pattern
+  // selection to the current session/trade's own instrument, instead of reading the full
+  // registry and filtering by hand. A pattern with an empty instruments array (unassigned/legacy)
+  // never matches any instrument - it must be explicitly classified first.
+  function listForInstrument(instrument) {
+    var types = window.TradeJournalInstrumentCatalogTypes;
+    var code = types ? types.normalizeCode(instrument) : null;
+    if (!code) return [];
+    return listForScenarios().filter(function (pattern) { return pattern.instruments.indexOf(code) > -1; });
   }
 
   function recordUsage(patternId, delta) {
@@ -282,6 +314,7 @@
     screenshotUrl: screenshotUrl,
     imageDataUrls: imageDataUrls,
     listForScenarios: listForScenarios,
+    listForInstrument: listForInstrument,
     recordUsage: recordUsage,
     scenarioReport: scenarioReport,
     createStage: function (text, order) { return stage(text || '', order || 1); },
