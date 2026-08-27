@@ -37,6 +37,9 @@ services:
       REDIS_URL: redis://redis:6379
       AI_QUOTA_PER_USER_PER_HOUR: ${AI_QUOTA_PER_USER_PER_HOUR:-200}
       AI_QUOTA_GLOBAL_PER_HOUR: ${AI_QUOTA_GLOBAL_PER_HOUR:-20000}
+      # Opt in only after provider pricing and user wallet balances are configured. Keeping this
+      # false preserves platform-funded AI during the commercial system's staged rollout.
+      AI_WALLET_ENFORCED: ${AI_WALLET_ENFORCED:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6}
       # fix/voice-mode-hosted-connection: was missing entirely from this file - mintRealtimeClientSecret()

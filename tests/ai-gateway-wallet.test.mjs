@@ -45,6 +45,7 @@ async function registerAndGetCookie() {
 }
 
 test('a billed AI route with no provider pricing configured fails closed (503 PROVIDER_PRICING_NOT_CONFIGURED) and never reaches the provider', async () => {
+  process.env.AI_WALLET_ENFORCED = 'true';
   const { cookie } = await registerAndGetCookie();
   const response = await fetch(`${aiBaseUrl}/api/ai/chat`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ message: 'hi', provider: 'openai' })
@@ -55,6 +56,7 @@ test('a billed AI route with no provider pricing configured fails closed (503 PR
 });
 
 test('once pricing is configured, the wallet gate passes and the request reaches real provider-calling logic (failing later on the expected missing-key error, not a wallet error)', async () => {
+  process.env.AI_WALLET_ENFORCED = 'true';
   await communityRepo.providerPricing.upsert({ provider: 'openai', promptPricePer1k: 0.03, completionPricePer1k: 0.06, monthlyTokenBudget: null });
   const { userId, cookie } = await registerAndGetCookie();
   const before = await communityRepo.wallet.getAccount(userId);
@@ -79,6 +81,7 @@ test('once pricing is configured, the wallet gate passes and the request reaches
 });
 
 test('a BYOK call (client-supplied apiKey) bypasses the wallet entirely, even with zero balance and no pricing configured', async () => {
+  process.env.AI_WALLET_ENFORCED = 'true';
   const { userId, cookie } = await registerAndGetCookie();
   await communityRepo.wallet.grant(userId, { type: 'ADMIN_DEBIT', promoDeltaMicroUsd: -(await communityRepo.wallet.getAccount(userId)).promoBalanceMicroUsd }); // drain to $0
   const response = await fetch(`${aiBaseUrl}/api/ai/chat`, {
@@ -91,6 +94,19 @@ test('a BYOK call (client-supplied apiKey) bypasses the wallet entirely, even wi
   const body = await response.json();
   assert.notEqual(body.error, 'WALLET_INSUFFICIENT_BALANCE');
   assert.notEqual(body.error, 'PROVIDER_PRICING_NOT_CONFIGURED');
+  const ledger = await communityRepo.wallet.ledgerForUser(userId);
+  assert.equal(ledger.filter((entry) => entry.type === 'AI_RESERVATION' || entry.type === 'AI_SETTLEMENT' || entry.type === 'AI_RELEASE').length, 0);
+});
+
+test('the wallet gate is rollout-safe by default: without explicit enforcement, platform-funded chat reaches provider logic even when pricing is absent', async () => {
+  delete process.env.AI_WALLET_ENFORCED;
+  const { userId, cookie } = await registerAndGetCookie();
+  const response = await fetch(`${aiBaseUrl}/api/ai/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ message: 'hi', provider: 'openai' })
+  });
+  const body = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(body.error, 'OPENAI_API_KEY_MISSING', 'the request must pass the disabled wallet gate and reach the provider-key boundary');
   const ledger = await communityRepo.wallet.ledgerForUser(userId);
   assert.equal(ledger.filter((entry) => entry.type === 'AI_RESERVATION' || entry.type === 'AI_SETTLEMENT' || entry.type === 'AI_RELEASE').length, 0);
 });

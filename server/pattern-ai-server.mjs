@@ -280,6 +280,15 @@ const AI_BILLED_ROUTES = {
   '/api/ai/chat': 'aiChat'
 };
 
+// Commercial billing is an explicit rollout, not an implicit side effect of deploying the
+// wallet schema. Existing production users predate wallet balances/provider pricing, so enabling
+// the gate before those operator-owned prerequisites are configured makes every platform-funded
+// AI request fail before it reaches the provider. Keep the pre-commercial behavior until an
+// operator deliberately sets AI_WALLET_ENFORCED=true after pricing and balances are ready.
+function aiWalletEnforced() {
+  return String(process.env.AI_WALLET_ENFORCED || '').trim().toLowerCase() === 'true';
+}
+
 async function internalWalletCall(path, payload) {
   const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + path;
   const headers = { 'Content-Type': 'application/json' };
@@ -1846,6 +1855,7 @@ const server = http.createServer(async (request, response) => {
       // never makes. This app supports BYOK-only operation by design (docs/ai/realtime-deployment.md) -
       // `false` here means "no server-funded key," not "Voice Mode is broken."
       realtimeConfigured: Boolean(process.env.OPENAI_API_KEY),
+      aiWalletEnforced: aiWalletEnforced(),
       version: process.env.RENDER_GIT_COMMIT ? process.env.RENDER_GIT_COMMIT.slice(0, 12) : (process.env.npm_package_version || null)
     });
   }
@@ -1898,7 +1908,7 @@ const server = http.createServer(async (request, response) => {
     // callProvider()'s own key-resolution order above).
     const billedFeature = AI_BILLED_ROUTES[request.url];
     const isByok = typeof body.apiKey === 'string' && body.apiKey.trim().length > 0;
-    if (billedFeature && !isByok) {
+    if (billedFeature && !isByok && aiWalletEnforced()) {
       const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: body.provider, model: body.model, payload: body });
       if (!gate.ok) {
         const status = gate.reason === 'WALLET_INSUFFICIENT_BALANCE' ? 402 : 503;
