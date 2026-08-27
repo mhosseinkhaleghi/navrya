@@ -18,6 +18,7 @@ const marketplaceViewSrc = await readFile(path.join(root, 'navrya-src', 'marketp
 const messagesViewSrc = await readFile(path.join(root, 'navrya-src', 'messagesView.jsx'), 'utf8');
 const patternRegistrySrc = await readFile(path.join(root, 'navrya-src', 'patternRegistryView.jsx'), 'utf8');
 const strategyEducationSrc = await readFile(path.join(root, 'navrya-src', 'strategyEducationView.jsx'), 'utf8');
+const strategiesHubSrc = await readFile(path.join(root, 'navrya-src', 'strategiesHubView.jsx'), 'utf8');
 const contextEngineSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'ai-context-engine.js'), 'utf8');
 const chatDockCoreSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'chat-dock-core.js'), 'utf8');
 
@@ -72,11 +73,48 @@ test('marketplace.publish never fabricates performance data - successRatePercent
   assert.match(block, /NEVER FABRICATE|never invent/i);
 });
 
-test('marketplace.publish resolves the active Pattern OR Strategy (never both), and navigates to the real Sharing sub-tab before polling for its hub - the hub only mounts there', () => {
+test('marketplace.publish resolves the active Pattern OR Strategy (never both), and opens the LIVE Strategies Hub\'s own Share tab (openExisting(id, \'share\')) before polling for its publish form', () => {
   const block = actionBlock('marketplace.publish');
   assert.match(block, /resolveActivePatternId\(context\) \|\| resolveActiveStrategyId\(context\)/);
-  assert.match(block, /'#strategies\/patterns\/' \+ encodeURIComponent\(patternId\) \+ '\/sharing'/);
-  assert.match(block, /window\.TradeJournalStrategyEducation\.openDetail\(strategyId, 'sharing'\)/);
+  assert.match(block, /window\.TradeJournalNavryaPatternHub\.openExisting\(patternId, 'share'\)/);
+  assert.match(block, /window\.TradeJournalNavryaStrategyHub\.openExisting\(strategyId, 'share'\)/);
+  assert.match(block, /window\.TradeJournalNavryaShareTabHub/);
+  assert.match(block, /shareHub\.openPublishForm\(\)/);
+});
+
+// Journey H1: marketplace.publish used to route through the orphaned, pre-NAVRYA legacy pages
+// (pattern-registry.js's window.TradeJournalPatternRegistry.render() / strategy-education.js's
+// window.TradeJournalStrategyEducation.openDetail()) instead of the LIVE Strategies Hub - found
+// via real code tracing (panel-system.js's own showCustom(), what those legacy pages' layer.show()
+// calls into, never unmounts the previous React root, unlike the real render() path). Fixed to
+// open the live Hub's own Share tab/publish form instead - these two globals must never appear in
+// the action's own open()/submit() again, structurally, not just by manual inspection.
+test('marketplace.publish never CALLS the legacy pattern-registry.js/strategy-education.js globals anymore (a code-comment mention of the old bug, for context, is fine - an actual invocation is not)', () => {
+  const block = actionBlock('marketplace.publish');
+  assert.doesNotMatch(block, /window\.TradeJournalPatternRegistry\.(render|open)/, 'the legacy Pattern Registry page must never be routed through again');
+  assert.doesNotMatch(block, /window\.TradeJournalStrategyEducation\.openDetail/, 'the legacy Strategy Education page must never be routed through again');
+  assert.doesNotMatch(block, /'#strategies\/patterns\/.*\/sharing'/, 'the legacy hash-route navigation must be gone');
+});
+
+test('marketplace.publish forces the real, unmount-safe render() path onto \'strategies\' (self-healing any already-orphaned legacy root) only when not already there, and submits through the new strategy-hub-publish-flow process', () => {
+  const block = actionBlock('marketplace.publish');
+  assert.match(block, /if \(store\.getState\(\)\.activeId !== 'strategies'\) store\.setActiveId\('strategies'\);/);
+  assert.match(block, /registry\.query\('strategy-hub-publish-flow'\)\.open/);
+  assert.match(block, /processId: 'strategy-hub-publish-flow'/);
+  assert.match(block, /TradeJournalAIProcessRegistry\.submit\('strategy-hub-publish-flow'\)/);
+});
+
+test('strategiesHubView.jsx\'s live ShareTab/PublishForm register \'strategy-hub-publish-flow\' with the Process Registry - a NEW id, deliberately distinct from the legacy publishFlowModal.jsx\'s own \'publish-flow\'', () => {
+  assert.match(strategiesHubSrc, /registry\.register\('strategy-hub-publish-flow', \{/);
+  assert.match(strategiesHubSrc, /layer: 'foreground'/);
+  assert.match(strategiesHubSrc, /allowlist: \['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount', 'confirmPublish'\]/);
+  assert.match(strategiesHubSrc, /submit: \(\) => submitRef\.current\(\)/);
+  assert.match(strategiesHubSrc, /window\.TradeJournalNavryaShareTabHub = \{ openPublishForm: \(\) => setFormOpenRef\.current\(true\) \}/);
+});
+
+test('openExistingPattern/openExistingStrategy accept an optional target tab (needed to open straight into \'share\'), defaulting to \'details\' exactly as before', () => {
+  assert.match(strategiesHubSrc, /function openExistingPattern\(id, tabId\) \{ setTab\('patterns'\); openItem\('pattern', id, tabId \|\| 'details'\); \}/);
+  assert.match(strategiesHubSrc, /function openExistingStrategy\(id, tabId\) \{ setTab\('strategies'\); openItem\('strategy', id, tabId \|\| 'details'\); \}/);
 });
 
 test('community.comment.create and marketplace.rate/messageSeller never guess an entity - available() strictly requires an already-resolved active post/listing', () => {

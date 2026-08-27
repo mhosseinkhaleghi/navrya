@@ -116,7 +116,9 @@ test('PatternDetailsTab\'s patch() has the identical fix - the same stale-closur
 
 test('StrategiesHub exposes a real window hook (TradeJournalNavryaStrategyHub) that creates a Strategy through the same real StrategyEducationStore.create() the "New strategy" button already uses - not a second creation path, and is torn down on unmount like the Pattern hub', () => {
   assert.match(hubSrc, /function createNewStrategy\(\) \{ const s = window\.TradeJournalStrategyEducationStore\.create\(\);/);
-  assert.match(hubSrc, /function openExistingStrategy\(id\) \{ setTab\('strategies'\); openItem\('strategy', id, 'details'\); \}/);
+  // Journey H1: gained an optional tabId (defaults to 'details', unchanged for every caller here)
+  // so marketplace.publish can open straight into the real Share tab - see that action's own fix.
+  assert.match(hubSrc, /function openExistingStrategy\(id, tabId\) \{ setTab\('strategies'\); openItem\('strategy', id, tabId \|\| 'details'\); \}/);
   assert.match(hubSrc, /window\.TradeJournalNavryaStrategyHub = \{ createNew: createNewStrategy, openExisting: openExistingStrategy \}/);
   assert.match(hubSrc, /delete window\.TradeJournalNavryaPatternHub; delete window\.TradeJournalNavryaStrategyHub;/);
 });

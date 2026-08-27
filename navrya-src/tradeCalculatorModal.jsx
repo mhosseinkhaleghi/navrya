@@ -8,6 +8,8 @@ import { Select } from '../public/pages/shared/navrya/components/forms/Select.js
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { useAssistantMotion } from '../public/pages/shared/navrya/components/assistant/motion.js';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
 
@@ -321,6 +323,11 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
 
   const [dir, setDir] = React.useState('long');
   const [margin, setMargin] = React.useState('isolated');
+  // Journey H1: magic-fill animation for the fields most commonly set by Voice on this screen.
+  const dirFilled = useAiFieldFill('trade-calculator', 'direction');
+  const entryFilled = useAiFieldFill('trade-calculator', 'entryPrice');
+  const stopFilled = useAiFieldFill('trade-calculator', 'stopLoss');
+  const riskFilled = useAiFieldFill('trade-calculator', 'riskPercent');
   const [strategyId, setStrategyId] = React.useState('');
   // Journey B (AI trade planning): a real, visible Linked Pattern control - this modal never had
   // one before (only the Trade Wizard did, and even there patterns were never AI-fillable; see
@@ -420,6 +427,7 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('trade-calculator', {
+      layer: 'foreground',
       allowlist: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'riskAmount', 'leverage', 'feeType', 'feePercent', 'takeProfits', 'linkedStrategyId', 'linkedPatternIds', 'sourceSessionId', 'sourceScenarioId', 'pendingEmotionSignal', 'riskOverride', 'accountId', 'instrument'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
@@ -773,31 +781,37 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
               <SectionLabel>{t('calcTheSetup')}</SectionLabel>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <MetricLabel>{t('direction')}</MetricLabel>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <PillButton selected={dir === 'long'} onClick={() => setDir('long')} tone="success"><Icon name="trending-up" size={16} />{t('long')}</PillButton>
-                <PillButton selected={dir === 'short'} onClick={() => setDir('short')} tone="danger"><Icon name="trending-down" size={16} />{t('short')}</PillButton>
+            <AiMagicFill active={dirFilled}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <MetricLabel>{t('direction')}</MetricLabel>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <PillButton selected={dir === 'long'} onClick={() => setDir('long')} tone="success"><Icon name="trending-up" size={16} />{t('long')}</PillButton>
+                  <PillButton selected={dir === 'short'} onClick={() => setDir('short')} tone="danger"><Icon name="trending-down" size={16} />{t('short')}</PillButton>
+                </div>
               </div>
-            </div>
+            </AiMagicFill>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <FromImageDot show={filled.indexOf('entry') > -1} title={t('calcReadFromScreenshot')} />
-                <MetricLabel>{t('entryPrice')}</MetricLabel>
+            <AiMagicFill active={entryFilled}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <FromImageDot show={filled.indexOf('entry') > -1} title={t('calcReadFromScreenshot')} />
+                  <MetricLabel>{t('entryPrice')}</MetricLabel>
+                </div>
+                <NumField value={entry} onChange={setEntry} placeholder="0.00" unit="usd" />
               </div>
-              <NumField value={entry} onChange={setEntry} placeholder="0.00" unit="usd" />
-            </div>
+            </AiMagicFill>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <FromImageDot show={filled.indexOf('stop') > -1} title={t('calcReadFromScreenshot')} />
-                <MetricLabel>{t('stopLoss')}</MetricLabel>
-                <span style={{ flex: 1 }} />
-                {out.valid && <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--gold-warm)' }}>{t('calcSlAway', { value: fmtMoney(i18n, out.r.slDistancePercent, 2) })}</span>}
+            <AiMagicFill active={stopFilled}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <FromImageDot show={filled.indexOf('stop') > -1} title={t('calcReadFromScreenshot')} />
+                  <MetricLabel>{t('stopLoss')}</MetricLabel>
+                  <span style={{ flex: 1 }} />
+                  {out.valid && <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--gold-warm)' }}>{t('calcSlAway', { value: fmtMoney(i18n, out.r.slDistancePercent, 2) })}</span>}
+                </div>
+                <NumField value={stop} onChange={setStop} placeholder="0.00" unit="usd" />
               </div>
-              <NumField value={stop} onChange={setStop} placeholder="0.00" unit="usd" />
-            </div>
+            </AiMagicFill>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <MetricLabel>{t('accountBalance')}</MetricLabel>
@@ -821,28 +835,30 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
                 <SectionLabel>{t('calcRiskAndLeverage')}</SectionLabel>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <MetricLabel>{t('calcRiskPerTrade')}</MetricLabel>
-                  <span style={{ flex: 1 }} />
-                  <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-username)', color: 'var(--char-accent)' }}>
-                    {riskMode === 'amount'
-                      ? (out.valid && out.r.riskPercent !== null && out.r.riskPercent !== undefined ? fmtMoney(i18n, out.r.riskPercent, out.r.riskPercent % 1 ? 2 : 0) + '%' : '—') + ' · ' + (toNum(riskAmountInput) !== null ? fmtMoney(i18n, toNum(riskAmountInput), 0) + ' USD' : '—')
-                      : fmtMoney(i18n, risk, risk % 1 ? 2 : 0) + '% · ' + (out.valid && out.r.riskAmount !== null && out.r.riskAmount !== undefined ? fmtMoney(i18n, out.r.riskAmount, 0) + ' USD' : '—')}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 7 }}>
-                  {RISK_CHIPS.map((v) => <PillButton key={v} selected={riskMode === 'percent' && risk === v} onClick={() => pickRisk(v)}>{fmtMoney(i18n, v, v % 1 ? 1 : 0) + '%'}</PillButton>)}
-                </div>
-                <RiskSlider value={riskMode === 'amount' ? (out.r && out.r.riskPercent) || 0 : risk} onChange={pickRisk} label={t('calcRiskPerTrade')} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)', flex: 'none' }}>{t('calcCustom')}</span>
-                  <div style={{ width: 150, flex: 'none' }}>
-                    <NumField value={riskAmountShown} onChange={typeRiskAmount} placeholder="0.00" unit="usd" />
+              <AiMagicFill active={riskFilled}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <MetricLabel>{t('calcRiskPerTrade')}</MetricLabel>
+                    <span style={{ flex: 1 }} />
+                    <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-username)', color: 'var(--char-accent)' }}>
+                      {riskMode === 'amount'
+                        ? (out.valid && out.r.riskPercent !== null && out.r.riskPercent !== undefined ? fmtMoney(i18n, out.r.riskPercent, out.r.riskPercent % 1 ? 2 : 0) + '%' : '—') + ' · ' + (toNum(riskAmountInput) !== null ? fmtMoney(i18n, toNum(riskAmountInput), 0) + ' USD' : '—')
+                        : fmtMoney(i18n, risk, risk % 1 ? 2 : 0) + '% · ' + (out.valid && out.r.riskAmount !== null && out.r.riskAmount !== undefined ? fmtMoney(i18n, out.r.riskAmount, 0) + ' USD' : '—')}
+                    </span>
                   </div>
-                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('riskAmount')}</span>
+                  <div style={{ display: 'flex', gap: 7 }}>
+                    {RISK_CHIPS.map((v) => <PillButton key={v} selected={riskMode === 'percent' && risk === v} onClick={() => pickRisk(v)}>{fmtMoney(i18n, v, v % 1 ? 1 : 0) + '%'}</PillButton>)}
+                  </div>
+                  <RiskSlider value={riskMode === 'amount' ? (out.r && out.r.riskPercent) || 0 : risk} onChange={pickRisk} label={t('calcRiskPerTrade')} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)', flex: 'none' }}>{t('calcCustom')}</span>
+                    <div style={{ width: 150, flex: 'none' }}>
+                      <NumField value={riskAmountShown} onChange={typeRiskAmount} placeholder="0.00" unit="usd" />
+                    </div>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('riskAmount')}</span>
+                  </div>
                 </div>
-              </div>
+              </AiMagicFill>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>

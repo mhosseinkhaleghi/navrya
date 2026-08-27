@@ -60,6 +60,32 @@ async function builderSandboxWithRegistry(overrides) {
   return { builder: sandbox.window.TradeJournalAIContextBuilder, processRegistry: sandbox.window.TradeJournalAIProcessRegistry };
 }
 
+// Journey H1 closure: currentSurfaceFor() reads TradeJournalAISurfaceContext, which itself reads
+// TradeJournalAIProcessRegistry + TradeJournalAIContextEngine - the real chain, not a hand-rolled
+// stand-in, so this proves the actual wire shape a real turn would produce.
+async function builderSandboxWithSurface(overrides) {
+  const o = overrides || {};
+  const document = { documentElement: {} };
+  const sandbox = {
+    window: { location: { hash: o.hash || '' }, document }, document, Date
+  };
+  sandbox.window = Object.assign(sandbox.window, {
+    TradeJournalAIActionRegistry: o.actionRegistry,
+    TradeJournalStrategyEducationStore: o.strategyStore,
+    TradeJournalPatternStore: o.patternStore,
+    TradeJournalWorkspace: o.workspace,
+    TradeJournalTradeStore: o.tradeStore,
+    TradeJournalMentalHealthStore: o.mentalHealthStore,
+    TradeJournalAIProactiveEngine: o.proactiveEngine,
+    TradeJournalNavryaStore: o.navryaStore
+  });
+  const files = ['ai-process-registry.js', 'ai-context-engine.js', 'ai-surface-context.js', 'ai-knowledge-registry.js', 'ai-user-memory.js', 'ai-context-builder.js'];
+  for (const file of files) {
+    vm.runInNewContext(await source(file), sandbox, { filename: file });
+  }
+  return { builder: sandbox.window.TradeJournalAIContextBuilder, processRegistry: sandbox.window.TradeJournalAIProcessRegistry };
+}
+
 // ---- Trade question: only relevant Trade/Strategy context, nothing else ----
 
 test('a Trade question on the Sessions/trade-planning page includes trade-planning knowledge, never Community/Subscription knowledge', async () => {
@@ -310,4 +336,178 @@ test('an explicit opts.activeTradeId still wins over the live-registry resolutio
   processRegistry.register('trade-details-t-registry', { allowlist: [], isOpen: () => true });
   const pkg = builder.build({ message: 'this trade', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: {} }, activeTradeId: 't-explicit' });
   assert.equal(pkg.liveContext.tradeId, 't-explicit');
+});
+
+// --- Journey H1 closure: liveContext.currentSurface (current-form question awareness) ---
+
+test('liveContext.currentSurface is null when nothing is open at all - never padding an ordinary turn', async () => {
+  const { builder } = await builderSandboxWithSurface({});
+  const pkg = builder.build({ message: 'hi', currentContext: { navigation: { activeId: 'dashboard' }, activeEntities: {} } });
+  assert.equal(pkg.liveContext.currentSurface, null);
+});
+
+test('liveContext.currentSurface reports processId/page/layer/step for a real open foreground process, with its full allowlist when it declares no stepForPath', async () => {
+  // page is independently re-derived by ai-surface-context.js from the REAL global
+  // TradeJournalNavryaStore (via ai-context-engine.js's own protected snapshot()), never from the
+  // currentContext object passed into build() - so the fake store here is what actually drives it.
+  const navryaStore = { getState: () => ({ activeId: 'strategies' }) };
+  const { builder, processRegistry } = await builderSandboxWithSurface({ navryaStore });
+  processRegistry.register('strategy-editor-s1', {
+    layer: 'foreground', allowlist: ['positionManagement.entryRules', 'riskManagement.maxRiskPerTradePercent'],
+    isOpen: () => true, activeStep: () => null
+  });
+  const pkg = builder.build({ message: 'این ریسک یعنی چی؟', currentContext: { navigation: { activeId: 'strategies' }, activeEntities: {} } });
+  assert.deepEqual(clone(pkg.liveContext.currentSurface), {
+    page: 'strategies', processId: 'strategy-editor-s1', layer: 'foreground', step: null,
+    visibleFields: ['positionManagement.entryRules', 'riskManagement.maxRiskPerTradePercent']
+  });
+});
+
+test('liveContext.currentSurface.visibleFields is scoped to the CURRENT STEP for a real stepped wizard - fields belonging to other steps are excluded', async () => {
+  const { builder, processRegistry } = await builderSandboxWithSurface({});
+  let step = 2;
+  processRegistry.register('trade-wizard', {
+    layer: 'foreground',
+    allowlist: ['direction', 'entryPrice', 'primaryTimeframe', 'conceptTags', 'accountId'],
+    isOpen: () => true, activeStep: () => step,
+    stepForPath: (path) => ({ direction: 1, entryPrice: 1, primaryTimeframe: 2, conceptTags: 3 }[path] ?? null) // accountId: no step opinion
+  });
+  const pkg = builder.build({ message: 'این چیه؟', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: {} } });
+  assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['accountId', 'primaryTimeframe'].sort(), 'step-1 fields (direction/entryPrice) and step-3 fields (conceptTags) must be excluded from step 2\'s own visible fields; accountId (no step opinion) stays visible on every step');
+  assert.equal(pkg.liveContext.currentSurface.step, 2);
+});
+
+test('liveContext.currentSurface never includes an AI-internal-only field (sourceSessionId/sourceScenarioId/pendingEmotionSignal/riskOverride), even though the real process allowlist contains them', async () => {
+  const { builder, processRegistry } = await builderSandboxWithSurface({});
+  processRegistry.register('trade-calculator', {
+    layer: 'foreground',
+    allowlist: ['direction', 'entryPrice', 'sourceSessionId', 'sourceScenarioId', 'pendingEmotionSignal', 'riskOverride'],
+    isOpen: () => true, activeStep: () => null
+  });
+  const pkg = builder.build({ message: 'این فیلد چیه؟', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: {} } });
+  assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['direction', 'entryPrice']);
+});
+
+test('liveContext.currentSurface for an open Psychology Intake carries only field PATHS (the same ones already sent via activeProcess.allowlist on an ordinary turn) - never a single answer VALUE', async () => {
+  const { builder, processRegistry } = await builderSandboxWithSurface({ hash: '#mindset' });
+  let step = 2;
+  processRegistry.register('mh-intake', {
+    layer: 'foreground',
+    allowlist: ['intake.demographics.age', 'intake.demographics.gender', 'intake.financialContext.capitalType'],
+    isOpen: () => true, activeStep: () => step,
+    stepForPath: (path) => (path.indexOf('intake.demographics.') === 0 ? 2 : path.indexOf('intake.financialContext.') === 0 ? 3 : null)
+  });
+  const pkg = builder.build({ message: 'سن یعنی چی می‌پرسی؟', currentContext: { navigation: { activeId: 'dashboard' }, activeEntities: {} } });
+  assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['intake.demographics.age', 'intake.demographics.gender']);
+  const serialized = JSON.stringify(pkg.liveContext.currentSurface);
+  assert.doesNotMatch(serialized, /\d{2,}/, 'no numeric answer value (e.g. an age) may ever appear in the wire-sent currentSurface - field paths only');
+  assert.equal(pkg.liveContext.currentSurface.page, 'psychology');
+});
+
+// --- Journey H1 closure: liveContext.workflow psychology redaction (the real privacy bug found
+// and fixed while verifying this exact guarantee - see ai-context-builder.js's own comment) ---
+
+test('a Psychology-domain workflow (processId starting mh-, or actionId starting psychology.) has its known/missing stripped from liveContext.workflow - only workflowId/actionId/processId/status survive', async () => {
+  const { builder } = await builderSandboxWithSurface({});
+  const pkg = builder.build({
+    message: 'ادامه بده',
+    currentContext: {
+      navigation: { activeId: 'dashboard' }, activeEntities: {},
+      workflow: {
+        workflowId: 'wf-1', actionId: 'psychology.intake.start', processId: 'mh-intake', status: 'collecting',
+        known: { 'intake.demographics.age': 29, 'intake.financialContext.capitalType': 'personal_savings', 'intake.firstBigLossReaction': 'panicked and closed everything' },
+        missing: []
+      }
+    }
+  });
+  assert.deepEqual(clone(pkg.liveContext.workflow), { workflowId: 'wf-1', actionId: 'psychology.intake.start', processId: 'mh-intake', status: 'collecting' });
+  const serialized = JSON.stringify(pkg.liveContext);
+  assert.doesNotMatch(serialized, /personal_savings|panicked/, 'no real intake answer content may survive into liveContext, structurally - not just the known key name');
+});
+
+test('a NON-Psychology workflow (e.g. trade.calculator) keeps its full known/missing in liveContext.workflow, unaffected by the Psychology redaction', async () => {
+  const { builder } = await builderSandboxWithSurface({});
+  const pkg = builder.build({
+    message: 'ادامه بده',
+    currentContext: {
+      navigation: { activeId: 'sessions' }, activeEntities: {},
+      workflow: { workflowId: 'wf-2', actionId: 'trade.calculator', processId: 'trade-calculator', status: 'collecting', known: { direction: 'long', entryPrice: '1950' }, missing: ['stopLoss'] }
+    }
+  });
+  assert.deepEqual(clone(pkg.liveContext.workflow), { workflowId: 'wf-2', actionId: 'trade.calculator', processId: 'trade-calculator', status: 'collecting', known: { direction: 'long', entryPrice: '1950' }, missing: ['stopLoss'] });
+});
+
+test('liveContext.workflow stays null when no workflow is in progress, exactly as before this change', async () => {
+  const { builder } = await builderSandboxWithSurface({});
+  const pkg = builder.build({ message: 'hi', currentContext: { navigation: { activeId: 'dashboard' }, activeEntities: {}, workflow: null } });
+  assert.equal(pkg.liveContext.workflow, null);
+});
+
+// --- Journey H1 closure: one representative currentSurface case per in-scope domain, mirroring ---
+// --- each domain's REAL registration shape (allowlist/layer/stepForPath) exactly. ---
+
+test('Pattern field question: pattern-editor-{id} exposes its real name/description/completionThreshold fields, no step (single-panel editor)', async () => {
+  const navryaStore = { getState: () => ({ activeId: 'strategies' }) };
+  const { builder, processRegistry } = await builderSandboxWithSurface({ navryaStore });
+  processRegistry.register('pattern-editor-p1', { layer: 'foreground', allowlist: ['name', 'description', 'completionThreshold', 'instruments'], isOpen: () => true, activeStep: () => null });
+  const pkg = builder.build({ message: 'این threshold یعنی چی؟', currentContext: { navigation: { activeId: 'strategies' }, activeEntities: {} } });
+  assert.equal(pkg.liveContext.currentSurface.processId, 'pattern-editor-p1');
+  assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['completionThreshold', 'description', 'instruments', 'name']);
+});
+
+test('Session/Scenario field question: session-create (foreground) and a live-session-scenario-{id} card (background/ambient) both surface their real fields, neither outranks the other for currentSurface\'s own purpose - only activeOpenProcess()\'s topmost pick matters for WHICH one is current', async () => {
+  const navryaStore = { getState: () => ({ activeId: 'sessions' }) };
+  const { builder, processRegistry } = await builderSandboxWithSurface({ navryaStore });
+  processRegistry.register('live-session-scenario-sc1', { layer: 'background', allowlist: ['title', 'description', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit'], isOpen: () => true, activeStep: () => null });
+  let pkg = builder.build({ message: 'این stopLoss سناریو یعنی چی؟', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: {} } });
+  assert.equal(pkg.liveContext.currentSurface.processId, 'live-session-scenario-sc1');
+  assert.ok(pkg.liveContext.currentSurface.visibleFields.indexOf('stopLoss') > -1);
+
+  // A real foreground session-create dialog opened on top correctly becomes the new current one.
+  processRegistry.register('session-create', { layer: 'foreground', allowlist: ['city', 'timeframe', 'instrument'], isOpen: () => true, activeStep: () => null });
+  pkg = builder.build({ message: 'این timeframe یعنی چی؟', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: {} } });
+  assert.equal(pkg.liveContext.currentSurface.processId, 'session-create');
+});
+
+test('Trade Wizard field question: step-scoped exactly like the real tradeLogModal.jsx groups (direction/entryPrice on step 1, primaryTimeframe on step 2, conceptTags/chartNote on step 3)', async () => {
+  const navryaStore = { getState: () => ({ activeId: 'sessions' }) };
+  const { builder, processRegistry } = await builderSandboxWithSurface({ navryaStore });
+  const STEP_GROUPS = { direction: 1, marginMode: 1, entryPrice: 1, stopLoss: 1, riskPercent: 1, riskAmount: 1, leverage: 1, positionSize: 1, primaryTimeframe: 2, conceptTags: 3, chartNote: 3 };
+  let step = 3;
+  processRegistry.register('trade-wizard', {
+    layer: 'foreground', allowlist: Object.keys(STEP_GROUPS).concat(['accountId', 'instrument']),
+    isOpen: () => true, activeStep: () => step, stepForPath: (p) => (STEP_GROUPS[p] ?? null)
+  });
+  const pkg = builder.build({ message: 'این concept tags یعنی چی؟', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: {} } });
+  assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['accountId', 'chartNote', 'conceptTags', 'instrument'].sort());
+});
+
+test('Psychology Intake field question: mh-intake step-scoped to DemographicsStep\'s own real fields, and its workflow (if any) keeps raw answers out of liveContext - both guarantees hold together on the same turn', async () => {
+  const { builder, processRegistry } = await builderSandboxWithSurface({ hash: '#mindset' });
+  processRegistry.register('mh-intake', {
+    layer: 'foreground',
+    allowlist: ['intake.demographics.age', 'intake.demographics.gender', 'intake.demographics.maritalStatus', 'intake.financialContext.capitalType'],
+    isOpen: () => true, activeStep: () => 2,
+    stepForPath: (p) => (p.indexOf('intake.demographics.') === 0 ? 2 : p.indexOf('intake.financialContext.') === 0 ? 3 : null)
+  });
+  const pkg = builder.build({
+    message: 'چرا این سوال رو می‌پرسی؟',
+    currentContext: {
+      navigation: { activeId: 'dashboard' }, activeEntities: {},
+      workflow: { workflowId: 'wf-1', actionId: 'psychology.intake.start', processId: 'mh-intake', status: 'collecting', known: { 'intake.demographics.age': 31 }, missing: [] }
+    }
+  });
+  assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['intake.demographics.age', 'intake.demographics.gender', 'intake.demographics.maritalStatus']);
+  assert.deepEqual(clone(pkg.liveContext.workflow), { workflowId: 'wf-1', actionId: 'psychology.intake.start', processId: 'mh-intake', status: 'collecting' });
+  assert.doesNotMatch(JSON.stringify(pkg.liveContext), /\b31\b/, 'the real age value must never appear anywhere in liveContext');
+});
+
+test('Settings field question: settings-trading-defaults (background/persistent, no step) surfaces its real three fields', async () => {
+  const navryaStore = { getState: () => ({ activeId: 'settings' }) };
+  const { builder, processRegistry } = await builderSandboxWithSurface({ navryaStore });
+  processRegistry.register('settings-trading-defaults', { layer: 'background', allowlist: ['defaultRiskPercent', 'leverageCap', 'maxTradesPerSession'], isOpen: () => true, activeStep: () => null });
+  const pkg = builder.build({ message: 'این leverage cap یعنی چی؟', currentContext: { navigation: { activeId: 'settings' }, activeEntities: {} } });
+  assert.equal(pkg.liveContext.currentSurface.processId, 'settings-trading-defaults');
+  assert.equal(pkg.liveContext.currentSurface.layer, 'background');
+  assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['defaultRiskPercent', 'leverageCap', 'maxTradesPerSession']);
 });

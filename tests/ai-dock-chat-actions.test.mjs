@@ -108,6 +108,48 @@ test('buildProductContextText() omits a section entirely when that part of the p
   assert.equal(text.indexOf('=== USER DATA'), -1);
 });
 
+// --- Journey H1 closure: liveContext.currentSurface (ai-context-builder.js's new field) renders ---
+// --- under the existing LIVE STATE section with no server-side code change needed - it's part ---
+// --- of the same JSON.stringify(liveContext) call this section already made before this gate. ---
+
+test('buildProductContextText() renders liveContext.currentSurface (current-form question awareness) under the existing LIVE STATE section', () => {
+  const text = buildProductContextText({
+    domains: [], userMemory: [],
+    liveContext: { activeId: 'sessions', currentSurface: { page: 'sessions', processId: 'trade-wizard', layer: 'foreground', step: 2, visibleFields: ['primaryTimeframe'] } }
+  });
+  assert.ok(text.indexOf('=== LIVE STATE') > -1);
+  assert.ok(text.indexOf('trade-wizard') > -1);
+  assert.ok(text.indexOf('primaryTimeframe') > -1);
+});
+
+// --- Journey H1 closure: the real privacy bug found and fixed while verifying this exact ---
+// --- guarantee (see ai-context-builder.js's own comment) - proven all the way through the ---
+// --- actual server-side render, not just the client-side package shape. ---
+
+test('a Psychology-domain workflow\'s redacted liveContext.workflow (ai-context-builder.js\'s own fix) never surfaces a real intake answer in the rendered prompt text', () => {
+  const text = buildProductContextText({
+    domains: [], userMemory: [],
+    liveContext: {
+      activeId: null,
+      // Exactly the shape ai-context-builder.js's own redaction leaves behind - known/missing
+      // already stripped client-side before this ever reaches the server.
+      workflow: { workflowId: 'wf-1', actionId: 'psychology.intake.start', processId: 'mh-intake', status: 'collecting' }
+    }
+  });
+  assert.ok(text.indexOf('mh-intake') > -1, 'the model may still know Intake is open');
+  assert.ok(text.indexOf('psychology.intake.start') > -1);
+  assert.doesNotMatch(text, /"known"|"missing"/, 'no known/missing key may appear at all for a Psychology workflow - not just no real value');
+});
+
+test('a NON-Psychology workflow\'s known/missing still render normally in LIVE STATE, proving the redaction is Psychology-specific, not a blanket removal', () => {
+  const text = buildProductContextText({
+    domains: [], userMemory: [],
+    liveContext: { activeId: 'sessions', workflow: { workflowId: 'wf-2', actionId: 'trade.calculator', processId: 'trade-calculator', status: 'collecting', known: { direction: 'long' }, missing: ['stopLoss'] } }
+  });
+  assert.ok(text.indexOf('"known"') > -1);
+  assert.ok(text.indexOf('direction') > -1);
+});
+
 // --- Prompt-injection boundary: malicious content inside a domain's own notes, or inside the ---
 // --- user's own real Strategy/Pattern/Session/Trade data, is rendered as literal text data - ---
 // --- buildProductContextText() never interprets, executes, or strips it, it only ever quotes it ---

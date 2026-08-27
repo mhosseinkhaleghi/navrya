@@ -76,6 +76,17 @@
     return current;
   }
 
+  // Journey H1 (stale-action protection, brief sections 27-28): captures the "known-good" real UI
+  // state (which surface, which step) this workflow is about to drive. processId isn't resolved
+  // yet for a pattern.create-shaped action at this exact synchronous point (see start()'s own
+  // comment on pendingOpen) - capture is deferred to applyKnownFields()'s first call, right after
+  // pendingOpen resolves and workflow.processId is finally the real one, never the placeholder
+  // processIdFor(actionId) guess.
+  function captureUiSnapshot(workflow) {
+    var guard = window.TradeJournalAIUiRevisionGuard;
+    workflow.uiSnapshot = guard && typeof guard.capture === 'function' ? guard.capture(workflow.processId) : null;
+  }
+
   // Applies each {path, value} pair to the real, already-open UI via
   // TradeJournalAIProcessRegistry.applyValue() - live sync, no manual "Apply" click, unlike the
   // existing screenshot-review suggestions[] flow which stays a deliberate manual-approval UX for
@@ -101,6 +112,26 @@
       if (current !== workflow) return current;
       if (openResult && typeof openResult === 'object' && openResult.processId) workflow.processId = openResult.processId;
       workflow.pendingOpen = null;
+    }
+
+    // Journey H1 (stale-action protection): the first call for this workflow captures the
+    // known-good real UI state now that processId is finally the real one (see start()'s own
+    // comment on why this can't happen synchronously there). Every later call checks whether the
+    // real UI has since moved out from under it - closed, a different step from a manual
+    // Back/Next/Skip, or a different foreground surface now topmost - BEFORE this turn's fields
+    // ever touch it.
+    var revisionGuard = window.TradeJournalAIUiRevisionGuard;
+    if (!workflow.uiSnapshot) {
+      captureUiSnapshot(workflow);
+    } else if (revisionGuard && typeof revisionGuard.hasDiverged === 'function' && revisionGuard.hasDiverged(workflow.uiSnapshot)) {
+      // Resurrecting this workflow's stale assumptions onto whatever the user has since moved to
+      // by hand would be exactly the "AI restores an overridden value" bug this guard exists to
+      // prevent (brief sections 27, 49-51: manual edits/navigation are always authoritative).
+      // Clear it - a later turn re-evaluates fresh against whatever the real UI actually shows
+      // next, the same way chat-dock-core.js's own activeProcess resolution already fills an open
+      // process it didn't itself start.
+      if (current === workflow) current = null;
+      return null;
     }
 
     var appliedAny = false;
@@ -146,6 +177,13 @@
     // re-registration) actually happen before any auto-submit decision reads real, current state,
     // rather than deciding to submit a beat too early against stale data.
     if (appliedAny) await new Promise(function (resolve) { setTimeout(resolve, 0); });
+    if (current !== workflow) return current;
+
+    // Journey H1: re-baseline the known-good snapshot AFTER this turn's own field application (and
+    // any resulting real step-advance it triggered via ai-process-registry.js's own
+    // stepForPath/goToStep) has settled - so the guard above never mistakes THIS engine's own
+    // legitimate step-follow for a human's independent action on the very next turn.
+    if (appliedAny) captureUiSnapshot(workflow);
 
     // Any turn re-evaluates from scratch - a previously scheduled submit must never fire against
     // whatever is current by the time it would run; if the set is still complete after this turn,

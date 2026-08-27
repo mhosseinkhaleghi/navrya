@@ -17,6 +17,50 @@
     [/^#community/, ['community']],
     [/^#account/, ['account']]
   ];
+
+  // Journey H1 closure: same exclusion set chat-dock-core.js's own modelFacingAllowlist() already
+  // filters activeProcess.allowlist through, kept here as its own small copy (this module has no
+  // shared import mechanism with chat-dock-core.js - both are independent window-global IIFEs) -
+  // these are fields ONLY this app's own orchestration code ever writes directly
+  // (sourceSessionId/sourceScenarioId, pendingEmotionSignal, riskOverride), never something a real
+  // form field or a model-facing "what can I fill/ask about" list should ever name.
+  var SURFACE_INTERNAL_ONLY_FIELDS = { sourceSessionId: true, sourceScenarioId: true, pendingEmotionSignal: true, riskOverride: true };
+
+  // Journey H1 closure (brief section 1, "current-form question awareness"): the smallest
+  // sufficient descriptor of what real surface/step is on screen right now, for a question like
+  // "what does this mean?" to be answered correctly - domain/page, processId, step, and the
+  // CURRENT STEP's own field PATHS only (never values, never the whole record). Reuses
+  // TradeJournalAISurfaceContext (page-aware-voice.md) for page/processId/step/layer, and
+  // activeOpenProcess()'s own (now-exposed) stepForPath to narrow the process's full allowlist
+  // down to just the fields actually visible on the current step - a non-stepped process (no
+  // stepForPath declared) simply keeps its whole allowlist, exactly as activeProcess.allowlist
+  // already sends today for an ordinary continuing turn. Field paths (never values) were already
+  // an accepted-safe wire shape before this change (see activeProcess.allowlist, sent on every
+  // ordinary continuing turn) - the two things this adds are (1) step-scoping instead of the
+  // whole allowlist, and (2) availability even on an explicit Explain turn, when
+  // chat-dock-core.js deliberately nulls its own local activeProcess/availableActions view (never
+  // the real registry) so the model doesn't mistake a question for a field-extraction turn.
+  function currentSurfaceFor() {
+    var surfaceContext = window.TradeJournalAISurfaceContext;
+    var procRegistry = window.TradeJournalAIProcessRegistry;
+    if (!surfaceContext || !procRegistry) return null;
+    var snap;
+    try { snap = surfaceContext.snapshot(); } catch (_) { return null; }
+    if (!snap || !snap.processId) return null;
+    var topmost;
+    try { topmost = procRegistry.activeOpenProcess(); } catch (_) { topmost = null; }
+    // Defensive identity check - surfaceContext.snapshot() derives processId from this exact same
+    // activeOpenProcess() call, so these already agree by construction; re-checking costs nothing
+    // and means a future refactor of either module fails safe (no fields) rather than silently
+    // attaching one process's field list to a different process's id.
+    if (!topmost || topmost.id !== snap.processId) return null;
+    var rawFields = (topmost.allowlist || []).filter(function (p) { return !SURFACE_INTERNAL_ONLY_FIELDS[p]; });
+    var fields = typeof topmost.stepForPath === 'function'
+      ? rawFields.filter(function (p) { var s = topmost.stepForPath(p); return s === null || s === undefined || s === snap.step; })
+      : rawFields;
+    return { page: snap.page || null, processId: snap.processId, layer: snap.layer || null, step: snap.step === undefined ? null : snap.step, visibleFields: fields };
+  }
+
   function domainsForHash(hash) {
     for (var i = 0; i < HASH_DOMAINS.length; i++) {
       if (HASH_DOMAINS[i][0].test(hash || '')) return HASH_DOMAINS[i][1];
@@ -93,6 +137,28 @@
       productKnowledge.push(domain);
     });
 
+    // Journey H1 closure: a Psychology-domain workflow's own `known` accumulates real intake
+    // answers (age, financial context, first-big-loss-reaction, family-transparency answers, ...)
+    // exactly as the user actually states them - ai-workflow-engine.js's applyKnownFields() is
+    // completely generic across every domain, so `psychology.intake.start` (Journey H1) making
+    // Intake action-startable/continuable means its workflow accumulates real answers in `known`
+    // the identical way trade.calculator's own workflow accumulates entryPrice/stopLoss. Every
+    // OTHER domain's workflow.known is already treated as safe to summarize into this generic,
+    // wire-sent liveContext - Psychology answers are a materially different sensitivity class, and
+    // this app's own hard invariant (ai-user-memory.js's header comment) is that
+    // getRelevantPsychologyContext() is the ONLY function ever allowed to surface Mental Health
+    // data, and only in its own minimized {currentStress,source,recordedAt} shape. Strip `known`
+    // (and, defensively, `missing`) from a Psychology-domain workflow before it ever reaches
+    // liveContext - the model still knows Intake is open (processId/actionId/status), never a
+    // single actual answer. Found and fixed while verifying this exact guarantee for this closure
+    // pass - see tests/ai-context-builder.test.mjs's own "psychology workflow.known never reaches
+    // the wire" coverage.
+    var rawWorkflow = currentContext.workflow || null;
+    var workflow = rawWorkflow;
+    if (rawWorkflow && (String(rawWorkflow.processId || '').indexOf('mh-') === 0 || String(rawWorkflow.actionId || '').indexOf('psychology.') === 0)) {
+      workflow = { workflowId: rawWorkflow.workflowId || null, actionId: rawWorkflow.actionId || null, processId: rawWorkflow.processId || null, status: rawWorkflow.status || null };
+    }
+
     var liveContext = {
       activeId: activeId || null,
       hash: hash || null,
@@ -102,7 +168,10 @@
       strategyId: resolvedStrategyId || null,
       patternId: resolvedPatternId || null,
       accountId: resolvedAccountId || null,
-      workflow: currentContext.workflow || null
+      workflow: workflow,
+      // Journey H1 closure: see currentSurfaceFor()'s own header comment - null when nothing is
+      // open (the common case for most turns), never padding a turn that doesn't need it.
+      currentSurface: currentSurfaceFor()
     };
 
     // Structured, on-demand user memory (LAYER B) - only ever pulled for a domain that is

@@ -543,7 +543,7 @@ export function mountCharacterApp(character) {
         //    card or the real, explicit override path - the model's own good intentions silently
         //    pre-empt NAVRYA's real policy layer. The fix is the same kind as (1): tell the model
         //    plainly that extraction and policy are different jobs, and this one is never its job.
-        description: 'Plan and create a brand-new Trade (direction, entry, stop, target, risk) - this is the ONLY action that creates a Trade. "Open this trade"/"mark it open" about an EXISTING, already-visible Hunting Trade is a different action (trade.open, a lifecycle status change) - never this one; use this one whenever no specific existing Trade is already in view. linkedStrategyId/linkedPatternIds: pass the Strategy/Pattern NAME exactly as the user said it (e.g. "Conservative Scalper") - NAVRYA resolves the real id from that name itself; never invent or omit it for lacking a real id. IMPORTANT - riskPercent (and every other field): extraction and safety policy are two different, separate jobs, and enforcing policy is never your job here, even once. Put the exact riskPercent number the user literally typed into the suggestion/fields array on every single turn they state one, with zero exceptions - including a message that also mentions anger, recent losses, or stress in the same breath. NAVRYA itself runs a real, deterministic check on that number after you extract it and will pause for explicit confirmation if it conflicts with anything - that downstream check is the ONLY thing allowed to hold the value back, and it can only do that if you hand the number over first. Silently re-suggesting the OLD value, or leaving the field out of your suggestion, is a bug: it skips NAVRYA own real safety check entirely and is far less safe than extracting the number and letting NAVRYA evaluate it. You may still say in your own reply that you are concerned - just also extract the number.',
+        description: 'Plan and create a brand-new Trade (direction, entry, stop, target, risk) via the quick single-screen Calculator - this is the DEFAULT action for creating a Trade from a plain description. "Log a trade"/"open the trade log"/a request for the fuller multi-step log (concept tags, chart note, screenshots) is a DIFFERENT action (trade.wizard) - use that one instead when the user\'s own wording asks for logging/the wizard specifically, never this one. "Open this trade"/"mark it open" about an EXISTING, already-visible Hunting Trade is a third, different action (trade.open, a lifecycle status change) - never this one; use this one whenever no specific existing Trade is already in view and the user has not asked for the log wizard by name. linkedStrategyId/linkedPatternIds: pass the Strategy/Pattern NAME exactly as the user said it (e.g. "Conservative Scalper") - NAVRYA resolves the real id from that name itself; never invent or omit it for lacking a real id. IMPORTANT - riskPercent (and every other field): extraction and safety policy are two different, separate jobs, and enforcing policy is never your job here, even once. Put the exact riskPercent number the user literally typed into the suggestion/fields array on every single turn they state one, with zero exceptions - including a message that also mentions anger, recent losses, or stress in the same breath. NAVRYA itself runs a real, deterministic check on that number after you extract it and will pause for explicit confirmation if it conflicts with anything - that downstream check is the ONLY thing allowed to hold the value back, and it can only do that if you hand the number over first. Silently re-suggesting the OLD value, or leaving the field out of your suggestion, is a bug: it skips NAVRYA own real safety check entirely and is far less safe than extracting the number and letting NAVRYA evaluate it. You may still say in your own reply that you are concerned - just also extract the number.',
         aliases: ['take a long', 'take a short', 'go long', 'go short', 'open a trade', 'start a trade', 'size a trade', 'plan a trade', 'open a position', 'open a long position', 'open a short position'],
         // instrument is required, but a Trade sourced from an active Session is prefilled (and
         // then locked in the UI - see tradeCalculatorModal.jsx) from that session's own real
@@ -609,6 +609,44 @@ export function mountCharacterApp(character) {
         // tradejournal:trades-changed event, so the Open Positions panel refreshes on its own -
         // this only navigates the user to see the trade they just described, the same "land in
         // the result" precedent session.create's own resultContext already set.
+        resultContext: (trade) => { if (trade && trade.id && window.TradeJournalNavryaTradeDetails) window.TradeJournalNavryaTradeDetails.open(trade.id); }
+      });
+    }
+
+    // Journey H1: closes a confirmed gap - tradeLogModal.jsx's own real 'trade-wizard' process
+    // registration (allowlist + live field-fill) has existed since Journey B, but had no submit()
+    // and no Action Registry entry at all, so Voice could never OPEN the real "Log a trade" wizard
+    // (dashboardView.jsx's own real button, t('logTrade') - a fuller, multi-step logging flow with
+    // concept tags/chart note/emotions/screenshots) or complete it, only fill fields into one a
+    // human had already opened by hand. Deliberately a SEPARATE action from trade.calculator, not
+    // a merged/ambiguous one - both are real, distinct, human-clickable entry points
+    // (dashboardView.jsx's "Log a trade" vs "Calculator" buttons) for the same underlying "create a
+    // Trade" outcome; aliases below are narrowly scoped to logging/wizard-specific phrasing so the
+    // two never compete for the same plain "go long"/"plan a trade" utterance (see
+    // trade.calculator's own updated description above).
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'trade.wizard', domain: 'trades', riskLevel: 'medium',
+        description: 'Open the real, full multi-step "Log a trade" wizard (status, timeframes/trends, concept tags + chart note, emotions, screenshots) and log a brand-new Trade through it - use this ONLY when the user\'s own wording explicitly asks to "log" a trade, open the trade log/wizard, or otherwise wants the fuller step-by-step flow rather than a quick calculator. For a plain "go long"/"plan a trade"/"size a trade" request with no mention of logging/the wizard, use trade.calculator instead. accountId/instrument live in a persistent header shown on every step, not one specific step.',
+        aliases: ['log a trade', 'log this trade', 'open the trade log', 'open the log wizard', 'start the trade wizard'],
+        requiredFields: ['direction', 'instrument'],
+        optionalFields: (window.TradeJournalTradeTypes && window.TradeJournalTradeTypes.tradeWizardPaths ? window.TradeJournalTradeTypes.tradeWizardPaths : []).filter((f) => f !== 'direction' && f !== 'instrument'),
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var seed = {};
+          var entities = context && context.activeEntities;
+          if (entities && entities.sessionId) seed.source = { sessionId: entities.sessionId };
+          window.TradeJournalNavryaTradeLog.open(seed, {});
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('trade-wizard').open,
+            () => resolve({ processId: 'trade-wizard' }),
+            () => resolve(null) // the real wizard never actually mounted/registered (unexpected)
+          );
+        }),
+        // registry.submit() delegates to tradeLogModal.jsx's own finish() (see that registration's
+        // own comment) - the exact same real save path the wizard's own "Register" button calls.
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('trade-wizard'),
         resultContext: (trade) => { if (trade && trade.id && window.TradeJournalNavryaTradeDetails) window.TradeJournalNavryaTradeDetails.open(trade.id); }
       });
     }
@@ -1508,43 +1546,54 @@ export function mountCharacterApp(character) {
         requiredFields: ['confirmPublish'], optionalFields: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount'],
         normalizeField: normalizeGateField('confirmPublish'),
         available: (context) => !!(resolveActivePatternId(context) || resolveActiveStrategyId(context)),
+        // Journey H1: previously routed through the orphaned, pre-NAVRYA legacy pages
+        // (window.TradeJournalPatternRegistry/StrategyEducation, pattern-registry.js/
+        // strategy-education.js) instead of the LIVE Strategies Hub's own Share tab
+        // (strategiesHubView.jsx) - found via real code tracing while building page-aware Voice:
+        // panel-system.js's own showCustom() (what those legacy pages' layer.show() calls into)
+        // removes the previous panelPage from the DOM but never unmounts its React root (unlike
+        // the real render() path, which does), so invoking this action while the live Hub was
+        // showing left it mounted-but-detached and showed the user the wrong, old-look page. The
+        // live Hub already has its own real, working publish form (PublishForm, inside ShareTab) -
+        // it simply had never been wired into the AI Process Registry before now (see
+        // strategiesHubView.jsx's own 'strategy-hub-publish-flow' registration).
         open: (context) => new Promise((resolve) => {
           var patternId = resolveActivePatternId(context);
           var strategyId = !patternId ? resolveActiveStrategyId(context) : null;
           if (!patternId && !strategyId) { resolve(null); return; }
-          // The Pattern/Strategy Sharing hooks (TradeJournalNavryaPatternSharingHub/
-          // ...StrategySharingHub) only exist while the real Sharing sub-tab is mounted - and
           // resolveActivePatternId/resolveActiveStrategyId only resolve while the user is on a
-          // DIFFERENT tab (pattern-editor-{id}/strategy-editor-{id} aren't registered while their
-          // own Sharing tab is showing). Navigate to the Sharing tab first, using the already-
-          // resolved id (captured above, before this navigation moves us off the tab that
-          // resolved it) - mirrors patternRegistryView.jsx's own navigateProfile(id, 'sharing')/
-          // strategyEducationView.jsx's navigateDetail(id, 'sharing'), the same calls their own
-          // "Sharing" tab buttons make.
-          if (patternId) {
-            history.replaceState(null, '', '#strategies/patterns/' + encodeURIComponent(patternId) + '/sharing');
-            if (window.TradeJournalPatternRegistry) window.TradeJournalPatternRegistry.render();
-          } else if (window.TradeJournalStrategyEducation) {
-            window.TradeJournalStrategyEducation.openDetail(strategyId, 'sharing');
-          }
-          var hookName = patternId ? 'TradeJournalNavryaPatternSharingHub' : 'TradeJournalNavryaStrategySharingHub';
+          // DIFFERENT DetailView tab (pattern-editor-{id}/strategy-editor-{id} aren't registered
+          // while their own Share tab is showing) - capture the id now, before navigating away
+          // from the tab that resolved it. Forcing activeId through the real render() path (only
+          // when it isn't already 'strategies') is the same self-healing step pattern.create/
+          // strategy.create already take, and would also unmount any already-orphaned legacy root
+          // left over from before this fix.
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          var registry = window.TradeJournalAIProcessRegistry;
           pollFor(
-            () => window[hookName],
-            (hub) => {
-              hub.openFlow();
-              var registry = window.TradeJournalAIProcessRegistry;
+            () => window.TradeJournalNavryaPatternHub || window.TradeJournalNavryaStrategyHub,
+            () => {
+              if (patternId) window.TradeJournalNavryaPatternHub.openExisting(patternId, 'share');
+              else window.TradeJournalNavryaStrategyHub.openExisting(strategyId, 'share');
               pollFor(
-                () => registry && registry.query('publish-flow').open,
-                () => resolve({ processId: 'publish-flow' }),
-                () => resolve(null)
+                () => window.TradeJournalNavryaShareTabHub,
+                (shareHub) => {
+                  shareHub.openPublishForm();
+                  pollFor(
+                    () => registry && registry.query('strategy-hub-publish-flow').open,
+                    () => resolve({ processId: 'strategy-hub-publish-flow' }),
+                    () => resolve(null) // the real publish form never actually mounted/registered (unexpected)
+                  );
+                },
+                () => resolve(null) // the Share tab never mounted (unexpected)
               );
             },
-            () => resolve(null)
+            () => resolve(null) // the Strategies Hub never mounted (unexpected)
           );
         }),
         submit: (known) => {
           if (known.confirmPublish !== true && known.confirmPublish !== 'true') return undefined;
-          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('publish-flow');
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('strategy-hub-publish-flow');
         },
         resultContext: () => {}
       });
@@ -1720,6 +1769,38 @@ export function mountCharacterApp(character) {
           );
         }),
         submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('account-profile-role'),
+        resultContext: () => {}
+      });
+
+      // Journey H1: closes a confirmed gap - the real Psychology Intake wizard
+      // (mentalHealthIntakeModal.jsx, 13 steps) has always had a real 'mh-intake' Process Registry
+      // registration (so an already-open intake can be filled), but NO Action Registry entry
+      // existed to let Voice open it in the first place; the only prior path was the Companion's
+      // own proactive "next best step" nudge (ai-journey-steps.js's 'intake' step,
+      // journeySteps.registerExecutor above), never something the user could ask for by name.
+      // Deliberately open-only and entityAlreadyPersisted (mirrors settings.trading.update's own
+      // shape exactly): this action NEVER fabricates or infers a single answer - it only navigates
+      // there, exactly like its own description tells the model. Every subsequent field fill
+      // still flows through the SAME, already-privacy-scoped 'mh-intake' allowlist
+      // (mental-health.types.js's intakePaths) a human-opened intake already uses - no new data
+      // exposure, no change to ai-user-memory.js's own minimized getRelevantPsychologyContext().
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'psychology.intake.start', domain: 'psychology', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Open the real Psychology Intake wizard so the user can begin/resume it. This action ONLY navigates there - never fabricate, infer, or pre-fill a single answer on this turn; every intake field is filled later, only from what the user explicitly states themselves, turn by turn, exactly like typing it into the real form would be.',
+        aliases: ['start my intake', 'start the psychology intake', 'begin my intake', 'open psychology intake', 'take the intake'],
+        requiredFields: [], optionalFields: [],
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (!window.TradeJournalMentalHealthIntake) { resolve(null); return; }
+          window.TradeJournalMentalHealthIntake.open();
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('mh-intake').open,
+            () => resolve({ processId: 'mh-intake' }),
+            () => resolve(null) // the real intake modal never actually mounted/registered (unexpected)
+          );
+        }),
+        submit: () => undefined,
         resultContext: () => {}
       });
 

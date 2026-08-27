@@ -7,6 +7,8 @@ import { Select } from '../public/pages/shared/navrya/components/forms/Select.js
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { useAssistantMotion } from '../public/pages/shared/navrya/components/assistant/motion.js';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
 
@@ -240,6 +242,16 @@ function computeSolved(f) {
 // ============================================================================
 function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
   const long = trade.dir === 'long';
+  // Journey H1: magic-fill animation for this step's own AI-fillable fields (trade.types.js's
+  // tradeWizardPaths). Step 1 owns direction/marginMode/entryPrice/stopLoss/riskPercent/
+  // riskAmount/leverage/positionSize - see ai-process-registry.js's stepForPath group for
+  // 'trade-wizard', which is why the wizard actually lands on THIS step for any of them.
+  const dirFilled = useAiFieldFill('trade-wizard', 'direction');
+  const marginFilled = useAiFieldFill('trade-wizard', 'marginMode');
+  const entryFilled = useAiFieldFill('trade-wizard', 'entryPrice');
+  const stopFilled = useAiFieldFill('trade-wizard', 'stopLoss');
+  const riskPercentFilled = useAiFieldFill('trade-wizard', 'riskPercent');
+  const leverageFilled = useAiFieldFill('trade-wizard', 'leverage');
   const bad = solved.valid && solved.r.potentialProfit !== null && solved.r.potentialProfit !== undefined && solved.r.potentialProfit < 0;
   const tiles = [
     { label: t('positionSize'), value: solved.valid && solved.r.positionSize !== null && solved.r.positionSize !== undefined ? fmtMoney(i18n, solved.r.positionSize, 0) + ' USD' : '—' },
@@ -274,39 +286,47 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
           </span>
         </button>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <MetricLabel>{t('direction')}</MetricLabel>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <PillButton selected={long} onClick={() => dirManual('long')} tone="success"><Icon name="trending-up" size={16} />{t('long')}</PillButton>
-            <PillButton selected={!long} onClick={() => dirManual('short')} tone="danger"><Icon name="trending-down" size={16} />{t('short')}</PillButton>
+        <AiMagicFill active={dirFilled}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <MetricLabel>{t('direction')}</MetricLabel>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <PillButton selected={long} onClick={() => dirManual('long')} tone="success"><Icon name="trending-up" size={16} />{t('long')}</PillButton>
+              <PillButton selected={!long} onClick={() => dirManual('short')} tone="danger"><Icon name="trending-down" size={16} />{t('short')}</PillButton>
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <MetricLabel>{t('marginMode')}</MetricLabel>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <PillButton selected={trade.margin === 'isolated'} onClick={() => setField('margin', 'isolated')}>{t('isolated')}</PillButton>
-            <PillButton selected={trade.margin === 'cross'} onClick={() => setField('margin', 'cross')}>{t('cross')}</PillButton>
+        </AiMagicFill>
+        <AiMagicFill active={marginFilled}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <MetricLabel>{t('marginMode')}</MetricLabel>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <PillButton selected={trade.margin === 'isolated'} onClick={() => setField('margin', 'isolated')}>{t('isolated')}</PillButton>
+              <PillButton selected={trade.margin === 'cross'} onClick={() => setField('margin', 'cross')}>{t('cross')}</PillButton>
+            </div>
           </div>
-        </div>
+        </AiMagicFill>
       </div>
 
       <div style={{ flex: '1 1 330px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
         <SectionLabel>{t('logTheNumbers')}</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('entryPrice')}</MetricLabel><NumField value={trade.entry} onChange={(v) => setField('entry', v)} placeholder="0.00" unit="usd" /></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('stopLoss')}</MetricLabel><NumField value={trade.stop} onChange={(v) => setField('stop', v)} placeholder="0.00" unit="usd" /></div>
+          <AiMagicFill active={entryFilled}><div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('entryPrice')}</MetricLabel><NumField value={trade.entry} onChange={(v) => setField('entry', v)} placeholder="0.00" unit="usd" /></div></AiMagicFill>
+          <AiMagicFill active={stopFilled}><div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('stopLoss')}</MetricLabel><NumField value={trade.stop} onChange={(v) => setField('stop', v)} placeholder="0.00" unit="usd" /></div></AiMagicFill>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('takeProfit')}</MetricLabel><NumField value={trade.tp} onChange={(v) => setField('tp', v)} placeholder="0.00" unit="usd" /></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            <MetricLabel>{t('riskPercent')}</MetricLabel>
-            <NumField
-              value={trade.riskPercent || (solved.valid && solved.r.riskPercent !== null && solved.r.riskPercent !== undefined ? plainNum(solved.r.riskPercent, 2) : '')}
-              onChange={(v) => setField('riskPercent', v)} placeholder="1" unit="%" computed={!trade.riskPercent}
-            />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            <MetricLabel>{t('leverage')}</MetricLabel>
-            <NumField value={trade.leverage} onChange={(v) => setField('leverage', v)} placeholder="10" unit="x" />
-          </div>
+          <AiMagicFill active={riskPercentFilled}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <MetricLabel>{t('riskPercent')}</MetricLabel>
+              <NumField
+                value={trade.riskPercent || (solved.valid && solved.r.riskPercent !== null && solved.r.riskPercent !== undefined ? plainNum(solved.r.riskPercent, 2) : '')}
+                onChange={(v) => setField('riskPercent', v)} placeholder="1" unit="%" computed={!trade.riskPercent}
+              />
+            </div>
+          </AiMagicFill>
+          <AiMagicFill active={leverageFilled}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <MetricLabel>{t('leverage')}</MetricLabel>
+              <NumField value={trade.leverage} onChange={(v) => setField('leverage', v)} placeholder="10" unit="x" />
+            </div>
+          </AiMagicFill>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('accountBalance')}</MetricLabel><NumField value={trade.balance} onChange={(v) => setField('balance', v)} placeholder="0" unit="usd" /></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12, paddingTop: 4, borderTop: '1px solid var(--border-hairline)' }}>
@@ -352,26 +372,31 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
 // Step 2 - Timeframes
 // ============================================================================
 function StepTimeframes({ t, types, trade, setField, setTrend }) {
+  // Journey H1: this whole step maps to 'trade-wizard's stepForPath step 2 - primaryTimeframe is
+  // the only tradeWizardPaths field on it (see ai-process-registry.js's stepForPath groups).
+  const timeframeFilled = useAiFieldFill('trade-wizard', 'primaryTimeframe');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
-        <SectionLabel>{t('logTimeframeTraded')}</SectionLabel>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
-          {(types.timeframes || []).map((tf) => (
-            <button
-              key={tf} type="button" onClick={() => setField('primaryTimeframe', tf)} className="navrya-tabular"
-              style={{
-                flex: '1 1 100px', minWidth: 0, height: 52, borderRadius: 8, cursor: 'pointer',
-                border: trade.primaryTimeframe === tf ? '2px solid var(--char-accent)' : '1px solid var(--divider-gold)',
-                background: trade.primaryTimeframe === tf ? 'var(--char-active-surface)' : 'rgba(11,20,21,.5)',
-                color: trade.primaryTimeframe === tf ? 'var(--char-accent)' : 'var(--text-muted)',
-                font: '600 19px/22px var(--font-display)', letterSpacing: '.06em',
-                boxShadow: trade.primaryTimeframe === tf ? '0 0 16px var(--char-glow)' : 'none'
-              }}
-            >{tf}</button>
-          ))}
+      <AiMagicFill active={timeframeFilled}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
+          <SectionLabel>{t('logTimeframeTraded')}</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
+            {(types.timeframes || []).map((tf) => (
+              <button
+                key={tf} type="button" onClick={() => setField('primaryTimeframe', tf)} className="navrya-tabular"
+                style={{
+                  flex: '1 1 100px', minWidth: 0, height: 52, borderRadius: 8, cursor: 'pointer',
+                  border: trade.primaryTimeframe === tf ? '2px solid var(--char-accent)' : '1px solid var(--divider-gold)',
+                  background: trade.primaryTimeframe === tf ? 'var(--char-active-surface)' : 'rgba(11,20,21,.5)',
+                  color: trade.primaryTimeframe === tf ? 'var(--char-accent)' : 'var(--text-muted)',
+                  font: '600 19px/22px var(--font-display)', letterSpacing: '.06em',
+                  boxShadow: trade.primaryTimeframe === tf ? '0 0 16px var(--char-glow)' : 'none'
+                }}
+              >{tf}</button>
+            ))}
+          </div>
         </div>
-      </div>
+      </AiMagicFill>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
           <SectionLabel>{t('logHowEachReads')}</SectionLabel>
@@ -412,23 +437,29 @@ function StepTimeframes({ t, types, trade, setField, setTrend }) {
 // Step 3 - What you saw
 // ============================================================================
 function StepSeen({ t, types, trade, toggleConcept, patterns, togglePattern, patternDraft, setPatternDraft, onAddPattern, setField }) {
+  // Journey H1: this step maps to 'trade-wizard's stepForPath step 3 - conceptTags/chartNote are
+  // its only tradeWizardPaths fields (linkedPatternIds isn't AI-fillable today).
+  const conceptTagsFilled = useAiFieldFill('trade-wizard', 'conceptTags');
+  const chartNoteFilled = useAiFieldFill('trade-wizard', 'chartNote');
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'stretch' }}>
       <div style={{ flex: '1.4 1 460px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
           <SectionLabel>{t('conceptTags')}</SectionLabel>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
-          {(types.concepts || []).map((tag) => {
-            const sel = trade.conceptTags.indexOf(tag) > -1;
-            return (
-              <button
-                key={tag} type="button" onClick={() => toggleConcept(tag)}
-                style={{ minHeight: 40, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid ' + (sel ? 'var(--char-accent)' : 'var(--divider-gold)'), background: sel ? 'var(--char-active-surface)' : 'rgba(11,20,21,.5)', color: sel ? 'var(--char-accent)' : 'var(--text-primary)' }}
-              >{sel && <Icon name="check" size={13} />}<span style={{ font: '500 13px/17px var(--font-ui)' }}>{tag}</span></button>
-            );
-          })}
-        </div>
+        <AiMagicFill active={conceptTagsFilled}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
+            {(types.concepts || []).map((tag) => {
+              const sel = trade.conceptTags.indexOf(tag) > -1;
+              return (
+                <button
+                  key={tag} type="button" onClick={() => toggleConcept(tag)}
+                  style={{ minHeight: 40, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid ' + (sel ? 'var(--char-accent)' : 'var(--divider-gold)'), background: sel ? 'var(--char-active-surface)' : 'rgba(11,20,21,.5)', color: sel ? 'var(--char-accent)' : 'var(--text-primary)' }}
+                >{sel && <Icon name="check" size={13} />}<span style={{ font: '500 13px/17px var(--font-ui)' }}>{tag}</span></button>
+              );
+            })}
+          </div>
+        </AiMagicFill>
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, paddingTop: 12, borderTop: '1px solid var(--border-hairline)' }}>
           <SectionLabel>{t('logYourSavedPatterns')}</SectionLabel>
@@ -460,14 +491,16 @@ function StepSeen({ t, types, trade, toggleConcept, patterns, togglePattern, pat
           <Button variant="secondary" icon="plus" onClick={onAddPattern}>{t('logSave')}</Button>
         </div>
       </div>
-      <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
-        <SectionLabel>{t('logInYourWords')}</SectionLabel>
-        <textarea
-          dir="auto" value={trade.chartNote} onChange={(e) => setField('chartNote', e.target.value)} placeholder={t('chartNotePlaceholder')}
-          style={{ flex: 1, minHeight: 240, boxSizing: 'border-box', padding: 14, borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', lineHeight: '22px', resize: 'none', outline: 'none' }}
-        />
-        <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('logFutureSelfTrust')}</span>
-      </div>
+      <AiMagicFill active={chartNoteFilled}>
+        <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
+          <SectionLabel>{t('logInYourWords')}</SectionLabel>
+          <textarea
+            dir="auto" value={trade.chartNote} onChange={(e) => setField('chartNote', e.target.value)} placeholder={t('chartNotePlaceholder')}
+            style={{ flex: 1, minHeight: 240, boxSizing: 'border-box', padding: 14, borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', lineHeight: '22px', resize: 'none', outline: 'none' }}
+          />
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('logFutureSelfTrust')}</span>
+        </div>
+      </AiMagicFill>
     </div>
   );
 }
@@ -752,6 +785,12 @@ function TradeLogModal({ seed, options, onClose }) {
   const trendRequestedRef = React.useRef(false);
   const stepRef = React.useRef(step);
   stepRef.current = step;
+  // Journey H1: finish() (defined below) closes over this render's own instrument/selectedStatus/
+  // accountId/etc - the registration effect below only re-runs when [step] changes, so capturing
+  // finish() directly inside it would be exactly the ScenarioEditor-class stale-closure bug this
+  // codebase already fixed elsewhere (publishFlowModal.jsx's own submitRef.current = submit
+  // convention). Re-assigned every render instead (below, right after finish() is (re)defined).
+  const submitRef = React.useRef(null);
 
   const solved = computeSolved({
     entry: trade.entry, stop: trade.stop, tp: trade.tp, dir: trade.dir, margin: trade.margin,
@@ -796,14 +835,37 @@ function TradeLogModal({ seed, options, onClose }) {
 
   // AI process registry - the global assistant dock can suggest values into this open wizard,
   // same allowlist/applyValue contract trade-ui.js's own openWizard() registers.
+  // Journey H1: field -> real wizard step map. accountId/instrument are deliberately left out of
+  // every group - they live in the persistent "Session bar" rendered above the per-step body on
+  // EVERY step (see this component's own JSX), not inside any one step, so stepForPath() must
+  // return null for them (apply wherever the wizard already is, never force a step change).
+  // Step 4 (emotions)/Step 5 (screenshots) have no tradeWizardPaths fields at all - dominant
+  // emotions/stress/note are a SEPARATE allowlist (trade.types.js's emotionLogPaths), filled
+  // through the trade-emotion-log process/trade.emotion.log action instead.
+  const wizardStepMap = window.TradeJournalAIWizardStepMap ? window.TradeJournalAIWizardStepMap.forGroups({
+    1: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'riskPercent', 'riskAmount', 'leverage', 'positionSize'],
+    2: ['primaryTimeframe'],
+    3: ['conceptTags', 'chartNote']
+  }) : null;
+
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     let mounted = true;
     registry.register('trade-wizard', {
+      layer: 'foreground',
       allowlist: (types.tradeWizardPaths || []).slice(),
       isOpen: () => mounted,
       activeStep: () => stepRef.current,
+      stepForPath: wizardStepMap ? wizardStepMap.stepForPath : null,
+      goToStep: goTo,
+      // Journey H1: closes the confirmed gap - this process previously had no submit at all, so
+      // an AI-driven "log a trade" could fill the wizard but never complete it. Delegates through
+      // submitRef (assigned fresh every render, right after finish() itself is defined below) so
+      // this always calls the LATEST finish() closure - not a stale one from whatever render this
+      // effect (deps [step]) last ran in - the same real save path the "Register" button's own
+      // onClick already calls.
+      submit: () => submitRef.current && submitRef.current(),
       applyValue: (path, value) => {
         if ((types.tradeWizardPaths || []).indexOf(path) === -1) return;
         if (path === 'conceptTags') { toggleConcept(value); return; }
@@ -1053,7 +1115,12 @@ function TradeLogModal({ seed, options, onClose }) {
     }
     const filesToUpload = shots.map((s) => s.file);
     const promise = filesToUpload.length ? tradeStore.addScreenshots(saved.id, filesToUpload) : Promise.resolve(saved);
-    promise.then((value) => {
+    // Journey H1: return the chain (previously fire-and-forget, its result discarded by the one
+    // existing caller, goNext()) so ai-process-registry.js's submit() - and, through it,
+    // ai-workflow-engine.js's action.resultContext() - can receive the real saved trade once
+    // trade.wizard wires this in as its own submit. No change in behavior for the human "Register"
+    // button, which already ignored finish()'s return value.
+    return promise.then((value) => {
       const urlData = (url) => (url.indexOf('data:') === 0 ? Promise.resolve(url) : fetch(url).then((r) => r.blob()).then((blob) => new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.readAsDataURL(blob); })));
       if (!value.screenshots.length) return value;
       return Promise.all(value.screenshots.slice(0, 4).map((item) => tradeStore.screenshotUrl(item).then((url) => (url ? urlData(url) : ''))))
@@ -1075,12 +1142,17 @@ function TradeLogModal({ seed, options, onClose }) {
       setSaving(false);
       onClose();
       if (options && options.onSave) options.onSave(value);
+      return value;
     }).catch(() => {
       setSaving(false);
       const tradeUi = window.TradeJournalTradeUI;
       if (tradeUi) tradeUi.toast(t('uploadError'), 'danger');
     });
   }
+  // Re-captured every render (finish() closes over instrument/selectedStatus/accountId/etc, all
+  // of which can change after the trade-wizard registration effect above last ran) - same
+  // stale-closure-avoidance convention as publishFlowModal.jsx's own submitRef.current = submit.
+  submitRef.current = finish;
 
   function goNext() {
     if (step === 4) {

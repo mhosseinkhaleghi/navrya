@@ -5,6 +5,8 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import * as sessionsAdapter from './sessionsAdapter.js';
 import { openLogWizard } from './tradeLogModal.jsx';
 
@@ -883,6 +885,28 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
   const onDeleteRef = React.useRef(onDelete);
   onDeleteRef.current = onDelete;
 
+  // Journey H1 closure: magic-fill animation for this Scenario's own AI-fillable fields - the
+  // real, existing controlled state (onUpdate/onSetSide) stays fully authoritative; this only
+  // subscribes to the same shared TradeJournalAIFieldFillBus every other Journey H1 domain
+  // already uses. `confirmDelete` is deliberately NOT wired here - it is a synthetic, AI-only gate
+  // field with no corresponding visible control at all (the real delete icon has no confirmation
+  // UI of its own to animate - see this component's own allowlist comment above), so there is
+  // nothing to attach the shared effect to without inventing a new UI element, which this pass
+  // deliberately does not do.
+  const titleFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'title');
+  const descriptionFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'description');
+  const evidenceFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'evidence');
+  const problemFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'problem');
+  const triggerFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'trigger');
+  const positionTypeFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'positionType');
+  const entryPricesFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'entryPrices');
+  const stopLossFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'stopLoss');
+  const takeProfitFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'takeProfit');
+  // patternName itself has no visible field (it's resolution-only, see the allowlist comment
+  // above) - the real, visible effect of a successful resolution is the Pattern <select> below
+  // changing, so the animation is attached there instead of to a non-existent "patternName" field.
+  const patternNameFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'patternName');
+
   function handlePatternChange(patternId) {
     if (!patternId) { onUpdateRef.current({ pattern: null }); return; }
     const picked = registeredPatternsRef.current.find((p) => p.id === patternId);
@@ -968,17 +992,19 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       </div>
       {open && (
         <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--border-hairline)', paddingTop: 12 }}>
-          <TextField label={tr(lang, 'scenarioTitleLabel')} value={scenario.title} onCommit={(v) => onUpdate({ title: v })} />
-          <TextAreaField label={tr(lang, 'scenarioDescLabel')} value={scenario.description} placeholder={tr(lang, 'scenarioDescPlaceholder')} onCommit={(v) => onUpdate({ description: v })} />
-          <TextAreaField label={tr(lang, 'evidenceLabel')} value={scenario.evidence} placeholder={tr(lang, 'evidencePlaceholder')} onCommit={(v) => onUpdate({ evidence: v })} />
+          <AiMagicFill active={titleFilled}><TextField label={tr(lang, 'scenarioTitleLabel')} value={scenario.title} onCommit={(v) => onUpdate({ title: v })} /></AiMagicFill>
+          <AiMagicFill active={descriptionFilled}><TextAreaField label={tr(lang, 'scenarioDescLabel')} value={scenario.description} placeholder={tr(lang, 'scenarioDescPlaceholder')} onCommit={(v) => onUpdate({ description: v })} /></AiMagicFill>
+          <AiMagicFill active={evidenceFilled}><TextAreaField label={tr(lang, 'evidenceLabel')} value={scenario.evidence} placeholder={tr(lang, 'evidencePlaceholder')} onCommit={(v) => onUpdate({ evidence: v })} /></AiMagicFill>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <span style={fieldLabelStyle}>{tr(lang, 'patternTagLabel')}</span>
-            <select disabled={readOnly} value={(scenario.pattern && scenario.pattern.patternTagId) || ''} onChange={(e) => handlePatternChange(e.target.value)} style={inputStyle}>
-              <option value="">{tr(lang, 'noPatternOption')}</option>
-              {registeredPatterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </label>
+          <AiMagicFill active={patternNameFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={fieldLabelStyle}>{tr(lang, 'patternTagLabel')}</span>
+              <select disabled={readOnly} value={(scenario.pattern && scenario.pattern.patternTagId) || ''} onChange={(e) => handlePatternChange(e.target.value)} style={inputStyle}>
+                <option value="">{tr(lang, 'noPatternOption')}</option>
+                {registeredPatterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+          </AiMagicFill>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -1013,8 +1039,8 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
             )}
           </div>
 
-          <TextAreaField label={tr(lang, 'problemLabel')} value={scenario.problem} placeholder={tr(lang, 'problemPlaceholder')} onCommit={(v) => onUpdate({ problem: v })} />
-          <TextAreaField label={tr(lang, 'triggerLabel')} value={scenario.trigger} placeholder={tr(lang, 'triggerPlaceholder')} onCommit={(v) => onUpdate({ trigger: v })} />
+          <AiMagicFill active={problemFilled}><TextAreaField label={tr(lang, 'problemLabel')} value={scenario.problem} placeholder={tr(lang, 'problemPlaceholder')} onCommit={(v) => onUpdate({ problem: v })} /></AiMagicFill>
+          <AiMagicFill active={triggerFilled}><TextAreaField label={tr(lang, 'triggerLabel')} value={scenario.trigger} placeholder={tr(lang, 'triggerPlaceholder')} onCommit={(v) => onUpdate({ trigger: v })} /></AiMagicFill>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1026,32 +1052,40 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={fieldLabelStyle}>{tr(lang, 'planTitle')}</span>
-            <span style={{ display: 'flex', gap: 6 }}>
-              {[['Long', tr(lang, 'sideLong')], ['Short', tr(lang, 'sideShort')]].map(([id, label]) => (
-                <button key={id} type="button" disabled={readOnly} onClick={() => onSetSide(id)} style={{
-                  flex: 1, height: 32, borderRadius: 6, cursor: readOnly ? 'not-allowed' : 'pointer', font: 'var(--type-body)', fontSize: 11,
-                  border: '1px solid ' + (plan.positionType === id ? 'var(--char-accent)' : 'var(--border-hairline)'),
-                  background: plan.positionType === id ? 'var(--char-active-surface)' : 'transparent',
-                  color: plan.positionType === id ? 'var(--char-accent)' : 'var(--text-muted)'
-                }}>{label}</button>
-              ))}
-            </span>
+            <AiMagicFill active={positionTypeFilled}>
+              <span style={{ display: 'flex', gap: 6 }}>
+                {[['Long', tr(lang, 'sideLong')], ['Short', tr(lang, 'sideShort')]].map(([id, label]) => (
+                  <button key={id} type="button" disabled={readOnly} onClick={() => onSetSide(id)} style={{
+                    flex: 1, height: 32, borderRadius: 6, cursor: readOnly ? 'not-allowed' : 'pointer', font: 'var(--type-body)', fontSize: 11,
+                    border: '1px solid ' + (plan.positionType === id ? 'var(--char-accent)' : 'var(--border-hairline)'),
+                    background: plan.positionType === id ? 'var(--char-active-surface)' : 'transparent',
+                    color: plan.positionType === id ? 'var(--char-accent)' : 'var(--text-muted)'
+                  }}>{label}</button>
+                ))}
+              </span>
+            </AiMagicFill>
             <span style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{tr(lang, 'entryPriceLabel')}</span>
-                <input type="text" className="navrya-tabular" defaultValue={(plan.entryPrices || []).join(', ')} style={{ ...inputStyle, height: 32, fontSize: 11 }}
-                  onBlur={(e) => onUpdate({ executionPlan: { ...plan, entryPrices: e.target.value.split(',').map((x) => Number(x.trim())).filter((n) => !Number.isNaN(n)) } })} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 9, color: 'var(--danger)' }}>{tr(lang, 'stopLabel')}</span>
-                <input type="text" className="navrya-tabular" defaultValue={plan.stopLoss ?? ''} style={{ ...inputStyle, height: 32, fontSize: 11 }}
-                  onBlur={(e) => onUpdate({ executionPlan: { ...plan, stopLoss: e.target.value ? Number(e.target.value) : null } })} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 9, color: 'var(--success)' }}>{tr(lang, 'targetLabel')}</span>
-                <input type="text" className="navrya-tabular" defaultValue={plan.takeProfit ?? ''} style={{ ...inputStyle, height: 32, fontSize: 11 }}
-                  onBlur={(e) => onUpdate({ executionPlan: { ...plan, takeProfit: e.target.value ? Number(e.target.value) : null } })} />
-              </label>
+              <AiMagicFill active={entryPricesFilled}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{tr(lang, 'entryPriceLabel')}</span>
+                  <input type="text" className="navrya-tabular" defaultValue={(plan.entryPrices || []).join(', ')} style={{ ...inputStyle, height: 32, fontSize: 11 }}
+                    onBlur={(e) => onUpdate({ executionPlan: { ...plan, entryPrices: e.target.value.split(',').map((x) => Number(x.trim())).filter((n) => !Number.isNaN(n)) } })} />
+                </label>
+              </AiMagicFill>
+              <AiMagicFill active={stopLossFilled}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 9, color: 'var(--danger)' }}>{tr(lang, 'stopLabel')}</span>
+                  <input type="text" className="navrya-tabular" defaultValue={plan.stopLoss ?? ''} style={{ ...inputStyle, height: 32, fontSize: 11 }}
+                    onBlur={(e) => onUpdate({ executionPlan: { ...plan, stopLoss: e.target.value ? Number(e.target.value) : null } })} />
+                </label>
+              </AiMagicFill>
+              <AiMagicFill active={takeProfitFilled}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 9, color: 'var(--success)' }}>{tr(lang, 'targetLabel')}</span>
+                  <input type="text" className="navrya-tabular" defaultValue={plan.takeProfit ?? ''} style={{ ...inputStyle, height: 32, fontSize: 11 }}
+                    onBlur={(e) => onUpdate({ executionPlan: { ...plan, takeProfit: e.target.value ? Number(e.target.value) : null } })} />
+                </label>
+              </AiMagicFill>
             </span>
           </div>
 
@@ -1148,6 +1182,10 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
   // real delete button here also has no window.confirm() of its own.
   const onDeleteEntryRef = React.useRef(onDeleteEntry);
   onDeleteEntryRef.current = onDeleteEntry;
+  // Journey H1 closure: magic-fill animation for this Entry's own AI-fillable field. Same
+  // 'confirmDelete' exception as ScenarioEditor above - no visible confirmation control exists to
+  // attach the shared effect to.
+  const noteFilled = useAiFieldFill('live-session-entry-' + entry.id, 'note');
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -1197,11 +1235,13 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) onAttachImage(entry, f); e.target.value = ''; }} />
             </span>
           )}
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--text-muted)' }}><Icon name="edit" size={14} />{tr(lang, 'noteLabel')}</span>
-            <textarea defaultValue={note || ''} placeholder={tr(lang, 'notePlaceholder')} dir="auto" style={{ ...textareaStyle, minHeight: 74, padding: '10px 12px' }}
-              onBlur={(e) => { if (e.target.value !== (note || '')) onNote(entry, e.target.value); }} />
-          </label>
+          <AiMagicFill active={noteFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--text-muted)' }}><Icon name="edit" size={14} />{tr(lang, 'noteLabel')}</span>
+              <textarea defaultValue={note || ''} placeholder={tr(lang, 'notePlaceholder')} dir="auto" style={{ ...textareaStyle, minHeight: 74, padding: '10px 12px' }}
+                onBlur={(e) => { if (e.target.value !== (note || '')) onNote(entry, e.target.value); }} />
+            </label>
+          </AiMagicFill>
           <AiStrip session={session} entry={entry} lang={lang} onAnalyze={() => onAnalyze(entry)} />
         </div>
         <div style={{ width: 400, flex: 'none', padding: 16, display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(3,8,7,.35)', borderInlineStart: '1px solid var(--border-hairline)' }}>

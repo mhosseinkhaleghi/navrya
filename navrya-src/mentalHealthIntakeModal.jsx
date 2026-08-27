@@ -5,6 +5,8 @@ import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { CharacterPortrait } from '../public/pages/shared/navrya/components/identity/CharacterPortrait.jsx';
 import { QuoteCard } from '../public/pages/shared/navrya/components/cards/QuoteCard.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { CHARACTERS } from './characters.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
@@ -668,36 +670,53 @@ function OrientationStep({ character, navryaId, t, lang }) {
 
 function DemographicsStep({ draft, setDraft, t }) {
   const d = draft.demographics;
+  // Journey H1: magic-fill animation for this step's own intakePaths fields.
+  const ageFilled = useAiFieldFill('mh-intake', 'intake.demographics.age');
+  const genderFilled = useAiFieldFill('mh-intake', 'intake.demographics.gender');
+  const maritalFilled = useAiFieldFill('mh-intake', 'intake.demographics.maritalStatus');
+  const occupationFilled = useAiFieldFill('mh-intake', 'intake.demographics.primaryOccupation');
+  const fullTimeFilled = useAiFieldFill('mh-intake', 'intake.demographics.isFullTimeTrader');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <AgeSlider value={d.age} onChange={(age) => set(setDraft, { demographics: { ...d, age } })} t={t} />
-      <Field>
-        <FieldHead label={t('mhGender')} />
-        <TileGrid options={GENDERS} prefix="mhGender_" t={t} value={d.gender} basis={176} onChange={(gender) => set(setDraft, { demographics: { ...d, gender } })} />
-      </Field>
-      <Field>
-        <FieldHead label={t('mhMaritalStatus')} />
-        <TileGrid options={MARITAL_STATUSES} prefix="mhMaritalStatus_" t={t} value={d.maritalStatus} basis={176} onChange={(maritalStatus) => set(setDraft, { demographics: { ...d, maritalStatus } })} />
-      </Field>
-      <Field>
-        <FieldHead label={t('mhOccupation')} />
-        <TileGrid options={OCCUPATION_TYPES} prefix="mhOccupationType_" t={t} value={d.primaryOccupation} basis={176} onChange={(primaryOccupation) => set(setDraft, { demographics: { ...d, primaryOccupation } })} />
-      </Field>
-      <SwitchRow label={t('mhFullTimeTrader')} value={d.isFullTimeTrader} onChange={(isFullTimeTrader) => set(setDraft, { demographics: { ...d, isFullTimeTrader } })} t={t} />
+      <AiMagicFill active={ageFilled}><AgeSlider value={d.age} onChange={(age) => set(setDraft, { demographics: { ...d, age } })} t={t} /></AiMagicFill>
+      <AiMagicFill active={genderFilled}>
+        <Field>
+          <FieldHead label={t('mhGender')} />
+          <TileGrid options={GENDERS} prefix="mhGender_" t={t} value={d.gender} basis={176} onChange={(gender) => set(setDraft, { demographics: { ...d, gender } })} />
+        </Field>
+      </AiMagicFill>
+      <AiMagicFill active={maritalFilled}>
+        <Field>
+          <FieldHead label={t('mhMaritalStatus')} />
+          <TileGrid options={MARITAL_STATUSES} prefix="mhMaritalStatus_" t={t} value={d.maritalStatus} basis={176} onChange={(maritalStatus) => set(setDraft, { demographics: { ...d, maritalStatus } })} />
+        </Field>
+      </AiMagicFill>
+      <AiMagicFill active={occupationFilled}>
+        <Field>
+          <FieldHead label={t('mhOccupation')} />
+          <TileGrid options={OCCUPATION_TYPES} prefix="mhOccupationType_" t={t} value={d.primaryOccupation} basis={176} onChange={(primaryOccupation) => set(setDraft, { demographics: { ...d, primaryOccupation } })} />
+        </Field>
+      </AiMagicFill>
+      <AiMagicFill active={fullTimeFilled}><SwitchRow label={t('mhFullTimeTrader')} value={d.isFullTimeTrader} onChange={(isFullTimeTrader) => set(setDraft, { demographics: { ...d, isFullTimeTrader } })} t={t} /></AiMagicFill>
     </div>
   );
 }
 
 function FinancialStep({ draft, setDraft, t }) {
   const f = draft.financialContext;
+  const capitalTypeFilled = useAiFieldFill('mh-intake', 'intake.financialContext.capitalType');
+  const allocationFilled = useAiFieldFill('mh-intake', 'intake.financialContext.capitalAllocationPercent');
+  const borrowedFilled = useAiFieldFill('mh-intake', 'intake.financialContext.borrowedMoneyForTrading');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <Field>
-        <FieldHead label={t('mhCapitalType')} />
-        <TileGrid options={CAPITAL_TYPES} prefix="mhCapitalType_" t={t} value={f.capitalType} onChange={(capitalType) => set(setDraft, { financialContext: { ...f, capitalType } })} />
-      </Field>
-      <ShareRange value={f.capitalAllocationPercent || 0} onChange={(capitalAllocationPercent) => set(setDraft, { financialContext: { ...f, capitalAllocationPercent } })} t={t} />
-      <SwitchRow label={t('mhBorrowedMoney')} value={f.borrowedMoneyForTrading} onChange={(borrowedMoneyForTrading) => set(setDraft, { financialContext: { ...f, borrowedMoneyForTrading } })} t={t} />
+      <AiMagicFill active={capitalTypeFilled}>
+        <Field>
+          <FieldHead label={t('mhCapitalType')} />
+          <TileGrid options={CAPITAL_TYPES} prefix="mhCapitalType_" t={t} value={f.capitalType} onChange={(capitalType) => set(setDraft, { financialContext: { ...f, capitalType } })} />
+        </Field>
+      </AiMagicFill>
+      <AiMagicFill active={allocationFilled}><ShareRange value={f.capitalAllocationPercent || 0} onChange={(capitalAllocationPercent) => set(setDraft, { financialContext: { ...f, capitalAllocationPercent } })} t={t} /></AiMagicFill>
+      <AiMagicFill active={borrowedFilled}><SwitchRow label={t('mhBorrowedMoney')} value={f.borrowedMoneyForTrading} onChange={(borrowedMoneyForTrading) => set(setDraft, { financialContext: { ...f, borrowedMoneyForTrading } })} t={t} /></AiMagicFill>
     </div>
   );
 }
@@ -708,10 +727,12 @@ function ExperienceStep({ draft, setDraft, t }) {
   const existing = h.marketsTraded || [];
   const selected = existing.filter((v) => presetLabels.indexOf(v) > -1);
   const custom = existing.filter((v) => presetLabels.indexOf(v) === -1);
+  const yearsFilled = useAiFieldFill('mh-intake', 'intake.tradingHistory.yearsTrading');
+  const marketsFilled = useAiFieldFill('mh-intake', 'intake.tradingHistory.marketsTraded');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <YearsRungs value={h.yearsTrading == null ? 0 : h.yearsTrading} onChange={(yearsTrading) => set(setDraft, { tradingHistory: { ...h, yearsTrading } })} t={t} />
-      <InstrumentPicker selected={selected} custom={custom} t={t} onChange={({ selected: s, custom: c }) => set(setDraft, { tradingHistory: { ...h, marketsTraded: s.concat(c) } })} />
+      <AiMagicFill active={yearsFilled}><YearsRungs value={h.yearsTrading == null ? 0 : h.yearsTrading} onChange={(yearsTrading) => set(setDraft, { tradingHistory: { ...h, yearsTrading } })} t={t} /></AiMagicFill>
+      <AiMagicFill active={marketsFilled}><InstrumentPicker selected={selected} custom={custom} t={t} onChange={({ selected: s, custom: c }) => set(setDraft, { tradingHistory: { ...h, marketsTraded: s.concat(c) } })} /></AiMagicFill>
     </div>
   );
 }
@@ -759,18 +780,32 @@ function ExtremesStep({ draft, setDraft, t }) {
 }
 
 function MotivationStep({ draft, setDraft, t }) {
+  const motivationFilled = useAiFieldFill('mh-intake', 'intake.motivationForTrading');
+  const lossReactionFilled = useAiFieldFill('mh-intake', 'intake.firstBigLossReaction');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <Field>
-        <FieldHead label={t('mhMotivationQuestion')} />
-        <TileGrid options={MOTIVATIONS} prefix="mhMotivation_" t={t} value={draft.motivationForTrading} onChange={(motivationForTrading) => set(setDraft, { motivationForTrading })} />
-      </Field>
-      <Field>
-        <FieldHead label={t('mhFirstLossQuestion')} />
-        <TileGrid options={LOSS_REACTIONS} prefix="mhLossReaction_" t={t} value={draft.firstBigLossReaction} onChange={(firstBigLossReaction) => set(setDraft, { firstBigLossReaction })} />
-      </Field>
+      <AiMagicFill active={motivationFilled}>
+        <Field>
+          <FieldHead label={t('mhMotivationQuestion')} />
+          <TileGrid options={MOTIVATIONS} prefix="mhMotivation_" t={t} value={draft.motivationForTrading} onChange={(motivationForTrading) => set(setDraft, { motivationForTrading })} />
+        </Field>
+      </AiMagicFill>
+      <AiMagicFill active={lossReactionFilled}>
+        <Field>
+          <FieldHead label={t('mhFirstLossQuestion')} />
+          <TileGrid options={LOSS_REACTIONS} prefix="mhLossReaction_" t={t} value={draft.firstBigLossReaction} onChange={(firstBigLossReaction) => set(setDraft, { firstBigLossReaction })} />
+        </Field>
+      </AiMagicFill>
     </div>
   );
+}
+
+// Journey H1: rows here are rendered from a data-driven list (.map() below), so a hook can't be
+// called directly inside that callback (Rules of Hooks) - same small per-item wrapper pattern as
+// strategiesHubView.jsx's own StrategyMagicField.
+function IntakeMagicField({ path, children }) {
+  const active = useAiFieldFill('mh-intake', path);
+  return <AiMagicFill active={active}>{children}</AiMagicFill>;
 }
 
 function TransparencyStep({ draft, setDraft, t }) {
@@ -783,7 +818,9 @@ function TransparencyStep({ draft, setDraft, t }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {rows.map(([key, labelKey]) => (
-        <SwitchRow key={key} label={t(labelKey)} value={m[key]} onChange={(v) => set(setDraft, { transparencyMatrix: { ...m, [key]: v } })} t={t} />
+        <IntakeMagicField key={key} path={'intake.transparencyMatrix.' + key}>
+          <SwitchRow label={t(labelKey)} value={m[key]} onChange={(v) => set(setDraft, { transparencyMatrix: { ...m, [key]: v } })} t={t} />
+        </IntakeMagicField>
       ))}
       <div style={{ marginTop: 4 }}><FamilySummary count={count} t={t} /></div>
     </div>
@@ -995,16 +1032,40 @@ function MentalHealthIntakeModal({ container, onClose, onFinish }) {
   // AI-assistant chat dock can fill fields into the currently open intake - same draft-then-
   // approve store.applySuggestion pipeline the chat-based intake filling already uses, just
   // re-reading the result back into React state instead of a manual re-render.
+  // Journey H1: field -> real Intake step map, built from the SAME intakePaths list this
+  // registration's own allowlist already uses (mental-health.types.js) - every group here is a
+  // whole-section dot-prefix (e.g. 'intake.demographics.'), matching how DemographicsStep/
+  // FinancialStep/etc. each own one whole intake.<section>.* branch (see this file's own
+  // step->component map just above, step === 2 ? <DemographicsStep> ...). Steps 1 (Orientation),
+  // 5 (Extremes - largestWin/largestLoss/marginCallOrZeroedCount are real numericPaths fields but
+  // NOT in intakePaths, so nothing on this step is AI-fillable through this registration today),
+  // 8-12 (Scenario - a SEPARATE, non-intakePaths allowlist) and 13 (Summary/Sealed) have no
+  // intakePaths fields at all, so no group exists for them - a field belonging to one of those
+  // simply keeps whatever step is already showing (stepForPath returns null). motivationForTrading
+  // AND firstBigLossReaction are BOTH rendered together inside MotivationStep (step 6) - despite
+  // the name, "first big loss reaction" is the emotional-reaction question paired with motivation,
+  // not one of ExtremesStep's own objective win/loss amount fields (step 5).
+  const intakeStepMap = window.TradeJournalAIWizardStepMap ? window.TradeJournalAIWizardStepMap.forGroups({
+    2: ['intake.demographics.'],
+    3: ['intake.financialContext.'],
+    4: ['intake.tradingHistory.'],
+    6: ['intake.motivationForTrading', 'intake.firstBigLossReaction'],
+    7: ['intake.transparencyMatrix.']
+  }) : null;
+
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     const types = window.TradeJournalMentalHealthTypes;
     if (!registry) return undefined;
     registry.register('mh-intake', {
+      layer: 'foreground',
       allowlist: (types.intakePaths || []).slice(),
       // DOM-presence check, matching every other registrant's isOpen() convention (see
       // ai-process-registry.js) - no separate close-event plumbing needed.
       isOpen: () => document.body.contains(container),
       activeStep: () => step,
+      stepForPath: intakeStepMap ? intakeStepMap.stepForPath : null,
+      goToStep: goTo,
       applyValue: (path, value, mode) => {
         if ((types.intakePaths || []).indexOf(path) === -1) return;
         let profile = store.load();

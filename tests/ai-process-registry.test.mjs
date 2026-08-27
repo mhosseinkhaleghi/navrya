@@ -60,6 +60,18 @@ test('activeOpenProcess() is null when every registered process reports itself c
   assert.equal(registry.activeOpenProcess(), null);
 });
 
+test('activeOpenProcess() passes through the winner\'s own stepForPath as a plain function reference (Journey H1 closure) - null for a registration that never declared one', async () => {
+  const registry = await registrySandbox();
+  const stepForPath = (path) => (path === 'primaryTimeframe' ? 2 : null);
+  registry.register('trade-wizard', { allowlist: ['primaryTimeframe'], isOpen: () => true, activeStep: () => 1, stepForPath: stepForPath });
+  const active = registry.activeOpenProcess();
+  assert.equal(active.stepForPath, stepForPath, 'the exact same function reference applyValue() itself uses internally - never a re-derived copy');
+  assert.equal(active.stepForPath('primaryTimeframe'), 2);
+
+  registry.register('session-create', { allowlist: ['city'], isOpen: () => true, activeStep: () => null }); // no stepForPath declared
+  assert.equal(registry.activeOpenProcess().stepForPath, null);
+});
+
 test('applyValue() rejects a path outside the registered allowlist and never invokes the flow\'s own applyValue', async () => {
   const registry = await registrySandbox();
   let called = null;
@@ -188,4 +200,109 @@ test('openIdsWithPrefix() re-registering the same id bumps it back to the front,
   registry.register('pattern-editor-p2', { isOpen: () => true });
   registry.register('pattern-editor-p1', { isOpen: () => true }); // re-touched
   assert.deepEqual(clone(registry.openIdsWithPrefix('pattern-editor-')), ['pattern-editor-p1', 'pattern-editor-p2']);
+});
+
+// --- Journey H1: layer ('topmost surface'), wizard step lockstep, field-fill bus, snapshot() ---
+
+test('activeOpenProcess() prefers an open foreground registration over an open background one, regardless of registration order', async () => {
+  const registry = await registrySandbox();
+  // Background registered AFTER foreground - pure recency would have picked it; layer must win.
+  registry.register('settings-trading-defaults', { layer: 'background', isOpen: () => true, activeStep: () => null });
+  registry.register('trade-wizard', { layer: 'foreground', isOpen: () => true, activeStep: () => 1 });
+  registry.register('some-later-background-thing', { layer: 'background', isOpen: () => true, activeStep: () => null });
+  assert.equal(registry.activeOpenProcess().id, 'trade-wizard', 'an open foreground surface always outranks an open background one');
+});
+
+test('activeOpenProcess() still applies the existing recency rule within the same layer', async () => {
+  const registry = await registrySandbox();
+  registry.register('pattern-editor-p1', { layer: 'foreground', isOpen: () => true, activeStep: () => null });
+  registry.register('strategy-editor-s1', { layer: 'foreground', isOpen: () => true, activeStep: () => null });
+  assert.equal(registry.activeOpenProcess().id, 'strategy-editor-s1', 'same layer: most recently (re-)registered still wins');
+});
+
+test('a registration that omits layer defaults to background, unaffected unless something foreground is also open', async () => {
+  const registry = await registrySandbox();
+  registry.register('settings-trading-defaults', {}); // no layer key at all - every pre-Journey-H1 call site
+  assert.equal(registry.activeOpenProcess(), null, 'not open yet');
+});
+
+test('snapshot(processId) returns { open, step, layer } for one registration, and a safe default for an unknown id', async () => {
+  const registry = await registrySandbox();
+  registry.register('trade-wizard', { layer: 'foreground', isOpen: () => true, activeStep: () => 2 });
+  assert.deepEqual(clone(registry.snapshot('trade-wizard')), { open: true, step: 2, layer: 'foreground' });
+  assert.deepEqual(clone(registry.snapshot('never-registered')), { open: false, step: null, layer: null });
+});
+
+test('applyValue() drives goToStep() before applyValue() when stepForPath resolves a step other than the current one', async () => {
+  const registry = await registrySandbox();
+  const calls = [];
+  let step = 1;
+  registry.register('trade-wizard', {
+    allowlist: ['entryPrice'],
+    activeStep: () => step,
+    stepForPath: (path) => (path === 'entryPrice' ? 2 : null),
+    goToStep: (n) => { calls.push(['goToStep', n]); step = n; },
+    applyValue: (path, value) => { calls.push(['applyValue', path, value, step]); }
+  });
+  registry.applyValue('trade-wizard', 'entryPrice', '1950', 'replace');
+  assert.deepEqual(calls, [['goToStep', 2], ['applyValue', 'entryPrice', '1950', 2]], 'goToStep must run BEFORE applyValue, and applyValue must see the already-advanced step');
+});
+
+test('applyValue() never calls goToStep when stepForPath has no opinion (returns null) about this field', async () => {
+  const registry = await registrySandbox();
+  const calls = [];
+  registry.register('trade-wizard', {
+    allowlist: ['chartNote'],
+    activeStep: () => 1,
+    stepForPath: () => null,
+    goToStep: (n) => calls.push(['goToStep', n]),
+    applyValue: (path, value) => calls.push(['applyValue', path, value])
+  });
+  registry.applyValue('trade-wizard', 'chartNote', 'looks clean', 'replace');
+  assert.deepEqual(calls, [['applyValue', 'chartNote', 'looks clean']]);
+});
+
+test('applyValue() never calls goToStep when the field\'s step already matches the current step', async () => {
+  const registry = await registrySandbox();
+  const calls = [];
+  registry.register('trade-wizard', {
+    allowlist: ['entryPrice'],
+    activeStep: () => 2,
+    stepForPath: () => 2,
+    goToStep: (n) => calls.push(['goToStep', n]),
+    applyValue: (path, value) => calls.push(['applyValue', path, value])
+  });
+  registry.applyValue('trade-wizard', 'entryPrice', '1950', 'replace');
+  assert.deepEqual(calls, [['applyValue', 'entryPrice', '1950']]);
+});
+
+test('applyValue() emits on TradeJournalAIFieldFillBus (when present) with the process id, path, and {value, mode} - AFTER the real value already landed', async () => {
+  const sandbox = { window: {} };
+  const order = [];
+  sandbox.window.TradeJournalAIFieldFillBus = { emit: (processId, path, meta) => order.push(['bus-emit', processId, path, meta.value, meta.mode]) };
+  vm.runInNewContext(await source('ai-process-registry.js'), sandbox, { filename: 'ai-process-registry.js' });
+  const registry = sandbox.window.TradeJournalAIProcessRegistry;
+  registry.register('session-create', { allowlist: ['city'], applyValue: (path, value) => order.push(['real-applyValue', path, value]) });
+  registry.applyValue('session-create', 'city', 'newYork', 'replace');
+  assert.deepEqual(order, [
+    ['real-applyValue', 'city', 'newYork'],
+    ['bus-emit', 'session-create', 'city', 'newYork', 'replace']
+  ], 'the bus is a presentation signal only - it must fire strictly after the real write, never before or instead of it');
+});
+
+test('applyValue() never throws when TradeJournalAIFieldFillBus is absent (every character page loads it, but the write path must not hard-depend on it)', async () => {
+  const registry = await registrySandbox();
+  registry.register('session-create', { allowlist: ['city'], applyValue: () => {} });
+  assert.equal(registry.applyValue('session-create', 'city', 'newYork', 'replace'), true);
+});
+
+test('applyValue() never throws when TradeJournalAIFieldFillBus.emit itself throws - the real write must already be committed either way', async () => {
+  const sandbox = { window: {} };
+  sandbox.window.TradeJournalAIFieldFillBus = { emit: () => { throw new Error('presentation layer blew up'); } };
+  vm.runInNewContext(await source('ai-process-registry.js'), sandbox, { filename: 'ai-process-registry.js' });
+  const registry = sandbox.window.TradeJournalAIProcessRegistry;
+  let applied = null;
+  registry.register('session-create', { allowlist: ['city'], applyValue: (path, value) => { applied = [path, value]; } });
+  assert.equal(registry.applyValue('session-create', 'city', 'newYork', 'replace'), true);
+  assert.deepEqual(applied, ['city', 'newYork']);
 });

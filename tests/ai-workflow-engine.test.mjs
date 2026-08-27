@@ -20,7 +20,8 @@ async function engineSandbox(overrides) {
   const sandbox = { window: {}, Promise, Set, Date, setTimeout, clearTimeout };
   sandbox.window = Object.assign(sandbox.window, {
     TradeJournalAIActionRegistry: overrides.actionRegistry,
-    TradeJournalAIProcessRegistry: overrides.processRegistry
+    TradeJournalAIProcessRegistry: overrides.processRegistry,
+    TradeJournalAIUiRevisionGuard: overrides.uiRevisionGuard
   });
   vm.runInNewContext(await source('ai-workflow-engine.js'), sandbox, { filename: 'ai-workflow-engine.js' });
   return sandbox.window.TradeJournalAIWorkflowEngine;
@@ -528,4 +529,74 @@ test('cancel() during the grace window prevents the pending submit from ever fir
   engine.cancel();
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.equal(submitCalls.length, 0, 'the cancelled workflow\'s scheduled submit must never run');
+});
+
+// --- Journey H1: stale-action protection (TradeJournalAIUiRevisionGuard integration) ---
+
+function fakeUiRevisionGuard(diverged) {
+  const captureCalls = [];
+  return {
+    capture: (processId) => { captureCalls.push(processId); return { processId: processId, layer: 'foreground', step: 1 }; },
+    hasDiverged: () => diverged.value,
+    captureCalls
+  };
+}
+
+test('a workflow with no TradeJournalAIUiRevisionGuard present behaves exactly as before (feature-detected, not a hard dependency)', async () => {
+  const applyCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.start('session.create', {});
+  const workflow = await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  assert.deepEqual(clone(workflow.known), { city: 'New York' });
+  assert.deepEqual(clone(applyCalls), [['session-create', 'city', 'New York', 'replace']]);
+});
+
+test('applyKnownFields() captures a uiSnapshot via the guard against the real, already-resolved processId', async () => {
+  const diverged = { value: false };
+  const guard = fakeUiRevisionGuard(diverged);
+  const action = { id: 'session.create', requiredFields: ['city'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} }, uiRevisionGuard: guard });
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  // Captured once because no snapshot existed yet, and re-captured (a fresh baseline) once more
+  // right after this same turn's own field application settled - every call carries the real,
+  // already-resolved processId, never the pre-open() placeholder.
+  assert.deepEqual(guard.captureCalls, ['session-create', 'session-create']);
+});
+
+test('applyKnownFields() discards the workflow without applying any field once the guard reports divergence', async () => {
+  const diverged = { value: false };
+  const guard = fakeUiRevisionGuard(diverged);
+  const applyCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city', 'timeframe'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) }, uiRevisionGuard: guard });
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {}); // first call: captures, applies normally
+  assert.ok(engine.current(), 'still a live workflow after the first, non-diverged turn');
+
+  // Between turns, the real UI moved out from under this workflow (closed / different step /
+  // different foreground surface now topmost) - simulated here by flipping the guard's answer.
+  diverged.value = true;
+  const result = await engine.applyKnownFields([{ path: 'timeframe', value: '5m' }], {});
+  assert.equal(result, null, 'a diverged turn must return null, exactly like "no workflow in progress"');
+  assert.equal(engine.current(), null, 'the stale workflow is cleared rather than silently continuing');
+  assert.deepEqual(clone(applyCalls), [['session-create', 'city', 'New York', 'replace']], 'the diverged turn\'s own field (timeframe) must never reach the real UI');
+});
+
+test('a workflow discarded by divergence never schedules or fires a submit for the stale remaining field', async () => {
+  const diverged = { value: false };
+  const guard = fakeUiRevisionGuard(diverged);
+  const submitCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city', 'timeframe'], submit: async (known) => { submitCalls.push(known); return { id: 'should-not-happen' }; } };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} }, uiRevisionGuard: guard });
+  engine.setSubmitGraceMs(10);
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {}); // first call: captures a baseline, applies normally, one field still missing
+
+  diverged.value = true; // the real UI moved out from under this workflow before the next turn
+  const result = await engine.applyKnownFields([{ path: 'timeframe', value: '5m' }], {});
+  assert.equal(result, null);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(submitCalls.length, 0, 'a discarded-as-stale workflow must never complete its required set through submit()');
 });

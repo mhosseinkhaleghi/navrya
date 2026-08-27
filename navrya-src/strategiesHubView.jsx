@@ -6,6 +6,8 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
 // React rewrite of the "Strategies" screen per the design handoff: a single index (Patterns /
@@ -1004,6 +1006,12 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
   patternRef.current = pattern;
   function patch(fields) { Object.assign(patternRef.current, fields); onSave(patternRef.current); setSavedAt(Date.now()); }
 
+  // Journey H1: magic-fill animation for this Pattern's own AI-fillable fields.
+  const nameFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'name');
+  const descriptionFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'description');
+  const thresholdFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'completionThreshold');
+  const instrumentsFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'instruments');
+
   // AI process registry (A4) - reuses the SAME process id pattern-registry.js's legacy editor()
   // already registers ('pattern-editor-' + pattern.id), with the exact same allowlist
   // (patternTypes.patternStagePaths - name/description only), so AI-fill works identically
@@ -1023,6 +1031,7 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
     // for it - pattern.delete's own submit() in character-app.jsx is what actually gates on it.
     const allowlist = (patternTypes.patternStagePaths || []).slice().concat(['confirm']);
     registry.register('pattern-editor-' + pattern.id, {
+      layer: 'foreground',
       allowlist,
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
@@ -1067,20 +1076,24 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
             <span style={{ fontSize: 11, letterSpacing: '.1em', color: 'var(--char-accent)' }}>{tr(lang, 'defTitle')}</span>
             {savedAt && <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={13} />{tr(lang, 'changesSaved')}</span>}
           </span>
-          <TextField_ label={tr(lang, 'nameLabel')} value={pattern.name} onCommit={(v) => patch({ name: v })} />
-          <TextAreaField_ label={tr(lang, 'descLabel')} value={pattern.description} rows={3} onCommit={(v) => patch({ description: v })} help={tr(lang, 'descHelp')} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: 14, borderRadius: 10, border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.05)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'thresholdTitle')}</span>
-              <span className="navrya-tabular" style={{ fontSize: 20, fontWeight: 700, color: 'var(--char-accent)' }}>{digits(lang, pattern.completionThreshold) + '٪'}</span>
-            </span>
-            <input type="range" min="0" max="100" step="5" value={pattern.completionThreshold} onChange={(e) => patch({ completionThreshold: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--char-accent)', cursor: 'pointer' }} />
-            <span style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'thresholdHelp')}</span>
-          </div>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'instrumentsLabel')} *</span>
-            <InstrumentPicker multiple value={pattern.instruments || []} onChange={(v) => patch({ instruments: v })} width="100%" />
-          </label>
+          <AiMagicFill active={nameFilled}><TextField_ label={tr(lang, 'nameLabel')} value={pattern.name} onCommit={(v) => patch({ name: v })} /></AiMagicFill>
+          <AiMagicFill active={descriptionFilled}><TextAreaField_ label={tr(lang, 'descLabel')} value={pattern.description} rows={3} onCommit={(v) => patch({ description: v })} help={tr(lang, 'descHelp')} /></AiMagicFill>
+          <AiMagicFill active={thresholdFilled}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: 14, borderRadius: 10, border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.05)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'thresholdTitle')}</span>
+                <span className="navrya-tabular" style={{ fontSize: 20, fontWeight: 700, color: 'var(--char-accent)' }}>{digits(lang, pattern.completionThreshold) + '٪'}</span>
+              </span>
+              <input type="range" min="0" max="100" step="5" value={pattern.completionThreshold} onChange={(e) => patch({ completionThreshold: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--char-accent)', cursor: 'pointer' }} />
+              <span style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'thresholdHelp')}</span>
+            </div>
+          </AiMagicFill>
+          <AiMagicFill active={instrumentsFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'instrumentsLabel')} *</span>
+              <InstrumentPicker multiple value={pattern.instruments || []} onChange={(v) => patch({ instruments: v })} width="100%" />
+            </label>
+          </AiMagicFill>
         </div>
       </Panel>
 
@@ -1135,6 +1148,15 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
   );
 }
 
+// Journey H1: strategy-editor-{id}'s fields are rendered from a data-driven groups[].fields[]
+// list (below), so a hook can't be called directly inside that .map() callback (Rules of Hooks) -
+// this tiny wrapper component gives each rendered field its OWN useAiFieldFill instance instead,
+// the standard, correct way to give per-list-item hook state.
+function StrategyMagicField({ processId, path, children }) {
+  const active = useAiFieldFill(processId, path);
+  return <AiMagicFill active={active}>{children}</AiMagicFill>;
+}
+
 function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
   const [savedAt, setSavedAt] = React.useState(null);
   // Found via real F15 browser testing (manual-edit precedence): the AI process registration
@@ -1176,6 +1198,7 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
     // written onto the real Strategy record - strategy.delete's own submit() is what gates on it.
     const allowlist = (strategyTypes.textPaths || []).concat(strategyTypes.numericPaths || []).concat(['name', 'confirm']);
     registry.register('strategy-editor-' + strategy.id, {
+      layer: 'foreground',
       allowlist,
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => { if (path !== 'confirm' && allowlist.indexOf(path) > -1) set(path, value); }
@@ -1207,7 +1230,9 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
       <Panel variant="base" padding="18px 20px 20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {savedAt && <span style={{ display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-end', fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={13} />{tr(lang, 'changesSaved')}</span>}
-          <TextField_ label={tr(lang, 'strategyNameLabel')} value={strategy.name} placeholder={tr(lang, 'strategyNamePlaceholder')} onCommit={(v) => set('name', v)} />
+          <StrategyMagicField processId={'strategy-editor-' + strategy.id} path="name">
+            <TextField_ label={tr(lang, 'strategyNameLabel')} value={strategy.name} placeholder={tr(lang, 'strategyNamePlaceholder')} onCommit={(v) => set('name', v)} />
+          </StrategyMagicField>
         </div>
       </Panel>
       {groups.map((g) => (
@@ -1223,20 +1248,24 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
             {!g.frameworkOnly && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
                 {g.fields.map((f) => (
-                  <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{f.label}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <input type="text" dir="auto" defaultValue={f.value == null ? '' : f.value} onBlur={(e) => { const v = e.target.value; if (String(f.value == null ? '' : f.value) !== v) set(f.key, v); }} style={inputStyle} />
-                      {f.unit && <span style={{ flex: 'none', fontSize: 11.5, color: 'var(--text-dim)' }}>{f.unit}</span>}
-                    </span>
-                  </label>
+                  <StrategyMagicField key={f.key} processId={'strategy-editor-' + strategy.id} path={f.key}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{f.label}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="text" dir="auto" defaultValue={f.value == null ? '' : f.value} onBlur={(e) => { const v = e.target.value; if (String(f.value == null ? '' : f.value) !== v) set(f.key, v); }} style={inputStyle} />
+                        {f.unit && <span style={{ flex: 'none', fontSize: 11.5, color: 'var(--text-dim)' }}>{f.unit}</span>}
+                      </span>
+                    </label>
+                  </StrategyMagicField>
                 ))}
               </div>
             )}
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{tr(lang, 'freeNoteLabel')}</span>
-              <textarea defaultValue={g.note || ''} dir="auto" rows={2} placeholder={tr(lang, 'freeNotePlaceholder')} onBlur={(e) => { if (e.target.value !== (g.note || '')) set(g.noteKey, e.target.value); }} style={textareaStyle} />
-            </label>
+            <StrategyMagicField processId={'strategy-editor-' + strategy.id} path={g.noteKey}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{tr(lang, 'freeNoteLabel')}</span>
+                <textarea defaultValue={g.note || ''} dir="auto" rows={2} placeholder={tr(lang, 'freeNotePlaceholder')} onBlur={(e) => { if (e.target.value !== (g.note || '')) set(g.noteKey, e.target.value); }} style={textareaStyle} />
+              </label>
+            </StrategyMagicField>
           </div>
         </Panel>
       ))}
@@ -1648,6 +1677,40 @@ function PublishForm({ lang, kind, item, listing, onClose, onSaved }) {
   const [free, setFree] = React.useState(listing && listing.previewContent && listing.previewContent.freeCount != null ? listing.previewContent.freeCount : Math.min(2, maxFree));
   const [submitting, setSubmitting] = React.useState(false);
 
+  // Journey H1 (marketplace.publish fix): registers this, the LIVE Strategies Hub's own publish
+  // form, with the AI Process Registry under a NEW id ('strategy-hub-publish-flow') - deliberately
+  // distinct from the legacy publishFlowModal.jsx's own 'publish-flow' registration, so the two
+  // can never collide even before that legacy path is fully retired. Mirrors
+  // publishFlowModal.jsx's own registration exactly (mountedRef/submitRef template, same
+  // allowlist, same synthetic 'confirmPublish' gate field for workflow continuation) - this form
+  // already exists and already works for a human click, it was simply never wired into the
+  // registry, which is the entire reason marketplace.publish had nowhere real to land once the
+  // Strategies Hub replaced the legacy pattern-registry.js/strategy-education.js pages it used to
+  // route through.
+  const mountedRef = React.useRef(true);
+  const submitRef = React.useRef(null);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (registry) {
+      registry.register('strategy-hub-publish-flow', {
+        layer: 'foreground',
+        allowlist: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount', 'confirmPublish'],
+        isOpen: () => mountedRef.current,
+        applyValue: (path, value) => {
+          if (path === 'title') setTitle(String(value == null ? '' : value));
+          else if (path === 'description') setDescription(String(value == null ? '' : value));
+          else if (path === 'priceAmount') setPrice(value === '' || value == null ? '' : String(value));
+          else if (path === 'priceCurrency') { if (currencies.indexOf(value) > -1) setCurrency(value); }
+          else if (path === 'previewItemCount') { const n = Number(value); if (Number.isFinite(n)) setFree(Math.max(0, Math.min(maxFree, n))); }
+        },
+        submit: () => submitRef.current()
+      });
+    }
+    return () => { mountedRef.current = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function buildContent(freeCount) {
     if (isPatternKind(kind)) {
       return {
@@ -1675,6 +1738,10 @@ function PublishForm({ lang, kind, item, listing, onClose, onSaved }) {
       onClose();
     } catch (_) { setSubmitting(false); }
   }
+  // Re-captured every render (title/description/price/currency/free all change after the
+  // registration effect above first ran with deps []) - same stale-closure-avoidance convention
+  // as publishFlowModal.jsx's own submitRef.current = submit.
+  submitRef.current = submit;
 
   const priceTag = currency === 'USD' ? '$' + price : digits(lang, price) + ' ' + currency;
   return (
@@ -1749,6 +1816,21 @@ function ShareTab({ lang, kind, item, onSave }) {
   const [listing, setListing] = React.useState(undefined); // undefined = loading, null = none
   const [ratings, setRatings] = React.useState(null);
   const [formOpen, setFormOpen] = React.useState(false);
+
+  // Journey H1 (marketplace.publish fix): the same window-hook handoff convention every other
+  // NAVRYA modal/view already exposes (TradeJournalNavryaPatternHub/StrategyHub above,
+  // TradeJournalNavryaTradeCalculator, ...) - scoped to this tab's own mount lifecycle, so
+  // character-app.jsx's marketplace.publish action can open the real, already-working publish
+  // form a human's "Register listing"/"Edit listing" button opens, instead of the orphaned legacy
+  // pattern-registry.js/strategy-education.js pages it used to route through. Ref-wrapped so the
+  // hook always calls the LATEST setFormOpen, never a stale closure from the render this effect
+  // first ran in.
+  const setFormOpenRef = React.useRef(setFormOpen);
+  setFormOpenRef.current = setFormOpen;
+  React.useEffect(() => {
+    window.TradeJournalNavryaShareTabHub = { openPublishForm: () => setFormOpenRef.current(true) };
+    return () => { delete window.TradeJournalNavryaShareTabHub; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1970,12 +2052,14 @@ function StrategiesHub({ character }) {
   }
   // pattern.edit (Journey F): opens an EXISTING Pattern the action's own open() already resolved
   // by name - never creates anything, just the same setTab/openItem navigation createNewPattern()
-  // already does for a brand-new one.
-  function openExistingPattern(id) { setTab('patterns'); openItem('pattern', id, 'details'); }
+  // already does for a brand-new one. `tabId` (Journey H1, marketplace.publish's fix): optional,
+  // defaults to 'details' exactly like before - lets an action open straight into a specific
+  // DetailView tab (e.g. 'share') instead of always landing on Details first.
+  function openExistingPattern(id, tabId) { setTab('patterns'); openItem('pattern', id, tabId || 'details'); }
   // strategy.create/strategy.edit (Journey F, F15): same pair, same reasoning, for Strategies -
   // the same real StrategyEducationStore.create() the "New strategy" button already calls.
   function createNewStrategy() { const s = window.TradeJournalStrategyEducationStore.create(); setTab('strategies'); openItem('strategy', s.id, 'details'); return s; }
-  function openExistingStrategy(id) { setTab('strategies'); openItem('strategy', id, 'details'); }
+  function openExistingStrategy(id, tabId) { setTab('strategies'); openItem('strategy', id, tabId || 'details'); }
   // Same window-hook handoff convention every other NAVRYA modal/view already exposes
   // (TradeJournalNavryaTradeCalculator, TradeJournalNavryaLiveSession, ...) - this one is scoped
   // to this component's own mount/unmount lifecycle (StrategiesHub is a per-view React root,

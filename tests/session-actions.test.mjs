@@ -159,3 +159,47 @@ test('ai-context-engine.js resolves activeEntryId() from the real live-session-e
   assert.match(contextEngineSrc, /active\.id\.indexOf\('live-session-entry-'\) !== 0\) return null;/);
   assert.match(contextEngineSrc, /entryId: sessionId \? activeEntryId\(\) : null/);
 });
+
+// --- Journey H1 closure: Session Entry / Scenario magic-fill coverage (the gap the H1 final ---
+// --- report itself flagged - "no new animation wiring added there this pass"). Reuses the exact ---
+// --- shared ai-field-fill-bus/useAiFieldFill/AiMagicFill architecture every other H1 domain ---
+// --- already uses - no second animation system, no change to real controlled state/business logic. ---
+
+test('liveSessionView.jsx imports the shared AiMagicFill/useAiFieldFill architecture - not a second, parallel animation mechanism', () => {
+  assert.match(liveSessionSrc, /import \{ AiMagicFill \} from '\.\.\/public\/pages\/shared\/navrya\/components\/feedback\/AiMagicFill\.jsx';/);
+  assert.match(liveSessionSrc, /import \{ useAiFieldFill \} from '\.\.\/public\/pages\/shared\/navrya\/hooks\/useAiFieldFill\.js';/);
+});
+
+test('every real, AI-fillable ScenarioEditor field (title/description/evidence/problem/trigger/positionType/entryPrices/stopLoss/takeProfit) is wired to useAiFieldFill(\'live-session-scenario-\' + scenario.id, <path>), matching its own allowlist exactly', () => {
+  for (const field of ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName']) {
+    const re = new RegExp(`useAiFieldFill\\('live-session-scenario-' \\+ scenario\\.id, '${field}'\\)`);
+    assert.match(liveSessionSrc, re, `ScenarioEditor must call useAiFieldFill for '${field}'`);
+  }
+});
+
+test('every real, AI-fillable field is actually WRAPPED in <AiMagicFill active={...FieldFilled}> in the real JSX, not just subscribed to and unused', () => {
+  for (const varName of ['titleFilled', 'descriptionFilled', 'evidenceFilled', 'problemFilled', 'triggerFilled', 'positionTypeFilled', 'entryPricesFilled', 'stopLossFilled', 'takeProfitFilled', 'patternNameFilled', 'noteFilled']) {
+    const re = new RegExp(`<AiMagicFill active=\\{${varName}\\}>`);
+    assert.match(liveSessionSrc, re, `${varName} must actually be passed to a real <AiMagicFill active={...}> in the rendered JSX`);
+  }
+});
+
+test('EntryDetailPanel\'s own AI-fillable field (note) is wired to useAiFieldFill(\'live-session-entry-\' + entry.id, \'note\'), matching its own allowlist exactly', () => {
+  assert.match(liveSessionSrc, /useAiFieldFill\('live-session-entry-' \+ entry\.id, 'note'\)/);
+});
+
+test('confirmDelete (both ScenarioEditor and EntryDetailPanel) is deliberately NOT wired to useAiFieldFill - it is a synthetic, AI-only gate field with no corresponding visible control to animate, documented rather than given an invented UI element', () => {
+  assert.doesNotMatch(liveSessionSrc, /useAiFieldFill\([^)]*'confirmDelete'\)/);
+  assert.match(liveSessionSrc, /no visible confirmation control exists/, 'the exception must be documented in the real source, not silently absent');
+});
+
+test('manual field edits (onBlur/onChange/onCommit handlers) call the real onUpdate/onSetSide/onNote setters directly - never the AI field-fill bus, so a human typing can never trigger the AI-origin animation', () => {
+  // The bus is only ever referenced through ai-process-registry.js's own applyValue() (the
+  // AI-origin path) - a real CODE reference (window.TradeJournalAIFieldFillBus / a bare call)
+  // here would mean liveSessionView.jsx started emitting on it directly, a second wiring path;
+  // a code COMMENT merely naming the bus for context (as this file's own H1-closure comments do)
+  // is fine and must not fail this check.
+  assert.doesNotMatch(liveSessionSrc, /window\.TradeJournalAIFieldFillBus|TradeJournalAIFieldFillBus\.(emit|on)/, 'liveSessionView.jsx must never call the bus directly - only ai-process-registry.js\'s own applyValue() may emit on it');
+  // Each manual handler still calls the real setter directly, e.g. onBlur={(e) => onNote(entry, ...)}.
+  assert.match(liveSessionSrc, /onBlur=\{\(e\) => \{ if \(e\.target\.value !== \(note \|\| ''\)\) onNote\(entry, e\.target\.value\); \}\}/);
+});

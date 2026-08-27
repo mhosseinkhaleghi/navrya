@@ -6,6 +6,8 @@ import { Select } from '../forms/Select.jsx';
 import { TextField } from '../forms/TextField.jsx';
 import { UploadField } from '../forms/UploadField.jsx';
 import { InstrumentPicker } from '../forms/InstrumentPicker.jsx';
+import { AiMagicFill } from '../feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../../hooks/useAiFieldFill.js';
 
 export const TIMEFRAMES = ['5m', '15m', '1h', '4h', '1D'];
 export const SESSION_CITIES = ['London', 'New York', 'Tokyo', 'Sydney'];
@@ -66,6 +68,11 @@ export function NewSessionDialog({
   // chart upload in this app already persists images.
   const [uploads, setUploads] = React.useState({});
 
+  // Journey H1: magic-fill animation for the three fields most commonly set by Voice.
+  const cityFilled = useAiFieldFill('session-create', 'city');
+  const timeframeFilled = useAiFieldFill('session-create', 'timeframe');
+  const instrumentFilled = useAiFieldFill('session-create', 'instrument');
+
   React.useEffect(() => () => {
     Object.values(uploads).forEach((u) => { if (u && u.previewUrl) URL.revokeObjectURL(u.previewUrl); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -105,6 +112,7 @@ export function NewSessionDialog({
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('session-create', {
+      layer: 'foreground',
       allowlist: ['city', 'timeframe', 'gregorian', 'jalali', 'loop', 'grace', 'accountId', 'instrument'],
       isOpen: () => openRef.current && mountedRef.current,
       activeStep: () => 'form',
@@ -172,18 +180,24 @@ export function NewSessionDialog({
         ))}
       </div>
       <div style={grid}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
-          <FieldLabel>{t.tradingSession}</FieldLabel>
-          <Select value={city} onChange={setCity} options={SESSION_CITIES} width="100%" />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
-          <FieldLabel>{t.primaryTimeframe}</FieldLabel>
-          <Select value={timeframe} onChange={setTimeframe} options={TIMEFRAMES} width="100%" />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
-          <FieldLabel>{t.instrument} *</FieldLabel>
-          <InstrumentPicker value={instrument} onChange={setInstrument} width="100%" />
-        </label>
+        <AiMagicFill active={cityFilled}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+            <FieldLabel>{t.tradingSession}</FieldLabel>
+            <Select value={city} onChange={setCity} options={SESSION_CITIES} width="100%" />
+          </label>
+        </AiMagicFill>
+        <AiMagicFill active={timeframeFilled}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+            <FieldLabel>{t.primaryTimeframe}</FieldLabel>
+            <Select value={timeframe} onChange={setTimeframe} options={TIMEFRAMES} width="100%" />
+          </label>
+        </AiMagicFill>
+        <AiMagicFill active={instrumentFilled}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+            <FieldLabel>{t.instrument} *</FieldLabel>
+            <InstrumentPicker value={instrument} onChange={setInstrument} width="100%" />
+          </label>
+        </AiMagicFill>
         <TextField label={t.gregorianDate} value={gregorian} onChange={setGregorian} />
         <TextField label={t.jalaliDate} value={jalali} onChange={setJalali} dir="rtl" />
         <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>

@@ -27,8 +27,24 @@ test('trade.open is a lifecycle transition of an existing Hunting Trade, distinc
   assert.match(openBlock, /a lifecycle status transition/i);
   assert.match(openBlock, /never the creation of a new Trade/i);
   const calcBlock = actionBlock('trade.calculator');
-  assert.match(calcBlock, /the ONLY action that creates a Trade/);
+  // Journey H1: trade.calculator is no longer the ONLY action that creates a Trade -
+  // trade.wizard (the real, separate multi-step "Log a trade" flow) does too. Both descriptions
+  // now explicitly cross-reference each other so the model never treats them as interchangeable.
+  assert.match(calcBlock, /the DEFAULT action for creating a Trade/);
+  assert.match(calcBlock, /trade\.wizard/);
   assert.match(calcBlock, /trade\.open, a lifecycle status change/);
+});
+
+test('trade.wizard opens the real, separate "Log a trade" wizard, is deliberately distinct from trade.calculator (narrow, logging-specific aliases only), and submits through the now-real trade-wizard process', () => {
+  const wizardBlock = actionBlock('trade.wizard');
+  assert.match(wizardBlock, /domain: 'trades'/);
+  assert.match(wizardBlock, /window\.TradeJournalNavryaTradeLog\.open\(/);
+  assert.match(wizardBlock, /registry\.query\('trade-wizard'\)\.open/);
+  assert.match(wizardBlock, /TradeJournalAIProcessRegistry\.submit\('trade-wizard'\)/);
+  assert.match(wizardBlock, /requiredFields: \['direction', 'instrument'\]/);
+  for (const alias of wizardBlock.match(/aliases: \[([^\]]*)\]/)[1].split(',')) {
+    assert.match(alias, /log|wizard/i, `trade.wizard's own aliases must stay narrowly logging/wizard-specific: ${alias}`);
+  }
 });
 
 test('trade.open only available for a resolved, real Hunting Trade, and its open() calls the exact same updateStatus() the real "Mark Open" button uses', () => {

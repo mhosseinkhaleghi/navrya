@@ -1234,6 +1234,140 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   and already read by `companionContext()`, but have no Settings UI yet beyond
   `initiativePreference` - see `docs/ai/companion-profile.md`.
 
+### 7.24 AI Copilot: Page-Aware Voice & Live UI Synchronization (Journey H1)
+
+- **Purpose:** Voice always knows the current real UI surface (page/modal/wizard/step/fields),
+  a foreground modal/wizard/editor always outranks the background page, a Voice-driven action opens
+  the SAME real UI a human click would, a Voice-filled field visibly updates through a premium
+  "magic-fill" glow, a real multi-step wizard visibly advances in lockstep with Voice, and a
+  human's own manual action (Next/Back/Skip/edit/close) immediately becomes Voice's new truth on
+  the very next turn - all without a second UI/data path, and with zero additional model/network
+  calls anywhere in the mechanism (the existing one-model-call-per-turn invariant is unchanged).
+- **Files:** `public/pages/shared/ai-surface-context.js` (`window.TradeJournalAISurfaceContext` -
+  the surface resolver), `ai-wizard-step-map.js` (`window.TradeJournalAIWizardStepMap` - the
+  field→step lookup builder both real wizards use), `ai-ui-revision-guard.js`
+  (`window.TradeJournalAIUiRevisionGuard` - the stale-action guard), `ai-field-fill-bus.js`
+  (`window.TradeJournalAIFieldFillBus` - the presentation event bus); a `layer`/`stepForPath`/
+  `goToStep` extension to `ai-process-registry.js`'s `register()`/`activeOpenProcess()`/
+  `applyValue()`, and a `uiSnapshot` capture/divergence-check extension to
+  `ai-workflow-engine.js`'s `start()`/`applyKnownFields()`; the magic-fill animation itself -
+  `public/pages/shared/navrya/hooks/useAiFieldFill.js`,
+  `.../navrya/components/feedback/AiMagicFill.jsx` + `.motion.js`. Two new Action Registry entries
+  in `navrya-src/character-app.jsx`: `trade.wizard`, `psychology.intake.start`. Full detail in
+  `docs/ai/page-aware-voice.md`, `docs/ai/voice-ui-synchronization.md`,
+  `docs/ai/voice-ui-coverage-matrix.md` - this section is the map, matching Section 7.19-7.23's own
+  convention.
+- **The product brief's headline bug did not reproduce.** The brief assumed `pattern.create`
+  doesn't open the real Pattern UI. Read against the actual code and confirmed live in a real
+  browser, it already does - `character-app.jsx`'s `pattern.create` action correctly polls for
+  `window.TradeJournalNavryaPatternHub` (the live Strategies Hub's own hook) and for the resulting
+  `pattern-editor-{id}` registration before resolving, hardened by an earlier commit
+  (`98a9ca4 fix(strategies-hub): require instrument(s) before creating a pattern`). No fix was made
+  to it.
+- **A real, adjacent bug was found instead and fixed: `marketplace.publish` routed through the
+  orphaned, pre-NAVRYA legacy pages.** `open()` previously called
+  `window.TradeJournalPatternRegistry.render()` / `window.TradeJournalStrategyEducation
+  .openDetail()` (`pattern-registry.js`/`strategy-education.js`) instead of the live Strategies Hub
+  (`strategiesHubView.jsx`). Root cause traced to `panel-system.js`: `showCustom()` (what the
+  legacy pages' `layer.show()` calls into) removes the previous `panelPage` from the DOM but never
+  calls `panelPage._reactRoot.unmount()` (unlike `render()`, the normal-navigation path, which
+  does - the same unmount fix this document already records at §7.18-era work) - so invoking the
+  action while the live Hub was showing left it mounted-but-detached and displayed the wrong,
+  old-look page. Fixed to open the live Hub's own Share tab / `PublishForm` (real, working,
+  previously just never registered with the Process Registry) instead: `openExistingPattern`/
+  `openExistingStrategy` gained an optional target-tab parameter, `ShareTab` exposes a new
+  `window.TradeJournalNavryaShareTabHub` hook, and `PublishForm` now registers
+  `'strategy-hub-publish-flow'` (deliberately a NEW id, distinct from the legacy
+  `publishFlowModal.jsx`'s own `'publish-flow'`). Verified live in-browser end to end: opens the
+  live Hub's Share tab, fills title/description through the real form, and the legacy globals are
+  structurally proven never called again (`tests/community-marketplace-messaging-actions.test.mjs`).
+- **`layer` is the entire "topmost surface" mechanism - deliberately binary, not a z-index/DOM-
+  stacking model.** `ai-process-registry.js`'s `register()` gained an optional
+  `layer: 'foreground' | 'background'` (default `'background'` - every pre-existing registration is
+  unaffected). `activeOpenProcess()`'s winner rule became `(layerRank, _order)`: an open
+  `foreground` registration (a modal/wizard/full-detail editor) always outranks an open
+  `background` one (a persistent inline section, or an already-deliberately-ambient per-card
+  registration like Scenario cards) regardless of registration recency; the existing same-layer
+  recency rule is unchanged within a tier. `ai-surface-context.js`'s `snapshot()` composes this
+  with `ai-context-engine.js`'s existing resolvers and - only when nothing is open at all -
+  `ai-journey-engine.js`'s already-deterministic `nextBestStep()` as the Dashboard "what deserves
+  attention" fallback (brief §8) - no new priority scorer was built.
+- **Wizard lockstep: field application drives the real step forward, never the reverse.**
+  `ai-wizard-step-map.js`'s `forGroups({step: [paths]})` builds a pure `stepForPath(path)` lookup;
+  `tradeLogModal.jsx`'s `trade-wizard` and `mentalHealthIntakeModal.jsx`'s `mh-intake`
+  registrations each declare one, built from their own real allowlist
+  (`trade.types.js`'s `tradeWizardPaths`, `mental-health.types.js`'s `intakePaths`) grouped against
+  their own real step→component map. `ai-process-registry.js`'s `applyValue()` resolves the target
+  step and calls the registration's own `goToStep()` (the exact function the real Next/Back buttons
+  call) BEFORE writing the value, whenever it differs from the currently visible step - never a
+  fake step number, never bypassing real UI validation. Verified live in-browser: applying
+  `primaryTimeframe` to an open `trade-wizard` on step 1 visibly advances it to step 2, then
+  `chartNote` to step 3; applying `intake.demographics.age`/`.financialContext.capitalType`/
+  `.tradingHistory.yearsTrading` in sequence visibly advances a fresh `mh-intake` through steps
+  1→2→3→4; a real manual click on the Intake's own "Previous" button is read fresh on the very next
+  query, with zero caching.
+- **`trade.wizard` and `psychology.intake.start` close two confirmed, real gaps - not invented
+  ones.** `trade-wizard`'s own Process Registry registration has existed since Journey B (fields
+  fill into an already-open wizard) but had no `submit()` at all and no Action Registry entry, so
+  Voice could never open or complete the real "Log a trade" wizard (`dashboardView.jsx`'s own
+  `t('logTrade')` button) - only the separate, single-screen `trade.calculator` could create a
+  Trade by voice. `tradeLogModal.jsx`'s `finish()` (previously fire-and-forget, its return value
+  discarded by its one caller) now returns its promise chain, wired through a `submitRef` (the same
+  stale-closure-avoidance convention `publishFlowModal.jsx` already established) so the process
+  registry's `submit()` always calls the LATEST closure, not one captured whenever the step-keyed
+  registration effect last ran. `trade.wizard` and `trade.calculator` are deliberately kept as TWO
+  separate, narrowly-aliased actions (not merged/ambiguous) - both are real, distinct,
+  human-clickable entry points for "create a Trade" (`dashboardView.jsx`'s own "Log a trade" vs.
+  "Calculator" buttons); each action's description explicitly cross-references the other so the
+  model never treats a plain "go long" and an explicit "log a trade" as the same request. Similarly,
+  `mh-intake` has had a real Process Registry registration since Journey C (an already-open Intake
+  can be filled) but no Action Registry entry - Voice could never open it by name, only the
+  Companion's own proactive "next best step" nudge could (`ai-journey-steps.js`'s `'intake'` step).
+  `psychology.intake.start` is deliberately open-only (`entityAlreadyPersisted: true`, mirroring
+  `settings.trading.update`'s exact shape) and touches no Mental Health data itself - every
+  subsequent field turn still flows through the same, already-privacy-scoped `mh-intake` allowlist
+  a human-opened intake already uses; `ai-user-memory.js`'s minimized
+  `getRelevantPsychologyContext()` contract is completely untouched.
+- **Stale-action protection is narrow and additive, not a generic diff engine.**
+  `ai-ui-revision-guard.js`'s `hasDiverged(captured)` is true iff the captured process closed, its
+  step changed to something the workflow itself didn't just cause (a human's own Back/Next/Skip),
+  or - only for a `foreground` capture - a different registration is now topmost.
+  `ai-workflow-engine.js` captures a workflow's `uiSnapshot` once its real `processId` is known,
+  checks divergence before applying each later turn's fields (discarding the workflow rather than
+  resurrecting stale assumptions onto whatever the user has since moved to by hand - brief §27,
+  §49-51), and re-captures immediately after its own field application legitimately advances a
+  step, so its own step-follow is never mistaken for a human's independent action on the next turn.
+- **Magic-fill animation is a pure, decoupled presentation layer - never a second source of truth.**
+  `ai-process-registry.js`'s `applyValue()` emits on `TradeJournalAIFieldFillBus` strictly AFTER the
+  real value has already landed on the real UI's own state. `useAiFieldFill(processId, path)`
+  subscribes per field, returning a boolean that auto-clears after ~650ms; `<AiMagicFill>` wraps the
+  real field with `display:contents` (never affects a parent flex/grid layout) and toggles a
+  `data-nv-magic-fill` attribute the shared `AiMagicFill.motion.js` sheet targets (same
+  once-injected-`<style>` convention as `components/assistant/motion.js`'s own
+  `useAssistantMotion()`). The glow color is each character's own `--char-accent` token, never a
+  fixed brand color. `prefers-reduced-motion` is handled entirely in CSS - the animation is
+  neutralized but a static, instant highlight remains, so success is never signaled by motion alone
+  (brief §17). Wired this pass across Pattern/Strategy editors, Session creation, Trade
+  Calculator, Trade Wizard, Psychology Intake, and Settings Trading Defaults (the representative
+  persistent-surface case, proving the same hook works identically outside a modal) - verified live
+  in-browser on every one of them (`getComputedStyle(...).animationName ===
+  'nv-magic-fill-pulse'` mid-flight, cleared afterward).
+- **Zero model/network calls anywhere in this mechanism.** Every function this gate introduces -
+  the `layer` comparison, `stepForPath()`, `capture()`/`hasDiverged()`, `snapshot()`,
+  `emit()`/`on()` - is a synchronous, local read of state that already exists in memory for other
+  reasons. The only network call anywhere in the pipeline this gate touches remains
+  `chat-dock-core.js`'s single `fetch('/api/ai/chat')` per turn, unchanged since Journey A.
+- **Explicitly out of scope this pass, reported as gaps rather than built partially:** Community
+  post/comment flows, Marketplace `rate`/`messageSeller`, Messaging compose/reply (audited, no new
+  sync/animation work - user-approved scope); Account beyond its already-correct
+  surface-awareness; threading `ai-surface-context.js`'s step detail into Explain-mode's
+  `companionContext`/server prompt (the client-side piece exists, the server-side prompt-builder
+  wiring in `server/pattern-ai-server.mjs` was not audited or touched this pass); Intake step 5's
+  own visible fields (`largestWin`/`largestLoss`/`marginCallOrZeroedCount`) are real
+  `numericPaths` but were never in the `mh-intake` registration's own `intakePaths` allowlist - a
+  pre-existing scope limit, not introduced here. See `docs/ai/voice-ui-coverage-matrix.md` for the
+  complete, row-by-row accounting.
+
 ## 8. AI Integration Points
 
 ### Server configuration

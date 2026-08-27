@@ -7,6 +7,8 @@ import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Toggle } from '../public/pages/shared/navrya/components/forms/Toggle.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { CharacterPortrait } from '../public/pages/shared/navrya/components/identity/CharacterPortrait.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { CHARACTERS } from './characters.js';
@@ -611,6 +613,15 @@ function TradingDefaultsSection({ t, lang }) {
   // AI process registry (A4) - mountedRef template. A suggested value is clamped into that row's
   // own real [min,max] before being applied, same discipline every +/- stepper button already has.
   const mountedRef = React.useRef(true);
+  // Journey H1: hooks can't be called inside rows.map() (Rules of Hooks) - called once per real
+  // key here instead, looked up by row.key below. This is the "representative persistent
+  // inline-form" case (layer stays 'background', unlike a modal/wizard - it correctly competes
+  // WITH the rest of the page rather than overlaying it) that proves the animation hook works
+  // identically outside a modal.
+  const riskFilled = useAiFieldFill('settings-trading-defaults', 'defaultRiskPercent');
+  const leverageFilled = useAiFieldFill('settings-trading-defaults', 'leverageCap');
+  const tradesFilled = useAiFieldFill('settings-trading-defaults', 'maxTradesPerSession');
+  const filledByKey = { defaultRiskPercent: riskFilled, leverageCap: leverageFilled, maxTradesPerSession: tradesFilled };
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -632,14 +643,16 @@ function TradingDefaultsSection({ t, lang }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 10 }}>
           {rows.map((row) => (
-            <div key={row.key} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
-              <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{row.label}</span>
-              <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-metric-value)', color: 'var(--text-primary)' }}>{digits(lang, row.value)}</span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button type="button" onClick={() => patch(row.key, Math.max(row.min, Math.round((settings[row.key] - row.step) * 10) / 10))} aria-label={t('decrease')} style={{ flex: 1, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)', color: 'var(--text-muted)' }}><Icon name="minus" size={14} /></button>
-                <button type="button" onClick={() => patch(row.key, Math.min(row.max, Math.round((settings[row.key] + row.step) * 10) / 10))} aria-label={t('increase')} style={{ flex: 1, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)', color: 'var(--text-muted)' }}><Icon name="plus" size={14} /></button>
+            <AiMagicFill key={row.key} active={filledByKey[row.key]}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
+                <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{row.label}</span>
+                <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-metric-value)', color: 'var(--text-primary)' }}>{digits(lang, row.value)}</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" onClick={() => patch(row.key, Math.max(row.min, Math.round((settings[row.key] - row.step) * 10) / 10))} aria-label={t('decrease')} style={{ flex: 1, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)', color: 'var(--text-muted)' }}><Icon name="minus" size={14} /></button>
+                  <button type="button" onClick={() => patch(row.key, Math.min(row.max, Math.round((settings[row.key] + row.step) * 10) / 10))} aria-label={t('increase')} style={{ flex: 1, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)', color: 'var(--text-muted)' }}><Icon name="plus" size={14} /></button>
+                </div>
               </div>
-            </div>
+            </AiMagicFill>
           ))}
         </div>
         <Notice icon="honour">{t('defaultsNote')}</Notice>
