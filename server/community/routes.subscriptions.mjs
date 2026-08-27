@@ -3,6 +3,7 @@ import { asyncHandler, ApiError } from './errors.mjs';
 import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs';
 import { cancelAtPeriodEnd, reactivateSubscription } from '../commercial/subscription-service.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
+import { getEffectiveCommercialConfig } from '../commercial/commercial-config.mjs';
 
 // Commercial System Slice 2 - the user-facing Subscription surface (spec section 21/22/23).
 // Mounted at /api/sync/subscriptions, same requireAuth()+csrfProtection() chain as every other
@@ -21,6 +22,15 @@ export function router(repo) {
       repo.subscriptions.getActiveForUser(req.currentUser.id)
     ]);
     res.json({ plan: entitlements.plan, subscription });
+  }));
+
+  // Real plan-comparison UI addition - exposes the SAME effective config (defaults merged with
+  // any admin override) the entitlement resolver itself reads, so displayed prices/limits can
+  // never drift from what a purchase actually snapshots. No commercial number is hard-coded
+  // client-side; overridesByKey is intentionally omitted (admin-internal bookkeeping only).
+  app.get('/catalog', asyncHandler(async (req, res) => {
+    const config = await getEffectiveCommercialConfig(repo);
+    res.json({ plans: config.plans });
   }));
 
   app.post('/upgrade-request', asyncHandler(async (req, res) => {

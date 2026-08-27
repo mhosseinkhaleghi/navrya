@@ -26,6 +26,14 @@ export function router(repo) {
     res.json({ entries: await repo.wallet.ledgerForUser(req.currentUser.id, { limit: 50 }) });
   }));
 
+  // Billing History (real UI addition) - every payment_transactions row for this user, whatever
+  // its type (wallet_topup/subscription/storage_purchase/refund) or status. Reuses the existing
+  // repo.paymentTransactions.listForUser() the admin surface already relies on; scoped to
+  // req.currentUser.id here so a user can only ever see their own transactions.
+  app.get('/transactions', asyncHandler(async (req, res) => {
+    res.json({ transactions: await repo.paymentTransactions.listForUser(req.currentUser.id, { limit: 50 }) });
+  }));
+
   app.post('/topup-request', asyncHandler(async (req, res) => {
     const amountUsd = Number((req.body || {}).amountUsd);
     const result = await billingProvider.createWalletTopUp({ userId: req.currentUser.id, amountUsd });

@@ -1102,135 +1102,448 @@ function RoleTab({ lang, profile, onSaved }) {
 
 function fmtMicroUsd(microUsd) { return '$' + (microUsd / 1000000).toFixed(2); }
 function fmtBytesGb(bytes) { return (bytes / 1073741824).toFixed(bytes % 1073741824 === 0 ? 0 : 1) + ' GB'; }
+function fmtDate(iso) { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+function fmtDateTime(iso) { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+function planLabel(planId) { return planId ? planId.charAt(0).toUpperCase() + planId.slice(1) : ''; }
+function humanizeSlug(slug) {
+  return String(slug || '').split(/[-_]/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+const labelRow = { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)' };
 
-function WalletPanel() {
+// Wallet Activity's "why did my balance move" line - composed from the ledger row's own
+// type/sourceAction/provider/model/feature (server/db/repo.*.mjs's wallet.grant()/settle()/
+// release() are the only writers of these fields - see repo.memory.mjs's wallet object). There is
+// no free-text reason column anywhere in this schema, so this is a client-side presentation
+// mapping, not a lossy summary of a richer field that already existed.
+function ledgerEntryDisplay(entry) {
+  const netMicroUsd = (entry.cashDeltaMicroUsd || 0) + (entry.promoDeltaMicroUsd || 0);
+  const isCredit = netMicroUsd > 0;
+  let title, subtitle;
+  if (entry.type === 'AI_SETTLEMENT') {
+    title = 'AI Usage · ' + humanizeSlug(entry.feature || 'Assistant');
+    subtitle = [entry.provider, entry.model].filter(Boolean).join(' · ');
+  } else if (entry.type === 'TOP_UP') {
+    title = 'Wallet Top-Up'; subtitle = 'Manual billing';
+  } else if (entry.type === 'PROMO_CREDIT') {
+    title = 'Signup Bonus'; subtitle = 'Promo credit';
+  } else if (entry.type === 'ADMIN_CREDIT') {
+    title = 'Admin Credit';
+    subtitle = entry.sourceAction && entry.sourceAction !== 'admin-credit' ? entry.sourceAction : 'Manual adjustment';
+  } else if (entry.type === 'ADMIN_DEBIT') {
+    const isRefund = entry.sourceAction === 'refund';
+    title = isRefund ? 'Refund Reversal' : 'Admin Debit';
+    subtitle = isRefund ? 'Top-up refunded' : (entry.sourceAction && entry.sourceAction !== 'admin-debit' ? entry.sourceAction : 'Manual adjustment');
+  } else {
+    title = humanizeSlug(entry.type); subtitle = entry.sourceAction || '';
+  }
+  return { isCredit, title, subtitle, amountLabel: (isCredit ? '+' : '-') + fmtMicroUsd(Math.abs(netMicroUsd)) };
+}
+
+const PLAN_ORDER = ['free', 'plus', 'personalized'];
+const LIMIT_LABELS = { patterns: 'saved patterns', strategies: 'strategies', accounts: 'trading accounts', sessions: 'trading sessions', analysisSymbols: 'analysis symbols' };
+const LIMIT_LABELS_SINGULAR = { patterns: 'saved pattern', strategies: 'strategy', accounts: 'trading account', sessions: 'trading session', analysisSymbols: 'analysis symbol' };
+// Every line is derived from the SAME effective config the entitlement resolver enforces
+// server-side (GET /api/sync/subscriptions/catalog) - nothing here is a hard-coded plan number,
+// so an admin-edited price/limit shows up correctly with no client change.
+function planFeatureLines(planConfig) {
+  const lines = [fmtBytesGb(planConfig.storageBytes) + ' cloud storage'];
+  Object.keys(LIMIT_LABELS).forEach((key) => {
+    const val = planConfig.limits ? planConfig.limits[key] : null;
+    const label = val === 1 ? LIMIT_LABELS_SINGULAR[key] : LIMIT_LABELS[key];
+    lines.push(val === null || val === undefined ? 'Unlimited ' + LIMIT_LABELS[key] : val + ' ' + label);
+  });
+  if (planConfig.features && planConfig.features.aiPanelBuilder) lines.push('AI Panel Builder access');
+  return lines;
+}
+
+function PlanHero({ plan, subscription, onToggleCancel }) {
+  const [wallet, setWallet] = React.useState(null);
+  const [storage, setStorage] = React.useState(null);
+  React.useEffect(() => {
+    fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {});
+    fetch('/api/sync/storage').then((r) => r.json()).then(setStorage).catch(() => {});
+  }, []);
+  const isUnlimitedPlan = plan !== 'free';
+  const storagePct = storage ? Math.min(100, (storage.usedBytes / Math.max(1, storage.quotaBytes)) * 100) : 0;
+  return (
+    <Panel variant="prestige" ornament ornamentSize={18} texture textureOpacity={0.05} padding="28px 30px">
+      <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 340px', minWidth: 260, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{ width: 56, height: 56, borderRadius: 12, background: 'var(--char-active-surface)', border: '1px solid var(--border-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--char-accent)', flex: 'none' }}>
+              <Icon name="subscription" size={28} />
+            </span>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', boxShadow: '0 0 8px rgba(46,204,113,.6)' }}></span>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--success)' }}>Active</span>
+              </div>
+              <h2 style={{ margin: '3px 0 0', fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--parchment)' }}>{planLabel(plan)} Plan</h2>
+            </div>
+          </div>
+          {subscription ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--gold-warm)' }}>{fmtMicroUsd(subscription.priceAmountMicroUsd)}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ month</span>
+              </div>
+              <div dir="ltr" style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>
+                {subscription.cancelAtPeriodEnd ? 'Cancels ' : 'Renews '}{fmtDate(subscription.currentPeriodEnd)}
+                {subscription.cancelAtPeriodEnd ? ' · renew anytime before then' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <Button variant="secondary" size="sm" onClick={onToggleCancel}>{subscription.cancelAtPeriodEnd ? 'Reactivate' : 'Cancel at Period End'}</Button>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>Free plan — no billing on file.</div>
+          )}
+        </div>
+
+        <div style={{ width: 1, background: 'var(--divider-gold)', alignSelf: 'stretch' }}></div>
+
+        <div style={{ flex: '1 1 300px', minWidth: 260, display: 'flex', flexDirection: 'column', gap: 16, justifyContent: 'center' }}>
+          {storage && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
+                <span style={labelRow}>Storage Used</span>
+                <span dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtBytesGb(storage.usedBytes)} of {fmtBytesGb(storage.quotaBytes)}</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 999, background: 'rgba(244,234,215,.08)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: storagePct + '%', borderRadius: 999, background: 'linear-gradient(90deg, var(--char-accent-strong), var(--char-accent))' }}></div>
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 14 }}>
+            <div style={{ flex: 1, padding: '13px 15px', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'var(--surface-card)' }}>
+              <div style={{ ...labelRow, marginBottom: 6 }}>Wallet Balance</div>
+              <div className="navrya-tabular" style={{ fontSize: 20, fontWeight: 700, color: 'var(--parchment)' }}>{wallet ? fmtMicroUsd(wallet.totalBalanceMicroUsd) : '—'}</div>
+            </div>
+            <div style={{ flex: 1, padding: '13px 15px', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'var(--surface-card)' }}>
+              <div style={{ ...labelRow, marginBottom: 6 }}>Plan Limits</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: isUnlimitedPlan ? 'var(--char-accent)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                {isUnlimitedPlan ? <><Icon name="Infinity" size={15} />Unlimited</> : 'Free tier caps'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function UpgradeModal({ planId, price, onClose, onConfirm }) {
+  return (
+    <Modal open title={'Upgrade to ' + planLabel(planId)} icon="subscription" onClose={onClose} width={440}
+      footer={(
+        <>
+          <span style={{ flex: 1 }} />
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={onConfirm}>Confirm Request</Button>
+        </>
+      )}
+    >
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        {price ? "You'll be billed " + fmtMicroUsd(Math.round(price.amountUsd * 1000000)) + ' / ' + price.billingInterval + ' ' : ''}
+        once an admin confirms this request. Your current plan stays active until then.
+      </p>
+    </Modal>
+  );
+}
+
+function PlanComparisonGrid({ plan, catalog, onUpgrade }) {
+  if (!catalog) return null;
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ ...labelRow, marginBottom: 4 }}>Choose Your Plan</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>Upgrades take effect once an admin confirms the request.</div>
+      </div>
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+        {PLAN_ORDER.map((planId) => {
+          const cfg = catalog[planId];
+          if (!cfg) return null;
+          const isCurrent = planId === plan;
+          const isPast = PLAN_ORDER.indexOf(planId) < PLAN_ORDER.indexOf(plan);
+          const lines = planFeatureLines(cfg);
+          return (
+            <Panel key={planId} variant={isCurrent ? 'active' : 'base'} ornament={isCurrent} ornamentSize={18} glow={isCurrent}
+              padding="22px 20px" style={{ flex: '1 1 260px', minWidth: 240, display: 'flex', flexDirection: 'column', gap: 14 }}
+            >
+              {isCurrent && (
+                <div style={{ alignSelf: 'center', padding: '4px 14px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>Current Plan</div>
+              )}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(planId)}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 7 }}>
+                  <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {cfg.price.billingInterval}</span>
+                </div>
+              </div>
+              <ul style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: 0, padding: 0, listStyle: 'none' }}>
+                {lines.map((line) => (
+                  <li key={line} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 12.5, color: isCurrent ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.4 }}>
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: isCurrent ? 'var(--char-accent)' : 'var(--text-dim)', marginTop: 6, flex: 'none' }}></span>
+                    <span dir="ltr">{line}</span>
+                  </li>
+                ))}
+              </ul>
+              <div style={{ flex: 1 }}></div>
+              {isCurrent ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 12, color: 'var(--char-accent)', fontWeight: 600, paddingTop: 9, borderTop: '1px solid var(--divider-gold)' }}>
+                  <Icon name="check" size={14} />Active Plan
+                </div>
+              ) : isPast ? (
+                <div style={{ fontSize: 11.5, color: 'var(--text-disabled)', textAlign: 'center', paddingTop: 8, borderTop: '1px solid var(--divider-gold)' }}>Your previous plan</div>
+              ) : (
+                <Button variant="primary" size="sm" style={{ justifyContent: 'center' }} onClick={() => onUpgrade(planId)}>Upgrade to {planLabel(planId)}</Button>
+              )}
+            </Panel>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WalletCard({ onNotice }) {
   const [wallet, setWallet] = React.useState(null);
   const [amount, setAmount] = React.useState('10');
-  const [note, setNote] = React.useState('');
   function reload() { fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {}); }
   React.useEffect(reload, []);
   function requestTopUp() {
-    fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: Number(amount) }) })
+    const amountUsd = Number(amount) || 0;
+    fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
-      .then(() => setNote('Top-up requested - pending Admin confirmation (manual/test billing).'))
-      .catch((error) => setNote('Could not submit the top-up request: ' + error.message));
+      .then(() => { onNotice('Top-up of ' + fmtMicroUsd(amountUsd * 1000000) + ' requested — pending Admin confirmation (manual/test billing).'); reload(); })
+      .catch((error) => onNotice('Could not submit the top-up request: ' + error.message));
   }
   if (!wallet) return null;
   return (
-    <Panel variant="base" ornament padding="20px 22px">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <span style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>AI Wallet</span>
-        <strong style={{ fontSize: 22, color: 'var(--parchment)' }}>{fmtMicroUsd(wallet.totalBalanceMicroUsd)}</strong>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Promo {fmtMicroUsd(wallet.promoBalanceMicroUsd)} · Paid {fmtMicroUsd(wallet.paidBalanceMicroUsd)}</span>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-          <div style={{ width: 110 }}><TextField label="Amount (USD)" value={amount} onChange={setAmount} type="number" /></div>
-          <Button variant="primary" size="sm" onClick={requestTopUp}>Request Top-Up</Button>
+    <Panel variant="base" ornament padding="22px 24px">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 26 }}>
+        <div style={{ flex: '1 1 320px', minWidth: 260 }}>
+          <div style={{ ...labelRow, marginBottom: 9 }}>AI Wallet</div>
+          <div className="navrya-tabular" style={{ fontSize: 31, fontWeight: 700, color: 'var(--parchment)' }}>{fmtMicroUsd(wallet.totalBalanceMicroUsd)}</div>
+          <div dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Promo {fmtMicroUsd(wallet.promoBalanceMicroUsd)} · Paid {fmtMicroUsd(wallet.paidBalanceMicroUsd)}</div>
+          <p style={{ fontSize: 12, color: 'var(--text-dim)', maxWidth: 380, margin: '14px 0 0', lineHeight: 1.6 }}>
+            Every AI response — chat, pattern analysis, session review — draws from this balance the moment it's generated. See exactly what it was spent on in Wallet Activity below.
+          </p>
         </div>
-        {!!note && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{note}</span>}
-      </div>
-    </Panel>
-  );
-}
-
-function PlanPanel() {
-  const [data, setData] = React.useState(null);
-  const [note, setNote] = React.useState('');
-  function reload() { fetch('/api/sync/subscriptions').then((r) => r.json()).then(setData).catch(() => setData({ plan: 'free', subscription: null })); }
-  React.useEffect(reload, []);
-  function upgrade(planId) {
-    fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
-      .then(() => setNote('Upgrade requested - pending Admin confirmation (manual/test billing).')).catch(() => setNote('Could not submit the upgrade request.'));
-  }
-  function cancelSub(id) { fetch('/api/sync/subscriptions/' + id + '/cancel', { method: 'POST' }).then(reload); }
-  function reactivateSub(id) { fetch('/api/sync/subscriptions/' + id + '/reactivate', { method: 'POST' }).then(reload); }
-  if (!data) return null;
-  const planLabel = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);
-  const upgradeTargets = data.plan === 'free' ? ['plus', 'personalized'] : data.plan === 'plus' ? ['personalized'] : [];
-  return (
-    <Panel variant="base" ornament padding="20px 22px">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Plan</span>
-            <strong style={{ fontSize: 22, color: 'var(--parchment)' }}>{planLabel}</strong>
-          </div>
-          {data.subscription && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>
-              <div>{fmtMicroUsd(data.subscription.priceAmountMicroUsd)} / mo</div>
-              <div>{data.subscription.cancelAtPeriodEnd ? 'Canceling - active until ' : 'Renews '}{new Date(data.subscription.currentPeriodEnd).toLocaleDateString()}</div>
-            </div>
-          )}
-        </div>
-        {!!upgradeTargets.length && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {upgradeTargets.map((planId) => (
-              <Button key={planId} variant="primary" size="sm" onClick={() => upgrade(planId)}>Upgrade to {planId.charAt(0).toUpperCase() + planId.slice(1)}</Button>
+        <div style={{ flex: '1 1 280px', minWidth: 260, maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={labelRow}>Amount (USD)</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[10, 25, 50].map((v) => (
+              <Chip key={v} tone={Number(amount) === v ? 'accent' : 'neutral'} style={{ cursor: 'pointer' }} onClick={() => setAmount(String(v))}>${v}</Chip>
             ))}
           </div>
-        )}
-        {data.subscription && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            {data.subscription.cancelAtPeriodEnd
-              ? <Button variant="secondary" size="sm" onClick={() => reactivateSub(data.subscription.id)}>Reactivate</Button>
-              : <Button variant="secondary" size="sm" onClick={() => cancelSub(data.subscription.id)}>Cancel at period end</Button>}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}><TextField value={amount} onChange={setAmount} type="number" /></div>
+            <Button variant="primary" onClick={requestTopUp}>Request Top-Up</Button>
           </div>
-        )}
-        {!!note && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{note}</span>}
+        </div>
       </div>
     </Panel>
   );
 }
 
-function StoragePanel() {
+const LEDGER_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'usage', label: 'AI Usage' },
+  { id: 'credit', label: 'Top-Ups & Credits' }
+];
+
+function WalletActivityCard() {
+  const [entries, setEntries] = React.useState(null);
+  const [filter, setFilter] = React.useState('all');
+  React.useEffect(() => {
+    fetch('/api/sync/wallet/ledger').then((r) => r.json())
+      // AI_RELEASE rows are a held-reservation release, always net $0 - not a meaningful "why did
+      // my balance move" event, so they're filtered out here rather than shown as a $0.00 row.
+      .then((d) => setEntries((d.entries || []).filter((e) => e.type !== 'AI_RELEASE')))
+      .catch(() => setEntries([]));
+  }, []);
+  if (!entries) return null;
+  const filtered = entries.filter((e) => {
+    if (filter === 'all') return true;
+    const net = (e.cashDeltaMicroUsd || 0) + (e.promoDeltaMicroUsd || 0);
+    return filter === 'usage' ? net < 0 : net > 0;
+  });
+  return (
+    <Panel variant="base" ornament padding="22px 24px">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
+        <div style={labelRow}>Wallet Activity — why your balance moved</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {LEDGER_FILTERS.map((f) => (
+            <Chip key={f.id} tone={filter === f.id ? 'accent' : 'neutral'} style={{ cursor: 'pointer' }} onClick={() => setFilter(f.id)}>{f.label}</Chip>
+          ))}
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-dim)', padding: '12px 4px' }}>No activity yet.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {filtered.map((entry) => {
+            const d = ledgerEntryDisplay(entry);
+            return (
+              <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 4px', borderBottom: '1px solid rgba(244,234,215,.06)' }}>
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, flex: 'none', background: d.isCredit ? 'rgba(46,204,113,.12)' : 'rgba(255,56,48,.12)', color: d.isCredit ? 'var(--success)' : 'var(--danger)' }}>
+                  <Icon name={d.isCredit ? 'ArrowUpRight' : 'ArrowDownLeft'} size={16} />
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{d.title}</div>
+                  <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-dim)', marginTop: 2 }}>{d.subtitle}{d.subtitle ? ' · ' : ''}{fmtDateTime(entry.createdAt)}</div>
+                </div>
+                <div dir="ltr" className="navrya-tabular" style={{ fontSize: 14, fontWeight: 700, color: d.isCredit ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap' }}>{d.amountLabel}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function StorageCard({ onNotice }) {
   const [storage, setStorage] = React.useState(null);
   const [products, setProducts] = React.useState([]);
-  const [note, setNote] = React.useState('');
   function reload() {
     fetch('/api/sync/storage').then((r) => r.json()).then(setStorage).catch(() => {});
     fetch('/api/sync/storage/products').then((r) => r.json()).then((d) => setProducts(d.products || [])).catch(() => {});
   }
   React.useEffect(reload, []);
-  function requestPurchase(productId) {
-    fetch('/api/sync/storage/purchase-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId }) })
-      .then(() => setNote('Purchase requested - pending Admin confirmation (manual/test billing).')).catch(() => setNote('Could not submit the purchase request.'));
+  function requestPurchase(product) {
+    fetch('/api/sync/storage/purchase-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId: product.id }) })
+      .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
+      .then(() => { onNotice(product.name + ' purchase requested — pending Admin confirmation (manual/test billing).'); reload(); })
+      .catch((error) => onNotice('Could not submit the purchase request: ' + error.message));
   }
   if (!storage) return null;
+  const pct = Math.min(100, (storage.usedBytes / Math.max(1, storage.quotaBytes)) * 100);
+  const activeEntitlements = (storage.entitlements || []).filter((e) => new Date(e.expiresAt).getTime() > Date.now());
   return (
-    <Panel variant="base" ornament padding="20px 22px">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Storage</span>
-        <strong style={{ fontSize: 22, color: 'var(--parchment)' }}>{fmtBytesGb(storage.usedBytes)} / {fmtBytesGb(storage.quotaBytes)}</strong>
-        {!!(storage.entitlements && storage.entitlements.length) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {storage.entitlements.map((e) => (
-              <span key={e.id} style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{fmtBytesGb(e.capacityBytesSnapshot)} - expires {new Date(e.expiresAt).toLocaleDateString()}</span>
-            ))}
-          </div>
-        )}
-        {!!products.length && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {products.map((p) => (
-              <Button key={p.id} variant="secondary" size="sm" onClick={() => requestPurchase(p.id)}>{p.name} - {fmtMicroUsd(p.priceAmountMicroUsd)}</Button>
-            ))}
-          </div>
-        )}
-        {!!note && <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{note}</span>}
+    <Panel variant="base" ornament padding="22px 24px">
+      <div style={{ ...labelRow, marginBottom: 10 }}>Cloud Storage</div>
+      <div dir="ltr" style={{ marginBottom: 8 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--parchment)' }}>{fmtBytesGb(storage.usedBytes)}</span>
+        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}> of {fmtBytesGb(storage.quotaBytes)} used</span>
       </div>
+      <div style={{ height: 6, borderRadius: 999, background: 'rgba(244,234,215,.08)', overflow: 'hidden', marginBottom: 20 }}>
+        <div style={{ height: '100%', width: pct + '%', borderRadius: 999, background: 'linear-gradient(90deg, var(--char-accent-strong), var(--char-accent))' }}></div>
+      </div>
+      {!!activeEntitlements.length && (
+        <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 22 }}>
+          {activeEntitlements.map((e) => (
+            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '9px 2px', borderBottom: '1px solid rgba(244,234,215,.06)' }}>
+              <span style={{ color: 'var(--text-primary)' }}>Storage add-on</span>
+              <span dir="ltr" style={{ color: 'var(--text-muted)' }}>{fmtBytesGb(e.capacityBytesSnapshot)} · expires {fmtDate(e.expiresAt)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {!!products.length && (
+        <>
+          <div style={{ ...labelRow, marginBottom: 12 }}>Add More Storage</div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            {products.map((p) => (
+              <div key={p.id} style={{ flex: '1 1 200px', minWidth: 180, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'var(--surface-card)', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
+                <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>+{fmtBytesGb(p.capacityBytes)} · {p.validityDays} days</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold-warm)' }}>{fmtMicroUsd(p.priceAmountMicroUsd)}</div>
+                <Button variant="secondary" size="sm" style={{ justifyContent: 'center', marginTop: 'auto' }} onClick={() => requestPurchase(p)}>Purchase</Button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+const TX_STATUS_STYLE = {
+  confirmed: { color: 'var(--success)', border: 'rgba(46,204,113,.4)', background: 'rgba(46,204,113,.08)', label: 'Paid' },
+  pending: { color: 'var(--warning)', border: 'rgba(255,176,32,.4)', background: 'rgba(255,176,32,.08)', label: 'Pending' },
+  failed: { color: 'var(--danger)', border: 'rgba(255,56,48,.4)', background: 'rgba(255,56,48,.08)', label: 'Failed' },
+  refunded: { color: 'var(--info)', border: 'rgba(77,163,255,.4)', background: 'rgba(77,163,255,.08)', label: 'Refunded' }
+};
+const TX_TYPE_LABEL = { wallet_topup: 'Wallet Top-Up', subscription: 'Plan · Monthly Subscription', storage_purchase: 'Storage Add-on', refund: 'Refund' };
+
+function BillingHistoryCard() {
+  const [transactions, setTransactions] = React.useState(null);
+  React.useEffect(() => {
+    fetch('/api/sync/wallet/transactions').then((r) => r.json()).then((d) => setTransactions(d.transactions || [])).catch(() => setTransactions([]));
+  }, []);
+  if (!transactions) return null;
+  return (
+    <Panel variant="base" ornament padding="22px 24px">
+      <div style={{ ...labelRow, marginBottom: 18 }}>Billing History</div>
+      {transactions.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>No billing activity yet.</div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 100px 90px', gap: 12, padding: '0 6px 11px', borderBottom: '1px solid var(--divider-gold)', fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+            <span>Date</span><span>Description</span><span>Amount</span><span>Status</span>
+          </div>
+          {transactions.map((tx) => {
+            const st = TX_STATUS_STYLE[tx.status] || TX_STATUS_STYLE.pending;
+            return (
+              <div key={tx.id} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 100px 90px', gap: 12, padding: '14px 6px', borderBottom: '1px solid rgba(244,234,215,.06)', alignItems: 'center' }}>
+                <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{fmtDate(tx.confirmedAt || tx.createdAt)}</span>
+                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{TX_TYPE_LABEL[tx.type] || humanizeSlug(tx.type)}</span>
+                <span className="navrya-tabular" style={{ fontSize: 13, fontWeight: 600, color: 'var(--parchment)' }}>{fmtMicroUsd(tx.amountMicroUsd)}</span>
+                <Chip style={{ color: st.color, borderColor: st.border, background: st.background }}>{st.label}</Chip>
+              </div>
+            );
+          })}
+        </>
+      )}
     </Panel>
   );
 }
 
 function SubscriptionTab({ lang, i18n }) {
+  const [subData, setSubData] = React.useState(null);
+  const [catalog, setCatalog] = React.useState(null);
+  const [notice, setNotice] = React.useState('');
+  const [upgradeTarget, setUpgradeTarget] = React.useState(null);
   const [subs, setSubs] = React.useState(null);
+
+  const reloadSub = React.useCallback(() => {
+    fetch('/api/sync/subscriptions').then((r) => r.json()).then(setSubData).catch(() => setSubData({ plan: 'free', subscription: null }));
+  }, []);
+  React.useEffect(reloadSub, [reloadSub]);
+  React.useEffect(() => {
+    fetch('/api/sync/subscriptions/catalog').then((r) => r.json()).then((d) => setCatalog(d.plans)).catch(() => setCatalog(null));
+  }, []);
   React.useEffect(() => {
     const store = window.TradeJournalAccountProfileStore;
     if (store) store.getSubscriptions().then(setSubs).catch(() => setSubs([]));
   }, []);
+
+  function requestUpgrade(planId) {
+    fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
+      .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
+      .then(() => { setUpgradeTarget(null); setNotice('Upgrade to ' + planLabel(planId) + ' requested — pending Admin confirmation (manual/test billing).'); })
+      .catch((error) => setNotice('Could not submit the upgrade request: ' + error.message));
+  }
+  function toggleCancel() {
+    const sub = subData && subData.subscription;
+    if (!sub) return;
+    const url = '/api/sync/subscriptions/' + sub.id + '/' + (sub.cancelAtPeriodEnd ? 'reactivate' : 'cancel');
+    fetch(url, { method: 'POST' }).then(reloadSub);
+  }
+
+  if (!subData) return null;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <PlanPanel />
-      <WalletPanel />
-      <StoragePanel />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
+      <PlanHero plan={subData.plan} subscription={subData.subscription} onToggleCancel={toggleCancel} />
+      <PlanComparisonGrid plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
+      <WalletCard onNotice={setNotice} />
+      <WalletActivityCard />
+      <StorageCard onNotice={setNotice} />
+      <BillingHistoryCard />
       {subs && subs.length > 0 && (
         <Panel variant="base" ornament padding="20px 22px">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1246,6 +1559,14 @@ function SubscriptionTab({ lang, i18n }) {
             ))}
           </div>
         </Panel>
+      )}
+      {upgradeTarget && (
+        <UpgradeModal
+          planId={upgradeTarget}
+          price={catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price}
+          onClose={() => setUpgradeTarget(null)}
+          onConfirm={() => requestUpgrade(upgradeTarget)}
+        />
       )}
     </div>
   );
