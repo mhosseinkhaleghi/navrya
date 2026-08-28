@@ -1,6 +1,6 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
-import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs';
+import { getBillingProvider } from '../commercial/billing-provider-factory.mjs';
 import { cancelAtPeriodEnd, reactivateSubscription } from '../commercial/subscription-service.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
 import { getEffectiveCommercialConfig } from '../commercial/commercial-config.mjs';
@@ -14,7 +14,7 @@ import { getEffectiveCommercialConfig } from '../commercial/commercial-config.mj
 // server/commercial/entitlement-resolver.mjs picks it up automatically on the next read.
 export function router(repo) {
   const app = express.Router();
-  const billingProvider = new ManualBillingProvider(repo);
+  const billingProvider = getBillingProvider(repo);
 
   app.get('/', asyncHandler(async (req, res) => {
     const [entitlements, subscription] = await Promise.all([

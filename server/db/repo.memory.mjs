@@ -26,7 +26,7 @@ export function createMemoryRepo() {
     commercialConfigOverrides: new Map(), commercialConfigVersions: new Map(), markupRules: new Map(),
     providerModelPricing: new Map(), walletAccounts: new Map(), walletLedger: new Map(), walletReservations: new Map(),
     quotaLocks: new Map(), analysisSymbols: new Map(),
-    subscriptions: new Map(), paymentTransactions: new Map(), paymentEvents: new Map(),
+    subscriptions: new Map(), paymentTransactions: new Map(), paymentEvents: new Map(), cryptoInvoices: new Map(),
     storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map()
   };
 
@@ -1647,6 +1647,51 @@ export function createMemoryRepo() {
     }
   };
 
+  // Mirrors repo.pg.mjs's cryptoInvoices exactly - see 038_crypto_invoices.sql's own comment.
+  const cryptoInvoices = {
+    async create({ transactionId, provider, chainId, assetSymbol, tokenContract, tokenDecimals, recipientAddress, atomicAmount, usdAmountMicroUsd, exchangeRateSnapshot, expiresAt, gatewayInvoiceId }) {
+      const record = {
+        id: newId('cryptoInvoice'), transactionId, provider: provider || 'bsc_crypto', chainId, assetSymbol, tokenContract, tokenDecimals,
+        recipientAddress, atomicAmount: String(atomicAmount), usdAmountMicroUsd, exchangeRateSnapshot,
+        status: 'pending', expiresAt, gatewayInvoiceId: gatewayInvoiceId || null, txHash: null, confirmationCount: 0,
+        createdAt: now(), confirmedAt: null
+      };
+      state.cryptoInvoices.set(record.id, record);
+      return clone(record);
+    },
+    async get(id) {
+      const record = state.cryptoInvoices.get(id);
+      return record ? clone(record) : null;
+    },
+    async getByTransactionId(transactionId) {
+      const record = Array.from(state.cryptoInvoices.values()).find((r) => r.transactionId === transactionId);
+      return record ? clone(record) : null;
+    },
+    // Mirrors repo.pg.mjs's atomic claimTxHash() - the same hash can never be claimed by two
+    // different invoices, and an invoice that already has a DIFFERENT hash refuses a second claim.
+    // Re-claiming the SAME hash the SAME invoice already holds is an idempotent no-op success -
+    // required for a legitimate retry (e.g. "insufficient confirmations, check again later" with
+    // the same tx hash) to ever succeed once enough confirmations accumulate.
+    async claimTxHash(id, txHash) {
+      const record = state.cryptoInvoices.get(id);
+      if (!record) return { ok: false, claimedByOtherInvoice: false };
+      if (record.txHash === txHash) return { ok: true, invoice: clone(record) };
+      if (record.txHash) return { ok: false, claimedByOtherInvoice: false };
+      const claimedElsewhere = Array.from(state.cryptoInvoices.values()).some((r) => r.id !== id && r.txHash === txHash);
+      if (claimedElsewhere) return { ok: false, claimedByOtherInvoice: true };
+      record.txHash = txHash;
+      return { ok: true, invoice: clone(record) };
+    },
+    async updateStatus(id, status, { confirmationCount, confirmedAt } = {}) {
+      const record = state.cryptoInvoices.get(id);
+      if (!record) return null;
+      record.status = status;
+      if (confirmationCount != null) record.confirmationCount = confirmationCount;
+      record.confirmedAt = confirmedAt || null;
+      return clone(record);
+    }
+  };
+
   const storageProducts = {
     // Mirrors repo.pg.mjs's lazy self-seed exactly - see that method's own comment.
     async list() {
@@ -2040,6 +2085,6 @@ export function createMemoryRepo() {
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, storageProducts, storageEntitlements, storageObjects
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, storageProducts, storageEntitlements, storageObjects
   };
 }

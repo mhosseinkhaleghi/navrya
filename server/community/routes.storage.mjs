@@ -1,6 +1,6 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
-import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs';
+import { getBillingProvider } from '../commercial/billing-provider-factory.mjs';
 import { resolveStorageUsageBytes, resolveStorageQuotaBytes, percentUsed, thresholdCrossedFor } from '../commercial/storage-service.mjs';
 import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provider.mjs';
 
@@ -12,7 +12,7 @@ import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provid
 // section 10) - computed here, not pushed anywhere.
 export function router(repo, uploadsDir) {
   const app = express.Router();
-  const billingProvider = new ManualBillingProvider(repo);
+  const billingProvider = getBillingProvider(repo);
   const objectStorage = new LocalDiskObjectStorageProvider({ uploadsDir });
 
   app.get('/', asyncHandler(async (req, res) => {

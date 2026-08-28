@@ -2554,6 +2554,66 @@ export function createPgRepo(pool) {
     }
   };
 
+  function mapCryptoInvoice(row) {
+    return {
+      id: row.id, transactionId: row.transaction_id, provider: row.provider, chainId: row.chain_id,
+      assetSymbol: row.asset_symbol, tokenContract: row.token_contract, tokenDecimals: row.token_decimals,
+      recipientAddress: row.recipient_address, atomicAmount: row.atomic_amount, usdAmountMicroUsd: Number(row.usd_amount_micro_usd),
+      exchangeRateSnapshot: row.exchange_rate_snapshot == null ? null : Number(row.exchange_rate_snapshot),
+      status: row.status, expiresAt: row.expires_at, gatewayInvoiceId: row.gateway_invoice_id, txHash: row.tx_hash,
+      confirmationCount: row.confirmation_count, createdAt: row.created_at, confirmedAt: row.confirmed_at
+    };
+  }
+  // Real BSC crypto payment invoices (task A) - one row per payment_transactions row, created
+  // once with every chain/pricing fact frozen (see 038_crypto_invoices.sql's own comment); only
+  // status/tx_hash/confirmation_count/confirmed_at are ever updated afterward.
+  const cryptoInvoices = {
+    async create({ transactionId, provider, chainId, assetSymbol, tokenContract, tokenDecimals, recipientAddress, atomicAmount, usdAmountMicroUsd, exchangeRateSnapshot, expiresAt, gatewayInvoiceId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO crypto_invoices
+           (id, transaction_id, provider, chain_id, asset_symbol, token_contract, token_decimals, recipient_address, atomic_amount, usd_amount_micro_usd, exchange_rate_snapshot, expires_at, gateway_invoice_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [
+          newId('cryptoInvoice'), transactionId, provider || 'bsc_crypto', chainId, assetSymbol, tokenContract, tokenDecimals,
+          recipientAddress, String(atomicAmount), usdAmountMicroUsd, exchangeRateSnapshot, expiresAt, gatewayInvoiceId || null
+        ]
+      );
+      return mapCryptoInvoice(rows[0]);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM crypto_invoices WHERE id=$1', [id]);
+      return rows[0] ? mapCryptoInvoice(rows[0]) : null;
+    },
+    async getByTransactionId(transactionId) {
+      const { rows } = await pool.query('SELECT * FROM crypto_invoices WHERE transaction_id=$1', [transactionId]);
+      return rows[0] ? mapCryptoInvoice(rows[0]) : null;
+    },
+    // Atomic claim: a tx hash already used by ANY invoice (not just this one) refuses the claim -
+    // the DB-level UNIQUE constraint on tx_hash is the real guarantee; ON CONFLICT DO NOTHING lets
+    // the caller distinguish "I claimed it" from "someone/something already had it" without a
+    // separate SELECT-then-UPDATE race. Re-claiming the SAME hash THIS invoice already holds is an
+    // idempotent no-op success (checked first, before the conditional UPDATE, which only ever
+    // fires when tx_hash IS NULL) - required for a legitimate retry (e.g. "insufficient
+    // confirmations, check again later" with the same tx hash) to ever succeed later.
+    async claimTxHash(id, txHash) {
+      const current = await pool.query('SELECT * FROM crypto_invoices WHERE id=$1', [id]);
+      if (current.rows[0] && current.rows[0].tx_hash === txHash) return { ok: true, invoice: mapCryptoInvoice(current.rows[0]) };
+      const { rows } = await pool.query('UPDATE crypto_invoices SET tx_hash=$2 WHERE id=$1 AND tx_hash IS NULL RETURNING *', [id, txHash]);
+      if (rows[0]) return { ok: true, invoice: mapCryptoInvoice(rows[0]) };
+      // Either this invoice already has a different hash claimed, or the hash belongs to another
+      // invoice (UNIQUE violation) - both are "not claimed by this call", never thrown as a 500.
+      const existing = await pool.query('SELECT * FROM crypto_invoices WHERE tx_hash=$1', [txHash]).catch(() => ({ rows: [] }));
+      return { ok: false, claimedByOtherInvoice: existing.rows.length > 0 && existing.rows[0].id !== id };
+    },
+    async updateStatus(id, status, { confirmationCount, confirmedAt } = {}) {
+      const { rows } = await pool.query(
+        'UPDATE crypto_invoices SET status=$2, confirmation_count=COALESCE($3, confirmation_count), confirmed_at=$4 WHERE id=$1 RETURNING *',
+        [id, status, confirmationCount ?? null, confirmedAt || null]
+      );
+      return rows[0] ? mapCryptoInvoice(rows[0]) : null;
+    }
+  };
+
   function mapStorageProduct(row) {
     return {
       id: row.id, name: row.name, capacityBytes: Number(row.capacity_bytes), priceAmountMicroUsd: Number(row.price_amount_micro_usd),
@@ -3039,6 +3099,6 @@ export function createPgRepo(pool) {
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, storageProducts, storageEntitlements, storageObjects
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, storageProducts, storageEntitlements, storageObjects
   };
 }

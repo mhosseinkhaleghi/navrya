@@ -26,6 +26,7 @@ import * as routesAnalysisSymbols from './routes.analysis-symbols.mjs';
 import * as routesWallet from './routes.wallet.mjs';
 import * as routesSubscriptions from './routes.subscriptions.mjs';
 import * as routesStorage from './routes.storage.mjs';
+import * as routesWebhooksBsc from './routes.webhooks-bsc.mjs';
 import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
 import { csrfProtection } from './security/csrf.mjs';
@@ -96,6 +97,17 @@ export function createApp({ repo, uploadsDir }) {
   // the path prefix only; body-parser skips re-parsing an already-parsed body, so the general
   // parser below is a no-op for these paths.
   app.use('/api/auth', express.json({ limit: '32kb' }));
+  // Real BSC crypto webhook (task A.6) - needs the RAW request body to verify its HMAC signature
+  // (server/commercial/bsc-crypto-billing-provider.mjs's verifyWebhook()), so this is parsed as
+  // raw bytes, BEFORE the general JSON parser below would otherwise consume it, exactly like the
+  // /api/auth line above reserves its own smaller parser first. req.rawBody carries the exact
+  // bytes the signature was computed over; req.body is then reparsed to plain JSON so the route
+  // handler itself never has to special-case a Buffer.
+  app.use('/api/webhooks', express.raw({ type: 'application/json', limit: '16kb' }), (req, res, next) => {
+    req.rawBody = req.body;
+    try { req.body = req.body && req.body.length ? JSON.parse(req.body.toString('utf8')) : {}; } catch (_) { req.body = {}; }
+    next();
+  });
   // Base64 images inflate payloads ~33% over their binary size; 60mb comfortably covers a
   // handful of 15MB-capped images per request, well under the AI server's 100mb cap.
   app.use(express.json({ limit: '60mb' }));
@@ -122,6 +134,10 @@ export function createApp({ repo, uploadsDir }) {
   // caller) - protected by its own shared-secret header inside the route, not by
   // requireAuth/requireAdmin, since there is no browser identity on this call at all.
   app.use('/internal', routesInternal.router(repo));
+  // Public - a real external indexer/webhook source has no NAVRYA session either; verified
+  // entirely by its own HMAC signature (see the raw-body middleware above), never by
+  // requireAuth/csrfProtection below.
+  app.use('/api/webhooks', routesWebhooksBsc.router(repo));
 
   app.use('/api/auth', routesAuth.router(repo)); // register/login/google/logout/sessions/password/email - bootstraps identity, applies its own per-route auth+CSRF
   app.use('/api/auth/oidc', routesAuthOidc.router(repo)); // generic OIDC start/callback

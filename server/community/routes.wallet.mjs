@@ -1,6 +1,7 @@
 import express from 'express';
-import { asyncHandler } from './errors.mjs';
-import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs';
+import { asyncHandler, ApiError } from './errors.mjs';
+import { getBillingProvider } from '../commercial/billing-provider-factory.mjs';
+import { buildInvoiceDto, checkInvoicePayment } from '../commercial/crypto-invoice-service.mjs';
 
 // Commercial System Slice 1/2 - the user-facing AI Wallet (spec section 55/57). Mounted at
 // /api/sync/wallet, same requireAuth()+csrfProtection() chain as every other /api/sync/* route.
@@ -11,7 +12,7 @@ import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs
 // funds land only after an admin confirms it (server/commercial/payment-service.mjs).
 export function router(repo) {
   const app = express.Router();
-  const billingProvider = new ManualBillingProvider(repo);
+  const billingProvider = getBillingProvider(repo);
 
   app.get('/', asyncHandler(async (req, res) => {
     const account = await repo.wallet.getAccount(req.currentUser.id);
@@ -38,6 +39,33 @@ export function router(repo) {
     const amountUsd = Number((req.body || {}).amountUsd);
     const result = await billingProvider.createWalletTopUp({ userId: req.currentUser.id, amountUsd });
     res.status(201).json(result);
+  }));
+
+  // Real BSC crypto invoice surface (task A.5) - shared across wallet top-ups, subscription
+  // upgrades, and storage purchases, since a crypto_invoices row is keyed by transaction_id, not
+  // by purchase type. Ownership is checked via the invoice's OWN linked payment_transactions row
+  // (crypto_invoices carries no user_id of its own) - never trusts a bare invoice id alone.
+  async function loadOwnedInvoice(req) {
+    const invoice = await repo.cryptoInvoices.get(req.params.invoiceId);
+    if (!invoice) throw new ApiError(404, 'CRYPTO_INVOICE_NOT_FOUND');
+    const transaction = await repo.paymentTransactions.get(invoice.transactionId);
+    if (!transaction || transaction.userId !== req.currentUser.id) throw new ApiError(404, 'CRYPTO_INVOICE_NOT_FOUND');
+    return invoice;
+  }
+
+  app.get('/invoices/:invoiceId', asyncHandler(async (req, res) => {
+    const invoice = await loadOwnedInvoice(req);
+    res.json(buildInvoiceDto(invoice));
+  }));
+
+  // Never trusts the browser to say a payment happened (task A.6) - this only ever triggers a
+  // real server-side on-chain verification (server/commercial/crypto-invoice-service.mjs), which
+  // itself only ever activates anything through the existing idempotent confirmTransaction().
+  app.post('/invoices/:invoiceId/check', asyncHandler(async (req, res) => {
+    await loadOwnedInvoice(req);
+    const txHash = (req.body || {}).txHash;
+    const result = await checkInvoicePayment(repo, req.params.invoiceId, { txHash });
+    res.json({ ...result, invoice: buildInvoiceDto(result.invoice) });
   }));
 
   return app;
