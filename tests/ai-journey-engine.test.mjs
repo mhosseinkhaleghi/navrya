@@ -276,7 +276,17 @@ test('debugLastSnapshot() is sanitized metadata only (phase/stepId/reason), neve
   w.TradeJournalAIJourneyEngine.evaluate();
   const debug = w.TradeJournalAIJourneyEngine.debugLastSnapshot();
   assert.ok(debug.phase && debug.nextStepId);
-  assert.ok(!JSON.stringify(debug).includes('41'));
+  // Found via a real CI failure (2026-08-28): `debug.at` is a genuinely live `new
+  // Date().toISOString()` (debugLastSnapshot()'s own timestamp, not store content) - checking the
+  // WHOLE object for the substring '41' is flaky by construction, since an ISO timestamp's own
+  // hour/minute/second/millisecond digits coincidentally contain '41' a meaningful fraction of the
+  // time (confirmed: failed twice today, once locally and once in a real deploy's CI run, at
+  // completely unrelated wall-clock moments). Exclude `at` before the check - it is the only
+  // non-deterministic field in `debug`, and the real guarantee this test exists to prove (no raw
+  // Mental Health content, like the fake age above, ever leaks into the sanitized snapshot) is
+  // unaffected either way.
+  const { at, ...rest } = debug;
+  assert.ok(!JSON.stringify(rest).includes('41'));
 });
 
 test('evaluating the Journey Engine never calls fetch - zero network/model calls for a plain evaluation', async () => {
