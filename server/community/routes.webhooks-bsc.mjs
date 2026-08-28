@@ -22,7 +22,7 @@ export function router(repo) {
     const { invoiceId, txHash } = req.body || {};
     if (!invoiceId || !txHash) throw new ApiError(400, 'VALIDATION_FAILED');
     const result = await checkInvoicePayment(repo, invoiceId, { txHash });
-    res.json({ ...result, invoice: buildInvoiceDto(result.invoice) });
+    res.json({ ...result, invoice: await buildInvoiceDto(result.invoice) });
   }));
 
   return app;

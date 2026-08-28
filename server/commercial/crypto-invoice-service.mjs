@@ -4,6 +4,7 @@
 // the client's invoice modal polls a route that calls checkInvoicePayment() while the invoice is
 // open, exactly the same "check opportunistically at request time" shape subscription expiry
 // already uses.
+import QRCode from 'qrcode';
 import { ApiError } from '../community/errors.mjs';
 import { verifyBscTransfer, findRecentTransfersToAddress } from './bsc-chain-client.mjs';
 import { confirmTransaction } from './payment-service.mjs';
@@ -13,15 +14,18 @@ const DEFAULT_LOOKBACK_BLOCKS = 6000; // ~5 hours at BSC's ~3s block time - boun
 // The ONLY thing the browser ever receives about an invoice - no RPC URL, no webhook secret, no
 // credential of any kind (task A.4/A.9). paymentUri is a real, standards-based EIP-681 request
 // URI (`ethereum:{contract}@{chainId}/transfer?address={recipient}&uint256={amount}`) real
-// wallets can parse to pre-fill a transfer, which is also what gets QR-encoded.
-export function buildInvoiceDto(invoice) {
+// wallets can parse to pre-fill a transfer; qrCodeDataUri is that same URI rendered to a PNG data
+// URI server-side (the `qrcode` package - task A.5) so the client never needs its own QR library
+// or ever handles anything more sensitive than a string to display.
+export async function buildInvoiceDto(invoice) {
   const confirmationsRequired = Number(process.env.BSC_CONFIRMATIONS_REQUIRED || 15);
   const paymentUri = `ethereum:${invoice.tokenContract}@${invoice.chainId}/transfer?address=${invoice.recipientAddress}&uint256=${invoice.atomicAmount}`;
+  const qrCodeDataUri = await QRCode.toDataURL(paymentUri, { margin: 1, width: 240 });
   return {
     invoiceId: invoice.id, transactionId: invoice.transactionId, chainId: invoice.chainId, chainName: 'BNB Smart Chain (BSC)',
     assetSymbol: invoice.assetSymbol, recipientAddress: invoice.recipientAddress, atomicAmount: invoice.atomicAmount,
     tokenDecimals: invoice.tokenDecimals, usdAmountMicroUsd: invoice.usdAmountMicroUsd, expiresAt: invoice.expiresAt,
-    status: invoice.status, paymentUri, confirmationsRequired, confirmationCount: invoice.confirmationCount
+    status: invoice.status, paymentUri, qrCodeDataUri, confirmationsRequired, confirmationCount: invoice.confirmationCount
   };
 }
 

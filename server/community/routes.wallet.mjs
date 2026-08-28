@@ -55,7 +55,7 @@ export function router(repo) {
 
   app.get('/invoices/:invoiceId', asyncHandler(async (req, res) => {
     const invoice = await loadOwnedInvoice(req);
-    res.json(buildInvoiceDto(invoice));
+    res.json(await buildInvoiceDto(invoice));
   }));
 
   // Never trusts the browser to say a payment happened (task A.6) - this only ever triggers a
@@ -65,7 +65,7 @@ export function router(repo) {
     await loadOwnedInvoice(req);
     const txHash = (req.body || {}).txHash;
     const result = await checkInvoicePayment(repo, req.params.invoiceId, { txHash });
-    res.json({ ...result, invoice: buildInvoiceDto(result.invoice) });
+    res.json({ ...result, invoice: await buildInvoiceDto(result.invoice) });
   }));
 
   return app;

@@ -110,6 +110,7 @@ test('creating a top-up with BSC configured returns a safe invoice DTO - no RPC 
   assert.equal(dto.recipientAddress, DEPOSIT_ADDRESS);
   assert.equal(dto.status, 'pending');
   assert.match(dto.paymentUri, /^ethereum:/);
+  assert.match(dto.qrCodeDataUri, /^data:image\/png;base64,/, 'the QR code is generated server-side, never left for the client to build from raw wallet data');
   const serialized = JSON.stringify(dto);
   assert.doesNotMatch(serialized, /mock-rpc\.invalid/i);
   assert.doesNotMatch(serialized, /super-secret-should-never-leak/);

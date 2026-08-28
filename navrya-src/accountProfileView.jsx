@@ -10,6 +10,7 @@ import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice
 import { RankCrest, RANK_TITLE } from '../public/pages/shared/navrya/components/identity/RankCrest.jsx';
 import { CharacterPortrait } from '../public/pages/shared/navrya/components/identity/CharacterPortrait.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { CryptoInvoiceModal } from './cryptoInvoiceModal.jsx';
 
 // React rewrite of the Account Profile destination (sidebar "اشتراک", #account/profile[/tab])
 // per the design handoff: a persistent "dossier band" (rank/level/XP/next-reward) above a tab
@@ -123,7 +124,14 @@ const copy = {
     subTxWalletTopUp: 'شارژ کیف پول', subTxSubscription: 'پلن · اشتراک ماهانه', subTxStoragePurchase: 'افزونهٔ فضای ذخیره‌سازی', subTxRefund: 'بازگشت وجه',
     subStatusPaid: 'پرداخت‌شده', subStatusPending: 'در انتظار', subStatusFailed: 'ناموفق', subStatusRefunded: 'بازگردانده‌شده',
     subUpgradeNotice: 'درخواست ارتقا به {plan} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
-    subUpgradeError: 'ثبت درخواست ارتقا ممکن نشد: {error}'
+    subUpgradeError: 'ثبت درخواست ارتقا ممکن نشد: {error}',
+    subInvoiceTitle: 'پرداخت با ارز دیجیتال', subInvoiceNetwork: 'شبکه', subInvoiceAsset: 'دارایی', subInvoiceAmount: 'مبلغ',
+    subInvoiceRecipient: 'آدرس مقصد', subInvoiceCopy: 'کپی', subInvoiceCopied: 'کپی شد',
+    subInvoiceExpiresIn: 'انقضا تا {time}', subInvoiceExpired: 'این فاکتور منقضی شده است.',
+    subInvoiceStatusPending: 'در انتظار پرداخت…', subInvoiceStatusConfirmed: 'پرداخت تأیید شد!', subInvoiceStatusExpired: 'این فاکتور منقضی شده است.',
+    subInvoiceHint: 'دقیقاً همین مبلغ را روی شبکه BNB Smart Chain به آدرس بالا ارسال کن. پرداخت تو به‌صورت خودکار شناسایی می‌شود.',
+    subInvoiceClose: 'بستن', subInvoiceCheckNow: 'بررسی الان',
+    subInvoiceTxHashLabel: 'شناسه تراکنش (اختیاری)', subInvoiceTxHashPlaceholder: 'اگر شناسه تراکنش را داری اینجا وارد کن'
   },
   en: {
     dossierEyebrow: 'NAVRYA · DOSSIER', dossierTitle: 'Dossier, progress & subscription',
@@ -212,7 +220,14 @@ const copy = {
     subTxWalletTopUp: 'Wallet Top-Up', subTxSubscription: 'Plan · Monthly Subscription', subTxStoragePurchase: 'Storage Add-on', subTxRefund: 'Refund',
     subStatusPaid: 'Paid', subStatusPending: 'Pending', subStatusFailed: 'Failed', subStatusRefunded: 'Refunded',
     subUpgradeNotice: 'Upgrade to {plan} requested — pending Admin confirmation (manual/test billing).',
-    subUpgradeError: 'Could not submit the upgrade request: {error}'
+    subUpgradeError: 'Could not submit the upgrade request: {error}',
+    subInvoiceTitle: 'Pay with Crypto', subInvoiceNetwork: 'Network', subInvoiceAsset: 'Asset', subInvoiceAmount: 'Amount',
+    subInvoiceRecipient: 'Recipient Address', subInvoiceCopy: 'Copy', subInvoiceCopied: 'Copied',
+    subInvoiceExpiresIn: 'Expires in {time}', subInvoiceExpired: 'This invoice has expired.',
+    subInvoiceStatusPending: 'Waiting for payment…', subInvoiceStatusConfirmed: 'Payment confirmed!', subInvoiceStatusExpired: 'This invoice has expired.',
+    subInvoiceHint: 'Send exactly this amount on BNB Smart Chain to the address above. Your payment is detected automatically.',
+    subInvoiceClose: 'Close', subInvoiceCheckNow: 'Check Now',
+    subInvoiceTxHashLabel: 'Transaction hash (optional)', subInvoiceTxHashPlaceholder: 'Paste your transaction hash if you have it'
   },
   ar: {
     dossierEyebrow: 'NAVRYA · الملف', dossierTitle: 'الملف والتقدم والاشتراك',
@@ -301,7 +316,14 @@ const copy = {
     subTxWalletTopUp: 'شحن المحفظة', subTxSubscription: 'خطة · اشتراك شهري', subTxStoragePurchase: 'إضافة مساحة تخزين', subTxRefund: 'استرداد',
     subStatusPaid: 'مدفوع', subStatusPending: 'قيد الانتظار', subStatusFailed: 'فشل', subStatusRefunded: 'مسترَدّ',
     subUpgradeNotice: 'تم إرسال طلب الترقية إلى {plan} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
-    subUpgradeError: 'تعذّر إرسال طلب الترقية: {error}'
+    subUpgradeError: 'تعذّر إرسال طلب الترقية: {error}',
+    subInvoiceTitle: 'الدفع بالعملات الرقمية', subInvoiceNetwork: 'الشبكة', subInvoiceAsset: 'الأصل', subInvoiceAmount: 'المبلغ',
+    subInvoiceRecipient: 'عنوان الاستلام', subInvoiceCopy: 'نسخ', subInvoiceCopied: 'تم النسخ',
+    subInvoiceExpiresIn: 'تنتهي خلال {time}', subInvoiceExpired: 'انتهت صلاحية هذه الفاتورة.',
+    subInvoiceStatusPending: 'في انتظار الدفع…', subInvoiceStatusConfirmed: 'تم تأكيد الدفع!', subInvoiceStatusExpired: 'انتهت صلاحية هذه الفاتورة.',
+    subInvoiceHint: 'أرسل هذا المبلغ بالضبط على شبكة BNB Smart Chain إلى العنوان أعلاه. سيتم اكتشاف دفعتك تلقائيًا.',
+    subInvoiceClose: 'إغلاق', subInvoiceCheckNow: 'تحقّق الآن',
+    subInvoiceTxHashLabel: 'رقم المعاملة (اختياري)', subInvoiceTxHashPlaceholder: 'الصق رقم المعاملة إن كان متوفرًا لديك'
   },
   es: {
     dossierEyebrow: 'NAVRYA · EXPEDIENTE', dossierTitle: 'Expediente, progreso y suscripción',
@@ -390,7 +412,14 @@ const copy = {
     subTxWalletTopUp: 'Recarga de cartera', subTxSubscription: 'Plan · Suscripción mensual', subTxStoragePurchase: 'Complemento de almacenamiento', subTxRefund: 'Reembolso',
     subStatusPaid: 'Pagado', subStatusPending: 'Pendiente', subStatusFailed: 'Fallido', subStatusRefunded: 'Reembolsado',
     subUpgradeNotice: 'Se solicitó la actualización a {plan} — pendiente de confirmación del administrador (facturación manual/de prueba).',
-    subUpgradeError: 'No se pudo enviar la solicitud de actualización: {error}'
+    subUpgradeError: 'No se pudo enviar la solicitud de actualización: {error}',
+    subInvoiceTitle: 'Pagar con criptomonedas', subInvoiceNetwork: 'Red', subInvoiceAsset: 'Activo', subInvoiceAmount: 'Monto',
+    subInvoiceRecipient: 'Dirección de destino', subInvoiceCopy: 'Copiar', subInvoiceCopied: 'Copiado',
+    subInvoiceExpiresIn: 'Vence en {time}', subInvoiceExpired: 'Esta factura ha vencido.',
+    subInvoiceStatusPending: 'Esperando el pago…', subInvoiceStatusConfirmed: '¡Pago confirmado!', subInvoiceStatusExpired: 'Esta factura ha vencido.',
+    subInvoiceHint: 'Envía exactamente este monto en BNB Smart Chain a la dirección de arriba. Tu pago se detecta automáticamente.',
+    subInvoiceClose: 'Cerrar', subInvoiceCheckNow: 'Verificar ahora',
+    subInvoiceTxHashLabel: 'Hash de la transacción (opcional)', subInvoiceTxHashPlaceholder: 'Pega el hash de tu transacción si lo tienes'
   }
 };
 
@@ -1480,7 +1509,7 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
   );
 }
 
-function WalletCard({ lang, onNotice }) {
+function WalletCard({ lang, onNotice, onInvoice }) {
   const [wallet, setWallet] = React.useState(null);
   const [amount, setAmount] = React.useState('10');
   function reload() { fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {}); }
@@ -1489,7 +1518,14 @@ function WalletCard({ lang, onNotice }) {
     const amountUsd = Number(amount) || 0;
     fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
-      .then(() => { onNotice(tr(lang, 'subTopUpNotice', { amount: fmtMicroUsd(amountUsd * 1000000) })); reload(); notifyWalletChanged(); })
+      .then((result) => {
+        // A real BSC crypto invoice (task A) - opens the payment modal instead of the plain
+        // "pending admin confirmation" notice, which stays exactly correct for the Manual provider
+        // (no invoiceId in that case).
+        if (result.invoiceId) onInvoice(result.invoiceId);
+        else onNotice(tr(lang, 'subTopUpNotice', { amount: fmtMicroUsd(amountUsd * 1000000) }));
+        reload(); notifyWalletChanged();
+      })
       .catch((error) => onNotice(tr(lang, 'subTopUpError', { error: error.message })));
   }
   if (!wallet) return null;
@@ -1583,7 +1619,7 @@ function WalletActivityCard({ lang }) {
   );
 }
 
-function StorageCard({ lang, onNotice }) {
+function StorageCard({ lang, onNotice, onInvoice }) {
   const [storage, setStorage] = React.useState(null);
   const [products, setProducts] = React.useState([]);
   function reload() {
@@ -1594,7 +1630,11 @@ function StorageCard({ lang, onNotice }) {
   function requestPurchase(product) {
     fetch('/api/sync/storage/purchase-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId: product.id }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
-      .then(() => { onNotice(tr(lang, 'subStorageNotice', { name: product.name })); reload(); notifyWalletChanged(); })
+      .then((result) => {
+        if (result.invoiceId) onInvoice(result.invoiceId);
+        else onNotice(tr(lang, 'subStorageNotice', { name: product.name }));
+        reload(); notifyWalletChanged();
+      })
       .catch((error) => onNotice(tr(lang, 'subStorageError', { error: error.message })));
   }
   if (!storage) return null;
@@ -1691,6 +1731,10 @@ function SubscriptionTab({ lang }) {
   const [catalog, setCatalog] = React.useState(null);
   const [notice, setNotice] = React.useState('');
   const [upgradeTarget, setUpgradeTarget] = React.useState(null);
+  // Real BSC crypto invoice (task A) - set whenever a create-request response carries an
+  // invoiceId (BILLING_PROVIDER=bsc_crypto is active); stays null under the Manual provider,
+  // where the plain pending-admin-confirmation notice above is exactly correct as-is.
+  const [invoiceId, setInvoiceId] = React.useState(null);
 
   const reloadSub = React.useCallback(() => {
     fetch('/api/sync/subscriptions').then((r) => r.json()).then(setSubData).catch(() => setSubData({ plan: 'free', subscription: null }));
@@ -1703,7 +1747,12 @@ function SubscriptionTab({ lang }) {
   function requestUpgrade(planId) {
     fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
-      .then(() => { setUpgradeTarget(null); setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId) })); notifyWalletChanged(); })
+      .then((result) => {
+        setUpgradeTarget(null);
+        if (result.invoiceId) setInvoiceId(result.invoiceId);
+        else setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId) }));
+        notifyWalletChanged();
+      })
       .catch((error) => setNotice(tr(lang, 'subUpgradeError', { error: error.message })));
   }
   function toggleCancel() {
@@ -1720,9 +1769,9 @@ function SubscriptionTab({ lang }) {
       {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
       <PlanHero lang={lang} plan={subData.plan} subscription={subData.subscription} onToggleCancel={toggleCancel} />
       <PlanComparisonGrid lang={lang} plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
-      <WalletCard lang={lang} onNotice={setNotice} />
+      <WalletCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
       <WalletActivityCard lang={lang} />
-      <StorageCard lang={lang} onNotice={setNotice} />
+      <StorageCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
       <BillingHistoryCard lang={lang} />
       {upgradeTarget && (
         <UpgradeModal
@@ -1731,6 +1780,13 @@ function SubscriptionTab({ lang }) {
           price={catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price}
           onClose={() => setUpgradeTarget(null)}
           onConfirm={() => requestUpgrade(upgradeTarget)}
+        />
+      )}
+      {invoiceId && (
+        <CryptoInvoiceModal
+          lang={lang} tr={tr} invoiceId={invoiceId}
+          onClose={() => setInvoiceId(null)}
+          onConfirmed={() => { reloadSub(); notifyWalletChanged(); }}
         />
       )}
     </div>
