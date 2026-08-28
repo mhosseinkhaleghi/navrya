@@ -169,6 +169,23 @@
     if (!eng || !i18n) return null;
     var voiceCtx = eng.voiceOpeningContext();
     if (!voiceCtx || voiceCtx.blocked) return null;
+
+    // 2026-08-28 bug report: page-aware ordering. Before this, opening Voice while the user was
+    // ALREADY looking at their own open Session always greeted about an unrelated open Trade
+    // instead (openTradeId was checked first, unconditionally, with no notion of "which page is
+    // the user actually on") - confirmed via real production testing. The surface the user is
+    // CURRENTLY looking at must win over a "globally most urgent" fact happening elsewhere in the
+    // app - reuses TradeJournalAISurfaceContext.snapshot() (Journey H1's own "what surface is the
+    // user on" resolver), never a second, parallel page-detection mechanism. Scoped narrowly to
+    // the one case this module already has real greeting copy for (an open Session); a distinct
+    // greeting for every other possible page (Pattern editor, Psychology, ...) would need its own
+    // new i18n copy per domain - out of scope for this fix, not silently assumed.
+    var surfaceContext = window.TradeJournalAISurfaceContext;
+    var surface = surfaceContext && typeof surfaceContext.snapshot === 'function' ? surfaceContext.snapshot() : null;
+    if (voiceCtx.openSessionId && surface && surface.page === 'sessions' && surface.entities && surface.entities.sessionId === voiceCtx.openSessionId) {
+      return { kind: 'activeSession', text: i18n.t('voiceOpeningActiveSession') };
+    }
+
     if (voiceCtx.openTradeId) return { kind: 'activeTrade', text: i18n.t('voiceOpeningActiveTrade') };
     if (voiceCtx.reflectionDueTradeId) return { kind: 'dueReflection', text: i18n.t('voiceOpeningDueReflection') };
     if (voiceCtx.openSessionId) return { kind: 'activeSession', text: i18n.t('voiceOpeningActiveSession') };

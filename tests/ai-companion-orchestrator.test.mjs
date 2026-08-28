@@ -35,6 +35,11 @@ function buildSandbox(overrides = {}) {
     TradeJournalAIJourneyEngine: overrides.journeyEngine || { nextBestStep: () => null, dedupeKeyFor: (id) => 'journey:' + id, executeStep: () => {} },
     TradeJournalAICompanionProfile: overrides.profileStore || { hasSeenWalkthrough: () => true, initiativePreference: () => 'normal', setWalkthroughSeen() {}, dismissStep() {}, skipOptionalStep() {}, setCurrentGoal() {} }
   });
+  // 2026-08-28 bug report: page-aware voiceOpening() ordering - only set when a test explicitly
+  // passes one, so every pre-existing test (asserting the plain global-priority order) is
+  // unaffected by default (feature-detected in the real source: `surfaceContext &&
+  // typeof surfaceContext.snapshot === 'function'`).
+  if (overrides.surfaceContext) sandbox.window.TradeJournalAISurfaceContext = overrides.surfaceContext;
   return { sandbox, listeners, dispatched, clock };
 }
 
@@ -222,13 +227,52 @@ test('voiceOpening(): a genuinely fresh user (walkthrough not seen) gets the onb
   assert.deepEqual(seenCalls, [true], 'marked seen the moment NAVRYA decides to speak it, before any reply');
 });
 
-test('voiceOpening(): an active open Trade outranks everything else, including a fresh/unseen walkthrough', async () => {
+test('voiceOpening(): an active open Trade outranks everything else, including a fresh/unseen walkthrough - when the user is not currently looking at their own open Session', async () => {
   const { orchestrator } = await loadOrchestrator({
     journeyEngine: voiceEngine({ voiceOpeningContext: () => ({ blocked: false, openTradeId: 't1', reflectionDueTradeId: null, openSessionId: null, hasSeenWalkthrough: false }) })
   });
   const opening = orchestrator.voiceOpening();
   assert.equal(opening.kind, 'activeTrade');
   assert.equal(opening.text, 'voiceOpeningActiveTrade');
+});
+
+// 2026-08-28 bug report: real production testing found that opening Voice Mode while the user was
+// ALREADY inside their own open Session always greeted about an unrelated open Trade instead -
+// openTradeId was checked first, unconditionally, with no notion of "which page is the user
+// actually on". The page the user is CURRENTLY looking at must win over a "globally most urgent"
+// fact happening elsewhere in the app.
+test('voiceOpening(): the user\'s OWN open Session, while they are actually looking at it (TradeJournalAISurfaceContext), outranks an unrelated open Trade elsewhere', async () => {
+  const { orchestrator } = await loadOrchestrator({
+    journeyEngine: voiceEngine({ voiceOpeningContext: () => ({ blocked: false, openTradeId: 't1', reflectionDueTradeId: null, openSessionId: 's1', hasSeenWalkthrough: true }) }),
+    surfaceContext: { snapshot: () => ({ page: 'sessions', entities: { sessionId: 's1' } }) }
+  });
+  const opening = orchestrator.voiceOpening();
+  assert.equal(opening.kind, 'activeSession');
+  assert.equal(opening.text, 'voiceOpeningActiveSession');
+});
+
+test('voiceOpening(): an unrelated open Trade still wins when the user is on the Sessions page but looking at a DIFFERENT session than voiceOpeningContext\'s own openSessionId', async () => {
+  const { orchestrator } = await loadOrchestrator({
+    journeyEngine: voiceEngine({ voiceOpeningContext: () => ({ blocked: false, openTradeId: 't1', reflectionDueTradeId: null, openSessionId: 's1', hasSeenWalkthrough: true }) }),
+    surfaceContext: { snapshot: () => ({ page: 'sessions', entities: { sessionId: 's2' } }) }
+  });
+  assert.equal(orchestrator.voiceOpening().kind, 'activeTrade');
+});
+
+test('voiceOpening(): an unrelated open Trade still wins when the user is on a completely different page (not currently looking at any Session)', async () => {
+  const { orchestrator } = await loadOrchestrator({
+    journeyEngine: voiceEngine({ voiceOpeningContext: () => ({ blocked: false, openTradeId: 't1', reflectionDueTradeId: null, openSessionId: 's1', hasSeenWalkthrough: true }) }),
+    surfaceContext: { snapshot: () => ({ page: 'dashboard', entities: {} }) }
+  });
+  assert.equal(orchestrator.voiceOpening().kind, 'activeTrade');
+});
+
+test('voiceOpening(): behaves exactly as before (the plain global-priority order) when TradeJournalAISurfaceContext is not present - feature-detected, not a hard dependency', async () => {
+  const { orchestrator } = await loadOrchestrator({
+    journeyEngine: voiceEngine({ voiceOpeningContext: () => ({ blocked: false, openTradeId: 't1', reflectionDueTradeId: null, openSessionId: 's1', hasSeenWalkthrough: true }) })
+    // no surfaceContext override - TradeJournalAISurfaceContext stays undefined in the sandbox
+  });
+  assert.equal(orchestrator.voiceOpening().kind, 'activeTrade');
 });
 
 test('voiceOpening(): a due Reflection outranks an open Session and the returning-neutral greeting', async () => {
