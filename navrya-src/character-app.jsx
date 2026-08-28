@@ -62,9 +62,41 @@ function navItems(t) {
   ];
 }
 
-// SCENARIOS and STREAK are computed from real stores; HONOUR and EXECUTION have no backing
-// metric anywhere in this codebase and render an honest '—' rather than an invented number -
-// the same "insufficient data over fabricated numbers" standard used throughout this app.
+function fmtWalletUsd(microUsd) { return '$' + (microUsd / 1000000).toFixed(2); }
+
+// HONOUR now shows the real AI Wallet balance (GET /api/sync/wallet - the same endpoint
+// accountProfileView.jsx's Subscription tab already uses as its own source of truth for this
+// number, never a second/parallel wallet read). SCENARIOS and STREAK are computed from real
+// stores; EXECUTION still has no backing metric anywhere in this codebase and renders an honest
+// '—' rather than an invented number - the same "insufficient data over fabricated numbers"
+// standard used throughout this app.
+function useWalletBalance() {
+  const [balance, setBalance] = React.useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    function reload() {
+      fetch('/api/sync/wallet').then((r) => r.json()).then((d) => { if (!cancelled) setBalance(d.totalBalanceMicroUsd); }).catch(() => {});
+    }
+    reload();
+    // Refetch whenever a wallet-affecting action fires this event (topup/purchase confirmed,
+    // upgrade confirmed - accountProfileView.jsx dispatches it) and whenever the tab regains
+    // focus/visibility, so the header never shows a stale balance after the user does something
+    // wallet-affecting on another tab/device or comes back to this one.
+    function onWalletChanged() { reload(); }
+    function onVisible() { if (document.visibilityState === 'visible') reload(); }
+    window.addEventListener('navrya:wallet-changed', onWalletChanged);
+    window.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', reload);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('navrya:wallet-changed', onWalletChanged);
+      window.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', reload);
+    };
+  }, []);
+  return balance;
+}
+
 function useMetrics(sessions, t) {
   const [streak, setStreak] = React.useState(null);
   React.useEffect(() => {
@@ -74,8 +106,9 @@ function useMetrics(sessions, t) {
     setStreak(psychologyStore.disciplineStreak(tradeStore.listSync()));
   }, [sessions]);
   const scenarios = React.useMemo(() => sessions.reduce((sum, s) => sum + sessionsAdapter.scenarioCount(s), 0), [sessions]);
+  const walletBalance = useWalletBalance();
   return [
-    { icon: 'honour', label: t.honour, value: '—' },
+    { icon: 'honour', label: t.honour, value: walletBalance === null ? '—' : fmtWalletUsd(walletBalance) },
     { icon: 'scenarios', label: t.scenarios, value: String(scenarios) },
     { icon: 'execution', label: t.execution, value: '—' },
     { icon: 'streak', label: t.streak, value: streak === null ? '—' : String(streak) }

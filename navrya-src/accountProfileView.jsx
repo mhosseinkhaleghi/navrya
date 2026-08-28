@@ -84,7 +84,46 @@ const copy = {
     roleTeacher: 'مدرس', roleTeacherDesc: 'تولید محتوای آموزشی و مرور ساختاریافتهٔ استراتژی‌ها.',
     saveRole: 'ذخیرهٔ نقش', roleCurrentLine: 'نقش فعلی: {role}', roleSaved: 'نقش به‌روزرسانی شد.',
 
-    xpTypeAchievement: 'باز شدن دستاورد', xpTypeStreak: 'پاداش استمرار: {detail}'
+    xpTypeAchievement: 'باز شدن دستاورد', xpTypeStreak: 'پاداش استمرار: {detail}',
+
+    subActiveStatus: 'فعال', subPlanSuffix: 'پلن {plan}', subPerMonth: '/ ماه',
+    subPlanFree: 'رایگان', subPlanPlus: 'پلاس', subPlanPersonalized: 'اختصاصی',
+    subRenews: 'تمدید در {date}', subCancelsNote: 'لغو در {date} · هر زمان قبل از آن می‌توانی تمدید کنی',
+    subReactivate: 'فعال‌سازی مجدد', subCancelAtPeriodEnd: 'لغو در پایان دوره', subFreeNoBilling: 'پلن رایگان — صورتحسابی ثبت نشده است.',
+    subStorageUsed: 'فضای ذخیره‌سازی مصرف‌شده', subWalletBalance: 'موجودی کیف پول', subPlanLimits: 'محدودیت‌های پلن',
+    subUnlimited: 'نامحدود', subFreeTierCaps: 'محدودیت‌های پلن رایگان',
+    subUpgradeModalTitle: 'ارتقا به {plan}', subCancel: 'انصراف', subConfirmRequest: 'تأیید درخواست',
+    subUpgradeBilledNote: 'به‌محض تأیید این درخواست توسط مدیر، مبلغ {price} / {interval} از تو دریافت می‌شود. پلن فعلی‌ات تا آن زمان فعال می‌ماند.',
+    subIntervalMonth: 'ماه', subIntervalYear: 'سال',
+    subChooseYourPlan: 'انتخاب پلن', subUpgradesEffectNote: 'ارتقا فقط پس از تأیید مدیر اعمال می‌شود.',
+    subCurrentPlan: 'پلن فعلی', subActivePlan: 'پلن فعال', subPreviousPlan: 'پلن قبلی شما', subUpgradeTo: 'ارتقا به {plan}',
+    subFeatCloudStorage: '{size} فضای ابری', subFeatPatternsOne: '{n} الگوی ذخیره‌شده', subFeatPatternsMany: '{n} الگوی ذخیره‌شده',
+    subFeatUnlimitedPatterns: 'الگوهای ذخیره‌شدهٔ نامحدود', subFeatStrategiesOne: '{n} استراتژی', subFeatStrategiesMany: '{n} استراتژی',
+    subFeatUnlimitedStrategies: 'استراتژی‌های نامحدود', subFeatAccountsOne: '{n} حساب معاملاتی', subFeatAccountsMany: '{n} حساب معاملاتی',
+    subFeatUnlimitedAccounts: 'حساب‌های معاملاتی نامحدود', subFeatSessionsOne: '{n} سشن معاملاتی', subFeatSessionsMany: '{n} سشن معاملاتی',
+    subFeatUnlimitedSessions: 'سشن‌های معاملاتی نامحدود', subFeatSymbolsOne: '{n} نماد تحلیل', subFeatSymbolsMany: '{n} نماد تحلیل',
+    subFeatUnlimitedSymbols: 'نمادهای تحلیل نامحدود', subFeatAiPanelBuilder: 'دسترسی به سازندهٔ پنل هوش مصنوعی',
+    subAiWallet: 'کیف پول هوش مصنوعی', subPromoPaid: 'هدیه {promo} · پرداختی {paid}',
+    subWalletHint: 'هر پاسخ هوش مصنوعی — گفتگو، تحلیل الگو، مرور سشن — همان لحظه از این موجودی کسر می‌شود. دقیقاً ببین برای چی خرج شده، در «فعالیت کیف پول» پایین همین صفحه.',
+    subAmountUsd: 'مبلغ (دلار)', subRequestTopUp: 'درخواست شارژ',
+    subTopUpNotice: 'درخواست شارژ به مبلغ {amount} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
+    subTopUpError: 'ثبت درخواست شارژ ممکن نشد: {error}',
+    subWalletActivityTitle: 'فعالیت کیف پول — دلیل تغییر موجودی',
+    subFilterAll: 'همه', subFilterUsage: 'مصرف هوش مصنوعی', subFilterCredit: 'شارژ و اعتبار', subNoActivity: 'هنوز فعالیتی ثبت نشده است.',
+    subLedgerAiUsage: 'مصرف هوش مصنوعی · {feature}', subLedgerAssistant: 'دستیار', subLedgerTopUp: 'شارژ کیف پول', subLedgerManualBilling: 'صورتحساب دستی',
+    subLedgerSignupBonus: 'هدیهٔ ثبت‌نام', subLedgerPromoCredit: 'اعتبار هدیه', subLedgerAdminCredit: 'اعتبار مدیر', subLedgerManualAdjustment: 'تعدیل دستی',
+    subLedgerRefundReversal: 'بازگشت وجه', subLedgerAdminDebit: 'کسر مدیر', subLedgerTopUpRefunded: 'شارژ بازگردانده شد',
+    subImpactPromo: '(از هدیه)', subImpactPaid: '(از پرداختی)', subImpactBoth: '(هدیه + پرداختی)',
+    subCloudStorage: 'فضای ذخیره‌سازی ابری', subOfQuotaUsed: ' از {quota} مصرف‌شده', subStorageAddOn: 'افزونهٔ فضای ذخیره‌سازی', subExpiresOn: 'انقضا در {date}',
+    subAddMoreStorage: 'افزودن فضای بیشتر', subCapacityValidity: '+{capacity} · {days} روز', subPurchase: 'خرید',
+    subStorageNotice: 'درخواست خرید {name} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
+    subStorageError: 'ثبت درخواست خرید ممکن نشد: {error}',
+    subBillingHistory: 'تاریخچهٔ صورتحساب', subNoBillingActivity: 'هنوز فعالیت صورتحسابی ثبت نشده است.',
+    subColDate: 'تاریخ', subColDescription: 'شرح', subColAmount: 'مبلغ', subColStatus: 'وضعیت',
+    subTxWalletTopUp: 'شارژ کیف پول', subTxSubscription: 'پلن · اشتراک ماهانه', subTxStoragePurchase: 'افزونهٔ فضای ذخیره‌سازی', subTxRefund: 'بازگشت وجه',
+    subStatusPaid: 'پرداخت‌شده', subStatusPending: 'در انتظار', subStatusFailed: 'ناموفق', subStatusRefunded: 'بازگردانده‌شده',
+    subUpgradeNotice: 'درخواست ارتقا به {plan} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
+    subUpgradeError: 'ثبت درخواست ارتقا ممکن نشد: {error}'
   },
   en: {
     dossierEyebrow: 'NAVRYA · DOSSIER', dossierTitle: 'Dossier, progress & subscription',
@@ -134,7 +173,46 @@ const copy = {
     roleTeacher: 'Teacher', roleTeacherDesc: 'Producing educational content and structured strategy reviews.',
     saveRole: 'Save role', roleCurrentLine: 'Current role: {role}', roleSaved: 'Role updated.',
 
-    xpTypeAchievement: 'Achievement unlocked', xpTypeStreak: 'Streak bonus: {detail}'
+    xpTypeAchievement: 'Achievement unlocked', xpTypeStreak: 'Streak bonus: {detail}',
+
+    subActiveStatus: 'Active', subPlanSuffix: '{plan} Plan', subPerMonth: '/ month',
+    subPlanFree: 'Free', subPlanPlus: 'Plus', subPlanPersonalized: 'Personalized',
+    subRenews: 'Renews {date}', subCancelsNote: 'Cancels {date} · renew anytime before then',
+    subReactivate: 'Reactivate', subCancelAtPeriodEnd: 'Cancel at Period End', subFreeNoBilling: 'Free plan — no billing on file.',
+    subStorageUsed: 'Storage Used', subWalletBalance: 'Wallet Balance', subPlanLimits: 'Plan Limits',
+    subUnlimited: 'Unlimited', subFreeTierCaps: 'Free tier caps',
+    subUpgradeModalTitle: 'Upgrade to {plan}', subCancel: 'Cancel', subConfirmRequest: 'Confirm Request',
+    subUpgradeBilledNote: "You'll be billed {price} / {interval} once an admin confirms this request. Your current plan stays active until then.",
+    subIntervalMonth: 'month', subIntervalYear: 'year',
+    subChooseYourPlan: 'Choose Your Plan', subUpgradesEffectNote: 'Upgrades take effect once an admin confirms the request.',
+    subCurrentPlan: 'Current Plan', subActivePlan: 'Active Plan', subPreviousPlan: 'Your previous plan', subUpgradeTo: 'Upgrade to {plan}',
+    subFeatCloudStorage: '{size} cloud storage', subFeatPatternsOne: '{n} saved pattern', subFeatPatternsMany: '{n} saved patterns',
+    subFeatUnlimitedPatterns: 'Unlimited saved patterns', subFeatStrategiesOne: '{n} strategy', subFeatStrategiesMany: '{n} strategies',
+    subFeatUnlimitedStrategies: 'Unlimited strategies', subFeatAccountsOne: '{n} trading account', subFeatAccountsMany: '{n} trading accounts',
+    subFeatUnlimitedAccounts: 'Unlimited trading accounts', subFeatSessionsOne: '{n} trading session', subFeatSessionsMany: '{n} trading sessions',
+    subFeatUnlimitedSessions: 'Unlimited trading sessions', subFeatSymbolsOne: '{n} analysis symbol', subFeatSymbolsMany: '{n} analysis symbols',
+    subFeatUnlimitedSymbols: 'Unlimited analysis symbols', subFeatAiPanelBuilder: 'AI Panel Builder access',
+    subAiWallet: 'AI Wallet', subPromoPaid: 'Promo {promo} · Paid {paid}',
+    subWalletHint: "Every AI response — chat, pattern analysis, session review — draws from this balance the moment it's generated. See exactly what it was spent on in Wallet Activity below.",
+    subAmountUsd: 'Amount (USD)', subRequestTopUp: 'Request Top-Up',
+    subTopUpNotice: 'Top-up of {amount} requested — pending Admin confirmation (manual/test billing).',
+    subTopUpError: 'Could not submit the top-up request: {error}',
+    subWalletActivityTitle: 'Wallet Activity — why your balance moved',
+    subFilterAll: 'All', subFilterUsage: 'AI Usage', subFilterCredit: 'Top-Ups & Credits', subNoActivity: 'No activity yet.',
+    subLedgerAiUsage: 'AI Usage · {feature}', subLedgerAssistant: 'Assistant', subLedgerTopUp: 'Wallet Top-Up', subLedgerManualBilling: 'Manual billing',
+    subLedgerSignupBonus: 'Signup Bonus', subLedgerPromoCredit: 'Promo credit', subLedgerAdminCredit: 'Admin Credit', subLedgerManualAdjustment: 'Manual adjustment',
+    subLedgerRefundReversal: 'Refund Reversal', subLedgerAdminDebit: 'Admin Debit', subLedgerTopUpRefunded: 'Top-up refunded',
+    subImpactPromo: '(promo)', subImpactPaid: '(paid)', subImpactBoth: '(promo + paid)',
+    subCloudStorage: 'Cloud Storage', subOfQuotaUsed: ' of {quota} used', subStorageAddOn: 'Storage add-on', subExpiresOn: 'expires {date}',
+    subAddMoreStorage: 'Add More Storage', subCapacityValidity: '+{capacity} · {days} days', subPurchase: 'Purchase',
+    subStorageNotice: '{name} purchase requested — pending Admin confirmation (manual/test billing).',
+    subStorageError: 'Could not submit the purchase request: {error}',
+    subBillingHistory: 'Billing History', subNoBillingActivity: 'No billing activity yet.',
+    subColDate: 'Date', subColDescription: 'Description', subColAmount: 'Amount', subColStatus: 'Status',
+    subTxWalletTopUp: 'Wallet Top-Up', subTxSubscription: 'Plan · Monthly Subscription', subTxStoragePurchase: 'Storage Add-on', subTxRefund: 'Refund',
+    subStatusPaid: 'Paid', subStatusPending: 'Pending', subStatusFailed: 'Failed', subStatusRefunded: 'Refunded',
+    subUpgradeNotice: 'Upgrade to {plan} requested — pending Admin confirmation (manual/test billing).',
+    subUpgradeError: 'Could not submit the upgrade request: {error}'
   },
   ar: {
     dossierEyebrow: 'NAVRYA · الملف', dossierTitle: 'الملف والتقدم والاشتراك',
@@ -184,7 +262,46 @@ const copy = {
     roleTeacher: 'مدرّس', roleTeacherDesc: 'إنتاج محتوى تعليمي ومراجعات استراتيجية منظمة.',
     saveRole: 'حفظ الدور', roleCurrentLine: 'الدور الحالي: {role}', roleSaved: 'تم تحديث الدور.',
 
-    xpTypeAchievement: 'فتح إنجاز', xpTypeStreak: 'مكافأة الاستمرارية: {detail}'
+    xpTypeAchievement: 'فتح إنجاز', xpTypeStreak: 'مكافأة الاستمرارية: {detail}',
+
+    subActiveStatus: 'نشط', subPlanSuffix: 'خطة {plan}', subPerMonth: '/ شهر',
+    subPlanFree: 'مجانية', subPlanPlus: 'بلس', subPlanPersonalized: 'مخصّصة',
+    subRenews: 'التجديد في {date}', subCancelsNote: 'الإلغاء في {date} · يمكنك التجديد في أي وقت قبل ذلك',
+    subReactivate: 'إعادة التفعيل', subCancelAtPeriodEnd: 'الإلغاء في نهاية الفترة', subFreeNoBilling: 'خطة مجانية — لا توجد فوترة مسجّلة.',
+    subStorageUsed: 'المساحة المستخدَمة', subWalletBalance: 'رصيد المحفظة', subPlanLimits: 'حدود الخطة',
+    subUnlimited: 'غير محدود', subFreeTierCaps: 'حدود الخطة المجانية',
+    subUpgradeModalTitle: 'الترقية إلى {plan}', subCancel: 'إلغاء', subConfirmRequest: 'تأكيد الطلب',
+    subUpgradeBilledNote: 'سيتم خصم {price} / {interval} بمجرد تأكيد المسؤول لهذا الطلب. تبقى خطتك الحالية فعّالة حتى ذلك الحين.',
+    subIntervalMonth: 'شهر', subIntervalYear: 'سنة',
+    subChooseYourPlan: 'اختر خطتك', subUpgradesEffectNote: 'تُفعَّل الترقيات فقط بعد تأكيد المسؤول للطلب.',
+    subCurrentPlan: 'الخطة الحالية', subActivePlan: 'خطة فعّالة', subPreviousPlan: 'خطتك السابقة', subUpgradeTo: 'الترقية إلى {plan}',
+    subFeatCloudStorage: '{size} مساحة سحابية', subFeatPatternsOne: '{n} نمط محفوظ', subFeatPatternsMany: '{n} أنماط محفوظة',
+    subFeatUnlimitedPatterns: 'أنماط محفوظة غير محدودة', subFeatStrategiesOne: '{n} استراتيجية', subFeatStrategiesMany: '{n} استراتيجيات',
+    subFeatUnlimitedStrategies: 'استراتيجيات غير محدودة', subFeatAccountsOne: '{n} حساب تداول', subFeatAccountsMany: '{n} حسابات تداول',
+    subFeatUnlimitedAccounts: 'حسابات تداول غير محدودة', subFeatSessionsOne: '{n} جلسة تداول', subFeatSessionsMany: '{n} جلسات تداول',
+    subFeatUnlimitedSessions: 'جلسات تداول غير محدودة', subFeatSymbolsOne: '{n} رمز تحليل', subFeatSymbolsMany: '{n} رموز تحليل',
+    subFeatUnlimitedSymbols: 'رموز تحليل غير محدودة', subFeatAiPanelBuilder: 'الوصول إلى منشئ لوحة الذكاء الاصطناعي',
+    subAiWallet: 'محفظة الذكاء الاصطناعي', subPromoPaid: 'هدية {promo} · مدفوع {paid}',
+    subWalletHint: 'كل استجابة من الذكاء الاصطناعي — محادثة، تحليل نمط، مراجعة جلسة — تُخصم من هذا الرصيد فور توليدها. اطّلع بالضبط على ما أُنفق عليه في «نشاط المحفظة» أدناه.',
+    subAmountUsd: 'المبلغ (دولار)', subRequestTopUp: 'طلب شحن الرصيد',
+    subTopUpNotice: 'تم إرسال طلب شحن بقيمة {amount} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
+    subTopUpError: 'تعذّر إرسال طلب الشحن: {error}',
+    subWalletActivityTitle: 'نشاط المحفظة — سبب تغيّر الرصيد',
+    subFilterAll: 'الكل', subFilterUsage: 'استخدام الذكاء الاصطناعي', subFilterCredit: 'الشحن والاعتمادات', subNoActivity: 'لا يوجد نشاط بعد.',
+    subLedgerAiUsage: 'استخدام الذكاء الاصطناعي · {feature}', subLedgerAssistant: 'المساعد', subLedgerTopUp: 'شحن المحفظة', subLedgerManualBilling: 'فوترة يدوية',
+    subLedgerSignupBonus: 'مكافأة التسجيل', subLedgerPromoCredit: 'رصيد هدية', subLedgerAdminCredit: 'رصيد من المسؤول', subLedgerManualAdjustment: 'تعديل يدوي',
+    subLedgerRefundReversal: 'استرداد المبلغ', subLedgerAdminDebit: 'خصم من المسؤول', subLedgerTopUpRefunded: 'تم استرداد الشحن',
+    subImpactPromo: '(من الهدية)', subImpactPaid: '(من المدفوع)', subImpactBoth: '(هدية + مدفوع)',
+    subCloudStorage: 'المساحة السحابية', subOfQuotaUsed: ' من {quota} مستخدَم', subStorageAddOn: 'إضافة مساحة', subExpiresOn: 'تنتهي في {date}',
+    subAddMoreStorage: 'إضافة المزيد من المساحة', subCapacityValidity: '+{capacity} · {days} يومًا', subPurchase: 'شراء',
+    subStorageNotice: 'تم إرسال طلب شراء {name} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
+    subStorageError: 'تعذّر إرسال طلب الشراء: {error}',
+    subBillingHistory: 'سجلّ الفوترة', subNoBillingActivity: 'لا يوجد نشاط فوترة بعد.',
+    subColDate: 'التاريخ', subColDescription: 'الوصف', subColAmount: 'المبلغ', subColStatus: 'الحالة',
+    subTxWalletTopUp: 'شحن المحفظة', subTxSubscription: 'خطة · اشتراك شهري', subTxStoragePurchase: 'إضافة مساحة تخزين', subTxRefund: 'استرداد',
+    subStatusPaid: 'مدفوع', subStatusPending: 'قيد الانتظار', subStatusFailed: 'فشل', subStatusRefunded: 'مسترَدّ',
+    subUpgradeNotice: 'تم إرسال طلب الترقية إلى {plan} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
+    subUpgradeError: 'تعذّر إرسال طلب الترقية: {error}'
   },
   es: {
     dossierEyebrow: 'NAVRYA · EXPEDIENTE', dossierTitle: 'Expediente, progreso y suscripción',
@@ -234,7 +351,46 @@ const copy = {
     roleTeacher: 'Profesor', roleTeacherDesc: 'Producir contenido educativo y revisiones estructuradas de estrategias.',
     saveRole: 'Guardar rol', roleCurrentLine: 'Rol actual: {role}', roleSaved: 'Rol actualizado.',
 
-    xpTypeAchievement: 'Logro desbloqueado', xpTypeStreak: 'Bono de racha: {detail}'
+    xpTypeAchievement: 'Logro desbloqueado', xpTypeStreak: 'Bono de racha: {detail}',
+
+    subActiveStatus: 'Activo', subPlanSuffix: 'Plan {plan}', subPerMonth: '/ mes',
+    subPlanFree: 'Gratis', subPlanPlus: 'Plus', subPlanPersonalized: 'Personalizado',
+    subRenews: 'Se renueva el {date}', subCancelsNote: 'Se cancela el {date} · puedes renovar en cualquier momento antes de eso',
+    subReactivate: 'Reactivar', subCancelAtPeriodEnd: 'Cancelar al final del período', subFreeNoBilling: 'Plan gratuito — sin facturación registrada.',
+    subStorageUsed: 'Almacenamiento usado', subWalletBalance: 'Saldo de la cartera', subPlanLimits: 'Límites del plan',
+    subUnlimited: 'Ilimitado', subFreeTierCaps: 'Límites del plan gratuito',
+    subUpgradeModalTitle: 'Actualizar a {plan}', subCancel: 'Cancelar', subConfirmRequest: 'Confirmar solicitud',
+    subUpgradeBilledNote: 'Se te cobrará {price} / {interval} en cuanto un administrador confirme esta solicitud. Tu plan actual sigue activo hasta entonces.',
+    subIntervalMonth: 'mes', subIntervalYear: 'año',
+    subChooseYourPlan: 'Elige tu plan', subUpgradesEffectNote: 'Las actualizaciones surten efecto solo cuando un administrador confirma la solicitud.',
+    subCurrentPlan: 'Plan actual', subActivePlan: 'Plan activo', subPreviousPlan: 'Tu plan anterior', subUpgradeTo: 'Actualizar a {plan}',
+    subFeatCloudStorage: '{size} de almacenamiento en la nube', subFeatPatternsOne: '{n} patrón guardado', subFeatPatternsMany: '{n} patrones guardados',
+    subFeatUnlimitedPatterns: 'Patrones guardados ilimitados', subFeatStrategiesOne: '{n} estrategia', subFeatStrategiesMany: '{n} estrategias',
+    subFeatUnlimitedStrategies: 'Estrategias ilimitadas', subFeatAccountsOne: '{n} cuenta de trading', subFeatAccountsMany: '{n} cuentas de trading',
+    subFeatUnlimitedAccounts: 'Cuentas de trading ilimitadas', subFeatSessionsOne: '{n} sesión de trading', subFeatSessionsMany: '{n} sesiones de trading',
+    subFeatUnlimitedSessions: 'Sesiones de trading ilimitadas', subFeatSymbolsOne: '{n} símbolo de análisis', subFeatSymbolsMany: '{n} símbolos de análisis',
+    subFeatUnlimitedSymbols: 'Símbolos de análisis ilimitados', subFeatAiPanelBuilder: 'Acceso al creador de paneles de IA',
+    subAiWallet: 'Cartera de IA', subPromoPaid: 'Promo {promo} · Pagado {paid}',
+    subWalletHint: 'Cada respuesta de IA — chat, análisis de patrones, revisión de sesión — se descuenta de este saldo en el momento en que se genera. Consulta exactamente en qué se gastó en Actividad de la cartera, abajo.',
+    subAmountUsd: 'Monto (USD)', subRequestTopUp: 'Solicitar recarga',
+    subTopUpNotice: 'Se solicitó una recarga de {amount} — pendiente de confirmación del administrador (facturación manual/de prueba).',
+    subTopUpError: 'No se pudo enviar la solicitud de recarga: {error}',
+    subWalletActivityTitle: 'Actividad de la cartera — por qué cambió tu saldo',
+    subFilterAll: 'Todo', subFilterUsage: 'Uso de IA', subFilterCredit: 'Recargas y créditos', subNoActivity: 'Aún no hay actividad.',
+    subLedgerAiUsage: 'Uso de IA · {feature}', subLedgerAssistant: 'Asistente', subLedgerTopUp: 'Recarga de cartera', subLedgerManualBilling: 'Facturación manual',
+    subLedgerSignupBonus: 'Bono de registro', subLedgerPromoCredit: 'Crédito promocional', subLedgerAdminCredit: 'Crédito del administrador', subLedgerManualAdjustment: 'Ajuste manual',
+    subLedgerRefundReversal: 'Reversión de reembolso', subLedgerAdminDebit: 'Débito del administrador', subLedgerTopUpRefunded: 'Recarga reembolsada',
+    subImpactPromo: '(promo)', subImpactPaid: '(pagado)', subImpactBoth: '(promo + pagado)',
+    subCloudStorage: 'Almacenamiento en la nube', subOfQuotaUsed: ' de {quota} usado', subStorageAddOn: 'Complemento de almacenamiento', subExpiresOn: 'vence el {date}',
+    subAddMoreStorage: 'Añadir más almacenamiento', subCapacityValidity: '+{capacity} · {days} días', subPurchase: 'Comprar',
+    subStorageNotice: 'Se solicitó la compra de {name} — pendiente de confirmación del administrador (facturación manual/de prueba).',
+    subStorageError: 'No se pudo enviar la solicitud de compra: {error}',
+    subBillingHistory: 'Historial de facturación', subNoBillingActivity: 'Aún no hay actividad de facturación.',
+    subColDate: 'Fecha', subColDescription: 'Descripción', subColAmount: 'Monto', subColStatus: 'Estado',
+    subTxWalletTopUp: 'Recarga de cartera', subTxSubscription: 'Plan · Suscripción mensual', subTxStoragePurchase: 'Complemento de almacenamiento', subTxRefund: 'Reembolso',
+    subStatusPaid: 'Pagado', subStatusPending: 'Pendiente', subStatusFailed: 'Fallido', subStatusRefunded: 'Reembolsado',
+    subUpgradeNotice: 'Se solicitó la actualización a {plan} — pendiente de confirmación del administrador (facturación manual/de prueba).',
+    subUpgradeError: 'No se pudo enviar la solicitud de actualización: {error}'
   }
 };
 
@@ -1104,59 +1260,79 @@ function fmtMicroUsd(microUsd) { return '$' + (microUsd / 1000000).toFixed(2); }
 function fmtBytesGb(bytes) { return (bytes / 1073741824).toFixed(bytes % 1073741824 === 0 ? 0 : 1) + ' GB'; }
 function fmtDate(iso) { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
 function fmtDateTime(iso) { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
-function planLabel(planId) { return planId ? planId.charAt(0).toUpperCase() + planId.slice(1) : ''; }
 function humanizeSlug(slug) {
   return String(slug || '').split(/[-_]/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 const labelRow = { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)' };
+const PLAN_LABEL_KEY = { free: 'subPlanFree', plus: 'subPlanPlus', personalized: 'subPlanPersonalized' };
+function planLabel(lang, planId) { return planId ? tr(lang, PLAN_LABEL_KEY[planId] || planId) : ''; }
+
+// Wallet-affecting actions in this tab dispatch this so the header's own HONOUR metric
+// (navrya-src/character-app.jsx's useWalletBalance()) refetches without a full page reload -
+// same balance-changed convention used app-wide for other CustomEvent-driven refreshes.
+function notifyWalletChanged() { window.dispatchEvent(new CustomEvent('navrya:wallet-changed')); }
 
 // Wallet Activity's "why did my balance move" line - composed from the ledger row's own
 // type/sourceAction/provider/model/feature (server/db/repo.*.mjs's wallet.grant()/settle()/
 // release() are the only writers of these fields - see repo.memory.mjs's wallet object). There is
 // no free-text reason column anywhere in this schema, so this is a client-side presentation
 // mapping, not a lossy summary of a richer field that already existed.
-function ledgerEntryDisplay(entry) {
+function ledgerEntryDisplay(lang, entry) {
   const netMicroUsd = (entry.cashDeltaMicroUsd || 0) + (entry.promoDeltaMicroUsd || 0);
   const isCredit = netMicroUsd > 0;
   let title, subtitle;
   if (entry.type === 'AI_SETTLEMENT') {
-    title = 'AI Usage · ' + humanizeSlug(entry.feature || 'Assistant');
+    title = tr(lang, 'subLedgerAiUsage', { feature: entry.feature ? humanizeSlug(entry.feature) : tr(lang, 'subLedgerAssistant') });
     subtitle = [entry.provider, entry.model].filter(Boolean).join(' · ');
   } else if (entry.type === 'TOP_UP') {
-    title = 'Wallet Top-Up'; subtitle = 'Manual billing';
+    title = tr(lang, 'subLedgerTopUp'); subtitle = tr(lang, 'subLedgerManualBilling');
   } else if (entry.type === 'PROMO_CREDIT') {
-    title = 'Signup Bonus'; subtitle = 'Promo credit';
+    title = tr(lang, 'subLedgerSignupBonus'); subtitle = tr(lang, 'subLedgerPromoCredit');
   } else if (entry.type === 'ADMIN_CREDIT') {
-    title = 'Admin Credit';
-    subtitle = entry.sourceAction && entry.sourceAction !== 'admin-credit' ? entry.sourceAction : 'Manual adjustment';
+    title = tr(lang, 'subLedgerAdminCredit');
+    subtitle = entry.sourceAction && entry.sourceAction !== 'admin-credit' ? entry.sourceAction : tr(lang, 'subLedgerManualAdjustment');
   } else if (entry.type === 'ADMIN_DEBIT') {
     const isRefund = entry.sourceAction === 'refund';
-    title = isRefund ? 'Refund Reversal' : 'Admin Debit';
-    subtitle = isRefund ? 'Top-up refunded' : (entry.sourceAction && entry.sourceAction !== 'admin-debit' ? entry.sourceAction : 'Manual adjustment');
+    title = isRefund ? tr(lang, 'subLedgerRefundReversal') : tr(lang, 'subLedgerAdminDebit');
+    subtitle = isRefund ? tr(lang, 'subLedgerTopUpRefunded') : (entry.sourceAction && entry.sourceAction !== 'admin-debit' ? entry.sourceAction : tr(lang, 'subLedgerManualAdjustment'));
   } else {
     title = humanizeSlug(entry.type); subtitle = entry.sourceAction || '';
   }
-  return { isCredit, title, subtitle, amountLabel: (isCredit ? '+' : '-') + fmtMicroUsd(Math.abs(netMicroUsd)) };
+  // Paid-vs-promo impact (task B.3) - only worth a qualifier when the entry actually touched
+  // both buckets, or when it's worth distinguishing which one moved; a pure single-bucket entry
+  // (the overwhelmingly common case) stays unqualified to avoid clutter.
+  let impact = '';
+  if (entry.cashDeltaMicroUsd && entry.promoDeltaMicroUsd) impact = tr(lang, 'subImpactBoth');
+  else if (entry.promoDeltaMicroUsd) impact = tr(lang, 'subImpactPromo');
+  else if (entry.cashDeltaMicroUsd) impact = tr(lang, 'subImpactPaid');
+  return { isCredit, title, subtitle, impact, amountLabel: (isCredit ? '+' : '-') + fmtMicroUsd(Math.abs(netMicroUsd)) };
 }
 
 const PLAN_ORDER = ['free', 'plus', 'personalized'];
-const LIMIT_LABELS = { patterns: 'saved patterns', strategies: 'strategies', accounts: 'trading accounts', sessions: 'trading sessions', analysisSymbols: 'analysis symbols' };
-const LIMIT_LABELS_SINGULAR = { patterns: 'saved pattern', strategies: 'strategy', accounts: 'trading account', sessions: 'trading session', analysisSymbols: 'analysis symbol' };
+// [pluralKey, singularKey, unlimitedKey] per limit - matches this app's existing One/Many
+// pluralization convention (e.g. public/pages/shared/ai-i18n.js's aiAsstConversationsOne/Many).
+const LIMIT_KEYS = {
+  patterns: ['subFeatPatternsMany', 'subFeatPatternsOne', 'subFeatUnlimitedPatterns'],
+  strategies: ['subFeatStrategiesMany', 'subFeatStrategiesOne', 'subFeatUnlimitedStrategies'],
+  accounts: ['subFeatAccountsMany', 'subFeatAccountsOne', 'subFeatUnlimitedAccounts'],
+  sessions: ['subFeatSessionsMany', 'subFeatSessionsOne', 'subFeatUnlimitedSessions'],
+  analysisSymbols: ['subFeatSymbolsMany', 'subFeatSymbolsOne', 'subFeatUnlimitedSymbols']
+};
 // Every line is derived from the SAME effective config the entitlement resolver enforces
 // server-side (GET /api/sync/subscriptions/catalog) - nothing here is a hard-coded plan number,
 // so an admin-edited price/limit shows up correctly with no client change.
-function planFeatureLines(planConfig) {
-  const lines = [fmtBytesGb(planConfig.storageBytes) + ' cloud storage'];
-  Object.keys(LIMIT_LABELS).forEach((key) => {
+function planFeatureLines(lang, planConfig) {
+  const lines = [tr(lang, 'subFeatCloudStorage', { size: fmtBytesGb(planConfig.storageBytes) })];
+  Object.keys(LIMIT_KEYS).forEach((key) => {
     const val = planConfig.limits ? planConfig.limits[key] : null;
-    const label = val === 1 ? LIMIT_LABELS_SINGULAR[key] : LIMIT_LABELS[key];
-    lines.push(val === null || val === undefined ? 'Unlimited ' + LIMIT_LABELS[key] : val + ' ' + label);
+    const [manyKey, oneKey, unlimitedKey] = LIMIT_KEYS[key];
+    lines.push(val === null || val === undefined ? tr(lang, unlimitedKey) : tr(lang, val === 1 ? oneKey : manyKey, { n: val }));
   });
-  if (planConfig.features && planConfig.features.aiPanelBuilder) lines.push('AI Panel Builder access');
+  if (planConfig.features && planConfig.features.aiPanelBuilder) lines.push(tr(lang, 'subFeatAiPanelBuilder'));
   return lines;
 }
 
-function PlanHero({ plan, subscription, onToggleCancel }) {
+function PlanHero({ lang, plan, subscription, onToggleCancel }) {
   const [wallet, setWallet] = React.useState(null);
   const [storage, setStorage] = React.useState(null);
   React.useEffect(() => {
@@ -1176,27 +1352,26 @@ function PlanHero({ plan, subscription, onToggleCancel }) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', boxShadow: '0 0 8px rgba(46,204,113,.6)' }}></span>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--success)' }}>Active</span>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--success)' }}>{tr(lang, 'subActiveStatus')}</span>
               </div>
-              <h2 style={{ margin: '3px 0 0', fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--parchment)' }}>{planLabel(plan)} Plan</h2>
+              <h2 style={{ margin: '3px 0 0', fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--parchment)' }}>{tr(lang, 'subPlanSuffix', { plan: planLabel(lang, plan) })}</h2>
             </div>
           </div>
           {subscription ? (
             <>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--gold-warm)' }}>{fmtMicroUsd(subscription.priceAmountMicroUsd)}</span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ month</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'subPerMonth')}</span>
               </div>
               <div dir="ltr" style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>
-                {subscription.cancelAtPeriodEnd ? 'Cancels ' : 'Renews '}{fmtDate(subscription.currentPeriodEnd)}
-                {subscription.cancelAtPeriodEnd ? ' · renew anytime before then' : ''}
+                {subscription.cancelAtPeriodEnd ? tr(lang, 'subCancelsNote', { date: fmtDate(subscription.currentPeriodEnd) }) : tr(lang, 'subRenews', { date: fmtDate(subscription.currentPeriodEnd) })}
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <Button variant="secondary" size="sm" onClick={onToggleCancel}>{subscription.cancelAtPeriodEnd ? 'Reactivate' : 'Cancel at Period End'}</Button>
+                <Button variant="secondary" size="sm" onClick={onToggleCancel}>{subscription.cancelAtPeriodEnd ? tr(lang, 'subReactivate') : tr(lang, 'subCancelAtPeriodEnd')}</Button>
               </div>
             </>
           ) : (
-            <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>Free plan — no billing on file.</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(lang, 'subFreeNoBilling')}</div>
           )}
         </div>
 
@@ -1206,8 +1381,8 @@ function PlanHero({ plan, subscription, onToggleCancel }) {
           {storage && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                <span style={labelRow}>Storage Used</span>
-                <span dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtBytesGb(storage.usedBytes)} of {fmtBytesGb(storage.quotaBytes)}</span>
+                <span style={labelRow}>{tr(lang, 'subStorageUsed')}</span>
+                <span dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtBytesGb(storage.usedBytes)}{tr(lang, 'subOfQuotaUsed', { quota: fmtBytesGb(storage.quotaBytes) })}</span>
               </div>
               <div style={{ height: 6, borderRadius: 999, background: 'rgba(244,234,215,.08)', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: storagePct + '%', borderRadius: 999, background: 'linear-gradient(90deg, var(--char-accent-strong), var(--char-accent))' }}></div>
@@ -1216,13 +1391,13 @@ function PlanHero({ plan, subscription, onToggleCancel }) {
           )}
           <div style={{ display: 'flex', gap: 14 }}>
             <div style={{ flex: 1, padding: '13px 15px', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'var(--surface-card)' }}>
-              <div style={{ ...labelRow, marginBottom: 6 }}>Wallet Balance</div>
+              <div style={{ ...labelRow, marginBottom: 6 }}>{tr(lang, 'subWalletBalance')}</div>
               <div className="navrya-tabular" style={{ fontSize: 20, fontWeight: 700, color: 'var(--parchment)' }}>{wallet ? fmtMicroUsd(wallet.totalBalanceMicroUsd) : '—'}</div>
             </div>
             <div style={{ flex: 1, padding: '13px 15px', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'var(--surface-card)' }}>
-              <div style={{ ...labelRow, marginBottom: 6 }}>Plan Limits</div>
+              <div style={{ ...labelRow, marginBottom: 6 }}>{tr(lang, 'subPlanLimits')}</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: isUnlimitedPlan ? 'var(--char-accent)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 7 }}>
-                {isUnlimitedPlan ? <><Icon name="Infinity" size={15} />Unlimited</> : 'Free tier caps'}
+                {isUnlimitedPlan ? <><Icon name="Infinity" size={15} />{tr(lang, 'subUnlimited')}</> : tr(lang, 'subFreeTierCaps')}
               </div>
             </div>
           </div>
@@ -1232,32 +1407,31 @@ function PlanHero({ plan, subscription, onToggleCancel }) {
   );
 }
 
-function UpgradeModal({ planId, price, onClose, onConfirm }) {
+function UpgradeModal({ lang, planId, price, onClose, onConfirm }) {
   return (
-    <Modal open title={'Upgrade to ' + planLabel(planId)} icon="subscription" onClose={onClose} width={440}
+    <Modal open title={tr(lang, 'subUpgradeModalTitle', { plan: planLabel(lang, planId) })} icon="subscription" onClose={onClose} width={440}
       footer={(
         <>
           <span style={{ flex: 1 }} />
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={onConfirm}>Confirm Request</Button>
+          <Button variant="secondary" onClick={onClose}>{tr(lang, 'subCancel')}</Button>
+          <Button variant="primary" onClick={onConfirm}>{tr(lang, 'subConfirmRequest')}</Button>
         </>
       )}
     >
       <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        {price ? "You'll be billed " + fmtMicroUsd(Math.round(price.amountUsd * 1000000)) + ' / ' + price.billingInterval + ' ' : ''}
-        once an admin confirms this request. Your current plan stays active until then.
+        {price ? tr(lang, 'subUpgradeBilledNote', { price: fmtMicroUsd(Math.round(price.amountUsd * 1000000)), interval: tr(lang, price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth') }) : ''}
       </p>
     </Modal>
   );
 }
 
-function PlanComparisonGrid({ plan, catalog, onUpgrade }) {
+function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
   if (!catalog) return null;
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ ...labelRow, marginBottom: 4 }}>Choose Your Plan</div>
-        <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>Upgrades take effect once an admin confirms the request.</div>
+        <div style={{ ...labelRow, marginBottom: 4 }}>{tr(lang, 'subChooseYourPlan')}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(lang, 'subUpgradesEffectNote')}</div>
       </div>
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
         {PLAN_ORDER.map((planId) => {
@@ -1265,19 +1439,19 @@ function PlanComparisonGrid({ plan, catalog, onUpgrade }) {
           if (!cfg) return null;
           const isCurrent = planId === plan;
           const isPast = PLAN_ORDER.indexOf(planId) < PLAN_ORDER.indexOf(plan);
-          const lines = planFeatureLines(cfg);
+          const lines = planFeatureLines(lang, cfg);
           return (
             <Panel key={planId} variant={isCurrent ? 'active' : 'base'} ornament={isCurrent} ornamentSize={18} glow={isCurrent}
               padding="22px 20px" style={{ flex: '1 1 260px', minWidth: 240, display: 'flex', flexDirection: 'column', gap: 14 }}
             >
               {isCurrent && (
-                <div style={{ alignSelf: 'center', padding: '4px 14px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>Current Plan</div>
+                <div style={{ alignSelf: 'center', padding: '4px 14px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>{tr(lang, 'subCurrentPlan')}</div>
               )}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(planId)}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(lang, planId)}</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 7 }}>
                   <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {cfg.price.billingInterval}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {tr(lang, cfg.price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth')}</span>
                 </div>
               </div>
               <ul style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: 0, padding: 0, listStyle: 'none' }}>
@@ -1291,12 +1465,12 @@ function PlanComparisonGrid({ plan, catalog, onUpgrade }) {
               <div style={{ flex: 1 }}></div>
               {isCurrent ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 12, color: 'var(--char-accent)', fontWeight: 600, paddingTop: 9, borderTop: '1px solid var(--divider-gold)' }}>
-                  <Icon name="check" size={14} />Active Plan
+                  <Icon name="check" size={14} />{tr(lang, 'subActivePlan')}
                 </div>
               ) : isPast ? (
-                <div style={{ fontSize: 11.5, color: 'var(--text-disabled)', textAlign: 'center', paddingTop: 8, borderTop: '1px solid var(--divider-gold)' }}>Your previous plan</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-disabled)', textAlign: 'center', paddingTop: 8, borderTop: '1px solid var(--divider-gold)' }}>{tr(lang, 'subPreviousPlan')}</div>
               ) : (
-                <Button variant="primary" size="sm" style={{ justifyContent: 'center' }} onClick={() => onUpgrade(planId)}>Upgrade to {planLabel(planId)}</Button>
+                <Button variant="primary" size="sm" style={{ justifyContent: 'center' }} onClick={() => onUpgrade(planId)}>{tr(lang, 'subUpgradeTo', { plan: planLabel(lang, planId) })}</Button>
               )}
             </Panel>
           );
@@ -1306,7 +1480,7 @@ function PlanComparisonGrid({ plan, catalog, onUpgrade }) {
   );
 }
 
-function WalletCard({ onNotice }) {
+function WalletCard({ lang, onNotice }) {
   const [wallet, setWallet] = React.useState(null);
   const [amount, setAmount] = React.useState('10');
   function reload() { fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {}); }
@@ -1315,23 +1489,23 @@ function WalletCard({ onNotice }) {
     const amountUsd = Number(amount) || 0;
     fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
-      .then(() => { onNotice('Top-up of ' + fmtMicroUsd(amountUsd * 1000000) + ' requested — pending Admin confirmation (manual/test billing).'); reload(); })
-      .catch((error) => onNotice('Could not submit the top-up request: ' + error.message));
+      .then(() => { onNotice(tr(lang, 'subTopUpNotice', { amount: fmtMicroUsd(amountUsd * 1000000) })); reload(); notifyWalletChanged(); })
+      .catch((error) => onNotice(tr(lang, 'subTopUpError', { error: error.message })));
   }
   if (!wallet) return null;
   return (
     <Panel variant="base" ornament padding="22px 24px">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 26 }}>
         <div style={{ flex: '1 1 320px', minWidth: 260 }}>
-          <div style={{ ...labelRow, marginBottom: 9 }}>AI Wallet</div>
+          <div style={{ ...labelRow, marginBottom: 9 }}>{tr(lang, 'subAiWallet')}</div>
           <div className="navrya-tabular" style={{ fontSize: 31, fontWeight: 700, color: 'var(--parchment)' }}>{fmtMicroUsd(wallet.totalBalanceMicroUsd)}</div>
-          <div dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Promo {fmtMicroUsd(wallet.promoBalanceMicroUsd)} · Paid {fmtMicroUsd(wallet.paidBalanceMicroUsd)}</div>
+          <div dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>{tr(lang, 'subPromoPaid', { promo: fmtMicroUsd(wallet.promoBalanceMicroUsd), paid: fmtMicroUsd(wallet.paidBalanceMicroUsd) })}</div>
           <p style={{ fontSize: 12, color: 'var(--text-dim)', maxWidth: 380, margin: '14px 0 0', lineHeight: 1.6 }}>
-            Every AI response — chat, pattern analysis, session review — draws from this balance the moment it's generated. See exactly what it was spent on in Wallet Activity below.
+            {tr(lang, 'subWalletHint')}
           </p>
         </div>
         <div style={{ flex: '1 1 280px', minWidth: 260, maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={labelRow}>Amount (USD)</div>
+          <div style={labelRow}>{tr(lang, 'subAmountUsd')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             {[10, 25, 50].map((v) => (
               <Chip key={v} tone={Number(amount) === v ? 'accent' : 'neutral'} style={{ cursor: 'pointer' }} onClick={() => setAmount(String(v))}>${v}</Chip>
@@ -1339,7 +1513,7 @@ function WalletCard({ onNotice }) {
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}><TextField value={amount} onChange={setAmount} type="number" /></div>
-            <Button variant="primary" onClick={requestTopUp}>Request Top-Up</Button>
+            <Button variant="primary" onClick={requestTopUp}>{tr(lang, 'subRequestTopUp')}</Button>
           </div>
         </div>
       </div>
@@ -1347,13 +1521,15 @@ function WalletCard({ onNotice }) {
   );
 }
 
-const LEDGER_FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'usage', label: 'AI Usage' },
-  { id: 'credit', label: 'Top-Ups & Credits' }
-];
+function ledgerFilters(lang) {
+  return [
+    { id: 'all', label: tr(lang, 'subFilterAll') },
+    { id: 'usage', label: tr(lang, 'subFilterUsage') },
+    { id: 'credit', label: tr(lang, 'subFilterCredit') }
+  ];
+}
 
-function WalletActivityCard() {
+function WalletActivityCard({ lang }) {
   const [entries, setEntries] = React.useState(null);
   const [filter, setFilter] = React.useState('all');
   React.useEffect(() => {
@@ -1372,19 +1548,19 @@ function WalletActivityCard() {
   return (
     <Panel variant="base" ornament padding="22px 24px">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
-        <div style={labelRow}>Wallet Activity — why your balance moved</div>
+        <div style={labelRow}>{tr(lang, 'subWalletActivityTitle')}</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {LEDGER_FILTERS.map((f) => (
+          {ledgerFilters(lang).map((f) => (
             <Chip key={f.id} tone={filter === f.id ? 'accent' : 'neutral'} style={{ cursor: 'pointer' }} onClick={() => setFilter(f.id)}>{f.label}</Chip>
           ))}
         </div>
       </div>
       {filtered.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: 'var(--text-dim)', padding: '12px 4px' }}>No activity yet.</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-dim)', padding: '12px 4px' }}>{tr(lang, 'subNoActivity')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {filtered.map((entry) => {
-            const d = ledgerEntryDisplay(entry);
+            const d = ledgerEntryDisplay(lang, entry);
             return (
               <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 4px', borderBottom: '1px solid rgba(244,234,215,.06)' }}>
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, flex: 'none', background: d.isCredit ? 'rgba(46,204,113,.12)' : 'rgba(255,56,48,.12)', color: d.isCredit ? 'var(--success)' : 'var(--danger)' }}>
@@ -1394,7 +1570,10 @@ function WalletActivityCard() {
                   <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{d.title}</div>
                   <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-dim)', marginTop: 2 }}>{d.subtitle}{d.subtitle ? ' · ' : ''}{fmtDateTime(entry.createdAt)}</div>
                 </div>
-                <div dir="ltr" className="navrya-tabular" style={{ fontSize: 14, fontWeight: 700, color: d.isCredit ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap' }}>{d.amountLabel}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                  <div dir="ltr" className="navrya-tabular" style={{ fontSize: 14, fontWeight: 700, color: d.isCredit ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap' }}>{d.amountLabel}</div>
+                  {!!d.impact && <div style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{d.impact}</div>}
+                </div>
               </div>
             );
           })}
@@ -1404,7 +1583,7 @@ function WalletActivityCard() {
   );
 }
 
-function StorageCard({ onNotice }) {
+function StorageCard({ lang, onNotice }) {
   const [storage, setStorage] = React.useState(null);
   const [products, setProducts] = React.useState([]);
   function reload() {
@@ -1415,18 +1594,18 @@ function StorageCard({ onNotice }) {
   function requestPurchase(product) {
     fetch('/api/sync/storage/purchase-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId: product.id }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
-      .then(() => { onNotice(product.name + ' purchase requested — pending Admin confirmation (manual/test billing).'); reload(); })
-      .catch((error) => onNotice('Could not submit the purchase request: ' + error.message));
+      .then(() => { onNotice(tr(lang, 'subStorageNotice', { name: product.name })); reload(); notifyWalletChanged(); })
+      .catch((error) => onNotice(tr(lang, 'subStorageError', { error: error.message })));
   }
   if (!storage) return null;
   const pct = Math.min(100, (storage.usedBytes / Math.max(1, storage.quotaBytes)) * 100);
   const activeEntitlements = (storage.entitlements || []).filter((e) => new Date(e.expiresAt).getTime() > Date.now());
   return (
     <Panel variant="base" ornament padding="22px 24px">
-      <div style={{ ...labelRow, marginBottom: 10 }}>Cloud Storage</div>
+      <div style={{ ...labelRow, marginBottom: 10 }}>{tr(lang, 'subCloudStorage')}</div>
       <div dir="ltr" style={{ marginBottom: 8 }}>
         <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--parchment)' }}>{fmtBytesGb(storage.usedBytes)}</span>
-        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}> of {fmtBytesGb(storage.quotaBytes)} used</span>
+        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>{tr(lang, 'subOfQuotaUsed', { quota: fmtBytesGb(storage.quotaBytes) })}</span>
       </div>
       <div style={{ height: 6, borderRadius: 999, background: 'rgba(244,234,215,.08)', overflow: 'hidden', marginBottom: 20 }}>
         <div style={{ height: '100%', width: pct + '%', borderRadius: 999, background: 'linear-gradient(90deg, var(--char-accent-strong), var(--char-accent))' }}></div>
@@ -1435,22 +1614,22 @@ function StorageCard({ onNotice }) {
         <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 22 }}>
           {activeEntitlements.map((e) => (
             <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '9px 2px', borderBottom: '1px solid rgba(244,234,215,.06)' }}>
-              <span style={{ color: 'var(--text-primary)' }}>Storage add-on</span>
-              <span dir="ltr" style={{ color: 'var(--text-muted)' }}>{fmtBytesGb(e.capacityBytesSnapshot)} · expires {fmtDate(e.expiresAt)}</span>
+              <span style={{ color: 'var(--text-primary)' }}>{tr(lang, 'subStorageAddOn')}</span>
+              <span dir="ltr" style={{ color: 'var(--text-muted)' }}>{fmtBytesGb(e.capacityBytesSnapshot)} · {tr(lang, 'subExpiresOn', { date: fmtDate(e.expiresAt) })}</span>
             </div>
           ))}
         </div>
       )}
       {!!products.length && (
         <>
-          <div style={{ ...labelRow, marginBottom: 12 }}>Add More Storage</div>
+          <div style={{ ...labelRow, marginBottom: 12 }}>{tr(lang, 'subAddMoreStorage')}</div>
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             {products.map((p) => (
               <div key={p.id} style={{ flex: '1 1 200px', minWidth: 180, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'var(--surface-card)', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
-                <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>+{fmtBytesGb(p.capacityBytes)} · {p.validityDays} days</div>
+                <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{tr(lang, 'subCapacityValidity', { capacity: fmtBytesGb(p.capacityBytes), days: p.validityDays })}</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold-warm)' }}>{fmtMicroUsd(p.priceAmountMicroUsd)}</div>
-                <Button variant="secondary" size="sm" style={{ justifyContent: 'center', marginTop: 'auto' }} onClick={() => requestPurchase(p)}>Purchase</Button>
+                <Button variant="secondary" size="sm" style={{ justifyContent: 'center', marginTop: 'auto' }} onClick={() => requestPurchase(p)}>{tr(lang, 'subPurchase')}</Button>
               </div>
             ))}
           </div>
@@ -1460,15 +1639,15 @@ function StorageCard({ onNotice }) {
   );
 }
 
-const TX_STATUS_STYLE = {
-  confirmed: { color: 'var(--success)', border: 'rgba(46,204,113,.4)', background: 'rgba(46,204,113,.08)', label: 'Paid' },
-  pending: { color: 'var(--warning)', border: 'rgba(255,176,32,.4)', background: 'rgba(255,176,32,.08)', label: 'Pending' },
-  failed: { color: 'var(--danger)', border: 'rgba(255,56,48,.4)', background: 'rgba(255,56,48,.08)', label: 'Failed' },
-  refunded: { color: 'var(--info)', border: 'rgba(77,163,255,.4)', background: 'rgba(77,163,255,.08)', label: 'Refunded' }
+const TX_STATUS_KEY = {
+  confirmed: { color: 'var(--success)', border: 'rgba(46,204,113,.4)', background: 'rgba(46,204,113,.08)', key: 'subStatusPaid' },
+  pending: { color: 'var(--warning)', border: 'rgba(255,176,32,.4)', background: 'rgba(255,176,32,.08)', key: 'subStatusPending' },
+  failed: { color: 'var(--danger)', border: 'rgba(255,56,48,.4)', background: 'rgba(255,56,48,.08)', key: 'subStatusFailed' },
+  refunded: { color: 'var(--info)', border: 'rgba(77,163,255,.4)', background: 'rgba(77,163,255,.08)', key: 'subStatusRefunded' }
 };
-const TX_TYPE_LABEL = { wallet_topup: 'Wallet Top-Up', subscription: 'Plan · Monthly Subscription', storage_purchase: 'Storage Add-on', refund: 'Refund' };
+const TX_TYPE_KEY = { wallet_topup: 'subTxWalletTopUp', subscription: 'subTxSubscription', storage_purchase: 'subTxStoragePurchase', refund: 'subTxRefund' };
 
-function BillingHistoryCard() {
+function BillingHistoryCard({ lang }) {
   const [transactions, setTransactions] = React.useState(null);
   React.useEffect(() => {
     fetch('/api/sync/wallet/transactions').then((r) => r.json()).then((d) => setTransactions(d.transactions || [])).catch(() => setTransactions([]));
@@ -1476,22 +1655,22 @@ function BillingHistoryCard() {
   if (!transactions) return null;
   return (
     <Panel variant="base" ornament padding="22px 24px">
-      <div style={{ ...labelRow, marginBottom: 18 }}>Billing History</div>
+      <div style={{ ...labelRow, marginBottom: 18 }}>{tr(lang, 'subBillingHistory')}</div>
       {transactions.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>No billing activity yet.</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(lang, 'subNoBillingActivity')}</div>
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 100px 90px', gap: 12, padding: '0 6px 11px', borderBottom: '1px solid var(--divider-gold)', fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
-            <span>Date</span><span>Description</span><span>Amount</span><span>Status</span>
+            <span>{tr(lang, 'subColDate')}</span><span>{tr(lang, 'subColDescription')}</span><span>{tr(lang, 'subColAmount')}</span><span>{tr(lang, 'subColStatus')}</span>
           </div>
           {transactions.map((tx) => {
-            const st = TX_STATUS_STYLE[tx.status] || TX_STATUS_STYLE.pending;
+            const st = TX_STATUS_KEY[tx.status] || TX_STATUS_KEY.pending;
             return (
               <div key={tx.id} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 100px 90px', gap: 12, padding: '14px 6px', borderBottom: '1px solid rgba(244,234,215,.06)', alignItems: 'center' }}>
                 <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{fmtDate(tx.confirmedAt || tx.createdAt)}</span>
-                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{TX_TYPE_LABEL[tx.type] || humanizeSlug(tx.type)}</span>
+                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{tx.type && TX_TYPE_KEY[tx.type] ? tr(lang, TX_TYPE_KEY[tx.type]) : humanizeSlug(tx.type)}</span>
                 <span className="navrya-tabular" style={{ fontSize: 13, fontWeight: 600, color: 'var(--parchment)' }}>{fmtMicroUsd(tx.amountMicroUsd)}</span>
-                <Chip style={{ color: st.color, borderColor: st.border, background: st.background }}>{st.label}</Chip>
+                <Chip style={{ color: st.color, borderColor: st.border, background: st.background }}>{tr(lang, st.key)}</Chip>
               </div>
             );
           })}
@@ -1501,12 +1680,17 @@ function BillingHistoryCard() {
   );
 }
 
-function SubscriptionTab({ lang, i18n }) {
+// Real Subscription tab (task B.4/B.5) - Billing History (above) already sources exclusively
+// from GET /api/sync/wallet/transactions -> repo.paymentTransactions.listForUser(), never
+// marketplace data. The legacy Marketplace "your subscriptions" mock-purchase panel that used to
+// render here (window.TradeJournalAccountProfileStore.getSubscriptions(), tagged "mock") has been
+// removed per explicit instruction - marketplace purchases remain their own separate domain and
+// must not be presented as payment history on this real commercial screen.
+function SubscriptionTab({ lang }) {
   const [subData, setSubData] = React.useState(null);
   const [catalog, setCatalog] = React.useState(null);
   const [notice, setNotice] = React.useState('');
   const [upgradeTarget, setUpgradeTarget] = React.useState(null);
-  const [subs, setSubs] = React.useState(null);
 
   const reloadSub = React.useCallback(() => {
     fetch('/api/sync/subscriptions').then((r) => r.json()).then(setSubData).catch(() => setSubData({ plan: 'free', subscription: null }));
@@ -1515,16 +1699,12 @@ function SubscriptionTab({ lang, i18n }) {
   React.useEffect(() => {
     fetch('/api/sync/subscriptions/catalog').then((r) => r.json()).then((d) => setCatalog(d.plans)).catch(() => setCatalog(null));
   }, []);
-  React.useEffect(() => {
-    const store = window.TradeJournalAccountProfileStore;
-    if (store) store.getSubscriptions().then(setSubs).catch(() => setSubs([]));
-  }, []);
 
   function requestUpgrade(planId) {
     fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
-      .then(() => { setUpgradeTarget(null); setNotice('Upgrade to ' + planLabel(planId) + ' requested — pending Admin confirmation (manual/test billing).'); })
-      .catch((error) => setNotice('Could not submit the upgrade request: ' + error.message));
+      .then(() => { setUpgradeTarget(null); setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId) })); notifyWalletChanged(); })
+      .catch((error) => setNotice(tr(lang, 'subUpgradeError', { error: error.message })));
   }
   function toggleCancel() {
     const sub = subData && subData.subscription;
@@ -1538,30 +1718,15 @@ function SubscriptionTab({ lang, i18n }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
-      <PlanHero plan={subData.plan} subscription={subData.subscription} onToggleCancel={toggleCancel} />
-      <PlanComparisonGrid plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
-      <WalletCard onNotice={setNotice} />
-      <WalletActivityCard />
-      <StorageCard onNotice={setNotice} />
-      <BillingHistoryCard />
-      {subs && subs.length > 0 && (
-        <Panel variant="base" ornament padding="20px 22px">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'subRealTitle')}</span>
-            {subs.map((sub) => (
-              <div key={sub.id || sub.purchasedAt} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 9, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <strong style={{ fontSize: 13, color: 'var(--parchment)' }}>{sub.listing.title}</strong>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tr(lang, 'purchasedOn', { date: i18n.date(sub.purchasedAt) })}</span>
-                </div>
-                <Chip tone="neutral">{tr(lang, 'mockBadge')}</Chip>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
+      <PlanHero lang={lang} plan={subData.plan} subscription={subData.subscription} onToggleCancel={toggleCancel} />
+      <PlanComparisonGrid lang={lang} plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
+      <WalletCard lang={lang} onNotice={setNotice} />
+      <WalletActivityCard lang={lang} />
+      <StorageCard lang={lang} onNotice={setNotice} />
+      <BillingHistoryCard lang={lang} />
       {upgradeTarget && (
         <UpgradeModal
+          lang={lang}
           planId={upgradeTarget}
           price={catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price}
           onClose={() => setUpgradeTarget(null)}
@@ -1668,7 +1833,7 @@ function AccountProfileView({ initialTab, character }) {
       {tab === 'identity' && <IdentityTab lang={lang} i18n={i18n} character={character} profile={profile} onSaved={setProfile} />}
       {tab === 'level' && <LevelTab lang={lang} i18n={i18n} profile={profile} mastery={mastery} xpEvents={xpEvents} />}
       {tab === 'ach' && <AchievementsTab lang={lang} i18n={i18n} profile={profile} unlockedByKey={unlockedByKey} openId={openAch} setOpenId={setOpenAch} />}
-      {tab === 'sub' && <SubscriptionTab lang={lang} i18n={i18n} />}
+      {tab === 'sub' && <SubscriptionTab lang={lang} />}
       {tab === 'role' && <RoleTab lang={lang} profile={profile} onSaved={setProfile} />}
     </div>
   );
