@@ -1154,6 +1154,28 @@ export function mountCharacterApp(character) {
         resultContext: () => {}
       });
 
+      // 2026-08-28 bug report: the real Pre-Session Check-In popup (preSessionCheckInModal.jsx)
+      // shows itself as a precondition before session.movementEntry.create's/
+      // session.scenario.create's own target UI ever opens - reactive, opened by app code
+      // directly, never by an action's own open(). Standalone fallback ONLY: while it is showing
+      // with an AI workflow already in flight (the common case - the user asked to add an entry,
+      // and this popup interrupted that), preSessionCheckInModal.jsx's own mount effect calls
+      // ai-workflow-engine.js's retargetOrStart() directly, pointing the SAME already-in-flight
+      // workflow at this popup rather than starting a second, competing one - this action exists
+      // only for retargetOrStart()'s OTHER case, when nothing was already in flight (a human's
+      // own manual click opened the popup with no AI involvement yet). available() is gated
+      // strictly on the popup already being open - this action can never summon it.
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'session.preSessionCheckIn.fill', domain: 'sessions', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Fill the real, already-open Pre-Session Check-In popup (sleep quality, current stress level, a significant personal event) with what the user explicitly states. This popup only ever appears on its own, as a real precondition before the first entry of a Session - never open it yourself; only use this action while it is already showing.',
+        aliases: [],
+        requiredFields: [], optionalFields: ['sleepQuality', 'currentStressLevel', 'significantPersonalEvent'],
+        available: () => { var registry = window.TradeJournalAIProcessRegistry; return !!(registry && registry.query('mh-pre-session-checkin').open); },
+        open: () => Promise.resolve({ processId: 'mh-pre-session-checkin' }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
       window.TradeJournalAIActionRegistry.registerAction({
         // Deliberately NOT entityAlreadyPersisted, unlike pattern.create/strategy.create - found
         // via real browser testing. chat-dock-core.js's own activeProcess resolution already, and

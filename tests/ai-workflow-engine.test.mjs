@@ -631,3 +631,74 @@ test('applyKnownFields() re-baselines and keeps the workflow alive - never disca
   ], 'the field on the turn AFTER a "step" divergence must still reach the real UI, not be silently dropped');
   assert.equal(guard.captureCalls.length, 4, 're-baselined once for the "step" divergence itself, then again after this turn\'s own field application settled');
 });
+
+// --- 2026-08-28 bug report: retargetOrStart() / restorePreviousProcessId() ---
+// (Pre-Session Check-In popup - real, app-opened, never through an action's own open())
+
+test('retargetOrStart() points an already-in-flight workflow at a new real processId, pushing the old one onto a stack, and clears its uiSnapshot', async () => {
+  const action = { id: 'session.movementEntry.create', requiredFields: [] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('session.movementEntry.create', {});
+  await engine.applyKnownFields([], {}); // establishes the default processId
+  assert.equal(engine.current().processId, 'session-movementEntry-create');
+
+  const retargeted = engine.retargetOrStart('mh-pre-session-checkin', 'session.preSessionCheckIn.fill', {}, []);
+  assert.equal(retargeted.processId, 'mh-pre-session-checkin', 'the SAME workflow now targets the popup');
+  assert.equal(engine.current().workflowId, retargeted.workflowId, 'no new workflow was started - the original is preserved');
+  assert.equal(retargeted.uiSnapshot, null, 'forces a fresh capture against the new real surface');
+});
+
+test('restorePreviousProcessId() hands a retargeted workflow back to its original processId', async () => {
+  const action = { id: 'session.movementEntry.create', requiredFields: [] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('session.movementEntry.create', {});
+  await engine.applyKnownFields([], {});
+  const originalWorkflowId = engine.current().workflowId;
+
+  engine.retargetOrStart('mh-pre-session-checkin', 'session.preSessionCheckIn.fill', {}, []);
+  const restored = engine.restorePreviousProcessId();
+  assert.equal(restored.processId, 'session-movementEntry-create', 'back to the original real target - the interrupted request resumes exactly where it left off');
+  assert.equal(restored.workflowId, originalWorkflowId, 'still the SAME workflow throughout - never abandoned');
+});
+
+test('retargetOrStart() nests correctly through two interruptions and restores in the right order', async () => {
+  const action = { id: 'session.movementEntry.create', requiredFields: [] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('session.movementEntry.create', {});
+  await engine.applyKnownFields([], {});
+
+  engine.retargetOrStart('mh-pre-session-checkin', 'session.preSessionCheckIn.fill', {}, []);
+  engine.retargetOrStart('some-other-interrupt', 'some.other.action', {}, []);
+  assert.equal(engine.current().processId, 'some-other-interrupt');
+  assert.equal(engine.restorePreviousProcessId().processId, 'mh-pre-session-checkin');
+  assert.equal(engine.restorePreviousProcessId().processId, 'session-movementEntry-create');
+});
+
+test('retargetOrStart() is a no-op (returns the same workflow, does not push the stack) when already targeting the requested processId', async () => {
+  const action = { id: 'session.movementEntry.create', requiredFields: [] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('session.movementEntry.create', {});
+  await engine.applyKnownFields([], {});
+  const before = engine.current().processId;
+  const result = engine.retargetOrStart(before, 'session.preSessionCheckIn.fill', {}, []);
+  assert.equal(result.processId, before);
+  assert.equal(engine.restorePreviousProcessId().processId, before, 'nothing was pushed - restoring is a harmless no-op');
+});
+
+test('retargetOrStart() starts a fresh, standalone workflow when nothing was already in flight (a human\'s own manual click opened the popup)', async () => {
+  const action = { id: 'session.preSessionCheckIn.fill', requiredFields: [], entityAlreadyPersisted: true };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  assert.equal(engine.current(), null, 'nothing in flight to begin with');
+  const result = engine.retargetOrStart('mh-pre-session-checkin', 'session.preSessionCheckIn.fill', {}, []);
+  assert.equal(result.actionId, 'session.preSessionCheckIn.fill');
+  assert.equal(result.processId, 'session-preSessionCheckIn-fill', 'start()\'s own default processId mapping, before applyKnownFields() ever resolves open()\'s override');
+});
+
+test('restorePreviousProcessId() is a harmless no-op when nothing was ever retargeted', async () => {
+  const action = { id: 'session.movementEntry.create', requiredFields: [] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('session.movementEntry.create', {});
+  await engine.applyKnownFields([], {});
+  const before = engine.current().processId;
+  assert.equal(engine.restorePreviousProcessId().processId, before);
+});

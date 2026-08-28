@@ -305,8 +305,56 @@
     current = null;
   }
 
+  // 2026-08-28 bug report: a small number of REAL, app-owned popups (currently only the
+  // Pre-Session Check-In - preSessionCheckInModal.jsx) show themselves as a genuine precondition
+  // BEFORE another action's own target UI ever opens (session.movementEntry.create's/
+  // session.scenario.create's own open() is still mid-poll, waiting for its real target to
+  // exist, while the popup is genuinely the topmost thing on screen) - or independently, from a
+  // human's own manual click, with no AI workflow in flight at all. Neither case was ever
+  // fillable by voice before this: chat-dock-core.js's field-application only ever reaches a
+  // process that either (a) a brand-new action.id just started, or (b) an ALREADY in-flight
+  // workflow's own processId already matches - a reactive popup opened by app code satisfies
+  // neither, so voice could only ever produce a manual, click-to-apply suggestion for it (a dead
+  // end, since no click-to-apply control is reachable from Voice).
+  //
+  // retargetOrStart() is the fix: if a workflow is already in flight (the common case - the user
+  // asked to add an entry, and THIS popup interrupted that), point the SAME workflow at the
+  // popup's own real processId for as long as it's showing (pushing the previous processId onto
+  // a small stack, restored by restorePreviousProcessId() once it closes) - the original
+  // workflow's own open() polling, still running the whole time, resumes exactly where it left
+  // off once restored, rather than being abandoned by starting a second, unrelated workflow (see
+  // applyKnownFields()'s own comment on why a superseded workflow's late-resolving open() safely
+  // no-ops - that mechanism is what an abandoned workflow would fall into, silently orphaning the
+  // user's original request). If nothing was in flight (a human's own manual click opened the
+  // popup with no AI involvement yet), starts a small, self-contained workflow instead so the
+  // popup is still voice-fillable standalone - it clears itself automatically once the popup
+  // closes, via this engine's own existing pruneIfAbandoned().
+  function retargetOrStart(processId, actionId, context, initialFields) {
+    if (current) {
+      if (current.processId === processId) return current;
+      current._retargetStack = current._retargetStack || [];
+      current._retargetStack.push(current.processId);
+      current.processId = processId;
+      current.uiSnapshot = null; // force a fresh capture against the new real surface
+      return current;
+    }
+    return start(actionId, context, initialFields);
+  }
+
+  // Hands a retargeted workflow back to whichever real processId it was driving before the
+  // interruption (see retargetOrStart() above) - a no-op if nothing was ever retargeted (the
+  // standalone-popup case handles its own cleanup via pruneIfAbandoned() instead).
+  function restorePreviousProcessId() {
+    if (!current || !current._retargetStack || !current._retargetStack.length) return current;
+    current.processId = current._retargetStack.pop();
+    current.uiSnapshot = null;
+    return current;
+  }
+
   window.TradeJournalAIWorkflowEngine = {
     start: start,
+    retargetOrStart: retargetOrStart,
+    restorePreviousProcessId: restorePreviousProcessId,
     applyKnownFields: applyKnownFields,
     current: currentWorkflow,
     pruneIfAbandoned: pruneIfAbandoned,

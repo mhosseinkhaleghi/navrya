@@ -4,6 +4,8 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 
 // Redesign of mental-health-continuous.js's openPreSessionCheckIn() - the short, optional
 // "before you start" popup that used to fire once per session, before the first entry's
@@ -85,6 +87,13 @@ function PreSessionCheckInModal({ session, onDone }) {
   const [significantPersonalEvent, setSignificantPersonalEvent] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
+  // 2026-08-28 bug report fix: the same shared magic-fill animation every other Journey H1
+  // surface uses, wired now that this popup is actually reachable by voice (see the registration
+  // effect below, retargetOrStart()).
+  const sleepFilled = useAiFieldFill('mh-pre-session-checkin', 'sleepQuality');
+  const stressFilled = useAiFieldFill('mh-pre-session-checkin', 'currentStressLevel');
+  const eventFilled = useAiFieldFill('mh-pre-session-checkin', 'significantPersonalEvent');
+
   function close() { if (onDone) onDone(); }
 
   React.useEffect(() => {
@@ -96,11 +105,16 @@ function PreSessionCheckInModal({ session, onDone }) {
 
   // Same 'mh-pre-session-checkin' process id / allowlist the legacy wizard registered, so the
   // global assistant dock's suggestion pipeline keeps working unchanged against this dialog.
+  // layer: 'foreground' (2026-08-28 bug report fix) - this is a real, full-screen modal overlay
+  // (zIndex:100 below), the same "genuinely laid over the rest of the page" case every other
+  // Journey H1 modal/wizard registration already opts into; it previously defaulted to
+  // 'background', missing the topmost-surface rule if anything else happened to be open.
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     let mounted = true;
     registry.register('mh-pre-session-checkin', {
+      layer: 'foreground',
       allowlist: ['sleepQuality', 'currentStressLevel', 'significantPersonalEvent'],
       isOpen: () => mounted,
       activeStep: () => 'checkin',
@@ -110,7 +124,22 @@ function PreSessionCheckInModal({ session, onDone }) {
         else if (path === 'significantPersonalEvent') setSignificantPersonalEvent(String(value || ''));
       }
     });
-    return () => { mounted = false; };
+    // 2026-08-28 bug report fix: this popup is opened directly by app code (liveSessionView.jsx's
+    // withPreSessionCheckIn()), never through the AI Action Registry's own open() - structurally
+    // unreachable by live voice-fill before this, since chat-dock-core.js only ever auto-applies
+    // fields into a process a workflow it started itself already owns. retargetOrStart() points
+    // whichever workflow is already in flight (the common case - interrupted mid "add an entry")
+    // at this popup for as long as it's showing, or starts a small standalone one if nothing was
+    // in flight (a human's own manual click) - see that function's own comment in
+    // ai-workflow-engine.js for the full reasoning, including why this never abandons the
+    // original in-flight request.
+    const workflowEngine = window.TradeJournalAIWorkflowEngine;
+    const contextEngine = window.TradeJournalAIContextEngine;
+    if (workflowEngine) workflowEngine.retargetOrStart('mh-pre-session-checkin', 'session.preSessionCheckIn.fill', contextEngine ? contextEngine.snapshot() : {}, []);
+    return () => {
+      mounted = false;
+      if (workflowEngine) workflowEngine.restorePreviousProcessId();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -154,9 +183,10 @@ function PreSessionCheckInModal({ session, onDone }) {
         {/* Body */}
         <div className="navrya-scroll" style={{ minHeight: 200, maxHeight: '60vh', boxSizing: 'border-box', padding: '4px 20px 20px', overflowY: 'auto', background: 'var(--ink-950)', display: 'flex', flexDirection: 'column', gap: 20 }}>
           <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('mhPreSessionCheckInHint')}</span>
-          <RatingRow label={t('mhSleepQuality')} value={sleepQuality} onChange={setSleepQuality} />
-          <RatingRow label={t('mhCurrentStress')} value={currentStressLevel} onChange={setCurrentStressLevel} />
+          <AiMagicFill active={sleepFilled}><RatingRow label={t('mhSleepQuality')} value={sleepQuality} onChange={setSleepQuality} /></AiMagicFill>
+          <AiMagicFill active={stressFilled}><RatingRow label={t('mhCurrentStress')} value={currentStressLevel} onChange={setCurrentStressLevel} /></AiMagicFill>
           <YesNoRow label={t('mhSomethingToProve')} value={somethingToProveToday} onChange={setSomethingToProveToday} t={t} />
+          <AiMagicFill active={eventFilled}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <SectionLabel>{t('mhSignificantEventPlaceholder')}</SectionLabel>
             <input
@@ -164,6 +194,7 @@ function PreSessionCheckInModal({ session, onDone }) {
               style={{ height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: '500 13.5px/19px var(--font-ui)', outline: 'none' }}
             />
           </div>
+          </AiMagicFill>
         </div>
 
         {/* Footer */}

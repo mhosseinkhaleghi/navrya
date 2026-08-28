@@ -14,6 +14,7 @@ const characterAppSrc = await readFile(path.join(root, 'navrya-src', 'character-
 const liveSessionSrc = await readFile(path.join(root, 'navrya-src', 'liveSessionView.jsx'), 'utf8');
 const chatDockCoreSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'chat-dock-core.js'), 'utf8');
 const contextEngineSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'ai-context-engine.js'), 'utf8');
+const preSessionCheckInSrc = await readFile(path.join(root, 'navrya-src', 'preSessionCheckInModal.jsx'), 'utf8');
 
 function actionBlock(id) {
   const re = new RegExp(`id: '${id.replace(/\./g, '\\.')}'[\\s\\S]*?resultContext: \\(\\) => \\{\\}\\s*\\}\\);`);
@@ -202,4 +203,32 @@ test('manual field edits (onBlur/onChange/onCommit handlers) call the real onUpd
   assert.doesNotMatch(liveSessionSrc, /window\.TradeJournalAIFieldFillBus|TradeJournalAIFieldFillBus\.(emit|on)/, 'liveSessionView.jsx must never call the bus directly - only ai-process-registry.js\'s own applyValue() may emit on it');
   // Each manual handler still calls the real setter directly, e.g. onBlur={(e) => onNote(entry, ...)}.
   assert.match(liveSessionSrc, /onBlur=\{\(e\) => \{ if \(e\.target\.value !== \(note \|\| ''\)\) onNote\(entry, e\.target\.value\); \}\}/);
+});
+
+// --- 2026-08-28 bug report: the Pre-Session Check-In popup is now voice-fillable ---
+// (preSessionCheckInModal.jsx - opened by app code directly, never through an action's own
+// open(); session.preSessionCheckIn.fill exists only as retargetOrStart()'s standalone fallback)
+
+test('session.preSessionCheckIn.fill only ever resolves the ALREADY-open popup - it can never summon it itself', () => {
+  const block = actionBlock('session.preSessionCheckIn.fill');
+  assert.match(block, /entityAlreadyPersisted: true/);
+  assert.match(block, /requiredFields: \[\], optionalFields: \['sleepQuality', 'currentStressLevel', 'significantPersonalEvent'\]/);
+  assert.match(block, /available: \(\) => \{ var registry = window\.TradeJournalAIProcessRegistry; return !!\(registry && registry\.query\('mh-pre-session-checkin'\)\.open\); \}/);
+  assert.match(block, /open: \(\) => Promise\.resolve\(\{ processId: 'mh-pre-session-checkin' \}\)/);
+});
+
+test('preSessionCheckInModal.jsx registers as layer:\'foreground\' (a real, full-screen modal overlay)', () => {
+  assert.match(preSessionCheckInSrc, /registry\.register\('mh-pre-session-checkin', \{\s*\n\s*layer: 'foreground',/);
+});
+
+test('preSessionCheckInModal.jsx calls retargetOrStart() on mount and restorePreviousProcessId() on unmount, so the SAME workflow interrupted by this popup resumes afterward instead of being abandoned', () => {
+  assert.match(preSessionCheckInSrc, /workflowEngine\.retargetOrStart\('mh-pre-session-checkin', 'session\.preSessionCheckIn\.fill', contextEngine \? contextEngine\.snapshot\(\) : \{\}, \[\]\)/);
+  assert.match(preSessionCheckInSrc, /if \(workflowEngine\) workflowEngine\.restorePreviousProcessId\(\);/);
+});
+
+test('preSessionCheckInModal.jsx wires all 3 of its own AI-fillable fields to useAiFieldFill and wraps each in a real <AiMagicFill>', () => {
+  for (const [varName, fieldPath] of [['sleepFilled', 'sleepQuality'], ['stressFilled', 'currentStressLevel'], ['eventFilled', 'significantPersonalEvent']]) {
+    assert.match(preSessionCheckInSrc, new RegExp(`const ${varName} = useAiFieldFill\\('mh-pre-session-checkin', '${fieldPath}'\\)`));
+    assert.match(preSessionCheckInSrc, new RegExp(`<AiMagicFill active=\\{${varName}\\}>`));
+  }
 });
