@@ -59,7 +59,13 @@ function sampleSession(id) {
             trigger: 'trigger text', occurred: true,
             probabilityHistory: [{ value: 75, loggedAt: '2026-01-01T07:05:00.000Z' }],
             pattern: { name: 'UTAD WYCKOF', patternTagId: 'pattern-1', stages: ['a', 'b'], completedStageIds: ['a'] },
-            executionPlan: { actionPlan: 'plan', positionType: 'Long', entryPrices: [100], stopLoss: 90, takeProfit: 120, positionStatus: null }
+            executionPlan: { actionPlan: 'plan', positionType: 'Long', entryPrices: [100], stopLoss: 90, takeProfit: 120, positionStatus: null },
+            // 2026-08-28 bug report: real production testing found these 3 real, pre-existing
+            // Scenario fields silently lost on every server round-trip (039_trading_session_
+            // scenario_gaps.sql adds the missing columns) - a plain DOM edit (not just AI/voice)
+            // reproduced it identically. Covered in this exact round-trip test so a future
+            // regression here is caught by npm test, not only by live production testing.
+            problem: 'weak volume', invalidationNote: 'closes below 1.2000', invalidationTagIds: ['support break', 'volume dries up']
           }
         ]
       }
@@ -85,11 +91,17 @@ test('POST upserts a full nested session (entries + scenarios + activity log) an
   assert.equal(created.body.entries[0].scenarios[0].title, 'UTAD WYCKOF');
   assert.equal(created.body.entries[0].scenarios[0].occurred, true);
   assert.equal(created.body.entries[0].scenarios[0].patternTagId, 'pattern-1');
+  assert.equal(created.body.entries[0].scenarios[0].problem, 'weak volume');
+  assert.equal(created.body.entries[0].scenarios[0].invalidationNote, 'closes below 1.2000');
+  assert.deepEqual(created.body.entries[0].scenarios[0].invalidationTagIds, ['support break', 'volume dries up']);
   assert.equal(created.body.activityLog.length, 1);
 
   const fetched = await api('GET', '/api/sync/sessions/session-a', { userId: user.id });
   assert.equal(fetched.status, 200);
   assert.deepEqual(fetched.body.entries[0].scenarios[0].executionPlan, sampleSession('session-a').entries[0].scenarios[0].executionPlan);
+  assert.equal(fetched.body.entries[0].scenarios[0].problem, 'weak volume');
+  assert.equal(fetched.body.entries[0].scenarios[0].invalidationNote, 'closes below 1.2000');
+  assert.deepEqual(fetched.body.entries[0].scenarios[0].invalidationTagIds, ['support break', 'volume dries up']);
 
   const list = await api('GET', '/api/sync/sessions', { userId: user.id });
   assert.equal(list.body.sessions.length, 1);

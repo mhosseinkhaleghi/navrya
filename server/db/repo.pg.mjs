@@ -182,7 +182,13 @@ function mapTradingSessionScenario(row) {
     description: row.description, evidence: row.evidence, trigger: row.trigger_text,
     occurred: row.occurred, patternTagId: row.pattern_tag_id,
     completionPercent: row.completion_percent == null ? null : Number(row.completion_percent),
-    probabilityHistory: row.probability_history || [], pattern: row.pattern, executionPlan: row.execution_plan
+    probabilityHistory: row.probability_history || [], pattern: row.pattern, executionPlan: row.execution_plan,
+    // 2026-08-28 bug report: problem/invalidationNote/invalidationTagIds were never real columns
+    // at all (039_trading_session_scenario_gaps.sql adds them) - real, pre-existing client-side
+    // Scenario fields silently dropped on every server round-trip since the Phase 2 migration to
+    // server-authoritative sync, confirmed via real production testing (a plain DOM edit, not
+    // just AI/voice, never survived a reconcile).
+    problem: row.problem, invalidationNote: row.invalidation_note, invalidationTagIds: row.invalidation_tag_ids || []
   };
 }
 function mapTradingSessionEntry(row, scenarios) {
@@ -1502,15 +1508,19 @@ export function createPgRepo(pool) {
             const { rows: scenarioRows } = await client.query(
               `INSERT INTO trading_session_scenarios
                 (id, entry_id, session_id, title, description, evidence, trigger_text, occurred, pattern_tag_id,
-                 completion_percent, probability_history, pattern, execution_plan)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                 completion_percent, probability_history, pattern, execution_plan, problem, invalidation_note, invalidation_tag_ids)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
                RETURNING *`,
               [scenario.id, entry.id, record.id, scenario.title || '', scenario.description || null,
                 scenario.evidence || null, scenario.trigger || null, scenario.occurred === true,
                 (scenario.pattern && scenario.pattern.patternTagId) || null,
                 scenario.completion != null ? Number(scenario.completion) : null,
                 JSON.stringify(Array.isArray(scenario.probabilityHistory) ? scenario.probabilityHistory : []),
-                JSON.stringify(scenario.pattern ?? null), JSON.stringify(scenario.executionPlan ?? null)]
+                JSON.stringify(scenario.pattern ?? null), JSON.stringify(scenario.executionPlan ?? null),
+                // 2026-08-28 bug report: real columns added (039_trading_session_scenario_gaps.sql) -
+                // see mapTradingSessionScenario()'s own comment above for the full history.
+                scenario.problem || null, scenario.invalidationNote || null,
+                JSON.stringify(Array.isArray(scenario.invalidationTagIds) ? scenario.invalidationTagIds : [])]
             );
             mappedScenarios.push(mapTradingSessionScenario(scenarioRows[0]));
           }

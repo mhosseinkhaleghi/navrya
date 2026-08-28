@@ -944,7 +944,16 @@ export function createMemoryRepo() {
                 patternTagId: (scenario.pattern && scenario.pattern.patternTagId) || null,
                 completionPercent: scenario.completion != null ? Number(scenario.completion) : null,
                 probabilityHistory: Array.isArray(scenario.probabilityHistory) ? scenario.probabilityHistory : [],
-                pattern: scenario.pattern ?? null, executionPlan: scenario.executionPlan ?? null
+                pattern: scenario.pattern ?? null, executionPlan: scenario.executionPlan ?? null,
+                // 2026-08-28 bug report: problem/invalidationNote/invalidationTagIds were never
+                // persisted server-side at all - client-side data (real, pre-existing app
+                // functionality, not new) silently lost on every reconcile/reload. Confirmed via
+                // real production testing: a real DOM edit (not just AI) to the Scenario's
+                // "problem" field visibly landed locally but never survived a re-read, because
+                // this repo's own mapping (and repo.pg.mjs's real INSERT/SELECT columns) never
+                // carried these 3 fields through at all.
+                problem: scenario.problem || null, invalidationNote: scenario.invalidationNote || null,
+                invalidationTagIds: Array.isArray(scenario.invalidationTagIds) ? scenario.invalidationTagIds : []
               };
             })
           };
