@@ -123,15 +123,34 @@
     var revisionGuard = window.TradeJournalAIUiRevisionGuard;
     if (!workflow.uiSnapshot) {
       captureUiSnapshot(workflow);
-    } else if (revisionGuard && typeof revisionGuard.hasDiverged === 'function' && revisionGuard.hasDiverged(workflow.uiSnapshot)) {
-      // Resurrecting this workflow's stale assumptions onto whatever the user has since moved to
-      // by hand would be exactly the "AI restores an overridden value" bug this guard exists to
-      // prevent (brief sections 27, 49-51: manual edits/navigation are always authoritative).
-      // Clear it - a later turn re-evaluates fresh against whatever the real UI actually shows
-      // next, the same way chat-dock-core.js's own activeProcess resolution already fills an open
-      // process it didn't itself start.
-      if (current === workflow) current = null;
-      return null;
+    } else if (revisionGuard && typeof revisionGuard.hasDiverged === 'function') {
+      var divergence = revisionGuard.hasDiverged(workflow.uiSnapshot);
+      if (divergence === 'closed' || divergence === 'surface') {
+        // The real UI this workflow was driving is genuinely gone (closed, or a different surface
+        // is now topmost) - resurrecting this workflow's stale assumptions onto whatever the user
+        // has since moved to by hand would be exactly the "AI restores an overridden value" bug
+        // this guard exists to prevent (brief sections 27, 49-51: manual edits/navigation are
+        // always authoritative). Clear it - a later turn re-evaluates fresh against whatever the
+        // real UI actually shows next, the same way chat-dock-core.js's own activeProcess
+        // resolution already fills an open process it didn't itself start.
+        if (current === workflow) current = null;
+        return null;
+      }
+      if (divergence === 'step') {
+        // Found via real production testing (2026-08-28 bug report): the SAME wizard this
+        // workflow is driving simply moved to a different step under the user's own hand (a real
+        // Next/Back/Skip click) - the most ordinary thing that can happen mid-intake or mid-wizard,
+        // not a sign the workflow is stale. Treating it like 'closed'/'surface' above (abandon the
+        // whole workflow) silently ended live voice-fill for the rest of the session the instant
+        // this happened - chat-dock-core.js has no fallback that auto-applies fields into an open
+        // process no live workflow owns, so once abandoned, only manual click-to-apply suggestions
+        // were ever offered again, a dead end for voice. Re-baseline to the real step instead and
+        // keep collecting - this turn's own fields still land on whichever step they actually
+        // belong to (ai-process-registry.js's own applyValue() drives the real step there itself,
+        // forward or back, via stepForPath/goToStep), so Voice follows the user, exactly as the
+        // brief requires, rather than giving up on them.
+        captureUiSnapshot(workflow);
+      }
     }
 
     var appliedAny = false;

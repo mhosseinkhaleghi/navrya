@@ -57,23 +57,26 @@ test('hasDiverged() is false when nothing about the captured surface has changed
   assert.equal(guard.hasDiverged(captured), false);
 });
 
-test('hasDiverged() is true once the captured process has closed', async () => {
+test('hasDiverged() is "closed" once the captured process has closed', async () => {
   const state = { processes: { 'trade-wizard': { open: true, step: 2, layer: 'foreground' } }, topmostId: 'trade-wizard' };
   const guard = await guardSandbox(fakeRegistry(state));
   const captured = guard.capture('trade-wizard');
   state.processes['trade-wizard'] = { open: false, step: null };
-  assert.equal(guard.hasDiverged(captured), true, 'the real UI this workflow was driving no longer exists');
+  assert.equal(guard.hasDiverged(captured), 'closed', 'the real UI this workflow was driving no longer exists');
 });
 
-test('hasDiverged() is true when the step changed without this engine\'s own doing (a manual Back/Next/Skip)', async () => {
+// Corrected 2026-08-28 (real production bug report): the SAME wizard moving to a different step
+// under the user's own hand is real but not "abandon the workflow" - see ai-workflow-engine.js's
+// own comment on why 'step' is handled differently from 'closed'/'surface'.
+test('hasDiverged() is "step" when the step changed without this engine\'s own doing (a manual Back/Next/Skip)', async () => {
   const state = { processes: { 'trade-wizard': { open: true, step: 2, layer: 'foreground' } }, topmostId: 'trade-wizard' };
   const guard = await guardSandbox(fakeRegistry(state));
   const captured = guard.capture('trade-wizard');
   state.processes['trade-wizard'] = { open: true, step: 1, layer: 'foreground' }; // human clicked Back
-  assert.equal(guard.hasDiverged(captured), true);
+  assert.equal(guard.hasDiverged(captured), 'step');
 });
 
-test('hasDiverged() is true for a foreground surface once a different registration becomes topmost', async () => {
+test('hasDiverged() is "surface" for a foreground surface once a different registration becomes topmost', async () => {
   const state = {
     processes: { 'pattern-editor-p1': { open: true, step: null, layer: 'foreground' } },
     topmostId: 'pattern-editor-p1'
@@ -83,7 +86,7 @@ test('hasDiverged() is true for a foreground surface once a different registrati
   // The user opened a different foreground surface (e.g. the Trade wizard) on top of it.
   state.processes['trade-wizard'] = { open: true, step: 1, layer: 'foreground' };
   state.topmostId = 'trade-wizard';
-  assert.equal(guard.hasDiverged(captured), true);
+  assert.equal(guard.hasDiverged(captured), 'surface');
 });
 
 test('hasDiverged() is false for a background-layer capture even when a foreground surface becomes topmost elsewhere', async () => {

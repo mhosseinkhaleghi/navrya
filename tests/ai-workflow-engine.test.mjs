@@ -533,6 +533,9 @@ test('cancel() during the grace window prevents the pending submit from ever fir
 
 // --- Journey H1: stale-action protection (TradeJournalAIUiRevisionGuard integration) ---
 
+// diverged.value is false (no divergence) or one of the real guard's own return values -
+// 'closed' | 'surface' | 'step' - never a bare true, matching ai-ui-revision-guard.js's actual
+// contract (see that file's own hasDiverged() comment on why 'step' is handled differently).
 function fakeUiRevisionGuard(diverged) {
   const captureCalls = [];
   return {
@@ -565,7 +568,7 @@ test('applyKnownFields() captures a uiSnapshot via the guard against the real, a
   assert.deepEqual(guard.captureCalls, ['session-create', 'session-create']);
 });
 
-test('applyKnownFields() discards the workflow without applying any field once the guard reports divergence', async () => {
+test('applyKnownFields() discards the workflow without applying any field once the guard reports "closed"/"surface" divergence', async () => {
   const diverged = { value: false };
   const guard = fakeUiRevisionGuard(diverged);
   const applyCalls = [];
@@ -575,16 +578,16 @@ test('applyKnownFields() discards the workflow without applying any field once t
   await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {}); // first call: captures, applies normally
   assert.ok(engine.current(), 'still a live workflow after the first, non-diverged turn');
 
-  // Between turns, the real UI moved out from under this workflow (closed / different step /
-  // different foreground surface now topmost) - simulated here by flipping the guard's answer.
-  diverged.value = true;
+  // Between turns, the real UI this workflow was driving is genuinely gone - closed, or a
+  // different foreground surface now topmost (simulated here by flipping the guard's answer).
+  diverged.value = 'closed';
   const result = await engine.applyKnownFields([{ path: 'timeframe', value: '5m' }], {});
-  assert.equal(result, null, 'a diverged turn must return null, exactly like "no workflow in progress"');
+  assert.equal(result, null, 'a "closed"/"surface" turn must return null, exactly like "no workflow in progress"');
   assert.equal(engine.current(), null, 'the stale workflow is cleared rather than silently continuing');
   assert.deepEqual(clone(applyCalls), [['session-create', 'city', 'New York', 'replace']], 'the diverged turn\'s own field (timeframe) must never reach the real UI');
 });
 
-test('a workflow discarded by divergence never schedules or fires a submit for the stale remaining field', async () => {
+test('a workflow discarded by "closed"/"surface" divergence never schedules or fires a submit for the stale remaining field', async () => {
   const diverged = { value: false };
   const guard = fakeUiRevisionGuard(diverged);
   const submitCalls = [];
@@ -594,9 +597,37 @@ test('a workflow discarded by divergence never schedules or fires a submit for t
   engine.start('session.create', {});
   await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {}); // first call: captures a baseline, applies normally, one field still missing
 
-  diverged.value = true; // the real UI moved out from under this workflow before the next turn
+  diverged.value = 'surface'; // a different foreground surface is now topmost, before the next turn
   const result = await engine.applyKnownFields([{ path: 'timeframe', value: '5m' }], {});
   assert.equal(result, null);
   await new Promise((resolve) => setTimeout(resolve, 40));
   assert.equal(submitCalls.length, 0, 'a discarded-as-stale workflow must never complete its required set through submit()');
+});
+
+// Real production bug (2026-08-28): a "step" divergence - the SAME wizard moved forward or back
+// under the user's own real Next/Back/Skip click - must NOT abandon the workflow the way
+// "closed"/"surface" do. Before this fix, the very first manual step change during Psychology
+// Intake or the Trade Wizard permanently ended live voice-fill for the rest of that session
+// (chat-dock-core.js has no fallback that auto-applies fields into an open process no live
+// workflow owns - only dead-ended, click-to-apply suggestions). The correct behavior: re-baseline
+// to the new real step and keep collecting, so a LATER field still lands live.
+test('applyKnownFields() re-baselines and keeps the workflow alive - never discards it - on a "step" divergence', async () => {
+  const diverged = { value: false };
+  const guard = fakeUiRevisionGuard(diverged);
+  const applyCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city', 'timeframe'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) }, uiRevisionGuard: guard });
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {}); // first call: captures a baseline
+  assert.equal(guard.captureCalls.length, 2, 'captured once (no snapshot yet) and re-captured once after this turn\'s own field application settled');
+
+  diverged.value = 'step'; // the user manually clicked Next/Back on the SAME real wizard
+  const result = await engine.applyKnownFields([{ path: 'timeframe', value: '5m' }], {});
+  assert.notEqual(result, null, 'a "step" divergence must never be treated like "no workflow in progress"');
+  assert.ok(engine.current(), 'the workflow survives a manual step change - Voice follows, it does not give up');
+  assert.deepEqual(clone(applyCalls), [
+    ['session-create', 'city', 'New York', 'replace'],
+    ['session-create', 'timeframe', '5m', 'replace']
+  ], 'the field on the turn AFTER a "step" divergence must still reach the real UI, not be silently dropped');
+  assert.equal(guard.captureCalls.length, 4, 're-baselined once for the "step" divergence itself, then again after this turn\'s own field application settled');
 });
