@@ -73,7 +73,11 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiRecentEventsTitle: 'Recent AI events', aiRecentEventsEmpty: 'No AI calls recorded yet.',
     aiRecentColTime: 'Time', aiRecentColProvider: 'Provider', aiRecentColSource: 'Source', aiRecentColStatus: 'Status', aiRecentColLatency: 'Latency',
     aiTopUsersTitle: 'Top users by token usage', aiTopUsersEmpty: 'No usage recorded yet.', aiTopUsersColUser: 'User', aiTopUsersColTokens: 'Tokens',
-    usageByProviderLabel: 'Token usage by provider', noProviderUsage: 'No AI usage recorded for this user yet.'
+    usageByProviderLabel: 'Token usage by provider', noProviderUsage: 'No AI usage recorded for this user yet.',
+    aiCostSectionTitle: 'AI cost & charge (real, per model)', aiCostProviderCost: 'Provider cost', aiCostRetailCharge: 'Retail charge',
+    aiCostModel: 'Model', aiCostCalls: 'Calls', aiCostNoData: 'No real per-model AI cost recorded for this user yet.',
+    aiUsageByModelTitle: 'Real settled cost by model (all users)', aiUsageByModelEmpty: 'No real per-model AI cost recorded yet.',
+    aiCostProvider: 'Provider', aiCostPromptTokens: 'Prompt tokens', aiCostCompletionTokens: 'Completion tokens', aiCostTotalTokens: 'Total tokens'
   },
   fa: {
     brand: 'پنل مدیریت',
@@ -134,7 +138,11 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiRecentEventsTitle: 'رویدادهای اخیر هوش مصنوعی', aiRecentEventsEmpty: 'هنوز هیچ فراخوانی هوش مصنوعی ثبت نشده است.',
     aiRecentColTime: 'زمان', aiRecentColProvider: 'سرویس‌دهنده', aiRecentColSource: 'منبع', aiRecentColStatus: 'وضعیت', aiRecentColLatency: 'تأخیر',
     aiTopUsersTitle: 'پرمصرف‌ترین کاربران (توکن)', aiTopUsersEmpty: 'هنوز مصرفی ثبت نشده است.', aiTopUsersColUser: 'کاربر', aiTopUsersColTokens: 'توکن',
-    usageByProviderLabel: 'مصرف توکن به تفکیک سرویس‌دهنده', noProviderUsage: 'هنوز مصرف هوش مصنوعی برای این کاربر ثبت نشده است.'
+    usageByProviderLabel: 'مصرف توکن به تفکیک سرویس‌دهنده', noProviderUsage: 'هنوز مصرف هوش مصنوعی برای این کاربر ثبت نشده است.',
+    aiCostSectionTitle: 'هزینه و مبلغ دریافتی هوش مصنوعی (واقعی، به تفکیک مدل)', aiCostProviderCost: 'هزینه واقعی سرویس‌دهنده', aiCostRetailCharge: 'مبلغ دریافتی از کاربر',
+    aiCostModel: 'مدل', aiCostCalls: 'تعداد فراخوانی', aiCostNoData: 'هنوز هزینه واقعی هوش مصنوعی برای این کاربر ثبت نشده است.',
+    aiUsageByModelTitle: 'هزینه واقعی تسویه‌شده به تفکیک مدل (همه کاربران)', aiUsageByModelEmpty: 'هنوز هزینه واقعی هوش مصنوعی به تفکیک مدل ثبت نشده است.',
+    aiCostProvider: 'سرویس‌دهنده', aiCostPromptTokens: 'توکن‌های ورودی', aiCostCompletionTokens: 'توکن‌های خروجی', aiCostTotalTokens: 'مجموع توکن‌ها'
   },
   ar: {
     brand: 'لوحة الإدارة',
@@ -195,7 +203,11 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiRecentEventsTitle: 'أحداث الذكاء الاصطناعي الأخيرة', aiRecentEventsEmpty: 'لا توجد استدعاءات مسجّلة بعد.',
     aiRecentColTime: 'الوقت', aiRecentColProvider: 'المزوّد', aiRecentColSource: 'المصدر', aiRecentColStatus: 'الحالة', aiRecentColLatency: 'زمن الاستجابة',
     aiTopUsersTitle: 'أكثر المستخدمين استهلاكًا للرموز', aiTopUsersEmpty: 'لا يوجد استخدام مسجل بعد.', aiTopUsersColUser: 'المستخدم', aiTopUsersColTokens: 'الرموز',
-    usageByProviderLabel: 'استخدام الرموز حسب المزوّد', noProviderUsage: 'لا يوجد استخدام ذكاء اصطناعي مسجّل لهذا المستخدم بعد.'
+    usageByProviderLabel: 'استخدام الرموز حسب المزوّد', noProviderUsage: 'لا يوجد استخدام ذكاء اصطناعي مسجّل لهذا المستخدم بعد.',
+    aiCostSectionTitle: 'تكلفة واستحقاق الذكاء الاصطناعي (فعلي، حسب النموذج)', aiCostProviderCost: 'تكلفة المزوّد', aiCostRetailCharge: 'المبلغ المحصّل من المستخدم',
+    aiCostModel: 'النموذج', aiCostCalls: 'عدد الاستدعاءات', aiCostNoData: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة لهذا المستخدم بعد.',
+    aiUsageByModelTitle: 'التكلفة الفعلية المسوّاة حسب النموذج (كل المستخدمين)', aiUsageByModelEmpty: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة حسب النموذج بعد.',
+    aiCostProvider: 'المزوّد', aiCostPromptTokens: 'رموز الإدخال', aiCostCompletionTokens: 'رموز الإخراج', aiCostTotalTokens: 'إجمالي الرموز'
   },
   es: {
     brand: 'Administración',
@@ -256,7 +268,11 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiRecentEventsTitle: 'Eventos recientes de IA', aiRecentEventsEmpty: 'Aún no hay llamadas registradas.',
     aiRecentColTime: 'Hora', aiRecentColProvider: 'Proveedor', aiRecentColSource: 'Origen', aiRecentColStatus: 'Estado', aiRecentColLatency: 'Latencia',
     aiTopUsersTitle: 'Usuarios con mayor uso de tokens', aiTopUsersEmpty: 'Aún no hay uso registrado.', aiTopUsersColUser: 'Usuario', aiTopUsersColTokens: 'Tokens',
-    usageByProviderLabel: 'Uso de tokens por proveedor', noProviderUsage: 'Aún no hay uso de IA registrado para este usuario.'
+    usageByProviderLabel: 'Uso de tokens por proveedor', noProviderUsage: 'Aún no hay uso de IA registrado para este usuario.',
+    aiCostSectionTitle: 'Costo y cargo de IA (real, por modelo)', aiCostProviderCost: 'Costo del proveedor', aiCostRetailCharge: 'Cargo al usuario',
+    aiCostModel: 'Modelo', aiCostCalls: 'Llamadas', aiCostNoData: 'Aún no hay costo real de IA por modelo registrado para este usuario.',
+    aiUsageByModelTitle: 'Costo real liquidado por modelo (todos los usuarios)', aiUsageByModelEmpty: 'Aún no hay costo real de IA por modelo registrado.',
+    aiCostProvider: 'Proveedor', aiCostPromptTokens: 'Tokens de entrada', aiCostCompletionTokens: 'Tokens de salida', aiCostTotalTokens: 'Tokens totales'
   }
 };
 
@@ -504,6 +520,25 @@ function userDetailRow(user, colSpan) {
     box.append(usageList);
   }
 
+  // Real, gateway-settled per-model AI cost/charge (task D.2) - additive next to the token-count
+  // list above, never replacing it. Sourced from user.aiCost (server/admin/routes.mjs's
+  // aggregateByModelForUser(), origin='gateway' only - never the untrusted usageByProvider tokens
+  // shown above).
+  box.append(el('h3', '', t('aiCostSectionTitle')));
+  if (!user.aiCost || !user.aiCost.byModel || !user.aiCost.byModel.length) {
+    box.append(el('p', 'hint', t('aiCostNoData')));
+  } else {
+    const aiCostList = document.createElement('ul');
+    user.aiCost.byModel.forEach((row) => {
+      const li = document.createElement('li');
+      li.textContent = (row.provider + '/' + (row.model || '—')) + ' — ' + t('aiCostCalls') + ': ' + fmtNumber(row.calls)
+        + ' · ' + t('aiCostProviderCost') + ': ' + fmtMicroUsd(row.providerCostMicroUsd)
+        + ' · ' + t('aiCostRetailCharge') + ': ' + fmtMicroUsd(row.retailChargeMicroUsd);
+      aiCostList.append(li);
+    });
+    box.append(aiCostList);
+  }
+
   box.append(el('h3', '', t('achievementsLabel')));
   if (!user.achievements || !user.achievements.length) {
     box.append(el('p', 'hint', t('noAchievements')));
@@ -552,13 +587,16 @@ function aiTab() {
     api('/ai/health').catch(() => ({ providers: [], recent: [] })),
     api('/finance/overview').catch(() => ({ mockRevenue: { total: 0, mock: true }, aiCostByProvider: [], remainingBudgetByProvider: [] })),
     api('/users?sort=totalTokensUsed&dir=desc&pageSize=10&page=1').catch(() => ({ users: [] })),
+    // Real, settled per-model $ cost/charge (task D.3) - independently allowed to fail, same
+    // posture as the four sections above it.
+    api('/ai/usage-by-model?days=30').catch(() => ({ byModel: [], days: 30 })),
     // Voice Providers (ElevenLabs) - independently allowed to fail, same posture as the four
     // sections above: an operator managing LLM keys must not be blocked by a voice-provider
     // migration not having run yet on this environment.
     api('/voice-providers/credentials').catch(() => []),
     api('/voice-providers/characters').catch(() => []),
     api('/voice-providers/health').catch(() => ({ characters: [] }))
-  ]).then(([keys, pricing, usage, health, finance, topUsers, vpCredentials, vpCharacters, vpHealth]) => {
+  ]).then(([keys, pricing, usage, health, finance, topUsers, usageByModel, vpCredentials, vpCharacters, vpHealth]) => {
     const wrap = el('div');
     wrap.append(statRow([statCard('key-round', keys.filter((k) => k.isSet).length + ' / ' + KNOWN_PROVIDERS.length, t('statProvidersConfigured'))]));
     const grid = el('div', 'admin-grid');
@@ -674,6 +712,39 @@ function aiTab() {
       setTimeout(() => drawBarChart(canvas, bars), 0);
     }
     wrap.append(allTimeCard);
+
+    // Real, settled per-model $ cost/charge across every user (task D.3) - distinct from and
+    // additive to the token-count/estimate reporting above (allTimeCard/costByProvider both come
+    // from ai_usage_events' untrusted client-reported tokens times provider_pricing - an
+    // ESTIMATE). This table is gateway-origin only (server default), i.e. real settled cost - the
+    // two are never summed or presented as the same number.
+    const modelCostCard = el('div', 'admin-card');
+    modelCostCard.append(el('h3', '', t('aiUsageByModelTitle')));
+    if (!usageByModel.byModel || !usageByModel.byModel.length) {
+      modelCostCard.append(el('p', 'hint', t('aiUsageByModelEmpty')));
+    } else {
+      const table = document.createElement('table');
+      table.className = 'admin-table';
+      const thead = document.createElement('tr');
+      [t('aiCostProvider'), t('aiCostModel'), t('aiCostCalls'), t('aiCostPromptTokens'), t('aiCostCompletionTokens'), t('aiCostTotalTokens'), t('aiCostProviderCost'), t('aiCostRetailCharge')]
+        .forEach((label) => thead.append(el('th', '', label)));
+      const theadWrap = document.createElement('thead'); theadWrap.append(thead); table.append(theadWrap);
+      const tbody = document.createElement('tbody');
+      usageByModel.byModel.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.append(
+          cell(row.provider), cell(row.model || '—'), cell(fmtNumber(row.calls)),
+          cell(fmtNumber(row.promptTokens)), cell(fmtNumber(row.completionTokens)), cell(fmtNumber(row.totalTokens)),
+          cell(fmtMicroUsd(row.providerCostMicroUsd)), cell(fmtMicroUsd(row.retailChargeMicroUsd))
+        );
+        tbody.append(tr);
+      });
+      table.append(tbody);
+      const tableWrap = el('div', 'admin-table-wrap');
+      tableWrap.append(table);
+      modelCostCard.append(tableWrap);
+    }
+    wrap.append(modelCostCard);
 
     const recentCard = el('div', 'admin-card');
     recentCard.append(el('h3', '', t('aiRecentEventsTitle')));

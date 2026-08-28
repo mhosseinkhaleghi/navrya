@@ -207,6 +207,16 @@ export function router(repo) {
     res.json(await repo.usageEvents.summaryForUser(req.currentUser.id));
   }));
 
+  // Real, per-model $ cost/charge for the signed-in user's own AI usage (task D.1) - gateway-
+  // origin only (aggregateByModelForUser's default), so this is authoritative real cost, never
+  // the client's own untrusted self-reported token counts from /me/usage above.
+  app.get('/me/ai-usage-by-model', asyncHandler(async (req, res) => {
+    const days = req.query.days ? Math.min(365, Math.max(1, Number(req.query.days) || 30)) : null;
+    const since = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString() : undefined;
+    const byModel = await repo.usageEvents.aggregateByModelForUser(req.currentUser.id, { since });
+    res.json({ byModel, days });
+  }));
+
   // The client sends only the event's identity (type, sourceType/sourceId, dedupeKey) - never a
   // points value. Every award is looked up from POINTS_BY_TYPE, re-verified against the real
   // owning record when one exists, deduplicated, and capped, all server-side.

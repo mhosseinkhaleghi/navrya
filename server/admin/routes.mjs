@@ -168,17 +168,25 @@ export function router(repo) {
     // response additionally joins in the level, unlocked achievements, and subscription
     // purchases so the Admin Users-tab detail view has everything a support agent needs on one
     // screen (ARCHITECTURE.md §7.16/§7.17), without a second round trip.
-    const [sessions, usageAgg, usageByProvider, purchaseAgg, achievements, purchases] = await Promise.all([
+    const [sessions, usageAgg, usageByProvider, purchaseAgg, achievements, purchases, usageByModel] = await Promise.all([
       repo.sessions.listByUser(user.id), repo.usageEvents.aggregateByUser(), repo.usageEvents.aggregateByUserAndProvider(user.id),
-      repo.purchases.aggregateByBuyer(), repo.achievements.listForUser(user.id), repo.purchases.listByBuyer(user.id)
+      repo.purchases.aggregateByBuyer(), repo.achievements.listForUser(user.id), repo.purchases.listByBuyer(user.id),
+      // Real per-model $ cost/charge (task D.2) - gateway-origin only (default), so this can never
+      // be inflated by the same user's own untrusted client-reported usageByProvider tokens above.
+      repo.usageEvents.aggregateByModelForUser(user.id)
     ]);
     const purchasesWithListings = await Promise.all(purchases.map(async (purchase) => ({ purchase, listing: await repo.listings.get(purchase.listingId) })));
     const subscriptions = purchasesWithListings
       .filter((row) => row.listing && row.listing.type === 'subscription')
       .map((row) => ({ ...row.purchase, listing: row.listing }));
+    const aiCost = {
+      providerCostMicroUsd: usageByModel.reduce((sum, row) => sum + row.providerCostMicroUsd, 0),
+      retailChargeMicroUsd: usageByModel.reduce((sum, row) => sum + row.retailChargeMicroUsd, 0),
+      byModel: usageByModel
+    };
     res.json({
       ...user, level: levelForXp(user.xpTotal), sessions, totalTokensUsed: usageAgg[user.id] || 0, usageByProvider,
-      purchases: purchaseAgg[user.id] || { count: 0, total: 0 }, achievements, subscriptions
+      purchases: purchaseAgg[user.id] || { count: 0, total: 0 }, achievements, subscriptions, aiCost
     });
   }));
 
@@ -257,6 +265,18 @@ export function router(repo) {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const [byProviderAndDay, byUser] = await Promise.all([repo.usageEvents.aggregateByProviderAndDay({ since }), repo.usageEvents.aggregateByUser()]);
     res.json({ byProviderAndDay, byUser, days });
+  }));
+
+  // Real, settled per-model $ cost/charge across every user (task D.3) - additive to the
+  // provider-level token/estimate reporting above, never replacing it. Gateway-origin only
+  // (aggregateByModel's default), so this is real cost, not the token-count-times-price estimate
+  // /ai/usage and /finance/overview already show - keep the two clearly labeled and distinct on
+  // the client (never summed together as one number).
+  app.get('/ai/usage-by-model', asyncHandler(async (req, res) => {
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const byModel = await repo.usageEvents.aggregateByModel({ since });
+    res.json({ byModel, days });
   }));
 
   // Section 7.16 follow-up: "is this provider actually working right now, or did it just

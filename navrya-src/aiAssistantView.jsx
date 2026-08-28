@@ -12,6 +12,8 @@ import { ModelGlyph } from '../public/pages/shared/navrya/components/assistant/M
 import { memorySnapshot, clearChatHistory, providerLabel } from './aiSettingsAdapter.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
+function fmtUsd(microUsd) { return '$' + ((Number(microUsd) || 0) / 1000000).toFixed(4); }
+
 function compact(n) {
   const v = Number(n || 0);
   if (v >= 1000000) return (v / 1000000).toFixed(2) + 'M';
@@ -151,6 +153,13 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   const [savedAtByProvider, setSavedAtByProvider] = React.useState({});
   const testTimer = React.useRef(null);
   const clearMessageTimer = React.useRef(null);
+  // Real, gateway-settled per-model cost (task D.1) - a server fetch, never the local
+  // usageStore's own client-reported token counts above (that store stays exactly as-is, per
+  // task C.2's "preserve the existing client usage UI's immediate local feedback").
+  const [realCostByModel, setRealCostByModel] = React.useState(null);
+  React.useEffect(() => {
+    fetch('/api/users/me/ai-usage-by-model').then((r) => r.json()).then((d) => setRealCostByModel(d.byModel || [])).catch(() => setRealCostByModel([]));
+  }, []);
 
   // Every field this screen reads (key, model choice, voice, remember, budget) lives in
   // ai-settings-store.js, not component state - both stores dispatch a change event on every
@@ -468,6 +477,32 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
                       hint={budget ? i18n.t('aiAsstBudgetHintSet') : i18n.t('aiAsstBudgetHintUnset')}
                     />
                   </div>
+                </div>
+              </Panel>
+
+              <Panel variant="base" ornament padding="18px 20px 20px">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ font: 'var(--type-section-label)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{i18n.t('aiAsstRealCostTitle')}</span>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiAsstRealCostHint')}</span>
+                  </div>
+                  {!realCostByModel || !realCostByModel.length ? (
+                    <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostEmpty')}</span>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {realCostByModel.map((row) => (
+                        <div key={row.provider + '/' + row.model} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)' }}>
+                          <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{row.provider + ' / ' + (row.model || '—')}</span>
+                          <div dir="ltr" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                            <span>{i18n.t('aiAsstRealCostCalls')}: {i18n.number(row.calls)}</span>
+                            <span>{i18n.t('aiAsstRealCostTokens')}: {i18n.number(row.totalTokens)}</span>
+                            <span>{i18n.t('aiAsstRealCostProviderCost')}: {fmtUsd(row.providerCostMicroUsd)}</span>
+                            <span style={{ color: 'var(--char-accent)' }}>{i18n.t('aiAsstRealCostCharged')}: {fmtUsd(row.retailChargeMicroUsd)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </Panel>
 
