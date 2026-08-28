@@ -24,7 +24,7 @@ import { renderPatternRegistry } from './patternRegistryView.jsx';
 import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
 import { renderAccountProfile } from './accountProfileView.jsx';
-import { openIntake } from './mentalHealthIntakeModal.jsx';
+import { openIntake, INTAKE_ENUM_OPTIONS } from './mentalHealthIntakeModal.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { openLogWizard } from './tradeLogModal.jsx';
 import { useAccounts } from './accountsView.jsx';
@@ -1794,6 +1794,120 @@ export function mountCharacterApp(character) {
         resultContext: () => {}
       });
 
+      // 2026-08-28 bug report: activeProcess.allowlist only ever sends the MODEL field PATHS
+      // (chat-dock-core.js's modelFacingAllowlist()) - no type or valid-option info at all - so a
+      // spoken/localized answer ("متاهل هستم", "married", "I'm married") reasonably comes back as
+      // free text, not the exact internal key (mentalHealthIntakeModal.jsx's own TileGrid options
+      // compare against, e.g. 'married') its own value=== check requires to visibly select
+      // anything. Found via real production testing: the write itself always succeeded (the raw
+      // text landed in the store), the tile just never lit up, silently. normalizeIntakeChoice()
+      // maps free text onto the real internal key by comparing against that SAME option's own
+      // real, already-shown label in EVERY supported language (fa/ar/en/es -
+      // mental-health-i18n.js's own messages dictionary, reused directly - never a second,
+      // hand-duplicated translation table that could drift from what the user actually sees) -
+      // the same "map a natural-language extraction onto the real option list" pattern
+      // normalizeSessionCity()/normalizeSessionTimeframe() above already use for session.create,
+      // applied here for every enum-shaped intake field. An unrecognized value returns null -
+      // ai-workflow-engine.js then leaves that field missing rather than live-applying a value no
+      // real tile would ever visibly match.
+      function normalizeIntakeChoice(optionPairs, i18nPrefix, rawValue) {
+        var text = String(rawValue == null ? '' : rawValue).trim().toLowerCase();
+        if (!text) return null;
+        var keys = optionPairs.map((pair) => pair[0]);
+        var exact = keys.find((key) => key.toLowerCase() === text || key.toLowerCase().replace(/_/g, ' ') === text);
+        if (exact) return exact;
+        var messages = window.TradeJournalMentalHealthI18n && window.TradeJournalMentalHealthI18n.messages;
+        if (!messages) return null;
+        var langs = Object.keys(messages);
+        for (var i = 0; i < keys.length; i++) {
+          for (var j = 0; j < langs.length; j++) {
+            var label = messages[langs[j]][i18nPrefix + keys[i]];
+            if (label && String(label).trim().toLowerCase() === text) return keys[i];
+          }
+        }
+        // Real speech rarely IS the bare label - "متاهل هستم" ("I am married"), not just "متاهل".
+        // Found via real production testing (the marital-status bug report). Fall back to the
+        // longest real label that appears inside the spoken text (or the text inside a short
+        // label, for the reverse case - "مطلق" spoken alone should still match the
+        // "مطلقه/مطلق" combined-gender label) - longest-first so a short, generic label can never
+        // pre-empt a more specific one that also matches (e.g. never let a short label shadow a
+        // longer, more specific one sharing a common prefix).
+        var candidates = [];
+        for (var k = 0; k < keys.length; k++) {
+          for (var l = 0; l < langs.length; l++) {
+            var candidateLabel = messages[langs[l]][i18nPrefix + keys[k]];
+            if (!candidateLabel) continue;
+            var normalized = String(candidateLabel).trim().toLowerCase();
+            if (normalized.length > 1 && (text.indexOf(normalized) > -1 || normalized.indexOf(text) > -1)) {
+              candidates.push({ key: keys[k], length: normalized.length });
+            }
+          }
+        }
+        if (!candidates.length) return null;
+        candidates.sort((a, b) => b.length - a.length);
+        return candidates[0].key;
+      }
+      // Same idea as normalizeIntakeChoice() above, for the intake's 6 real boolean-shaped fields
+      // (isFullTimeTrader, borrowedMoneyForTrading, the 4 transparencyMatrix.* fields) - a model
+      // has no schema hint that these expect a literal true/false either, so a spoken "بله"/"yes"
+      // needs the same real-label comparison, reusing mental-health-i18n.js's own mhYes/mhNo
+      // strings across every supported language.
+      function normalizeIntakeBoolean(rawValue) {
+        if (rawValue === true || rawValue === false) return rawValue;
+        var text = String(rawValue == null ? '' : rawValue).trim().toLowerCase();
+        if (text === 'true') return true;
+        if (text === 'false') return false;
+        var messages = window.TradeJournalMentalHealthI18n && window.TradeJournalMentalHealthI18n.messages;
+        if (!messages) return null;
+        var langs = Object.keys(messages);
+        for (var i = 0; i < langs.length; i++) {
+          var yes = messages[langs[i]].mhYes, no = messages[langs[i]].mhNo;
+          if (yes && String(yes).trim().toLowerCase() === text) return true;
+          if (no && String(no).trim().toLowerCase() === text) return false;
+        }
+        // Same real-speech fallback as normalizeIntakeChoice() above ("بله حتما" / "yes it is"),
+        // never both a yes AND a no match at once - an ambiguous/contradictory answer is left
+        // missing rather than guessed either way.
+        var sawYes = false, sawNo = false;
+        for (var j = 0; j < langs.length; j++) {
+          var yesLabel = messages[langs[j]].mhYes, noLabel = messages[langs[j]].mhNo;
+          if (yesLabel && text.indexOf(String(yesLabel).trim().toLowerCase()) > -1) sawYes = true;
+          if (noLabel && text.indexOf(String(noLabel).trim().toLowerCase()) > -1) sawNo = true;
+        }
+        if (sawYes && !sawNo) return true;
+        if (sawNo && !sawYes) return false;
+        return null;
+      }
+      // marketsTraded (intake.tradingHistory.marketsTraded) is the one intake enum field that is
+      // ALSO a real free-text field (mentalHealthIntakeModal.jsx's own InstrumentPicker accepts
+      // custom market names beyond its 6 presets) - unlike the strict-choice fields above, an
+      // unrecognized value is never rejected, only passed through as a genuine custom entry,
+      // matching what a human typing a market name directly into that same control already does.
+      function normalizeIntakeMarket(rawValue) {
+        var text = String(rawValue == null ? '' : rawValue).trim();
+        if (!text) return null;
+        var lower = text.toLowerCase();
+        var presets = INTAKE_ENUM_OPTIONS.MARKET_PRESETS;
+        var exact = presets.find((key) => key.toLowerCase() === lower);
+        if (exact) return exact;
+        var messages = window.TradeJournalMentalHealthI18n && window.TradeJournalMentalHealthI18n.messages;
+        if (messages) {
+          var langs = Object.keys(messages);
+          for (var i = 0; i < presets.length; i++) {
+            for (var j = 0; j < langs.length; j++) {
+              var label = messages[langs[j]]['mhMarketsPreset_' + presets[i]];
+              if (label && String(label).trim().toLowerCase() === lower) return presets[i];
+            }
+          }
+        }
+        return text;
+      }
+      var INTAKE_BOOLEAN_PATHS = {
+        'intake.demographics.isFullTimeTrader': true, 'intake.financialContext.borrowedMoneyForTrading': true,
+        'intake.transparencyMatrix.profitKnownToFamily': true, 'intake.transparencyMatrix.lossKnownToFamily': true,
+        'intake.transparencyMatrix.capitalKnownToFamily': true, 'intake.transparencyMatrix.tradingActivityKnownToFamily': true
+      };
+
       // Journey H1: closes a confirmed gap - the real Psychology Intake wizard
       // (mentalHealthIntakeModal.jsx, 13 steps) has always had a real 'mh-intake' Process Registry
       // registration (so an already-open intake can be filled), but NO Action Registry entry
@@ -1812,6 +1926,23 @@ export function mountCharacterApp(character) {
         aliases: ['start my intake', 'start the psychology intake', 'begin my intake', 'open psychology intake', 'take the intake'],
         requiredFields: [], optionalFields: [],
         available: () => true,
+        // 2026-08-28 bug report fix: maps a spoken/localized answer onto the real internal enum
+        // key every intake TileGrid actually compares against - see normalizeIntakeChoice()'s own
+        // comment above. A path with no case here (age/capitalAllocationPercent/yearsTrading,
+        // all numeric; the free-text-safe motivation/lossReaction choices already covered) passes
+        // through unchanged - mental-health-store.js's own setPath() already Number()-coerces the
+        // numeric ones.
+        normalizeField: (path, value) => {
+          if (path === 'intake.demographics.gender') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.GENDERS, 'mhGender_', value);
+          if (path === 'intake.demographics.maritalStatus') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.MARITAL_STATUSES, 'mhMaritalStatus_', value);
+          if (path === 'intake.demographics.primaryOccupation') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.OCCUPATION_TYPES, 'mhOccupationType_', value);
+          if (path === 'intake.financialContext.capitalType') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.CAPITAL_TYPES, 'mhCapitalType_', value);
+          if (path === 'intake.motivationForTrading') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.MOTIVATIONS, 'mhMotivation_', value);
+          if (path === 'intake.firstBigLossReaction') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.LOSS_REACTIONS, 'mhLossReaction_', value);
+          if (path === 'intake.tradingHistory.marketsTraded') return normalizeIntakeMarket(value);
+          if (INTAKE_BOOLEAN_PATHS[path]) return normalizeIntakeBoolean(value);
+          return value;
+        },
         open: () => new Promise((resolve) => {
           if (!window.TradeJournalMentalHealthIntake) { resolve(null); return; }
           window.TradeJournalMentalHealthIntake.open();

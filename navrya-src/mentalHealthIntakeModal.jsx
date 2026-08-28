@@ -32,6 +32,16 @@ const MARITAL_STATUSES = [['single', 'user'], ['married', 'users'], ['divorced',
 const OCCUPATION_TYPES = [['full_time_trader', 'execution'], ['part_time_trader', 'clock'], ['employed', 'briefcase'], ['self_employed', 'store'], ['student', 'graduation-cap'], ['retired', 'armchair'], ['other', 'more']];
 const MARKET_PRESETS = ['forex', 'crypto', 'stocks', 'commodities', 'indices', 'futures_options'];
 
+// 2026-08-28 bug report: exported (not just module-local) so character-app.jsx's
+// psychology.intake.start normalizeField can map a spoken/localized answer ("متاهل هستم",
+// "married", ...) onto the exact same real internal keys this file's own TileGrid options
+// compare against - imported directly, never duplicated, the same convention
+// session.create's own normalizeField already uses for NewSessionDialog's SESSION_CITIES/
+// TIMEFRAMES (character-app.jsx:8).
+export const INTAKE_ENUM_OPTIONS = {
+  MOTIVATIONS, LOSS_REACTIONS, CAPITAL_TYPES, GENDERS, MARITAL_STATUSES, OCCUPATION_TYPES, MARKET_PRESETS
+};
+
 const CHAPTER_STEPS = [[1], [2, 3, 4], [5, 6, 7], [8, 9, 10, 11, 12], [13]];
 const CHAPTER_KEYS = ['mhChapterOrientation', 'mhChapterContext', 'mhChapterHistory', 'mhChapterScenarios', 'mhChapterSeal'];
 const TOTAL_STEPS = 13;
