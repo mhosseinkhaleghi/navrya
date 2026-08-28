@@ -60,13 +60,24 @@ test('session.scenario.create\'s description carries no hedging/self-doubting cl
   assert.doesNotMatch(block, /guide them to do that first instead of guessing/);
 });
 
-test('session.scenario.create requires title, is only available once BOTH an active Session and an active Entry are resolved, and never lists a probability field as AI-fillable', () => {
+test('session.scenario.create requires title, is only available once BOTH an active Session and an active Entry are resolved', () => {
   const block = actionBlock('session.scenario.create');
   assert.doesNotMatch(block, /entityAlreadyPersisted/);
-  assert.match(block, /requiredFields: \['title'\], optionalFields: \['description', 'evidence', 'problem', 'trigger', 'patternName'\]/);
+  assert.match(block, /requiredFields: \['title'\], optionalFields: \['description', 'evidence', 'problem', 'trigger', 'patternName', 'probability', 'invalidationNote', 'invalidationTags'\]/);
   assert.match(block, /available: \(context\) => !!\(context && context\.activeEntities && context\.activeEntities\.sessionId && context\.activeEntities\.entryId\)/);
-  assert.doesNotMatch(block, /optionalFields:[^\n]*probability/i);
-  assert.match(block, /Never invents a probability value/);
+});
+
+// 2026-08-28 bug report: probability was previously deliberately never AI-fillable at all
+// ("Never invents a probability value") - explicitly reversed per the user's own request
+// ("درصد احتمال باید از طریق ویس قابل کنترل باشه"). Still never inferred/guessed - only the
+// exact value the user explicitly states, the same "never guess" rule every other numeric
+// AI-fillable field in this app already follows.
+test('session.scenario.create/edit both allow an explicit probability value, but their own description still forbids inferring/guessing one from confidence or tone', () => {
+  for (const id of ['session.scenario.create', 'session.scenario.edit']) {
+    const block = actionBlock(id);
+    assert.match(block, /optionalFields:[^\n]*'probability'/, `${id} must list probability as AI-fillable`);
+    assert.match(block, /probability is 0-100 and must only be the exact percentage the user explicitly states - never inferred/);
+  }
 });
 
 test('session.scenario.create\'s open() resolves null (never guesses an Entry) when context.activeEntities.entryId is missing, and otherwise drives hub.addScenarioToEntry(entryId)', () => {
@@ -91,7 +102,7 @@ test('session.scenario.edit resolves an EXISTING, named scenario by exact, case-
 // the currently-open scenario via context.activeEntities.scenarioId.
 test('session.scenario.edit has no required fields - scenarioTitle is optional, resolving the CURRENTLY-OPEN scenario (context.activeEntities.scenarioId) when omitted, so a follow-up turn can keep filling a just-created scenario that has no distinguishing name yet', () => {
   const block = actionBlock('session.scenario.edit');
-  assert.match(block, /requiredFields: \[\], optionalFields: \['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName'\]/);
+  assert.match(block, /requiredFields: \[\], optionalFields: \['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName', 'probability', 'invalidationNote', 'invalidationTags'\]/);
   assert.match(block, /var activeScenarioId = context && context\.activeEntities && context\.activeEntities\.scenarioId;/);
   assert.match(block, /if \(!activeScenarioId\) \{ resolve\(null\); return; \}/, 'no name given AND nothing currently open must still never guess');
   assert.match(block, /target = flat\.find\(\(sc\) => sc\.id === activeScenarioId\);/);
@@ -184,18 +195,35 @@ test('liveSessionView.jsx imports the shared AiMagicFill/useAiFieldFill architec
   assert.match(liveSessionSrc, /import \{ useAiFieldFill \} from '\.\.\/public\/pages\/shared\/navrya\/hooks\/useAiFieldFill\.js';/);
 });
 
-test('every real, AI-fillable ScenarioEditor field (title/description/evidence/problem/trigger/positionType/entryPrices/stopLoss/takeProfit) is wired to useAiFieldFill(\'live-session-scenario-\' + scenario.id, <path>), matching its own allowlist exactly', () => {
-  for (const field of ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName']) {
+test('every real, AI-fillable ScenarioEditor field (title/description/evidence/problem/trigger/positionType/entryPrices/stopLoss/takeProfit/probability/invalidationNote/invalidationTags) is wired to useAiFieldFill(\'live-session-scenario-\' + scenario.id, <path>), matching its own allowlist exactly', () => {
+  for (const field of ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags']) {
     const re = new RegExp(`useAiFieldFill\\('live-session-scenario-' \\+ scenario\\.id, '${field}'\\)`);
     assert.match(liveSessionSrc, re, `ScenarioEditor must call useAiFieldFill for '${field}'`);
   }
 });
 
 test('every real, AI-fillable field is actually WRAPPED in <AiMagicFill active={...FieldFilled}> in the real JSX, not just subscribed to and unused', () => {
-  for (const varName of ['titleFilled', 'descriptionFilled', 'evidenceFilled', 'problemFilled', 'triggerFilled', 'positionTypeFilled', 'entryPricesFilled', 'stopLossFilled', 'takeProfitFilled', 'patternNameFilled', 'noteFilled']) {
+  for (const varName of ['titleFilled', 'descriptionFilled', 'evidenceFilled', 'problemFilled', 'triggerFilled', 'positionTypeFilled', 'entryPricesFilled', 'stopLossFilled', 'takeProfitFilled', 'patternNameFilled', 'probabilityFilled', 'invalidationNoteFilled', 'invalidationTagsFilled', 'noteFilled']) {
     const re = new RegExp(`<AiMagicFill active=\\{${varName}\\}>`);
     assert.match(liveSessionSrc, re, `${varName} must actually be passed to a real <AiMagicFill active={...}> in the rendered JSX`);
   }
+});
+
+// 2026-08-28 bug report: probability/invalidationNote/invalidationTags were never in the
+// ScenarioEditor registration's own allowlist/applyValue at all - added now, same real write
+// shape the manual controls already use (probabilityHistory append, invalidationTagIds
+// append-dedup, invalidationNote replace).
+test('the live-session-scenario-{id} registration allowlist includes probability/invalidationNote/invalidationTags, and applyValue() writes each through the SAME real mechanism the manual controls use', () => {
+  assert.match(liveSessionSrc, /allowlist: \['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'confirmDelete'\]/);
+  // probability: clamped 0-100, appended as a new probabilityHistory entry - never a bare
+  // current-value overwrite (probabilityOf() itself reads the LATEST entry of a real log).
+  assert.match(liveSessionSrc, /const clamped = Math\.max\(0, Math\.min\(100, n\)\);/);
+  assert.match(liveSessionSrc, /probabilityHistory: \(scenarioRef\.current\.probabilityHistory \|\| \[\]\)\.concat\(\[\{ value: clamped, loggedAt: new Date\(\)\.toISOString\(\) \}\]\)/);
+  // invalidationNote: a plain replace, same as title/description/evidence/problem/trigger.
+  assert.match(liveSessionSrc, /if \(path === 'invalidationNote'\) \{ onUpdateRef\.current\(\{ invalidationNote: String\(value \?\? ''\) \}\); return; \}/);
+  // invalidationTags: comma-split, trimmed, deduped against the real existing list, appended -
+  // mirrors InvalidationTags' own addTag(), never a bare replace of the whole array.
+  assert.match(liveSessionSrc, /const additions = String\(value \?\? ''\)\.split\(','\)\.map\(\(part\) => part\.trim\(\)\)\.filter\(\(part\) => part && existing\.indexOf\(part\) === -1\);/);
 });
 
 test('EntryDetailPanel\'s own AI-fillable field (note) is wired to useAiFieldFill(\'live-session-entry-\' + entry.id, \'note\'), matching its own allowlist exactly', () => {

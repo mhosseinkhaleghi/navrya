@@ -1222,9 +1222,15 @@ export function mountCharacterApp(character) {
         // title from conversation history - the exact same real, already-proven mechanism
         // pattern.edit/strategy.edit already use for "the Pattern I don't yet have a name for".
         id: 'session.scenario.create', domain: 'sessions', riskLevel: 'low',
-        description: 'Create a new Scenario (title, and optionally description, evidence, problem, trigger) inside the active trading Session, attached to its currently selected Entry. patternName links it to an existing Pattern by name. Never invents a probability value - that field is never AI-fillable.',
+        // 2026-08-28 bug report: probability/invalidationNote/invalidationTags were never
+        // AI-fillable at all (an earlier, deliberate decision to keep probability human-only -
+        // explicitly reversed now per the user's own request). probability must still only ever
+        // be the EXACT percentage the user explicitly states - never inferred/estimated from
+        // their confidence, tone, or wording, the same "never guess" rule every other numeric
+        // AI-fillable field in this app already follows.
+        description: 'Create a new Scenario (title, and optionally description, evidence, problem, trigger, probability, invalidationNote, invalidationTags) inside the active trading Session, attached to its currently selected Entry. patternName links it to an existing Pattern by name. probability is 0-100 and must only be the exact percentage the user explicitly states - never inferred from confidence/tone. invalidationTags are the real, specific conditions that would invalidate this Scenario (comma-separate more than one) - never invented.',
         aliases: ['create a scenario', 'add a scenario', 'new scenario', 'create a new scenario'],
-        requiredFields: ['title'], optionalFields: ['description', 'evidence', 'problem', 'trigger', 'patternName'],
+        requiredFields: ['title'], optionalFields: ['description', 'evidence', 'problem', 'trigger', 'patternName', 'probability', 'invalidationNote', 'invalidationTags'],
         available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId && context.activeEntities.entryId),
         open: (context) => new Promise((resolve) => {
           var entryId = context && context.activeEntities && context.activeEntities.entryId;
@@ -1278,9 +1284,14 @@ export function mountCharacterApp(character) {
         // above. Every edit turn re-resolves fresh; there is nothing useful a kept-alive workflow
         // would add here since the continuation branch can never reach it anyway.
         id: 'session.scenario.edit', domain: 'sessions', riskLevel: 'low',
-        description: 'Continue filling/editing a Scenario in the active trading Session (title, description, evidence, problem, trigger, or its Pattern link via patternName) - never a probability value. Most commonly this is the Scenario the user is CURRENTLY looking at (its card is already open, e.g. right after session.scenario.create, or across several follow-up turns while dictating its fields one at a time) - leave scenarioTitle unset for that, it resolves automatically. Only set scenarioTitle to open a DIFFERENT, already-named Scenario the user explicitly names that is not the one currently open.',
+        // 2026-08-28 bug report: probability/invalidationNote/invalidationTags added (see
+        // session.scenario.create's own comment above on why probability is no longer
+        // human-only) - this is also how an ALREADY-SET probability gets genuinely changed
+        // later (e.g. "actually, make it 70%"), the same real append-a-new-history-entry write
+        // the manual slider itself performs, never blocked from re-setting an existing value.
+        description: 'Continue filling/editing a Scenario in the active trading Session (title, description, evidence, problem, trigger, probability, invalidationNote, invalidationTags, or its Pattern link via patternName) - including CHANGING a value already set (e.g. "actually make the probability 70%"), never just filling blanks once. Most commonly this is the Scenario the user is CURRENTLY looking at (its card is already open, e.g. right after session.scenario.create, or across several follow-up turns while dictating its fields one at a time) - leave scenarioTitle unset for that, it resolves automatically. Only set scenarioTitle to open a DIFFERENT, already-named Scenario the user explicitly names that is not the one currently open. probability is 0-100 and must only be the exact percentage the user explicitly states - never inferred from confidence/tone. invalidationTags are the real, specific conditions that would invalidate this Scenario (comma-separate more than one) - never invented.',
         aliases: ['edit a scenario', 'edit the scenario', 'update a scenario', 'change the scenario', 'open the scenario', 'fill in the scenario', 'continue the scenario'],
-        requiredFields: [], optionalFields: ['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName'],
+        requiredFields: [], optionalFields: ['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName', 'probability', 'invalidationNote', 'invalidationTags'],
         available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
         open: (context, initialFields) => new Promise((resolve) => {
           var sessionId = context && context.activeEntities && context.activeEntities.sessionId;

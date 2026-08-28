@@ -85,7 +85,7 @@ test('trade.delete is explicitly distinguished from trade.cancel (status change)
 });
 
 test('scenario.delete and entry.delete extend the real, previously-unconfirmed deleteScenario()/deleteEntry() with a submit() gated on confirmDelete - the real delete icon had no window.confirm() of its own (found via repository audit)', () => {
-  assert.match(liveSessionSrc, /allowlist: \['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'confirmDelete'\]/);
+  assert.match(liveSessionSrc, /allowlist: \['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'confirmDelete'\]/);
   assert.match(liveSessionSrc, /submit: \(\) => onDeleteRef\.current\(\)/);
   assert.match(liveSessionSrc, /allowlist: \['note', 'confirmDelete'\]/);
   assert.match(liveSessionSrc, /submit: \(\) => onDeleteEntryRef\.current\(entry\)/);

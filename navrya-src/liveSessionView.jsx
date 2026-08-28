@@ -906,6 +906,11 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
   // above) - the real, visible effect of a successful resolution is the Pattern <select> below
   // changing, so the animation is attached there instead of to a non-existent "patternName" field.
   const patternNameFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'patternName');
+  // 2026-08-28 bug report: probability/invalidation were never AI-fillable at all - added now,
+  // same shared architecture as every other field in this component.
+  const probabilityFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'probability');
+  const invalidationNoteFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'invalidationNote');
+  const invalidationTagsFilled = useAiFieldFill('live-session-scenario-' + scenario.id, 'invalidationTags');
 
   function handlePatternChange(patternId) {
     if (!patternId) { onUpdateRef.current({ pattern: null }); return; }
@@ -949,7 +954,10 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       // F37: 'confirmDelete' is a synthetic, AI-only field, same reasoning as trade.cancel's own
       // 'confirm' - the real delete icon here has NO window.confirm() of its own (found via
       // audit), so this gate IS the only confirmation ceremony that exists at all.
-      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'confirmDelete'],
+      // 2026-08-28 bug report: probability/invalidationNote/invalidationTags were never
+      // AI-fillable at all - not a write bug, simply never added to the allowlist the model is
+      // even told exists. Added now, same shape as every other real field here.
+      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'confirmDelete'],
       isOpen: () => mountedRef.current && open,
       submit: () => onDeleteRef.current(),
       applyValue: (path, value) => {
@@ -968,6 +976,29 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
           if (!wanted) return;
           const matches = registeredPatternsRef.current.filter((p) => String(p.name || '').trim().toLowerCase() === wanted);
           if (matches.length === 1) handlePatternChange(matches[0].id);
+          return;
+        }
+        // 2026-08-28 bug report: same real write the manual slider's own onChange already does
+        // (probabilityHistory is an append-only log, never a bare current value - see
+        // probabilityOf()'s own comment) - a later AI-set value is a genuine edit, exactly like a
+        // human dragging the slider again, never blocked from changing an already-set value.
+        if (path === 'probability') {
+          const n = Number(value);
+          if (Number.isNaN(n)) return;
+          const clamped = Math.max(0, Math.min(100, n));
+          onUpdateRef.current({ probabilityHistory: (scenarioRef.current.probabilityHistory || []).concat([{ value: clamped, loggedAt: new Date().toISOString() }]) }, 'probability_changed');
+          return;
+        }
+        if (path === 'invalidationNote') { onUpdateRef.current({ invalidationNote: String(value ?? '') }); return; }
+        // invalidationTags mirrors InvalidationTags' own addTag() (append, dedup by exact string,
+        // never a bare replace of the whole list) - a spoken value listing more than one reason
+        // ("سطح 1.2000 یا شکست حمایت") is split on commas so each becomes its own real tag, the
+        // same shape a human adding them one at a time would produce, not one long unreadable tag.
+        if (path === 'invalidationTags') {
+          const existing = scenarioRef.current.invalidationTagIds || [];
+          const additions = String(value ?? '').split(',').map((part) => part.trim()).filter((part) => part && existing.indexOf(part) === -1);
+          if (!additions.length) return;
+          onUpdateRef.current({ invalidationTagIds: existing.concat(additions) });
         }
       }
     });
@@ -1042,13 +1073,15 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
           <AiMagicFill active={problemFilled}><TextAreaField label={tr(lang, 'problemLabel')} value={scenario.problem} placeholder={tr(lang, 'problemPlaceholder')} onCommit={(v) => onUpdate({ problem: v })} /></AiMagicFill>
           <AiMagicFill active={triggerFilled}><TextAreaField label={tr(lang, 'triggerLabel')} value={scenario.trigger} placeholder={tr(lang, 'triggerPlaceholder')} onCommit={(v) => onUpdate({ trigger: v })} /></AiMagicFill>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={fieldLabelStyle}>{tr(lang, 'probabilityLabel')}</span>
-              <span className="navrya-tabular" style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--success)' }}>{prob}%</span>
-            </span>
-            <input type="range" min="0" max="100" step="5" value={prob} disabled={readOnly} onChange={(e) => onUpdate({ probabilityHistory: (scenario.probabilityHistory || []).concat([{ value: Number(e.target.value), loggedAt: new Date().toISOString() }]) }, 'probability_changed')} style={{ width: '100%', accentColor: 'var(--success)', cursor: readOnly ? 'not-allowed' : 'pointer' }} />
-          </label>
+          <AiMagicFill active={probabilityFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={fieldLabelStyle}>{tr(lang, 'probabilityLabel')}</span>
+                <span className="navrya-tabular" style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--success)' }}>{prob}%</span>
+              </span>
+              <input type="range" min="0" max="100" step="5" value={prob} disabled={readOnly} onChange={(e) => onUpdate({ probabilityHistory: (scenario.probabilityHistory || []).concat([{ value: Number(e.target.value), loggedAt: new Date().toISOString() }]) }, 'probability_changed')} style={{ width: '100%', accentColor: 'var(--success)', cursor: readOnly ? 'not-allowed' : 'pointer' }} />
+            </label>
+          </AiMagicFill>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={fieldLabelStyle}>{tr(lang, 'planTitle')}</span>
@@ -1125,8 +1158,12 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--warning)' }}><Icon name="TriangleAlert" size={12} />{tr(lang, 'invalidationLabel')}</span>
-            <InvalidationTags lang={lang} tags={scenario.invalidationTagIds} readOnly={readOnly} onChange={(tags) => onUpdate({ invalidationTagIds: tags })} />
-            <TextAreaField label={tr(lang, 'invalidationNoteLabel')} value={scenario.invalidationNote} placeholder={tr(lang, 'invalidationNotePlaceholder')} onCommit={(v) => onUpdate({ invalidationNote: v })} />
+            <AiMagicFill active={invalidationTagsFilled}>
+              <InvalidationTags lang={lang} tags={scenario.invalidationTagIds} readOnly={readOnly} onChange={(tags) => onUpdate({ invalidationTagIds: tags })} />
+            </AiMagicFill>
+            <AiMagicFill active={invalidationNoteFilled}>
+              <TextAreaField label={tr(lang, 'invalidationNoteLabel')} value={scenario.invalidationNote} placeholder={tr(lang, 'invalidationNotePlaceholder')} onCommit={(v) => onUpdate({ invalidationNote: v })} />
+            </AiMagicFill>
           </div>
 
           <button type="button" onClick={() => onUpdate({ occurred: !scenario.occurred })} style={{
