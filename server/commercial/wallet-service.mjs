@@ -14,7 +14,10 @@ export function toMicroUsd(usd) { return Math.round(Number(usd) * MICRO); }
 // row wins if present and enabled; otherwise falls back to the provider-level provider_pricing
 // row already used by the existing Admin "AI" tab. Returns null (never a guessed/zero rate) when
 // neither exists, so the caller can fail closed rather than serve a request NAVRYA cannot price.
-async function resolvePricingRate(repo, { provider, model }) {
+// Exported (alongside costMicroUsdFor below) so the authoritative AI-usage-recording path
+// (server/community/routes.internal.mjs's /internal/usage/record) reuses this SAME resolution -
+// never a second cost formula for the same real-cost concept.
+export async function resolvePricingRate(repo, { provider, model }) {
   if (model) {
     const modelRow = await repo.providerModelPricing.get(provider, model);
     if (modelRow && modelRow.enabled && (modelRow.promptPricePer1k != null || modelRow.completionPricePer1k != null)) {
@@ -28,7 +31,7 @@ async function resolvePricingRate(repo, { provider, model }) {
   return null;
 }
 
-function costMicroUsdFor(rate, { promptTokens, completionTokens }) {
+export function costMicroUsdFor(rate, { promptTokens, completionTokens }) {
   const usd = (Number(promptTokens) || 0) / 1000 * rate.promptPricePer1k + (Number(completionTokens) || 0) / 1000 * rate.completionPricePer1k;
   return Math.max(0, Math.round(usd * MICRO));
 }

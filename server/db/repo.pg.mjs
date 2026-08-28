@@ -94,7 +94,15 @@ function mapThread(row) { return { id: row.id, listingId: row.listing_id, buyerI
 function mapMessage(row) { return { id: row.id, threadId: row.thread_id, senderId: row.sender_id, content: row.content, createdAt: row.created_at, readAt: row.read_at }; }
 function mapReport(row) { return { id: row.id, targetType: row.target_type, targetId: row.target_id, reporterId: row.reporter_id, reason: row.reason, status: row.status, createdAt: row.created_at }; }
 function mapSession(row) { return { id: row.id, userId: row.user_id, startedAt: row.started_at, lastHeartbeatAt: row.last_heartbeat_at, endedAt: row.ended_at }; }
-function mapUsageEvent(row) { return { id: row.id, userId: row.user_id, provider: row.provider, promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens, totalTokens: row.total_tokens, source: row.source, createdAt: row.created_at }; }
+function mapUsageEvent(row) {
+  return {
+    id: row.id, userId: row.user_id, provider: row.provider, promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens,
+    totalTokens: row.total_tokens, source: row.source, model: row.model, feature: row.feature,
+    providerCostMicroUsd: row.provider_cost_micro_usd == null ? null : Number(row.provider_cost_micro_usd),
+    retailChargeMicroUsd: row.retail_charge_micro_usd == null ? null : Number(row.retail_charge_micro_usd),
+    origin: row.origin, linkedLedgerIdempotencyKey: row.linked_ledger_idempotency_key, createdAt: row.created_at
+  };
+}
 function mapHealthEvent(row) { return { id: row.id, provider: row.provider, ok: row.ok, errorCode: row.error_code, latencyMs: row.latency_ms, source: row.source, createdAt: row.created_at }; }
 function mapProviderPricing(row) { return { provider: row.provider, promptPricePer1k: row.prompt_price_per_1k == null ? null : Number(row.prompt_price_per_1k), completionPricePer1k: row.completion_price_per_1k == null ? null : Number(row.completion_price_per_1k), monthlyTokenBudget: row.monthly_token_budget, updatedAt: row.updated_at }; }
 function mapAdminKey(row) { return { provider: row.provider, apiKey: row.api_key, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
@@ -820,13 +828,59 @@ export function createPgRepo(pool) {
   };
 
   const usageEvents = {
-    async create({ userId, provider, promptTokens, completionTokens, totalTokens, source }) {
+    // model/feature/providerCostMicroUsd/retailChargeMicroUsd/origin/linkedLedgerIdempotencyKey
+    // are all optional and additive - every pre-existing call site (the client's own
+    // POST /api/users/usage-report -> reportToServer()) keeps working unchanged and lands as
+    // origin='client' with these left null, exactly reflecting that it never carried this data.
+    // The new gateway-side writer (server/community/routes.internal.mjs's /internal/usage/record,
+    // called from server/pattern-ai-server.mjs's dispatch) is the only caller that passes
+    // origin='gateway' plus real model/cost data.
+    async create({ userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey }) {
       const id = newId('usageEvent');
       const { rows } = await pool.query(
-        'INSERT INTO ai_usage_events (id, user_id, provider, prompt_tokens, completion_tokens, total_tokens, source) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-        [id, userId || null, String(provider || 'unknown'), promptTokens ?? null, completionTokens ?? null, totalTokens ?? null, String(source || 'unknown')]
+        `INSERT INTO ai_usage_events
+           (id, user_id, provider, prompt_tokens, completion_tokens, total_tokens, source, model, feature, provider_cost_micro_usd, retail_charge_micro_usd, origin, linked_ledger_idempotency_key)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [
+          id, userId || null, String(provider || 'unknown'), promptTokens ?? null, completionTokens ?? null, totalTokens ?? null, String(source || 'unknown'),
+          model || null, feature || null, providerCostMicroUsd ?? null, retailChargeMicroUsd ?? null, origin || 'client', linkedLedgerIdempotencyKey || null
+        ]
       );
       return mapUsageEvent(rows[0]);
+    },
+    // Real per-model $ reporting (client "my AI usage" table, admin user detail, admin AI tab) -
+    // grouped by (provider, model) and, by default, scoped to origin='gateway' rows only, so a
+    // client-reported row (untrusted, no cost data) can never double-count or masquerade as real
+    // settled cost. `since` bounds the reporting period; omitted means lifetime.
+    async aggregateByModelForUser(userId, { origin = 'gateway', since } = {}) {
+      const params = [userId, origin];
+      let text = `SELECT provider, model, COUNT(*) AS calls,
+                    SUM(COALESCE(prompt_tokens,0)) AS prompt_tokens, SUM(COALESCE(completion_tokens,0)) AS completion_tokens, SUM(COALESCE(total_tokens,0)) AS total_tokens,
+                    SUM(COALESCE(provider_cost_micro_usd,0)) AS provider_cost_micro_usd, SUM(COALESCE(retail_charge_micro_usd,0)) AS retail_charge_micro_usd
+                  FROM ai_usage_events WHERE user_id=$1 AND origin=$2`;
+      if (since) { params.push(since); text += ` AND created_at >= $${params.length}`; }
+      text += ' GROUP BY provider, model ORDER BY provider_cost_micro_usd DESC';
+      const { rows } = await pool.query(text, params);
+      return rows.map((row) => ({
+        provider: row.provider, model: row.model, calls: Number(row.calls || 0),
+        promptTokens: Number(row.prompt_tokens || 0), completionTokens: Number(row.completion_tokens || 0), totalTokens: Number(row.total_tokens || 0),
+        providerCostMicroUsd: Number(row.provider_cost_micro_usd || 0), retailChargeMicroUsd: Number(row.retail_charge_micro_usd || 0)
+      }));
+    },
+    async aggregateByModel({ origin = 'gateway', since } = {}) {
+      const params = [origin];
+      let text = `SELECT provider, model, COUNT(*) AS calls,
+                    SUM(COALESCE(prompt_tokens,0)) AS prompt_tokens, SUM(COALESCE(completion_tokens,0)) AS completion_tokens, SUM(COALESCE(total_tokens,0)) AS total_tokens,
+                    SUM(COALESCE(provider_cost_micro_usd,0)) AS provider_cost_micro_usd, SUM(COALESCE(retail_charge_micro_usd,0)) AS retail_charge_micro_usd
+                  FROM ai_usage_events WHERE origin=$1`;
+      if (since) { params.push(since); text += ` AND created_at >= $${params.length}`; }
+      text += ' GROUP BY provider, model ORDER BY provider_cost_micro_usd DESC';
+      const { rows } = await pool.query(text, params);
+      return rows.map((row) => ({
+        provider: row.provider, model: row.model, calls: Number(row.calls || 0),
+        promptTokens: Number(row.prompt_tokens || 0), completionTokens: Number(row.completion_tokens || 0), totalTokens: Number(row.total_tokens || 0),
+        providerCostMicroUsd: Number(row.provider_cost_micro_usd || 0), retailChargeMicroUsd: Number(row.retail_charge_micro_usd || 0)
+      }));
     },
     async aggregateByProviderAndDay({ since } = {}) {
       const params = [];

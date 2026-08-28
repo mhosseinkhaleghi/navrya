@@ -3,7 +3,8 @@ import { asyncHandler } from './errors.mjs';
 import { resolveSessionByRawId } from './security/session-service.mjs';
 import { resolveRedisClient } from './security/rate-limit.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
-import { reserveForAiCall, settleAiCall, releaseAiCall } from '../commercial/wallet-service.mjs';
+import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, costMicroUsdFor } from '../commercial/wallet-service.mjs';
+import { resolveRetailMultiplier } from '../commercial/markup.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
@@ -171,6 +172,37 @@ export function router(repo) {
     const body = req.body || {};
     const result = await releaseAiCall(repo, body.reservationId);
     res.json(result);
+  }));
+
+  // Authoritative AI usage recording (gateway-originated, never client-reported) - see
+  // 037_ai_usage_events_authoritative.sql's own comment for the full reasoning. Called
+  // unconditionally by pattern-ai-server.mjs's dispatch for every real (non-BYOK) billed call,
+  // REGARDLESS of AI_WALLET_ENFORCED - unlike /wallet/settle above, which only ever runs when
+  // enforcement is on and a reservation exists. This is what makes real provider cost reportable
+  // even in today's rollout-safe (enforcement off) production configuration, where /wallet/settle
+  // never runs at all. `billed` (true only when the caller actually held a wallet reservation for
+  // this call) decides whether retailChargeMicroUsd reflects a real charge or is legitimately zero
+  // (platform-funded call, not charged) - never invented either way.
+  app.post('/usage/record', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const usage = body.usage || {};
+    const rate = await resolvePricingRate(repo, { provider: body.provider, model: body.model });
+    const providerCostMicroUsd = rate ? costMicroUsdFor(rate, { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens }) : 0;
+    let retailChargeMicroUsd = 0;
+    let linkedLedgerIdempotencyKey = null;
+    if (body.billed) {
+      const { retailMultiplier } = await resolveRetailMultiplier(repo, { feature: body.feature, provider: body.provider, model: body.model });
+      retailChargeMicroUsd = Math.round(providerCostMicroUsd * retailMultiplier);
+      if (body.reservationId) linkedLedgerIdempotencyKey = 'ai-settle:' + body.reservationId;
+    }
+    const record = await repo.usageEvents.create({
+      userId: body.userId, provider: body.provider, model: body.model, feature: body.feature,
+      promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, totalTokens: usage.totalTokens,
+      source: body.source || 'gateway-dispatch', origin: 'gateway',
+      providerCostMicroUsd, retailChargeMicroUsd, linkedLedgerIdempotencyKey
+    });
+    res.status(201).json(record);
   }));
 
   app.get('/entitlements/:userId', asyncHandler(async (req, res) => {

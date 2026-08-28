@@ -430,14 +430,49 @@ export function createMemoryRepo() {
   };
 
   const usageEvents = {
-    async create({ userId, provider, promptTokens, completionTokens, totalTokens, source }) {
+    // Mirrors repo.pg.mjs's usageEvents.create() exactly - see that method's own comment for why
+    // model/feature/cost/origin/linkedLedgerIdempotencyKey are all optional and additive.
+    async create({ userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey }) {
       const record = {
         id: newId('usageEvent'), userId: userId || null, provider: String(provider || 'unknown'),
         promptTokens: promptTokens ?? null, completionTokens: completionTokens ?? null, totalTokens: totalTokens ?? null,
-        source: String(source || 'unknown'), createdAt: now()
+        source: String(source || 'unknown'), model: model || null, feature: feature || null,
+        providerCostMicroUsd: providerCostMicroUsd ?? null, retailChargeMicroUsd: retailChargeMicroUsd ?? null,
+        origin: origin || 'client', linkedLedgerIdempotencyKey: linkedLedgerIdempotencyKey || null, createdAt: now()
       };
       state.usageEvents.set(record.id, record);
       return clone(record);
+    },
+    // Mirrors repo.pg.mjs's aggregateByModelForUser()/aggregateByModel() exactly - see that
+    // method's own comment. Defaults to origin='gateway' so a client-reported row (no cost data)
+    // is excluded from real $ reporting by default.
+    async aggregateByModelForUser(userId, { origin = 'gateway', since } = {}) {
+      let values = Array.from(state.usageEvents.values()).filter((e) => e.userId === userId && (e.origin || 'client') === origin);
+      if (since) values = values.filter((e) => new Date(e.createdAt) >= new Date(since));
+      const buckets = new Map();
+      values.forEach((e) => {
+        const key = e.provider + '|' + (e.model || '');
+        const bucket = buckets.get(key) || { provider: e.provider, model: e.model || null, calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, providerCostMicroUsd: 0, retailChargeMicroUsd: 0 };
+        bucket.calls += 1;
+        bucket.promptTokens += e.promptTokens || 0; bucket.completionTokens += e.completionTokens || 0; bucket.totalTokens += e.totalTokens || 0;
+        bucket.providerCostMicroUsd += e.providerCostMicroUsd || 0; bucket.retailChargeMicroUsd += e.retailChargeMicroUsd || 0;
+        buckets.set(key, bucket);
+      });
+      return Array.from(buckets.values()).sort((a, b) => b.providerCostMicroUsd - a.providerCostMicroUsd);
+    },
+    async aggregateByModel({ origin = 'gateway', since } = {}) {
+      let values = Array.from(state.usageEvents.values()).filter((e) => (e.origin || 'client') === origin);
+      if (since) values = values.filter((e) => new Date(e.createdAt) >= new Date(since));
+      const buckets = new Map();
+      values.forEach((e) => {
+        const key = e.provider + '|' + (e.model || '');
+        const bucket = buckets.get(key) || { provider: e.provider, model: e.model || null, calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, providerCostMicroUsd: 0, retailChargeMicroUsd: 0 };
+        bucket.calls += 1;
+        bucket.promptTokens += e.promptTokens || 0; bucket.completionTokens += e.completionTokens || 0; bucket.totalTokens += e.totalTokens || 0;
+        bucket.providerCostMicroUsd += e.providerCostMicroUsd || 0; bucket.retailChargeMicroUsd += e.retailChargeMicroUsd || 0;
+        buckets.set(key, bucket);
+      });
+      return Array.from(buckets.values()).sort((a, b) => b.providerCostMicroUsd - a.providerCostMicroUsd);
     },
     async aggregateByProviderAndDay({ since } = {}) {
       let values = Array.from(state.usageEvents.values());

@@ -324,6 +324,22 @@ async function releaseWalletFundsForCall(reservationId) {
   } catch (_) { /* best-effort, see settleWalletFundsForCall's comment */ }
 }
 
+// Authoritative AI cost/usage recording (never client-reported) - called for EVERY real
+// (non-BYOK) billed call, unconditionally, regardless of aiWalletEnforced(). Unlike
+// settleWalletFundsForCall above (which only ever runs when enforcement is on and a reservation
+// was actually held), this always records real provider cost so it stays reportable even in
+// today's rollout-safe (enforcement off) production configuration - see
+// 037_ai_usage_events_authoritative.sql's own comment. `billed` tells /internal/usage/record
+// whether a real wallet charge happened for this specific call, so retailChargeMicroUsd is never
+// invented for a platform-funded (unenforced) call. Same best-effort, fire-and-forget posture as
+// settleWalletFundsForCall - a usage-recording failure must never surface on the AI response the
+// user is already holding.
+async function recordAiUsageForCall({ userId, feature, provider, model, usage, billed, reservationId }) {
+  try {
+    await internalWalletCall('/internal/usage/record', { userId, feature, provider, model, usage, billed, reservationId, source: 'gateway-dispatch' });
+  } catch (_) { /* best-effort - a missed usage row never blocks or fails the AI response */ }
+}
+
 function json(response, status, body) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -1940,6 +1956,15 @@ const server = http.createServer(async (request, response) => {
     else return json(response, 404, { error: 'NOT_FOUND' });
 
     if (walletReservationId) await settleWalletFundsForCall({ reservationId: walletReservationId, provider: result && result.provider, model: result && result.model, feature: billedFeature, usage: result && result.usage });
+    // Authoritative usage/cost recording - runs for every real billed call regardless of
+    // aiWalletEnforced() (unlike the settle call above), so real provider cost is captured even
+    // when the wallet gate itself is off. See recordAiUsageForCall()'s own comment.
+    if (billedFeature && !isByok) {
+      await recordAiUsageForCall({
+        userId: session.userId, feature: billedFeature, provider: result && result.provider, model: result && result.model,
+        usage: result && result.usage, billed: !!walletReservationId, reservationId: walletReservationId
+      });
+    }
     return json(response, 200, result);
   } catch (error) {
     if (walletReservationId) await releaseWalletFundsForCall(walletReservationId); // failed calls are never charged (spec section 27)
