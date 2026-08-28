@@ -10,6 +10,7 @@ import { confirmTransaction, failTransaction } from '../commercial/payment-servi
 import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs';
 import { resolveBscRuntimeConfig, isBscConfigComplete } from '../commercial/bsc-config.mjs';
 import { getChainId, isValidEvmAddress } from '../commercial/bsc-chain-client.mjs';
+import { resolvePricingRate } from '../commercial/wallet-service.mjs';
 
 const STEP_UP_MAX_AGE_MS = 15 * 60 * 1000; // mirrors auth-admin.mjs's own DEFAULT_STEP_UP_MAX_AGE_MS
 
@@ -18,6 +19,15 @@ const MARKUP_SCOPE_TYPES = ['feature', 'provider', 'model', 'feature_model'];
 function numOrNull(value) { return value === null || value === undefined || value === '' ? null : Number(value); }
 function isNonNegativeIntegerOrNull(value) { return value === null || (Number.isInteger(value) && value >= 0); }
 function isNonNegativeNumber(value) { return Number.isFinite(value) && value >= 0; }
+// AI billing operational fix - resolvePricingRate() (wallet-service.mjs) treats an explicit `0` as
+// "configured" (never a guessed/zero rate the way `null` is), which is exactly right for a
+// genuinely free/loss-leader model an admin means to configure - but a *paid* platform model
+// saved with both prices at 0 would silently make every provider-funded call free forever, with
+// no error anywhere. Reject that specific shape at write time - null+null (not yet configured)
+// stays allowed and correctly fails closed later via PROVIDER_PRICING_NOT_CONFIGURED.
+function isZeroPricedPair(promptPricePer1k, completionPricePer1k) {
+  return promptPricePer1k === 0 && completionPricePer1k === 0;
+}
 
 // Commercial System Slice 1 - Admin controls for plans, wallet rules, markup overrides, provider
 // model pricing, and per-user credit/debit (spec sections 14/15/17/18/19/50). Mounted at
@@ -143,9 +153,16 @@ export function router(repo) {
     const provider = String(body.provider || '').trim();
     const model = String(body.model || '').trim();
     if (!provider || !model) throw new ApiError(400, 'VALIDATION_FAILED');
+    const promptPricePer1k = numOrNull(body.promptPricePer1k);
+    const completionPricePer1k = numOrNull(body.completionPricePer1k);
+    const enabled = body.enabled !== false;
+    // A zero-priced row that resolves as "configured" must never silently make provider-funded
+    // calls free forever - see isZeroPricedPair()'s own comment. Only checked when the row would
+    // actually be enabled; a disabled row can hold whatever draft values without risk.
+    if (enabled && isZeroPricedPair(promptPricePer1k, completionPricePer1k)) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
     const row = await repo.providerModelPricing.upsert({
-      provider, model, promptPricePer1k: numOrNull(body.promptPricePer1k), completionPricePer1k: numOrNull(body.completionPricePer1k),
-      currency: body.currency || 'USD', enabled: body.enabled !== false
+      provider, model, promptPricePer1k, completionPricePer1k,
+      currency: body.currency || 'USD', enabled
     });
     await audit(req, 'commercial.providerModelPricing.upsert', 'providerModelPricing', provider + ':' + model, row);
     res.status(201).json(row);
@@ -471,6 +488,34 @@ export function router(repo) {
     invalidateCommercialConfigCache();
     await audit(req, 'commercial.cryptoPayments.status.update', 'cryptoPaymentsConfig', 'global', { before: { enabled: before }, after: { enabled } });
     res.json(await buildCryptoPaymentsStatusDto());
+  }));
+
+  // ---- AI billing readiness (production diagnosis: real OpenAI usage recorded, cost stuck at
+  // $0.00000 - traced to missing provider_model_pricing, not a settlement/reporting bug) --------
+  // Built entirely from already-existing, already-tested functions - repo.usageEvents
+  // .aggregateByModel() (gateway-origin only, same aggregation the admin AI tab and per-user
+  // breakdown already read) and wallet-service.mjs's own resolvePricingRate() (the exact function
+  // that decides whether a real call will price at $0). Never a second pricing/usage concept -
+  // this route only ever asks the existing resolver "would this price right now?" per model that
+  // has actually seen gateway traffic, so it surfaces precisely the openai/gpt-5.6 symptom: real
+  // calls, priceConfigured:false, providerCostMicroUsd:0.
+  app.get('/billing-readiness', asyncHandler(async (req, res) => {
+    const activeModels = await repo.usageEvents.aggregateByModel({ origin: 'gateway' });
+    const pricing = await Promise.all(activeModels.map(async (row) => ({
+      provider: row.provider, model: row.model, calls: row.calls,
+      priceConfigured: Boolean(await resolvePricingRate(repo, { provider: row.provider, model: row.model })),
+      providerCostMicroUsd: row.providerCostMicroUsd, retailChargeMicroUsd: row.retailChargeMicroUsd
+    })));
+    res.json({
+      // AI_WALLET_ENFORCED is read here from the community-api process's own env - see
+      // docker-compose.production.yml's community-api service block, which now also receives this
+      // SAME flag (never a second enforcement flag) purely so this status display can show it;
+      // pattern-ai-server.mjs's own aiWalletEnforced() remains the only place that actually
+      // decides enforcement for a real request.
+      walletEnforced: String(process.env.AI_WALLET_ENFORCED || '').trim().toLowerCase() === 'true',
+      internalApiSecretConfigured: Boolean(process.env.INTERNAL_API_SECRET),
+      pricing
+    });
   }));
 
   return app;

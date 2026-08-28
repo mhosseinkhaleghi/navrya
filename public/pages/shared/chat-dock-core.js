@@ -545,6 +545,15 @@
     var tResponseParsed = now();
     if (!response.ok) throw new Error(payload.error || 'AI_REQUEST_FAILED');
     if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage, source: 'chatDock.chat' });
+    // AI billing operational fix (requirement 3) - a billed chat turn debits the wallet
+    // server-side (server/pattern-ai-server.mjs's dispatch), but nothing previously told the
+    // header's own balance (navrya-src/character-app.jsx's useWalletBalance()) to refetch - it
+    // only refreshed on top-up/purchase/upgrade actions or the next focus/visibility change. This
+    // is the same event those actions already dispatch (navrya-src/accountProfileView.jsx's
+    // notifyWalletChanged()) - fired unconditionally here since the client has no reliable way to
+    // know whether THIS turn was actually billed (BYOK, enforcement-off, or a failed reservation
+    // all still land here); refetching a possibly-unchanged balance is a harmless no-op.
+    try { window.dispatchEvent(new CustomEvent('navrya:wallet-changed')); } catch (_) { /* no-op */ }
     var usageValue = payload.usage || {};
     var usedTokens = typeof usageValue.totalTokens === 'number' ? usageValue.totalTokens : (usageValue.promptTokens || 0) + (usageValue.completionTokens || 0);
     var nextConversationId = conversationId;

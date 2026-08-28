@@ -297,6 +297,31 @@ async function internalWalletCall(path, payload) {
   return response.ok ? await response.json() : { ok: false, reason: 'WALLET_SERVICE_UNAVAILABLE' };
 }
 
+// AI billing operational fix (task B) - a real charge already earned by a successful, already-paid
+// OpenAI call must not be lost to one transient Community-API blip. Retries ONLY the genuinely
+// transient/unreachable case (a thrown network error, or the WALLET_SERVICE_UNAVAILABLE fallback
+// internalWalletCall() returns for a non-2xx response) - a definitive business answer (e.g. the
+// reservation was already settled/not found) is returned immediately, never retried, since retrying
+// it would just add latency for the same answer. Bounded (3 attempts, well under 1s total) and
+// reuses internalWalletCall()'s exact request/response shape - no new schema, no new queue. Used
+// only by settleWalletFundsForCall/recordAiUsageForCall below, which are the two calls that would
+// otherwise silently strand a real, already-known charge; reserveWalletFundsForCall (before the
+// provider call, nothing spent yet) is unaffected - a transient failure there just 503s the request
+// for the caller to retry themselves.
+async function internalWalletCallWithRetry(path, payload, attempts = 3) {
+  let lastResult;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      lastResult = await internalWalletCall(path, payload);
+    } catch (_) {
+      lastResult = { ok: false, reason: 'WALLET_SERVICE_UNAVAILABLE' };
+    }
+    if (!lastResult || lastResult.reason !== 'WALLET_SERVICE_UNAVAILABLE') return lastResult;
+    if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 150 * (i + 1)));
+  }
+  return lastResult;
+}
+
 // Fail CLOSED, same posture as verifySession() above - an unreachable Community API must never
 // be treated as "the user has funds", or every AI call would silently become free the moment the
 // billing service is down.
@@ -311,11 +336,15 @@ async function reserveWalletFundsForCall({ userId, feature, provider, model, pay
 // Never lets a settlement-reporting failure surface as a failure on the AI response the user is
 // already holding - same "the caller never awaits/depends on this for its own success" posture
 // as reportProviderHealth() below, just still awaited here so a crash/restart can't interleave
-// with the in-flight response write.
+// with the in-flight response write. Goes through internalWalletCallWithRetry() (task B) so a
+// transient Community-API blip doesn't permanently strand a real charge; if every retry is
+// exhausted the reservation still ages out as an unresolved 'pending' row - now actually
+// recovered (released, never charged) by releaseStalePendingReservations() the next time this
+// same user's wallet.reserve() runs (server/db/repo.pg.mjs/repo.memory.mjs).
 async function settleWalletFundsForCall({ reservationId, provider, model, feature, usage }) {
   try {
-    await internalWalletCall('/internal/wallet/settle', { reservationId, provider, model, feature, usage });
-  } catch (_) { /* best-effort - the reservation ages out as an unresolved 'pending' row rather than blocking the response */ }
+    await internalWalletCallWithRetry('/internal/wallet/settle', { reservationId, provider, model, feature, usage });
+  } catch (_) { /* best-effort - see the stale-reservation recovery note above */ }
 }
 
 async function releaseWalletFundsForCall(reservationId) {
@@ -336,7 +365,7 @@ async function releaseWalletFundsForCall(reservationId) {
 // user is already holding.
 async function recordAiUsageForCall({ userId, feature, provider, model, usage, billed, reservationId }) {
   try {
-    await internalWalletCall('/internal/usage/record', { userId, feature, provider, model, usage, billed, reservationId, source: 'gateway-dispatch' });
+    await internalWalletCallWithRetry('/internal/usage/record', { userId, feature, provider, model, usage, billed, reservationId, source: 'gateway-dispatch' });
   } catch (_) { /* best-effort - a missed usage row never blocks or fails the AI response */ }
 }
 
@@ -2004,5 +2033,5 @@ export {
   callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
   historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
-  __resetVoiceConfigCacheForTests
+  __resetVoiceConfigCacheForTests, internalWalletCallWithRetry
 };

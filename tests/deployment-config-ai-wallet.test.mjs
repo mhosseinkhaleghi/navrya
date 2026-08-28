@@ -12,3 +12,22 @@ test('production forwards AI_WALLET_ENFORCED with a safe false default', () => {
   assert.match(compose, /AI_WALLET_ENFORCED:\s*\$\{AI_WALLET_ENFORCED:-false\}/);
   assert.match(productionEnv, /^AI_WALLET_ENFORCED=false$/m);
 });
+
+// AI billing operational fix - the Admin "billing readiness" status (routes.commercial.mjs's GET
+// /billing-readiness) needs to read this SAME flag from the community-api process too (it only
+// ever reached pattern-ai before). Scoped per-service (not just "the string appears somewhere in
+// the file") so this actually proves both services receive it, never a second/different flag.
+function serviceBlock(composeText, serviceName) {
+  const start = composeText.indexOf('\n  ' + serviceName + ':');
+  assert.ok(start > -1, `service "${serviceName}" must exist in docker-compose.production.yml`);
+  const nextServiceMatch = composeText.slice(start + 1).match(/\n  [a-z][a-z0-9_-]*:\n/);
+  const end = nextServiceMatch ? start + 1 + nextServiceMatch.index : composeText.length;
+  return composeText.slice(start, end);
+}
+
+test('both pattern-ai and community-api services receive AI_WALLET_ENFORCED - the same flag, never a second one', () => {
+  const patternAiBlock = serviceBlock(compose, 'pattern-ai');
+  const communityApiBlock = serviceBlock(compose, 'community-api');
+  assert.match(patternAiBlock, /AI_WALLET_ENFORCED:\s*\$\{AI_WALLET_ENFORCED:-false\}/);
+  assert.match(communityApiBlock, /AI_WALLET_ENFORCED:\s*\$\{AI_WALLET_ENFORCED:-false\}/);
+});

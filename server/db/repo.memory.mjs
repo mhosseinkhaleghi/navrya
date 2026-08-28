@@ -1419,12 +1419,39 @@ export function createMemoryRepo() {
     async remove(provider, model) { state.providerModelPricing.delete(provider + ':' + model); }
   };
 
+  // AI billing operational fix (task B) - mirrors repo.pg.mjs's identical-purpose
+  // sweepStalePendingReservations() exactly (see that function's own comment for the full
+  // reasoning): recovers a truly orphaned 'pending' reservation (pattern-ai-server.mjs crashed, or
+  // every settle/record retry was exhausted) by releasing it - never charging it, since the real
+  // usage was never recovered.
+  function sweepStalePendingReservationsMemory(userId, thresholdMs) {
+    const cutoff = Date.now() - thresholdMs;
+    Array.from(state.walletReservations.values())
+      .filter((r) => r.userId === userId && r.status === 'pending' && new Date(r.createdAt).getTime() < cutoff)
+      .forEach((r) => {
+        r.status = 'released';
+        r.resolvedAt = now();
+        const entry = {
+          id: newId('walletLedger'), userId: r.userId, type: 'AI_RELEASE', cashDeltaMicroUsd: 0, promoDeltaMicroUsd: 0,
+          providerCostMicroUsd: null, retailChargeMicroUsd: null, markupPercent: null, retailMultiplier: null,
+          provider: r.provider, model: r.model, feature: r.feature, sourceAction: 'ai-release-stale',
+          adminUserId: null, idempotencyKey: null, metadata: { reservationId: r.id, reason: 'stale' }, createdAt: now()
+        };
+        state.walletLedger.set(entry.id, entry);
+      });
+  }
+  const STALE_RESERVATION_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes - see repo.pg.mjs's identical constant
+
   const wallet = {
     async getAccount(userId) {
       if (!state.walletAccounts.has(userId)) state.walletAccounts.set(userId, { userId, paidBalanceMicroUsd: 0, promoBalanceMicroUsd: 0, createdAt: now(), updatedAt: now() });
       return clone(state.walletAccounts.get(userId));
     },
+    async releaseStalePendingReservations(userId, thresholdMs = STALE_RESERVATION_THRESHOLD_MS) {
+      sweepStalePendingReservationsMemory(userId, thresholdMs);
+    },
     async reserve(userId, { estimatedRetailMicroUsd, provider, model, feature }) {
+      sweepStalePendingReservationsMemory(userId, STALE_RESERVATION_THRESHOLD_MS);
       await wallet.getAccount(userId);
       const account = state.walletAccounts.get(userId);
       const pending = Array.from(state.walletReservations.values())

@@ -19,6 +19,14 @@ const ONLINE_SWEEP_THRESHOLD_MS = 135000;
 
 function numOrNull(value) { return value === null || value === undefined || value === '' ? null : Number(value); }
 function intOrNull(value) { return value === null || value === undefined || value === '' ? null : Math.round(Number(value)); }
+// AI billing operational fix - mirrors routes.commercial.mjs's identical guard for
+// provider_model_pricing: resolvePricingRate() (wallet-service.mjs) treats an explicit 0 as
+// "configured", so a provider-level row saved with both prices at 0 would silently make every
+// model under that provider free forever with no error. null+null (not yet configured) stays
+// allowed and correctly fails closed later via PROVIDER_PRICING_NOT_CONFIGURED.
+function isZeroPricedPair(promptPricePer1k, completionPricePer1k) {
+  return promptPricePer1k === 0 && completionPricePer1k === 0;
+}
 
 // --- XP config admin editing (Section 11 "XP & Segmentation" tab) helpers ---
 // Splits a requirement object like {closedSessions:2, domainXpMin:{psychology:100}} into flat
@@ -331,10 +339,15 @@ export function router(repo) {
   app.post('/ai/pricing', asyncHandler(async (req, res) => {
     const provider = req.body && req.body.provider;
     if (!KNOWN_PROVIDERS.includes(provider)) throw new ApiError(400, 'VALIDATION_FAILED');
+    const promptPricePer1k = numOrNull(req.body.promptPricePer1k);
+    const completionPricePer1k = numOrNull(req.body.completionPricePer1k);
+    // provider_pricing has no enabled column (004_admin.sql) - every row here is "live" the
+    // moment it's saved, so this check always applies (see isZeroPricedPair()'s own comment).
+    if (isZeroPricedPair(promptPricePer1k, completionPricePer1k)) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
     const record = await repo.providerPricing.upsert({
       provider,
-      promptPricePer1k: numOrNull(req.body.promptPricePer1k),
-      completionPricePer1k: numOrNull(req.body.completionPricePer1k),
+      promptPricePer1k,
+      completionPricePer1k,
       monthlyTokenBudget: intOrNull(req.body.monthlyTokenBudget)
     });
     await audit(req, 'ai.pricing.set', 'providerPricing', provider, record);

@@ -90,6 +90,12 @@ services:
       UPLOADS_DIR: /app/uploads
       PATTERN_AI_URL: http://pattern-ai:8787
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      # AI billing operational fix: the SAME flag already passed to pattern-ai below - never a
+      # second enforcement flag. pattern-ai-server.mjs's own aiWalletEnforced() remains the only
+      # place that decides enforcement for a real request; this copy exists purely so the Admin
+      # "AI billing readiness" status (server/admin/routes.commercial.mjs's GET
+      # /billing-readiness) can display the effective state without a live cross-process call.
+      AI_WALLET_ENFORCED: ${AI_WALLET_ENFORCED:-false}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
       CSRF_SECRET: ${CSRF_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}

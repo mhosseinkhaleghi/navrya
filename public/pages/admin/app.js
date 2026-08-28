@@ -12,6 +12,9 @@ const translations = {
     comSimulatorTitle: 'AI Pricing Simulator', comProviderCost: 'Provider cost (USD)', comRetail: 'Retail', comProfit: 'Gross profit',
     comMarkupRulesTitle: 'Markup overrides', comScopeType: 'Scope type', comScopeKey: 'Scope key (feature/provider/model name)', comAddRule: 'Add override', comRemove: 'Remove', comNoRules: 'No overrides - the global markup applies to everything.',
     comProviderPricingTitle: 'Provider model pricing', comModel: 'Model', comPromptPrice: 'Prompt $/1K', comCompletionPrice: 'Completion $/1K', comAddPricing: 'Add model pricing', comNoModelPricing: 'No model-specific pricing - the provider-level rate (AI tab) applies.',
+    comBillingReadinessTitle: 'AI billing readiness', comWalletEnforcedOn: 'Wallet enforcement: ON', comWalletEnforcedOff: 'Wallet enforcement: OFF (platform-funded, unbilled)',
+    comInternalSecretConfigured: 'Internal billing bridge: secret configured', comInternalSecretMissing: 'Internal billing bridge: secret NOT configured',
+    comBillingReadinessEmpty: 'No AI usage recorded yet.', comPriceConfigured: 'Price configured',
     comCreditDebitTitle: 'Grant / debit a user’s wallet', comUserId: 'User ID', comAmountUsd: 'Amount (USD)', comBalanceType: 'Balance', comBalancePaid: 'Paid', comBalancePromo: 'Promo', comReason: 'Reason (internal note)', comCredit: 'Credit', comDebit: 'Debit',
     comLedgerTitle: 'Recent wallet ledger', comLedgerEmpty: 'No wallet activity yet.', comColTime: 'Time', comColUser: 'User', comColType: 'Type', comColCash: 'Cash Δ', comColPromo: 'Promo Δ', comColProviderModel: 'Provider / model', comColFeature: 'Feature',
     comHistoryTitle: 'Published configuration changes', comHistoryEmpty: 'No changes published yet.', comColKey: 'Config key', comColChangedBy: 'Changed by', comColSummary: 'Summary',
@@ -75,6 +78,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiTopUsersTitle: 'Top users by token usage', aiTopUsersEmpty: 'No usage recorded yet.', aiTopUsersColUser: 'User', aiTopUsersColTokens: 'Tokens',
     usageByProviderLabel: 'Token usage by provider', noProviderUsage: 'No AI usage recorded for this user yet.',
     aiCostSectionTitle: 'AI cost & charge (real, per model)', aiCostProviderCost: 'Provider cost', aiCostRetailCharge: 'Retail charge',
+    aiCostRateCardHint: 'Calculated from actual token usage x your configured provider pricing (a rate card) - not a reconciled OpenAI invoice.',
     aiCostModel: 'Model', aiCostCalls: 'Calls', aiCostNoData: 'No real per-model AI cost recorded for this user yet.',
     aiUsageByModelTitle: 'Real settled cost by model (all users)', aiUsageByModelEmpty: 'No real per-model AI cost recorded yet.',
     aiCostProvider: 'Provider', aiCostPromptTokens: 'Prompt tokens', aiCostCompletionTokens: 'Completion tokens', aiCostTotalTokens: 'Total tokens',
@@ -168,6 +172,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiTopUsersTitle: 'پرمصرف‌ترین کاربران (توکن)', aiTopUsersEmpty: 'هنوز مصرفی ثبت نشده است.', aiTopUsersColUser: 'کاربر', aiTopUsersColTokens: 'توکن',
     usageByProviderLabel: 'مصرف توکن به تفکیک سرویس‌دهنده', noProviderUsage: 'هنوز مصرف هوش مصنوعی برای این کاربر ثبت نشده است.',
     aiCostSectionTitle: 'هزینه و مبلغ دریافتی هوش مصنوعی (واقعی، به تفکیک مدل)', aiCostProviderCost: 'هزینه واقعی سرویس‌دهنده', aiCostRetailCharge: 'مبلغ دریافتی از کاربر',
+    aiCostRateCardHint: 'محاسبه‌شده از مصرف واقعی توکن ضربدر نرخ پیکربندی‌شده‌ی شما - نه صورت‌حساب تطبیق‌داده‌شده‌ی OpenAI.',
     aiCostModel: 'مدل', aiCostCalls: 'تعداد فراخوانی', aiCostNoData: 'هنوز هزینه واقعی هوش مصنوعی برای این کاربر ثبت نشده است.',
     aiUsageByModelTitle: 'هزینه واقعی تسویه‌شده به تفکیک مدل (همه کاربران)', aiUsageByModelEmpty: 'هنوز هزینه واقعی هوش مصنوعی به تفکیک مدل ثبت نشده است.',
     aiCostProvider: 'سرویس‌دهنده', aiCostPromptTokens: 'توکن‌های ورودی', aiCostCompletionTokens: 'توکن‌های خروجی', aiCostTotalTokens: 'مجموع توکن‌ها',
@@ -258,6 +263,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiTopUsersTitle: 'أكثر المستخدمين استهلاكًا للرموز', aiTopUsersEmpty: 'لا يوجد استخدام مسجل بعد.', aiTopUsersColUser: 'المستخدم', aiTopUsersColTokens: 'الرموز',
     usageByProviderLabel: 'استخدام الرموز حسب المزوّد', noProviderUsage: 'لا يوجد استخدام ذكاء اصطناعي مسجّل لهذا المستخدم بعد.',
     aiCostSectionTitle: 'تكلفة واستحقاق الذكاء الاصطناعي (فعلي، حسب النموذج)', aiCostProviderCost: 'تكلفة المزوّد', aiCostRetailCharge: 'المبلغ المحصّل من المستخدم',
+    aiCostRateCardHint: 'محسوبة من استخدام الرموز الفعلي × تسعيرة المزوّد التي أعددتها - وليست فاتورة OpenAI مُسوّاة.',
     aiCostModel: 'النموذج', aiCostCalls: 'عدد الاستدعاءات', aiCostNoData: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة لهذا المستخدم بعد.',
     aiUsageByModelTitle: 'التكلفة الفعلية المسوّاة حسب النموذج (كل المستخدمين)', aiUsageByModelEmpty: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة حسب النموذج بعد.',
     aiCostProvider: 'المزوّد', aiCostPromptTokens: 'رموز الإدخال', aiCostCompletionTokens: 'رموز الإخراج', aiCostTotalTokens: 'إجمالي الرموز',
@@ -348,6 +354,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiTopUsersTitle: 'Usuarios con mayor uso de tokens', aiTopUsersEmpty: 'Aún no hay uso registrado.', aiTopUsersColUser: 'Usuario', aiTopUsersColTokens: 'Tokens',
     usageByProviderLabel: 'Uso de tokens por proveedor', noProviderUsage: 'Aún no hay uso de IA registrado para este usuario.',
     aiCostSectionTitle: 'Costo y cargo de IA (real, por modelo)', aiCostProviderCost: 'Costo del proveedor', aiCostRetailCharge: 'Cargo al usuario',
+    aiCostRateCardHint: 'Calculado a partir del uso real de tokens x tu tarifa de proveedor configurada - no una factura de OpenAI conciliada.',
     aiCostModel: 'Modelo', aiCostCalls: 'Llamadas', aiCostNoData: 'Aún no hay costo real de IA por modelo registrado para este usuario.',
     aiUsageByModelTitle: 'Costo real liquidado por modelo (todos los usuarios)', aiUsageByModelEmpty: 'Aún no hay costo real de IA por modelo registrado.',
     aiCostProvider: 'Proveedor', aiCostPromptTokens: 'Tokens de entrada', aiCostCompletionTokens: 'Tokens de salida', aiCostTotalTokens: 'Tokens totales',
@@ -628,6 +635,7 @@ function userDetailRow(user, colSpan) {
   // aggregateByModelForUser(), origin='gateway' only - never the untrusted usageByProvider tokens
   // shown above).
   box.append(el('h3', '', t('aiCostSectionTitle')));
+  box.append(el('p', 'hint', t('aiCostRateCardHint')));
   if (!user.aiCost || !user.aiCost.byModel || !user.aiCost.byModel.length) {
     box.append(el('p', 'hint', t('aiCostNoData')));
   } else {
@@ -823,6 +831,7 @@ function aiTab() {
     // two are never summed or presented as the same number.
     const modelCostCard = el('div', 'admin-card');
     modelCostCard.append(el('h3', '', t('aiUsageByModelTitle')));
+    modelCostCard.append(el('p', 'hint', t('aiCostRateCardHint')));
     if (!usageByModel.byModel || !usageByModel.byModel.length) {
       modelCostCard.append(el('p', 'hint', t('aiUsageByModelEmpty')));
     } else {
@@ -1529,9 +1538,44 @@ function commercialPlansSubTab() {
 
 function commercialWalletSubTab() {
   return Promise.all([
-    api('/commercial/wallet-rules'), api('/commercial/markup-rules'), api('/commercial/provider-pricing'), api('/commercial/ledger')
-  ]).then(([walletRules, markupRulesData, pricingData, ledgerData]) => {
+    api('/commercial/wallet-rules'), api('/commercial/markup-rules'), api('/commercial/provider-pricing'), api('/commercial/ledger'),
+    api('/commercial/billing-readiness')
+  ]).then(([walletRules, markupRulesData, pricingData, ledgerData, readiness]) => {
     const wrap = el('div', 'admin-grid');
+
+    // AI billing readiness (production diagnosis: real usage recorded, cost stuck at $0.00000 -
+    // traced to missing provider pricing, not a settlement bug) - a concise read-only status so
+    // an admin can see WHY cost is $0 without reading the database directly. Built from the exact
+    // same aggregation/pricing-resolution the real billing path itself uses (server/admin/
+    // routes.commercial.mjs's GET /billing-readiness) - never a second cost concept.
+    const readinessCard = el('div', 'admin-card');
+    readinessCard.append(el('h3', '', t('comBillingReadinessTitle')));
+    const readinessHead = el('div', 'admin-btn-row');
+    readinessHead.append(el('span', 'badge status-' + (readiness.walletEnforced ? 'valid' : 'unknown'), readiness.walletEnforced ? t('comWalletEnforcedOn') : t('comWalletEnforcedOff')));
+    readinessHead.append(el('span', 'badge status-' + (readiness.internalApiSecretConfigured ? 'valid' : 'invalid'), readiness.internalApiSecretConfigured ? t('comInternalSecretConfigured') : t('comInternalSecretMissing')));
+    readinessCard.append(readinessHead);
+    if (!readiness.pricing.length) {
+      readinessCard.append(el('p', 'hint', t('comBillingReadinessEmpty')));
+    } else {
+      const table = document.createElement('table');
+      table.className = 'admin-table';
+      const thead = document.createElement('tr');
+      [t('comColProviderModel'), t('aiCostCalls'), t('comPriceConfigured'), t('aiCostProviderCost')].forEach((label) => thead.append(el('th', '', label)));
+      const theadWrap = document.createElement('thead'); theadWrap.append(thead);
+      table.append(theadWrap);
+      const tbody = document.createElement('tbody');
+      readiness.pricing.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.append(
+          el('td', '', row.provider + ' / ' + (row.model || '—')), el('td', '', fmtNumber(row.calls)),
+          el('td', '', row.priceConfigured ? '✓' : '✗'), el('td', '', fmtMicroUsd(row.providerCostMicroUsd))
+        );
+        tbody.append(tr);
+      });
+      table.append(tbody);
+      readinessCard.append(table);
+    }
+    wrap.append(readinessCard);
 
     const rulesCard = el('div', 'admin-card');
     rulesCard.append(el('h3', '', t('comSubWallet')));

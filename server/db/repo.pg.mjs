@@ -2213,6 +2213,39 @@ export function createPgRepo(pool) {
       provider: row.provider, model: row.model, feature: row.feature, createdAt: row.created_at, resolvedAt: row.resolved_at
     };
   }
+  // AI billing operational fix (task B) - the gap the reserve()/release() comments below used to
+  // name and leave open: "no background sweep in this slice". A reservation only ever ages out of
+  // the pending-sum's MEANING once something concludes it - if pattern-ai-server.mjs crashes (or
+  // every settle/record retry is exhausted) mid-flight, nothing ever did that, and the hold would
+  // otherwise count against this same user's available balance forever. Called lazily, scoped to
+  // one user, from inside reserve()'s own transaction (mirrors the lazy-sweep-on-next-relevant-
+  // write convention `sessions.sweepStale()` already uses elsewhere in this file) - this can only
+  // ever RELEASE (never charge) a reservation whose real usage was never recovered, the same
+  // conservative direction release() already takes for a known failure. STALE_RESERVATION_
+  // THRESHOLD_MS is generous past callOpenAI()'s own 90s provider timeout plus the settle/record
+  // retry's well-under-1s, so it never races a genuinely in-flight call.
+  async function sweepStalePendingReservations(client, userId, thresholdMs) {
+    // Deliberately NOT clamped to >= 0 (unlike sessions.sweepStale() above) - a caller passing a
+    // small negative threshold (verification only; production always uses the real positive
+    // STALE_RESERVATION_THRESHOLD_MS constant) means "treat anything up to now as stale", which
+    // must work with a real time margin rather than racing Date.now()'s own millisecond boundary.
+    const seconds = Math.floor(thresholdMs / 1000);
+    const { rows: staleRows } = await client.query(
+      `UPDATE wallet_reservations SET status='released', resolved_at=now()
+       WHERE user_id=$1 AND status='pending' AND created_at < now() - ($2 * INTERVAL '1 second')
+       RETURNING id, provider, model, feature`,
+      [userId, seconds]
+    );
+    for (const row of staleRows) {
+      await client.query(
+        `INSERT INTO wallet_ledger (id, user_id, type, provider, model, feature, source_action, metadata)
+         VALUES ($1,$2,'AI_RELEASE',$3,$4,$5,'ai-release-stale',$6)`,
+        [newId('walletLedger'), userId, row.provider, row.model, row.feature, JSON.stringify({ reservationId: row.id, reason: 'stale' })]
+      );
+    }
+  }
+  const STALE_RESERVATION_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
   const wallet = {
     async getAccount(userId) {
       const { rows } = await pool.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING RETURNING *', [userId]);
@@ -2223,13 +2256,14 @@ export function createPgRepo(pool) {
     // Places a hold for an upcoming AI call. "Available" is the stored balance minus every OTHER
     // still-pending reservation for this user - reserving never mutates wallet_accounts itself
     // (only settle()/release()/grant() do), so a caller that crashes before resolving its own
-    // reservation cannot permanently lock funds away from a later request; it just leaves an
-    // orphaned 'pending' row that ages out of relevance once nothing still adds it to the pending
-    // sum's meaning (no background sweep in this slice - see the migration's own comment).
+    // reservation cannot permanently lock funds away from a later request; a truly orphaned
+    // 'pending' row is recovered by sweepStalePendingReservations() above rather than counting
+    // against this user forever.
     async reserve(userId, { estimatedRetailMicroUsd, provider, model, feature }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        await sweepStalePendingReservations(client, userId, STALE_RESERVATION_THRESHOLD_MS);
         await client.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
         const { rows: accountRows } = await client.query('SELECT * FROM wallet_accounts WHERE user_id=$1 FOR UPDATE', [userId]);
         const account = accountRows[0];
@@ -2250,6 +2284,22 @@ export function createPgRepo(pool) {
         );
         await client.query('COMMIT');
         return { ok: true, reservation: mapWalletReservation(rows[0]) };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // Public entry point for the same sweep reserve() runs automatically (task B) - exposed as
+    // its own method so an explicit/shorter threshold can be used for verification without
+    // waiting out the real STALE_RESERVATION_THRESHOLD_MS.
+    async releaseStalePendingReservations(userId, thresholdMs = STALE_RESERVATION_THRESHOLD_MS) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await sweepStalePendingReservations(client, userId, thresholdMs);
+        await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
