@@ -109,6 +109,9 @@ const copy = {
     subAmountUsd: 'مبلغ (دلار)', subRequestTopUp: 'درخواست شارژ',
     subTopUpNotice: 'درخواست شارژ به مبلغ {amount} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
     subTopUpError: 'ثبت درخواست شارژ ممکن نشد: {error}',
+    subTopUpMinTitle: 'مبلغ خیلی کم است',
+    subTopUpMinBody: 'حداقل مبلغ شارژ کیف پول {amount} است. لطفاً مبلغی برابر یا بیشتر از آن وارد کنید.',
+    subTopUpMinOk: 'متوجه شدم',
     subWalletActivityTitle: 'فعالیت کیف پول — دلیل تغییر موجودی',
     subFilterAll: 'همه', subFilterUsage: 'مصرف هوش مصنوعی', subFilterCredit: 'شارژ و اعتبار', subNoActivity: 'هنوز فعالیتی ثبت نشده است.',
     subLedgerAiUsage: 'مصرف هوش مصنوعی · {feature}', subLedgerAssistant: 'دستیار', subLedgerTopUp: 'شارژ کیف پول', subLedgerManualBilling: 'صورتحساب دستی',
@@ -205,6 +208,9 @@ const copy = {
     subAmountUsd: 'Amount (USD)', subRequestTopUp: 'Request Top-Up',
     subTopUpNotice: 'Top-up of {amount} requested — pending Admin confirmation (manual/test billing).',
     subTopUpError: 'Could not submit the top-up request: {error}',
+    subTopUpMinTitle: 'Amount too low',
+    subTopUpMinBody: 'The minimum wallet top-up is {amount}. Please enter that amount or more.',
+    subTopUpMinOk: 'Got it',
     subWalletActivityTitle: 'Wallet Activity — why your balance moved',
     subFilterAll: 'All', subFilterUsage: 'AI Usage', subFilterCredit: 'Top-Ups & Credits', subNoActivity: 'No activity yet.',
     subLedgerAiUsage: 'AI Usage · {feature}', subLedgerAssistant: 'Assistant', subLedgerTopUp: 'Wallet Top-Up', subLedgerManualBilling: 'Manual billing',
@@ -301,6 +307,9 @@ const copy = {
     subAmountUsd: 'المبلغ (دولار)', subRequestTopUp: 'طلب شحن الرصيد',
     subTopUpNotice: 'تم إرسال طلب شحن بقيمة {amount} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
     subTopUpError: 'تعذّر إرسال طلب الشحن: {error}',
+    subTopUpMinTitle: 'المبلغ منخفض جدًا',
+    subTopUpMinBody: 'الحد الأدنى لشحن المحفظة هو {amount}. الرجاء إدخال هذا المبلغ أو أكثر.',
+    subTopUpMinOk: 'فهمت',
     subWalletActivityTitle: 'نشاط المحفظة — سبب تغيّر الرصيد',
     subFilterAll: 'الكل', subFilterUsage: 'استخدام الذكاء الاصطناعي', subFilterCredit: 'الشحن والاعتمادات', subNoActivity: 'لا يوجد نشاط بعد.',
     subLedgerAiUsage: 'استخدام الذكاء الاصطناعي · {feature}', subLedgerAssistant: 'المساعد', subLedgerTopUp: 'شحن المحفظة', subLedgerManualBilling: 'فوترة يدوية',
@@ -397,6 +406,9 @@ const copy = {
     subAmountUsd: 'Monto (USD)', subRequestTopUp: 'Solicitar recarga',
     subTopUpNotice: 'Se solicitó una recarga de {amount} — pendiente de confirmación del administrador (facturación manual/de prueba).',
     subTopUpError: 'No se pudo enviar la solicitud de recarga: {error}',
+    subTopUpMinTitle: 'Monto demasiado bajo',
+    subTopUpMinBody: 'La recarga mínima de la billetera es {amount}. Introduce ese monto o uno mayor.',
+    subTopUpMinOk: 'Entendido',
     subWalletActivityTitle: 'Actividad de la cartera — por qué cambió tu saldo',
     subFilterAll: 'Todo', subFilterUsage: 'Uso de IA', subFilterCredit: 'Recargas y créditos', subNoActivity: 'Aún no hay actividad.',
     subLedgerAiUsage: 'Uso de IA · {feature}', subLedgerAssistant: 'Asistente', subLedgerTopUp: 'Recarga de cartera', subLedgerManualBilling: 'Facturación manual',
@@ -1509,7 +1521,25 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
   );
 }
 
-function WalletCard({ lang, onNotice, onInvoice }) {
+// A dedicated popup (not just the inline Notice banner every other wallet/storage/subscription
+// error uses) for the one error a shopper is most likely to trigger by simply mistyping an amount
+// - shown clearly enough that they don't need to re-read a small inline error string to understand
+// why their request was refused. minimumTopUpUsd always comes from the server's own response
+// (server/commercial/commercial-defaults.mjs's WALLET_DEFAULTS, admin-editable via Admin >
+// Commercial > Wallet), never hardcoded here, so this stays correct if that value ever changes.
+function TopUpMinimumModal({ lang, minimumTopUpUsd, onClose }) {
+  return (
+    <Modal open title={tr(lang, 'subTopUpMinTitle')} icon="circle-alert" onClose={onClose} width={380}
+      footer={(<><span style={{ flex: 1 }} /><Button variant="primary" onClick={onClose}>{tr(lang, 'subTopUpMinOk')}</Button></>)}
+    >
+      <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-primary)', lineHeight: 1.6 }}>
+        {tr(lang, 'subTopUpMinBody', { amount: fmtMicroUsd(Math.round(Number(minimumTopUpUsd) * 1000000)) })}
+      </p>
+    </Modal>
+  );
+}
+
+function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
   const [wallet, setWallet] = React.useState(null);
   const [amount, setAmount] = React.useState('10');
   function reload() { fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {}); }
@@ -1517,7 +1547,13 @@ function WalletCard({ lang, onNotice, onInvoice }) {
   function requestTopUp() {
     const amountUsd = Number(amount) || 0;
     fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd }) })
-      .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
+      .then((r) => r.json().then((body) => {
+        // Below-minimum is handled as its own dedicated popup (onBelowMinimum), not the generic
+        // inline notice - it carries the real, server-configured minimumTopUpUsd (admin-editable
+        // via Admin > Commercial > Wallet), never a hardcoded client-side guess.
+        if (!r.ok) { const error = new Error(body.error); error.details = body; throw error; }
+        return body;
+      }))
       .then((result) => {
         // A real BSC crypto invoice (task A) - opens the payment modal instead of the plain
         // "pending admin confirmation" notice, which stays exactly correct for the Manual provider
@@ -1526,7 +1562,10 @@ function WalletCard({ lang, onNotice, onInvoice }) {
         else onNotice(tr(lang, 'subTopUpNotice', { amount: fmtMicroUsd(amountUsd * 1000000) }));
         reload(); notifyWalletChanged();
       })
-      .catch((error) => onNotice(tr(lang, 'subTopUpError', { error: error.message })));
+      .catch((error) => {
+        if (error.details && error.details.error === 'WALLET_TOPUP_BELOW_MINIMUM') onBelowMinimum(error.details.minimumTopUpUsd);
+        else onNotice(tr(lang, 'subTopUpError', { error: error.message }));
+      });
   }
   if (!wallet) return null;
   return (
@@ -1735,6 +1774,10 @@ function SubscriptionTab({ lang }) {
   // invoiceId (BILLING_PROVIDER=bsc_crypto is active); stays null under the Manual provider,
   // where the plain pending-admin-confirmation notice above is exactly correct as-is.
   const [invoiceId, setInvoiceId] = React.useState(null);
+  // Holds the server's real minimumTopUpUsd while the below-minimum popup is open; null means
+  // closed. Kept separate from `notice` since this is a dedicated, harder-to-miss modal, not the
+  // inline Notice banner.
+  const [belowMinimumUsd, setBelowMinimumUsd] = React.useState(null);
 
   const reloadSub = React.useCallback(() => {
     fetch('/api/sync/subscriptions').then((r) => r.json()).then(setSubData).catch(() => setSubData({ plan: 'free', subscription: null }));
@@ -1769,7 +1812,7 @@ function SubscriptionTab({ lang }) {
       {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
       <PlanHero lang={lang} plan={subData.plan} subscription={subData.subscription} onToggleCancel={toggleCancel} />
       <PlanComparisonGrid lang={lang} plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
-      <WalletCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
+      <WalletCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} onBelowMinimum={setBelowMinimumUsd} />
       <WalletActivityCard lang={lang} />
       <StorageCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
       <BillingHistoryCard lang={lang} />
@@ -1788,6 +1831,9 @@ function SubscriptionTab({ lang }) {
           onClose={() => setInvoiceId(null)}
           onConfirmed={() => { reloadSub(); notifyWalletChanged(); }}
         />
+      )}
+      {belowMinimumUsd != null && (
+        <TopUpMinimumModal lang={lang} minimumTopUpUsd={belowMinimumUsd} onClose={() => setBelowMinimumUsd(null)} />
       )}
     </div>
   );

@@ -49,7 +49,9 @@ export const DEFAULT_STORAGE_PRODUCTS = [
 
 export const WALLET_DEFAULTS = {
   markupPercent: 200, // retailMultiplier = 1 + markupPercent/100 = 3.00x (spec section 16)
-  minimumTopUpUsd: 10,
+  // Lowered from 10 to 1 for real-money testing (explicit request) - still admin-editable
+  // afterward via Admin > Commercial > Wallet (PATCH /commercial/wallet-rules), same as before.
+  minimumTopUpUsd: 1,
   signupPromoRetailUsd: 0.50
 };
 
