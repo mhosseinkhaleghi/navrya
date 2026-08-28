@@ -76,18 +76,31 @@ test('session.scenario.create\'s open() resolves null (never guesses an Entry) w
   assert.match(block, /var processId = 'live-session-scenario-' \+ created\.id/);
 });
 
-test('session.scenario.edit resolves an EXISTING scenario by exact, case-insensitive title match scoped to the current active Session\'s own scenarios only, resolving null (never guessing) on zero or ambiguous matches - F53', () => {
+test('session.scenario.edit resolves an EXISTING, named scenario by exact, case-insensitive title match scoped to the current active Session\'s own scenarios only, resolving null (never guessing) on zero or ambiguous matches - F53', () => {
   const block = actionBlock('session.scenario.edit');
-  assert.match(block, /requiredFields: \['scenarioTitle'\]/);
-  assert.match(block, /if \(!sessionId \|\| !wanted\) \{ resolve\(null\); return; \}/);
+  assert.match(block, /if \(!sessionId\) \{ resolve\(null\); return; \}/);
   assert.match(block, /if \(matches\.length !== 1\) \{ resolve\(null\); return; \}/);
-  assert.match(block, /String\(x\.scenario\.title \|\| ''\)\.trim\(\)\.toLowerCase\(\) === wanted\.toLowerCase\(\)/);
+  assert.match(block, /String\(sc\.title \|\| ''\)\.trim\(\)\.toLowerCase\(\) === wanted\.toLowerCase\(\)/);
 });
 
-test('session.scenario.edit\'s description distinguishes scenarioTitle (resolution-only) from title (a rename), and tells the model to ask rather than guess when no existing Scenario has been named - F53', () => {
+// 2026-08-28 bug report: continuing to fill a Scenario across SEPARATE turns ("create a
+// scenario" ... then, later, "set the title to X") never worked - a just-created scenario still
+// carries its untouched default title, so there was nothing for scenarioTitle to resolve by, and
+// the model correctly refused to guess (exactly as the old description told it to), leaving the
+// user with no way to continue via voice. scenarioTitle is now optional - omitted, it resolves
+// the currently-open scenario via context.activeEntities.scenarioId.
+test('session.scenario.edit has no required fields - scenarioTitle is optional, resolving the CURRENTLY-OPEN scenario (context.activeEntities.scenarioId) when omitted, so a follow-up turn can keep filling a just-created scenario that has no distinguishing name yet', () => {
   const block = actionBlock('session.scenario.edit');
-  assert.match(block, /it is never a rename/);
-  assert.match(block, /ask them first instead of guessing/);
+  assert.match(block, /requiredFields: \[\], optionalFields: \['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName'\]/);
+  assert.match(block, /var activeScenarioId = context && context\.activeEntities && context\.activeEntities\.scenarioId;/);
+  assert.match(block, /if \(!activeScenarioId\) \{ resolve\(null\); return; \}/, 'no name given AND nothing currently open must still never guess');
+  assert.match(block, /target = flat\.find\(\(sc\) => sc\.id === activeScenarioId\);/);
+});
+
+test('session.scenario.edit\'s description distinguishes scenarioTitle (resolution-only, for a DIFFERENT already-named scenario) from title (a rename), and explains the currently-open scenario resolves automatically without one', () => {
+  const block = actionBlock('session.scenario.edit');
+  assert.match(block, /leave scenarioTitle unset for that, it resolves automatically/);
+  assert.match(block, /Only set scenarioTitle to open a DIFFERENT, already-named Scenario/);
 });
 
 test('session.scenario.edit\'s open() drives the real hub (hub.openScenario), scoped to session.entries flattened from window.TradeJournalWorkspace.find(sessionId) - never a second, parallel Session read path', () => {

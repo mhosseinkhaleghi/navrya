@@ -1221,26 +1221,53 @@ export function mountCharacterApp(character) {
       // insensitive match, never guessed (F53) - and, per F15 (Journey F "zero stale entity
       // leakage between Sessions"), scoped to the CURRENT active Session's own scenarios only,
       // never a cross-Session search.
+      //
+      // 2026-08-28 bug report: real production testing found that continuing to fill a Scenario
+      // ACROSS SEPARATE TURNS ("create a scenario" ... then, later, "set the title to X and the
+      // description to Y") never actually worked - session.scenario.create is deliberately
+      // single-shot (see its own comment above), so a follow-up turn has no live workflow to
+      // continue, and this action's own scenarioTitle requirement had NOTHING for the model to
+      // resolve by: a just-created Scenario still carries its untouched default title ("New
+      // scenario"), not yet the real name the user is IN THE PROCESS of dictating. Confirmed
+      // live: the model correctly refused to guess a scenarioTitle (exactly as this action's own
+      // description told it to) and gave up, offering the user manual entry instead - a real,
+      // previously-unexercised gap, not a regression from any of today's other fixes.
+      //
+      // scenarioTitle now becomes optional: when omitted, resolves the Scenario the user is
+      // CURRENTLY looking at - context.activeEntities.scenarioId, ai-context-engine.js's own
+      // activeScenarioId() (the topmost open 'live-session-scenario-{id}' registration, the exact
+      // same real "currently open" signal Journey B's own "start a Trade from this Scenario"
+      // already trusts) - never a guess across Sessions/Entries. scenarioTitle is still there,
+      // unchanged, for the genuinely different case: naming an EXISTING, already-titled Scenario
+      // the user is not currently looking at.
       window.TradeJournalAIActionRegistry.registerAction({
         // Also deliberately NOT entityAlreadyPersisted - same reasoning as session.scenario.create
-        // above. Every edit turn re-resolves scenarioTitle fresh; there is nothing useful a kept-
-        // alive workflow would add here since the continuation branch can never reach it anyway.
+        // above. Every edit turn re-resolves fresh; there is nothing useful a kept-alive workflow
+        // would add here since the continuation branch can never reach it anyway.
         id: 'session.scenario.edit', domain: 'sessions', riskLevel: 'low',
-        description: 'Open an EXISTING Scenario, in the currently active Session only, by title, so it can be edited (title, description, evidence, problem, trigger, or its Pattern link via patternName). scenarioTitle identifies which existing Scenario to open - it is never a rename (use "title" for that). Only select this action once the user has actually named which existing Scenario they mean; if they have not, ask them first instead of guessing.',
-        aliases: ['edit a scenario', 'edit the scenario', 'update a scenario', 'change the scenario', 'open the scenario'],
-        requiredFields: ['scenarioTitle'], optionalFields: ['title', 'description', 'evidence', 'problem', 'trigger', 'patternName'],
+        description: 'Continue filling/editing a Scenario in the active trading Session (title, description, evidence, problem, trigger, or its Pattern link via patternName) - never a probability value. Most commonly this is the Scenario the user is CURRENTLY looking at (its card is already open, e.g. right after session.scenario.create, or across several follow-up turns while dictating its fields one at a time) - leave scenarioTitle unset for that, it resolves automatically. Only set scenarioTitle to open a DIFFERENT, already-named Scenario the user explicitly names that is not the one currently open.',
+        aliases: ['edit a scenario', 'edit the scenario', 'update a scenario', 'change the scenario', 'open the scenario', 'fill in the scenario', 'continue the scenario'],
+        requiredFields: [], optionalFields: ['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName'],
         available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
         open: (context, initialFields) => new Promise((resolve) => {
           var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
-          var titleField = (initialFields || []).filter((f) => f && f.path === 'scenarioTitle')[0];
-          var wanted = titleField ? String(titleField.value == null ? '' : titleField.value).trim() : '';
-          if (!sessionId || !wanted) { resolve(null); return; }
+          if (!sessionId) { resolve(null); return; }
           var session = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
           if (!session) { resolve(null); return; }
-          var flat = (session.entries || []).reduce((all, entry) => all.concat((entry.scenarios || []).map((sc) => ({ entry, scenario: sc }))), []);
-          var matches = flat.filter((x) => String(x.scenario.title || '').trim().toLowerCase() === wanted.toLowerCase());
-          if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
-          var target = matches[0].scenario;
+          var flat = (session.entries || []).reduce((all, entry) => all.concat((entry.scenarios || []).map((sc) => sc)), []);
+          var titleField = (initialFields || []).filter((f) => f && f.path === 'scenarioTitle')[0];
+          var wanted = titleField ? String(titleField.value == null ? '' : titleField.value).trim() : '';
+          var target;
+          if (wanted) {
+            var matches = flat.filter((sc) => String(sc.title || '').trim().toLowerCase() === wanted.toLowerCase());
+            if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
+            target = matches[0];
+          } else {
+            var activeScenarioId = context && context.activeEntities && context.activeEntities.scenarioId;
+            if (!activeScenarioId) { resolve(null); return; } // no name given AND nothing currently open - never a guess
+            target = flat.find((sc) => sc.id === activeScenarioId);
+            if (!target) { resolve(null); return; }
+          }
           if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
           pollFor(
             () => window.TradeJournalNavryaLiveSessionHub,
