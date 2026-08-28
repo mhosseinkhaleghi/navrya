@@ -68,18 +68,31 @@ matching the brief's own "topmost surface wins" rule extended one level further:
 `window.TradeJournalAIUiRevisionGuard`:
 - `capture(processId)` -> `{processId, layer, step}` snapshot of a process's current, real state
   (via `ai-process-registry.js`'s new `snapshot(processId)`), or `null` if it isn't open.
-- `hasDiverged(captured)` -> `true` iff any of: the process closed; its step changed to something
-  other than what was captured (a human's own Back/Next/Skip, or reopening at a different step);
-  or - only for a `foreground`-layer capture - a *different* registration is now topmost.
+- `hasDiverged(captured)` -> `false`, or one of `'closed'` | `'surface'` | `'step'` - never a bare
+  boolean for an actual divergence. `'closed'`: the process closed. `'surface'` (only for a
+  `foreground`-layer capture): a *different* registration is now topmost. `'step'`: its step
+  changed to something other than what was captured (a human's own Back/Next/Skip).
 
 `ai-workflow-engine.js` calls `capture()` once a workflow's real `processId` is known (right after
 `start()`'s stashed `open()` resolves), checks `hasDiverged()` before applying each later turn's
 fields, and re-captures after its own field application legitimately advances a step (via the
 `stepForPath`/`goToStep` mechanism - see `docs/ai/voice-ui-synchronization.md`) so its own
-step-follow is never mistaken for a human's independent action on the very next turn. See that
-guard's own header comment for why this is narrower than a generic diff, and section 27/49-51 of
-the product brief for the underlying "manual edits are always authoritative" rule this exists to
-protect.
+step-follow is never mistaken for a human's independent action on the very next turn.
+
+**`'closed'`/`'surface'` abandon the workflow** (the real UI it was driving is genuinely gone) -
+`current = null`, exactly as before. **`'step'` does not** - corrected 2026-08-24 → 2026-08-28
+after a real production bug report: the very first manual step change on any guarded wizard (e.g.
+Psychology Intake's own "Begin" button off its first, Orientation step - something every real
+intake hits immediately) was abandoning the entire workflow, and chat-dock-core.js has no
+fallback that live-applies fields into an open process no workflow owns (that path only ever
+returns manual, click-to-apply suggestions - a dead end for voice), so the FIRST manual step
+change permanently ended live voice-fill for the rest of the session. A `'step'` divergence now
+just re-baselines the captured snapshot (via the same `captureUiSnapshot()`) and keeps
+collecting - Voice follows the user to the new step, it never gives up on the wizard because they
+moved. See that guard's own header comment for the full reasoning, and section 27/49-51 of the
+product brief for the underlying "manual edits are always authoritative" rule this exists to
+protect - `'closed'`/`'surface'` still enforce it exactly as originally designed; only `'step'`
+was found to be the wrong enforcement for a wizard's own ordinary forward/back navigation.
 
 ## Zero-model-call guarantee
 

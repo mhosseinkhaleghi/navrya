@@ -1329,9 +1329,18 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   a human-opened intake already uses; `ai-user-memory.js`'s minimized
   `getRelevantPsychologyContext()` contract is completely untouched.
 - **Stale-action protection is narrow and additive, not a generic diff engine.**
-  `ai-ui-revision-guard.js`'s `hasDiverged(captured)` is true iff the captured process closed, its
-  step changed to something the workflow itself didn't just cause (a human's own Back/Next/Skip),
-  or - only for a `foreground` capture - a different registration is now topmost.
+  `ai-ui-revision-guard.js`'s `hasDiverged(captured)` returns `false`, or one of `'closed'` |
+  `'surface'` | `'step'`, never a bare boolean for an actual divergence: `'closed'` (the captured
+  process closed) and `'surface'` (only for a `foreground` capture - a different registration is
+  now topmost) mean the real UI this workflow was driving is genuinely gone, so
+  `ai-workflow-engine.js` abandons the workflow. `'step'` (the step changed to something the
+  workflow itself didn't just cause - a human's own Back/Next/Skip) is handled differently:
+  corrected 2026-08-28 after a real production bug report - the FIRST manual step change on a
+  wizard (e.g. Psychology Intake's own "Begin" button off Orientation) was abandoning the whole
+  workflow, silently ending live voice-fill for the rest of the session, since nothing else
+  auto-applies fields into an open process no workflow owns. A `'step'` divergence now
+  re-baselines the captured snapshot and keeps collecting instead - Voice follows a manual
+  step change, it never gives up on the wizard because of one.
   `ai-workflow-engine.js` captures a workflow's `uiSnapshot` once its real `processId` is known,
   checks divergence before applying each later turn's fields (discarding the workflow rather than
   resurrecting stale assumptions onto whatever the user has since moved to by hand - brief §27,
