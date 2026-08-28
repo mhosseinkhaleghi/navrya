@@ -14,7 +14,6 @@ import { getEffectiveCommercialConfig } from '../commercial/commercial-config.mj
 // server/commercial/entitlement-resolver.mjs picks it up automatically on the next read.
 export function router(repo) {
   const app = express.Router();
-  const billingProvider = getBillingProvider(repo);
 
   app.get('/', asyncHandler(async (req, res) => {
     const [entitlements, subscription] = await Promise.all([
@@ -35,6 +34,7 @@ export function router(repo) {
 
   app.post('/upgrade-request', asyncHandler(async (req, res) => {
     const planId = (req.body || {}).planId;
+    const billingProvider = await getBillingProvider(repo);
     const result = await billingProvider.createSubscription({ userId: req.currentUser.id, planId });
     res.status(201).json(result);
   }));
@@ -42,6 +42,7 @@ export function router(repo) {
   app.post('/:id/cancel', asyncHandler(async (req, res) => {
     const subscription = await repo.subscriptions.get(req.params.id);
     if (!subscription || subscription.userId !== req.currentUser.id) throw new ApiError(404, 'SUBSCRIPTION_NOT_FOUND');
+    const billingProvider = await getBillingProvider(repo);
     await billingProvider.cancelSubscription({ subscriptionId: subscription.id });
     res.json(await cancelAtPeriodEnd(repo, subscription.id));
   }));

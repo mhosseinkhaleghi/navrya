@@ -55,3 +55,25 @@ export const WALLET_DEFAULTS = {
 
 export const PLAN_NAMES = ['free', 'plus', 'personalized'];
 export const RESOURCE_TYPES = ['patterns', 'strategies', 'accounts', 'sessions', 'analysisSymbols'];
+
+// Real BSC crypto payment provider configuration (admin-managed - see commercial-config.mjs's
+// `bsc:*` override keys and server/commercial/bsc-config.mjs's resolveBscRuntimeConfig()).
+// `enabled` deliberately defaults false and is NEVER sourced from .env (see commercial-config.mjs)
+// - it only ever becomes true through an explicit admin action (PATCH /api/admin/commercial/
+// crypto-payments/status), after that route's own live RPC + completeness validation passes.
+// depositAddress/tokenContract default to '' (never a placeholder address) so "not yet
+// configured" is unambiguous. The two real secrets this provider needs (the RPC URL and the
+// optional webhook HMAC secret) are NOT here - they live encrypted-at-rest in the dedicated
+// bsc_payment_secrets table (039_bsc_payment_secrets.sql), never in commercial_config_overrides/
+// versions, since that history is permanent and would otherwise leak them forever.
+export const BSC_DEFAULTS = {
+  enabled: false,
+  chainId: 56, // BSC mainnet
+  depositAddress: '',
+  tokenSymbol: 'USDT',
+  tokenContract: '',
+  tokenDecimals: 18,
+  exchangeRateUsdPerToken: 1, // USD value of one whole token unit; 1 = USD-pegged stablecoin
+  confirmationsRequired: 15,
+  invoiceExpiryMinutes: 30
+};

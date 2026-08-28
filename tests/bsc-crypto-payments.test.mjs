@@ -3,13 +3,19 @@ import test, { after, afterEach, before } from 'node:test';
 import crypto from 'node:crypto';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
+import { invalidateCommercialConfigCache } from '../server/commercial/commercial-config.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
 
-// Real BSC crypto payment invoices (task A) - end-to-end coverage: invoice creation + safe DTO,
-// server-side on-chain verification (chain/token/recipient/amount/confirmations/expiry/hash-
-// uniqueness), the idempotent confirmTransaction() choke point, and the optional HMAC-verified
+// Real BSC crypto payment invoices (task A, hardened by the admin-config task's mandatory
+// security fix - task C) - end-to-end coverage: invoice creation + safe DTO, server-side on-chain
+// verification (chain/token/recipient/EXACT amount/confirmations/expiry/hash-uniqueness/required
+// tx hash), the idempotent confirmTransaction() choke point, and the optional HMAC-verified
 // webhook. Mocks globalThis.fetch for the BSC JSON-RPC calls, the same established convention
 // ai-gateway.test.mjs already uses for provider HTTP calls - no real BSC RPC endpoint is reached.
+//
+// Configuration is now admin-managed (DB-backed), not env-driven - setBscConfig() below writes
+// through the exact same repo.commercialConfig.publish()/repo.bscPaymentSecrets.setRpcUrl() paths
+// the real Admin UI uses, rather than setting process.env.BSC_*.
 const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 // Generated (never hand-typed) so each is guaranteed exactly 40 hex chars - a real Ethereum/BSC
 // address length. A hand-typed repeated-digit string silently being 38 or 39 chars long is exactly
@@ -18,54 +24,60 @@ const TRANSFER_EVENT_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a116
 const DEPOSIT_ADDRESS = '0x' + '1'.repeat(39) + 'a';
 const TOKEN_CONTRACT = '0x' + '2'.repeat(39) + 'b';
 const PAYER_ADDRESS = '0x' + '3'.repeat(39) + 'c';
+const RPC_URL_SENTINEL = 'http://mock-rpc.invalid';
 
 function padTopic(address) { return '0x' + '0'.repeat(24) + address.replace(/^0x/i, '').toLowerCase(); }
 
 let server, baseUrl, repo;
 const originalFetch = globalThis.fetch;
-const originalEnv = { ...process.env };
 
 before(async () => {
-  // BillingProvider selection happens once, at router-construction time inside createApp() -
-  // BILLING_PROVIDER must already be 'bsc_crypto' before that call, since every route's
-  // billingProvider instance is fixed for the lifetime of this one test server (no per-request
-  // re-selection). Every test in this file wants the BSC provider, so this is set once, here.
-  process.env.BILLING_PROVIDER = 'bsc_crypto';
   repo = createMemoryRepo();
   server = createApp({ repo, uploadsDir: '/tmp' }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
 after(() => new Promise((resolve) => server.close(resolve)));
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-  for (const key of Object.keys(process.env)) { if (!(key in originalEnv)) delete process.env[key]; }
-  Object.assign(process.env, originalEnv);
-});
+afterEach(() => { globalThis.fetch = originalFetch; });
 
-function setBscConfig(overrides = {}) {
-  Object.assign(process.env, {
-    BILLING_PROVIDER: 'bsc_crypto', BSC_RPC_URL: 'http://mock-rpc.invalid', BSC_CHAIN_ID: '56',
-    BSC_DEPOSIT_ADDRESS: DEPOSIT_ADDRESS, BSC_TOKEN_CONTRACT: TOKEN_CONTRACT, BSC_TOKEN_SYMBOL: 'USDT',
-    BSC_TOKEN_DECIMALS: '18', BSC_CONFIRMATIONS_REQUIRED: '2', BSC_INVOICE_EXPIRY_MINUTES: '30',
+// Idempotently (re-)publishes every public bsc:* field plus the encrypted RPC URL secret - always
+// the FULL set, never a partial diff - so no test can be affected by whatever a previous test in
+// this shared-repo file left behind. This mirrors the real Admin UI's write paths exactly
+// (repo.commercialConfig.publish() + repo.bscPaymentSecrets.setRpcUrl()), never process.env.
+async function setBscConfig(targetRepo, overrides = {}) {
+  const fields = {
+    enabled: true, chainId: 56, depositAddress: DEPOSIT_ADDRESS, tokenContract: TOKEN_CONTRACT, tokenSymbol: 'USDT',
+    tokenDecimals: 18, confirmationsRequired: 2, invoiceExpiryMinutes: 30, exchangeRateUsdPerToken: 1,
     ...overrides
-  });
+  };
+  await targetRepo.commercialConfig.publish('bsc:chainId', { chainId: fields.chainId });
+  await targetRepo.commercialConfig.publish('bsc:depositAddress', { address: fields.depositAddress });
+  await targetRepo.commercialConfig.publish('bsc:tokenContract', { address: fields.tokenContract });
+  await targetRepo.commercialConfig.publish('bsc:tokenSymbol', { symbol: fields.tokenSymbol });
+  await targetRepo.commercialConfig.publish('bsc:tokenDecimals', { decimals: fields.tokenDecimals });
+  await targetRepo.commercialConfig.publish('bsc:confirmationsRequired', { count: fields.confirmationsRequired });
+  await targetRepo.commercialConfig.publish('bsc:invoiceExpiryMinutes', { minutes: fields.invoiceExpiryMinutes });
+  await targetRepo.commercialConfig.publish('bsc:exchangeRateUsdPerToken', { rate: fields.exchangeRateUsdPerToken });
+  await targetRepo.bscPaymentSecrets.setRpcUrl(RPC_URL_SENTINEL);
+  // enabled is published LAST and separately - mirrors the real enable route's own ordering
+  // (config must be complete before/at the moment enabled flips true).
+  await targetRepo.commercialConfig.publish('bsc:enabled', { enabled: fields.enabled });
+  invalidateCommercialConfigCache();
 }
 
 // Mocks the RPC methods verifyBscTransfer()/bsc-crypto-billing-provider.mjs actually call, keyed
 // by JSON-RPC `method` - {chainId, receipt, blockNumber} let each test shape exactly what the
 // chain "reports" without needing a real node.
-function mockRpc({ chainId = 56, receipt, blockNumber, logsResult } = {}) {
+function mockRpc({ chainId = 56, receipt, blockNumber } = {}) {
   globalThis.fetch = async (url, options) => {
     // Only intercept calls actually aimed at the (fake) BSC RPC endpoint - every other fetch
     // (including this test file's own calls to its local Express server via baseUrl) passes
     // straight through to the real fetch, unaffected.
-    if (String(url) !== process.env.BSC_RPC_URL) return originalFetch(url, options);
+    if (String(url) !== RPC_URL_SENTINEL) return originalFetch(url, options);
     const body = JSON.parse(options.body);
     if (body.method === 'eth_chainId') return { ok: true, json: async () => ({ result: '0x' + chainId.toString(16) }) };
     if (body.method === 'eth_getTransactionReceipt') return { ok: true, json: async () => ({ result: receipt || null }) };
     if (body.method === 'eth_blockNumber') return { ok: true, json: async () => ({ result: '0x' + (blockNumber || 0).toString(16) }) };
-    if (body.method === 'eth_getLogs') return { ok: true, json: async () => ({ result: logsResult || [] }) };
     throw new Error('unexpected RPC method in test: ' + body.method);
   };
 }
@@ -83,19 +95,49 @@ async function createUserAndCookie(name) {
   return { user, headers };
 }
 
-test('with BSC not configured, creating a top-up fails explicitly (BSC_PROVIDER_NOT_CONFIGURED), never a fake success', async () => {
-  process.env.BILLING_PROVIDER = 'bsc_crypto';
-  // Deliberately leave BSC_RPC_URL etc. unset.
-  const { headers } = await createUserAndCookie('No Config User');
-  const response = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
-  assert.equal(response.status, 503);
-  const body = await response.json();
-  assert.equal(body.error, 'BSC_PROVIDER_NOT_CONFIGURED');
+test('with BSC not enabled (fresh repo, nothing configured), Manual stays the default - top-up succeeds as a pending manual transaction, never BSC', async () => {
+  const freshRepo = createMemoryRepo();
+  const freshServer = createApp({ repo: freshRepo, uploadsDir: '/tmp' }).listen(0);
+  await new Promise((resolve) => freshServer.once('listening', resolve));
+  const freshBaseUrl = `http://127.0.0.1:${freshServer.address().port}`;
+  try {
+    const user = await freshRepo.users.create({ displayName: 'Default Provider User' });
+    const headers = await authHeadersFor(freshRepo, user.id);
+    const response = await fetch(`${freshBaseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.status, 'pending');
+    assert.equal(body.invoiceId, undefined, 'Manual top-ups never create a crypto invoice');
+    const invoice = await freshRepo.cryptoInvoices.getByTransactionId(body.transactionId);
+    assert.equal(invoice, null);
+  } finally {
+    await new Promise((resolve) => freshServer.close(resolve));
+  }
+});
+
+test('with BSC enabled but an incomplete configuration (no RPC secret, no deposit address), creating a top-up fails explicitly (BSC_PROVIDER_NOT_CONFIGURED), never a fake success', async () => {
+  const freshRepo = createMemoryRepo();
+  const freshServer = createApp({ repo: freshRepo, uploadsDir: '/tmp' }).listen(0);
+  await new Promise((resolve) => freshServer.once('listening', resolve));
+  const freshBaseUrl = `http://127.0.0.1:${freshServer.address().port}`;
+  try {
+    await freshRepo.commercialConfig.publish('bsc:enabled', { enabled: true });
+    invalidateCommercialConfigCache();
+    // Deliberately leave depositAddress/tokenContract/rpcUrl unset.
+    const user = await freshRepo.users.create({ displayName: 'No Config User' });
+    const headers = await authHeadersFor(freshRepo, user.id);
+    const response = await fetch(`${freshBaseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+    assert.equal(response.status, 503);
+    const body = await response.json();
+    assert.equal(body.error, 'BSC_PROVIDER_NOT_CONFIGURED');
+  } finally {
+    await new Promise((resolve) => freshServer.close(resolve));
+  }
 });
 
 test('creating a top-up with BSC configured returns a safe invoice DTO - no RPC URL, webhook secret, or any credential', async () => {
-  setBscConfig();
-  process.env.BSC_WEBHOOK_SECRET = 'super-secret-should-never-leak';
+  await setBscConfig(repo);
+  await repo.bscPaymentSecrets.setWebhookSecret('super-secret-should-never-leak');
   mockRpc({ chainId: 56 });
   const { headers } = await createUserAndCookie('DTO User');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
@@ -119,7 +161,7 @@ test('creating a top-up with BSC configured returns a safe invoice DTO - no RPC 
 });
 
 test('another user cannot read or check someone else\'s invoice', async () => {
-  setBscConfig();
+  await setBscConfig(repo);
   mockRpc({ chainId: 56 });
   const { headers: ownerHeaders } = await createUserAndCookie('Owner');
   const { headers: strangerHeaders } = await createUserAndCookie('Stranger');
@@ -129,8 +171,30 @@ test('another user cannot read or check someone else\'s invoice', async () => {
   assert.equal(stolenRead.status, 404);
 });
 
+// SECURITY (task C): a check with no txHash supplied must be rejected outright - this used to
+// fall back to scanning the shared deposit address for any recent transfer of the right amount,
+// which could wrongly match a different payer's transfer. That fallback is gone entirely.
+test('checking an invoice without supplying a transaction hash is rejected (TX_HASH_REQUIRED), never auto-scans the shared deposit address', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 });
+  const { user, headers } = await createUserAndCookie('No Hash User');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+  const before = await repo.wallet.getAccount(user.id);
+
+  // Even though a genuinely matching transfer exists on-chain (per the mock), omitting txHash
+  // must still be rejected - there is no discovery/scan path left to find it automatically.
+  mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+  assert.equal(checkResp.status, 400);
+  const body = await checkResp.json();
+  assert.equal(body.error, 'TX_HASH_REQUIRED');
+  const after = await repo.wallet.getAccount(user.id);
+  assert.deepEqual(after, before, 'omitting the tx hash must never credit anything');
+});
+
 test('a check with the wrong chain id is rejected and never credits the wallet', async () => {
-  setBscConfig();
+  await setBscConfig(repo);
   mockRpc({ chainId: 56 });
   const { user, headers } = await createUserAndCookie('Chain Mismatch');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
@@ -147,7 +211,7 @@ test('a check with the wrong chain id is rejected and never credits the wallet',
 });
 
 test('a check with the wrong recipient address is rejected', async () => {
-  setBscConfig();
+  await setBscConfig(repo);
   mockRpc({ chainId: 56 });
   const { headers } = await createUserAndCookie('Wrong Recipient');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
@@ -161,7 +225,7 @@ test('a check with the wrong recipient address is rejected', async () => {
 });
 
 test('a check with an insufficient amount is rejected (under-payment never accepted)', async () => {
-  setBscConfig();
+  await setBscConfig(repo);
   mockRpc({ chainId: 56 });
   const { headers } = await createUserAndCookie('Underpay');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
@@ -174,8 +238,28 @@ test('a check with an insufficient amount is rejected (under-payment never accep
   assert.equal(result.reason, 'NO_MATCHING_TRANSFER');
 });
 
+// SECURITY (task C.5): the amount match is now EXACT, not "greater than or equal to". An
+// over-payment is just as much a non-match as an under-payment - there is no audited overpayment
+// policy in this pass, so accepting more than expected would be silently inventing one.
+test('a check with an amount GREATER than expected (over-payment) is also rejected - exact match only, never >=', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 });
+  const { user, headers } = await createUserAndCookie('Overpay');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+  const before = await repo.wallet.getAccount(user.id);
+
+  mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 15n * 10n ** 18n }) }); // $15 sent, $10 expected
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'f'.repeat(64) }) });
+  const result = await checkResp.json();
+  assert.equal(result.status, 'pending');
+  assert.equal(result.reason, 'NO_MATCHING_TRANSFER');
+  const after = await repo.wallet.getAccount(user.id);
+  assert.deepEqual(after, before, 'an over-payment must never credit anything without an explicit, audited overpayment policy');
+});
+
 test('a check with too few confirmations stays pending, never confirmed, and can succeed later once enough accumulate', async () => {
-  setBscConfig({ BSC_CONFIRMATIONS_REQUIRED: '5' });
+  await setBscConfig(repo, { confirmationsRequired: 5 });
   mockRpc({ chainId: 56 });
   const { user, headers } = await createUserAndCookie('Confirmations');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
@@ -190,9 +274,10 @@ test('a check with too few confirmations stays pending, never confirmed, and can
   assert.equal(firstResult.reason, 'INSUFFICIENT_CONFIRMATIONS');
   const midway = await repo.wallet.getAccount(user.id);
 
-  // Now enough confirmations (blockNumber 104 - 100 + 1 = 5).
+  // Now enough confirmations (blockNumber 104 - 100 + 1 = 5). Omitting txHash this time still
+  // works - it resumes the hash already claimed by THIS invoice on the first call.
   mockRpc({ chainId: 56, blockNumber: 104, receipt: makeReceipt({ blockNumber: 100, amount: expectedAmount }) });
-  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xdeadbeef' }) });
+  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
   const secondResult = await secondCheck.json();
   assert.equal(secondResult.status, 'confirmed');
   const after = await repo.wallet.getAccount(user.id);
@@ -200,7 +285,7 @@ test('a check with too few confirmations stays pending, never confirmed, and can
 });
 
 test('a fully verified payment credits the wallet EXACTLY ONCE even if checked/replayed many times (idempotent, no double-credit)', async () => {
-  setBscConfig();
+  await setBscConfig(repo);
   // Invoice CREATION itself cross-checks the chain id (BscCryptoBillingProvider._createInvoiceFor())
   // - the mock must already be active before the create call, not only before the later check.
   mockRpc({ chainId: 56 });
@@ -219,8 +304,8 @@ test('a fully verified payment credits the wallet EXACTLY ONCE even if checked/r
   assert.equal(after.paidBalanceMicroUsd, before.paidBalanceMicroUsd + 25000000, 'exactly one $25 credit, no matter how many times the same confirmed tx is re-checked');
 });
 
-test('the same on-chain tx hash can never confirm two different invoices (transaction-hash uniqueness)', async () => {
-  setBscConfig();
+test('the same on-chain tx hash can never confirm two different invoices (transaction-hash uniqueness) - the concurrent-same-amount-invoice scenario task C describes', async () => {
+  await setBscConfig(repo);
   mockRpc({ chainId: 56 }); // active before BOTH create calls below, each of which cross-checks chain id
   const { user, headers } = await createUserAndCookie('Hash Reuse');
   const createFirst = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
@@ -241,31 +326,64 @@ test('the same on-chain tx hash can never confirm two different invoices (transa
   assert.deepEqual(afterSecond, afterFirst, 'no second credit from the reused hash');
 });
 
-test('an expired invoice is marked expired and can never be confirmed afterward', async () => {
-  setBscConfig({ BSC_INVOICE_EXPIRY_MINUTES: '0' }); // expires essentially immediately
+// Sanity check that the fix does not break the LEGITIMATE version of this scenario: two distinct
+// invoices for the same amount, each paid by its own genuinely distinct on-chain transaction, must
+// both still confirm independently and correctly.
+test('two invoices for the same amount, each with their own distinct real transaction hash, both confirm correctly and independently', async () => {
+  await setBscConfig(repo);
   mockRpc({ chainId: 56 });
-  const { user, headers } = await createUserAndCookie('Expiry');
-  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
-  const { invoiceId } = await createResp.json();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  const { user, headers } = await createUserAndCookie('Legitimate Concurrent');
+  const createFirst = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId: firstInvoiceId } = await createFirst.json();
+  const createSecond = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId: secondInvoiceId } = await createSecond.json();
+  const before = await repo.wallet.getAccount(user.id);
 
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
-  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xtoolate' }) });
+  const firstCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${firstInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xfirsttx' }) });
+  assert.equal((await firstCheck.json()).status, 'confirmed');
+  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${secondInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xsecondtx' }) });
+  assert.equal((await secondCheck.json()).status, 'confirmed');
+  const after = await repo.wallet.getAccount(user.id);
+  assert.equal(after.paidBalanceMicroUsd, before.paidBalanceMicroUsd + 20000000, 'both distinct payments must land - $10 + $10');
+});
+
+test('an expired invoice is marked expired and can never be confirmed afterward', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 });
+  const { user, headers } = await createUserAndCookie('Expiry');
+  // Constructed directly against the repo (bypassing the real create flow) with an already-past
+  // expiresAt - the real invoiceExpiryMinutes admin setting enforces a sane >= 1 minute minimum
+  // (buildEffective()'s own validation), so this deterministically exercises "already expired"
+  // rather than waiting on a real 60+ second clock.
+  const transaction = await repo.paymentTransactions.create({
+    userId: user.id, type: 'wallet_topup', provider: 'bsc_crypto', externalTransactionId: 'expiry-test-tx',
+    amountMicroUsd: 10000000, currency: 'USD', metadata: {}
+  });
+  const invoice = await repo.cryptoInvoices.create({
+    transactionId: transaction.id, provider: 'bsc_crypto', chainId: 56, assetSymbol: 'USDT', tokenContract: TOKEN_CONTRACT,
+    tokenDecimals: 18, recipientAddress: DEPOSIT_ADDRESS, atomicAmount: (10n * 10n ** 18n).toString(), usdAmountMicroUsd: 10000000,
+    exchangeRateSnapshot: 1, expiresAt: new Date(Date.now() - 1000).toISOString()
+  });
+
+  mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoice.id}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xtoolate' }) });
   const result = await checkResp.json();
   assert.equal(result.status, 'expired');
   const account = await repo.wallet.getAccount(user.id);
-  assert.equal(account.promoBalanceMicroUsd > 0 ? account.paidBalanceMicroUsd : 0, 0, 'an expired invoice must never be paid, even with a genuinely valid transfer');
+  assert.equal(account.paidBalanceMicroUsd, 0, 'an expired invoice must never be paid, even with a genuinely valid transfer');
 });
 
-test('webhook: with no BSC_WEBHOOK_SECRET configured, the endpoint refuses every call (safe manual/dev fallback, never silently accepted)', async () => {
-  setBscConfig();
+test('webhook: with no BSC webhook secret configured, the endpoint refuses every call (safe manual/dev fallback, never silently accepted)', async () => {
+  await setBscConfig(repo);
+  await repo.bscPaymentSecrets.clearWebhookSecret();
   const response = await fetch(`${baseUrl}/api/webhooks/bsc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invoiceId: 'x', txHash: '0x1' }) });
   assert.equal(response.status, 501);
 });
 
 test('webhook: an invalid HMAC signature is rejected', async () => {
-  setBscConfig();
-  process.env.BSC_WEBHOOK_SECRET = 'real-secret';
+  await setBscConfig(repo);
+  await repo.bscPaymentSecrets.setWebhookSecret('real-secret');
   const response = await fetch(`${baseUrl}/api/webhooks/bsc`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-webhook-signature': 'deadbeef'.repeat(8) },
     body: JSON.stringify({ invoiceId: 'x', txHash: '0x1' })
@@ -274,8 +392,8 @@ test('webhook: an invalid HMAC signature is rejected', async () => {
 });
 
 test('webhook: a validly-signed payload triggers the same real verification and confirms exactly once', async () => {
-  setBscConfig();
-  process.env.BSC_WEBHOOK_SECRET = 'real-secret';
+  await setBscConfig(repo);
+  await repo.bscPaymentSecrets.setWebhookSecret('real-secret');
   mockRpc({ chainId: 56 }); // active before the create call, which cross-checks chain id
   const { user, headers } = await createUserAndCookie('Webhook User');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
@@ -292,4 +410,15 @@ test('webhook: a validly-signed payload triggers the same real verification and 
   assert.equal(result.status, 'confirmed');
   const account = await repo.wallet.getAccount(user.id);
   assert.ok(account.paidBalanceMicroUsd >= 10000000);
+});
+
+// Regression guard for the removed scan function itself (task C.1) - static source inspection,
+// this codebase's established convention for asserting a dangerous code path is truly gone, not
+// just unused (see e.g. header-wallet-balance-static.test.mjs).
+test('the removed auto-scan discovery function no longer exists anywhere in the BSC chain client', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../server/commercial/bsc-chain-client.mjs', import.meta.url), 'utf8');
+  // Narrowly matches an actual function declaration/export, not this file's own explanatory
+  // comment documenting the removal (which legitimately names the removed function).
+  assert.doesNotMatch(src, /function\s+findRecentTransfersToAddress\s*\(/, 'the shared-address scan-and-match-by-amount function must be removed entirely, not merely unused');
 });

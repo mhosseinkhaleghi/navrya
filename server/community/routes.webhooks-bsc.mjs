@@ -13,16 +13,18 @@ import { checkInvoicePayment, buildInvoiceDto } from '../commercial/crypto-invoi
 
 export function router(repo) {
   const app = express.Router();
-  const billingProvider = getBillingProvider(repo);
 
   app.post('/bsc', asyncHandler(async (req, res) => {
     // req.rawBody/req.body are set by app.mjs's dedicated raw-body middleware for this one path
-    // prefix - req.body is already reparsed JSON by the time this handler runs.
+    // prefix - req.body is already reparsed JSON by the time this handler runs. Billing provider
+    // is resolved per-request (never cached at router-construction time) so an admin toggling BSC
+    // on/off takes effect on the very next webhook call, no restart required.
+    const billingProvider = await getBillingProvider(repo);
     await billingProvider.verifyWebhook(req);
     const { invoiceId, txHash } = req.body || {};
     if (!invoiceId || !txHash) throw new ApiError(400, 'VALIDATION_FAILED');
     const result = await checkInvoicePayment(repo, invoiceId, { txHash });
-    res.json({ ...result, invoice: await buildInvoiceDto(result.invoice) });
+    res.json({ ...result, invoice: await buildInvoiceDto(result.invoice, repo) });
   }));
 
   return app;

@@ -1,11 +1,17 @@
 import express from 'express';
 import { ApiError, asyncHandler } from '../community/errors.mjs';
 import { requireRecentReauth } from './auth-admin.mjs';
-import { getEffectiveCommercialConfig, invalidateCommercialConfigCache, retailMultiplierFor } from '../commercial/commercial-config.mjs';
+import { isStepUpFresh } from '../community/security/session-service.mjs';
+import { randomToken } from '../community/security/crypto-util.mjs';
+import { getEffectiveCommercialConfig, getBscPublicConfig, invalidateCommercialConfigCache, retailMultiplierFor } from '../commercial/commercial-config.mjs';
 import { PLAN_NAMES, RESOURCE_TYPES } from '../commercial/commercial-defaults.mjs';
 import { toMicroUsd } from '../commercial/wallet-service.mjs';
 import { confirmTransaction, failTransaction } from '../commercial/payment-service.mjs';
 import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs';
+import { resolveBscRuntimeConfig, isBscConfigComplete } from '../commercial/bsc-config.mjs';
+import { getChainId, isValidEvmAddress } from '../commercial/bsc-chain-client.mjs';
+
+const STEP_UP_MAX_AGE_MS = 15 * 60 * 1000; // mirrors auth-admin.mjs's own DEFAULT_STEP_UP_MAX_AGE_MS
 
 const MARKUP_SCOPE_TYPES = ['feature', 'provider', 'model', 'feature_model'];
 
@@ -293,6 +299,178 @@ export function router(repo) {
     const confirmed = await confirmTransaction(repo, refundRequest.transactionId, { adminUserId: req.currentUser.id });
     await audit(req, 'commercial.transaction.refund', 'paymentTransaction', req.params.id, { refundTransactionId: refundRequest.transactionId });
     res.status(201).json(confirmed);
+  }));
+
+  // ---- Crypto payments (BSC) - admin config (admin-config task A/B/C) ------------------------
+  // Public, non-secret settings are versioned through the same repo.commercialConfig.publish()
+  // every other commercial setting uses (see PATCH /wallet-rules above); the RPC URL and webhook
+  // secret NEVER go through that path - they live encrypted-at-rest in the dedicated
+  // repo.bscPaymentSecrets store (server/db/migrations/039_bsc_payment_secrets.sql) and are never
+  // returned by any route below. No response, audit `details`, or error in this whole section
+  // ever includes a raw RPC URL or webhook secret value - only booleans/hints/status.
+  function isPlausibleRpcUrl(value) { return typeof value === 'string' && /^https?:\/\/.+/i.test(value.trim()); }
+
+  async function buildCryptoPaymentsStatusDto() {
+    const [publicConfig, secretsStatus] = await Promise.all([getBscPublicConfig(repo), repo.bscPaymentSecrets.get()]);
+    const configComplete = isBscConfigComplete({ ...publicConfig, rpcConfigured: secretsStatus.rpcConfigured });
+    return {
+      ...publicConfig, mode: publicConfig.enabled ? 'bsc_crypto' : 'manual',
+      rpcConfigured: secretsStatus.rpcConfigured, webhookConfigured: secretsStatus.webhookConfigured,
+      webhookSecretHint: secretsStatus.webhookSecretHint, lastTestedAt: secretsStatus.lastTestedAt,
+      lastTestOk: secretsStatus.lastTestOk, lastDetectedChainId: secretsStatus.lastDetectedChainId,
+      configComplete
+    };
+  }
+
+  // Live RPC probe - never leaks the raw URL or underlying error, only a safe reason code.
+  async function testRpcConnection(rpcUrl, configuredChainId) {
+    if (!rpcUrl) return { ok: false, reason: 'RPC_URL_NOT_CONFIGURED' };
+    try {
+      const detectedChainId = await getChainId(rpcUrl);
+      return { ok: true, detectedChainId, configuredChainId, matches: detectedChainId === configuredChainId };
+    } catch {
+      return { ok: false, reason: 'UNREACHABLE' };
+    }
+  }
+
+  app.get('/crypto-payments/status', asyncHandler(async (req, res) => {
+    res.json(await buildCryptoPaymentsStatusDto());
+  }));
+
+  // Only "changing the recipient wallet" is reauth-gated among the public fields (task A.3/A.4) -
+  // chain id/token symbol/contract/decimals/rate/confirmations/expiry save without it, exactly
+  // like every other /wallet-rules-style setting in this file. Checked inline (not as route
+  // middleware) so ONE save action can cover the whole form while only actually requiring a fresh
+  // reauth when depositAddress is part of what changed.
+  app.patch('/crypto-payments/public-settings', asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    if ('depositAddress' in body && !isStepUpFresh(req.sessionRecord, STEP_UP_MAX_AGE_MS)) {
+      throw new ApiError(401, 'STEP_UP_REQUIRED', null, { maxAgeMs: STEP_UP_MAX_AGE_MS });
+    }
+    const before = await getBscPublicConfig(repo);
+    const updatedBy = req.currentUser.id;
+    if ('chainId' in body) {
+      const chainId = Number(body.chainId);
+      if (!Number.isFinite(chainId) || chainId <= 0) throw new ApiError(400, 'VALIDATION_FAILED');
+      await repo.commercialConfig.publish('bsc:chainId', { chainId }, { updatedBy, changeSummary: 'Updated BSC chain id' });
+    }
+    if ('depositAddress' in body) {
+      const address = String(body.depositAddress || '').trim();
+      if (!isValidEvmAddress(address)) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'depositAddress' });
+      await repo.commercialConfig.publish('bsc:depositAddress', { address }, { updatedBy, changeSummary: 'Updated BSC deposit address' });
+    }
+    if ('tokenSymbol' in body) {
+      const symbol = String(body.tokenSymbol || '').trim();
+      if (!symbol) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'tokenSymbol' });
+      await repo.commercialConfig.publish('bsc:tokenSymbol', { symbol }, { updatedBy, changeSummary: 'Updated BSC token symbol' });
+    }
+    if ('tokenContract' in body) {
+      const address = String(body.tokenContract || '').trim();
+      if (!isValidEvmAddress(address)) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'tokenContract' });
+      await repo.commercialConfig.publish('bsc:tokenContract', { address }, { updatedBy, changeSummary: 'Updated BSC token contract' });
+    }
+    if ('tokenDecimals' in body) {
+      const decimals = Number(body.tokenDecimals);
+      if (!Number.isInteger(decimals) || decimals < 0) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'tokenDecimals' });
+      await repo.commercialConfig.publish('bsc:tokenDecimals', { decimals }, { updatedBy, changeSummary: 'Updated BSC token decimals' });
+    }
+    if ('exchangeRateUsdPerToken' in body) {
+      const rate = Number(body.exchangeRateUsdPerToken);
+      if (!Number.isFinite(rate) || rate <= 0) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'exchangeRateUsdPerToken' });
+      await repo.commercialConfig.publish('bsc:exchangeRateUsdPerToken', { rate }, { updatedBy, changeSummary: 'Updated BSC exchange rate snapshot' });
+    }
+    if ('confirmationsRequired' in body) {
+      const count = Number(body.confirmationsRequired);
+      if (!Number.isInteger(count) || count < 1) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'confirmationsRequired' });
+      await repo.commercialConfig.publish('bsc:confirmationsRequired', { count }, { updatedBy, changeSummary: 'Updated BSC confirmations required' });
+    }
+    if ('invoiceExpiryMinutes' in body) {
+      const minutes = Number(body.invoiceExpiryMinutes);
+      if (!Number.isInteger(minutes) || minutes < 1) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'invoiceExpiryMinutes' });
+      await repo.commercialConfig.publish('bsc:invoiceExpiryMinutes', { minutes }, { updatedBy, changeSummary: 'Updated BSC invoice expiry' });
+    }
+    invalidateCommercialConfigCache();
+    const after = await getBscPublicConfig(repo);
+    await audit(req, 'commercial.cryptoPayments.publicSettings.update', 'cryptoPaymentsConfig', 'global', { before, after });
+    res.json(await buildCryptoPaymentsStatusDto());
+  }));
+
+  app.post('/crypto-payments/rpc-secret', requireRecentReauth(), asyncHandler(async (req, res) => {
+    const rpcUrl = String((req.body || {}).rpcUrl || '').trim();
+    if (!isPlausibleRpcUrl(rpcUrl)) throw new ApiError(400, 'VALIDATION_FAILED', null, { field: 'rpcUrl' });
+    await repo.bscPaymentSecrets.setRpcUrl(rpcUrl, { updatedBy: req.currentUser.id });
+    await audit(req, 'commercial.cryptoPayments.rpcSecret.set', 'cryptoPaymentsConfig', 'global', {});
+    res.json({ rpcConfigured: true });
+  }));
+
+  app.delete('/crypto-payments/rpc-secret', requireRecentReauth(), asyncHandler(async (req, res) => {
+    await repo.bscPaymentSecrets.clearRpcUrl({ updatedBy: req.currentUser.id });
+    const wasEnabled = (await getBscPublicConfig(repo)).enabled;
+    let autoDisabled = false;
+    if (wasEnabled) {
+      // Never leave "enabled" silently meaning "misconfigured" - clearing the only RPC credential
+      // a live BSC provider needs must disable it too, not just remove the ability to test it.
+      await repo.commercialConfig.publish('bsc:enabled', { enabled: false }, { updatedBy: req.currentUser.id, changeSummary: 'Auto-disabled: RPC secret cleared' });
+      invalidateCommercialConfigCache();
+      autoDisabled = true;
+    }
+    await audit(req, 'commercial.cryptoPayments.rpcSecret.clear', 'cryptoPaymentsConfig', 'global', { autoDisabled });
+    res.json({ rpcConfigured: false, autoDisabled });
+  }));
+
+  // Generates the secret server-side (never accepts an admin-supplied value) and returns it in
+  // plaintext EXACTLY ONCE in this response - the only place in this whole feature a secret value
+  // is ever sent to a client. Never logged, never re-returned by any GET afterward.
+  app.post('/crypto-payments/webhook-secret', requireRecentReauth(), asyncHandler(async (req, res) => {
+    const webhookSecret = randomToken(32);
+    const status = await repo.bscPaymentSecrets.setWebhookSecret(webhookSecret, { updatedBy: req.currentUser.id });
+    await audit(req, 'commercial.cryptoPayments.webhookSecret.rotate', 'cryptoPaymentsConfig', 'global', {});
+    res.json({ webhookSecret, hint: status.webhookSecretHint });
+  }));
+
+  app.delete('/crypto-payments/webhook-secret', requireRecentReauth(), asyncHandler(async (req, res) => {
+    await repo.bscPaymentSecrets.clearWebhookSecret({ updatedBy: req.currentUser.id });
+    await audit(req, 'commercial.cryptoPayments.webhookSecret.clear', 'cryptoPaymentsConfig', 'global', {});
+    res.json({ webhookConfigured: false });
+  }));
+
+  // Read-only diagnostic - not reauth-gated. Tests an unsaved candidate URL when the admin
+  // supplies one (validating before committing), else the currently configured/saved one.
+  app.post('/crypto-payments/test-connection', asyncHandler(async (req, res) => {
+    const candidateRpcUrl = (req.body || {}).rpcUrl ? String(req.body.rpcUrl).trim() : null;
+    const config = await resolveBscRuntimeConfig(repo);
+    const rpcUrl = candidateRpcUrl || config.rpcUrl;
+    const result = await testRpcConnection(rpcUrl, config.chainId);
+    if (!candidateRpcUrl) await repo.bscPaymentSecrets.recordTestResult({ ok: result.ok, chainId: result.detectedChainId });
+    res.json(result);
+  }));
+
+  // Enabling requires a complete config AND a live RPC check confirming the reachable chain
+  // matches what's configured (task A.4) - never just trusting the last recorded test result,
+  // since config could have changed since. Disabling is always allowed. Because the mandatory
+  // security fix (exact-amount match, required tx hash - see crypto-invoice-service.mjs) already
+  // landed before this route exists at all, BSC can never be enabled into an unsafe verification
+  // path.
+  app.patch('/crypto-payments/status', requireRecentReauth(), asyncHandler(async (req, res) => {
+    const enabled = Boolean((req.body || {}).enabled);
+    const before = (await getBscPublicConfig(repo)).enabled;
+    if (enabled) {
+      const config = await resolveBscRuntimeConfig(repo);
+      if (!isBscConfigComplete(config)) {
+        const missing = [];
+        if (!config.depositAddress) missing.push('depositAddress');
+        if (!config.tokenContract) missing.push('tokenContract');
+        if (!config.rpcConfigured) missing.push('rpcUrl');
+        throw new ApiError(400, 'BSC_CONFIG_INCOMPLETE', null, { missing });
+      }
+      const rpcResult = await testRpcConnection(config.rpcUrl, config.chainId);
+      await repo.bscPaymentSecrets.recordTestResult({ ok: rpcResult.ok, chainId: rpcResult.detectedChainId });
+      if (!rpcResult.ok || !rpcResult.matches) throw new ApiError(400, 'BSC_RPC_VALIDATION_FAILED', null, rpcResult);
+    }
+    await repo.commercialConfig.publish('bsc:enabled', { enabled }, { updatedBy: req.currentUser.id, changeSummary: enabled ? 'Enabled BSC crypto payments' : 'Disabled BSC crypto payments' });
+    invalidateCommercialConfigCache();
+    await audit(req, 'commercial.cryptoPayments.status.update', 'cryptoPaymentsConfig', 'global', { before: { enabled: before }, after: { enabled } });
+    res.json(await buildCryptoPaymentsStatusDto());
   }));
 
   return app;

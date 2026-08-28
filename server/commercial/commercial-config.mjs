@@ -5,7 +5,7 @@
 // gateway process (server/pattern-ai-server.mjs) never imports this file directly - it has no
 // Postgres access by design - it reads resolved config over the internal HTTP bridge instead
 // (server/community/routes.internal.mjs's /internal/entitlements/:userId and wallet endpoints).
-import { PLAN_DEFAULTS, WALLET_DEFAULTS, PLAN_NAMES } from './commercial-defaults.mjs';
+import { PLAN_DEFAULTS, WALLET_DEFAULTS, BSC_DEFAULTS, PLAN_NAMES } from './commercial-defaults.mjs';
 
 const CACHE_TTL_MS = 30000;
 let cache = { data: null, fetchedAt: 0 };
@@ -16,10 +16,29 @@ export function invalidateCommercialConfigCache() { cache = { data: null, fetche
 
 function cloneDeep(value) { return JSON.parse(JSON.stringify(value)); }
 
+// Real BSC crypto payment config's `.env` tier - a local-development/bootstrap fallback ONLY
+// (task B.1), applied before any DB override is considered below. Production configuration is
+// meant to live in the DB (set via Admin > Commercial > Crypto payments), never here - notably
+// `enabled` is NEVER read from `.env` at all (see BSC_DEFAULTS's own comment), so a bare `.env`
+// with legacy BSC_* values set can never silently turn real payments on by itself.
+function bscEnvFallback() {
+  const bsc = cloneDeep(BSC_DEFAULTS);
+  if (process.env.BSC_CHAIN_ID) { const n = Number(process.env.BSC_CHAIN_ID); if (Number.isFinite(n) && n > 0) bsc.chainId = n; }
+  if (process.env.BSC_DEPOSIT_ADDRESS) bsc.depositAddress = process.env.BSC_DEPOSIT_ADDRESS;
+  if (process.env.BSC_TOKEN_SYMBOL) bsc.tokenSymbol = process.env.BSC_TOKEN_SYMBOL;
+  if (process.env.BSC_TOKEN_CONTRACT) bsc.tokenContract = process.env.BSC_TOKEN_CONTRACT;
+  if (process.env.BSC_TOKEN_DECIMALS) { const n = Number(process.env.BSC_TOKEN_DECIMALS); if (Number.isFinite(n) && n >= 0) bsc.tokenDecimals = n; }
+  if (process.env.BSC_EXCHANGE_RATE_USD_PER_TOKEN) { const n = Number(process.env.BSC_EXCHANGE_RATE_USD_PER_TOKEN); if (Number.isFinite(n) && n > 0) bsc.exchangeRateUsdPerToken = n; }
+  if (process.env.BSC_CONFIRMATIONS_REQUIRED) { const n = Number(process.env.BSC_CONFIRMATIONS_REQUIRED); if (Number.isFinite(n) && n >= 1) bsc.confirmationsRequired = n; }
+  if (process.env.BSC_INVOICE_EXPIRY_MINUTES) { const n = Number(process.env.BSC_INVOICE_EXPIRY_MINUTES); if (Number.isFinite(n) && n >= 1) bsc.invoiceExpiryMinutes = n; }
+  return bsc;
+}
+
 function buildEffective(overrideRows) {
   const plans = {};
   PLAN_NAMES.forEach((plan) => { plans[plan] = cloneDeep(PLAN_DEFAULTS[plan]); });
   const wallet = cloneDeep(WALLET_DEFAULTS);
+  const bsc = bscEnvFallback();
   const overridesByKey = {};
 
   overrideRows.forEach((row) => {
@@ -53,10 +72,28 @@ function buildEffective(overrideRows) {
       if (Number.isFinite(value.amount) && value.amount >= 0) wallet.minimumTopUpUsd = value.amount;
     } else if (row.configKey === 'wallet:signupPromoRetailUsd') {
       if (Number.isFinite(value.amount) && value.amount >= 0) wallet.signupPromoRetailUsd = value.amount;
+    } else if (row.configKey === 'bsc:enabled') {
+      bsc.enabled = Boolean(value.enabled);
+    } else if (row.configKey === 'bsc:chainId') {
+      if (Number.isFinite(value.chainId) && value.chainId > 0) bsc.chainId = value.chainId;
+    } else if (row.configKey === 'bsc:depositAddress') {
+      if (typeof value.address === 'string') bsc.depositAddress = value.address;
+    } else if (row.configKey === 'bsc:tokenSymbol') {
+      if (typeof value.symbol === 'string' && value.symbol.trim()) bsc.tokenSymbol = value.symbol.trim();
+    } else if (row.configKey === 'bsc:tokenContract') {
+      if (typeof value.address === 'string') bsc.tokenContract = value.address;
+    } else if (row.configKey === 'bsc:tokenDecimals') {
+      if (Number.isFinite(value.decimals) && value.decimals >= 0) bsc.tokenDecimals = value.decimals;
+    } else if (row.configKey === 'bsc:exchangeRateUsdPerToken') {
+      if (Number.isFinite(value.rate) && value.rate > 0) bsc.exchangeRateUsdPerToken = value.rate;
+    } else if (row.configKey === 'bsc:confirmationsRequired') {
+      if (Number.isFinite(value.count) && value.count >= 1) bsc.confirmationsRequired = value.count;
+    } else if (row.configKey === 'bsc:invoiceExpiryMinutes') {
+      if (Number.isFinite(value.minutes) && value.minutes >= 1) bsc.invoiceExpiryMinutes = value.minutes;
     }
   });
 
-  return { plans, wallet, overridesByKey };
+  return { plans, wallet, bsc, overridesByKey };
 }
 
 export async function getEffectiveCommercialConfig(repo) {
@@ -79,6 +116,14 @@ export async function getWalletRules(repo) {
 export async function getPlanPrice(repo, plan) {
   const config = await getPlanConfig(repo, plan);
   return config.price;
+}
+
+// Public (non-secret) BSC crypto payment settings only - never the RPC URL or webhook secret,
+// which live encrypted-at-rest in the dedicated bsc_payment_secrets table and are resolved by
+// server/commercial/bsc-config.mjs's resolveBscRuntimeConfig(), not this function.
+export async function getBscPublicConfig(repo) {
+  const config = await getEffectiveCommercialConfig(repo);
+  return config.bsc;
 }
 
 // retailMultiplier = 1 + markupPercent/100 (spec section 16) - the one formula every markup

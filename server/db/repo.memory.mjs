@@ -27,6 +27,12 @@ export function createMemoryRepo() {
     providerModelPricing: new Map(), walletAccounts: new Map(), walletLedger: new Map(), walletReservations: new Map(),
     quotaLocks: new Map(), analysisSymbols: new Map(),
     subscriptions: new Map(), paymentTransactions: new Map(), paymentEvents: new Map(), cryptoInvoices: new Map(),
+    // Singleton row, mirrors the real 039_bsc_payment_secrets.sql table (id 'default' implied -
+    // there is exactly one BSC provider config per deployment) - a plain object, not a Map.
+    bscPaymentSecrets: {
+      rpcUrlEncrypted: null, webhookSecretEncrypted: null, webhookSecretHint: null,
+      lastTestedAt: null, lastTestOk: null, lastDetectedChainId: null, updatedBy: null, updatedAt: null
+    },
     storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map()
   };
 
@@ -1701,6 +1707,56 @@ export function createMemoryRepo() {
     }
   };
 
+  // Mirrors repo.pg.mjs's bscPaymentSecrets exactly - get() masked/status-only, getRaw() the
+  // internal-only decrypted counterpart (server/commercial/bsc-config.mjs is the sole caller).
+  function mapBscSecretsStatus() {
+    const row = state.bscPaymentSecrets;
+    return {
+      rpcConfigured: Boolean(row.rpcUrlEncrypted), webhookConfigured: Boolean(row.webhookSecretEncrypted),
+      webhookSecretHint: row.webhookSecretHint, lastTestedAt: row.lastTestedAt, lastTestOk: row.lastTestOk,
+      lastDetectedChainId: row.lastDetectedChainId
+    };
+  }
+  const bscPaymentSecrets = {
+    async get() { return mapBscSecretsStatus(); },
+    async getRaw() {
+      const row = state.bscPaymentSecrets;
+      return {
+        rpcUrl: row.rpcUrlEncrypted ? decryptSecret(row.rpcUrlEncrypted, encryptionKeyHex()) : null,
+        webhookSecret: row.webhookSecretEncrypted ? decryptSecret(row.webhookSecretEncrypted, encryptionKeyHex()) : null
+      };
+    },
+    async setRpcUrl(plaintextUrl, { updatedBy } = {}) {
+      const row = state.bscPaymentSecrets;
+      row.rpcUrlEncrypted = encryptSecret(plaintextUrl, encryptionKeyHex());
+      row.updatedBy = updatedBy || null; row.updatedAt = now();
+      return mapBscSecretsStatus();
+    },
+    async clearRpcUrl({ updatedBy } = {}) {
+      const row = state.bscPaymentSecrets;
+      row.rpcUrlEncrypted = null; row.updatedBy = updatedBy || null; row.updatedAt = now();
+      return mapBscSecretsStatus();
+    },
+    async setWebhookSecret(plaintextSecret, { updatedBy } = {}) {
+      const row = state.bscPaymentSecrets;
+      row.webhookSecretEncrypted = encryptSecret(plaintextSecret, encryptionKeyHex());
+      row.webhookSecretHint = String(plaintextSecret).slice(-4);
+      row.updatedBy = updatedBy || null; row.updatedAt = now();
+      return mapBscSecretsStatus();
+    },
+    async clearWebhookSecret({ updatedBy } = {}) {
+      const row = state.bscPaymentSecrets;
+      row.webhookSecretEncrypted = null; row.webhookSecretHint = null;
+      row.updatedBy = updatedBy || null; row.updatedAt = now();
+      return mapBscSecretsStatus();
+    },
+    async recordTestResult({ ok, chainId }) {
+      const row = state.bscPaymentSecrets;
+      row.lastTestedAt = now(); row.lastTestOk = Boolean(ok); row.lastDetectedChainId = Number.isFinite(chainId) ? chainId : null;
+      return mapBscSecretsStatus();
+    }
+  };
+
   const storageProducts = {
     // Mirrors repo.pg.mjs's lazy self-seed exactly - see that method's own comment.
     async list() {
@@ -2094,6 +2150,6 @@ export function createMemoryRepo() {
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, storageProducts, storageEntitlements, storageObjects
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects
   };
 }

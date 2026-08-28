@@ -12,7 +12,6 @@ import { buildInvoiceDto, checkInvoicePayment } from '../commercial/crypto-invoi
 // funds land only after an admin confirms it (server/commercial/payment-service.mjs).
 export function router(repo) {
   const app = express.Router();
-  const billingProvider = getBillingProvider(repo);
 
   app.get('/', asyncHandler(async (req, res) => {
     const account = await repo.wallet.getAccount(req.currentUser.id);
@@ -37,6 +36,7 @@ export function router(repo) {
 
   app.post('/topup-request', asyncHandler(async (req, res) => {
     const amountUsd = Number((req.body || {}).amountUsd);
+    const billingProvider = await getBillingProvider(repo);
     const result = await billingProvider.createWalletTopUp({ userId: req.currentUser.id, amountUsd });
     res.status(201).json(result);
   }));
@@ -55,17 +55,19 @@ export function router(repo) {
 
   app.get('/invoices/:invoiceId', asyncHandler(async (req, res) => {
     const invoice = await loadOwnedInvoice(req);
-    res.json(await buildInvoiceDto(invoice));
+    res.json(await buildInvoiceDto(invoice, repo));
   }));
 
   // Never trusts the browser to say a payment happened (task A.6) - this only ever triggers a
   // real server-side on-chain verification (server/commercial/crypto-invoice-service.mjs), which
   // itself only ever activates anything through the existing idempotent confirmTransaction().
+  // txHash is required (task C's security fix) - checkInvoicePayment() itself rejects a missing
+  // one (400 TX_HASH_REQUIRED) rather than falling back to scanning the shared deposit address.
   app.post('/invoices/:invoiceId/check', asyncHandler(async (req, res) => {
     await loadOwnedInvoice(req);
     const txHash = (req.body || {}).txHash;
     const result = await checkInvoicePayment(repo, req.params.invoiceId, { txHash });
-    res.json({ ...result, invoice: await buildInvoiceDto(result.invoice) });
+    res.json({ ...result, invoice: await buildInvoiceDto(result.invoice, repo) });
   }));
 
   return app;

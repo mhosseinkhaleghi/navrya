@@ -12,7 +12,6 @@ import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provid
 // section 10) - computed here, not pushed anywhere.
 export function router(repo, uploadsDir) {
   const app = express.Router();
-  const billingProvider = getBillingProvider(repo);
   const objectStorage = new LocalDiskObjectStorageProvider({ uploadsDir });
 
   app.get('/', asyncHandler(async (req, res) => {
@@ -32,6 +31,7 @@ export function router(repo, uploadsDir) {
 
   app.post('/purchase-request', asyncHandler(async (req, res) => {
     const productId = (req.body || {}).productId;
+    const billingProvider = await getBillingProvider(repo);
     const result = await billingProvider.createStoragePurchase({ userId: req.currentUser.id, productId });
     res.status(201).json(result);
   }));

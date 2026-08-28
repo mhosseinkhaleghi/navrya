@@ -16,32 +16,40 @@ import { BillingProvider } from './billing-provider.mjs';
 import { getPlanPrice, getWalletRules } from './commercial-config.mjs';
 import { toMicroUsd } from './wallet-service.mjs';
 import { getChainId } from './bsc-chain-client.mjs';
+import { resolveBscRuntimeConfig, isBscConfigComplete } from './bsc-config.mjs';
 
 // Fails explicitly (task A.8) the moment any required config is missing - never a fake/simulated
-// invoice. BSC_EXCHANGE_RATE_USD_PER_TOKEN defaults to 1 (a USD-pegged stablecoin, e.g. USDT) -
-// the only rate this system can respond honestly without integrating a live price feed; a
-// non-stablecoin asset must set this explicitly and accepts its own necessarily-approximate
-// snapshot (see computeAtomicAmount's own comment).
-function requireBscConfig() {
-  const rpcUrl = process.env.BSC_RPC_URL;
-  const depositAddress = process.env.BSC_DEPOSIT_ADDRESS;
-  const tokenContract = process.env.BSC_TOKEN_CONTRACT;
-  const tokenDecimalsRaw = process.env.BSC_TOKEN_DECIMALS;
-  const missing = [];
-  if (!rpcUrl) missing.push('BSC_RPC_URL');
-  if (!depositAddress) missing.push('BSC_DEPOSIT_ADDRESS');
-  if (!tokenContract) missing.push('BSC_TOKEN_CONTRACT');
-  if (!tokenDecimalsRaw) missing.push('BSC_TOKEN_DECIMALS');
-  if (missing.length) throw new ApiError(503, 'BSC_PROVIDER_NOT_CONFIGURED', null, { missing });
+// invoice. Resolves the admin-managed config (public settings + encrypted RPC URL) via
+// resolveBscRuntimeConfig() instead of reading process.env.BSC_* directly - `.env` only ever
+// applies there as a local-development/bootstrap fallback, never the production source of truth.
+// This is defense in depth: server/commercial/billing-provider-factory.mjs already only ever
+// constructs this provider when `enabled` is true, but a config that flips to incomplete/disabled
+// between that check and this one (e.g. an admin clearing the RPC secret mid-request) must still
+// fail closed here rather than proceed with a stale/partial config.
+// exchangeRateUsdPerToken defaults to 1 (a USD-pegged stablecoin, e.g. USDT) - the only rate this
+// system can respond honestly without integrating a live price feed; a non-stablecoin asset must
+// set this explicitly and accepts its own necessarily-approximate snapshot (see
+// computeAtomicAmount's own comment).
+async function requireBscConfig(repo) {
+  const config = await resolveBscRuntimeConfig(repo);
+  if (!config.enabled || !isBscConfigComplete(config)) {
+    const missing = [];
+    if (!config.enabled) missing.push('enabled');
+    if (!config.depositAddress) missing.push('depositAddress');
+    if (!config.tokenContract) missing.push('tokenContract');
+    if (!config.rpcConfigured) missing.push('rpcUrl');
+    throw new ApiError(503, 'BSC_PROVIDER_NOT_CONFIGURED', null, { missing });
+  }
   return {
-    chainId: Number(process.env.BSC_CHAIN_ID || 56),
-    assetSymbol: process.env.BSC_TOKEN_SYMBOL || 'USDT',
-    depositAddress,
-    tokenContract,
-    tokenDecimals: Number(tokenDecimalsRaw),
-    confirmationsRequired: Number(process.env.BSC_CONFIRMATIONS_REQUIRED || 15),
-    invoiceExpiryMinutes: Number(process.env.BSC_INVOICE_EXPIRY_MINUTES || 30),
-    exchangeRateSnapshot: Number(process.env.BSC_EXCHANGE_RATE_USD_PER_TOKEN || 1)
+    chainId: config.chainId,
+    assetSymbol: config.tokenSymbol,
+    depositAddress: config.depositAddress,
+    tokenContract: config.tokenContract,
+    tokenDecimals: config.tokenDecimals,
+    confirmationsRequired: config.confirmationsRequired,
+    invoiceExpiryMinutes: config.invoiceExpiryMinutes,
+    exchangeRateSnapshot: config.exchangeRateUsdPerToken,
+    rpcUrl: config.rpcUrl
   };
 }
 
@@ -62,10 +70,10 @@ export class BscCryptoBillingProvider extends BillingProvider {
   }
 
   async _createInvoiceFor(transaction) {
-    const config = requireBscConfig();
-    // Cross-checked against the RPC endpoint itself, not just trusted from env - task A.6's
+    const config = await requireBscConfig(this.repo);
+    // Cross-checked against the RPC endpoint itself, not just trusted from config - task A.6's
     // "validates chain ID" requirement applies at creation time too, not only at confirmation.
-    const actualChainId = await getChainId();
+    const actualChainId = await getChainId(config.rpcUrl);
     if (actualChainId !== config.chainId) throw new ApiError(503, 'BSC_CHAIN_ID_MISMATCH', null, { configured: config.chainId, actual: actualChainId });
     const atomicAmount = computeAtomicAmount(transaction.amountMicroUsd, config.tokenDecimals, config.exchangeRateSnapshot);
     const expiresAt = new Date(Date.now() + config.invoiceExpiryMinutes * 60 * 1000).toISOString();
@@ -147,7 +155,8 @@ export class BscCryptoBillingProvider extends BillingProvider {
   // when no real webhook secret is configured, rather than silently treating every request as
   // trusted.
   async verifyWebhook(req) {
-    const secret = process.env.BSC_WEBHOOK_SECRET;
+    const config = await resolveBscRuntimeConfig(this.repo);
+    const secret = config.webhookSecret;
     if (!secret) throw new ApiError(501, 'WEBHOOK_NOT_SUPPORTED');
     const signature = req.header('x-webhook-signature') || '';
     const rawBody = req.rawBody;

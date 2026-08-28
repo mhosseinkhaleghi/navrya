@@ -77,7 +77,35 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'AI cost & charge (real, per model)', aiCostProviderCost: 'Provider cost', aiCostRetailCharge: 'Retail charge',
     aiCostModel: 'Model', aiCostCalls: 'Calls', aiCostNoData: 'No real per-model AI cost recorded for this user yet.',
     aiUsageByModelTitle: 'Real settled cost by model (all users)', aiUsageByModelEmpty: 'No real per-model AI cost recorded yet.',
-    aiCostProvider: 'Provider', aiCostPromptTokens: 'Prompt tokens', aiCostCompletionTokens: 'Completion tokens', aiCostTotalTokens: 'Total tokens'
+    aiCostProvider: 'Provider', aiCostPromptTokens: 'Prompt tokens', aiCostCompletionTokens: 'Completion tokens', aiCostTotalTokens: 'Total tokens',
+    // Crypto payments (BSC) - admin config sub-tab (admin-config task). Unlike the rest of the
+    // Commercial tab (deliberately English-only, see commercialSubNav's own comment), this
+    // surface is fully localized in en/fa/ar/es.
+    comSubCryptoPayments: 'Crypto payments',
+    cryptoPayStatusTitle: 'Provider status', cryptoPayModeBsc: 'BSC Crypto', cryptoPayModeManual: 'Manual',
+    cryptoPayConfigComplete: 'Configuration complete', cryptoPayRpcConfigured: 'RPC configured', cryptoPayWebhookConfigured: 'Webhook configured',
+    cryptoPayYes: 'Yes', cryptoPayNo: 'No', cryptoPayLastTested: 'Last tested {date}', cryptoPayTestOk: 'succeeded', cryptoPayTestFailed: 'failed',
+    cryptoPayDetectedChain: 'chain {chainId}', cryptoPayNeverTested: 'Connection never tested',
+    cryptoPayNewInvoicesWarning: 'Changes here only affect invoices created after saving - existing invoices keep their original snapshot.',
+    cryptoPayEnable: 'Enable BSC crypto payments', cryptoPayDisable: 'Disable BSC crypto payments',
+    cryptoPayPublicTitle: 'Public BSC settings', cryptoPayChainId: 'Chain ID', cryptoPayDepositAddress: 'Deposit wallet address',
+    cryptoPayTokenSymbol: 'Token symbol', cryptoPayTokenContract: 'Token contract (BEP-20)', cryptoPayTokenDecimals: 'Token decimals',
+    cryptoPayExchangeRate: 'USD per token', cryptoPayConfirmations: 'Confirmations required', cryptoPayExpiryMinutes: 'Invoice expiry (minutes)',
+    cryptoPaySavePublic: 'Save public settings',
+    cryptoPayRpcTitle: 'RPC connection', cryptoPayRpcConfiguredBadge: 'RPC URL: configured', cryptoPayRpcNotConfiguredBadge: 'RPC URL: not configured',
+    cryptoPayRpcUrl: 'BSC RPC URL', cryptoPaySaveRpc: 'Save / rotate RPC URL',
+    cryptoPayReplaceRpcHint: 'Enter a new URL to replace the saved one - the current value is never shown here.',
+    cryptoPayClearRpc: 'Clear', cryptoPayClearRpcConfirm: 'Clear the saved RPC URL? BSC crypto payments will be disabled if currently enabled.',
+    cryptoPayTestButton: 'Test connection', cryptoPayTestSuccess: 'Connected - reported chain {chainId}',
+    cryptoPayTestChainMismatch: '(configured chain is {configured})', cryptoPayTestFailedReason: 'Test failed: {reason}',
+    cryptoPayWebhookTitle: 'Webhook secret (optional)', cryptoPayWebhookHint: 'Configured (ends in {hint})',
+    cryptoPayWebhookNotConfiguredBadge: 'Not configured - the webhook endpoint refuses every request until one is generated',
+    cryptoPayGenerateWebhook: 'Generate / rotate secret',
+    cryptoPayRotateWebhookConfirm: 'Rotating replaces the current secret - any existing webhook sender must be updated with the new value. Continue?',
+    cryptoPayClearWebhook: 'Clear',
+    cryptoPayClearWebhookConfirm: 'Clear the webhook secret? The webhook endpoint will refuse every request until a new one is generated.',
+    cryptoPayWebhookRevealed: 'New webhook secret: {secret}',
+    cryptoPayWebhookNeverShownAgain: 'This value is shown once and cannot be retrieved again - copy it now.'
   },
   fa: {
     brand: 'پنل مدیریت',
@@ -142,7 +170,32 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'هزینه و مبلغ دریافتی هوش مصنوعی (واقعی، به تفکیک مدل)', aiCostProviderCost: 'هزینه واقعی سرویس‌دهنده', aiCostRetailCharge: 'مبلغ دریافتی از کاربر',
     aiCostModel: 'مدل', aiCostCalls: 'تعداد فراخوانی', aiCostNoData: 'هنوز هزینه واقعی هوش مصنوعی برای این کاربر ثبت نشده است.',
     aiUsageByModelTitle: 'هزینه واقعی تسویه‌شده به تفکیک مدل (همه کاربران)', aiUsageByModelEmpty: 'هنوز هزینه واقعی هوش مصنوعی به تفکیک مدل ثبت نشده است.',
-    aiCostProvider: 'سرویس‌دهنده', aiCostPromptTokens: 'توکن‌های ورودی', aiCostCompletionTokens: 'توکن‌های خروجی', aiCostTotalTokens: 'مجموع توکن‌ها'
+    aiCostProvider: 'سرویس‌دهنده', aiCostPromptTokens: 'توکن‌های ورودی', aiCostCompletionTokens: 'توکن‌های خروجی', aiCostTotalTokens: 'مجموع توکن‌ها',
+    comSubCryptoPayments: 'پرداخت‌های ارز دیجیتال',
+    cryptoPayStatusTitle: 'وضعیت درگاه پرداخت', cryptoPayModeBsc: 'ارز دیجیتال BSC', cryptoPayModeManual: 'دستی',
+    cryptoPayConfigComplete: 'پیکربندی کامل است', cryptoPayRpcConfigured: 'آدرس RPC تنظیم شده', cryptoPayWebhookConfigured: 'وب‌هوک تنظیم شده',
+    cryptoPayYes: 'بله', cryptoPayNo: 'خیر', cryptoPayLastTested: 'آخرین آزمایش: {date}', cryptoPayTestOk: 'موفق', cryptoPayTestFailed: 'ناموفق',
+    cryptoPayDetectedChain: 'زنجیره {chainId}', cryptoPayNeverTested: 'اتصال هنوز آزمایش نشده است',
+    cryptoPayNewInvoicesWarning: 'این تغییرات فقط روی فاکتورهای جدید پس از ذخیره اثر می‌گذارد - فاکتورهای موجود مقادیر ثبت‌شده‌ی خود را حفظ می‌کنند.',
+    cryptoPayEnable: 'فعال‌سازی پرداخت ارز دیجیتال BSC', cryptoPayDisable: 'غیرفعال‌سازی پرداخت ارز دیجیتال BSC',
+    cryptoPayPublicTitle: 'تنظیمات عمومی BSC', cryptoPayChainId: 'شناسه زنجیره', cryptoPayDepositAddress: 'آدرس کیف پول دریافت',
+    cryptoPayTokenSymbol: 'نماد توکن', cryptoPayTokenContract: 'قرارداد توکن (BEP-20)', cryptoPayTokenDecimals: 'اعشار توکن',
+    cryptoPayExchangeRate: 'دلار به ازای هر توکن', cryptoPayConfirmations: 'تعداد تأییدیه‌های لازم', cryptoPayExpiryMinutes: 'انقضای فاکتور (دقیقه)',
+    cryptoPaySavePublic: 'ذخیره تنظیمات عمومی',
+    cryptoPayRpcTitle: 'اتصال RPC', cryptoPayRpcConfiguredBadge: 'آدرس RPC: تنظیم شده', cryptoPayRpcNotConfiguredBadge: 'آدرس RPC: تنظیم نشده',
+    cryptoPayRpcUrl: 'آدرس RPC شبکه BSC', cryptoPaySaveRpc: 'ذخیره / تعویض آدرس RPC',
+    cryptoPayReplaceRpcHint: 'برای جایگزینی مقدار ذخیره‌شده، آدرس جدید را وارد کنید - مقدار فعلی هرگز اینجا نمایش داده نمی‌شود.',
+    cryptoPayClearRpc: 'پاک کردن', cryptoPayClearRpcConfirm: 'آدرس RPC ذخیره‌شده پاک شود؟ در صورت فعال بودن، پرداخت ارز دیجیتال BSC غیرفعال خواهد شد.',
+    cryptoPayTestButton: 'آزمایش اتصال', cryptoPayTestSuccess: 'متصل شد - زنجیره گزارش‌شده {chainId}',
+    cryptoPayTestChainMismatch: '(زنجیره پیکربندی‌شده {configured} است)', cryptoPayTestFailedReason: 'آزمایش ناموفق: {reason}',
+    cryptoPayWebhookTitle: 'کلید مخفی وب‌هوک (اختیاری)', cryptoPayWebhookHint: 'تنظیم شده (پایان‌یابنده به {hint})',
+    cryptoPayWebhookNotConfiguredBadge: 'تنظیم نشده - تا زمانی که مقداری ساخته نشود، مسیر وب‌هوک همه درخواست‌ها را رد می‌کند',
+    cryptoPayGenerateWebhook: 'ساخت / تعویض کلید مخفی',
+    cryptoPayRotateWebhookConfirm: 'تعویض کلید، مقدار فعلی را جایگزین می‌کند - هر فرستنده‌ی وب‌هوک موجود باید با مقدار جدید به‌روزرسانی شود. ادامه می‌دهید؟',
+    cryptoPayClearWebhook: 'پاک کردن',
+    cryptoPayClearWebhookConfirm: 'کلید مخفی وب‌هوک پاک شود؟ تا ساخت مقدار جدید، مسیر وب‌هوک همه درخواست‌ها را رد می‌کند.',
+    cryptoPayWebhookRevealed: 'کلید مخفی جدید وب‌هوک: {secret}',
+    cryptoPayWebhookNeverShownAgain: 'این مقدار فقط یک‌بار نمایش داده می‌شود و دیگر قابل بازیابی نیست - همین حالا آن را کپی کنید.'
   },
   ar: {
     brand: 'لوحة الإدارة',
@@ -207,7 +260,32 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'تكلفة واستحقاق الذكاء الاصطناعي (فعلي، حسب النموذج)', aiCostProviderCost: 'تكلفة المزوّد', aiCostRetailCharge: 'المبلغ المحصّل من المستخدم',
     aiCostModel: 'النموذج', aiCostCalls: 'عدد الاستدعاءات', aiCostNoData: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة لهذا المستخدم بعد.',
     aiUsageByModelTitle: 'التكلفة الفعلية المسوّاة حسب النموذج (كل المستخدمين)', aiUsageByModelEmpty: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة حسب النموذج بعد.',
-    aiCostProvider: 'المزوّد', aiCostPromptTokens: 'رموز الإدخال', aiCostCompletionTokens: 'رموز الإخراج', aiCostTotalTokens: 'إجمالي الرموز'
+    aiCostProvider: 'المزوّد', aiCostPromptTokens: 'رموز الإدخال', aiCostCompletionTokens: 'رموز الإخراج', aiCostTotalTokens: 'إجمالي الرموز',
+    comSubCryptoPayments: 'المدفوعات بالعملات الرقمية',
+    cryptoPayStatusTitle: 'حالة مزوّد الدفع', cryptoPayModeBsc: 'عملة رقمية BSC', cryptoPayModeManual: 'يدوي',
+    cryptoPayConfigComplete: 'الإعداد مكتمل', cryptoPayRpcConfigured: 'تم ضبط RPC', cryptoPayWebhookConfigured: 'تم ضبط الويب هوك',
+    cryptoPayYes: 'نعم', cryptoPayNo: 'لا', cryptoPayLastTested: 'آخر اختبار: {date}', cryptoPayTestOk: 'نجح', cryptoPayTestFailed: 'فشل',
+    cryptoPayDetectedChain: 'السلسلة {chainId}', cryptoPayNeverTested: 'لم يتم اختبار الاتصال بعد',
+    cryptoPayNewInvoicesWarning: 'هذه التغييرات تؤثر فقط على الفواتير الجديدة بعد الحفظ - الفواتير الحالية تحتفظ بقيمها المسجّلة.',
+    cryptoPayEnable: 'تفعيل الدفع بعملة BSC الرقمية', cryptoPayDisable: 'تعطيل الدفع بعملة BSC الرقمية',
+    cryptoPayPublicTitle: 'إعدادات BSC العامة', cryptoPayChainId: 'معرّف السلسلة', cryptoPayDepositAddress: 'عنوان محفظة الاستلام',
+    cryptoPayTokenSymbol: 'رمز العملة', cryptoPayTokenContract: 'عقد العملة (BEP-20)', cryptoPayTokenDecimals: 'خانات عشرية للعملة',
+    cryptoPayExchangeRate: 'دولار لكل وحدة عملة', cryptoPayConfirmations: 'عدد التأكيدات المطلوبة', cryptoPayExpiryMinutes: 'انتهاء صلاحية الفاتورة (دقائق)',
+    cryptoPaySavePublic: 'حفظ الإعدادات العامة',
+    cryptoPayRpcTitle: 'اتصال RPC', cryptoPayRpcConfiguredBadge: 'رابط RPC: مضبوط', cryptoPayRpcNotConfiguredBadge: 'رابط RPC: غير مضبوط',
+    cryptoPayRpcUrl: 'رابط RPC لشبكة BSC', cryptoPaySaveRpc: 'حفظ / تدوير رابط RPC',
+    cryptoPayReplaceRpcHint: 'أدخل رابطًا جديدًا لاستبدال القيمة المحفوظة - القيمة الحالية لا تُعرض هنا أبدًا.',
+    cryptoPayClearRpc: 'مسح', cryptoPayClearRpcConfirm: 'هل تريد مسح رابط RPC المحفوظ؟ سيتم تعطيل الدفع بعملة BSC الرقمية إذا كان مفعّلاً حاليًا.',
+    cryptoPayTestButton: 'اختبار الاتصال', cryptoPayTestSuccess: 'تم الاتصال - السلسلة المُبلَّغ عنها {chainId}',
+    cryptoPayTestChainMismatch: '(السلسلة المضبوطة هي {configured})', cryptoPayTestFailedReason: 'فشل الاختبار: {reason}',
+    cryptoPayWebhookTitle: 'سر الويب هوك (اختياري)', cryptoPayWebhookHint: 'مضبوط (ينتهي بـ {hint})',
+    cryptoPayWebhookNotConfiguredBadge: 'غير مضبوط - سيرفض مسار الويب هوك كل طلب حتى يتم توليد سر جديد',
+    cryptoPayGenerateWebhook: 'توليد / تدوير السر',
+    cryptoPayRotateWebhookConfirm: 'التدوير يستبدل السر الحالي - يجب تحديث أي مرسل ويب هوك حالي بالقيمة الجديدة. المتابعة؟',
+    cryptoPayClearWebhook: 'مسح',
+    cryptoPayClearWebhookConfirm: 'هل تريد مسح سر الويب هوك؟ سيرفض مسار الويب هوك كل طلب حتى يتم توليد سر جديد.',
+    cryptoPayWebhookRevealed: 'سر الويب هوك الجديد: {secret}',
+    cryptoPayWebhookNeverShownAgain: 'تُعرض هذه القيمة مرة واحدة فقط ولا يمكن استرجاعها لاحقًا - انسخها الآن.'
   },
   es: {
     brand: 'Administración',
@@ -272,7 +350,32 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'Costo y cargo de IA (real, por modelo)', aiCostProviderCost: 'Costo del proveedor', aiCostRetailCharge: 'Cargo al usuario',
     aiCostModel: 'Modelo', aiCostCalls: 'Llamadas', aiCostNoData: 'Aún no hay costo real de IA por modelo registrado para este usuario.',
     aiUsageByModelTitle: 'Costo real liquidado por modelo (todos los usuarios)', aiUsageByModelEmpty: 'Aún no hay costo real de IA por modelo registrado.',
-    aiCostProvider: 'Proveedor', aiCostPromptTokens: 'Tokens de entrada', aiCostCompletionTokens: 'Tokens de salida', aiCostTotalTokens: 'Tokens totales'
+    aiCostProvider: 'Proveedor', aiCostPromptTokens: 'Tokens de entrada', aiCostCompletionTokens: 'Tokens de salida', aiCostTotalTokens: 'Tokens totales',
+    comSubCryptoPayments: 'Pagos con criptomonedas',
+    cryptoPayStatusTitle: 'Estado del proveedor', cryptoPayModeBsc: 'Cripto BSC', cryptoPayModeManual: 'Manual',
+    cryptoPayConfigComplete: 'Configuración completa', cryptoPayRpcConfigured: 'RPC configurado', cryptoPayWebhookConfigured: 'Webhook configurado',
+    cryptoPayYes: 'Sí', cryptoPayNo: 'No', cryptoPayLastTested: 'Última prueba: {date}', cryptoPayTestOk: 'correcta', cryptoPayTestFailed: 'fallida',
+    cryptoPayDetectedChain: 'cadena {chainId}', cryptoPayNeverTested: 'La conexión aún no se ha probado',
+    cryptoPayNewInvoicesWarning: 'Estos cambios solo afectan a las facturas creadas después de guardarlos - las facturas existentes conservan sus valores originales.',
+    cryptoPayEnable: 'Activar pagos con cripto BSC', cryptoPayDisable: 'Desactivar pagos con cripto BSC',
+    cryptoPayPublicTitle: 'Ajustes públicos de BSC', cryptoPayChainId: 'ID de cadena', cryptoPayDepositAddress: 'Dirección de la billetera de depósito',
+    cryptoPayTokenSymbol: 'Símbolo del token', cryptoPayTokenContract: 'Contrato del token (BEP-20)', cryptoPayTokenDecimals: 'Decimales del token',
+    cryptoPayExchangeRate: 'USD por token', cryptoPayConfirmations: 'Confirmaciones requeridas', cryptoPayExpiryMinutes: 'Caducidad de la factura (minutos)',
+    cryptoPaySavePublic: 'Guardar ajustes públicos',
+    cryptoPayRpcTitle: 'Conexión RPC', cryptoPayRpcConfiguredBadge: 'URL de RPC: configurada', cryptoPayRpcNotConfiguredBadge: 'URL de RPC: no configurada',
+    cryptoPayRpcUrl: 'URL de RPC de BSC', cryptoPaySaveRpc: 'Guardar / rotar URL de RPC',
+    cryptoPayReplaceRpcHint: 'Introduce una URL nueva para reemplazar la guardada - el valor actual nunca se muestra aquí.',
+    cryptoPayClearRpc: 'Borrar', cryptoPayClearRpcConfirm: '¿Borrar la URL de RPC guardada? Los pagos con cripto BSC se desactivarán si estaban activos.',
+    cryptoPayTestButton: 'Probar conexión', cryptoPayTestSuccess: 'Conectado - cadena reportada {chainId}',
+    cryptoPayTestChainMismatch: '(la cadena configurada es {configured})', cryptoPayTestFailedReason: 'Prueba fallida: {reason}',
+    cryptoPayWebhookTitle: 'Secreto del webhook (opcional)', cryptoPayWebhookHint: 'Configurado (termina en {hint})',
+    cryptoPayWebhookNotConfiguredBadge: 'No configurado - el endpoint del webhook rechazará toda solicitud hasta que se genere uno',
+    cryptoPayGenerateWebhook: 'Generar / rotar secreto',
+    cryptoPayRotateWebhookConfirm: 'Rotar reemplaza el secreto actual - cualquier emisor de webhook existente debe actualizarse con el nuevo valor. ¿Continuar?',
+    cryptoPayClearWebhook: 'Borrar',
+    cryptoPayClearWebhookConfirm: '¿Borrar el secreto del webhook? El endpoint del webhook rechazará toda solicitud hasta que se genere uno nuevo.',
+    cryptoPayWebhookRevealed: 'Nuevo secreto del webhook: {secret}',
+    cryptoPayWebhookNeverShownAgain: 'Este valor se muestra una sola vez y no se puede recuperar después - cópialo ahora.'
   }
 };
 
@@ -1347,7 +1450,8 @@ function commercialSubNav(active) {
   const nav = el('div', 'admin-btn-row');
   [
     ['plans', t('comSubPlans')], ['wallet', t('comSubWallet')], ['subscriptions', t('comSubSubscriptions')],
-    ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['history', t('comSubHistory')]
+    ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['history', t('comSubHistory')],
+    ['cryptoPayments', t('comSubCryptoPayments')]
   ].forEach(([id, label]) => {
     const btn = el('button', 'btn btn-secondary btn-sm' + (id === active ? ' active' : ''), label);
     btn.type = 'button';
@@ -1736,9 +1840,156 @@ function commercialTransactionsSubTab() {
   });
 }
 
+// Crypto payments (BSC) - admin config sub-tab (admin-config task). Unlike every OTHER Commercial
+// sub-tab (deliberately English-only for now, per commercialSubNav's own comment above), this one
+// is fully localized in en/fa/ar/es - a new requirement specific to this task, not a retroactive
+// fix to its siblings.
+function commercialCryptoPaymentsSubTab() {
+  return api('/commercial/crypto-payments/status').then((status) => {
+    const wrap = el('div', 'admin-grid');
+
+    // --- Provider status ---
+    const statusCard = el('div', 'admin-card');
+    const statusHead = el('div', 'admin-ai-card-head');
+    statusHead.append(el('h3', '', t('cryptoPayStatusTitle')));
+    statusHead.append(el('span', 'badge status-' + (status.enabled ? 'valid' : 'unknown'), status.enabled ? t('cryptoPayModeBsc') : t('cryptoPayModeManual')));
+    statusCard.append(statusHead);
+    statusCard.append(el('p', 'hint', t('cryptoPayConfigComplete') + ': ' + (status.configComplete ? t('cryptoPayYes') : t('cryptoPayNo'))));
+    statusCard.append(el('p', 'hint', t('cryptoPayRpcConfigured') + ': ' + (status.rpcConfigured ? t('cryptoPayYes') : t('cryptoPayNo'))));
+    statusCard.append(el('p', 'hint', t('cryptoPayWebhookConfigured') + ': ' + (status.webhookConfigured ? t('cryptoPayYes') : t('cryptoPayNo'))));
+    statusCard.append(el('p', 'hint', status.lastTestedAt
+      ? t('cryptoPayLastTested', { date: fmtDate(status.lastTestedAt) }) + ' — ' + (status.lastTestOk ? t('cryptoPayTestOk') : t('cryptoPayTestFailed'))
+        + (status.lastDetectedChainId != null ? ' (' + t('cryptoPayDetectedChain', { chainId: status.lastDetectedChainId }) + ')' : '')
+      : t('cryptoPayNeverTested')));
+    statusCard.append(el('p', 'hint', t('cryptoPayNewInvoicesWarning')));
+    const toggleBtn = el('button', 'btn ' + (status.enabled ? 'btn-danger' : 'btn-primary') + ' btn-sm', status.enabled ? t('cryptoPayDisable') : t('cryptoPayEnable'));
+    toggleBtn.type = 'button';
+    toggleBtn.onclick = () => {
+      toggleBtn.disabled = true;
+      api('/commercial/crypto-payments/status', { method: 'PATCH', body: JSON.stringify({ enabled: !status.enabled }) })
+        .then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => showToast(error.message, 'danger'))
+        .finally(() => { toggleBtn.disabled = false; });
+    };
+    statusCard.append(toggleBtn);
+    wrap.append(statusCard);
+
+    // --- Public BSC settings (versioned, non-secret) ---
+    const publicCard = el('div', 'admin-card');
+    publicCard.append(el('h3', '', t('cryptoPayPublicTitle')));
+    const chainIdField = field(t('cryptoPayChainId'), 'number', status.chainId);
+    const depositAddressField = field(t('cryptoPayDepositAddress'), 'text', status.depositAddress);
+    const tokenSymbolField = field(t('cryptoPayTokenSymbol'), 'text', status.tokenSymbol);
+    const tokenContractField = field(t('cryptoPayTokenContract'), 'text', status.tokenContract);
+    const tokenDecimalsField = field(t('cryptoPayTokenDecimals'), 'number', status.tokenDecimals);
+    const exchangeRateField = field(t('cryptoPayExchangeRate'), 'number', status.exchangeRateUsdPerToken);
+    const confirmationsField = field(t('cryptoPayConfirmations'), 'number', status.confirmationsRequired);
+    const expiryField = field(t('cryptoPayExpiryMinutes'), 'number', status.invoiceExpiryMinutes);
+    // Addresses stay left-to-right even under an RTL (fa/ar) page - same convention this app
+    // already uses for wallet addresses/tx hashes elsewhere.
+    depositAddressField.input.dir = 'ltr';
+    tokenContractField.input.dir = 'ltr';
+    const savePublicBtn = el('button', 'btn btn-primary', t('cryptoPaySavePublic'));
+    savePublicBtn.type = 'button';
+    savePublicBtn.onclick = () => {
+      savePublicBtn.disabled = true;
+      api('/commercial/crypto-payments/public-settings', { method: 'PATCH', body: JSON.stringify({
+        chainId: Number(chainIdField.input.value), depositAddress: depositAddressField.input.value.trim(),
+        tokenSymbol: tokenSymbolField.input.value.trim(), tokenContract: tokenContractField.input.value.trim(),
+        tokenDecimals: Number(tokenDecimalsField.input.value), exchangeRateUsdPerToken: Number(exchangeRateField.input.value),
+        confirmationsRequired: Number(confirmationsField.input.value), invoiceExpiryMinutes: Number(expiryField.input.value)
+      }) }).then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => showToast(error.message, 'danger'))
+        .finally(() => { savePublicBtn.disabled = false; });
+    };
+    publicCard.append(
+      chainIdField.wrap, depositAddressField.wrap, tokenSymbolField.wrap, tokenContractField.wrap,
+      tokenDecimalsField.wrap, exchangeRateField.wrap, confirmationsField.wrap, expiryField.wrap, savePublicBtn
+    );
+    wrap.append(publicCard);
+
+    // --- RPC connection (secret - password field, never prefilled, "configured" badge only) ---
+    const rpcCard = el('div', 'admin-card');
+    rpcCard.append(el('h3', '', t('cryptoPayRpcTitle')));
+    rpcCard.append(el('p', 'hint', status.rpcConfigured ? t('cryptoPayRpcConfiguredBadge') : t('cryptoPayRpcNotConfiguredBadge')));
+    const rpcUrlField = field(t('cryptoPayRpcUrl'), 'password', '');
+    const saveRpcBtn = el('button', 'btn btn-primary btn-sm', t('cryptoPaySaveRpc'));
+    saveRpcBtn.type = 'button';
+    saveRpcBtn.onclick = () => {
+      const rpcUrl = rpcUrlField.input.value.trim();
+      if (!rpcUrl) return;
+      rpcUrlField.input.value = ''; // clear immediately - never let the raw URL linger in the DOM
+      saveRpcBtn.disabled = true;
+      api('/commercial/crypto-payments/rpc-secret', { method: 'POST', body: JSON.stringify({ rpcUrl }) })
+        .then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => showToast(error.message, 'danger'))
+        .finally(() => { saveRpcBtn.disabled = false; });
+    };
+    const clearRpcBtn = el('button', 'btn btn-secondary btn-sm', t('cryptoPayClearRpc'));
+    clearRpcBtn.type = 'button';
+    clearRpcBtn.onclick = () => {
+      if (!window.confirm(t('cryptoPayClearRpcConfirm'))) return;
+      api('/commercial/crypto-payments/rpc-secret', { method: 'DELETE' })
+        .then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => showToast(error.message, 'danger'));
+    };
+    const testResultLine = el('p', 'hint');
+    const testBtn = el('button', 'btn btn-secondary btn-sm', t('cryptoPayTestButton'));
+    testBtn.type = 'button';
+    testBtn.onclick = () => {
+      testBtn.disabled = true;
+      api('/commercial/crypto-payments/test-connection', { method: 'POST', body: JSON.stringify({}) })
+        .then((result) => {
+          testResultLine.textContent = result.ok
+            ? t('cryptoPayTestSuccess', { chainId: result.detectedChainId }) + (result.matches ? '' : ' — ' + t('cryptoPayTestChainMismatch', { configured: result.configuredChainId }))
+            : t('cryptoPayTestFailedReason', { reason: result.reason });
+        })
+        .catch((error) => showToast(error.message, 'danger'))
+        .finally(() => { testBtn.disabled = false; });
+    };
+    rpcCard.append(rpcUrlField.wrap, el('p', 'hint', t('cryptoPayReplaceRpcHint')), saveRpcBtn, clearRpcBtn, testBtn, testResultLine);
+    wrap.append(rpcCard);
+
+    // --- Webhook secret (optional - generated server-side, shown once) ---
+    const webhookCard = el('div', 'admin-card');
+    webhookCard.append(el('h3', '', t('cryptoPayWebhookTitle')));
+    webhookCard.append(el('p', 'hint', status.webhookConfigured ? t('cryptoPayWebhookHint', { hint: status.webhookSecretHint }) : t('cryptoPayWebhookNotConfiguredBadge')));
+    const webhookRevealBox = el('p', 'hint');
+    webhookRevealBox.hidden = true;
+    const generateWebhookBtn = el('button', 'btn btn-primary btn-sm', t('cryptoPayGenerateWebhook'));
+    generateWebhookBtn.type = 'button';
+    generateWebhookBtn.onclick = () => {
+      if (status.webhookConfigured && !window.confirm(t('cryptoPayRotateWebhookConfirm'))) return;
+      generateWebhookBtn.disabled = true;
+      api('/commercial/crypto-payments/webhook-secret', { method: 'POST' })
+        .then((result) => {
+          webhookRevealBox.hidden = false;
+          webhookRevealBox.dir = 'ltr';
+          webhookRevealBox.textContent = t('cryptoPayWebhookRevealed', { secret: result.webhookSecret });
+          showToast(t('saved'));
+        })
+        .catch((error) => showToast(error.message, 'danger'))
+        .finally(() => { generateWebhookBtn.disabled = false; });
+    };
+    const clearWebhookBtn = el('button', 'btn btn-secondary btn-sm', t('cryptoPayClearWebhook'));
+    clearWebhookBtn.type = 'button';
+    clearWebhookBtn.onclick = () => {
+      if (!window.confirm(t('cryptoPayClearWebhookConfirm'))) return;
+      api('/commercial/crypto-payments/webhook-secret', { method: 'DELETE' })
+        .then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => showToast(error.message, 'danger'));
+    };
+    webhookCard.append(generateWebhookBtn, clearWebhookBtn, webhookRevealBox, el('p', 'hint', t('cryptoPayWebhookNeverShownAgain')));
+    wrap.append(webhookCard);
+
+    return wrap;
+  });
+}
+
 const COMMERCIAL_SUB_TAB_BUILDERS = {
   plans: commercialPlansSubTab, wallet: commercialWalletSubTab, subscriptions: commercialSubscriptionsSubTab,
-  storage: commercialStorageSubTab, transactions: commercialTransactionsSubTab, history: commercialHistorySubTab
+  storage: commercialStorageSubTab, transactions: commercialTransactionsSubTab, history: commercialHistorySubTab,
+  cryptoPayments: commercialCryptoPaymentsSubTab
 };
 function commercialTab() {
   const builder = COMMERCIAL_SUB_TAB_BUILDERS[commercialSubTab] || commercialPlansSubTab;

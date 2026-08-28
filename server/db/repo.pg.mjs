@@ -122,6 +122,29 @@ function mapVoiceCredential(row, { includeDecrypted } = {}) {
   if (includeDecrypted) base.apiKey = decryptSecret(row.api_key_encrypted, encryptionKeyHex());
   return base;
 }
+// Masked status only - the shape every admin-facing GET uses. Never includes a decrypted value;
+// see mapBscSecretsRaw() below for the internal-only counterpart.
+function mapBscSecretsStatus(row) {
+  if (!row) return { rpcConfigured: false, webhookConfigured: false, webhookSecretHint: null, lastTestedAt: null, lastTestOk: null, lastDetectedChainId: null };
+  return {
+    rpcConfigured: Boolean(row.rpc_url_encrypted),
+    webhookConfigured: Boolean(row.webhook_secret_encrypted),
+    webhookSecretHint: row.webhook_secret_hint,
+    lastTestedAt: row.last_tested_at,
+    lastTestOk: row.last_test_ok,
+    lastDetectedChainId: row.last_detected_chain_id
+  };
+}
+// Internal-only - real decrypted secret values. Only ever called by
+// server/commercial/bsc-config.mjs's resolveBscRuntimeConfig(), never by an admin/browser-facing
+// route (mirrors mapVoiceCredential's includeDecrypted convention).
+function mapBscSecretsRaw(row) {
+  if (!row) return { rpcUrl: null, webhookSecret: null };
+  return {
+    rpcUrl: row.rpc_url_encrypted ? decryptSecret(row.rpc_url_encrypted, encryptionKeyHex()) : null,
+    webhookSecret: row.webhook_secret_encrypted ? decryptSecret(row.webhook_secret_encrypted, encryptionKeyHex()) : null
+  };
+}
 function mapVoiceLanguageConfig(row) {
   return {
     languageCode: row.language_code, provider: row.provider, credentialId: row.credential_id,
@@ -2624,6 +2647,64 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Encrypted-at-rest BSC provider secrets (admin-config task, section B) - a singleton row (id
+  // 'default'), deliberately separate from commercial_config_overrides/versions (see
+  // 039_bsc_payment_secrets.sql's own comment). Every write is an upsert against that one row;
+  // get() is the ONLY method any admin/browser-facing route may call - getRaw() is internal-only
+  // (server/commercial/bsc-config.mjs), matching admin_voice_provider_credentials' masked-by-
+  // default convention exactly.
+  const bscPaymentSecrets = {
+    async _row() {
+      const { rows } = await pool.query('SELECT * FROM bsc_payment_secrets WHERE id=$1', ['default']);
+      return rows[0] || null;
+    },
+    async get() { return mapBscSecretsStatus(await bscPaymentSecrets._row()); },
+    async getRaw() { return mapBscSecretsRaw(await bscPaymentSecrets._row()); },
+    async setRpcUrl(plaintextUrl, { updatedBy } = {}) {
+      const encrypted = encryptSecret(plaintextUrl, encryptionKeyHex());
+      await pool.query(
+        `INSERT INTO bsc_payment_secrets (id, rpc_url_encrypted, updated_by, updated_at) VALUES ('default',$1,$2,now())
+         ON CONFLICT (id) DO UPDATE SET rpc_url_encrypted=$1, updated_by=$2, updated_at=now()`,
+        [encrypted, updatedBy || null]
+      );
+      return bscPaymentSecrets.get();
+    },
+    async clearRpcUrl({ updatedBy } = {}) {
+      await pool.query(
+        `INSERT INTO bsc_payment_secrets (id, rpc_url_encrypted, updated_by, updated_at) VALUES ('default',NULL,$1,now())
+         ON CONFLICT (id) DO UPDATE SET rpc_url_encrypted=NULL, updated_by=$1, updated_at=now()`,
+        [updatedBy || null]
+      );
+      return bscPaymentSecrets.get();
+    },
+    async setWebhookSecret(plaintextSecret, { updatedBy } = {}) {
+      const encrypted = encryptSecret(plaintextSecret, encryptionKeyHex());
+      const hint = String(plaintextSecret).slice(-4);
+      await pool.query(
+        `INSERT INTO bsc_payment_secrets (id, webhook_secret_encrypted, webhook_secret_hint, updated_by, updated_at) VALUES ('default',$1,$2,$3,now())
+         ON CONFLICT (id) DO UPDATE SET webhook_secret_encrypted=$1, webhook_secret_hint=$2, updated_by=$3, updated_at=now()`,
+        [encrypted, hint, updatedBy || null]
+      );
+      return bscPaymentSecrets.get();
+    },
+    async clearWebhookSecret({ updatedBy } = {}) {
+      await pool.query(
+        `INSERT INTO bsc_payment_secrets (id, webhook_secret_encrypted, webhook_secret_hint, updated_by, updated_at) VALUES ('default',NULL,NULL,$1,now())
+         ON CONFLICT (id) DO UPDATE SET webhook_secret_encrypted=NULL, webhook_secret_hint=NULL, updated_by=$1, updated_at=now()`,
+        [updatedBy || null]
+      );
+      return bscPaymentSecrets.get();
+    },
+    async recordTestResult({ ok, chainId }) {
+      await pool.query(
+        `INSERT INTO bsc_payment_secrets (id, last_tested_at, last_test_ok, last_detected_chain_id) VALUES ('default',now(),$1,$2)
+         ON CONFLICT (id) DO UPDATE SET last_tested_at=now(), last_test_ok=$1, last_detected_chain_id=$2`,
+        [Boolean(ok), Number.isFinite(chainId) ? chainId : null]
+      );
+      return bscPaymentSecrets.get();
+    }
+  };
+
   function mapStorageProduct(row) {
     return {
       id: row.id, name: row.name, capacityBytes: Number(row.capacity_bytes), priceAmountMicroUsd: Number(row.price_amount_micro_usd),
@@ -3109,6 +3190,6 @@ export function createPgRepo(pool) {
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, storageProducts, storageEntitlements, storageObjects
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects
   };
 }
