@@ -9,6 +9,7 @@ const translations = {
     // keys further down - t() falls back to this English text for fa/ar/es until a translation
     // pass covers them too).
     navGroupMonitor: 'Monitor', navGroupMonetize: 'Monetize', navGroupConfigure: 'Configure',
+    comPageSubtitle: 'Plans, wallet, subscriptions, storage add-ons, transactions and crypto payments - one tab open at a time.',
     comSubPlans: 'Plans', comSubWallet: 'Wallet', comSubHistory: 'Configuration History',
     comUnlimited: 'Unlimited', comStorageBytes: 'Storage (bytes)', comLimitPatterns: 'Patterns', comLimitStrategies: 'Strategies', comLimitAccounts: 'Connected Accounts', comLimitSessions: 'Sessions', comLimitAnalysisSymbols: 'Analysis Symbols',
     comFeatureWallet: 'Wallet enabled', comFeatureAi: 'AI (wallet-based)', comFeatureVoice: 'Voice (wallet-based)', comFeatureAiPanelBuilder: 'AI Panel Builder',
@@ -1679,13 +1680,13 @@ function financialTab() {
 // surface is out of scope for this slice; every OTHER tab's existing translations are untouched.
 let commercialSubTab = 'plans';
 function commercialSubNav(active) {
-  const nav = el('div', 'admin-btn-row');
+  const nav = el('div', 'admin-seg-nav');
   [
     ['plans', t('comSubPlans')], ['wallet', t('comSubWallet')], ['subscriptions', t('comSubSubscriptions')],
     ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['history', t('comSubHistory')],
     ['cryptoPayments', t('comSubCryptoPayments')]
   ].forEach(([id, label]) => {
-    const btn = el('button', 'btn btn-secondary btn-sm' + (id === active ? ' active' : ''), label);
+    const btn = el('button', 'admin-seg-btn' + (id === active ? ' active' : ''), label);
     btn.type = 'button';
     btn.onclick = () => { commercialSubTab = id; renderTab(); };
     nav.append(btn);
@@ -1708,7 +1709,7 @@ function commercialPlansSubTab() {
 
       const limitInputs = {};
       RESOURCE_LIMIT_KEYS.forEach((key) => {
-        const row = el('div', 'admin-btn-row');
+        const row = el('div', 'admin-limit-row');
         const numberField = field(t(RESOURCE_LIMIT_LABELS[key]), 'number', planConfig.limits[key]);
         const unlimitedCheckbox = document.createElement('input');
         unlimitedCheckbox.type = 'checkbox';
@@ -1771,7 +1772,7 @@ function commercialWalletSubTab() {
     // an admin can see WHY cost is $0 without reading the database directly. Built from the exact
     // same aggregation/pricing-resolution the real billing path itself uses (server/admin/
     // routes.commercial.mjs's GET /billing-readiness) - never a second cost concept.
-    const readinessCard = el('div', 'admin-card');
+    const readinessCard = el('div', 'admin-card admin-card-wide');
     readinessCard.append(el('h3', '', t('comBillingReadinessTitle')));
     const readinessHead = el('div', 'admin-btn-row');
     readinessHead.append(el('span', 'badge status-' + (readiness.walletEnforced ? 'valid' : 'unknown'), readiness.walletEnforced ? t('comWalletEnforcedOn') : t('comWalletEnforcedOff')));
@@ -1865,7 +1866,9 @@ function commercialWalletSubTab() {
       api('/commercial/markup-rules', { method: 'POST', body: JSON.stringify({ scopeType: scopeTypeSelect.value, scopeKey: scopeKeyField.input.value, markupPercent: Number(rulePercentField.input.value), enabled: true }) })
         .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
     };
-    markupCard.append(scopeTypeSelect, scopeKeyField.wrap, rulePercentField.wrap, addRuleBtn);
+    const addRuleRow = el('div', 'admin-form-row admin-form-row-submit');
+    addRuleRow.append(scopeTypeSelect, scopeKeyField.wrap, rulePercentField.wrap, addRuleBtn);
+    markupCard.append(addRuleRow);
     wrap.append(markupCard);
 
     const pricingCard = el('div', 'admin-card');
@@ -1892,7 +1895,9 @@ function commercialWalletSubTab() {
         provider: providerSelect.value, model: modelField.input.value, promptPricePer1k: promptPriceField.input.value || null, completionPricePer1k: completionPriceField.input.value || null
       }) }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
     };
-    pricingCard.append(providerSelect, modelField.wrap, promptPriceField.wrap, completionPriceField.wrap, addPricingBtn);
+    const addPricingRow = el('div', 'admin-form-row admin-form-row-submit');
+    addPricingRow.append(providerSelect, modelField.wrap, promptPriceField.wrap, completionPriceField.wrap, addPricingBtn);
+    pricingCard.append(addPricingRow);
     wrap.append(pricingCard);
 
     // Admin credit/debit (spec section 50) - no user search/autocomplete in this slice, an admin
@@ -1916,10 +1921,14 @@ function commercialWalletSubTab() {
     const debitBtn = el('button', 'btn btn-secondary', t('comDebit'));
     debitBtn.type = 'button';
     debitBtn.onclick = () => submitCreditDebit('debit');
-    creditCard.append(userIdField.wrap, amountField.wrap, balanceSelect, reasonField.wrap, creditBtn, debitBtn);
+    const creditDebitFields = el('div', 'admin-form-row');
+    creditDebitFields.append(userIdField.wrap, amountField.wrap, balanceSelect, reasonField.wrap);
+    const creditDebitBtns = el('div', 'admin-btn-row');
+    creditDebitBtns.append(creditBtn, debitBtn);
+    creditCard.append(creditDebitFields, creditDebitBtns);
     wrap.append(creditCard);
 
-    const ledgerCard = el('div', 'admin-card');
+    const ledgerCard = el('div', 'admin-card admin-card-wide');
     ledgerCard.append(el('h3', '', t('comLedgerTitle')));
     if (!ledgerData.entries.length) {
       ledgerCard.append(el('p', 'hint', t('comLedgerEmpty')));
@@ -1941,7 +1950,12 @@ function commercialWalletSubTab() {
         tbody.append(row);
       });
       table.append(tbody);
-      ledgerCard.append(table);
+      // Consistency fix (CSS restyle, no logic change): matches commercialTransactionsSubTab()'s
+      // already-correct .admin-table-wrap - this ledger table has 7 columns and was missing the
+      // horizontal-scroll wrapper every other wide admin table in this file already gets.
+      const tableWrap = el('div', 'admin-table-wrap');
+      tableWrap.append(table);
+      ledgerCard.append(tableWrap);
     }
     wrap.append(ledgerCard);
 
@@ -1971,7 +1985,11 @@ function commercialHistorySubTab() {
       tbody.append(row);
     });
     table.append(tbody);
-    wrap.append(table);
+    // Consistency fix (CSS restyle, no logic change): matches commercialTransactionsSubTab()'s
+    // already-correct .admin-table-wrap - was missing the horizontal-scroll wrapper.
+    const tableWrap = el('div', 'admin-table-wrap');
+    tableWrap.append(table);
+    wrap.append(tableWrap);
     return wrap;
   });
 }
@@ -2262,6 +2280,7 @@ function commercialTab() {
   const builder = COMMERCIAL_SUB_TAB_BUILDERS[commercialSubTab] || commercialPlansSubTab;
   return builder().then((body) => {
     const wrap = el('div');
+    wrap.append(pageHeader('credit-card', 'tabCommercial', 'comPageSubtitle'));
     wrap.append(commercialSubNav(commercialSubTab), body);
     return wrap;
   });

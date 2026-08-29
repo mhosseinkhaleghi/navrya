@@ -224,6 +224,32 @@ table.admin-table tbody tr:hover { background:rgba(255,255,255,.025); }
 .field-check input { width:16px; height:16px; }
 .admin-voice-test-audio { display:block; margin-top:10px; max-width:100%; }
 
+/* ---------- Commercial tab (Chunk 4 restyle) ---------- */
+/* Sub-tab pills (Plans/Wallet/Subscriptions/...) - same .active toggle/commercialSubTab state
+   as before, restyled as a segmented nav instead of a row of generic secondary buttons. */
+.admin-seg-nav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+.admin-seg-btn { padding:9px 16px; border-radius:10px; font-size:12.5px; font-weight:700; color:var(--muted); border:1px solid var(--line); background:var(--panel-raised); }
+.admin-seg-btn:hover { color:var(--text); border-color:#2c3c5c; }
+.admin-seg-btn.active { color:#fff; border-color:transparent; background:linear-gradient(90deg, var(--violet), var(--violet-soft)); }
+/* A resource-limit row (Plans sub-tab): the number field grows, the "Unlimited" checkbox stays
+   fixed-width and bottom-aligned with the field's input - was a generic .admin-btn-row (flex,
+   no grow rule), leaving the number field its own unpredictable content width. */
+.admin-limit-row { display:flex; align-items:end; gap:10px; margin-bottom:10px; }
+.admin-limit-row .field { flex:1; margin-bottom:0; }
+.admin-limit-row .field-check { flex:none; height:38px; margin:0; white-space:nowrap; }
+/* A group of sibling fields/controls that were previously appended flat with no wrapper at all
+   (Wallet sub-tab's add-markup-rule row, add-provider-pricing row, credit/debit fields) - same
+   api() payloads, same elements, just grouped into a readable 2-col row instead of stacking one
+   full-width control per line. The -submit modifier makes a trailing single button span both
+   columns (used where the row ends in one "Add ..." button, not two side-by-side actions). */
+.admin-form-row { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; align-items:end; margin-top:6px; }
+.admin-form-row .field { margin-bottom:0; }
+.admin-form-row-submit > *:last-child { grid-column:1 / -1; }
+/* A card holding a genuinely wide table (Wallet sub-tab's AI-billing-readiness and ledger
+   cards) - spans the full row of its .admin-grid instead of being squeezed into one narrow
+   auto-fill column alongside the form cards next to it. */
+.admin-card-wide { grid-column:1 / -1; }
+
 .admin-pagination { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:13px; color:var(--muted); }
 
 .toast { position:fixed; z-index:20; inset-inline-end:24px; bottom:24px; max-width:280px; padding:12px 16px; border:1px solid #9861dc; border-radius:9px; color:#f4eaff; background:#271246; box-shadow:0 14px 35px rgba(0,0,0,.4); opacity:0; transform:translateY(10px); pointer-events:none; transition:.2s ease; }
@@ -248,6 +274,7 @@ html[dir="rtl"] .language-menu button { text-align:right; }
   .admin-layout.sidebar-open .admin-sidebar { transform:translateX(0); }
   .admin-layout.collapsed .admin-brand strong, .admin-layout.collapsed .admin-nav button span, .admin-layout.collapsed .admin-back-link span { display:inline; }
   .admin-content { padding:16px 14px 40px; }
-  .admin-grid, .admin-grid-3, .admin-stat-row, .admin-pricing-row, .admin-cred-add-row { grid-template-columns:1fr; }
+  .admin-grid, .admin-grid-3, .admin-stat-row, .admin-pricing-row, .admin-cred-add-row, .admin-form-row { grid-template-columns:1fr; }
+  .admin-limit-row { flex-wrap:wrap; }
   .admin-current-user #currentUserName { display:none; }
 }
