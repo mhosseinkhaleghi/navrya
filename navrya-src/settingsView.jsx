@@ -61,6 +61,7 @@ const copy = {
     regionTitle: 'منطقه و زبان', countryLabel: 'کشور', countryHint: 'تعطیلات، سشن‌ها و سال مالیاتی را تعیین می‌کند',
     languageLabel: 'زبان', languageHint: 'زبان رابط کاربری', timezoneLabel: 'منطقه زمانی', timezoneHint: 'ساعت‌ها و مرزهای سشن',
     currencyLabel: 'واحد پول حساب', currencyHint: 'ریسک و سود/زیان با این واحد نمایش داده می‌شود', weekLabel: 'شروع هفته', weekHint: 'شبکه ژورنال و تقویم',
+    weekdaySaturday: 'شنبه', weekdaySunday: 'یکشنبه', weekdayMonday: 'دوشنبه',
     clockLabel: 'قالب ساعت', clockHint: 'زمان سشن‌ها در کل اپ', h24: '۲۴ ساعته', h12: '۱۲ ساعته',
     alertsTitle: 'هشدارها و انضباط',
     sessionOpenLabel: 'هشدار باز شدن سشن', sessionOpenHint: 'وقتی لندن، نیویورک، توکیو یا سیدنی باز می‌شود اطلاع بده',
@@ -96,6 +97,7 @@ const copy = {
     regionTitle: 'المنطقة واللغة', countryLabel: 'الدولة', countryHint: 'يحدد العطلات والجلسات والسنة الضريبية',
     languageLabel: 'اللغة', languageHint: 'لغة الواجهة', timezoneLabel: 'المنطقة الزمنية', timezoneHint: 'الساعات وحدود الجلسات',
     currencyLabel: 'عملة الحساب', currencyHint: 'تُعرض المخاطرة والأرباح/الخسائر بهذه العملة', weekLabel: 'بداية الأسبوع', weekHint: 'شبكة السجل والتقويم',
+    weekdaySaturday: 'السبت', weekdaySunday: 'الأحد', weekdayMonday: 'الاثنين',
     clockLabel: 'تنسيق الساعة', clockHint: 'أوقات الجلسات في كل التطبيق', h24: '٢٤ ساعة', h12: '١٢ ساعة',
     alertsTitle: 'التنبيهات والانضباط',
     sessionOpenLabel: 'تنبيه فتح الجلسة', sessionOpenHint: 'نبّهني عند فتح لندن أو نيويورك أو طوكيو أو سيدني',
@@ -131,6 +133,7 @@ const copy = {
     regionTitle: 'Region & language', countryLabel: 'Country', countryHint: 'Sets holidays, sessions and tax year',
     languageLabel: 'Language', languageHint: 'Interface language', timezoneLabel: 'Time zone', timezoneHint: 'Clocks and session boundaries',
     currencyLabel: 'Account currency', currencyHint: 'Risk and P&L are shown in this currency', weekLabel: 'Week starts on', weekHint: 'Journal and calendar grids',
+    weekdaySaturday: 'Saturday', weekdaySunday: 'Sunday', weekdayMonday: 'Monday',
     clockLabel: 'Clock format', clockHint: 'Session times across the app', h24: '24 h', h12: '12 h',
     alertsTitle: 'Alerts & discipline',
     sessionOpenLabel: 'Session open alert', sessionOpenHint: 'Ping when London, New York, Tokyo or Sydney opens',
@@ -166,6 +169,7 @@ const copy = {
     regionTitle: 'Región e idioma', countryLabel: 'País', countryHint: 'Define festivos, sesiones y año fiscal',
     languageLabel: 'Idioma', languageHint: 'Idioma de la interfaz', timezoneLabel: 'Zona horaria', timezoneHint: 'Relojes y límites de sesión',
     currencyLabel: 'Moneda de la cuenta', currencyHint: 'El riesgo y el P&L se muestran en esta moneda', weekLabel: 'La semana empieza en', weekHint: 'Cuadrículas del diario y calendario',
+    weekdaySaturday: 'sábado', weekdaySunday: 'domingo', weekdayMonday: 'lunes',
     clockLabel: 'Formato de hora', clockHint: 'Horarios de sesión en toda la app', h24: '24 h', h12: '12 h',
     alertsTitle: 'Alertas y disciplina',
     sessionOpenLabel: 'Alerta de apertura de sesión', sessionOpenHint: 'Avisa cuando abra Londres, Nueva York, Tokio o Sídney',
@@ -491,8 +495,13 @@ function RegionLanguageSection({ t, lang, store }) {
     { key: 'country', label: t('countryLabel'), hint: t('countryHint'), options: ['Iran', 'United Arab Emirates', 'Türkiye', 'Germany', 'United Kingdom', 'United States'] },
     { key: 'timezone', label: t('timezoneLabel'), hint: t('timezoneHint'), options: ['Asia/Tehran (UTC+3:30)', 'Asia/Dubai (UTC+4)', 'Europe/London (UTC+1)', 'America/New_York (UTC-4)'] },
     { key: 'currency', label: t('currencyLabel'), hint: t('currencyHint'), options: ['USD', 'EUR', 'AED', 'IRR', 'GBP'] },
-    { key: 'weekStart', label: t('weekLabel'), hint: t('weekHint'), options: ['Saturday', 'Sunday', 'Monday'] }
+    { key: 'weekStart', label: t('weekLabel'), hint: t('weekHint'), options: [
+      { value: 'Saturday', label: t('weekdaySaturday') }, { value: 'Sunday', label: t('weekdaySunday') }, { value: 'Monday', label: t('weekdayMonday') }
+    ] }
   ];
+  // Row options are either plain strings (country/timezone/currency) or {value,label} pairs
+  // (weekStart, translated) - normalize before comparing/validating against a raw value.
+  const optionValue = (o) => (typeof o === 'string' ? o : o.value);
 
   // AI process registry (A4) - mountedRef template. Every field here is a validated <Select>, so
   // applyValue only ever applies a suggested value when it's one of that field's own real
@@ -512,7 +521,7 @@ function RegionLanguageSection({ t, lang, store }) {
       applyValue: (path, value) => {
         if (path === 'language') { if (languageOptions.some((o) => o.value === value)) store.setLanguage(value); return; }
         const row = rows.find((r) => 'region.' + r.key === path);
-        if (row && row.options.indexOf(value) > -1) { const p = {}; p[row.key] = value; patch(p); }
+        if (row && row.options.some((o) => optionValue(o) === value)) { const p = {}; p[row.key] = value; patch(p); }
       }
     });
     return () => { mountedRef.current = false; };
