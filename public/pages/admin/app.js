@@ -5,6 +5,10 @@ const translations = {
     gateErrorNotAdmin: 'This account does not have admin access.', gateErrorInvalidCredentials: 'Incorrect email or password.',
     enforcementWarning: 'Warning: ADMIN_AUTH_ENFORCED is not set on the server - every account currently has admin access. Set ADMIN_AUTH_ENFORCED=true.',
     tabUsers: 'Users', tabAI: 'AI', tabTechnical: 'Technical', tabXP: 'XP & Segmentation', tabMarketplace: 'Marketplace', tabFinancial: 'Financial', tabCommercial: 'Commercial',
+    // Sidebar group labels (English-only for now, same accepted precedent as the Commercial-tab
+    // keys further down - t() falls back to this English text for fa/ar/es until a translation
+    // pass covers them too).
+    navGroupMonitor: 'Monitor', navGroupMonetize: 'Monetize', navGroupConfigure: 'Configure',
     comSubPlans: 'Plans', comSubWallet: 'Wallet', comSubHistory: 'Configuration History',
     comUnlimited: 'Unlimited', comStorageBytes: 'Storage (bytes)', comLimitPatterns: 'Patterns', comLimitStrategies: 'Strategies', comLimitAccounts: 'Connected Accounts', comLimitSessions: 'Sessions', comLimitAnalysisSymbols: 'Analysis Symbols',
     comFeatureWallet: 'Wallet enabled', comFeatureAi: 'AI (wallet-based)', comFeatureVoice: 'Voice (wallet-based)', comFeatureAiPanelBuilder: 'AI Panel Builder',
@@ -569,6 +573,29 @@ function statCard(iconName, value, label) {
   return card;
 }
 function statRow(cards) { const row = el('div', 'admin-stat-row'); row.append(...cards); return row; }
+// Per-tab page header (icon + title + one-line subtitle), prepended inside a tab's own body -
+// #pageTitle in the topbar is untouched (renderTab() still sets it via textContent, unchanged).
+// subtitleKey is optional; omit it for a header with no subtitle line.
+function pageHeader(iconName, titleKey, subtitleKey) {
+  const wrap = el('div', 'admin-page-header');
+  const iconWrap = el('div', 'admin-page-header-icon');
+  if (window.TradeJournalIcons) iconWrap.append(window.TradeJournalIcons.icon(iconName));
+  const text = el('div');
+  // h2, not h1 - the topbar's own #pageTitle (index.html) is already a real <h1> for this page;
+  // this is a secondary, in-body restatement, so it nests under that instead of duplicating it.
+  text.append(el('h2', 'admin-page-header-title', t(titleKey)));
+  if (subtitleKey) text.append(el('p', 'admin-page-header-subtitle', t(subtitleKey)));
+  wrap.append(iconWrap, text);
+  return wrap;
+}
+// A section head (label + optional right-aligned hint) introducing one group of cards within a
+// tab body, without a full page header - e.g. "Provider keys & pricing" above a card grid.
+function sectionHead(titleKey, hintText) {
+  const wrap = el('div', 'admin-section-head');
+  wrap.append(el('h3', '', t(titleKey)));
+  if (hintText) wrap.append(el('p', 'hint', hintText));
+  return wrap;
+}
 function errorNode(error, onRetry) {
   const wrap = el('div', 'admin-card');
   wrap.append(el('p', 'error-text', t('errorGeneric') + (error && error.code ? ' (' + error.code + ')' : '')));
