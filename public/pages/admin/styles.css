@@ -16,6 +16,17 @@
 }
 html[lang="fa"] { --font:"PeydaWeb",Tahoma,sans-serif; } html[lang="ar"] { --font:Tajawal,Arial,sans-serif; } html[lang="es"] { --font:Manrope,Arial,sans-serif; }
 * { box-sizing:border-box; }
+/* Real bug found via live browser verification (not introduced by this redesign - pre-existing):
+   several elements below set an unconditional `display` (.admin-gate/.admin-layout/
+   .admin-current-user are all `display:grid`/`flex`), which - per the CSS cascade - wins over
+   the UA stylesheet's `[hidden]{display:none}` at equal specificity once ANY same-specificity
+   author rule also targets that element, since author styles are inserted after the UA sheet.
+   Concretely: after a real login, `#adminGate.hidden = true` set the attribute correctly, but
+   the gate kept rendering at `display:grid` anyway, stacked on top of the real dashboard below
+   it. `.language-menu[hidden]{display:none}` further down already carries the fix for that one
+   element; this single !important rule is the standard, idiomatic fix for the whole page instead
+   of patching every individual selector one at a time. */
+[hidden] { display:none !important; }
 html { min-width:320px; background:var(--bg); }
 body { min-height:100vh; margin:0; color:var(--text); background:var(--bg); font-family:var(--font); }
 button { font:inherit; color:inherit; cursor:pointer; }
