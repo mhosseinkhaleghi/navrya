@@ -58,6 +58,9 @@ const translations = {
     backToApp: 'Back to app', sidebarToggleLabel: 'Toggle menu',
     statTotalUsers: 'Total users', statOnlineNow: 'Online now', statProvidersConfigured: 'Providers configured', statTotalListings: 'Total listings', statPublishedListings: 'Published', statFeaturedListings: 'Featured',
     detailLoadFailed: 'Could not load user details.', noEmail: 'No email on file', noPhone: 'No phone on file',
+    // Users list -> dedicated profile page (replaces the old inline accordion row).
+    usersPageSubtitle: 'Every account on the platform — search, review, and open a profile.', viewProfile: 'View profile',
+    usersBackToLibrary: '← All users', joinedOnLabel: 'Joined {date}', levelCardTitle: 'Level & XP', verificationCardTitle: 'Verification',
     kycStatusLabel: 'Verification (KYC) status', kycNotStarted: 'Not started', kycPending: 'Pending review', kycVerified: 'Verified', kycRejected: 'Rejected', saveKyc: 'Save status',
     profileRoleLabel: 'Product role', profileRoleTrader: 'Trader', profileRoleMentor: 'Mentor', profileRoleTeacher: 'Teacher',
     levelXpLabel: 'Level {level} · {xp} XP', achievementsLabel: 'Achievements', noAchievements: 'No achievements unlocked yet.',
@@ -178,6 +181,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     backToApp: 'بازگشت به برنامه', sidebarToggleLabel: 'باز/بسته کردن منو',
     statTotalUsers: 'مجموع کاربران', statOnlineNow: 'آنلاین الان', statProvidersConfigured: 'سرویس‌دهنده‌های تنظیم‌شده', statTotalListings: 'مجموع آگهی‌ها', statPublishedListings: 'منتشرشده', statFeaturedListings: 'ویژه',
     detailLoadFailed: 'جزئیات کاربر بارگذاری نشد.', noEmail: 'ایمیلی ثبت نشده', noPhone: 'شماره‌ای ثبت نشده',
+    usersPageSubtitle: 'همه‌ی حساب‌های پلتفرم — جست‌وجو، بررسی و باز کردن پروفایل.', viewProfile: 'مشاهده پروفایل',
+    usersBackToLibrary: '← همه‌ی کاربران', joinedOnLabel: 'عضویت از {date}', levelCardTitle: 'سطح و امتیاز', verificationCardTitle: 'احراز هویت',
     kycStatusLabel: 'وضعیت احراز هویت (KYC)', kycNotStarted: 'شروع نشده', kycPending: 'در حال بررسی', kycVerified: 'تأیید شده', kycRejected: 'رد شده', saveKyc: 'ذخیرهٔ وضعیت',
     profileRoleLabel: 'نقش محصولی', profileRoleTrader: 'معامله‌گر', profileRoleMentor: 'منتور', profileRoleTeacher: 'مدرس',
     levelXpLabel: 'سطح {level} · {xp} امتیاز', achievementsLabel: 'دستاوردها', noAchievements: 'هنوز دستاوردی باز نشده است.',
@@ -295,6 +300,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     backToApp: 'العودة إلى التطبيق', sidebarToggleLabel: 'فتح/إغلاق القائمة',
     statTotalUsers: 'إجمالي المستخدمين', statOnlineNow: 'متصل الآن', statProvidersConfigured: 'مزوّدون مُهيّؤون', statTotalListings: 'إجمالي الإعلانات', statPublishedListings: 'منشور', statFeaturedListings: 'مميّز',
     detailLoadFailed: 'تعذر تحميل تفاصيل المستخدم.', noEmail: 'لا يوجد بريد إلكتروني', noPhone: 'لا يوجد هاتف',
+    usersPageSubtitle: 'كل الحسابات في المنصة — ابحث وراجع وافتح ملفًا شخصيًا.', viewProfile: 'عرض الملف الشخصي',
+    usersBackToLibrary: '← كل المستخدمين', joinedOnLabel: 'الانضمام في {date}', levelCardTitle: 'المستوى والنقاط', verificationCardTitle: 'التحقق',
     kycStatusLabel: 'حالة التحقق (KYC)', kycNotStarted: 'لم تبدأ', kycPending: 'قيد المراجعة', kycVerified: 'موثّق', kycRejected: 'مرفوض', saveKyc: 'حفظ الحالة',
     profileRoleLabel: 'الدور المنتجي', profileRoleTrader: 'متداول', profileRoleMentor: 'موجّه', profileRoleTeacher: 'مدرّس',
     levelXpLabel: 'المستوى {level} · {xp} نقطة', achievementsLabel: 'الإنجازات', noAchievements: 'لا توجد إنجازات مفتوحة بعد.',
@@ -412,6 +419,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     backToApp: 'Volver a la app', sidebarToggleLabel: 'Mostrar/ocultar menú',
     statTotalUsers: 'Usuarios totales', statOnlineNow: 'En línea ahora', statProvidersConfigured: 'Proveedores configurados', statTotalListings: 'Anuncios totales', statPublishedListings: 'Publicados', statFeaturedListings: 'Destacados',
     detailLoadFailed: 'No se pudieron cargar los detalles del usuario.', noEmail: 'Sin correo registrado', noPhone: 'Sin teléfono registrado',
+    usersPageSubtitle: 'Todas las cuentas de la plataforma — busca, revisa y abre un perfil.', viewProfile: 'Ver perfil',
+    usersBackToLibrary: '← Todos los usuarios', joinedOnLabel: 'Se unió el {date}', levelCardTitle: 'Nivel y XP', verificationCardTitle: 'Verificación',
     kycStatusLabel: 'Estado de verificación (KYC)', kycNotStarted: 'No iniciado', kycPending: 'En revisión', kycVerified: 'Verificado', kycRejected: 'Rechazado', saveKyc: 'Guardar estado',
     profileRoleLabel: 'Rol de producto', profileRoleTrader: 'Trader', profileRoleMentor: 'Mentor', profileRoleTeacher: 'Profesor',
     levelXpLabel: 'Nivel {level} · {xp} XP', achievementsLabel: 'Logros', noAchievements: 'Aún no hay logros desbloqueados.',
@@ -607,20 +616,24 @@ function errorNode(error, onRetry) {
 }
 
 // --- Users tab ---
+// Split into a library (list) and a dedicated profile page, the same list->detail shape
+// Conversation Studio already uses (conversationStudioSelectedId / conversationStudioTab()) -
+// mirrored here rather than inventing a second mechanism.
 
-let usersState = { search: '', sort: 'createdAt', dir: 'desc', page: 1, expanded: null };
+let usersState = { search: '', sort: 'createdAt', dir: 'desc', page: 1 };
+let usersSelectedId = null;
 
 function usersTab() {
-  return api('/users?search=' + encodeURIComponent(usersState.search) + '&sort=' + usersState.sort + '&dir=' + usersState.dir + '&page=' + usersState.page).then((data) => {
-    // The list row is a lightweight shape (server/admin/routes.mjs's GET /users) - it has no
-    // kyc/profileRole/level/achievements/subscriptions. The expanded detail row needs the fully
-    // enriched GET /users/:id response instead, fetched once here rather than per-row.
-    const detailPromise = usersState.expanded ? api('/users/' + usersState.expanded).catch(() => null) : Promise.resolve(null);
-    return detailPromise.then((detail) => buildUsersTabBody(data, detail));
-  });
+  return usersSelectedId ? userProfilePage(usersSelectedId) : usersLibrary();
 }
-function buildUsersTabBody(data, detail) {
+function openUserProfile(id) { usersSelectedId = id; renderTab(); }
+
+function usersLibrary() {
+  return api('/users?search=' + encodeURIComponent(usersState.search) + '&sort=' + usersState.sort + '&dir=' + usersState.dir + '&page=' + usersState.page).then(buildUsersLibraryBody);
+}
+function buildUsersLibraryBody(data) {
     const wrap = el('div');
+    wrap.append(pageHeader('users', 'tabUsers', 'usersPageSubtitle'));
     wrap.append(statRow([
       statCard('users', fmtNumber(data.total), t('statTotalUsers')),
       statCard('wifi', fmtNumber(data.onlineCount || 0), t('statOnlineNow'))
@@ -657,6 +670,8 @@ function buildUsersTabBody(data, detail) {
     const tbody = document.createElement('tbody');
     data.users.forEach((user) => {
       const row = document.createElement('tr');
+      row.classList.add('admin-row-clickable');
+      row.onclick = () => openUserProfile(user.id);
       row.append(
         cell(user.displayName), cell(fmtDate(user.createdAt)), cell(fmtDate(user.lastLoginAt)),
         onlineCell(user.isOnline), cell(fmtNumber(user.hoursOnline)),
@@ -664,13 +679,12 @@ function buildUsersTabBody(data, detail) {
         cell(t('role' + user.role.charAt(0).toUpperCase() + user.role.slice(1)))
       );
       const actionsCell = document.createElement('td');
-      const detailBtn = el('button', 'btn btn-secondary', usersState.expanded === user.id ? t('close') : t('colActions'));
-      detailBtn.type = 'button';
-      detailBtn.onclick = () => { usersState.expanded = usersState.expanded === user.id ? null : user.id; renderTab(); };
-      actionsCell.append(detailBtn);
+      const viewBtn = el('button', 'btn btn-secondary btn-sm', t('viewProfile'));
+      viewBtn.type = 'button';
+      viewBtn.onclick = (event) => { event.stopPropagation(); openUserProfile(user.id); };
+      actionsCell.append(viewBtn);
       row.append(actionsCell);
       tbody.append(row);
-      if (usersState.expanded === user.id) tbody.append(userDetailRow(detail, columns.length));
     });
     table.append(tbody);
     tableWrap.append(table);
@@ -696,43 +710,77 @@ function onlineCell(isOnline) {
   return td;
 }
 function humanizeAchievementKey(key) { return String(key || '').split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '); }
+function initialsOf(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+function kvRow(labelText, valueNode) {
+  const row = el('div', 'admin-kv-row');
+  row.append(el('span', '', labelText));
+  const value = el('span', '');
+  if (typeof valueNode === 'string') value.textContent = valueNode; else value.append(valueNode);
+  row.append(value);
+  return row;
+}
+
+function userProfilePage(id) {
+  return api('/users/' + id).then(buildUserProfilePage).catch((error) => {
+    const wrap = el('div');
+    wrap.append(usersBackButton());
+    wrap.append(errorNode(error, () => renderTab()));
+    return wrap;
+  });
+}
+function usersBackButton() {
+  const btn = el('button', 'btn btn-secondary btn-sm', t('usersBackToLibrary'));
+  btn.type = 'button';
+  btn.onclick = () => { usersSelectedId = null; renderTab(); };
+  return btn;
+}
 // `user` here is the fully-enriched GET /api/admin/users/:id response (identity, kyc,
-// profileRole, xpTotal, level, achievements, subscriptions) - null if that fetch failed.
-function userDetailRow(user, colSpan) {
-  const row = document.createElement('tr');
-  const td = document.createElement('td');
-  td.colSpan = colSpan;
-  if (!user) {
-    td.append(el('p', 'error-text', t('detailLoadFailed')));
-    row.append(td);
-    return row;
-  }
-  const box = el('div', 'admin-card admin-user-detail');
+// profileRole, xpTotal, achievements, subscriptions, usageByProvider, aiCost).
+function buildUserProfilePage(user) {
+  const wrap = el('div');
+  wrap.append(usersBackButton());
 
-  const identity = el('div', 'admin-user-identity');
-  if (user.avatarDataUrl) { const img = document.createElement('img'); img.className = 'admin-user-avatar'; img.src = user.avatarDataUrl; img.alt = ''; identity.append(img); }
-  identity.append(el('p', '', user.email || t('noEmail')), el('p', 'hint', user.phone || t('noPhone')));
-  box.append(identity);
+  const header = el('div', 'admin-profile-header');
+  const avatar = el('div', 'admin-profile-avatar');
+  if (user.avatarDataUrl) { const img = document.createElement('img'); img.src = user.avatarDataUrl; img.alt = ''; avatar.append(img); }
+  else avatar.textContent = initialsOf(user.displayName);
+  const idBlock = el('div', 'admin-profile-id');
+  const nameLine = el('h2', 'admin-profile-name', user.displayName + ' ');
+  nameLine.append(el('span', 'badge', t('role' + user.role.charAt(0).toUpperCase() + user.role.slice(1))));
+  const metaLine = el('div', 'admin-profile-meta');
+  metaLine.append(el('span', '', user.email || t('noEmail')), el('span', '', user.phone || t('noPhone')), el('span', '', t('joinedOnLabel', { date: fmtDate(user.createdAt) })));
+  idBlock.append(nameLine, metaLine);
 
-  const roleField = el('label', 'field');
-  roleField.append(el('span', '', t('colRole')));
+  const actions = el('div', 'admin-profile-actions');
   const roleSelect = document.createElement('select');
   ['user', 'moderator', 'admin'].forEach((role) => roleSelect.append(new Option(t('role' + role.charAt(0).toUpperCase() + role.slice(1)), role, false, user.role === role)));
   roleSelect.onchange = () => {
     api('/users/' + user.id, { method: 'PATCH', body: JSON.stringify({ role: roleSelect.value }) })
       .then(() => showToast(t('saved'))).catch((error) => showToast(error.message, 'danger'));
   };
-  roleField.append(roleSelect);
-  const suspendBtn = el('button', 'btn ' + (user.suspendedAt ? 'btn-secondary' : 'btn-danger'), user.suspendedAt ? t('unsuspend') : t('suspend'));
+  const suspendBtn = el('button', 'btn btn-sm ' + (user.suspendedAt ? 'btn-secondary' : 'btn-danger'), user.suspendedAt ? t('unsuspend') : t('suspend'));
   suspendBtn.type = 'button';
   suspendBtn.onclick = () => {
     api('/users/' + user.id, { method: 'PATCH', body: JSON.stringify({ suspendedAt: user.suspendedAt ? null : new Date().toISOString() }) })
       .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
   };
-  box.append(roleField, suspendBtn);
+  actions.append(roleSelect, suspendBtn);
+  header.append(avatar, idBlock, actions);
+  wrap.append(header);
 
-  box.append(el('p', 'hint', t('profileRoleLabel') + ': ' + t('profileRole' + user.profileRole.charAt(0).toUpperCase() + user.profileRole.slice(1))));
+  const columns = el('div', 'admin-profile-columns');
+  const left = el('div');
+  const right = el('div');
 
+  // --- Left: verification, level/XP, achievements, subscriptions ---
+  const verifyCard = el('div', 'admin-card');
+  verifyCard.append(el('h3', '', t('verificationCardTitle')));
+  verifyCard.append(kvRow(t('kycStatusLabel'), el('span', 'badge', t('kyc' + user.kycStatus.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('')))));
+  verifyCard.append(kvRow(t('profileRoleLabel'), t('profileRole' + user.profileRole.charAt(0).toUpperCase() + user.profileRole.slice(1))));
   const kycField = el('label', 'field');
   kycField.append(el('span', '', t('kycStatusLabel')));
   const kycSelect = document.createElement('select');
@@ -744,31 +792,74 @@ function userDetailRow(user, colSpan) {
     api('/users/' + user.id + '/kyc', { method: 'PATCH', body: JSON.stringify({ kycStatus: kycSelect.value }) })
       .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
   };
-  box.append(kycField, saveKycBtn);
+  verifyCard.append(kycField, saveKycBtn);
+  left.append(verifyCard);
 
+  const xpCard = el('div', 'admin-card');
+  xpCard.append(el('h3', '', t('levelCardTitle')));
   const rules = window.TradeJournalProfileXPRules;
-  const levelLine = el('p', '', t('levelXpLabel', { level: rules ? rules.levelForXp(user.xpTotal) : user.level, xp: fmtNumber(user.xpTotal) }));
-  box.append(levelLine);
+  const level = rules ? rules.levelForXp(user.xpTotal) : user.level;
+  xpCard.append(el('p', '', t('levelXpLabel', { level: level, xp: fmtNumber(user.xpTotal) })));
+  // Real progress within the current level, from the same thresholds/formula the NAVRYA header
+  // ring already uses (ARCHITECTURE.md 11.17) - never shown when the rules script failed to
+  // load, or at the final level (xpForNextLevel returns null, nothing to progress toward).
+  if (rules) {
+    const nextThreshold = rules.xpForNextLevel(user.xpTotal);
+    if (nextThreshold != null) {
+      const currentThreshold = rules.LEVEL_THRESHOLDS[level - 1] || 0;
+      const pct = Math.max(0, Math.min(100, ((user.xpTotal - currentThreshold) / (nextThreshold - currentThreshold)) * 100));
+      const track = el('div', 'admin-xp-progress-track');
+      const fill = el('div', 'admin-xp-progress-fill');
+      fill.style.width = pct + '%';
+      track.append(fill);
+      xpCard.append(track);
+    }
+  }
+  left.append(xpCard);
 
-  // Section 7.16 follow-up: this user's AI token usage, broken down by provider - the list row
-  // above only ever showed the one lifetime total (colTokensUsed).
-  box.append(el('h3', '', t('usageByProviderLabel')));
+  const achCard = el('div', 'admin-card');
+  achCard.append(el('h3', '', t('achievementsLabel')));
+  if (!user.achievements || !user.achievements.length) {
+    achCard.append(el('p', 'hint', t('noAchievements')));
+  } else {
+    const achList = document.createElement('ul');
+    user.achievements.forEach((achievement) => { const li = document.createElement('li'); li.textContent = humanizeAchievementKey(achievement.achievementKey) + ' — ' + fmtDate(achievement.unlockedAt); achList.append(li); });
+    achCard.append(achList);
+  }
+  left.append(achCard);
+
+  const subCard = el('div', 'admin-card');
+  subCard.append(el('h3', '', t('subscriptionsLabel')));
+  if (!user.subscriptions || !user.subscriptions.length) {
+    subCard.append(el('p', 'hint', t('noSubscriptions')));
+  } else {
+    const subList = document.createElement('ul');
+    user.subscriptions.forEach((sub) => {
+      const li = document.createElement('li');
+      li.textContent = (sub.listing ? sub.listing.title : sub.listingId) + ' — ' + t('purchasedOnLabel', { date: fmtDate(sub.purchasedAt) }) + ' (' + t('mockBadge') + ')';
+      subList.append(li);
+    });
+    subCard.append(subList);
+  }
+  left.append(subCard);
+
+  // --- Right: token usage by provider, real per-model AI cost ---
+  const usageCard = el('div', 'admin-card');
+  usageCard.append(el('h3', '', t('usageByProviderLabel')));
   if (!user.usageByProvider || !user.usageByProvider.length) {
-    box.append(el('p', 'hint', t('noProviderUsage')));
+    usageCard.append(el('p', 'hint', t('noProviderUsage')));
   } else {
     const usageList = document.createElement('ul');
     user.usageByProvider.forEach((row) => { const li = document.createElement('li'); li.textContent = row.provider + ': ' + fmtNumber(row.totalTokens) + ' ' + t('tokensUsedLabel'); usageList.append(li); });
-    box.append(usageList);
+    usageCard.append(usageList);
   }
+  right.append(usageCard);
 
-  // Real, gateway-settled per-model AI cost/charge (task D.2) - additive next to the token-count
-  // list above, never replacing it. Sourced from user.aiCost (server/admin/routes.mjs's
-  // aggregateByModelForUser(), origin='gateway' only - never the untrusted usageByProvider tokens
-  // shown above).
-  box.append(el('h3', '', t('aiCostSectionTitle')));
-  box.append(el('p', 'hint', t('aiCostRateCardHint')));
+  const aiCostCard = el('div', 'admin-card');
+  aiCostCard.append(el('h3', '', t('aiCostSectionTitle')));
+  aiCostCard.append(el('p', 'hint', t('aiCostRateCardHint')));
   if (!user.aiCost || !user.aiCost.byModel || !user.aiCost.byModel.length) {
-    box.append(el('p', 'hint', t('aiCostNoData')));
+    aiCostCard.append(el('p', 'hint', t('aiCostNoData')));
   } else {
     const aiCostList = document.createElement('ul');
     user.aiCost.byModel.forEach((row) => {
@@ -778,34 +869,13 @@ function userDetailRow(user, colSpan) {
         + ' · ' + t('aiCostRetailCharge') + ': ' + fmtMicroUsd(row.retailChargeMicroUsd);
       aiCostList.append(li);
     });
-    box.append(aiCostList);
+    aiCostCard.append(aiCostList);
   }
+  right.append(aiCostCard);
 
-  box.append(el('h3', '', t('achievementsLabel')));
-  if (!user.achievements || !user.achievements.length) {
-    box.append(el('p', 'hint', t('noAchievements')));
-  } else {
-    const achList = document.createElement('ul');
-    user.achievements.forEach((achievement) => { const li = document.createElement('li'); li.textContent = humanizeAchievementKey(achievement.achievementKey) + ' — ' + fmtDate(achievement.unlockedAt); achList.append(li); });
-    box.append(achList);
-  }
-
-  box.append(el('h3', '', t('subscriptionsLabel')));
-  if (!user.subscriptions || !user.subscriptions.length) {
-    box.append(el('p', 'hint', t('noSubscriptions')));
-  } else {
-    const subList = document.createElement('ul');
-    user.subscriptions.forEach((sub) => {
-      const li = document.createElement('li');
-      li.textContent = (sub.listing ? sub.listing.title : sub.listingId) + ' — ' + t('purchasedOnLabel', { date: fmtDate(sub.purchasedAt) }) + ' (' + t('mockBadge') + ')';
-      subList.append(li);
-    });
-    box.append(subList);
-  }
-
-  td.append(box);
-  row.append(td);
-  return row;
+  columns.append(left, right);
+  wrap.append(columns);
+  return wrap;
 }
 
 // --- AI tab ---

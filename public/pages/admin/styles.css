@@ -128,12 +128,28 @@ html[dir="rtl"] select { background-position:left 10px center; padding:0 12px 0 
 .hint { color:var(--muted); font-size:13px; }
 .error-text { color:#ff7581; font-size:13px; }
 
-.admin-user-detail .field { max-width:280px; }
-.admin-user-identity { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
-.admin-user-identity p { margin:0; }
-.admin-user-avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex:none; }
-.admin-user-detail ul { margin:0; padding-inline-start:18px; display:flex; flex-direction:column; gap:4px; font-size:13px; }
-.admin-user-detail h3 { margin:16px 0 8px; font-size:14px; }
+.admin-card ul { margin:0; padding-inline-start:18px; display:flex; flex-direction:column; gap:4px; font-size:13px; }
+
+/* ---------- User profile page (Users tab: list -> dedicated profile, replaces the old
+   inline-accordion row) ---------- */
+.admin-row-clickable { cursor:pointer; }
+.admin-profile-header { display:flex; align-items:center; gap:16px; padding:20px 22px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(135deg, color-mix(in srgb, var(--violet) 10%, transparent), var(--panel) 55%); margin-bottom:20px; }
+.admin-profile-avatar { width:64px; height:64px; border-radius:18px; flex:none; display:grid; place-items:center; font-size:22px; font-weight:800; color:#fff; background:linear-gradient(135deg, var(--violet), var(--violet-soft)); overflow:hidden; }
+.admin-profile-avatar img { width:100%; height:100%; object-fit:cover; }
+.admin-profile-id { flex:1; min-width:0; }
+.admin-profile-name { margin:0 0 6px; font-size:19px; font-weight:800; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.admin-profile-meta { display:flex; flex-wrap:wrap; gap:14px; font-size:12.5px; color:var(--muted); font-weight:600; }
+.admin-profile-actions { display:flex; align-items:center; gap:10px; flex:none; }
+.admin-profile-columns { display:grid; grid-template-columns:340px minmax(0,1fr); gap:20px; align-items:start; }
+.admin-kv-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); font-size:12.5px; }
+.admin-kv-row:last-of-type { border-bottom:0; }
+.admin-kv-row span:first-child { color:var(--muted); font-weight:600; }
+.admin-xp-progress-track { height:8px; border-radius:5px; background:rgba(255,255,255,.06); overflow:hidden; margin-top:10px; }
+.admin-xp-progress-fill { height:100%; border-radius:5px; background:linear-gradient(90deg, var(--violet-soft), var(--violet)); }
+@media (max-width:880px) {
+  .admin-profile-header { flex-wrap:wrap; }
+  .admin-profile-columns { grid-template-columns:1fr; }
+}
 
 .admin-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
 .admin-toolbar input[type="text"] { height:38px; padding:0 12px; min-width:220px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.03); color:var(--text); }

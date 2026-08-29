@@ -273,12 +273,12 @@ function findAll(node, predicate, out = []) {
   return out;
 }
 
-test('expanding a user row fetches the enriched GET /users/:id detail and renders identity/KYC/level/achievements/subscriptions; Save KYC PATCHes the dedicated endpoint', async () => {
+test('viewing a user profile fetches the enriched GET /users/:id detail and renders identity/KYC/level/achievements/subscriptions; Save KYC PATCHes the dedicated endpoint', async () => {
   const switcherStub = { currentUserId: () => 'admin-1' };
   const listUser = { id: 'u1', displayName: 'Jane Trader', role: 'user', suspendedAt: null, createdAt: new Date().toISOString(), lastLoginAt: null, isOnline: false, hoursOnline: 0, purchaseCount: 0, totalMockSpent: 0, totalTokensUsed: 0 };
   const detailUser = {
     id: 'u1', displayName: 'Jane Trader', role: 'user', suspendedAt: null, email: 'jane@example.com', phone: null,
-    profileRole: 'trader', kycStatus: 'pending', xpTotal: 120, level: 2, avatarDataUrl: null,
+    profileRole: 'trader', kycStatus: 'pending', xpTotal: 120, level: 2, avatarDataUrl: null, createdAt: new Date().toISOString(),
     achievements: [{ achievementKey: 'first_trade_closed', unlockedAt: new Date().toISOString() }],
     subscriptions: [{ purchasedAt: new Date().toISOString(), listing: { title: 'Mentor Access' } }]
   };
@@ -292,10 +292,13 @@ test('expanding a user row fetches the enriched GET /users/:id detail and render
   };
   const { app } = await load({ count: 0 }, fetchImpl, switcherStub);
 
+  // Users is now a real list -> dedicated profile page split (mirrors Conversation Studio's
+  // own list -> editor router) rather than an inline accordion row - clicking "View profile"
+  // sets the selected id and re-renders, same interaction the row's own onclick also triggers.
   let wrap = await app.usersTab();
-  const [detailBtn] = findAll(wrap, (n) => n.tagName === 'button' && n.textContent === 'Actions');
-  assert.ok(detailBtn, 'expected a detail/Actions button for the listed user');
-  detailBtn.onclick();
+  const [viewBtn] = findAll(wrap, (n) => n.tagName === 'button' && n.textContent === 'View profile');
+  assert.ok(viewBtn, 'expected a View profile button for the listed user');
+  viewBtn.onclick({ stopPropagation() {} });
 
   wrap = await app.usersTab();
   const texts = findAll(wrap, () => true).map((n) => n.textContent).join(' | ');
