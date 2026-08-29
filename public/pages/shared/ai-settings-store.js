@@ -31,8 +31,29 @@
   // trait/knockout are ModelGlyph's own presentation hints (idle-loop animation, black-on-white
   // knockout-to-parchment) - kept on the one canonical catalog entry per engine so chatDockView.jsx
   // and aiAssistantView.jsx read the exact same values instead of each keeping its own copy.
+  //
+  // GPT-5.6 family (2026-08-29 update): OpenAI ships GPT-5.6 as three explicit API model ids -
+  // Sol (flagship/frontier), Terra (balanced), Luna (fastest/cheapest) - alongside the older bare
+  // `gpt-5.6` alias, which OpenAI's own API already resolves server-side to Sol (this app never
+  // needs to alias-map it itself - callOpenAI() already just forwards whatever model string is
+  // selected verbatim). `gpt-5.6` stays in `models` (never removed) so an existing user's already-
+  // saved selection keeps working exactly as before (see load()'s stored-wins merge below) - only
+  // a BRAND NEW settings object (a user who has never chosen a model) gets `models[0]`, now
+  // 'gpt-5.6-sol', as its default. `modelLabels`/`modelTiers` are presentation metadata on this
+  // SAME canonical entry (never a second model list) - `models` itself stays a plain array of raw
+  // API id strings on purpose, since existing consumers (aiAssistantView.jsx's
+  // `current.models.indexOf(value)` allowlist check, chat-dock-core.js's own pass-through) already
+  // depend on that exact shape. The tier descriptor TEXT itself lives in ai-i18n.js
+  // (aiAsstModelTierFrontier/Balanced/Economical), never hardcoded here - this file has no i18n
+  // dependency by design, only `modelTiers` tags WHICH descriptor key applies to which model id.
   var PROVIDER_CATALOG = [
-    { id: 'openai', label: 'OpenAI', endpoint: 'api.openai.com', models: ['gpt-5.6', 'gpt-4.1', 'gpt-4o'], supportsVoice: true, trait: 'spin', knockout: true },
+    {
+      id: 'openai', label: 'OpenAI', endpoint: 'api.openai.com',
+      models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.6', 'gpt-4.1', 'gpt-4o'],
+      modelLabels: { 'gpt-5.6-sol': 'GPT-5.6 Sol', 'gpt-5.6-terra': 'GPT-5.6 Terra', 'gpt-5.6-luna': 'GPT-5.6 Luna' },
+      modelTiers: { 'gpt-5.6-sol': 'frontier', 'gpt-5.6-terra': 'balanced', 'gpt-5.6-luna': 'economical' },
+      supportsVoice: true, trait: 'spin', knockout: true
+    },
     { id: 'anthropic', label: 'Claude', endpoint: 'api.anthropic.com', models: ['claude-sonnet-4-5', 'claude-opus-4-1'], supportsVoice: false, trait: 'tilt', knockout: false },
     { id: 'kimi', label: 'Kimi', endpoint: 'api.moonshot.cn', models: ['moonshot-v1-8k', 'moonshot-v1-32k'], supportsVoice: false, trait: 'wink', knockout: true },
     { id: 'deepseek', label: 'DeepSeek', endpoint: 'api.deepseek.com', models: ['deepseek-chat', 'deepseek-reasoner'], supportsVoice: false, trait: 'dive', knockout: false }

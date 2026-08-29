@@ -386,8 +386,22 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('aiAsstModelLabel')}</span>
                 <Select
-                  value={settings.modelByProvider[model]} options={(entry ? entry.models : []).map((m) => ({ value: m, label: m }))}
-                  onChange={(v) => settingsStore.saveSettings({ modelByProvider: { [model]: v } })} icon="sparkle" width={268}
+                  value={settings.modelByProvider[model]}
+                  options={(entry ? entry.models : []).map((m) => {
+                    // modelLabels/modelTiers are optional per-model presentation metadata on the
+                    // SAME canonical catalog entry (ai-settings-store.js) - a model with neither
+                    // (every legacy id: gpt-5.6, gpt-4.1, gpt-4o, and every non-OpenAI model)
+                    // falls back to the raw id exactly as before this composition existed. The
+                    // tier phrase itself is real, localized UI copy (ai-i18n.js
+                    // aiAsstModelTier<Tier>) - never a hardcoded dollar figure, since retail
+                    // pricing/markup stay admin-controlled (server/commercial/wallet-service.mjs).
+                    const label = (entry && entry.modelLabels && entry.modelLabels[m]) || m;
+                    const tier = entry && entry.modelTiers && entry.modelTiers[m];
+                    const tierKey = tier && 'aiAsstModelTier' + tier.charAt(0).toUpperCase() + tier.slice(1);
+                    const tierText = tierKey ? i18n.t(tierKey) : '';
+                    return { value: m, label: tierText ? label + ' — ' + tierText : label };
+                  })}
+                  onChange={(v) => settingsStore.saveSettings({ modelByProvider: { [model]: v } })} icon="sparkle" width={340}
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginInlineStart: 8 }}>

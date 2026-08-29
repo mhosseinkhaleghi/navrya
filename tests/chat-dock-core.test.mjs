@@ -1192,3 +1192,48 @@ test('a HIGH-confidence match with no approved audio carries audioUrl: null, nev
   assert.equal(result.audioUrl, null);
   assert.equal(result.audioMimeType, null);
 });
+
+// GPT-5.6 family (2026-08-29): end-to-end proof that the exact selected model string - not a
+// provider name, not an alias - reaches the real /api/ai/chat request body, covering the task's
+// explicit "Selecting Luna must send exactly gpt-5.6-luna, and Terra exactly gpt-5.6-terra".
+// ai-settings-store.js only persists a saveSettings() patch through
+// window.TradeJournalUserPreferences (Phase 8c) - coreSandbox() deliberately never loads the
+// full server-replica.js/user-preferences.js/auth stack (irrelevant to what these two tests
+// prove), so a minimal stub honoring the exact same getPref/setPref contract is wired in by
+// hand, matching this file's own "stub only the pieces treated as external integration points"
+// convention (see the coreSandbox() comment above).
+function stubUserPreferences(window) {
+  let stored = null;
+  window.TradeJournalUserPreferences = {
+    getPref: (key, fallback) => (key === 'aiSettings' && stored) ? stored : fallback,
+    setPref: (key, value) => { if (key === 'aiSettings') stored = value; }
+  };
+}
+
+test('selecting GPT-5.6 Luna sends exactly "gpt-5.6-luna" as the model in the /api/ai/chat request body', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    fetch: async (url, options) => { fetchCall = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', model: 'gpt-5.6-luna', usage: { totalTokens: 2 } }) }; }
+  });
+  stubUserPreferences(window);
+  window.TradeJournalAISettingsStore.saveSettings({ provider: 'openai', modelByProvider: { openai: 'gpt-5.6-luna' } });
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'hello', therapistMode: false, transcript: [] });
+
+  assert.equal(fetchCall.url, '/api/ai/chat');
+  assert.equal(fetchCall.body.provider, 'openai');
+  assert.equal(fetchCall.body.model, 'gpt-5.6-luna', 'the exact API model id must be sent, never a display label or a rounded-off alias');
+});
+
+test('selecting GPT-5.6 Terra sends exactly "gpt-5.6-terra" as the model in the /api/ai/chat request body', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    fetch: async (url, options) => { fetchCall = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', model: 'gpt-5.6-terra', usage: { totalTokens: 2 } }) }; }
+  });
+  stubUserPreferences(window);
+  window.TradeJournalAISettingsStore.saveSettings({ provider: 'openai', modelByProvider: { openai: 'gpt-5.6-terra' } });
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'hello', therapistMode: false, transcript: [] });
+
+  assert.equal(fetchCall.body.model, 'gpt-5.6-terra');
+});

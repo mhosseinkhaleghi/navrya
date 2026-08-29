@@ -126,3 +126,66 @@ test('no localStorage key is ever written for the migrated ai-settings fields an
   store.saveSettings({ provider: 'kimi' });
   assert.equal(localStorage.getItem('tradejournal:ai-settings:v1'), null, "Phase 1's guard key may still exist defensively for pre-migration browsers, but nothing writes it any more");
 });
+
+// GPT-5.6 family (2026-08-29): OpenAI's Sol/Terra/Luna explicit model ids, added directly to the
+// one canonical openai catalog entry - never a second hardcoded model list. These tests cover the
+// exact task requirements: catalog membership, the new default, and legacy-selection safety.
+test("the openai catalog entry includes the exact GPT-5.6 Sol/Terra/Luna model ids", async () => {
+  const store = await settingsSandbox();
+  const catalog = store.providerCatalog();
+  const openai = catalog.find((p) => p.id === 'openai');
+  assert.ok(openai.models.indexOf('gpt-5.6-sol') > -1, 'gpt-5.6-sol must be in the catalog');
+  assert.ok(openai.models.indexOf('gpt-5.6-terra') > -1, 'gpt-5.6-terra must be in the catalog');
+  assert.ok(openai.models.indexOf('gpt-5.6-luna') > -1, 'gpt-5.6-luna must be in the catalog');
+  // Legacy ids must never be removed - existing gpt-5.6/gpt-4.1/gpt-4o users must keep working.
+  assert.ok(openai.models.indexOf('gpt-5.6') > -1, 'the legacy gpt-5.6 alias must remain selectable');
+  assert.ok(openai.models.indexOf('gpt-4.1') > -1, 'gpt-4.1 must remain selectable');
+  assert.ok(openai.models.indexOf('gpt-4o') > -1, 'gpt-4o must remain selectable');
+});
+
+test('a brand-new user (no stored settings) defaults the OpenAI model to gpt-5.6-sol', async () => {
+  const store = await settingsSandbox();
+  const settings = store.settings();
+  assert.equal(settings.modelByProvider.openai, 'gpt-5.6-sol');
+  assert.equal(store.activeModel(), 'gpt-5.6-sol');
+});
+
+// "Do not silently migrate an existing user from an old model to a more expensive model" - a
+// legacy stored selection must survive the catalog reorder untouched, never be coerced to Sol.
+test('an existing user with a legacy stored openai model selection (gpt-5.6) is preserved exactly, not migrated to gpt-5.6-sol', async () => {
+  const prefsStore = { aiSettings: { provider: 'openai', modelByProvider: { openai: 'gpt-5.6' } } };
+  const fetchImpl = async (url, options) => {
+    if (options && options.method === 'POST') { const body = JSON.parse(options.body); prefsStore[body.id] = body.value; return { ok: true, json: async () => body }; }
+    return { ok: true, json: async () => ({ preferences: Object.keys(prefsStore).map((id) => ({ id: id, value: prefsStore[id] })) }) };
+  };
+  const store = await settingsSandbox(memoryStorage(), fetchImpl);
+  assert.equal(store.settings().modelByProvider.openai, 'gpt-5.6', 'the stored legacy selection must win over the new default');
+  assert.equal(store.activeModel(), 'gpt-5.6');
+});
+
+test('an existing user with a legacy stored gpt-4.1 or gpt-4o selection is also preserved exactly, and never becomes blank', async () => {
+  for (const legacyModel of ['gpt-4.1', 'gpt-4o']) {
+    const prefsStore = { aiSettings: { provider: 'openai', modelByProvider: { openai: legacyModel } } };
+    const fetchImpl = async (url, options) => {
+      if (options && options.method === 'POST') { const body = JSON.parse(options.body); prefsStore[body.id] = body.value; return { ok: true, json: async () => body }; }
+      return { ok: true, json: async () => ({ preferences: Object.keys(prefsStore).map((id) => ({ id: id, value: prefsStore[id] })) }) };
+    };
+    const store = await settingsSandbox(memoryStorage(), fetchImpl);
+    assert.equal(store.settings().modelByProvider.openai, legacyModel, legacyModel + ' must survive unchanged');
+    assert.ok(store.activeModel(), legacyModel + ' must never resolve to a blank/falsy active model');
+  }
+});
+
+test('presentation metadata (modelLabels/modelTiers) lives on the same canonical openai catalog entry, not a second model list, and legacy ids carry no metadata', async () => {
+  const store = await settingsSandbox();
+  const openai = store.providerCatalog().find((p) => p.id === 'openai');
+  assert.equal(openai.modelLabels['gpt-5.6-sol'], 'GPT-5.6 Sol');
+  assert.equal(openai.modelLabels['gpt-5.6-terra'], 'GPT-5.6 Terra');
+  assert.equal(openai.modelLabels['gpt-5.6-luna'], 'GPT-5.6 Luna');
+  assert.equal(openai.modelTiers['gpt-5.6-sol'], 'frontier');
+  assert.equal(openai.modelTiers['gpt-5.6-terra'], 'balanced');
+  assert.equal(openai.modelTiers['gpt-5.6-luna'], 'economical');
+  assert.equal(openai.modelLabels['gpt-5.6'], undefined, 'the legacy alias deliberately carries no display metadata');
+  assert.equal(openai.modelLabels['gpt-4.1'], undefined);
+  assert.equal(openai.modelLabels['gpt-4o'], undefined);
+});
