@@ -39,7 +39,9 @@ const translations = {
     pricingPromptLabel: 'Prompt price / 1K tokens', pricingCompletionLabel: 'Completion price / 1K tokens', budgetLabel: 'Monthly token budget', savePricing: 'Save pricing',
     usageChartTitle: 'Token usage by provider', usageChartEmpty: 'No usage recorded yet.',
     dbConnectivity: 'Database connectivity', dbOk: 'Connected', dbFail: 'Unreachable', migrationsApplied: 'Migrations applied', migrationsNone: 'None recorded (in-memory backend)', communityApiHealth: 'Community API', aiGatewayHealth: 'AI gateway', errorTrackingLabel: 'Error tracking', errorTrackingValue: 'Not implemented yet',
+    technicalPageSubtitle: 'Live health of the database, background services, and downstream APIs the platform depends on.', statSystemsHealthy: 'Systems healthy',
     xpStatTypes: 'XP types', xpStatOverridden: 'Overridden values', xpNoRows: 'Nothing to show.',
+    xpPageSubtitle: 'Every XP source, cap, and mastery requirement the engine reads - override any number, the verification logic stays in code.',
     xpColDefault: 'Default', xpColCurrent: 'Current', xpColEdit: 'Edit', xpColType: 'Type', xpColDomain: 'Domain',
     xpColAchievement: 'Achievement', xpColLevel: 'Level', xpColRequirement: 'Requirement',
     xpResetDefault: 'Reset to default', xpPeriodDay: 'per day', xpPeriodWeek: 'per week',
@@ -49,9 +51,12 @@ const translations = {
     xpSectionSourceTotalCaps: 'Per-source total point ceiling (e.g. max total XP per Trade)',
     xpSectionPeriodCaps: 'Per-type period caps', xpSectionAchievements: 'Achievement points',
     xpSectionMastery: 'Mastery-gate requirements by level',
+    marketplacePageSubtitle: 'Every pattern-report listing on the marketplace - review evidence, feature, or delist.',
     marketplaceColTitle: 'Title', marketplaceColSeller: 'Seller', marketplaceColPrice: 'Price', marketplaceColEvidence: 'Evidence', marketplaceColStatus: 'Status', marketplaceColFeatured: 'Featured',
     delistAction: 'Delist', publishAction: 'Publish', featureAction: 'Feature', unfeatureAction: 'Unfeature',
     statusFilterAll: 'All', statusFilterDraft: 'Draft', statusFilterPublished: 'Published', statusFilterDelisted: 'Delisted',
+    financialPageSubtitle: 'Marketplace revenue, real AI provider cost, and remaining monthly budget at a glance.',
+    statMockRevenue: 'Marketplace revenue (mock)', statAiCostThisMonth: 'AI cost this month', statTokensUsedThisMonth: 'Tokens used this month',
     financeMockRevenueTitle: 'Mock marketplace revenue', financeMockRevenueNote: 'Mock — no real payment processor connected.',
     financeAiCostTitle: 'AI cost estimate (this month)', financeBudgetTitle: 'Remaining budget (this month)',
     noPricingSet: 'No pricing set', noBudgetSet: 'No budget set', tokensUsedLabel: 'tokens used', remainingLabel: 'remaining', budgetOfLabel: 'of {budget}',
@@ -124,6 +129,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
 
     tabConversationStudio: 'Conversation Studio',
     convStudioTitle: 'Conversation Studio', convStudioHint: 'Author, test, and publish the deterministic scenarios the Conversation Router matches locally, with zero AI calls.',
+    convStudioStatTotal: 'Total scenarios', convStudioStatPublished: 'Published', convStudioStatDraft: 'Draft',
     convStudioCreateTitle: 'Create a scenario', convStudioScenarioKey: 'Scenario key (e.g. session.purpose)', convStudioDomain: 'Domain', convStudioKind: 'Kind',
     convStudioKindFaq: 'FAQ', convStudioKindDataQuery: 'Data query', convStudioKindSurfaceHelp: 'Surface help', convStudioCreate: 'Create', convStudioKeyRequired: 'A scenario key is required.',
     convStudioColKey: 'Key', convStudioColDomain: 'Domain', convStudioColKind: 'Kind', convStudioColStatus: 'Status', convStudioColVersion: 'Version', convStudioColLanguages: 'Languages', convStudioColUpdated: 'Updated', convStudioColPublishedAt: 'Published',
@@ -165,7 +171,9 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     pricingPromptLabel: 'قیمت هر ۱۰۰۰ توکن پرامپت', pricingCompletionLabel: 'قیمت هر ۱۰۰۰ توکن پاسخ', budgetLabel: 'سقف توکن ماهانه', savePricing: 'ذخیرهٔ قیمت‌گذاری',
     usageChartTitle: 'مصرف توکن به تفکیک سرویس‌دهنده', usageChartEmpty: 'هنوز مصرفی ثبت نشده است.',
     dbConnectivity: 'اتصال پایگاه‌داده', dbOk: 'متصل', dbFail: 'در دسترس نیست', migrationsApplied: 'مهاجرت‌های اعمال‌شده', migrationsNone: 'ثبت نشده (بک‌اند حافظه‌ای)', communityApiHealth: 'سرور بخش انجمن', aiGatewayHealth: 'دروازهٔ هوش مصنوعی', errorTrackingLabel: 'ثبت خطا', errorTrackingValue: 'هنوز پیاده‌سازی نشده',
+    technicalPageSubtitle: 'سلامت زندهٔ پایگاه‌داده، سرویس‌های پس‌زمینه و APIهای وابسته‌ای که پلتفرم به آن‌ها متکی است.', statSystemsHealthy: 'سیستم‌های سالم',
     xpStatTypes: 'نوع رویداد XP', xpStatOverridden: 'مقادیر تغییریافته', xpNoRows: 'چیزی برای نمایش نیست.',
+    xpPageSubtitle: 'همهٔ منابع امتیاز، سقف‌ها و الزامات تسلط که موتور می‌خواند - هر عدد را تغییر بده، منطق اعتبارسنجی همچنان در کد باقی می‌ماند.',
     xpColDefault: 'پیش‌فرض', xpColCurrent: 'فعلی', xpColEdit: 'ویرایش', xpColType: 'نوع', xpColDomain: 'حوزه',
     xpColAchievement: 'دستاورد', xpColLevel: 'سطح', xpColRequirement: 'شرط',
     xpResetDefault: 'بازگشت به پیش‌فرض', xpPeriodDay: 'در روز', xpPeriodWeek: 'در هفته',
@@ -175,9 +183,12 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     xpSectionSourceTotalCaps: 'سقف کل امتیاز هر منبع (مثلاً حداکثر امتیاز هر Trade)',
     xpSectionPeriodCaps: 'سقف دوره‌ای هر نوع', xpSectionAchievements: 'امتیاز دستاوردها',
     xpSectionMastery: 'شرایط عبور از هر سطح (Mastery Gate)',
+    marketplacePageSubtitle: 'همهٔ آگهی‌های گزارش الگو در بازار - شواهد را بررسی کن، ویژه کن یا از فهرست خارج کن.',
     marketplaceColTitle: 'عنوان', marketplaceColSeller: 'فروشنده', marketplaceColPrice: 'قیمت', marketplaceColEvidence: 'شواهد', marketplaceColStatus: 'وضعیت', marketplaceColFeatured: 'ویژه',
     delistAction: 'حذف از بازار', publishAction: 'انتشار', featureAction: 'ویژه کردن', unfeatureAction: 'برداشتن ویژه',
     statusFilterAll: 'همه', statusFilterDraft: 'پیش‌نویس', statusFilterPublished: 'منتشرشده', statusFilterDelisted: 'حذف‌شده',
+    financialPageSubtitle: 'درآمد بازار، هزینهٔ واقعی سرویس‌دهنده‌های هوش مصنوعی و بودجهٔ باقی‌ماندهٔ ماهانه، در یک نگاه.',
+    statMockRevenue: 'درآمد بازار (آزمایشی)', statAiCostThisMonth: 'هزینهٔ هوش مصنوعی این ماه', statTokensUsedThisMonth: 'توکن مصرف‌شده این ماه',
     financeMockRevenueTitle: 'درآمد آزمایشی بازار', financeMockRevenueNote: 'آزمایشی — به هیچ درگاه پرداخت واقعی متصل نیست.',
     financeAiCostTitle: 'برآورد هزینهٔ هوش مصنوعی (این ماه)', financeBudgetTitle: 'باقی‌ماندهٔ بودجه (این ماه)',
     noPricingSet: 'قیمتی تنظیم نشده', noBudgetSet: 'بودجه‌ای تنظیم نشده', tokensUsedLabel: 'توکن مصرف‌شده', remainingLabel: 'باقی‌مانده', budgetOfLabel: 'از {budget}',
@@ -245,6 +256,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
 
     tabConversationStudio: 'استودیوی گفتگو',
     convStudioTitle: 'استودیوی گفتگو', convStudioHint: 'سناریوهای قطعی‌ای که روتر گفتگو به‌صورت محلی و بدون فراخوانی هوش مصنوعی تشخیص می‌دهد را اینجا بساز، تست کن و منتشر کن.',
+    convStudioStatTotal: 'مجموع سناریوها', convStudioStatPublished: 'منتشرشده', convStudioStatDraft: 'پیش‌نویس',
     convStudioCreateTitle: 'ساخت سناریو', convStudioScenarioKey: 'کلید سناریو (مثل session.purpose)', convStudioDomain: 'حوزه', convStudioKind: 'نوع',
     convStudioKindFaq: 'سوال متداول', convStudioKindDataQuery: 'پرس‌وجوی داده', convStudioKindSurfaceHelp: 'راهنمای صفحه فعال', convStudioCreate: 'ایجاد', convStudioKeyRequired: 'کلید سناریو الزامی است.',
     convStudioColKey: 'کلید', convStudioColDomain: 'حوزه', convStudioColKind: 'نوع', convStudioColStatus: 'وضعیت', convStudioColVersion: 'نسخه', convStudioColLanguages: 'زبان‌ها', convStudioColUpdated: 'به‌روزرسانی', convStudioColPublishedAt: 'انتشار',
@@ -286,7 +298,9 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     pricingPromptLabel: 'سعر كل 1000 رمز إدخال', pricingCompletionLabel: 'سعر كل 1000 رمز إخراج', budgetLabel: 'الميزانية الشهرية للرموز', savePricing: 'حفظ التسعير',
     usageChartTitle: 'استخدام الرموز حسب المزوّد', usageChartEmpty: 'لا يوجد استخدام مسجل بعد.',
     dbConnectivity: 'اتصال قاعدة البيانات', dbOk: 'متصلة', dbFail: 'غير متاحة', migrationsApplied: 'الترحيلات المطبّقة', migrationsNone: 'لا يوجد سجل (خلفية في الذاكرة)', communityApiHealth: 'خادم المجتمع', aiGatewayHealth: 'بوابة الذكاء الاصطناعي', errorTrackingLabel: 'تتبع الأخطاء', errorTrackingValue: 'غير مطبَّق بعد',
+    technicalPageSubtitle: 'الحالة الحية لقاعدة البيانات والخدمات الخلفية وواجهات برمجة التطبيقات التي تعتمد عليها المنصة.', statSystemsHealthy: 'الأنظمة السليمة',
     xpStatTypes: 'أنواع نقاط الخبرة', xpStatOverridden: 'قيم مخصّصة', xpNoRows: 'لا يوجد شيء لعرضه.',
+    xpPageSubtitle: 'كل مصدر نقاط، وسقف، ومتطلب إتقان يقرأه المحرك - عدّل أي رقم، ويبقى منطق التحقق في الكود.',
     xpColDefault: 'افتراضي', xpColCurrent: 'الحالي', xpColEdit: 'تعديل', xpColType: 'النوع', xpColDomain: 'المجال',
     xpColAchievement: 'الإنجاز', xpColLevel: 'المستوى', xpColRequirement: 'الشرط',
     xpResetDefault: 'إعادة إلى الافتراضي', xpPeriodDay: 'يوميًا', xpPeriodWeek: 'أسبوعيًا',
@@ -296,9 +310,12 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     xpSectionSourceTotalCaps: 'السقف الكلي للنقاط لكل مصدر (مثلاً أقصى نقاط لكل صفقة)',
     xpSectionPeriodCaps: 'السقف الدوري لكل نوع', xpSectionAchievements: 'نقاط الإنجازات',
     xpSectionMastery: 'شروط اجتياز كل مستوى',
+    marketplacePageSubtitle: 'كل إعلانات تقارير الأنماط في السوق - راجع الأدلة أو مَيِّز أو ألغِ الإدراج.',
     marketplaceColTitle: 'العنوان', marketplaceColSeller: 'البائع', marketplaceColPrice: 'السعر', marketplaceColEvidence: 'الأدلة', marketplaceColStatus: 'الحالة', marketplaceColFeatured: 'مميّز',
     delistAction: 'إزالة من السوق', publishAction: 'نشر', featureAction: 'تمييز', unfeatureAction: 'إلغاء التمييز',
     statusFilterAll: 'الكل', statusFilterDraft: 'مسودة', statusFilterPublished: 'منشور', statusFilterDelisted: 'مُزال',
+    financialPageSubtitle: 'إيرادات السوق، وتكلفة مزوّدي الذكاء الاصطناعي الحقيقية، والميزانية الشهرية المتبقية، في لمحة واحدة.',
+    statMockRevenue: 'إيراد السوق (تجريبي)', statAiCostThisMonth: 'تكلفة الذكاء الاصطناعي هذا الشهر', statTokensUsedThisMonth: 'الرموز المستخدمة هذا الشهر',
     financeMockRevenueTitle: 'إيراد السوق التجريبي', financeMockRevenueNote: 'تجريبي — غير متصل بأي معالج دفع حقيقي.',
     financeAiCostTitle: 'تقدير تكلفة الذكاء الاصطناعي (هذا الشهر)', financeBudgetTitle: 'الميزانية المتبقية (هذا الشهر)',
     noPricingSet: 'لا يوجد تسعير', noBudgetSet: 'لا توجد ميزانية', tokensUsedLabel: 'رمز مستخدم', remainingLabel: 'المتبقي', budgetOfLabel: 'من {budget}',
@@ -366,6 +383,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
 
     tabConversationStudio: 'استوديو المحادثة',
     convStudioTitle: 'استوديو المحادثة', convStudioHint: 'أنشئ واختبر وانشر السيناريوهات الحتمية التي يطابقها موجّه المحادثة محليًا، بدون أي استدعاء للذكاء الاصطناعي.',
+    convStudioStatTotal: 'إجمالي السيناريوهات', convStudioStatPublished: 'منشور', convStudioStatDraft: 'مسودة',
     convStudioCreateTitle: 'إنشاء سيناريو', convStudioScenarioKey: 'مفتاح السيناريو (مثل session.purpose)', convStudioDomain: 'المجال', convStudioKind: 'النوع',
     convStudioKindFaq: 'سؤال شائع', convStudioKindDataQuery: 'استعلام بيانات', convStudioKindSurfaceHelp: 'مساعدة الشاشة الحالية', convStudioCreate: 'إنشاء', convStudioKeyRequired: 'مفتاح السيناريو مطلوب.',
     convStudioColKey: 'المفتاح', convStudioColDomain: 'المجال', convStudioColKind: 'النوع', convStudioColStatus: 'الحالة', convStudioColVersion: 'الإصدار', convStudioColLanguages: 'اللغات', convStudioColUpdated: 'آخر تحديث', convStudioColPublishedAt: 'تاريخ النشر',
@@ -407,7 +425,9 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     pricingPromptLabel: 'Precio por 1K tokens de entrada', pricingCompletionLabel: 'Precio por 1K tokens de salida', budgetLabel: 'Presupuesto mensual de tokens', savePricing: 'Guardar tarifas',
     usageChartTitle: 'Uso de tokens por proveedor', usageChartEmpty: 'Aún no hay uso registrado.',
     dbConnectivity: 'Conectividad de la base de datos', dbOk: 'Conectada', dbFail: 'No disponible', migrationsApplied: 'Migraciones aplicadas', migrationsNone: 'Sin registro (backend en memoria)', communityApiHealth: 'API de comunidad', aiGatewayHealth: 'Pasarela de IA', errorTrackingLabel: 'Seguimiento de errores', errorTrackingValue: 'Aún no implementado',
+    technicalPageSubtitle: 'Estado en vivo de la base de datos, los servicios en segundo plano y las APIs externas de las que depende la plataforma.', statSystemsHealthy: 'Sistemas saludables',
     xpStatTypes: 'Tipos de XP', xpStatOverridden: 'Valores personalizados', xpNoRows: 'Nada que mostrar.',
+    xpPageSubtitle: 'Cada fuente de XP, límite y requisito de maestría que lee el motor - anula cualquier número, la lógica de verificación permanece en el código.',
     xpColDefault: 'Predeterminado', xpColCurrent: 'Actual', xpColEdit: 'Editar', xpColType: 'Tipo', xpColDomain: 'Dominio',
     xpColAchievement: 'Logro', xpColLevel: 'Nivel', xpColRequirement: 'Requisito',
     xpResetDefault: 'Restablecer predeterminado', xpPeriodDay: 'por día', xpPeriodWeek: 'por semana',
@@ -417,9 +437,12 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     xpSectionSourceTotalCaps: 'Tope total de puntos por fuente (p. ej. máx. XP por operación)',
     xpSectionPeriodCaps: 'Tope periódico por tipo', xpSectionAchievements: 'Puntos de logros',
     xpSectionMastery: 'Requisitos de dominio (mastery) por nivel',
+    marketplacePageSubtitle: 'Todos los anuncios de informes de patrones del mercado - revisa evidencia, destaca o retira.',
     marketplaceColTitle: 'Título', marketplaceColSeller: 'Vendedor', marketplaceColPrice: 'Precio', marketplaceColEvidence: 'Evidencia', marketplaceColStatus: 'Estado', marketplaceColFeatured: 'Destacado',
     delistAction: 'Retirar', publishAction: 'Publicar', featureAction: 'Destacar', unfeatureAction: 'Quitar destacado',
     statusFilterAll: 'Todos', statusFilterDraft: 'Borrador', statusFilterPublished: 'Publicado', statusFilterDelisted: 'Retirado',
+    financialPageSubtitle: 'Ingresos del mercado, costo real de proveedores de IA y presupuesto mensual restante, de un vistazo.',
+    statMockRevenue: 'Ingresos del mercado (simulado)', statAiCostThisMonth: 'Costo de IA este mes', statTokensUsedThisMonth: 'Tokens usados este mes',
     financeMockRevenueTitle: 'Ingresos simulados del mercado', financeMockRevenueNote: 'Simulado — sin procesador de pagos real conectado.',
     financeAiCostTitle: 'Costo estimado de IA (este mes)', financeBudgetTitle: 'Presupuesto restante (este mes)',
     noPricingSet: 'Sin tarifas configuradas', noBudgetSet: 'Sin presupuesto configurado', tokensUsedLabel: 'tokens usados', remainingLabel: 'restante', budgetOfLabel: 'de {budget}',
@@ -487,6 +510,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
 
     tabConversationStudio: 'Estudio de Conversación',
     convStudioTitle: 'Estudio de Conversación', convStudioHint: 'Crea, prueba y publica los escenarios deterministas que el Router de Conversación resuelve localmente, sin ninguna llamada a la IA.',
+    convStudioStatTotal: 'Escenarios totales', convStudioStatPublished: 'Publicados', convStudioStatDraft: 'Borrador',
     convStudioCreateTitle: 'Crear un escenario', convStudioScenarioKey: 'Clave del escenario (p. ej. session.purpose)', convStudioDomain: 'Dominio', convStudioKind: 'Tipo',
     convStudioKindFaq: 'Pregunta frecuente', convStudioKindDataQuery: 'Consulta de datos', convStudioKindSurfaceHelp: 'Ayuda de pantalla activa', convStudioCreate: 'Crear', convStudioKeyRequired: 'La clave del escenario es obligatoria.',
     convStudioColKey: 'Clave', convStudioColDomain: 'Dominio', convStudioColKind: 'Tipo', convStudioColStatus: 'Estado', convStudioColVersion: 'Versión', convStudioColLanguages: 'Idiomas', convStudioColUpdated: 'Actualizado', convStudioColPublishedAt: 'Publicado',
@@ -1446,7 +1470,12 @@ function drawBarChart(canvas, data) {
 
 function technicalTab() {
   return api('/technical').then((data) => {
-    const wrap = el('div', 'admin-grid');
+    const wrap = el('div');
+    wrap.append(pageHeader('server-cog', 'tabTechnical', 'technicalPageSubtitle'));
+    const healthyCount = [data.db.ok, data.communityApi.ok, data.aiGateway.ok].filter(Boolean).length;
+    wrap.append(statRow([statCard('shield-check', healthyCount + ' / 3', t('statSystemsHealthy'))]));
+
+    const grid = el('div', 'admin-grid');
     const dbCard = el('div', 'admin-card');
     dbCard.append(el('h3', '', t('dbConnectivity')), el('p', '', (data.db.ok ? t('dbOk') : t('dbFail')) + ' (' + data.db.backend + ')'));
     const migrations = el('div', 'admin-card');
@@ -1459,7 +1488,8 @@ function technicalTab() {
     gatewayCard.append(el('h3', '', t('aiGatewayHealth')), el('p', '', data.aiGateway.ok ? t('dbOk') : t('dbFail')));
     const errorCard = el('div', 'admin-card');
     errorCard.append(el('h3', '', t('errorTrackingLabel')), el('p', 'hint', t('errorTrackingValue')));
-    wrap.append(dbCard, migrations, communityCard, gatewayCard, errorCard);
+    grid.append(dbCard, migrations, communityCard, gatewayCard, errorCard);
+    wrap.append(grid);
     return wrap;
   });
 }
@@ -1542,6 +1572,7 @@ function xpConfigTable(title, rows, leadColumns, category, keyFor, opts) {
 function xpTab() {
   return api('/xp/config').then((cfg) => {
     const wrap = el('div');
+    wrap.append(pageHeader('award', 'tabXP', 'xpPageSubtitle'));
     const overriddenCount = ['points', 'domainCaps', 'sourceCaps', 'periodCaps', 'sourceTotalCaps', 'achievementPoints', 'masteryRequirements']
       .reduce((sum, key) => sum + cfg[key].filter((r) => r.overridden).length, 0) + (cfg.recurringCap.overridden ? 1 : 0);
     wrap.append(statRow([statCard('award', String(cfg.points.length), t('xpStatTypes')), statCard('sliders-horizontal', String(overriddenCount), t('xpStatOverridden'))]));
@@ -1584,6 +1615,7 @@ let marketplaceStatusFilter = 'all';
 function marketplaceTab() {
   return api('/marketplace/listings?status=' + marketplaceStatusFilter).then((listings) => {
     const wrap = el('div');
+    wrap.append(pageHeader('store', 'tabMarketplace', 'marketplacePageSubtitle'));
     wrap.append(statRow([
       statCard('store', fmtNumber(listings.length), t('statTotalListings')),
       statCard('badge-check', fmtNumber(listings.filter((l) => l.status === 'published').length), t('statPublishedListings')),
@@ -1643,13 +1675,26 @@ function marketplaceTab() {
 
 function financialTab() {
   return api('/finance/overview').then((data) => {
-    const wrap = el('div', 'admin-grid');
+    const wrap = el('div');
+    wrap.append(pageHeader('banknote', 'tabFinancial', 'financialPageSubtitle'));
 
+    // Real stat row - the mock-revenue total is exactly that (mock, no payment processor
+    // connected - see financeMockRevenueNote), but the AI cost/token sums are real, computed
+    // from the exact same per-provider rows the cards below already render from.
+    const totalAiCost = data.aiCostByProvider.reduce((sum, row) => sum + (row.cost || 0), 0);
+    const totalTokensUsed = data.aiCostByProvider.reduce((sum, row) => sum + (row.tokensUsed || 0), 0);
+    wrap.append(statRow([
+      statCard('landmark', fmtNumber(data.mockRevenue.total), t('statMockRevenue')),
+      statCard('banknote', fmtNumber(totalAiCost), t('statAiCostThisMonth')),
+      statCard('activity', fmtNumber(totalTokensUsed), t('statTokensUsedThisMonth'))
+    ]));
+
+    const grid = el('div', 'admin-grid');
     const revenueCard = el('div', 'admin-card');
     revenueCard.append(el('h3', '', t('financeMockRevenueTitle')));
     revenueCard.append(el('p', '', fmtNumber(data.mockRevenue.total)));
     revenueCard.append(el('p', 'hint', t('financeMockRevenueNote')));
-    wrap.append(revenueCard);
+    grid.append(revenueCard);
 
     const costCard = el('div', 'admin-card');
     costCard.append(el('h3', '', t('financeAiCostTitle')));
@@ -1658,7 +1703,7 @@ function financialTab() {
       line.textContent = row.provider + ': ' + (row.cost === null ? t('noPricingSet') : fmtNumber(row.cost)) + ' (' + fmtNumber(row.tokensUsed) + ' ' + t('tokensUsedLabel') + ')';
       costCard.append(line);
     });
-    wrap.append(costCard);
+    grid.append(costCard);
 
     const budgetCard = el('div', 'admin-card');
     budgetCard.append(el('h3', '', t('financeBudgetTitle')));
@@ -1667,7 +1712,8 @@ function financialTab() {
       line.textContent = row.provider + ': ' + (row.remaining === null ? t('noBudgetSet') : fmtNumber(row.remaining) + ' ' + t('remainingLabel') + ' (' + t('budgetOfLabel', { budget: fmtNumber(row.budget) }) + ')');
       budgetCard.append(line);
     });
-    wrap.append(budgetCard);
+    grid.append(budgetCard);
+    wrap.append(grid);
     return wrap;
   });
 }
@@ -2325,7 +2371,13 @@ function conversationStudioStatusBadge(status) {
 function conversationStudioLibrary() {
   return api('/conversation-scenarios').then((data) => {
     const wrap = el('div');
-    wrap.append(el('h2', '', t('convStudioTitle')), el('p', 'hint', t('convStudioHint')));
+    wrap.append(pageHeader('message-square-text', 'convStudioTitle', 'convStudioHint'));
+    const scenarios = data.scenarios || [];
+    wrap.append(statRow([
+      statCard('layers', String(scenarios.length), t('convStudioStatTotal')),
+      statCard('badge-check', String(scenarios.filter((s) => s.status === 'published').length), t('convStudioStatPublished')),
+      statCard('pencil', String(scenarios.filter((s) => s.status === 'draft').length), t('convStudioStatDraft'))
+    ]));
 
     const createCard = el('div', 'admin-card');
     createCard.append(el('h3', '', t('convStudioCreateTitle')));
@@ -2353,7 +2405,7 @@ function conversationStudioLibrary() {
     const head = el('tr');
     [t('convStudioColKey'), t('convStudioColDomain'), t('convStudioColKind'), t('convStudioColStatus'), t('convStudioColVersion'), t('convStudioColLanguages'), t('convStudioColUpdated')].forEach((label) => head.append(el('th', '', label)));
     table.append(head);
-    (data.scenarios || []).forEach((scenario) => {
+    scenarios.forEach((scenario) => {
       const row = el('tr');
       row.style.cursor = 'pointer';
       row.onclick = () => { conversationStudioSelectedId = scenario.id; renderTab(); };

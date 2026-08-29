@@ -102,6 +102,12 @@ input, select, textarea { font:inherit; color:inherit; }
 .field select { padding-inline-end:30px; }
 html[dir="rtl"] .field select { padding-inline-end:12px; padding-inline-start:30px; }
 .field input:focus, .field select:focus { outline:0; border-color:var(--violet); }
+/* Real bug found via live verification (pre-existing, not introduced by this redesign): a
+   .field textarea (Conversation Studio editor's trigger/response fields) had none of the above -
+   only the global `textarea{font:inherit;color:inherit}` reset - so it rendered with the browser's
+   default white background instead of matching every other field in this dark theme. */
+.field textarea { padding:8px 12px; border:1px solid var(--line); border-radius:8px; background-color:rgba(255,255,255,.03); color:var(--text); resize:vertical; }
+.field textarea:focus { outline:0; border-color:var(--violet); }
 
 /* Custom chevron on every <select> in this page (native ones look inconsistent against the
    rest of the design system) - a select with no wrapper class (a few exist in Marketplace/
