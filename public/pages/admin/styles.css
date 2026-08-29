@@ -93,7 +93,11 @@ input, select, textarea { font:inherit; color:inherit; }
 .btn:disabled { opacity:.5; cursor:not-allowed; }
 .btn-sm { height:30px; padding:0 10px; font-size:12px; }
 
-.field { display:grid; gap:6px; font-size:12px; color:var(--muted); }
+/* grid-template-columns:minmax(0,1fr) (not the implicit "auto" default) - without it, a .field
+   nested inside another grid track (e.g. .admin-pricing-row's 2-up layout) sizes its own single
+   column to its label's unwrapped max-content width and overflows the (correctly, narrower) box
+   the outer grid stretched it to, instead of wrapping. */
+.field { display:grid; grid-template-columns:minmax(0, 1fr); gap:6px; font-size:12px; color:var(--muted); min-width:0; }
 .field input, .field select { height:38px; padding:0 12px; border:1px solid var(--line); border-radius:8px; background-color:rgba(255,255,255,.03); color:var(--text); }
 .field select { padding-inline-end:30px; }
 html[dir="rtl"] .field select { padding-inline-end:12px; padding-inline-start:30px; }
@@ -138,6 +142,23 @@ html[dir="rtl"] select { background-position:left 10px center; padding:0 12px 0 
 .admin-ai-card-head h3 { margin:0; }
 .hint { color:var(--muted); font-size:13px; }
 .error-text { color:#ff7581; font-size:13px; }
+
+/* ---------- AI & Voice tab (Chunk 3 restyle) ---------- */
+/* Provider pricing row: prompt/1K + completion/1K side by side, monthly budget full-width below -
+   was 3 cramped fields stacked one per line. */
+.admin-pricing-row { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; }
+/* Fixed 3-up grid for ElevenLabs credential/character cards - denser than .admin-grid's
+   auto-fill since these cards carry many small fields and read better narrower. */
+.admin-grid-3 { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; }
+/* A card nested inside another .admin-card (credential/character cards inside the Voice
+   Providers section) - tighter padding/radius and a raised background to read as a sub-card. */
+.admin-card-nested { padding:14px 16px; border-radius:10px; background:var(--panel-raised); margin-bottom:0; }
+.admin-card-nested h3 { font-size:13px; }
+.admin-card-nested .field { margin-bottom:9px; }
+.admin-card-nested .field input, .admin-card-nested .field select { height:32px; font-size:12px; }
+/* "Add credential profile" row: name + key + save button in one line on wide screens. */
+.admin-cred-add-row { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) auto; gap:10px; align-items:end; margin-top:6px; }
+.admin-cred-add-row .field { margin-bottom:0; }
 
 .admin-card ul { margin:0; padding-inline-start:18px; display:flex; flex-direction:column; gap:4px; font-size:13px; }
 
@@ -212,6 +233,12 @@ table.admin-table tbody tr:hover { background:rgba(255,255,255,.025); }
 html[dir="rtl"] table.admin-table th, html[dir="rtl"] table.admin-table td { text-align:right; }
 html[dir="rtl"] .language-menu button { text-align:right; }
 
+/* .admin-grid-3's fixed 3-up columns get cramped (voice cards carry many small fields) well
+   before the sidebar collapses at 880px, so it steps down to 2 columns earlier. */
+@media (max-width:1200px) {
+  .admin-grid-3 { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
+
 /* ---------- Responsive: sidebar becomes an overlay drawer below the breakpoint ---------- */
 @media (max-width:880px) {
   .admin-layout { grid-template-columns:0 minmax(0,1fr); }
@@ -221,6 +248,6 @@ html[dir="rtl"] .language-menu button { text-align:right; }
   .admin-layout.sidebar-open .admin-sidebar { transform:translateX(0); }
   .admin-layout.collapsed .admin-brand strong, .admin-layout.collapsed .admin-nav button span, .admin-layout.collapsed .admin-back-link span { display:inline; }
   .admin-content { padding:16px 14px 40px; }
-  .admin-grid, .admin-stat-row { grid-template-columns:1fr; }
+  .admin-grid, .admin-grid-3, .admin-stat-row, .admin-pricing-row, .admin-cred-add-row { grid-template-columns:1fr; }
   .admin-current-user #currentUserName { display:none; }
 }

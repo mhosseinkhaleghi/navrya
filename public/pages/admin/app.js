@@ -67,6 +67,9 @@ const translations = {
     subscriptionsLabel: 'Subscriptions', noSubscriptions: 'No subscriptions.', mockBadge: 'mock', purchasedOnLabel: 'Purchased {date}',
     aiHealthLabel: 'Health', statusHealthy: 'Healthy', statusDegraded: 'Degraded', statusIdle: 'Idle', statusDisconnected: 'Disconnected', statusUnconfigured: 'Not configured', statusUnknown: 'Not tested yet',
     aiTestNow: 'Test now', aiTestingNow: 'Testing…', aiTestOk: 'Connection OK.', aiLastChecked: 'Last checked {date}', aiLastErrorLabel: 'Last error: {error}',
+    // AI & Voice tab page header + section head (Chunk 3 restyle).
+    aiPageSubtitle: 'Provider keys, pricing, live health, ElevenLabs voice routing, and platform-wide usage.',
+    aiProviderKeysTitle: 'Provider keys & pricing', statHealthyProviders: 'Healthy providers',
 voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-managed ElevenLabs credentials and per-language voice routing for the live Voice Mode. Changes apply immediately - no redeploy needed.',
     vpCredentialsTitle: 'Credential profiles', vpAddCredential: 'Add credential profile', vpLabelPlaceholder: 'Profile name (e.g. Primary ElevenLabs Account)', vpKeyPlaceholder: 'Paste the ElevenLabs API key', vpReplaceKeyHint: 'Leave blank to keep the current key', vpSaveCredential: 'Save profile', vpNoCredentials: 'No credential profiles yet.',
     vpKeyHint: 'Key ends in {hint}', vpValidate: 'Validate', vpValidating: 'Validating…', vpDelete: 'Delete', vpDeleteConfirm: 'Delete this credential profile? Any language using it will fall back until a new one is selected.', vpDeleted: 'Credential deleted.',
@@ -189,6 +192,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     subscriptionsLabel: 'اشتراک‌ها', noSubscriptions: 'اشتراکی وجود ندارد.', mockBadge: 'آزمایشی', purchasedOnLabel: 'خریداری‌شده در {date}',
     aiHealthLabel: 'سلامت', statusHealthy: 'سالم', statusDegraded: 'ناپایدار', statusIdle: 'بی‌فعالیت', statusDisconnected: 'قطع شده', statusUnconfigured: 'پیکربندی نشده', statusUnknown: 'هنوز تست نشده',
     aiTestNow: 'تست همین حالا', aiTestingNow: 'در حال تست…', aiTestOk: 'اتصال برقرار است.', aiLastChecked: 'آخرین بررسی {date}', aiLastErrorLabel: 'آخرین خطا: {error}',
+    aiPageSubtitle: 'کلیدهای سرویس‌دهنده، قیمت‌گذاری، سلامت زنده، مسیردهی صدای ElevenLabs و مصرف کل پلتفرم.',
+    aiProviderKeysTitle: 'کلیدهای سرویس‌دهنده و قیمت‌گذاری', statHealthyProviders: 'سرویس‌دهنده‌های سالم',
     voiceProvidersTitle: 'ارائه‌دهنده‌های صدا (ElevenLabs)', voiceProvidersHint: 'کلیدهای ElevenLabs و مسیردهی صدا به‌ازای هر زبان، مدیریت‌شده توسط ادمین - برای حالت صوتی زنده. تغییرات بلافاصله اعمال می‌شوند، بدون نیاز به دیپلوی دوباره.',
     vpCredentialsTitle: 'پروفایل‌های کلید', vpAddCredential: 'افزودن پروفایل کلید', vpLabelPlaceholder: 'نام پروفایل (مثلاً حساب اصلی ElevenLabs)', vpKeyPlaceholder: 'کلید API ElevenLabs را وارد کن', vpReplaceKeyHint: 'برای نگه‌داشتن کلید فعلی، خالی بگذار', vpSaveCredential: 'ذخیرهٔ پروفایل', vpNoCredentials: 'هنوز پروفایل کلیدی ثبت نشده است.',
     vpKeyHint: 'کلید با {hint} تمام می‌شود', vpValidate: 'اعتبارسنجی', vpValidating: 'در حال اعتبارسنجی…', vpDelete: 'حذف', vpDeleteConfirm: 'این پروفایل کلید حذف شود؟ هر زبانی که از آن استفاده می‌کند، تا انتخاب یک پروفایل جدید به حالت پیش‌فرض برمی‌گردد.', vpDeleted: 'کلید حذف شد.',
@@ -308,6 +313,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     subscriptionsLabel: 'الاشتراكات', noSubscriptions: 'لا توجد اشتراكات.', mockBadge: 'تجريبي', purchasedOnLabel: 'تم الشراء في {date}',
     aiHealthLabel: 'الحالة', statusHealthy: 'سليم', statusDegraded: 'غير مستقر', statusIdle: 'خامل', statusDisconnected: 'منقطع', statusUnconfigured: 'غير مهيّأ', statusUnknown: 'لم يُختبر بعد',
     aiTestNow: 'اختبار الآن', aiTestingNow: 'جارٍ الاختبار…', aiTestOk: 'الاتصال يعمل.', aiLastChecked: 'آخر فحص {date}', aiLastErrorLabel: 'آخر خطأ: {error}',
+    aiPageSubtitle: 'مفاتيح المزوّدين، التسعير، الحالة الحية، توجيه صوت ElevenLabs، والاستخدام على مستوى المنصة.',
+    aiProviderKeysTitle: 'مفاتيح المزوّدين والتسعير', statHealthyProviders: 'مزوّدون سليمون',
     voiceProvidersTitle: 'مزوّدو الصوت (ElevenLabs)', voiceProvidersHint: 'مفاتيح ElevenLabs وتوجيه الصوت لكل لغة، تديرها الإدارة - لوضع الصوت المباشر. تُطبَّق التغييرات فورًا دون الحاجة لإعادة النشر.',
     vpCredentialsTitle: 'ملفات المفاتيح', vpAddCredential: 'إضافة ملف مفتاح', vpLabelPlaceholder: 'اسم الملف (مثال: حساب ElevenLabs الرئيسي)', vpKeyPlaceholder: 'أدخل مفتاح API الخاص بـ ElevenLabs', vpReplaceKeyHint: 'اتركه فارغًا للاحتفاظ بالمفتاح الحالي', vpSaveCredential: 'حفظ الملف', vpNoCredentials: 'لا توجد ملفات مفاتيح بعد.',
     vpKeyHint: 'المفتاح ينتهي بـ {hint}', vpValidate: 'تحقّق', vpValidating: 'جارٍ التحقّق…', vpDelete: 'حذف', vpDeleteConfirm: 'هل تريد حذف ملف المفتاح هذا؟ أي لغة تستخدمه ستعود إلى الوضع الافتراضي حتى يتم اختيار ملف جديد.', vpDeleted: 'تم حذف المفتاح.',
@@ -427,6 +434,8 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     subscriptionsLabel: 'Suscripciones', noSubscriptions: 'Sin suscripciones.', mockBadge: 'simulado', purchasedOnLabel: 'Comprado el {date}',
     aiHealthLabel: 'Estado', statusHealthy: 'Saludable', statusDegraded: 'Inestable', statusIdle: 'Inactivo', statusDisconnected: 'Desconectado', statusUnconfigured: 'No configurado', statusUnknown: 'Aún no probado',
     aiTestNow: 'Probar ahora', aiTestingNow: 'Probando…', aiTestOk: 'Conexión correcta.', aiLastChecked: 'Última verificación {date}', aiLastErrorLabel: 'Último error: {error}',
+    aiPageSubtitle: 'Claves de proveedores, precios, estado en vivo, enrutamiento de voz ElevenLabs y uso de toda la plataforma.',
+    aiProviderKeysTitle: 'Claves de proveedores y precios', statHealthyProviders: 'Proveedores saludables',
     voiceProvidersTitle: 'Proveedores de voz (ElevenLabs)', voiceProvidersHint: 'Credenciales de ElevenLabs y enrutamiento de voz por idioma, gestionados por el administrador, para el Modo de Voz en vivo. Los cambios se aplican de inmediato, sin necesidad de reimplementar.',
     vpCredentialsTitle: 'Perfiles de credenciales', vpAddCredential: 'Añadir perfil de credencial', vpLabelPlaceholder: 'Nombre del perfil (p. ej., Cuenta principal de ElevenLabs)', vpKeyPlaceholder: 'Introduce la clave API de ElevenLabs', vpReplaceKeyHint: 'Déjalo vacío para conservar la clave actual', vpSaveCredential: 'Guardar perfil', vpNoCredentials: 'Aún no hay perfiles de credenciales.',
     vpKeyHint: 'La clave termina en {hint}', vpValidate: 'Validar', vpValidating: 'Validando…', vpDelete: 'Eliminar', vpDeleteConfirm: '¿Eliminar este perfil de credencial? Cualquier idioma que lo use volverá al estado predeterminado hasta que se seleccione un nuevo perfil.', vpDeleted: 'Clave eliminada.',
@@ -910,7 +919,7 @@ function aiTab() {
     api('/voice-providers/health').catch(() => ({ characters: [] }))
   ]).then(([keys, pricing, usage, health, finance, topUsers, usageByModel, vpCredentials, vpCharacters, vpHealth]) => {
     const wrap = el('div');
-    wrap.append(statRow([statCard('key-round', keys.filter((k) => k.isSet).length + ' / ' + KNOWN_PROVIDERS.length, t('statProvidersConfigured'))]));
+    wrap.append(pageHeader('brain-circuit', 'tabAI', 'aiPageSubtitle'));
     const grid = el('div', 'admin-grid');
     const keyByProvider = {}; keys.forEach((k) => { keyByProvider[k.provider] = k; });
     const pricingByProvider = {}; pricing.forEach((p) => { pricingByProvider[p.provider] = p; });
@@ -922,6 +931,15 @@ function aiTab() {
       const dayKey = new Date(row.day).toISOString().slice(0, 10);
       todayTokensByProvider[row.provider] = (todayTokensByProvider[row.provider] || 0) + (dayKey === todayKey ? row.totalTokens : 0);
     });
+    // Second real stat, computed from the same /ai/health response the provider cards below
+    // already read - counts providers whose live health check is currently 'healthy', not just
+    // "has a key saved" (that's what the first stat already covers).
+    const healthyProviderCount = KNOWN_PROVIDERS.filter((provider) => healthByProvider[provider] && healthByProvider[provider].status === 'healthy').length;
+    wrap.append(statRow([
+      statCard('key-round', keys.filter((k) => k.isSet).length + ' / ' + KNOWN_PROVIDERS.length, t('statProvidersConfigured')),
+      statCard('heart-pulse', healthyProviderCount + ' / ' + KNOWN_PROVIDERS.length, t('statHealthyProviders'))
+    ]));
+    wrap.append(sectionHead('aiProviderKeysTitle'));
 
     KNOWN_PROVIDERS.forEach((provider) => {
       const card = el('div', 'admin-card');
@@ -982,7 +1000,9 @@ function aiTab() {
           provider, promptPricePer1k: promptField.input.value, completionPricePer1k: completionField.input.value, monthlyTokenBudget: budgetField.input.value
         }) }).then(() => showToast(t('saved'))).catch((error) => showToast(error.message, 'danger'));
       };
-      card.append(promptField.wrap, completionField.wrap, budgetField.wrap, savePricingBtn);
+      const pricingRowWrap = el('div', 'admin-pricing-row');
+      pricingRowWrap.append(promptField.wrap, completionField.wrap);
+      card.append(pricingRowWrap, budgetField.wrap, savePricingBtn);
       grid.append(card);
     });
     wrap.append(grid);
@@ -1125,13 +1145,13 @@ function voiceProvidersSection(data) {
   (data.health.characters || []).forEach((row) => { healthByKey[row.character + ':' + row.gender] = row; });
 
   const section = el('div');
-  section.append(el('h3', '', t('voiceProvidersTitle')));
+  section.append(sectionHead('voiceProvidersTitle'));
   section.append(el('p', 'hint', t('voiceProvidersHint')));
 
   const credCard = el('div', 'admin-card');
   credCard.append(el('h3', '', t('vpCredentialsTitle')));
   if (!credentials.length) credCard.append(el('p', 'hint', t('vpNoCredentials')));
-  const credGrid = el('div', 'admin-grid');
+  const credGrid = el('div', 'admin-grid-3');
   credentials.forEach((cred) => credGrid.append(voiceCredentialCard(cred)));
   credCard.append(credGrid);
 
@@ -1150,12 +1170,14 @@ function voiceProvidersSection(data) {
       .catch((error) => showToast(error.message, 'danger'))
       .finally(() => { saveCredBtn.disabled = false; });
   };
-  credCard.append(labelField.wrap, keyField.wrap, el('p', 'hint', t('vpReplaceKeyHint')), saveCredBtn);
+  const credAddRow = el('div', 'admin-cred-add-row');
+  credAddRow.append(labelField.wrap, keyField.wrap, saveCredBtn);
+  credCard.append(credAddRow, el('p', 'hint', t('vpReplaceKeyHint')));
   section.append(credCard);
 
   const charCard = el('div', 'admin-card');
   charCard.append(el('h3', '', t('vpCharactersTitle')));
-  const charGrid = el('div', 'admin-grid');
+  const charGrid = el('div', 'admin-grid-3');
   characters.forEach((config) => charGrid.append(voiceCharacterCard(config, credentials, healthByKey[config.character + ':' + config.gender])));
   charCard.append(charGrid);
   section.append(charCard);
@@ -1182,7 +1204,7 @@ function voiceProvidersSection(data) {
 }
 
 function voiceCredentialCard(cred) {
-  const card = el('div', 'admin-card');
+  const card = el('div', 'admin-card admin-card-nested');
   const head = el('div', 'admin-ai-card-head');
   head.append(el('h3', '', cred.label));
   const validationKey = 'vpValidation' + cred.validationStatus.charAt(0).toUpperCase() + cred.validationStatus.slice(1);
@@ -1252,7 +1274,7 @@ const VP_CHARACTER_NAME_KEY = { hunter: 'vpCharacterHunter', commander: 'vpChara
 const VP_GENDER_KEY = { male: 'vpGenderMale', female: 'vpGenderFemale' };
 
 function voiceCharacterCard(config, credentials, healthRow) {
-  const card = el('div', 'admin-card');
+  const card = el('div', 'admin-card admin-card-nested');
   const head = el('div', 'admin-ai-card-head');
   head.append(el('h3', '', t(VP_CHARACTER_NAME_KEY[config.character] || config.character) + ' · ' + t(VP_GENDER_KEY[config.gender] || config.gender)));
   const status = (healthRow && healthRow.status) || (config.enabled ? 'unconfigured' : 'disabled');
