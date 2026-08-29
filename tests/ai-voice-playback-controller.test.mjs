@@ -155,3 +155,76 @@ test('an empty/falsy text is a no-op - never enqueued, never calls speak()', asy
   assert.equal(speakCalled, false);
   assert.equal(controller.queueLength(), 0);
 });
+
+// ---- Journey H2, Gate 3: published-audio playback ----
+
+test('an entry carrying audioUrl calls playAudioUrl instead of speak, and never calls speak at all on success', async () => {
+  const module = await sandbox();
+  let speakCalls = 0;
+  const audioCalls = [];
+  const controller = module.create({
+    speak: () => { speakCalls++; return Promise.resolve(); },
+    playAudioUrl: (url) => { audioCalls.push(url); return Promise.resolve(); }
+  });
+  controller.enqueue('the written reply', { audioUrl: '/uploads/conversation-audio/x.mp3' });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(audioCalls, ['/uploads/conversation-audio/x.mp3']);
+  assert.equal(speakCalls, 0, 'a successful published-audio playback must never also call the dynamic TTS engine');
+});
+
+test('onAudioStart fires exactly once for a published-audio entry, before playAudioUrl resolves', async () => {
+  const module = await sandbox();
+  const started = [];
+  const gate = deferred();
+  const controller = module.create({
+    speak: () => Promise.resolve(),
+    playAudioUrl: () => gate.promise,
+    onAudioStart: (entry) => started.push(entry.text)
+  });
+  controller.enqueue('hello', { audioUrl: '/uploads/conversation-audio/x.mp3' });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(started, ['hello']);
+  gate.resolve();
+});
+
+test('a playAudioUrl failure falls back to speak(text) for the SAME entry - never re-runs business logic, only changes delivery', async () => {
+  const module = await sandbox();
+  const speakCalls = [];
+  const settled = [];
+  const controller = module.create({
+    speak: (text) => { speakCalls.push(text); return Promise.resolve(); },
+    playAudioUrl: () => Promise.reject(new Error('network error')),
+    onSettled: (entry) => settled.push(entry)
+  });
+  controller.enqueue('the written reply', { audioUrl: '/uploads/conversation-audio/broken.mp3' });
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(speakCalls, ['the written reply'], 'a broken published file must fall back to the normal TTS engine for this exact text');
+  assert.equal(settled[0].spoken, true);
+});
+
+test('when playAudioUrl is not provided by the caller, an entry with audioUrl still falls back to speak() (feature-detected, never throws)', async () => {
+  const module = await sandbox();
+  const speakCalls = [];
+  const controller = module.create({ speak: (text) => { speakCalls.push(text); return Promise.resolve(); } });
+  controller.enqueue('hello', { audioUrl: '/uploads/conversation-audio/x.mp3' });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(speakCalls, ['hello']);
+});
+
+test('interrupt() stops a currently-playing published-audio entry via the same injected interrupt() function', async () => {
+  const module = await sandbox();
+  let interrupted = 0;
+  const gate = deferred();
+  const controller = module.create({
+    speak: () => Promise.resolve(),
+    playAudioUrl: () => gate.promise,
+    interrupt: () => { interrupted++; }
+  });
+  controller.enqueue('hello', { audioUrl: '/uploads/conversation-audio/x.mp3' });
+  await new Promise((r) => setTimeout(r, 0));
+  controller.interrupt();
+  assert.equal(interrupted, 1);
+  assert.equal(controller.isSpeaking(), false);
+  gate.resolve();
+});

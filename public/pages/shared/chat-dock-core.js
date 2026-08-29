@@ -323,6 +323,13 @@
 
     var active = settingsStore.settings();
     var activeProcess = registry ? registry.activeOpenProcess() : null;
+    // Journey H2, Gate 2: captured BEFORE any of the exclusion rules below narrow activeProcess
+    // down for the (unrelated) purpose of still permitting fresh action-discovery - surface-help
+    // scenarios specifically want to answer a question about exactly the kind of passively-open
+    // editor (Pattern/Strategy tabs, Settings panels) those exclusion rules exist to look past.
+    // See this file's own conversation-router integration comment further down for how this is
+    // actually used.
+    var rawActiveProcess = activeProcess;
     // A live-session Scenario card being expanded ('live-session-scenario-' + id - see
     // liveSessionView.jsx's own per-card registration, and ai-context-engine.js's
     // activeScenarioId(), which already reads this exact same id prefix for context) is a
@@ -493,6 +500,58 @@
     // never touched, closed, or mutated, so the existing form stays open and unchanged, and
     // ordinary ChatDock behavior resumes on the very next turn (nothing global changed).
     if (companionIntent === 'explain') { activeProcess = null; availableActions = null; }
+
+    // Journey H2, Gate 1/2: a deterministic, zero-network multilingual FAQ/data-query/surface-help
+    // router runs in this exact slot - after every activeProcess/availableActions exclusion above
+    // has settled, and before the Companion-explain override above is allowed to still reach the
+    // model unaffected (an explicit Explain tap deliberately wants the model's TEACHER stance,
+    // never a canned answer, so it is excluded here too). See ai-conversation-router.js and
+    // docs/ai/conversation-router.md/conversation-studio.md for the full design - only a
+    // HIGH-confidence match (a real score AND a real margin over every other candidate) resolves
+    // here; anything else (including no candidate at all) returns null and this turn falls
+    // through to the ordinary AI path below, completely unchanged.
+    //
+    // Two mutually-exclusive admission modes, tried in this order:
+    // - surface_help (Gate 2, tried FIRST): a real form/editor is genuinely open right now
+    //   (rawActiveProcess - the UN-excluded activeOpenProcess(), deliberately captured before the
+    //   passive-registration exclusion rules above ran, since those exist to let discovery see
+    //   PAST exactly this kind of passively-open editor - surface-help wants the opposite: to
+    //   answer a question about it), and no AI workflow is actively mid-fill on that EXACT
+    //   process right now (a workflow targeting a different, unrelated process never blocks this -
+    //   it has nothing to do with the open editor). Only scenarios explicitly authored for that
+    //   process (kind:'surface_help', allowedProcesses prefix-matching rawActiveProcess.id) are
+    //   ever considered - never a generic faq/data_query scenario. A match never sets/clears
+    //   activeProcess, never touches the workflow, and never mutates a field or step - purely an
+    //   answer, exactly like every other zero-network fast path's `activeProcess: null` return
+    //   (that field only ever tells chatDockView.jsx's popover what to display, never the real
+    //   registry/form state).
+    // - generic (Gate 1's exact original rule, tried only if surface_help didn't already resolve):
+    //   nothing open, no workflow being continued - the same admission rule availableActions
+    //   itself uses above.
+    var conversationRouter = window.TradeJournalAIConversationRouter;
+    if (conversationRouter && companionIntent !== 'explain') {
+      var routed = null;
+      var surfaceHelpEligible = rawActiveProcess && !(currentWorkflow && currentWorkflow.processId === rawActiveProcess.id);
+      if (surfaceHelpEligible) {
+        try { routed = conversationRouter.route(text, { mode: 'surface_help', activeProcessId: rawActiveProcess.id }); } catch (_e) { routed = null; }
+      }
+      if (!routed && !activeProcess && !workflowBlocksDiscovery) {
+        try { routed = conversationRouter.route(text); } catch (_e) { routed = null; }
+      }
+      if (routed) {
+        setLastTurnDebug({ path: 'conversation-router', scenarioId: routed.scenarioId, resolutionKind: routed.kind });
+        var routerTurnType = routed.kind === 'data_query' ? 'LOCAL_DATA_QUERY' : routed.kind === 'surface_help' ? 'LOCAL_SURFACE_HELP' : 'LOCAL_FAQ';
+        recordZeroNetworkLatency(routerTurnType, t0, {});
+        return {
+          kind: 'assistant', reply: routed.written, voiceReply: routed.voiceReply || routed.written,
+          // Journey H2, Gate 3: computed unconditionally (like voiceReply already is) - the
+          // caller (chatDockView.jsx) decides whether to actually play it, based on whether this
+          // turn came from Voice. A typed message ignores this field entirely.
+          audioUrl: routed.audioUrl || null, audioMimeType: routed.audioMimeType || null,
+          suggestions: [], activeProcess: null, conversationId: conversationId
+        };
+      }
+    }
 
     var tContextStart = now();
     var requestBody = {

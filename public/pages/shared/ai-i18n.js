@@ -120,7 +120,15 @@
       voiceOpeningActiveSession: 'سلام. سشن بازت هنوز فعاله. می‌خوای از همون‌جا ادامه بدیم؟',
       voiceOpeningActiveTrade: 'سلام. یه ترید باز داری. می‌خوای اول همون رو مرور کنیم؟',
       voiceOpeningDueReflection: 'سلام. یه معامله‌ی بسته داری که هنوز جمع‌بندی نشده. می‌خوای الان مرورش کنیم؟',
-      voiceOpeningStartAck: 'بسیار خب، بیا شروع کنیم.', voiceOpeningLaterAck: 'باشه، هر وقت خواستی اینجام.'
+      voiceOpeningStartAck: 'بسیار خب، بیا شروع کنیم.', voiceOpeningLaterAck: 'باشه، هر وقت خواستی اینجام.',
+
+      convRouterSessionPurpose: 'سشن یعنی همون فضایی که قبل از ورود به معامله، توش چارت رو می‌بینی، حرکت بازار رو دنبال می‌کنی و سناریوهات رو با دلیل ثبت می‌کنی — به‌جای اینکه سرراست بری تو معامله.',
+      convRouterPatternPurpose: 'پترن یعنی یک رفتار تکرارشونده‌ی بازار که یک بار با مراحلش ثبتش می‌کنی؛ بعد هر وقت همون رفتار رو توی یه سناریوی جدید دیدی، می‌تونی بهش لینکش کنی و ببینی چقدر واقعاً جواب داده.',
+      convRouterStrategyPurpose: 'استراتژی یعنی همون قانون‌های شخصی خودت برای ورود، خروج و مدیریت ریسک — یک‌بار می‌نویسیش، بعد هر معامله رو بهش لینک می‌کنی تا ببینی چقدر واقعاً طبق پلن پیش رفتی.',
+      convRouterAiCapabilities: 'می‌تونم برات فرم‌های بازی که رو صدا یا تایپ پر کنم، یه سشن یا معامله جدید بسازم، سوال‌هات درباره‌ی خود ناوریا رو جواب بدم، و اگه حالت روان‌شناس رو روشن کنی، درباره‌ی احساسات معامله‌گریت هم باهات حرف بزنم.',
+      convRouterDashboardPurpose: 'داشبورد همون صفحه‌ی اصلیه که خلاصه‌ی وضعیتت رو می‌بینی — معاملات باز، سشن‌های اخیر و دسترسی سریع به بقیه‌ی بخش‌ها، همه توی یه نگاه.',
+      convRouterOpenTradesCountOne: 'الان ۱ معامله باز داری.', convRouterOpenTradesCountMany: 'الان {count} معامله باز داری.',
+      convRouterDefaultRisk: 'ریسک پیش‌فرضت الان روی {value}% تنظیمه.'
     },
     ar: {
       aiSettingsTitle: 'الذكاء الاصطناعي', aiSettingsHelp: 'أدر مزوّد الخدمة ومفتاحك الخاص وحالة الصوت واستهلاك التوكنات وذاكرة المساعد من هنا.',
@@ -239,7 +247,15 @@
       voiceOpeningActiveSession: 'أهلاً. جلستك ما زالت مفتوحة. هل تريد أن نكمل من هناك؟',
       voiceOpeningActiveTrade: 'أهلاً. لديك صفقة مفتوحة. هل تريد أن نراجعها أولاً؟',
       voiceOpeningDueReflection: 'أهلاً. لديك صفقة مغلقة لم تتم مراجعتها بعد. هل تريد أن نراجعها الآن؟',
-      voiceOpeningStartAck: 'ممتاز، لنبدأ.', voiceOpeningLaterAck: 'حسناً، أنا هنا كلما كنت مستعداً.'
+      voiceOpeningStartAck: 'ممتاز، لنبدأ.', voiceOpeningLaterAck: 'حسناً، أنا هنا كلما كنت مستعداً.',
+
+      convRouterSessionPurpose: 'الجلسة هي المكان الذي تراقب فيه الرسم البياني، وتتابع حركة السوق، وتسجّل سيناريوهاتك بمنطق واضح قبل الدخول في أي صفقة — بدلاً من الدخول مباشرة.',
+      convRouterPatternPurpose: 'النمط هو سلوك متكرر في السوق تسجّله مرة واحدة بمراحله؛ وفي كل مرة ترى فيها نفس السلوك ضمن سيناريو جديد، يمكنك ربطه به ومعرفة مدى نجاحه فعلياً.',
+      convRouterStrategyPurpose: 'الاستراتيجية هي قواعدك الخاصة للدخول والخروج وإدارة المخاطر — تكتبها مرة واحدة، ثم تربط كل صفقة بها لترى مدى التزامك الفعلي بالخطة.',
+      convRouterAiCapabilities: 'يمكنني تعبئة أي نموذج مفتوح لديك عبر الصوت أو الكتابة، ومساعدتك في إنشاء جلسة أو صفقة جديدة، والإجابة عن أسئلتك حول نافريا نفسه، وإذا فعّلت وضع المعالج، التحدث معك عن نفسيتك في التداول.',
+      convRouterDashboardPurpose: 'لوحة التحكم هي شاشتك الرئيسية — ملخص سريع لصفقاتك المفتوحة، جلساتك الأخيرة، ووصول سريع لبقية الأقسام، كل ذلك بنظرة واحدة.',
+      convRouterOpenTradesCountOne: 'لديك حالياً صفقة واحدة مفتوحة.', convRouterOpenTradesCountMany: 'لديك حالياً {count} صفقة مفتوحة.',
+      convRouterDefaultRisk: 'مخاطرتك الافتراضية مضبوطة حالياً على {value}%.'
     },
     en: {
       aiSettingsTitle: 'AI', aiSettingsHelp: 'Manage the provider, your own API key, voice mode, token usage, and the assistant\'s memory here.',
@@ -358,7 +374,15 @@
       voiceOpeningActiveSession: 'Hi. Your session is still open. Want to pick up where we left off?',
       voiceOpeningActiveTrade: 'Hi. You have an open trade. Want to review it first?',
       voiceOpeningDueReflection: 'Hi. You have a closed trade that hasn\'t been reviewed yet. Want to go over it now?',
-      voiceOpeningStartAck: 'Great, let\'s get started.', voiceOpeningLaterAck: 'Okay, I\'m here whenever you\'re ready.'
+      voiceOpeningStartAck: 'Great, let\'s get started.', voiceOpeningLaterAck: 'Okay, I\'m here whenever you\'re ready.',
+
+      convRouterSessionPurpose: 'A Session is where you watch the chart, track market movement, and log your scenarios with real reasoning before you ever place a trade — instead of jumping straight into a position.',
+      convRouterPatternPurpose: 'A Pattern is a repeatable market behavior you record once, with its own stages; whenever you see that same behavior in a new scenario, you can link it and see how well it\'s actually performed over time.',
+      convRouterStrategyPurpose: 'A Strategy is your own written rules for entry, exit, and risk management — you write it once, then link every trade to it so you can see how closely you actually followed the plan.',
+      convRouterAiCapabilities: 'I can fill in whatever form you have open through voice or text, help you create a new session or trade, answer questions about NAVRYA itself, and — with Therapist mode on — talk through your trading psychology with you.',
+      convRouterDashboardPurpose: 'The Dashboard is your home screen — a quick summary of your open trades, recent sessions, and fast access to everything else, all in one glance.',
+      convRouterOpenTradesCountOne: 'You currently have 1 open trade.', convRouterOpenTradesCountMany: 'You currently have {count} open trades.',
+      convRouterDefaultRisk: 'Your default risk is currently set to {value}%.'
     },
     es: {
       aiSettingsTitle: 'IA', aiSettingsHelp: 'Gestiona el proveedor, tu propia clave de API, el modo de voz, el uso de tokens y la memoria del asistente aquí.',
@@ -477,7 +501,15 @@
       voiceOpeningActiveSession: 'Hola. Tu sesión sigue abierta. ¿Quieres continuar desde ahí?',
       voiceOpeningActiveTrade: 'Hola. Tienes una operación abierta. ¿Quieres revisarla primero?',
       voiceOpeningDueReflection: 'Hola. Tienes una operación cerrada que aún no se ha revisado. ¿Quieres revisarla ahora?',
-      voiceOpeningStartAck: 'Perfecto, empecemos.', voiceOpeningLaterAck: 'Vale, aquí estoy cuando quieras.'
+      voiceOpeningStartAck: 'Perfecto, empecemos.', voiceOpeningLaterAck: 'Vale, aquí estoy cuando quieras.',
+
+      convRouterSessionPurpose: 'Una Sesión es donde observas el gráfico, sigues el movimiento del mercado y registras tus escenarios con una razón real antes de entrar en una operación — en lugar de entrar directamente.',
+      convRouterPatternPurpose: 'Un Patrón es un comportamiento repetible del mercado que registras una vez, con sus propias etapas; cada vez que veas ese mismo comportamiento en un escenario nuevo, puedes vincularlo y ver qué tan bien ha funcionado en realidad.',
+      convRouterStrategyPurpose: 'Una Estrategia son tus propias reglas para la entrada, la salida y la gestión de riesgo — la escribes una vez y luego vinculas cada operación a ella para ver qué tan bien seguiste realmente el plan.',
+      convRouterAiCapabilities: 'Puedo completar cualquier formulario que tengas abierto por voz o texto, ayudarte a crear una nueva sesión u operación, responder preguntas sobre NAVRYA en sí, y — con el modo terapeuta activado — hablar contigo sobre tu psicología de trading.',
+      convRouterDashboardPurpose: 'El Panel es tu pantalla principal — un resumen rápido de tus operaciones abiertas, sesiones recientes y acceso rápido a todo lo demás, todo de un vistazo.',
+      convRouterOpenTradesCountOne: 'Actualmente tienes 1 operación abierta.', convRouterOpenTradesCountMany: 'Actualmente tienes {count} operaciones abiertas.',
+      convRouterDefaultRisk: 'Tu riesgo predeterminado está configurado actualmente en {value}%.'
     }
   };
 

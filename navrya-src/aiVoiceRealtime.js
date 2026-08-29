@@ -236,6 +236,17 @@ export function createVoiceSession(options) {
   // through a cancellation. Cleared the instant it's used or the entry settles for any other reason.
   var elevenLabsStopFn = null;
 
+  // Journey H2, Gate 3 (Conversation Studio voice asset pipeline): a THIRD, dedicated <audio>
+  // element for pre-generated, admin-approved published audio - deliberately never sharing
+  // elevenLabsAudioEl above, even though both play same-origin audio outside the WebRTC transport.
+  // Keeping them separate means a stale ElevenLabs teardown can never race a published-audio
+  // playback's own src/currentTime, and diagnostics (audioDiagnostics()) can tell the two apart.
+  var publishedAudioEl = null;
+  // Same role as elevenLabsStopFn, for whichever published-audio playback is active right now -
+  // interrupt()/teardownTransport() stop both unconditionally, regardless of which one (if either)
+  // is actually playing.
+  var publishedAudioStopFn = null;
+
   // connectionEpoch: bumped once per genuine new connection attempt (every connect() call,
   // reconnect or not). Listeners registered against a specific session/transport instance close
   // over the epoch value active when THEY were registered (`myEpoch` inside connect()) and check
@@ -462,6 +473,9 @@ export function createVoiceSession(options) {
     // both halts playback and settles the in-flight speak() promise; pendingSpeakSettle below is
     // still the fallback for the (impossible once this runs, but defensive) case it was already null.
     if (elevenLabsStopFn) { var stopEl = elevenLabsStopFn; elevenLabsStopFn = null; stopEl(); }
+    // Journey H2, Gate 3: same requirement, same shape, for published-audio playback - a
+    // torn-down session must never leave a pre-generated clip audibly playing into it either.
+    if (publishedAudioStopFn) { var stopPub = publishedAudioStopFn; publishedAudioStopFn = null; stopPub(); }
     handledItemIds = Object.create(null);
     // See pendingSpeakSettle's own comment above - close() itself never settles an in-flight
     // speak() promise, so do it explicitly here rather than leave the caller's playback queue
@@ -721,6 +735,10 @@ export function createVoiceSession(options) {
     // must immediately cancel/stop/settle"). A no-op when nothing ElevenLabs is currently playing,
     // exactly like session.interrupt() itself already safely no-ops when nothing is active.
     if (elevenLabsStopFn) { var stopEl = elevenLabsStopFn; elevenLabsStopFn = null; stopEl(); }
+    // Journey H2, Gate 3: published-audio playback is likewise entirely outside the OpenAI
+    // session below - a barge-in during a pre-generated clip must stop it exactly as immediately
+    // as it would ElevenLabs or the Realtime model's own speech. No-ops when nothing is playing.
+    if (publishedAudioStopFn) { var stopPub = publishedAudioStopFn; publishedAudioStopFn = null; stopPub(); }
     if (!session) return;
     try {
       session.interrupt();
@@ -881,6 +899,68 @@ export function createVoiceSession(options) {
     return speakViaOpenAI(text);
   }
 
+  // Journey H2, Gate 3 (Conversation Studio voice asset pipeline): plays a single pre-generated,
+  // admin-approved audio file for a Voice turn that matched a static scenario with approved audio.
+  // Called DIRECTLY by the caller's PlaybackController (ai-voice-playback-controller.js) instead of
+  // speak() - never through it, and never reached at all unless PlaybackController's own entry
+  // actually carries an audioUrl. Deliberately does not require a live `session` (unlike speak()'s
+  // own guard) - published audio plays independently of the OpenAI Realtime transport, exactly like
+  // ElevenLabs playback already does.
+  //
+  // Unlike playElevenLabsAudio() above, this never relays synthetic output_audio_buffer.* events -
+  // PlaybackController already fires its own onAudioStart optimistically for an audioUrl entry (see
+  // that module's own comment) since there is no separate raw event a static file could ever emit;
+  // this function's only job is to actually play the audio and report success/failure back through
+  // its returned Promise.
+  //
+  // Settlement contract (deliberately DIFFERENT from playElevenLabsAudio, which never rejects): a
+  // natural 'ended' resolves; a real playback failure (missing/corrupt file, decode error, a 12s
+  // stall, or a rejected play() - e.g. an autoplay-policy block) REJECTS. PlaybackController's own
+  // .catch() is what falls back to the normal dynamic TTS engine for this exact, already-known text
+  // (spec section 30/31) - this function itself never re-runs any business logic, it only ever
+  // changes how the one already-decided reply gets spoken. A mid-playback stop from
+  // interrupt()/teardownTransport() always resolves instead - by the time that settles,
+  // PlaybackController has already synchronously settled the entry itself (interrupted/skipped), so
+  // this promise's own outcome is moot either way (see that module's settleOnce() idempotency
+  // guard) - resolving simply avoids a pointless, unwanted fallback-to-TTS attempt on an
+  // intentional stop, which is not a broken file.
+  function playAudioUrl(url) {
+    if (!url) return Promise.resolve();
+    setState(VOICE_STATES.ASSISTANT_SPEAKING);
+    if (!publishedAudioEl) publishedAudioEl = document.createElement('audio');
+    var el = publishedAudioEl;
+    el.src = url;
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      // Same 12s last-resort safety net as every other playback path in this file - a genuinely
+      // stuck/never-firing 'ended'/'error' event must never block the playback queue forever.
+      var timer = setTimeout(function () { settle(false); }, 12000);
+      function settle(ok) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        el.removeEventListener('ended', onEnded);
+        el.removeEventListener('error', onPlaybackError);
+        if (publishedAudioStopFn === stopNow) publishedAudioStopFn = null;
+        if (ok) resolve(); else reject(new Error('published audio playback failed'));
+      }
+      function onEnded() { settle(true); }
+      function onPlaybackError() { settle(false); }
+      function stopNow() { try { el.pause(); el.currentTime = 0; } catch (_e) { /* best-effort */ } settle(true); }
+      el.addEventListener('ended', onEnded);
+      el.addEventListener('error', onPlaybackError);
+      publishedAudioStopFn = stopNow;
+      var playPromise = el.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        // A play() rejection (e.g. browser autoplay policy) is a genuine failure here - unlike
+        // playElevenLabsAudio's own posture (nothing further to fall back to at that point), this
+        // path DOES have a further fallback available (PlaybackController's own .catch()), so it
+        // must reject rather than silently treat a never-started clip as a finished turn.
+        playPromise.catch(function () { settle(false); });
+      }
+    });
+  }
+
   function setLanguage(nextLanguage) { language = nextLanguage || 'en'; }
 
   // fix/voice-mode-turn-ux (Part D): "End message" - finalizes ONLY the user's current spoken
@@ -933,6 +1013,10 @@ export function createVoiceSession(options) {
     mute: mute,
     interrupt: interrupt,
     speak: speak,
+    // Journey H2, Gate 3: exported for chatDockView.jsx to pass straight into
+    // PlaybackController.create({ playAudioUrl: voiceRef.current.playAudioUrl, ... }) - see
+    // playAudioUrl()'s own comment for the full contract.
+    playAudioUrl: playAudioUrl,
     setLanguage: setLanguage,
     // fix/voice-mode-turn-ux: called by the caller's PlaybackController.onSettled (Part A/B) once
     // it has genuinely settled the currently-speaking entry, for any reason - moves `state` back

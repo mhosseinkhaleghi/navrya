@@ -139,6 +139,55 @@ test('teardownTransport() stops any in-flight ElevenLabs audio - a disconnect()/
   assert.match(body, /if \(elevenLabsStopFn\) \{ var stopEl = elevenLabsStopFn; elevenLabsStopFn = null; stopEl\(\); \}/);
 });
 
+// --- Journey H2, Gate 3: published-audio playback (Conversation Studio voice asset pipeline) ---
+
+test('playAudioUrl is a dedicated function, exported, and never routed through speak()/speakViaOpenAI()/speakViaElevenLabs() - PlaybackController calls it directly for a matched scenario\'s pre-generated audio', () => {
+  assert.match(source, /function playAudioUrl\(url\)/);
+  assert.match(source, /playAudioUrl: playAudioUrl,/, 'must be exported on the public API returned by createVoiceSession');
+  const speakBody = source.slice(source.indexOf('function speak(text)'), source.indexOf('function speak(text)') + 300);
+  assert.doesNotMatch(speakBody, /playAudioUrl/, 'speak() itself must never call playAudioUrl - only PlaybackController decides which one to invoke, via ai-voice-output-resolver.js');
+});
+
+test('playAudioUrl uses a THIRD, dedicated <audio> element, never reusing elevenLabsAudioEl or the WebRTC transport\'s own element', () => {
+  const body = source.slice(source.indexOf('function playAudioUrl(url)'), source.indexOf('function setLanguage'));
+  assert.match(body, /var el = publishedAudioEl;/);
+  assert.match(body, /el\.src = url;/);
+  assert.doesNotMatch(body, /elevenLabsAudioEl/, 'must not reuse the ElevenLabs element');
+});
+
+test('playAudioUrl does not require a live session - published audio plays independently of the OpenAI Realtime transport, exactly like ElevenLabs playback already does', () => {
+  const body = source.slice(source.indexOf('function playAudioUrl(url)'), source.indexOf('function setLanguage'));
+  assert.doesNotMatch(body, /if \(!session/);
+});
+
+test('playAudioUrl resolves on a natural end, but REJECTS on a real playback failure (error/timeout/play() rejection) - deliberately different from playElevenLabsAudio, which never rejects, because PlaybackController\'s own .catch() gives this path a further fallback (dynamic TTS) that ElevenLabs playback does not have at that point', () => {
+  const body = source.slice(source.indexOf('function playAudioUrl(url)'), source.indexOf('function setLanguage'));
+  assert.match(body, /function onEnded\(\) \{ settle\(true\); \}/);
+  assert.match(body, /function onPlaybackError\(\) \{ settle\(false\); \}/);
+  assert.match(body, /setTimeout\(function \(\) \{ settle\(false\); \}, 12000\)/);
+  assert.match(body, /playPromise\.catch\(function \(\) \{ settle\(false\); \}\);/);
+  assert.match(body, /if \(ok\) resolve\(\); else reject\(new Error\('published audio playback failed'\)\);/);
+});
+
+test('playAudioUrl resolves (never rejects) when stopped via interrupt()/teardown - an intentional stop is not a broken file, and PlaybackController has already settled the entry itself by then', () => {
+  const body = source.slice(source.indexOf('function playAudioUrl(url)'), source.indexOf('function setLanguage'));
+  assert.match(body, /function stopNow\(\) \{ try \{ el\.pause\(\); el\.currentTime = 0; \} catch \(_e\) \{[^}]*\} settle\(true\); \}/);
+  assert.match(body, /publishedAudioStopFn = stopNow;/);
+});
+
+test('interrupt() stops any in-flight published-audio playback unconditionally, alongside (and independent of) the ElevenLabs stop and the OpenAI session.interrupt() call', () => {
+  const interruptBody = source.slice(source.indexOf('function interrupt()'), source.indexOf('// Called only by the caller'));
+  const elIdx = interruptBody.indexOf('if (elevenLabsStopFn)');
+  const pubIdx = interruptBody.indexOf('if (publishedAudioStopFn)');
+  const sessionIdx = interruptBody.indexOf('session.interrupt();');
+  assert.ok(elIdx > -1 && pubIdx > -1 && sessionIdx > -1 && pubIdx < sessionIdx, 'the published-audio stop must run before session.interrupt(), and must not be gated on `session` being truthy');
+});
+
+test('teardownTransport() stops any in-flight published-audio playback - a disconnect()/reconnect must never leave a pre-generated clip audibly playing into a torn-down session', () => {
+  const body = source.slice(source.indexOf('function teardownTransport()'), source.indexOf('function scheduleReconnect'));
+  assert.match(body, /if \(publishedAudioStopFn\) \{ var stopPub = publishedAudioStopFn; publishedAudioStopFn = null; stopPub\(\); \}/);
+});
+
 test('fetchSpeakAudio is an optional injected dependency (same pattern as fetchSession) - createVoiceSession never hardcodes the real HTTP endpoint for it', () => {
   assert.match(source, /var fetchSpeakAudio = options && options\.fetchSpeakAudio;/);
   assert.doesNotMatch(source, /fetch\(['"]\/api\/ai\/voice\/speak['"]/, 'aiVoiceRealtime.js must stay a pure transport with zero knowledge of the real endpoint - chatDockView.jsx owns that fetch');
@@ -207,7 +256,7 @@ test('voiceGenderPreference() reads the per-character gender pick from window.Tr
 test('the text handed to PlaybackController is only ever what NAVRYA\'s own deterministic turn produced (voiceReply/reply from the submit() result, then the Persian Voice Quality gate\'s own deterministic ai-voice-text.js post-processing - see ai-voice-chatdock-ux.test.mjs), never anything the Realtime model decided on its own, and is never awaited (playback must never block the next turn)', () => {
   assert.match(dockViewSource, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\)/);
   assert.match(dockViewSource, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
-  assert.match(dockViewSource, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '' \}\);/);
+  assert.match(dockViewSource, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '', audioUrl: audioUrlForEntry \}\);/);
   assert.doesNotMatch(dockViewSource, /await playbackControllerRef\.current\.enqueue/, 'enqueue() must never be awaited - that would recreate the exact coupling this pass removes');
 });
 
@@ -395,6 +444,36 @@ test('classifyMintFailureStage/classifySdpFailureStage are pure and read no brow
   for (const fn of [mintFn, sdpFn]) {
     assert.doesNotMatch(fn, /document\.|window\.|navigator\.|fetch\(/, 'a pure classifier must never itself touch the network or the DOM');
   }
+});
+
+// --- Journey H2, Gate 3: chatDockView.jsx wiring for published-audio playback ---
+
+test('submit() threads audioUrl/audioMimeType straight through from core.sendChat()\'s own result, unconditionally (never gated on source) - the resolver, not this function, decides whether to actually use them', () => {
+  const submitStart = dockViewSource.indexOf('async function submit(value, options)');
+  const body = dockViewSource.slice(submitStart, dockViewSource.indexOf('} catch (_err) {', submitStart));
+  assert.match(body, /audioUrl: result\.audioUrl \|\| null, audioMimeType: result\.audioMimeType \|\| null/);
+});
+
+test('PlaybackController.create() is wired with playAudioUrl, read fresh from voiceRef.current on every call - same convention as the existing speak()/interrupt() options', () => {
+  const body = dockViewSource.slice(dockViewSource.indexOf('playbackControllerRef.current = window.TradeJournalAIVoicePlaybackController.create({'), dockViewSource.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('));
+  assert.match(body, /playAudioUrl: \(url\) => voiceRef\.current\.playAudioUrl\(url\)/);
+});
+
+test('the voice onResult wiring calls ai-voice-output-resolver.js with source:\'voice\' before ever enqueuing an audioUrl, and degrades to DYNAMIC_TTS (never PUBLISHED_AUDIO) if the resolver module is missing', () => {
+  const body = dockViewSource.slice(dockViewSource.indexOf('onResult: (result, meta) => {'), dockViewSource.indexOf('window.TradeJournalChatDockVoiceLatency = latency;'));
+  assert.match(body, /window\.TradeJournalAIVoiceOutputResolver/);
+  assert.match(body, /outputResolver\.resolve\(\{ source: 'voice', hasAudio: !!\(result && result\.audioUrl\) \}\)/);
+  assert.match(body, /: 'DYNAMIC_TTS';/, 'the no-resolver fallback must be the safe DYNAMIC_TTS decision, never PUBLISHED_AUDIO');
+  assert.match(body, /const audioUrlForEntry = outputDecision === 'PUBLISHED_AUDIO' \? result\.audioUrl : null;/);
+  assert.match(body, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '', audioUrl: audioUrlForEntry \}\);/);
+});
+
+test('a typed (text-source) submit() never reaches the voice onResult/PlaybackController wiring at all - audioUrl can never autoplay for a typed message, structurally, not just by the resolver\'s own source check', () => {
+  // The onResult callback lives ONLY inside turnCoordinatorRef.current's own creation - the object
+  // TurnCoordinator drives via handleFinalTranscript(), which is only ever called from
+  // onVoiceTranscript (a Realtime transcript callback), never from the text-input send handler.
+  const turnCoordinatorBody = dockViewSource.slice(dockViewSource.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('), dockViewSource.indexOf('return () => { if (voiceRef.current)'));
+  assert.match(turnCoordinatorBody, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/, 'the ONLY submit() call inside this voice-only object always reports source:\'voice\' - never source-agnostic');
 });
 
 test('fetchRealtimeSession (chatDockView.jsx) preserves the real server error code/status on a failed mint instead of collapsing every failure into one opaque VOICE_SESSION_REQUEST_FAILED string - the exact production bug this fix addresses', () => {

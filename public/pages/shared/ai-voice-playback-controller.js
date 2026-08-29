@@ -31,6 +31,11 @@
   function createPlaybackController(options) {
     var opts = options || {};
     var speakFn = opts.speak; // (text) => Promise<void> - normally aiVoiceRealtime.js's own speak()
+    // Journey H2, Gate 3: (url) => Promise<void> - normally aiVoiceRealtime.js's own
+    // playAudioUrl(). Optional - a page without this wired up simply never takes the
+    // published-audio branch below, exactly like every other feature-detected capability in this
+    // codebase.
+    var playAudioUrlFn = opts.playAudioUrl;
     var interruptFn = opts.interrupt; // () => void - normally aiVoiceRealtime.js's own interrupt()
     var onSettled = typeof opts.onSettled === 'function' ? opts.onSettled : function () {};
     // Fires exactly once per entry, the moment ITS OWN real output-audio buffer genuinely starts
@@ -77,7 +82,26 @@
       };
       var result;
       try {
-        result = typeof speakFn === 'function' ? speakFn(entry.text) : Promise.resolve();
+        // Journey H2, Gate 3: an entry carrying a real audioUrl (see enqueue()'s own comment)
+        // plays the pre-generated file instead of synthesizing speech - entering this exact same
+        // queue/epoch/interrupt machinery, never a second, incompatible state. onAudioStart fires
+        // optimistically here (there is no separate raw output-audio-buffer event a static file
+        // could ever emit, unlike the OpenAI Realtime path below) - markAudioStarted()'s own
+        // idempotency guard means a later real event for a FALLBACK attempt (see the .catch()
+        // below) can never double-fire the caption.
+        if (entry.audioUrl && typeof playAudioUrlFn === 'function') {
+          if (currentInternal.markAudioStarted()) onAudioStart(Object.assign({}, current));
+          result = Promise.resolve().then(function () { return playAudioUrlFn(entry.audioUrl); })
+            .catch(function () {
+              // Fallback (spec section 30/31): a network/format/playback failure for the
+              // published file NEVER re-runs business logic - the text is already known, so this
+              // only ever changes HOW the same entry gets spoken, falling back to the normal live
+              // TTS engine for this exact entry.
+              return typeof speakFn === 'function' ? speakFn(entry.text) : Promise.resolve();
+            });
+        } else {
+          result = typeof speakFn === 'function' ? speakFn(entry.text) : Promise.resolve();
+        }
       } catch (_err) {
         settleOnce(false, 'error');
         return;
@@ -162,10 +186,14 @@
     }
 
     // enqueue(text, meta) - meta: any opaque caller data (turnId, connectionEpoch, caption, ...),
-    // carried through unchanged to onSettled()/onAudioStart(). Returns the assigned responseId
-    // (this controller's OWN local id, unrelated to the real server response id - see
-    // setCurrentResponseId()). Never returns a Promise the caller is expected to await - this is
-    // the whole point of splitting playback out.
+    // carried through unchanged to onSettled()/onAudioStart(). Journey H2, Gate 3: meta.audioUrl
+    // is the one recognized field this controller itself acts on - when present (and
+    // opts.playAudioUrl was provided), this entry plays the pre-generated file instead of
+    // synthesizing speech (see processNext()'s own comment) - the caller decides per-turn whether
+    // to set it, via ai-voice-output-resolver.js's PUBLISHED_AUDIO/DYNAMIC_TTS decision. Returns
+    // the assigned responseId (this controller's OWN local id, unrelated to the real server
+    // response id - see setCurrentResponseId()). Never returns a Promise the caller is expected
+    // to await - this is the whole point of splitting playback out.
     function enqueue(text, meta) {
       if (!text) return null;
       var responseId = 'resp-' + (nextResponseId++);

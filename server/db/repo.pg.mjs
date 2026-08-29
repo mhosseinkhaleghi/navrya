@@ -4,6 +4,7 @@ import { encryptSecret, decryptSecret } from '../community/security/crypto-util.
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
+import { spokenTextFor, computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -85,6 +86,32 @@ function mapListing(row) {
     successRatePercent: row.success_rate_percent == null ? null : Number(row.success_rate_percent),
     sampleSize: row.sample_size, evidenceAsOf: row.evidence_as_of, previewContent: row.preview_content,
     fullContent: row.full_content, screenshots: row.screenshots, status: row.status, featured: row.featured,
+    createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+function mapConversationScenario(row) {
+  return {
+    id: row.id, scenarioKey: row.scenario_key, domain: row.domain, kind: row.kind,
+    dataQueryRef: row.data_query_ref, ctaActionId: row.cta_action_id,
+    allowedProcesses: row.allowed_processes, allowedSteps: row.allowed_steps,
+    publishedVersionId: row.published_version_id, draftVersionId: row.draft_version_id,
+    archivedAt: row.archived_at, createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+function mapConversationScenarioVersion(row) {
+  return {
+    id: row.id, scenarioId: row.scenario_id, versionNumber: row.version_number, status: row.status,
+    definition: row.definition, publishedAt: row.published_at, createdBy: row.created_by, publishedBy: row.published_by,
+    createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+function mapConversationAudioAsset(row) {
+  return {
+    id: row.id, scenarioId: row.scenario_id, scenarioVersionId: row.scenario_version_id,
+    language: row.language, variantKey: row.variant_key, contentHash: row.content_hash,
+    provider: row.provider, voiceProfileKey: row.voice_profile_key, voiceId: row.voice_id, modelId: row.model_id,
+    fileUrl: row.file_url, mimeType: row.mime_type, durationMs: row.duration_ms, status: row.status,
+    createdBy: row.created_by, approvedBy: row.approved_by, approvedAt: row.approved_at,
     createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
@@ -3219,6 +3246,328 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Journey H2, Gate 2: Conversation Studio. Same draft/published/archived shape as
+  // marketplace_listings' own status lifecycle, plus a real version history
+  // (conversation_scenario_versions) - see 041_conversation_scenarios.sql for the full reasoning,
+  // including why the two cross-table FKs are DEFERRABLE (create() below relies on it).
+  async function composeScenario(client, scenarioRow) {
+    const draftPromise = scenarioRow.draft_version_id
+      ? client.query('SELECT * FROM conversation_scenario_versions WHERE id=$1', [scenarioRow.draft_version_id])
+      : Promise.resolve({ rows: [] });
+    const publishedPromise = scenarioRow.published_version_id
+      ? client.query('SELECT * FROM conversation_scenario_versions WHERE id=$1', [scenarioRow.published_version_id])
+      : Promise.resolve({ rows: [] });
+    const [draftResult, publishedResult] = await Promise.all([draftPromise, publishedPromise]);
+    return Object.assign(mapConversationScenario(scenarioRow), {
+      draftVersion: draftResult.rows[0] ? mapConversationScenarioVersion(draftResult.rows[0]) : null,
+      publishedVersion: publishedResult.rows[0] ? mapConversationScenarioVersion(publishedResult.rows[0]) : null
+    });
+  }
+  async function nextVersionNumber(client, scenarioId) {
+    const { rows } = await client.query('SELECT COALESCE(MAX(version_number),0) AS max FROM conversation_scenario_versions WHERE scenario_id=$1', [scenarioId]);
+    return Number(rows[0].max) + 1;
+  }
+  const conversationScenarios = {
+    async create({ scenarioKey, domain, kind, dataQueryRef, ctaActionId, allowedProcesses, allowedSteps, definition, createdBy }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const scenarioId = newId('convscn');
+        const versionId = newId('convscnver');
+        let scenarioRow;
+        try {
+          ({ rows: [scenarioRow] } = await client.query(
+            `INSERT INTO conversation_scenarios (id, scenario_key, domain, kind, data_query_ref, cta_action_id, allowed_processes, allowed_steps, draft_version_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+            [scenarioId, scenarioKey, domain || null, kind, dataQueryRef || null, ctaActionId || null,
+              JSON.stringify(allowedProcesses || null), JSON.stringify(allowedSteps || null), versionId]
+          ));
+        } catch (error) {
+          if (error && error.code === '23505') { await client.query('ROLLBACK'); throw new ApiError(409, 'SCENARIO_KEY_TAKEN'); }
+          throw error;
+        }
+        const { rows: [versionRow] } = await client.query(
+          `INSERT INTO conversation_scenario_versions (id, scenario_id, version_number, status, definition, created_by)
+           VALUES ($1,$2,1,'draft',$3,$4) RETURNING *`,
+          [versionId, scenarioId, JSON.stringify(definition || {}), createdBy || null]
+        );
+        await client.query('COMMIT');
+        return Object.assign(mapConversationScenario(scenarioRow), { draftVersion: mapConversationScenarioVersion(versionRow), publishedVersion: null });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM conversation_scenarios WHERE id=$1', [id]);
+      return rows[0] ? composeScenario(pool, rows[0]) : null;
+    },
+    async getByKey(scenarioKey) {
+      const { rows } = await pool.query('SELECT * FROM conversation_scenarios WHERE scenario_key=$1', [scenarioKey]);
+      return rows[0] ? composeScenario(pool, rows[0]) : null;
+    },
+    async list({ status, domain } = {}) {
+      const params = [];
+      let text = 'SELECT * FROM conversation_scenarios WHERE 1=1';
+      if (domain) { params.push(domain); text += ` AND domain=$${params.length}`; }
+      if (status === 'archived') text += ' AND archived_at IS NOT NULL';
+      else if (status === 'published') text += ' AND archived_at IS NULL AND published_version_id IS NOT NULL';
+      else if (status === 'draft') text += ' AND archived_at IS NULL AND draft_version_id IS NOT NULL';
+      text += ' ORDER BY updated_at DESC';
+      const { rows } = await pool.query(text, params);
+      return Promise.all(rows.map((row) => composeScenario(pool, row)));
+    },
+    async listVersions(scenarioId) {
+      const { rows } = await pool.query('SELECT * FROM conversation_scenario_versions WHERE scenario_id=$1 ORDER BY version_number DESC', [scenarioId]);
+      return rows.map(mapConversationScenarioVersion);
+    },
+    async getVersion(versionId) {
+      const { rows } = await pool.query('SELECT * FROM conversation_scenario_versions WHERE id=$1', [versionId]);
+      return rows[0] ? mapConversationScenarioVersion(rows[0]) : null;
+    },
+    async updateDraft(scenarioId, definitionPatch) {
+      const { rows: scenarioRows } = await pool.query('SELECT * FROM conversation_scenarios WHERE id=$1', [scenarioId]);
+      if (!scenarioRows[0]) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      const scenario = scenarioRows[0];
+      if (!scenario.draft_version_id) throw new ApiError(400, 'NO_DRAFT_TO_EDIT');
+      const { rows: draftRows } = await pool.query('SELECT * FROM conversation_scenario_versions WHERE id=$1', [scenario.draft_version_id]);
+      const merged = Object.assign({}, draftRows[0].definition, definitionPatch);
+      await pool.query('UPDATE conversation_scenario_versions SET definition=$2, updated_at=now() WHERE id=$1', [scenario.draft_version_id, JSON.stringify(merged)]);
+      await pool.query('UPDATE conversation_scenarios SET updated_at=now() WHERE id=$1', [scenarioId]);
+      return composeScenario(pool, scenario);
+    },
+    async startNewRevision(scenarioId, createdBy) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: scenarioRows } = await client.query('SELECT * FROM conversation_scenarios WHERE id=$1 FOR UPDATE', [scenarioId]);
+        const scenario = scenarioRows[0];
+        if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+        if (scenario.draft_version_id) throw new ApiError(409, 'DRAFT_ALREADY_EXISTS');
+        if (!scenario.published_version_id) throw new ApiError(400, 'NO_PUBLISHED_VERSION');
+        const { rows: publishedRows } = await client.query('SELECT * FROM conversation_scenario_versions WHERE id=$1', [scenario.published_version_id]);
+        const versionId = newId('convscnver');
+        const versionNumber = await nextVersionNumber(client, scenarioId);
+        const { rows: [versionRow] } = await client.query(
+          `INSERT INTO conversation_scenario_versions (id, scenario_id, version_number, status, definition, created_by)
+           VALUES ($1,$2,$3,'draft',$4,$5) RETURNING *`,
+          [versionId, scenarioId, versionNumber, JSON.stringify(publishedRows[0].definition), createdBy || null]
+        );
+        const { rows: [updatedScenario] } = await client.query('UPDATE conversation_scenarios SET draft_version_id=$2, updated_at=now() WHERE id=$1 RETURNING *', [scenarioId, versionId]);
+        await client.query('COMMIT');
+        return Object.assign(mapConversationScenario(updatedScenario), { draftVersion: mapConversationScenarioVersion(versionRow), publishedVersion: mapConversationScenarioVersion(publishedRows[0]) });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async publish(scenarioId, versionId, publishedBy) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: scenarioRows } = await client.query('SELECT * FROM conversation_scenarios WHERE id=$1 FOR UPDATE', [scenarioId]);
+        const scenario = scenarioRows[0];
+        if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+        if (scenario.draft_version_id !== versionId) throw new ApiError(400, 'NOT_CURRENT_DRAFT');
+        const { rows: draftRows } = await client.query('SELECT * FROM conversation_scenario_versions WHERE id=$1', [versionId]);
+        if (!draftRows[0] || draftRows[0].status !== 'draft') throw new ApiError(400, 'VERSION_NOT_DRAFT');
+        if (scenario.published_version_id) {
+          await client.query(`UPDATE conversation_scenario_versions SET status='archived', updated_at=now() WHERE id=$1`, [scenario.published_version_id]);
+        }
+        const { rows: [publishedRow] } = await client.query(
+          `UPDATE conversation_scenario_versions SET status='published', published_at=now(), published_by=$2, updated_at=now() WHERE id=$1 RETURNING *`,
+          [versionId, publishedBy || null]
+        );
+        const { rows: [updatedScenario] } = await client.query(
+          'UPDATE conversation_scenarios SET published_version_id=$2, draft_version_id=NULL, updated_at=now() WHERE id=$1 RETURNING *',
+          [scenarioId, versionId]
+        );
+        await client.query('COMMIT');
+        return Object.assign(mapConversationScenario(updatedScenario), { draftVersion: null, publishedVersion: mapConversationScenarioVersion(publishedRow) });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // Never an in-place mutation of a past version - copies targetVersion's content into a
+    // brand-new, immediately-published version, reusing the same "archive the old published
+    // version" step publish() performs, so there is only one real "become the live version" code
+    // path in this whole domain.
+    async rollback(scenarioId, targetVersionId, actorId) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: scenarioRows } = await client.query('SELECT * FROM conversation_scenarios WHERE id=$1 FOR UPDATE', [scenarioId]);
+        const scenario = scenarioRows[0];
+        if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+        if (scenario.draft_version_id) throw new ApiError(409, 'DRAFT_ALREADY_EXISTS');
+        const { rows: targetRows } = await client.query('SELECT * FROM conversation_scenario_versions WHERE id=$1 AND scenario_id=$2', [targetVersionId, scenarioId]);
+        if (!targetRows[0]) throw new ApiError(404, 'VERSION_NOT_FOUND');
+        if (scenario.published_version_id) {
+          await client.query(`UPDATE conversation_scenario_versions SET status='archived', updated_at=now() WHERE id=$1`, [scenario.published_version_id]);
+        }
+        const versionId = newId('convscnver');
+        const versionNumber = await nextVersionNumber(client, scenarioId);
+        const { rows: [versionRow] } = await client.query(
+          `INSERT INTO conversation_scenario_versions (id, scenario_id, version_number, status, definition, published_at, created_by, published_by)
+           VALUES ($1,$2,$3,'published',$4,now(),$5,$5) RETURNING *`,
+          [versionId, scenarioId, versionNumber, JSON.stringify(targetRows[0].definition), actorId || null]
+        );
+        const { rows: [updatedScenario] } = await client.query(
+          'UPDATE conversation_scenarios SET published_version_id=$2, updated_at=now() WHERE id=$1 RETURNING *',
+          [scenarioId, versionId]
+        );
+        await client.query('COMMIT');
+        return Object.assign(mapConversationScenario(updatedScenario), { draftVersion: null, publishedVersion: mapConversationScenarioVersion(versionRow) });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // Scenario-level metadata only (ctaActionId/domain/allowedProcesses/allowedSteps) - never
+    // scenarioKey/kind, which stay immutable after create() by design (spec section 11: other
+    // systems may reference the stable key).
+    async updateMetadata(scenarioId, patch) {
+      const existing = await pool.query('SELECT * FROM conversation_scenarios WHERE id=$1', [scenarioId]);
+      if (!existing.rows[0]) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      const merged = Object.assign({}, mapConversationScenario(existing.rows[0]), patch);
+      const { rows: [row] } = await pool.query(
+        'UPDATE conversation_scenarios SET domain=$2, cta_action_id=$3, allowed_processes=$4, allowed_steps=$5, updated_at=now() WHERE id=$1 RETURNING *',
+        [scenarioId, merged.domain, merged.ctaActionId, JSON.stringify(merged.allowedProcesses), JSON.stringify(merged.allowedSteps)]
+      );
+      return composeScenario(pool, row);
+    },
+    async archive(scenarioId) {
+      const { rows: [row] } = await pool.query('UPDATE conversation_scenarios SET archived_at=now(), updated_at=now() WHERE id=$1 RETURNING *', [scenarioId]);
+      if (!row) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      return composeScenario(pool, row);
+    },
+    async unarchive(scenarioId) {
+      const { rows: [row] } = await pool.query('UPDATE conversation_scenarios SET archived_at=NULL, updated_at=now() WHERE id=$1 RETURNING *', [scenarioId]);
+      if (!row) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      return composeScenario(pool, row);
+    },
+    // The production Router's own bundle source (server/community/routes.conversation-scenarios-
+    // sync.mjs) - every non-archived scenario with a real published version, full definition
+    // content included. Never returns draft content, by construction (only published_version_id
+    // is ever joined here).
+    // Journey H2, Gate 3: joins approved, currently-hash-valid audio onto each published
+    // scenario row as `audio: {[language]: {[variantKey]: {url, mimeType, durationMs}}}`. A
+    // second, batched query (not N+1) against every published version id at once - this endpoint
+    // is only ever called once per bundle-refresh request, but there is no reason to make it
+    // scale linearly with query count as the scenario library grows.
+    async listPublishedForBundle() {
+      const { rows } = await pool.query(
+        `SELECT s.id, s.scenario_key, s.domain, s.kind, s.data_query_ref, s.cta_action_id,
+                s.allowed_processes, s.allowed_steps, s.published_version_id,
+                v.version_number, v.definition, v.published_at
+         FROM conversation_scenarios s
+         JOIN conversation_scenario_versions v ON v.id = s.published_version_id
+         WHERE s.archived_at IS NULL AND s.published_version_id IS NOT NULL`
+      );
+      const versionIds = rows.map((row) => row.published_version_id);
+      const audioByVersion = await approvedAudioByVersionIds(versionIds);
+      return rows.map((row) => ({
+        id: row.id, scenarioKey: row.scenario_key, domain: row.domain, kind: row.kind,
+        dataQueryRef: row.data_query_ref, ctaActionId: row.cta_action_id,
+        allowedProcesses: row.allowed_processes, allowedSteps: row.allowed_steps,
+        publishedVersion: row.version_number, publishedAt: row.published_at, definition: row.definition,
+        audio: audioByVersion[row.published_version_id] || {}
+      }));
+    }
+  };
+
+  // Shared by conversationScenarios.listPublishedForBundle() above - never exposes anything
+  // beyond {url, mimeType, durationMs} (never voice_profile_key/voice_id/provider/credential
+  // internals) and only ever reads status='approved' rows, re-verified against each version's
+  // OWN current definition hash (defensive: always true for a genuinely-approved published
+  // version, since Gate 2 made version definitions immutable, but never trusted blindly).
+  async function approvedAudioByVersionIds(versionIds) {
+    const uniqueIds = Array.from(new Set(versionIds)).filter(Boolean);
+    if (!uniqueIds.length) return {};
+    const { rows: assetRows } = await pool.query(
+      `SELECT * FROM conversation_audio_assets WHERE scenario_version_id = ANY($1) AND status = 'approved'`,
+      [uniqueIds]
+    );
+    if (!assetRows.length) return {};
+    const { rows: versionRows } = await pool.query('SELECT id, definition FROM conversation_scenario_versions WHERE id = ANY($1)', [uniqueIds]);
+    const definitionByVersion = {};
+    versionRows.forEach((row) => { definitionByVersion[row.id] = row.definition; });
+    const result = {};
+    assetRows.forEach((row) => {
+      const definition = definitionByVersion[row.scenario_version_id];
+      const spoken = spokenTextFor(definition, row.language);
+      const expectedHash = computeAudioContentHash({ text: spoken.text, language: row.language, provider: row.provider, voiceId: row.voice_id, modelId: row.model_id });
+      if (!spoken.text || expectedHash !== row.content_hash) return; // hash mismatch - never served, even though status says approved
+      if (!result[row.scenario_version_id]) result[row.scenario_version_id] = {};
+      if (!result[row.scenario_version_id][row.language]) result[row.scenario_version_id][row.language] = {};
+      result[row.scenario_version_id][row.language][row.variant_key] = { url: row.file_url, mimeType: row.mime_type, durationMs: row.duration_ms };
+    });
+    return result;
+  }
+
+  const conversationAudioAssets = {
+    async create({ scenarioId, scenarioVersionId, language, variantKey, contentHash, provider, voiceProfileKey, voiceId, modelId, fileUrl, mimeType, durationMs, createdBy }) {
+      const id = newId('convaudio');
+      const { rows } = await pool.query(
+        `INSERT INTO conversation_audio_assets
+          (id, scenario_id, scenario_version_id, language, variant_key, content_hash, provider, voice_profile_key, voice_id, model_id, file_url, mime_type, duration_ms, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [id, scenarioId, scenarioVersionId, language, variantKey || 'standard', contentHash, provider || 'elevenlabs', voiceProfileKey, voiceId, modelId || null, fileUrl, mimeType, durationMs == null ? null : Math.round(Number(durationMs)), createdBy || null]
+      );
+      return mapConversationAudioAsset(rows[0]);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM conversation_audio_assets WHERE id=$1', [id]);
+      return rows[0] ? mapConversationAudioAsset(rows[0]) : null;
+    },
+    async listForVersion(scenarioVersionId) {
+      const { rows } = await pool.query('SELECT * FROM conversation_audio_assets WHERE scenario_version_id=$1 ORDER BY created_at DESC', [scenarioVersionId]);
+      return rows.map(mapConversationAudioAsset);
+    },
+    // Archives whatever was previously approved for the same (version, language, variant) slot,
+    // then approves this one - in one transaction, mirroring conversationScenarios.publish()'s own
+    // "archive the old, promote the new" shape exactly.
+    async approve(id, approvedBy) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: assetRows } = await client.query('SELECT * FROM conversation_audio_assets WHERE id=$1 FOR UPDATE', [id]);
+        const asset = assetRows[0];
+        if (!asset) throw new ApiError(404, 'AUDIO_ASSET_NOT_FOUND');
+        await client.query(
+          `UPDATE conversation_audio_assets SET status='archived', updated_at=now()
+           WHERE scenario_version_id=$1 AND language=$2 AND variant_key=$3 AND status='approved' AND id != $4`,
+          [asset.scenario_version_id, asset.language, asset.variant_key, id]
+        );
+        const { rows: [updated] } = await client.query(
+          `UPDATE conversation_audio_assets SET status='approved', approved_by=$2, approved_at=now(), updated_at=now() WHERE id=$1 RETURNING *`,
+          [id, approvedBy || null]
+        );
+        await client.query('COMMIT');
+        return mapConversationAudioAsset(updated);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async archive(id) {
+      const { rows: [row] } = await pool.query(`UPDATE conversation_audio_assets SET status='archived', updated_at=now() WHERE id=$1 RETURNING *`, [id]);
+      if (!row) throw new ApiError(404, 'AUDIO_ASSET_NOT_FOUND');
+      return mapConversationAudioAsset(row);
+    }
+  };
+
   // Backs the admin Technical tab's DB-connectivity check (a real SELECT 1) and applied-
   // migrations list. Not domain-scoped like everything else above, so it sits at the top
   // level of the returned repo object rather than inside one of the per-noun sub-objects.
@@ -3240,6 +3589,7 @@ export function createPgRepo(pool) {
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
+    conversationScenarios, conversationAudioAssets
   };
 }

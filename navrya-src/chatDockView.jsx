@@ -360,7 +360,18 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         // only for source:'voice' turns) is preferred over the full written reply so a long
         // written Q&A answer isn't read back verbatim; falls back to `reply` when absent (e.g.
         // the therapist/proactive-resolved paths, whose replies are already short).
-        return { kind: result.kind || 'assistant', reply: result.reply || '', voiceReply: result.voiceReply || result.reply || '' };
+        //
+        // Journey H2, Gate 3: audioUrl/audioMimeType (null unless a matched static scenario has
+        // approved, hash-current published audio - see chat-dock-core.js/ai-conversation-
+        // router.js) are threaded straight through unchanged. Computed unconditionally regardless
+        // of `source` - the onResult wiring below is what decides whether to actually USE it (via
+        // ai-voice-output-resolver.js), never this function; a typed/text turn simply never reads
+        // these fields at all (see submit()'s only two callers: onSend, for text, never looks at
+        // them, and onVoiceTranscript's TurnCoordinator, below).
+        return {
+          kind: result.kind || 'assistant', reply: result.reply || '', voiceReply: result.voiceReply || result.reply || '',
+          audioUrl: result.audioUrl || null, audioMimeType: result.audioMimeType || null
+        };
       }
     } catch (_err) {
       const nextTranscript = transcript.concat([{ role: 'user', content: value }, { role: 'assistant', content: i18n.t('aiDockError') }]).slice(-24);
@@ -603,6 +614,10 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // never the SDK's own high-level audio_stopped any more (see aiVoiceRealtime.js's own comment).
     playbackControllerRef.current = window.TradeJournalAIVoicePlaybackController.create({
       speak: (text) => voiceRef.current.speak(text),
+      // Journey H2, Gate 3: read fresh via voiceRef.current on every call, same convention as
+      // speak()/interrupt() just above - only ever reached by PlaybackController itself, for an
+      // entry the onResult wiring below tagged with a real audioUrl.
+      playAudioUrl: (url) => voiceRef.current.playAudioUrl(url),
       interrupt: () => voiceRef.current.interrupt(),
       onAudioStart: (entry) => { if (entry.caption) setVoiceReplyCaption(entry.caption); },
       onSettled: (entry) => {
@@ -646,7 +661,21 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
           // Fire-and-forget - handing the reply to PlaybackController never blocks this callback,
           // and TurnCoordinator's own queue has already moved on to the next turn by now anyway
           // (its serialization only ever waited for submit() above, never for this).
-          playbackControllerRef.current.enqueue(toSpeak, { turnId: meta.turnId, connectionEpoch: meta.connectionEpoch, caption: rawToSpeak || '' });
+          //
+          // Journey H2, Gate 3: the ONE place this turn's delivery mechanism is actually decided -
+          // ai-voice-output-resolver.js's own pure resolve() (spec section 25: kept out of this
+          // component's own branching). This callback is only ever reached for a voice-originated
+          // turn (TurnCoordinator's own submit() option above always passes source:'voice'), so
+          // that is what is reported here - a typed/text submit() never reaches this wiring at
+          // all, so a typed message can never end up autoplaying audio (spec section 26/27), no
+          // matter what result.audioUrl happens to contain. A missing resolver module degrades to
+          // the always-safe DYNAMIC_TTS decision, never PUBLISHED_AUDIO by accident.
+          const outputResolver = window.TradeJournalAIVoiceOutputResolver;
+          const outputDecision = outputResolver
+            ? outputResolver.resolve({ source: 'voice', hasAudio: !!(result && result.audioUrl) })
+            : 'DYNAMIC_TTS';
+          const audioUrlForEntry = outputDecision === 'PUBLISHED_AUDIO' ? result.audioUrl : null;
+          playbackControllerRef.current.enqueue(toSpeak, { turnId: meta.turnId, connectionEpoch: meta.connectionEpoch, caption: rawToSpeak || '', audioUrl: audioUrlForEntry });
         }
         window.TradeJournalChatDockVoiceLatency = latency;
         // Dynamic VAD (Voice Mode performance pass): re-derive eagerness for the NEXT user turn

@@ -248,7 +248,7 @@ test('the deterministic ai-voice-text.js post-processing pass runs on whatever i
   assert.match(block, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\);/);
   assert.match(block, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
   assert.doesNotMatch(block, /setVoiceReplyCaption\(rawToSpeak \|\| ''\);/, 'the caption must not be set directly here any more - see PlaybackController\'s own onAudioStart wiring instead');
-  assert.match(block, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '' \}\);/, 'the post-processed text is spoken; the RAW text is carried as the entry\'s own caption (gate section 12: only what is spoken may differ)');
+  assert.match(block, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '', audioUrl: audioUrlForEntry \}\);/, 'the post-processed text is spoken; the RAW text is carried as the entry\'s own caption (gate section 12: only what is spoken may differ)');
 });
 
 test('PlaybackController.onAudioStart publishes the caption exactly when an entry\'s own real audio starts playing - never at enqueue/business-result time', () => {

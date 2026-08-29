@@ -3,6 +3,18 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import { buildFixtureBundleRows, buildSurfaceHelpFixtureRow } from './helpers/conversation-scenario-fixtures.mjs';
+
+// Journey H2, Gate 2: a fake localStorage pre-seeded with a published-bundle - ai-conversation-
+// router.js's own IIFE reads this synchronously at load time (matching a real warm-reload
+// browser), so this is how a test gives the router real scenario data without a network call.
+function bundleLocalStorage(scenarios) {
+  const store = { 'tradejournal:conversation-scenarios-bundle:v1': JSON.stringify({ scenarios, version: 'v-test' }) };
+  return {
+    getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+    setItem: (k, v) => { store[k] = v; }, removeItem: (k) => { delete store[k]; }
+  };
+}
 
 const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
@@ -27,7 +39,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 async function coreSandbox(overrides) {
   const document = { documentElement: { lang: 'en' } };
   const sandbox = {
-    window: {}, document, localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    window: {}, document, localStorage: overrides.localStorage || { getItem: () => null, setItem() {}, removeItem() {} },
     fetch: overrides.fetch || (async () => { throw new Error('fetch must not be called in this test'); }),
     Set, Math, JSON, console, Date, Promise, setTimeout, clearTimeout,
     CustomEvent: overrides.CustomEvent || class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } }
@@ -63,6 +75,12 @@ async function coreSandbox(overrides) {
     if (files.indexOf('ai-context-engine.js') === -1) files.push('ai-context-engine.js');
     files.push('ai-knowledge-registry.js', 'ai-user-memory.js', 'ai-context-builder.js');
   }
+  // Journey H2, Gate 1/2: the deterministic Conversation Router - a page without this script tag
+  // (or an older cached bundle) must keep today's exact behavior, so every test above that doesn't
+  // set this flag proves the router is never even consulted. ai-conversation-matcher.js is the
+  // real shared matching engine ai-conversation-router.js now delegates to (Gate 2) - always
+  // loaded alongside it, matching the real script-tag order on every character page.
+  if (overrides.withConversationRouter) files.push('ai-surface-context.js', 'ai-conversation-matcher.js', 'ai-conversation-router.js');
   for (const file of files) {
     vm.runInNewContext(await source(file), sandbox, { filename: file });
   }
@@ -1010,4 +1028,167 @@ test('debugLastLatency() reports a real AI call (turnType/provider/model/aiCallM
   assert.equal(fastPathLatency.aiCallMade, false);
   assert.equal(fastPathLatency.provider, null);
   assert.equal(fastPathLatency.providerMs, 0);
+});
+
+// Journey H2, Gate 1/2: the deterministic Conversation Router runs in the exact same "nothing
+// already open" admission slot as action discovery (plus the new, narrower surface-help mode
+// tested separately below) - these tests prove the real integration point inside sendChat()
+// itself; the router's own matching/scoring logic is already covered independently by
+// tests/ai-conversation-matcher.test.mjs and tests/ai-conversation-router.test.mjs.
+
+test('a HIGH-confidence product-FAQ question resolves locally with zero AI calls (fetch is never called)', async () => {
+  const window = await coreSandbox({ withConversationRouter: true, localStorage: bundleLocalStorage(buildFixtureBundleRows()) }); // no fetch override - default throws if called
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is a session', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'assistant');
+  assert.ok(result.reply.length > 0);
+  assert.equal(result.voiceReply, result.reply);
+  assert.deepEqual(clone(result.suggestions), []);
+  assert.equal(result.activeProcess, null);
+  const debug = window.TradeJournalChatDockCore.debugLastTurn();
+  assert.equal(debug.path, 'conversation-router');
+  assert.equal(debug.scenarioId, 'session.purpose');
+});
+
+test('a genuinely ambiguous/open-ended question still reaches the model exactly once, whether or not the router is loaded', async () => {
+  let chatFetchCalls = 0;
+  const window = await coreSandbox({
+    withConversationRouter: true, localStorage: bundleLocalStorage(buildFixtureBundleRows()),
+    // A cache loaded from storage always forces one background bundle-refresh attempt on the
+    // very next route() call (ai-conversation-router.js's own fetchedAt:0 convention) - a real,
+    // separate, harmless network call to a different URL, unrelated to whether the model itself
+    // gets called. Only /api/ai/chat counts toward the assertion this test actually cares about.
+    fetch: async (url) => {
+      if (String(url).indexOf('/api/ai/chat') !== -1) { chatFetchCalls++; return { ok: true, json: async () => ({ reply: 'a real model answer', suggestions: [], provider: 'openai', usage: { totalTokens: 5 } }) }; }
+      return { ok: true, json: async () => ({ version: 'v-test', scenarios: buildFixtureBundleRows() }) };
+    }
+  });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'why do I keep revenge trading after a loss?', therapistMode: false, transcript: [] });
+
+  assert.equal(chatFetchCalls, 1, 'a message the router cannot confidently resolve must still reach the model, exactly once');
+  assert.equal(result.reply, 'a real model answer');
+});
+
+test('the router is never consulted while a real form is genuinely open - the exact same admission rule action discovery already uses', async () => {
+  let chatFetchCalled = false;
+  const window = await coreSandbox({
+    withConversationRouter: true, localStorage: bundleLocalStorage(buildFixtureBundleRows()),
+    // See the "genuinely ambiguous" test above for why only /api/ai/chat is counted - a cache
+    // loaded from storage always attempts one incidental background bundle-refresh too, and
+    // route() is still invoked here (in surface-help mode, since a real form is open), so that
+    // refresh really does fire against this same mock.
+    fetch: async (url) => {
+      if (String(url).indexOf('/api/ai/chat') !== -1) { chatFetchCalled = true; return { ok: true, json: async () => ({ reply: 'plain answer', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+      return { ok: true, json: async () => ({ version: 'v-test', scenarios: buildFixtureBundleRows() }) };
+    }
+  });
+  window.TradeJournalAIProcessRegistry.register('session-create', { allowlist: ['city'], isOpen: () => true });
+
+  // With nothing open, this exact text resolves HIGH-confidence locally (see the test above) -
+  // with a real form open, it must fall straight through to the model instead, same as discovery.
+  await window.TradeJournalChatDockCore.sendChat({ text: 'what is a session', therapistMode: false, transcript: [] });
+
+  assert.equal(chatFetchCalled, true, 'a genuinely open form must suppress the router exactly as it suppresses action discovery');
+});
+
+// Journey H2, Gate 2: surface-help - a real form/editor is genuinely open, but the question is
+// about THAT open form itself (a narrower, additive exception to the "nothing open" rule above).
+
+test('a surface_help scenario resolves while its own real form is passively open, with zero AI calls, and the open form is left untouched', async () => {
+  const window = await coreSandbox({
+    withConversationRouter: true,
+    localStorage: bundleLocalStorage(buildFixtureBundleRows().concat([buildSurfaceHelpFixtureRow()]))
+  });
+  window.TradeJournalAIProcessRegistry.register('strategy-editor-abc123', { allowlist: ['maxRiskPerTradePercent'], isOpen: () => true });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is risk management', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'assistant');
+  assert.ok(result.reply.length > 0);
+  assert.equal(result.activeProcess, null, 'the return shape never claims to have changed the real form - chatDockView.jsx only reads this for its own popover display');
+  const debug = window.TradeJournalChatDockCore.debugLastTurn();
+  assert.equal(debug.path, 'conversation-router');
+  assert.equal(debug.scenarioId, 'strategy.risk_management.field_help');
+  assert.equal(debug.resolutionKind, 'surface_help');
+});
+
+test('a surface_help scenario never resolves for a process outside its own allowedProcesses, and falls through to the model', async () => {
+  let chatFetchCalled = false;
+  const window = await coreSandbox({
+    withConversationRouter: true,
+    localStorage: bundleLocalStorage(buildFixtureBundleRows().concat([buildSurfaceHelpFixtureRow()])),
+    fetch: async (url) => {
+      if (String(url).indexOf('/api/ai/chat') !== -1) { chatFetchCalled = true; return { ok: true, json: async () => ({ reply: 'model answer', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+      return { ok: true, json: async () => ({ version: 'v-test', scenarios: buildFixtureBundleRows() }) };
+    }
+  });
+  window.TradeJournalAIProcessRegistry.register('pattern-editor-xyz', { allowlist: ['name'], isOpen: () => true });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is risk management', therapistMode: false, transcript: [] });
+
+  assert.equal(chatFetchCalled, true);
+  assert.equal(result.reply, 'model answer');
+});
+
+test('an active AI workflow targeting the EXACT same open process still blocks surface-help (a workflow always owns its own turn)', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true, withConversationRouter: true,
+    localStorage: bundleLocalStorage(buildFixtureBundleRows().concat([buildSurfaceHelpFixtureRow()])),
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'model answer', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+  window.TradeJournalAIProcessRegistry.register('strategy-editor-abc123', { allowlist: ['maxRiskPerTradePercent'], isOpen: () => true });
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'strategy.edit', requiredFields: ['maxRiskPerTradePercent'], optionalFields: [],
+    open: () => ({ processId: 'strategy-editor-abc123' }), submit: async () => ({}), resultContext: () => {}
+  });
+  window.TradeJournalAIWorkflowEngine.start('strategy.edit', {}, []);
+  await window.TradeJournalAIWorkflowEngine.applyKnownFields([], {});
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is risk management', therapistMode: false, transcript: [] });
+  assert.equal(result.reply, 'model answer', 'a workflow actively mid-fill on this exact process must block surface-help too, not just generic discovery');
+});
+
+test('an active AI workflow targeting a DIFFERENT, unrelated process does not block surface-help for the passively-open one', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true, withConversationRouter: true,
+    localStorage: bundleLocalStorage(buildFixtureBundleRows().concat([buildSurfaceHelpFixtureRow()]))
+  });
+  window.TradeJournalAIProcessRegistry.register('session-create', { allowlist: ['city'], isOpen: () => true });
+  window.TradeJournalAIActionRegistry.registerAction({ id: 'session.create', requiredFields: ['city'], optionalFields: [], open: () => {}, submit: async () => ({}), resultContext: () => {} });
+  window.TradeJournalAIWorkflowEngine.start('session.create', {}, []);
+  // The real, passively-open Strategy editor is a SEPARATE process from the in-flight
+  // session.create workflow above - registering it after start() mirrors a real page where both
+  // can genuinely coexist.
+  window.TradeJournalAIProcessRegistry.register('strategy-editor-abc123', { allowlist: ['maxRiskPerTradePercent'], isOpen: () => true });
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is risk management', therapistMode: false, transcript: [] });
+  const debug = window.TradeJournalChatDockCore.debugLastTurn();
+  assert.equal(debug.path, 'conversation-router');
+  assert.equal(debug.resolutionKind, 'surface_help');
+});
+
+// Journey H2, Gate 3: a HIGH-confidence local match with approved audio still makes zero
+// /api/ai/chat calls (the H2.1/H2.2 invariant is unweakened), and the result carries the audio
+// fields chatDockView.jsx's own resolver (tested independently in
+// tests/ai-voice-output-resolver.test.mjs) later decides whether to actually use.
+test('a HIGH-confidence match with approved audio still makes zero /api/ai/chat calls, and the result carries audioUrl/audioMimeType', async () => {
+  const rows = buildFixtureBundleRows().map((row) => (row.scenarioKey === 'session.purpose'
+    ? Object.assign({}, row, { audio: { en: { standard: { url: '/uploads/conversation-audio/x.mp3', mimeType: 'audio/mpeg' } } } })
+    : row));
+  const window = await coreSandbox({ withConversationRouter: true, localStorage: bundleLocalStorage(rows) }); // no fetch override - default throws if /api/ai/chat is ever called
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is a session', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'assistant');
+  assert.equal(result.audioUrl, '/uploads/conversation-audio/x.mp3');
+  assert.equal(result.audioMimeType, 'audio/mpeg');
+});
+
+test('a HIGH-confidence match with no approved audio carries audioUrl: null, never throws', async () => {
+  const window = await coreSandbox({ withConversationRouter: true, localStorage: bundleLocalStorage(buildFixtureBundleRows()) });
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is a session', therapistMode: false, transcript: [] });
+  assert.equal(result.audioUrl, null);
+  assert.equal(result.audioMimeType, null);
 });

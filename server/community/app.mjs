@@ -26,6 +26,7 @@ import * as routesAnalysisSymbols from './routes.analysis-symbols.mjs';
 import * as routesWallet from './routes.wallet.mjs';
 import * as routesSubscriptions from './routes.subscriptions.mjs';
 import * as routesStorage from './routes.storage.mjs';
+import * as routesConversationScenariosSync from './routes.conversation-scenarios-sync.mjs';
 import * as routesWebhooksBsc from './routes.webhooks-bsc.mjs';
 import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
@@ -172,7 +173,12 @@ export function createApp({ repo, uploadsDir }) {
   app.use('/api/sync/wallet', routesWallet.router(repo));
   app.use('/api/sync/subscriptions', routesSubscriptions.router(repo));
   app.use('/api/sync/storage', routesStorage.router(repo, uploadsDir));
-  app.use('/api/admin', requireAdmin(repo), routesAdmin.router(repo));
+  // Journey H2, Gate 2: the published Conversation Scenario bundle the browser Router fetches -
+  // public app content, not user data, but still sits behind requireAuth()/csrfProtection() like
+  // every other /api/sync/* route (a GET needs no CSRF token; this just keeps the mount
+  // consistent rather than carving out a bespoke unauthenticated exception).
+  app.use('/api/sync/conversation-scenarios', routesConversationScenariosSync.router(repo));
+  app.use('/api/admin', requireAdmin(repo), routesAdmin.router(repo, uploadsDir));
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

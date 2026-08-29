@@ -10,6 +10,7 @@ import { LEVEL_REQUIREMENTS } from '../community/mastery-rules.mjs';
 import { getEffectiveXpConfig, invalidateXpConfigCache, SERVER_ONLY_ACHIEVEMENT_POINTS } from '../community/xp-config.mjs';
 import { router as voiceProvidersRouter } from './routes.voice-providers.mjs';
 import { router as commercialRouter } from './routes.commercial.mjs';
+import { router as conversationScenariosRouter } from './routes.conversation-scenarios.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
 const SORTABLE_COLUMNS = ['displayName', 'createdAt', 'lastLoginAt', 'isOnline', 'hoursOnline', 'purchaseCount', 'totalMockSpent', 'totalTokensUsed'];
@@ -118,7 +119,7 @@ function xpConfigValueFor(category, rawValue) {
   return null;
 }
 
-export function router(repo) {
+export function router(repo, uploadsDir) {
   const app = express.Router();
 
   async function audit(req, action, targetType, targetId, details) {
@@ -498,6 +499,10 @@ export function router(repo) {
   // Commercial System Slice 1 (Plans/Wallet/Markup/Provider-Model-Pricing/per-user credit-debit) -
   // same "own file, mounted here to inherit requireAdmin for free" pattern as voice-providers above.
   app.use('/commercial', commercialRouter(repo));
+
+  // Journey H2, Gate 2: Conversation Studio - same "own file, mounted here to inherit
+  // requireAdmin for free" pattern as voice-providers/commercial above.
+  app.use('/conversation-scenarios', conversationScenariosRouter(repo, uploadsDir));
 
   return app;
 }

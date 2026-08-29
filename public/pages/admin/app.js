@@ -109,7 +109,33 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhook: 'Clear',
     cryptoPayClearWebhookConfirm: 'Clear the webhook secret? The webhook endpoint will refuse every request until a new one is generated.',
     cryptoPayWebhookRevealed: 'New webhook secret: {secret}',
-    cryptoPayWebhookNeverShownAgain: 'This value is shown once and cannot be retrieved again - copy it now.'
+    cryptoPayWebhookNeverShownAgain: 'This value is shown once and cannot be retrieved again - copy it now.',
+
+    tabConversationStudio: 'Conversation Studio',
+    convStudioTitle: 'Conversation Studio', convStudioHint: 'Author, test, and publish the deterministic scenarios the Conversation Router matches locally, with zero AI calls.',
+    convStudioCreateTitle: 'Create a scenario', convStudioScenarioKey: 'Scenario key (e.g. session.purpose)', convStudioDomain: 'Domain', convStudioKind: 'Kind',
+    convStudioKindFaq: 'FAQ', convStudioKindDataQuery: 'Data query', convStudioKindSurfaceHelp: 'Surface help', convStudioCreate: 'Create', convStudioKeyRequired: 'A scenario key is required.',
+    convStudioColKey: 'Key', convStudioColDomain: 'Domain', convStudioColKind: 'Kind', convStudioColStatus: 'Status', convStudioColVersion: 'Version', convStudioColLanguages: 'Languages', convStudioColUpdated: 'Updated', convStudioColPublishedAt: 'Published',
+    convStudioStatusPublished: 'Published', convStudioStatusDraft: 'Draft', convStudioStatusArchived: 'Archived',
+    convStudioVersionHistory: 'Version history', convStudioRollback: 'Rollback', convStudioRollbackConfirm: 'Roll back to this version? This creates a new, immediately-published version with this version\'s exact content - it never resurrects the old version in place.',
+    convStudioTriggerLab: 'Trigger Lab', convStudioTriggerLabHint: 'Runs the exact same matcher production uses, against this draft plus every other published scenario - zero LLM calls.',
+    convStudioTestUtterance: 'Test utterance', convStudioRunTest: 'Test', convStudioResolution: 'Resolution', convStudioScore: 'Score', convStudioReasons: 'Reasons',
+    convStudioRunBatch: 'Run test corpus', convStudioPositiveRate: 'Positive pass rate', convStudioNegativeRate: 'Negative rejection rate',
+    convStudioCheckCollisions: 'Check collisions', convStudioNoCollisions: 'No collisions found against the currently published scenarios.',
+    convStudioBackToLibrary: '← Back to library', convStudioUnarchive: 'Unarchive', convStudioArchive: 'Archive', convStudioNewRevision: 'New revision',
+    convStudioNoDraft: 'No draft in progress - click "New revision" to start editing the next version.', convStudioEditingDraft: 'Editing draft',
+    convStudioCta: 'Suggested action (CTA)', convStudioCtaNone: 'None',
+    convStudioCorpusPositive: 'Test corpus - positive examples (one per line)', convStudioCorpusNegative: 'Test corpus - negative examples (one per line)',
+    convStudioGroups: 'Concept groups (one group per line, terms separated by |)', convStudioStrong: 'Strong phrases (one per line)', convStudioNegative: 'Negative phrases (one per line)',
+    convStudioWrittenResponse: 'Written response', convStudioVoiceResponse: 'Spoken (voice) response',
+    convStudioSaveDraft: 'Save draft', convStudioPublish: 'Publish', convStudioPublished: 'Published.', convStudioPublishBlocked: 'Publish blocked',
+    convStudioAudioTitle: 'Published audio', convStudioAudioNotEligible: 'Data-query scenarios use live per-user values and can never have static published audio.',
+    convStudioAudioNoText: 'No spoken or written response yet - nothing to generate audio from.', convStudioAudioNoneYet: 'No audio generated yet for this language.',
+    convStudioAudioApproved: 'Approved - live for Voice users', convStudioAudioStale: 'stale (text changed since this was generated)',
+    convStudioAudioStaleBlocked: 'This candidate no longer matches the current text - regenerate before approving.',
+    convStudioAudioPreview: 'Preview - not yet live', convStudioAudioUsedWrittenFallback: 'used the written response (no separate voice response was set)',
+    convStudioAudioApprove: 'Approve', convStudioAudioArchive: 'Archive', convStudioAudioGenerate: 'Generate', convStudioAudioGenerating: 'Generating…',
+    convStudioAudioVoiceProfileKey: 'Voice profile label'
   },
   fa: {
     brand: 'پنل مدیریت',
@@ -200,7 +226,33 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhook: 'پاک کردن',
     cryptoPayClearWebhookConfirm: 'کلید مخفی وب‌هوک پاک شود؟ تا ساخت مقدار جدید، مسیر وب‌هوک همه درخواست‌ها را رد می‌کند.',
     cryptoPayWebhookRevealed: 'کلید مخفی جدید وب‌هوک: {secret}',
-    cryptoPayWebhookNeverShownAgain: 'این مقدار فقط یک‌بار نمایش داده می‌شود و دیگر قابل بازیابی نیست - همین حالا آن را کپی کنید.'
+    cryptoPayWebhookNeverShownAgain: 'این مقدار فقط یک‌بار نمایش داده می‌شود و دیگر قابل بازیابی نیست - همین حالا آن را کپی کنید.',
+
+    tabConversationStudio: 'استودیوی گفتگو',
+    convStudioTitle: 'استودیوی گفتگو', convStudioHint: 'سناریوهای قطعی‌ای که روتر گفتگو به‌صورت محلی و بدون فراخوانی هوش مصنوعی تشخیص می‌دهد را اینجا بساز، تست کن و منتشر کن.',
+    convStudioCreateTitle: 'ساخت سناریو', convStudioScenarioKey: 'کلید سناریو (مثل session.purpose)', convStudioDomain: 'حوزه', convStudioKind: 'نوع',
+    convStudioKindFaq: 'سوال متداول', convStudioKindDataQuery: 'پرس‌وجوی داده', convStudioKindSurfaceHelp: 'راهنمای صفحه فعال', convStudioCreate: 'ایجاد', convStudioKeyRequired: 'کلید سناریو الزامی است.',
+    convStudioColKey: 'کلید', convStudioColDomain: 'حوزه', convStudioColKind: 'نوع', convStudioColStatus: 'وضعیت', convStudioColVersion: 'نسخه', convStudioColLanguages: 'زبان‌ها', convStudioColUpdated: 'به‌روزرسانی', convStudioColPublishedAt: 'انتشار',
+    convStudioStatusPublished: 'منتشرشده', convStudioStatusDraft: 'پیش‌نویس', convStudioStatusArchived: 'بایگانی‌شده',
+    convStudioVersionHistory: 'تاریخچه نسخه‌ها', convStudioRollback: 'بازگشت', convStudioRollbackConfirm: 'به این نسخه بازگردیم؟ این کار یک نسخه جدید و منتشرشده با محتوای همین نسخه می‌سازد - نسخه قدیمی هیچ‌وقت در جای خودش دوباره فعال نمی‌شود.',
+    convStudioTriggerLab: 'آزمایشگاه محرک', convStudioTriggerLabHint: 'دقیقاً همان موتور تطبیقی که در محیط واقعی استفاده می‌شود را، در برابر این پیش‌نویس و بقیه‌ی سناریوهای منتشرشده اجرا می‌کند - بدون هیچ فراخوانی هوش مصنوعی.',
+    convStudioTestUtterance: 'جمله تست', convStudioRunTest: 'تست کن', convStudioResolution: 'نتیجه', convStudioScore: 'امتیاز', convStudioReasons: 'دلایل',
+    convStudioRunBatch: 'اجرای مجموعه تست', convStudioPositiveRate: 'نرخ موفقیت مثبت‌ها', convStudioNegativeRate: 'نرخ رد منفی‌ها',
+    convStudioCheckCollisions: 'بررسی تداخل', convStudioNoCollisions: 'هیچ تداخلی با سناریوهای منتشرشده‌ی فعلی پیدا نشد.',
+    convStudioBackToLibrary: '← بازگشت به فهرست', convStudioUnarchive: 'خروج از بایگانی', convStudioArchive: 'بایگانی', convStudioNewRevision: 'نسخه جدید',
+    convStudioNoDraft: 'هیچ پیش‌نویسی در جریان نیست - برای ویرایش نسخه بعدی روی «نسخه جدید» بزن.', convStudioEditingDraft: 'در حال ویرایش پیش‌نویس',
+    convStudioCta: 'اقدام پیشنهادی (CTA)', convStudioCtaNone: 'هیچ‌کدام',
+    convStudioCorpusPositive: 'نمونه‌های تست مثبت (هر خط یک نمونه)', convStudioCorpusNegative: 'نمونه‌های تست منفی (هر خط یک نمونه)',
+    convStudioGroups: 'گروه‌های مفهومی (هر خط یک گروه، عبارت‌ها با | جدا شوند)', convStudioStrong: 'عبارت‌های قوی (هر خط یکی)', convStudioNegative: 'عبارت‌های منفی (هر خط یکی)',
+    convStudioWrittenResponse: 'پاسخ نوشتاری', convStudioVoiceResponse: 'پاسخ صوتی',
+    convStudioSaveDraft: 'ذخیره پیش‌نویس', convStudioPublish: 'انتشار', convStudioPublished: 'منتشر شد.', convStudioPublishBlocked: 'انتشار مسدود شد',
+    convStudioAudioTitle: 'صدای منتشرشده', convStudioAudioNotEligible: 'سناریوهای «پرسش داده» از مقادیر زنده و مخصوص هر کاربر استفاده می‌کنند و هرگز نمی‌توانند صدای ثابت منتشرشده داشته باشند.',
+    convStudioAudioNoText: 'هنوز پاسخ نوشتاری یا گفتاری وجود ندارد - چیزی برای تولید صدا نیست.', convStudioAudioNoneYet: 'هنوز صدایی برای این زبان تولید نشده است.',
+    convStudioAudioApproved: 'تأییدشده - برای کاربران صوتی فعال است', convStudioAudioStale: 'منسوخ (متن پس از تولید این صدا تغییر کرده است)',
+    convStudioAudioStaleBlocked: 'این نمونه دیگر با متن فعلی مطابقت ندارد - پیش از تأیید دوباره تولید کنید.',
+    convStudioAudioPreview: 'پیش‌نمایش - هنوز فعال نیست', convStudioAudioUsedWrittenFallback: 'از پاسخ نوشتاری استفاده شد (پاسخ گفتاری جداگانه‌ای تنظیم نشده بود)',
+    convStudioAudioApprove: 'تأیید', convStudioAudioArchive: 'بایگانی', convStudioAudioGenerate: 'تولید', convStudioAudioGenerating: 'در حال تولید…',
+    convStudioAudioVoiceProfileKey: 'برچسب پروفایل صدا'
   },
   ar: {
     brand: 'لوحة الإدارة',
@@ -291,7 +343,33 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhook: 'مسح',
     cryptoPayClearWebhookConfirm: 'هل تريد مسح سر الويب هوك؟ سيرفض مسار الويب هوك كل طلب حتى يتم توليد سر جديد.',
     cryptoPayWebhookRevealed: 'سر الويب هوك الجديد: {secret}',
-    cryptoPayWebhookNeverShownAgain: 'تُعرض هذه القيمة مرة واحدة فقط ولا يمكن استرجاعها لاحقًا - انسخها الآن.'
+    cryptoPayWebhookNeverShownAgain: 'تُعرض هذه القيمة مرة واحدة فقط ولا يمكن استرجاعها لاحقًا - انسخها الآن.',
+
+    tabConversationStudio: 'استوديو المحادثة',
+    convStudioTitle: 'استوديو المحادثة', convStudioHint: 'أنشئ واختبر وانشر السيناريوهات الحتمية التي يطابقها موجّه المحادثة محليًا، بدون أي استدعاء للذكاء الاصطناعي.',
+    convStudioCreateTitle: 'إنشاء سيناريو', convStudioScenarioKey: 'مفتاح السيناريو (مثل session.purpose)', convStudioDomain: 'المجال', convStudioKind: 'النوع',
+    convStudioKindFaq: 'سؤال شائع', convStudioKindDataQuery: 'استعلام بيانات', convStudioKindSurfaceHelp: 'مساعدة الشاشة الحالية', convStudioCreate: 'إنشاء', convStudioKeyRequired: 'مفتاح السيناريو مطلوب.',
+    convStudioColKey: 'المفتاح', convStudioColDomain: 'المجال', convStudioColKind: 'النوع', convStudioColStatus: 'الحالة', convStudioColVersion: 'الإصدار', convStudioColLanguages: 'اللغات', convStudioColUpdated: 'آخر تحديث', convStudioColPublishedAt: 'تاريخ النشر',
+    convStudioStatusPublished: 'منشور', convStudioStatusDraft: 'مسودة', convStudioStatusArchived: 'مؤرشف',
+    convStudioVersionHistory: 'سجل الإصدارات', convStudioRollback: 'استرجاع', convStudioRollbackConfirm: 'هل تريد الاسترجاع إلى هذا الإصدار؟ سيتم إنشاء إصدار جديد منشور فورًا بنفس محتوى هذا الإصدار - الإصدار القديم لا يُعاد تفعيله في مكانه أبدًا.',
+    convStudioTriggerLab: 'مختبر المحفزات', convStudioTriggerLabHint: 'يشغّل نفس محرك المطابقة المستخدم في الإنتاج تمامًا، مقابل هذه المسودة وكل سيناريو آخر منشور - بدون أي استدعاء للذكاء الاصطناعي.',
+    convStudioTestUtterance: 'جملة الاختبار', convStudioRunTest: 'اختبار', convStudioResolution: 'النتيجة', convStudioScore: 'النتيجة العددية', convStudioReasons: 'الأسباب',
+    convStudioRunBatch: 'تشغيل مجموعة الاختبار', convStudioPositiveRate: 'معدل نجاح الأمثلة الإيجابية', convStudioNegativeRate: 'معدل رفض الأمثلة السلبية',
+    convStudioCheckCollisions: 'فحص التعارضات', convStudioNoCollisions: 'لم يتم العثور على أي تعارض مع السيناريوهات المنشورة حاليًا.',
+    convStudioBackToLibrary: '← العودة إلى المكتبة', convStudioUnarchive: 'إلغاء الأرشفة', convStudioArchive: 'أرشفة', convStudioNewRevision: 'مراجعة جديدة',
+    convStudioNoDraft: 'لا توجد مسودة قيد العمل - اضغط "مراجعة جديدة" لبدء تحرير الإصدار التالي.', convStudioEditingDraft: 'تحرير المسودة',
+    convStudioCta: 'الإجراء المقترح (CTA)', convStudioCtaNone: 'لا شيء',
+    convStudioCorpusPositive: 'أمثلة اختبار إيجابية (واحد في كل سطر)', convStudioCorpusNegative: 'أمثلة اختبار سلبية (واحد في كل سطر)',
+    convStudioGroups: 'مجموعات المفاهيم (مجموعة في كل سطر، افصل الكلمات بـ |)', convStudioStrong: 'العبارات القوية (واحدة في كل سطر)', convStudioNegative: 'العبارات السلبية (واحدة في كل سطر)',
+    convStudioWrittenResponse: 'الرد المكتوب', convStudioVoiceResponse: 'الرد الصوتي',
+    convStudioSaveDraft: 'حفظ المسودة', convStudioPublish: 'نشر', convStudioPublished: 'تم النشر.', convStudioPublishBlocked: 'تم منع النشر',
+    convStudioAudioTitle: 'الصوت المنشور', convStudioAudioNotEligible: 'سيناريوهات "استعلام البيانات" تستخدم قيمًا حية خاصة بكل مستخدم ولا يمكن أن يكون لها صوت ثابت منشور أبدًا.',
+    convStudioAudioNoText: 'لا توجد استجابة مكتوبة أو منطوقة بعد - لا يوجد شيء لتوليد الصوت منه.', convStudioAudioNoneYet: 'لم يتم توليد أي صوت لهذه اللغة بعد.',
+    convStudioAudioApproved: 'معتمد - مفعّل لمستخدمي الصوت', convStudioAudioStale: 'قديم (تغيّر النص منذ توليد هذا الصوت)',
+    convStudioAudioStaleBlocked: 'هذا المرشح لم يعد يطابق النص الحالي - أعد التوليد قبل الاعتماد.',
+    convStudioAudioPreview: 'معاينة - غير مفعّلة بعد', convStudioAudioUsedWrittenFallback: 'تم استخدام الاستجابة المكتوبة (لم يتم تعيين استجابة صوتية منفصلة)',
+    convStudioAudioApprove: 'اعتماد', convStudioAudioArchive: 'أرشفة', convStudioAudioGenerate: 'توليد', convStudioAudioGenerating: 'جارٍ التوليد…',
+    convStudioAudioVoiceProfileKey: 'تسمية ملف الصوت'
   },
   es: {
     brand: 'Administración',
@@ -382,7 +460,33 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhook: 'Borrar',
     cryptoPayClearWebhookConfirm: '¿Borrar el secreto del webhook? El endpoint del webhook rechazará toda solicitud hasta que se genere uno nuevo.',
     cryptoPayWebhookRevealed: 'Nuevo secreto del webhook: {secret}',
-    cryptoPayWebhookNeverShownAgain: 'Este valor se muestra una sola vez y no se puede recuperar después - cópialo ahora.'
+    cryptoPayWebhookNeverShownAgain: 'Este valor se muestra una sola vez y no se puede recuperar después - cópialo ahora.',
+
+    tabConversationStudio: 'Estudio de Conversación',
+    convStudioTitle: 'Estudio de Conversación', convStudioHint: 'Crea, prueba y publica los escenarios deterministas que el Router de Conversación resuelve localmente, sin ninguna llamada a la IA.',
+    convStudioCreateTitle: 'Crear un escenario', convStudioScenarioKey: 'Clave del escenario (p. ej. session.purpose)', convStudioDomain: 'Dominio', convStudioKind: 'Tipo',
+    convStudioKindFaq: 'Pregunta frecuente', convStudioKindDataQuery: 'Consulta de datos', convStudioKindSurfaceHelp: 'Ayuda de pantalla activa', convStudioCreate: 'Crear', convStudioKeyRequired: 'La clave del escenario es obligatoria.',
+    convStudioColKey: 'Clave', convStudioColDomain: 'Dominio', convStudioColKind: 'Tipo', convStudioColStatus: 'Estado', convStudioColVersion: 'Versión', convStudioColLanguages: 'Idiomas', convStudioColUpdated: 'Actualizado', convStudioColPublishedAt: 'Publicado',
+    convStudioStatusPublished: 'Publicado', convStudioStatusDraft: 'Borrador', convStudioStatusArchived: 'Archivado',
+    convStudioVersionHistory: 'Historial de versiones', convStudioRollback: 'Revertir', convStudioRollbackConfirm: '¿Revertir a esta versión? Esto crea una nueva versión, publicada de inmediato, con el contenido exacto de esta versión - la versión anterior nunca se reactiva en su lugar.',
+    convStudioTriggerLab: 'Laboratorio de Disparadores', convStudioTriggerLabHint: 'Ejecuta exactamente el mismo motor de coincidencia que usa producción, contra este borrador y cada otro escenario publicado - cero llamadas a la IA.',
+    convStudioTestUtterance: 'Frase de prueba', convStudioRunTest: 'Probar', convStudioResolution: 'Resolución', convStudioScore: 'Puntuación', convStudioReasons: 'Razones',
+    convStudioRunBatch: 'Ejecutar conjunto de pruebas', convStudioPositiveRate: 'Tasa de acierto positivo', convStudioNegativeRate: 'Tasa de rechazo negativo',
+    convStudioCheckCollisions: 'Comprobar colisiones', convStudioNoCollisions: 'No se encontraron colisiones con los escenarios actualmente publicados.',
+    convStudioBackToLibrary: '← Volver a la biblioteca', convStudioUnarchive: 'Desarchivar', convStudioArchive: 'Archivar', convStudioNewRevision: 'Nueva revisión',
+    convStudioNoDraft: 'No hay ningún borrador en curso - haz clic en "Nueva revisión" para editar la siguiente versión.', convStudioEditingDraft: 'Editando borrador',
+    convStudioCta: 'Acción sugerida (CTA)', convStudioCtaNone: 'Ninguna',
+    convStudioCorpusPositive: 'Ejemplos de prueba positivos (uno por línea)', convStudioCorpusNegative: 'Ejemplos de prueba negativos (uno por línea)',
+    convStudioGroups: 'Grupos de conceptos (un grupo por línea, términos separados por |)', convStudioStrong: 'Frases fuertes (una por línea)', convStudioNegative: 'Frases negativas (una por línea)',
+    convStudioWrittenResponse: 'Respuesta escrita', convStudioVoiceResponse: 'Respuesta hablada (voz)',
+    convStudioSaveDraft: 'Guardar borrador', convStudioPublish: 'Publicar', convStudioPublished: 'Publicado.', convStudioPublishBlocked: 'Publicación bloqueada',
+    convStudioAudioTitle: 'Audio publicado', convStudioAudioNotEligible: 'Los escenarios de "consulta de datos" usan valores en vivo específicos de cada usuario y nunca pueden tener audio estático publicado.',
+    convStudioAudioNoText: 'Aún no hay respuesta escrita ni hablada - no hay nada de qué generar audio.', convStudioAudioNoneYet: 'Aún no se ha generado audio para este idioma.',
+    convStudioAudioApproved: 'Aprobado - activo para usuarios de voz', convStudioAudioStale: 'obsoleto (el texto cambió desde que se generó este audio)',
+    convStudioAudioStaleBlocked: 'Este candidato ya no coincide con el texto actual - vuelve a generarlo antes de aprobarlo.',
+    convStudioAudioPreview: 'Vista previa - aún no activo', convStudioAudioUsedWrittenFallback: 'se usó la respuesta escrita (no se configuró una respuesta de voz separada)',
+    convStudioAudioApprove: 'Aprobar', convStudioAudioArchive: 'Archivar', convStudioAudioGenerate: 'Generar', convStudioAudioGenerating: 'Generando…',
+    convStudioAudioVoiceProfileKey: 'Etiqueta del perfil de voz'
   }
 };
 
@@ -445,7 +549,7 @@ function api(path, options) {
   const id = switcher && switcher.currentUserId();
   const headers = Object.assign({ 'Content-Type': 'application/json' }, id ? { 'x-dev-user-id': id } : {}, options.headers || {});
   return fetch('/api/admin' + path, Object.assign({}, options, { headers })).then((response) => response.json().catch(() => ({})).then((body) => {
-    if (!response.ok) { const error = new Error((body && body.error) || 'REQUEST_FAILED'); error.status = response.status; throw error; }
+    if (!response.ok) { const error = new Error((body && body.error) || 'REQUEST_FAILED'); error.status = response.status; error.body = body; throw error; }
     return body;
   }));
 }
@@ -2044,10 +2148,489 @@ function commercialTab() {
   });
 }
 
-const tabBuilders = { users: usersTab, ai: aiTab, technical: technicalTab, xp: xpTab, marketplace: marketplaceTab, financial: financialTab, commercial: commercialTab };
+// --- Conversation Studio (Journey H2, Gate 2) ---
+// Library (list) -> Editor (metadata + per-language trigger/response authoring + version
+// history + Trigger Lab) - the commercialTab() list/sub-view precedent above, specialized to one
+// level of drill-down (library -> one scenario) rather than a flat set of sibling sub-tabs.
+
+const CONV_STUDIO_LANGUAGES = ['fa', 'en', 'ar', 'es'];
+// Mirrors server/admin/routes.conversation-scenarios.mjs's own SAFE_CTA_ACTION_IDS exactly - a
+// second, independent declaration (this app has no browser/server shared-module bundling, the
+// same "kept in sync by inspection, not a shared module" precedent as SUPPORTED_LANGUAGES in
+// routes.voice-providers.mjs) - the real enforcement is server-side either way, this is only
+// what populates the dropdown.
+const CONV_STUDIO_SAFE_CTA_IDS = ['session.create', 'trade.calculator', 'pattern.create', 'strategy.create', 'navigate.to'];
+
+let conversationStudioSelectedId = null;
+
+function textareaField(label, value, rows) {
+  const wrap = el('label', 'field');
+  wrap.append(el('span', '', label));
+  const textarea = document.createElement('textarea');
+  textarea.rows = rows || 3;
+  textarea.value = value || '';
+  wrap.append(textarea);
+  return { wrap, textarea };
+}
+function linesToList(text) { return String(text || '').split('\n').map((s) => s.trim()).filter(Boolean); }
+function linesToGroups(text) { return linesToList(text).map((line) => line.split('|').map((s) => s.trim()).filter(Boolean)).filter((g) => g.length); }
+function groupsToLines(groups) { return (groups || []).map((g) => g.join(' | ')).join('\n'); }
+
+// Reuses the existing .badge.status-* convention - .status-published/.status-draft already exist
+// (the marketplace listing lifecycle uses the identical three-state shape); archived reuses the
+// muted .status-disabled tier rather than inventing a fourth color.
+function conversationStudioStatusBadge(status) {
+  const tier = status === 'archived' ? 'disabled' : status;
+  return el('span', 'badge status-' + tier, t('convStudioStatus' + status.charAt(0).toUpperCase() + status.slice(1)));
+}
+
+function conversationStudioLibrary() {
+  return api('/conversation-scenarios').then((data) => {
+    const wrap = el('div');
+    wrap.append(el('h2', '', t('convStudioTitle')), el('p', 'hint', t('convStudioHint')));
+
+    const createCard = el('div', 'admin-card');
+    createCard.append(el('h3', '', t('convStudioCreateTitle')));
+    const keyField = field(t('convStudioScenarioKey'), 'text', '');
+    const domainField = field(t('convStudioDomain'), 'text', '');
+    const kindField = selectField(t('convStudioKind'), [
+      { value: 'faq', text: t('convStudioKindFaq') }, { value: 'data_query', text: t('convStudioKindDataQuery') }, { value: 'surface_help', text: t('convStudioKindSurfaceHelp') }
+    ], 'faq');
+    const createBtn = el('button', 'btn btn-primary', t('convStudioCreate'));
+    createBtn.type = 'button';
+    createBtn.onclick = () => {
+      const scenarioKey = keyField.input.value.trim();
+      if (!scenarioKey) { showToast(t('convStudioKeyRequired'), 'danger'); return; }
+      api('/conversation-scenarios', {
+        method: 'POST',
+        body: JSON.stringify({ scenarioKey, domain: domainField.input.value.trim() || null, kind: kindField.select.value, definition: { languages: {}, responses: {} } })
+      }).then((scenario) => { conversationStudioSelectedId = scenario.id; renderTab(); })
+        .catch((error) => showToast(error.message, 'danger'));
+    };
+    createCard.append(keyField.wrap, domainField.wrap, kindField.wrap, createBtn);
+    wrap.append(createCard);
+
+    const tableWrap = el('div', 'admin-table-wrap');
+    const table = el('table', 'admin-table');
+    const head = el('tr');
+    [t('convStudioColKey'), t('convStudioColDomain'), t('convStudioColKind'), t('convStudioColStatus'), t('convStudioColVersion'), t('convStudioColLanguages'), t('convStudioColUpdated')].forEach((label) => head.append(el('th', '', label)));
+    table.append(head);
+    (data.scenarios || []).forEach((scenario) => {
+      const row = el('tr');
+      row.style.cursor = 'pointer';
+      row.onclick = () => { conversationStudioSelectedId = scenario.id; renderTab(); };
+      row.append(el('td', '', scenario.scenarioKey), el('td', '', scenario.domain || '—'), el('td', '', scenario.kind));
+      const statusCell = el('td'); statusCell.append(conversationStudioStatusBadge(scenario.status));
+      row.append(statusCell);
+      row.append(el('td', '', scenario.publishedVersion ? 'v' + scenario.publishedVersion : '—'));
+      // Plain text coverage summary ("FA ✓ · EN ✓ · AR – · ES –") rather than a
+      // new colored-dot component - this is the one place in the whole tab that would have
+      // needed genuinely new CSS just for this, and a professional-but-plain admin table row is
+      // a reasonable trade against that for this gate.
+      const coverageText = CONV_STUDIO_LANGUAGES.map((lang) => {
+        const state = (scenario.languages || {})[lang] || 'none';
+        return lang.toUpperCase() + ' ' + (state === 'complete' ? '✓' : state === 'partial' ? '±' : '–');
+      }).join(' · ');
+      row.append(el('td', '', coverageText));
+      row.append(el('td', '', fmtDate(scenario.updatedAt)));
+      table.append(row);
+    });
+    tableWrap.append(table);
+    wrap.append(tableWrap);
+    return wrap;
+  });
+}
+
+function conversationStudioLanguageSection(lang, definition) {
+  const section = el('div', 'admin-card');
+  section.append(el('h4', '', lang.toUpperCase()));
+  const rule = (definition.languages && definition.languages[lang]) || { groups: [], strong: [], negative: [] };
+  const response = (definition.responses && definition.responses[lang]) || { written: '', voiceReply: '' };
+  const groupsField = textareaField(t('convStudioGroups'), groupsToLines(rule.groups), 3);
+  const strongField = textareaField(t('convStudioStrong'), (rule.strong || []).join('\n'), 2);
+  const negativeField = textareaField(t('convStudioNegative'), (rule.negative || []).join('\n'), 2);
+  const writtenField = textareaField(t('convStudioWrittenResponse'), response.written, 3);
+  const voiceField = textareaField(t('convStudioVoiceResponse'), response.voiceReply, 2);
+  section.append(groupsField.wrap, strongField.wrap, negativeField.wrap, writtenField.wrap, voiceField.wrap);
+  return {
+    node: section,
+    read: () => ({
+      rule: { groups: linesToGroups(groupsField.textarea.value), strong: linesToList(strongField.textarea.value), negative: linesToList(negativeField.textarea.value) },
+      response: { written: writtenField.textarea.value.trim(), voiceReply: voiceField.textarea.value.trim() || writtenField.textarea.value.trim() }
+    })
+  };
+}
+
+function conversationStudioVersionHistory(scenario) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('convStudioVersionHistory')));
+  const tableWrap = el('div', 'admin-table-wrap');
+  const table = el('table', 'admin-table');
+  const head = el('tr');
+  [t('convStudioColVersion'), t('convStudioColStatus'), t('convStudioColPublishedAt'), ''].forEach((label) => head.append(el('th', '', label)));
+  table.append(head);
+  (scenario.versions || []).sort((a, b) => b.versionNumber - a.versionNumber).forEach((version) => {
+    const row = el('tr');
+    row.append(el('td', '', 'v' + version.versionNumber));
+    const statusCell = el('td'); statusCell.append(conversationStudioStatusBadge(version.status));
+    row.append(statusCell);
+    row.append(el('td', '', fmtDate(version.publishedAt)));
+    const actionsCell = el('td');
+    if (version.status === 'archived' || (version.status === 'published' && scenario.publishedVersionId !== version.id)) {
+      const rollbackBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioRollback'));
+      rollbackBtn.type = 'button';
+      rollbackBtn.onclick = () => {
+        if (!window.confirm(t('convStudioRollbackConfirm'))) return;
+        api('/conversation-scenarios/' + scenario.id + '/rollback', { method: 'POST', body: JSON.stringify({ targetVersionId: version.id }) })
+          .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+      };
+      actionsCell.append(rollbackBtn);
+    }
+    row.append(actionsCell);
+    table.append(row);
+  });
+  tableWrap.append(table);
+  card.append(tableWrap);
+  return card;
+}
+
+// --- Journey H2, Gate 3: Conversation Studio voice asset pipeline (per-language Generate/Play/
+// Approve/Archive UI for pre-generated, admin-approved audio). Reuses the exact same voice-
+// provider credential/voice/model selection endpoints the Voice Providers tab's own character
+// cards already use (api('/voice-providers/voices|models?credentialId=...')) - no new selection
+// mechanism is invented here.
+
+// One language's row: shows the spoken text this audio would be generated from (the exact same
+// voiceReply-falls-back-to-written rule the server's own spokenTextFor() uses - see
+// server/community/conversation-audio-identity.mjs; this is a display-only echo of that rule, the
+// server always recomputes it independently and never trusts anything this panel sends as text),
+// the current approved asset (if any, with its own stale flag - spec section 20/51/52) and the
+// latest not-yet-approved preview (if any), plus the Generate form.
+function conversationStudioAudioLanguageRow(scenarioId, versionId, lang, definition, assets, credentials) {
+  const response = (definition.responses && definition.responses[lang]) || {};
+  const spokenText = String(response.voiceReply || response.written || '').trim();
+  const row = el('div', 'admin-card');
+  row.append(el('h4', '', lang.toUpperCase()));
+  if (!spokenText) { row.append(el('p', 'hint', t('convStudioAudioNoText'))); return row; }
+  row.append(el('p', 'hint', spokenText));
+
+  const languageAssets = assets.filter((a) => a.language === lang && a.variantKey === 'standard');
+  const approved = languageAssets.find((a) => a.status === 'approved');
+  const latestPreview = languageAssets
+    .filter((a) => a.status === 'preview')
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  if (!approved && !latestPreview) row.append(el('p', 'hint', t('convStudioAudioNoneYet')));
+
+  if (approved) {
+    const statusText = t('convStudioAudioApproved') + (approved.isStale ? ' · ' + t('convStudioAudioStale') : '');
+    row.append(el('p', approved.isStale ? 'error-text' : '', statusText));
+    const audio = document.createElement('audio');
+    audio.controls = true; audio.src = approved.fileUrl; audio.className = 'admin-voice-test-audio';
+    row.append(audio);
+    const archiveBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioAudioArchive'));
+    archiveBtn.type = 'button';
+    archiveBtn.onclick = () => {
+      archiveBtn.disabled = true;
+      api('/conversation-scenarios/' + scenarioId + '/audio/' + approved.id + '/archive', { method: 'POST' })
+        .then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => { showToast(error.message, 'danger'); archiveBtn.disabled = false; });
+    };
+    row.append(archiveBtn);
+  }
+
+  if (latestPreview) {
+    row.append(el('p', '', t('convStudioAudioPreview')));
+    const audio = document.createElement('audio');
+    audio.controls = true; audio.src = latestPreview.fileUrl; audio.className = 'admin-voice-test-audio';
+    row.append(audio);
+    const previewBtnRow = el('div', 'admin-btn-row');
+    const approveBtn = el('button', 'btn btn-primary btn-sm', t('convStudioAudioApprove'));
+    approveBtn.type = 'button';
+    approveBtn.onclick = () => {
+      approveBtn.disabled = true;
+      api('/conversation-scenarios/' + scenarioId + '/audio/' + latestPreview.id + '/approve', { method: 'POST' })
+        .then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => {
+          showToast(error.status === 409 ? t('convStudioAudioStaleBlocked') : error.message, 'danger');
+          approveBtn.disabled = false;
+        });
+    };
+    const discardBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioAudioArchive'));
+    discardBtn.type = 'button';
+    discardBtn.onclick = () => {
+      discardBtn.disabled = true;
+      api('/conversation-scenarios/' + scenarioId + '/audio/' + latestPreview.id + '/archive', { method: 'POST' })
+        .then(() => { showToast(t('saved')); renderTab(); })
+        .catch((error) => { showToast(error.message, 'danger'); discardBtn.disabled = false; });
+    };
+    previewBtnRow.append(approveBtn, discardBtn);
+    row.append(previewBtnRow);
+  }
+
+  // Generate form - credential/voiceId/modelId selection mirrors the Voice Providers tab's own
+  // character card (conversationStudioLanguageSection's sibling in that tab) exactly: a searchable
+  // datalist populated via an explicit "Load voices" click (never fetched automatically), plus a
+  // free-text voiceId input so a known id can always be typed directly.
+  const credentialSelect = selectField(t('vpCredentialSelect'),
+    [{ value: '', text: t('vpNoCredentialSelected') }].concat(credentials.map((c) => ({ value: c.id, text: c.label }))), '');
+  const voiceIdField = field(t('vpVoiceId'), 'text', '');
+  const voiceDatalist = document.createElement('datalist');
+  const datalistId = 'conv-audio-voices-' + scenarioId + '-' + versionId + '-' + lang;
+  voiceDatalist.id = datalistId;
+  voiceIdField.input.setAttribute('list', datalistId);
+  voiceIdField.wrap.append(voiceDatalist);
+  const loadVoicesBtn = el('button', 'btn btn-secondary btn-sm', t('vpLoadVoices'));
+  loadVoicesBtn.type = 'button';
+  loadVoicesBtn.onclick = () => {
+    if (!credentialSelect.select.value) { showToast(t('vpNoCredentialSelected'), 'danger'); return; }
+    loadVoicesBtn.disabled = true;
+    api('/voice-providers/voices?credentialId=' + encodeURIComponent(credentialSelect.select.value))
+      .then((voices) => {
+        voiceDatalist.innerHTML = '';
+        voices.forEach((voice) => {
+          const opt = document.createElement('option');
+          opt.value = voice.voiceId; opt.label = voice.name;
+          voiceDatalist.append(opt);
+        });
+      })
+      .catch((error) => showToast(error.message, 'danger'))
+      .finally(() => { loadVoicesBtn.disabled = false; });
+  };
+  const modelSelect = selectField(t('vpModelSelect'), [{ value: '', text: '—' }], '');
+  const loadModelsBtn = el('button', 'btn btn-secondary btn-sm', t('vpLoadModels'));
+  loadModelsBtn.type = 'button';
+  loadModelsBtn.onclick = () => {
+    if (!credentialSelect.select.value) { showToast(t('vpNoCredentialSelected'), 'danger'); return; }
+    loadModelsBtn.disabled = true;
+    api('/voice-providers/models?credentialId=' + encodeURIComponent(credentialSelect.select.value))
+      .then((models) => {
+        modelSelect.select.innerHTML = '';
+        models.forEach((model) => {
+          const opt = document.createElement('option');
+          opt.value = model.modelId; opt.textContent = model.name;
+          modelSelect.select.append(opt);
+        });
+      })
+      .catch((error) => showToast(error.message, 'danger'))
+      .finally(() => { loadModelsBtn.disabled = false; });
+  };
+  // Organizational/diagnostic label only (spec section 41's lighter-weight posture - see the
+  // Gate 3 plan's own "no Voice Profile registry table this gate" note); the real provider call
+  // always takes the explicit credentialId/voiceId/modelId above, never this label.
+  const voiceProfileKeyField = field(t('convStudioAudioVoiceProfileKey'), 'text', lang + '_default');
+  const generateBtn = el('button', 'btn btn-primary btn-sm', t('convStudioAudioGenerate'));
+  generateBtn.type = 'button';
+  generateBtn.onclick = () => {
+    const credentialId = credentialSelect.select.value;
+    const voiceId = voiceIdField.input.value.trim();
+    if (!credentialId || !voiceId) { showToast(t('vpValidateFirst'), 'danger'); return; }
+    generateBtn.disabled = true;
+    const originalLabel = generateBtn.textContent;
+    generateBtn.textContent = t('convStudioAudioGenerating');
+    api('/conversation-scenarios/' + scenarioId + '/versions/' + versionId + '/audio', {
+      method: 'POST',
+      body: JSON.stringify({
+        language: lang, variantKey: 'standard', credentialId, voiceId, modelId: modelSelect.select.value || null,
+        voiceProfileKey: voiceProfileKeyField.input.value.trim() || (lang + '_default')
+      })
+    }).then((asset) => {
+      showToast(asset.usedFallbackText ? t('saved') + ' · ' + t('convStudioAudioUsedWrittenFallback') : t('saved'));
+      renderTab();
+    })
+      .catch((error) => showToast(error.message, 'danger'))
+      .finally(() => { generateBtn.disabled = false; generateBtn.textContent = originalLabel; });
+  };
+  const generateRow = el('div', 'admin-btn-row');
+  generateRow.append(credentialSelect.wrap, voiceIdField.wrap, loadVoicesBtn, modelSelect.wrap, loadModelsBtn, voiceProfileKeyField.wrap, generateBtn);
+  row.append(generateRow);
+
+  return row;
+}
+
+// One version's whole audio panel (called once for the published version and, separately, once
+// for the draft, when each exists - see conversationStudioEditor). `data_query` scenarios are
+// structurally never audio-eligible (spec section 4/37/38, enforced server-side too at the
+// generation endpoint itself) - this renders a plain explanation and makes zero network calls
+// rather than a panel full of buttons that would only ever 400.
+function conversationStudioAudioPanel(scenario, version, label) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('convStudioAudioTitle') + ' - ' + label));
+  if (scenario.kind === 'data_query') {
+    card.append(el('p', 'hint', t('convStudioAudioNotEligible')));
+    return Promise.resolve(card);
+  }
+  return Promise.all([
+    api('/conversation-scenarios/' + scenario.id + '/versions/' + version.id + '/audio'),
+    api('/voice-providers/credentials').catch(() => [])
+  ]).then(([audioData, credentials]) => {
+    CONV_STUDIO_LANGUAGES.forEach((lang) => {
+      card.append(conversationStudioAudioLanguageRow(scenario.id, version.id, lang, version.definition, audioData.assets || [], credentials));
+    });
+    return card;
+  });
+}
+
+function conversationStudioTriggerLab(scenarioId) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('convStudioTriggerLab')), el('p', 'hint', t('convStudioTriggerLabHint')));
+  const textField = field(t('convStudioTestUtterance'), 'text', '');
+  const runBtn = el('button', 'btn btn-secondary', t('convStudioRunTest'));
+  runBtn.type = 'button';
+  const resultBox = el('div');
+  runBtn.onclick = () => {
+    api('/conversation-scenarios/' + scenarioId + '/test', { method: 'POST', body: JSON.stringify({ text: textField.input.value }) })
+      .then((result) => {
+        resultBox.replaceChildren();
+        resultBox.append(el('p', '', t('convStudioResolution') + ': ' + result.resolution + ' (' + result.confidenceBand + ', margin ' + result.scoreMargin + ')'));
+        const tableWrap = el('div', 'admin-table-wrap');
+        const table = el('table', 'admin-table');
+        const head = el('tr'); [t('convStudioColKey'), t('convStudioScore'), t('convStudioReasons')].forEach((label) => head.append(el('th', '', label)));
+        table.append(head);
+        result.candidates.forEach((c) => {
+          const row = el('tr');
+          row.append(el('td', '', c.scenarioKey), el('td', '', String(c.score)), el('td', '', (c.reasons || []).join(', ')));
+          table.append(row);
+        });
+        tableWrap.append(table);
+        resultBox.append(tableWrap);
+      }).catch((error) => showToast(error.message, 'danger'));
+  };
+  const batchBtn = el('button', 'btn btn-secondary', t('convStudioRunBatch'));
+  batchBtn.type = 'button';
+  const batchResultBox = el('div');
+  batchBtn.onclick = () => {
+    api('/conversation-scenarios/' + scenarioId + '/test-batch', { method: 'POST' }).then((result) => {
+      batchResultBox.replaceChildren(el('p', '', t('convStudioPositiveRate') + ': ' + (result.positivePassRate === null ? '—' : Math.round(result.positivePassRate * 100) + '%') +
+        ' · ' + t('convStudioNegativeRate') + ': ' + (result.negativeRejectionRate === null ? '—' : Math.round(result.negativeRejectionRate * 100) + '%')));
+    }).catch((error) => showToast(error.message, 'danger'));
+  };
+  const collisionBtn = el('button', 'btn btn-secondary', t('convStudioCheckCollisions'));
+  collisionBtn.type = 'button';
+  const collisionBox = el('div');
+  collisionBtn.onclick = () => {
+    api('/conversation-scenarios/' + scenarioId + '/collisions').then((result) => {
+      collisionBox.replaceChildren();
+      if (!result.collisions.length) { collisionBox.append(el('p', 'hint', t('convStudioNoCollisions'))); return; }
+      result.collisions.forEach((collision) => {
+        collisionBox.append(el('p', 'error-text', '"' + collision.text + '" -> ' + collision.otherScenarioKey + ' (' + collision.severity + ', ' + collision.myScore + ' vs ' + collision.otherScore + ')'));
+      });
+    }).catch((error) => showToast(error.message, 'danger'));
+  };
+  const btnRow = el('div', 'admin-btn-row');
+  btnRow.append(runBtn, batchBtn, collisionBtn);
+  card.append(textField.wrap, btnRow, resultBox, batchResultBox, collisionBox);
+  return card;
+}
+
+function conversationStudioEditor(id) {
+  return api('/conversation-scenarios/' + id).then((scenario) => {
+    const wrap = el('div');
+    const backBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioBackToLibrary'));
+    backBtn.type = 'button';
+    backBtn.onclick = () => { conversationStudioSelectedId = null; renderTab(); };
+    wrap.append(backBtn);
+
+    const header = el('div', 'admin-card');
+    header.append(el('h2', '', scenario.scenarioKey));
+    const metaLine = el('p', 'hint', scenario.domain + ' · ' + scenario.kind + (scenario.dataQueryRef ? ' · ' + scenario.dataQueryRef : ''));
+    header.append(metaLine);
+    const statusRow = el('div', 'admin-btn-row');
+    statusRow.append(conversationStudioStatusBadge(scenario.archivedAt ? 'archived' : scenario.publishedVersionId ? 'published' : 'draft'));
+    const archiveBtn = el('button', 'btn btn-secondary btn-sm', scenario.archivedAt ? t('convStudioUnarchive') : t('convStudioArchive'));
+    archiveBtn.type = 'button';
+    archiveBtn.onclick = () => {
+      api('/conversation-scenarios/' + id + '/' + (scenario.archivedAt ? 'unarchive' : 'archive'), { method: 'POST' })
+        .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    statusRow.append(archiveBtn);
+    if (scenario.publishedVersionId && !scenario.draftVersionId) {
+      const revisionBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioNewRevision'));
+      revisionBtn.type = 'button';
+      revisionBtn.onclick = () => api('/conversation-scenarios/' + id + '/revision', { method: 'POST' }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+      statusRow.append(revisionBtn);
+    }
+    header.append(statusRow);
+    wrap.append(header);
+
+    if (!scenario.draftVersion) {
+      wrap.append(el('p', 'hint', t('convStudioNoDraft')));
+      if (!scenario.publishedVersion) { wrap.append(conversationStudioVersionHistory(scenario)); return wrap; }
+      return conversationStudioAudioPanel(scenario, scenario.publishedVersion, 'v' + scenario.publishedVersion.versionNumber + ' (' + t('convStudioStatusPublished') + ')')
+        .then((panel) => { wrap.append(panel); wrap.append(conversationStudioVersionHistory(scenario)); return wrap; });
+    }
+
+    const editorCard = el('div', 'admin-card');
+    editorCard.append(el('h3', '', t('convStudioEditingDraft') + ' v' + scenario.draftVersion.versionNumber));
+    const ctaOptions = [{ value: '', text: t('convStudioCtaNone') }].concat(CONV_STUDIO_SAFE_CTA_IDS.map((id2) => ({ value: id2, text: id2 })));
+    const ctaField = selectField(t('convStudioCta'), ctaOptions, scenario.ctaActionId || '');
+    editorCard.append(ctaField.wrap);
+    const corpusPositiveField = textareaField(t('convStudioCorpusPositive'), ((scenario.draftVersion.definition.testCorpus || {}).positive || []).join('\n'), 2);
+    const corpusNegativeField = textareaField(t('convStudioCorpusNegative'), ((scenario.draftVersion.definition.testCorpus || {}).negative || []).join('\n'), 2);
+    editorCard.append(corpusPositiveField.wrap, corpusNegativeField.wrap);
+
+    const languageSections = {};
+    CONV_STUDIO_LANGUAGES.forEach((lang) => {
+      const section = conversationStudioLanguageSection(lang, scenario.draftVersion.definition);
+      languageSections[lang] = section;
+      editorCard.append(section.node);
+    });
+
+    const saveBtn = el('button', 'btn btn-primary', t('convStudioSaveDraft'));
+    saveBtn.type = 'button';
+    saveBtn.onclick = () => {
+      const languages = {}; const responses = {};
+      CONV_STUDIO_LANGUAGES.forEach((lang) => { const read = languageSections[lang].read(); languages[lang] = read.rule; responses[lang] = read.response; });
+      const patch = {
+        languages, responses,
+        testCorpus: { positive: linesToList(corpusPositiveField.textarea.value), negative: linesToList(corpusNegativeField.textarea.value) }
+      };
+      Promise.all([
+        api('/conversation-scenarios/' + id + '/draft', { method: 'PATCH', body: JSON.stringify(patch) }),
+        ctaField.select.value !== (scenario.ctaActionId || '') ? api('/conversation-scenarios/' + id, { method: 'PATCH', body: JSON.stringify({ ctaActionId: ctaField.select.value || null }) }).catch(() => {}) : Promise.resolve()
+      ]).then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    const publishBtn = el('button', 'btn btn-primary', t('convStudioPublish'));
+    publishBtn.type = 'button';
+    publishBtn.onclick = () => {
+      api('/conversation-scenarios/' + id + '/publish', { method: 'POST', body: JSON.stringify({ versionId: scenario.draftVersionId }) })
+        .then(() => { showToast(t('convStudioPublished')); renderTab(); })
+        .catch((error) => {
+          if (error.status === 422) { showToast(t('convStudioPublishBlocked') + ': ' + JSON.stringify(error.body && error.body.errors), 'danger'); }
+          else showToast(error.message, 'danger');
+        });
+    };
+    const editorBtnRow = el('div', 'admin-btn-row');
+    editorBtnRow.append(saveBtn, publishBtn);
+    editorCard.append(editorBtnRow);
+    wrap.append(editorCard);
+
+    wrap.append(conversationStudioTriggerLab(id));
+
+    // Journey H2, Gate 3: audio for the PUBLISHED version (what real Voice users actually hear
+    // today, when one exists) and for the DRAFT version (so an admin can prepare ahead of the
+    // next publish) are shown as two separate panels - never conflated, since they are two
+    // different scenario_version_id rows with independent content hashes/staleness.
+    const audioPanels = [];
+    if (scenario.publishedVersion) {
+      audioPanels.push(conversationStudioAudioPanel(scenario, scenario.publishedVersion, 'v' + scenario.publishedVersion.versionNumber + ' (' + t('convStudioStatusPublished') + ')'));
+    }
+    audioPanels.push(conversationStudioAudioPanel(scenario, scenario.draftVersion, 'v' + scenario.draftVersion.versionNumber + ' (' + t('convStudioStatusDraft') + ')'));
+    return Promise.all(audioPanels).then((panels) => {
+      panels.forEach((panel) => wrap.append(panel));
+      wrap.append(conversationStudioVersionHistory(scenario));
+      return wrap;
+    });
+  });
+}
+
+function conversationStudioTab() {
+  return conversationStudioSelectedId ? conversationStudioEditor(conversationStudioSelectedId) : conversationStudioLibrary();
+}
+
+const tabBuilders = { users: usersTab, ai: aiTab, technical: technicalTab, xp: xpTab, marketplace: marketplaceTab, financial: financialTab, commercial: commercialTab, conversationStudio: conversationStudioTab };
 
 function route() {
-  const match = location.hash.match(/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial)$/);
+  const match = location.hash.match(/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial|conversationStudio)$/);
   return match ? match[1] : 'users';
 }
 
@@ -2100,7 +2683,7 @@ function startApp() {
   try { if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1') layout.classList.add('collapsed'); } catch (_) { /* no-op */ }
   loadCurrentUserLabel();
   icons(document);
-  if (!/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial)$/.test(location.hash)) location.hash = '#/admin/users';
+  if (!/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial|conversationStudio)$/.test(location.hash)) location.hash = '#/admin/users';
   else renderTab();
 }
 

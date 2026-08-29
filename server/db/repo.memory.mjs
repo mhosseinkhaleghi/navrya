@@ -4,6 +4,7 @@ import { encryptSecret, decryptSecret } from '../community/security/crypto-util.
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
+import { spokenTextFor, computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -33,7 +34,8 @@ export function createMemoryRepo() {
       rpcUrlEncrypted: null, webhookSecretEncrypted: null, webhookSecretHint: null,
       lastTestedAt: null, lastTestOk: null, lastDetectedChainId: null, updatedBy: null, updatedAt: null
     },
-    storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map()
+    storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map(),
+    conversationScenarios: new Map(), conversationScenarioVersions: new Map(), conversationAudioAssets: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -2170,6 +2172,227 @@ export function createMemoryRepo() {
   // to check connectivity against, so this is honestly synthetic rather than faking a query.
   async function health() { return { backend: 'memory', dbOk: true, migrations: [] }; }
 
+  // Journey H2, Gate 2: Conversation Studio. Same draft/published/archived shape as
+  // marketplace_listings' own status lifecycle, plus a real version history
+  // (conversation_scenario_versions) - see 041_conversation_scenarios.sql for the full reasoning.
+  // composeScenario() attaches the real draft/published version OBJECTS (not just their ids) -
+  // every caller (the admin detail route, the Trigger Lab) needs the actual content, never a
+  // second round trip.
+  function composeScenario(scenario) {
+    const draft = scenario.draftVersionId ? state.conversationScenarioVersions.get(scenario.draftVersionId) : null;
+    const published = scenario.publishedVersionId ? state.conversationScenarioVersions.get(scenario.publishedVersionId) : null;
+    return Object.assign(clone(scenario), { draftVersion: draft ? clone(draft) : null, publishedVersion: published ? clone(published) : null });
+  }
+  function nextVersionNumber(scenarioId) {
+    const numbers = Array.from(state.conversationScenarioVersions.values()).filter((v) => v.scenarioId === scenarioId).map((v) => v.versionNumber);
+    return (numbers.length ? Math.max(...numbers) : 0) + 1;
+  }
+  const conversationScenarios = {
+    async create({ scenarioKey, domain, kind, dataQueryRef, ctaActionId, allowedProcesses, allowedSteps, definition, createdBy }) {
+      if (Array.from(state.conversationScenarios.values()).some((s) => s.scenarioKey === scenarioKey)) throw new ApiError(409, 'SCENARIO_KEY_TAKEN');
+      const stamp = now();
+      const scenarioId = newId('convscn');
+      const versionId = newId('convscnver');
+      state.conversationScenarioVersions.set(versionId, {
+        id: versionId, scenarioId, versionNumber: 1, status: 'draft', definition: definition || {},
+        publishedAt: null, createdBy: createdBy || null, publishedBy: null, createdAt: stamp, updatedAt: stamp
+      });
+      state.conversationScenarios.set(scenarioId, {
+        id: scenarioId, scenarioKey, domain: domain || null, kind, dataQueryRef: dataQueryRef || null,
+        ctaActionId: ctaActionId || null, allowedProcesses: allowedProcesses || null, allowedSteps: allowedSteps || null,
+        publishedVersionId: null, draftVersionId: versionId, archivedAt: null, createdAt: stamp, updatedAt: stamp
+      });
+      return composeScenario(state.conversationScenarios.get(scenarioId));
+    },
+    async get(id) { const scenario = state.conversationScenarios.get(id); return scenario ? composeScenario(scenario) : null; },
+    async getByKey(scenarioKey) {
+      const scenario = Array.from(state.conversationScenarios.values()).find((s) => s.scenarioKey === scenarioKey);
+      return scenario ? composeScenario(scenario) : null;
+    },
+    async list({ status, domain } = {}) {
+      let values = Array.from(state.conversationScenarios.values());
+      if (domain) values = values.filter((s) => s.domain === domain);
+      if (status === 'archived') values = values.filter((s) => s.archivedAt);
+      else if (status === 'published') values = values.filter((s) => !s.archivedAt && s.publishedVersionId);
+      else if (status === 'draft') values = values.filter((s) => !s.archivedAt && s.draftVersionId);
+      return values.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(composeScenario);
+    },
+    async listVersions(scenarioId) {
+      return Array.from(state.conversationScenarioVersions.values()).filter((v) => v.scenarioId === scenarioId)
+        .sort((a, b) => b.versionNumber - a.versionNumber).map(clone);
+    },
+    async getVersion(versionId) { const version = state.conversationScenarioVersions.get(versionId); return version ? clone(version) : null; },
+    async updateDraft(scenarioId, definitionPatch) {
+      const scenario = state.conversationScenarios.get(scenarioId);
+      if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      if (!scenario.draftVersionId) throw new ApiError(400, 'NO_DRAFT_TO_EDIT');
+      const version = state.conversationScenarioVersions.get(scenario.draftVersionId);
+      version.definition = Object.assign({}, version.definition, definitionPatch);
+      version.updatedAt = now();
+      scenario.updatedAt = version.updatedAt;
+      return composeScenario(scenario);
+    },
+    async startNewRevision(scenarioId, createdBy) {
+      const scenario = state.conversationScenarios.get(scenarioId);
+      if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      if (scenario.draftVersionId) throw new ApiError(409, 'DRAFT_ALREADY_EXISTS');
+      if (!scenario.publishedVersionId) throw new ApiError(400, 'NO_PUBLISHED_VERSION');
+      const published = state.conversationScenarioVersions.get(scenario.publishedVersionId);
+      const stamp = now();
+      const versionId = newId('convscnver');
+      state.conversationScenarioVersions.set(versionId, {
+        id: versionId, scenarioId, versionNumber: nextVersionNumber(scenarioId), status: 'draft',
+        definition: clone(published.definition), publishedAt: null, createdBy: createdBy || null, publishedBy: null,
+        createdAt: stamp, updatedAt: stamp
+      });
+      scenario.draftVersionId = versionId;
+      scenario.updatedAt = stamp;
+      return composeScenario(scenario);
+    },
+    async publish(scenarioId, versionId, publishedBy) {
+      const scenario = state.conversationScenarios.get(scenarioId);
+      if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      if (scenario.draftVersionId !== versionId) throw new ApiError(400, 'NOT_CURRENT_DRAFT');
+      const draft = state.conversationScenarioVersions.get(versionId);
+      if (!draft || draft.status !== 'draft') throw new ApiError(400, 'VERSION_NOT_DRAFT');
+      const stamp = now();
+      if (scenario.publishedVersionId) {
+        const previous = state.conversationScenarioVersions.get(scenario.publishedVersionId);
+        if (previous) { previous.status = 'archived'; previous.updatedAt = stamp; }
+      }
+      draft.status = 'published'; draft.publishedAt = stamp; draft.publishedBy = publishedBy || null; draft.updatedAt = stamp;
+      scenario.publishedVersionId = versionId;
+      scenario.draftVersionId = null;
+      scenario.updatedAt = stamp;
+      return composeScenario(scenario);
+    },
+    // Never an in-place mutation of a past version - copies targetVersion's content into a
+    // brand-new, immediately-published version, reusing the exact same "archive the old
+    // published version" step publish() already performs, so there is only one real "become the
+    // live version" code path in this whole domain.
+    async rollback(scenarioId, targetVersionId, actorId) {
+      const scenario = state.conversationScenarios.get(scenarioId);
+      if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      const target = state.conversationScenarioVersions.get(targetVersionId);
+      if (!target || target.scenarioId !== scenarioId) throw new ApiError(404, 'VERSION_NOT_FOUND');
+      if (scenario.draftVersionId) throw new ApiError(409, 'DRAFT_ALREADY_EXISTS');
+      const stamp = now();
+      const versionId = newId('convscnver');
+      state.conversationScenarioVersions.set(versionId, {
+        id: versionId, scenarioId, versionNumber: nextVersionNumber(scenarioId), status: 'published',
+        definition: clone(target.definition), publishedAt: stamp, createdBy: actorId || null, publishedBy: actorId || null,
+        createdAt: stamp, updatedAt: stamp
+      });
+      if (scenario.publishedVersionId) {
+        const previous = state.conversationScenarioVersions.get(scenario.publishedVersionId);
+        if (previous) { previous.status = 'archived'; previous.updatedAt = stamp; }
+      }
+      scenario.publishedVersionId = versionId;
+      scenario.updatedAt = stamp;
+      return composeScenario(scenario);
+    },
+    // Scenario-level metadata only (ctaActionId/domain/allowedProcesses/allowedSteps) - never
+    // scenarioKey/kind, which stay immutable after create() by design (spec section 11: other
+    // systems may reference the stable key).
+    async updateMetadata(scenarioId, patch) {
+      const scenario = state.conversationScenarios.get(scenarioId);
+      if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      ['domain', 'ctaActionId', 'allowedProcesses', 'allowedSteps'].forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(patch, key)) scenario[key] = patch[key];
+      });
+      scenario.updatedAt = now();
+      return composeScenario(scenario);
+    },
+    async archive(scenarioId) {
+      const scenario = state.conversationScenarios.get(scenarioId);
+      if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      scenario.archivedAt = now();
+      scenario.updatedAt = scenario.archivedAt;
+      return composeScenario(scenario);
+    },
+    async unarchive(scenarioId) {
+      const scenario = state.conversationScenarios.get(scenarioId);
+      if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+      scenario.archivedAt = null;
+      scenario.updatedAt = now();
+      return composeScenario(scenario);
+    },
+    // The production Router's own bundle source (server/community/routes.conversation-scenarios-
+    // sync.mjs) - every non-archived scenario with a real published version, full definition
+    // content included. Never returns draft content, by construction (only publishedVersionId is
+    // ever read here).
+    async listPublishedForBundle() {
+      return Array.from(state.conversationScenarios.values())
+        .filter((s) => !s.archivedAt && s.publishedVersionId)
+        .map((s) => {
+          const version = state.conversationScenarioVersions.get(s.publishedVersionId);
+          return {
+            id: s.id, scenarioKey: s.scenarioKey, domain: s.domain, kind: s.kind,
+            dataQueryRef: s.dataQueryRef, ctaActionId: s.ctaActionId,
+            allowedProcesses: s.allowedProcesses, allowedSteps: s.allowedSteps,
+            publishedVersion: version ? version.versionNumber : null, publishedAt: version ? version.publishedAt : null,
+            definition: version ? clone(version.definition) : {},
+            audio: approvedAudioFor(s.publishedVersionId, version)
+          };
+        });
+    }
+  };
+
+  // Journey H2, Gate 3: mirrors repo.pg.mjs's approvedAudioByVersionIds() exactly, one version at
+  // a time (the in-memory backend has no real query-batching concern to optimize for) - never
+  // exposes anything beyond {url, mimeType, durationMs}, and re-verifies the content hash against
+  // the version's OWN current definition before ever serving a row, regardless of its stored status.
+  function approvedAudioFor(versionId, version) {
+    if (!versionId || !version) return {};
+    const assets = Array.from(state.conversationAudioAssets.values())
+      .filter((a) => a.scenarioVersionId === versionId && a.status === 'approved');
+    const result = {};
+    assets.forEach((asset) => {
+      const spoken = spokenTextFor(version.definition, asset.language);
+      const expectedHash = computeAudioContentHash({ text: spoken.text, language: asset.language, provider: asset.provider, voiceId: asset.voiceId, modelId: asset.modelId });
+      if (!spoken.text || expectedHash !== asset.contentHash) return;
+      if (!result[asset.language]) result[asset.language] = {};
+      result[asset.language][asset.variantKey] = { url: asset.fileUrl, mimeType: asset.mimeType, durationMs: asset.durationMs };
+    });
+    return result;
+  }
+
+  const conversationAudioAssets = {
+    async create({ scenarioId, scenarioVersionId, language, variantKey, contentHash, provider, voiceProfileKey, voiceId, modelId, fileUrl, mimeType, durationMs, createdBy }) {
+      const stamp = now();
+      const record = {
+        id: newId('convaudio'), scenarioId, scenarioVersionId, language, variantKey: variantKey || 'standard',
+        contentHash, provider: provider || 'elevenlabs', voiceProfileKey, voiceId, modelId: modelId || null,
+        fileUrl, mimeType, durationMs: durationMs == null ? null : Math.round(Number(durationMs)), status: 'preview',
+        createdBy: createdBy || null, approvedBy: null, approvedAt: null, createdAt: stamp, updatedAt: stamp
+      };
+      state.conversationAudioAssets.set(record.id, record);
+      return clone(record);
+    },
+    async get(id) { const record = state.conversationAudioAssets.get(id); return record ? clone(record) : null; },
+    async listForVersion(scenarioVersionId) {
+      return Array.from(state.conversationAudioAssets.values())
+        .filter((a) => a.scenarioVersionId === scenarioVersionId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(clone);
+    },
+    async approve(id, approvedBy) {
+      const asset = state.conversationAudioAssets.get(id);
+      if (!asset) throw new ApiError(404, 'AUDIO_ASSET_NOT_FOUND');
+      const stamp = now();
+      Array.from(state.conversationAudioAssets.values())
+        .filter((a) => a.id !== id && a.scenarioVersionId === asset.scenarioVersionId && a.language === asset.language && a.variantKey === asset.variantKey && a.status === 'approved')
+        .forEach((a) => { a.status = 'archived'; a.updatedAt = stamp; });
+      asset.status = 'approved'; asset.approvedBy = approvedBy || null; asset.approvedAt = stamp; asset.updatedAt = stamp;
+      return clone(asset);
+    },
+    async archive(id) {
+      const asset = state.conversationAudioAssets.get(id);
+      if (!asset) throw new ApiError(404, 'AUDIO_ASSET_NOT_FOUND');
+      asset.status = 'archived'; asset.updatedAt = now();
+      return clone(asset);
+    }
+  };
+
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
@@ -2177,6 +2400,7 @@ export function createMemoryRepo() {
     strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
+    conversationScenarios, conversationAudioAssets
   };
 }
