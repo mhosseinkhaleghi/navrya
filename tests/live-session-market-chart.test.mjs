@@ -64,7 +64,7 @@ test('the Market chart widget is mounted once (lazily) and never destroyed on a 
   // of this Live Session visit) and only ever hidden/shown via CSS display, never remounted.
   const persistBlock = sliceBetween('{chartEverOpenedRef.current && (', '{chartModalOpen', 'the chartEverOpenedRef persistence block');
   assert.match(persistBlock, /style=\{\{ display: view === 'chart' \? 'block' : 'none' \}\}/);
-  assert.match(persistBlock, /<MarketChartView\s*\n\s*session=\{session\} lang=\{lang\}\s*\n\s*onAddChart=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ setChartModalInitialFile\(file\); setChartModalOpen\(true\); \}\)\}\s*\n\s*onLogMove=\{\(\) => withPreSessionCheckIn\(\(\) => addEntry\('movement'\)\)\}/);
+  assert.match(persistBlock, /<MarketChartView\s*\n\s*session=\{session\} lang=\{lang\}\s*\n\s*onAddChart=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ setChartModalInitialFile\(file\); setChartModalOpen\(true\); \}\)\}\s*\n\s*onLogMove=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ const entry = addEntry\('movement'\); if \(file\) attachImage\(entry, file\); \}\)\}/);
 });
 
 test('the widget loads the official TradingView free hosted Advanced Chart embed script, and nothing else', () => {
@@ -148,13 +148,13 @@ test('MarketChartView reads only session.instrument for the chart symbol, never 
   assert.doesNotMatch(view, /tradingViewSymbolFor\(session\.market/);
 });
 
-test('MarketChartView reuses the exact same Timeline action for Log movement, reachable from the chart without switching views', () => {
+test('both Add chart and Log movement capture a screenshot via the browser\'s own tab-capture API through one shared pipeline before calling their respective handler with the file - never blocking on failure/denial', () => {
   const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
-  assert.match(view, /<Button variant="secondary" size="sm" icon="Activity" onClick=\{onLogMove\}>\{tr\(lang, 'addMove'\)\}<\/Button>/);
-});
-
-test('MarketChartView\'s Add chart button captures a screenshot via the browser\'s own tab-capture API before calling onAddChart(file) - never blocking on failure/denial', () => {
-  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  // One shared capture function - not two independent copies - used by both buttons.
+  assert.match(view, /async function captureChartScreenshot\(\) \{/);
+  assert.match(view, /async function handleAddChartClick\(\) \{\s*\n\s*const file = await captureChartScreenshot\(\);\s*\n\s*onAddChart\(file\);\s*\n\s*\}/);
+  assert.match(view, /async function handleLogMoveClick\(\) \{\s*\n\s*const file = await captureChartScreenshot\(\);\s*\n\s*onLogMove\(file\);\s*\n\s*\}/);
+  assert.match(view, /<Button variant="secondary" size="sm" icon=\{capturing \? 'LoaderCircle' : 'Activity'\} disabled=\{capturing\} title=\{tr\(lang, 'chartCaptureHint'\)\} onClick=\{handleLogMoveClick\}>\{tr\(lang, 'addMove'\)\}<\/Button>/);
   assert.match(view, /<Button variant="primary" size="sm" icon=\{capturing \? 'LoaderCircle' : 'ImagePlus'\} disabled=\{capturing\} title=\{tr\(lang, 'chartCaptureHint'\)\} onClick=\{handleAddChartClick\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
   // getDisplayMedia is a native browser API - no npm package, no TradingView involvement at all.
   assert.match(view, /navigator\.mediaDevices\.getDisplayMedia\(\{/);
@@ -164,9 +164,8 @@ test('MarketChartView\'s Add chart button captures a screenshot via the browser\
   assert.match(view, /track\.addEventListener\('ended', \(\) => \{ if \(captureStreamRef\.current === stream\) captureStreamRef\.current = null; \}\);/);
   // The granted stream is reused (never re-requested) while its track is still live.
   assert.match(view, /if \(existing && existing\.getVideoTracks\(\)\[0\] && existing\.getVideoTracks\(\)\[0\]\.readyState === 'live'\) return existing;/);
-  // Every failure path (unsupported/denied/no-frame) still resolves the flow by calling
-  // onAddChart with null, never leaving the trader stuck without a way to log the chart.
-  assert.match(view, /onAddChart\(file\);/);
+  // Every failure path (unsupported/denied/no-frame) still resolves by returning null, never
+  // leaving the trader stuck without a way to log the chart/movement.
   assert.match(view, /setCaptureError\(tr\(lang, 'chartCaptureUnsupported'\)\);/);
   assert.match(view, /setCaptureError\(tr\(lang, 'chartCaptureFailed'\)\);/);
   assert.match(view, /setCaptureError\(tr\(lang, 'chartCapturePermissionDenied'\)\);/);
@@ -284,4 +283,12 @@ test('LiveSessionView wires the captured screenshot from Market chart into Chart
   // Timeline's own three "Add chart" trigger points are untouched - still the plain boolean open,
   // never passing a file.
   assert.match(src, /onClick=\{\(\) => withPreSessionCheckIn\(\(\) => setChartModalOpen\(true\)\)\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
+});
+
+test('LiveSessionView also attaches the captured screenshot to a Log movement entry created from Market chart, via the existing attachImage() function - Timeline\'s own plain Log movement button is untouched', () => {
+  // Market chart's onLogMove(file) creates the movement entry first (so it always exists, capture
+  // failure or not), then attaches the file only when one was actually captured.
+  assert.match(src, /onLogMove=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ const entry = addEntry\('movement'\); if \(file\) attachImage\(entry, file\); \}\)\}/);
+  // Timeline's own plain Log movement button is untouched - still no file involved at all.
+  assert.match(src, /onClick=\{\(\) => withPreSessionCheckIn\(\(\) => addEntry\('movement'\)\)\}>\{tr\(lang, 'addMove'\)\}<\/Button>/);
 });

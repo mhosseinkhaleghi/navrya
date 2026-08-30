@@ -1781,14 +1781,17 @@ function grabStreamFrame(stream) {
 //
 // Screenshot capture (user's explicit choice over TradingView's own native export, see
 // docs/HANDOFF.md): the free widget renders in a cross-origin iframe with no way for this page's
-// own JS to read its pixels directly, so "Add chart" instead uses the browser's own tab-capture
-// API (navigator.mediaDevices.getDisplayMedia). The permission is requested once (a real,
-// unavoidable browser dialog - the trader should keep "This Tab" selected) and the resulting
-// MediaStream is kept alive in captureStreamRef for the rest of this Live Session visit, so every
-// later "Add chart" click grabs a fresh frame silently, with no further prompts, until the trader
-// stops sharing (the track's own 'ended' event) or leaves the session. A denied/unsupported/failed
-// capture never blocks logging a chart - onAddChart(null) still opens the same modal with its
-// normal empty, manually-uploadable dropzone.
+// own JS to read its pixels directly, so both "Add chart" and "Log movement" instead use the
+// browser's own tab-capture API (navigator.mediaDevices.getDisplayMedia) - real product feedback:
+// whichever button the trader presses from this panel should attach the exact chart it is
+// currently showing. The permission is requested once (a real, unavoidable browser dialog - the
+// trader should keep "This Tab" selected) and the resulting MediaStream is kept alive in
+// captureStreamRef for the rest of this Live Session visit, so every later click (either button)
+// grabs a fresh frame silently, with no further prompts, until the trader stops sharing (the
+// track's own 'ended' event) or leaves the session. A denied/unsupported/failed capture never
+// blocks logging an entry - onAddChart(null)/onLogMove(null) still complete the same action
+// (the modal's normal empty, manually-uploadable dropzone; a movement entry with no image) that
+// clicking either button already did before this capture existed.
 function MarketChartView({ session, lang, onAddChart, onLogMove }) {
   const symbol = tradingViewSymbolFor(session.instrument);
   const wrapRef = React.useRef(null);
@@ -1830,7 +1833,10 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
     return stream;
   }
 
-  async function handleAddChartClick() {
+  // Shared by both "Add chart" and "Log movement" (real product request: whichever one is
+  // pressed from the Market chart panel should attach the chart image it is currently showing) -
+  // returns a File on success or null on any failure/denial, never throwing.
+  async function captureChartScreenshot() {
     setCaptureError('');
     setCapturing(true);
     let file = null;
@@ -1880,7 +1886,17 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
       setCaptureError(tr(lang, 'chartCapturePermissionDenied'));
     }
     setCapturing(false);
+    return file;
+  }
+
+  async function handleAddChartClick() {
+    const file = await captureChartScreenshot();
     onAddChart(file);
+  }
+
+  async function handleLogMoveClick() {
+    const file = await captureChartScreenshot();
+    onLogMove(file);
   }
 
   if (!symbol) return <ChartUnmappedNotice lang={lang} />;
@@ -1894,7 +1910,7 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
             <span className="navrya-tabular" dir="ltr" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{symbol} · {session.timeframe || interval}</span>
             {captureError && <span dir="auto" style={{ fontSize: 11, color: 'var(--danger)' }}>{captureError}</span>}
             <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Button variant="secondary" size="sm" icon="Activity" onClick={onLogMove}>{tr(lang, 'addMove')}</Button>
+              <Button variant="secondary" size="sm" icon={capturing ? 'LoaderCircle' : 'Activity'} disabled={capturing} title={tr(lang, 'chartCaptureHint')} onClick={handleLogMoveClick}>{tr(lang, 'addMove')}</Button>
               <Button variant="primary" size="sm" icon={capturing ? 'LoaderCircle' : 'ImagePlus'} disabled={capturing} title={tr(lang, 'chartCaptureHint')} onClick={handleAddChartClick}>{tr(lang, 'addChart')}</Button>
               <button
                 type="button" onClick={toggleFullscreen}
@@ -2615,7 +2631,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           <MarketChartView
             session={session} lang={lang}
             onAddChart={(file) => withPreSessionCheckIn(() => { setChartModalInitialFile(file); setChartModalOpen(true); })}
-            onLogMove={() => withPreSessionCheckIn(() => addEntry('movement'))}
+            onLogMove={(file) => withPreSessionCheckIn(() => { const entry = addEntry('movement'); if (file) attachImage(entry, file); })}
           />
         </div>
       )}
