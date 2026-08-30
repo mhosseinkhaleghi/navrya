@@ -13,18 +13,21 @@ import { ModelGlyph } from './ModelSwitcher.jsx';
    adaptations from the mock (no fabricated "SEEN" read-receipt, no "save to journal" - no real
    journal concept exists to wire it to; Copy/Regenerate ARE wired for real). */
 
-// A real `height` (not a `maxHeight` cap) on purpose - matches the design's own explicit intent
-// (its own annotation card literally reads "هر کلیک یک پله" - every click is a real, visible
-// step), verified via a real browser screenshot: with a `maxHeight` cap, growing from TALL to
-// FULL had no visible effect at all for a short reply (the box simply doesn't need the extra
-// room), which made the button look broken. COMPACT is wrapped in `min(...)` as the one genuinely
-// viewport-risky fixed-px value; TALL/FULL are already viewport-relative and therefore safe by
-// construction on any real screen size - the same vh-based fix a real prior overflow bug report
-// already established for this thread (see the outer 60vh body wrapper below, unchanged).
+// A `maxHeight` CAP, not a forced `height` - real user feedback on a real short reply: forcing the
+// thread to always fill the current stage's full height left a tall block of empty dead space
+// below a one-line answer, which read as "it just opens all the way regardless of the message."
+// The box now sizes to its real content and only engages a stage's ceiling once content actually
+// needs it - the stage buttons visibly matter for a long conversation, and correctly do nothing
+// visible for a short one, which is the honest, correct behavior (an earlier pass tried forcing a
+// real `height` instead specifically to make short-content growth visible, and that was the wrong
+// tradeoff - reverted here). COMPACT is wrapped in `min(...)` as the one genuinely viewport-risky
+// fixed-px value; TALL/FULL are already viewport-relative and therefore safe by construction on
+// any real screen size - the same vh-based fix a real prior overflow bug report already
+// established for this thread (see the outer 60vh body wrapper below, unchanged).
 const STAGE_META = [
-  { code: 'COMPACT', height: 'min(230px,40vh)' },
-  { code: 'TALL', height: '38vh' },
-  { code: 'FULL', height: '60vh' }
+  { code: 'COMPACT', maxHeight: 'min(230px,40vh)' },
+  { code: 'TALL', maxHeight: '38vh' },
+  { code: 'FULL', maxHeight: '60vh' }
 ];
 
 function Dots() {
@@ -436,7 +439,7 @@ export function ChatResponsePopover({
             // stage tiers (STAGE_META, above) replace that one fixed number with three real,
             // user-controlled choices, still bounded by the 60vh outer wrapper above regardless of
             // stage, so FULL can never itself reopen the original overflow bug.
-            style={{ display: 'flex', flexDirection: 'column', gap: 14, height: STAGE_META[stage].height, overflowY: 'auto', paddingInlineEnd: 4 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: STAGE_META[stage].maxHeight, overflowY: 'auto', paddingInlineEnd: 4 }}
           >
             {effectiveMessages.map((m, i) => {
               const prev = i > 0 ? effectiveMessages[i - 1] : null;

@@ -328,12 +328,20 @@ function ensureBackgroundLayer(navryaCharacter) {
   backdrop.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.28;filter:saturate(.85);'
     + 'background-image:linear-gradient(180deg,rgba(3,8,7,.35),rgba(3,8,7,.92)),var(--ps-backdrop);'
     + 'background-size:cover;background-position:center';
+  // Real bug fix (found via a live production report on the Commander page): this grid's line
+  // colour was a literal `rgba(38,51,50,...)` - a fixed dark green-gray, identical on every
+  // character. It happened to blend into Hunter's own green palette and go unnoticed there, but
+  // reads as a genuine wrong-colour cast on every other character. `--ps-accent-rgb` is the same
+  // reliable, globally-published (panel-system.js, not scoped to any subtree) per-character value
+  // already used for this exact "low-opacity accent tint" purpose elsewhere in this app (e.g.
+  // `session-chip`'s own `rgba(var(--ps-accent-rgb),...)` background/border) - used here instead
+  // of a second hardcoded colour.
   const grid = document.createElement('span');
   grid.id = 'navryaBackgroundGrid';
   grid.setAttribute('aria-hidden', 'true');
   grid.setAttribute('data-character', navryaCharacter);
   grid.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;'
-    + 'background-image:linear-gradient(rgba(38,51,50,.28) 1px,transparent 1px),linear-gradient(90deg,rgba(38,51,50,.28) 1px,transparent 1px);'
+    + 'background-image:linear-gradient(rgba(var(--ps-accent-rgb),.16) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--ps-accent-rgb),.16) 1px,transparent 1px);'
     + 'background-size:48px 48px';
   const glow = document.createElement('span');
   glow.setAttribute('aria-hidden', 'true');
