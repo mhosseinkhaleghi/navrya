@@ -60,10 +60,12 @@ function ConversationHistoryDropdown({ i18n, loading, conversations, onPick, onC
       role="listbox" aria-label={i18n.t('aiDockHistory')}
       style={{
         width: '100%', maxWidth: 360, boxSizing: 'border-box', maxHeight: 320, overflowY: 'auto',
-        borderRadius: 'var(--radius-14)', border: '1px solid rgba(244,234,215,.14)',
-        background: 'linear-gradient(180deg,rgba(244,234,215,.10),rgba(244,234,215,.035))',
-        backdropFilter: 'blur(26px) saturate(150%)', WebkitBackdropFilter: 'blur(26px) saturate(150%)',
-        boxShadow: 'var(--shadow-panel),inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 0 1px rgba(183,138,74,.18)',
+        // NAVRYA chat dock redesign: matches ChatResponsePopover.jsx's own new panel treatment -
+        // this dropdown, the Companion card, and the reply panel all render into the same ChatDock
+        // `children` slot and must read as one consistent family.
+        borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold-strong)',
+        background: 'linear-gradient(180deg,rgba(17,27,28,.97),rgba(7,11,15,.985))',
+        boxShadow: 'var(--shadow-panel),var(--glow-soft)',
         padding: 6
       }}
     >
@@ -181,6 +183,10 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   const models = React.useMemo(() => settingsStore.providerCatalog().map((p) => ({
     id: p.id, label: core.providerLabel(p.id), trait: p.trait, knockout: !!p.knockout
   })), []);
+  // NAVRYA chat dock redesign: the redesigned reply panel's header shows a real avatar/label for
+  // the engine that answered - the same "current model" ChatDock.jsx's own pill already resolves
+  // from `models`/`providerId`, recomputed the same way rather than a second source of truth.
+  const activeModel = models.find((m) => m.id === providerId) || models[0] || null;
 
   // Keeps this dock and the AI Assistant screen's tab strip pointed at the same engine even
   // though they are two separate React roots (README: "one selection, two surfaces") - whichever
@@ -315,6 +321,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     setText('');
     setPopover((p) => ({ open: true, state: 'thinking', prompt: value, messages: p && p.messages }));
     setBusy(true);
+    // NAVRYA chat dock redesign: real per-turn timestamp/latency for the message-grid's timestamp
+    // row (never fabricated - a conversation resumed from server history simply has no `at` on
+    // its messages, and the redesigned popover renders no timestamp for those, rather than a
+    // guessed one - see ChatResponsePopover.jsx's own comment).
+    const sentAt = Date.now();
     try {
       // Journey G, Item 1: a Companion "Explain" tap threads companionIntent:'explain' through so
       // chat-dock-core.js (a) never lets an unrelated registered process elsewhere on the page
@@ -335,14 +346,17 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       if (result.kind === 'safety') {
         // Mirrors the retired global-ai-dock.js exactly: the user turn is still recorded, but
         // no assistant turn exists to append when the safety gate stops the reply.
-        setTranscript((t) => t.concat([{ role: 'user', content: value }]).slice(-24));
+        setTranscript((t) => t.concat([{ role: 'user', content: value, at: sentAt }]).slice(-24));
         const safetyNode = window.TradeJournalMentalHealthSafety
           ? window.TradeJournalMentalHealthSafety.renderSafetyCard(closePopover)
           : null;
         setPopover({ open: true, state: 'safety', prompt: value, safetyNode });
         return { kind: 'safety', reply: '' };
       } else {
-        const nextTranscript = transcript.concat([{ role: 'user', content: value }, { role: 'assistant', content: result.reply || '' }]).slice(-24);
+        const nextTranscript = transcript.concat([
+          { role: 'user', content: value, at: sentAt },
+          { role: 'assistant', content: result.reply || '', at: Date.now(), latencyMs: Date.now() - sentAt }
+        ]).slice(-24);
         setTranscript(nextTranscript);
         if (result.conversationId) setActiveConversationId(result.conversationId);
         setPopover({
@@ -352,7 +366,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
           // result.kind === 'workflow' (an AI-discovered/in-progress action, e.g. session.create):
           // fields it already applied live are shown as plain meta chips - reusing the popover's
           // existing meta row rather than a new dedicated "AI action progress" component.
-          meta: result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : []
+          meta: result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : [],
+          // NAVRYA chat dock redesign: real "a Journey C proactive rule was applied to this reply"
+          // banner - only ever true when chat-dock-core.js genuinely resolved a proactive
+          // confirmation this turn (ai-proactive-engine.js's own real ruleId), never fabricated.
+          ruleApplied: result.kind === 'proactive-resolved'
         });
         markRenderTiming(renderStampAt);
         // Returned so a voice-originated turn (see the Realtime wiring below) can speak back a
@@ -374,7 +392,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         };
       }
     } catch (_err) {
-      const nextTranscript = transcript.concat([{ role: 'user', content: value }, { role: 'assistant', content: i18n.t('aiDockError') }]).slice(-24);
+      const nextTranscript = transcript.concat([{ role: 'user', content: value, at: sentAt }, { role: 'assistant', content: i18n.t('aiDockError'), at: Date.now() }]).slice(-24);
       setTranscript(nextTranscript);
       setPopover({ open: true, state: 'answer', messages: nextTranscript });
       return { kind: 'error', reply: i18n.t('aiDockError') };
@@ -785,6 +803,17 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     setPopover((p) => (p ? { ...p, suggestions: p.suggestions.filter((s) => s !== item) } : p));
   }
 
+  // NAVRYA chat dock redesign: "Regenerate" (the design's "پاسخ دیگر") re-asks the same last user
+  // message as a brand-new turn through the exact same submit() a typed message already goes
+  // through - it does not attempt to replace the prior turn in place. Honest adaptation from the
+  // mock: this app's transcript is a real, linear, append-only history (Section 3/7.14), so
+  // "another answer" reads as a new exchange rather than silently rewriting one that already
+  // happened - consistent with never mutating past turns anywhere else in this app.
+  function regenerateLastReply(lastUserText) {
+    if (!lastUserText || busy) return;
+    submit(lastUserText);
+  }
+
   function triggerAttach() { if (fileInputRef.current) fileInputRef.current.click(); }
 
   async function onFileChosen(event) {
@@ -922,6 +951,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
             reviewFields={popover.reviewFields || []} reviewEmptyLabel={popover.reviewEmptyLabel}
             reviewActions={reviewActions}
             onClose={closePopover}
+            model={activeModel} locale={i18n.language()}
+            todayLabel={i18n.t('aiDockToday')} yesterdayLabel={i18n.t('aiDockYesterday')}
+            sizeLabels={{
+              compact: i18n.t('aiDockStageCompact'), tall: i18n.t('aiDockStageTall'), full: i18n.t('aiDockStageFull'),
+              grow: i18n.t('aiDockGrow'), shrink: i18n.t('aiDockShrink'),
+              fold: i18n.t('aiDockFold'), unfold: i18n.t('aiDockUnfold'), close: i18n.t('aiDockClose')
+            }}
+            messageActionLabels={{ copy: i18n.t('aiDockCopyReply'), copied: i18n.t('aiDockCopied'), regenerate: i18n.t('aiDockRegenerate') }}
+            ruleApplied={!!popover.ruleApplied} ruleAppliedLabel={i18n.t('aiDockRuleApplied')}
+            onRegenerate={regenerateLastReply}
           />
         )}
       </ChatDock>

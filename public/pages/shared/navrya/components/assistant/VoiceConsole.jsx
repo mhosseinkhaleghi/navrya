@@ -274,6 +274,14 @@ export function VoiceConsole({
       <span aria-hidden="true" style={{ position: 'absolute', bottom: 5, insetInlineStart: 5, width: 14, height: 14, borderBottom: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineStart: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
 
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border-hairline)' }}>
+        {/* NAVRYA chat dock redesign consistency pass: the same one-time header sweep
+            ChatResponsePopover.jsx's header now plays (NavryaChatDock.dc.html) - purely
+            decorative, plays once on mount, touches nothing about the real voice transport/turn
+            state machine below (NavryaVoiceMode.dc.html itself is unchanged - this console already
+            matched it pixel-for-pixel before this pass). */}
+        <span aria-hidden="true" style={{ position: 'absolute', top: 0, insetInlineStart: 0, insetInlineEnd: 0, height: 1, overflow: 'hidden' }}>
+          <span style={{ display: 'block', width: '38%', height: 1, background: 'linear-gradient(90deg,transparent,var(--char-accent),transparent)', animation: 'navrya-sweep-a 900ms var(--ease-out) both' }} />
+        </span>
         <span style={{ width: 30, height: 30, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)' }}>
           <ModelGlyph model={model} size={16} />
         </span>

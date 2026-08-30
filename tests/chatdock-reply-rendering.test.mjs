@@ -16,10 +16,14 @@ const root = process.cwd();
 // silently reintroducing the regression, the same convention already established for the
 // panel-system.js unmount fix and the ChatDock/Modal spacing fix.
 
-test('ChatResponsePopover.jsx preserves real line breaks (whiteSpace: pre-line) on both message-rendering paths', async () => {
+// NAVRYA chat dock redesign (NavryaChatDock.dc.html): `lines` (the rare screenshot-analysis error
+// fallback) is now folded into the same real `effectiveMessages` array `messages` already uses -
+// one render path, not two independently maintained ones, so a line-break/markdown fix applied
+// once can never silently miss the other.
+test('ChatResponsePopover.jsx preserves real line breaks (whiteSpace: pre-line), whether a reply came from a real multi-turn `messages` array or the single-answer `lines` fallback', async () => {
   const source = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
-  const occurrences = source.match(/whiteSpace:\s*'pre-line'/g) || [];
-  assert.ok(occurrences.length >= 2, 'both the multi-turn `messages` path and the single-answer `lines` path must preserve real line breaks - found ' + occurrences.length);
+  assert.match(source, /whiteSpace: 'pre-line'/, 'the message paragraph must preserve real line breaks');
+  assert.match(source, /const effectiveMessages = messages && messages\.length/, '`lines` must be unified into the same message-array render path as `messages`, not a separate parallel one');
 });
 
 test('ChatResponsePopover.jsx strips literal markdown bold/header tokens before rendering, on both paths', async () => {
@@ -73,16 +77,22 @@ test('ChatResponsePopover.jsx caps its scrollable message thread with a viewport
   assert.match(source, /maxHeight:\s*'\d+vh'/, 'must use a viewport-relative (vh) cap instead');
 });
 
-test('ChatResponsePopover.jsx has a real collapse/expand toggle next to the close button, and collapsing hides the body while keeping the header (and the toggle itself) reachable', async () => {
+// NAVRYA chat dock redesign (NavryaChatDock.dc.html): the old plain "collapsed" boolean/chevron
+// became a real fold/unfold toggle in the new header, matching the design's own fold affordance -
+// same protected behavior (a real toggle, inside the header, that hides the body without
+// unmounting the header), renamed to match the new vocabulary.
+test('ChatResponsePopover.jsx has a real fold/unfold toggle inside the header, and folding hides the body while keeping the header (and the toggle itself) reachable', async () => {
   const source = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
-  assert.match(source, /const \[collapsed, setCollapsed\] = React\.useState\(false\)/, 'must track a real collapsed/expanded state');
-  assert.match(source, /setCollapsed\(\(v\) => !v\)/, 'the toggle button must actually flip the state, not just set it one way');
-  assert.match(source, /\{!collapsed && <div/, 'collapsing must hide the body content, not just visually shrink it');
-  // The toggle button itself must be OUTSIDE the collapsible body (i.e. still inside <header>),
-  // otherwise collapsing would hide the only control that could ever expand it again.
+  assert.match(source, /const \[folded, setFolded\] = React\.useState\(false\)/, 'must track a real folded/expanded state');
+  assert.match(source, /setFolded\(\(f\) => !f\)/, 'the toggle must actually flip the state, not just set it one way');
+  assert.match(source, /\{!folded && <div/, 'folding must hide the body content, not just visually shrink it');
+  // The toggle button itself must be OUTSIDE the foldable body (i.e. still inside <header>),
+  // otherwise folding would hide the only control that could ever unfold it again.
   const headerEnd = source.indexOf('</header>');
-  const toggleAt = source.indexOf('setCollapsed((v) => !v)');
-  assert.ok(toggleAt > -1 && toggleAt < headerEnd, 'the collapse toggle must live inside the header, before it closes, so it is never hidden by its own collapsed state');
+  const toggleFnAt = source.indexOf('function toggleFold()');
+  const toggleButtonAt = source.indexOf('onClick={toggleFold}');
+  assert.ok(toggleFnAt > -1, 'a real toggleFold() function must exist');
+  assert.ok(toggleButtonAt > -1 && toggleButtonAt < headerEnd, 'the fold toggle button must live inside the header, before it closes, so it is never hidden by its own folded state');
 });
 
 // --- trade.calculator's own real alias coverage (found via a real user report: "open long trade

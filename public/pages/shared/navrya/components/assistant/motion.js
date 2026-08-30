@@ -16,6 +16,10 @@ const ASSISTANT_MOTION_CSS = `
 @keyframes navrya-tilt{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg)}}
 @keyframes navrya-dive{0%,100%{transform:translateY(-2px)}50%{transform:translateY(5px)}}
 @keyframes navrya-wink{0%,84%,100%{transform:scaleY(1)}91%{transform:scaleY(.14)}}
+@keyframes navrya-sweep-a{0%{transform:translateX(-110%);opacity:0}18%{opacity:1}100%{transform:translateX(110%);opacity:0}}
+@keyframes navrya-sweep-b{0%{transform:translateX(-110%);opacity:0}18%{opacity:1}100%{transform:translateX(110%);opacity:0}}
+@keyframes navrya-pulse-a{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.1);opacity:0}}
+@keyframes navrya-pulse-b{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.1);opacity:0}}
 [data-navrya-assistant] input::placeholder{color:var(--text-muted);opacity:1}
 [data-navrya-assistant] input:focus{outline:none}
 @media (prefers-reduced-motion:reduce){[data-navrya-assistant] *,[data-navrya-assistant]{animation:none!important;transition:none!important}}

@@ -12,12 +12,15 @@ import { ActionRow, MiniButton } from './ChatResponsePopover.jsx';
 // ai-journey-engine.js nextBestStep() (§12/§17).
 export function CompanionCard({ card, i18n, onContinue, onExplain, onLater, onSkip, onStart, onWhatIs, onWelcomeLater }) {
   if (!card) return null;
+  // NAVRYA chat dock redesign: matches ChatResponsePopover.jsx's own new panel treatment (same
+  // background/border/glow VoiceConsole.jsx already established) instead of the old translucent
+  // frosted-glass card - both surfaces render into the same ChatDock `children` slot, so they must
+  // read as one consistent family rather than two different visual styles.
   const wrapperStyle = {
     width: '100%', maxWidth: 360, boxSizing: 'border-box',
-    borderRadius: 'var(--radius-14)', border: '1px solid rgba(244,234,215,.14)',
-    background: 'linear-gradient(180deg,rgba(244,234,215,.10),rgba(244,234,215,.035))',
-    backdropFilter: 'blur(26px) saturate(150%)', WebkitBackdropFilter: 'blur(26px) saturate(150%)',
-    boxShadow: 'var(--shadow-panel),inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 0 1px rgba(183,138,74,.18)',
+    borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold-strong)',
+    background: 'linear-gradient(180deg,rgba(17,27,28,.97),rgba(7,11,15,.985))',
+    boxShadow: 'var(--shadow-panel),var(--glow-soft)',
     padding: 14
   };
   const titleStyle = { font: 'var(--type-body-strong)', color: 'var(--text-primary)', marginBottom: 4 };

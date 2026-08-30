@@ -96,10 +96,15 @@ test('the vertical 12px gap between the response surface and the dock row is unc
 
 test('the response body is now its own bounded, scrollable region covering EVERY section (lines/meta/suggestions/review), not only the messages thread - a header stays outside this wrapper and therefore always reachable', () => {
   assert.match(responsePopoverSrc, /maxHeight: '60vh', overflowY: 'auto', boxSizing: 'border-box' \}\}>/);
-  // The header (with its collapse/close controls) is rendered as a sibling BEFORE this scrollable
-  // wrapper in the JSX, i.e. outside it - never scrolled away with the body.
+  // The header (with its fold/close controls) is rendered as a sibling BEFORE this scrollable
+  // wrapper in the JSX, i.e. outside it - never scrolled away with the body. Matched on the same
+  // full literal pattern as the assertion above (not the bare "maxHeight: '60vh'" substring,
+  // which - since the NAVRYA chat dock redesign added a real height-stage tier table using that
+  // same '60vh' value for its own FULL tier - now also appears earlier in the file, before
+  // <header, and would otherwise falsely resolve to that unrelated declaration instead of this
+  // wrapper).
   const headerIdx = responsePopoverSrc.indexOf('<header');
-  const scrollWrapperIdx = responsePopoverSrc.indexOf("maxHeight: '60vh'");
+  const scrollWrapperIdx = responsePopoverSrc.indexOf("maxHeight: '60vh', overflowY: 'auto', boxSizing: 'border-box' }}>");
   assert.ok(headerIdx > -1 && scrollWrapperIdx > headerIdx, 'the header must be declared before (outside) the scrollable body wrapper');
 });
 
