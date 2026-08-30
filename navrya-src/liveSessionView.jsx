@@ -145,7 +145,11 @@ const copy = {
     chartUnmappedTitle: 'برای این سشن نمادی مشخص نشده است',
     chartUnmappedBodyNoInstrument: 'برای این سشن نمادی مشخص نشده است، بنابراین چارتی برای نمایش وجود ندارد.',
     chartUnmappedHint: 'برای تعیین نماد سشن، روی چیپ نماد در نوار فرمان بالا کلیک کنید؛ پس از تعیین نماد، TradingView چارت متناظر را باز می‌کند و شما می‌توانید از داخل خود چارت، بازار دیگری را نیز انتخاب کنید.',
-    tvAttribution: 'رصد تمام بازارها در TradingView', enterFullscreenChart: 'تمام‌صفحه', exitFullscreenChart: 'خروج از تمام‌صفحه'
+    tvAttribution: 'رصد تمام بازارها در TradingView', enterFullscreenChart: 'تمام‌صفحه', exitFullscreenChart: 'خروج از تمام‌صفحه',
+    chartCaptureHint: 'یک اسکرین‌شات از این چارت می‌گیرد. ممکن است مرورگر یک‌بار از شما بخواهد اشتراک‌گذاری همین تب را تأیید کنید.',
+    chartCapturePermissionDenied: 'اجازه‌ی اسکرین‌شات داده نشد. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
+    chartCaptureUnsupported: 'گرفتن اسکرین‌شات در این مرورگر پشتیبانی نمی‌شود. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
+    chartCaptureFailed: 'گرفتن اسکرین‌شات از چارت ممکن نشد. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.'
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
@@ -210,7 +214,11 @@ const copy = {
     chartUnmappedTitle: 'لم يتم تحديد أداة لهذه الجلسة',
     chartUnmappedBodyNoInstrument: 'لم يتم تحديد أداة لهذه الجلسة، لذا لا يوجد مخطط لعرضه.',
     chartUnmappedHint: 'لتحديد أداة الجلسة، انقر على شارة الأداة في شريط الأوامر أعلاه - بمجرد التحديد، سيفتح TradingView مخططاً مطابقاً، ويمكنك اختيار سوق آخر بنفسك من داخل المخطط نفسه.',
-    tvAttribution: 'تتبع جميع الأسواق على TradingView', enterFullscreenChart: 'ملء الشاشة', exitFullscreenChart: 'الخروج من وضع ملء الشاشة'
+    tvAttribution: 'تتبع جميع الأسواق على TradingView', enterFullscreenChart: 'ملء الشاشة', exitFullscreenChart: 'الخروج من وضع ملء الشاشة',
+    chartCaptureHint: 'يلتقط لقطة شاشة لهذا المخطط. قد يطلب المتصفح مرة واحدة الموافقة على مشاركة هذا التبويب.',
+    chartCapturePermissionDenied: 'لم يتم منح إذن التقاط الشاشة. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
+    chartCaptureUnsupported: 'التقاط لقطة الشاشة غير مدعوم في هذا المتصفح. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
+    chartCaptureFailed: 'تعذّر التقاط لقطة شاشة للمخطط. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.'
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
@@ -275,7 +283,11 @@ const copy = {
     chartUnmappedTitle: 'No instrument set for this session',
     chartUnmappedBodyNoInstrument: 'No instrument is set for this session, so there is no chart to show.',
     chartUnmappedHint: 'Click the instrument chip in the command bar above to set the session instrument - once set, TradingView opens a matching chart, and you can pick a different market yourself from inside the chart.',
-    tvAttribution: 'Track all markets on TradingView', enterFullscreenChart: 'Fullscreen', exitFullscreenChart: 'Exit fullscreen'
+    tvAttribution: 'Track all markets on TradingView', enterFullscreenChart: 'Fullscreen', exitFullscreenChart: 'Exit fullscreen',
+    chartCaptureHint: 'Captures a screenshot of this chart. Your browser may ask you to share this tab once.',
+    chartCapturePermissionDenied: 'Screenshot permission was not granted. You can still attach an image manually below.',
+    chartCaptureUnsupported: 'Screenshot capture is not supported in this browser. You can still attach an image manually below.',
+    chartCaptureFailed: 'Could not capture a screenshot of the chart. You can still attach an image manually below.'
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
@@ -340,7 +352,11 @@ const copy = {
     chartUnmappedTitle: 'Esta sesión no tiene un instrumento definido',
     chartUnmappedBodyNoInstrument: 'Esta sesión no tiene un instrumento definido, por lo que no hay ningún gráfico que mostrar.',
     chartUnmappedHint: 'Haz clic en la etiqueta del instrumento en la barra de comandos superior para definirlo - una vez definido, TradingView abrirá un gráfico correspondiente, y podrás elegir otro mercado tú mismo desde dentro del propio gráfico.',
-    tvAttribution: 'Sigue todos los mercados en TradingView', enterFullscreenChart: 'Pantalla completa', exitFullscreenChart: 'Salir de pantalla completa'
+    tvAttribution: 'Sigue todos los mercados en TradingView', enterFullscreenChart: 'Pantalla completa', exitFullscreenChart: 'Salir de pantalla completa',
+    chartCaptureHint: 'Captura una imagen de este gráfico. Es posible que el navegador te pida una vez compartir esta pestaña.',
+    chartCapturePermissionDenied: 'No se concedió permiso para la captura. Aún puedes adjuntar una imagen manualmente abajo.',
+    chartCaptureUnsupported: 'La captura de pantalla no es compatible con este navegador. Aún puedes adjuntar una imagen manualmente abajo.',
+    chartCaptureFailed: 'No se pudo capturar una imagen del gráfico. Aún puedes adjuntar una imagen manualmente abajo.'
   }
 };
 
@@ -550,10 +566,14 @@ function SessionModalShell({ title, icon, eyebrow, onClose, footer, width = 640,
 // the legacy session-entry-flow.js's openEntry('chart') always asked for: a required image,
 // a required timeframe (the DC prototype silently defaulted this and never asked), market, date,
 // an optional note and scenario linking. Same real entry shape TradeJournalWorkspace saves.
-function ChartEntryModal({ session, lang, onClose, onSubmit }) {
+// initialFile (optional) pre-fills the upload with an already-captured image - e.g. the Market
+// chart panel's own screenshot-capture button (see MarketChartView) - so the trader lands on a
+// populated preview instead of an empty dropzone; every other field/behavior is unchanged, and a
+// plain manual "Add chart" (Timeline's own buttons) never passes this prop.
+function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
   const rtl = lang === 'fa' || lang === 'ar';
-  const [file, setFile] = React.useState(null);
-  const [previewUrl, setPreviewUrl] = React.useState('');
+  const [file, setFile] = React.useState(initialFile || null);
+  const [previewUrl, setPreviewUrl] = React.useState(() => (initialFile ? URL.createObjectURL(initialFile) : ''));
   const [timeframe, setTimeframe] = React.useState(session.timeframe || '5m');
   const [market, setMarket] = React.useState(sessionsAdapter.displayCity(session.market) === 'New York' ? 'NewYork' : (session.market || 'London'));
   // HOTFIX: session.date used to come out of NewSessionDialog's own hardcoded, non-ISO default
@@ -1720,6 +1740,34 @@ function ChartUnmappedNotice({ lang }) {
   );
 }
 
+// Grabs one current frame from a live MediaStream as a CanvasImageSource (an ImageBitmap where
+// the ImageCapture API exists - Chromium - otherwise a <video>-element fallback for broader
+// engine support). Used only by MarketChartView's screenshot capture below.
+function grabStreamFrame(stream) {
+  if (typeof ImageCapture !== 'undefined') {
+    const track = stream.getVideoTracks()[0];
+    return new ImageCapture(track).grabFrame();
+  }
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      video.play().then(() => {
+        requestAnimationFrame(() => {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          canvas.getContext('2d').drawImage(video, 0, 0);
+          resolve(canvas);
+        });
+      }).catch(reject);
+    };
+    video.onerror = () => reject(new Error('video capture element failed'));
+  });
+}
+
 // Third CommandBar view, beside Timeline and Session report - a full TradingView chart for this
 // Session's real instrument/timeframe. session.instrument is the only source read for the symbol
 // (never session.market/city); session.market/city is only ever a city/session-timezone concept.
@@ -1730,10 +1778,25 @@ function ChartUnmappedNotice({ lang }) {
 // the trader wants to log a chart/movement entry without leaving the chart they are looking at).
 // Fullscreen uses the standard Fullscreen API on wrapRef - only this panel goes fullscreen, never
 // the whole page - so the header row (title/buttons) stays visible above the enlarged chart.
+//
+// Screenshot capture (user's explicit choice over TradingView's own native export, see
+// docs/HANDOFF.md): the free widget renders in a cross-origin iframe with no way for this page's
+// own JS to read its pixels directly, so "Add chart" instead uses the browser's own tab-capture
+// API (navigator.mediaDevices.getDisplayMedia). The permission is requested once (a real,
+// unavoidable browser dialog - the trader should keep "This Tab" selected) and the resulting
+// MediaStream is kept alive in captureStreamRef for the rest of this Live Session visit, so every
+// later "Add chart" click grabs a fresh frame silently, with no further prompts, until the trader
+// stops sharing (the track's own 'ended' event) or leaves the session. A denied/unsupported/failed
+// capture never blocks logging a chart - onAddChart(null) still opens the same modal with its
+// normal empty, manually-uploadable dropzone.
 function MarketChartView({ session, lang, onAddChart, onLogMove }) {
   const symbol = tradingViewSymbolFor(session.instrument);
   const wrapRef = React.useRef(null);
+  const chartElRef = React.useRef(null);
+  const captureStreamRef = React.useRef(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [capturing, setCapturing] = React.useState(false);
+  const [captureError, setCaptureError] = React.useState('');
 
   React.useEffect(() => {
     function onChange() { setIsFullscreen(!!document.fullscreenElement && document.fullscreenElement === wrapRef.current); }
@@ -1741,10 +1804,83 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
+  // Release the OS-level "sharing this tab" indicator when the trader finally leaves the whole
+  // Live Session (this component only ever unmounts then, per the persistence fix above).
+  React.useEffect(() => () => {
+    const stream = captureStreamRef.current;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+  }, []);
+
   function toggleFullscreen() {
     if (document.fullscreenElement) { document.exitFullscreen(); return; }
     const el = wrapRef.current;
     if (el && el.requestFullscreen) el.requestFullscreen();
+  }
+
+  async function ensureCaptureStream() {
+    const existing = captureStreamRef.current;
+    if (existing && existing.getVideoTracks()[0] && existing.getVideoTracks()[0].readyState === 'live') return existing;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return null;
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { displaySurface: 'browser' }, preferCurrentTab: true, selfBrowserSurface: 'include', audio: false
+    });
+    const track = stream.getVideoTracks()[0];
+    if (track) track.addEventListener('ended', () => { if (captureStreamRef.current === stream) captureStreamRef.current = null; });
+    captureStreamRef.current = stream;
+    return stream;
+  }
+
+  async function handleAddChartClick() {
+    setCaptureError('');
+    setCapturing(true);
+    let file = null;
+    try {
+      const stream = await ensureCaptureStream();
+      if (!stream) {
+        setCaptureError(tr(lang, 'chartCaptureUnsupported'));
+      } else {
+        // getDisplayMedia only ever captures what is currently painted on screen - a chart
+        // panel taller than the visible viewport (a real, observed case: CommandBar/PulseBand
+        // push it far enough down that the panel's own bottom can be scrolled out of view) would
+        // otherwise have its off-screen portion silently missing from the captured frame. Scroll
+        // it fully into view first (a no-op if it's already visible), then wait one frame
+        // interval for the resulting repaint to actually reach the capture stream.
+        if (chartElRef.current && chartElRef.current.scrollIntoView) {
+          chartElRef.current.scrollIntoView({ block: 'nearest' });
+          await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+        const frame = await grabStreamFrame(stream);
+        const el = chartElRef.current;
+        const rect = el ? el.getBoundingClientRect() : null;
+        // Clamp to the real, currently-visible viewport too - a safety net for the rare case the
+        // chart is still taller than the viewport even after scrollIntoView (e.g. a very short
+        // browser window), so the crop can never request pixels the stream never actually
+        // captured, which would otherwise leave blank space in the result.
+        const visLeft = rect ? Math.max(0, rect.left) : 0;
+        const visTop = rect ? Math.max(0, rect.top) : 0;
+        const visWidth = rect ? Math.min(window.innerWidth, rect.left + rect.width) - visLeft : 0;
+        const visHeight = rect ? Math.min(window.innerHeight, rect.top + rect.height) - visTop : 0;
+        if (visWidth > 0 && visHeight > 0) {
+          const scaleX = frame.width / window.innerWidth;
+          const scaleY = frame.height / window.innerHeight;
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(visWidth * scaleX));
+          canvas.height = Math.max(1, Math.round(visHeight * scaleY));
+          canvas.getContext('2d').drawImage(
+            frame, visLeft * scaleX, visTop * scaleY, visWidth * scaleX, visHeight * scaleY,
+            0, 0, canvas.width, canvas.height
+          );
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+          if (blob) file = new File([blob], 'market-chart-' + Date.now() + '.png', { type: 'image/png' });
+        }
+        if (!file) setCaptureError(tr(lang, 'chartCaptureFailed'));
+      }
+    } catch (_) {
+      // Includes the trader cancelling/denying the browser's own share-tab prompt.
+      setCaptureError(tr(lang, 'chartCapturePermissionDenied'));
+    }
+    setCapturing(false);
+    onAddChart(file);
   }
 
   if (!symbol) return <ChartUnmappedNotice lang={lang} />;
@@ -1756,9 +1892,10 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Icon name="CandlestickChart" size={18} /><span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'viewChart')}</span>
             <span className="navrya-tabular" dir="ltr" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{symbol} · {session.timeframe || interval}</span>
+            {captureError && <span dir="auto" style={{ fontSize: 11, color: 'var(--danger)' }}>{captureError}</span>}
             <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Button variant="secondary" size="sm" icon="Activity" onClick={onLogMove}>{tr(lang, 'addMove')}</Button>
-              <Button variant="primary" size="sm" icon="ImagePlus" onClick={onAddChart}>{tr(lang, 'addChart')}</Button>
+              <Button variant="primary" size="sm" icon={capturing ? 'LoaderCircle' : 'ImagePlus'} disabled={capturing} title={tr(lang, 'chartCaptureHint')} onClick={handleAddChartClick}>{tr(lang, 'addChart')}</Button>
               <button
                 type="button" onClick={toggleFullscreen}
                 title={tr(lang, isFullscreen ? 'exitFullscreenChart' : 'enterFullscreenChart')}
@@ -1769,7 +1906,9 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
               </button>
             </span>
           </div>
-          <TradingViewAdvancedChart symbol={symbol} interval={interval} lang={lang} fill={isFullscreen} />
+          <div ref={chartElRef}>
+            <TradingViewAdvancedChart symbol={symbol} interval={interval} lang={lang} fill={isFullscreen} />
+          </div>
         </div>
       </Panel>
     </div>
@@ -2071,6 +2210,10 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   const [openScenarios, setOpenScenarios] = React.useState(() => new Set());
   const [imageUrls, setImageUrls] = React.useState({});
   const [chartModalOpen, setChartModalOpen] = React.useState(false);
+  // Set only by the Market chart panel's own screenshot-capture "Add chart" button
+  // (MarketChartView's onAddChart(file)) - Timeline's plain "Add chart" buttons never touch this,
+  // so the modal keeps opening with an empty dropzone for that unchanged path.
+  const [chartModalInitialFile, setChartModalInitialFile] = React.useState(null);
   const [fateStep, setFateStep] = React.useState(null); // null | 'entry' | 'summary'
   const railRef = React.useRef(null);
 
@@ -2207,7 +2350,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       note: note || '', relatedScenarioIds: relatedScenarioIds || [], scenarios: []
     };
     persist((s) => { s.entries = (s.entries || []).concat([entry]); }, 'entry_added', tr(lang, 'addChart'));
-    setChartModalOpen(false); setFilter('all'); setQ('');
+    setChartModalOpen(false); setChartModalInitialFile(null); setFilter('all'); setQ('');
     selectEntry(entry.id);
   }
   async function submitFateEntry({ file, timeframe, market, note }) {
@@ -2471,13 +2614,19 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         <div style={{ display: view === 'chart' ? 'block' : 'none' }}>
           <MarketChartView
             session={session} lang={lang}
-            onAddChart={() => withPreSessionCheckIn(() => setChartModalOpen(true))}
+            onAddChart={(file) => withPreSessionCheckIn(() => { setChartModalInitialFile(file); setChartModalOpen(true); })}
             onLogMove={() => withPreSessionCheckIn(() => addEntry('movement'))}
           />
         </div>
       )}
 
-      {chartModalOpen && <ChartEntryModal session={session} lang={lang} onClose={() => setChartModalOpen(false)} onSubmit={submitChartEntry} />}
+      {chartModalOpen && (
+        <ChartEntryModal
+          session={session} lang={lang} initialFile={chartModalInitialFile}
+          onClose={() => { setChartModalOpen(false); setChartModalInitialFile(null); }}
+          onSubmit={submitChartEntry}
+        />
+      )}
       {fateStep === 'entry' && <FateEntryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSubmit={submitFateEntry} />}
       {fateStep === 'summary' && <FateSummaryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSave={saveFateSummary} />}
     </div>

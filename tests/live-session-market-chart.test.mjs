@@ -64,7 +64,7 @@ test('the Market chart widget is mounted once (lazily) and never destroyed on a 
   // of this Live Session visit) and only ever hidden/shown via CSS display, never remounted.
   const persistBlock = sliceBetween('{chartEverOpenedRef.current && (', '{chartModalOpen', 'the chartEverOpenedRef persistence block');
   assert.match(persistBlock, /style=\{\{ display: view === 'chart' \? 'block' : 'none' \}\}/);
-  assert.match(persistBlock, /<MarketChartView\s*\n\s*session=\{session\} lang=\{lang\}\s*\n\s*onAddChart=\{\(\) => withPreSessionCheckIn\(\(\) => setChartModalOpen\(true\)\)\}\s*\n\s*onLogMove=\{\(\) => withPreSessionCheckIn\(\(\) => addEntry\('movement'\)\)\}/);
+  assert.match(persistBlock, /<MarketChartView\s*\n\s*session=\{session\} lang=\{lang\}\s*\n\s*onAddChart=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ setChartModalInitialFile\(file\); setChartModalOpen\(true\); \}\)\}\s*\n\s*onLogMove=\{\(\) => withPreSessionCheckIn\(\(\) => addEntry\('movement'\)\)\}/);
 });
 
 test('the widget loads the official TradingView free hosted Advanced Chart embed script, and nothing else', () => {
@@ -148,10 +148,59 @@ test('MarketChartView reads only session.instrument for the chart symbol, never 
   assert.doesNotMatch(view, /tradingViewSymbolFor\(session\.market/);
 });
 
-test('MarketChartView reuses the exact same Timeline actions for Add chart / Log movement, reachable from the chart without switching views', () => {
+test('MarketChartView reuses the exact same Timeline action for Log movement, reachable from the chart without switching views', () => {
   const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
   assert.match(view, /<Button variant="secondary" size="sm" icon="Activity" onClick=\{onLogMove\}>\{tr\(lang, 'addMove'\)\}<\/Button>/);
-  assert.match(view, /<Button variant="primary" size="sm" icon="ImagePlus" onClick=\{onAddChart\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
+});
+
+test('MarketChartView\'s Add chart button captures a screenshot via the browser\'s own tab-capture API before calling onAddChart(file) - never blocking on failure/denial', () => {
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(view, /<Button variant="primary" size="sm" icon=\{capturing \? 'LoaderCircle' : 'ImagePlus'\} disabled=\{capturing\} title=\{tr\(lang, 'chartCaptureHint'\)\} onClick=\{handleAddChartClick\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
+  // getDisplayMedia is a native browser API - no npm package, no TradingView involvement at all.
+  assert.match(view, /navigator\.mediaDevices\.getDisplayMedia\(\{/);
+  assert.match(view, /preferCurrentTab: true/);
+  // A stale/stopped stream ('ended', e.g. the trader used the browser's own "Stop sharing")
+  // triggers a fresh prompt on the next click rather than silently failing forever.
+  assert.match(view, /track\.addEventListener\('ended', \(\) => \{ if \(captureStreamRef\.current === stream\) captureStreamRef\.current = null; \}\);/);
+  // The granted stream is reused (never re-requested) while its track is still live.
+  assert.match(view, /if \(existing && existing\.getVideoTracks\(\)\[0\] && existing\.getVideoTracks\(\)\[0\]\.readyState === 'live'\) return existing;/);
+  // Every failure path (unsupported/denied/no-frame) still resolves the flow by calling
+  // onAddChart with null, never leaving the trader stuck without a way to log the chart.
+  assert.match(view, /onAddChart\(file\);/);
+  assert.match(view, /setCaptureError\(tr\(lang, 'chartCaptureUnsupported'\)\);/);
+  assert.match(view, /setCaptureError\(tr\(lang, 'chartCaptureFailed'\)\);/);
+  assert.match(view, /setCaptureError\(tr\(lang, 'chartCapturePermissionDenied'\)\);/);
+  // The captured frame is cropped to the real chart element's own bounding rect, never the
+  // whole captured tab verbatim.
+  assert.match(view, /const rect = el \? el\.getBoundingClientRect\(\) : null;/);
+});
+
+test('the chart is scrolled fully into view before capture, and the crop is clamped to the real visible viewport - a real bug found live: a chart panel taller than the viewport (pushed down by CommandBar/PulseBand) left the off-screen portion of a naive crop blank, since getDisplayMedia only ever captures what is actually on screen', () => {
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(view, /chartElRef\.current\.scrollIntoView\(\{ block: 'nearest' \}\);/);
+  assert.match(view, /await new Promise\(\(resolve\) => setTimeout\(resolve, 120\)\);/);
+  // Every dimension is clamped against window.innerWidth/innerHeight, never the element's own
+  // (possibly-larger-than-the-viewport) full bounding rect used verbatim.
+  assert.match(view, /const visLeft = rect \? Math\.max\(0, rect\.left\) : 0;/);
+  assert.match(view, /const visTop = rect \? Math\.max\(0, rect\.top\) : 0;/);
+  assert.match(view, /const visWidth = rect \? Math\.min\(window\.innerWidth, rect\.left \+ rect\.width\) - visLeft : 0;/);
+  assert.match(view, /const visHeight = rect \? Math\.min\(window\.innerHeight, rect\.top \+ rect\.height\) - visTop : 0;/);
+  assert.match(view, /if \(visWidth > 0 && visHeight > 0\) \{/);
+});
+
+test('the granted capture stream is released when the trader leaves the Live Session, and the chart element has a dedicated ref for cropping', () => {
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(view, /const captureStreamRef = React\.useRef\(null\);/);
+  assert.match(view, /if \(stream\) stream\.getTracks\(\)\.forEach\(\(t\) => t\.stop\(\)\);/);
+  assert.match(view, /<div ref=\{chartElRef\}>\s*<TradingViewAdvancedChart symbol=\{symbol\} interval=\{interval\} lang=\{lang\} fill=\{isFullscreen\} \/>\s*<\/div>/);
+});
+
+test('grabStreamFrame prefers the native ImageCapture API (Chromium) and falls back to a <video>+canvas grab for other engines - no npm package', () => {
+  const helper = sliceBetween('function grabStreamFrame(stream) {', 'function MarketChartView(', 'grabStreamFrame');
+  assert.match(helper, /if \(typeof ImageCapture !== 'undefined'\) \{/);
+  assert.match(helper, /new ImageCapture\(track\)\.grabFrame\(\);/);
+  assert.match(helper, /const video = document\.createElement\('video'\);/);
+  assert.match(helper, /video\.srcObject = stream;/);
 });
 
 test('MarketChartView provides a real fullscreen toggle using the standard Fullscreen API, scoped to just the chart panel', () => {
@@ -201,7 +250,8 @@ test('all four i18n dictionaries (fa, ar, en, es) declare the new view label and
   const keys = [
     'viewChart', 'chartLoadingText', 'chartLoadErrorTitle', 'chartLoadErrorBody',
     'chartUnmappedTitle', 'chartUnmappedBodyNoInstrument', 'chartUnmappedHint', 'tvAttribution',
-    'enterFullscreenChart', 'exitFullscreenChart'
+    'enterFullscreenChart', 'exitFullscreenChart', 'chartCaptureHint', 'chartCapturePermissionDenied',
+    'chartCaptureUnsupported', 'chartCaptureFailed'
   ];
   ['fa:', 'ar:', 'en:', 'es:'].forEach((langTag) => {
     const idx = src.indexOf('\n  ' + langTag);
@@ -217,4 +267,21 @@ test('fa/ar Persian and Arabic labels are the required literal strings; en/es ar
   assert.match(src, /viewChart: 'مخطط السوق'/);
   assert.match(src, /viewChart: 'Market chart'/);
   assert.match(src, /viewChart: 'Gráfico de mercado'/);
+});
+
+test('ChartEntryModal accepts an optional initialFile (the captured screenshot) and pre-fills the preview from it, without changing behavior for a plain manual "Add chart" (no initialFile)', () => {
+  const modal = sliceBetween('function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {', 'function Ring(', 'ChartEntryModal');
+  assert.match(modal, /const \[file, setFile\] = React\.useState\(initialFile \|\| null\);/);
+  assert.match(modal, /const \[previewUrl, setPreviewUrl\] = React\.useState\(\(\) => \(initialFile \? URL\.createObjectURL\(initialFile\) : ''\)\);/);
+});
+
+test('LiveSessionView wires the captured screenshot from Market chart into ChartEntryModal, and resets it on close/submit so a later plain Timeline "Add chart" never reuses a stale file', () => {
+  assert.match(src, /const \[chartModalInitialFile, setChartModalInitialFile\] = React\.useState\(null\);/);
+  // Market chart's onAddChart(file) - not Timeline's own onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))} calls - is the only path that sets it.
+  assert.match(src, /onAddChart=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ setChartModalInitialFile\(file\); setChartModalOpen\(true\); \}\)\}/);
+  assert.match(src, /<ChartEntryModal\s*\n\s*session=\{session\} lang=\{lang\} initialFile=\{chartModalInitialFile\}\s*\n\s*onClose=\{\(\) => \{ setChartModalOpen\(false\); setChartModalInitialFile\(null\); \}\}/);
+  assert.match(src, /setChartModalOpen\(false\); setChartModalInitialFile\(null\); setFilter\('all'\); setQ\(''\);/);
+  // Timeline's own three "Add chart" trigger points are untouched - still the plain boolean open,
+  // never passing a file.
+  assert.match(src, /onClick=\{\(\) => withPreSessionCheckIn\(\(\) => setChartModalOpen\(true\)\)\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
 });
