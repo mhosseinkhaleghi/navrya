@@ -30,7 +30,7 @@ test('the model Select never hardcodes a retail dollar amount - only the localiz
 
 test('the OpenAI catalog entry (ai-settings-store.js) - the single canonical model list - carries the exact Sol/Terra/Luna ids and the exact required tier phrases, in all 4 required languages', async () => {
   const store = await read('public', 'pages', 'shared', 'ai-settings-store.js');
-  assert.match(store, /models:\s*\[\s*'gpt-5\.6-sol',\s*'gpt-5\.6-terra',\s*'gpt-5\.6-luna'/, 'Sol/Terra/Luna must lead the one canonical openai models array (new default)');
+  assert.match(store, /models:\s*\[\s*'gpt-5\.6-luna'/, 'gpt-5.6-luna must be models[0] - the only thing defaults() reads for the new default');
   assert.match(store, /'gpt-5\.6-sol':\s*'GPT-5\.6 Sol'/);
   assert.match(store, /'gpt-5\.6-terra':\s*'GPT-5\.6 Terra'/);
   assert.match(store, /'gpt-5\.6-luna':\s*'GPT-5\.6 Luna'/);

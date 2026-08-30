@@ -143,16 +143,36 @@ test("the openai catalog entry includes the exact GPT-5.6 Sol/Terra/Luna model i
   assert.ok(openai.models.indexOf('gpt-4o') > -1, 'gpt-4o must remain selectable');
 });
 
-test('a brand-new user (no stored settings) defaults the OpenAI model to gpt-5.6-sol', async () => {
+// 2026-08-30: default flipped from Sol to Luna (the economical tier) for every account that has
+// never explicitly picked a model - see the ai-settings-store.js file-top comment for why this is
+// a pure reorder of models[0], safe for every existing user.
+test('a brand-new user (no stored settings) defaults the OpenAI model to gpt-5.6-luna, the economical tier', async () => {
   const store = await settingsSandbox();
   const settings = store.settings();
-  assert.equal(settings.modelByProvider.openai, 'gpt-5.6-sol');
-  assert.equal(store.activeModel(), 'gpt-5.6-sol');
+  assert.equal(settings.modelByProvider.openai, 'gpt-5.6-luna');
+  assert.equal(store.activeModel(), 'gpt-5.6-luna');
+});
+
+// "When the user reloads or comes back, whatever they picked must stay picked, never reset to the
+// default" - an explicit Sol/Terra selection must survive a fresh load exactly like the pre-
+// existing legacy-selection tests below, even though Luna is now the default for everyone else.
+test('an existing user who explicitly selected GPT-5.6 Sol or Terra keeps that exact selection across a fresh load - it is never reset to the new Luna default', async () => {
+  for (const chosenModel of ['gpt-5.6-sol', 'gpt-5.6-terra']) {
+    const prefsStore = { aiSettings: { provider: 'openai', modelByProvider: { openai: chosenModel } } };
+    const fetchImpl = async (url, options) => {
+      if (options && options.method === 'POST') { const body = JSON.parse(options.body); prefsStore[body.id] = body.value; return { ok: true, json: async () => body }; }
+      return { ok: true, json: async () => ({ preferences: Object.keys(prefsStore).map((id) => ({ id: id, value: prefsStore[id] })) }) };
+    };
+    const store = await settingsSandbox(memoryStorage(), fetchImpl);
+    assert.equal(store.settings().modelByProvider.openai, chosenModel, chosenModel + ' must survive a fresh load unchanged, not revert to gpt-5.6-luna');
+    assert.equal(store.activeModel(), chosenModel);
+  }
 });
 
 // "Do not silently migrate an existing user from an old model to a more expensive model" - a
-// legacy stored selection must survive the catalog reorder untouched, never be coerced to Sol.
-test('an existing user with a legacy stored openai model selection (gpt-5.6) is preserved exactly, not migrated to gpt-5.6-sol', async () => {
+// legacy stored selection must survive the catalog reorder untouched, never be coerced to the
+// new default.
+test('an existing user with a legacy stored openai model selection (gpt-5.6) is preserved exactly, not migrated to gpt-5.6-luna', async () => {
   const prefsStore = { aiSettings: { provider: 'openai', modelByProvider: { openai: 'gpt-5.6' } } };
   const fetchImpl = async (url, options) => {
     if (options && options.method === 'POST') { const body = JSON.parse(options.body); prefsStore[body.id] = body.value; return { ok: true, json: async () => body }; }
@@ -161,6 +181,12 @@ test('an existing user with a legacy stored openai model selection (gpt-5.6) is 
   const store = await settingsSandbox(memoryStorage(), fetchImpl);
   assert.equal(store.settings().modelByProvider.openai, 'gpt-5.6', 'the stored legacy selection must win over the new default');
   assert.equal(store.activeModel(), 'gpt-5.6');
+});
+
+test('the default is read exclusively from models[0], never from a separate hardcoded default field - reordering the array is what actually changes the default', async () => {
+  const store = await settingsSandbox();
+  const openai = store.providerCatalog().find((p) => p.id === 'openai');
+  assert.equal(openai.models[0], 'gpt-5.6-luna', 'models[0] must be gpt-5.6-luna, since defaults() reads exactly this');
 });
 
 test('an existing user with a legacy stored gpt-4.1 or gpt-4o selection is also preserved exactly, and never becomes blank', async () => {

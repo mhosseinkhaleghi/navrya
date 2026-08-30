@@ -37,11 +37,18 @@
   // `gpt-5.6` alias, which OpenAI's own API already resolves server-side to Sol (this app never
   // needs to alias-map it itself - callOpenAI() already just forwards whatever model string is
   // selected verbatim). `gpt-5.6` stays in `models` (never removed) so an existing user's already-
-  // saved selection keeps working exactly as before (see load()'s stored-wins merge below) - only
-  // a BRAND NEW settings object (a user who has never chosen a model) gets `models[0]`, now
-  // 'gpt-5.6-sol', as its default. `modelLabels`/`modelTiers` are presentation metadata on this
-  // SAME canonical entry (never a second model list) - `models` itself stays a plain array of raw
-  // API id strings on purpose, since existing consumers (aiAssistantView.jsx's
+  // saved selection keeps working exactly as before (see load()'s stored-wins merge below).
+  //
+  // 2026-08-30: default flipped from Sol to Luna (the economical tier) for every user who has
+  // never explicitly chosen a model - `models[0]` is the ONLY thing defaults() reads
+  // (perProviderMap(p => p.models[0]) below), so Luna leads the array now. This can NEVER affect
+  // anyone who already has a real modelByProvider.openai entry in their persisted aiSettings
+  // (load()'s `Object.assign({}, base.modelByProvider, stored.modelByProvider || {})` always lets
+  // a stored value win over this default, and that persistence already survives reload/re-login -
+  // Phase 8c, window.TradeJournalUserPreferences) - only an account that has NEVER touched the
+  // model dropdown notices this change at all. `modelLabels`/`modelTiers` are presentation
+  // metadata on this SAME canonical entry (never a second model list) - `models` itself stays a
+  // plain array of raw API id strings on purpose, since existing consumers (aiAssistantView.jsx's
   // `current.models.indexOf(value)` allowlist check, chat-dock-core.js's own pass-through) already
   // depend on that exact shape. The tier descriptor TEXT itself lives in ai-i18n.js
   // (aiAsstModelTierFrontier/Balanced/Economical), never hardcoded here - this file has no i18n
@@ -49,7 +56,7 @@
   var PROVIDER_CATALOG = [
     {
       id: 'openai', label: 'OpenAI', endpoint: 'api.openai.com',
-      models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.6', 'gpt-4.1', 'gpt-4o'],
+      models: ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6', 'gpt-4.1', 'gpt-4o'],
       modelLabels: { 'gpt-5.6-sol': 'GPT-5.6 Sol', 'gpt-5.6-terra': 'GPT-5.6 Terra', 'gpt-5.6-luna': 'GPT-5.6 Luna' },
       modelTiers: { 'gpt-5.6-sol': 'frontier', 'gpt-5.6-terra': 'balanced', 'gpt-5.6-luna': 'economical' },
       supportsVoice: true, trait: 'spin', knockout: true
