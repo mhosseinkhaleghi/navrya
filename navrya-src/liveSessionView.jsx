@@ -13,19 +13,35 @@ import { openLogWizard } from './tradeLogModal.jsx';
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
 
-// Market chart view (TradingView free hosted Advanced Chart widget) - explicit instrument -> real
-// TradingView symbol mapping only. session.market is a city/session-timezone concept (see
-// MARKET_NAMES above), never a financial symbol - it must never be read here as a fallback. An
-// instrument with no entry below renders ChartUnmappedNotice instead of guessing a symbol.
+// Market chart view (TradingView free hosted Advanced Chart widget) - session.market is a
+// city/session-timezone concept (see MARKET_NAMES above), never a financial symbol - it must
+// never be read here as a fallback. The instrument itself always drives the chart, though.
+//
+// Curated, exchange-precise mappings for this app's flagship instruments plus the short ticker
+// forms a trader is likely to actually type into the Instrument Catalog's free-text picker (e.g.
+// "BTC", not just "BTCUSDT") - these guarantee the right exchange/quote-currency rather than
+// leaving it to TradingView's own guess. Real product feedback (2026-08-30): blocking the chart
+// behind an exact-map-or-nothing gate left the panel showing an error for any instrument outside
+// this literal list, when the actual goal is "always open some chart, then let the trader fix the
+// symbol themselves" - see tradingViewSymbolFor()'s fallback below, and the widget's own
+// allow_symbol_change:true.
 const TV_SYMBOL_BY_INSTRUMENT = {
-  XAUUSD: 'OANDA:XAUUSD',
-  BTCUSDT: 'BINANCE:BTCUSDT',
-  ETHUSDT: 'BINANCE:ETHUSDT',
-  EURUSD: 'OANDA:EURUSD',
-  GBPUSD: 'OANDA:GBPUSD'
+  XAUUSD: 'OANDA:XAUUSD', XAU: 'OANDA:XAUUSD', GOLD: 'OANDA:XAUUSD',
+  BTCUSDT: 'BINANCE:BTCUSDT', BTCUSD: 'BINANCE:BTCUSDT', BTC: 'BINANCE:BTCUSDT',
+  ETHUSDT: 'BINANCE:ETHUSDT', ETHUSD: 'BINANCE:ETHUSDT', ETH: 'BINANCE:ETHUSDT',
+  EURUSD: 'OANDA:EURUSD', EUR: 'OANDA:EURUSD',
+  GBPUSD: 'OANDA:GBPUSD', GBP: 'OANDA:GBPUSD'
 };
+// Resolves a real, non-empty session.instrument to a starting TradingView symbol - a curated
+// match above when one exists, otherwise the trader's own typed code passed straight through as
+// a plain symbol query (no invented EXCHANGE: prefix), which TradingView's own resolver treats
+// exactly like typing it into the widget's own symbol search. Only returns null when there is
+// truly no instrument to chart at all - never for an instrument this map simply doesn't cover -
+// so the panel always opens a real, changeable chart instead of a blocking notice.
 function tradingViewSymbolFor(instrument) {
-  return (instrument && TV_SYMBOL_BY_INSTRUMENT[instrument]) || null;
+  const code = instrument ? String(instrument).trim().toUpperCase() : '';
+  if (!code) return null;
+  return TV_SYMBOL_BY_INSTRUMENT[code] || code;
 }
 
 // Session timeframe -> TradingView "interval" widget parameter. TV_INTERVAL_DEFAULT is the
@@ -126,10 +142,9 @@ const copy = {
     noOpenPositions: 'هیچ پوزیشن بازی نیست', closeAction2: 'بستن پوزیشن', logEmotionShort: 'ثبت احساس', analyzing: 'در حال تحلیل کامل سشن...',
     chartLoadingText: 'در حال بارگذاری چارت TradingView…', chartLoadErrorTitle: 'بارگذاری چارت ناموفق بود',
     chartLoadErrorBody: 'اسکریپت چارت TradingView بارگذاری نشد. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.',
-    chartUnmappedTitle: 'نگاشت TradingView برای این نماد موجود نیست',
-    chartUnmappedBodyWithInstrument: 'نماد این سشن «{instrument}» است، اما هنوز نگاشت صریحی به نماد TradingView برای آن تعریف نشده است.',
+    chartUnmappedTitle: 'برای این سشن نمادی مشخص نشده است',
     chartUnmappedBodyNoInstrument: 'برای این سشن نمادی مشخص نشده است، بنابراین چارتی برای نمایش وجود ندارد.',
-    chartUnmappedHint: 'برای تعیین یا تغییر نماد سشن، روی چیپ نماد در نوار فرمان بالا کلیک کنید.',
+    chartUnmappedHint: 'برای تعیین نماد سشن، روی چیپ نماد در نوار فرمان بالا کلیک کنید؛ پس از تعیین نماد، TradingView چارت متناظر را باز می‌کند و شما می‌توانید از داخل خود چارت، بازار دیگری را نیز انتخاب کنید.',
     tvAttribution: 'رصد تمام بازارها در TradingView'
   },
   ar: {
@@ -192,10 +207,9 @@ const copy = {
     noOpenPositions: 'لا توجد صفقة مفتوحة', closeAction2: 'إغلاق الصفقة', logEmotionShort: 'تسجيل شعور', analyzing: 'جارٍ تحليل الجلسة بالكامل...',
     chartLoadingText: 'جارٍ تحميل مخطط TradingView…', chartLoadErrorTitle: 'تعذّر تحميل المخطط',
     chartLoadErrorBody: 'تعذّر تحميل سكربت مخطط TradingView. تحقق من اتصال الإنترنت وحاول مرة أخرى.',
-    chartUnmappedTitle: 'لا يوجد ربط TradingView لهذه الأداة',
-    chartUnmappedBodyWithInstrument: 'أداة هذه الجلسة هي «{instrument}»، لكن لم يُحدَّد بعد ربط صريح لها برمز TradingView.',
+    chartUnmappedTitle: 'لم يتم تحديد أداة لهذه الجلسة',
     chartUnmappedBodyNoInstrument: 'لم يتم تحديد أداة لهذه الجلسة، لذا لا يوجد مخطط لعرضه.',
-    chartUnmappedHint: 'لتحديد أداة الجلسة أو تغييرها، انقر على شارة الأداة في شريط الأوامر أعلاه.',
+    chartUnmappedHint: 'لتحديد أداة الجلسة، انقر على شارة الأداة في شريط الأوامر أعلاه - بمجرد التحديد، سيفتح TradingView مخططاً مطابقاً، ويمكنك اختيار سوق آخر بنفسك من داخل المخطط نفسه.',
     tvAttribution: 'تتبع جميع الأسواق على TradingView'
   },
   en: {
@@ -258,10 +272,9 @@ const copy = {
     noOpenPositions: 'No open positions', closeAction2: 'Close position', logEmotionShort: 'Log emotion', analyzing: 'Analyzing the complete session...',
     chartLoadingText: 'Loading the TradingView chart…', chartLoadErrorTitle: 'The chart failed to load',
     chartLoadErrorBody: 'The TradingView chart script could not be loaded. Check your connection and try again.',
-    chartUnmappedTitle: 'No TradingView mapping for this instrument',
-    chartUnmappedBodyWithInstrument: 'This session\'s instrument is "{instrument}", but no explicit TradingView symbol mapping exists for it yet.',
+    chartUnmappedTitle: 'No instrument set for this session',
     chartUnmappedBodyNoInstrument: 'No instrument is set for this session, so there is no chart to show.',
-    chartUnmappedHint: 'Click the instrument chip in the command bar above to set or change the session instrument.',
+    chartUnmappedHint: 'Click the instrument chip in the command bar above to set the session instrument - once set, TradingView opens a matching chart, and you can pick a different market yourself from inside the chart.',
     tvAttribution: 'Track all markets on TradingView'
   },
   es: {
@@ -324,10 +337,9 @@ const copy = {
     noOpenPositions: 'No hay posiciones abiertas', closeAction2: 'Cerrar posición', logEmotionShort: 'Registrar emoción', analyzing: 'Analizando la sesión completa...',
     chartLoadingText: 'Cargando el gráfico de TradingView…', chartLoadErrorTitle: 'No se pudo cargar el gráfico',
     chartLoadErrorBody: 'No se pudo cargar el script del gráfico de TradingView. Comprueba tu conexión e inténtalo de nuevo.',
-    chartUnmappedTitle: 'No hay una asignación de TradingView para este instrumento',
-    chartUnmappedBodyWithInstrument: 'El instrumento de esta sesión es «{instrument}», pero todavía no existe una asignación explícita a un símbolo de TradingView.',
+    chartUnmappedTitle: 'Esta sesión no tiene un instrumento definido',
     chartUnmappedBodyNoInstrument: 'Esta sesión no tiene un instrumento definido, por lo que no hay ningún gráfico que mostrar.',
-    chartUnmappedHint: 'Haz clic en la etiqueta del instrumento en la barra de comandos superior para definir o cambiar el instrumento de la sesión.',
+    chartUnmappedHint: 'Haz clic en la etiqueta del instrumento en la barra de comandos superior para definirlo - una vez definido, TradingView abrirá un gráfico correspondiente, y podrás elegir otro mercado tú mismo desde dentro del propio gráfico.',
     tvAttribution: 'Sigue todos los mercados en TradingView'
   }
 };
@@ -1691,18 +1703,17 @@ function TradingViewAdvancedChart({ symbol, interval, lang }) {
   );
 }
 
-// Polished localized empty/error state for an instrument with no explicit TradingView mapping
-// (or no instrument at all) - never silently falls back to a different symbol, and always names
-// the real session instrument when one exists.
-function ChartUnmappedNotice({ instrument, lang }) {
+// Polished localized empty state for a session with no instrument set at all - the only case
+// tradingViewSymbolFor() can't resolve into some real chart. A real, unmapped instrument now
+// still opens a real chart (see tradingViewSymbolFor()'s fallback above), so this never fires for
+// an instrument that merely isn't in the curated map any more.
+function ChartUnmappedNotice({ lang }) {
   return (
     <Panel variant="base" ornament padding="40px 24px">
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
         <span style={{ color: 'rgba(244,234,215,.18)' }}><Icon name="CandlestickChart" size={30} /></span>
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'chartUnmappedTitle')}</span>
-        <span dir="auto" style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420 }}>
-          {instrument ? tr(lang, 'chartUnmappedBodyWithInstrument', { instrument }) : tr(lang, 'chartUnmappedBodyNoInstrument')}
-        </span>
+        <span dir="auto" style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420 }}>{tr(lang, 'chartUnmappedBodyNoInstrument')}</span>
         <span style={{ fontSize: 11, color: 'var(--text-dim)', maxWidth: 420 }}>{tr(lang, 'chartUnmappedHint')}</span>
       </div>
     </Panel>
@@ -1712,9 +1723,11 @@ function ChartUnmappedNotice({ instrument, lang }) {
 // Third CommandBar view, beside Timeline and Session report - a full TradingView chart for this
 // Session's real instrument/timeframe. session.instrument is the only source read for the symbol
 // (never session.market/city); session.market/city is only ever a city/session-timezone concept.
+// The starting symbol is a best-effort resolution (tradingViewSymbolFor()) - the trader can
+// always pick a different market themselves from inside the chart via allow_symbol_change.
 function MarketChartView({ session, lang }) {
   const symbol = tradingViewSymbolFor(session.instrument);
-  if (!symbol) return <ChartUnmappedNotice instrument={session.instrument} lang={lang} />;
+  if (!symbol) return <ChartUnmappedNotice lang={lang} />;
   const interval = tradingViewIntervalFor(session.timeframe);
   return (
     <Panel variant="base" ornament padding="16px">

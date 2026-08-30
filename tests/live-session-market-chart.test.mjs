@@ -95,18 +95,23 @@ test('the official Advanced Chart widget configuration includes the required opt
   assert.match(widget, /tr\(lang, 'tvAttribution'\)/);
 });
 
-test('explicit instrument -> TradingView symbol mapping covers the required symbols, with a documented safe default for the rest', () => {
+test('explicit instrument -> TradingView symbol mapping covers the required symbols (plus the short ticker forms a trader actually types)', () => {
   const map = block(/const TV_SYMBOL_BY_INSTRUMENT = \{[\s\S]*?\};/, 'TV_SYMBOL_BY_INSTRUMENT');
   assert.match(map, /XAUUSD: 'OANDA:XAUUSD'/);
   assert.match(map, /BTCUSDT: 'BINANCE:BTCUSDT'/);
   assert.match(map, /ETHUSDT: 'BINANCE:ETHUSDT'/);
   assert.match(map, /EURUSD: 'OANDA:EURUSD'/);
   assert.match(map, /GBPUSD: 'OANDA:GBPUSD'/);
+  // The short forms a trader is likely to actually type (product feedback: a session tagged
+  // just "BTC" must still open a real Bitcoin chart) resolve to the same curated targets.
+  assert.match(map, /BTC: 'BINANCE:BTCUSDT'/);
+  assert.match(map, /GOLD: 'OANDA:XAUUSD'/);
 
-  const fn = sliceBetween('function tradingViewSymbolFor(instrument) {', 'function tradingViewIntervalFor', 'tradingViewSymbolFor');
-  assert.match(fn, /return \(instrument && TV_SYMBOL_BY_INSTRUMENT\[instrument\]\) \|\| null;/);
+  const fn = sliceBetween('function tradingViewSymbolFor(instrument) {', '// Session timeframe', 'tradingViewSymbolFor');
   // market/city must never be read as a symbol fallback anywhere in the resolver.
   assert.doesNotMatch(fn, /\.market/);
+  assert.match(fn, /if \(!code\) return null;/);
+  assert.match(fn, /return TV_SYMBOL_BY_INSTRUMENT\[code\] \|\| code;/);
 
   const intervals = block(/const TV_INTERVAL_BY_TIMEFRAME = \{[\s\S]*?\};/, 'TV_INTERVAL_BY_TIMEFRAME');
   assert.match(intervals, /'1m': '1'/);
@@ -119,28 +124,45 @@ test('explicit instrument -> TradingView symbol mapping covers the required symb
   assert.match(src, /const TV_INTERVAL_DEFAULT = '15';/);
 });
 
-test('MarketChartView reads only session.instrument for the chart symbol, never session.market/city, and never silently falls back to a different symbol', () => {
+test('MarketChartView reads only session.instrument for the chart symbol, never session.market/city, and always opens a real chart for any non-empty instrument', () => {
   const view = sliceBetween('function MarketChartView({ session, lang }) {', 'function ReportView(', 'MarketChartView');
   assert.match(view, /const symbol = tradingViewSymbolFor\(session\.instrument\);/);
-  assert.match(view, /if \(!symbol\) return <ChartUnmappedNotice instrument=\{session\.instrument\} lang=\{lang\} \/>;/);
+  assert.match(view, /if \(!symbol\) return <ChartUnmappedNotice lang=\{lang\} \/>;/);
   // The only session.market use inside this component is display text (city/timeframe/date line),
   // never symbol resolution - guarded by the assertion above that the symbol always comes from
   // tradingViewSymbolFor(session.instrument) alone.
   assert.doesNotMatch(view, /tradingViewSymbolFor\(session\.market/);
 });
 
-test('an unmapped or absent instrument shows a localized notice naming the real instrument and pointing at the instrument chip, never a guessed symbol', () => {
-  const notice = sliceBetween('function ChartUnmappedNotice({ instrument, lang }) {', 'function MarketChartView(', 'ChartUnmappedNotice');
+test('an absent instrument (the only unresolvable case) shows a localized empty-state notice pointing at the instrument chip', () => {
+  const notice = sliceBetween('function ChartUnmappedNotice({ lang }) {', 'function MarketChartView(', 'ChartUnmappedNotice');
   assert.match(notice, /tr\(lang, 'chartUnmappedTitle'\)/);
-  assert.match(notice, /instrument \? tr\(lang, 'chartUnmappedBodyWithInstrument', \{ instrument \}\) : tr\(lang, 'chartUnmappedBodyNoInstrument'\)/);
+  assert.match(notice, /tr\(lang, 'chartUnmappedBodyNoInstrument'\)/);
   assert.match(notice, /tr\(lang, 'chartUnmappedHint'\)/);
+});
+
+test('a real, non-empty instrument always resolves to a real chart, even when it is not in the curated map (product fix: "BTC" and any other typed code must open a chart, never a blocking notice)', () => {
+  // Both the map and the resolver are plain JS (no JSX) - sliced verbatim from the real source
+  // and evaluated directly, rather than re-derived, so this proves the actual shipped logic.
+  const src = sliceBetween('const TV_SYMBOL_BY_INSTRUMENT = {', '// Session timeframe', 'the symbol resolver and its map');
+  const tradingViewSymbolFor = new Function(src + '\nreturn tradingViewSymbolFor;')();
+  assert.equal(tradingViewSymbolFor('BTC'), 'BINANCE:BTCUSDT');
+  assert.equal(tradingViewSymbolFor('btcusdt'), 'BINANCE:BTCUSDT');
+  assert.equal(tradingViewSymbolFor('gold'), 'OANDA:XAUUSD');
+  // Not in the curated map at all - still resolves to a real, non-null symbol (the trader's own
+  // typed code, uppercased) instead of a blocking notice.
+  assert.equal(tradingViewSymbolFor('US30'), 'US30');
+  assert.equal(tradingViewSymbolFor('nas100'), 'NAS100');
+  // Only a genuinely empty/absent instrument is unresolvable.
+  assert.equal(tradingViewSymbolFor(null), null);
+  assert.equal(tradingViewSymbolFor(''), null);
+  assert.equal(tradingViewSymbolFor('   '), null);
 });
 
 test('all four i18n dictionaries (fa, ar, en, es) declare the new view label and chart states', () => {
   const keys = [
     'viewChart', 'chartLoadingText', 'chartLoadErrorTitle', 'chartLoadErrorBody',
-    'chartUnmappedTitle', 'chartUnmappedBodyWithInstrument', 'chartUnmappedBodyNoInstrument',
-    'chartUnmappedHint', 'tvAttribution'
+    'chartUnmappedTitle', 'chartUnmappedBodyNoInstrument', 'chartUnmappedHint', 'tvAttribution'
   ];
   ['fa:', 'ar:', 'en:', 'es:'].forEach((langTag) => {
     const idx = src.indexOf('\n  ' + langTag);
