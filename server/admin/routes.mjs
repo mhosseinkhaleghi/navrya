@@ -177,21 +177,47 @@ export function router(repo, uploadsDir) {
     // response additionally joins in the level, unlocked achievements, and subscription
     // purchases so the Admin Users-tab detail view has everything a support agent needs on one
     // screen (ARCHITECTURE.md §7.16/§7.17), without a second round trip.
-    const [sessions, usageAgg, usageByProvider, purchaseAgg, achievements, purchases, usageByModel] = await Promise.all([
+    const [sessions, usageAgg, usageByProvider, purchaseAgg, achievements, purchases, usageByModel, settlements] = await Promise.all([
       repo.sessions.listByUser(user.id), repo.usageEvents.aggregateByUser(), repo.usageEvents.aggregateByUserAndProvider(user.id),
       repo.purchases.aggregateByBuyer(), repo.achievements.listForUser(user.id), repo.purchases.listByBuyer(user.id),
       // Real per-model $ cost/charge (task D.2) - gateway-origin only (default), so this can never
       // be inflated by the same user's own untrusted client-reported usageByProvider tokens above.
-      repo.usageEvents.aggregateByModelForUser(user.id)
+      repo.usageEvents.aggregateByModelForUser(user.id),
+      // AI Cost Control's per-user drill-down (integrated into this same existing profile view,
+      // never a parallel endpoint) - real wallet settlement links, cash vs promo debit.
+      repo.wallet.settlementsForUser(user.id, { limit: 100 })
     ]);
     const purchasesWithListings = await Promise.all(purchases.map(async (purchase) => ({ purchase, listing: await repo.listings.get(purchase.listingId) })));
     const subscriptions = purchasesWithListings
       .filter((row) => row.listing && row.listing.type === 'subscription')
       .map((row) => ({ ...row.purchase, listing: row.listing }));
+    const settledRetailChargeMicroUsd = settlements.reduce((sum, entry) => sum + Math.abs(entry.cashDeltaMicroUsd) + Math.abs(entry.promoDeltaMicroUsd), 0);
+    const expectedRetailChargeMicroUsd = usageByModel.reduce((sum, row) => sum + row.retailChargeMicroUsd, 0);
     const aiCost = {
       providerCostMicroUsd: usageByModel.reduce((sum, row) => sum + row.providerCostMicroUsd, 0),
-      retailChargeMicroUsd: usageByModel.reduce((sum, row) => sum + row.retailChargeMicroUsd, 0),
-      byModel: usageByModel
+      retailChargeMicroUsd: expectedRetailChargeMicroUsd,
+      byModel: usageByModel,
+      // AI Cost Control: real settlement links with the cash/promo split each one actually moved -
+      // never organization-level external cost allocated to a user as if it were exact (this app
+      // has no per-call, per-user external cost attribution from any provider's cost API).
+      walletSettlements: settlements.map((entry) => ({
+        id: entry.id, provider: entry.provider, model: entry.model, feature: entry.feature,
+        cashDeltaMicroUsd: entry.cashDeltaMicroUsd, promoDeltaMicroUsd: entry.promoDeltaMicroUsd,
+        providerCostMicroUsd: entry.providerCostMicroUsd, retailChargeMicroUsd: entry.retailChargeMicroUsd, createdAt: entry.createdAt
+      })),
+      // A cheap, real reconciliation signal computed from data already fetched above (never a
+      // second query): this user's total EXPECTED retail charge (from their own gateway-
+      // authoritative usage events, unbounded) versus what the last 100 AI_SETTLEMENT ledger rows
+      // for this user actually moved. Honestly scoped, not the full exact Domain A reconciliation
+      // (server/commercial/provider-cost/reconciliation-service.mjs, date-ranged and unbounded via
+      // pagination) - `sampleLimited` is true when this user has more than 100 settlements, in
+      // which case a "mismatch" here may simply mean "older than the last 100," not a real
+      // exception; only trust `matches` as a real signal when `sampleLimited` is false.
+      reconciliation: {
+        expectedRetailChargeMicroUsd, settledRetailChargeMicroUsd,
+        matches: expectedRetailChargeMicroUsd === settledRetailChargeMicroUsd,
+        sampleLimited: settlements.length >= 100
+      }
     };
     res.json({
       ...user, level: levelForXp(user.xpTotal), sessions, totalTokensUsed: usageAgg[user.id] || 0, usageByProvider,
@@ -455,6 +481,12 @@ export function router(repo, uploadsDir) {
     res.json(updated);
   }));
 
+  // AI Cost Control correction: this route has always been a token-count x admin-set rate-card
+  // ESTIMATE (never a reconciled provider invoice, never gateway-settled cost) - the `aiCostByProvider`
+  // shape below is unchanged (no existing caller breaks), but the response now says so explicitly
+  // rather than only in a comment, and names the real canonical endpoints for external actual cost
+  // (GET /api/admin/commercial/ai-cost-control/reconciliation/external) and settled cost
+  // (GET /api/admin/ai/usage-by-model, GET /api/admin/commercial/ai-cost-control/models).
   app.get('/finance/overview', asyncHandler(async (req, res) => {
     const monthKey = new Date().toISOString().slice(0, 7);
     const [buyerAgg, usageThisMonth, pricingRows] = await Promise.all([
@@ -486,7 +518,17 @@ export function router(repo, uploadsDir) {
     res.json({
       mockRevenue: { total: Number(mockRevenueTotal.toFixed(2)), mock: true },
       aiCostByProvider,
-      remainingBudgetByProvider
+      remainingBudgetByProvider,
+      // Additive labeling only - every existing field above is byte-identical, so no existing
+      // caller breaks. See this route's own header comment.
+      legacyEstimate: true,
+      source: 'internal-rate-card-estimate',
+      note: 'aiCostByProvider is a token-count x admin-configured-rate ESTIMATE, not a reconciled provider invoice or gateway-settled cost.',
+      canonicalEndpoints: {
+        externalActualProviderCost: '/api/admin/commercial/ai-cost-control/reconciliation/external',
+        settledInternalCost: '/api/admin/ai/usage-by-model',
+        modelBreakdown: '/api/admin/commercial/ai-cost-control/models'
+      }
     });
   }));
 

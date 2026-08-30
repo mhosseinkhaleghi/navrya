@@ -188,7 +188,14 @@ export function router(repo) {
     const body = req.body || {};
     const usage = body.usage || {};
     const rate = await resolvePricingRate(repo, { provider: body.provider, model: body.model });
-    const providerCostMicroUsd = rate ? costMicroUsdFor(rate, { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens }) : 0;
+    // AI Cost Control: cachedInputTokens/cacheWriteInputTokens are real pricing dimensions
+    // (costMicroUsdFor() prices them - see wallet-service.mjs); reasoningTokens is not (already
+    // included in completionTokens by the provider's own accounting) and is stored only for
+    // admin observability.
+    const providerCostMicroUsd = rate ? costMicroUsdFor(rate, {
+      promptTokens: usage.promptTokens, completionTokens: usage.completionTokens,
+      cachedInputTokens: usage.cachedInputTokens, cacheWriteInputTokens: usage.cacheWriteInputTokens
+    }) : 0;
     let retailChargeMicroUsd = 0;
     let linkedLedgerIdempotencyKey = null;
     if (body.billed) {
@@ -199,6 +206,8 @@ export function router(repo) {
     const record = await repo.usageEvents.create({
       userId: body.userId, provider: body.provider, model: body.model, feature: body.feature,
       promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, totalTokens: usage.totalTokens,
+      cachedInputTokens: usage.cachedInputTokens, cacheWriteInputTokens: usage.cacheWriteInputTokens, reasoningTokens: usage.reasoningTokens,
+      usageRaw: usage.raw || null,
       source: body.source || 'gateway-dispatch', origin: 'gateway',
       providerCostMicroUsd, retailChargeMicroUsd, linkedLedgerIdempotencyKey
     });

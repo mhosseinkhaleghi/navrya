@@ -132,7 +132,11 @@ function mapUsageEvent(row) {
     totalTokens: row.total_tokens, source: row.source, model: row.model, feature: row.feature,
     providerCostMicroUsd: row.provider_cost_micro_usd == null ? null : Number(row.provider_cost_micro_usd),
     retailChargeMicroUsd: row.retail_charge_micro_usd == null ? null : Number(row.retail_charge_micro_usd),
-    origin: row.origin, linkedLedgerIdempotencyKey: row.linked_ledger_idempotency_key, createdAt: row.created_at
+    origin: row.origin, linkedLedgerIdempotencyKey: row.linked_ledger_idempotency_key,
+    // AI Cost Control (043_ai_cost_control.sql) - additive/nullable, see that migration's comment.
+    cachedInputTokens: row.cached_input_tokens, cacheWriteInputTokens: row.cache_write_input_tokens,
+    reasoningTokens: row.reasoning_tokens, usageRaw: row.usage_raw || null,
+    createdAt: row.created_at
   };
 }
 function mapHealthEvent(row) { return { id: row.id, provider: row.provider, ok: row.ok, errorCode: row.error_code, latencyMs: row.latency_ms, source: row.source, createdAt: row.created_at }; }
@@ -896,15 +900,20 @@ export function createPgRepo(pool) {
     // The new gateway-side writer (server/community/routes.internal.mjs's /internal/usage/record,
     // called from server/pattern-ai-server.mjs's dispatch) is the only caller that passes
     // origin='gateway' plus real model/cost data.
-    async create({ userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey }) {
+    async create({
+      userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey,
+      cachedInputTokens, cacheWriteInputTokens, reasoningTokens, usageRaw
+    }) {
       const id = newId('usageEvent');
       const { rows } = await pool.query(
         `INSERT INTO ai_usage_events
-           (id, user_id, provider, prompt_tokens, completion_tokens, total_tokens, source, model, feature, provider_cost_micro_usd, retail_charge_micro_usd, origin, linked_ledger_idempotency_key)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+           (id, user_id, provider, prompt_tokens, completion_tokens, total_tokens, source, model, feature, provider_cost_micro_usd, retail_charge_micro_usd, origin, linked_ledger_idempotency_key,
+            cached_input_tokens, cache_write_input_tokens, reasoning_tokens, usage_raw)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
         [
           id, userId || null, String(provider || 'unknown'), promptTokens ?? null, completionTokens ?? null, totalTokens ?? null, String(source || 'unknown'),
-          model || null, feature || null, providerCostMicroUsd ?? null, retailChargeMicroUsd ?? null, origin || 'client', linkedLedgerIdempotencyKey || null
+          model || null, feature || null, providerCostMicroUsd ?? null, retailChargeMicroUsd ?? null, origin || 'client', linkedLedgerIdempotencyKey || null,
+          cachedInputTokens ?? null, cacheWriteInputTokens ?? null, reasoningTokens ?? null, usageRaw ? JSON.stringify(usageRaw) : null
         ]
       );
       return mapUsageEvent(rows[0]);
@@ -1005,6 +1014,60 @@ export function createPgRepo(pool) {
         monthKey, thisMonth: toBucket(monthRows.rows),
         lifetime: toBucket(lifetimeRows.rows)
       };
+    },
+    // AI Cost Control's exact internal reconciliation domain: every gateway-origin usage event
+    // that was actually billed (carries a linked_ledger_idempotency_key, meaning a wallet
+    // reservation existed for it) in a UTC range - the set this reconciliation checks against
+    // wallet_ledger's matching AI_SETTLEMENT rows (see server/commercial/reconciliation-service.mjs).
+    // Paginated - this table can grow large in production.
+    async listBilledInRange({ start, end, limit = 200, offset = 0 } = {}) {
+      const { rows } = await pool.query(
+        `SELECT * FROM ai_usage_events
+         WHERE origin='gateway' AND linked_ledger_idempotency_key IS NOT NULL AND created_at >= $1 AND created_at < $2
+         ORDER BY created_at ASC LIMIT $3 OFFSET $4`,
+        [start, end, limit, offset]
+      );
+      return rows.map(mapUsageEvent);
+    },
+    async countBilledInRange({ start, end } = {}) {
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM ai_usage_events
+         WHERE origin='gateway' AND linked_ledger_idempotency_key IS NOT NULL AND created_at >= $1 AND created_at < $2`,
+        [start, end]
+      );
+      return rows[0].count;
+    },
+    // Non-billable/excluded rows for the same range - reported as a transparency count in the
+    // reconciliation panel (never silently dropped from the picture), never compared for
+    // amount/provider/model mismatch since they were never billed in the first place.
+    async countExcludedInRange({ start, end } = {}) {
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM ai_usage_events
+         WHERE created_at >= $1 AND created_at < $2 AND NOT (origin='gateway' AND linked_ledger_idempotency_key IS NOT NULL)`,
+        [start, end]
+      );
+      return rows[0].count;
+    },
+    // Model-level breakdown for the AI Cost Control model table, including the new cache/reasoning
+    // dimensions - a superset of aggregateByModel() above (which stays unchanged for its own
+    // existing callers), scoped by an explicit UTC range required.
+    async aggregateByModelInRange({ start, end }) {
+      const { rows } = await pool.query(
+        `SELECT provider, model, COUNT(*) AS calls,
+                SUM(COALESCE(prompt_tokens,0)) AS prompt_tokens, SUM(COALESCE(completion_tokens,0)) AS completion_tokens,
+                SUM(COALESCE(total_tokens,0)) AS total_tokens, SUM(COALESCE(cached_input_tokens,0)) AS cached_input_tokens,
+                SUM(COALESCE(cache_write_input_tokens,0)) AS cache_write_input_tokens, SUM(COALESCE(reasoning_tokens,0)) AS reasoning_tokens,
+                SUM(COALESCE(provider_cost_micro_usd,0)) AS provider_cost_micro_usd, SUM(COALESCE(retail_charge_micro_usd,0)) AS retail_charge_micro_usd
+         FROM ai_usage_events WHERE origin='gateway' AND created_at >= $1 AND created_at < $2
+         GROUP BY provider, model ORDER BY provider_cost_micro_usd DESC`,
+        [start, end]
+      );
+      return rows.map((row) => ({
+        provider: row.provider, model: row.model, calls: Number(row.calls || 0),
+        promptTokens: Number(row.prompt_tokens || 0), completionTokens: Number(row.completion_tokens || 0), totalTokens: Number(row.total_tokens || 0),
+        cachedInputTokens: Number(row.cached_input_tokens || 0), cacheWriteInputTokens: Number(row.cache_write_input_tokens || 0), reasoningTokens: Number(row.reasoning_tokens || 0),
+        providerCostMicroUsd: Number(row.provider_cost_micro_usd || 0), retailChargeMicroUsd: Number(row.retail_charge_micro_usd || 0)
+      }));
     }
   };
 
@@ -2196,6 +2259,9 @@ export function createPgRepo(pool) {
       provider: row.provider, model: row.model,
       promptPricePer1k: row.prompt_price_per_1k == null ? null : Number(row.prompt_price_per_1k),
       completionPricePer1k: row.completion_price_per_1k == null ? null : Number(row.completion_price_per_1k),
+      // AI Cost Control (043_ai_cost_control.sql) - additive/nullable, see that migration's comment.
+      cachedInputPricePer1k: row.cached_input_price_per_1k == null ? null : Number(row.cached_input_price_per_1k),
+      cacheWriteInputPricePer1k: row.cache_write_input_price_per_1k == null ? null : Number(row.cache_write_input_price_per_1k),
       currency: row.currency, enabled: row.enabled, effectiveFrom: row.effective_from, effectiveUntil: row.effective_until,
       updatedAt: row.updated_at
     };
@@ -2209,13 +2275,13 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query('SELECT * FROM provider_model_pricing WHERE provider=$1 AND model=$2', [provider, model]);
       return rows[0] ? mapProviderModelPricing(rows[0]) : null;
     },
-    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, currency, enabled }) {
+    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, currency, enabled }) {
       const { rows } = await pool.query(
-        `INSERT INTO provider_model_pricing (provider, model, prompt_price_per_1k, completion_price_per_1k, currency, enabled, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,now())
-         ON CONFLICT (provider, model) DO UPDATE SET prompt_price_per_1k=$3, completion_price_per_1k=$4, currency=$5, enabled=$6, updated_at=now()
+        `INSERT INTO provider_model_pricing (provider, model, prompt_price_per_1k, completion_price_per_1k, cached_input_price_per_1k, cache_write_input_price_per_1k, currency, enabled, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+         ON CONFLICT (provider, model) DO UPDATE SET prompt_price_per_1k=$3, completion_price_per_1k=$4, cached_input_price_per_1k=$5, cache_write_input_price_per_1k=$6, currency=$7, enabled=$8, updated_at=now()
          RETURNING *`,
-        [provider, model, promptPricePer1k ?? null, completionPricePer1k ?? null, currency || 'USD', enabled !== false]
+        [provider, model, promptPricePer1k ?? null, completionPricePer1k ?? null, cachedInputPricePer1k ?? null, cacheWriteInputPricePer1k ?? null, currency || 'USD', enabled !== false]
       );
       return mapProviderModelPricing(rows[0]);
     },
@@ -2453,9 +2519,52 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query('SELECT * FROM wallet_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2', [userId, limit || 50]);
       return rows.map(mapWalletLedgerEntry);
     },
+    // AI Cost Control's per-user drill-down (server/admin/routes.mjs's GET /users/:id) - type-
+    // filtered so a heavy top-up/admin-credit history can never crowd real AI_SETTLEMENT rows out
+    // of a fixed-size window the way a plain ledgerForUser(limit) could.
+    async settlementsForUser(userId, { limit } = {}) {
+      const { rows } = await pool.query(
+        `SELECT * FROM wallet_ledger WHERE user_id=$1 AND type='AI_SETTLEMENT' ORDER BY created_at DESC LIMIT $2`,
+        [userId, limit || 100]
+      );
+      return rows.map(mapWalletLedgerEntry);
+    },
     async recentLedger({ limit } = {}) {
       const { rows } = await pool.query('SELECT * FROM wallet_ledger ORDER BY created_at DESC LIMIT $1', [limit || 100]);
       return rows.map(mapWalletLedgerEntry);
+    },
+    // AI Cost Control's exact internal reconciliation domain: every AI_SETTLEMENT ledger row in a
+    // UTC range, keyed by idempotency_key (== an ai_usage_events row's own
+    // linked_ledger_idempotency_key, "ai-settle:" + reservationId) - see
+    // server/commercial/reconciliation-service.mjs for how the two sets are compared.
+    async listSettlementsInRange({ start, end, limit = 200, offset = 0 } = {}) {
+      const { rows } = await pool.query(
+        `SELECT * FROM wallet_ledger WHERE type='AI_SETTLEMENT' AND created_at >= $1 AND created_at < $2
+         ORDER BY created_at ASC LIMIT $3 OFFSET $4`,
+        [start, end, limit, offset]
+      );
+      return rows.map(mapWalletLedgerEntry);
+    },
+    async countSettlementsInRange({ start, end } = {}) {
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM wallet_ledger WHERE type='AI_SETTLEMENT' AND created_at >= $1 AND created_at < $2`,
+        [start, end]
+      );
+      return rows[0].count;
+    },
+    // AI Cost Control overview card's "actual wallet debit" figure - the REAL cash+promo balance
+    // movement AI_SETTLEMENT caused in a range, computed server-side (never a client-side sum over
+    // a paginated list, for accuracy at any real data volume). Deliberately a distinct number from
+    // retail_charge_micro_usd's own sum (ai_usage_events' own estimate) - see this feature's own
+    // Domain A reconciliation for what a divergence between the two would mean.
+    async sumSettlementsInRange({ start, end } = {}) {
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS count, COALESCE(SUM(ABS(cash_delta_micro_usd)),0)::bigint AS cash, COALESCE(SUM(ABS(promo_delta_micro_usd)),0)::bigint AS promo
+         FROM wallet_ledger WHERE type='AI_SETTLEMENT' AND created_at >= $1 AND created_at < $2`,
+        [start, end]
+      );
+      const row = rows[0];
+      return { count: row.count, cashMicroUsd: Number(row.cash), promoMicroUsd: Number(row.promo), totalMicroUsd: Number(row.cash) + Number(row.promo) };
     }
   };
 
@@ -2784,6 +2893,183 @@ export function createPgRepo(pool) {
         [Boolean(ok), Number.isFinite(chainId) ? chainId : null]
       );
       return bscPaymentSecrets.get();
+    }
+  };
+
+  // AI Cost Control (043_ai_cost_control.sql) - encrypted credentials for a provider's EXTERNAL
+  // cost-reconciliation API (e.g. an OpenAI organization admin key), deliberately separate from
+  // both the legacy plaintext admin_ai_keys (used to call the model API itself) and
+  // admin_voice_provider_credentials (a different provider category). Same shape/pattern as
+  // voiceProviderCredentials above - multi-row, multi-provider, generated id, includeDecrypted
+  // gated the same way.
+  function mapCostCredential(row, { includeDecrypted } = {}) {
+    const base = {
+      id: row.id, provider: row.provider, label: row.label, keyHint: row.key_hint, scopeConfig: row.scope_config || {}, enabled: row.enabled,
+      validationStatus: row.validation_status, validationError: row.validation_error, validatedAt: row.validated_at,
+      updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at
+    };
+    if (includeDecrypted) base.apiKey = decryptSecret(row.api_key_encrypted, encryptionKeyHex());
+    return base;
+  }
+  const providerCostCredentials = {
+    async create({ provider, label, apiKey, scopeConfig, updatedBy }) {
+      const trimmed = sanitizeApiKey(apiKey);
+      if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
+      const id = newId('providerCostCred');
+      const encrypted = encryptSecret(trimmed, encryptionKeyHex());
+      const { rows } = await pool.query(
+        `INSERT INTO provider_cost_credentials (id, provider, label, api_key_encrypted, key_hint, scope_config, updated_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,now(),now()) RETURNING *`,
+        [id, String(provider || '').trim(), String(label || '').trim() || 'Untitled credential', encrypted, voiceKeyHintFor(trimmed), JSON.stringify(scopeConfig || {}), updatedBy || null]
+      );
+      return mapCostCredential(rows[0]);
+    },
+    // A blank/omitted apiKey retains the existing encrypted value - same convention as
+    // voiceProviderCredentials.replace(). A real key replacement resets validation_status.
+    async replace(id, { label, apiKey, scopeConfig, enabled, updatedBy }) {
+      const trimmed = apiKey != null ? sanitizeApiKey(apiKey) : '';
+      const sets = ['updated_at = now()', 'updated_by = $2'];
+      const values = [id, updatedBy || null];
+      let idx = 3;
+      if (label != null) { sets.push(`label = $${idx}`); values.push(String(label).trim() || 'Untitled credential'); idx += 1; }
+      if (scopeConfig != null) { sets.push(`scope_config = $${idx}`); values.push(JSON.stringify(scopeConfig)); idx += 1; }
+      if (enabled != null) { sets.push(`enabled = $${idx}`); values.push(Boolean(enabled)); idx += 1; }
+      if (trimmed) {
+        sets.push(`api_key_encrypted = $${idx}`); values.push(encryptSecret(trimmed, encryptionKeyHex())); idx += 1;
+        sets.push(`key_hint = $${idx}`); values.push(voiceKeyHintFor(trimmed)); idx += 1;
+        sets.push("validation_status = 'unknown'", 'validation_error = NULL', 'validated_at = NULL');
+      }
+      const { rows } = await pool.query(`UPDATE provider_cost_credentials SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, values);
+      if (!rows[0]) throw new ApiError(404, 'CREDENTIAL_NOT_FOUND');
+      return mapCostCredential(rows[0]);
+    },
+    async recordValidation(id, { status, error }) {
+      const { rows } = await pool.query(
+        `UPDATE provider_cost_credentials SET validation_status=$2, validation_error=$3, validated_at=now(), updated_at=now() WHERE id=$1 RETURNING *`,
+        [id, status, error || null]
+      );
+      return rows[0] ? mapCostCredential(rows[0]) : null;
+    },
+    async delete(id) {
+      const { rowCount } = await pool.query('DELETE FROM provider_cost_credentials WHERE id = $1', [id]);
+      return rowCount > 0;
+    },
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM provider_cost_credentials ORDER BY provider ASC, created_at ASC');
+      return rows.map((row) => mapCostCredential(row));
+    },
+    async listByProvider(provider) {
+      const { rows } = await pool.query('SELECT * FROM provider_cost_credentials WHERE provider=$1 ORDER BY created_at ASC', [provider]);
+      return rows.map((row) => mapCostCredential(row));
+    },
+    // includeDecrypted must NEVER be set true by any admin/browser-facing route - only the
+    // adapter that actually calls the provider's cost API is allowed to pass it.
+    async get(id, { includeDecrypted } = {}) {
+      const { rows } = await pool.query('SELECT * FROM provider_cost_credentials WHERE id = $1', [id]);
+      return rows[0] ? mapCostCredential(rows[0], { includeDecrypted }) : null;
+    }
+  };
+
+  // AI Cost Control: one row per admin-triggered fetch against a provider's official cost API,
+  // plus its resulting immutable line-item snapshots. See 043_ai_cost_control.sql's own comment
+  // for why a read always picks ONE run's rows rather than merging across runs.
+  function mapCostSyncRun(row) {
+    return {
+      id: row.id, provider: row.provider, scopeKey: row.scope_key, requestedStart: row.requested_start, requestedEnd: row.requested_end,
+      status: row.status, errorCode: row.error_code, triggeredBy: row.triggered_by, startedAt: row.started_at, finishedAt: row.finished_at
+    };
+  }
+  function mapCostSnapshot(row) {
+    return {
+      id: row.id, syncRunId: row.sync_run_id, provider: row.provider, scopeKey: row.scope_key,
+      periodStart: row.period_start, periodEnd: row.period_end, currency: row.currency,
+      amountMicroUsd: Number(row.amount_micro_usd), lineItem: row.line_item, projectId: row.project_id, createdAt: row.created_at
+    };
+  }
+  const providerCostSync = {
+    async createRun({ provider, scopeKey, requestedStart, requestedEnd, triggeredBy }) {
+      const id = newId('providerCostSyncRun');
+      const { rows } = await pool.query(
+        `INSERT INTO provider_cost_sync_runs (id, provider, scope_key, requested_start, requested_end, status, triggered_by, started_at)
+         VALUES ($1,$2,$3,$4,$5,'running',$6,now()) RETURNING *`,
+        [id, provider, scopeKey || 'default', requestedStart, requestedEnd, triggeredBy || null]
+      );
+      return mapCostSyncRun(rows[0]);
+    },
+    async finishRun(id, { status, errorCode } = {}) {
+      const { rows } = await pool.query(
+        `UPDATE provider_cost_sync_runs SET status=$2, error_code=$3, finished_at=now() WHERE id=$1 RETURNING *`,
+        [id, status, errorCode || null]
+      );
+      return rows[0] ? mapCostSyncRun(rows[0]) : null;
+    },
+    async insertSnapshots(syncRunId, rows) {
+      if (!rows || !rows.length) return [];
+      const run = await pool.query('SELECT provider, scope_key FROM provider_cost_sync_runs WHERE id=$1', [syncRunId]);
+      if (!run.rows[0]) throw new ApiError(404, 'SYNC_RUN_NOT_FOUND');
+      const { provider, scope_key: scopeKey } = run.rows[0];
+      const inserted = [];
+      for (const row of rows) {
+        const { rows: result } = await pool.query(
+          `INSERT INTO provider_cost_snapshots (id, sync_run_id, provider, scope_key, period_start, period_end, currency, amount_micro_usd, line_item, project_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+          [newId('providerCostSnapshot'), syncRunId, provider, scopeKey, row.periodStart, row.periodEnd, row.currency || 'usd', row.amountMicroUsd, row.lineItem || null, row.projectId || null]
+        );
+        inserted.push(mapCostSnapshot(result[0]));
+      }
+      return inserted;
+    },
+    async snapshotsForRun(syncRunId) {
+      const { rows } = await pool.query('SELECT * FROM provider_cost_snapshots WHERE sync_run_id=$1 ORDER BY period_start ASC', [syncRunId]);
+      return rows.map(mapCostSnapshot);
+    },
+    // The one real read this whole domain exists for: the LATEST successful (never partial/error)
+    // run for (provider, scopeKey) whose OWN requested range fully covers [start, end) - the
+    // deterministic "pick one run" rule 043_ai_cost_control.sql's comment requires, so two
+    // overlapping refreshes can never be summed together.
+    async latestSuccessfulRunCovering({ provider, scopeKey, start, end }) {
+      const { rows } = await pool.query(
+        `SELECT * FROM provider_cost_sync_runs
+         WHERE provider=$1 AND scope_key=$2 AND status='success' AND requested_start <= $3 AND requested_end >= $4
+         ORDER BY finished_at DESC LIMIT 1`,
+        [provider, scopeKey || 'default', start, end]
+      );
+      return rows[0] ? mapCostSyncRun(rows[0]) : null;
+    },
+    async latestRunsByProvider() {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT ON (provider, scope_key) * FROM provider_cost_sync_runs ORDER BY provider, scope_key, started_at DESC`
+      );
+      return rows.map(mapCostSyncRun);
+    },
+    async recentRuns({ provider, limit } = {}) {
+      const { rows } = provider
+        ? await pool.query('SELECT * FROM provider_cost_sync_runs WHERE provider=$1 ORDER BY started_at DESC LIMIT $2', [provider, limit || 20])
+        : await pool.query('SELECT * FROM provider_cost_sync_runs ORDER BY started_at DESC LIMIT $1', [limit || 20]);
+      return rows.map(mapCostSyncRun);
+    }
+  };
+
+  // Explicitly-labeled manual balance entries - never read by any reconciliation math (see
+  // 043_ai_cost_control.sql's own comment).
+  function mapBalanceSnapshot(row) {
+    return {
+      id: row.id, provider: row.provider, amountMicroUsd: Number(row.amount_micro_usd), currency: row.currency,
+      note: row.note, adminUserId: row.admin_user_id, createdAt: row.created_at
+    };
+  }
+  const providerBalanceSnapshots = {
+    async create({ provider, amountMicroUsd, currency, note, adminUserId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO provider_balance_manual_snapshots (id, provider, amount_micro_usd, currency, note, admin_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [newId('providerBalanceSnapshot'), provider, amountMicroUsd, currency || 'usd', note || null, adminUserId || null]
+      );
+      return mapBalanceSnapshot(rows[0]);
+    },
+    async latest(provider) {
+      const { rows } = await pool.query('SELECT * FROM provider_balance_manual_snapshots WHERE provider=$1 ORDER BY created_at DESC LIMIT 1', [provider]);
+      return rows[0] ? mapBalanceSnapshot(rows[0]) : null;
     }
   };
 
@@ -3626,6 +3912,7 @@ export function createPgRepo(pool) {
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
-    conversationScenarios, conversationAudioAssets, conversationScenarioExposures
+    conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
+    providerCostCredentials, providerCostSync, providerBalanceSnapshots
   };
 }

@@ -38,7 +38,9 @@ export function createMemoryRepo() {
     },
     storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map(),
     conversationScenarios: new Map(), conversationScenarioVersions: new Map(), conversationAudioAssets: new Map(),
-    conversationScenarioExposures: new Map()
+    conversationScenarioExposures: new Map(),
+    // AI Cost Control (043_ai_cost_control.sql) - see repo.pg.mjs's identical-purpose domains.
+    providerCostCredentials: new Map(), providerCostSyncRuns: new Map(), providerCostSnapshots: new Map(), providerBalanceSnapshots: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -443,13 +445,20 @@ export function createMemoryRepo() {
   const usageEvents = {
     // Mirrors repo.pg.mjs's usageEvents.create() exactly - see that method's own comment for why
     // model/feature/cost/origin/linkedLedgerIdempotencyKey are all optional and additive.
-    async create({ userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey }) {
+    async create({
+      userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey,
+      cachedInputTokens, cacheWriteInputTokens, reasoningTokens, usageRaw
+    }) {
       const record = {
         id: newId('usageEvent'), userId: userId || null, provider: String(provider || 'unknown'),
         promptTokens: promptTokens ?? null, completionTokens: completionTokens ?? null, totalTokens: totalTokens ?? null,
         source: String(source || 'unknown'), model: model || null, feature: feature || null,
         providerCostMicroUsd: providerCostMicroUsd ?? null, retailChargeMicroUsd: retailChargeMicroUsd ?? null,
-        origin: origin || 'client', linkedLedgerIdempotencyKey: linkedLedgerIdempotencyKey || null, createdAt: now()
+        origin: origin || 'client', linkedLedgerIdempotencyKey: linkedLedgerIdempotencyKey || null,
+        // AI Cost Control (043_ai_cost_control.sql) - see repo.pg.mjs's mapUsageEvent() comment.
+        cachedInputTokens: cachedInputTokens ?? null, cacheWriteInputTokens: cacheWriteInputTokens ?? null,
+        reasoningTokens: reasoningTokens ?? null, usageRaw: usageRaw || null,
+        createdAt: now()
       };
       state.usageEvents.set(record.id, record);
       return clone(record);
@@ -539,6 +548,40 @@ export function createMemoryRepo() {
         addInto(lifetime, e);
       });
       return { todayKey, today, monthKey, thisMonth, lifetime };
+    },
+    // AI Cost Control's exact internal reconciliation domain - mirrors repo.pg.mjs's identical-
+    // named methods exactly, see that file's own comments.
+    async listBilledInRange({ start, end, limit = 200, offset = 0 } = {}) {
+      const values = Array.from(state.usageEvents.values())
+        .filter((e) => e.origin === 'gateway' && e.linkedLedgerIdempotencyKey && e.createdAt >= start && e.createdAt < end)
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+      return values.slice(offset, offset + limit).map(clone);
+    },
+    async countBilledInRange({ start, end } = {}) {
+      return Array.from(state.usageEvents.values())
+        .filter((e) => e.origin === 'gateway' && e.linkedLedgerIdempotencyKey && e.createdAt >= start && e.createdAt < end).length;
+    },
+    async countExcludedInRange({ start, end } = {}) {
+      return Array.from(state.usageEvents.values())
+        .filter((e) => e.createdAt >= start && e.createdAt < end && !(e.origin === 'gateway' && e.linkedLedgerIdempotencyKey)).length;
+    },
+    async aggregateByModelInRange({ start, end }) {
+      const buckets = new Map();
+      Array.from(state.usageEvents.values())
+        .filter((e) => e.origin === 'gateway' && e.createdAt >= start && e.createdAt < end)
+        .forEach((e) => {
+          const key = e.provider + '|' + (e.model || '');
+          const bucket = buckets.get(key) || {
+            provider: e.provider, model: e.model || null, calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0,
+            cachedInputTokens: 0, cacheWriteInputTokens: 0, reasoningTokens: 0, providerCostMicroUsd: 0, retailChargeMicroUsd: 0
+          };
+          bucket.calls += 1;
+          bucket.promptTokens += e.promptTokens || 0; bucket.completionTokens += e.completionTokens || 0; bucket.totalTokens += e.totalTokens || 0;
+          bucket.cachedInputTokens += e.cachedInputTokens || 0; bucket.cacheWriteInputTokens += e.cacheWriteInputTokens || 0; bucket.reasoningTokens += e.reasoningTokens || 0;
+          bucket.providerCostMicroUsd += e.providerCostMicroUsd || 0; bucket.retailChargeMicroUsd += e.retailChargeMicroUsd || 0;
+          buckets.set(key, bucket);
+        });
+      return Array.from(buckets.values()).sort((a, b) => b.providerCostMicroUsd - a.providerCostMicroUsd);
     }
   };
 
@@ -1412,10 +1455,12 @@ export function createMemoryRepo() {
       const row = state.providerModelPricing.get(provider + ':' + model);
       return row ? clone(row) : null;
     },
-    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, currency, enabled }) {
+    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, currency, enabled }) {
       const key = provider + ':' + model;
       const record = {
         provider, model, promptPricePer1k: promptPricePer1k ?? null, completionPricePer1k: completionPricePer1k ?? null,
+        // AI Cost Control (043_ai_cost_control.sql) - see repo.pg.mjs's mapProviderModelPricing() comment.
+        cachedInputPricePer1k: cachedInputPricePer1k ?? null, cacheWriteInputPricePer1k: cacheWriteInputPricePer1k ?? null,
         currency: currency || 'USD', enabled: enabled !== false, effectiveFrom: null, effectiveUntil: null, updatedAt: now()
       };
       state.providerModelPricing.set(key, record);
@@ -1532,8 +1577,31 @@ export function createMemoryRepo() {
       return Array.from(state.walletLedger.values()).filter((e) => e.userId === userId)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 50).map(clone);
     },
+    // AI Cost Control's per-user drill-down - mirrors repo.pg.mjs's identical-named method exactly.
+    async settlementsForUser(userId, { limit } = {}) {
+      return Array.from(state.walletLedger.values()).filter((e) => e.userId === userId && e.type === 'AI_SETTLEMENT')
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 100).map(clone);
+    },
     async recentLedger({ limit } = {}) {
       return Array.from(state.walletLedger.values()).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 100).map(clone);
+    },
+    // AI Cost Control's exact internal reconciliation domain - mirrors repo.pg.mjs's identical-
+    // named methods exactly.
+    async listSettlementsInRange({ start, end, limit = 200, offset = 0 } = {}) {
+      const values = Array.from(state.walletLedger.values())
+        .filter((e) => e.type === 'AI_SETTLEMENT' && e.createdAt >= start && e.createdAt < end)
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+      return values.slice(offset, offset + limit).map(clone);
+    },
+    async countSettlementsInRange({ start, end } = {}) {
+      return Array.from(state.walletLedger.values()).filter((e) => e.type === 'AI_SETTLEMENT' && e.createdAt >= start && e.createdAt < end).length;
+    },
+    // AI Cost Control - mirrors repo.pg.mjs's identical-named method exactly.
+    async sumSettlementsInRange({ start, end } = {}) {
+      const matches = Array.from(state.walletLedger.values()).filter((e) => e.type === 'AI_SETTLEMENT' && e.createdAt >= start && e.createdAt < end);
+      const cashMicroUsd = matches.reduce((sum, e) => sum + Math.abs(e.cashDeltaMicroUsd), 0);
+      const promoMicroUsd = matches.reduce((sum, e) => sum + Math.abs(e.promoDeltaMicroUsd), 0);
+      return { count: matches.length, cashMicroUsd, promoMicroUsd, totalMicroUsd: cashMicroUsd + promoMicroUsd };
     }
   };
 
@@ -1786,6 +1854,129 @@ export function createMemoryRepo() {
       const row = state.bscPaymentSecrets;
       row.lastTestedAt = now(); row.lastTestOk = Boolean(ok); row.lastDetectedChainId = Number.isFinite(chainId) ? chainId : null;
       return mapBscSecretsStatus();
+    }
+  };
+
+  // AI Cost Control (043_ai_cost_control.sql) - mirrors repo.pg.mjs's identical-purpose domains
+  // exactly (real encryption, same shape), see that file's own comments.
+  function shapeCostCredential(record, { includeDecrypted } = {}) {
+    const base = {
+      id: record.id, provider: record.provider, label: record.label, keyHint: record.keyHint, scopeConfig: record.scopeConfig || {}, enabled: record.enabled,
+      validationStatus: record.validationStatus, validationError: record.validationError, validatedAt: record.validatedAt,
+      updatedBy: record.updatedBy, createdAt: record.createdAt, updatedAt: record.updatedAt
+    };
+    if (includeDecrypted) base.apiKey = decryptSecret(record.apiKeyEncrypted, encryptionKeyHex());
+    return clone(base);
+  }
+  const providerCostCredentials = {
+    async create({ provider, label, apiKey, scopeConfig, updatedBy }) {
+      const trimmed = sanitizeApiKey(apiKey);
+      if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
+      const record = {
+        id: newId('providerCostCred'), provider: String(provider || '').trim(), label: String(label || '').trim() || 'Untitled credential',
+        apiKeyEncrypted: encryptSecret(trimmed, encryptionKeyHex()), keyHint: voiceKeyHintFor(trimmed), scopeConfig: scopeConfig || {}, enabled: true,
+        validationStatus: 'unknown', validationError: null, validatedAt: null,
+        updatedBy: updatedBy || null, createdAt: now(), updatedAt: now()
+      };
+      state.providerCostCredentials.set(record.id, record);
+      return shapeCostCredential(record);
+    },
+    async replace(id, { label, apiKey, scopeConfig, enabled, updatedBy }) {
+      const record = state.providerCostCredentials.get(id);
+      if (!record) throw new ApiError(404, 'CREDENTIAL_NOT_FOUND');
+      if (label != null) record.label = String(label).trim() || 'Untitled credential';
+      if (scopeConfig != null) record.scopeConfig = scopeConfig;
+      if (enabled != null) record.enabled = Boolean(enabled);
+      const trimmed = apiKey != null ? sanitizeApiKey(apiKey) : '';
+      if (trimmed) {
+        record.apiKeyEncrypted = encryptSecret(trimmed, encryptionKeyHex());
+        record.keyHint = voiceKeyHintFor(trimmed);
+        record.validationStatus = 'unknown'; record.validationError = null; record.validatedAt = null;
+      }
+      record.updatedBy = updatedBy || null; record.updatedAt = now();
+      return shapeCostCredential(record);
+    },
+    async recordValidation(id, { status, error }) {
+      const record = state.providerCostCredentials.get(id);
+      if (!record) return null;
+      record.validationStatus = status; record.validationError = error || null; record.validatedAt = now(); record.updatedAt = now();
+      return shapeCostCredential(record);
+    },
+    async delete(id) { return state.providerCostCredentials.delete(id); },
+    async list() { return Array.from(state.providerCostCredentials.values()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).map((r) => shapeCostCredential(r)); },
+    async listByProvider(provider) {
+      return Array.from(state.providerCostCredentials.values()).filter((r) => r.provider === provider).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).map((r) => shapeCostCredential(r));
+    },
+    async get(id, { includeDecrypted } = {}) {
+      const record = state.providerCostCredentials.get(id);
+      return record ? shapeCostCredential(record, { includeDecrypted }) : null;
+    }
+  };
+
+  const providerCostSync = {
+    async createRun({ provider, scopeKey, requestedStart, requestedEnd, triggeredBy }) {
+      const record = {
+        id: newId('providerCostSyncRun'), provider, scopeKey: scopeKey || 'default', requestedStart, requestedEnd,
+        status: 'running', errorCode: null, triggeredBy: triggeredBy || null, startedAt: now(), finishedAt: null
+      };
+      state.providerCostSyncRuns.set(record.id, record);
+      return clone(record);
+    },
+    async finishRun(id, { status, errorCode } = {}) {
+      const record = state.providerCostSyncRuns.get(id);
+      if (!record) return null;
+      record.status = status; record.errorCode = errorCode || null; record.finishedAt = now();
+      return clone(record);
+    },
+    async insertSnapshots(syncRunId, rows) {
+      const run = state.providerCostSyncRuns.get(syncRunId);
+      if (!run) throw new ApiError(404, 'SYNC_RUN_NOT_FOUND');
+      if (!rows || !rows.length) return [];
+      const inserted = [];
+      for (const row of rows) {
+        const record = {
+          id: newId('providerCostSnapshot'), syncRunId, provider: run.provider, scopeKey: run.scopeKey,
+          periodStart: row.periodStart, periodEnd: row.periodEnd, currency: row.currency || 'usd',
+          amountMicroUsd: row.amountMicroUsd, lineItem: row.lineItem || null, projectId: row.projectId || null, createdAt: now()
+        };
+        state.providerCostSnapshots.set(record.id, record);
+        inserted.push(clone(record));
+      }
+      return inserted;
+    },
+    async snapshotsForRun(syncRunId) {
+      return Array.from(state.providerCostSnapshots.values()).filter((s) => s.syncRunId === syncRunId).sort((a, b) => (a.periodStart < b.periodStart ? -1 : 1)).map(clone);
+    },
+    async latestSuccessfulRunCovering({ provider, scopeKey, start, end }) {
+      const key = scopeKey || 'default';
+      const matches = Array.from(state.providerCostSyncRuns.values())
+        .filter((r) => r.provider === provider && r.scopeKey === key && r.status === 'success' && r.requestedStart <= start && r.requestedEnd >= end)
+        .sort((a, b) => (a.finishedAt < b.finishedAt ? 1 : -1));
+      return matches[0] ? clone(matches[0]) : null;
+    },
+    async latestRunsByProvider() {
+      const byKey = new Map();
+      Array.from(state.providerCostSyncRuns.values())
+        .sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1))
+        .forEach((r) => { byKey.set(r.provider + ':' + r.scopeKey, r); });
+      return Array.from(byKey.values()).map(clone);
+    },
+    async recentRuns({ provider, limit } = {}) {
+      let values = Array.from(state.providerCostSyncRuns.values());
+      if (provider) values = values.filter((r) => r.provider === provider);
+      return values.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)).slice(0, limit || 20).map(clone);
+    }
+  };
+
+  const providerBalanceSnapshots = {
+    async create({ provider, amountMicroUsd, currency, note, adminUserId }) {
+      const record = { id: newId('providerBalanceSnapshot'), provider, amountMicroUsd, currency: currency || 'usd', note: note || null, adminUserId: adminUserId || null, createdAt: now() };
+      state.providerBalanceSnapshots.set(record.id, record);
+      return clone(record);
+    },
+    async latest(provider) {
+      const matches = Array.from(state.providerBalanceSnapshots.values()).filter((s) => s.provider === provider).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return matches[0] ? clone(matches[0]) : null;
     }
   };
 
@@ -2431,6 +2622,7 @@ export function createMemoryRepo() {
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
-    conversationScenarios, conversationAudioAssets, conversationScenarioExposures
+    conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
+    providerCostCredentials, providerCostSync, providerBalanceSnapshots
   };
 }
