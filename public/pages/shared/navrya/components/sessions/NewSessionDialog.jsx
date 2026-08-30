@@ -11,6 +11,9 @@ import { useAiFieldFill } from '../../hooks/useAiFieldFill.js';
 
 export const TIMEFRAMES = ['5m', '15m', '1h', '4h', '1D'];
 export const SESSION_CITIES = ['London', 'New York', 'Tokyo', 'Sydney'];
+// No longer driving a <Select> (see the loop field below - it's a plain minutes number now, from
+// 1 up) but kept exported since it documented the old fixed-label contract and nothing forbids a
+// caller from still reading it.
 export const LOOP_INTERVALS = ['15 min', '30 min', '1 hour', '4 hours'];
 export const UPLOAD_SLOTS = ['5m', '1h', '4h', '1D'];
 
@@ -19,13 +22,32 @@ function FieldLabel({ children }) {
 }
 
 const DEFAULT_LABELS = {
-  dialogTitle: 'New session', createWithoutChart: 'Create without chart', cancel: 'Cancel',
+  dialogTitle: 'New session', createWithoutChart: 'Create without chart', createSession: 'Create session', cancel: 'Cancel',
   uploadNotice: 'Chart uploads are optional. Add scenarios and notes after creation.',
   uploadChart: 'Upload chart image', tradingSession: 'Trading session', primaryTimeframe: 'Primary timeframe',
-  gregorianDate: 'Gregorian date', jalaliDate: 'Jalali date', loopInterval: 'Loop / update interval',
+  gregorianDate: 'Gregorian date', jalaliDate: 'Jalali date', loopInterval: 'Loop / update interval (minutes)',
   graceMinutes: 'Update grace period (minutes)', sessionAccount: 'Account', sessionNoAccount: 'No account',
-  instrument: 'Instrument'
+  instrument: 'Instrument',
+  liveSessionWarning: 'You picked this trading session manually — live auto-detection is currently off for it.'
 };
+
+// Real market-session detection, in UTC - the same windows already documented in
+// ARCHITECTURE.md's session-detection table and used by trade-store.js's own detectSession()/
+// navrya-src/marketAdapter.js's currentOpenMarket(). Kept here as its own small, self-contained
+// copy (matching the convention those two already established - each script/module scope keeps
+// its own copy rather than one importing the other) instead of reaching into navrya-src, since
+// this file is a reusable design-system component and must not depend on app-level modules.
+// London/New York's overlap (13:00-16:00) keeps that established priority (London wins, checked
+// first, exactly like the other two copies); Sydney/Tokyo's overlap (00:00-07:00) resolves to
+// Tokyo - the later-opened of the two - since Tokyo is checked before the Sydney fallback.
+function liveTradingSession(now) {
+  const hour = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const inRange = (start, end) => (start < end ? (hour >= start && hour < end) : (hour >= start || hour < end));
+  if (inRange(7, 16)) return 'London';
+  if (inRange(13, 22)) return 'New York';
+  if (inRange(0, 9)) return 'Tokyo';
+  return 'Sydney';
+}
 
 // HOTFIX: the two date defaults below used to be hardcoded, stale mock strings
 // ('08/01/2026'/'۱۴۰۵/۰۵/۱۰') left over from an early design mockup - every session created
@@ -47,12 +69,30 @@ function todayJalali() { return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { 
    opt-in and must never suggest there is something to pick when there is nothing real to pick. */
 export function NewSessionDialog({
   open = true, eyebrow, onClose, onCreate, labels, accountOptions,
-  defaults = { city: 'London', timeframe: '5m', gregorian: todayIso(), jalali: todayJalali(), loop: '30 min', grace: '5', accountId: '', instrument: '' },
+  // `city` is intentionally absent here - see the live-detection effect below, which picks the
+  // real, currently-open market session as the default instead of a fixed guess. An explicit
+  // defaults.city from a future caller still wins (checked first, same as every other field).
+  defaults = { timeframe: '5m', gregorian: todayIso(), jalali: todayJalali(), loop: '5', grace: '5', accountId: '', instrument: '' },
   style, ...rest
 }) {
   const t = { ...DEFAULT_LABELS, ...labels };
-  const [city, setCity] = React.useState(defaults.city);
+  // Defect: "New session" always opened defaulted to a fixed 'London', requiring a manual pick
+  // every time even though the real, currently-open trading session is always knowable. `city`
+  // now defaults to that live session, and re-syncs to whatever is live every time the dialog is
+  // actually opened (`open` flips to true) - `liveCity` is the value it was last set from, so
+  // comparing the two below can tell a fresh auto-pick apart from a deliberate manual change.
+  const [city, setCity] = React.useState(() => defaults.city || liveTradingSession(new Date()));
+  const [liveCity, setLiveCity] = React.useState(() => defaults.city || liveTradingSession(new Date()));
+  React.useEffect(() => {
+    if (!open) return;
+    const detected = defaults.city || liveTradingSession(new Date());
+    setLiveCity(detected);
+    setCity(detected);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const [timeframe, setTimeframe] = React.useState(defaults.timeframe);
+  // Only one calendar is ever shown (see the date field below) - the other still travels with
+  // every session record exactly as before (sessionsAdapter.js/liveSessionView.jsx both read
+  // either one), computed fresh rather than left editable behind a hidden, stale field.
   const [gregorian, setGregorian] = React.useState(defaults.gregorian);
   const [jalali, setJalali] = React.useState(defaults.jalali);
   const [loop, setLoop] = React.useState(defaults.loop);
@@ -147,6 +187,16 @@ export function NewSessionDialog({
   }
 
   const grid = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 16 };
+  // Defect: the primary button always read "Create without chart", even right after a chart was
+  // actually attached - misleading once at least one upload slot is filled.
+  const hasUpload = Object.keys(uploads).length > 0;
+  // Defect: both a Gregorian and a Jalali date field were always shown together. The app's
+  // existing convention (session-system.js's dateFa(), used only when document.documentElement.lang
+  // is 'fa') is that the calendar follows the language setting - matched here directly rather than
+  // threading a new prop through, the same way every other navrya-src view file already reads this
+  // live rather than caching it. Both calendars are still recorded on the session either way (see
+  // the `gregorian`/`jalali` state comment above); only one is ever an editable field.
+  const isFa = (typeof document !== 'undefined' && document.documentElement.lang) === 'fa';
 
   return (
     <Modal
@@ -162,7 +212,7 @@ export function NewSessionDialog({
               uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
             })}
           >
-            {t.createWithoutChart}
+            {hasUpload ? t.createSession : t.createWithoutChart}
           </Button>
           <Button variant="ghost" onClick={onClose}>{t.cancel}</Button>
         </React.Fragment>
@@ -175,6 +225,7 @@ export function NewSessionDialog({
           <UploadField
             key={tf} label={t.uploadChart + ' ' + tf}
             filename={uploads[tf] && uploads[tf].file.name}
+            previewUrl={uploads[tf] && uploads[tf].previewUrl}
             onSelect={(file) => selectFile(tf, file)}
           />
         ))}
@@ -186,6 +237,11 @@ export function NewSessionDialog({
             <Select value={city} onChange={setCity} options={SESSION_CITIES} width="100%" />
           </label>
         </AiMagicFill>
+        {city !== liveCity && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Notice tone="warning" icon="alert-triangle">{t.liveSessionWarning}</Notice>
+          </div>
+        )}
         <AiMagicFill active={timeframeFilled}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
             <FieldLabel>{t.primaryTimeframe}</FieldLabel>
@@ -198,12 +254,12 @@ export function NewSessionDialog({
             <InstrumentPicker value={instrument} onChange={setInstrument} width="100%" />
           </label>
         </AiMagicFill>
-        <TextField label={t.gregorianDate} value={gregorian} onChange={setGregorian} />
-        <TextField label={t.jalaliDate} value={jalali} onChange={setJalali} dir="rtl" />
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
-          <FieldLabel>{t.loopInterval}</FieldLabel>
-          <Select value={loop} onChange={setLoop} options={LOOP_INTERVALS} width="100%" />
-        </label>
+        {isFa ? (
+          <TextField label={t.jalaliDate} value={jalali} onChange={setJalali} dir="rtl" />
+        ) : (
+          <TextField label={t.gregorianDate} value={gregorian} onChange={setGregorian} type="date" />
+        )}
+        <TextField label={t.loopInterval} value={loop} onChange={setLoop} type="number" min="1" />
         <TextField label={t.graceMinutes} value={grace} onChange={setGrace} type="number" />
         {hasAccounts ? (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>

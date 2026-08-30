@@ -287,16 +287,27 @@ function SessionsApp({ character, navryaCharacter, store }) {
         />
       ) : (
         <SessionLibrary
-          sessions={cards} onNewSession={store.createSession}
+          // HOTFIX: creating a session used to just close the dialog and leave the user sitting on
+          // the Session Library - session.create's own AI action already navigates in via
+          // resultContext() (openLiveSession() below), but the plain "New session" button never
+          // did. store.createSession() resolves with the real created session (sessionsAdapter.js's
+          // own return value), so this is the exact same navigation, just reached from the manual
+          // path too instead of only the voice/chat one.
+          sessions={cards}
+          onNewSession={(values) => Promise.resolve(store.createSession(values)).then((session) => {
+            if (session && session.id) openLiveSession(session.id);
+            return session;
+          })}
           title={t.sessionLibraryTitle} subtitle={t.sessionLibrarySubtitle} newSessionLabel={t.newSession}
           emptyStateProps={{ title: t.emptyTitle, helper: t.emptyHelper }}
           newSessionDialogProps={{
             labels: {
-              dialogTitle: t.dialogTitle, createWithoutChart: t.createWithoutChart, cancel: t.cancel,
+              dialogTitle: t.dialogTitle, createWithoutChart: t.createWithoutChart, createSession: t.createSession, cancel: t.cancel,
               uploadNotice: t.uploadNotice, uploadChart: t.uploadChart, tradingSession: t.tradingSession,
               primaryTimeframe: t.primaryTimeframe, gregorianDate: t.gregorianDate, jalaliDate: t.jalaliDate,
               loopInterval: t.loopInterval, graceMinutes: t.graceMinutes,
-              sessionAccount: t.sessionAccount, sessionNoAccount: t.sessionNoAccount, instrument: t.instrument
+              sessionAccount: t.sessionAccount, sessionNoAccount: t.sessionNoAccount, instrument: t.instrument,
+              liveSessionWarning: t.liveSessionWarning
             },
             accountOptions: sessionAccountOptions
           }}

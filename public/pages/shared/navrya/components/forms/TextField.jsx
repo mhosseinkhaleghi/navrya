@@ -2,7 +2,8 @@ import React from 'react';
 
 /* Labelled input — 44px, gold frame, neutral ink surface. Pair two per row in a dialog grid. */
 export function TextField({
-  label, value, onChange, placeholder, type = 'text', dir, disabled = false, hint, style, ...rest
+  label, value, onChange, placeholder, type = 'text', dir, disabled = false, hint,
+  min, max, step, style, ...rest
 }) {
   const [focus, setFocus] = React.useState(false);
   return (
@@ -12,6 +13,7 @@ export function TextField({
       )}
       <input
         type={type} value={value} placeholder={placeholder} dir={dir} disabled={disabled}
+        min={min} max={max} step={step}
         onChange={(e) => onChange && onChange(e.target.value)}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
         style={{
