@@ -96,6 +96,10 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'AI cost & charge (real, per model)', aiCostProviderCost: 'Provider cost', aiCostRetailCharge: 'Retail charge',
     aiCostRateCardHint: 'Calculated from actual token usage x your configured provider pricing (a rate card) - not a reconciled OpenAI invoice.',
     aiCostModel: 'Model', aiCostCalls: 'Calls', aiCostNoData: 'No real per-model AI cost recorded for this user yet.',
+    aiCostReconMatches: 'Wallet settlements match usage', aiCostReconMismatch: 'Wallet settlements do not match usage',
+    aiCostReconExpected: 'Expected retail charge', aiCostReconSettled: 'Actual wallet movement',
+    aiCostReconSampleLimited: '(based on the most recent 100 settlements only)',
+    aiCostSettlementsTitle: 'Wallet settlements', aiCostCashDebit: 'Cash debit', aiCostPromoDebit: 'Promo debit',
     aiUsageByModelTitle: 'Real settled cost by model (all users)', aiUsageByModelEmpty: 'No real per-model AI cost recorded yet.',
     aiCostProvider: 'Provider', aiCostPromptTokens: 'Prompt tokens', aiCostCompletionTokens: 'Completion tokens', aiCostTotalTokens: 'Total tokens',
     // Crypto payments (BSC) - admin config sub-tab (admin-config task). Unlike the rest of the
@@ -126,6 +130,54 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhookConfirm: 'Clear the webhook secret? The webhook endpoint will refuse every request until a new one is generated.',
     cryptoPayWebhookRevealed: 'New webhook secret: {secret}',
     cryptoPayWebhookNeverShownAgain: 'This value is shown once and cannot be retrieved again - copy it now.',
+
+    // AI Cost Control - admin config sub-tab. Fully localized, same convention as Crypto payments
+    // directly above (the two newest, most-scrutinized Commercial additions).
+    comSubAiCostControl: 'AI Cost Control',
+    aiccStatusOk: 'Reconciled', aiccStatusNoAdapter: 'No official cost reconciliation adapter configured',
+    aiccStatusNotConfigured: 'Not configured', aiccStatusNotSynced: 'Never synced for this range',
+    aiccStatusNotComparableCurrency: 'Not comparable - provider currency differs from USD',
+    aiccRangeLabel: 'Time range', aiccRange24h: 'Last 24 hours', aiccRange7d: 'Last 7 days', aiccRange30d: 'Last 30 days',
+    aiccRangeMonth: 'Current month', aiccRangeCustom: 'Custom UTC range',
+    aiccCustomStart: 'Start (UTC)', aiccCustomEnd: 'End (UTC)', aiccApplyRange: 'Apply', aiccRangeUtcHint: 'All ranges are UTC. Provider cost data is daily-bucketed by the official API and may be delayed - it is not necessarily real-time.',
+    aiccOverviewTitle: 'Overview',
+    aiccNotComparable: 'Not comparable',
+    aiccOverviewExternalCost: 'External actual provider cost', aiccSourceProviderApi: 'Provider official cost API',
+    aiccOverviewInternalEstimate: 'Internal provider-cost estimate', aiccSourceInternalEstimate: 'Internal rate-card estimate',
+    aiccOverviewRetailCharge: 'Retail user charges', aiccSourceRetailCharge: 'Retail wallet charge',
+    aiccOverviewWalletDebit: 'Actual wallet debits', aiccOverviewMargin: 'Margin (retail - external actual)',
+    aiccOverviewReconciliation: 'Reconciliation exceptions', aiccOverviewFreshness: 'Providers with comparable data',
+    aiccFreshnessStale: 'stale', aiccFreshnessComparable: 'comparable',
+    aiccProvidersTitle: 'Providers',
+    aiccColProvider: 'Provider', aiccColStatus: 'Status', aiccColExternalCost: 'External cost', aiccColInternalEstimate: 'Internal estimate',
+    aiccColDiff: 'Difference', aiccColRetailCharge: 'Retail charge', aiccColBalance: 'Balance', aiccColLastSync: 'Last successful sync',
+    aiccColScope: 'Scope / project', aiccColActions: 'Actions',
+    aiccOutOfTolerance: 'Out of tolerance',
+    aiccBalanceUnavailable: 'Balance unavailable via official API', aiccBalanceManualLabel: 'Manual, not used for reconciliation',
+    aiccRefreshBtn: 'Refresh', aiccRefreshing: 'Refreshing…', aiccRefreshSuccess: 'Refreshed successfully', aiccRefreshFailed: 'Refresh failed',
+    aiccConfigureBtn: 'Configure a credential below to enable',
+    aiccModelsTitle: 'Models',
+    aiccColInputTokens: 'Input tokens', aiccColOutputTokens: 'Output tokens', aiccColCachedTokens: 'Cached input tokens',
+    aiccColCacheWriteTokens: 'Cache-write tokens', aiccColReasoningTokens: 'Reasoning tokens (informational)',
+    aiccColExternalCostModel: 'External cost',
+    aiccModelExternalNotSupported: 'Not supported at model level for this provider',
+    aiccReconciliationTitle: 'Reconciliation',
+    aiccReconInternalTitle: 'Internal wallet / usage reconciliation (exact)',
+    aiccReconMatched: 'Matched', aiccReconMissingSettlement: 'Missing settlement', aiccReconOrphanSettlement: 'Orphan settlement',
+    aiccReconAmountMismatch: 'Amount mismatch', aiccReconProviderModelMismatch: 'Provider/model mismatch', aiccReconExcluded: 'Excluded (non-billable)',
+    aiccReconTruncated: 'This range has more rows than could be scanned in one pass - counts above reflect only the rows scanned. Narrow the range for an exact total.',
+    aiccExceptionsTitle: 'Exceptions',
+    aiccColExceptionType: 'Type', aiccColKey: 'Key', aiccColOccurredAt: 'Occurred at',
+    aiccReconExternalTitle: 'External provider reconciliation (expected to vary)',
+    aiccToleranceLabel: 'Warning tolerance (%)', aiccToleranceSave: 'Save',
+    aiccCredentialsTitle: 'Provider cost-reconciliation credentials',
+    aiccTestConnection: 'Test connection', aiccTestConnectionSuccess: 'Connection succeeded', aiccTestConnectionFailed: 'Connection failed',
+    aiccDeleteCredential: 'Delete', aiccDeleteCredentialConfirm: 'Delete this credential? Reconciliation for this provider will stop working until a new one is added.',
+    aiccColLabel: 'Label', aiccApiKey: 'API key (organization admin key)', aiccProjectId: 'Dedicated project id',
+    aiccAddCredential: 'Add credential',
+    aiccScopeConfigHint: 'For OpenAI, use a dedicated organization ADMIN key (not the normal model API key) and a dedicated NAVRYA project id, so unrelated organization usage is never counted.',
+    aiccBalanceManualTitle: 'Manual balance snapshot (optional)',
+    aiccBalanceManualAmount: 'Amount (USD)', aiccBalanceManualNote: 'Note', aiccBalanceManualSave: 'Save snapshot',
 
     tabConversationStudio: 'Conversation Studio',
     convStudioTitle: 'Conversation Studio', convStudioHint: 'Author, test, and publish the deterministic scenarios the Conversation Router matches locally, with zero AI calls.',
@@ -226,6 +278,10 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'هزینه و مبلغ دریافتی هوش مصنوعی (واقعی، به تفکیک مدل)', aiCostProviderCost: 'هزینه واقعی سرویس‌دهنده', aiCostRetailCharge: 'مبلغ دریافتی از کاربر',
     aiCostRateCardHint: 'محاسبه‌شده از مصرف واقعی توکن ضربدر نرخ پیکربندی‌شده‌ی شما - نه صورت‌حساب تطبیق‌داده‌شده‌ی OpenAI.',
     aiCostModel: 'مدل', aiCostCalls: 'تعداد فراخوانی', aiCostNoData: 'هنوز هزینه واقعی هوش مصنوعی برای این کاربر ثبت نشده است.',
+    aiCostReconMatches: 'تسویه‌های کیف پول با مصرف مطابقت دارد', aiCostReconMismatch: 'تسویه‌های کیف پول با مصرف مطابقت ندارد',
+    aiCostReconExpected: 'مبلغ مورد انتظار از کاربر', aiCostReconSettled: 'مبلغ واقعی کسر شده از کیف پول',
+    aiCostReconSampleLimited: '(فقط بر اساس ۱۰۰ تسویه اخیر)',
+    aiCostSettlementsTitle: 'تسویه‌های کیف پول', aiCostCashDebit: 'کسر از موجودی نقدی', aiCostPromoDebit: 'کسر از موجودی هدیه',
     aiUsageByModelTitle: 'هزینه واقعی تسویه‌شده به تفکیک مدل (همه کاربران)', aiUsageByModelEmpty: 'هنوز هزینه واقعی هوش مصنوعی به تفکیک مدل ثبت نشده است.',
     aiCostProvider: 'سرویس‌دهنده', aiCostPromptTokens: 'توکن‌های ورودی', aiCostCompletionTokens: 'توکن‌های خروجی', aiCostTotalTokens: 'مجموع توکن‌ها',
     comSubCryptoPayments: 'پرداخت‌های ارز دیجیتال',
@@ -253,6 +309,53 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhookConfirm: 'کلید مخفی وب‌هوک پاک شود؟ تا ساخت مقدار جدید، مسیر وب‌هوک همه درخواست‌ها را رد می‌کند.',
     cryptoPayWebhookRevealed: 'کلید مخفی جدید وب‌هوک: {secret}',
     cryptoPayWebhookNeverShownAgain: 'این مقدار فقط یک‌بار نمایش داده می‌شود و دیگر قابل بازیابی نیست - همین حالا آن را کپی کنید.',
+
+    // کنترل هزینه هوش مصنوعی - زیرتب پیکربندی مدیریتی، کاملاً بومی‌سازی‌شده.
+    comSubAiCostControl: 'کنترل هزینه هوش مصنوعی',
+    aiccStatusOk: 'تطبیق‌یافته', aiccStatusNoAdapter: 'هیچ رابط تطبیق هزینه رسمی پیکربندی نشده است',
+    aiccStatusNotConfigured: 'پیکربندی نشده', aiccStatusNotSynced: 'برای این بازه هرگز همگام‌سازی نشده',
+    aiccStatusNotComparableCurrency: 'قابل مقایسه نیست - واحد پول سرویس‌دهنده با دلار متفاوت است',
+    aiccRangeLabel: 'بازه زمانی', aiccRange24h: '۲۴ ساعت اخیر', aiccRange7d: '۷ روز اخیر', aiccRange30d: '۳۰ روز اخیر',
+    aiccRangeMonth: 'ماه جاری', aiccRangeCustom: 'بازه دلخواه (UTC)',
+    aiccCustomStart: 'شروع (UTC)', aiccCustomEnd: 'پایان (UTC)', aiccApplyRange: 'اعمال', aiccRangeUtcHint: 'همه بازه‌ها بر اساس UTC هستند. داده هزینه سرویس‌دهنده به‌صورت روزانه از API رسمی دریافت می‌شود و ممکن است با تأخیر باشد - لزوماً بلادرنگ نیست.',
+    aiccOverviewTitle: 'نمای کلی',
+    aiccNotComparable: 'قابل مقایسه نیست',
+    aiccOverviewExternalCost: 'هزینه واقعی خارجی سرویس‌دهنده', aiccSourceProviderApi: 'API رسمی هزینه سرویس‌دهنده',
+    aiccOverviewInternalEstimate: 'برآورد داخلی هزینه سرویس‌دهنده', aiccSourceInternalEstimate: 'برآورد داخلی بر اساس نرخ',
+    aiccOverviewRetailCharge: 'مبلغ دریافتی از کاربران', aiccSourceRetailCharge: 'مبلغ دریافتی از کیف پول',
+    aiccOverviewWalletDebit: 'کسر واقعی از کیف پول', aiccOverviewMargin: 'حاشیه سود (دریافتی منهای هزینه واقعی خارجی)',
+    aiccOverviewReconciliation: 'موارد استثنای تطبیق', aiccOverviewFreshness: 'سرویس‌دهنده‌های دارای داده قابل مقایسه',
+    aiccFreshnessStale: 'قدیمی', aiccFreshnessComparable: 'قابل مقایسه',
+    aiccProvidersTitle: 'سرویس‌دهنده‌ها',
+    aiccColProvider: 'سرویس‌دهنده', aiccColStatus: 'وضعیت', aiccColExternalCost: 'هزینه خارجی', aiccColInternalEstimate: 'برآورد داخلی',
+    aiccColDiff: 'اختلاف', aiccColRetailCharge: 'مبلغ دریافتی', aiccColBalance: 'موجودی', aiccColLastSync: 'آخرین همگام‌سازی موفق',
+    aiccColScope: 'محدوده / پروژه', aiccColActions: 'عملیات',
+    aiccOutOfTolerance: 'خارج از آستانه مجاز',
+    aiccBalanceUnavailable: 'موجودی از طریق API رسمی در دسترس نیست', aiccBalanceManualLabel: 'دستی، در تطبیق استفاده نمی‌شود',
+    aiccRefreshBtn: 'به‌روزرسانی', aiccRefreshing: 'در حال به‌روزرسانی…', aiccRefreshSuccess: 'با موفقیت به‌روزرسانی شد', aiccRefreshFailed: 'به‌روزرسانی ناموفق بود',
+    aiccConfigureBtn: 'برای فعال‌سازی، یک اعتبارنامه در پایین پیکربندی کنید',
+    aiccModelsTitle: 'مدل‌ها',
+    aiccColInputTokens: 'توکن‌های ورودی', aiccColOutputTokens: 'توکن‌های خروجی', aiccColCachedTokens: 'توکن‌های ورودی کش‌شده',
+    aiccColCacheWriteTokens: 'توکن‌های نوشتن کش', aiccColReasoningTokens: 'توکن‌های استدلال (اطلاعاتی)',
+    aiccColExternalCostModel: 'هزینه خارجی',
+    aiccModelExternalNotSupported: 'برای این سرویس‌دهنده در سطح مدل پشتیبانی نمی‌شود',
+    aiccReconciliationTitle: 'تطبیق',
+    aiccReconInternalTitle: 'تطبیق دقیق داخلی کیف پول / مصرف',
+    aiccReconMatched: 'مطابق', aiccReconMissingSettlement: 'تسویه گمشده', aiccReconOrphanSettlement: 'تسویه بدون مصرف متناظر',
+    aiccReconAmountMismatch: 'عدم تطابق مبلغ', aiccReconProviderModelMismatch: 'عدم تطابق سرویس‌دهنده/مدل', aiccReconExcluded: 'حذف‌شده (غیرقابل صورتحساب)',
+    aiccReconTruncated: 'این بازه بیش از حد قابل بررسی در یک مرحله ردیف دارد - اعداد بالا فقط بازتاب ردیف‌های بررسی‌شده است. برای عدد دقیق، بازه را کوچک‌تر کنید.',
+    aiccExceptionsTitle: 'استثناها',
+    aiccColExceptionType: 'نوع', aiccColKey: 'کلید', aiccColOccurredAt: 'زمان وقوع',
+    aiccReconExternalTitle: 'تطبیق خارجی سرویس‌دهنده (انتظار تفاوت می‌رود)',
+    aiccToleranceLabel: 'آستانه هشدار (٪)', aiccToleranceSave: 'ذخیره',
+    aiccCredentialsTitle: 'اعتبارنامه‌های تطبیق هزینه سرویس‌دهنده',
+    aiccTestConnection: 'آزمایش اتصال', aiccTestConnectionSuccess: 'اتصال موفق بود', aiccTestConnectionFailed: 'اتصال ناموفق بود',
+    aiccDeleteCredential: 'حذف', aiccDeleteCredentialConfirm: 'این اعتبارنامه حذف شود؟ تطبیق این سرویس‌دهنده تا افزودن اعتبارنامه جدید کار نخواهد کرد.',
+    aiccColLabel: 'برچسب', aiccApiKey: 'کلید API (کلید مدیریتی سازمان)', aiccProjectId: 'شناسه پروژه اختصاصی',
+    aiccAddCredential: 'افزودن اعتبارنامه',
+    aiccScopeConfigHint: 'برای OpenAI، از یک کلید مدیریتی (ADMIN) اختصاصی سازمان (نه کلید معمولی API مدل) و یک شناسه پروژه اختصاصی NAVRYA استفاده کنید تا مصرف نامرتبط سازمان هرگز شمارش نشود.',
+    aiccBalanceManualTitle: 'ثبت دستی موجودی (اختیاری)',
+    aiccBalanceManualAmount: 'مبلغ (دلار)', aiccBalanceManualNote: 'یادداشت', aiccBalanceManualSave: 'ذخیره ثبت',
 
     tabConversationStudio: 'استودیوی گفتگو',
     convStudioTitle: 'استودیوی گفتگو', convStudioHint: 'سناریوهای قطعی‌ای که روتر گفتگو به‌صورت محلی و بدون فراخوانی هوش مصنوعی تشخیص می‌دهد را اینجا بساز، تست کن و منتشر کن.',
@@ -353,6 +456,10 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'تكلفة واستحقاق الذكاء الاصطناعي (فعلي، حسب النموذج)', aiCostProviderCost: 'تكلفة المزوّد', aiCostRetailCharge: 'المبلغ المحصّل من المستخدم',
     aiCostRateCardHint: 'محسوبة من استخدام الرموز الفعلي × تسعيرة المزوّد التي أعددتها - وليست فاتورة OpenAI مُسوّاة.',
     aiCostModel: 'النموذج', aiCostCalls: 'عدد الاستدعاءات', aiCostNoData: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة لهذا المستخدم بعد.',
+    aiCostReconMatches: 'تسويات المحفظة مطابقة للاستخدام', aiCostReconMismatch: 'تسويات المحفظة غير مطابقة للاستخدام',
+    aiCostReconExpected: 'المبلغ المتوقع من المستخدم', aiCostReconSettled: 'الحركة الفعلية في المحفظة',
+    aiCostReconSampleLimited: '(استنادًا إلى آخر 100 تسوية فقط)',
+    aiCostSettlementsTitle: 'تسويات المحفظة', aiCostCashDebit: 'خصم نقدي', aiCostPromoDebit: 'خصم من رصيد العروض',
     aiUsageByModelTitle: 'التكلفة الفعلية المسوّاة حسب النموذج (كل المستخدمين)', aiUsageByModelEmpty: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة حسب النموذج بعد.',
     aiCostProvider: 'المزوّد', aiCostPromptTokens: 'رموز الإدخال', aiCostCompletionTokens: 'رموز الإخراج', aiCostTotalTokens: 'إجمالي الرموز',
     comSubCryptoPayments: 'المدفوعات بالعملات الرقمية',
@@ -380,6 +487,53 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhookConfirm: 'هل تريد مسح سر الويب هوك؟ سيرفض مسار الويب هوك كل طلب حتى يتم توليد سر جديد.',
     cryptoPayWebhookRevealed: 'سر الويب هوك الجديد: {secret}',
     cryptoPayWebhookNeverShownAgain: 'تُعرض هذه القيمة مرة واحدة فقط ولا يمكن استرجاعها لاحقًا - انسخها الآن.',
+
+    // التحكم في تكلفة الذكاء الاصطناعي - علامة تبويب فرعية إدارية، مترجمة بالكامل.
+    comSubAiCostControl: 'التحكم في تكلفة الذكاء الاصطناعي',
+    aiccStatusOk: 'مُسوّى', aiccStatusNoAdapter: 'لا يوجد محول تسوية تكلفة رسمي مُهيّأ',
+    aiccStatusNotConfigured: 'غير مهيّأ', aiccStatusNotSynced: 'لم تتم المزامنة لهذا النطاق مطلقًا',
+    aiccStatusNotComparableCurrency: 'غير قابل للمقارنة - عملة المزوّد مختلفة عن الدولار الأمريكي',
+    aiccRangeLabel: 'النطاق الزمني', aiccRange24h: 'آخر 24 ساعة', aiccRange7d: 'آخر 7 أيام', aiccRange30d: 'آخر 30 يومًا',
+    aiccRangeMonth: 'الشهر الحالي', aiccRangeCustom: 'نطاق مخصص (UTC)',
+    aiccCustomStart: 'البداية (UTC)', aiccCustomEnd: 'النهاية (UTC)', aiccApplyRange: 'تطبيق', aiccRangeUtcHint: 'كل النطاقات بتوقيت UTC. بيانات تكلفة المزوّد مجمّعة يوميًا عبر الواجهة الرسمية وقد تكون متأخرة - ليست بالضرورة فورية.',
+    aiccOverviewTitle: 'نظرة عامة',
+    aiccNotComparable: 'غير قابل للمقارنة',
+    aiccOverviewExternalCost: 'التكلفة الفعلية الخارجية للمزوّد', aiccSourceProviderApi: 'واجهة التكلفة الرسمية للمزوّد',
+    aiccOverviewInternalEstimate: 'التقدير الداخلي لتكلفة المزوّد', aiccSourceInternalEstimate: 'تقدير داخلي حسب بطاقة الأسعار',
+    aiccOverviewRetailCharge: 'المبالغ المحصّلة من المستخدمين', aiccSourceRetailCharge: 'رسوم المحفظة',
+    aiccOverviewWalletDebit: 'الخصومات الفعلية من المحفظة', aiccOverviewMargin: 'الهامش (الرسوم ناقص التكلفة الخارجية الفعلية)',
+    aiccOverviewReconciliation: 'استثناءات التسوية', aiccOverviewFreshness: 'المزوّدون ذوو بيانات قابلة للمقارنة',
+    aiccFreshnessStale: 'قديمة', aiccFreshnessComparable: 'قابلة للمقارنة',
+    aiccProvidersTitle: 'المزوّدون',
+    aiccColProvider: 'المزوّد', aiccColStatus: 'الحالة', aiccColExternalCost: 'التكلفة الخارجية', aiccColInternalEstimate: 'التقدير الداخلي',
+    aiccColDiff: 'الفرق', aiccColRetailCharge: 'الرسوم المحصّلة', aiccColBalance: 'الرصيد', aiccColLastSync: 'آخر مزامنة ناجحة',
+    aiccColScope: 'النطاق / المشروع', aiccColActions: 'الإجراءات',
+    aiccOutOfTolerance: 'خارج الحد المسموح',
+    aiccBalanceUnavailable: 'الرصيد غير متاح عبر الواجهة الرسمية', aiccBalanceManualLabel: 'يدوي، لا يُستخدم في التسوية',
+    aiccRefreshBtn: 'تحديث', aiccRefreshing: 'جارٍ التحديث…', aiccRefreshSuccess: 'تم التحديث بنجاح', aiccRefreshFailed: 'فشل التحديث',
+    aiccConfigureBtn: 'قم بتهيئة بيانات اعتماد أدناه للتفعيل',
+    aiccModelsTitle: 'النماذج',
+    aiccColInputTokens: 'رموز الإدخال', aiccColOutputTokens: 'رموز الإخراج', aiccColCachedTokens: 'رموز الإدخال المخزّنة مؤقتًا',
+    aiccColCacheWriteTokens: 'رموز كتابة التخزين المؤقت', aiccColReasoningTokens: 'رموز التفكير (إعلامي فقط)',
+    aiccColExternalCostModel: 'التكلفة الخارجية',
+    aiccModelExternalNotSupported: 'غير مدعوم على مستوى النموذج لهذا المزوّد',
+    aiccReconciliationTitle: 'التسوية',
+    aiccReconInternalTitle: 'تسوية دقيقة داخلية للمحفظة والاستخدام',
+    aiccReconMatched: 'متطابق', aiccReconMissingSettlement: 'تسوية مفقودة', aiccReconOrphanSettlement: 'تسوية بلا استخدام مرتبط',
+    aiccReconAmountMismatch: 'عدم تطابق في المبلغ', aiccReconProviderModelMismatch: 'عدم تطابق في المزوّد/النموذج', aiccReconExcluded: 'مستبعد (غير قابل للفوترة)',
+    aiccReconTruncated: 'يحتوي هذا النطاق على صفوف أكثر مما يمكن فحصه في مرور واحد - الأعداد أعلاه تعكس الصفوف التي تم فحصها فقط. ضيّق النطاق للحصول على رقم دقيق.',
+    aiccExceptionsTitle: 'الاستثناءات',
+    aiccColExceptionType: 'النوع', aiccColKey: 'المفتاح', aiccColOccurredAt: 'وقت الحدوث',
+    aiccReconExternalTitle: 'تسوية خارجية مع المزوّد (يُتوقّع أن تختلف)',
+    aiccToleranceLabel: 'نسبة التحذير المسموحة (٪)', aiccToleranceSave: 'حفظ',
+    aiccCredentialsTitle: 'بيانات اعتماد تسوية تكلفة المزوّد',
+    aiccTestConnection: 'اختبار الاتصال', aiccTestConnectionSuccess: 'نجح الاتصال', aiccTestConnectionFailed: 'فشل الاتصال',
+    aiccDeleteCredential: 'حذف', aiccDeleteCredentialConfirm: 'حذف بيانات الاعتماد هذه؟ ستتوقف تسوية هذا المزوّد حتى تُضاف بيانات اعتماد جديدة.',
+    aiccColLabel: 'التسمية', aiccApiKey: 'مفتاح API (مفتاح إدارة المؤسسة)', aiccProjectId: 'معرّف مشروع مخصّص',
+    aiccAddCredential: 'إضافة بيانات اعتماد',
+    aiccScopeConfigHint: 'بالنسبة لـ OpenAI، استخدم مفتاح إدارة (ADMIN) مخصّصًا للمؤسسة (وليس مفتاح API العادي للنموذج) ومعرّف مشروع NAVRYA مخصّصًا، حتى لا يُحتسب استخدام المؤسسة غير ذي الصلة أبدًا.',
+    aiccBalanceManualTitle: 'لقطة رصيد يدوية (اختياري)',
+    aiccBalanceManualAmount: 'المبلغ (دولار)', aiccBalanceManualNote: 'ملاحظة', aiccBalanceManualSave: 'حفظ اللقطة',
 
     tabConversationStudio: 'استوديو المحادثة',
     convStudioTitle: 'استوديو المحادثة', convStudioHint: 'أنشئ واختبر وانشر السيناريوهات الحتمية التي يطابقها موجّه المحادثة محليًا، بدون أي استدعاء للذكاء الاصطناعي.',
@@ -480,6 +634,10 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiCostSectionTitle: 'Costo y cargo de IA (real, por modelo)', aiCostProviderCost: 'Costo del proveedor', aiCostRetailCharge: 'Cargo al usuario',
     aiCostRateCardHint: 'Calculado a partir del uso real de tokens x tu tarifa de proveedor configurada - no una factura de OpenAI conciliada.',
     aiCostModel: 'Modelo', aiCostCalls: 'Llamadas', aiCostNoData: 'Aún no hay costo real de IA por modelo registrado para este usuario.',
+    aiCostReconMatches: 'Las liquidaciones de la billetera coinciden con el uso', aiCostReconMismatch: 'Las liquidaciones de la billetera no coinciden con el uso',
+    aiCostReconExpected: 'Cargo minorista esperado', aiCostReconSettled: 'Movimiento real de la billetera',
+    aiCostReconSampleLimited: '(basado solo en las últimas 100 liquidaciones)',
+    aiCostSettlementsTitle: 'Liquidaciones de la billetera', aiCostCashDebit: 'Débito en efectivo', aiCostPromoDebit: 'Débito promocional',
     aiUsageByModelTitle: 'Costo real liquidado por modelo (todos los usuarios)', aiUsageByModelEmpty: 'Aún no hay costo real de IA por modelo registrado.',
     aiCostProvider: 'Proveedor', aiCostPromptTokens: 'Tokens de entrada', aiCostCompletionTokens: 'Tokens de salida', aiCostTotalTokens: 'Tokens totales',
     comSubCryptoPayments: 'Pagos con criptomonedas',
@@ -507,6 +665,53 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     cryptoPayClearWebhookConfirm: '¿Borrar el secreto del webhook? El endpoint del webhook rechazará toda solicitud hasta que se genere uno nuevo.',
     cryptoPayWebhookRevealed: 'Nuevo secreto del webhook: {secret}',
     cryptoPayWebhookNeverShownAgain: 'Este valor se muestra una sola vez y no se puede recuperar después - cópialo ahora.',
+
+    // Control de costos de IA - subpestaña de configuración de administración, totalmente localizada.
+    comSubAiCostControl: 'Control de costos de IA',
+    aiccStatusOk: 'Conciliado', aiccStatusNoAdapter: 'No hay un adaptador oficial de conciliación de costos configurado',
+    aiccStatusNotConfigured: 'No configurado', aiccStatusNotSynced: 'Nunca sincronizado para este rango',
+    aiccStatusNotComparableCurrency: 'No comparable - la moneda del proveedor difiere de USD',
+    aiccRangeLabel: 'Rango de tiempo', aiccRange24h: 'Últimas 24 horas', aiccRange7d: 'Últimos 7 días', aiccRange30d: 'Últimos 30 días',
+    aiccRangeMonth: 'Mes actual', aiccRangeCustom: 'Rango UTC personalizado',
+    aiccCustomStart: 'Inicio (UTC)', aiccCustomEnd: 'Fin (UTC)', aiccApplyRange: 'Aplicar', aiccRangeUtcHint: 'Todos los rangos son UTC. Los datos de costo del proveedor se agrupan diariamente por la API oficial y pueden estar demorados - no son necesariamente en tiempo real.',
+    aiccOverviewTitle: 'Resumen',
+    aiccNotComparable: 'No comparable',
+    aiccOverviewExternalCost: 'Costo real externo del proveedor', aiccSourceProviderApi: 'API oficial de costos del proveedor',
+    aiccOverviewInternalEstimate: 'Estimación interna del costo del proveedor', aiccSourceInternalEstimate: 'Estimación interna por tarifa',
+    aiccOverviewRetailCharge: 'Cargos minoristas a usuarios', aiccSourceRetailCharge: 'Cargo de la billetera minorista',
+    aiccOverviewWalletDebit: 'Débitos reales de la billetera', aiccOverviewMargin: 'Margen (cargo minorista - costo externo real)',
+    aiccOverviewReconciliation: 'Excepciones de conciliación', aiccOverviewFreshness: 'Proveedores con datos comparables',
+    aiccFreshnessStale: 'desactualizado', aiccFreshnessComparable: 'comparable',
+    aiccProvidersTitle: 'Proveedores',
+    aiccColProvider: 'Proveedor', aiccColStatus: 'Estado', aiccColExternalCost: 'Costo externo', aiccColInternalEstimate: 'Estimación interna',
+    aiccColDiff: 'Diferencia', aiccColRetailCharge: 'Cargo minorista', aiccColBalance: 'Saldo', aiccColLastSync: 'Última sincronización exitosa',
+    aiccColScope: 'Alcance / proyecto', aiccColActions: 'Acciones',
+    aiccOutOfTolerance: 'Fuera de tolerancia',
+    aiccBalanceUnavailable: 'Saldo no disponible mediante la API oficial', aiccBalanceManualLabel: 'Manual, no usado para conciliación',
+    aiccRefreshBtn: 'Actualizar', aiccRefreshing: 'Actualizando…', aiccRefreshSuccess: 'Actualizado correctamente', aiccRefreshFailed: 'Error al actualizar',
+    aiccConfigureBtn: 'Configura una credencial abajo para habilitar',
+    aiccModelsTitle: 'Modelos',
+    aiccColInputTokens: 'Tokens de entrada', aiccColOutputTokens: 'Tokens de salida', aiccColCachedTokens: 'Tokens de entrada en caché',
+    aiccColCacheWriteTokens: 'Tokens de escritura de caché', aiccColReasoningTokens: 'Tokens de razonamiento (informativo)',
+    aiccColExternalCostModel: 'Costo externo',
+    aiccModelExternalNotSupported: 'No compatible a nivel de modelo para este proveedor',
+    aiccReconciliationTitle: 'Conciliación',
+    aiccReconInternalTitle: 'Conciliación interna exacta de billetera / uso',
+    aiccReconMatched: 'Coincidente', aiccReconMissingSettlement: 'Liquidación faltante', aiccReconOrphanSettlement: 'Liquidación huérfana',
+    aiccReconAmountMismatch: 'Discrepancia de monto', aiccReconProviderModelMismatch: 'Discrepancia de proveedor/modelo', aiccReconExcluded: 'Excluido (no facturable)',
+    aiccReconTruncated: 'Este rango tiene más filas de las que se pudieron analizar en una pasada - los conteos anteriores reflejan solo las filas analizadas. Reduce el rango para un total exacto.',
+    aiccExceptionsTitle: 'Excepciones',
+    aiccColExceptionType: 'Tipo', aiccColKey: 'Clave', aiccColOccurredAt: 'Ocurrió el',
+    aiccReconExternalTitle: 'Conciliación externa del proveedor (se espera que varíe)',
+    aiccToleranceLabel: 'Tolerancia de advertencia (%)', aiccToleranceSave: 'Guardar',
+    aiccCredentialsTitle: 'Credenciales de conciliación de costos del proveedor',
+    aiccTestConnection: 'Probar conexión', aiccTestConnectionSuccess: 'Conexión exitosa', aiccTestConnectionFailed: 'Conexión fallida',
+    aiccDeleteCredential: 'Eliminar', aiccDeleteCredentialConfirm: '¿Eliminar esta credencial? La conciliación de este proveedor dejará de funcionar hasta que se agregue una nueva.',
+    aiccColLabel: 'Etiqueta', aiccApiKey: 'Clave API (clave de administrador de la organización)', aiccProjectId: 'Id. de proyecto dedicado',
+    aiccAddCredential: 'Agregar credencial',
+    aiccScopeConfigHint: 'Para OpenAI, usa una clave ADMIN dedicada de la organización (no la clave de API normal del modelo) y un id. de proyecto NAVRYA dedicado, para que el uso de la organización no relacionado nunca se cuente.',
+    aiccBalanceManualTitle: 'Captura manual de saldo (opcional)',
+    aiccBalanceManualAmount: 'Monto (USD)', aiccBalanceManualNote: 'Nota', aiccBalanceManualSave: 'Guardar captura',
 
     tabConversationStudio: 'Estudio de Conversación',
     convStudioTitle: 'Estudio de Conversación', convStudioHint: 'Crea, prueba y publica los escenarios deterministas que el Router de Conversación resuelve localmente, sin ninguna llamada a la IA.',
@@ -904,6 +1109,31 @@ function buildUserProfilePage(user) {
       aiCostList.append(li);
     });
     aiCostCard.append(aiCostList);
+  }
+  // AI Cost Control per-user drill-down: real wallet settlement links (cash vs promo debit) and a
+  // cheap reconciliation signal - never organization-level external provider cost allocated to
+  // this one user, since no provider's cost API supports that attribution (see
+  // Admin > Commercial > AI Cost Control's own provider table for the real, aggregate comparison).
+  if (user.aiCost && user.aiCost.reconciliation) {
+    const recon = user.aiCost.reconciliation;
+    const badge = el('span', 'badge status-' + (recon.matches ? 'valid' : 'invalid'), recon.matches ? t('aiCostReconMatches') : t('aiCostReconMismatch'));
+    aiCostCard.append(el('p', 'hint', t('aiCostReconExpected') + ': ' + fmtMicroUsd(recon.expectedRetailChargeMicroUsd) + ' · ' + t('aiCostReconSettled') + ': ' + fmtMicroUsd(recon.settledRetailChargeMicroUsd)));
+    const reconLine = el('p', 'hint');
+    reconLine.append(badge);
+    if (recon.sampleLimited) reconLine.append(document.createTextNode(' ' + t('aiCostReconSampleLimited')));
+    aiCostCard.append(reconLine);
+  }
+  if (user.aiCost && user.aiCost.walletSettlements && user.aiCost.walletSettlements.length) {
+    aiCostCard.append(el('h4', '', t('aiCostSettlementsTitle')));
+    const settlementList = document.createElement('ul');
+    user.aiCost.walletSettlements.slice(0, 20).forEach((entry) => {
+      const li = document.createElement('li');
+      li.textContent = fmtDate(entry.createdAt) + ' — ' + entry.provider + '/' + (entry.model || '—')
+        + ' · ' + t('aiCostCashDebit') + ': ' + fmtMicroUsd(Math.abs(entry.cashDeltaMicroUsd))
+        + ' · ' + t('aiCostPromoDebit') + ': ' + fmtMicroUsd(Math.abs(entry.promoDeltaMicroUsd));
+      settlementList.append(li);
+    });
+    aiCostCard.append(settlementList);
   }
   right.append(aiCostCard);
 
@@ -1730,7 +1960,7 @@ function commercialSubNav(active) {
   [
     ['plans', t('comSubPlans')], ['wallet', t('comSubWallet')], ['subscriptions', t('comSubSubscriptions')],
     ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['history', t('comSubHistory')],
-    ['cryptoPayments', t('comSubCryptoPayments')]
+    ['cryptoPayments', t('comSubCryptoPayments')], ['aiCostControl', t('comSubAiCostControl')]
   ].forEach(([id, label]) => {
     const btn = el('button', 'admin-seg-btn' + (id === active ? ' active' : ''), label);
     btn.type = 'button';
@@ -2317,10 +2547,339 @@ function commercialCryptoPaymentsSubTab() {
   });
 }
 
+// --- AI Cost Control subtab (fully localized fa/ar/en/es, unlike most of this Commercial tab -
+// matches the crypto-payments subtab's own precedent as the newest, most-scrutinized addition) ---
+let aiCostControlState = { range: '30d', customStart: '', customEnd: '', modelsPage: 1, reconPage: 1 };
+
+function aiccRangeQueryParams() {
+  const params = 'range=' + encodeURIComponent(aiCostControlState.range)
+    + (aiCostControlState.range === 'custom' ? '&start=' + encodeURIComponent(aiCostControlState.customStart) + '&end=' + encodeURIComponent(aiCostControlState.customEnd) : '');
+  return params;
+}
+
+function aiccStatusBadge(status) {
+  const label = {
+    ok: t('aiccStatusOk'), no_adapter: t('aiccStatusNoAdapter'), not_configured: t('aiccStatusNotConfigured'),
+    not_synced: t('aiccStatusNotSynced'), not_comparable_currency: t('aiccStatusNotComparableCurrency')
+  }[status] || status;
+  const tone = status === 'ok' ? 'valid' : status === 'no_adapter' ? 'unknown' : 'invalid';
+  return el('span', 'badge status-' + tone, label);
+}
+
+function commercialAiCostControlSubTab() {
+  const query = aiccRangeQueryParams();
+  return Promise.all([
+    api('/commercial/ai-cost-control/overview?' + query),
+    api('/commercial/ai-cost-control/providers?' + query),
+    api('/commercial/ai-cost-control/models?' + query + '&page=' + aiCostControlState.modelsPage + '&pageSize=25'),
+    api('/commercial/ai-cost-control/reconciliation/internal?' + query + '&page=' + aiCostControlState.reconPage + '&pageSize=25'),
+    api('/commercial/ai-cost-control/reconciliation/external?' + query),
+    api('/commercial/ai-cost-control/credentials')
+  ]).then(([overview, providers, models, reconInternal, reconExternal, credentialsData]) => {
+    const wrap = el('div', 'admin-grid');
+
+    // --- Range selector ---
+    const rangeCard = el('div', 'admin-card admin-card-wide');
+    rangeCard.append(el('h3', '', t('aiccRangeLabel')));
+    const rangeSelect = document.createElement('select');
+    [['24h', t('aiccRange24h')], ['7d', t('aiccRange7d')], ['30d', t('aiccRange30d')], ['month', t('aiccRangeMonth')], ['custom', t('aiccRangeCustom')]]
+      .forEach(([value, label]) => { const opt = document.createElement('option'); opt.value = value; opt.textContent = label; opt.selected = value === aiCostControlState.range; rangeSelect.append(opt); });
+    const rangeRow = el('div', 'admin-form-row');
+    rangeRow.append(rangeSelect);
+    const startField = field(t('aiccCustomStart'), 'datetime-local', aiCostControlState.customStart);
+    const endField = field(t('aiccCustomEnd'), 'datetime-local', aiCostControlState.customEnd);
+    startField.wrap.hidden = aiCostControlState.range !== 'custom';
+    endField.wrap.hidden = aiCostControlState.range !== 'custom';
+    rangeSelect.onchange = () => { startField.wrap.hidden = rangeSelect.value !== 'custom'; endField.wrap.hidden = rangeSelect.value !== 'custom'; };
+    const applyBtn = el('button', 'btn btn-primary btn-sm', t('aiccApplyRange'));
+    applyBtn.type = 'button';
+    applyBtn.onclick = () => {
+      aiCostControlState.range = rangeSelect.value;
+      if (rangeSelect.value === 'custom') {
+        aiCostControlState.customStart = startField.input.value ? new Date(startField.input.value).toISOString() : '';
+        aiCostControlState.customEnd = endField.input.value ? new Date(endField.input.value).toISOString() : '';
+      }
+      aiCostControlState.modelsPage = 1; aiCostControlState.reconPage = 1;
+      renderTab();
+    };
+    rangeRow.append(startField.wrap, endField.wrap, applyBtn);
+    rangeCard.append(rangeRow);
+    rangeCard.append(el('p', 'hint', t('aiccRangeUtcHint')));
+    wrap.append(rangeCard);
+
+    // --- Overview cards ---
+    const overviewCard = el('div', 'admin-card admin-card-wide');
+    overviewCard.append(el('h3', '', t('aiccOverviewTitle')));
+    overviewCard.append(statRow([
+      statCard('landmark', overview.externalCostComparable ? fmtMicroUsd(overview.externalActualCostMicroUsd) : t('aiccNotComparable'), t('aiccOverviewExternalCost') + ' · ' + t('aiccSourceProviderApi')),
+      statCard('calculator', fmtMicroUsd(overview.internalEstimateMicroUsd), t('aiccOverviewInternalEstimate') + ' · ' + t('aiccSourceInternalEstimate')),
+      statCard('receipt', fmtMicroUsd(overview.retailChargeMicroUsd), t('aiccOverviewRetailCharge') + ' · ' + t('aiccSourceRetailCharge')),
+      statCard('wallet', fmtMicroUsd(overview.actualWalletDebitMicroUsd), t('aiccOverviewWalletDebit')),
+      statCard('trending-up', overview.marginMicroUsd == null ? t('aiccNotComparable') : fmtMicroUsd(overview.marginMicroUsd), t('aiccOverviewMargin')),
+      statCard('alert-triangle', fmtNumber(overview.reconciliation.totalExceptions), t('aiccOverviewReconciliation')),
+      statCard('refresh-cw', overview.freshness.comparableProviderCount + (overview.freshness.staleProviderCount ? ' (' + overview.freshness.staleProviderCount + ' ' + t('aiccFreshnessStale') + ')' : ''), t('aiccOverviewFreshness'))
+    ]));
+    wrap.append(overviewCard);
+
+    // --- Provider table ---
+    const providersCard = el('div', 'admin-card admin-card-wide');
+    providersCard.append(el('h3', '', t('aiccProvidersTitle')));
+    const providersTableWrap = el('div', 'admin-table-wrap');
+    const providersTable = document.createElement('table');
+    providersTable.className = 'admin-table';
+    const providersThead = document.createElement('thead');
+    const providersHeadRow = document.createElement('tr');
+    [t('aiccColProvider'), t('aiccColStatus'), t('aiccColExternalCost'), t('aiccColInternalEstimate'), t('aiccColDiff'), t('aiccColRetailCharge'), t('aiccColBalance'), t('aiccColLastSync'), t('aiccColScope'), t('aiccColActions')]
+      .forEach((label) => providersHeadRow.append(el('th', '', label)));
+    providersThead.append(providersHeadRow);
+    providersTable.append(providersThead);
+    const providersTbody = document.createElement('tbody');
+    providers.providers.forEach((row) => {
+      const tr = document.createElement('tr');
+      tr.append(el('td', '', row.displayName));
+      const statusTd = document.createElement('td');
+      statusTd.append(aiccStatusBadge(row.external.status));
+      tr.append(statusTd);
+      tr.append(el('td', '', row.external.comparable ? fmtMicroUsd(row.external.externalActualCostMicroUsd) : t('aiccNotComparable')));
+      tr.append(el('td', '', fmtMicroUsd(row.external.internalEstimateMicroUsd)));
+      const diffTd = document.createElement('td');
+      if (row.external.comparable && row.external.diffPercent != null) {
+        diffTd.textContent = fmtMicroUsd(row.external.diffMicroUsd) + ' (' + row.external.diffPercent.toFixed(1) + '%)';
+        if (row.external.outOfTolerance) diffTd.append(' ', el('span', 'badge status-invalid', t('aiccOutOfTolerance')));
+      } else {
+        diffTd.textContent = '—';
+      }
+      tr.append(diffTd);
+      tr.append(el('td', '', fmtMicroUsd(row.external.retailChargeMicroUsd)));
+      const balanceTd = document.createElement('td');
+      if (row.balance.supported) balanceTd.textContent = fmtMicroUsd(row.balance.amountMicroUsd);
+      else {
+        balanceTd.append(el('span', 'hint', t('aiccBalanceUnavailable')));
+        if (row.manualBalance) balanceTd.append(el('span', 'hint', t('aiccBalanceManualLabel') + ': ' + fmtMicroUsd(row.manualBalance.amountMicroUsd) + ' (' + fmtDate(row.manualBalance.createdAt) + ')'));
+      }
+      tr.append(balanceTd);
+      tr.append(el('td', '', row.external.freshness ? fmtDate(row.external.freshness.lastSuccessfulSyncAt) : t('aiccStatusNotSynced')));
+      tr.append(el('td', '', row.scopeConfig && row.scopeConfig.projectId ? row.scopeConfig.projectId : '—'));
+      const actionsTd = document.createElement('td');
+      if (row.supportsActualCosts && row.credentialConfigured) {
+        const refreshBtn = el('button', 'btn btn-secondary btn-sm', t('aiccRefreshBtn'));
+        refreshBtn.type = 'button';
+        refreshBtn.onclick = () => {
+          refreshBtn.disabled = true; refreshBtn.textContent = t('aiccRefreshing');
+          api('/commercial/ai-cost-control/refresh', { method: 'POST', body: JSON.stringify({ provider: row.provider, range: aiCostControlState.range, start: aiCostControlState.customStart, end: aiCostControlState.customEnd }) })
+            .then((result) => { showToast(result.ok !== false ? t('aiccRefreshSuccess') : t('aiccRefreshFailed') + ': ' + result.reason, result.ok !== false ? undefined : 'danger'); renderTab(); })
+            .catch((error) => showToast(error.message, 'danger'))
+            .finally(() => { refreshBtn.disabled = false; refreshBtn.textContent = t('aiccRefreshBtn'); });
+        };
+        actionsTd.append(refreshBtn);
+      } else if (row.adapterRegistered) {
+        actionsTd.append(el('span', 'hint', t('aiccConfigureBtn')));
+      }
+      tr.append(actionsTd);
+      providersTbody.append(tr);
+    });
+    providersTable.append(providersTbody);
+    providersTableWrap.append(providersTable);
+    providersCard.append(providersTableWrap);
+    wrap.append(providersCard);
+
+    // --- Model table (paginated) ---
+    const modelsCard = el('div', 'admin-card admin-card-wide');
+    modelsCard.append(el('h3', '', t('aiccModelsTitle')));
+    if (!models.models.length) {
+      modelsCard.append(el('p', 'hint', t('comNoModelPricing')));
+    } else {
+      const modelsTableWrap = el('div', 'admin-table-wrap');
+      const modelsTable = document.createElement('table');
+      modelsTable.className = 'admin-table';
+      const modelsThead = document.createElement('thead');
+      const modelsHeadRow = document.createElement('tr');
+      [t('comColProviderModel'), t('aiCostCalls'), t('aiccColInputTokens'), t('aiccColOutputTokens'), t('aiccColCachedTokens'), t('aiccColCacheWriteTokens'), t('aiccColReasoningTokens'), t('aiccColInternalEstimate'), t('aiccColRetailCharge'), t('comPriceConfigured'), t('aiccColExternalCostModel')]
+        .forEach((label) => modelsHeadRow.append(el('th', '', label)));
+      modelsThead.append(modelsHeadRow);
+      modelsTable.append(modelsThead);
+      const modelsTbody = document.createElement('tbody');
+      models.models.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.append(
+          el('td', '', row.provider + ' / ' + (row.model || '—')), el('td', '', fmtNumber(row.calls)),
+          el('td', '', fmtNumber(row.promptTokens)), el('td', '', fmtNumber(row.completionTokens)),
+          el('td', '', fmtNumber(row.cachedInputTokens)), el('td', '', fmtNumber(row.cacheWriteInputTokens)), el('td', '', fmtNumber(row.reasoningTokens)),
+          el('td', '', fmtMicroUsd(row.providerCostMicroUsd)), el('td', '', fmtMicroUsd(row.retailChargeMicroUsd)),
+          el('td', '', row.priceConfigured ? '✓' : '✗'),
+          el('td', 'hint', row.externalCostSupported ? fmtMicroUsd(row.externalCostMicroUsd) : t('aiccModelExternalNotSupported'))
+        );
+        modelsTbody.append(tr);
+      });
+      modelsTable.append(modelsTbody);
+      modelsTableWrap.append(modelsTable);
+      modelsCard.append(modelsTableWrap);
+      const modelsTotalPages = Math.max(1, Math.ceil(models.total / models.pageSize));
+      const modelsPagination = el('div', 'admin-pagination');
+      const modelsPrev = el('button', 'btn btn-secondary', t('prev'));
+      modelsPrev.type = 'button'; modelsPrev.disabled = aiCostControlState.modelsPage <= 1;
+      modelsPrev.onclick = () => { aiCostControlState.modelsPage -= 1; renderTab(); };
+      const modelsNext = el('button', 'btn btn-secondary', t('next'));
+      modelsNext.type = 'button'; modelsNext.disabled = aiCostControlState.modelsPage >= modelsTotalPages;
+      modelsNext.onclick = () => { aiCostControlState.modelsPage += 1; renderTab(); };
+      modelsPagination.append(modelsPrev, el('span', '', t('pageOf', { page: aiCostControlState.modelsPage, total: modelsTotalPages })), modelsNext);
+      modelsCard.append(modelsPagination);
+    }
+    wrap.append(modelsCard);
+
+    // --- Reconciliation panel ---
+    const reconCard = el('div', 'admin-card admin-card-wide');
+    reconCard.append(el('h3', '', t('aiccReconciliationTitle')));
+
+    reconCard.append(el('h4', '', t('aiccReconInternalTitle')));
+    reconCard.append(statRow([
+      statCard('check-circle', fmtNumber(reconInternal.matched), t('aiccReconMatched')),
+      statCard('help-circle', fmtNumber(reconInternal.exceptionCounts.MISSING_SETTLEMENT), t('aiccReconMissingSettlement')),
+      statCard('help-circle', fmtNumber(reconInternal.exceptionCounts.ORPHAN_SETTLEMENT), t('aiccReconOrphanSettlement')),
+      statCard('alert-triangle', fmtNumber(reconInternal.exceptionCounts.AMOUNT_MISMATCH), t('aiccReconAmountMismatch')),
+      statCard('alert-triangle', fmtNumber(reconInternal.exceptionCounts.PROVIDER_MODEL_MISMATCH), t('aiccReconProviderModelMismatch')),
+      statCard('minus-circle', fmtNumber(reconInternal.excludedCount), t('aiccReconExcluded'))
+    ]));
+    if (reconInternal.truncated) reconCard.append(el('p', 'hint', t('aiccReconTruncated')));
+
+    if (reconInternal.exceptions.items.length) {
+      reconCard.append(el('h4', '', t('aiccExceptionsTitle')));
+      const excTableWrap = el('div', 'admin-table-wrap');
+      const excTable = document.createElement('table');
+      excTable.className = 'admin-table';
+      const excThead = document.createElement('thead');
+      const excHeadRow = document.createElement('tr');
+      [t('aiccColExceptionType'), t('comColProviderModel'), t('aiccColKey'), t('aiccColOccurredAt')].forEach((label) => excHeadRow.append(el('th', '', label)));
+      excThead.append(excHeadRow);
+      excTable.append(excThead);
+      const excTbody = document.createElement('tbody');
+      reconInternal.exceptions.items.forEach((item) => {
+        const tr = document.createElement('tr');
+        tr.append(
+          el('td', '', item.type), el('td', '', (item.provider || (item.usageProviderModel || {}).provider || '—') + ' / ' + (item.model || (item.usageProviderModel || {}).model || '—')),
+          el('td', 'hint', item.key || '—'), el('td', '', fmtDate(item.occurredAt))
+        );
+        excTbody.append(tr);
+      });
+      excTable.append(excTbody);
+      excTableWrap.append(excTable);
+      reconCard.append(excTableWrap);
+      const excTotalPages = reconInternal.exceptions.totalPages;
+      const excPagination = el('div', 'admin-pagination');
+      const excPrev = el('button', 'btn btn-secondary', t('prev'));
+      excPrev.type = 'button'; excPrev.disabled = aiCostControlState.reconPage <= 1;
+      excPrev.onclick = () => { aiCostControlState.reconPage -= 1; renderTab(); };
+      const excNext = el('button', 'btn btn-secondary', t('next'));
+      excNext.type = 'button'; excNext.disabled = aiCostControlState.reconPage >= excTotalPages;
+      excNext.onclick = () => { aiCostControlState.reconPage += 1; renderTab(); };
+      excPagination.append(excPrev, el('span', '', t('pageOf', { page: aiCostControlState.reconPage, total: excTotalPages })), excNext);
+      reconCard.append(excPagination);
+    }
+
+    reconCard.append(el('h4', '', t('aiccReconExternalTitle')));
+    const toleranceField = field(t('aiccToleranceLabel'), 'number', reconExternal.tolerancePercent);
+    const toleranceBtn = el('button', 'btn btn-secondary btn-sm', t('aiccToleranceSave'));
+    toleranceBtn.type = 'button';
+    toleranceBtn.onclick = () => {
+      api('/commercial/ai-cost-control/variance-tolerance', { method: 'PATCH', body: JSON.stringify({ percent: Number(toleranceField.input.value) }) })
+        .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    const toleranceRow = el('div', 'admin-form-row');
+    toleranceRow.append(toleranceField.wrap, toleranceBtn);
+    reconCard.append(toleranceRow);
+    const externalList = document.createElement('ul');
+    reconExternal.providers.forEach((row) => {
+      const li = document.createElement('li');
+      const label = row.provider + ': ';
+      if (row.status !== 'ok') { li.textContent = label + t('aiccStatus' + row.status.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('')); }
+      else {
+        li.textContent = label + t('aiccOverviewExternalCost') + ' ' + fmtMicroUsd(row.externalActualCostMicroUsd) + ' vs ' + t('aiccOverviewInternalEstimate') + ' ' + fmtMicroUsd(row.internalEstimateMicroUsd)
+          + ' (' + (row.diffPercent == null ? '—' : row.diffPercent.toFixed(1) + '%') + ')' + (row.outOfTolerance ? ' ⚠ ' + t('aiccOutOfTolerance') : '');
+      }
+      externalList.append(li);
+    });
+    reconCard.append(externalList);
+    wrap.append(reconCard);
+
+    // --- Credentials (encrypted, admin-managed) ---
+    const credCard = el('div', 'admin-card admin-card-wide');
+    credCard.append(el('h3', '', t('aiccCredentialsTitle')));
+    if (!credentialsData.credentials.length) credCard.append(el('p', 'hint', t('comNoRules')));
+    credentialsData.credentials.forEach((credential) => {
+      const row = el('div', 'admin-btn-row');
+      row.append(el('span', '', credential.provider + ' — ' + credential.label + ' (' + credential.keyHint + ')' + (credential.scopeConfig.projectId ? ' · ' + credential.scopeConfig.projectId : '')));
+      row.append(el('span', 'badge status-' + (credential.validationStatus === 'valid' ? 'valid' : credential.validationStatus === 'invalid' ? 'invalid' : 'unknown'), credential.validationStatus));
+      const testBtn = el('button', 'btn btn-secondary btn-sm', t('aiccTestConnection'));
+      testBtn.type = 'button';
+      testBtn.onclick = () => {
+        testBtn.disabled = true;
+        api('/commercial/ai-cost-control/credentials/' + credential.id + '/test-connection', { method: 'POST', body: JSON.stringify({}) })
+          .then((result) => showToast(result.ok ? t('aiccTestConnectionSuccess') : t('aiccTestConnectionFailed') + ': ' + result.reason, result.ok ? undefined : 'danger'))
+          .catch((error) => showToast(error.message, 'danger'))
+          .finally(() => { testBtn.disabled = false; renderTab(); });
+      };
+      const deleteBtn = el('button', 'btn btn-danger btn-sm', t('aiccDeleteCredential'));
+      deleteBtn.type = 'button';
+      deleteBtn.onclick = () => {
+        if (!window.confirm(t('aiccDeleteCredentialConfirm'))) return;
+        api('/commercial/ai-cost-control/credentials/' + credential.id, { method: 'DELETE' }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+      };
+      row.append(testBtn, deleteBtn);
+      credCard.append(row);
+    });
+    const addProviderSelect = document.createElement('select');
+    listAdaptersProvidersForSelect().forEach((provider) => { const opt = document.createElement('option'); opt.value = provider; opt.textContent = provider; addProviderSelect.append(opt); });
+    const addLabelField = field(t('aiccColLabel'), 'text', '');
+    const addKeyField = field(t('aiccApiKey'), 'password', '');
+    const addProjectField = field(t('aiccProjectId'), 'text', '');
+    addKeyField.input.dir = 'ltr';
+    addProjectField.input.dir = 'ltr';
+    const addCredBtn = el('button', 'btn btn-primary', t('aiccAddCredential'));
+    addCredBtn.type = 'button';
+    addCredBtn.onclick = () => {
+      const apiKey = addKeyField.input.value.trim();
+      if (!apiKey) return;
+      addKeyField.input.value = ''; // never let the raw key linger in the DOM
+      api('/commercial/ai-cost-control/credentials', { method: 'POST', body: JSON.stringify({
+        provider: addProviderSelect.value, label: addLabelField.input.value.trim() || undefined,
+        apiKey, scopeConfig: { projectId: addProjectField.input.value.trim() }
+      }) }).then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    const addRow = el('div', 'admin-form-row admin-form-row-submit');
+    addRow.append(addProviderSelect, addLabelField.wrap, addKeyField.wrap, addProjectField.wrap, addCredBtn);
+    credCard.append(el('p', 'hint', t('aiccScopeConfigHint')));
+    credCard.append(addRow);
+    wrap.append(credCard);
+
+    // --- Manual balance snapshot (explicitly labeled, never used for reconciliation) ---
+    const balanceCard = el('div', 'admin-card');
+    balanceCard.append(el('h3', '', t('aiccBalanceManualTitle')));
+    balanceCard.append(el('p', 'hint', t('aiccBalanceManualLabel')));
+    const balProviderSelect = document.createElement('select');
+    listAdaptersProvidersForSelect().forEach((provider) => { const opt = document.createElement('option'); opt.value = provider; opt.textContent = provider; balProviderSelect.append(opt); });
+    const balAmountField = field(t('aiccBalanceManualAmount'), 'number', '');
+    const balNoteField = field(t('aiccBalanceManualNote'), 'text', '');
+    const balSaveBtn = el('button', 'btn btn-secondary', t('aiccBalanceManualSave'));
+    balSaveBtn.type = 'button';
+    balSaveBtn.onclick = () => {
+      api('/commercial/ai-cost-control/balance/' + balProviderSelect.value + '/manual-snapshot', { method: 'POST', body: JSON.stringify({ amountUsd: Number(balAmountField.input.value), note: balNoteField.input.value.trim() }) })
+        .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+    };
+    const balRow = el('div', 'admin-form-row admin-form-row-submit');
+    balRow.append(balProviderSelect, balAmountField.wrap, balNoteField.wrap, balSaveBtn);
+    balanceCard.append(balRow);
+    wrap.append(balanceCard);
+
+    return wrap;
+  });
+}
+
+function listAdaptersProvidersForSelect() { return ['openai', 'anthropic', 'kimi', 'deepseek']; }
+
 const COMMERCIAL_SUB_TAB_BUILDERS = {
   plans: commercialPlansSubTab, wallet: commercialWalletSubTab, subscriptions: commercialSubscriptionsSubTab,
   storage: commercialStorageSubTab, transactions: commercialTransactionsSubTab, history: commercialHistorySubTab,
-  cryptoPayments: commercialCryptoPaymentsSubTab
+  cryptoPayments: commercialCryptoPaymentsSubTab, aiCostControl: commercialAiCostControlSubTab
 };
 function commercialTab() {
   const builder = COMMERCIAL_SUB_TAB_BUILDERS[commercialSubTab] || commercialPlansSubTab;
@@ -2945,6 +3504,6 @@ function describeGateError(error) {
 // Minimal testability surface (this page otherwise has no window export, matching
 // select/app.js's own standalone-script style) - route() and the XP placeholder tab are pure
 // enough to unit-test directly rather than only indirectly through hash/DOM interaction.
-window.TradeJournalAdminApp = { route: route, xpTab: xpTab, usersTab: usersTab, aiTab: aiTab };
+window.TradeJournalAdminApp = { route: route, xpTab: xpTab, usersTab: usersTab, aiTab: aiTab, commercialAiCostControlSubTab: commercialAiCostControlSubTab };
 
 boot();

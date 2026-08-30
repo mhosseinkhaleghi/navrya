@@ -549,11 +549,25 @@ async function callOpenAI(payload, apiKey, model) {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `OPENAI_${response.status}`);
     const data = JSON.parse(outputText(result));
+    // AI Cost Control: OpenAI's Responses API usage object breaks input/output tokens down
+    // further (input_tokens_details.cached_tokens, output_tokens_details.reasoning_tokens) - both
+    // were previously read nowhere in this file, so a real, provider-billed distinction (cached
+    // input is discounted; reasoning tokens are billed as output) was silently invisible to
+    // NAVRYA's own cost accounting. Captured here, additively - promptTokens/completionTokens/
+    // totalTokens are unchanged, so every existing caller of callOpenAI() is unaffected.
+    // cachedInputTokens flows into wallet-service.mjs's costMicroUsdFor() as a real pricing
+    // dimension (a subset of promptTokens); reasoningTokens is observability-only (already
+    // included in completionTokens/output_tokens, never priced a second time - see that
+    // function's own comment for why).
     const usage = result.usage ? {
       promptTokens: result.usage.input_tokens ?? null,
       completionTokens: result.usage.output_tokens ?? null,
-      totalTokens: result.usage.total_tokens ?? null
-    } : { promptTokens: null, completionTokens: null, totalTokens: null };
+      totalTokens: result.usage.total_tokens ?? null,
+      cachedInputTokens: result.usage.input_tokens_details?.cached_tokens ?? null,
+      cacheWriteInputTokens: null,
+      reasoningTokens: result.usage.output_tokens_details?.reasoning_tokens ?? null,
+      raw: result.usage
+    } : { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null };
     return { data, usage };
   } finally {
     clearTimeout(timer);
@@ -603,12 +617,20 @@ async function callAnthropic(payload, apiKey, model) {
     if (!toolUse) throw new Error('EMPTY_MODEL_RESPONSE');
     const data = toolUse.input || {};
     assertRequiredKeys(data, schema);
+    // AI Cost Control: Anthropic's Messages API usage object reports real prompt-caching fields -
+    // cache_read_input_tokens (a discounted re-read of a previously cached prefix) and
+    // cache_creation_input_tokens (a premium-priced write of a NEW cache entry) - both additive
+    // and previously uncaptured here. promptTokens/completionTokens/totalTokens are unchanged.
     const usage = result.usage ? {
       promptTokens: result.usage.input_tokens ?? null,
       completionTokens: result.usage.output_tokens ?? null,
       totalTokens: (typeof result.usage.input_tokens === 'number' && typeof result.usage.output_tokens === 'number')
-        ? result.usage.input_tokens + result.usage.output_tokens : null
-    } : { promptTokens: null, completionTokens: null, totalTokens: null };
+        ? result.usage.input_tokens + result.usage.output_tokens : null,
+      cachedInputTokens: result.usage.cache_read_input_tokens ?? null,
+      cacheWriteInputTokens: result.usage.cache_creation_input_tokens ?? null,
+      reasoningTokens: null,
+      raw: result.usage
+    } : { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null };
     return { data, usage };
   } finally {
     clearTimeout(timer);
@@ -659,11 +681,16 @@ async function callOpenAICompatible(provider, payload, apiKey, model) {
     if (!content) throw new Error('EMPTY_MODEL_RESPONSE');
     const data = JSON.parse(content);
     assertRequiredKeys(data, schema);
+    // AI Cost Control: Kimi/DeepSeek's own cache-token field names are not independently verified
+    // against official documentation the way OpenAI's/Anthropic's were - left null rather than
+    // guessed, per the instruction to never invent provider data. The `raw` usage object is still
+    // captured for admin drill-down even though it isn't priced as a separate dimension yet.
     const usage = result.usage ? {
       promptTokens: result.usage.prompt_tokens ?? null,
       completionTokens: result.usage.completion_tokens ?? null,
-      totalTokens: result.usage.total_tokens ?? null
-    } : { promptTokens: null, completionTokens: null, totalTokens: null };
+      totalTokens: result.usage.total_tokens ?? null,
+      cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: result.usage
+    } : { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null };
     return { data, usage };
   } finally {
     clearTimeout(timer);

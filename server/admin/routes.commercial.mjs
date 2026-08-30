@@ -11,6 +11,7 @@ import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs
 import { resolveBscRuntimeConfig, isBscConfigComplete } from '../commercial/bsc-config.mjs';
 import { getChainId, isValidEvmAddress } from '../commercial/bsc-chain-client.mjs';
 import { resolvePricingRate } from '../commercial/wallet-service.mjs';
+import { router as aiCostControlRouter } from './routes.ai-cost-control.mjs';
 
 const STEP_UP_MAX_AGE_MS = 15 * 60 * 1000; // mirrors auth-admin.mjs's own DEFAULT_STEP_UP_MAX_AGE_MS
 
@@ -155,13 +156,19 @@ export function router(repo) {
     if (!provider || !model) throw new ApiError(400, 'VALIDATION_FAILED');
     const promptPricePer1k = numOrNull(body.promptPricePer1k);
     const completionPricePer1k = numOrNull(body.completionPricePer1k);
+    // AI Cost Control - optional cached-input/cache-write-input pricing dimensions. Never
+    // zero-price-guarded like prompt/completion below: a genuinely free cached-read tier is a
+    // real, legitimate provider pricing shape, and an unset (null) value already falls back
+    // safely to the base prompt price rather than $0 (see wallet-service.mjs's costMicroUsdFor()).
+    const cachedInputPricePer1k = numOrNull(body.cachedInputPricePer1k);
+    const cacheWriteInputPricePer1k = numOrNull(body.cacheWriteInputPricePer1k);
     const enabled = body.enabled !== false;
     // A zero-priced row that resolves as "configured" must never silently make provider-funded
     // calls free forever - see isZeroPricedPair()'s own comment. Only checked when the row would
     // actually be enabled; a disabled row can hold whatever draft values without risk.
     if (enabled && isZeroPricedPair(promptPricePer1k, completionPricePer1k)) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
     const row = await repo.providerModelPricing.upsert({
-      provider, model, promptPricePer1k, completionPricePer1k,
+      provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k,
       currency: body.currency || 'USD', enabled
     });
     await audit(req, 'commercial.providerModelPricing.upsert', 'providerModelPricing', provider + ':' + model, row);
@@ -517,6 +524,12 @@ export function router(repo) {
       pricing
     });
   }));
+
+  // ---- AI Cost Control (own file - real external-provider reconciliation, encrypted credential
+  // store, internal exact/external variance reconciliation) - own file for the same "large enough
+  // surface, own file, mounted here to inherit requireAdmin for free" reason crypto-payments and
+  // voice-providers already use. -------------------------------------------------------------
+  app.use('/ai-cost-control', aiCostControlRouter(repo));
 
   return app;
 }

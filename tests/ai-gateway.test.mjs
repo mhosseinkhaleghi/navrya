@@ -60,7 +60,15 @@ test('maps OpenAI Responses usage into the normalized envelope', async () => {
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ output_text: JSON.stringify({ reply: 'hi' }), usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } }) });
   const result = await callProvider('openai', 'k', undefined, { input: [], text: { format: { schema: { required: [] } } } });
   assert.deepEqual(result.data, { reply: 'hi' });
-  assert.deepEqual(result.usage, { promptTokens: 10, completionTokens: 5, totalTokens: 15 });
+  // AI Cost Control extended the usage envelope with cached/cache-write/reasoning-token fields
+  // (all null here since this mocked response carries no detail breakdown) and the provider's own
+  // raw usage object, alongside the original promptTokens/completionTokens/totalTokens - see
+  // callOpenAI()'s own comment.
+  assert.deepEqual(result.usage, {
+    promptTokens: 10, completionTokens: 5, totalTokens: 15,
+    cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null,
+    raw: { input_tokens: 10, output_tokens: 5, total_tokens: 15 }
+  });
   assert.equal(result.provider, 'openai');
 });
 
@@ -77,7 +85,13 @@ test('maps Anthropic tool-use output and computes totalTokens from input+output 
   });
   assert.match(calledUrl, /anthropic\.com/);
   assert.deepEqual(result.data, { reply: 'hello' });
-  assert.deepEqual(result.usage, { promptTokens: 20, completionTokens: 8, totalTokens: 28 }, 'Anthropic never reports total_tokens directly - it must be computed');
+  // AI Cost Control extended the usage envelope the same way as OpenAI's - see callAnthropic()'s
+  // own comment on cache_read_input_tokens/cache_creation_input_tokens (both absent/null here).
+  assert.deepEqual(result.usage, {
+    promptTokens: 20, completionTokens: 8, totalTokens: 28,
+    cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null,
+    raw: { input_tokens: 20, output_tokens: 8 }
+  }, 'Anthropic never reports total_tokens directly - it must be computed');
 });
 
 test('a Kimi/DeepSeek response missing a required schema key throws SCHEMA_VALIDATION_FAILED, not a fabricated field', async () => {
