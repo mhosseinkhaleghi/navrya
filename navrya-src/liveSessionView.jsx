@@ -145,7 +145,7 @@ const copy = {
     chartUnmappedTitle: 'برای این سشن نمادی مشخص نشده است',
     chartUnmappedBodyNoInstrument: 'برای این سشن نمادی مشخص نشده است، بنابراین چارتی برای نمایش وجود ندارد.',
     chartUnmappedHint: 'برای تعیین نماد سشن، روی چیپ نماد در نوار فرمان بالا کلیک کنید؛ پس از تعیین نماد، TradingView چارت متناظر را باز می‌کند و شما می‌توانید از داخل خود چارت، بازار دیگری را نیز انتخاب کنید.',
-    tvAttribution: 'رصد تمام بازارها در TradingView'
+    tvAttribution: 'رصد تمام بازارها در TradingView', enterFullscreenChart: 'تمام‌صفحه', exitFullscreenChart: 'خروج از تمام‌صفحه'
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
@@ -210,7 +210,7 @@ const copy = {
     chartUnmappedTitle: 'لم يتم تحديد أداة لهذه الجلسة',
     chartUnmappedBodyNoInstrument: 'لم يتم تحديد أداة لهذه الجلسة، لذا لا يوجد مخطط لعرضه.',
     chartUnmappedHint: 'لتحديد أداة الجلسة، انقر على شارة الأداة في شريط الأوامر أعلاه - بمجرد التحديد، سيفتح TradingView مخططاً مطابقاً، ويمكنك اختيار سوق آخر بنفسك من داخل المخطط نفسه.',
-    tvAttribution: 'تتبع جميع الأسواق على TradingView'
+    tvAttribution: 'تتبع جميع الأسواق على TradingView', enterFullscreenChart: 'ملء الشاشة', exitFullscreenChart: 'الخروج من وضع ملء الشاشة'
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
@@ -275,7 +275,7 @@ const copy = {
     chartUnmappedTitle: 'No instrument set for this session',
     chartUnmappedBodyNoInstrument: 'No instrument is set for this session, so there is no chart to show.',
     chartUnmappedHint: 'Click the instrument chip in the command bar above to set the session instrument - once set, TradingView opens a matching chart, and you can pick a different market yourself from inside the chart.',
-    tvAttribution: 'Track all markets on TradingView'
+    tvAttribution: 'Track all markets on TradingView', enterFullscreenChart: 'Fullscreen', exitFullscreenChart: 'Exit fullscreen'
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
@@ -340,7 +340,7 @@ const copy = {
     chartUnmappedTitle: 'Esta sesión no tiene un instrumento definido',
     chartUnmappedBodyNoInstrument: 'Esta sesión no tiene un instrumento definido, por lo que no hay ningún gráfico que mostrar.',
     chartUnmappedHint: 'Haz clic en la etiqueta del instrumento en la barra de comandos superior para definirlo - una vez definido, TradingView abrirá un gráfico correspondiente, y podrás elegir otro mercado tú mismo desde dentro del propio gráfico.',
-    tvAttribution: 'Sigue todos los mercados en TradingView'
+    tvAttribution: 'Sigue todos los mercados en TradingView', enterFullscreenChart: 'Pantalla completa', exitFullscreenChart: 'Salir de pantalla completa'
   }
 };
 
@@ -1618,7 +1618,7 @@ const TV_ADVANCED_CHART_SCRIPT_SRC = 'https://s3.tradingview.com/external-embedd
 // always torn down and rebuilt from scratch on every symbol/interval/lang change or unmount -
 // the widget script only ever knows how to build a fresh chart against its own script tag, it has
 // no "update in place" API, so leaving a stale container behind would duplicate widgets/scripts.
-function TradingViewAdvancedChart({ symbol, interval, lang }) {
+function TradingViewAdvancedChart({ symbol, interval, lang, fill }) {
   const hostRef = React.useRef(null);
   const [status, setStatus] = React.useState('loading'); // 'loading' | 'loaded' | 'error'
 
@@ -1686,7 +1686,7 @@ function TradingViewAdvancedChart({ symbol, interval, lang }) {
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
-      <div ref={hostRef} dir="ltr" style={{ width: '100%', height: 'clamp(360px, 64vh, 680px)' }} />
+      <div ref={hostRef} dir="ltr" style={{ width: '100%', height: fill ? 'calc(100vh - 84px)' : 'clamp(360px, 64vh, 680px)' }} />
       {status === 'loading' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-dim)', fontSize: 12, background: 'rgba(3,8,7,.5)', pointerEvents: 'none' }}>
           <Icon name="LoaderCircle" size={16} />{tr(lang, 'chartLoadingText')}
@@ -1725,20 +1725,54 @@ function ChartUnmappedNotice({ lang }) {
 // (never session.market/city); session.market/city is only ever a city/session-timezone concept.
 // The starting symbol is a best-effort resolution (tradingViewSymbolFor()) - the trader can
 // always pick a different market themselves from inside the chart via allow_symbol_change.
-function MarketChartView({ session, lang }) {
+//
+// onAddChart/onLogMove mirror the exact same Timeline-cockpit actions (real product feedback:
+// the trader wants to log a chart/movement entry without leaving the chart they are looking at).
+// Fullscreen uses the standard Fullscreen API on wrapRef - only this panel goes fullscreen, never
+// the whole page - so the header row (title/buttons) stays visible above the enlarged chart.
+function MarketChartView({ session, lang, onAddChart, onLogMove }) {
   const symbol = tradingViewSymbolFor(session.instrument);
+  const wrapRef = React.useRef(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+
+  React.useEffect(() => {
+    function onChange() { setIsFullscreen(!!document.fullscreenElement && document.fullscreenElement === wrapRef.current); }
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    const el = wrapRef.current;
+    if (el && el.requestFullscreen) el.requestFullscreen();
+  }
+
   if (!symbol) return <ChartUnmappedNotice lang={lang} />;
   const interval = tradingViewIntervalFor(session.timeframe);
   return (
-    <Panel variant="base" ornament padding="16px">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Icon name="CandlestickChart" size={18} /><span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'viewChart')}</span>
-          <span className="navrya-tabular" dir="ltr" style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--text-dim)' }}>{symbol} · {session.timeframe || interval}</span>
+    <div ref={wrapRef} style={isFullscreen ? { height: '100vh', background: 'var(--ink-950)' } : undefined}>
+      <Panel variant="base" ornament padding="16px" style={isFullscreen ? { borderRadius: 0, height: '100%' } : undefined}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Icon name="CandlestickChart" size={18} /><span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'viewChart')}</span>
+            <span className="navrya-tabular" dir="ltr" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{symbol} · {session.timeframe || interval}</span>
+            <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Button variant="secondary" size="sm" icon="Activity" onClick={onLogMove}>{tr(lang, 'addMove')}</Button>
+              <Button variant="primary" size="sm" icon="ImagePlus" onClick={onAddChart}>{tr(lang, 'addChart')}</Button>
+              <button
+                type="button" onClick={toggleFullscreen}
+                title={tr(lang, isFullscreen ? 'exitFullscreenChart' : 'enterFullscreenChart')}
+                aria-label={tr(lang, isFullscreen ? 'exitFullscreenChart' : 'enterFullscreenChart')}
+                style={{ display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}
+              >
+                <Icon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={16} />
+              </button>
+            </span>
+          </div>
+          <TradingViewAdvancedChart symbol={symbol} interval={interval} lang={lang} fill={isFullscreen} />
         </div>
-        <TradingViewAdvancedChart symbol={symbol} interval={interval} lang={lang} />
-      </div>
-    </Panel>
+      </Panel>
+    </div>
   );
 }
 
@@ -2018,6 +2052,17 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   }, [rerender]);
 
   const [view, setView] = React.useState(initialView === 'report' ? 'report' : 'timeline');
+  // Real product feedback: the trader's TradingView drawings were being erased every time they
+  // switched away from Market chart, because that view was mounted/unmounted with the rest of
+  // the ternary below - the widget's own iframe (and everything drawn on it) has no save/restore
+  // API on the free embed, so destroying it destroys the drawings too. Once opened, the chart
+  // stays mounted in the DOM for the rest of this Live Session visit (see the render below,
+  // toggled with CSS display rather than a remount) so the same iframe instance survives
+  // Timeline/Report switches; it is still lazy on first load (never mounted before the trader
+  // actually opens Market chart) and still torn down/rebuilt on a real symbol/interval/lang
+  // change (TradingViewAdvancedChart's own effect) or when the whole Live Session is left.
+  const chartEverOpenedRef = React.useRef(false);
+  if (view === 'chart') chartEverOpenedRef.current = true;
   const [sel, setSel] = React.useState(null);
   const [filter, setFilter] = React.useState('all');
   const [q, setQ] = React.useState('');
@@ -2414,10 +2459,22 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
             <SimilarSessionsPanel session={session} character={character} lang={lang} />
           </div>
         </div>
-      ) : view === 'chart' ? (
-        <MarketChartView session={session} lang={lang} />
-      ) : (
+      ) : view === 'chart' ? null : (
         <ReportView session={session} lang={lang} indexById={indexById} />
+      )}
+
+      {/* Rendered outside the ternary above, and only once ever mounted (see chartEverOpenedRef),
+          so the TradingView widget - and everything the trader has drawn on it - survives
+          switching to Timeline/Report and back, instead of being torn down and rebuilt every
+          time the view changes. */}
+      {chartEverOpenedRef.current && (
+        <div style={{ display: view === 'chart' ? 'block' : 'none' }}>
+          <MarketChartView
+            session={session} lang={lang}
+            onAddChart={() => withPreSessionCheckIn(() => setChartModalOpen(true))}
+            onLogMove={() => withPreSessionCheckIn(() => addEntry('movement'))}
+          />
+        </div>
       )}
 
       {chartModalOpen && <ChartEntryModal session={session} lang={lang} onClose={() => setChartModalOpen(false)} onSubmit={submitChartEntry} />}

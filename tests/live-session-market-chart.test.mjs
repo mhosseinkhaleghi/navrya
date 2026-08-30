@@ -49,8 +49,22 @@ test('the segmented-control buttons expose an accessible active-state label', ()
 
 test('the main view render adds a distinct chart branch without touching Timeline/Report behavior', () => {
   const render = sliceBetween("{view === 'timeline' ? (", '{chartModalOpen', 'the view === render conditional');
-  assert.match(render, /\) : view === 'chart' \? \(\s*<MarketChartView session=\{session\} lang=\{lang\} \/>\s*\) : \(/);
+  // The chart branch of the ternary itself is a no-op (null) - MarketChartView is rendered
+  // separately below (see the "never destroyed on Timeline/Report switch" test), not inline here.
+  assert.match(render, /\) : view === 'chart' \? null : \(/);
   assert.match(render, /<ReportView session=\{session\} lang=\{lang\} indexById=\{indexById\} \/>/);
+});
+
+test('the Market chart widget is mounted once (lazily) and never destroyed on a Timeline/Report switch - only CSS display toggles, so drawings on the live TradingView iframe survive', () => {
+  // Lazy: the flag only ever flips true once the trader has actually opened Market chart.
+  assert.match(src, /const chartEverOpenedRef = React\.useRef\(false\);/);
+  assert.match(src, /if \(view === 'chart'\) chartEverOpenedRef\.current = true;/);
+
+  // Once true, MarketChartView is rendered unconditionally (never unmounted again for the rest
+  // of this Live Session visit) and only ever hidden/shown via CSS display, never remounted.
+  const persistBlock = sliceBetween('{chartEverOpenedRef.current && (', '{chartModalOpen', 'the chartEverOpenedRef persistence block');
+  assert.match(persistBlock, /style=\{\{ display: view === 'chart' \? 'block' : 'none' \}\}/);
+  assert.match(persistBlock, /<MarketChartView\s*\n\s*session=\{session\} lang=\{lang\}\s*\n\s*onAddChart=\{\(\) => withPreSessionCheckIn\(\(\) => setChartModalOpen\(true\)\)\}\s*\n\s*onLogMove=\{\(\) => withPreSessionCheckIn\(\(\) => addEntry\('movement'\)\)\}/);
 });
 
 test('the widget loads the official TradingView free hosted Advanced Chart embed script, and nothing else', () => {
@@ -125,13 +139,37 @@ test('explicit instrument -> TradingView symbol mapping covers the required symb
 });
 
 test('MarketChartView reads only session.instrument for the chart symbol, never session.market/city, and always opens a real chart for any non-empty instrument', () => {
-  const view = sliceBetween('function MarketChartView({ session, lang }) {', 'function ReportView(', 'MarketChartView');
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
   assert.match(view, /const symbol = tradingViewSymbolFor\(session\.instrument\);/);
   assert.match(view, /if \(!symbol\) return <ChartUnmappedNotice lang=\{lang\} \/>;/);
   // The only session.market use inside this component is display text (city/timeframe/date line),
   // never symbol resolution - guarded by the assertion above that the symbol always comes from
   // tradingViewSymbolFor(session.instrument) alone.
   assert.doesNotMatch(view, /tradingViewSymbolFor\(session\.market/);
+});
+
+test('MarketChartView reuses the exact same Timeline actions for Add chart / Log movement, reachable from the chart without switching views', () => {
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(view, /<Button variant="secondary" size="sm" icon="Activity" onClick=\{onLogMove\}>\{tr\(lang, 'addMove'\)\}<\/Button>/);
+  assert.match(view, /<Button variant="primary" size="sm" icon="ImagePlus" onClick=\{onAddChart\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
+});
+
+test('MarketChartView provides a real fullscreen toggle using the standard Fullscreen API, scoped to just the chart panel', () => {
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(view, /const wrapRef = React\.useRef\(null\);/);
+  assert.match(view, /const \[isFullscreen, setIsFullscreen\] = React\.useState\(false\);/);
+  assert.match(view, /document\.addEventListener\('fullscreenchange', onChange\);/);
+  assert.match(view, /if \(document\.fullscreenElement\) \{ document\.exitFullscreen\(\); return; \}/);
+  assert.match(view, /el\.requestFullscreen\(\)/);
+  assert.match(view, /<Icon name=\{isFullscreen \? 'Minimize2' : 'Maximize2'\} size=\{16\} \/>/);
+  assert.match(view, /title=\{tr\(lang, isFullscreen \? 'exitFullscreenChart' : 'enterFullscreenChart'\)\}/);
+  // The widget itself is told to fill the fullscreen box instead of its normal clamped height.
+  assert.match(view, /<TradingViewAdvancedChart symbol=\{symbol\} interval=\{interval\} lang=\{lang\} fill=\{isFullscreen\} \/>/);
+});
+
+test('TradingViewAdvancedChart grows to fill the screen only when fill is set, otherwise keeps its normal clamped height', () => {
+  const widget = sliceBetween('function TradingViewAdvancedChart(', 'function ChartUnmappedNotice(', 'TradingViewAdvancedChart');
+  assert.match(widget, /height: fill \? 'calc\(100vh - 84px\)' : 'clamp\(360px, 64vh, 680px\)'/);
 });
 
 test('an absent instrument (the only unresolvable case) shows a localized empty-state notice pointing at the instrument chip', () => {
@@ -162,7 +200,8 @@ test('a real, non-empty instrument always resolves to a real chart, even when it
 test('all four i18n dictionaries (fa, ar, en, es) declare the new view label and chart states', () => {
   const keys = [
     'viewChart', 'chartLoadingText', 'chartLoadErrorTitle', 'chartLoadErrorBody',
-    'chartUnmappedTitle', 'chartUnmappedBodyNoInstrument', 'chartUnmappedHint', 'tvAttribution'
+    'chartUnmappedTitle', 'chartUnmappedBodyNoInstrument', 'chartUnmappedHint', 'tvAttribution',
+    'enterFullscreenChart', 'exitFullscreenChart'
   ];
   ['fa:', 'ar:', 'en:', 'es:'].forEach((langTag) => {
     const idx = src.indexOf('\n  ' + langTag);
