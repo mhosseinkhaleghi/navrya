@@ -309,8 +309,25 @@ function SessionsApp({ character, navryaCharacter, store }) {
 // Plain DOM, not a React root - it needs to exist before/outside any of the roots mount() creates,
 // and never re-renders (the grid is static; the glow's color follows --char-atmosphere via CSS,
 // not JS). Guarded so a hot-reload or a second mount() call never stacks a duplicate pair.
+//
+// NAVRYA chat dock redesign (NavryaChatDock.dc.html): the design's own reference renders show a
+// real, per-character photographic backdrop bleeding through behind the grid/glow, not just a flat
+// colour. panel-system.js already resolves and publishes this correctly per character as
+// `--ps-backdrop` (a real `url("assets/{character}-...webp")`, one already-shipped asset per
+// character - see its own `themes` map) - it was simply never consumed anywhere in the current
+// NAVRYA canvas (the two places that DO read `--ps-backdrop`, panel-system.css/session-system.css,
+// belong to the legacy vanilla panel-grid/session-hero renderers, both confirmed dead relative to
+// this canvas - see ARCHITECTURE.md's Known Constraints). Consumed here via `var(--ps-backdrop)`
+// (never re-reading/hardcoding the path itself) so this stays correct regardless of load order or
+// which character is active - a stale/missing value simply paints nothing, never a broken image.
 function ensureBackgroundLayer(navryaCharacter) {
   if (document.getElementById('navryaBackgroundGrid')) return;
+  const backdrop = document.createElement('span');
+  backdrop.setAttribute('aria-hidden', 'true');
+  backdrop.setAttribute('data-character', navryaCharacter);
+  backdrop.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.28;filter:saturate(.85);'
+    + 'background-image:linear-gradient(180deg,rgba(3,8,7,.35),rgba(3,8,7,.92)),var(--ps-backdrop);'
+    + 'background-size:cover;background-position:center';
   const grid = document.createElement('span');
   grid.id = 'navryaBackgroundGrid';
   grid.setAttribute('aria-hidden', 'true');
@@ -325,6 +342,7 @@ function ensureBackgroundLayer(navryaCharacter) {
     + 'background:radial-gradient(90% 70% at 20% 0%,var(--char-atmosphere) 0%,transparent 70%)';
   document.body.insertBefore(glow, document.body.firstChild);
   document.body.insertBefore(grid, document.body.firstChild);
+  document.body.insertBefore(backdrop, document.body.firstChild);
 }
 
 export function mountCharacterApp(character) {

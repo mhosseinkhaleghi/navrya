@@ -316,6 +316,15 @@ export function ChatDock({
                 {onToggleTherapist && (
                   <DockButton icon="psychology" label={therapistLabel} active={therapistActive} onClick={onToggleTherapist} />
                 )}
+                {/* NAVRYA chat dock redesign (NavryaChatDock.dc.html): a dedicated, always-
+                    available mic shortcut, distinct from the dual-purpose end button below it -
+                    that one only starts Voice when the input is already empty (typed text takes
+                    priority as Send); this one switches to Voice immediately regardless of
+                    whatever is currently typed, mirroring the design's own separate mic control
+                    rather than a decorative duplicate of the same action. */}
+                {onVoiceToggle && (
+                  <DockButton icon="mic" label={voiceLabels.start} disabled={busy} onClick={onVoiceToggle} />
+                )}
                 <DockButton
                   icon={showSend ? 'arrow-up' : 'audio-lines'}
                   tone="primary" disabled={showSend && !ready}
