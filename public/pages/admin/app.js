@@ -152,7 +152,15 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     convStudioAudioStaleBlocked: 'This candidate no longer matches the current text - regenerate before approving.',
     convStudioAudioPreview: 'Preview - not yet live', convStudioAudioUsedWrittenFallback: 'used the written response (no separate voice response was set)',
     convStudioAudioApprove: 'Approve', convStudioAudioArchive: 'Archive', convStudioAudioGenerate: 'Generate', convStudioAudioGenerating: 'Generating…',
-    convStudioAudioVoiceProfileKey: 'Voice profile label'
+    convStudioAudioVoiceProfileKey: 'Voice profile label',
+    convStudioExpressiveVoice: 'Expressive Voice', convStudioEnhanceDelivery: 'Enhance Delivery', convStudioEnhancing: 'Enhancing…',
+    convStudioDeliveryNote: 'Delivery note (optional)', convStudioDeliveryNotePlaceholder: 'e.g. warm and curious',
+    convStudioPerformanceValid: 'Valid - matches the canonical dialogue', convStudioPerformanceInvalid: 'Not used - ',
+    convStudioVariants: 'Context variants', convStudioAddVariant: '+ Add context variant',
+    convStudioVariantKey: 'Variant key (e.g. FIRST_TIME)', convStudioRemoveVariant: 'Remove variant',
+    convStudioContext: 'Context', convStudioExposure: 'Exposure', convStudioExposureAny: 'Any',
+    convStudioExposureFirstTime: 'First time', convStudioExposureNthOrLater: 'Nth time or later',
+    convStudioExposureThreshold: 'Threshold (N)', convStudioSurface: 'Surface', convStudioSurfaceAny: 'Any'
   },
   fa: {
     brand: 'پنل مدیریت',
@@ -279,7 +287,15 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     convStudioAudioStaleBlocked: 'این نمونه دیگر با متن فعلی مطابقت ندارد - پیش از تأیید دوباره تولید کنید.',
     convStudioAudioPreview: 'پیش‌نمایش - هنوز فعال نیست', convStudioAudioUsedWrittenFallback: 'از پاسخ نوشتاری استفاده شد (پاسخ گفتاری جداگانه‌ای تنظیم نشده بود)',
     convStudioAudioApprove: 'تأیید', convStudioAudioArchive: 'بایگانی', convStudioAudioGenerate: 'تولید', convStudioAudioGenerating: 'در حال تولید…',
-    convStudioAudioVoiceProfileKey: 'برچسب پروفایل صدا'
+    convStudioAudioVoiceProfileKey: 'برچسب پروفایل صدا',
+    convStudioExpressiveVoice: 'صدای بیانی', convStudioEnhanceDelivery: 'بهبود بیان', convStudioEnhancing: 'در حال بهبود…',
+    convStudioDeliveryNote: 'یادداشت بیان (اختیاری)', convStudioDeliveryNotePlaceholder: 'مثلاً: گرم و کنجکاو',
+    convStudioPerformanceValid: 'معتبر - با گفتگوی اصلی مطابقت دارد', convStudioPerformanceInvalid: 'استفاده نشد - ',
+    convStudioVariants: 'حالت‌های زمینه‌ای', convStudioAddVariant: '+ افزودن حالت زمینه‌ای',
+    convStudioVariantKey: 'کلید حالت (مثلاً FIRST_TIME)', convStudioRemoveVariant: 'حذف حالت',
+    convStudioContext: 'زمینه', convStudioExposure: 'میزان مواجهه', convStudioExposureAny: 'هر مقدار',
+    convStudioExposureFirstTime: 'اولین بار', convStudioExposureNthOrLater: 'بار Nام یا بیشتر',
+    convStudioExposureThreshold: 'آستانه (N)', convStudioSurface: 'سطح', convStudioSurfaceAny: 'هر سطحی'
   },
   ar: {
     brand: 'لوحة الإدارة',
@@ -406,7 +422,15 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     convStudioAudioStaleBlocked: 'هذا المرشح لم يعد يطابق النص الحالي - أعد التوليد قبل الاعتماد.',
     convStudioAudioPreview: 'معاينة - غير مفعّلة بعد', convStudioAudioUsedWrittenFallback: 'تم استخدام الاستجابة المكتوبة (لم يتم تعيين استجابة صوتية منفصلة)',
     convStudioAudioApprove: 'اعتماد', convStudioAudioArchive: 'أرشفة', convStudioAudioGenerate: 'توليد', convStudioAudioGenerating: 'جارٍ التوليد…',
-    convStudioAudioVoiceProfileKey: 'تسمية ملف الصوت'
+    convStudioAudioVoiceProfileKey: 'تسمية ملف الصوت',
+    convStudioExpressiveVoice: 'الصوت التعبيري', convStudioEnhanceDelivery: 'تحسين الأداء', convStudioEnhancing: 'جارٍ التحسين…',
+    convStudioDeliveryNote: 'ملاحظة الأداء (اختياري)', convStudioDeliveryNotePlaceholder: 'مثال: دافئ وفضولي',
+    convStudioPerformanceValid: 'صالح - يطابق الحوار الأصلي', convStudioPerformanceInvalid: 'لم يُستخدم - ',
+    convStudioVariants: 'حالات السياق', convStudioAddVariant: '+ إضافة حالة سياق',
+    convStudioVariantKey: 'مفتاح الحالة (مثل FIRST_TIME)', convStudioRemoveVariant: 'إزالة الحالة',
+    convStudioContext: 'السياق', convStudioExposure: 'التعرّض', convStudioExposureAny: 'أي',
+    convStudioExposureFirstTime: 'المرة الأولى', convStudioExposureNthOrLater: 'المرة N أو بعدها',
+    convStudioExposureThreshold: 'الحد (N)', convStudioSurface: 'السطح', convStudioSurfaceAny: 'أي سطح'
   },
   es: {
     brand: 'Administración',
@@ -533,7 +557,15 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     convStudioAudioStaleBlocked: 'Este candidato ya no coincide con el texto actual - vuelve a generarlo antes de aprobarlo.',
     convStudioAudioPreview: 'Vista previa - aún no activo', convStudioAudioUsedWrittenFallback: 'se usó la respuesta escrita (no se configuró una respuesta de voz separada)',
     convStudioAudioApprove: 'Aprobar', convStudioAudioArchive: 'Archivar', convStudioAudioGenerate: 'Generar', convStudioAudioGenerating: 'Generando…',
-    convStudioAudioVoiceProfileKey: 'Etiqueta del perfil de voz'
+    convStudioAudioVoiceProfileKey: 'Etiqueta del perfil de voz',
+    convStudioExpressiveVoice: 'Voz expresiva', convStudioEnhanceDelivery: 'Mejorar la entrega', convStudioEnhancing: 'Mejorando…',
+    convStudioDeliveryNote: 'Nota de entrega (opcional)', convStudioDeliveryNotePlaceholder: 'p. ej. cálido y curioso',
+    convStudioPerformanceValid: 'Válido - coincide con el diálogo canónico', convStudioPerformanceInvalid: 'No usado - ',
+    convStudioVariants: 'Variantes de contexto', convStudioAddVariant: '+ Añadir variante de contexto',
+    convStudioVariantKey: 'Clave de variante (p. ej. FIRST_TIME)', convStudioRemoveVariant: 'Eliminar variante',
+    convStudioContext: 'Contexto', convStudioExposure: 'Exposición', convStudioExposureAny: 'Cualquiera',
+    convStudioExposureFirstTime: 'Primera vez', convStudioExposureNthOrLater: 'N-ésima vez o después',
+    convStudioExposureThreshold: 'Umbral (N)', convStudioSurface: 'Superficie', convStudioSurfaceAny: 'Cualquiera'
   }
 };
 
@@ -2431,7 +2463,84 @@ function conversationStudioLibrary() {
   });
 }
 
-function conversationStudioLanguageSection(lang, definition) {
+// Journey H2 expressive-dialogue/context follow-up: a small, curated "known surface" list for the
+// Context section's Surface selector - the same free-text convention `surfaceBoost` already uses
+// elsewhere in this file, just offered as a picklist here since the UI asks for "choose supported
+// page/process" (spec section 19), not a free-text field.
+const CONV_STUDIO_KNOWN_SURFACES = ['sessions', 'strategies', 'dashboard', 'psychology', 'ai-assistant', 'community', 'account', 'settings'];
+
+// One response block - used for both the STANDARD response and each authored context variant, so
+// there is exactly one implementation of "written / spoken / expressive voice + Enhance Delivery"
+// rather than two near-duplicates. `variantKey` is 'standard' for the STANDARD block (matching the
+// server's own default), or the variant's own admin-chosen key otherwise - both are passed through
+// unchanged to the Enhance Delivery call so the server resolves the exact right stored dialogue.
+function conversationStudioResponseFields(scenarioId, versionId, lang, variantKey, response) {
+  const writtenField = textareaField(t('convStudioWrittenResponse'), response.written, 3);
+  const voiceField = textareaField(t('convStudioVoiceResponse'), response.voiceReply, 2);
+  const performanceField = textareaField(t('convStudioExpressiveVoice'), response.performanceText || '', 2);
+  const deliveryNoteField = field(t('convStudioDeliveryNote'), 'text', '');
+  deliveryNoteField.input.placeholder = t('convStudioDeliveryNotePlaceholder');
+  const statusLine = el('p', 'hint', '');
+  const enhanceBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioEnhanceDelivery'));
+  enhanceBtn.type = 'button';
+  enhanceBtn.onclick = () => {
+    enhanceBtn.disabled = true;
+    const originalLabel = enhanceBtn.textContent;
+    enhanceBtn.textContent = t('convStudioEnhancing');
+    api('/conversation-scenarios/' + scenarioId + '/versions/' + versionId + '/enhance-delivery', {
+      method: 'POST',
+      body: JSON.stringify({ language: lang, variantKey, deliveryNote: deliveryNoteField.input.value.trim() || null })
+    }).then((result) => {
+      performanceField.textarea.value = result.performanceText;
+      statusLine.textContent = result.valid ? t('convStudioPerformanceValid') : t('convStudioPerformanceInvalid') + result.reason;
+      statusLine.className = result.valid ? 'hint' : 'hint error-text';
+    }).catch((error) => showToast(error.message, 'danger'))
+      .finally(() => { enhanceBtn.disabled = false; enhanceBtn.textContent = originalLabel; });
+  };
+  const wrap = el('div');
+  wrap.append(writtenField.wrap, voiceField.wrap, performanceField.wrap, deliveryNoteField.wrap, enhanceBtn, statusLine);
+  return {
+    wrap,
+    read: () => ({
+      written: writtenField.textarea.value.trim(),
+      voiceReply: voiceField.textarea.value.trim() || writtenField.textarea.value.trim(),
+      performanceText: performanceField.textarea.value.trim() || null
+    })
+  };
+}
+
+// Compact Context controls (spec section 19) - Exposure (Any/First time/Nth time or later
+// [threshold]) and Surface (Any/<known page>). Deliberately the only two axes exposed in the UI -
+// the schema also supports processId/step, left schema-only this pass (no rule builder).
+function conversationStudioContextFields(context) {
+  const exposure = (context && context.exposure) || { type: 'ANY' };
+  const surface = (context && context.surface) || {};
+  const wrap = el('div', 'admin-card');
+  wrap.append(el('h5', '', t('convStudioContext')));
+  const exposureSelect = selectField(t('convStudioExposure'), [
+    { value: 'ANY', text: t('convStudioExposureAny') },
+    { value: 'FIRST_TIME', text: t('convStudioExposureFirstTime') },
+    { value: 'NTH_OR_LATER', text: t('convStudioExposureNthOrLater') }
+  ], exposure.type || 'ANY');
+  const thresholdField = field(t('convStudioExposureThreshold'), 'number', exposure.threshold || 3);
+  thresholdField.wrap.hidden = exposureSelect.select.value !== 'NTH_OR_LATER';
+  exposureSelect.select.onchange = () => { thresholdField.wrap.hidden = exposureSelect.select.value !== 'NTH_OR_LATER'; };
+  const surfaceSelect = selectField(t('convStudioSurface'),
+    [{ value: '', text: t('convStudioSurfaceAny') }].concat(CONV_STUDIO_KNOWN_SURFACES.map((page) => ({ value: page, text: page }))),
+    surface.page || '');
+  wrap.append(exposureSelect.wrap, thresholdField.wrap, surfaceSelect.wrap);
+  return {
+    wrap,
+    read: () => {
+      const result = { exposure: { type: exposureSelect.select.value } };
+      if (exposureSelect.select.value === 'NTH_OR_LATER') result.exposure.threshold = Number(thresholdField.input.value) || 3;
+      if (surfaceSelect.select.value) result.surface = { page: surfaceSelect.select.value };
+      return result;
+    }
+  };
+}
+
+function conversationStudioLanguageSection(lang, definition, scenarioId, versionId) {
   const section = el('div', 'admin-card');
   section.append(el('h4', '', lang.toUpperCase()));
   const rule = (definition.languages && definition.languages[lang]) || { groups: [], strong: [], negative: [] };
@@ -2439,14 +2548,46 @@ function conversationStudioLanguageSection(lang, definition) {
   const groupsField = textareaField(t('convStudioGroups'), groupsToLines(rule.groups), 3);
   const strongField = textareaField(t('convStudioStrong'), (rule.strong || []).join('\n'), 2);
   const negativeField = textareaField(t('convStudioNegative'), (rule.negative || []).join('\n'), 2);
-  const writtenField = textareaField(t('convStudioWrittenResponse'), response.written, 3);
-  const voiceField = textareaField(t('convStudioVoiceResponse'), response.voiceReply, 2);
-  section.append(groupsField.wrap, strongField.wrap, negativeField.wrap, writtenField.wrap, voiceField.wrap);
+  section.append(groupsField.wrap, strongField.wrap, negativeField.wrap);
+  const standardFields = conversationStudioResponseFields(scenarioId, versionId, lang, 'standard', response);
+  section.append(standardFields.wrap);
+
+  // Journey H2 expressive/context follow-up: a small, repeatable list of context variants for
+  // this language - each is its own independent response block (never copied from STANDARD or
+  // from each other) plus a compact Context section. Absent/empty = today's exact behavior.
+  section.append(el('h5', '', t('convStudioVariants')));
+  const variantsContainer = el('div');
+  section.append(variantsContainer);
+  const variantRows = [];
+  function addVariantRow(initial) {
+    const data = initial || { key: '', context: {}, written: '', voiceReply: '', performanceText: '' };
+    const row = el('div', 'admin-card');
+    const keyField = field(t('convStudioVariantKey'), 'text', data.key || '');
+    row.append(keyField.wrap);
+    const fields = conversationStudioResponseFields(scenarioId, versionId, lang, data.key || 'draft-variant', data);
+    row.append(fields.wrap);
+    const contextFields = conversationStudioContextFields(data.context);
+    row.append(contextFields.wrap);
+    const removeBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioRemoveVariant'));
+    removeBtn.type = 'button';
+    removeBtn.onclick = () => { variantsContainer.removeChild(row); variantRows.splice(variantRows.indexOf(entry), 1); };
+    row.append(removeBtn);
+    variantsContainer.append(row);
+    const entry = { keyField, read: () => Object.assign({ key: keyField.input.value.trim() }, fields.read(), { context: contextFields.read() }) };
+    variantRows.push(entry);
+  }
+  ((definition.variants && definition.variants[lang]) || []).forEach((variant) => addVariantRow(variant));
+  const addVariantBtn = el('button', 'btn btn-secondary btn-sm', t('convStudioAddVariant'));
+  addVariantBtn.type = 'button';
+  addVariantBtn.onclick = () => addVariantRow(null);
+  section.append(addVariantBtn);
+
   return {
     node: section,
     read: () => ({
       rule: { groups: linesToGroups(groupsField.textarea.value), strong: linesToList(strongField.textarea.value), negative: linesToList(negativeField.textarea.value) },
-      response: { written: writtenField.textarea.value.trim(), voiceReply: voiceField.textarea.value.trim() || writtenField.textarea.value.trim() }
+      response: standardFields.read(),
+      variants: variantRows.map((v) => v.read()).filter((v) => v.key && v.written)
     })
   };
 }
@@ -2496,15 +2637,19 @@ function conversationStudioVersionHistory(scenario) {
 // server always recomputes it independently and never trusts anything this panel sends as text),
 // the current approved asset (if any, with its own stale flag - spec section 20/51/52) and the
 // latest not-yet-approved preview (if any), plus the Generate form.
-function conversationStudioAudioLanguageRow(scenarioId, versionId, lang, definition, assets, credentials) {
-  const response = (definition.responses && definition.responses[lang]) || {};
+// Journey H2 expressive/context follow-up: `response` is already the resolved response set for
+// this exact (language, variantKey) - the STANDARD responses[lang] object, or one authored
+// variant - never re-derived from the whole definition here, so this function stays agnostic to
+// where the caller (conversationStudioAudioPanel) got it from.
+function conversationStudioAudioLanguageRow(scenarioId, versionId, lang, variantKey, response, assets, credentials) {
   const spokenText = String(response.voiceReply || response.written || '').trim();
   const row = el('div', 'admin-card');
-  row.append(el('h4', '', lang.toUpperCase()));
+  row.append(el('h4', '', lang.toUpperCase() + (variantKey !== 'standard' ? ' · ' + variantKey : '')));
   if (!spokenText) { row.append(el('p', 'hint', t('convStudioAudioNoText'))); return row; }
   row.append(el('p', 'hint', spokenText));
+  if (response.performanceText) row.append(el('p', 'hint', t('convStudioExpressiveVoice') + ': ' + response.performanceText));
 
-  const languageAssets = assets.filter((a) => a.language === lang && a.variantKey === 'standard');
+  const languageAssets = assets.filter((a) => a.language === lang && a.variantKey === variantKey);
   const approved = languageAssets.find((a) => a.status === 'approved');
   const latestPreview = languageAssets
     .filter((a) => a.status === 'preview')
@@ -2565,7 +2710,7 @@ function conversationStudioAudioLanguageRow(scenarioId, versionId, lang, definit
     [{ value: '', text: t('vpNoCredentialSelected') }].concat(credentials.map((c) => ({ value: c.id, text: c.label }))), '');
   const voiceIdField = field(t('vpVoiceId'), 'text', '');
   const voiceDatalist = document.createElement('datalist');
-  const datalistId = 'conv-audio-voices-' + scenarioId + '-' + versionId + '-' + lang;
+  const datalistId = 'conv-audio-voices-' + scenarioId + '-' + versionId + '-' + lang + '-' + variantKey;
   voiceDatalist.id = datalistId;
   voiceIdField.input.setAttribute('list', datalistId);
   voiceIdField.wrap.append(voiceDatalist);
@@ -2607,7 +2752,7 @@ function conversationStudioAudioLanguageRow(scenarioId, versionId, lang, definit
   // Organizational/diagnostic label only (spec section 41's lighter-weight posture - see the
   // Gate 3 plan's own "no Voice Profile registry table this gate" note); the real provider call
   // always takes the explicit credentialId/voiceId/modelId above, never this label.
-  const voiceProfileKeyField = field(t('convStudioAudioVoiceProfileKey'), 'text', lang + '_default');
+  const voiceProfileKeyField = field(t('convStudioAudioVoiceProfileKey'), 'text', lang + (variantKey !== 'standard' ? '_' + variantKey : '') + '_default');
   const generateBtn = el('button', 'btn btn-primary btn-sm', t('convStudioAudioGenerate'));
   generateBtn.type = 'button';
   generateBtn.onclick = () => {
@@ -2620,7 +2765,7 @@ function conversationStudioAudioLanguageRow(scenarioId, versionId, lang, definit
     api('/conversation-scenarios/' + scenarioId + '/versions/' + versionId + '/audio', {
       method: 'POST',
       body: JSON.stringify({
-        language: lang, variantKey: 'standard', credentialId, voiceId, modelId: modelSelect.select.value || null,
+        language: lang, variantKey, credentialId, voiceId, modelId: modelSelect.select.value || null,
         voiceProfileKey: voiceProfileKeyField.input.value.trim() || (lang + '_default')
       })
     }).then((asset) => {
@@ -2654,7 +2799,15 @@ function conversationStudioAudioPanel(scenario, version, label) {
     api('/voice-providers/credentials').catch(() => [])
   ]).then(([audioData, credentials]) => {
     CONV_STUDIO_LANGUAGES.forEach((lang) => {
-      card.append(conversationStudioAudioLanguageRow(scenario.id, version.id, lang, version.definition, audioData.assets || [], credentials));
+      const response = (version.definition.responses && version.definition.responses[lang]) || {};
+      card.append(conversationStudioAudioLanguageRow(scenario.id, version.id, lang, 'standard', response, audioData.assets || [], credentials));
+      // Journey H2 expressive/context follow-up: one more row per authored context variant for
+      // this language - each is its own independent (scenario_version_id, language, variantKey)
+      // audio identity, never conflated with STANDARD's.
+      ((version.definition.variants && version.definition.variants[lang]) || []).forEach((variant) => {
+        if (!variant || !variant.key) return;
+        card.append(conversationStudioAudioLanguageRow(scenario.id, version.id, lang, variant.key, variant, audioData.assets || [], credentials));
+      });
     });
     return card;
   });
@@ -2760,7 +2913,7 @@ function conversationStudioEditor(id) {
 
     const languageSections = {};
     CONV_STUDIO_LANGUAGES.forEach((lang) => {
-      const section = conversationStudioLanguageSection(lang, scenario.draftVersion.definition);
+      const section = conversationStudioLanguageSection(lang, scenario.draftVersion.definition, id, scenario.draftVersionId);
       languageSections[lang] = section;
       editorCard.append(section.node);
     });
@@ -2768,10 +2921,14 @@ function conversationStudioEditor(id) {
     const saveBtn = el('button', 'btn btn-primary', t('convStudioSaveDraft'));
     saveBtn.type = 'button';
     saveBtn.onclick = () => {
-      const languages = {}; const responses = {};
-      CONV_STUDIO_LANGUAGES.forEach((lang) => { const read = languageSections[lang].read(); languages[lang] = read.rule; responses[lang] = read.response; });
+      const languages = {}; const responses = {}; const variants = {};
+      CONV_STUDIO_LANGUAGES.forEach((lang) => {
+        const read = languageSections[lang].read();
+        languages[lang] = read.rule; responses[lang] = read.response;
+        if (read.variants.length) variants[lang] = read.variants;
+      });
       const patch = {
-        languages, responses,
+        languages, responses, variants,
         testCorpus: { positive: linesToList(corpusPositiveField.textarea.value), negative: linesToList(corpusNegativeField.textarea.value) }
       };
       Promise.all([

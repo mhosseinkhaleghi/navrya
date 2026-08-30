@@ -542,6 +542,15 @@
         setLastTurnDebug({ path: 'conversation-router', scenarioId: routed.scenarioId, resolutionKind: routed.kind });
         var routerTurnType = routed.kind === 'data_query' ? 'LOCAL_DATA_QUERY' : routed.kind === 'surface_help' ? 'LOCAL_SURFACE_HELP' : 'LOCAL_FAQ';
         recordZeroNetworkLatency(routerTurnType, t0, {});
+        // Journey H2 expressive/context follow-up (spec section 15): the ONE place a local
+        // scenario match is actually being delivered to the user as a real turn - fire-and-forget,
+        // never awaited (this must never delay or fail the turn itself). Trigger Lab, batch-test,
+        // collision-check, and audio preview never reach this file at all (they run entirely
+        // server-side via getConversationMatcher()), so exposure is only ever counted for a real
+        // delivery, by construction, not by an extra guard here.
+        if (typeof conversationRouter.recordExposure === 'function') {
+          try { conversationRouter.recordExposure(routed.scenarioId, routed.variantKey); } catch (_e) { /* best-effort - never blocks/breaks the turn */ }
+        }
         return {
           kind: 'assistant', reply: routed.written, voiceReply: routed.voiceReply || routed.written,
           // Journey H2, Gate 3: computed unconditionally (like voiceReply already is) - the

@@ -148,8 +148,112 @@
       // present for an approved, hash-current asset (the server already enforces this before the
       // bundle is ever built) - a missing entry here always means "no published audio," never an
       // error.
-      audio: (row && row.audio) || {}
+      audio: (row && row.audio) || {},
+      // Journey H2 expressive/context follow-up: {[language]: [{key, context, written, voiceReply,
+      // performanceText}]} - optional, absent for every scenario authored before this gate (and
+      // for one that simply never needed a variant) - selectVariant() below treats a missing/empty
+      // array for a language exactly like "no variant matched," falling through to the STANDARD
+      // `responses[lang]` unchanged.
+      variants: definition.variants || {}
     };
+  }
+
+  // --- Journey H2 expressive/context follow-up: deterministic context-variant selection ----------
+  // Pure and dependency-free like everything else in this file, so the browser Router and
+  // server-side publish-time collision validation share the exact same selection logic - the same
+  // "one implementation, not two" principle already established for matchScenarios()/normalize().
+  // Zero model calls, zero network - `context` is only ever locally-known data the caller already
+  // has (an exposure count already fetched/cached, and ai-surface-context.js's own snapshot).
+
+  // Exposure condition shapes: {type:'ANY'} | {type:'FIRST_TIME'} | {type:'NTH_OR_LATER',
+  // threshold:N}. `exposureCount` is how many times this exact scenario has already been
+  // DELIVERED to this user before the turn being resolved right now (see chat-dock-core.js's own
+  // comment on exactly when this increments) - so "the Nth time" means count >= N-1 at
+  // resolution time (the 1st delivery happens at count 0, the 3rd at count 2, etc.).
+  function exposureMatches(condition, exposureCount) {
+    var type = (condition && condition.type) || 'ANY';
+    if (type === 'ANY') return true;
+    if (type === 'FIRST_TIME') return exposureCount === 0;
+    if (type === 'NTH_OR_LATER') {
+      var threshold = Number(condition.threshold);
+      return isFinite(threshold) && threshold >= 1 && exposureCount >= threshold - 1;
+    }
+    return false; // an unrecognized condition type never matches - never a silent always-true default
+  }
+
+  // Surface condition: an optional {page, processId, step} subset - every field the AUTHOR
+  // declared must equal the corresponding field of the caller's real current surface snapshot; an
+  // absent/undefined field in the condition is not checked at all. No condition (or an empty
+  // object) always matches, exactly like an unspecified Exposure defaults to ANY.
+  function surfaceMatches(condition, surfaceSnapshot) {
+    if (!condition || (!condition.page && !condition.processId && !condition.step)) return true;
+    var snap = surfaceSnapshot || {};
+    if (condition.page && condition.page !== snap.page) return false;
+    if (condition.processId && condition.processId !== snap.processId) return false;
+    if (condition.step && condition.step !== snap.step) return false;
+    return true;
+  }
+
+  // Section 20's own priority: surface+exposure both specific > exposure only > surface only >
+  // (falls through to STANDARD, never scored here). "Specific" means the author actually declared
+  // that half of the condition as something other than ANY/absent - a variant that only says
+  // {exposure:{type:'ANY'}} is exactly as unspecific there as declaring nothing at all.
+  function variantSpecificity(variant) {
+    var ctx = (variant && variant.context) || {};
+    var exposureSpecific = !!(ctx.exposure && ctx.exposure.type && ctx.exposure.type !== 'ANY');
+    var surfaceSpecific = !!(ctx.surface && (ctx.surface.page || ctx.surface.processId || ctx.surface.step));
+    return (exposureSpecific ? 1 : 0) + (surfaceSpecific ? 1 : 0);
+  }
+
+  // Returns the winning variant object, or null when none matches (the caller falls back to the
+  // scenario's own STANDARD responses[lang] unchanged - STANDARD is never itself a row in this
+  // array). Never random: a tie at the same specificity level (an authoring collision Conversation
+  // Studio's own publish validation is meant to reject before this can ever happen in production)
+  // still resolves deterministically, to the first such variant in authoring order.
+  function selectVariant(variants, context) {
+    var list = Array.isArray(variants) ? variants : [];
+    var ctx = context || {};
+    var exposureCount = typeof ctx.exposureCount === 'number' ? ctx.exposureCount : 0;
+    var surfaceSnapshot = ctx.surfaceSnapshot || {};
+    var best = null;
+    var bestSpecificity = -1;
+    for (var i = 0; i < list.length; i++) {
+      var variant = list[i];
+      var variantCtx = (variant && variant.context) || {};
+      if (!exposureMatches(variantCtx.exposure, exposureCount)) continue;
+      if (!surfaceMatches(variantCtx.surface, surfaceSnapshot)) continue;
+      var specificity = variantSpecificity(variant);
+      if (specificity > bestSpecificity) { best = variant; bestSpecificity = specificity; }
+    }
+    return best;
+  }
+
+  // Authoring-time collision check (spec section 20/34): true when two DIFFERENT variants could
+  // both match the exact same real-world context at the same specificity - Conversation Studio's
+  // own publish validation calls this pairwise over every variant in a language so an admin can
+  // never publish an ambiguous set that would otherwise resolve "randomly" (in practice,
+  // deterministically but arbitrarily, by array order) at runtime.
+  // Real range overlap, not a shape-equality shortcut - two NTH_OR_LATER conditions with
+  // DIFFERENT thresholds still both match every sufficiently-large real exposure count (both
+  // ranges are unbounded above), so they collide even though their JSON differs; a FIRST_TIME
+  // only overlaps an NTH_OR_LATER whose threshold is low enough to also cover count 0.
+  function exposureRangeOverlaps(a, b) {
+    var aType = (a && a.type) || 'ANY'; var bType = (b && b.type) || 'ANY';
+    if (aType === 'ANY' || bType === 'ANY') return true;
+    if (aType === 'FIRST_TIME' && bType === 'FIRST_TIME') return true;
+    if (aType === 'FIRST_TIME' && bType === 'NTH_OR_LATER') return Number(b.threshold) <= 1;
+    if (bType === 'FIRST_TIME' && aType === 'NTH_OR_LATER') return Number(a.threshold) <= 1;
+    if (aType === 'NTH_OR_LATER' && bType === 'NTH_OR_LATER') return true;
+    return false;
+  }
+
+  function variantsCollide(a, b) {
+    if (variantSpecificity(a) !== variantSpecificity(b)) return false;
+    var aCtx = (a && a.context) || {}; var bCtx = (b && b.context) || {};
+    if (!exposureRangeOverlaps(aCtx.exposure, bCtx.exposure)) return false;
+    var aSurface = aCtx.surface || null; var bSurface = bCtx.surface || null;
+    if (!aSurface && !bSurface) return true;
+    return JSON.stringify(aSurface) === JSON.stringify(bSurface);
   }
 
   // Safe template substitution (spec section 23/26): only ever replaces `{varName}` for a name
@@ -176,6 +280,7 @@
   window.TradeJournalAIConversationMatcher = {
     normalize: normalize, matchScenarios: matchScenarios, scenarioFromBundleRow: scenarioFromBundleRow,
     renderTemplate: renderTemplate, templateVariablesIn: templateVariablesIn,
+    selectVariant: selectVariant, variantsCollide: variantsCollide,
     HIGH_SCORE_THRESHOLD: HIGH_SCORE_THRESHOLD, HIGH_MARGIN_THRESHOLD: HIGH_MARGIN_THRESHOLD, MEDIUM_SCORE_THRESHOLD: MEDIUM_SCORE_THRESHOLD
   };
 }());

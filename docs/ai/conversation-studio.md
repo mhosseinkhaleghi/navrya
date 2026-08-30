@@ -1,4 +1,5 @@
-# Conversation Studio (Journey H2, Gate 2; voice assets added in Gate 3)
+# Conversation Studio (Journey H2, Gate 2; voice assets added in Gate 3; expressive dialogue +
+# context variants added in the H2 follow-up gate)
 
 The admin-only authoring system for the Deterministic Conversation Router
 (`docs/ai/conversation-router.md`). An admin can create, edit, test, publish, and roll back a
@@ -6,7 +7,12 @@ multilingual conversation scenario with **zero app rebuild** - the production Ro
 newly published scenario the next time its bundle cache refreshes (at most 5 minutes, or
 immediately on a fresh page load). Gate 3 (`docs/ai/conversation-voice-assets.md`) added a
 per-language, per-version "Published audio" panel to this same editor for generating, listening to,
-approving, and archiving pre-generated speech for a scenario's response.
+approving, and archiving pre-generated speech for a scenario's response. A small H2 follow-up gate
+(this update) added two more, still admin-authoring-time-only capabilities on top of that: an
+AI-generated expressive performance script for ElevenLabs (`performanceText`), and a small number
+of deterministic context variants per language (first-time vs. later exposure, optionally the
+current surface) - see "Context variants" below and `docs/ai/conversation-voice-assets.md`'s own
+"Expressive dialogue" section for the Voice-asset side of the same follow-up.
 
 ## Responsibility boundary
 
@@ -33,9 +39,29 @@ Two tables (`server/db/migrations/041_conversation_scenarios.sql`):
   `allowed_processes`/`allowed_steps` (JSONB arrays) are `surface_help`-only: process-id *prefix*
   matches (e.g. `["strategy-editor-"]`) and an optional step filter.
 - `conversation_scenario_versions` - one row per version. `status` is `draft` | `published` |
-  `archived`. The entire authored content - `languages`, `responses`, and an optional
-  `testCorpus` - lives in one `definition` JSONB column, since nothing server-side queries into an
-  individual trigger phrase.
+  `archived`. The entire authored content - `languages`, `responses`, an optional `testCorpus`,
+  and (H2 follow-up) an optional `variants` - lives in one `definition` JSONB column, since
+  nothing server-side queries into an individual trigger phrase.
+
+**H2 follow-up, additive, zero migration for existing content**: `responses[lang]` gained one
+optional key, `performanceText` (sits alongside `written`/`voiceReply` in the same object - see
+`docs/ai/conversation-voice-assets.md`'s "Expressive dialogue" section for what it is and how it's
+validated). `definition.variants[lang]` is a new, optional array - absent for every scenario
+published before this gate, and for any scenario that simply never needs one:
+```js
+[{ key: 'FIRST_TIME', context: { exposure: {type:'FIRST_TIME'}, surface: {page:'sessions'} },
+   written: '...', voiceReply: '...', performanceText: '...' }]
+```
+`STANDARD` (the scenario's default) is never itself a row in this array - it's exactly what
+`responses[lang]` already is. See "Context variants" below for selection semantics.
+
+A third, small, dedicated table (`server/db/migrations/043_conversation_scenario_exposures.sql`)
+backs variant selection: `conversation_scenario_exposures(user_id, scenario_key, count,
+last_presented_at, last_variant_key)`, one row per (user, scenario). Deliberately its own table,
+not an addition to `companion_state` (`018_companion_state.sql`) - that document is a closed,
+privacy-tested schema for communication preferences and explicit choices, and this is a different,
+ever-growing, per-scenario counter that would only couple two unrelated read/write paths for no
+benefit.
 
 **Publishing a draft archives whatever was previously published** (status flips, content
 untouched) - this is what makes "the old version remains unchanged" and rollback both trivially
@@ -84,6 +110,7 @@ already use) - no per-route auth wiring needed.
 | `POST /:id/test` | Trigger Lab: one utterance through the shared matcher, draft substituted for this scenario's own entry, against every other **published** scenario |
 | `POST /:id/test-batch` | Runs the draft's own stored `testCorpus.positive`/`.negative` |
 | `GET /:id/collisions` | Checks the draft's own strong phrases + positive corpus against every other published scenario |
+| `POST /:id/versions/:versionId/enhance-delivery` | H2 follow-up: generates a candidate `performanceText` from the STORED canonical dialogue via a direct OpenAI call - see `docs/ai/conversation-voice-assets.md` |
 
 Every mutating route calls the existing `audit()` helper with scenario id/version metadata only -
 never the full `definition` body (no response text, no trigger phrases in the audit log).
@@ -106,11 +133,68 @@ A language with triggers but no response is a **warning**, not a blocker - genui
 language coverage is expected and supported (the Router's own "no response for this language ->
 fall through" rule handles it safely at runtime).
 
+**H2 follow-up, two more blocking checks**: any `performanceText` (STANDARD or any variant) that
+no longer matches its own canonical `voiceReply`/`written` (`INVALID_PERFORMANCE_TEXT`) - the real,
+unbypassable enforcement, since an admin can still hand-edit `performanceText` after Enhance
+Delivery generated it; and two variants in the same language whose context conditions could both
+match the same real-world turn at the same specificity (`VARIANT_CONTEXT_COLLISION`) - detected via
+`ai-conversation-matcher.js`'s own `variantsCollide()`, the same shared implementation the runtime
+selector uses, never a second reimplementation.
+
+## Context variants (H2 follow-up)
+
+A small, deterministic alternative to always serving the exact same wording - e.g. `session.purpose`
+sounding fuller and more welcoming the first time, shorter and more familiar afterward. Kept
+deliberately small per the brief's own instruction: no generic rule language, no arbitrary
+conditions, just two safe axes.
+
+**Exposure** - how many times NAVRYA has already delivered *this exact scenario* to *this user*
+before the turn being resolved right now:
+- `ANY` (the default when omitted) always matches.
+- `FIRST_TIME` matches only when the exposure count is `0`.
+- `NTH_OR_LATER` (with a small integer `threshold`) matches once the count reaches `threshold - 1`
+  (the Nth delivery happens when the count is `N-1`, since counting starts at 0 before the first
+  real delivery). A **second** exposure with no explicit variant authored for it simply falls
+  through to STANDARD - a second-time variant is never forced.
+
+**Surface** (optional) - an exact `page` (and, schema-only this pass, `processId`/`step`) matched
+against `ai-surface-context.js`'s own real snapshot - the identical shape `surfaceBoost`/
+`surface_help` already use, reused as-is rather than inventing a second context system.
+
+**Selection priority** (`ai-conversation-matcher.js`'s `selectVariant()`, shared by the runtime
+Router and by publish-time collision detection): surface+exposure both specific beats exposure-only
+beats surface-only beats STANDARD (no variant matched). A tie at the same specificity is a real
+authoring ambiguity - publish validation rejects it outright (`VARIANT_CONTEXT_COLLISION`) rather
+than ever resolving it randomly at runtime.
+
+**Exposure counting** (spec section 15, the exact rule): a scenario exposure is counted only when
+NAVRYA actually **delivers** that local scenario's response to the user, through either text or
+Voice - never for a Trigger Lab test, a batch-test run, a collision check, an Enhance Delivery
+call, or an audio preview. This holds structurally, not by an extra guard: the Trigger Lab/batch/
+collision routes all run entirely server-side via `getConversationMatcher()` and never touch
+`ai-conversation-router.js`'s own `route()`/`recordExposure()` at all. The one real write path is
+`chat-dock-core.js`'s `sendChat()`, at the exact point a local router match is about to be returned
+as a genuine turn - a fire-and-forget call, never awaited, never able to delay or break the turn
+itself.
+
+**Exposure persistence**: `GET`/`POST /api/sync/conversation-scenario-exposures` (real per-user
+auth, mounted like every other `/api/sync/*` route). The browser Router keeps a small, lazily-
+refreshed local cache of this map (mirroring the scenario bundle cache's own convention exactly)
+and **optimistically increments it immediately** on `recordExposure()`, before the network call
+even resolves - without this, three real questions asked back-to-back in one sitting would all see
+the same stale cached count for up to 5 minutes.
+
+**UI**: inside the same per-language section, a compact "+ Add context variant" control appends a
+block with its own written/spoken/expressive-voice fields (never copied from STANDARD or another
+variant) plus a small Context sub-section (Exposure: Any/First time/Nth time or later [threshold];
+Surface: Any/a known page). No visual rule builder, no new tab.
+
 ## Admin UI (`public/pages/admin/app.js`, "Conversation Studio" tab)
 
 Library (search/status/domain via `GET /`) -> click a scenario -> Editor: metadata, a CTA
 dropdown, per-language sections (concept groups / strong phrases / negative phrases / written
-response / spoken response - each a labeled multi-line field, never a raw JSON blob), a test
+response / spoken response / expressive voice + Enhance Delivery (H2 follow-up) / context
+variants (H2 follow-up) - each a labeled multi-line field, never a raw JSON blob), a test
 corpus (positive/negative examples), version history with Publish/New Revision/Rollback/Archive
 buttons, and an inline Trigger Lab (test one utterance, run the stored corpus, check collisions).
 
@@ -127,11 +211,14 @@ data-model change.
   need to run through `pattern-ai-server.mjs` (the only place with provider/key resolution) with
   an admin-role check that gateway doesn't currently perform for any endpoint. The core acceptance
   test for this gate does not require it.
-- **Response variant selection logic**: the `definition` schema and admin UI both support multiple
-  named variants conceptually, but this gate's editor only authors one response per language
-  (the "default" variant) - no selection heuristic exists yet.
+- **Response variant selection logic**: built in the H2 follow-up gate - see "Context variants"
+  above. Deliberately small (exposure + surface only, no generic rule language).
 - **Voice audio/TTS, ElevenLabs preview**: built in Gate 3 - see
   `docs/ai/conversation-voice-assets.md`. A "Published audio" panel now lives inside this same
   scenario editor, per language, for both the published and draft versions.
 - **CTA execution**: `ctaActionId` is authored, validated, and carried through in the Router's
   `route()` return value as inert metadata - nothing calls it yet (Gate 4).
+- **Surface-context `processId`/`step` targeting UI**: the schema (`context.surface`) and the
+  runtime selector both support it, but the H2 follow-up's own compact Context UI only exposes a
+  `page` picklist - no rule builder, per that gate's own "keep this small" instruction. Authoring a
+  `processId`/`step`-scoped variant today requires a direct `PATCH .../draft` call.

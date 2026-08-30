@@ -1438,6 +1438,35 @@ Server-side, `pattern-ai-server.mjs`'s `callProvider` also reports a **health ev
 
 A BYO API key lives in memory only (`ai-settings-store.js`'s module-level `sessionKeys`) unless the user explicitly opts into `persistApiKey`, at which point it is written to the separate `tradejournal:ai-byok:v1` key with an inline warning that it will be stored unencrypted in the browser. Voice mode is shown as available only for providers whose catalog entry sets `supportsVoice: true` (OpenAI only, today) - other providers show a genuinely `disabled` control, not just muted styling.
 
+### Conversation Studio: deterministic Router, published Voice audio, expressive dialogue, context variants (Journey H2)
+
+A separate, admin-authored fast path ahead of the general AI gateway above - not part of
+`pattern-ai-server.mjs`. `ai-conversation-router.js`/`ai-conversation-matcher.js` resolve a
+matched FAQ/data-query/surface-help scenario locally, **zero model calls**, from an admin-published
+scenario library (`server/admin/routes.conversation-scenarios.mjs`, `conversation_scenarios`/
+`conversation_scenario_versions`). A HIGH-confidence match can also play **pre-generated, admin-
+approved ElevenLabs audio** instead of live TTS (`conversation_audio_assets`, content-hash-keyed,
+re-verified stale-or-not on every read). As-built additions on top of that base:
+
+- **`performanceText`** - an optional ElevenLabs Audio Tags performance script alongside a
+  response's canonical `written`/`voiceReply`, admin-generated via one small, admin-authoring-
+  time-only LLM call ("Enhance Delivery," a direct OpenAI call from community-api using the
+  existing `admin_ai_keys` table - never a new pattern-ai-server.mjs endpoint), and validated
+  word-for-word against its own canonical dialogue before ever being trusted (never invented
+  content, never a runtime model call).
+- **Context variants** - a small, deterministic per-language selector
+  (`ai-conversation-matcher.js`'s `selectVariant()`) choosing among admin-authored dialogue
+  variants by exposure count (first-time vs. Nth-time-or-later) and/or the real current surface
+  (`ai-surface-context.js`), never a generic rule engine and never Mental Health/psychological
+  data. Exposure counts are the one small, dedicated, bounded per-user table this feature added
+  (`conversation_scenario_exposures` - deliberately not folded into the existing, closed,
+  privacy-tested `companion_state` document).
+
+See `docs/ai/conversation-router.md`, `docs/ai/conversation-studio.md`, and `docs/ai/conversation-
+voice-assets.md` for the full design and as-built detail - this entry exists only so Section 8's
+own AI-integration inventory doesn't silently omit an entire fast path that bypasses the gateway
+above it.
+
 ## 9. Coding Conventions & Style Rules
 
 ### JavaScript conventions

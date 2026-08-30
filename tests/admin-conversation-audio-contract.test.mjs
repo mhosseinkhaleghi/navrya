@@ -315,3 +315,218 @@ test('uses the spokenResponse text, and falls back to written text (flagged) onl
   assert.equal(generated.status, 201);
   assert.equal(generated.body.usedFallbackText, true);
 });
+
+// --- Journey H2 expressive/context follow-up: Enhance Delivery + variant-aware audio identity ---
+
+// Mirrors stubElevenLabs()'s own convention exactly, for the one new outbound call this gate
+// adds: a direct OpenAI Responses API call from community-api (never a new pattern-ai-server.mjs
+// endpoint - see server/community/enhance-delivery-provider.mjs's own header comment).
+function stubOpenAI({ performanceText, fail } = {}) {
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(String(url), baseUrl);
+    if (parsed.origin !== 'https://api.openai.com') return originalFetch(url, options);
+    calls.push(parsed.pathname);
+    if (fail) return { ok: false, status: 500, json: async () => ({ error: { message: 'boom' } }) };
+    return { ok: true, status: 200, json: async () => ({ output_text: JSON.stringify({ performanceText: performanceText || '' }) }) };
+  };
+  return calls;
+}
+
+// admin_ai_keys is a global, provider-keyed singleton (never scoped to one admin/test) - this test
+// MUST run before any other test in this file configures an 'openai' key, since that upsert would
+// otherwise persist for the rest of the file's shared repo/server instance.
+test('Enhance Delivery requires an admin-configured OpenAI key - fails loudly, never silently falling back to a different provider or a key this process was never given', async () => {
+  const admin = await createAdmin('enhance-admin-3');
+  const scenario = await createPublishedScenario(admin, 'enhance.three');
+  const calls = stubOpenAI({ performanceText: 'irrelevant' });
+
+  const result = await api('POST', `/api/admin/conversation-scenarios/${scenario.id}/versions/${scenario.publishedVersionId}/enhance-delivery`,
+    { userId: admin.id, body: { language: 'en', variantKey: 'standard' } });
+
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'OPENAI_KEY_NOT_CONFIGURED');
+  assert.equal(calls.length, 0, 'must never reach OpenAI at all without a configured key');
+});
+
+test('Enhance Delivery for a scenario with no stored spoken text at all (neither the requested variant nor STANDARD) is rejected before ever reaching OpenAI', async () => {
+  const admin = await createAdmin('enhance-admin-4');
+  await repo.adminKeys.upsert({ provider: 'openai', apiKey: 'test-openai-key', updatedBy: admin.id });
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'enhance.four', kind: 'faq',
+      definition: { languages: { en: { groups: [['thingummy']], strong: [], negative: [] } }, responses: { en: { written: '', voiceReply: '' } } }
+    }
+  });
+  const calls = stubOpenAI({ performanceText: 'irrelevant' });
+
+  // A nonexistent variant key gracefully degrades to STANDARD (responseSetFor()'s own documented
+  // behavior) - here STANDARD itself has no text either, so this must still be rejected, not
+  // silently proceed with an empty canonical string.
+  const result = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/enhance-delivery`,
+    { userId: admin.id, body: { language: 'en', variantKey: 'NEVER_SAVED_VARIANT' } });
+
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'NO_SPOKEN_TEXT');
+  assert.equal(calls.length, 0);
+});
+
+test('Enhance Delivery returns a valid, ready-to-review suggestion for the STANDARD response, and audits it', async () => {
+  const admin = await createAdmin('enhance-admin');
+  await repo.adminKeys.upsert({ provider: 'openai', apiKey: 'test-openai-key', updatedBy: admin.id });
+  const scenario = await createPublishedScenario(admin, 'enhance.one');
+  // faqDefinition()'s own canonical voiceReply is "A gadget is a thing, spoken." - the stubbed
+  // suggestion must match it exactly (plus a supported tag) to be reported valid.
+  const calls = stubOpenAI({ performanceText: '[curious] A gadget is a thing, spoken.' });
+
+  const result = await api('POST', `/api/admin/conversation-scenarios/${scenario.id}/versions/${scenario.publishedVersionId}/enhance-delivery`,
+    { userId: admin.id, body: { language: 'en', variantKey: 'standard', deliveryNote: 'warm and curious' } });
+
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.performanceText, '[curious] A gadget is a thing, spoken.');
+  assert.equal(result.body.valid, true);
+  assert.ok(Array.isArray(result.body.supportedTags) && result.body.supportedTags.includes('curious'));
+  assert.equal(calls.length, 1);
+
+  const log = await repo.auditLog.list({ limit: 200 });
+  const entry = log.find((e) => e.action === 'conversationAudio.enhanceDelivery' && e.targetId === scenario.id);
+  assert.ok(entry);
+  assert.equal(entry.details.valid, true);
+});
+
+test('Enhance Delivery reports an invented suggestion as invalid rather than silently presenting it as good - it never rejects the HTTP call outright, so the admin can still see and fix it', async () => {
+  const admin = await createAdmin('enhance-admin-2');
+  await repo.adminKeys.upsert({ provider: 'openai', apiKey: 'test-openai-key', updatedBy: admin.id });
+  const scenario = await createPublishedScenario(admin, 'enhance.two');
+  stubOpenAI({ performanceText: '[curious] A gadget is a thing, spoken, and also a completely invented extra sentence.' });
+
+  const result = await api('POST', `/api/admin/conversation-scenarios/${scenario.id}/versions/${scenario.publishedVersionId}/enhance-delivery`,
+    { userId: admin.id, body: { language: 'en', variantKey: 'standard' } });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.valid, false);
+  assert.equal(result.body.reason, 'DIALOGUE_CHANGED');
+});
+
+// Governance audit fix: Enhance Delivery spends real provider cost per call, exactly like the
+// existing admin ElevenLabs /test-sample route - which is rate-limited. This was a real, found
+// gap (Enhance Delivery originally had no cap at all) - fixed by mirroring that exact convention.
+test('Enhance Delivery is rate-limited (5/min/session) exactly like the existing /test-sample precedent, so a runaway admin session cannot spend unbounded real provider cost', async () => {
+  const admin = await createAdmin('rate-limited-enhance-admin');
+  await repo.adminKeys.upsert({ provider: 'openai', apiKey: 'test-openai-key', updatedBy: admin.id });
+  const scenario = await createPublishedScenario(admin, 'enhance.ratelimit.one');
+  stubOpenAI({ performanceText: 'A gadget is a thing.' });
+  let lastStatus = null;
+  for (let i = 0; i < 6; i += 1) {
+    const result = await api('POST', `/api/admin/conversation-scenarios/${scenario.id}/versions/${scenario.publishedVersionId}/enhance-delivery`,
+      { userId: admin.id, body: { language: 'en', variantKey: 'standard' } });
+    lastStatus = result.status;
+    if (i < 5) assert.notEqual(result.status, 429, `request ${i + 1} of 5 must not be rate-limited yet`);
+  }
+  assert.equal(lastStatus, 429);
+});
+
+test('a non-admin is rejected from Enhance Delivery, never reaching OpenAI', async () => {
+  const admin = await createAdmin('enhance-setup-admin');
+  const user = await createUser('enhance-plain-user');
+  await repo.adminKeys.upsert({ provider: 'openai', apiKey: 'test-openai-key', updatedBy: admin.id });
+  const scenario = await createPublishedScenario(admin, 'enhance.five');
+  const calls = stubOpenAI({ performanceText: 'irrelevant' });
+
+  const result = await api('POST', `/api/admin/conversation-scenarios/${scenario.id}/versions/${scenario.publishedVersionId}/enhance-delivery`,
+    { userId: user.id, body: { language: 'en', variantKey: 'standard' } });
+
+  assert.equal(result.status, 403);
+  assert.equal(calls.length, 0);
+});
+
+test('audio identity changes when the performance tag changes - regenerating with a different valid performanceText produces a different content hash, and approving it archives the prior asset for the same slot', async () => {
+  const admin = await createAdmin('tag-identity-admin');
+  const credential = await createCredential(admin.id);
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'audio.tagidentity.one', kind: 'faq',
+      definition: {
+        languages: { en: { groups: [['flapdoodle'], ['what is']], strong: ['what is a flapdoodle'], negative: [] } },
+        responses: { en: { written: 'A flapdoodle is a thing.', voiceReply: 'A flapdoodle is a thing.', performanceText: '[curious] A flapdoodle is a thing.' } }
+      }
+    }
+  });
+  stubElevenLabs();
+  const first = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`,
+    { userId: admin.id, body: { language: 'en', credentialId: credential.id, voiceId: 'voice-1', modelId: 'eleven_v3' } });
+  assert.equal(first.status, 201);
+  assert.equal(first.body.usedPerformanceText, true, 'eleven_v3 supports tags and the performanceText is valid - it must be what gets hashed/synthesized');
+  await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/audio/${first.body.id}/approve`, { userId: admin.id });
+
+  // Change [curious] to [softly] - same canonical dialogue, different performance direction.
+  await api('PATCH', `/api/admin/conversation-scenarios/${created.body.id}/draft`, {
+    userId: admin.id, body: { responses: { en: { written: 'A flapdoodle is a thing.', voiceReply: 'A flapdoodle is a thing.', performanceText: '[softly] A flapdoodle is a thing.' } } }
+  });
+
+  const staleCheck = await api('GET', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`, { userId: admin.id });
+  assert.equal(staleCheck.body.assets[0].isStale, true, 'changing only the performance tag must invalidate the previously-approved audio - never silently reused');
+
+  const second = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`,
+    { userId: admin.id, body: { language: 'en', credentialId: credential.id, voiceId: 'voice-1', modelId: 'eleven_v3' } });
+  assert.notEqual(second.body.contentHashShort, first.body.contentHashShort, 'a different performance tag must produce a different content hash');
+  await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/audio/${second.body.id}/approve`, { userId: admin.id });
+
+  const list = await api('GET', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`, { userId: admin.id });
+  assert.equal(list.body.assets.find((a) => a.id === first.body.id).status, 'archived');
+  assert.equal(list.body.assets.find((a) => a.id === second.body.id).status, 'approved');
+});
+
+test('a performanceText is silently NOT used for audio generation when the chosen model does not support tags - falls back to plain canonical text, never breaks generation', async () => {
+  const admin = await createAdmin('unsupported-model-admin');
+  const credential = await createCredential(admin.id);
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'audio.unsupportedmodel.one', kind: 'faq',
+      definition: {
+        languages: { en: { groups: [['wingding'], ['what is']], strong: ['what is a wingding'], negative: [] } },
+        responses: { en: { written: 'A wingding is a thing.', voiceReply: 'A wingding is a thing.', performanceText: '[curious] A wingding is a thing.' } }
+      }
+    }
+  });
+  stubElevenLabs();
+  const generated = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`,
+    { userId: admin.id, body: { language: 'en', credentialId: credential.id, voiceId: 'voice-1', modelId: 'eleven_multilingual_v2' } });
+  assert.equal(generated.status, 201);
+  assert.equal(generated.body.usedPerformanceText, false, 'eleven_multilingual_v2 does not support audio tags - must fall back to plain canonical text');
+});
+
+test('generating audio for a specific context variant is scoped to that exact variantKey, independent of STANDARD - the two are separate audio identities that can be approved independently', async () => {
+  const admin = await createAdmin('variant-audio-admin');
+  const credential = await createCredential(admin.id);
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'audio.variant.one', kind: 'faq',
+      definition: {
+        languages: { en: { groups: [['whirligig'], ['what is']], strong: ['what is a whirligig'], negative: [] } },
+        responses: { en: { written: 'A whirligig is a thing.', voiceReply: 'A whirligig is a thing.' } },
+        variants: { en: [{ key: 'FIRST_TIME', context: { exposure: { type: 'FIRST_TIME' } }, written: 'Welcome! A whirligig is a thing.', voiceReply: 'Welcome! A whirligig is a thing.' }] }
+      }
+    }
+  });
+  stubElevenLabs();
+  const standardAsset = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`,
+    { userId: admin.id, body: { language: 'en', variantKey: 'standard', credentialId: credential.id, voiceId: 'voice-1' } });
+  const firstTimeAsset = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`,
+    { userId: admin.id, body: { language: 'en', variantKey: 'FIRST_TIME', credentialId: credential.id, voiceId: 'voice-1' } });
+
+  assert.equal(standardAsset.status, 201);
+  assert.equal(firstTimeAsset.status, 201);
+  assert.equal(standardAsset.body.variantKey, 'standard');
+  assert.equal(firstTimeAsset.body.variantKey, 'FIRST_TIME');
+  assert.notEqual(standardAsset.body.contentHashShort, firstTimeAsset.body.contentHashShort, 'different dialogue text must produce different content identities');
+
+  await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/audio/${firstTimeAsset.body.id}/approve`, { userId: admin.id });
+  const bundle = await repo.conversationScenarios.listPublishedForBundle();
+  // Not published yet, so it never appears in the bundle - this only proves approval succeeded
+  // independently for the variant slot without needing STANDARD to also be approved.
+  assert.equal(bundle.find((s) => s.scenarioKey === 'audio.variant.one'), undefined);
+  const list = await api('GET', `/api/admin/conversation-scenarios/${created.body.id}/versions/${created.body.draftVersionId}/audio`, { userId: admin.id });
+  assert.equal(list.body.assets.find((a) => a.id === firstTimeAsset.body.id).status, 'approved');
+  assert.equal(list.body.assets.find((a) => a.id === standardAsset.body.id).status, 'preview', 'approving the FIRST_TIME slot must never affect the independent STANDARD slot');
+});

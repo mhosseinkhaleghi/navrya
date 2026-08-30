@@ -27,6 +27,7 @@ import * as routesWallet from './routes.wallet.mjs';
 import * as routesSubscriptions from './routes.subscriptions.mjs';
 import * as routesStorage from './routes.storage.mjs';
 import * as routesConversationScenariosSync from './routes.conversation-scenarios-sync.mjs';
+import * as routesConversationScenarioExposuresSync from './routes.conversation-scenario-exposures-sync.mjs';
 import * as routesWebhooksBsc from './routes.webhooks-bsc.mjs';
 import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
@@ -178,6 +179,10 @@ export function createApp({ repo, uploadsDir }) {
   // every other /api/sync/* route (a GET needs no CSRF token; this just keeps the mount
   // consistent rather than carving out a bespoke unauthenticated exception).
   app.use('/api/sync/conversation-scenarios', routesConversationScenariosSync.router(repo));
+  // Journey H2 expressive/context follow-up: the small, per-user, bounded exposure-count map the
+  // browser Router's own deterministic variant selector reads/increments - real user data, real
+  // requireAuth, unlike the bundle above.
+  app.use('/api/sync/conversation-scenario-exposures', routesConversationScenarioExposuresSync.router(repo));
   app.use('/api/admin', requireAdmin(repo), routesAdmin.router(repo, uploadsDir));
 
   app.use(notFoundMiddleware);

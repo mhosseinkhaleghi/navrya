@@ -2,8 +2,25 @@ import express from 'express';
 import { ApiError, asyncHandler } from '../community/errors.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { synthesize, ElevenLabsError } from '../community/elevenlabs-client.mjs';
-import { spokenTextFor, computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
+import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { saveAudio } from '../storage/audio-storage.mjs';
+import {
+  responseSetFor, effectiveVoiceText, effectiveVoiceTextFor, validatePerformanceText,
+  SUPPORTED_AUDIO_TAGS, CAUTION_DOMAINS
+} from '../community/performance-text.mjs';
+import { generatePerformanceText } from '../community/enhance-delivery-provider.mjs';
+import { rateLimit, sessionKey } from '../community/security/rate-limit.mjs';
+
+// Governance audit (H2 follow-up review): Enhance Delivery spends real provider cost per call,
+// exactly like the existing admin ElevenLabs /test-sample route
+// (server/admin/routes.voice-providers.mjs) - the real, closest precedent for "an admin-authoring-
+// time action that calls a paid AI provider directly, not through the user-facing gateway." That
+// route is rate-limited (`testSampleLimiter`, 5/min/session); Enhance Delivery was missing the
+// same control, found via this audit and fixed narrowly here - same shape, same store, no new
+// infrastructure. (health-event reporting/quota/wallet do NOT apply here: those are
+// pattern-ai-server.mjs's own governance for user-billed AI-gateway calls, a different category
+// this admin-authoring action was never part of, exactly like /test-sample never was either.)
+const enhanceDeliveryLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, keyFn: sessionKey('conversation-enhance-delivery') });
 
 // Journey H2, Gate 2: Conversation Studio admin API. Mounted at
 // /api/admin/conversation-scenarios inside routes.mjs, so it inherits requireAdmin() for free
@@ -75,6 +92,43 @@ async function validateForPublish(matcher, draftDefinition, scenario, otherPubli
     if (invalid.length) errors.push({ code: 'INVALID_TEMPLATE_VARIABLE', language: lang, variables: invalid, message: 'Response in ' + lang + ' references unknown variable(s): ' + invalid.join(', ') });
   });
 
+  // Journey H2 expressive/context follow-up (section 3/10): the REAL enforcement that a
+  // performanceText can never silently diverge from its own canonical dialogue - the Enhance
+  // Delivery endpoint already validates its own output before ever showing it to the admin, but an
+  // admin can still hand-edit performanceText afterward (spec section 10), so this is the one
+  // unbypassable gate. Checked for STANDARD (responses[lang]) and every authored variant alike.
+  const variantsByLang = draftDefinition.variants || {};
+  Object.keys(responses).forEach((lang) => {
+    const responseSet = responses[lang];
+    if (!responseSet.performanceText) return;
+    const canonical = String(responseSet.voiceReply || responseSet.written || '').trim();
+    const result = validatePerformanceText(matcher, { performanceText: responseSet.performanceText, canonicalSpokenText: canonical });
+    if (!result.valid) errors.push({ code: 'INVALID_PERFORMANCE_TEXT', language: lang, reason: result.reason, message: 'The expressive performance text for ' + lang + ' (standard) no longer matches its own canonical dialogue (' + result.reason + ').' });
+  });
+  Object.keys(variantsByLang).forEach((lang) => {
+    (variantsByLang[lang] || []).forEach((variant) => {
+      if (!variant || !variant.performanceText) return;
+      const canonical = String(variant.voiceReply || variant.written || '').trim();
+      const result = validatePerformanceText(matcher, { performanceText: variant.performanceText, canonicalSpokenText: canonical });
+      if (!result.valid) errors.push({ code: 'INVALID_PERFORMANCE_TEXT', language: lang, variantKey: variant.key, reason: result.reason, message: 'The expressive performance text for ' + lang + '/' + variant.key + ' no longer matches its own canonical dialogue (' + result.reason + ').' });
+    });
+  });
+
+  // Section 20/34: two variants in the same language that could both match the exact same
+  // real-world context at the same specificity is an authoring collision - the runtime selector
+  // resolves it deterministically (never randomly), but publishing an ambiguous set at all is
+  // refused outright rather than left to depend on authoring order.
+  Object.keys(variantsByLang).forEach((lang) => {
+    const list = variantsByLang[lang] || [];
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        if (matcher.variantsCollide(list[i], list[j])) {
+          errors.push({ code: 'VARIANT_CONTEXT_COLLISION', language: lang, variantKeys: [list[i].key, list[j].key], message: 'Variants "' + list[i].key + '" and "' + list[j].key + '" in ' + lang + ' can both match the same context - narrow one of them before publishing.' });
+        }
+      }
+    }
+  });
+
   // Real-utterance collision/veto checks against the actual matcher, exactly like the Trigger
   // Lab tester - the draft substitutes for this scenario's own published entry in the candidate
   // pool, so this is exactly what production would do the moment this version goes live.
@@ -135,10 +189,10 @@ function mapAudioAssetForAdmin(asset) {
 // Spec section 20: staleness is never stored - always recomputed against the version's CURRENT
 // definition. Always false for an already-published version (Gate 2 made version definitions
 // immutable), so this only ever matters while a version is still a mutable draft.
-function isStaleFor(asset, definition) {
-  const spoken = spokenTextFor(definition, asset.language);
-  const expectedHash = computeAudioContentHash({ text: spoken.text, language: asset.language, provider: asset.provider, voiceId: asset.voiceId, modelId: asset.modelId });
-  return !spoken.text || expectedHash !== asset.contentHash;
+function isStaleFor(matcher, asset, definition) {
+  const resolved = effectiveVoiceTextFor(matcher, definition, asset.language, asset.variantKey, asset.modelId);
+  const expectedHash = computeAudioContentHash({ text: resolved.text, language: asset.language, provider: asset.provider, voiceId: asset.voiceId, modelId: asset.modelId });
+  return !resolved.text || expectedHash !== asset.contentHash;
 }
 
 export function router(repo, uploadsDir) {
@@ -303,7 +357,8 @@ export function router(repo, uploadsDir) {
     const version = await repo.conversationScenarios.getVersion(req.params.versionId);
     if (!version || version.scenarioId !== scenario.id) throw new ApiError(404, 'VERSION_NOT_FOUND');
     const assets = await repo.conversationAudioAssets.listForVersion(req.params.versionId);
-    res.json({ assets: assets.map((asset) => Object.assign(mapAudioAssetForAdmin(asset), { isStale: isStaleFor(asset, version.definition) })) });
+    const matcher = await getConversationMatcher();
+    res.json({ assets: assets.map((asset) => Object.assign(mapAudioAssetForAdmin(asset), { isStale: isStaleFor(matcher, asset, version.definition) })) });
   }));
 
   // Generate a preview candidate (spec section 17). Never trusts browser-supplied text - always
@@ -340,22 +395,34 @@ export function router(repo, uploadsDir) {
     if (!String(body.voiceId || '').trim()) throw new ApiError(400, 'VOICE_ID_REQUIRED');
     const credential = await repo.voiceProviderCredentials.get(body.credentialId, { includeDecrypted: true });
     if (!credential) throw new ApiError(400, 'CREDENTIAL_NOT_FOUND');
-    const spoken = spokenTextFor(version.definition, body.language);
-    if (!spoken.text) throw new ApiError(400, 'NO_SPOKEN_TEXT');
+    const variantKey = body.variantKey || 'standard';
+    // Journey H2 expressive/context follow-up: resolves the STANDARD response or the exact
+    // authored variant this asset is for (never trusts browser-supplied dialogue text either way).
+    const responseSet = responseSetFor(version.definition, body.language, variantKey);
+    const spokenReply = String(responseSet.voiceReply || '').trim();
+    const written = String(responseSet.written || '').trim();
+    const canonicalSpokenText = spokenReply || written;
+    const usedFallbackText = !spokenReply && !!written;
+    if (!canonicalSpokenText) throw new ApiError(400, 'NO_SPOKEN_TEXT');
     const matcher = await getConversationMatcher();
-    if (matcher.templateVariablesIn(spoken.text).length) throw new ApiError(400, 'AUDIO_NOT_ELIGIBLE_TEMPLATE_VARIABLES');
-    const contentHash = computeAudioContentHash({ text: spoken.text, language: body.language, provider: 'elevenlabs', voiceId: body.voiceId, modelId: body.modelId });
+    if (matcher.templateVariablesIn(canonicalSpokenText).length) throw new ApiError(400, 'AUDIO_NOT_ELIGIBLE_TEMPLATE_VARIABLES');
+    // Section 11: the audio identity hash covers whatever text is ACTUALLY sent to ElevenLabs -
+    // performanceText (when present, valid, and the model supports it) or the plain canonical
+    // text otherwise (Section 27's fallback rule - a missing/invalid/unsupported performanceText
+    // never blocks generation, it only changes which text gets hashed/synthesized).
+    const picked = effectiveVoiceText(matcher, { performanceText: responseSet.performanceText, canonicalSpokenText, modelId: body.modelId });
+    const contentHash = computeAudioContentHash({ text: picked.text, language: body.language, provider: 'elevenlabs', voiceId: body.voiceId, modelId: body.modelId });
 
     const startedAt = Date.now();
     let synthesized;
     try {
       synthesized = await synthesize(credential.apiKey, body.voiceId, {
-        text: spoken.text, modelId: body.modelId, languageCode: body.language, voiceSettings: body.voiceSettings, outputFormat: 'mp3_44100_128'
+        text: picked.text, modelId: body.modelId, languageCode: body.language, voiceSettings: body.voiceSettings, outputFormat: 'mp3_44100_128'
       });
     } catch (error) {
       await repo.voiceTtsUsage.record({
         languageCode: body.language, provider: 'elevenlabs', credentialId: credential.id, source: 'studio_audio_generation',
-        characters: spoken.text.length, characterCost: null, success: false,
+        characters: picked.text.length, characterCost: null, success: false,
         errorCode: error instanceof ElevenLabsError ? error.code : 'UNKNOWN_ERROR', latencyMs: Date.now() - startedAt
       });
       if (error instanceof ElevenLabsError) throw new ApiError(502, error.code);
@@ -371,16 +438,54 @@ export function router(repo, uploadsDir) {
     });
     const saved = await saveAudio(synthesized.buffer, { uploadsDir, category: 'conversation-audio', declaredMimeType: synthesized.contentType });
     const asset = await repo.conversationAudioAssets.create({
-      scenarioId: scenario.id, scenarioVersionId: version.id, language: body.language, variantKey: body.variantKey || 'standard',
+      scenarioId: scenario.id, scenarioVersionId: version.id, language: body.language, variantKey,
       contentHash, provider: 'elevenlabs', voiceProfileKey: String(body.voiceProfileKey || '').trim() || 'default',
       voiceId: body.voiceId, modelId: body.modelId || null, fileUrl: saved.url, mimeType: saved.mimeType,
       createdBy: req.currentUser.id
     });
     await audit(req, repo, 'conversationAudio.generate', 'conversationAudioAsset', asset.id, {
-      scenarioKey: scenario.scenarioKey, versionId: version.id, language: body.language, usedFallbackText: spoken.usedFallback
+      scenarioKey: scenario.scenarioKey, versionId: version.id, language: body.language, variantKey,
+      usedFallbackText, usedPerformanceText: picked.usedPerformanceText
     });
     // Never runtime-active yet (spec section 18) - status is 'preview' until an explicit approve.
-    res.status(201).json(Object.assign(mapAudioAssetForAdmin(asset), { usedFallbackText: spoken.usedFallback }));
+    res.status(201).json(Object.assign(mapAudioAssetForAdmin(asset), { usedFallbackText, usedPerformanceText: picked.usedPerformanceText }));
+  }));
+
+  // --- Journey H2 expressive-dialogue follow-up: Enhance Delivery ---------------------------------
+  // Admin-authoring-time-only AI assist (spec section 6/7/8) - generates a candidate expressive
+  // performance script from the STORED canonical dialogue (never trusts browser text - the exact
+  // same rule audio generation already follows), validates it before ever calling it "good," and
+  // NEVER auto-saves - the admin reviews/edits the result, then the existing Save Draft persists it
+  // exactly like every other Studio field. Zero runtime model call: this only ever runs from the
+  // admin editor, never from route()/sendChat().
+  app.post('/:id/versions/:versionId/enhance-delivery', enhanceDeliveryLimiter, asyncHandler(async (req, res) => {
+    const scenario = await repo.conversationScenarios.get(req.params.id);
+    if (!scenario) throw new ApiError(404, 'SCENARIO_NOT_FOUND');
+    const version = await repo.conversationScenarios.getVersion(req.params.versionId);
+    if (!version || version.scenarioId !== scenario.id) throw new ApiError(404, 'VERSION_NOT_FOUND');
+    const body = req.body || {};
+    if (SUPPORTED_LANGUAGES.indexOf(body.language) === -1) throw new ApiError(400, 'UNSUPPORTED_LANGUAGE');
+    const variantKey = body.variantKey || 'standard';
+    const responseSet = responseSetFor(version.definition, body.language, variantKey);
+    const canonicalSpokenText = String(responseSet.voiceReply || responseSet.written || '').trim();
+    if (!canonicalSpokenText) throw new ApiError(400, 'NO_SPOKEN_TEXT');
+    // community-api has no OPENAI_API_KEY env fallback at all (that only exists on pattern-ai's
+    // own env) - an unconfigured admin key fails loudly here, never silently falling back to a
+    // different provider or a key this process was never given.
+    const adminKey = await repo.adminKeys.get('openai');
+    if (!adminKey || !adminKey.apiKey) throw new ApiError(400, 'OPENAI_KEY_NOT_CONFIGURED');
+    const generated = await generatePerformanceText(adminKey.apiKey, {
+      canonicalSpokenText, language: body.language, scenarioTitle: scenario.scenarioKey, domain: scenario.domain,
+      contextLabel: variantKey === 'standard' ? 'standard' : variantKey, deliveryNote: body.deliveryNote || null
+    });
+    const matcher = await getConversationMatcher();
+    const validation = validatePerformanceText(matcher, { performanceText: generated.performanceText, canonicalSpokenText });
+    await audit(req, repo, 'conversationAudio.enhanceDelivery', 'conversationScenario', scenario.id, {
+      versionId: version.id, language: body.language, variantKey, valid: validation.valid, reason: validation.reason
+    });
+    // Always returns the raw suggestion plus its validity - an invalid suggestion is never
+    // silently presented as good (spec section 3's own "reject the generated performanceText").
+    res.json({ performanceText: generated.performanceText, valid: validation.valid, reason: validation.reason, supportedTags: SUPPORTED_AUDIO_TAGS });
   }));
 
   // Human approval (spec section 18/44) - re-verifies the hash against the version's CURRENT
@@ -395,7 +500,8 @@ export function router(repo, uploadsDir) {
     if (!asset || asset.scenarioId !== scenario.id) throw new ApiError(404, 'AUDIO_ASSET_NOT_FOUND');
     const version = await repo.conversationScenarios.getVersion(asset.scenarioVersionId);
     if (!version) throw new ApiError(404, 'VERSION_NOT_FOUND');
-    if (isStaleFor(asset, version.definition)) throw new ApiError(409, 'AUDIO_STALE');
+    const matcher = await getConversationMatcher();
+    if (isStaleFor(matcher, asset, version.definition)) throw new ApiError(409, 'AUDIO_STALE');
     const approved = await repo.conversationAudioAssets.approve(asset.id, req.currentUser.id);
     await audit(req, repo, 'conversationAudio.approve', 'conversationAudioAsset', asset.id, {
       scenarioKey: scenario.scenarioKey, versionId: asset.scenarioVersionId, language: asset.language

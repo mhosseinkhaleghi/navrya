@@ -4,7 +4,9 @@ import { encryptSecret, decryptSecret } from '../community/security/crypto-util.
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
-import { spokenTextFor, computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
+import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
+import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
+import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -114,6 +116,9 @@ function mapConversationAudioAsset(row) {
     createdBy: row.created_by, approvedBy: row.approved_by, approvedAt: row.approved_at,
     createdAt: row.created_at, updatedAt: row.updated_at
   };
+}
+function mapScenarioExposure(row) {
+  return { userId: row.user_id, scenarioKey: row.scenario_key, count: row.count, lastPresentedAt: row.last_presented_at, lastVariantKey: row.last_variant_key };
 }
 function mapPurchase(row) { return { id: row.id, listingId: row.listing_id, buyerId: row.buyer_id, purchasedAt: row.purchased_at, priceAtPurchase: Number(row.price_at_purchase), mock: row.mock }; }
 function mapRating(row) { return { id: row.id, listingId: row.listing_id, buyerId: row.buyer_id, rating: row.rating, reviewText: row.review_text, createdAt: row.created_at }; }
@@ -3501,12 +3506,16 @@ export function createPgRepo(pool) {
     const { rows: versionRows } = await pool.query('SELECT id, definition FROM conversation_scenario_versions WHERE id = ANY($1)', [uniqueIds]);
     const definitionByVersion = {};
     versionRows.forEach((row) => { definitionByVersion[row.id] = row.definition; });
+    const matcher = await getConversationMatcher();
     const result = {};
     assetRows.forEach((row) => {
       const definition = definitionByVersion[row.scenario_version_id];
-      const spoken = spokenTextFor(definition, row.language);
-      const expectedHash = computeAudioContentHash({ text: spoken.text, language: row.language, provider: row.provider, voiceId: row.voice_id, modelId: row.model_id });
-      if (!spoken.text || expectedHash !== row.content_hash) return; // hash mismatch - never served, even though status says approved
+      // Journey H2 expressive/context follow-up: variant-aware - row.variant_key resolves the
+      // right response set (STANDARD or an authored variant), and performanceText (when present,
+      // valid, and the recorded model supports it) is what was actually hashed/synthesized.
+      const resolved = effectiveVoiceTextFor(matcher, definition, row.language, row.variant_key, row.model_id);
+      const expectedHash = computeAudioContentHash({ text: resolved.text, language: row.language, provider: row.provider, voiceId: row.voice_id, modelId: row.model_id });
+      if (!resolved.text || expectedHash !== row.content_hash) return; // hash mismatch - never served, even though status says approved
       if (!result[row.scenario_version_id]) result[row.scenario_version_id] = {};
       if (!result[row.scenario_version_id][row.language]) result[row.scenario_version_id][row.language] = {};
       result[row.scenario_version_id][row.language][row.variant_key] = { url: row.file_url, mimeType: row.mime_type, durationMs: row.duration_ms };
@@ -3568,6 +3577,33 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Journey H2 expressive/context follow-up (043_conversation_scenario_exposures.sql): the small,
+  // bounded per-user counter ai-conversation-matcher.js's selectVariant() needs - "how many times
+  // has THIS scenario actually been delivered to this user before now." `record()` is the ONE
+  // write path, and it always server-increments - the client only ever says "this exact scenario
+  // was just delivered," never a count.
+  const conversationScenarioExposures = {
+    async get(userId, scenarioKey) {
+      const { rows } = await pool.query('SELECT * FROM conversation_scenario_exposures WHERE user_id=$1 AND scenario_key=$2', [userId, scenarioKey]);
+      return rows[0] ? mapScenarioExposure(rows[0]) : null;
+    },
+    async getAllForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM conversation_scenario_exposures WHERE user_id=$1', [userId]);
+      return rows.map(mapScenarioExposure);
+    },
+    async record(userId, scenarioKey, variantKey) {
+      const { rows } = await pool.query(
+        `INSERT INTO conversation_scenario_exposures (user_id, scenario_key, count, last_presented_at, last_variant_key, updated_at)
+         VALUES ($1,$2,1,now(),$3,now())
+         ON CONFLICT (user_id, scenario_key) DO UPDATE SET
+           count = conversation_scenario_exposures.count + 1, last_presented_at = now(), last_variant_key = $3, updated_at = now()
+         RETURNING *`,
+        [userId, scenarioKey, variantKey || null]
+      );
+      return mapScenarioExposure(rows[0]);
+    }
+  };
+
   // Backs the admin Technical tab's DB-connectivity check (a real SELECT 1) and applied-
   // migrations list. Not domain-scoped like everything else above, so it sits at the top
   // level of the returned repo object rather than inside one of the per-noun sub-objects.
@@ -3590,6 +3626,6 @@ export function createPgRepo(pool) {
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
-    conversationScenarios, conversationAudioAssets
+    conversationScenarios, conversationAudioAssets, conversationScenarioExposures
   };
 }

@@ -1051,6 +1051,37 @@ test('a HIGH-confidence product-FAQ question resolves locally with zero AI calls
   assert.equal(debug.scenarioId, 'session.purpose');
 });
 
+// Journey H2 expressive/context follow-up (spec section 15): the ONE place a local scenario
+// match is actually being delivered as a real turn is the exact place exposure gets recorded -
+// spying on ai-conversation-router.js's own exported recordExposure() (rather than the network
+// layer) isolates this file's own wiring from that function's internal fetch/localStorage
+// mechanics, which are already covered independently in tests/ai-conversation-router.test.mjs.
+test('sendChat() records exposure with the real scenarioKey/variantKey exactly once, right after a local router match resolves', async () => {
+  const window = await coreSandbox({ withConversationRouter: true, localStorage: bundleLocalStorage(buildFixtureBundleRows()) });
+  const calls = [];
+  window.TradeJournalAIConversationRouter.recordExposure = (scenarioKey, variantKey) => { calls.push({ scenarioKey, variantKey }); };
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'what is a session', therapistMode: false, transcript: [] });
+
+  assert.deepEqual(calls, [{ scenarioKey: 'session.purpose', variantKey: 'standard' }]);
+});
+
+test('sendChat() never records exposure for a turn that falls through to the model - only a real local delivery counts', async () => {
+  const window = await coreSandbox({
+    withConversationRouter: true, localStorage: bundleLocalStorage(buildFixtureBundleRows()),
+    fetch: async (url) => {
+      if (String(url).indexOf('/api/ai/chat') !== -1) return { ok: true, json: async () => ({ reply: 'a real model answer', suggestions: [], provider: 'openai', usage: { totalTokens: 5 } }) };
+      return { ok: true, json: async () => ({ version: 'v-test', scenarios: buildFixtureBundleRows() }) };
+    }
+  });
+  const calls = [];
+  window.TradeJournalAIConversationRouter.recordExposure = (scenarioKey, variantKey) => { calls.push({ scenarioKey, variantKey }); };
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'why do I keep revenge trading after a loss?', therapistMode: false, transcript: [] });
+
+  assert.deepEqual(calls, [], 'an LLM-fallback turn must never record a scenario exposure - it never matched a local scenario at all');
+});
+
 test('a genuinely ambiguous/open-ended question still reaches the model exactly once, whether or not the router is loaded', async () => {
   let chatFetchCalls = 0;
   const window = await coreSandbox({

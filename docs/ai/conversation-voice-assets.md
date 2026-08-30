@@ -1,10 +1,17 @@
-# Conversation Studio Voice Asset Pipeline (Journey H2, Gate 3)
+# Conversation Studio Voice Asset Pipeline (Journey H2, Gate 3; expressive dialogue + context
+# variants added in the H2 follow-up gate)
 
-Status: **Gate 3 complete.** Gates 1-2 removed the LLM call for a matched deterministic scenario
-(`docs/ai/conversation-router.md`, `docs/ai/conversation-studio.md`). Gate 3 targets the
-*speech-generation* call for the same matched scenarios: an admin can generate a scenario's audio
-once, listen to it, approve it, and every subsequent matching Voice turn plays the stored file
-instead of calling a live TTS engine again.
+Status: **Gate 3 complete; H2 follow-up complete.** Gates 1-2 removed the LLM call for a matched
+deterministic scenario (`docs/ai/conversation-router.md`, `docs/ai/conversation-studio.md`). Gate 3
+targets the *speech-generation* call for the same matched scenarios: an admin can generate a
+scenario's audio once, listen to it, approve it, and every subsequent matching Voice turn plays the
+stored file instead of calling a live TTS engine again. The H2 follow-up gate added an
+AI-generated expressive performance script for that same audio (`performanceText`, ElevenLabs Audio
+Tags) and made the pipeline **variant-aware** - `variant_key` (which already existed in the Gate 3
+schema, always `'standard'` until now) is what a scenario's context-variant selection
+(`docs/ai/conversation-studio.md`'s own "Context variants" section) actually keys audio identity
+by, so `session.purpose`'s FIRST_TIME and STANDARD dialogue each have their own independent
+approved audio, never conflated.
 
 ## Cost model - stated explicitly, never conflated
 
@@ -78,10 +85,15 @@ One table, `conversation_audio_assets`:
 
 - `scenario_id` / `scenario_version_id` - which scenario, and which exact immutable version's
   content this audio was generated from.
-- `language`, `variant_key` (default `'standard'` - only value populated/consumed this gate, the
-  column exists for a future variant-selection feature).
-- `content_hash` - `sha256(spokenText|language|provider|voiceId|modelId)`, server-authoritative,
-  never trusted from the browser (`server/community/conversation-audio-identity.mjs`).
+- `language`, `variant_key` (default `'standard'`; since the H2 follow-up gate, a real dialogue
+  variant key - `'FIRST_TIME'`, `'THIRD_TIME_PLUS'`, etc. - matching `docs/ai/conversation-
+  studio.md`'s own "Context variants" - no migration was needed, this column already existed).
+- `content_hash` - `sha256(effectiveVoiceText|language|provider|voiceId|modelId)`,
+  server-authoritative, never trusted from the browser
+  (`server/community/conversation-audio-identity.mjs` for the hash function itself;
+  `server/community/performance-text.mjs`'s `effectiveVoiceTextFor()` for resolving which text -
+  STANDARD or a specific variant, `performanceText` or plain canonical - that actually is; see
+  "Expressive dialogue" below).
 - `provider`, `voice_profile_key` (an admin-typed organizational label only - see "No Voice Profile
   registry" below), `voice_id`, `model_id`.
 - `file_url`, `mime_type`, `duration_ms`.
@@ -123,12 +135,70 @@ duplicating it.
 | Route | Purpose |
 |---|---|
 | `GET /:id/versions/:versionId/audio` | Lists every asset for that version, each with a freshly-computed `isStale` flag |
-| `POST /:id/versions/:versionId/audio` | Generates a `preview` candidate. Body: `{language, variantKey, credentialId, voiceId, modelId, voiceProfileKey, voiceSettings}`. **Rejects `kind==='data_query'` (400) unconditionally.** Reads the **stored** version's `definition.responses[language].voiceReply`, falling back to `.written` when spoken text is empty (`usedFallbackText` reported back to the admin) - never trusts browser-supplied text for what gets synthesized. Computes `content_hash` server-side, calls `elevenlabs.synthesize()`, records `voice_tts_usage_events` with `source:'studio_audio_generation'` on both success and failure, saves via `audio-storage.mjs`, audits, inserts a `'preview'` row. Never runtime-active on its own. |
+| `POST /:id/versions/:versionId/audio` | Generates a `preview` candidate. Body: `{language, variantKey, credentialId, voiceId, modelId, voiceProfileKey, voiceSettings}`. **Rejects `kind==='data_query'` (400) unconditionally.** Reads the **stored** version's response set for `(language, variantKey)` (STANDARD or a specific authored variant - `responseSetFor()`), falling back to `.written` when spoken text is empty (`usedFallbackText`) - never trusts browser-supplied text. Resolves the effective text to synthesize via `effectiveVoiceTextFor()` - `performanceText` when present, valid, and the model supports Audio Tags, else the plain canonical text (`usedPerformanceText` reported back to the admin). Computes `content_hash` server-side from that effective text, calls `elevenlabs.synthesize()`, records `voice_tts_usage_events` with `source:'studio_audio_generation'` on both success and failure, saves via `audio-storage.mjs`, audits, inserts a `'preview'` row keyed by the real `variantKey`. Never runtime-active on its own. |
 | `POST /:id/audio/:assetId/approve` | Human approval (mandatory - generation never auto-approves). Re-verifies `content_hash` against the version's current definition first (`409 AUDIO_STALE` if it no longer matches); archives any previously-approved asset for the same slot in the same transaction; audits. |
 | `POST /:id/audio/:assetId/archive` | Manual removal from runtime eligibility without deleting the row/file - a full retention/cleanup policy is documented, not automated, this gate. |
 
 Every mutating route audits scenario/asset/version/language metadata only - never the audio bytes
 or the API key.
+
+## Expressive dialogue (H2 follow-up): `performanceText` + Enhance Delivery
+
+`responses[lang]` (and each authored context variant) gained one optional field, `performanceText`
+- an ElevenLabs Audio Tags performance script (`[curious] ... [short pause] ...`) for the exact
+same dialogue `voiceReply`/`written` already say. The canonical dialogue stays `voiceReply`;
+`performanceText` is Voice-authoring data only, and is **never** used for the text-mode
+`written` reply - a typed message can never end up displaying a bracketed tag.
+
+**Tag capability is a small, curated allowlist, never derived from a live provider API**
+(`server/community/performance-text.mjs`): `SUPPORTED_AUDIO_TAGS` = `curious, excited, softly,
+whispers, laughs, sighs, exhales, short pause, long pause` (conversational delivery cues only -
+never sound effects). `supportsExpressiveAudioTags(modelId)` matches `eleven_v3*` - the one
+ElevenLabs model with real Audio Tag support as of this writing (`elevenlabs-client.mjs`'s own
+`synthesize()` already defaults to `eleven_v3`); the ElevenLabs `/v1/models` response has no such
+capability field, so this is a maintained list, not an API-reported one.
+
+**Canonical-dialogue preservation is the real, enforced contract, not a convention** - a
+`performanceText` must contain the exact same words as its canonical dialogue, only supported tags
+and punctuation added. `validatePerformanceText(matcher, {performanceText, canonicalSpokenText})`
+strips every recognized `[tag]` (an *unrecognized* tag makes the whole text invalid outright -
+never silently dropped), then compares `matcher.normalize(stripped)` against
+`matcher.normalize(canonicalSpokenText)` for **exact equality** - reusing the shared matcher's own
+FA/EN/AR/ES-aware normalizer (the same one `matchScenarios()` already uses) instead of a second
+implementation. This is permissive of any punctuation/whitespace/case the enhancer adds, and strict
+about any added, removed, or reordered word. Enforced in three places, the middle one being the
+real, unbypassable boundary: (1) Enhance Delivery's own response reports `{valid, reason}` so an
+invalid AI suggestion is never silently shown as good; (2) **publish validation**
+(`INVALID_PERFORMANCE_TEXT`, blocking) - the real gate, since an admin can still hand-edit
+`performanceText` after generation; (3) `effectiveVoiceTextFor()` re-validates before ever sending
+it to ElevenLabs, falling back to plain canonical text on any failure (Section 27's own "never
+break the scenario" rule - a missing/invalid/unsupported-model `performanceText` just means the
+plain text gets synthesized instead, never an error).
+
+**Enhance Delivery** (`POST /:id/versions/:versionId/enhance-delivery`) is the one, small,
+admin-authoring-time-only LLM call this follow-up adds - **zero new runtime model call**. Reads the
+STORED canonical dialogue for the exact `(language, variantKey)` requested (never browser text),
+calls OpenAI's Responses API directly with a `json_schema` structured `{performanceText}` output
+(`server/community/enhance-delivery-provider.mjs`), using the admin-configured key
+(`repo.adminKeys.get('openai')` - the same key other `server/admin/*.mjs` routes already read
+directly; community-api has no `OPENAI_API_KEY` env fallback at all, so an unconfigured key fails
+loudly, `400 OPENAI_KEY_NOT_CONFIGURED`, never silently falling back to a different provider).
+**Deliberately not a new `pattern-ai-server.mjs` endpoint or a new community-api-to-pattern-ai
+bridge** - that would be a genuinely new cross-service dependency, the exact class of wiring that
+caused this feature area's one real production incident so far (the missing-file Docker bug fixed
+earlier in this same gate); calling OpenAI directly from community-api, which already owns
+`admin_ai_keys`, is both the smaller change and the one with no new deployment surface. **Never
+auto-saves** - the admin reviews/edits the suggestion, then the existing Save Draft persists it,
+exactly like every other Studio field. A small, deterministic `CAUTION_DOMAINS` list (`psychology`,
+`safety`, `risk`) steers the prompt away from playful/laughter tags for a scenario in one of those
+domains (forward-only guard - no Studio scenario is in one of these domains today).
+
+**Audio invalidation on a tag change**: since `content_hash` is computed from the *effective* text
+(`performanceText` when used), changing `[curious]` to `[softly]` - or any other tag, or the
+punctuation around it - changes the hash, which means the previously-approved audio immediately
+reads as stale (`isStaleFor()`) and can never be approved again as-is. There is no "just the tag
+changed, reuse the old audio" special case, by design - a different performance direction is a
+different clip.
 
 ## Runtime bundle extension
 
@@ -157,9 +227,13 @@ change alone was not sufficient (see `conversation-voice-testing.md`'s bug-fix n
 - **`ai-conversation-matcher.js`**: `scenarioFromBundleRow()` carries `audio` through into its
   flattened scenario shape.
 - **`ai-conversation-router.js`**: `route()`'s resolution object gains `audioUrl`/`audioMimeType`
-  (`null` when unavailable), computed unconditionally - like `voiceReply` already is - whenever the
-  matched scenario has `audio[language].standard`. `data_query` resolutions always report `null`
-  (structurally excluded, matching the generation-side rule).
+  (`null` when unavailable) and `variantKey`, computed unconditionally - like `voiceReply` already
+  is. Since the H2 follow-up, the audio lookup is keyed by the **selected** context variant
+  (`audio[language][selectedVariantKey]`, `selectedVariantKey` defaulting to `'standard'` for
+  every scenario with no authored variants - see `docs/ai/conversation-studio.md`'s "Context
+  variants"), never always `.standard` - a FIRST_TIME dialogue plays its own approved audio, not
+  STANDARD's. `data_query` resolutions always report `audioUrl: null` (structurally excluded,
+  matching the generation-side rule).
 - **`chat-dock-core.js`**: threads `audioUrl`/`audioMimeType` through the existing
   router-integration return object - one more field next to `reply`/`voiceReply`.
 - **`ai-voice-playback-controller.js`**: `enqueue(text, meta)` accepts an optional `meta.audioUrl`.

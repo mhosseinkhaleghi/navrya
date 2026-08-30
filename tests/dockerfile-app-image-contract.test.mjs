@@ -92,9 +92,12 @@ test('conversation-matcher-bridge.mjs throws (never silently returns something b
 test('every admin conversation-scenarios route that calls getConversationMatcher() is accounted for - a future new call site should prompt re-checking this same Docker dependency', async () => {
   const routesSource = await readFile(path.join(root, 'server', 'admin', 'routes.conversation-scenarios.mjs'), 'utf8');
   const callCount = (routesSource.match(/getConversationMatcher\(\)/g) || []).length;
-  // publish, /test, /test-batch, /collisions, and the audio-generation route (Section 27's
-  // template-variable check) - 5 real call sites as of this fix. Not a hard ceiling forever, but a
-  // deliberate tripwire: if this number changes, re-verify the Dockerfile still covers it (nothing
+  // publish, /test, /test-batch, /collisions, the audio-generation route (Section 27's
+  // template-variable check), the audio list/approve routes, and enhance-delivery (all added by
+  // the expressive-dialogue/context-variant follow-up, re-verified against the same one Docker
+  // dependency - no new file needed, every one of these only ever needs
+  // ai-conversation-matcher.js) - 8 real call sites as of this fix. Not a hard ceiling forever, but
+  // a deliberate tripwire: if this number changes, re-verify the Dockerfile still covers it (nothing
   // about the number itself matters other than "someone looked at this on purpose").
-  assert.equal(callCount, 5, 'the number of getConversationMatcher() call sites changed - re-verify the Dockerfile app stage still ships public/pages/shared/ai-conversation-matcher.js for all of them');
+  assert.equal(callCount, 8, 'the number of getConversationMatcher() call sites changed - re-verify the Dockerfile app stage still ships public/pages/shared/ai-conversation-matcher.js for all of them');
 });

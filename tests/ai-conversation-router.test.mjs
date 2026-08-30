@@ -19,6 +19,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function routerSandbox(overrides = {}) {
   const store = {};
   if (overrides.seedBundle) store['tradejournal:conversation-scenarios-bundle:v1'] = JSON.stringify({ scenarios: overrides.seedBundle, version: overrides.bundleVersion || 'v-test' });
+  // Journey H2 expressive/context follow-up: seeds the exposure-count cache exactly like a warm
+  // localStorage cache from a real prior page load - {scenarioKey: {count, ...}}.
+  if (overrides.seedExposures) store['tradejournal:conversation-scenario-exposures:v1'] = JSON.stringify({ byScenarioKey: overrides.seedExposures });
   const localStorage = {
     getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
     setItem: (k, v) => { store[k] = v; },
@@ -144,9 +147,17 @@ test('debugLastMatch reports Gate 2 diagnostics (scenarioSource/bundleVersion) a
 // without route() itself ever awaiting the network ----
 
 test('an empty cache is filled in by a background fetch, and the next call sees the new bundle', async () => {
-  let fetchCalls = 0;
-  const fetchImpl = async () => {
-    fetchCalls++;
+  // route() also lazily refreshes the exposure-count cache (Journey H2 follow-up) via a SEPARATE
+  // endpoint - a real fetch mock has to discriminate by URL, exactly like a real browser's two
+  // independent background refreshes would each hit their own endpoint exactly once.
+  let bundleFetchCalls = 0;
+  let exposuresFetchCalls = 0;
+  const fetchImpl = async (url) => {
+    if (String(url).indexOf('conversation-scenario-exposures') !== -1) {
+      exposuresFetchCalls++;
+      return { ok: true, json: async () => ({ exposures: {} }) };
+    }
+    bundleFetchCalls++;
     return { ok: true, json: async () => ({ version: 'v-fresh', scenarios: buildFixtureBundleRows() }) };
   };
   const window = await routerSandbox({ fetch: fetchImpl });
@@ -155,7 +166,8 @@ test('an empty cache is filled in by a background fetch, and the next call sees 
   await sleep(20);
   const second = window.TradeJournalAIConversationRouter.route('what is a session');
   assert.equal(second.kind, 'faq');
-  assert.equal(fetchCalls, 1);
+  assert.equal(bundleFetchCalls, 1);
+  assert.equal(exposuresFetchCalls, 1);
 });
 
 test('a failed background refresh never throws and leaves a still-valid cache untouched', async () => {
@@ -205,4 +217,100 @@ test('a data_query scenario never surfaces audioUrl, even if a bundle row incorr
   const result = window.TradeJournalAIConversationRouter.route('how many open trades do i have');
   assert.equal(result.kind, 'data_query');
   assert.equal(result.audioUrl, null, 'data_query must never play pre-generated audio, regardless of what the bundle claims');
+});
+
+// ---- Journey H2 expressive/context follow-up: context-variant selection in route() ----
+
+function withVariants(rows, scenarioKey, lang, variants) {
+  return rows.map((row) => (row.scenarioKey === scenarioKey
+    ? Object.assign({}, row, { definition: Object.assign({}, row.definition, { variants: Object.assign({}, row.definition.variants, { [lang]: variants }) }) })
+    : row));
+}
+
+const SESSION_PURPOSE_VARIANTS_EN = [
+  { key: 'FIRST_TIME', context: { exposure: { type: 'FIRST_TIME' } }, written: 'Welcome! A Session is the full walkthrough.', voiceReply: 'Welcome! A Session is the full walkthrough.' },
+  { key: 'THIRD_TIME_PLUS', context: { exposure: { type: 'NTH_OR_LATER', threshold: 3 } }, written: 'A Session, as you know.', voiceReply: 'A Session, as you know.' }
+];
+
+test('route() with no exposure history selects FIRST_TIME - the acceptance example\'s exact first turn', async () => {
+  const rows = withVariants(buildFixtureBundleRows(), 'session.purpose', 'en', SESSION_PURPOSE_VARIANTS_EN);
+  const window = await routerSandbox({ seedBundle: rows });
+  const result = window.TradeJournalAIConversationRouter.route('what is a session');
+  assert.equal(result.written, 'Welcome! A Session is the full walkthrough.');
+  assert.equal(result.variantKey, 'FIRST_TIME');
+});
+
+test('route() acceptance example: exposure count 1 -> STANDARD, count 2 -> THIRD_TIME_PLUS, count 3+ -> THIRD_TIME_PLUS', async () => {
+  const rows = withVariants(buildFixtureBundleRows(), 'session.purpose', 'en', SESSION_PURPOSE_VARIANTS_EN);
+
+  const second = await routerSandbox({ seedBundle: rows, seedExposures: { 'session.purpose': { count: 1 } } });
+  const secondResult = second.TradeJournalAIConversationRouter.route('what is a session');
+  assert.equal(secondResult.variantKey, 'standard', 'the 2nd real exposure falls through to STANDARD - no forced second-time variant exists for this scenario');
+  assert.match(secondResult.written, /instead of jumping straight into a position/, 'STANDARD is the exact same flat responses[lang] text as every scenario published before this gate');
+
+  const third = await routerSandbox({ seedBundle: rows, seedExposures: { 'session.purpose': { count: 2 } } });
+  const thirdResult = third.TradeJournalAIConversationRouter.route('what is a session');
+  assert.equal(thirdResult.variantKey, 'THIRD_TIME_PLUS');
+  assert.equal(thirdResult.written, 'A Session, as you know.');
+
+  const fourth = await routerSandbox({ seedBundle: rows, seedExposures: { 'session.purpose': { count: 6 } } });
+  const fourthResult = fourth.TradeJournalAIConversationRouter.route('what is a session');
+  assert.equal(fourthResult.variantKey, 'THIRD_TIME_PLUS');
+});
+
+test('a scenario with no authored variants for the current language is completely unaffected - variantKey is always "standard", identical to pre-gate behavior', async () => {
+  const window = await routerSandbox({ seedBundle: buildFixtureBundleRows(), seedExposures: { 'session.purpose': { count: 50 } } });
+  const result = window.TradeJournalAIConversationRouter.route('what is a session');
+  assert.equal(result.variantKey, 'standard');
+  assert.match(result.written, /instead of jumping straight into a position/);
+});
+
+test('published audio is looked up under the SELECTED variant key, never always "standard" - a FIRST_TIME dialogue plays its own approved audio, not STANDARD\'s', async () => {
+  let rows = withVariants(buildFixtureBundleRows(), 'session.purpose', 'en', SESSION_PURPOSE_VARIANTS_EN);
+  rows = rows.map((row) => (row.scenarioKey === 'session.purpose'
+    ? Object.assign({}, row, { audio: { en: { standard: { url: '/uploads/standard.mp3', mimeType: 'audio/mpeg' }, FIRST_TIME: { url: '/uploads/first-time.mp3', mimeType: 'audio/mpeg' } } } })
+    : row));
+  const window = await routerSandbox({ seedBundle: rows });
+  const result = window.TradeJournalAIConversationRouter.route('what is a session');
+  assert.equal(result.variantKey, 'FIRST_TIME');
+  assert.equal(result.audioUrl, '/uploads/first-time.mp3', 'must play the FIRST_TIME asset, never fall back to STANDARD\'s audio just because it exists');
+});
+
+test('a matched surface_help/data_query scenario is unaffected by variant selection when it has none authored - variantKey is "standard" for data_query too', async () => {
+  const store = { listSync: () => [{ status: 'open' }], settings: () => ({ defaultRiskPercent: 1 }) };
+  const window = await routerSandbox({ seedBundle: buildFixtureBundleRows(), tradeStore: store });
+  const result = window.TradeJournalAIConversationRouter.route('how many open trades do i have');
+  assert.equal(result.kind, 'data_query');
+  assert.equal(result.variantKey, 'standard');
+});
+
+test('recordExposure is exported and optimistically increments the local cache immediately - three real questions asked back-to-back in one sitting see counts 0/1/2, never all reading the same stale value', async () => {
+  const rows = withVariants(buildFixtureBundleRows(), 'session.purpose', 'en', SESSION_PURPOSE_VARIANTS_EN);
+  // A fetch stub that never resolves for the record POST (simulating "no response yet") - the
+  // optimistic local increment must still be immediately visible to the very next route() call,
+  // never waiting on the network.
+  const window = await routerSandbox({ seedBundle: rows, fetch: async () => new Promise(() => {}) });
+  const router = window.TradeJournalAIConversationRouter;
+
+  const first = router.route('what is a session');
+  assert.equal(first.variantKey, 'FIRST_TIME');
+  router.recordExposure(first.scenarioId, first.variantKey);
+
+  const second = router.route('what is a session');
+  assert.equal(second.variantKey, 'standard', 'the optimistic increment from the first call must already be visible here, without any network round trip completing');
+  router.recordExposure(second.scenarioId, second.variantKey);
+
+  const third = router.route('what is a session');
+  assert.equal(third.variantKey, 'THIRD_TIME_PLUS');
+});
+
+test('performanceText never appears in the written field of a resolution, even when a variant carries one - it is Voice-authoring data only, never shown in text UI', async () => {
+  const rows = withVariants(buildFixtureBundleRows(), 'session.purpose', 'en', [
+    { key: 'FIRST_TIME', context: { exposure: { type: 'FIRST_TIME' } }, written: 'Plain written text.', voiceReply: 'Plain spoken text.', performanceText: '[curious] Plain spoken text.' }
+  ]);
+  const window = await routerSandbox({ seedBundle: rows });
+  const result = window.TradeJournalAIConversationRouter.route('what is a session');
+  assert.equal(result.written, 'Plain written text.');
+  assert.doesNotMatch(result.written, /\[curious\]/);
+  assert.doesNotMatch(JSON.stringify(result), /\[curious\]/, 'performanceText must not leak into any field of the resolution at all');
 });

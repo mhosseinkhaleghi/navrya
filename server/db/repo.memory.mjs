@@ -4,7 +4,9 @@ import { encryptSecret, decryptSecret } from '../community/security/crypto-util.
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
-import { spokenTextFor, computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
+import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
+import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
+import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -35,7 +37,8 @@ export function createMemoryRepo() {
       lastTestedAt: null, lastTestOk: null, lastDetectedChainId: null, updatedBy: null, updatedAt: null
     },
     storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map(),
-    conversationScenarios: new Map(), conversationScenarioVersions: new Map(), conversationAudioAssets: new Map()
+    conversationScenarios: new Map(), conversationScenarioVersions: new Map(), conversationAudioAssets: new Map(),
+    conversationScenarioExposures: new Map()
   };
 
   function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -2322,6 +2325,7 @@ export function createMemoryRepo() {
     // content included. Never returns draft content, by construction (only publishedVersionId is
     // ever read here).
     async listPublishedForBundle() {
+      const matcher = await getConversationMatcher();
       return Array.from(state.conversationScenarios.values())
         .filter((s) => !s.archivedAt && s.publishedVersionId)
         .map((s) => {
@@ -2332,7 +2336,7 @@ export function createMemoryRepo() {
             allowedProcesses: s.allowedProcesses, allowedSteps: s.allowedSteps,
             publishedVersion: version ? version.versionNumber : null, publishedAt: version ? version.publishedAt : null,
             definition: version ? clone(version.definition) : {},
-            audio: approvedAudioFor(s.publishedVersionId, version)
+            audio: approvedAudioFor(matcher, s.publishedVersionId, version)
           };
         });
     }
@@ -2342,15 +2346,17 @@ export function createMemoryRepo() {
   // a time (the in-memory backend has no real query-batching concern to optimize for) - never
   // exposes anything beyond {url, mimeType, durationMs}, and re-verifies the content hash against
   // the version's OWN current definition before ever serving a row, regardless of its stored status.
-  function approvedAudioFor(versionId, version) {
+  function approvedAudioFor(matcher, versionId, version) {
     if (!versionId || !version) return {};
     const assets = Array.from(state.conversationAudioAssets.values())
       .filter((a) => a.scenarioVersionId === versionId && a.status === 'approved');
     const result = {};
     assets.forEach((asset) => {
-      const spoken = spokenTextFor(version.definition, asset.language);
-      const expectedHash = computeAudioContentHash({ text: spoken.text, language: asset.language, provider: asset.provider, voiceId: asset.voiceId, modelId: asset.modelId });
-      if (!spoken.text || expectedHash !== asset.contentHash) return;
+      // Journey H2 expressive/context follow-up: variant-aware, mirrors repo.pg.mjs's own
+      // approvedAudioByVersionIds() exactly.
+      const resolved = effectiveVoiceTextFor(matcher, version.definition, asset.language, asset.variantKey, asset.modelId);
+      const expectedHash = computeAudioContentHash({ text: resolved.text, language: asset.language, provider: asset.provider, voiceId: asset.voiceId, modelId: asset.modelId });
+      if (!resolved.text || expectedHash !== asset.contentHash) return;
       if (!result[asset.language]) result[asset.language] = {};
       result[asset.language][asset.variantKey] = { url: asset.fileUrl, mimeType: asset.mimeType, durationMs: asset.durationMs };
     });
@@ -2393,6 +2399,30 @@ export function createMemoryRepo() {
     }
   };
 
+  // Journey H2 expressive/context follow-up - mirrors repo.pg.mjs's own conversationScenarioExposures
+  // exactly. Keyed by 'userId::scenarioKey' since it's a genuine composite key, the same
+  // convention this file already uses elsewhere for composite-keyed maps.
+  const conversationScenarioExposures = {
+    async get(userId, scenarioKey) {
+      const record = state.conversationScenarioExposures.get(userId + '::' + scenarioKey);
+      return record ? clone(record) : null;
+    },
+    async getAllForUser(userId) {
+      return Array.from(state.conversationScenarioExposures.values()).filter((r) => r.userId === userId).map(clone);
+    },
+    async record(userId, scenarioKey, variantKey) {
+      const key = userId + '::' + scenarioKey;
+      const existing = state.conversationScenarioExposures.get(key);
+      const stamp = now();
+      const record = {
+        userId, scenarioKey, count: existing ? existing.count + 1 : 1,
+        lastPresentedAt: stamp, lastVariantKey: variantKey || null
+      };
+      state.conversationScenarioExposures.set(key, record);
+      return clone(record);
+    }
+  };
+
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
@@ -2401,6 +2431,6 @@ export function createMemoryRepo() {
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
-    conversationScenarios, conversationAudioAssets
+    conversationScenarios, conversationAudioAssets, conversationScenarioExposures
   };
 }

@@ -25,6 +25,23 @@
 
   var bundleState = { scenarios: [], version: null, fetchedAt: 0 };
 
+  // Journey H2 expressive/context follow-up: the small, per-user, lazily-refreshed exposure-count
+  // cache selectVariant() needs - mirrors the bundle cache above exactly (localStorage-first,
+  // lazy 5-minute background refresh, never blocks route()). A missing/corrupt cache means every
+  // scenario looks like a genuine first-time exposure - the safe default (FIRST_TIME is always a
+  // reasonable thing to show, never an error state).
+  var EXPOSURE_STORAGE_KEY = 'tradejournal:conversation-scenario-exposures:v1';
+  var exposureState = { byScenarioKey: {}, fetchedAt: 0 };
+
+  (function loadCachedExposuresFromStorage() {
+    try {
+      var raw = localStorage.getItem(EXPOSURE_STORAGE_KEY);
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.byScenarioKey) exposureState = { byScenarioKey: parsed.byScenarioKey, fetchedAt: 0 };
+    } catch (_e) { /* corrupt/unavailable cache - start empty, safe default */ }
+  }());
+
   // Synchronous, instant - route() must never block on a network round trip. A missing/corrupt
   // cache is not an error: bundleState just stays empty, which is always the safe default
   // (everything falls through to the LLM until a real fetch succeeds).
@@ -58,6 +75,49 @@
   // degrade to "just fall through to the LLM" on any failure, per docs/ai/conversation-router.md).
   function ensureBundleFresh() {
     if ((Date.now() - bundleState.fetchedAt) > REFRESH_INTERVAL_MS) refreshBundle();
+  }
+
+  var exposureRefreshInFlight = null;
+  function refreshExposures() {
+    if (exposureRefreshInFlight) return exposureRefreshInFlight;
+    exposureRefreshInFlight = fetch('/api/sync/conversation-scenario-exposures').then(function (response) {
+      if (!response.ok) throw new Error('EXPOSURES_FETCH_FAILED');
+      return response.json();
+    }).then(function (body) {
+      if (body && body.exposures) {
+        exposureState = { byScenarioKey: body.exposures, fetchedAt: Date.now() };
+        try { localStorage.setItem(EXPOSURE_STORAGE_KEY, JSON.stringify({ byScenarioKey: body.exposures })); } catch (_e) { /* storage unavailable - in-memory cache still updated for this page load */ }
+      }
+    }).catch(function () { /* best-effort - a failed refresh keeps whatever is already cached */ });
+    exposureRefreshInFlight.then(function () { exposureRefreshInFlight = null; }, function () { exposureRefreshInFlight = null; });
+    return exposureRefreshInFlight;
+  }
+  function ensureExposuresFresh() {
+    if ((Date.now() - exposureState.fetchedAt) > REFRESH_INTERVAL_MS) refreshExposures();
+  }
+  function exposureCountFor(scenarioKey) {
+    var entry = exposureState.byScenarioKey[scenarioKey];
+    return entry ? entry.count : 0;
+  }
+
+  // Called by the caller (chat-dock-core.js) once - and only once - a resolution from THIS
+  // router has actually been delivered as a real turn (spec section 15: never from Trigger Lab/
+  // batch-test/collision-check/audio-preview, which never call route() at all - a structurally
+  // separate, server-side-only code path, see docs/ai/conversation-testing.md). Optimistically
+  // increments the local cache immediately, so three real questions asked back-to-back in one
+  // sitting see exposure counts 0/1/2 even before any server round trip completes - a lazy
+  // 5-minute cache refresh alone would otherwise make this feature invisible within one session.
+  // A failed background record() simply leaves the optimistic value in place; the next real
+  // refresh reconciles it against the server's own authoritative count.
+  function recordExposure(scenarioKey, variantKey) {
+    if (!scenarioKey) return;
+    var existing = exposureState.byScenarioKey[scenarioKey];
+    exposureState.byScenarioKey[scenarioKey] = { count: (existing ? existing.count : 0) + 1, lastPresentedAt: new Date().toISOString(), lastVariantKey: variantKey || null };
+    try { localStorage.setItem(EXPOSURE_STORAGE_KEY, JSON.stringify({ byScenarioKey: exposureState.byScenarioKey })); } catch (_e) { /* storage unavailable - in-memory optimistic value still applied */ }
+    fetch('/api/sync/conversation-scenario-exposures/record', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenarioKey: scenarioKey, variantKey: variantKey || null })
+    }).catch(function () { /* best-effort - the optimistic local increment already stands */ });
   }
 
   // --- Data-query resolvers (code-owned; Studio only ever authors trigger wording + the response
@@ -126,6 +186,7 @@
   function route(text, context) {
     var t0 = now();
     ensureBundleFresh();
+    ensureExposuresFresh();
     var matcher = window.TradeJournalAIConversationMatcher;
     if (!matcher) return null;
     var mode = (context && context.mode) === 'surface_help' ? 'surface_help' : 'generic';
@@ -140,6 +201,19 @@
       // Spec section 19: a scenario matched, but with no published response for the CURRENT
       // language - never serve a different language, never runtime-translate. Fall through.
       var responseSet = scenario.responses && scenario.responses[lang];
+      var selectedVariantKey = 'standard';
+      // Journey H2 expressive/context follow-up: a scenario with authored variants for this
+      // language gets its response text swapped for the deterministic winner (Section 20's own
+      // priority - see selectVariant()'s own comment) BEFORE anything else runs; a scenario with
+      // no variants for this language (every scenario published before this gate, and any that
+      // simply never needs one) behaves exactly as before - responseSet stays the flat STANDARD
+      // responses[lang], selectedVariantKey stays 'standard'. Zero model calls, zero network -
+      // exposureCountFor() and surface are both already-known local data.
+      var variantsForLang = scenario.variants && scenario.variants[lang];
+      if (variantsForLang && variantsForLang.length) {
+        var winningVariant = matcher.selectVariant(variantsForLang, { exposureCount: exposureCountFor(scenario.scenarioKey), surfaceSnapshot: surface });
+        if (winningVariant && winningVariant.written) { responseSet = winningVariant; selectedVariantKey = winningVariant.key; }
+      }
       if (responseSet && responseSet.written) {
         if (scenario.kind === 'data_query') {
           var resolver = DATA_QUERY_RESOLVERS[scenario.dataQueryRef];
@@ -151,7 +225,7 @@
               voiceReply: matcher.renderTemplate(responseSet.voiceReply || responseSet.written, data),
               // Never eligible for pre-generated audio (spec section 3/4) - a data_query's text is
               // rendered from a live per-user value, so it can never be one shared static clip.
-              audioUrl: null, audioMimeType: null
+              audioUrl: null, audioMimeType: null, variantKey: selectedVariantKey
             };
           }
         } else {
@@ -161,11 +235,14 @@
           // either). Computed unconditionally here, exactly like voiceReply already is - the
           // CALLER (chat-dock-core.js/chatDockView.jsx) decides whether to actually use it, based
           // on whether this turn came from Voice (see docs/ai/conversation-voice-assets.md).
-          var audioSlot = scenario.audio && scenario.audio[lang] && scenario.audio[lang].standard;
+          // Journey H2 follow-up: keyed by the SELECTED variant, not always 'standard' - a
+          // FIRST_TIME dialogue's own approved audio is a different asset from STANDARD's.
+          var audioSlot = scenario.audio && scenario.audio[lang] && scenario.audio[lang][selectedVariantKey];
           resolution = {
             kind: scenario.kind, scenarioId: scenario.scenarioKey, ctaActionId: scenario.ctaActionId,
             written: responseSet.written, voiceReply: responseSet.voiceReply || responseSet.written,
-            audioUrl: audioSlot ? audioSlot.url : null, audioMimeType: audioSlot ? audioSlot.mimeType : null
+            audioUrl: audioSlot ? audioSlot.url : null, audioMimeType: audioSlot ? audioSlot.mimeType : null,
+            variantKey: selectedVariantKey
           };
         }
       }
@@ -188,5 +265,5 @@
 
   function debugLastMatch() { return lastMatch; }
 
-  window.TradeJournalAIConversationRouter = { route: route, debugLastMatch: debugLastMatch };
+  window.TradeJournalAIConversationRouter = { route: route, debugLastMatch: debugLastMatch, recordExposure: recordExposure };
 }());

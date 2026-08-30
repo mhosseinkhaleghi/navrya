@@ -150,6 +150,88 @@ test('publish is blocked (422) by an unsafe CTA action id and by an invalid temp
   assert.ok(publishAttempt.body.errors.some((e) => e.code === 'INVALID_TEMPLATE_VARIABLE'));
 });
 
+// ---- Journey H2 expressive/context follow-up: performanceText + variant-collision validation ----
+
+test('publish is blocked (422) when a STANDARD performanceText no longer matches its own canonical voiceReply - the real, unbypassable enforcement even if an admin hand-edited it after Enhance Delivery', async () => {
+  const admin = await createAdmin('performance-admin');
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'test.performance.invalid', kind: 'faq',
+      definition: faqDefinition({ responses: { en: { written: 'A widget is a thing.', voiceReply: 'A widget is a thing.', performanceText: '[curious] A widget is a completely different invented sentence.' } } })
+    }
+  });
+  assert.equal(created.status, 201);
+  const publishAttempt = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/publish`, { userId: admin.id, body: {} });
+  assert.equal(publishAttempt.status, 422);
+  assert.ok(publishAttempt.body.errors.some((e) => e.code === 'INVALID_PERFORMANCE_TEXT' && e.language === 'en'));
+});
+
+test('publish is blocked (422) when a VARIANT performanceText no longer matches that variant\'s own canonical dialogue', async () => {
+  const admin = await createAdmin('performance-admin-2');
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'test.performance.variant.invalid', kind: 'faq',
+      definition: Object.assign(faqDefinition(), {
+        variants: { en: [{ key: 'FIRST_TIME', context: { exposure: { type: 'FIRST_TIME' } }, written: 'Welcome, a widget is a thing.', voiceReply: 'Welcome, a widget is a thing.', performanceText: '[curious] Welcome, this is an invented different sentence.' }] }
+      })
+    }
+  });
+  const publishAttempt = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/publish`, { userId: admin.id, body: {} });
+  assert.equal(publishAttempt.status, 422);
+  assert.ok(publishAttempt.body.errors.some((e) => e.code === 'INVALID_PERFORMANCE_TEXT' && e.variantKey === 'FIRST_TIME'));
+});
+
+test('publish succeeds when performanceText only adds supported tags/punctuation to the exact canonical dialogue', async () => {
+  const admin = await createAdmin('performance-admin-3');
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'test.performance.valid', kind: 'faq',
+      definition: faqDefinition({ responses: { en: { written: 'A widget is a thing.', voiceReply: 'A widget is a thing.', performanceText: '[curious] A widget is a thing.' } } })
+    }
+  });
+  const published = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/publish`, { userId: admin.id, body: {} });
+  assert.equal(published.status, 200, JSON.stringify(published.body));
+});
+
+test('publish is blocked (422) by two context variants in the same language that can both match the same real-world context - an authoring collision, never resolved randomly', async () => {
+  const admin = await createAdmin('collision-variant-admin');
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'test.variantcollision.one', kind: 'faq',
+      definition: Object.assign(faqDefinition({ languages: { en: { groups: [['sprocket'], ['what is']], strong: ['what is a sprocket'], negative: [] } }, responses: { en: { written: 'A sprocket is a thing.', voiceReply: 'x' } } }), {
+        variants: {
+          en: [
+            { key: 'FIRST_TIME', context: { exposure: { type: 'FIRST_TIME' } }, written: 'Welcome sprocket.', voiceReply: 'x' },
+            { key: 'ALSO_FIRST_TIME', context: { exposure: { type: 'FIRST_TIME' } }, written: 'Hello sprocket.', voiceReply: 'x' }
+          ]
+        }
+      })
+    }
+  });
+  const publishAttempt = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/publish`, { userId: admin.id, body: {} });
+  assert.equal(publishAttempt.status, 422);
+  assert.ok(publishAttempt.body.errors.some((e) => e.code === 'VARIANT_CONTEXT_COLLISION'));
+});
+
+test('publish succeeds with two variants that target different, non-overlapping surfaces - never a false-positive collision', async () => {
+  const admin = await createAdmin('no-collision-admin');
+  const created = await api('POST', '/api/admin/conversation-scenarios', {
+    userId: admin.id, body: {
+      scenarioKey: 'test.variantcollision.two', kind: 'faq',
+      definition: Object.assign(faqDefinition({ languages: { en: { groups: [['gubbins'], ['what is']], strong: ['what is a gubbins'], negative: [] } }, responses: { en: { written: 'A gubbins is a thing.', voiceReply: 'x' } } }), {
+        variants: {
+          en: [
+            { key: 'ON_SESSIONS', context: { exposure: { type: 'FIRST_TIME' }, surface: { page: 'sessions' } }, written: 'On sessions.', voiceReply: 'x' },
+            { key: 'ON_DASHBOARD', context: { exposure: { type: 'FIRST_TIME' }, surface: { page: 'dashboard' } }, written: 'On dashboard.', voiceReply: 'x' }
+          ]
+        }
+      })
+    }
+  });
+  const published = await api('POST', `/api/admin/conversation-scenarios/${created.body.id}/publish`, { userId: admin.id, body: {} });
+  assert.equal(published.status, 200, JSON.stringify(published.body));
+});
+
 test('publish is blocked when a positive test-corpus example resolves to a different published scenario', async () => {
   const admin = await createAdmin('collision-admin');
   const first = await api('POST', '/api/admin/conversation-scenarios', {
