@@ -13,6 +13,32 @@ import { openLogWizard } from './tradeLogModal.jsx';
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
 
+// Market chart view (TradingView free hosted Advanced Chart widget) - explicit instrument -> real
+// TradingView symbol mapping only. session.market is a city/session-timezone concept (see
+// MARKET_NAMES above), never a financial symbol - it must never be read here as a fallback. An
+// instrument with no entry below renders ChartUnmappedNotice instead of guessing a symbol.
+const TV_SYMBOL_BY_INSTRUMENT = {
+  XAUUSD: 'OANDA:XAUUSD',
+  BTCUSDT: 'BINANCE:BTCUSDT',
+  ETHUSDT: 'BINANCE:ETHUSDT',
+  EURUSD: 'OANDA:EURUSD',
+  GBPUSD: 'OANDA:GBPUSD'
+};
+function tradingViewSymbolFor(instrument) {
+  return (instrument && TV_SYMBOL_BY_INSTRUMENT[instrument]) || null;
+}
+
+// Session timeframe -> TradingView "interval" widget parameter. TV_INTERVAL_DEFAULT is the
+// documented safe default for a timeframe this map does not recognize.
+const TV_INTERVAL_BY_TIMEFRAME = { '1m': '1', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '4h': '240', '1d': 'D' };
+const TV_INTERVAL_DEFAULT = '15';
+function tradingViewIntervalFor(timeframe) {
+  return TV_INTERVAL_BY_TIMEFRAME[timeframe] || TV_INTERVAL_DEFAULT;
+}
+function tradingViewLocaleFor(lang) {
+  return { fa: 'fa_IR', ar: 'ar_AE', en: 'en', es: 'es' }[lang] || 'en';
+}
+
 // React rewrite of the "open session" workspace (session-workspace-logic.js's vanilla-DOM
 // open()/meta()/dashboard()/timeline()/report()) per the "Live Session" design handoff. UI only
 // where the old screen already had real data: session/entry/scenario shapes, save()/log()/id()
@@ -42,7 +68,7 @@ const SPAN_MIN = 180; // decorative pacing window shared by both pulse rings and
 const copy = {
   fa: {
     back: 'بازگشت', settingsTitle: 'تنظیمات سشن', sessionOpen: 'باز', sessionClosed: 'بسته', instrumentUnassigned: 'نماد مشخص نشده', instrumentUnassignedHint: 'برای مشخص کردن نماد این سشن کلیک کنید',
-    viewTimeline: 'تایم‌لاین', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
+    viewTimeline: 'تایم‌لاین', viewChart: 'چارت بازار', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
     pulseEntries: 'ورودی‌ها', pulseEntriesUnit: 'چارت و حرکت', pulseScenarios: 'سناریوها', pulseScenariosUnit: 'ثبت‌شده',
     pulsePatterns: 'الگوها', pulsePatternsUnit: 'تگ‌شده', pulsePositions: 'پوزیشن‌ها', pulsePositionsUnit: 'باز',
     fateButton: 'سرنوشت سشن', focusHigh: 'تمرکز بالا', focusMedium: 'تمرکز متوسط', focusLow: 'تمرکز پایین',
@@ -97,11 +123,18 @@ const copy = {
     defaultLesson: 'پیش از هر ورود، تریگر و سطح ابطال را دوباره تأیید کنید.',
     defaultCarry: 'سناریوهای معتبر، مراحل ناتمام الگو و نکته‌های مدیریت ریسک را در سشن بعدی مرور کنید.',
     logTradeAction: 'ثبت معامله', allOpenPositions: 'همه پوزیشن‌های باز', rrShort: 'RR', leverageShort: 'اهرم',
-    noOpenPositions: 'هیچ پوزیشن بازی نیست', closeAction2: 'بستن پوزیشن', logEmotionShort: 'ثبت احساس', analyzing: 'در حال تحلیل کامل سشن...'
+    noOpenPositions: 'هیچ پوزیشن بازی نیست', closeAction2: 'بستن پوزیشن', logEmotionShort: 'ثبت احساس', analyzing: 'در حال تحلیل کامل سشن...',
+    chartLoadingText: 'در حال بارگذاری چارت TradingView…', chartLoadErrorTitle: 'بارگذاری چارت ناموفق بود',
+    chartLoadErrorBody: 'اسکریپت چارت TradingView بارگذاری نشد. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.',
+    chartUnmappedTitle: 'نگاشت TradingView برای این نماد موجود نیست',
+    chartUnmappedBodyWithInstrument: 'نماد این سشن «{instrument}» است، اما هنوز نگاشت صریحی به نماد TradingView برای آن تعریف نشده است.',
+    chartUnmappedBodyNoInstrument: 'برای این سشن نمادی مشخص نشده است، بنابراین چارتی برای نمایش وجود ندارد.',
+    chartUnmappedHint: 'برای تعیین یا تغییر نماد سشن، روی چیپ نماد در نوار فرمان بالا کلیک کنید.',
+    tvAttribution: 'رصد تمام بازارها در TradingView'
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
-    viewTimeline: 'الخط الزمني', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
+    viewTimeline: 'الخط الزمني', viewChart: 'مخطط السوق', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
     pulseEntries: 'الإدخالات', pulseEntriesUnit: 'رسم وحركة', pulseScenarios: 'السيناريوهات', pulseScenariosUnit: 'مسجّلة',
     pulsePatterns: 'الأنماط', pulsePatternsUnit: 'موسومة', pulsePositions: 'الصفقات', pulsePositionsUnit: 'مفتوحة',
     fateButton: 'مصير الجلسة', focusHigh: 'تركيز عالٍ', focusMedium: 'تركيز متوسط', focusLow: 'تركيز منخفض',
@@ -156,11 +189,18 @@ const copy = {
     defaultLesson: 'أكد المحفز ومستوى الإبطال قبل أي دخول.',
     defaultCarry: 'راجع السيناريوهات الصالحة ومراحل الأنماط غير المكتملة في الجلسة التالية.',
     logTradeAction: 'تسجيل صفقة', allOpenPositions: 'كل الصفقات المفتوحة', rrShort: 'RR', leverageShort: 'الرافعة',
-    noOpenPositions: 'لا توجد صفقة مفتوحة', closeAction2: 'إغلاق الصفقة', logEmotionShort: 'تسجيل شعور', analyzing: 'جارٍ تحليل الجلسة بالكامل...'
+    noOpenPositions: 'لا توجد صفقة مفتوحة', closeAction2: 'إغلاق الصفقة', logEmotionShort: 'تسجيل شعور', analyzing: 'جارٍ تحليل الجلسة بالكامل...',
+    chartLoadingText: 'جارٍ تحميل مخطط TradingView…', chartLoadErrorTitle: 'تعذّر تحميل المخطط',
+    chartLoadErrorBody: 'تعذّر تحميل سكربت مخطط TradingView. تحقق من اتصال الإنترنت وحاول مرة أخرى.',
+    chartUnmappedTitle: 'لا يوجد ربط TradingView لهذه الأداة',
+    chartUnmappedBodyWithInstrument: 'أداة هذه الجلسة هي «{instrument}»، لكن لم يُحدَّد بعد ربط صريح لها برمز TradingView.',
+    chartUnmappedBodyNoInstrument: 'لم يتم تحديد أداة لهذه الجلسة، لذا لا يوجد مخطط لعرضه.',
+    chartUnmappedHint: 'لتحديد أداة الجلسة أو تغييرها، انقر على شارة الأداة في شريط الأوامر أعلاه.',
+    tvAttribution: 'تتبع جميع الأسواق على TradingView'
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
-    viewTimeline: 'Timeline', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
+    viewTimeline: 'Timeline', viewChart: 'Market chart', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
     pulseEntries: 'Entries', pulseEntriesUnit: 'chart & move', pulseScenarios: 'Scenarios', pulseScenariosUnit: 'logged',
     pulsePatterns: 'Patterns', pulsePatternsUnit: 'tagged', pulsePositions: 'Positions', pulsePositionsUnit: 'open',
     fateButton: 'Session fate', focusHigh: 'High focus', focusMedium: 'Medium focus', focusLow: 'Low focus',
@@ -215,11 +255,18 @@ const copy = {
     defaultLesson: 'Confirm the trigger and invalidation level before every entry.',
     defaultCarry: 'Review valid scenarios, unfinished pattern stages and risk notes in the next session.',
     logTradeAction: 'Log trade', allOpenPositions: 'All open positions', rrShort: 'RR', leverageShort: 'Leverage',
-    noOpenPositions: 'No open positions', closeAction2: 'Close position', logEmotionShort: 'Log emotion', analyzing: 'Analyzing the complete session...'
+    noOpenPositions: 'No open positions', closeAction2: 'Close position', logEmotionShort: 'Log emotion', analyzing: 'Analyzing the complete session...',
+    chartLoadingText: 'Loading the TradingView chart…', chartLoadErrorTitle: 'The chart failed to load',
+    chartLoadErrorBody: 'The TradingView chart script could not be loaded. Check your connection and try again.',
+    chartUnmappedTitle: 'No TradingView mapping for this instrument',
+    chartUnmappedBodyWithInstrument: 'This session\'s instrument is "{instrument}", but no explicit TradingView symbol mapping exists for it yet.',
+    chartUnmappedBodyNoInstrument: 'No instrument is set for this session, so there is no chart to show.',
+    chartUnmappedHint: 'Click the instrument chip in the command bar above to set or change the session instrument.',
+    tvAttribution: 'Track all markets on TradingView'
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
-    viewTimeline: 'Línea temporal', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
+    viewTimeline: 'Línea temporal', viewChart: 'Gráfico de mercado', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
     pulseEntries: 'Entradas', pulseEntriesUnit: 'gráfico y movimiento', pulseScenarios: 'Escenarios', pulseScenariosUnit: 'registrados',
     pulsePatterns: 'Patrones', pulsePatternsUnit: 'etiquetados', pulsePositions: 'Posiciones', pulsePositionsUnit: 'abiertas',
     fateButton: 'Destino de la sesión', focusHigh: 'Enfoque alto', focusMedium: 'Enfoque medio', focusLow: 'Enfoque bajo',
@@ -274,7 +321,14 @@ const copy = {
     defaultLesson: 'Confirma el activador y la invalidación antes de cada entrada.',
     defaultCarry: 'Revisa los escenarios válidos y las etapas pendientes en la próxima sesión.',
     logTradeAction: 'Registrar operación', allOpenPositions: 'Todas las posiciones abiertas', rrShort: 'RR', leverageShort: 'Apalanc.',
-    noOpenPositions: 'No hay posiciones abiertas', closeAction2: 'Cerrar posición', logEmotionShort: 'Registrar emoción', analyzing: 'Analizando la sesión completa...'
+    noOpenPositions: 'No hay posiciones abiertas', closeAction2: 'Cerrar posición', logEmotionShort: 'Registrar emoción', analyzing: 'Analizando la sesión completa...',
+    chartLoadingText: 'Cargando el gráfico de TradingView…', chartLoadErrorTitle: 'No se pudo cargar el gráfico',
+    chartLoadErrorBody: 'No se pudo cargar el script del gráfico de TradingView. Comprueba tu conexión e inténtalo de nuevo.',
+    chartUnmappedTitle: 'No hay una asignación de TradingView para este instrumento',
+    chartUnmappedBodyWithInstrument: 'El instrumento de esta sesión es «{instrument}», pero todavía no existe una asignación explícita a un símbolo de TradingView.',
+    chartUnmappedBodyNoInstrument: 'Esta sesión no tiene un instrumento definido, por lo que no hay ningún gráfico que mostrar.',
+    chartUnmappedHint: 'Haz clic en la etiqueta del instrumento en la barra de comandos superior para definir o cambiar el instrumento de la sesión.',
+    tvAttribution: 'Sigue todos los mercados en TradingView'
   }
 };
 
@@ -669,8 +723,8 @@ function CommandBar({ session, lang, view, onBack, onSetView, onSetInstrument })
       </span>
       <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
         <span style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 9, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.6)' }}>
-          {[['timeline', tr(lang, 'viewTimeline')], ['report', tr(lang, 'viewReport')]].map(([id, label]) => (
-            <button key={id} type="button" onClick={() => onSetView(id)} style={{
+          {[['timeline', tr(lang, 'viewTimeline')], ['chart', tr(lang, 'viewChart')], ['report', tr(lang, 'viewReport')]].map(([id, label]) => (
+            <button key={id} type="button" onClick={() => onSetView(id)} aria-pressed={view === id} aria-label={label} title={label} style={{
               height: 30, padding: '0 14px', borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 12,
               border: '1px solid ' + (view === id ? 'var(--char-accent)' : 'transparent'),
               background: view === id ? 'var(--char-active-surface)' : 'transparent',
@@ -1542,6 +1596,139 @@ function SimilarSessionsPanel({ session, character, lang }) {
   );
 }
 
+// TradingView's free hosted "Advanced Chart" widget script. Self-hosted by TradingView, no API
+// key/npm package/backend endpoint required (documented by TradingView as the free "Advanced
+// Chart" widget).
+const TV_ADVANCED_CHART_SCRIPT_SRC = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+
+// Renders the official Advanced Chart widget for one resolved TradingView symbol/interval pair.
+// Built entirely with DOM APIs inside useEffect (no dangerouslySetInnerHTML) so the container is
+// always torn down and rebuilt from scratch on every symbol/interval/lang change or unmount -
+// the widget script only ever knows how to build a fresh chart against its own script tag, it has
+// no "update in place" API, so leaving a stale container behind would duplicate widgets/scripts.
+function TradingViewAdvancedChart({ symbol, interval, lang }) {
+  const hostRef = React.useRef(null);
+  const [status, setStatus] = React.useState('loading'); // 'loading' | 'loaded' | 'error'
+
+  React.useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    setStatus('loading');
+    while (host.firstChild) host.removeChild(host.firstChild);
+
+    const container = document.createElement('div');
+    container.className = 'tradingview-widget-container';
+    container.style.height = '100%';
+    container.style.width = '100%';
+
+    const widgetHost = document.createElement('div');
+    widgetHost.className = 'tradingview-widget-container__widget';
+    widgetHost.style.height = 'calc(100% - 28px)';
+    widgetHost.style.width = '100%';
+    container.appendChild(widgetHost);
+
+    // Explicit, always-visible TradingView attribution link - required by TradingView's own
+    // embed terms and never to be hidden/removed/obscured. Additive to whatever attribution the
+    // widget itself renders inside the chart it builds.
+    const copyright = document.createElement('div');
+    copyright.className = 'tradingview-widget-copyright';
+    copyright.style.cssText = 'padding:6px 2px 0;text-align:center;';
+    const copyrightLink = document.createElement('a');
+    copyrightLink.href = 'https://www.tradingview.com/';
+    copyrightLink.rel = 'noopener nofollow';
+    copyrightLink.target = '_blank';
+    copyrightLink.style.cssText = 'color:var(--text-dim);font-size:11px;text-decoration:none;';
+    copyrightLink.textContent = tr(lang, 'tvAttribution');
+    copyright.appendChild(copyrightLink);
+    container.appendChild(copyright);
+
+    host.appendChild(container);
+
+    const script = document.createElement('script');
+    script.type = 'text/javascript';
+    script.async = true;
+    script.textContent = JSON.stringify({
+      autosize: true,
+      symbol,
+      interval,
+      timezone: 'Etc/UTC',
+      theme: 'dark',
+      style: '1',
+      locale: tradingViewLocaleFor(lang),
+      allow_symbol_change: true,
+      hide_top_toolbar: false,
+      hide_side_toolbar: false,
+      withdateranges: true,
+      save_image: false,
+      support_host: 'https://www.tradingview.com'
+    });
+    script.onload = () => setStatus('loaded');
+    script.onerror = () => setStatus('error');
+    // src is set last so onload/onerror (attached above) can never race the browser's own load
+    // event for a script inserted with a src already present.
+    script.src = TV_ADVANCED_CHART_SCRIPT_SRC;
+    container.appendChild(script);
+
+    return () => { while (host.firstChild) host.removeChild(host.firstChild); };
+  }, [symbol, interval, lang]);
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <div ref={hostRef} dir="ltr" style={{ width: '100%', height: 'clamp(360px, 64vh, 680px)' }} />
+      {status === 'loading' && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-dim)', fontSize: 12, background: 'rgba(3,8,7,.5)', pointerEvents: 'none' }}>
+          <Icon name="LoaderCircle" size={16} />{tr(lang, 'chartLoadingText')}
+        </div>
+      )}
+      {status === 'error' && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', padding: 16, background: 'rgba(3,8,7,.85)' }}>
+          <Icon name="AlertTriangle" size={20} />
+          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'chartLoadErrorTitle')}</span>
+          <span>{tr(lang, 'chartLoadErrorBody')}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Polished localized empty/error state for an instrument with no explicit TradingView mapping
+// (or no instrument at all) - never silently falls back to a different symbol, and always names
+// the real session instrument when one exists.
+function ChartUnmappedNotice({ instrument, lang }) {
+  return (
+    <Panel variant="base" ornament padding="40px 24px">
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+        <span style={{ color: 'rgba(244,234,215,.18)' }}><Icon name="CandlestickChart" size={30} /></span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'chartUnmappedTitle')}</span>
+        <span dir="auto" style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420 }}>
+          {instrument ? tr(lang, 'chartUnmappedBodyWithInstrument', { instrument }) : tr(lang, 'chartUnmappedBodyNoInstrument')}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-dim)', maxWidth: 420 }}>{tr(lang, 'chartUnmappedHint')}</span>
+      </div>
+    </Panel>
+  );
+}
+
+// Third CommandBar view, beside Timeline and Session report - a full TradingView chart for this
+// Session's real instrument/timeframe. session.instrument is the only source read for the symbol
+// (never session.market/city); session.market/city is only ever a city/session-timezone concept.
+function MarketChartView({ session, lang }) {
+  const symbol = tradingViewSymbolFor(session.instrument);
+  if (!symbol) return <ChartUnmappedNotice instrument={session.instrument} lang={lang} />;
+  const interval = tradingViewIntervalFor(session.timeframe);
+  return (
+    <Panel variant="base" ornament padding="16px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Icon name="CandlestickChart" size={18} /><span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'viewChart')}</span>
+          <span className="navrya-tabular" dir="ltr" style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--text-dim)' }}>{symbol} · {session.timeframe || interval}</span>
+        </div>
+        <TradingViewAdvancedChart symbol={symbol} interval={interval} lang={lang} />
+      </div>
+    </Panel>
+  );
+}
+
 function ReportView({ session, lang, indexById }) {
   const entries = sortedEntries(session);
   const kinds = kindInfo(lang);
@@ -2214,6 +2401,8 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
             <SimilarSessionsPanel session={session} character={character} lang={lang} />
           </div>
         </div>
+      ) : view === 'chart' ? (
+        <MarketChartView session={session} lang={lang} />
       ) : (
         <ReportView session={session} lang={lang} indexById={indexById} />
       )}
