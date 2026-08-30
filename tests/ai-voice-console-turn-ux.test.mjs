@@ -90,8 +90,14 @@ test('z-index separation is preserved exactly as before - the response surface s
   assert.match(chatDockSrc, /zIndex: 150,/);
 });
 
-test('the vertical 12px gap between the response surface and the dock row is unchanged (bottom: 24 + rowHeight + 12, where the row itself starts at bottom:24)', () => {
-  assert.match(chatDockSrc, /bottom: 24 \+ rowHeight \+ 12, boxSizing: 'border-box'/);
+// NAVRYA chat dock redesign: the gap was deliberately shrunk from 12px to a near-hairline
+// PANEL_TO_DOCK_GAP_PX (6px) - paired with the same corner radius on both surfaces - so the two
+// independently-z-indexed elements (still two elements, for the real modal-collision fix this
+// same file documents - never merged into one) read as one connected panel, matching the design's
+// own continuous-panel look. The row itself still starts at bottom:24, unchanged.
+test('the response surface sits a small, deliberate PANEL_TO_DOCK_GAP_PX above the dock row (bottom: 24 + rowHeight + PANEL_TO_DOCK_GAP_PX, where the row itself starts at bottom:24), not the old 12px gap', () => {
+  assert.match(chatDockSrc, /var PANEL_TO_DOCK_GAP_PX = 6;/);
+  assert.match(chatDockSrc, /bottom: 24 \+ rowHeight \+ PANEL_TO_DOCK_GAP_PX, boxSizing: 'border-box'/);
 });
 
 test('the response body is now its own bounded, scrollable region covering EVERY section (lines/meta/suggestions/review), not only the messages thread - a header stays outside this wrapper and therefore always reachable', () => {

@@ -58,6 +58,14 @@ import { VoiceConsole, VoiceMiniBar } from './VoiceConsole.jsx';
    onClick both switch together (never just the icon - see ai-voice-chatdock-ux.test.mjs's own
    "no decoy button" guard, which this preserves under its new shape). */
 var POPOVER_SHORT_REPLY_ALLOWANCE_PX = 130;
+// NAVRYA chat dock redesign (NavryaChatDock.dc.html): in the design, the header/stream and the
+// input row are ONE continuous rounded-rect panel with no visible seam. This dock keeps them as
+// two independently z-indexed elements (see the file-header comment - a real, load-bearing fix
+// for a modal-collision bug, not something to undo), but a small, near-hairline gap plus a
+// MATCHING corner radius (both surfaces now use the same `--radius-14` the panel already does,
+// replacing this row's old fully-round pill shape) reads as one connected visual unit instead of
+// two unrelated floating pieces - the actual, previously-missing "shape" fix.
+var PANEL_TO_DOCK_GAP_PX = 6;
 
 // Ties each real Journey E VOICE_STATES value (navrya-src/aiVoiceRealtime.js) to its dot colour -
 // the single source of truth VoiceConsole/VoiceMiniBar's status dot reads from, so what a user
@@ -221,7 +229,7 @@ export function ChatDock({
   // doesn't mount one).
   React.useEffect(() => {
     var root = document.documentElement;
-    root.style.setProperty('--navrya-chat-dock-reserved', (24 + rowHeight + 12 + POPOVER_SHORT_REPLY_ALLOWANCE_PX) + 'px');
+    root.style.setProperty('--navrya-chat-dock-reserved', (24 + rowHeight + PANEL_TO_DOCK_GAP_PX + POPOVER_SHORT_REPLY_ALLOWANCE_PX) + 'px');
     return () => { root.style.removeProperty('--navrya-chat-dock-reserved'); };
   }, [rowHeight]);
 
@@ -235,7 +243,7 @@ export function ChatDock({
         <div
           data-navrya-assistant="response-surface"
           style={{
-            position: 'fixed', bottom: 24 + rowHeight + 12, boxSizing: 'border-box',
+            position: 'fixed', bottom: 24 + rowHeight + PANEL_TO_DOCK_GAP_PX, boxSizing: 'border-box',
             zIndex: 70, pointerEvents: 'none',
             // fix/voice-mode-turn-ux (Part E): once the real dock row rect has been measured, this
             // surface is pinned to those EXACT physical left/width values - its left/right edges
@@ -272,7 +280,10 @@ export function ChatDock({
               data-navrya-chat-dock=""
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px 9px 12px', boxSizing: 'border-box',
-                borderRadius: 'var(--radius-pill)',
+                // NAVRYA chat dock redesign: matches the reply panel's own corner radius
+                // (ChatResponsePopover.jsx) instead of the old fully-round pill shape, so the two
+                // stacked surfaces (see PANEL_TO_DOCK_GAP_PX above) read as one connected unit.
+                borderRadius: 'var(--radius-14)',
                 border: '1px solid ' + (focused ? 'var(--border-gold-strong)' : 'var(--border-gold)'),
                 background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-active-surface) 46%,rgba(17,27,28,.94)),color-mix(in srgb,var(--char-active-surface) 26%,rgba(7,11,15,.96)))',
                 backdropFilter: 'blur(12px)',
