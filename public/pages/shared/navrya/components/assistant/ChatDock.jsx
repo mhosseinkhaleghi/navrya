@@ -65,7 +65,11 @@ var POPOVER_SHORT_REPLY_ALLOWANCE_PX = 130;
 // MATCHING corner radius (both surfaces now use the same `--radius-14` the panel already does,
 // replacing this row's old fully-round pill shape) reads as one connected visual unit instead of
 // two unrelated floating pieces - the actual, previously-missing "shape" fix.
-var PANEL_TO_DOCK_GAP_PX = 6;
+// Tightened further (6 -> 2) on real user feedback that the panel and dock still read as two
+// separate pieces, not one flush, level unit - 2px is the smallest gap that still avoids the two
+// stacked surfaces' own rounded corners visually pinching into each other at the seam (both keep
+// all four corners rounded - see ChatResponsePopover.jsx's/this file's own --radius-14 match).
+var PANEL_TO_DOCK_GAP_PX = 2;
 
 // Ties each real Journey E VOICE_STATES value (navrya-src/aiVoiceRealtime.js) to its dot colour -
 // the single source of truth VoiceConsole/VoiceMiniBar's status dot reads from, so what a user
