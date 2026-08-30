@@ -45,7 +45,14 @@ export async function refreshProviderCosts(repo, { provider, credentialId, apiKe
     const result = await adapter.fetchActualCosts({ apiKey, scopeConfig, start, end });
     await repo.providerCostSync.insertSnapshots(run.id, result.periods);
     const finished = await repo.providerCostSync.finishRun(run.id, { status: result.truncated ? 'partial' : 'success' });
-    return { ok: true, run: finished, periodCount: result.periods.length, truncated: Boolean(result.truncated) };
+    const diagnostics = result.diagnostics || null;
+    // A real, live production report ("connected the credential, still shows nothing") traced
+    // back to exactly this shape: the request succeeds (ok:true) but zero rows match the
+    // configured project id, which previously looked identical to "genuinely no spend this
+    // period." Surfacing this distinction here is what lets the admin UI tell the two apart -
+    // never persisted, just returned for this one refresh call's own immediate feedback.
+    const projectIdMismatch = Boolean(diagnostics && diagnostics.totalResultsSeen > 0 && diagnostics.matchedResultsCount === 0);
+    return { ok: true, run: finished, periodCount: result.periods.length, truncated: Boolean(result.truncated), diagnostics, projectIdMismatch };
   } catch (error) {
     const code = error instanceof ProviderCostAdapterError ? error.code : 'UNKNOWN_ERROR';
     await repo.providerCostSync.finishRun(run.id, { status: 'error', errorCode: code });

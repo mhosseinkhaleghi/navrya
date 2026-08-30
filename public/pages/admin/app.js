@@ -155,6 +155,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiccOutOfTolerance: 'Out of tolerance',
     aiccBalanceUnavailable: 'Balance unavailable via official API', aiccBalanceManualLabel: 'Manual, not used for reconciliation',
     aiccRefreshBtn: 'Refresh', aiccRefreshing: 'Refreshing…', aiccRefreshSuccess: 'Refreshed successfully', aiccRefreshFailed: 'Refresh failed',
+    aiccRefreshProjectMismatch: 'OpenAI returned {total} real cost line item(s) for your organization, but none were tagged to the configured Project id - double-check it against a real project id at platform.openai.com/settings/organization/projects.',
     aiccConfigureBtn: 'Configure a credential below to enable',
     aiccModelsTitle: 'Models',
     aiccColInputTokens: 'Input tokens', aiccColOutputTokens: 'Output tokens', aiccColCachedTokens: 'Cached input tokens',
@@ -333,6 +334,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiccOutOfTolerance: 'خارج از آستانه مجاز',
     aiccBalanceUnavailable: 'موجودی از طریق API رسمی در دسترس نیست', aiccBalanceManualLabel: 'دستی، در تطبیق استفاده نمی‌شود',
     aiccRefreshBtn: 'به‌روزرسانی', aiccRefreshing: 'در حال به‌روزرسانی…', aiccRefreshSuccess: 'با موفقیت به‌روزرسانی شد', aiccRefreshFailed: 'به‌روزرسانی ناموفق بود',
+    aiccRefreshProjectMismatch: 'OpenAI تعداد {total} ردیف هزینه‌ی واقعی برای سازمان شما برگرداند، اما هیچ‌کدام با Project id تنظیم‌شده مطابقت نداشت - آن را با یک شناسه‌ی پروژه‌ی واقعی در platform.openai.com/settings/organization/projects دوباره بررسی کن.',
     aiccConfigureBtn: 'برای فعال‌سازی، یک اعتبارنامه در پایین پیکربندی کنید',
     aiccModelsTitle: 'مدل‌ها',
     aiccColInputTokens: 'توکن‌های ورودی', aiccColOutputTokens: 'توکن‌های خروجی', aiccColCachedTokens: 'توکن‌های ورودی کش‌شده',
@@ -511,6 +513,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiccOutOfTolerance: 'خارج الحد المسموح',
     aiccBalanceUnavailable: 'الرصيد غير متاح عبر الواجهة الرسمية', aiccBalanceManualLabel: 'يدوي، لا يُستخدم في التسوية',
     aiccRefreshBtn: 'تحديث', aiccRefreshing: 'جارٍ التحديث…', aiccRefreshSuccess: 'تم التحديث بنجاح', aiccRefreshFailed: 'فشل التحديث',
+    aiccRefreshProjectMismatch: 'أعادت OpenAI {total} بند تكلفة فعلي لمؤسستك، لكن لم يتطابق أي منها مع Project id المُهيّأ - تحقّق منه مقابل معرّف مشروع حقيقي على platform.openai.com/settings/organization/projects.',
     aiccConfigureBtn: 'قم بتهيئة بيانات اعتماد أدناه للتفعيل',
     aiccModelsTitle: 'النماذج',
     aiccColInputTokens: 'رموز الإدخال', aiccColOutputTokens: 'رموز الإخراج', aiccColCachedTokens: 'رموز الإدخال المخزّنة مؤقتًا',
@@ -689,6 +692,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiccOutOfTolerance: 'Fuera de tolerancia',
     aiccBalanceUnavailable: 'Saldo no disponible mediante la API oficial', aiccBalanceManualLabel: 'Manual, no usado para conciliación',
     aiccRefreshBtn: 'Actualizar', aiccRefreshing: 'Actualizando…', aiccRefreshSuccess: 'Actualizado correctamente', aiccRefreshFailed: 'Error al actualizar',
+    aiccRefreshProjectMismatch: 'OpenAI devolvió {total} partida(s) de costo real para tu organización, pero ninguna coincidió con el Project id configurado - verifícalo contra un id de proyecto real en platform.openai.com/settings/organization/projects.',
     aiccConfigureBtn: 'Configura una credencial abajo para habilitar',
     aiccModelsTitle: 'Modelos',
     aiccColInputTokens: 'Tokens de entrada', aiccColOutputTokens: 'Tokens de salida', aiccColCachedTokens: 'Tokens de entrada en caché',
@@ -2667,7 +2671,13 @@ function commercialAiCostControlSubTab() {
         refreshBtn.onclick = () => {
           refreshBtn.disabled = true; refreshBtn.textContent = t('aiccRefreshing');
           api('/commercial/ai-cost-control/refresh', { method: 'POST', body: JSON.stringify({ provider: row.provider, range: aiCostControlState.range, start: aiCostControlState.customStart, end: aiCostControlState.customEnd }) })
-            .then((result) => { showToast(result.ok !== false ? t('aiccRefreshSuccess') : t('aiccRefreshFailed') + ': ' + result.reason, result.ok !== false ? undefined : 'danger'); renderTab(); })
+            .then((result) => {
+              if (result.ok === false) { showToast(t('aiccRefreshFailed') + ': ' + result.reason, 'danger'); }
+              else if (result.projectIdMismatch) {
+                showToast(t('aiccRefreshProjectMismatch', { total: result.diagnostics.totalResultsSeen }), 'danger');
+              } else { showToast(t('aiccRefreshSuccess')); }
+              renderTab();
+            })
             .catch((error) => showToast(error.message, 'danger'))
             .finally(() => { refreshBtn.disabled = false; refreshBtn.textContent = t('aiccRefreshBtn'); });
         };

@@ -14,12 +14,26 @@
 //               results:[{ object:'organization.costs.result', amount:{value,currency},
 //                          line_item, project_id }] }], has_more, next_page }
 //
-// Known, honestly-disclosed limitation: the Costs API has NO server-side project filter query
-// parameter (unlike the separate Usage API's `project_ids`) - the only way to scope results to
-// one project is to request group_by:['project_id'] (which tags every result row with its real
-// project_id) and then filter client-side to the configured NAVRYA project id, discarding every
-// other project's rows. This is what dedicatedProjectScope below does - "a dedicated NAVRYA
-// project id" is enforced by this client-side filter, not by the request itself.
+// Project scoping (revised after a real production report of "shows nothing" once a credential
+// was configured): this adapter now sends BOTH a `project_ids` request filter AND
+// `group_by:['project_id']`, and separately keeps a client-side filter on the response as
+// defense-in-depth. Two real, confirmed-in-the-wild failure modes motivated this:
+//   1. OpenAI's own developer community has reported cases where an aggregate result's
+//      `project_id` comes back `null` even though real spend exists for that period, when
+//      `group_by=project_id` is not honored/echoed the way expected - relying on client-side
+//      filtering ALONE against a grouped-but-unreliable project_id would then silently discard
+//      every row, reporting a real success with zero dollars ("shows nothing") instead of a
+//      visible error.
+//   2. Sending `project_ids` as an actual filter (confirmed as a real, working parameter by
+//      OpenAI's own developer community, distinct from the `group_by` grouping field) lets the
+//      API itself pre-scope results, so this stops depending entirely on every result row
+//      correctly carrying its `project_id` for the client-side check to matter.
+// Neither of these was verified against a live call with a real admin key in this environment
+// (none was available) - both are genuinely defensive, not assumed correct. `diagnostics` below
+// (bucketsSeen/totalResultsSeen/matchedResultsCount) is what lets an admin (or this app's own
+// admin route) tell "OpenAI returned zero data for this period at all" apart from "OpenAI
+// returned real data, but none of it matched the configured project id" - the two very different
+// real causes of an empty result, which a bare `periods: []` could not distinguish.
 //
 // Known, honestly-disclosed limitation #2: there is no official OpenAI balance/credit API for a
 // standard API account (the legacy /dashboard/billing/credit_grants endpoint is undocumented and
@@ -74,16 +88,22 @@ export const openaiCostAdapter = {
     const periods = [];
     let page = null;
     let pageCount = 0;
+    let bucketsSeen = 0;
+    let totalResultsSeen = 0;
+    let matchedResultsCount = 0;
     do {
       const url = new URL(COSTS_URL);
       url.searchParams.set('start_time', String(startTime));
       url.searchParams.set('end_time', String(endTime));
       url.searchParams.set('bucket_width', '1d');
       url.searchParams.set('limit', '180');
+      // Real server-side filter (see header comment) - scopes the response itself to this
+      // project, rather than relying solely on the client-side check below.
+      url.searchParams.append('project_ids', projectId);
       // Standard repeated-key array encoding for OpenAI's documented `group_by: array of strings`
-      // parameter - grouping by project_id is what makes each result row carry a real project_id
-      // to filter on client-side (see this file's own header comment for why there is no
-      // server-side project filter on this endpoint).
+      // parameter - grouping by project_id is what makes each result row carry its real
+      // project_id, used both for the client-side defense-in-depth filter and for the diagnostics
+      // this function returns.
       url.searchParams.append('group_by', 'project_id');
       if (page) url.searchParams.set('page', page);
 
@@ -102,10 +122,15 @@ export const openaiCostAdapter = {
       }
 
       for (const bucket of body.data || []) {
+        bucketsSeen += 1;
         for (const result of bucket.results || []) {
-          // Client-side project scoping (see header comment) - a null/other-project row is real
+          if (!result) continue;
+          totalResultsSeen += 1;
+          // Client-side project scoping, kept as defense-in-depth even with the server-side
+          // `project_ids` filter above (see header comment) - a null/other-project row is real
           // OpenAI organization spend, just not NAVRYA's, so it must never be counted here.
-          if (!result || result.project_id !== projectId) continue;
+          if (result.project_id !== projectId) continue;
+          matchedResultsCount += 1;
           const amount = result.amount || {};
           periods.push({
             periodStart: new Date(bucket.start_time * 1000).toISOString(),
@@ -122,7 +147,10 @@ export const openaiCostAdapter = {
       pageCount += 1;
     } while (page && pageCount < MAX_PAGES);
 
-    return { periods, sourceUpdatedAt: new Date().toISOString(), truncated: Boolean(page) };
+    return {
+      periods, sourceUpdatedAt: new Date().toISOString(), truncated: Boolean(page),
+      diagnostics: { bucketsSeen, totalResultsSeen, matchedResultsCount }
+    };
   },
 
   // No official OpenAI balance/credit API exists for a standard API account - see this file's own

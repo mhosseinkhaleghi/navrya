@@ -39,10 +39,12 @@ test('fetchActualCosts sends the configured UTC start/end and requires an admin 
   assert.equal(capturedUrl.searchParams.get('end_time'), String(Math.floor(new Date(end).getTime() / 1000)));
   assert.equal(capturedUrl.searchParams.get('bucket_width'), '1d');
   assert.equal(capturedUrl.searchParams.get('group_by'), 'project_id');
+  assert.equal(capturedUrl.searchParams.get('project_ids'), 'proj_navrya', 'a real server-side project filter must be sent, not just the client-side check');
 
   assert.equal(result.periods.length, 1);
   assert.equal(result.periods[0].amountMicroUsd, 1230000);
   assert.equal(result.periods[0].currency, 'usd');
+  assert.deepEqual(result.diagnostics, { bucketsSeen: 1, totalResultsSeen: 1, matchedResultsCount: 1 });
   assert.equal(result.periods[0].lineItem, 'gpt-4o, input');
   assert.equal(result.periods[0].projectId, 'proj_navrya');
 });
@@ -75,6 +77,39 @@ test('client-side project scoping discards every other project\'s rows, never co
   const result = await openaiCostAdapter.fetchActualCosts({ apiKey: 'sk-admin-test', scopeConfig: { projectId: 'proj_navrya' }, start: '2025-01-01T00:00:00.000Z', end: '2025-01-02T00:00:00.000Z', fetchImpl });
   assert.equal(result.periods.length, 1);
   assert.equal(result.periods[0].amountMicroUsd, 5000000);
+  assert.deepEqual(result.diagnostics, { bucketsSeen: 1, totalResultsSeen: 3, matchedResultsCount: 1 });
+});
+
+// Real production report (2026-08-30): a real admin configured a real credential, clicked
+// Refresh, and the dashboard "showed nothing" - traced to OpenAI's own developer community
+// reporting cases where a grouped result's project_id can come back null even though real spend
+// exists, which this adapter's OLD client-side-only filtering could not distinguish from "no
+// spend at all" (both produced an empty, successful-looking result). This test proves the fix:
+// diagnostics surfaces that real data WAS returned even when none of it matched the configured
+// project, so the caller can render an actionable "check your project id" message instead of a
+// silent, indistinguishable $0.
+test('diagnostics distinguish "OpenAI returned real data but none matched the configured project id" from "genuinely no spend" - the exact real-world failure this adapter was hardened against', async () => {
+  const fetchImpl = () => Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve(mockCostsPage([
+      mockBucket(1735689600, 1735776000, [
+        // Real spend exists, but project_id came back null on every row (the exact community-
+        // reported OpenAI behavior) - the OLD implementation would have silently returned periods:[].
+        { object: 'organization.costs.result', amount: { value: 12.5, currency: 'usd' }, line_item: 'gpt-4o, input', project_id: null },
+        { object: 'organization.costs.result', amount: { value: 4.25, currency: 'usd' }, line_item: 'gpt-4o, output', project_id: null }
+      ])
+    ]))
+  });
+  const result = await openaiCostAdapter.fetchActualCosts({ apiKey: 'sk-admin-test', scopeConfig: { projectId: 'proj_navrya' }, start: '2025-01-01T00:00:00.000Z', end: '2025-01-02T00:00:00.000Z', fetchImpl });
+  assert.equal(result.periods.length, 0, 'still correctly excludes unmatched rows from the priced total');
+  assert.deepEqual(result.diagnostics, { bucketsSeen: 1, totalResultsSeen: 2, matchedResultsCount: 0 }, 'but now proves real data existed, distinguishing this from an empty organization');
+});
+
+test('genuinely empty organization cost data (no results at all) is distinguishable from a project-id mismatch - both zero, but diagnostics differ', async () => {
+  const fetchImpl = () => Promise.resolve({ ok: true, json: () => Promise.resolve(mockCostsPage([mockBucket(1735689600, 1735776000, [])])) });
+  const result = await openaiCostAdapter.fetchActualCosts({ apiKey: 'sk-admin-test', scopeConfig: { projectId: 'proj_navrya' }, start: '2025-01-01T00:00:00.000Z', end: '2025-01-02T00:00:00.000Z', fetchImpl });
+  assert.equal(result.periods.length, 0);
+  assert.deepEqual(result.diagnostics, { bucketsSeen: 1, totalResultsSeen: 0, matchedResultsCount: 0 });
 });
 
 test('pagination follows next_page across multiple buckets/pages and aggregates every matching result', async () => {
@@ -161,6 +196,32 @@ test('refreshProviderCosts stores a deterministic snapshot per sync run, and lat
     // own comment warns against.
     const outsideRange = await latestExternalCostForRange(repo, { provider: 'openai', scopeKey: 'proj_navrya', start: '2025-02-01T00:00:00.000Z', end: '2025-02-02T00:00:00.000Z' });
     assert.equal(outsideRange.status, 'not_synced');
+  } finally {
+    openaiCostAdapter.fetchActualCosts = originalFetch;
+  }
+});
+
+test('refreshProviderCosts surfaces projectIdMismatch:true (never silently ok-and-empty) when OpenAI returns real data that matched nothing', async () => {
+  registerAdapter(openaiCostAdapter);
+  const repo = createMemoryRepo();
+  const fetchImpl = () => Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve(mockCostsPage([
+      mockBucket(1735689600, 1735776000, [{ object: 'organization.costs.result', amount: { value: 7, currency: 'usd' }, line_item: 'gpt-4o, input', project_id: null }])
+    ]))
+  });
+  const originalFetch = openaiCostAdapter.fetchActualCosts;
+  openaiCostAdapter.fetchActualCosts = (args) => originalFetch({ ...args, fetchImpl });
+  try {
+    const result = await refreshProviderCosts(repo, {
+      provider: 'openai', credentialId: 'cred-1', apiKey: 'sk-admin-test', scopeConfig: { projectId: 'proj_navrya' },
+      start: '2025-01-01T00:00:00.000Z', end: '2025-01-02T00:00:00.000Z', triggeredBy: 'admin-1'
+    });
+    assert.equal(result.ok, true, 'this is still a real, successful API call - never surfaced as an error');
+    assert.equal(result.periodCount, 0);
+    assert.equal(result.projectIdMismatch, true);
+    assert.equal(result.diagnostics.totalResultsSeen, 1);
+    assert.equal(result.diagnostics.matchedResultsCount, 0);
   } finally {
     openaiCostAdapter.fetchActualCosts = originalFetch;
   }
