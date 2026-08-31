@@ -9,6 +9,7 @@ import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/A
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import * as sessionsAdapter from './sessionsAdapter.js';
 import { openLogWizard } from './tradeLogModal.jsx';
+import { SessionAiAnalysisModal } from './sessionAiAnalysisModal.jsx';
 
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
@@ -2071,12 +2072,13 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
   const [spike, setSpike] = React.useState('');
   const [note, setNote] = React.useState('');
   const [analysis, setAnalysis] = React.useState(session.aiSessionAnalysisResult || null);
-  const [loading, setLoading] = React.useState(false);
-
-  function runAnalysis() {
-    setLoading(true);
-    window.setTimeout(() => { setAnalysis(makeSessionAnalysis(session, lang)); setLoading(false); }, 250);
-  }
+  // The one-shot inline "AI Analysis" card below used to generate a local demo analysis directly
+  // (setLoading/setAnalysis via a fake 250ms timer) - both its entry points now open the real
+  // Session AI Analysis popup instead (sessionAiAnalysisModal.jsx: user view, model/profile
+  // selection, adherence, a real generating sequence). `analysis` itself is kept, unchanged, as
+  // save()'s own fallback below and as the seed for a session reopened with a prior result -
+  // only the old immediate-generate path is retired.
+  const [aiPopupOpen, setAiPopupOpen] = React.useState(false);
   function save() {
     onSave({ moveStrength, spike, note, analysis: analysis || makeSessionAnalysis(session, lang) });
   }
@@ -2101,6 +2103,7 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
   }, []);
 
   return (
+    <>
     <SessionModalShell title={tr(lang, 'fateStep2Title')} icon="Flag" onClose={onClose} width={640} footer={(
       <>
         <span style={{ flex: 1 }} />
@@ -2123,18 +2126,17 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
               <>
                 <span style={{ marginInlineStart: 'auto' }} />
                 <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'localProviderLabel')}</span>
-                <button type="button" onClick={runAnalysis} style={{ height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'reanalyzeLabel')}</button>
+                <button type="button" onClick={() => setAiPopupOpen(true)} style={{ height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'reanalyzeLabel')}</button>
               </>
             )}
           </div>
-          {!analysis && !loading && (
+          {!analysis && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '10px 0' }}>
               <p style={{ margin: 0, fontSize: 11, color: 'var(--text-dim)', textAlign: 'center' }}>{tr(lang, 'aiIntro')}</p>
-              <Button variant="primary" icon="sparkle" size="sm" onClick={runAnalysis}>{tr(lang, 'startAnalysis')}</Button>
+              <Button variant="primary" icon="sparkle" size="sm" onClick={() => setAiPopupOpen(true)}>{tr(lang, 'startAnalysis')}</Button>
             </div>
           )}
-          {loading && <span style={{ fontSize: 11, color: 'var(--text-dim)', textAlign: 'center', padding: '10px 0' }}>{tr(lang, 'analyzing')}</span>}
-          {analysis && !loading && (
+          {analysis && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 11, lineHeight: 1.8 }}>
               <div>
                 <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'overviewLabel')}</span>
@@ -2184,6 +2186,8 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
         </div>
       </div>
     </SessionModalShell>
+    {aiPopupOpen && <SessionAiAnalysisModal session={session} lang={lang} onClose={() => setAiPopupOpen(false)} />}
+    </>
   );
 }
 
