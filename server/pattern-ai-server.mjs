@@ -2490,8 +2490,18 @@ const server = http.createServer(async (request, response) => {
     // callProvider()'s own key-resolution order above).
     const billedFeature = AI_BILLED_ROUTES[request.url];
     const isByok = typeof body.apiKey === 'string' && body.apiKey.trim().length > 0;
+    // Scenario Map's visualize-scenario route never accepts a provider/model in its own request
+    // body (it is explicitly, always OpenAI/gpt-image-1 - see visualizeScenario()'s own comment) -
+    // body.provider/body.model are simply undefined for it. Reserving against `undefined` silently
+    // could never resolve a pricing rate for ANY row, so this route always failed closed with
+    // PROVIDER_PRICING_NOT_CONFIGURED regardless of what pricing existed - confirmed live. The real
+    // call's own provider/model are pinned here to match exactly what visualizeScenario() actually
+    // returns and what settleWalletFundsForCall() below already correctly reads from that result.
+    const isVisualizeScenario = request.url === '/api/sessions/visualize-scenario';
+    const reserveProvider = isVisualizeScenario ? 'openai' : body.provider;
+    const reserveModel = isVisualizeScenario ? 'gpt-image-1' : body.model;
     if (billedFeature && !isByok && aiWalletEnforced()) {
-      const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: body.provider, model: body.model, payload: body });
+      const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: reserveProvider, model: reserveModel, payload: body });
       if (!gate.ok) {
         const status = gate.reason === 'WALLET_INSUFFICIENT_BALANCE' ? 402 : 503;
         return json(response, status, { error: gate.reason || 'WALLET_SERVICE_UNAVAILABLE' });

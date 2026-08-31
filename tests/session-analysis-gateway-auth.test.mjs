@@ -77,3 +77,29 @@ test('a real, valid session reaches the real visualizeScenario handler (CHART_IM
   assert.notEqual(response.status, 404);
   assert.equal((await response.json()).error, 'CHART_IMAGE_REQUIRED');
 });
+
+// Production incident: visualize-scenario's wallet RESERVATION step (in the dispatcher, before
+// visualizeScenario() itself ever runs) read body.provider/body.model to resolve pricing - but
+// this route's own client (session-analysis-client.js) never sends either field, since the real
+// provider/model ('openai'/'gpt-image-1') are fixed and only known INSIDE visualizeScenario()
+// itself. Reserving against undefined/undefined could never resolve any pricing row, so with wallet
+// enforcement on this route failed closed with PROVIDER_PRICING_NOT_CONFIGURED unconditionally -
+// confirmed live, independent of whether real pricing existed. Verifies the reservation now
+// resolves the same fixed 'openai'/'gpt-image-1' pair visualizeScenario() itself always uses.
+test('with wallet enforcement on and real openai/gpt-image-1 pricing configured, visualize-scenario reservation succeeds (reaches CHART_IMAGE_REQUIRED, never PROVIDER_PRICING_NOT_CONFIGURED)', async () => {
+  const previousEnforced = process.env.AI_WALLET_ENFORCED;
+  process.env.AI_WALLET_ENFORCED = 'true';
+  try {
+    await communityRepo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-image-1', flatPricePerCallMicroUsd: 70000, currency: 'USD', enabled: true });
+    const { userId, cookie } = await registerAndGetCookie(uniqueEmail());
+    await communityRepo.wallet.grant(userId, { type: 'ADMIN_CREDIT', cashDeltaMicroUsd: 10000000 });
+    const response = await fetch(`${aiBaseUrl}/api/sessions/visualize-scenario`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ visualizationBrief: {}, language: 'en' })
+    });
+    const body = await response.json();
+    assert.notEqual(body.error, 'PROVIDER_PRICING_NOT_CONFIGURED');
+    assert.equal(body.error, 'CHART_IMAGE_REQUIRED');
+  } finally {
+    process.env.AI_WALLET_ENFORCED = previousEnforced;
+  }
+});
