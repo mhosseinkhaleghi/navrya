@@ -1238,7 +1238,7 @@ function buildSessionAnalysisSystemPrompt(body, language) {
   if (ADHERENCE_INSTRUCTION[body.adherence]) lines.push(ADHERENCE_INSTRUCTION[body.adherence]);
 
   if (analysisType === 'initial') {
-    lines.push('This is the INITIAL analysis for this Session - the deepest read. Establish a market thesis, important observations, relevant market state, key levels/zones if visible, tensions or contradictions, uncertainties, and things worth monitoring. Use the supplied historical Session context (previous session summary, similar sessions) where genuinely useful, but do not force a connection that is not really there.');
+    lines.push('This is the INITIAL analysis for this Session - the deepest read. Establish a market thesis, important observations, relevant market state, key levels/zones if visible, tensions or contradictions, uncertainties, and things worth monitoring. Use the supplied historical Session context (previous session summary, similar sessions) where genuinely useful, but do not force a connection that is not really there. Leave `scenarioEvaluations` empty - evaluating an existing scenario is a separate operation you are not performing here, even if active scenarios are supplied as context below.');
   } else if (analysisType === 'update') {
     lines.push('This is an ANALYSIS UPDATE, not a from-scratch analysis. The hero of your response is WHAT CHANGED since NAVRYA\'s last understanding of this Session (supplied as Session Memory below) - compare the new chart evidence against that memory and populate `whatChanged` accordingly. "No material change" is a valid, honest result - never fabricate a change to appear eventful. You may discuss an existing scenario\'s relevance, but you must NOT evaluate or restate its probability/status here - that is a separate operation the trader triggers explicitly (leave `scenarioEvaluations` empty).');
   } else if (analysisType === 'scenario_evaluation') {
@@ -1638,25 +1638,34 @@ async function analyzeTrade(body) {
 // fills defaults for a merely-missing-but-otherwise-valid field, e.g. from a non-strict
 // Kimi/DeepSeek response).
 const SESSION_ANALYSIS_BLOCK_TYPES = new Set(['observation', 'interpretation', 'change', 'market_structure', 'momentum', 'key_zones', 'market_tension', 'historical_context', 'pattern_context', 'invalidation', 'warning', 'uncertainty', 'watchlist', 'model_insight', 'custom']);
+// PRODUCTION INCIDENT FIX (2026-08-31): this originally THREW SCHEMA_VALIDATION_FAILED (-> a raw
+// 500) for a block type outside the enum or an out-of-range probability - conditions
+// session-analysis-schema.js's own normalizeAnalysisResult() (the client) is specifically built to
+// heal gracefully (unrecognized type -> safe 'custom' fallback, probability -> clamped). Rejecting
+// the ENTIRE analysis server-side for something the client already handles defensively meant a
+// single odd field from a non-strict provider (Kimi/DeepSeek only get top-level assertRequiredKeys
+// validation, never nested enum checks) - or even a rare OpenAI strict-mode edge case - threw away
+// an otherwise-good, already-paid-for analysis instead of just quietly repairing the one field.
+// This function now only ever DROPS/CLAMPS the specific offending value; the one thing it still
+// actively enforces by removal (never a whole-response throw) is the real security property: a
+// scenario evaluation must target a scenario id NAVRYA actually asked about, since that id flows
+// into the client's permanent probability-history append path.
 function validateSessionAnalysisResult(data, body) {
   if (!data || typeof data !== 'object') throw new Error('SCHEMA_VALIDATION_FAILED');
-  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
-  for (const block of blocks) {
-    if (!block || !SESSION_ANALYSIS_BLOCK_TYPES.has(block.type)) throw new Error('SCHEMA_VALIDATION_FAILED');
-  }
-  const scenarios = Array.isArray(data.scenarios) ? data.scenarios : [];
-  for (const scenario of scenarios) {
-    if (!scenario || typeof scenario.probability !== 'number' || scenario.probability < 0 || scenario.probability > 100) throw new Error('SCHEMA_VALIDATION_FAILED');
-  }
-  // A model may only evaluate a scenario NAVRYA actually asked about (real, already-persisted
-  // scenario ids from body.scenarioTargets) - never one it invented, which would otherwise let a
-  // fabricated id slip into the client's probability-history append path.
-  if (data.analysisType !== undefined && SESSION_ANALYSIS_TYPES.indexOf(data.analysisType) === -1) throw new Error('SCHEMA_VALIDATION_FAILED');
+  data.blocks = (Array.isArray(data.blocks) ? data.blocks : []).map((block) => {
+    if (block && !SESSION_ANALYSIS_BLOCK_TYPES.has(block.type)) return Object.assign({}, block, { type: 'custom' });
+    return block;
+  }).filter(Boolean);
+  data.scenarios = (Array.isArray(data.scenarios) ? data.scenarios : []).map((scenario) => {
+    if (!scenario) return scenario;
+    if (typeof scenario.probability !== 'number' || Number.isNaN(scenario.probability)) return Object.assign({}, scenario, { probability: 50 });
+    if (scenario.probability < 0 || scenario.probability > 100) return Object.assign({}, scenario, { probability: Math.max(0, Math.min(100, scenario.probability)) });
+    return scenario;
+  }).filter(Boolean);
+  if (SESSION_ANALYSIS_TYPES.indexOf(data.analysisType) === -1) delete data.analysisType;
   const knownTargets = new Set(Array.isArray(body.scenarioTargets) ? body.scenarioTargets : []);
-  const evaluations = Array.isArray(data.scenarioEvaluations) ? data.scenarioEvaluations : [];
-  for (const evaluation of evaluations) {
-    if (!evaluation || !knownTargets.has(evaluation.scenarioId)) throw new Error('SCHEMA_VALIDATION_FAILED');
-  }
+  data.scenarioEvaluations = (Array.isArray(data.scenarioEvaluations) ? data.scenarioEvaluations : [])
+    .filter((evaluation) => evaluation && knownTargets.has(evaluation.scenarioId));
   return data;
 }
 

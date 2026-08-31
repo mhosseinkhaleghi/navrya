@@ -21,7 +21,15 @@
 	handle {
 		encode zstd gzip
 		root * /srv
-		try_files {path} /index.html
+		# PRODUCTION INCIDENT FIX (2026-08-31): `try_files {path} /index.html` alone only ever
+		# resolves an EXACT file match (e.g. /pages/hunter/index.html) - it never tried
+		# `{path}/index.html`, so a directory-style request (/pages/hunter/, the normal way a
+		# browser navigates there) fell straight through to the SPA-fallback root /index.html
+		# (a different, minimal shell page) instead of that directory's own real index.html.
+		# Confirmed live: the exact file path served the correct 17KB character app, the
+		# trailing-slash directory path served the wrong 632-byte shell - this is what broke the
+		# whole app on any fresh navigation/reload. Adding the directory-index candidate fixes it.
+		try_files {path} {path}/index.html /index.html
 		file_server
 	}
 }

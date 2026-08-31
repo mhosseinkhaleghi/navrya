@@ -1007,7 +1007,12 @@ export function createMemoryRepo() {
                 // this repo's own mapping (and repo.pg.mjs's real INSERT/SELECT columns) never
                 // carried these 3 fields through at all.
                 problem: scenario.problem || null, invalidationNote: scenario.invalidationNote || null,
-                invalidationTagIds: Array.isArray(scenario.invalidationTagIds) ? scenario.invalidationTagIds : []
+                invalidationTagIds: Array.isArray(scenario.invalidationTagIds) ? scenario.invalidationTagIds : [],
+                // Adaptive AI Session Analysis (2026-08-31 production incident fix) - same "never
+                // persisted server-side at all" gap as problem/invalidationNote/invalidationTagIds
+                // above, now fixed in repo.pg.mjs too (045_scenario_ai_analysis_fields.sql).
+                status: scenario.status || null, aiSource: scenario.aiSource ?? null,
+                aiVisualization: scenario.aiVisualization ?? null, lastEvaluation: scenario.lastEvaluation ?? null
               };
             })
           };

@@ -247,7 +247,12 @@ function mapTradingSessionScenario(row) {
     // Scenario fields silently dropped on every server round-trip since the Phase 2 migration to
     // server-authoritative sync, confirmed via real production testing (a plain DOM edit, not
     // just AI/voice, never survived a reconcile).
-    problem: row.problem, invalidationNote: row.invalidation_note, invalidationTagIds: row.invalidation_tag_ids || []
+    problem: row.problem, invalidationNote: row.invalidation_note, invalidationTagIds: row.invalidation_tag_ids || [],
+    // Adaptive AI Session Analysis (2026-08-31 production incident fix) - same "real column,
+    // never a fold into an existing jsonb blob" fix as problem/invalidationNote/invalidationTagIds
+    // above; these three were previously not referenced by this INSERT at all and silently
+    // vanished on the very next session save.
+    status: row.status, aiSource: row.ai_source, aiVisualization: row.ai_visualization, lastEvaluation: row.last_evaluation
   };
 }
 function mapTradingSessionEntry(row, scenarios) {
@@ -1641,8 +1646,9 @@ export function createPgRepo(pool) {
             const { rows: scenarioRows } = await client.query(
               `INSERT INTO trading_session_scenarios
                 (id, entry_id, session_id, title, description, evidence, trigger_text, occurred, pattern_tag_id,
-                 completion_percent, probability_history, pattern, execution_plan, problem, invalidation_note, invalidation_tag_ids)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                 completion_percent, probability_history, pattern, execution_plan, problem, invalidation_note, invalidation_tag_ids,
+                 status, ai_source, ai_visualization, last_evaluation)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
                RETURNING *`,
               [scenario.id, entry.id, record.id, scenario.title || '', scenario.description || null,
                 scenario.evidence || null, scenario.trigger || null, scenario.occurred === true,
@@ -1653,7 +1659,11 @@ export function createPgRepo(pool) {
                 // 2026-08-28 bug report: real columns added (039_trading_session_scenario_gaps.sql) -
                 // see mapTradingSessionScenario()'s own comment above for the full history.
                 scenario.problem || null, scenario.invalidationNote || null,
-                JSON.stringify(Array.isArray(scenario.invalidationTagIds) ? scenario.invalidationTagIds : [])]
+                JSON.stringify(Array.isArray(scenario.invalidationTagIds) ? scenario.invalidationTagIds : []),
+                // Adaptive AI Session Analysis (2026-08-31 production incident fix) -
+                // 045_scenario_ai_analysis_fields.sql, same "real column" fix as the three above.
+                scenario.status || null, JSON.stringify(scenario.aiSource ?? null),
+                JSON.stringify(scenario.aiVisualization ?? null), JSON.stringify(scenario.lastEvaluation ?? null)]
             );
             mappedScenarios.push(mapTradingSessionScenario(scenarioRows[0]));
           }

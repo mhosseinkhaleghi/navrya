@@ -86,28 +86,42 @@ test('output budget: efficient tightens and deep relaxes the ceiling relative to
 
 // --------------------------------------------------------------------------------------------
 // Server-side result validation (brief §38) - a defense-in-depth gate beyond assertRequiredKeys().
+//
+// PRODUCTION INCIDENT (2026-08-31): this originally THREW (-> a raw 500) for any of these
+// conditions, discarding an otherwise-good, already-paid-for analysis for something the client's
+// own normalizeAnalysisResult() is specifically designed to heal gracefully. Now it only ever
+// repairs the offending value in place; the only thing still enforced by removal (never a
+// whole-response throw) is a scenario evaluation targeting a real, asked-about scenario id.
 // --------------------------------------------------------------------------------------------
 
-test('validateSessionAnalysisResult rejects an unrecognized block type', () => {
-  assert.throws(() => validateSessionAnalysisResult({ blocks: [{ type: 'not_a_real_block_type' }], scenarios: [], scenarioEvaluations: [] }, {}), /SCHEMA_VALIDATION_FAILED/);
+test('validateSessionAnalysisResult repairs an unrecognized block type to "custom" rather than rejecting the whole analysis', () => {
+  const data = validateSessionAnalysisResult({ blocks: [{ id: 'b1', type: 'not_a_real_block_type', title: 'x' }], scenarios: [], scenarioEvaluations: [] }, {});
+  assert.equal(data.blocks[0].type, 'custom');
+  assert.equal(data.blocks[0].title, 'x', 'the rest of the block must be preserved, not discarded');
 });
 
-test('validateSessionAnalysisResult rejects a scenario probability outside [0,100]', () => {
-  assert.throws(() => validateSessionAnalysisResult({ blocks: [], scenarios: [{ probability: 250 }], scenarioEvaluations: [] }, {}), /SCHEMA_VALIDATION_FAILED/);
+test('validateSessionAnalysisResult clamps a scenario probability outside [0,100] rather than rejecting the whole analysis', () => {
+  const data = validateSessionAnalysisResult({ blocks: [], scenarios: [{ localKey: 's1', probability: 250 }], scenarioEvaluations: [] }, {});
+  assert.equal(data.scenarios[0].probability, 100);
+  assert.equal(data.scenarios[0].localKey, 's1');
 });
 
-test('validateSessionAnalysisResult rejects a scenario evaluation for an id NAVRYA never asked about (brief §40 test 20 spirit - never trust a model-invented scenario id)', () => {
+test('validateSessionAnalysisResult drops (not rejects the whole analysis for) a scenario evaluation targeting an id NAVRYA never asked about - never trust a model-invented scenario id', () => {
   const body = { scenarioTargets: ['real-scenario-1'] };
-  assert.throws(
-    () => validateSessionAnalysisResult({ blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'invented-id' }] }, body),
-    /SCHEMA_VALIDATION_FAILED/
-  );
+  const data = validateSessionAnalysisResult({ blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'invented-id' }, { scenarioId: 'real-scenario-1' }] }, body);
+  assert.equal(data.scenarioEvaluations.length, 1);
+  assert.equal(data.scenarioEvaluations[0].scenarioId, 'real-scenario-1');
 });
 
 test('validateSessionAnalysisResult accepts a scenario evaluation for a real requested scenario id', () => {
   const body = { scenarioTargets: ['real-scenario-1'] };
-  const data = { blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'real-scenario-1' }] };
-  assert.deepEqual(validateSessionAnalysisResult(data, body), data);
+  const data = validateSessionAnalysisResult({ blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'real-scenario-1' }] }, body);
+  assert.equal(data.scenarioEvaluations.length, 1);
+  assert.equal(data.scenarioEvaluations[0].scenarioId, 'real-scenario-1');
+});
+
+test('validateSessionAnalysisResult still throws for a genuinely non-object response (nothing usable to repair)', () => {
+  assert.throws(() => validateSessionAnalysisResult(null, {}), /SCHEMA_VALIDATION_FAILED/);
 });
 
 // --------------------------------------------------------------------------------------------
