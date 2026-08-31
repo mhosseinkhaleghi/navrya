@@ -222,19 +222,35 @@ test('visualizeScenario rejects CHART_IMAGE_REQUIRED with no provider call at al
   assert.equal(calls, 0);
 });
 
-test('visualizeScenario calls the OpenAI images/edits endpoint and returns an imageDataUrl with usage always null (brief §35)', async () => {
+test('visualizeScenario calls the OpenAI images/edits endpoint against gpt-image-2 and returns the imageDataUrl with the REAL usage the provider reported, never fabricated', async () => {
   let calledUrl = null;
-  globalThis.fetch = async (url) => {
+  let sentModel = null;
+  globalThis.fetch = async (url, init) => {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     calledUrl = String(url);
-    return { ok: true, json: async () => ({ data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }] }) };
+    sentModel = init && init.body && init.body.get ? init.body.get('model') : null;
+    return { ok: true, json: async () => ({ data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }], usage: { input_tokens: 120, input_tokens_details: { cached_tokens: 20 }, output_tokens: 300, total_tokens: 420 } }) };
   };
   const result = await visualizeScenario({ chartImage: 'data:image/png;base64,AAAA', visualizationBrief: { narrative: 'test', primaryPath: ['A', 'B'] }, language: 'en', apiKey: 'k' });
   assert.match(calledUrl, /images\/edits/);
+  assert.equal(sentModel, 'gpt-image-2');
   assert.match(result.data.imageDataUrl, /^data:image\/png;base64,/);
   assert.equal(result.provider, 'openai');
-  assert.equal(result.model, 'gpt-image-1');
-  assert.equal(result.usage, null);
+  assert.equal(result.model, 'gpt-image-2');
+  assert.equal(result.usage.promptTokens, 120);
+  assert.equal(result.usage.completionTokens, 300);
+  assert.equal(result.usage.totalTokens, 420);
+  assert.equal(result.usage.cachedInputTokens, 20);
+});
+
+test('visualizeScenario reports an honest all-null usage envelope (never fabricated) when the provider omits usage entirely', async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    return { ok: true, json: async () => ({ data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }] }) };
+  };
+  const result = await visualizeScenario({ chartImage: 'data:image/png;base64,AAAA', visualizationBrief: {}, language: 'en', apiKey: 'k' });
+  assert.equal(result.usage.promptTokens, null);
+  assert.equal(result.usage.completionTokens, null);
 });
 
 // --------------------------------------------------------------------------------------------
@@ -267,12 +283,14 @@ test('visualizeAnalysis rejects CHART_IMAGE_REQUIRED with no provider call at al
   assert.equal(calls, 0);
 });
 
-test('visualizeAnalysis calls the OpenAI images/edits endpoint and returns an imageDataUrl with usage always null, same as visualizeScenario', async () => {
+test('visualizeAnalysis calls the OpenAI images/edits endpoint against gpt-image-2 and returns the imageDataUrl with the REAL usage the provider reported, same as visualizeScenario', async () => {
   let calledUrl = null;
-  globalThis.fetch = async (url) => {
+  let sentModel = null;
+  globalThis.fetch = async (url, init) => {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     calledUrl = String(url);
-    return { ok: true, json: async () => ({ data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }] }) };
+    sentModel = init && init.body && init.body.get ? init.body.get('model') : null;
+    return { ok: true, json: async () => ({ data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }], usage: { input_tokens: 150, input_tokens_details: { cached_tokens: 0 }, output_tokens: 400, total_tokens: 550 } }) };
   };
   const result = await visualizeAnalysis({
     chartImage: 'data:image/png;base64,AAAA',
@@ -280,8 +298,10 @@ test('visualizeAnalysis calls the OpenAI images/edits endpoint and returns an im
     language: 'en', apiKey: 'k'
   });
   assert.match(calledUrl, /images\/edits/);
+  assert.equal(sentModel, 'gpt-image-2');
   assert.match(result.data.imageDataUrl, /^data:image\/png;base64,/);
   assert.equal(result.provider, 'openai');
-  assert.equal(result.model, 'gpt-image-1');
-  assert.equal(result.usage, null);
+  assert.equal(result.model, 'gpt-image-2');
+  assert.equal(result.usage.promptTokens, 150);
+  assert.equal(result.usage.completionTokens, 400);
 });

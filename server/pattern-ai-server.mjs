@@ -55,6 +55,15 @@ const languageNames = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 
 const providerEnvKey = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', kimi: 'KIMI_API_KEY', deepseek: 'DEEPSEEK_API_KEY' };
 const providerEnvModel = { openai: 'OPENAI_MODEL', anthropic: 'ANTHROPIC_MODEL', kimi: 'KIMI_MODEL', deepseek: 'DEEPSEEK_MODEL' };
 const providerDefaultModel = { openai: 'gpt-5.6', anthropic: 'claude-sonnet-4-5', kimi: 'moonshot-v1-8k', deepseek: 'deepseek-chat' };
+// Scenario Map/Analysis Map's one image-generation model (callOpenAIImageEdit(), the OpenAI-only
+// images/edits endpoint) - named once so the actual API call, the provider/model these routes
+// report back for billing, and the wallet-reservation pinning (IMAGE_GENERATION_ROUTES below) can
+// never drift out of sync with each other the way a repeated string literal risks. Upgraded
+// gpt-image-1 -> gpt-image-2 (2026-09-01): the newer model, same /v1/images/edits interface, and -
+// unlike gpt-image-1's response - genuinely reports real per-call token usage (see
+// callOpenAIImageEdit()'s own comment), so this is now priced through the same accurate,
+// battle-tested token-based path every text call already uses, not an admin-guessed flat rate.
+const IMAGE_EDIT_MODEL = 'gpt-image-2';
 
 function resolveProviderName(provider) {
   return Object.prototype.hasOwnProperty.call(providerEnvKey, provider) ? provider : 'openai';
@@ -283,7 +292,7 @@ const AI_BILLED_ROUTES = {
   '/api/sessions/visualize-analysis': 'sessionAnalysisVisualization'
 };
 
-// Both image-generation routes above are explicitly, always OpenAI/gpt-image-1 (see
+// Both image-generation routes above are explicitly, always OpenAI/IMAGE_EDIT_MODEL (see
 // visualizeScenario()/visualizeAnalysis()'s own comments) - neither ever accepts a provider/model
 // in its own request body, unlike /api/sessions/analyze. Named here once so the wallet-reservation
 // pinning below and any future caller share one answer to "is this an image-generation route".
@@ -1787,7 +1796,7 @@ async function callOpenAIImageEdit({ imageDataUrl, prompt, apiKeyOverride }) {
   const buffer = Buffer.from(match[2], 'base64');
   const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
   const form = new FormData();
-  form.append('model', 'gpt-image-1');
+  form.append('model', IMAGE_EDIT_MODEL);
   form.append('image', new Blob([buffer], { type: mimeType }), `chart.${ext}`);
   form.append('prompt', prompt);
   form.append('size', 'auto');
@@ -1801,7 +1810,23 @@ async function callOpenAIImageEdit({ imageDataUrl, prompt, apiKeyOverride }) {
     if (!response.ok) throw new Error((result.error && result.error.message) || `OPENAI_IMAGE_${response.status}`);
     const first = (result.data || [])[0];
     if (!first || !first.b64_json) throw new Error('EMPTY_IMAGE_RESPONSE');
-    return { imageDataUrl: `data:image/png;base64,${first.b64_json}` };
+    // AI Cost Control: the images/edits endpoint DOES report real per-call token usage (input/
+    // cached-input/output, with an image-vs-text breakdown) - previously read nowhere in this
+    // function, so every Scenario Map/Analysis Map call was billed via a flat, admin-guessed rate
+    // instead of what the provider actually reported. Captured here the same shape callOpenAI()'s
+    // own usage object already uses, so the existing token-based wallet-service.mjs pricing path
+    // (provider_model_pricing's prompt/completion/cached-input price-per-1k, already accurate and
+    // battle-tested for text calls) prices this correctly too - no separate cost formula needed.
+    const usage = result.usage ? {
+      promptTokens: result.usage.input_tokens ?? null,
+      completionTokens: result.usage.output_tokens ?? null,
+      totalTokens: result.usage.total_tokens ?? null,
+      cachedInputTokens: result.usage.input_tokens_details?.cached_tokens ?? null,
+      cacheWriteInputTokens: null,
+      reasoningTokens: null,
+      raw: result.usage
+    } : { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null };
+    return { imageDataUrl: `data:image/png;base64,${first.b64_json}`, usage };
   } finally {
     clearTimeout(timer);
   }
@@ -1830,10 +1855,9 @@ function buildVisualizationPrompt(brief, language) {
 }
 
 // Explicit, separate, OpenAI-only, never-automatic action (brief §25/§27/§42.S) - has no
-// analysisType and is never invoked from analyzeSession() above. `usage` is deliberately null:
-// the images/edits API reports no token-style usage this app already normalizes, so nothing is
-// fabricated here (brief §35: image visualization cost is separate from text token usage and must
-// never be represented as fake token usage).
+// analysisType and is never invoked from analyzeSession() above. `usage` is the real object
+// callOpenAIImageEdit() captured from the provider's own response (never fabricated - see that
+// function's own comment for why this is no longer hardcoded null).
 async function visualizeScenario(body) {
   if (typeof body.chartImage !== 'string' || !body.chartImage.startsWith('data:image/')) throw new Error('CHART_IMAGE_REQUIRED');
   const brief = (body.visualizationBrief && typeof body.visualizationBrief === 'object') ? body.visualizationBrief : {};
@@ -1842,7 +1866,7 @@ async function visualizeScenario(body) {
   try {
     const outcome = await callOpenAIImageEdit({ imageDataUrl: body.chartImage, prompt, apiKeyOverride: body.apiKey });
     reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'sessions.scenarioVisualization' });
-    return { data: { imageDataUrl: outcome.imageDataUrl }, provider: 'openai', model: 'gpt-image-1', usage: null };
+    return { data: { imageDataUrl: outcome.imageDataUrl }, provider: 'openai', model: IMAGE_EDIT_MODEL, usage: outcome.usage };
   } catch (error) {
     reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'sessions.scenarioVisualization' });
     throw error;
@@ -1875,8 +1899,8 @@ function buildAnalysisVisualizationPrompt(snapshot, language) {
 }
 
 // Explicit, separate, OpenAI-only, never-automatic action, same shape as visualizeScenario() above
-// (no analysisType, never invoked from analyzeSession(), usage always null - see that function's
-// own comment for why). body.analysisSnapshot is a small, already-derived subset of a real,
+// (no analysisType, never invoked from analyzeSession(), real usage - see that function's own
+// comment for why). body.analysisSnapshot is a small, already-derived subset of a real,
 // already-completed analysis result (keyZones/primaryScenario/thesisHeadline) - the client builds
 // it from the SAME analysis the trader already paid for and is looking at; this never triggers a
 // second analyzeSession() call.
@@ -1888,7 +1912,7 @@ async function visualizeAnalysis(body) {
   try {
     const outcome = await callOpenAIImageEdit({ imageDataUrl: body.chartImage, prompt, apiKeyOverride: body.apiKey });
     reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'sessions.analysisVisualization' });
-    return { data: { imageDataUrl: outcome.imageDataUrl }, provider: 'openai', model: 'gpt-image-1', usage: null };
+    return { data: { imageDataUrl: outcome.imageDataUrl }, provider: 'openai', model: IMAGE_EDIT_MODEL, usage: outcome.usage };
   } catch (error) {
     reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'sessions.analysisVisualization' });
     throw error;
@@ -2556,8 +2580,8 @@ const server = http.createServer(async (request, response) => {
     const billedFeature = AI_BILLED_ROUTES[request.url];
     const isByok = typeof body.apiKey === 'string' && body.apiKey.trim().length > 0;
     // Neither image-generation route (IMAGE_GENERATION_ROUTES) accepts a provider/model in its own
-    // request body (both are explicitly, always OpenAI/gpt-image-1 - see visualizeScenario()'s own
-    // comment) - body.provider/body.model are simply undefined for them. Reserving against
+    // request body (both are explicitly, always OpenAI/IMAGE_EDIT_MODEL - see visualizeScenario()'s
+    // own comment) - body.provider/body.model are simply undefined for them. Reserving against
     // `undefined` silently could never resolve a pricing rate for ANY row, so these routes always
     // failed closed with PROVIDER_PRICING_NOT_CONFIGURED regardless of what pricing existed -
     // confirmed live for visualize-scenario. Pinned here to match exactly what
@@ -2565,7 +2589,7 @@ const server = http.createServer(async (request, response) => {
     // below already correctly reads from that result.
     const isImageGeneration = IMAGE_GENERATION_ROUTES.has(request.url);
     const reserveProvider = isImageGeneration ? 'openai' : body.provider;
-    const reserveModel = isImageGeneration ? 'gpt-image-1' : body.model;
+    const reserveModel = isImageGeneration ? IMAGE_EDIT_MODEL : body.model;
     if (billedFeature && !isByok && aiWalletEnforced()) {
       const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: reserveProvider, model: reserveModel, payload: body });
       if (!gate.ok) {

@@ -177,7 +177,7 @@ function mockVisualizeFetch(visualizeUrlFragment) {
       return { ok: true, json: async () => ({ url: '/uploads/session/generated-x.png' }) };
     }
     if (String(url).includes(visualizeUrlFragment)) {
-      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-1', usage: null }) };
+      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-2', usage: null }) };
     }
     throw new Error('unexpected fetch: ' + url);
   };
@@ -207,7 +207,7 @@ test('visualizeScenario fails outright (VISUALIZATION_SAVE_FAILED) rather than s
   const { client } = await loadClient({
     fetch: async (url) => {
       if (String(url).includes('/api/sync/sessions/images')) return { ok: false, status: 413 };
-      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-1', usage: null }) };
+      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-2', usage: null }) };
     },
     TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: true }), getKey: () => '' },
     TradeJournalAnalysisImagePrep: { prepareForTransport: async () => 'data:image/png;base64,BBBB' }
@@ -279,7 +279,7 @@ test('visualizeAnalysis fails outright (VISUALIZATION_SAVE_FAILED) rather than s
   const { client } = await loadClient({
     fetch: async (url) => {
       if (String(url).includes('/api/sync/sessions/images')) return { ok: false, status: 413 };
-      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-1', usage: null }) };
+      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-2', usage: null }) };
     },
     TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: true }), getKey: () => '' },
     TradeJournalAnalysisImagePrep: { prepareForTransport: async () => 'data:image/png;base64,BBBB' }
