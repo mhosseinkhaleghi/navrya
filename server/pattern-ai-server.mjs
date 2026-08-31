@@ -547,11 +547,15 @@ async function callOpenAI(payload, apiKey, model) {
   // the same request completed in 43-56s on the faster tiers). Every other existing caller never
   // sets this field and keeps the original 90s ceiling unchanged.
   const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
+  // timeoutMs is an internal-only signal for the AbortController above (unlike max_output_tokens,
+  // it is NOT a real Responses API field) - it must never reach the actual request body, or OpenAI
+  // rejects the whole call with "Unknown parameter: 'timeoutMs'." (confirmed live).
+  const { timeoutMs, ...providerPayload } = payload;
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(Object.assign({}, payload, { model })),
+      body: JSON.stringify(Object.assign({}, providerPayload, { model })),
       signal: controller.signal
     });
     const result = await response.json().catch(() => ({}));

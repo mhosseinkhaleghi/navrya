@@ -139,6 +139,25 @@ test('analyzeSession returns the normalized provider data plus provider/model/us
   assert.deepEqual(result.usage, { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null });
 });
 
+// Production incident: analyzeSession()'s own payload.timeoutMs (an internal-only signal for
+// callOpenAI's AbortController, added alongside max_output_tokens - see that budget's own
+// comment) was briefly forwarded straight into the real OpenAI Responses API request body via
+// Object.assign({}, payload, {model}), which OpenAI rejected outright with "Unknown parameter:
+// 'timeoutMs'." - confirmed live. Unlike max_output_tokens (a real Responses API field),
+// timeoutMs must never leave this process.
+test('analyzeSession never leaks its internal payload.timeoutMs into the real request body sent to the provider', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+  };
+  await analyzeSession(validAnalysisBody());
+  assert.ok(sentBody, 'the provider request must actually have been made');
+  assert.equal('timeoutMs' in sentBody, false);
+  assert.ok(Number.isFinite(sentBody.max_output_tokens), 'max_output_tokens, the one real budget field, must still be forwarded');
+});
+
 test('analyzeSession rejects MODEL_VISION_UNSUPPORTED before ever calling the provider, when images are supplied for a non-vision provider (brief §40 test 13)', async () => {
   let calls = 0;
   globalThis.fetch = async (url) => { calls += 1; if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse; return { ok: true, json: async () => ({}) }; };
