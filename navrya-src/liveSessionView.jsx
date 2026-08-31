@@ -1293,7 +1293,7 @@ function AiStrip({ session, entry, lang, onAnalyze }) {
   );
 }
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, character }) {
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
@@ -1331,7 +1331,7 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
         <Chip tone="neutral">{entryTimeLabel(entry, lang)}</Chip>
         <Chip tone="neutral">{[sessionsAdapter.displayCity(entry.market || entry.tradingSession || session.market), entry.timeframe || session.timeframe].filter(Boolean).join(' · ')}</Chip>
         <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
-          <Button variant="secondary" size="sm" icon="sparkle" onClick={() => onAnalyze(entry)}>{tr(lang, 'aiAnalyzeButton')}</Button>
+          <Button variant="secondary" size="sm" icon="sparkle" onClick={onOpenSessionAnalysis}>{tr(lang, 'aiAnalyzeButton')}</Button>
           <button type="button" onClick={() => onDeleteEntry(entry)} title={tr(lang, 'deleteEntryTitle')} style={{ display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 8, cursor: 'pointer', border: '1px solid rgba(255,56,48,.35)', background: 'rgba(255,56,48,.08)', color: 'var(--danger)' }}>
             <Icon name="trash" size={16} />
           </button>
@@ -2235,6 +2235,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // so the modal keeps opening with an empty dropzone for that unchanged path.
   const [chartModalInitialFile, setChartModalInitialFile] = React.useState(null);
   const [fateStep, setFateStep] = React.useState(null); // null | 'entry' | 'summary'
+  const [sessionAiPopupOpen, setSessionAiPopupOpen] = React.useState(false);
   const railRef = React.useRef(null);
 
   const session = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
@@ -2599,6 +2600,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                 session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
                 openScenarios={openScenarios}
                 onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage} onAnalyze={analyzeEntry}
+                onOpenSessionAnalysis={() => setSessionAiPopupOpen(true)}
                 onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
                 onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
                 onAddScenario={addScenario} character={character}
@@ -2649,6 +2651,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       )}
       {fateStep === 'entry' && <FateEntryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSubmit={submitFateEntry} />}
       {fateStep === 'summary' && <FateSummaryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSave={saveFateSummary} />}
+      {sessionAiPopupOpen && <SessionAiAnalysisModal session={session} lang={lang} onClose={() => setSessionAiPopupOpen(false)} />}
     </div>
   );
 }
