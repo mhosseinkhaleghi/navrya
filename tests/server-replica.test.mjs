@@ -48,32 +48,48 @@ test('hydrate() with no auth token resolves without hydrating and without markin
   assert.equal(domain.isHydrated(), false, 'a boot gate must keep waiting, not treat this as a genuinely empty account');
 });
 
-// PRODUCTION INCIDENT REGRESSION GUARD (2026-08-31): a domain store's own <script> tag can call
-// hydrate() before boot-language-gate.js's async auth check has resolved window.__NAVRYA_AUTH__ -
-// a real race (sequential <script src> tags never wait for an earlier script's own pending
-// fetch). Before this fix, that FIRST early call permanently memoized the "no user yet" no-op into
-// state.hydratePromise, so even a LATER, well-timed retry (e.g. character-app.jsx's own boot gate,
-// allReady(), called after every domain-registering script has already run) returned that same
-// stale resolved promise instead of ever performing the real fetch - confirmed live: the Analysis
-// Profile first-run gate reappeared on every reload even though the profile was already real and
-// persisted server-side, because GET .../analysis-profiles was never actually requested.
-test('hydrate() called before auth resolves, then again after auth resolves, actually fetches on the second call - the exact race that broke the Analysis Profile first-run gate in production', async () => {
+// PRODUCTION INCIDENT REGRESSION GUARD (2026-08-31): a domain store's own <script> tag calls
+// hydrate() SYNCHRONOUSLY, at its own script-load time - well before boot-language-gate.js's own
+// async GET /api/auth/session round trip can possibly have resolved window.__NAVRYA_AUTH__. A
+// first fix attempt just stopped permanently memoizing that too-early "no user yet" result,
+// hoping a LATER retry (character-app.jsx's own allReady() boot gate) would land after auth had
+// resolved - but that boot gate is ALSO called synchronously, in the very same early tick, so it
+// lost the identical race (confirmed live via a real Playwright session: still zero requests to
+// GET .../analysis-profiles, even 5+ seconds after reload). The real fix awaits
+// boot-language-gate.js's own window.__NAVRYA_AUTH_READY__ promise first, so hasCurrentUser() is
+// only ever read once the real answer is genuinely known.
+test('hydrate() awaits window.__NAVRYA_AUTH_READY__ before checking auth, rather than racing a synchronous check against it - the real fix for the Analysis Profile first-run gate looping in production', async () => {
+  let resolveAuthReady;
+  const authReadyPromise = new Promise((resolve) => { resolveAuthReady = resolve; });
   const { domain, sandbox, fetchCalls } = await loadDomainWithFetch({
     localStorage: memoryStorage(), fetchImpl: async () => ({ ok: true, json: async () => ({ items: [{ id: 'real-profile-1' }] }) })
   });
-  const firstResult = await domain.hydrate();
-  assert.equal(domain.isHydrated(), false, 'still not hydrated - no user was available yet');
-  assert.equal(fetchCalls.length, 0, 'no network call must happen before a real user is available');
+  // Simulate the real boot sequence: window.__NAVRYA_AUTH_READY__ exists (boot-language-gate.js's
+  // own script already ran) but has not settled yet - window.__NAVRYA_AUTH__ is still unset.
+  sandbox.window.__NAVRYA_AUTH_READY__ = authReadyPromise;
+  delete sandbox.window.__NAVRYA_AUTH__;
 
-  // Simulate boot-language-gate.js's own async auth check resolving moments later - the exact
-  // real-world timing this bug depended on.
+  const hydratePromise = domain.hydrate();
+  await flush();
+  assert.equal(fetchCalls.length, 0, 'no network call may happen before the real auth check has settled');
+  assert.equal(domain.isHydrated(), false);
+
+  // Now the real auth check settles - the exact moment boot-language-gate.js's own fetch resolves.
   sandbox.window.__NAVRYA_AUTH__ = { authenticated: true, userId: 'user-1', user: { id: 'user-1' }, csrfToken: 'test-csrf' };
+  resolveAuthReady(sandbox.window.__NAVRYA_AUTH__);
+  await hydratePromise;
 
-  await domain.hydrate();
-  assert.equal(fetchCalls.length, 1, 'the real fetch must actually happen once a user is available, not stay stuck on the earlier no-op forever');
+  assert.equal(fetchCalls.length, 1, 'the real fetch must happen once auth has genuinely resolved, not be skipped or stuck on an earlier guess');
   assert.equal(domain.isHydrated(), true);
   assert.equal(domain.list().length, 1);
   assert.equal(domain.list()[0].id, 'real-profile-1', 'the real, already-persisted server data must be reflected, not an empty list');
+});
+
+test('hydrate() falls back to a synchronous hasCurrentUser() check when window.__NAVRYA_AUTH_READY__ does not exist (e.g. a page that never loads boot-language-gate.js)', async () => {
+  const { domain, fetchCalls } = await loadDomainWithFetch({ localStorage: memoryStorage(), token: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ items: [] }) }) });
+  await domain.hydrate();
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(domain.isHydrated(), true);
 });
 
 test('hydrate() is idempotent - a second call does not fetch again', async () => {

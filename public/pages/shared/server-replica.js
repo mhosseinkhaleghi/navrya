@@ -38,6 +38,22 @@
     return Boolean(auth && auth.authenticated);
   }
 
+  // PRODUCTION INCIDENT FIX (2026-08-31), real fix (see hydrate()'s own comment below for the
+  // narrower first attempt that turned out insufficient): boot-language-gate.js (the very first
+  // script on every page) exposes window.__NAVRYA_AUTH_READY__ - a promise that resolves once its
+  // own GET /api/auth/session round trip has genuinely settled (success or failure), the same
+  // moment it finalizes window.__NAVRYA_AUTH__. A domain store's own <script> tag calling
+  // hydrate() runs SYNCHRONOUSLY, well before that fetch can possibly have completed - checking
+  // hasCurrentUser() at that instant is a real, always-losing race, not a rare edge case. Awaiting
+  // this promise first (falling back to an already-resolved Promise when the global doesn't exist,
+  // e.g. this file's own unit tests, or any page that doesn't load boot-language-gate.js) means
+  // hasCurrentUser() is only ever evaluated once the real answer is known, never before.
+  function authReady() {
+    return (window.__NAVRYA_AUTH_READY__ && typeof window.__NAVRYA_AUTH_READY__.then === 'function')
+      ? window.__NAVRYA_AUTH_READY__
+      : Promise.resolve();
+  }
+
   function notify(type, detail) {
     if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
       window.dispatchEvent(detail === undefined ? new CustomEvent(type) : new CustomEvent(type, { detail: detail }));
@@ -115,33 +131,28 @@
       notify('tradejournal:replica-' + name + '-changed', { count: state.items.length });
     }
 
+    // PRODUCTION INCIDENT FIX (2026-08-31): the first attempt here only stopped PERMANENTLY
+    // memoizing a too-early "no user yet" result, hoping a LATER hydrate() call (e.g.
+    // character-app.jsx's own allReady() boot gate) would land after auth had resolved - but
+    // that boot gate is itself called synchronously, in the very same early tick, so it can lose
+    // the exact same race. The real fix: always await authReady() (boot-language-gate.js's own
+    // settled-auth-check promise) BEFORE ever looking at hasCurrentUser(), so the answer is only
+    // ever read once it is genuinely known - never a point-in-time guess. Confirmed live: the
+    // Analysis Profile first-run gate kept reappearing on every reload even though the profile was
+    // real and already persisted server-side - GET .../analysis-profiles was never even requested.
     function hydrate() {
       if (state.hydratePromise) return state.hydratePromise;
-      if (!hasCurrentUser()) {
-        // No authenticated user yet - never treat this as "the account is empty." Hydration
-        // simply has not run; isHydrated() stays false so a boot gate keeps waiting rather than
-        // rendering a false-empty account.
-        //
-        // PRODUCTION INCIDENT FIX (2026-08-31): this used to memoize into state.hydratePromise,
-        // permanently - a domain store whose own <script> tag runs before boot-language-gate.js's
-        // async auth check has resolved window.__NAVRYA_AUTH__ (a real race: that check is a
-        // network round trip, and plain sequential <script src> tags never wait for a PRIOR
-        // script's own async work to finish) would call hydrate() here, get this no-op resolved
-        // promise forever after, and never actually fetch its real data even once the user WAS
-        // available moments later - character-app.jsx's own boot gate (Promise.all of every
-        // domain's hydrate()) would then resolve near-instantly too, believing hydration had
-        // completed, while listSync() stayed permanently empty. Confirmed live: the Analysis
-        // Profile first-run gate kept reappearing on every reload even though the profile was
-        // real and already persisted server-side - GET .../analysis-profiles was never even
-        // requested. Returning a fresh, unmemoized Promise.resolve() here means the NEXT hydrate()
-        // call (e.g. from allReady()'s own boot gate, called after this script's own synchronous
-        // top-level code has already run) re-checks hasCurrentUser() for real and performs the
-        // actual fetch once auth has genuinely resolved.
-        return Promise.resolve();
-      }
-      state.hydratePromise = requestJson(config.hydrateUrl)
-        .then(function (body) { setAllLocal((extractList(body) || []).map(deepClone)); state.hydrated = true; state.hydrationError = null; })
-        .catch(function (error) { state.hydrated = true; state.hydrationError = error; });
+      state.hydratePromise = authReady().then(function () {
+        if (!hasCurrentUser()) {
+          // Genuinely no session, now that the real check has settled - never treat this as "the
+          // account is empty." isHydrated() stays false so a boot gate keeps waiting rather than
+          // rendering a false-empty account (matches this file's pre-existing contract exactly).
+          return;
+        }
+        return requestJson(config.hydrateUrl)
+          .then(function (body) { setAllLocal((extractList(body) || []).map(deepClone)); state.hydrated = true; state.hydrationError = null; })
+          .catch(function (error) { state.hydrated = true; state.hydrationError = error; });
+      });
       return state.hydratePromise;
     }
 
@@ -260,14 +271,16 @@
       notify('tradejournal:replica-' + name + '-changed');
     }
 
+    // PRODUCTION INCIDENT FIX (2026-08-31) - same authReady()-first fix as registerListDomain's
+    // own hydrate() above; see that function's comment for the full race-condition explanation.
     function hydrate() {
       if (state.hydratePromise) return state.hydratePromise;
-      // PRODUCTION INCIDENT FIX (2026-08-31) - same unmemoized-retry fix as registerListDomain's
-      // own hydrate() above; see that function's comment for the full race-condition explanation.
-      if (!hasCurrentUser()) return Promise.resolve();
-      state.hydratePromise = requestJson(config.hydrateUrl)
-        .then(function (body) { setLocal(deepClone(extractDoc(body))); state.hydrated = true; state.hydrationError = null; })
-        .catch(function (error) { state.hydrated = true; state.hydrationError = error; });
+      state.hydratePromise = authReady().then(function () {
+        if (!hasCurrentUser()) return;
+        return requestJson(config.hydrateUrl)
+          .then(function (body) { setLocal(deepClone(extractDoc(body))); state.hydrated = true; state.hydrationError = null; })
+          .catch(function (error) { state.hydrated = true; state.hydrationError = error; });
+      });
       return state.hydratePromise;
     }
 
