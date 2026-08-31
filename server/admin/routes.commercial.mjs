@@ -29,6 +29,12 @@ function isNonNegativeNumber(value) { return Number.isFinite(value) && value >= 
 function isZeroPricedPair(promptPricePer1k, completionPricePer1k) {
   return promptPricePer1k === 0 && completionPricePer1k === 0;
 }
+// Same reasoning as isZeroPricedPair() above, for a flat-priced (046_flat_priced_ai_features.sql)
+// row instead of a token-priced one - a flat rate saved as exactly 0 while enabled would silently
+// make every provider-funded call in that pricing mode free forever.
+function isZeroFlatPrice(flatPricePerCallMicroUsd) {
+  return flatPricePerCallMicroUsd === 0;
+}
 
 // Commercial System Slice 1 - Admin controls for plans, wallet rules, markup overrides, provider
 // model pricing, and per-user credit/debit (spec sections 14/15/17/18/19/50). Mounted at
@@ -162,13 +168,22 @@ export function router(repo) {
     // safely to the base prompt price rather than $0 (see wallet-service.mjs's costMicroUsdFor()).
     const cachedInputPricePer1k = numOrNull(body.cachedInputPricePer1k);
     const cacheWriteInputPricePer1k = numOrNull(body.cacheWriteInputPricePer1k);
+    // Flat, non-token per-call rate (046_flat_priced_ai_features.sql) - a real provider pricing
+    // shape (e.g. gpt-image-1, billed per image/size rather than by token), independent of the
+    // prompt/completion fields above. See wallet-service.mjs's resolvePricingRate() for how a row
+    // that sets this is treated as flat-priced. Admin UI sends plain USD (same convention as
+    // storage-products' priceAmountUsd) - converted to the stored micro-USD unit here, not in the
+    // client.
+    const flatPricePerCallUsdInput = numOrNull(body.flatPricePerCallUsd);
+    const flatPricePerCallMicroUsd = flatPricePerCallUsdInput === null ? null : toMicroUsd(flatPricePerCallUsdInput);
     const enabled = body.enabled !== false;
     // A zero-priced row that resolves as "configured" must never silently make provider-funded
     // calls free forever - see isZeroPricedPair()'s own comment. Only checked when the row would
     // actually be enabled; a disabled row can hold whatever draft values without risk.
     if (enabled && isZeroPricedPair(promptPricePer1k, completionPricePer1k)) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
+    if (enabled && isZeroFlatPrice(flatPricePerCallMicroUsd)) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
     const row = await repo.providerModelPricing.upsert({
-      provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k,
+      provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, flatPricePerCallMicroUsd,
       currency: body.currency || 'USD', enabled
     });
     await audit(req, 'commercial.providerModelPricing.upsert', 'providerModelPricing', provider + ':' + model, row);

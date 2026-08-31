@@ -540,7 +540,13 @@ function strategyAttachmentContent(attachments) {
 // extra payload.reasoning/payload.text.verbosity a caller sets is simply never read by either.
 async function callOpenAI(payload, apiKey, model) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90000);
+  // Session Analysis output-budget policy (brief §4) once again: same additive, opt-in
+  // payload.timeoutMs as payload.max_output_tokens above - a frontier-tier reasoning model doing a
+  // real vision + deep-reasoning + full structured-JSON analysis can genuinely take well over 90s
+  // (confirmed live: gpt-5.6-sol aborted at the old fixed 90s ceiling on a real chart image, while
+  // the same request completed in 43-56s on the faster tiers). Every other existing caller never
+  // sets this field and keeps the original 90s ceiling unchanged.
+  const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -597,7 +603,8 @@ async function callOpenAI(payload, apiKey, model) {
 // is still run as a safety net since tool-use is reliable but not byte-identical-strict.
 async function callAnthropic(payload, apiKey, model) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90000);
+  // Same additive, opt-in payload.timeoutMs as callOpenAI's own comment above.
+  const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
   try {
     const systemItem = payload.input.find((item) => item.role === 'system');
     const systemText = systemItem ? systemItem.content.map((part) => part.text || '').join('\n') : '';
@@ -672,7 +679,8 @@ const compatibleBaseUrl = { kimi: 'https://api.moonshot.cn/v1/chat/completions',
 // than silently ignored.
 async function callOpenAICompatible(provider, payload, apiKey, model) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90000);
+  // Same additive, opt-in payload.timeoutMs as callOpenAI's own comment above.
+  const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
   try {
     const schema = payload.text.format.schema;
     const requiredKeys = schema.required || [];
@@ -1724,7 +1732,12 @@ async function analyzeSession(body) {
       { role: 'user', content: [{ type: 'input_text', text: contextText }, ...imageContent(images)] }
     ],
     text: { format: sessionAnalysisFormat },
-    max_output_tokens: budget
+    max_output_tokens: budget,
+    // Production incident: a frontier-tier reasoning model (real chart, deep reasoning, full
+    // structured JSON answer) can genuinely take well over the platform-wide 90s default - raised
+    // for every analysis type since even "initial" alone was observed needing 43-56s on cheaper
+    // tiers already, leaving little margin on the frontier tier.
+    timeoutMs: 180000
   }, SESSION_ANALYSIS_SOURCE[analysisType] || 'sessions.analyze');
 
   const data = validateSessionAnalysisResult(Object.assign({ analysisType }, rawResult), body);
@@ -2530,8 +2543,16 @@ const server = http.createServer(async (request, response) => {
       : error.message === 'MODEL_VISION_UNSUPPORTED' ? 422
       : error.message === 'CHART_IMAGE_REQUIRED' || error.message === 'INVALID_CHART_IMAGE' ? 400
       : error.message === 'ANALYSIS_OUTPUT_TRUNCATED' ? 502
+      // A provider call that hit its AbortController timeout throws the raw fetch abort error
+      // (name:'AbortError', e.g. "This operation was aborted") rather than one of the named errors
+      // above - confirmed live with the frontier model tier on a real chart image. Mapped to a
+      // distinct, honest 504 instead of falling through to a bare, undiagnosed 500.
+      : error.name === 'AbortError' ? 504
       : 500;
-    return json(response, status, { error: error.message || 'PATTERN_AI_FAILED' });
+    // error.message for an AbortError is the raw fetch abort text ("This operation was aborted"),
+    // not a stable code a client can key a translated message off of - normalized to one here.
+    const errorCode = error.name === 'AbortError' ? 'PROVIDER_TIMEOUT' : (error.message || 'PATTERN_AI_FAILED');
+    return json(response, status, { error: errorCode });
   }
 });
 

@@ -61,6 +61,7 @@ const copy = {
     err_NETWORK_ERROR: 'ارتباط با سرور تحلیل برقرار نشد.',
     err_ANALYSIS_FAILED: 'تحلیل با خطا مواجه شد. لطفاً دوباره تلاش کنید.',
     err_ANALYSIS_OUTPUT_TRUNCATED: 'پاسخ هوش مصنوعی خیلی طولانی شد و ناتمام ماند. لطفاً دوباره تلاش کنید.',
+    err_PROVIDER_TIMEOUT: 'این مدل بیش از حد معمول طول کشید. لطفاً دوباره تلاش کنید یا مدل دیگری انتخاب کنید.',
     unsupportedVisionInline: 'مدل انتخاب‌شده نمی‌تواند چارت را ببیند — مدل دیگری انتخاب کنید.'
   },
   ar: {
@@ -92,6 +93,7 @@ const copy = {
     err_NETWORK_ERROR: 'تعذّر الاتصال بخادم التحليل.',
     err_ANALYSIS_FAILED: 'فشل التحليل. حاول مرة أخرى.',
     err_ANALYSIS_OUTPUT_TRUNCATED: 'استجابة الذكاء الاصطناعي كانت طويلة جداً وتوقفت قبل الاكتمال. حاول مرة أخرى.',
+    err_PROVIDER_TIMEOUT: 'استغرق هذا النموذج وقتاً أطول من المعتاد. حاول مرة أخرى أو اختر نموذجاً آخر.',
     unsupportedVisionInline: 'النموذج المختار لا يمكنه رؤية المخطط — اختر نموذجاً آخر.'
   },
   en: {
@@ -123,6 +125,7 @@ const copy = {
     err_NETWORK_ERROR: "Couldn't reach the analysis server.",
     err_ANALYSIS_FAILED: 'The analysis failed. Please try again.',
     err_ANALYSIS_OUTPUT_TRUNCATED: "The AI's response was too long and got cut off. Please try again.",
+    err_PROVIDER_TIMEOUT: 'This model took longer than usual. Please try again or pick a different model.',
     unsupportedVisionInline: "This model can't see the chart — choose a different model."
   },
   es: {
@@ -154,6 +157,7 @@ const copy = {
     err_NETWORK_ERROR: 'No se pudo conectar con el servidor de análisis.',
     err_ANALYSIS_FAILED: 'El análisis falló. Inténtalo de nuevo.',
     err_ANALYSIS_OUTPUT_TRUNCATED: 'La respuesta de la IA fue demasiado larga y se cortó. Inténtalo de nuevo.',
+    err_PROVIDER_TIMEOUT: 'Este modelo tardó más de lo habitual. Inténtalo de nuevo o elige otro modelo.',
     unsupportedVisionInline: 'Este modelo no puede ver el gráfico — elige otro modelo.'
   }
 };
@@ -261,6 +265,13 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   const activeLang = lang || 'fa';
   const rtl = activeLang === 'fa' || activeLang === 'ar';
 
+  // "View analysis again" (not just "start a new one"): a plain evaluation-mode-aware, cheap
+  // per-render derivation (not a hook) - when this popup is opened for an entry that already has a
+  // saved real analysis, show that saved result immediately rather than always restarting at the
+  // empty form. Evaluation requests (scenarioTargets set) never have their own saved result to show
+  // this way - they always start fresh.
+  const hasSavedResult = !(Array.isArray(scenarioTargets) && scenarioTargets.length > 0) && !!(pinnedEntry && pinnedEntry.aiAnalysisResult);
+
   const [userView, setUserView] = React.useState('');
   const [provider, setProvider] = React.useState(() => (aiSettingsStore() ? aiSettingsStore().activeProvider() : 'openai'));
   const [model, setModel] = React.useState(() => (aiSettingsStore() ? aiSettingsStore().activeModel() : ''));
@@ -271,10 +282,10 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   });
   const [adherenceIndex, setAdherenceIndex] = React.useState(1); // 0 open · 1 balanced (default) · 2 strict
   const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
-  const [phase, setPhase] = React.useState('form'); // 'form' | 'generating' | 'result' | 'error'
+  const [phase, setPhase] = React.useState(hasSavedResult ? 'result' : 'form'); // 'form' | 'generating' | 'result' | 'error'
   const [stageIndex, setStageIndex] = React.useState(0);
-  const [analysisResult, setAnalysisResult] = React.useState(null);
-  const [analysisMeta, setAnalysisMeta] = React.useState(null);
+  const [analysisResult, setAnalysisResult] = React.useState(hasSavedResult ? pinnedEntry.aiAnalysisResult : null);
+  const [analysisMeta, setAnalysisMeta] = React.useState(hasSavedResult ? { cached: true, entry: pinnedEntry } : null);
   const [errorCode, setErrorCode] = React.useState(null);
   // Self-contained "Visualize Scenario" loading/result state for THIS popup's own result card -
   // independent of whatever a caller separately tracks for its own inline card elsewhere (e.g.

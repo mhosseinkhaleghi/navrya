@@ -24,7 +24,24 @@ test('the per-entry popup is wired to real persistence (onResult/onAddScenario/o
   assert.match(source, /onVisualizeScenario=\{runVisualizeAiScenario\}/);
 });
 
-test('entry-level AiStrip stays wired to the existing, separate local-demo quick-blurb action, unchanged', () => {
-  assert.match(source, /onAnalyze=\{analyzeEntry\}/);
-  assert.match(source, /<AiStrip session=\{session\} entry=\{entry\} lang=\{lang\} onAnalyze=\{\(\) => onAnalyze\(entry\)\} \/>/);
+// Production incident (2026-08-31): once a real analysis was saved, this same leftover local-demo
+// strip crashed with "Cannot read properties of undefined (reading 'length')" - it unconditionally
+// read entry.aiAnalysisResult.patterns/.chartSummary, a shape only the OLD, no-longer-reachable
+// local-demo path ever wrote; computeAnalysisPatches() (session-analysis-client.js) writes the
+// REAL normalized analysis result (thesis/blocks/scenarios/...) into that exact same field. Rather
+// than teach AiStrip two incompatible shapes, it (and the dead analyzeEntry()/makeAiResult() path
+// that only it ever called) was removed outright - the real modal is the only "view/start
+// analysis" entry point for an entry now.
+test('the dead, now-crashing AiStrip local-demo component and its analyzeEntry()/makeAiResult() callers are gone', () => {
+  assert.doesNotMatch(source, /function AiStrip\(/);
+  assert.doesNotMatch(source, /<AiStrip /);
+  assert.doesNotMatch(source, /function analyzeEntry\(/);
+  assert.doesNotMatch(source, /function makeAiResult\(/);
+});
+
+// "View analysis again" (not just "start a new one") now goes through the SAME real modal instead
+// of AiStrip's broken toggle - see sessionAiAnalysisModal.jsx's hasSavedResult.
+test('EntryDetailPanel\'s single AI-analysis button is the real popup trigger, with no separate onAnalyze prop left over', () => {
+  assert.doesNotMatch(source, /onAnalyze/);
+  assert.match(source, /function EntryDetailPanel\(\{ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onOpenSessionAnalysis,/);
 });

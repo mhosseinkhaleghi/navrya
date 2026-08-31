@@ -16,7 +16,7 @@ const translations = {
     comSavePlan: 'Save plan', comMarkupPercent: 'Global markup %', comMultiplier: 'Multiplier', comGrossMargin: 'Gross margin', comMinTopUp: 'Minimum top-up (USD)', comSignupPromo: 'Signup promo credit (USD, retail)', comSaveWalletRules: 'Save wallet rules',
     comSimulatorTitle: 'AI Pricing Simulator', comProviderCost: 'Provider cost (USD)', comRetail: 'Retail', comProfit: 'Gross profit',
     comMarkupRulesTitle: 'Markup overrides', comScopeType: 'Scope type', comScopeKey: 'Scope key (feature/provider/model name)', comAddRule: 'Add override', comRemove: 'Remove', comNoRules: 'No overrides - the global markup applies to everything.',
-    comProviderPricingTitle: 'Provider model pricing', comModel: 'Model', comPromptPrice: 'Prompt $/1K', comCompletionPrice: 'Completion $/1K', comAddPricing: 'Add model pricing', comNoModelPricing: 'No model-specific pricing - the provider-level rate (AI tab) applies.',
+    comProviderPricingTitle: 'Provider model pricing', comModel: 'Model', comPromptPrice: 'Prompt $/1K', comCompletionPrice: 'Completion $/1K', comFlatPrice: 'Flat $/call (non-token, e.g. image generation)', comAddPricing: 'Add model pricing', comNoModelPricing: 'No model-specific pricing - the provider-level rate (AI tab) applies.',
     comBillingReadinessTitle: 'AI billing readiness', comWalletEnforcedOn: 'Wallet enforcement: ON', comWalletEnforcedOff: 'Wallet enforcement: OFF (platform-funded, unbilled)',
     comInternalSecretConfigured: 'Internal billing bridge: secret configured', comInternalSecretMissing: 'Internal billing bridge: secret NOT configured',
     comBillingReadinessEmpty: 'No AI usage recorded yet.', comPriceConfigured: 'Price configured',
@@ -2188,7 +2188,8 @@ function commercialWalletSubTab() {
     if (!pricingData.rows.length) pricingCard.append(el('p', 'hint', t('comNoModelPricing')));
     pricingData.rows.forEach((row) => {
       const line = el('div', 'admin-btn-row');
-      line.append(el('span', '', row.provider + ' / ' + row.model + ' — ' + t('comPromptPrice') + ': ' + (row.promptPricePer1k ?? '—') + ', ' + t('comCompletionPrice') + ': ' + (row.completionPricePer1k ?? '—')));
+      const flatLabel = row.flatPricePerCallMicroUsd != null ? ', ' + t('comFlatPrice') + ': ' + fmtMicroUsd(row.flatPricePerCallMicroUsd) : '';
+      line.append(el('span', '', row.provider + ' / ' + row.model + ' — ' + t('comPromptPrice') + ': ' + (row.promptPricePer1k ?? '—') + ', ' + t('comCompletionPrice') + ': ' + (row.completionPricePer1k ?? '—') + flatLabel));
       const removeBtn = el('button', 'btn btn-secondary btn-sm', t('comRemove'));
       removeBtn.type = 'button';
       removeBtn.onclick = () => api('/commercial/provider-pricing/' + row.provider + '/' + row.model, { method: 'DELETE' }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
@@ -2200,15 +2201,17 @@ function commercialWalletSubTab() {
     const modelField = field(t('comModel'), 'text', '');
     const promptPriceField = field(t('comPromptPrice'), 'number', '');
     const completionPriceField = field(t('comCompletionPrice'), 'number', '');
+    const flatPriceField = field(t('comFlatPrice'), 'number', '');
     const addPricingBtn = el('button', 'btn btn-secondary', t('comAddPricing'));
     addPricingBtn.type = 'button';
     addPricingBtn.onclick = () => {
       api('/commercial/provider-pricing', { method: 'POST', body: JSON.stringify({
-        provider: providerSelect.value, model: modelField.input.value, promptPricePer1k: promptPriceField.input.value || null, completionPricePer1k: completionPriceField.input.value || null
+        provider: providerSelect.value, model: modelField.input.value, promptPricePer1k: promptPriceField.input.value || null, completionPricePer1k: completionPriceField.input.value || null,
+        flatPricePerCallUsd: flatPriceField.input.value || null
       }) }).then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
     };
     const addPricingRow = el('div', 'admin-form-row admin-form-row-submit');
-    addPricingRow.append(providerSelect, modelField.wrap, promptPriceField.wrap, completionPriceField.wrap, addPricingBtn);
+    addPricingRow.append(providerSelect, modelField.wrap, promptPriceField.wrap, completionPriceField.wrap, flatPriceField.wrap, addPricingBtn);
     pricingCard.append(addPricingRow);
     wrap.append(pricingCard);
 

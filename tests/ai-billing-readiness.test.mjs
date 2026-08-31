@@ -45,6 +45,30 @@ test('an enabled provider_model_pricing row with both prices at 0 is rejected (Z
   assert.equal(await repo.providerModelPricing.get('openai', 'gpt-5.6'), null, 'the rejected row must never be persisted');
 });
 
+// Production incident (046_flat_priced_ai_features.sql): the flat, non-token per-call rate
+// (gpt-image-1-style pricing) needs the exact same zero-price guard as the token-priced pair
+// above - an enabled row saved at exactly $0/call would silently make every provider-funded call
+// in that pricing mode free forever.
+test('an enabled provider_model_pricing row with flatPricePerCallUsd at 0 is rejected (ZERO_PRICE_NOT_ALLOWED)', async () => {
+  const admin = await createAdmin('Zero Flat Price Admin');
+  const result = await api('POST', '/api/admin/commercial/provider-pricing', {
+    userId: admin.id, body: { provider: 'openai', model: 'gpt-image-1', flatPricePerCallUsd: 0, enabled: true }
+  });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, 'ZERO_PRICE_NOT_ALLOWED');
+  assert.equal(await repo.providerModelPricing.get('openai', 'gpt-image-1'), null, 'the rejected row must never be persisted');
+});
+
+test('a real flatPricePerCallUsd is accepted and stored converted to micro-USD', async () => {
+  const admin = await createAdmin('Flat Price Admin');
+  const result = await api('POST', '/api/admin/commercial/provider-pricing', {
+    userId: admin.id, body: { provider: 'openai', model: 'gpt-image-1', flatPricePerCallUsd: 0.07, enabled: true }
+  });
+  assert.equal(result.status, 201);
+  const row = await repo.providerModelPricing.get('openai', 'gpt-image-1');
+  assert.equal(row.flatPricePerCallMicroUsd, 70000);
+});
+
 test('a DISABLED provider_model_pricing row with both prices at 0 is allowed (a draft the admin has not turned on yet)', async () => {
   const admin = await createAdmin('Draft Zero Price Admin');
   const result = await api('POST', '/api/admin/commercial/provider-pricing', {

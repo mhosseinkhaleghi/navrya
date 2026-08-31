@@ -27,6 +27,16 @@ export function toMicroUsd(usd) { return Math.round(Number(usd) * MICRO); }
 export async function resolvePricingRate(repo, { provider, model }) {
   if (model) {
     const modelRow = await repo.providerModelPricing.get(provider, model);
+    // 046_flat_priced_ai_features.sql: a non-token, per-call rate (e.g. gpt-image-1, billed by
+    // OpenAI per image/size rather than by token - and whose call always reports usage:null, so
+    // there is no token count to price in the first place). Only ever comes from the model-specific
+    // row, same as cached/cache-write pricing above - the provider-level fallback table has no
+    // concept of "this whole provider is flat-priced". Checked before the token-shaped branch below
+    // so a row that sets flatPricePerCallMicroUsd is unambiguously flat-priced even if it also has
+    // stale/irrelevant token fields left over.
+    if (modelRow && modelRow.enabled && modelRow.flatPricePerCallMicroUsd != null) {
+      return { flatPricePerCallMicroUsd: modelRow.flatPricePerCallMicroUsd };
+    }
     if (modelRow && modelRow.enabled && (modelRow.promptPricePer1k != null || modelRow.completionPricePer1k != null)) {
       return {
         promptPricePer1k: modelRow.promptPricePer1k || 0, completionPricePer1k: modelRow.completionPricePer1k || 0,
@@ -86,6 +96,16 @@ export function costMicroUsdFor(rate, { promptTokens, completionTokens, cachedIn
   return Math.max(0, Math.round(usd * MICRO));
 }
 
+// Shared by reserveForAiCall's estimate and settleAiCall's real charge: a flat-priced rate
+// (046_flat_priced_ai_features.sql) is the SAME known amount both times - there is no per-call
+// variance to estimate, and no usage to price it from (visualizeScenario() always reports
+// usage:null for exactly this reason). Falls through to the existing token formula for every
+// other (token-priced) rate, unchanged.
+function providerCostMicroUsdFor(rate, tokenUsage) {
+  if (rate.flatPricePerCallMicroUsd != null) return rate.flatPricePerCallMicroUsd;
+  return costMicroUsdFor(rate, tokenUsage);
+}
+
 // Pre-call estimate used only to size the reservation hold, never the final charge (settleAiCall
 // always recomputes from real usage). ~4 chars/token is a standard rough heuristic; a heavy
 // image payload (base64 in the JSON body) inflates the character count enormously, which makes
@@ -111,7 +131,7 @@ export async function reserveForAiCall(repo, { userId, feature, provider, model,
   if (!rate) return { ok: false, reason: 'PROVIDER_PRICING_NOT_CONFIGURED' };
   const { markupPercent, retailMultiplier } = await resolveRetailMultiplier(repo, { feature, provider, model });
   const estimate = estimateTokensFromPayload(payload);
-  const estimatedProviderCostMicroUsd = costMicroUsdFor(rate, estimate);
+  const estimatedProviderCostMicroUsd = providerCostMicroUsdFor(rate, estimate);
   const estimatedRetailMicroUsd = Math.round(estimatedProviderCostMicroUsd * retailMultiplier);
   const result = await repo.wallet.reserve(userId, { estimatedRetailMicroUsd, provider, model, feature });
   if (!result.ok) return result;
@@ -123,7 +143,7 @@ export async function reserveForAiCall(repo, { userId, feature, provider, model,
 export async function settleAiCall(repo, { reservationId, provider, model, feature, usage }) {
   const rate = await resolvePricingRate(repo, { provider, model });
   const { markupPercent, retailMultiplier } = await resolveRetailMultiplier(repo, { feature, provider, model });
-  const providerCostMicroUsd = rate ? costMicroUsdFor(rate, {
+  const providerCostMicroUsd = rate ? providerCostMicroUsdFor(rate, {
     promptTokens: usage && usage.promptTokens, completionTokens: usage && usage.completionTokens,
     cachedInputTokens: usage && usage.cachedInputTokens, cacheWriteInputTokens: usage && usage.cacheWriteInputTokens
   }) : 0;

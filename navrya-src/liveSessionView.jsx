@@ -457,20 +457,6 @@ function readAsDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
-function makeAiResult(session, entry, lang) {
-  const patterns = [];
-  flatScenarios(session).forEach(({ scenario }) => {
-    if (scenario.pattern && scenario.pattern.name && !patterns.some((p) => p.patternName === scenario.pattern.name)) {
-      patterns.push({ patternName: scenario.pattern.name, confidence: Math.max(40, patternInfo(scenario).pct) });
-    }
-  });
-  return {
-    provider: 'local-demo',
-    chartSummary: tr(lang, 'aiDemoSummary'),
-    patterns,
-    scenarioAssessments: (entry.scenarios || []).slice(0, 3).map((s) => ({ scenarioTitle: s.title, stillValid: probabilityOf(s) > 0 }))
-  };
-}
 // Ported from session-entry-flow.js's own makeSessionAnalysis() - a real "local-demo" summary
 // computed from this session's actual entries/scenarios/patterns, not a fabricated one: overview
 // count, the last 5 real timeline entries, real pattern-completion progress, real scenario
@@ -1280,33 +1266,8 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
   );
 }
 
-function AiStrip({ session, entry, lang, onAnalyze }) {
-  const [expanded, setExpanded] = React.useState(false);
-  const result = entry.aiAnalysisResult;
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid color-mix(in srgb, var(--char-accent) 40%, transparent)', background: 'var(--char-active-surface)' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--char-accent)' }}><Icon name="sparkle" size={16} /><span style={{ fontSize: 12 }}>{tr(lang, 'aiStripTitle')}</span></span>
-        <span style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>{result ? tr(lang, 'aiReady') : tr(lang, 'aiNotReady')}</span>
-        <button type="button" onClick={() => (result ? setExpanded((v) => !v) : onAnalyze())} style={{ height: 30, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'transparent', color: 'var(--char-accent)', font: 'var(--type-body)', fontSize: 11 }}>
-          {result ? (expanded ? tr(lang, 'closeAction') : tr(lang, 'viewAction')) : tr(lang, 'aiAnalyzeButton')}
-        </button>
-      </div>
-      {expanded && result && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 11, lineHeight: 1.8 }}>
-          <p dir="auto" style={{ margin: 0 }}>{result.chartSummary}</p>
-          {!!result.patterns.length && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {result.patterns.map((p, i) => <Chip key={i} tone="accent">{p.patternName} · {p.confidence}%</Chip>)}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, character }) {
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
@@ -1379,7 +1340,6 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
                 onBlur={(e) => { if (e.target.value !== (note || '')) onNote(entry, e.target.value); }} />
             </label>
           </AiMagicFill>
-          <AiStrip session={session} entry={entry} lang={lang} onAnalyze={() => onAnalyze(entry)} />
         </div>
         <div style={{ width: 400, flex: 'none', padding: 16, display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(3,8,7,.35)', borderInlineStart: '1px solid var(--border-hairline)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2485,12 +2445,6 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       if (target.type === 'movement') target.movementNote = value; else target.note = value;
     }, 'note_edited', tr(lang, 'noteLabel'), null, true);
   }
-  function analyzeEntry(entry) {
-    persist((s) => {
-      const target = (s.entries || []).find((e) => e.id === entry.id);
-      if (target) target.aiAnalysisResult = makeAiResult(s, target, lang);
-    }, 'entry_ai_analyzed', tr(lang, 'aiAnalyzeButton'), null, false);
-  }
   function addScenario(entry) {
     const scenario = {
       id: window.TradeJournalWorkspace.id('scenario'), entryId: entry.id, title: tr(lang, 'newScenarioTitle'), description: '', evidence: '',
@@ -2733,7 +2687,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                 key={selEntry.id}
                 session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
                 openScenarios={openScenarios}
-                onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage} onAnalyze={analyzeEntry}
+                onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage}
                 onOpenSessionAnalysis={() => setSessionAnalysisEntry(selEntry)}
                 onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
                 onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
@@ -2802,8 +2756,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           }}
         />
       )}
-      {/* Per-entry "AI analysis" trigger (EntryDetailPanel's own top button, wired directly to the
-          real popup rather than the AiStrip's separate local-demo quick blurb) - same full
+      {/* Per-entry "AI analysis" trigger (EntryDetailPanel's own top button) - same full
           persist()/addScenario()/updateScenario() plumbing as FateSummaryModal's own embedded
           instance above, just targeting the specific entry the trader had open when they clicked. */}
       {sessionAnalysisEntry && (

@@ -2351,6 +2351,10 @@ export function createPgRepo(pool) {
       // AI Cost Control (043_ai_cost_control.sql) - additive/nullable, see that migration's comment.
       cachedInputPricePer1k: row.cached_input_price_per_1k == null ? null : Number(row.cached_input_price_per_1k),
       cacheWriteInputPricePer1k: row.cache_write_input_price_per_1k == null ? null : Number(row.cache_write_input_price_per_1k),
+      // 046_flat_priced_ai_features.sql - a non-token, per-call rate (e.g. gpt-image-1) - see
+      // wallet-service.mjs's resolvePricingRate()/reserveForAiCall()/settleAiCall() for how this
+      // takes precedence over the token-based fields above when set.
+      flatPricePerCallMicroUsd: row.flat_price_per_call_micro_usd == null ? null : Number(row.flat_price_per_call_micro_usd),
       currency: row.currency, enabled: row.enabled, effectiveFrom: row.effective_from, effectiveUntil: row.effective_until,
       updatedAt: row.updated_at
     };
@@ -2364,13 +2368,13 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query('SELECT * FROM provider_model_pricing WHERE provider=$1 AND model=$2', [provider, model]);
       return rows[0] ? mapProviderModelPricing(rows[0]) : null;
     },
-    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, currency, enabled }) {
+    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, flatPricePerCallMicroUsd, currency, enabled }) {
       const { rows } = await pool.query(
-        `INSERT INTO provider_model_pricing (provider, model, prompt_price_per_1k, completion_price_per_1k, cached_input_price_per_1k, cache_write_input_price_per_1k, currency, enabled, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
-         ON CONFLICT (provider, model) DO UPDATE SET prompt_price_per_1k=$3, completion_price_per_1k=$4, cached_input_price_per_1k=$5, cache_write_input_price_per_1k=$6, currency=$7, enabled=$8, updated_at=now()
+        `INSERT INTO provider_model_pricing (provider, model, prompt_price_per_1k, completion_price_per_1k, cached_input_price_per_1k, cache_write_input_price_per_1k, flat_price_per_call_micro_usd, currency, enabled, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
+         ON CONFLICT (provider, model) DO UPDATE SET prompt_price_per_1k=$3, completion_price_per_1k=$4, cached_input_price_per_1k=$5, cache_write_input_price_per_1k=$6, flat_price_per_call_micro_usd=$7, currency=$8, enabled=$9, updated_at=now()
          RETURNING *`,
-        [provider, model, promptPricePer1k ?? null, completionPricePer1k ?? null, cachedInputPricePer1k ?? null, cacheWriteInputPricePer1k ?? null, currency || 'USD', enabled !== false]
+        [provider, model, promptPricePer1k ?? null, completionPricePer1k ?? null, cachedInputPricePer1k ?? null, cacheWriteInputPricePer1k ?? null, flatPricePerCallMicroUsd ?? null, currency || 'USD', enabled !== false]
       );
       return mapProviderModelPricing(rows[0]);
     },
