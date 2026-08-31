@@ -272,6 +272,11 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   const [analysisResult, setAnalysisResult] = React.useState(null);
   const [analysisMeta, setAnalysisMeta] = React.useState(null);
   const [errorCode, setErrorCode] = React.useState(null);
+  // Self-contained "Visualize Scenario" loading/result state for THIS popup's own result card -
+  // independent of whatever a caller separately tracks for its own inline card elsewhere (e.g.
+  // FateSummaryModal's own persisted-result view), so this modal renders a real loading/ready
+  // state regardless of which parent opened it (brief §27 loading experience).
+  const [localVisualizations, setLocalVisualizations] = React.useState({});
   const requestRef = React.useRef(null);
 
   const isEvaluation = Array.isArray(scenarioTargets) && scenarioTargets.length > 0;
@@ -373,6 +378,28 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   }, [phase]);
 
   const canGoBackToForm = phase !== 'generating';
+
+  // Self-computed from the real, persisted entry (not from whatever a caller happens to track),
+  // so the "Added" button state is correct for every caller of this modal without extra plumbing -
+  // a caller-supplied addedScenarioKeys prop (e.g. FateSummaryModal's own inline card) is still
+  // honored, merged in.
+  const computedAddedScenarioKeys = React.useMemo(() => {
+    const keys = new Set(addedScenarioKeys || []);
+    const targetForResult = (analysisMeta && analysisMeta.entry) || null;
+    if (targetForResult && analysisResult) {
+      (targetForResult.scenarios || []).forEach((sc) => {
+        if (sc.aiSource && sc.aiSource.analysisId === analysisResult.analysisId) keys.add(sc.aiSource.generatedScenarioKey);
+      });
+    }
+    return keys;
+  }, [addedScenarioKeys, analysisMeta, analysisResult]);
+  const mergedVisualizations = React.useMemo(() => ({ ...(scenarioVisualizations || {}), ...localVisualizations }), [scenarioVisualizations, localVisualizations]);
+  async function handleVisualizeLocal(scenario) {
+    setLocalVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
+    const ctx = { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId };
+    const outcome = onVisualizeScenario ? await onVisualizeScenario(scenario, ctx) : { ok: false };
+    setLocalVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
+  }
 
   return (
     <React.Fragment>
@@ -494,11 +521,11 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
               result={analysisResult} lang={activeLang}
               memoryReceipt={window.TradeJournalSessionAnalysisClient ? window.TradeJournalSessionAnalysisClient.buildMemoryReceipt(session) : null}
               depth={requestRef.current ? requestRef.current.depth : 'auto'}
-              addedScenarioKeys={addedScenarioKeys}
-              scenarioVisualizations={scenarioVisualizations}
+              addedScenarioKeys={computedAddedScenarioKeys}
+              scenarioVisualizations={mergedVisualizations}
               scenarioTitleFor={scenarioTitleFor}
               onAddScenario={(scenario) => onAddScenario && onAddScenario(scenario, { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId, provider: analysisResult.provider, model: analysisResult.model })}
-              onVisualizeScenario={(scenario) => onVisualizeScenario && onVisualizeScenario(scenario, { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId })}
+              onVisualizeScenario={handleVisualizeLocal}
             />
           )}
         </div>

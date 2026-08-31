@@ -1306,7 +1306,7 @@ function AiStrip({ session, entry, lang, onAnalyze }) {
   );
 }
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, character }) {
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
@@ -1344,7 +1344,7 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
         <Chip tone="neutral">{entryTimeLabel(entry, lang)}</Chip>
         <Chip tone="neutral">{[sessionsAdapter.displayCity(entry.market || entry.tradingSession || session.market), entry.timeframe || session.timeframe].filter(Boolean).join(' · ')}</Chip>
         <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
-          <Button variant="secondary" size="sm" icon="sparkle" onClick={() => onAnalyze(entry)}>{tr(lang, 'aiAnalyzeButton')}</Button>
+          <Button variant="secondary" size="sm" icon="sparkle" onClick={onOpenSessionAnalysis}>{tr(lang, 'aiAnalyzeButton')}</Button>
           <button type="button" onClick={() => onDeleteEntry(entry)} title={tr(lang, 'deleteEntryTitle')} style={{ display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 8, cursor: 'pointer', border: '1px solid rgba(255,56,48,.35)', background: 'rgba(255,56,48,.08)', color: 'var(--danger)' }}>
             <Icon name="trash" size={16} />
           </button>
@@ -2298,6 +2298,10 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // SCENARIO_EVALUATION (brief §22) - a distinct, explicit operation from ANALYSIS_UPDATE, opened
   // directly from a scenario's own "Evaluate with AI" action rather than through the Fate flow.
   const [evaluatingScenario, setEvaluatingScenario] = React.useState(null); // { entry, scenario } | null
+  // Per-entry "AI analysis" trigger (EntryDetailPanel's own top button) - holds the specific
+  // entry that was open when clicked, not just a bare boolean, so the popup analyzes the chart
+  // the trader was actually looking at rather than always defaulting to the session's latest one.
+  const [sessionAnalysisEntry, setSessionAnalysisEntry] = React.useState(null);
   const railRef = React.useRef(null);
 
   const session = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
@@ -2730,6 +2734,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                 session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
                 openScenarios={openScenarios}
                 onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage} onAnalyze={analyzeEntry}
+                onOpenSessionAnalysis={() => setSessionAnalysisEntry(selEntry)}
                 onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
                 onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
                 onAddScenario={addScenario} onScenarioEvaluate={(entry, scenario) => setEvaluatingScenario({ entry, scenario })} character={character}
@@ -2795,6 +2800,18 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
               if (evaluation.scenarioId === evaluatingScenario.scenario.id) evaluateAiScenario(evaluatingScenario.entry, evaluatingScenario.scenario, evaluation);
             });
           }}
+        />
+      )}
+      {/* Per-entry "AI analysis" trigger (EntryDetailPanel's own top button, wired directly to the
+          real popup rather than the AiStrip's separate local-demo quick blurb) - same full
+          persist()/addScenario()/updateScenario() plumbing as FateSummaryModal's own embedded
+          instance above, just targeting the specific entry the trader had open when they clicked. */}
+      {sessionAnalysisEntry && (
+        <SessionAiAnalysisModal
+          session={session} character={character} lang={lang} entry={sessionAnalysisEntry}
+          onClose={() => setSessionAnalysisEntry(null)}
+          onResult={(result, meta) => applyAnalysisResult(meta && meta.entry, result)}
+          onAddScenario={addAiScenario} onVisualizeScenario={runVisualizeAiScenario}
         />
       )}
     </div>
