@@ -3,7 +3,7 @@
 }
 
 (navrya_api) {
-	@ai path /api/patterns/* /api/strategy-education/* /api/trades/* /api/mental-health/* /api/ai/*
+	@ai path /api/patterns/* /api/strategy-education/* /api/trades/* /api/mental-health/* /api/ai/* /api/sessions/*
 	handle @ai {
 		reverse_proxy pattern-ai:8787
 	}

@@ -4,21 +4,25 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
+import { SessionAnalysisCard } from './sessionAnalysisCard.jsx';
 
 // Session AI Analysis - the popup behind the Session workspace's existing "AI Analysis"
 // ("شروع تحلیل") button (liveSessionView.jsx's FateSummaryModal, wired at its own call site -
-// this file owns none of that button's DOM, only what opens when it is clicked). Everything below
-// is request-collection + a demo generating/placeholder sequence - no scenario mutation, pattern
-// evaluation or real AI call happens here (see startAnalysis()'s own comment).
+// this file owns none of that button's DOM, only what opens when it is clicked). Request-
+// collection UI below is unchanged from the original PHASE-2 scaffold; startAnalysis() now makes
+// the real call through window.TradeJournalSessionAnalysisClient (server/pattern-ai-server.mjs's
+// POST /api/sessions/analyze) instead of the old fixed setTimeout demo sequence.
 //
 // Reuses, never re-implements: the shared Modal/Button/Select/Icon design system, the Analysis
 // Profiles domain (window.TradeJournalAnalysisProfileStore + the style/focus registries, via
-// window.TradeJournalAnalysisContext.getAnalysisContext - see ARCHITECTURE.md §7.25, whose own
-// analysis-context.js header comment names "a future Session AI Analysis feature" as its intended
-// caller, i.e. this file), and AnalysisProfileOnboarding.jsx's existing real two-step
-// style→focus wizard for the "+" quick-create affordance (mode="create", the exact same call
-// AnalysisProfilesView.jsx's own "New profile" button already makes) - never a second, parallel
-// style/focus picker.
+// window.TradeJournalAnalysisContext.getAnalysisContext - see ARCHITECTURE.md §7.25), and
+// AnalysisProfileOnboarding.jsx's existing real two-step style→focus wizard for the "+" quick-
+// create affordance - never a second, parallel style/focus picker. Scenario add/visualize/
+// evaluate persistence stays owned entirely by liveSessionView.jsx, reached only through the
+// onAddScenario/onVisualizeScenario/onResult callback props below - this file never writes to
+// window.TradeJournalWorkspace itself.
+
+function analysisClient() { return window.TradeJournalSessionAnalysisClient; }
 
 function profileStore() { return window.TradeJournalAnalysisProfileStore; }
 function aiSettingsStore() { return window.TradeJournalAISettingsStore; }
@@ -48,11 +52,15 @@ const copy = {
     ctxLatestChart: 'آخرین چارت', ctxPreviousMovement: 'حرکت قبلی',
     ctxActiveScenarios: 'سناریوی فعال', ctxPatternStates: 'وضعیت الگو',
     ctxStrategy: 'استراتژی / تگ الگو', ctxPreviousAnalysis: 'تحلیل قبلی هوش مصنوعی',
-    startAnalysis: 'شروع تحلیل', cancel: 'انصراف', close: 'بستن',
+    startAnalysis: 'شروع تحلیل', cancel: 'انصراف', close: 'بستن', retry: 'تلاش دوباره', regenerate: 'تحلیل مجدد',
     stage_readingChart: 'در حال خواندن آخرین چارت', stage_recallingMemory: 'در حال بازیابی حافظه سشن',
     stage_reviewingScenarios: 'بررسی سناریوهای فعال', stage_reviewingPatterns: 'بررسی الگوها و استراتژی',
     stage_applyingStyle: 'اعمال سبک تحلیل', stage_preparing: 'آماده‌سازی تحلیل',
-    resultTitle: 'تحلیل هوش مصنوعی', resultPlaceholder: 'ساختار نمایش تحلیل در مرحله بعد اضافه خواهد شد.'
+    errorTitle: 'تحلیل انجام نشد', switchModel: 'تغییر مدل',
+    err_MODEL_VISION_UNSUPPORTED: 'مدل انتخاب‌شده نمی‌تواند تصویر چارت را تحلیل کند.',
+    err_NETWORK_ERROR: 'ارتباط با سرور تحلیل برقرار نشد.',
+    err_ANALYSIS_FAILED: 'تحلیل با خطا مواجه شد. لطفاً دوباره تلاش کنید.',
+    unsupportedVisionInline: 'مدل انتخاب‌شده نمی‌تواند چارت را ببیند — مدل دیگری انتخاب کنید.'
   },
   ar: {
     title: 'تحليل الذكاء الاصطناعي', eyebrowRight: 'الجلسة الحالية',
@@ -74,11 +82,15 @@ const copy = {
     ctxLatestChart: 'آخر مخطط', ctxPreviousMovement: 'الحركة السابقة',
     ctxActiveScenarios: 'سيناريو نشط', ctxPatternStates: 'حالة النمط',
     ctxStrategy: 'استراتيجية / وسم النمط', ctxPreviousAnalysis: 'تحليل الذكاء الاصطناعي السابق',
-    startAnalysis: 'بدء التحليل', cancel: 'إلغاء', close: 'إغلاق',
+    startAnalysis: 'بدء التحليل', cancel: 'إلغاء', close: 'إغلاق', retry: 'إعادة المحاولة', regenerate: 'إعادة التحليل',
     stage_readingChart: 'جارٍ قراءة آخر مخطط', stage_recallingMemory: 'جارٍ استرجاع ذاكرة الجلسة',
     stage_reviewingScenarios: 'مراجعة السيناريوهات النشطة', stage_reviewingPatterns: 'مراجعة الأنماط والاستراتيجية',
     stage_applyingStyle: 'تطبيق أسلوب التحليل', stage_preparing: 'تجهيز التحليل',
-    resultTitle: 'تحليل الذكاء الاصطناعي', resultPlaceholder: 'سيتم إضافة بنية عرض التحليل في المرحلة التالية.'
+    errorTitle: 'تعذّر إجراء التحليل', switchModel: 'تغيير النموذج',
+    err_MODEL_VISION_UNSUPPORTED: 'النموذج المختار لا يمكنه تحليل صورة المخطط.',
+    err_NETWORK_ERROR: 'تعذّر الاتصال بخادم التحليل.',
+    err_ANALYSIS_FAILED: 'فشل التحليل. حاول مرة أخرى.',
+    unsupportedVisionInline: 'النموذج المختار لا يمكنه رؤية المخطط — اختر نموذجاً آخر.'
   },
   en: {
     title: 'AI Analysis', eyebrowRight: 'Current session',
@@ -100,11 +112,15 @@ const copy = {
     ctxLatestChart: 'Latest chart', ctxPreviousMovement: 'Previous movement',
     ctxActiveScenarios: 'Active scenario', ctxPatternStates: 'Pattern state',
     ctxStrategy: 'Strategy / pattern tag', ctxPreviousAnalysis: 'Previous AI analysis',
-    startAnalysis: 'Start analysis', cancel: 'Cancel', close: 'Close',
+    startAnalysis: 'Start analysis', cancel: 'Cancel', close: 'Close', retry: 'Retry', regenerate: 'Regenerate',
     stage_readingChart: 'Reading the latest chart', stage_recallingMemory: 'Retrieving session memory',
     stage_reviewingScenarios: 'Reviewing active scenarios', stage_reviewingPatterns: 'Reviewing patterns and strategy',
     stage_applyingStyle: 'Applying the analysis style', stage_preparing: 'Preparing the analysis',
-    resultTitle: 'AI Analysis', resultPlaceholder: 'The analysis result layout will be added in the next phase.'
+    errorTitle: 'Analysis failed', switchModel: 'Switch model',
+    err_MODEL_VISION_UNSUPPORTED: 'The selected model cannot analyze chart images.',
+    err_NETWORK_ERROR: "Couldn't reach the analysis server.",
+    err_ANALYSIS_FAILED: 'The analysis failed. Please try again.',
+    unsupportedVisionInline: "This model can't see the chart — choose a different model."
   },
   es: {
     title: 'Análisis de IA', eyebrowRight: 'Sesión actual',
@@ -126,11 +142,15 @@ const copy = {
     ctxLatestChart: 'Último gráfico', ctxPreviousMovement: 'Movimiento anterior',
     ctxActiveScenarios: 'Escenario activo', ctxPatternStates: 'Estado del patrón',
     ctxStrategy: 'Estrategia / etiqueta de patrón', ctxPreviousAnalysis: 'Análisis de IA anterior',
-    startAnalysis: 'Iniciar análisis', cancel: 'Cancelar', close: 'Cerrar',
+    startAnalysis: 'Iniciar análisis', cancel: 'Cancelar', close: 'Cerrar', retry: 'Reintentar', regenerate: 'Regenerar',
     stage_readingChart: 'Leyendo el último gráfico', stage_recallingMemory: 'Recuperando la memoria de la sesión',
     stage_reviewingScenarios: 'Revisando escenarios activos', stage_reviewingPatterns: 'Revisando patrones y estrategia',
     stage_applyingStyle: 'Aplicando el estilo de análisis', stage_preparing: 'Preparando el análisis',
-    resultTitle: 'Análisis de IA', resultPlaceholder: 'La estructura de presentación del análisis se añadirá en la siguiente fase.'
+    errorTitle: 'El análisis falló', switchModel: 'Cambiar modelo',
+    err_MODEL_VISION_UNSUPPORTED: 'El modelo elegido no puede analizar imágenes de gráficos.',
+    err_NETWORK_ERROR: 'No se pudo conectar con el servidor de análisis.',
+    err_ANALYSIS_FAILED: 'El análisis falló. Inténtalo de nuevo.',
+    unsupportedVisionInline: 'Este modelo no puede ver el gráfico — elige otro modelo.'
   }
 };
 function tr(lang, key) { return (copy[lang] && copy[lang][key]) || copy.en[key] || key; }
@@ -194,25 +214,28 @@ function ContextRow({ icon, label, count }) {
   );
 }
 
+// Honest loading state (brief §27) - cycles which label is "current", never claims a stage
+// finished or shows a fabricated percentage, since a real request has no observable progress this
+// client can report. Every non-current label stays in the same neutral, un-checked state.
 function GeneratingStages({ lang, stageIndex }) {
   useGeneratingMotion();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 0' }}>
       {GENERATION_STAGES.map((stage, i) => {
-        const state = i < stageIndex ? 'done' : i === stageIndex ? 'active' : 'pending';
+        const active = i === stageIndex;
         return (
-          <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, opacity: state === 'pending' ? 0.45 : 1 }}>
+          <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, opacity: active ? 1 : 0.45 }}>
             <span
-              data-nv-ai-stage={state === 'active' ? 'active' : undefined}
+              data-nv-ai-stage={active ? 'active' : undefined}
               style={{
                 width: 20, height: 20, flex: 'none', borderRadius: '50%', display: 'grid', placeItems: 'center',
-                border: '1px solid ' + (state === 'pending' ? 'var(--border-hairline)' : 'var(--char-accent)'),
-                background: state === 'done' ? 'var(--char-active-surface)' : 'transparent', color: 'var(--char-accent)'
+                border: '1px solid ' + (active ? 'var(--char-accent)' : 'var(--border-hairline)'),
+                background: 'transparent', color: 'var(--char-accent)'
               }}
             >
-              {state === 'done' ? <Icon name="check" size={12} /> : <Icon name="sparkle" size={11} />}
+              <Icon name="sparkle" size={11} />
             </span>
-            <span style={{ fontSize: 12, color: state === 'active' ? 'var(--text-primary)' : 'var(--text-muted)' }}>{tr(lang, 'stage_' + stage)}</span>
+            <span style={{ fontSize: 12, color: active ? 'var(--text-primary)' : 'var(--text-muted)' }}>{tr(lang, 'stage_' + stage)}</span>
           </div>
         );
       })}
@@ -220,12 +243,17 @@ function GeneratingStages({ lang, stageIndex }) {
   );
 }
 
-/* The Session workspace's "AI Analysis" popup (brief: request collection → demo generating
-   sequence → placeholder result). `session` is the real, normalized session record
-   (window.TradeJournalWorkspace.find(sessionId)'s own return shape) - this component only ever
-   reads it, never mutates a scenario/pattern/probability (that stays out of scope for this phase,
-   per the brief). */
-export function SessionAiAnalysisModal({ session, lang, onClose }) {
+/* The Session workspace's "AI Analysis" popup (request collection → real analysis call → the
+   Adaptive Analysis Card). `session` is the real, normalized session record
+   (window.TradeJournalWorkspace.find(sessionId)'s own return shape) - this component never
+   mutates it directly; a successful analysis is reported upward via onResult(patches) and a
+   scenario add/visualize action via onAddScenario/onVisualizeScenario, all applied by
+   liveSessionView.jsx through its own existing persist()/addScenario() functions (brief §20).
+   `entry` (optional) pins "the current chart" this analysis targets - defaults to the session's
+   own latest chart entry (buildSessionContextRefs().latestChartEntryId) when omitted, e.g. when
+   opened from the whole-session Fate flow. `scenarioTargets` (optional, scenario ids) switches
+   this into a SCENARIO_EVALUATION request instead of INITIAL/UPDATE. */
+export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, character, onClose, onResult, onAddScenario, onVisualizeScenario, addedScenarioKeys, scenarioVisualizations, scenarioTitleFor, scenarioTargets }) {
   const activeLang = lang || 'fa';
   const rtl = activeLang === 'fa' || activeLang === 'ar';
 
@@ -239,9 +267,21 @@ export function SessionAiAnalysisModal({ session, lang, onClose }) {
   });
   const [adherenceIndex, setAdherenceIndex] = React.useState(1); // 0 open · 1 balanced (default) · 2 strict
   const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
-  const [phase, setPhase] = React.useState('form'); // 'form' | 'generating' | 'result'
+  const [phase, setPhase] = React.useState('form'); // 'form' | 'generating' | 'result' | 'error'
   const [stageIndex, setStageIndex] = React.useState(0);
+  const [analysisResult, setAnalysisResult] = React.useState(null);
+  const [analysisMeta, setAnalysisMeta] = React.useState(null);
+  const [errorCode, setErrorCode] = React.useState(null);
   const requestRef = React.useRef(null);
+
+  const isEvaluation = Array.isArray(scenarioTargets) && scenarioTargets.length > 0;
+  const targetEntry = pinnedEntry || (function () {
+    const entries = (session.entries || []).slice().reverse();
+    return entries.find((e) => e.type === 'chart' && (e.hasImage || e.preview || e.imageBlobId)) || null;
+  }());
+  const hasChartImage = !!(targetEntry && (targetEntry.hasImage || targetEntry.preview || targetEntry.imageBlobId));
+  const capabilities = aiSettingsStore() ? aiSettingsStore().capabilitiesFor(provider) : { supportsVision: false };
+  const visionBlocked = hasChartImage && !capabilities.supportsVision;
 
   // Re-read on every render (profiles/settings can change while this popup is open, e.g. a quick
   // profile just created) rather than snapshotting once at mount.
@@ -288,50 +328,49 @@ export function SessionAiAnalysisModal({ session, lang, onClose }) {
     setQuickCreateOpen(false);
   }
 
-  // Builds the clean request object the next phase's real Session AI Analysis engine is meant to
-  // consume (see this file's own header comment) - assembled once per submit, never mutated
-  // afterwards. analysisContext/analysisStyle/focusAreas resolve through the exact same
-  // window.TradeJournalAnalysisContext.getAnalysisContext() boundary analysis-context.js already
-  // documents as this feature's intended caller, so nothing about the Analysis Profile domain is
-  // re-read or re-derived by hand here.
-  function buildAnalysisRequest() {
+  // The one real network call this component ever makes (brief §4 "ABSOLUTE RULE: one analysis =
+  // one model call") - routed entirely through window.TradeJournalSessionAnalysisClient
+  // (analysis-context.js's getAnalysisContext() is still the sole source for style/focus data;
+  // this function only resolves it once and hands the bundle to the client, never re-derives it).
+  // A cache hit (session-analysis-client.js's own fingerprint check) resolves with zero network
+  // call at all - see that file's findCachedAnalysis().
+  async function startAnalysis(forceRegenerate) {
+    if (visionBlocked) return;
+    const client = analysisClient();
+    if (!client) { setErrorCode('ANALYSIS_FAILED'); setPhase('error'); return; }
     const context = (profileId && analysisContextApi()) ? analysisContextApi().getAnalysisContext(profileId) : null;
-    return {
-      sessionId: session.id,
-      requestedAt: new Date().toISOString(),
-      userView: userView.trim(),
-      provider, model,
-      analysisProfile: profileId || null,
-      analysisContext: context,
-      analysisStyle: (context && context.primaryStyle && context.primaryStyle.id) || null,
-      focusAreas: context ? context.focuses.map((f) => f.id) : [],
-      adherence: ADHERENCE_LEVELS[adherenceIndex],
-      sessionContext: contextRefs
+    const request = {
+      session, character, entry: targetEntry,
+      analysisType: isEvaluation ? 'scenario_evaluation' : undefined,
+      scenarioTargets: isEvaluation ? scenarioTargets : undefined,
+      userView: userView.trim(), provider, model, language: activeLang,
+      profileId: profileId || null, analysisContext: context, adherence: ADHERENCE_LEVELS[adherenceIndex],
+      forceRegenerate: !!forceRegenerate
     };
-  }
-
-  // PHASE-2 SEAM: startAnalysis() only ever builds the request object above and drives a fixed,
-  // local, timer-based demo sequence - no network/model call happens here (brief: "do not
-  // implement the final trading-analysis engine in this task"). The real integration point is
-  // exactly this function body: replace the two setTimeout-driven effects below with a real async
-  // call fed `requestRef.current`, and replace the fixed 'result' placeholder JSX (bottom of this
-  // file) with the real rendered analysis - the request-collection UI above needs no changes for
-  // that swap.
-  function startAnalysis() {
-    requestRef.current = buildAnalysisRequest();
+    requestRef.current = request;
     setStageIndex(0);
     setPhase('generating');
+    const outcome = await client.analyzeSession(request);
+    if (!outcome.ok) {
+      setErrorCode(outcome.error || 'ANALYSIS_FAILED');
+      setPhase('error');
+      return;
+    }
+    setAnalysisResult(outcome.result);
+    setAnalysisMeta({ cached: outcome.cached, entry: targetEntry });
+    setPhase('result');
+    if (onResult) onResult(outcome.result, { entry: targetEntry });
   }
 
+  // Loading experience (brief §27) - a real request has no observable intermediate stage this
+  // client can honestly report, so this only ever cycles WHICH phase-label is shown, never claims
+  // a stage is "done" or shows a fabricated percentage. Stops the moment startAnalysis()'s own
+  // await resolves (phase leaves 'generating').
   React.useEffect(() => {
     if (phase !== 'generating') return undefined;
-    if (stageIndex >= GENERATION_STAGES.length - 1) {
-      const done = window.setTimeout(() => setPhase('result'), 700);
-      return () => window.clearTimeout(done);
-    }
-    const step = window.setTimeout(() => setStageIndex((i) => i + 1), 520);
-    return () => window.clearTimeout(step);
-  }, [phase, stageIndex]);
+    const step = window.setInterval(() => setStageIndex((i) => (i + 1) % GENERATION_STAGES.length), 1400);
+    return () => window.clearInterval(step);
+  }, [phase]);
 
   const canGoBackToForm = phase !== 'generating';
 
@@ -340,19 +379,29 @@ export function SessionAiAnalysisModal({ session, lang, onClose }) {
       <Modal
         open={!quickCreateOpen} title={tr(activeLang, 'title')} icon="sparkle" onClose={canGoBackToForm ? onClose : undefined}
         eyebrow={{ left: 'NAVRYA · AI ANALYSIS', right: tr(activeLang, 'eyebrowRight') }}
-        width={620}
+        width={phase === 'result' ? 760 : 620}
         footer={
           phase === 'form' ? (
             <React.Fragment>
               <Button variant="ghost" onClick={onClose}>{tr(activeLang, 'cancel')}</Button>
               <span style={{ marginInlineStart: 'auto' }}>
-                <Button variant="primary" icon="sparkle" onClick={startAnalysis}>{tr(activeLang, 'startAnalysis')}</Button>
+                <Button variant="primary" icon="sparkle" disabled={visionBlocked} onClick={() => startAnalysis(false)}>{tr(activeLang, 'startAnalysis')}</Button>
               </span>
             </React.Fragment>
           ) : phase === 'result' ? (
-            <span style={{ marginInlineStart: 'auto' }}>
-              <Button variant="primary" onClick={onClose}>{tr(activeLang, 'close')}</Button>
-            </span>
+            <React.Fragment>
+              <Button variant="ghost" icon="sparkle" onClick={() => startAnalysis(true)}>{tr(activeLang, 'regenerate')}</Button>
+              <span style={{ marginInlineStart: 'auto' }}>
+                <Button variant="primary" onClick={onClose}>{tr(activeLang, 'close')}</Button>
+              </span>
+            </React.Fragment>
+          ) : phase === 'error' ? (
+            <React.Fragment>
+              <Button variant="ghost" onClick={onClose}>{tr(activeLang, 'cancel')}</Button>
+              <span style={{ marginInlineStart: 'auto' }}>
+                <Button variant="primary" icon="sparkle" onClick={() => startAnalysis(false)}>{tr(activeLang, 'retry')}</Button>
+              </span>
+            </React.Fragment>
           ) : null
         }
       >
@@ -415,19 +464,42 @@ export function SessionAiAnalysisModal({ session, lang, onClose }) {
                   <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(activeLang, 'contextEmpty')}</span>
                 )}
               </div>
+
+              {visionBlocked && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--danger)', background: 'rgba(255,56,48,.08)' }}>
+                  <Icon name="TriangleAlert" size={14} style={{ color: 'var(--danger)', flex: 'none' }} />
+                  <span style={{ fontSize: 11, color: 'var(--danger)' }}>{tr(activeLang, 'unsupportedVisionInline')}</span>
+                </div>
+              )}
             </React.Fragment>
           )}
 
           {phase === 'generating' && <GeneratingStages lang={activeLang} stageIndex={stageIndex} />}
 
-          {phase === 'result' && (
+          {phase === 'error' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '22px 10px', textAlign: 'center' }}>
-              <span style={{ width: 44, height: 44, borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)' }}>
-                <Icon name="sparkle" size={20} />
+              <span style={{ width: 44, height: 44, borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--danger)', background: 'rgba(255,56,48,.1)', color: 'var(--danger)' }}>
+                <Icon name="TriangleAlert" size={20} />
               </span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--parchment)' }}>{tr(activeLang, 'resultTitle')}</span>
-              <p style={{ margin: 0, maxWidth: 380, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.8 }}>{tr(activeLang, 'resultPlaceholder')}</p>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--parchment)' }}>{tr(activeLang, 'errorTitle')}</span>
+              <p style={{ margin: 0, maxWidth: 380, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.8 }}>{tr(activeLang, 'err_' + errorCode) !== 'err_' + errorCode ? tr(activeLang, 'err_' + errorCode) : tr(activeLang, 'err_ANALYSIS_FAILED')}</p>
+              {errorCode === 'MODEL_VISION_UNSUPPORTED' && (
+                <Button variant="secondary" size="sm" onClick={() => setPhase('form')}>{tr(activeLang, 'switchModel')}</Button>
+              )}
             </div>
+          )}
+
+          {phase === 'result' && analysisResult && (
+            <SessionAnalysisCard
+              result={analysisResult} lang={activeLang}
+              memoryReceipt={window.TradeJournalSessionAnalysisClient ? window.TradeJournalSessionAnalysisClient.buildMemoryReceipt(session) : null}
+              depth={requestRef.current ? requestRef.current.depth : 'auto'}
+              addedScenarioKeys={addedScenarioKeys}
+              scenarioVisualizations={scenarioVisualizations}
+              scenarioTitleFor={scenarioTitleFor}
+              onAddScenario={(scenario) => onAddScenario && onAddScenario(scenario, { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId, provider: analysisResult.provider, model: analysisResult.model })}
+              onVisualizeScenario={(scenario) => onVisualizeScenario && onVisualizeScenario(scenario, { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId })}
+            />
           )}
         </div>
       </Modal>

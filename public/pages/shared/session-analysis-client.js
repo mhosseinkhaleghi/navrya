@@ -1,0 +1,418 @@
+/**
+ * Session Analysis Client — Adaptive AI Session Analysis (brief, whole document).
+ *
+ * The one orchestration seam between the Session UI (navrya-src/sessionAiAnalysisModal.jsx,
+ * sessionAnalysisCard.jsx, liveSessionView.jsx) and the server (server/pattern-ai-server.mjs's
+ * POST /api/sessions/analyze and /api/sessions/visualize-scenario). Owns: compact context
+ * gathering from the EXISTING stores (never a second parallel store - session-signature-store.js,
+ * pattern-registry-store.js, analysis-context.js, ai-settings-store.js), the cache/fingerprint
+ * check that skips a network call entirely on a hit, image preparation, and the deterministic
+ * patches that get applied through liveSessionView.jsx's own real persist()/addScenario()/
+ * updateScenario() functions - this file never writes to window.TradeJournalWorkspace directly,
+ * it only computes what a caller should pass to the existing persistence path (brief §20: "Do not
+ * write directly into storage from the Analysis Card if an existing store/adapter/action owns
+ * [it]").
+ */
+(function () {
+  'use strict';
+
+  function schema() { return window.TradeJournalSessionAnalysisSchema; }
+  function imagePrep() { return window.TradeJournalAnalysisImagePrep; }
+  function aiSettings() { return window.TradeJournalAISettingsStore; }
+  function aiUsage() { return window.TradeJournalAIUsage; }
+  function patternStore() { return window.TradeJournalPatternStore; }
+  function signatureStore() { return window.TradeJournalSessionSignatureStore; }
+  function signatureEngine() { return window.TradeJournalSessionSignatureEngine; }
+  function imageStore() { return window.TradeJournalImageStore; }
+
+  // ------------------------------------------------------------------------------------------
+  // Image resolution - reads whichever source a SessionEntry actually has (IndexedDB blob,
+  // server-hosted URL, or an inline preview data URL - see liveSessionView.jsx's
+  // submitChartEntry()/attachImage() for how those three get set) and produces ONE compact data
+  // URL for AI transport via analysis-image-prep.js. Never mutates the entry or the original
+  // image in any store.
+  // ------------------------------------------------------------------------------------------
+  async function resolveEntrySourceUrl(entry) {
+    if (!entry) return null;
+    if (entry.imageBlobId && imageStore()) {
+      try {
+        var blobUrl = await imageStore().loadImageUrl(entry.imageBlobId);
+        if (blobUrl) return blobUrl;
+      } catch (_) { /* fall through to other sources */ }
+    }
+    if (entry.imageUrl) return entry.imageUrl;
+    if (entry.preview) return entry.preview;
+    return null;
+  }
+
+  async function resolveEntryImageDataUrl(entry, options) {
+    var sourceUrl = await resolveEntrySourceUrl(entry);
+    if (!sourceUrl) return null;
+    var prep = imagePrep();
+    if (!prep) return null;
+    try {
+      return await prep.prepareForTransport(sourceUrl, options);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // A stable-enough identity for the fingerprint (brief §4) - the blob/URL/preview reference
+  // itself, not the (expensive to hash) pixel content. Two analyses of the exact same unedited
+  // entry share this id; a re-uploaded image on the same entry gets a new blobId/url and so a new
+  // identity, correctly invalidating the cache.
+  function entryImageIdentity(entry) {
+    if (!entry) return '';
+    return String(entry.imageBlobId || entry.imageUrl || (entry.preview ? 'preview:' + entry.preview.length : '') || '');
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Compact context gathering - brief §39 "never serialize entire stores into the prompt".
+  // ------------------------------------------------------------------------------------------
+
+  function flatScenarios(session) {
+    var out = [];
+    (session.entries || []).forEach(function (e) { (e.scenarios || []).forEach(function (s) { out.push({ entry: e, scenario: s }); }); });
+    return out;
+  }
+
+  // Real invalidation check - session-analysis-modal's own pre-existing buildSessionContextRefs()
+  // read `scenario.confirmedInvalidationTagIds`, a field that does not exist anywhere else in this
+  // codebase (the real field, set by InvalidationTags, is `invalidationTagIds`) - so that check
+  // always evaluated every scenario as "active" regardless of real invalidation state. Fixed here,
+  // the one place "is this scenario still active" is now computed for the Session Analysis domain.
+  function isScenarioActive(scenario) {
+    return !scenario.occurred && !((scenario.invalidationTagIds || []).length);
+  }
+
+  function gatherActiveScenarios(session, limit) {
+    return flatScenarios(session)
+      .filter(function (x) { return isScenarioActive(x.scenario); })
+      .slice(0, limit || 5)
+      .map(function (x) {
+        var s = x.scenario;
+        var history = s.probabilityHistory || [];
+        return {
+          id: s.id,
+          title: s.title || '',
+          description: s.description || '',
+          evidence: s.evidence || '',
+          trigger: s.trigger || '',
+          invalidationNote: s.invalidationNote || '',
+          probability: history.length ? history[history.length - 1].value : 50,
+          occurred: !!s.occurred,
+          status: s.status || 'pending',
+          patternName: (s.pattern && s.pattern.name) || null
+        };
+      });
+  }
+
+  // Deterministic completion tracking (brief §21: pattern completion/similarity is NAVRYA's own
+  // deterministic concept, never something the model computes) - walks the session's own
+  // scenario.pattern fields (never a second registry query per scenario) and only joins the full
+  // Pattern record for a description, when the registry still has it.
+  function gatherPatternContext(session, limit) {
+    var store = patternStore();
+    var seen = {};
+    var out = [];
+    flatScenarios(session).forEach(function (x) {
+      var pattern = x.scenario.pattern;
+      if (!pattern || !pattern.patternTagId) return;
+      if (seen[pattern.patternTagId]) return;
+      seen[pattern.patternTagId] = true;
+      var stages = pattern.stages || [];
+      var doneIds = pattern.completedStageIds || [];
+      var done = doneIds.filter(function (id) { return stages.some(function (st) { return st.id === id; }); }).length;
+      var full = store ? store.find(pattern.patternTagId) : null;
+      out.push({
+        patternTagId: pattern.patternTagId,
+        name: pattern.name || (full && full.name) || '',
+        completionThreshold: Number(pattern.completionThreshold || 70),
+        stageCount: stages.length,
+        completedStageCount: done,
+        completionPercent: stages.length ? Math.round((done / stages.length) * 100) : 0,
+        occurred: !!x.scenario.occurred,
+        description: full ? full.description : ''
+      });
+    });
+    return out.slice(0, limit || 6);
+  }
+
+  // "Top N similar sessions" - the exact existing pattern session-signature-ui.js already uses
+  // (buildPartialFromSession + compareWithProvider + slice), reused rather than re-implemented -
+  // this is a 100% local/deterministic computation (session-signature-engine.js), never an AI call.
+  async function gatherSimilarSessions(session, character, limit) {
+    var store = signatureStore();
+    var engine = signatureEngine();
+    if (!store || !engine) return [];
+    try {
+      var live = store.buildPartialFromSession(session, character);
+      var matches = await engine.compareWithProvider(live, store.listSync());
+      return matches.slice(0, limit || 3).map(function (m) {
+        return { similarity: m.similarity, market: m.market, instrument: m.instrument, timeframe: m.timeframe, date: m.date, fateSummaryText: m.fateSummaryText || '', reasons: m.reasons || [] };
+      });
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Memory Receipt (brief §3) - pure counts/refs, deliberately not translated text (every
+  // navrya-src/*.jsx file owns its own copy/tr() i18n; this stays domain data only).
+  function buildMemoryReceipt(session) {
+    var memory = session && session.aiSessionAnalysisResult && session.aiSessionAnalysisResult.memory;
+    var entries = session ? (session.entries || []) : [];
+    return {
+      eventCount: memory ? (memory.eventCount || 0) : 0,
+      hasInitialAnalysis: !!memory,
+      chartUpdateCount: entries.filter(function (e) { return e.type === 'chart'; }).length,
+      movementNoteCount: entries.filter(function (e) { return e.type === 'movement'; }).length,
+      activeScenarioCount: gatherActiveScenarios(session || {}, 99).length,
+      hasPreviousSession: !!(session && (session.previousSessionSummary || session.fateSummary)),
+      watchItemCount: memory ? (memory.watchItems || []).length : 0
+    };
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Fingerprint / cache lookup (brief §4 "CACHE / REUSE", §41 "opening a stored analysis makes
+  // zero AI calls"). Looks in exactly the two places a result is ever persisted (brief §34):
+  // the target entry's own aiAnalysisResult, and the session's latest aiSessionAnalysisResult.
+  // ------------------------------------------------------------------------------------------
+  function findCachedAnalysis(session, entry, fingerprint) {
+    if (entry && entry.aiAnalysisResult && entry.aiAnalysisResult.fingerprint === fingerprint) return entry.aiAnalysisResult;
+    var latest = session && session.aiSessionAnalysisResult && session.aiSessionAnalysisResult.latestAnalysis;
+    if (latest && latest.fingerprint === fingerprint) return latest;
+    return null;
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Request building + the one network call. ONE model call per invocation (brief §4's "ABSOLUTE
+  // RULE") - this function never calls the endpoint more than once for a given analyze() call.
+  // ------------------------------------------------------------------------------------------
+
+  function pickAdherenceProfile(analysisContext, adherence) {
+    if (!analysisContext) return null;
+    return {
+      primaryStyle: analysisContext.primaryStyle || null,
+      secondaryStyles: analysisContext.secondaryStyles || [],
+      focuses: analysisContext.focuses || [],
+      customMethodNotes: analysisContext.customMethodNotes || '',
+      adherence: adherence
+    };
+  }
+
+  // options: { session, character, entry, analysisType, scenarioTargets, userView, provider,
+  //            model, language, profileId, analysisContext, adherence, depth }
+  // Returns { ok, cached, result, error, status }. Makes AT MOST one network call, and none at
+  // all on a cache hit or a capability rejection (brief §41/§6).
+  async function analyzeSession(options) {
+    var opts = options || {};
+    var session = opts.session;
+    var entry = opts.entry;
+    var s = schema();
+    var settings = aiSettings();
+    var analysisType = opts.analysisType || (s ? s.analysisTypeForSession(session) : 'initial');
+    var capabilities = settings ? settings.capabilitiesFor(opts.provider) : { supportsVision: false };
+    var imageIdentity = entryImageIdentity(entry);
+    var hasImage = !!imageIdentity;
+
+    if (hasImage && !capabilities.supportsVision) {
+      return { ok: false, error: 'MODEL_VISION_UNSUPPORTED', status: 422 };
+    }
+
+    var depth = s ? s.resolveAnalysisDepth(opts.depth, opts.depthSignals) : (opts.depth || 'auto');
+    var memory = session && session.aiSessionAnalysisResult && session.aiSessionAnalysisResult.memory;
+    var fingerprint = s ? s.buildAnalysisFingerprint({
+      sessionId: session && session.id, entryId: entry && entry.id, imageIdentity: imageIdentity,
+      provider: opts.provider, model: opts.model, analysisType: analysisType,
+      profileId: opts.profileId, profileVersion: (opts.analysisContext && opts.analysisContext.profile && opts.analysisContext.profile.registryVersion) || 0,
+      memoryVersion: memory ? memory.eventCount : 0, depth: depth, scenarioTargets: opts.scenarioTargets
+    }) : '';
+
+    if (!opts.forceRegenerate) {
+      var cached = findCachedAnalysis(session, entry, fingerprint);
+      if (cached) return { ok: true, cached: true, result: cached };
+    }
+
+    var imageDataUrl = hasImage ? await resolveEntryImageDataUrl(entry) : null;
+    var apiKey = settings ? settings.getKey(opts.provider) : '';
+
+    var body = {
+      provider: opts.provider, model: opts.model, apiKey: apiKey || undefined,
+      language: opts.language || 'fa', analysisType: analysisType, depth: depth,
+      analysisProfile: pickAdherenceProfile(opts.analysisContext, opts.adherence),
+      adherence: opts.adherence || 'balanced',
+      userView: opts.userView || '',
+      sessionMemory: (analysisType !== 'initial' && memory) ? memory : null,
+      marketContext: { market: session && session.market, timeframe: (entry && entry.timeframe) || (session && session.timeframe), instrument: session && session.instrument, date: entry && (entry.gregorianDate || entry.createdAt) },
+      historicalContext: analysisType === 'initial' ? {
+        previousSessionSummary: (session && session.previousSessionSummary && (session.previousSessionSummary.note || session.previousSessionSummary.fateSummaryText)) || '',
+        similarSessions: await gatherSimilarSessions(session, opts.character, 3)
+      } : null,
+      patternContext: gatherPatternContext(session, 6),
+      activeScenarios: gatherActiveScenarios(session, 5),
+      scenarioTargets: analysisType === 'scenario_evaluation' ? (opts.scenarioTargets || []) : [],
+      images: imageDataUrl ? [imageDataUrl] : []
+    };
+
+    var response;
+    try {
+      response = await fetch('/api/sessions/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } catch (_) {
+      return { ok: false, error: 'NETWORK_ERROR', status: 0 };
+    }
+    var payload = await response.json().catch(function () { return {}; });
+    if (!response.ok) return { ok: false, error: payload.error || 'ANALYSIS_FAILED', status: response.status };
+
+    if (aiUsage()) aiUsage().record({ provider: payload.provider, usage: payload.usage, source: 'sessions.' + analysisType });
+
+    var normalized = s.normalizeAnalysisResult(payload.data, {
+      analysisId: (session && session.id ? session.id + ':' : '') + Date.now().toString(36),
+      analysisType: analysisType, provider: payload.provider, model: payload.model,
+      generatedAt: new Date().toISOString(), fingerprint: fingerprint, usage: payload.usage,
+      entryId: entry && entry.id
+    });
+    return { ok: true, cached: false, result: normalized };
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Deterministic persistence patches - the CALLER (liveSessionView.jsx) applies these through
+  // the real persist()/addScenario()/updateScenario() functions; this file never touches
+  // window.TradeJournalWorkspace itself (brief §20).
+  // ------------------------------------------------------------------------------------------
+
+  // brief §2: "store the analysis on the relevant Session Entry, derive/update compact Session
+  // Memory deterministically, persist through the EXISTING Session persistence/sync path."
+  function computeAnalysisPatches(session, normalizedResult) {
+    var s = schema();
+    var previousMemory = session.aiSessionAnalysisResult && session.aiSessionAnalysisResult.memory;
+    var activeRefs = gatherActiveScenarios(session, 99).map(function (x) { return x.id; });
+    var patternRefs = gatherPatternContext(session, 99).map(function (x) { return x.patternTagId; });
+    var memory = s.buildSessionMemory(previousMemory, normalizedResult, { activeScenarioRefs: activeRefs, importantPatternRefs: patternRefs });
+    return {
+      entryPatch: normalizedResult.entryId ? { aiAnalysisResult: normalizedResult } : null,
+      sessionPatch: {
+        aiSessionAnalysisResult: { version: s.VERSION, memory: memory, latestAnalysis: normalizedResult, updatedAt: normalizedResult.generatedAt }
+      }
+    };
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Scenario proposal -> real Session Scenario draft (brief §20). Maps the AI's richer proposal
+  // shape onto the SAME Scenario fields liveSessionView.jsx's own addScenario()/ScenarioEditor
+  // already use, so a trader can keep editing it with zero special-casing. Additive-only new
+  // fields (aiSource, status, aiVisualization) - nothing existing is renamed or removed.
+  // ------------------------------------------------------------------------------------------
+  function scenarioAlreadyAdded(entry, analysisId, generatedScenarioKey) {
+    return (entry.scenarios || []).some(function (sc) {
+      return sc.aiSource && sc.aiSource.analysisId === analysisId && sc.aiSource.generatedScenarioKey === generatedScenarioKey;
+    });
+  }
+
+  function buildScenarioDraftFromAi(aiScenario, context) {
+    var evidenceText = (aiScenario.evidenceFor || []).map(function (line) { return '• ' + line; }).join('\n');
+    return {
+      id: context.newId,
+      entryId: context.entry.id,
+      title: aiScenario.title || '',
+      description: aiScenario.summary || '',
+      evidence: evidenceText,
+      invalidationTagIds: [],
+      invalidationNote: aiScenario.invalidation || '',
+      problem: '',
+      trigger: aiScenario.trigger || '',
+      probabilityHistory: [{ value: aiScenario.probability, loggedAt: new Date().toISOString() }],
+      executionPlan: { actionPlan: '', positionType: aiScenario.direction === 'long' ? 'Long' : aiScenario.direction === 'short' ? 'Short' : null, entryPrices: [], stopLoss: null, takeProfit: null, positionStatus: null },
+      occurred: false,
+      status: 'pending',
+      pattern: null,
+      aiVisualization: null,
+      aiSource: {
+        source: 'ai_analysis', analysisId: context.analysisId, sourceEntryId: context.entry.id,
+        provider: context.provider, model: context.model, generatedScenarioKey: aiScenario.localKey,
+        kind: aiScenario.kind, role: aiScenario.role, confidence: aiScenario.confidence,
+        confirmations: aiScenario.confirmations, evidenceFor: aiScenario.evidenceFor, evidenceAgainst: aiScenario.evidenceAgainst,
+        visualizationBrief: aiScenario.visualizationBrief
+      }
+    };
+  }
+
+  // brief §22/§19: append-only probability history, never overwritten; scenario.status/occurred
+  // are the only fields a Scenario Evaluation is allowed to change (an Analysis Update never
+  // calls this at all - see the brief's own "must NOT silently produce these persistent
+  // evaluation changes").
+  function applyScenarioEvaluationPatch(scenario, evaluation) {
+    var history = (scenario.probabilityHistory || []).concat([{ value: evaluation.newProbability, loggedAt: new Date().toISOString() }]);
+    return {
+      probabilityHistory: history,
+      status: evaluation.status,
+      occurred: evaluation.status === 'confirmed' ? true : scenario.occurred,
+      lastEvaluation: {
+        whatHappened: evaluation.whatHappened, confirmedBy: evaluation.confirmedBy, contradictedBy: evaluation.contradictedBy,
+        remainsUnresolved: evaluation.remainsUnresolved, triggerOccurred: evaluation.triggerOccurred, invalidationOccurred: evaluation.invalidationOccurred,
+        evaluatedAt: new Date().toISOString()
+      }
+    };
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Scenario Map (brief §25-27) - explicit, never automatic (see sessionAnalysisCard.jsx's own
+  // "Visualize Scenario" button, the only caller). Caches on scenario.aiVisualization.
+  // ------------------------------------------------------------------------------------------
+  function visualizationFingerprint(entry, scenario, analysisId) {
+    return ['viz', entry && entry.id, scenario && (scenario.id || scenario.localKey), analysisId, entryImageIdentity(entry)].join('|');
+  }
+
+  function findCachedVisualization(scenario, fingerprint) {
+    var v = scenario && scenario.aiVisualization;
+    return (v && v.fingerprint === fingerprint) ? v : null;
+  }
+
+  // options: { entry, scenario, analysisId, visualizationBrief, language, apiKey }
+  async function visualizeScenario(options) {
+    var opts = options || {};
+    var fingerprint = visualizationFingerprint(opts.entry, opts.scenario, opts.analysisId);
+    if (!opts.forceRegenerate) {
+      var cached = findCachedVisualization(opts.scenario, fingerprint);
+      if (cached) return { ok: true, cached: true, visualization: cached };
+    }
+    var chartImage = await resolveEntryImageDataUrl(opts.entry, { maxDimension: 2048 });
+    if (!chartImage) return { ok: false, error: 'CHART_IMAGE_REQUIRED', status: 400 };
+
+    var settings = aiSettings();
+    var apiKey = opts.apiKey || (settings ? settings.getKey('openai') : '');
+    var response;
+    try {
+      response = await fetch('/api/sessions/visualize-scenario', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chartImage: chartImage, visualizationBrief: opts.visualizationBrief, language: opts.language || 'fa', apiKey: apiKey || undefined })
+      });
+    } catch (_) {
+      return { ok: false, error: 'NETWORK_ERROR', status: 0 };
+    }
+    var payload = await response.json().catch(function () { return {}; });
+    if (!response.ok) return { ok: false, error: payload.error || 'VISUALIZATION_FAILED', status: response.status };
+
+    if (aiUsage()) aiUsage().record({ provider: payload.provider, usage: payload.usage, source: 'sessions.scenarioVisualization' });
+
+    var visualization = { status: 'ready', imageDataUrl: payload.data && payload.data.imageDataUrl, fingerprint: fingerprint, generatedAt: new Date().toISOString(), originalImageDataUrl: chartImage };
+    return { ok: true, cached: false, visualization: visualization };
+  }
+
+  window.TradeJournalSessionAnalysisClient = {
+    resolveEntryImageDataUrl: resolveEntryImageDataUrl,
+    entryImageIdentity: entryImageIdentity,
+    isScenarioActive: isScenarioActive,
+    gatherActiveScenarios: gatherActiveScenarios,
+    gatherPatternContext: gatherPatternContext,
+    gatherSimilarSessions: gatherSimilarSessions,
+    buildMemoryReceipt: buildMemoryReceipt,
+    findCachedAnalysis: findCachedAnalysis,
+    analyzeSession: analyzeSession,
+    computeAnalysisPatches: computeAnalysisPatches,
+    scenarioAlreadyAdded: scenarioAlreadyAdded,
+    buildScenarioDraftFromAi: buildScenarioDraftFromAi,
+    applyScenarioEvaluationPatch: applyScenarioEvaluationPatch,
+    visualizeScenario: visualizeScenario,
+    findCachedVisualization: findCachedVisualization
+  };
+}());

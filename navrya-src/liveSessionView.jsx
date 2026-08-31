@@ -10,6 +10,7 @@ import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFi
 import * as sessionsAdapter from './sessionsAdapter.js';
 import { openLogWizard } from './tradeLogModal.jsx';
 import { SessionAiAnalysisModal } from './sessionAiAnalysisModal.jsx';
+import { SessionAnalysisCard } from './sessionAnalysisCard.jsx';
 
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
@@ -106,6 +107,7 @@ const copy = {
     probabilityLabel: 'درصد احتمال', planTitle: 'نقشه اجرا', sideLong: 'خرید (لانگ)', sideShort: 'فروش (شورت)',
     entryPriceLabel: 'قیمت ورود', stopLabel: 'حد ضرر', targetLabel: 'حد سود',
     invalidationLabel: 'بی‌اعتباری سناریو', invalidationPlaceholder: 'دلایل را با کاما جدا کنید', occurredYes: 'این سناریو اتفاق افتاد',
+    evaluateWithAi: 'ارزیابی با هوش مصنوعی',
     evidenceLabel: 'شواهد سناریو', evidencePlaceholder: 'چه چیزی این سناریو را معتبر می‌کند؟',
     problemLabel: 'مشکل سناریو', problemPlaceholder: 'نقطه ضعف یا ریسک این سناریو چیست؟',
     triggerLabel: 'تریگر سناریو', triggerPlaceholder: 'چه اتفاقی باید بیفتد تا وارد شوید؟',
@@ -175,6 +177,7 @@ const copy = {
     probabilityLabel: 'نسبة الاحتمال', planTitle: 'خطة التنفيذ', sideLong: 'شراء (Long)', sideShort: 'بيع (Short)',
     entryPriceLabel: 'سعر الدخول', stopLabel: 'وقف الخسارة', targetLabel: 'هدف الربح',
     invalidationLabel: 'إبطال السيناريو', invalidationPlaceholder: 'افصل الأسباب بفواصل', occurredYes: 'هذا السيناريو حدث',
+    evaluateWithAi: 'تقييم بالذكاء الاصطناعي',
     evidenceLabel: 'أدلة السيناريو', evidencePlaceholder: 'ما الذي يجعل هذا السيناريو صالحاً؟',
     problemLabel: 'مشكلة السيناريو', problemPlaceholder: 'ما نقطة الضعف أو المخاطرة في هذا السيناريو؟',
     triggerLabel: 'محفّز السيناريو', triggerPlaceholder: 'ما الذي يجب أن يحدث لتدخل الصفقة؟',
@@ -244,6 +247,7 @@ const copy = {
     probabilityLabel: 'Probability', planTitle: 'Execution plan', sideLong: 'Buy (Long)', sideShort: 'Sell (Short)',
     entryPriceLabel: 'Entry price', stopLabel: 'Stop loss', targetLabel: 'Take profit',
     invalidationLabel: 'Scenario invalidation', invalidationPlaceholder: 'Separate reasons with commas', occurredYes: 'This scenario occurred',
+    evaluateWithAi: 'Evaluate with AI',
     evidenceLabel: 'Scenario evidence', evidencePlaceholder: 'What makes this scenario valid?',
     problemLabel: 'Scenario issue', problemPlaceholder: 'What is the weak point or risk in this scenario?',
     triggerLabel: 'Scenario trigger', triggerPlaceholder: 'What has to happen for you to enter?',
@@ -313,6 +317,7 @@ const copy = {
     probabilityLabel: 'Probabilidad', planTitle: 'Plan de ejecución', sideLong: 'Compra (Long)', sideShort: 'Venta (Short)',
     entryPriceLabel: 'Precio de entrada', stopLabel: 'Stop loss', targetLabel: 'Take profit',
     invalidationLabel: 'Invalidación del escenario', invalidationPlaceholder: 'Separa las razones con comas', occurredYes: 'Este escenario ocurrió',
+    evaluateWithAi: 'Evaluar con IA',
     evidenceLabel: 'Evidencia del escenario', evidencePlaceholder: '¿Qué hace válido este escenario?',
     problemLabel: 'Problema del escenario', problemPlaceholder: '¿Cuál es el punto débil o riesgo de este escenario?',
     triggerLabel: 'Disparador del escenario', triggerPlaceholder: '¿Qué debe ocurrir para entrar?',
@@ -895,7 +900,7 @@ function InvalidationTags({ lang, tags, readOnly, onChange }) {
   );
 }
 
-function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpdate, onDelete, onToggleStage, onSetSide, character }) {
+function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpdate, onDelete, onToggleStage, onSetSide, onEvaluate, character }) {
   const readOnly = session.status === 'closed';
   const prob = probabilityOf(scenario);
   const info = patternInfo(scenario);
@@ -1261,6 +1266,14 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
             {scenario.occurred ? <Icon name="CircleCheck" size={16} /> : <span style={{ width: 14, height: 14, borderRadius: '50%', border: '1px solid currentColor', display: 'block' }}></span>}
             {tr(lang, 'occurredYes')}
           </button>
+          {onEvaluate && !readOnly && (
+            <button type="button" onClick={onEvaluate} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 34, borderRadius: 8, cursor: 'pointer',
+              font: 'var(--type-body)', fontSize: 11.5, border: '1px solid var(--char-accent)', background: 'transparent', color: 'var(--char-accent)'
+            }}>
+              <Icon name="sparkle" size={14} />{tr(lang, 'evaluateWithAi')}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1293,7 +1306,7 @@ function AiStrip({ session, entry, lang, onAnalyze }) {
   );
 }
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, character }) {
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onAnalyze, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
@@ -1382,6 +1395,7 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
               onDelete={() => onScenarioDelete(entry, scenario)}
               onToggleStage={(stage) => onScenarioStage(entry, scenario, stage)}
               onSetSide={(side) => onScenarioSide(entry, scenario, side)}
+              onEvaluate={onScenarioEvaluate ? () => onScenarioEvaluate(entry, scenario) : undefined}
               character={character}
             />
           ))}
@@ -2066,21 +2080,51 @@ function DirectionPicker({ label, value, onChange, lang }) {
 // external AI call, matching the legacy flow's own "local-demo" provider exactly. Saves
 // session.fateSummary (+ previousSessionSummary, so the NEXT session's own "previous session"
 // panel picks it up for real).
-function FateSummaryModal({ session, lang, onClose, onSave }) {
+function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysisResult, onAddAiScenario, onVisualizeAiScenario, onEvaluateAiScenario }) {
   const rtl = lang === 'fa' || lang === 'ar';
   const [moveStrength, setMoveStrength] = React.useState('');
   const [spike, setSpike] = React.useState('');
   const [note, setNote] = React.useState('');
-  const [analysis, setAnalysis] = React.useState(session.aiSessionAnalysisResult || null);
-  // The one-shot inline "AI Analysis" card below used to generate a local demo analysis directly
-  // (setLoading/setAnalysis via a fake 250ms timer) - both its entry points now open the real
-  // Session AI Analysis popup instead (sessionAiAnalysisModal.jsx: user view, model/profile
-  // selection, adherence, a real generating sequence). `analysis` itself is kept, unchanged, as
-  // save()'s own fallback below and as the seed for a session reopened with a prior result -
-  // only the old immediate-generate path is retired.
+  // aiSessionAnalysisResult is always the versioned {memory, latestAnalysis} envelope (brief §2/
+  // §34) - `latestAnalysis` is either a REAL AnalysisResult (has .thesis) or the local-demo
+  // fallback's own flat shape (has .overview), rendered by two different branches below.
+  const [analysisEnvelope, setAnalysisEnvelope] = React.useState(session.aiSessionAnalysisResult || null);
+  const [analysisEntry, setAnalysisEntry] = React.useState(null);
+  // Ephemeral per-open-modal cache for a proposed-but-not-yet-added scenario's Scenario Map
+  // (brief §26 "if already cached: load it instantly") - once a scenario is actually added,
+  // liveSessionView's runVisualizeAiScenario() also persists the result onto the real Scenario
+  // itself (scenario.aiVisualization), which survives beyond this modal being closed.
+  const [scenarioVisualizations, setScenarioVisualizations] = React.useState({});
   const [aiPopupOpen, setAiPopupOpen] = React.useState(false);
+  const latest = analysisEnvelope && analysisEnvelope.latestAnalysis;
+  const isRealResult = !!(latest && latest.thesis);
+
   function save() {
-    onSave({ moveStrength, spike, note, analysis: analysis || makeSessionAnalysis(session, lang) });
+    const envelope = analysisEnvelope || { version: 1, memory: null, latestAnalysis: makeSessionAnalysis(session, lang), updatedAt: new Date().toISOString() };
+    onSave({ moveStrength, spike, note, analysisEnvelope: envelope });
+  }
+  function handleAnalysisResult(result, meta) {
+    const envelope = onAnalysisResult ? onAnalysisResult(meta && meta.entry, result) : { version: 1, memory: null, latestAnalysis: result, updatedAt: new Date().toISOString() };
+    setAnalysisEnvelope(envelope);
+    setAnalysisEntry(meta && meta.entry);
+  }
+  async function handleVisualize(scenario, ctx) {
+    setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
+    const outcome = onVisualizeAiScenario ? await onVisualizeAiScenario(scenario, ctx) : { ok: false };
+    setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
+  }
+  const addedScenarioKeys = React.useMemo(() => {
+    const keys = new Set();
+    if (analysisEntry && latest) {
+      (analysisEntry.scenarios || []).forEach((sc) => {
+        if (sc.aiSource && sc.aiSource.analysisId === latest.analysisId) keys.add(sc.aiSource.generatedScenarioKey);
+      });
+    }
+    return keys;
+  }, [analysisEntry, latest]);
+  function scenarioTitleFor(scenarioId) {
+    const found = flatScenarios(session).find((x) => x.scenario.id === scenarioId);
+    return found ? found.scenario.title : '';
   }
 
   // AI process registry (A4) - mountedRef template. Only mounted while fateStep === 'summary'
@@ -2122,30 +2166,40 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Icon name="sparkle" size={16} /><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'sessionAiTitle')}</span>
-            {analysis && (
+            {latest && (
               <>
                 <span style={{ marginInlineStart: 'auto' }} />
-                <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'localProviderLabel')}</span>
+                {!isRealResult && <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'localProviderLabel')}</span>}
                 <button type="button" onClick={() => setAiPopupOpen(true)} style={{ height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'reanalyzeLabel')}</button>
               </>
             )}
           </div>
-          {!analysis && (
+          {!latest && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '10px 0' }}>
               <p style={{ margin: 0, fontSize: 11, color: 'var(--text-dim)', textAlign: 'center' }}>{tr(lang, 'aiIntro')}</p>
               <Button variant="primary" icon="sparkle" size="sm" onClick={() => setAiPopupOpen(true)}>{tr(lang, 'startAnalysis')}</Button>
             </div>
           )}
-          {analysis && (
+          {latest && isRealResult && (
+            <SessionAnalysisCard
+              result={latest} lang={lang}
+              memoryReceipt={window.TradeJournalSessionAnalysisClient ? window.TradeJournalSessionAnalysisClient.buildMemoryReceipt(session) : null}
+              depth="auto" addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={scenarioVisualizations}
+              scenarioTitleFor={scenarioTitleFor}
+              onAddScenario={(scenario) => onAddAiScenario && analysisEntry && onAddAiScenario(scenario, { entry: analysisEntry, analysisId: latest.analysisId, provider: latest.provider, model: latest.model })}
+              onVisualizeScenario={(scenario) => handleVisualize(scenario, { entry: analysisEntry, analysisId: latest.analysisId })}
+            />
+          )}
+          {latest && !isRealResult && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 11, lineHeight: 1.8 }}>
               <div>
                 <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'overviewLabel')}</span>
-                <p dir="auto" style={{ margin: 0, color: 'var(--text-primary)' }}>{analysis.overview}</p>
+                <p dir="auto" style={{ margin: 0, color: 'var(--text-primary)' }}>{latest.overview}</p>
               </div>
-              {!!analysis.keyMovements.length && (
+              {!!latest.keyMovements.length && (
                 <div>
                   <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'keyMovementsLabel')}</span>
-                  {analysis.keyMovements.map((m, i) => (
+                  {latest.keyMovements.map((m, i) => (
                     <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
                       <span className="navrya-tabular" style={{ color: 'var(--text-dim)', flex: 'none' }}>{m.time}</span>
                       <span dir="auto" style={{ flex: 1, color: 'var(--text-primary)' }}>{m.description}</span>
@@ -2153,18 +2207,18 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
                   ))}
                 </div>
               )}
-              {!!analysis.patternProgression.length && (
+              {!!latest.patternProgression.length && (
                 <div>
                   <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'patternProgressionLabel')}</span>
-                  {analysis.patternProgression.map((p, i) => (
+                  {latest.patternProgression.map((p, i) => (
                     <div key={i} dir="auto" style={{ padding: '4px 0', color: 'var(--text-primary)' }}><b>{p.patternName}</b> — <span style={{ color: 'var(--text-dim)' }}>{p.outcome}</span></div>
                   ))}
                 </div>
               )}
-              {!!analysis.scenarioOutcomes.length && (
+              {!!latest.scenarioOutcomes.length && (
                 <div>
                   <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'scenarioOutcomesLabel')}</span>
-                  {analysis.scenarioOutcomes.map((s, i) => (
+                  {latest.scenarioOutcomes.map((s, i) => (
                     <div key={i} dir="auto" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', color: s.occurred ? 'var(--success)' : 'var(--text-dim)' }}>
                       <Icon name={s.occurred ? 'CircleCheck' : 'Circle'} size={12} />
                       <span style={{ flex: 1 }}>{s.title}</span>
@@ -2175,18 +2229,24 @@ function FateSummaryModal({ session, lang, onClose, onSave }) {
               )}
               <div>
                 <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'lessonsLabel')}</span>
-                {analysis.lessonsLearned.map((l, i) => <p key={i} dir="auto" style={{ margin: '2px 0', color: 'var(--text-primary)' }}>{l}</p>)}
+                {latest.lessonsLearned.map((l, i) => <p key={i} dir="auto" style={{ margin: '2px 0', color: 'var(--text-primary)' }}>{l}</p>)}
               </div>
               <div style={{ padding: 10, borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(214,175,107,.06)' }}>
                 <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'carryForwardLabel')}</span>
-                <p dir="auto" style={{ margin: 0, color: 'var(--text-primary)' }}>{analysis.carryForwardToNextSession}</p>
+                <p dir="auto" style={{ margin: 0, color: 'var(--text-primary)' }}>{latest.carryForwardToNextSession}</p>
               </div>
             </div>
           )}
         </div>
       </div>
     </SessionModalShell>
-    {aiPopupOpen && <SessionAiAnalysisModal session={session} lang={lang} onClose={() => setAiPopupOpen(false)} />}
+    {aiPopupOpen && (
+      <SessionAiAnalysisModal
+        session={session} character={character} lang={lang} onClose={() => setAiPopupOpen(false)}
+        onResult={handleAnalysisResult} onAddScenario={onAddAiScenario} onVisualizeScenario={handleVisualize}
+        addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={scenarioVisualizations} scenarioTitleFor={scenarioTitleFor}
+      />
+    )}
     </>
   );
 }
@@ -2235,6 +2295,9 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // so the modal keeps opening with an empty dropzone for that unchanged path.
   const [chartModalInitialFile, setChartModalInitialFile] = React.useState(null);
   const [fateStep, setFateStep] = React.useState(null); // null | 'entry' | 'summary'
+  // SCENARIO_EVALUATION (brief §22) - a distinct, explicit operation from ANALYSIS_UPDATE, opened
+  // directly from a scenario's own "Evaluate with AI" action rather than through the Fate flow.
+  const [evaluatingScenario, setEvaluatingScenario] = React.useState(null); // { entry, scenario } | null
   const railRef = React.useRef(null);
 
   const session = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
@@ -2388,7 +2451,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     }, 'entry_added', tr(lang, 'fateStep1Title'));
     setFateStep('summary');
   }
-  function saveFateSummary({ moveStrength, spike, note, analysis }) {
+  function saveFateSummary({ moveStrength, spike, note, analysisEnvelope }) {
     persist((s) => {
       s.fateSummary = {
         moveStrengthDirection: moveStrength || undefined, spikeDirection: spike || undefined,
@@ -2397,8 +2460,16 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         savedAt: new Date().toISOString()
       };
       s.previousSessionSummary = s.fateSummary;
-      s.aiSessionAnalysisResult = analysis;
-      s.aiSessionAnalysis = analysis.overview + ' ' + analysis.carryForwardToNextSession;
+      // aiSessionAnalysisResult is now always the versioned {memory, latestAnalysis} envelope
+      // (brief §2/§34) - covers both a real AI result and the local-demo fallback below, which
+      // applyAnalysisResult()/FateSummaryModal's own save() already wrap the same way, so every
+      // reader (this session's own report view, a future session's PrevSummaryPanel) sees one
+      // consistent shape regardless of which path produced it.
+      const latest = analysisEnvelope && analysisEnvelope.latestAnalysis;
+      s.aiSessionAnalysisResult = analysisEnvelope;
+      s.aiSessionAnalysis = latest
+        ? (latest.thesis ? [latest.thesis.headline, latest.thesis.summary].filter(Boolean).join(' ') : [latest.overview, latest.carryForwardToNextSession].filter(Boolean).join(' '))
+        : '';
     }, 'fate_summary_saved', tr(lang, 'saveFateLabel'), null, false);
     setFateStep(null);
     setView('report');
@@ -2437,6 +2508,66 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       const target = targetEntry && (targetEntry.scenarios || []).find((sc) => sc.id === scenario.id);
       if (target) Object.assign(target, patch);
     }, logType || null, '', scenario.id, !!logType);
+  }
+
+  // Adaptive AI Session Analysis (brief §2/§20/§22): the three write paths a real analysis ever
+  // triggers, each going through the SAME persist()/scenario functions above a human edit already
+  // uses - session-analysis-client.js only ever computes what to write, never writes it itself.
+  function applyAnalysisResult(entry, normalizedResult) {
+    const client = window.TradeJournalSessionAnalysisClient;
+    if (!client) return null;
+    const patches = client.computeAnalysisPatches(session, normalizedResult);
+    persist((s) => {
+      if (patches.entryPatch) {
+        const target = (s.entries || []).find((e) => e.id === (entry && entry.id));
+        if (target) Object.assign(target, patches.entryPatch);
+      }
+      Object.assign(s, patches.sessionPatch);
+    }, 'ai_analysis_completed', tr(lang, 'aiAnalyzeButton'), null, false);
+    return patches.sessionPatch.aiSessionAnalysisResult;
+  }
+  // A model-proposed scenario becomes a real, persisted Scenario only on this explicit click
+  // (brief §20/§42.S "never automatic") - reuses this same entry.scenarios array a human "+ Add
+  // scenario" click already targets; duplicate-prevention checks the real persisted aiSource, not
+  // component state (brief §40 test 17).
+  function addAiScenario(aiScenario, ctx) {
+    const client = window.TradeJournalSessionAnalysisClient;
+    const targetEntry = (ctx && ctx.entry) || null;
+    if (!client || !targetEntry) return;
+    if (client.scenarioAlreadyAdded(targetEntry, ctx.analysisId, aiScenario.localKey)) return;
+    const draft = client.buildScenarioDraftFromAi(aiScenario, {
+      newId: window.TradeJournalWorkspace.id('scenario'), entry: targetEntry,
+      analysisId: ctx.analysisId, provider: ctx.provider, model: ctx.model
+    });
+    persist((s) => {
+      const target = (s.entries || []).find((e) => e.id === targetEntry.id);
+      if (target) target.scenarios = (target.scenarios || []).concat([draft]);
+    }, 'scenario_added', tr(lang, 'addScenario'), draft.id, true);
+    setOpenScenarios((prev) => new Set(prev).add(draft.id));
+  }
+  // Evaluates a real, already-persisted scenario against new evidence (brief §22) - append-only
+  // probability history, status/occurred are the only fields this ever changes, via the SAME
+  // updateScenario() a human probability-slider edit already uses.
+  function evaluateAiScenario(entry, scenario, evaluation) {
+    const client = window.TradeJournalSessionAnalysisClient;
+    if (!client) return;
+    updateScenario(entry, scenario, client.applyScenarioEvaluationPatch(scenario, evaluation), 'scenario_evaluated');
+  }
+  // Scenario Map (brief §25-27) - explicit, never automatic, OpenAI-only. If the proposed scenario
+  // has already been added to the session (real aiSource match), the result is also persisted onto
+  // that real Scenario (scenario.aiVisualization) so it survives a reopen with zero extra call
+  // (brief §41); if not yet added, the caller only keeps it in its own local/ephemeral state for
+  // this modal session - visualizing before adding is still supported, just not yet persisted.
+  async function runVisualizeAiScenario(aiScenario, ctx) {
+    const client = window.TradeJournalSessionAnalysisClient;
+    const targetEntry = ctx && ctx.entry;
+    if (!client || !targetEntry) return { ok: false, error: 'NO_ENTRY' };
+    const outcome = await client.visualizeScenario({ entry: targetEntry, scenario: aiScenario, analysisId: ctx.analysisId, visualizationBrief: aiScenario.visualizationBrief, language: lang });
+    if (outcome.ok) {
+      const addedScenario = (targetEntry.scenarios || []).find((sc) => sc.aiSource && sc.aiSource.analysisId === ctx.analysisId && sc.aiSource.generatedScenarioKey === aiScenario.localKey);
+      if (addedScenario) updateScenario(targetEntry, addedScenario, { aiVisualization: outcome.visualization });
+    }
+    return outcome;
   }
   function deleteScenario(entry, scenario) {
     persist((s) => {
@@ -2601,7 +2732,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                 onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage} onAnalyze={analyzeEntry}
                 onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
                 onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
-                onAddScenario={addScenario} character={character}
+                onAddScenario={addScenario} onScenarioEvaluate={(entry, scenario) => setEvaluatingScenario({ entry, scenario })} character={character}
               />
             ) : (
               <Panel variant="base" ornament padding="48px">
@@ -2648,7 +2779,24 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         />
       )}
       {fateStep === 'entry' && <FateEntryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSubmit={submitFateEntry} />}
-      {fateStep === 'summary' && <FateSummaryModal session={session} lang={lang} onClose={() => setFateStep(null)} onSave={saveFateSummary} />}
+      {fateStep === 'summary' && (
+        <FateSummaryModal
+          session={session} lang={lang} character={character} onClose={() => setFateStep(null)} onSave={saveFateSummary}
+          onAnalysisResult={applyAnalysisResult} onAddAiScenario={addAiScenario} onVisualizeAiScenario={runVisualizeAiScenario} onEvaluateAiScenario={evaluateAiScenario}
+        />
+      )}
+      {evaluatingScenario && (
+        <SessionAiAnalysisModal
+          session={session} character={character} lang={lang} entry={evaluatingScenario.entry}
+          scenarioTargets={[evaluatingScenario.scenario.id]}
+          onClose={() => setEvaluatingScenario(null)}
+          onResult={(result) => {
+            (result.scenarioEvaluations || []).forEach((evaluation) => {
+              if (evaluation.scenarioId === evaluatingScenario.scenario.id) evaluateAiScenario(evaluatingScenario.entry, evaluatingScenario.scenario, evaluation);
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

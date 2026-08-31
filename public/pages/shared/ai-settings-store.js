@@ -53,17 +53,35 @@
   // depend on that exact shape. The tier descriptor TEXT itself lives in ai-i18n.js
   // (aiAsstModelTierFrontier/Balanced/Economical), never hardcoded here - this file has no i18n
   // dependency by design, only `modelTiers` tags WHICH descriptor key applies to which model id.
+  // Adaptive AI Session Analysis: capability flags, additive alongside supportsVoice above -
+  // provider-level (not per-model), matching this catalog's existing granularity and the AI
+  // gateway's own provider-level vision gate (server/pattern-ai-server.mjs's
+  // SESSION_ANALYSIS_VISION_SUPPORT/callOpenAICompatible's `supportsVision = provider==='kimi'`).
+  // Read by the Session Analysis modal/card to render an honest "this model can't see charts"
+  // state (brief §6) BEFORE ever sending an image, never by string-matching a model name in a UI
+  // component. recommendedForChartAnalysis is a soft steering hint only (sorts/badges a model in
+  // the picker) - it never disables a selection.
   var PROVIDER_CATALOG = [
     {
       id: 'openai', label: 'OpenAI', endpoint: 'api.openai.com',
       models: ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6', 'gpt-4.1', 'gpt-4o'],
       modelLabels: { 'gpt-5.6-sol': 'GPT-5.6 Sol', 'gpt-5.6-terra': 'GPT-5.6 Terra', 'gpt-5.6-luna': 'GPT-5.6 Luna' },
       modelTiers: { 'gpt-5.6-sol': 'frontier', 'gpt-5.6-terra': 'balanced', 'gpt-5.6-luna': 'economical' },
-      supportsVoice: true, trait: 'spin', knockout: true
+      supportsVoice: true, trait: 'spin', knockout: true,
+      supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: true, recommendedForChartAnalysis: true
     },
-    { id: 'anthropic', label: 'Claude', endpoint: 'api.anthropic.com', models: ['claude-sonnet-4-5', 'claude-opus-4-1'], supportsVoice: false, trait: 'tilt', knockout: false },
-    { id: 'kimi', label: 'Kimi', endpoint: 'api.moonshot.cn', models: ['moonshot-v1-8k', 'moonshot-v1-32k'], supportsVoice: false, trait: 'wink', knockout: true },
-    { id: 'deepseek', label: 'DeepSeek', endpoint: 'api.deepseek.com', models: ['deepseek-chat', 'deepseek-reasoner'], supportsVoice: false, trait: 'dive', knockout: false }
+    {
+      id: 'anthropic', label: 'Claude', endpoint: 'api.anthropic.com', models: ['claude-sonnet-4-5', 'claude-opus-4-1'], supportsVoice: false, trait: 'tilt', knockout: false,
+      supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
+    },
+    {
+      id: 'kimi', label: 'Kimi', endpoint: 'api.moonshot.cn', models: ['moonshot-v1-8k', 'moonshot-v1-32k'], supportsVoice: false, trait: 'wink', knockout: true,
+      supportsVision: true, supportsStructuredOutput: false, supportsReasoning: false, supportsImageGeneration: false, recommendedForChartAnalysis: false
+    },
+    {
+      id: 'deepseek', label: 'DeepSeek', endpoint: 'api.deepseek.com', models: ['deepseek-chat', 'deepseek-reasoner'], supportsVoice: false, trait: 'dive', knockout: false,
+      supportsVision: false, supportsStructuredOutput: false, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: false
+    }
   ];
 
   function perProviderMap(fill) {
@@ -158,6 +176,16 @@
 
   function providerCatalog() { return PROVIDER_CATALOG.map(function (p) { return Object.assign({}, p, { models: p.models.slice() }); }); }
 
+  function capabilitiesFor(provider) {
+    var entry = PROVIDER_CATALOG.filter(function (p) { return p.id === provider; })[0];
+    if (!entry) return { supportsVision: false, supportsStructuredOutput: false, supportsReasoning: false, supportsImageGeneration: false, recommendedForChartAnalysis: false };
+    return {
+      supportsVision: !!entry.supportsVision, supportsStructuredOutput: !!entry.supportsStructuredOutput,
+      supportsReasoning: !!entry.supportsReasoning, supportsImageGeneration: !!entry.supportsImageGeneration,
+      recommendedForChartAnalysis: !!entry.recommendedForChartAnalysis
+    };
+  }
+
   function activeProvider() { return load().provider; }
   function activeModel() {
     var current = load();
@@ -169,6 +197,7 @@
     settings: settings, saveSettings: saveSettings,
     getKey: getKey, setKey: setKey, clearKey: clearKey,
     setVoice: setVoice, setBudget: setBudget,
-    providerCatalog: providerCatalog, activeProvider: activeProvider, activeModel: activeModel
+    providerCatalog: providerCatalog, activeProvider: activeProvider, activeModel: activeModel,
+    capabilitiesFor: capabilitiesFor
   };
 }());
