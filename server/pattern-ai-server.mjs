@@ -550,7 +550,22 @@ async function callOpenAI(payload, apiKey, model) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `OPENAI_${response.status}`);
-    const data = JSON.parse(outputText(result));
+    // A strict-schema response can still arrive truncated: for a reasoning model, max_output_tokens
+    // caps reasoning tokens *and* visible answer tokens together, so a genuinely complex input (e.g.
+    // a real, detailed chart image) can exhaust the budget mid-JSON-string before ever finishing the
+    // answer. The Responses API flags this explicitly via status:'incomplete' - checked first so the
+    // caller gets an honest, typed ANALYSIS_OUTPUT_TRUNCATED instead of a cryptic downstream
+    // JSON.parse SyntaxError ("Unterminated string..."); the catch below is a fallback for the rare
+    // case truncation happens without that flag being set.
+    if (result.status === 'incomplete' && result.incomplete_details?.reason === 'max_output_tokens') {
+      throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
+    }
+    let data;
+    try {
+      data = JSON.parse(outputText(result));
+    } catch (parseError) {
+      throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
+    }
     // AI Cost Control: OpenAI's Responses API usage object breaks input/output tokens down
     // further (input_tokens_details.cached_tokens, output_tokens_details.reasoning_tokens) - both
     // were previously read nowhere in this file, so a real, provider-billed distinction (cached
@@ -619,6 +634,10 @@ async function callAnthropic(payload, apiKey, model) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `ANTHROPIC_${response.status}`);
+    // Same max_tokens-mid-tool-call truncation as callOpenAI's own check above - Anthropic reports
+    // it via stop_reason:'max_tokens' rather than leaving a broken tool_use.input to fail
+    // assertRequiredKeys() with a far less legible error.
+    if (result.stop_reason === 'max_tokens') throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
     const toolUse = (result.content || []).find((block) => block.type === 'tool_use');
     if (!toolUse) throw new Error('EMPTY_MODEL_RESPONSE');
     const data = toolUse.input || {};
@@ -688,9 +707,17 @@ async function callOpenAICompatible(provider, payload, apiKey, model) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `${provider.toUpperCase()}_${response.status}`);
+    // Same truncation family as callOpenAI/callAnthropic above - chat-completions reports it via
+    // finish_reason:'length'.
+    if (result.choices?.[0]?.finish_reason === 'length') throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
     const content = result.choices?.[0]?.message?.content;
     if (!content) throw new Error('EMPTY_MODEL_RESPONSE');
-    const data = JSON.parse(content);
+    let data;
+    try {
+      data = JSON.parse(content);
+    } catch (parseError) {
+      throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
+    }
     assertRequiredKeys(data, schema);
     // AI Cost Control: Kimi/DeepSeek's own cache-token field names are not independently verified
     // against official documentation the way OpenAI's/Anthropic's were - left null rather than
@@ -1168,7 +1195,13 @@ const SESSION_ANALYSIS_SOURCE = { initial: 'sessions.initialAnalysis', update: '
 // is forwarded verbatim to the Responses API) / callAnthropic / callOpenAICompatible above via the
 // same field name. Deliberately generous, not a hard essay-preventing clamp - "structured decision
 // intelligence", not a one-line summary.
-const SESSION_ANALYSIS_OUTPUT_BUDGET = { initial: 4096, update: 2200, scenario_evaluation: 1400 };
+// initial raised 4096 -> 10000 (production incident: a real, detailed chart image against a
+// reasoning model routinely needs several thousand reasoning tokens *and* a full 15-block-type
+// JSON answer before finishing - max_output_tokens caps both together, so 4096 truncated
+// mid-JSON-string on genuinely complex real charts even though every synthetic/simple test image
+// stayed well under it. update/scenario_evaluation are unchanged - their content is narrower by
+// design and were not observed truncating.
+const SESSION_ANALYSIS_OUTPUT_BUDGET = { initial: 10000, update: 2200, scenario_evaluation: 1400 };
 // Deep analysis (brief's low-friction overflow menu option) relaxes the ceiling; Efficient
 // (brief §4's "remaining budget is low" indicator) tightens it. Both are client-resolved depth
 // labels (AUTO itself is resolved client-side too - see session-analysis-client.js's
@@ -2496,6 +2529,7 @@ const server = http.createServer(async (request, response) => {
       : error.message === 'TEXT_REQUIRED' || error.message === 'TEXT_TOO_LONG' ? 400
       : error.message === 'MODEL_VISION_UNSUPPORTED' ? 422
       : error.message === 'CHART_IMAGE_REQUIRED' || error.message === 'INVALID_CHART_IMAGE' ? 400
+      : error.message === 'ANALYSIS_OUTPUT_TRUNCATED' ? 502
       : 500;
     return json(response, status, { error: error.message || 'PATTERN_AI_FAILED' });
   }

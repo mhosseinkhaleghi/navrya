@@ -162,6 +162,31 @@ test('analyzeSession defaults to INITIAL for a missing/invalid analysisType rath
 });
 
 // --------------------------------------------------------------------------------------------
+// Truncated model output (production incident): a real, detailed chart image pushed a reasoning
+// model's combined reasoning + JSON-answer tokens past max_output_tokens, cutting the response off
+// mid-JSON-string. Before this fix that reached the client as a raw, uninterpreted
+// "Unterminated string in JSON at position ..." SyntaxError mapped to a bare 500. It must now
+// surface as a distinct, honest ANALYSIS_OUTPUT_TRUNCATED regardless of which of the two ways a
+// provider signals it: an explicit status flag, or (fallback) text that simply fails to parse.
+// --------------------------------------------------------------------------------------------
+
+test('analyzeSession surfaces ANALYSIS_OUTPUT_TRUNCATED (not a raw JSON.parse crash) when the Responses API explicitly flags status:incomplete/max_output_tokens', async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    return { ok: true, json: async () => ({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: '{"thesis":{"headline":"cut off mid-strin' }) };
+  };
+  await assert.rejects(() => analyzeSession(validAnalysisBody()), /ANALYSIS_OUTPUT_TRUNCATED/);
+});
+
+test('analyzeSession surfaces ANALYSIS_OUTPUT_TRUNCATED (not a raw JSON.parse crash) when the response text is simply cut off mid-string with no explicit status flag', async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    return { ok: true, json: async () => ({ output_text: '{"thesis":{"headline":"BTC nearing a decision zone after a multi-wave declin' }) };
+  };
+  await assert.rejects(() => analyzeSession(validAnalysisBody()), /ANALYSIS_OUTPUT_TRUNCATED/);
+});
+
+// --------------------------------------------------------------------------------------------
 // visualizeScenario() - explicit, OpenAI-only, never automatic; usage always null.
 // --------------------------------------------------------------------------------------------
 

@@ -60,6 +60,7 @@ const copy = {
     err_MODEL_VISION_UNSUPPORTED: 'مدل انتخاب‌شده نمی‌تواند تصویر چارت را تحلیل کند.',
     err_NETWORK_ERROR: 'ارتباط با سرور تحلیل برقرار نشد.',
     err_ANALYSIS_FAILED: 'تحلیل با خطا مواجه شد. لطفاً دوباره تلاش کنید.',
+    err_ANALYSIS_OUTPUT_TRUNCATED: 'پاسخ هوش مصنوعی خیلی طولانی شد و ناتمام ماند. لطفاً دوباره تلاش کنید.',
     unsupportedVisionInline: 'مدل انتخاب‌شده نمی‌تواند چارت را ببیند — مدل دیگری انتخاب کنید.'
   },
   ar: {
@@ -90,6 +91,7 @@ const copy = {
     err_MODEL_VISION_UNSUPPORTED: 'النموذج المختار لا يمكنه تحليل صورة المخطط.',
     err_NETWORK_ERROR: 'تعذّر الاتصال بخادم التحليل.',
     err_ANALYSIS_FAILED: 'فشل التحليل. حاول مرة أخرى.',
+    err_ANALYSIS_OUTPUT_TRUNCATED: 'استجابة الذكاء الاصطناعي كانت طويلة جداً وتوقفت قبل الاكتمال. حاول مرة أخرى.',
     unsupportedVisionInline: 'النموذج المختار لا يمكنه رؤية المخطط — اختر نموذجاً آخر.'
   },
   en: {
@@ -120,6 +122,7 @@ const copy = {
     err_MODEL_VISION_UNSUPPORTED: 'The selected model cannot analyze chart images.',
     err_NETWORK_ERROR: "Couldn't reach the analysis server.",
     err_ANALYSIS_FAILED: 'The analysis failed. Please try again.',
+    err_ANALYSIS_OUTPUT_TRUNCATED: "The AI's response was too long and got cut off. Please try again.",
     unsupportedVisionInline: "This model can't see the chart — choose a different model."
   },
   es: {
@@ -150,6 +153,7 @@ const copy = {
     err_MODEL_VISION_UNSUPPORTED: 'El modelo elegido no puede analizar imágenes de gráficos.',
     err_NETWORK_ERROR: 'No se pudo conectar con el servidor de análisis.',
     err_ANALYSIS_FAILED: 'El análisis falló. Inténtalo de nuevo.',
+    err_ANALYSIS_OUTPUT_TRUNCATED: 'La respuesta de la IA fue demasiado larga y se cortó. Inténtalo de nuevo.',
     unsupportedVisionInline: 'Este modelo no puede ver el gráfico — elige otro modelo.'
   }
 };
