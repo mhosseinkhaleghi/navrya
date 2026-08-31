@@ -261,7 +261,7 @@ function GeneratingStages({ lang, stageIndex }) {
    own latest chart entry (buildSessionContextRefs().latestChartEntryId) when omitted, e.g. when
    opened from the whole-session Fate flow. `scenarioTargets` (optional, scenario ids) switches
    this into a SCENARIO_EVALUATION request instead of INITIAL/UPDATE. */
-export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, character, onClose, onResult, onAddScenario, onVisualizeScenario, addedScenarioKeys, scenarioVisualizations, scenarioTitleFor, scenarioTargets }) {
+export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, character, onClose, onResult, onAddScenario, onVisualizeScenario, onVisualizeAnalysis, addedScenarioKeys, scenarioVisualizations, analysisVisualization, scenarioTitleFor, scenarioTargets }) {
   const activeLang = lang || 'fa';
   const rtl = activeLang === 'fa' || activeLang === 'ar';
 
@@ -292,6 +292,13 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   // FateSummaryModal's own persisted-result view), so this modal renders a real loading/ready
   // state regardless of which parent opened it (brief §27 loading experience).
   const [localVisualizations, setLocalVisualizations] = React.useState({});
+  // Same self-contained reasoning as localVisualizations above, for the whole-analysis overlay -
+  // seeded from the entry's own persisted entry.aiAnalysisResult.wholeVisualization when reopening
+  // an existing analysis (hasSavedResult), so "view analysis again" also shows a previously
+  // generated overlay without regenerating it.
+  const [localAnalysisVisualization, setLocalAnalysisVisualization] = React.useState(
+    hasSavedResult && pinnedEntry.aiAnalysisResult.wholeVisualization ? pinnedEntry.aiAnalysisResult.wholeVisualization : null
+  );
   const requestRef = React.useRef(null);
 
   const isEvaluation = Array.isArray(scenarioTargets) && scenarioTargets.length > 0;
@@ -378,6 +385,9 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     }
     setAnalysisResult(outcome.result);
     setAnalysisMeta({ cached: outcome.cached, entry: targetEntry });
+    // A cache hit legitimately reuses (and should keep showing) the entry's own persisted
+    // wholeVisualization; a genuinely NEW analysis has no visualization of its own yet.
+    setLocalAnalysisVisualization(outcome.cached ? outcome.result.wholeVisualization || null : null);
     setPhase('result');
     if (onResult) onResult(outcome.result, { entry: targetEntry });
   }
@@ -414,6 +424,15 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     const ctx = { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId };
     const outcome = onVisualizeScenario ? await onVisualizeScenario(scenario, ctx) : { ok: false };
     setLocalVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
+  }
+  // A caller-supplied analysisVisualization (e.g. FateSummaryModal's own inline card, kept in sync
+  // with the same persisted state) wins once set - same "caller state wins, local state is the
+  // in-this-popup-session fallback" precedence as mergedVisualizations above.
+  const mergedAnalysisVisualization = analysisVisualization || localAnalysisVisualization;
+  async function handleVisualizeAnalysisLocal() {
+    setLocalAnalysisVisualization({ status: 'loading' });
+    const outcome = onVisualizeAnalysis ? await onVisualizeAnalysis(analysisResult, { entry: analysisMeta && analysisMeta.entry }) : { ok: false };
+    setLocalAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error' });
   }
 
   return (
@@ -541,6 +560,8 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
               scenarioTitleFor={scenarioTitleFor}
               onAddScenario={(scenario) => onAddScenario && onAddScenario(scenario, { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId, provider: analysisResult.provider, model: analysisResult.model })}
               onVisualizeScenario={handleVisualizeLocal}
+              onVisualizeAnalysis={analysisMeta && analysisMeta.entry ? handleVisualizeAnalysisLocal : null}
+              analysisVisualization={mergedAnalysisVisualization}
             />
           )}
         </div>

@@ -279,8 +279,15 @@ const AI_BILLED_ROUTES = {
   '/api/mental-health/education-card': 'mentalHealthEducationCard',
   '/api/ai/chat': 'aiChat',
   '/api/sessions/analyze': 'sessionAnalyze',
-  '/api/sessions/visualize-scenario': 'sessionScenarioVisualization'
+  '/api/sessions/visualize-scenario': 'sessionScenarioVisualization',
+  '/api/sessions/visualize-analysis': 'sessionAnalysisVisualization'
 };
+
+// Both image-generation routes above are explicitly, always OpenAI/gpt-image-1 (see
+// visualizeScenario()/visualizeAnalysis()'s own comments) - neither ever accepts a provider/model
+// in its own request body, unlike /api/sessions/analyze. Named here once so the wallet-reservation
+// pinning below and any future caller share one answer to "is this an image-generation route".
+const IMAGE_GENERATION_ROUTES = new Set(['/api/sessions/visualize-scenario', '/api/sessions/visualize-analysis']);
 
 // Commercial billing is an explicit rollout, not an implicit side effect of deploying the
 // wallet schema. Existing production users predate wallet balances/provider pricing, so enabling
@@ -1830,6 +1837,52 @@ async function visualizeScenario(body) {
   }
 }
 
+// Analysis Map: the same illustrative-overlay tool as Scenario Map above, but drawing the WHOLE
+// analysis (every key zone the model called out, plus the primary scenario's own path) onto the
+// chart in one pass, rather than one scenario at a time. Deliberately its own prompt builder
+// rather than a loop calling buildVisualizationPrompt() per scenario - one coherent overlay reads
+// far better than several independently-drawn ones stacked on the same image, and it keeps this a
+// single image-generation call (same "never a second hidden model call" principle as
+// analyzeSession() itself, brief §4).
+function buildAnalysisVisualizationPrompt(snapshot, language) {
+  const lang = languageNames[language] || languageNames.en;
+  const zoneLines = (Array.isArray(snapshot.keyZones) ? snapshot.keyZones : [])
+    .slice(0, 6)
+    .map((zone) => `- ${zone.range}${zone.label ? ' (' + zone.label + ')' : ''}`);
+  const primary = snapshot.primaryScenario || null;
+  const lines = [
+    'Annotate this real trading chart screenshot with an illustrative overlay of a full market analysis. Do not alter, invent, remove, or redraw any visible price candles, axis labels, or chart data - only ADD overlay markings (shaded zones, small labels, one path line/arrow) on top of the existing chart exactly as supplied. This is an illustrative overlay for a trader to review, not a new chart.',
+    snapshot.thesisHeadline ? `Overall thesis: ${snapshot.thesisHeadline}` : '',
+    zoneLines.length ? `Mark these key zones (shade lightly, small label each):\n${zoneLines.join('\n')}` : '',
+    primary && Array.isArray(primary.primaryPath) && primary.primaryPath.length ? `Primary expected path (draw as one solid line/arrow, e.g. green): ${primary.primaryPath.join(' -> ')}` : '',
+    primary && primary.triggerZone ? `Trigger zone (mark clearly with a small label): ${primary.triggerZone}` : '',
+    primary && primary.invalidationZone ? `Invalidation zone (mark in red/warning color with a small label): ${primary.invalidationZone}` : '',
+    `If you add any text labels, write them in ${lang}. Keep the overlay clean, sparse and legible - this is a professional trading-analysis illustration covering the whole analysis at a glance, not decorative art.`
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+// Explicit, separate, OpenAI-only, never-automatic action, same shape as visualizeScenario() above
+// (no analysisType, never invoked from analyzeSession(), usage always null - see that function's
+// own comment for why). body.analysisSnapshot is a small, already-derived subset of a real,
+// already-completed analysis result (keyZones/primaryScenario/thesisHeadline) - the client builds
+// it from the SAME analysis the trader already paid for and is looking at; this never triggers a
+// second analyzeSession() call.
+async function visualizeAnalysis(body) {
+  if (typeof body.chartImage !== 'string' || !body.chartImage.startsWith('data:image/')) throw new Error('CHART_IMAGE_REQUIRED');
+  const snapshot = (body.analysisSnapshot && typeof body.analysisSnapshot === 'object') ? body.analysisSnapshot : {};
+  const prompt = buildAnalysisVisualizationPrompt(snapshot, body.language);
+  const startedAt = Date.now();
+  try {
+    const outcome = await callOpenAIImageEdit({ imageDataUrl: body.chartImage, prompt, apiKeyOverride: body.apiKey });
+    reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'sessions.analysisVisualization' });
+    return { data: { imageDataUrl: outcome.imageDataUrl }, provider: 'openai', model: 'gpt-image-1', usage: null };
+  } catch (error) {
+    reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'sessions.analysisVisualization' });
+    throw error;
+  }
+}
+
 // A centrally-maintained conversational style instruction (production repair pass, section 22 of
 // the repair brief) - never scattered per-component string literals. Applies to every dockChat()
 // branch below; the activeProcess branch layers one extra "keep it short" sentence on top, since
@@ -2490,16 +2543,17 @@ const server = http.createServer(async (request, response) => {
     // callProvider()'s own key-resolution order above).
     const billedFeature = AI_BILLED_ROUTES[request.url];
     const isByok = typeof body.apiKey === 'string' && body.apiKey.trim().length > 0;
-    // Scenario Map's visualize-scenario route never accepts a provider/model in its own request
-    // body (it is explicitly, always OpenAI/gpt-image-1 - see visualizeScenario()'s own comment) -
-    // body.provider/body.model are simply undefined for it. Reserving against `undefined` silently
-    // could never resolve a pricing rate for ANY row, so this route always failed closed with
-    // PROVIDER_PRICING_NOT_CONFIGURED regardless of what pricing existed - confirmed live. The real
-    // call's own provider/model are pinned here to match exactly what visualizeScenario() actually
-    // returns and what settleWalletFundsForCall() below already correctly reads from that result.
-    const isVisualizeScenario = request.url === '/api/sessions/visualize-scenario';
-    const reserveProvider = isVisualizeScenario ? 'openai' : body.provider;
-    const reserveModel = isVisualizeScenario ? 'gpt-image-1' : body.model;
+    // Neither image-generation route (IMAGE_GENERATION_ROUTES) accepts a provider/model in its own
+    // request body (both are explicitly, always OpenAI/gpt-image-1 - see visualizeScenario()'s own
+    // comment) - body.provider/body.model are simply undefined for them. Reserving against
+    // `undefined` silently could never resolve a pricing rate for ANY row, so these routes always
+    // failed closed with PROVIDER_PRICING_NOT_CONFIGURED regardless of what pricing existed -
+    // confirmed live for visualize-scenario. Pinned here to match exactly what
+    // visualizeScenario()/visualizeAnalysis() actually return and what settleWalletFundsForCall()
+    // below already correctly reads from that result.
+    const isImageGeneration = IMAGE_GENERATION_ROUTES.has(request.url);
+    const reserveProvider = isImageGeneration ? 'openai' : body.provider;
+    const reserveModel = isImageGeneration ? 'gpt-image-1' : body.model;
     if (billedFeature && !isByok && aiWalletEnforced()) {
       const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: reserveProvider, model: reserveModel, payload: body });
       if (!gate.ok) {
@@ -2523,6 +2577,7 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/ai/chat') result = await dockChat(body);
     else if (request.url === '/api/sessions/analyze') result = await analyzeSession(body);
     else if (request.url === '/api/sessions/visualize-scenario') result = await visualizeScenario(body);
+    else if (request.url === '/api/sessions/visualize-analysis') result = await visualizeAnalysis(body);
     else if (request.url === '/api/ai/test-connection') result = await testConnection(body);
     else if (request.url === '/api/ai/realtime/session') result = await mintRealtimeClientSecret(body, session.userId);
     // Admin-only hardened replacement for the old isolated /api/ai/voice/test-tts-fa (see
@@ -2594,7 +2649,8 @@ export {
   historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests, internalWalletCallWithRetry,
-  analyzeSession, visualizeScenario, buildSessionAnalysisSystemPrompt, buildSessionAnalysisContextText,
+  analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
+  buildSessionAnalysisSystemPrompt, buildSessionAnalysisContextText,
   validateSessionAnalysisResult, sessionAnalysisOutputBudget, sessionAnalysisFormat,
   SESSION_ANALYSIS_TYPES, SESSION_ANALYSIS_SOURCE, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT
 };

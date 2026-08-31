@@ -166,10 +166,27 @@ test('findCachedVisualization only matches when the fingerprint is identical', a
   assert.equal(client.findCachedVisualization(scenario, 'viz|e1|sc1|a1|img2'), null);
 });
 
-test('visualizeScenario is cached - a second call with the same fingerprint makes no network request (brief §40 test 22)', async () => {
+// Production incident: a generated image's raw base64 was previously embedded directly on the
+// visualization object - the next whole-session save then hung indefinitely trying to push a
+// multi-MB inline blob. visualizeScenario()/visualizeAnalysis() now upload the generated image
+// through the same /api/sync/sessions/images endpoint an entry's own original chart already uses,
+// and persist only the small returned URL - see uploadGeneratedImage()'s own comment.
+function mockVisualizeFetch(visualizeUrlFragment) {
+  return async (url) => {
+    if (String(url).includes('/api/sync/sessions/images')) {
+      return { ok: true, json: async () => ({ url: '/uploads/session/generated-x.png' }) };
+    }
+    if (String(url).includes(visualizeUrlFragment)) {
+      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-1', usage: null }) };
+    }
+    throw new Error('unexpected fetch: ' + url);
+  };
+}
+
+test('visualizeScenario uploads the generated image (never persists raw base64) and is cached - a second call with the same fingerprint makes no network request (brief §40 test 22)', async () => {
   let fetchCalls = 0;
   const { client } = await loadClient({
-    fetch: async () => { fetchCalls += 1; return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-1', usage: null }) }; },
+    fetch: async (url) => { fetchCalls += 1; return mockVisualizeFetch('/api/sessions/visualize-scenario')(url); },
     TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: true }), getKey: () => '' },
     TradeJournalAnalysisImagePrep: { prepareForTransport: async () => 'data:image/png;base64,BBBB' }
   });
@@ -177,10 +194,99 @@ test('visualizeScenario is cached - a second call with the same fingerprint make
   const scenario = { localKey: 'k1', visualizationBrief: { primaryPath: [], alternativePath: [], triggerZone: '', invalidationZone: '', targetZones: [], narrative: '' } };
   const first = await client.visualizeScenario({ entry, scenario, analysisId: 'a1', visualizationBrief: scenario.visualizationBrief });
   assert.equal(first.ok, true);
-  assert.equal(fetchCalls, 1);
+  assert.equal(first.visualization.imageDataUrl, '/uploads/session/generated-x.png');
+  assert.equal(fetchCalls, 2, 'one call to visualize-scenario, one to upload the generated image');
   scenario.aiVisualization = first.visualization;
   const second = await client.visualizeScenario({ entry, scenario, analysisId: 'a1', visualizationBrief: scenario.visualizationBrief });
   assert.equal(second.ok, true);
   assert.equal(second.cached, true);
-  assert.equal(fetchCalls, 1, 'a cached visualization must never trigger a second paid call');
+  assert.equal(fetchCalls, 2, 'a cached visualization must never trigger a second paid call');
+});
+
+test('visualizeScenario fails outright (VISUALIZATION_SAVE_FAILED) rather than silently keeping the raw base64 when the image upload fails', async () => {
+  const { client } = await loadClient({
+    fetch: async (url) => {
+      if (String(url).includes('/api/sync/sessions/images')) return { ok: false, status: 413 };
+      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-1', usage: null }) };
+    },
+    TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: true }), getKey: () => '' },
+    TradeJournalAnalysisImagePrep: { prepareForTransport: async () => 'data:image/png;base64,BBBB' }
+  });
+  const entry = { id: 'e1', imageUrl: '/uploads/session/x.png' };
+  const scenario = { localKey: 'k1', visualizationBrief: {} };
+  const result = await client.visualizeScenario({ entry, scenario, analysisId: 'a1', visualizationBrief: scenario.visualizationBrief });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'VISUALIZATION_SAVE_FAILED');
+});
+
+// Analysis Map (2026-08-31 follow-up) - same tool as Scenario Map above, drawing the whole
+// analysis (every key zone + the primary scenario's path) instead of one scenario at a time.
+// Caches on entry.aiAnalysisResult.wholeVisualization rather than scenario.aiVisualization, since
+// there is no single scenario to attach a whole-analysis overlay to.
+
+test('buildAnalysisSnapshot gathers zones from every key_zones-type block (not just the first) and only the PRIMARY-role scenario\'s own visualizationBrief', async () => {
+  const { client } = await loadClient();
+  const analysisResult = {
+    thesis: { headline: 'Sellers in control' },
+    blocks: [
+      { type: 'key_zones', zones: [{ range: '100-105', label: 'Support' }] },
+      { type: 'observation', zones: [] },
+      { type: 'key_zones', zones: [{ range: '110-115', label: 'Resistance' }] }
+    ],
+    scenarios: [
+      { role: 'alternative', localKey: 'alt', visualizationBrief: { primaryPath: ['X'] } },
+      { role: 'primary', localKey: 'p1', visualizationBrief: { primaryPath: ['A', 'B'], triggerZone: 'below 100' } }
+    ]
+  };
+  const snapshot = client.buildAnalysisSnapshot(analysisResult);
+  assert.equal(snapshot.thesisHeadline, 'Sellers in control');
+  assert.equal(snapshot.keyZones.length, 2);
+  // vm.runInContext realm: Array.from() re-materializes into the native realm before comparing,
+  // since node:assert/strict's deepEqual fails on structurally-identical-but-cross-realm arrays.
+  assert.deepEqual(Array.from(snapshot.keyZones, (z) => z.range), ['100-105', '110-115']);
+  assert.equal(snapshot.primaryScenario.triggerZone, 'below 100');
+  assert.deepEqual(Array.from(snapshot.primaryScenario.primaryPath), ['A', 'B']);
+});
+
+test('findCachedAnalysisVisualization only matches when the fingerprint is identical', async () => {
+  const { client } = await loadClient();
+  const entry = { id: 'e1', aiAnalysisResult: { wholeVisualization: { status: 'ready', fingerprint: 'viz-analysis|e1|a1|img1' } } };
+  assert.ok(client.findCachedAnalysisVisualization(entry, 'viz-analysis|e1|a1|img1'));
+  assert.equal(client.findCachedAnalysisVisualization(entry, 'viz-analysis|e1|a1|img2'), null);
+});
+
+test('visualizeAnalysis uploads the generated image (never persists raw base64) and is cached - a second call with the same fingerprint makes no network request', async () => {
+  let fetchCalls = 0;
+  const { client } = await loadClient({
+    fetch: async (url) => { fetchCalls += 1; return mockVisualizeFetch('/api/sessions/visualize-analysis')(url); },
+    TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: true }), getKey: () => '' },
+    TradeJournalAnalysisImagePrep: { prepareForTransport: async () => 'data:image/png;base64,BBBB' }
+  });
+  const entry = { id: 'e1', imageUrl: '/uploads/session/x.png' };
+  const analysisResult = { analysisId: 'a1', thesis: { headline: 'h' }, blocks: [], scenarios: [] };
+  const first = await client.visualizeAnalysis({ entry, analysisResult });
+  assert.equal(first.ok, true);
+  assert.equal(first.visualization.imageDataUrl, '/uploads/session/generated-x.png');
+  assert.equal(fetchCalls, 2, 'one call to visualize-analysis, one to upload the generated image');
+  entry.aiAnalysisResult = { wholeVisualization: first.visualization };
+  const second = await client.visualizeAnalysis({ entry, analysisResult });
+  assert.equal(second.ok, true);
+  assert.equal(second.cached, true);
+  assert.equal(fetchCalls, 2, 'a cached visualization must never trigger a second paid call');
+});
+
+test('visualizeAnalysis fails outright (VISUALIZATION_SAVE_FAILED) rather than silently keeping the raw base64 when the image upload fails', async () => {
+  const { client } = await loadClient({
+    fetch: async (url) => {
+      if (String(url).includes('/api/sync/sessions/images')) return { ok: false, status: 413 };
+      return { ok: true, json: async () => ({ data: { imageDataUrl: 'data:image/png;base64,AAAA' }, provider: 'openai', model: 'gpt-image-1', usage: null }) };
+    },
+    TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: true }), getKey: () => '' },
+    TradeJournalAnalysisImagePrep: { prepareForTransport: async () => 'data:image/png;base64,BBBB' }
+  });
+  const entry = { id: 'e1', imageUrl: '/uploads/session/x.png' };
+  const analysisResult = { analysisId: 'a1', thesis: { headline: 'h' }, blocks: [], scenarios: [] };
+  const result = await client.visualizeAnalysis({ entry, analysisResult });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'VISUALIZATION_SAVE_FAILED');
 });

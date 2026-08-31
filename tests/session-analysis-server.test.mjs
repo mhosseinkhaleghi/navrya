@@ -7,7 +7,8 @@ import test, { after, afterEach } from 'node:test';
 // this stubs the underlying provider HTTP call, never a mocked "callProvider" seam of its own.
 const serverModule = await import('../server/pattern-ai-server.mjs');
 const {
-  analyzeSession, visualizeScenario, buildSessionAnalysisSystemPrompt, sessionAnalysisOutputBudget,
+  analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
+  buildSessionAnalysisSystemPrompt, sessionAnalysisOutputBudget,
   validateSessionAnalysisResult, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT
 } = serverModule;
 const server = serverModule.default;
@@ -224,6 +225,55 @@ test('visualizeScenario calls the OpenAI images/edits endpoint and returns an im
     return { ok: true, json: async () => ({ data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }] }) };
   };
   const result = await visualizeScenario({ chartImage: 'data:image/png;base64,AAAA', visualizationBrief: { narrative: 'test', primaryPath: ['A', 'B'] }, language: 'en', apiKey: 'k' });
+  assert.match(calledUrl, /images\/edits/);
+  assert.match(result.data.imageDataUrl, /^data:image\/png;base64,/);
+  assert.equal(result.provider, 'openai');
+  assert.equal(result.model, 'gpt-image-1');
+  assert.equal(result.usage, null);
+});
+
+// --------------------------------------------------------------------------------------------
+// visualizeAnalysis() (Analysis Map) - same shape as visualizeScenario() above, but drawing the
+// WHOLE analysis (every key zone + the primary scenario's path) in one image instead of one
+// scenario at a time.
+// --------------------------------------------------------------------------------------------
+
+test('buildAnalysisVisualizationPrompt gathers zones from every key_zones block (not just one) and the PRIMARY-role scenario\'s own path', () => {
+  const snapshot = {
+    thesisHeadline: 'Sellers in control',
+    keyZones: [{ range: '100-105', label: 'Support' }, { range: '110-115', label: 'Resistance' }],
+    primaryScenario: { primaryPath: ['A', 'B'], triggerZone: 'below 100', invalidationZone: 'above 115' }
+  };
+  const prompt = buildAnalysisVisualizationPrompt(snapshot, 'en');
+  assert.match(prompt, /Sellers in control/);
+  assert.match(prompt, /100-105/);
+  assert.match(prompt, /110-115/);
+  assert.match(prompt, /A -> B/);
+  assert.match(prompt, /below 100/);
+  assert.match(prompt, /above 115/);
+  // Never redraws/invents chart data - the same hard constraint visualizeScenario's own prompt states.
+  assert.match(prompt, /Do not alter, invent, remove, or redraw/);
+});
+
+test('visualizeAnalysis rejects CHART_IMAGE_REQUIRED with no provider call at all when no chart image is supplied', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; return { ok: true, json: async () => ({}) }; };
+  await assert.rejects(() => visualizeAnalysis({ analysisSnapshot: {}, language: 'en' }), /CHART_IMAGE_REQUIRED/);
+  assert.equal(calls, 0);
+});
+
+test('visualizeAnalysis calls the OpenAI images/edits endpoint and returns an imageDataUrl with usage always null, same as visualizeScenario', async () => {
+  let calledUrl = null;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    calledUrl = String(url);
+    return { ok: true, json: async () => ({ data: [{ b64_json: 'ZmFrZS1pbWFnZQ==' }] }) };
+  };
+  const result = await visualizeAnalysis({
+    chartImage: 'data:image/png;base64,AAAA',
+    analysisSnapshot: { thesisHeadline: 'h', keyZones: [{ range: '1-2', label: 'z' }], primaryScenario: null },
+    language: 'en', apiKey: 'k'
+  });
   assert.match(calledUrl, /images\/edits/);
   assert.match(result.data.imageDataUrl, /^data:image\/png;base64,/);
   assert.equal(result.provider, 'openai');

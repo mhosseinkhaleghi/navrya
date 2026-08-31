@@ -1324,6 +1324,12 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
               <button type="button" title={tr(lang, 'fullscreenTitle')} onClick={() => window.open(imageUrl, '_blank', 'noopener')} style={{ position: 'absolute', top: 10, insetInlineEnd: 10, display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.7)', color: 'var(--text-muted)' }}>
                 <Icon name="Maximize2" size={16} />
               </button>
+              {/* Chart-shortcut trigger (2026-08-31 follow-up): the same real onOpenSessionAnalysis
+                  trigger as the header button above, placed directly on the chart image itself so
+                  a trader can start/reopen the analysis without first locating the header button. */}
+              <button type="button" title={tr(lang, 'aiAnalyzeButton')} onClick={onOpenSessionAnalysis} style={{ position: 'absolute', top: 10, insetInlineEnd: 52, display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'rgba(3,8,7,.7)', color: 'var(--char-accent)' }}>
+                <Icon name="sparkle" size={16} />
+              </button>
             </span>
           ) : (
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: 300, borderRadius: 10, border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.5)' }}>
@@ -2040,7 +2046,7 @@ function DirectionPicker({ label, value, onChange, lang }) {
 // external AI call, matching the legacy flow's own "local-demo" provider exactly. Saves
 // session.fateSummary (+ previousSessionSummary, so the NEXT session's own "previous session"
 // panel picks it up for real).
-function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysisResult, onAddAiScenario, onVisualizeAiScenario, onEvaluateAiScenario }) {
+function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysisResult, onAddAiScenario, onVisualizeAiScenario, onVisualizeAiAnalysis, onEvaluateAiScenario }) {
   const rtl = lang === 'fa' || lang === 'ar';
   const [moveStrength, setMoveStrength] = React.useState('');
   const [spike, setSpike] = React.useState('');
@@ -2055,6 +2061,10 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
   // liveSessionView's runVisualizeAiScenario() also persists the result onto the real Scenario
   // itself (scenario.aiVisualization), which survives beyond this modal being closed.
   const [scenarioVisualizations, setScenarioVisualizations] = React.useState({});
+  // Same ephemeral-per-open-modal-cache reasoning as scenarioVisualizations above, but for the
+  // whole-analysis overlay - liveSessionView's runVisualizeAiAnalysis() persists the real result
+  // onto entry.aiAnalysisResult.wholeVisualization, which survives beyond this modal closing.
+  const [analysisVisualization, setAnalysisVisualization] = React.useState(null);
   const [aiPopupOpen, setAiPopupOpen] = React.useState(false);
   const latest = analysisEnvelope && analysisEnvelope.latestAnalysis;
   const isRealResult = !!(latest && latest.thesis);
@@ -2067,11 +2077,18 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     const envelope = onAnalysisResult ? onAnalysisResult(meta && meta.entry, result) : { version: 1, memory: null, latestAnalysis: result, updatedAt: new Date().toISOString() };
     setAnalysisEnvelope(envelope);
     setAnalysisEntry(meta && meta.entry);
+    setAnalysisVisualization(null); // a genuinely new analysis has no visualization of its own yet
   }
   async function handleVisualize(scenario, ctx) {
     setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
     const outcome = onVisualizeAiScenario ? await onVisualizeAiScenario(scenario, ctx) : { ok: false };
     setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
+  }
+  async function handleVisualizeAnalysis() {
+    if (!analysisEntry || !latest) return;
+    setAnalysisVisualization({ status: 'loading' });
+    const outcome = onVisualizeAiAnalysis ? await onVisualizeAiAnalysis(latest, { entry: analysisEntry }) : { ok: false };
+    setAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error' });
   }
   const addedScenarioKeys = React.useMemo(() => {
     const keys = new Set();
@@ -2148,6 +2165,7 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
               scenarioTitleFor={scenarioTitleFor}
               onAddScenario={(scenario) => onAddAiScenario && analysisEntry && onAddAiScenario(scenario, { entry: analysisEntry, analysisId: latest.analysisId, provider: latest.provider, model: latest.model })}
               onVisualizeScenario={(scenario) => handleVisualize(scenario, { entry: analysisEntry, analysisId: latest.analysisId })}
+              onVisualizeAnalysis={analysisEntry ? handleVisualizeAnalysis : null} analysisVisualization={analysisVisualization}
             />
           )}
           {latest && !isRealResult && (
@@ -2203,8 +2221,9 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     {aiPopupOpen && (
       <SessionAiAnalysisModal
         session={session} character={character} lang={lang} onClose={() => setAiPopupOpen(false)}
-        onResult={handleAnalysisResult} onAddScenario={onAddAiScenario} onVisualizeScenario={handleVisualize}
-        addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={scenarioVisualizations} scenarioTitleFor={scenarioTitleFor}
+        onResult={handleAnalysisResult} onAddScenario={onAddAiScenario} onVisualizeScenario={handleVisualize} onVisualizeAnalysis={handleVisualizeAnalysis}
+        addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={scenarioVisualizations} analysisVisualization={analysisVisualization}
+        scenarioTitleFor={scenarioTitleFor}
       />
     )}
     </>
@@ -2264,7 +2283,23 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   const [sessionAnalysisEntry, setSessionAnalysisEntry] = React.useState(null);
   const railRef = React.useRef(null);
 
-  const session = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
+  // Production bug found via the Analysis Map feature (2026-08-31): this component calls hooks
+  // both before AND after the `if (!session) return null` gate below (e.g. liveSessionHubRef's
+  // useRef/useEffect, ~250 lines further down) - a real Rules-of-Hooks violation that had simply
+  // never been triggered before, because window.TradeJournalWorkspace.find(sessionId) had never
+  // been observed to transiently return null while this component stayed mounted. A long-running
+  // async action (Analysis Map's ~30-60s image generation) followed by this component's own
+  // persist()->rerender() at the end gave a transient store-read miss enough of a window to
+  // actually happen, and React's "fewer hooks than expected" crashed the whole view. Restructuring
+  // ~250 lines of hook-straddling code to fix the violation at its root is its own separate,
+  // higher-risk change; this instead removes the actual trigger - session now only reads as falsy
+  // on this component's very first render (before the store has anything to find, the case
+  // `if (!session) return null` was actually written for), never on a later transient miss while
+  // already mounted and displaying a real session.
+  const lastSessionRef = React.useRef(null);
+  const rawSession = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
+  if (rawSession) lastSessionRef.current = rawSession;
+  const session = rawSession || lastSessionRef.current;
 
   const entries = session ? sortedEntries(session) : [];
   const indexById = {};
@@ -2527,6 +2562,28 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     }
     return outcome;
   }
+  // Analysis Map - same real persist()/aiVisualization pattern as runVisualizeAiScenario() above,
+  // just persisted onto the analysis result itself (entry.aiAnalysisResult.wholeVisualization)
+  // rather than onto one scenario, since a whole-analysis overlay has no single scenario to attach
+  // to. computeAnalysisPatches() already writes the full normalizedResult into
+  // entry.aiAnalysisResult verbatim on every real analysis, so this field survives untouched until
+  // the next real analysis genuinely replaces the whole result (a new analysis has no way to know
+  // about a previous visualization, same as a new analysis has no way to know about it for
+  // scenarios either - both are regenerated on demand, never carried forward silently).
+  function updateAnalysisVisualization(entry, visualization) {
+    persist((s) => {
+      const target = (s.entries || []).find((e) => e.id === entry.id);
+      if (target && target.aiAnalysisResult) target.aiAnalysisResult = { ...target.aiAnalysisResult, wholeVisualization: visualization };
+    }, null, '', null, true);
+  }
+  async function runVisualizeAiAnalysis(analysisResult, ctx) {
+    const client = window.TradeJournalSessionAnalysisClient;
+    const targetEntry = ctx && ctx.entry;
+    if (!client || !targetEntry) return { ok: false, error: 'NO_ENTRY' };
+    const outcome = await client.visualizeAnalysis({ entry: targetEntry, analysisResult, language: lang });
+    if (outcome.ok) updateAnalysisVisualization(targetEntry, outcome.visualization);
+    return outcome;
+  }
   function deleteScenario(entry, scenario) {
     persist((s) => {
       const target = (s.entries || []).find((e) => e.id === entry.id);
@@ -2764,7 +2821,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           session={session} character={character} lang={lang} entry={sessionAnalysisEntry}
           onClose={() => setSessionAnalysisEntry(null)}
           onResult={(result, meta) => applyAnalysisResult(meta && meta.entry, result)}
-          onAddScenario={addAiScenario} onVisualizeScenario={runVisualizeAiScenario}
+          onAddScenario={addAiScenario} onVisualizeScenario={runVisualizeAiScenario} onVisualizeAnalysis={runVisualizeAiAnalysis}
         />
       )}
     </div>

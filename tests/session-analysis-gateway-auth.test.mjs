@@ -78,6 +78,23 @@ test('a real, valid session reaches the real visualizeScenario handler (CHART_IM
   assert.equal((await response.json()).error, 'CHART_IMAGE_REQUIRED');
 });
 
+test('an anonymous call to /api/sessions/visualize-analysis is rejected the same way', async () => {
+  const response = await fetch(`${aiBaseUrl}/api/sessions/visualize-analysis`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+  });
+  assert.equal(response.status, 401);
+});
+
+test('a real, valid session reaches the real visualizeAnalysis handler (CHART_IMAGE_REQUIRED with no image, never 401/404)', async () => {
+  const { cookie } = await registerAndGetCookie(uniqueEmail());
+  const response = await fetch(`${aiBaseUrl}/api/sessions/visualize-analysis`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ analysisSnapshot: {}, language: 'en' })
+  });
+  assert.notEqual(response.status, 401);
+  assert.notEqual(response.status, 404);
+  assert.equal((await response.json()).error, 'CHART_IMAGE_REQUIRED');
+});
+
 // Production incident: visualize-scenario's wallet RESERVATION step (in the dispatcher, before
 // visualizeScenario() itself ever runs) read body.provider/body.model to resolve pricing - but
 // this route's own client (session-analysis-client.js) never sends either field, since the real
@@ -95,6 +112,26 @@ test('with wallet enforcement on and real openai/gpt-image-1 pricing configured,
     await communityRepo.wallet.grant(userId, { type: 'ADMIN_CREDIT', cashDeltaMicroUsd: 10000000 });
     const response = await fetch(`${aiBaseUrl}/api/sessions/visualize-scenario`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ visualizationBrief: {}, language: 'en' })
+    });
+    const body = await response.json();
+    assert.notEqual(body.error, 'PROVIDER_PRICING_NOT_CONFIGURED');
+    assert.equal(body.error, 'CHART_IMAGE_REQUIRED');
+  } finally {
+    process.env.AI_WALLET_ENFORCED = previousEnforced;
+  }
+});
+
+// Same pinning fix, same reason - visualize-analysis (Analysis Map) is the second, newer
+// IMAGE_GENERATION_ROUTES member and shares the exact same reservation code path.
+test('with wallet enforcement on and real openai/gpt-image-1 pricing configured, visualize-analysis reservation succeeds (reaches CHART_IMAGE_REQUIRED, never PROVIDER_PRICING_NOT_CONFIGURED)', async () => {
+  const previousEnforced = process.env.AI_WALLET_ENFORCED;
+  process.env.AI_WALLET_ENFORCED = 'true';
+  try {
+    await communityRepo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-image-1', flatPricePerCallMicroUsd: 70000, currency: 'USD', enabled: true });
+    const { userId, cookie } = await registerAndGetCookie(uniqueEmail());
+    await communityRepo.wallet.grant(userId, { type: 'ADMIN_CREDIT', cashDeltaMicroUsd: 10000000 });
+    const response = await fetch(`${aiBaseUrl}/api/sessions/visualize-analysis`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ analysisSnapshot: {}, language: 'en' })
     });
     const body = await response.json();
     assert.notEqual(body.error, 'PROVIDER_PRICING_NOT_CONFIGURED');

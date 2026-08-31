@@ -30,7 +30,8 @@ const copy = {
     whatHappened: 'چه اتفاقی افتاد', confirmedBy: 'موارد تاییدکننده', contradictedBy: 'موارد نقض‌کننده', remainsUnresolved: 'موارد حل‌نشده',
     status_pending: 'در انتظار', status_strengthened: 'تقویت‌شده', status_weakened: 'تضعیف‌شده', status_partially_confirmed: 'تا حدی تایید‌شده', status_confirmed: 'تایید‌شده', status_invalidated: 'باطل‌شده',
     original: 'اصلی', scenarioMap: 'نقشه سناریو', regenerate: 'تحلیل مجدد',
-    original_data_note: 'این تصویر یک روکش تصویری‌سازی‌شده است، نه داده واقعی بازار.'
+    original_data_note: 'این تصویر یک روکش تصویری‌سازی‌شده است، نه داده واقعی بازار.',
+    visualizeAnalysis: 'ترسیم کل تحلیل روی چارت', visualizingAnalysis: 'در حال ترسیم تحلیل…'
   },
   ar: {
     header: 'تحليل الذكاء الاصطناعي للسوق', memoryChip: 'ذاكرة الجلسة · {n} حدث', depthAuto: 'تلقائي', depthEfficient: 'تحليل فعّال', depthDeep: 'تحليل عميق',
@@ -45,7 +46,8 @@ const copy = {
     whatHappened: 'ماذا حدث', confirmedBy: 'ما أكّد', contradictedBy: 'ما ناقض', remainsUnresolved: 'ما لم يُحسم',
     status_pending: 'قيد الانتظار', status_strengthened: 'تعزّز', status_weakened: 'ضعُف', status_partially_confirmed: 'تأكّد جزئياً', status_confirmed: 'تأكّد', status_invalidated: 'أُبطل',
     original: 'الأصلي', scenarioMap: 'خريطة السيناريو', regenerate: 'إعادة التحليل',
-    original_data_note: 'هذه صورة توضيحية مولّدة، وليست بيانات سوق حقيقية.'
+    original_data_note: 'هذه صورة توضيحية مولّدة، وليست بيانات سوق حقيقية.',
+    visualizeAnalysis: 'رسم التحليل الكامل على الرسم البياني', visualizingAnalysis: 'جارٍ رسم التحليل…'
   },
   en: {
     header: 'AI Market Analysis', memoryChip: 'Session Memory · {n} events', depthAuto: 'Auto', depthEfficient: 'Efficient analysis', depthDeep: 'Deep analysis',
@@ -60,7 +62,8 @@ const copy = {
     whatHappened: 'What happened', confirmedBy: 'What confirmed', contradictedBy: 'What contradicted', remainsUnresolved: 'What remains',
     status_pending: 'Pending', status_strengthened: 'Strengthened', status_weakened: 'Weakened', status_partially_confirmed: 'Partially confirmed', status_confirmed: 'Confirmed', status_invalidated: 'Invalidated',
     original: 'Original', scenarioMap: 'Scenario Map', regenerate: 'Regenerate',
-    original_data_note: 'This is an illustrative generated overlay, not real market data.'
+    original_data_note: 'This is an illustrative generated overlay, not real market data.',
+    visualizeAnalysis: 'Draw full analysis on chart', visualizingAnalysis: 'Drawing analysis…'
   },
   es: {
     header: 'Análisis de IA del mercado', memoryChip: 'Memoria de sesión · {n} eventos', depthAuto: 'Automático', depthEfficient: 'Análisis eficiente', depthDeep: 'Análisis profundo',
@@ -75,7 +78,8 @@ const copy = {
     whatHappened: 'Qué ocurrió', confirmedBy: 'Qué lo confirmó', contradictedBy: 'Qué lo contradijo', remainsUnresolved: 'Qué queda sin resolver',
     status_pending: 'Pendiente', status_strengthened: 'Reforzado', status_weakened: 'Debilitado', status_partially_confirmed: 'Parcialmente confirmado', status_confirmed: 'Confirmado', status_invalidated: 'Invalidado',
     original: 'Original', scenarioMap: 'Mapa de escenario', regenerate: 'Regenerar',
-    original_data_note: 'Esta es una superposición ilustrativa generada, no datos reales del mercado.'
+    original_data_note: 'Esta es una superposición ilustrativa generada, no datos reales del mercado.',
+    visualizeAnalysis: 'Dibujar el análisis completo en el gráfico', visualizingAnalysis: 'Dibujando el análisis…'
   }
 };
 function tr(lang, key, vars) {
@@ -232,7 +236,7 @@ function ScenarioEvaluationCard({ evaluation, scenarioTitle, lang }) {
 // model only ever sees/returns the id, never re-states a title NAVRYA already owns).
 export function SessionAnalysisCard({
   result, lang, memoryReceipt, depth, addedScenarioKeys, scenarioVisualizations,
-  onAddScenario, onVisualizeScenario, scenarioTitleFor, meta
+  onAddScenario, onVisualizeScenario, onVisualizeAnalysis, analysisVisualization, scenarioTitleFor, meta
 }) {
   const activeLang = lang || 'fa';
   const rtl = activeLang === 'fa' || activeLang === 'ar';
@@ -255,6 +259,25 @@ export function SessionAnalysisCard({
         <p dir="auto" style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--parchment)', lineHeight: 1.7 }}>{result.thesis.headline}</p>
         {result.thesis.summary && <p dir="auto" style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>{result.thesis.summary}</p>}
       </div>
+
+      {/* Analysis Map (brief follow-up, 2026-08-31): the whole analysis (every key zone + the
+          primary scenario's path) drawn onto the actual chart in one image, rather than per
+          scenario one at a time - onVisualizeAnalysis is only ever supplied once a real entry is
+          known (the modal/caller withholds it otherwise), so this never renders for a flow with
+          nowhere to source a chart image from. */}
+      {onVisualizeAnalysis && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {analysisVisualization && analysisVisualization.status === 'ready' && analysisVisualization.imageDataUrl && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <img src={analysisVisualization.imageDataUrl} alt="" style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-gold)', display: 'block' }} />
+              <span style={{ fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'original_data_note')}</span>
+            </div>
+          )}
+          <Button variant="secondary" size="sm" icon="image" disabled={analysisVisualization && analysisVisualization.status === 'loading'} onClick={onVisualizeAnalysis}>
+            {analysisVisualization && analysisVisualization.status === 'loading' ? tr(activeLang, 'visualizingAnalysis') : tr(activeLang, 'visualizeAnalysis')}
+          </Button>
+        </div>
+      )}
 
       {!!result.stateMetrics.length && (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>

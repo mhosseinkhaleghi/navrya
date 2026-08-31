@@ -367,6 +367,30 @@
     return (v && v.fingerprint === fingerprint) ? v : null;
   }
 
+  // Production bug (2026-08-31): a generated image's raw base64 data URL is easily 1-3MB - storing
+  // it directly on the visualization object meant the NEXT session save (server-replica.js's
+  // upsert(), the same whole-session-record JSON PUT every other field change already uses) had to
+  // push that multi-MB blob inline in the session JSON. Confirmed live: that save request fired but
+  // never resolved (no response, no error, indefinitely) rather than failing cleanly. Uploaded here
+  // through the SAME endpoint an entry's own original chart image already uses
+  // (session-workspace-logic.js's own /api/sync/sessions/images) instead, so only a small
+  // /uploads/... URL - not the pixels themselves - ever gets embedded in the session record. A
+  // failed upload fails the whole visualize action outright (VISUALIZATION_SAVE_FAILED) rather than
+  // silently keeping the huge inline blob, which would just reintroduce the same hang later.
+  async function uploadGeneratedImage(dataUrl) {
+    var response;
+    try {
+      response = await fetch('/api/sync/sessions/images', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl: dataUrl })
+      });
+    } catch (_) {
+      return null;
+    }
+    if (!response.ok) return null;
+    var body = await response.json().catch(function () { return {}; });
+    return body.url || null;
+  }
+
   // options: { entry, scenario, analysisId, visualizationBrief, language, apiKey }
   async function visualizeScenario(options) {
     var opts = options || {};
@@ -394,7 +418,78 @@
 
     if (aiUsage()) aiUsage().record({ provider: payload.provider, usage: payload.usage, source: 'sessions.scenarioVisualization' });
 
-    var visualization = { status: 'ready', imageDataUrl: payload.data && payload.data.imageDataUrl, fingerprint: fingerprint, generatedAt: new Date().toISOString(), originalImageDataUrl: chartImage };
+    var uploadedUrl = await uploadGeneratedImage(payload.data && payload.data.imageDataUrl);
+    if (!uploadedUrl) return { ok: false, error: 'VISUALIZATION_SAVE_FAILED', status: 0 };
+    var visualization = { status: 'ready', imageDataUrl: uploadedUrl, fingerprint: fingerprint, generatedAt: new Date().toISOString() };
+    return { ok: true, cached: false, visualization: visualization };
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Analysis Map - the same illustrative-overlay tool as Scenario Map above, drawing the WHOLE
+  // analysis (every key zone + the primary scenario's path) onto the chart in one image, instead
+  // of one scenario at a time. Caches on entry.aiAnalysisResult.wholeVisualization (a sibling of
+  // scenario.aiVisualization - see liveSessionView.jsx's updateAnalysisVisualization()).
+  // ------------------------------------------------------------------------------------------
+  function analysisVisualizationFingerprint(entry, analysisId) {
+    return ['viz-analysis', entry && entry.id, analysisId, entryImageIdentity(entry)].join('|');
+  }
+
+  function findCachedAnalysisVisualization(entry, fingerprint) {
+    var v = entry && entry.aiAnalysisResult && entry.aiAnalysisResult.wholeVisualization;
+    return (v && v.fingerprint === fingerprint) ? v : null;
+  }
+
+  // Derives the small, already-known subset of a real, already-completed analysis result the
+  // server-side prompt builder needs (server/pattern-ai-server.mjs's
+  // buildAnalysisVisualizationPrompt()) - never a second analyzeSession() call, purely reshaping
+  // data the trader is already looking at. Gathers zones from every key_zones-type block (not just
+  // one) and the primary-role scenario's own visualizationBrief, when either exists.
+  function buildAnalysisSnapshot(analysisResult) {
+    var keyZones = [];
+    (analysisResult.blocks || []).forEach(function (block) {
+      if (block && block.type === 'key_zones' && Array.isArray(block.zones)) keyZones = keyZones.concat(block.zones);
+    });
+    var primaryScenario = (analysisResult.scenarios || []).find(function (s) { return s.role === 'primary'; }) || null;
+    return {
+      thesisHeadline: (analysisResult.thesis && analysisResult.thesis.headline) || '',
+      keyZones: keyZones,
+      primaryScenario: primaryScenario ? primaryScenario.visualizationBrief : null
+    };
+  }
+
+  // options: { entry, analysisResult, language, apiKey, forceRegenerate }
+  async function visualizeAnalysis(options) {
+    var opts = options || {};
+    var fingerprint = analysisVisualizationFingerprint(opts.entry, opts.analysisResult && opts.analysisResult.analysisId);
+    if (!opts.forceRegenerate) {
+      var cached = findCachedAnalysisVisualization(opts.entry, fingerprint);
+      if (cached) return { ok: true, cached: true, visualization: cached };
+    }
+    var chartImage = await resolveEntryImageDataUrl(opts.entry, { maxDimension: 2048 });
+    if (!chartImage) return { ok: false, error: 'CHART_IMAGE_REQUIRED', status: 400 };
+
+    var settings = aiSettings();
+    var apiKey = opts.apiKey || (settings ? settings.getKey('openai') : '');
+    var response;
+    try {
+      response = await fetch('/api/sessions/visualize-analysis', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chartImage: chartImage, analysisSnapshot: buildAnalysisSnapshot(opts.analysisResult || {}), language: opts.language || 'fa', apiKey: apiKey || undefined })
+      });
+    } catch (_) {
+      return { ok: false, error: 'NETWORK_ERROR', status: 0 };
+    }
+    var payload = await response.json().catch(function () { return {}; });
+    if (!response.ok) return { ok: false, error: payload.error || 'VISUALIZATION_FAILED', status: response.status };
+
+    if (aiUsage()) aiUsage().record({ provider: payload.provider, usage: payload.usage, source: 'sessions.analysisVisualization' });
+
+    // Same reasoning as visualizeScenario()'s own uploadGeneratedImage() call above - only a small
+    // /uploads/... URL, never the raw multi-MB base64 pixels, ever gets embedded in the session
+    // record this then gets persisted onto (entry.aiAnalysisResult.wholeVisualization).
+    var uploadedUrl = await uploadGeneratedImage(payload.data && payload.data.imageDataUrl);
+    if (!uploadedUrl) return { ok: false, error: 'VISUALIZATION_SAVE_FAILED', status: 0 };
+    var visualization = { status: 'ready', imageDataUrl: uploadedUrl, fingerprint: fingerprint, generatedAt: new Date().toISOString() };
     return { ok: true, cached: false, visualization: visualization };
   }
 
@@ -413,6 +508,9 @@
     buildScenarioDraftFromAi: buildScenarioDraftFromAi,
     applyScenarioEvaluationPatch: applyScenarioEvaluationPatch,
     visualizeScenario: visualizeScenario,
-    findCachedVisualization: findCachedVisualization
+    findCachedVisualization: findCachedVisualization,
+    visualizeAnalysis: visualizeAnalysis,
+    buildAnalysisSnapshot: buildAnalysisSnapshot,
+    findCachedAnalysisVisualization: findCachedAnalysisVisualization
   };
 }());
