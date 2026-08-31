@@ -21,7 +21,7 @@ export function createMemoryRepo() {
     adminKeys: new Map(), auditLog: new Map(),
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
-    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), trades: new Map(), accounts: new Map(),
+    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), trades: new Map(), accounts: new Map(),
     instrumentCatalog: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
@@ -1160,6 +1160,8 @@ export function createMemoryRepo() {
             resolvedAt: item.resolvedAt || null, note: item.note || null
           };
         }),
+        // Analysis Profiles domain (044_analysis_profiles.sql) - optional, loose reference.
+        linkedAnalysisProfileId: record.linkedAnalysisProfileId || null,
         createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
       };
       state.strategies.set(record.id, stored);
@@ -1178,6 +1180,55 @@ export function createMemoryRepo() {
       if (!record) return;
       if (record.userId !== userId) throw new ApiError(403, 'NOT_STRATEGY_OWNER');
       state.strategies.delete(id);
+    }
+  };
+
+  // Analysis Profiles domain (see ARCHITECTURE.md §7.25, 044_analysis_profiles.sql). Mirrors
+  // repo.pg.mjs's analysisProfiles.upsert() ownership pre-check and "exactly one default per
+  // user" clearing, without an actual transaction (the in-memory fake is inherently single-
+  // threaded per call).
+  const analysisProfiles = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = state.analysisProfiles.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+      const stamp = now();
+      const isDefault = Boolean(record.isDefault);
+      if (isDefault) {
+        Array.from(state.analysisProfiles.values()).forEach((other) => {
+          if (other.userId === userId && other.id !== record.id && other.isDefault) {
+            state.analysisProfiles.set(other.id, Object.assign({}, other, { isDefault: false, updatedAt: stamp }));
+          }
+        });
+      }
+      const stored = {
+        id: record.id, userId,
+        name: record.name || '', description: record.description || '',
+        primaryStyleId: record.primaryStyleId || 'general_analysis',
+        secondaryStyleIds: Array.isArray(record.secondaryStyleIds) ? record.secondaryStyleIds.slice() : [],
+        focusIds: Array.isArray(record.focusIds) ? record.focusIds.slice() : [],
+        customMethodNotes: record.customMethodNotes || '',
+        isDefault, isActive: record.isActive !== false,
+        registryVersion: Math.max(1, Number(record.registryVersion) || 1),
+        createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
+      };
+      state.analysisProfiles.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.analysisProfiles.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.analysisProfiles.values()).filter((p) => p.userId === userId).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.analysisProfiles.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+      state.analysisProfiles.delete(id);
     }
   };
 
@@ -2618,7 +2669,7 @@ export function createMemoryRepo() {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

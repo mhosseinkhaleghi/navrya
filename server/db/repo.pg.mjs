@@ -329,6 +329,21 @@ function mapStrategy(row, attachments, chatHistory, detectionEvents) {
     },
     overallFramework: { description: row.overall_framework_description, attachments: byCategory('overallFramework') },
     chatHistory: chatHistory || [], aiUnderstandingSummary: row.ai_understanding_summary, detectionEvents: detectionEvents || [],
+    // Analysis Profiles domain (044_analysis_profiles.sql) - optional, loose reference, no FK.
+    linkedAnalysisProfileId: row.linked_analysis_profile_id || null,
+    createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+
+// Analysis Profiles domain (see ARCHITECTURE.md §7.25, 044_analysis_profiles.sql). Flat row, no
+// child tables - secondary_style_ids/focus_ids are small id arrays nothing queries into
+// individually (same reasoning as trades.take_profits/concept_tags).
+function mapAnalysisProfile(row) {
+  return {
+    id: row.id, userId: row.user_id, name: row.name, description: row.description,
+    primaryStyleId: row.primary_style_id, secondaryStyleIds: row.secondary_style_ids || [],
+    focusIds: row.focus_ids || [], customMethodNotes: row.custom_method_notes,
+    isDefault: row.is_default, isActive: row.is_active, registryVersion: row.registry_version,
     createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
@@ -1843,21 +1858,21 @@ export function createPgRepo(pool) {
             (id, user_id, name, active, is_public, origin, entry_rules, stop_loss_rules, exit_target_rules,
              position_sizing_rules, position_management_notes, max_risk_per_trade_percent, daily_drawdown_limit_percent,
              total_drawdown_limit_percent, max_concurrent_trades, max_profit_cap_per_trade, risk_management_notes,
-             overall_framework_description, ai_understanding_summary, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
+             overall_framework_description, ai_understanding_summary, linked_analysis_profile_id, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,now())
            ON CONFLICT (id) DO UPDATE SET
              name=$3, active=$4, is_public=$5, origin=$6, entry_rules=$7, stop_loss_rules=$8, exit_target_rules=$9,
              position_sizing_rules=$10, position_management_notes=$11, max_risk_per_trade_percent=$12,
              daily_drawdown_limit_percent=$13, total_drawdown_limit_percent=$14, max_concurrent_trades=$15,
              max_profit_cap_per_trade=$16, risk_management_notes=$17, overall_framework_description=$18,
-             ai_understanding_summary=$19, updated_at=now()
+             ai_understanding_summary=$19, linked_analysis_profile_id=$20, updated_at=now()
            RETURNING *`,
           [record.id, userId, record.name || '', record.active !== false, Boolean(record.isPublic),
             record.origin === 'ai_from_event' ? 'ai_from_event' : 'manual',
             pm.entryRules || '', pm.stopLossRules || '', pm.exitTargetRules || '', pm.positionSizingRules || '', pm.freeNotes || '',
             rm.maxRiskPerTradePercent ?? null, rm.dailyDrawdownLimitPercent ?? null, rm.totalDrawdownLimitPercent ?? null,
             rm.maxConcurrentTrades ?? null, rm.maxProfitCapPerTrade ?? null, rm.freeNotes || '',
-            of.description || '', JSON.stringify(record.aiUnderstandingSummary ?? null)]
+            of.description || '', JSON.stringify(record.aiUnderstandingSummary ?? null), record.linkedAnalysisProfileId || null]
         );
 
         await client.query('DELETE FROM strategy_attachments WHERE strategy_id=$1', [record.id]);
@@ -1928,6 +1943,70 @@ export function createPgRepo(pool) {
       if (!rows[0]) return;
       if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_STRATEGY_OWNER');
       await pool.query('DELETE FROM strategies WHERE id=$1', [id]); // cascades to attachments/chat/detection events
+    }
+  };
+
+  // Analysis Profiles domain (see ARCHITECTURE.md §7.25, 044_analysis_profiles.sql). Flat table,
+  // no child tables/transaction needed - mirrors patterns.upsert()'s ownership pre-check without
+  // patterns' extra child-table steps. "Exactly one default per user" is enforced two ways here,
+  // defense in depth: the partial unique index (044_analysis_profiles.sql) is the hard backstop;
+  // this upsert also proactively clears any other default row for the same user inside the same
+  // transaction when the incoming record itself is being set as the default, so a client that
+  // skips its own clear-the-old-default step (analysis-profile-store.js's save()) still can't
+  // leave two rows with is_default=true - it would violate the partial unique index instead.
+  const analysisProfiles = {
+    async upsert(userId, record) {
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: ownerRows } = await client.query('SELECT user_id FROM analysis_profiles WHERE id=$1', [record.id]);
+        if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+
+        const isDefault = Boolean(record.isDefault);
+        if (isDefault) {
+          await client.query('UPDATE analysis_profiles SET is_default=FALSE WHERE user_id=$1 AND id<>$2 AND is_default', [userId, record.id]);
+        }
+
+        const { rows } = await client.query(
+          `INSERT INTO analysis_profiles
+            (id, user_id, name, description, primary_style_id, secondary_style_ids, focus_ids,
+             custom_method_notes, is_default, is_active, registry_version, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+           ON CONFLICT (id) DO UPDATE SET
+             name=$3, description=$4, primary_style_id=$5, secondary_style_ids=$6, focus_ids=$7,
+             custom_method_notes=$8, is_default=$9, is_active=$10, registry_version=$11, updated_at=now()
+           RETURNING *`,
+          [record.id, userId, record.name || '', record.description || '',
+            record.primaryStyleId || 'general_analysis',
+            JSON.stringify(Array.isArray(record.secondaryStyleIds) ? record.secondaryStyleIds : []),
+            JSON.stringify(Array.isArray(record.focusIds) ? record.focusIds : []),
+            record.customMethodNotes || '', isDefault, record.isActive !== false,
+            Math.max(1, Number(record.registryVersion) || 1)]
+        );
+
+        await client.query('COMMIT');
+        return mapAnalysisProfile(rows[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async get(userId, id) {
+      const { rows } = await pool.query('SELECT * FROM analysis_profiles WHERE id=$1 AND user_id=$2', [id, userId]);
+      return rows[0] ? mapAnalysisProfile(rows[0]) : null;
+    },
+    async listByUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM analysis_profiles WHERE user_id=$1 ORDER BY updated_at DESC', [userId]);
+      return rows.map(mapAnalysisProfile);
+    },
+    async remove(userId, id) {
+      const { rows } = await pool.query('SELECT user_id FROM analysis_profiles WHERE id=$1', [id]);
+      if (!rows[0]) return;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+      await pool.query('DELETE FROM analysis_profiles WHERE id=$1', [id]);
     }
   };
 
@@ -3908,7 +3987,7 @@ export function createPgRepo(pool) {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

@@ -14,6 +14,7 @@ import * as routesProfile from './routes.profile.mjs';
 import * as routesTradingSessions from './routes.trading-sessions.mjs';
 import * as routesPatterns from './routes.patterns.mjs';
 import * as routesStrategies from './routes.strategies.mjs';
+import * as routesAnalysisProfiles from './routes.analysis-profiles.mjs';
 import * as routesTrades from './routes.trades.mjs';
 import * as routesAccounts from './routes.accounts.mjs';
 import * as routesInstrumentCatalog from './routes.instrument-catalog.mjs';
@@ -162,6 +163,7 @@ export function createApp({ repo, uploadsDir }) {
   app.use('/api/sync/sessions', routesTradingSessions.router(repo, uploadsDir));
   app.use('/api/sync/patterns', routesPatterns.router(repo, uploadsDir));
   app.use('/api/sync/strategies', routesStrategies.router(repo, uploadsDir));
+  app.use('/api/sync/analysis-profiles', routesAnalysisProfiles.router(repo));
   app.use('/api/sync/trades', routesTrades.router(repo, uploadsDir));
   app.use('/api/sync/accounts', routesAccounts.router(repo));
   app.use('/api/sync/instrument-catalog', routesInstrumentCatalog.router(repo));

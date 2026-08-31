@@ -10,7 +10,7 @@
   function now() { return new Date().toISOString(); }
   function numberOrNull(value, integer) { if (value === null || value === undefined || value === '') return null; var out = Number(value); if (!Number.isFinite(out)) return null; if (integer) out = Math.round(out); return Math.max(0, out); }
   function emptySections() { return { positionManagement: { entryRules: '', stopLossRules: '', exitTargetRules: '', positionSizingRules: '', freeNotes: '', attachments: [] }, riskManagement: { maxRiskPerTradePercent: null, dailyDrawdownLimitPercent: null, totalDrawdownLimitPercent: null, maxConcurrentTrades: null, maxProfitCapPerTrade: null, freeNotes: '', attachments: [] }, overallFramework: { description: '', attachments: [] } }; }
-  function empty(seed) { var stamp = now(), sections = emptySections(), value = seed || {}; return { id: value.id || uid('strategy'), name: String(value.name || ''), active: value.active !== false, isPublic: Boolean(value.isPublic), origin: value.origin === 'ai_from_event' ? 'ai_from_event' : 'manual', positionManagement: sections.positionManagement, riskManagement: sections.riskManagement, overallFramework: sections.overallFramework, chatHistory: [], aiUnderstandingSummary: { positionManagement: '', riskManagement: '', overallFramework: '', updatedAt: stamp }, detectionEvents: [], createdAt: stamp, updatedAt: stamp }; }
+  function empty(seed) { var stamp = now(), sections = emptySections(), value = seed || {}; return { id: value.id || uid('strategy'), name: String(value.name || ''), active: value.active !== false, isPublic: Boolean(value.isPublic), origin: value.origin === 'ai_from_event' ? 'ai_from_event' : 'manual', positionManagement: sections.positionManagement, riskManagement: sections.riskManagement, overallFramework: sections.overallFramework, chatHistory: [], aiUnderstandingSummary: { positionManagement: '', riskManagement: '', overallFramework: '', updatedAt: stamp }, detectionEvents: [], linkedAnalysisProfileId: value.linkedAnalysisProfileId || null, createdAt: stamp, updatedAt: stamp }; }
   // `fileUrl` (Section 7.18 Module 3) is the server-hosted copy of an image-type attachment,
   // patched in by the 'strategy-images' sync sender once its upload resolves - must be
   // preserved through normalize() like blobId/dataUrl, or it would be silently dropped on the
@@ -35,6 +35,10 @@
     base.chatHistory = Array.isArray(source.chatHistory) ? source.chatHistory : [];
     base.aiUnderstandingSummary = Object.assign(empty().aiUnderstandingSummary, source.aiUnderstandingSummary || {});
     base.detectionEvents = (Array.isArray(source.detectionEvents) ? source.detectionEvents : []).map(function (item) { return detectionEvent(item, base.id); });
+    // Analysis Profiles domain (§7.25) - a loose, unvalidated-here reference (this store never
+    // imports the Analysis Profile Store; validity is the profile side's own concern, same
+    // "no cross-store coupling" convention trades.linkedPatternIds already follows).
+    base.linkedAnalysisProfileId = source.linkedAnalysisProfileId || null;
     base.createdAt = source.createdAt || base.createdAt; base.updatedAt = source.updatedAt || base.createdAt;
     return base;
   }

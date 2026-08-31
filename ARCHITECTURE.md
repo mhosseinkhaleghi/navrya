@@ -1377,6 +1377,188 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   pre-existing scope limit, not introduced here. See `docs/ai/voice-ui-coverage-matrix.md` for the
   complete, row-by-row accounting.
 
+### 7.25 Analysis Profiles
+
+- **Purpose:** A new, first-class domain describing *how a given user reads a chart* - their
+  primary analytical lens/style, up to two secondary lenses (Hybrid), and the Focus Areas they
+  check first - independent of every other domain that already used the word "strategy" or
+  "pattern" for something else entirely. Built as the foundation a future AI chart-analysis
+  feature will consume; **no chart-analysis AI, scenario generation, or "AI freedom/strictness"
+  preference is implemented anywhere in this domain** - see the explicit boundary note below.
+- **Conceptual separation, restated because it is easy to blur:**
+  - **Analysis Profile** = the analytical lens used to *read* a chart (this section).
+  - **Strategy** (§7.7) = execution/risk rules for *trading* on what was read - independent, only
+    linked by an optional pointer (below), never a subtype of either.
+  - **Pattern** (§7.6) = a registered, recognizable market structure/event - a Pattern is
+    something NAVRYA (eventually) *detects*; an Analysis Profile is the lens a *person* reads
+    with. Neither is stored inside the other.
+  - **Scenario** = a session-scoped hypothesis about what happens next (unchanged, still lives
+    inside a Session record).
+  - **AI Analysis Request** (future, not built) = a future per-generation request carrying model
+    choice and, deliberately, any "freedom/strictness" preference - see the boundary note below.
+- **Files:**
+  - **Style Registry:** `public/pages/shared/analysis-style-registry.js` →
+    `window.TradeJournalAnalysisStyleRegistry`. ~54 `AnalysisStyleDefinition` entries across nine
+    categories (Price & Structure, Liquidity & Institutional, Auction/Volume/Order Flow, Price
+    Pattern Families, Market Cycle/Structural Theories, Indicator/Mathematical, Systematic Market
+    Behavior, Quant/Statistical, Special/Generic), each with a stable snake_case `id`,
+    `{fa,ar,en,es}` `name`/`shortDescription`, `recommendedFocusIds`/`optionalFocusIds` (pointing
+    into the Focus Registry, never duplicated), `requiredInputs`/`supportedInputs`,
+    `relatedStyleIds`, and English-only structured metadata (`analysisPrinciples`, `limitations`,
+    `futurePromptGuidance`) that is *never read by anything yet* - reserved for a future AI
+    consumer. `mergeFocusRecommendations(primaryStyleId, secondaryStyleIds)` implements the
+    Hybrid dedup rule: the primary style's own recommended list first, then each secondary's, no
+    focus id ever suggested twice.
+  - **Focus Registry:** `public/pages/shared/analysis-focus-registry.js` →
+    `window.TradeJournalAnalysisFocusRegistry`. ~67 reusable `AnalysisFocusDefinition` entries
+    across thirteen categories, each with a stable id, `{fa,ar,en,es}` `name`/`shortDescription`,
+    and `requiredInputs` (e.g. `poc`/`value_area` declare `structured_volume_profile`; `delta`/
+    `absorption` declare `visible_orderflow_chart`). `compatibleStyles(focusId)` is computed live
+    by scanning the Style Registry's own `recommendedFocusIds`/`optionalFocusIds` - deliberately
+    **not** a hand-maintained reverse list, so the two registries can never drift apart on which
+    styles a Focus "belongs to". `forStyle(styleId)` resolves a style's raw id arrays to full
+    Focus definitions in one call.
+  - **Types:** `public/pages/shared/analysis-profile.types.js` - JSDoc-only, same convention as
+    `pattern-registry.types.js`. Documents `AnalysisProfile` and `AnalysisProfileSnapshot` (the
+    latter storing each resolved style/focus `name` as its full `{fa,ar,en,es}` map, not one
+    picked language, since a future Session referencing a snapshot may be viewed in any language).
+  - **Store:** `public/pages/shared/analysis-profile-store.js` →
+    `window.TradeJournalAnalysisProfileStore`. Built directly on `server-replica.js`'s
+    `registerListDomain('analysisProfiles', {hydrateUrl:'/api/sync/analysis-profiles', ...})` -
+    the current, canonical persistence pattern (see §3's Persistence strategy update below), not
+    the older §7.18 sync-queue shape. Public API: `list/listSync/get/find/create/update/save/
+    remove/duplicate/setDefault/getDefault/snapshot/suggestedName`. Every mutation funnels through
+    one `save()` (the same "single mutation funnel" convention `mental-health-store.js`'s
+    `write()` established), which enforces "exactly one default profile" client-side (clearing any
+    other profile that was previously default) and dispatches
+    `tradejournal:analysis-profiles-changed`. `normalize()` validates `primaryStyleId` against the
+    Style Registry (falls back to the real `general_analysis` entry, never invents an id) and
+    filters `secondaryStyleIds` (deduplicated, capped at 2, excludes the primary itself) /
+    `focusIds` (deduplicated, invalid ids dropped) against the two registries. `remove(id)`
+    refuses to delete a user's last remaining profile (throws `AnalysisProfileError` with code
+    `ANALYSIS_PROFILE_LAST_REMAINING`, caught by the UI and shown as a translated message);
+    deleting the default profile promotes the most-recently-updated remaining profile to default;
+    then clears (never dangles) any Strategy's `linkedAnalysisProfileId` pointing at it, via
+    `window.TradeJournalStrategyEducationStore` looked up live - the exact same convention
+    `strategy-education-store.js`'s own `orphanLinkedTrades()` already established for Strategy →
+    Trade cleanup.
+  - **Future-AI boundary:** `public/pages/shared/analysis-context.js` →
+    `window.TradeJournalAnalysisContext.getAnalysisContext(profileId)`. Composes the profile, its
+    resolved primary/secondary style definitions, resolved focus definitions, and the union of
+    every involved style's `requiredInputs`, into one normalized bundle. **Pure data assembly -
+    no LLM call, no prompt construction, no provider selection, no scenario generation anywhere in
+    this file or this domain.** This is the one seam a future Session AI Analysis feature is
+    expected to call.
+  - **Onboarding UI:** `navrya-src/analysisProfileOnboarding.jsx` -
+    `AnalysisProfileOnboarding({mode:'first-run'|'create'|'edit', existingProfile, lang,
+    onComplete, onSkip, onCancel})`. The exact two-step questionnaire: Step 1 ("How do you read
+    the market?") is style selection (8 featured cards + "View all styles" grouped by the
+    registry's own categories + General/Hybrid/Custom Method as always-visible special options;
+    choosing Hybrid reveals a primary-lens radio-style picker plus up to two secondary-lens
+    checkboxes, never more; Custom Method requires a short note, min 8 characters, before Step 2
+    unlocks). Step 2 ("What do your eyes look for first?") shows Recommended/More focus chips
+    computed live via `mergeFocusRecommendations()` (or the full Focus Registry, ungrouped by
+    recommendation, specifically for Custom Method), a live "Analysis DNA" preview, and an
+    auto-suggested name (`suggestedName()`) that stops updating the moment the user types their
+    own. **There is no third step and no AI freedom/strictness/creativity question anywhere in
+    this component** - `tests/analysis-profile-onboarding.test.mjs` asserts this structurally, not
+    just by convention. Built from the shared `Modal`/`Button`/`Select`/`Chip`/`Icon` primitives
+    (`public/pages/shared/navrya/components/**`), so all four character themes and RTL/LTR come
+    for free; Escape/backdrop close reuses `Modal`'s own existing behavior.
+  - **First-run mount:** `navrya-src/character-app.jsx`'s `AnalysisProfileFirstRunGate` component
+    and the small addition to `mount()` right after the three primary React roots render (same
+    `Promise.all([sessionsAdapter.resetOnce(), TradeJournalServerReplica.allReady()])` boot gate
+    every other migrated domain already waits on - never a false-empty read before hydration
+    settles). Mounted into a new `#navryaAnalysisProfileOnboardingRoot` element added to all four
+    character `index.html` pages, gated on `window.TradeJournalAnalysisProfileStore.listSync()
+    .length === 0` - **user-scoped, not character-scoped**, deliberately not the kind of
+    character-specific DOM hack the brief warned against. "Set up later" creates the safe default
+    (`General Market Analysis` / `general_analysis` / `market_structure, trend, key_levels,
+    momentum`) so no downstream Session-AI integration ever has to handle a genuinely null
+    profile.
+  - **List/detail UI:** `navrya-src/analysisProfilesView.jsx` - `AnalysisProfilesTab({lang})`:
+    search, card grid (Open/Edit/Duplicate/Set as Default/Report/Delete), and a detail view with
+    Overview (Analysis DNA, linked Strategies, an honest Usage section) and Report tabs. **Report
+    v1 shows only real numbers** - created/updated dates, default status, primary/secondary style,
+    focus count, linked-Strategy count and list (derived by filtering
+    `window.TradeJournalStrategyEducationStore.listSync()` for `linkedAnalysisProfileId ===
+    profile.id`). Session-usage count, most-used markets, most-used timeframes, and configuration
+    history all render an honest "insufficient data" state, never a fabricated number - Sessions
+    carry no `analysisProfileId` yet (see the Session-readiness note below), so a per-profile
+    session count cannot be truthfully derived in this phase.
+  - **Strategy integration (§15 of the brief):** `strategy-education.types.js`'s `Strategy`
+    typedef and `strategy-education-store.js`'s `empty()`/`normalize()` gained an optional
+    `linkedAnalysisProfileId` (default `null`, never implicitly auto-selected - a Strategy is
+    never silently pointed at a random Analysis Profile). Deliberately **not** added to that
+    file's `textPaths`/`numericPaths` AI-fillable allowlist - linking is a real user decision, set
+    through its own dedicated control (`strategiesHubView.jsx`'s `setLinkedProfile()`, which
+    bypasses the generic `set()`/`setPath()` helper entirely so "clear the link" writes a real
+    `null`, not the string `"null"` that helper's default string-coercion would otherwise produce).
+    `strategiesHubView.jsx` gained exactly two touch points, both minimal: a 4th tab
+    (`'analysis-profiles'`, rendering `AnalysisProfilesTab` - the same fully self-contained
+    pattern the pre-existing Positions tab already uses) and a "Preferred Analysis Profile" select
+    in the Strategy detail form. No Analysis-Profile business logic lives inside
+    `strategiesHubView.jsx` itself - the whole domain stays movable to a future
+    `#ai/analysis-profiles` route with no rewrite.
+- **Route:** temporarily surfaced under the existing Strategies Hub (`#strategies`, the
+  `'analysis-profiles'` tab) purely because the future AI Dashboard doesn't exist yet - see the
+  brief's own explicit instruction. **Not internally coupled to Strategies**: no module is named
+  `strategy-analysis-profile`, no profile data is stored inside a Strategy record, and the tab
+  entry/select field described above are the only two lines of coupling in the entire codebase.
+- **Persistence:** `server/db/migrations/044_analysis_profiles.sql` - a single flat
+  `analysis_profiles` table (`secondary_style_ids`/`focus_ids` as `jsonb`, the same
+  "don't over-normalize a small id array nothing queries into individually" reasoning
+  `trades.take_profits`/`concept_tags` already established), indexed on `user_id`, with a partial
+  unique index (`WHERE is_default`) enforcing "at most one default per user" as a hard database
+  backstop on top of the client store's own clearing logic; plus `ALTER TABLE strategies ADD
+  COLUMN IF NOT EXISTS linked_analysis_profile_id TEXT` (loose, no FK - same convention as
+  `trades.linked_strategy_id`). `server/community/routes.analysis-profiles.mjs` mounted at
+  `/api/sync/analysis-profiles` in `server/community/app.mjs`, mirroring `routes.patterns.mjs`'s
+  shape minus an `/images` route (this domain has no user-uploaded files). `repo.pg.mjs`'s
+  `analysisProfiles.upsert()` additionally clears any other default row for the same user inside
+  its own transaction (defense in depth, since a client that skipped its own clear-the-old-default
+  step would otherwise violate the partial unique index instead of silently succeeding);
+  `repo.memory.mjs` mirrors the same contract for tests. **Deliberately not gated by
+  `createWithQuota`** - unlike Patterns/Strategies (commercial content domains with their own plan
+  limits), the brief never asked Analysis Profiles to be plan-limited, so that gate was not added.
+- **Registry storage:** the Style and Focus Registries are product/domain reference data, not user
+  records - they live in version-controlled `public/pages/shared/*.js`, never one database row per
+  style/focus per user (brief §19). `analysis_profiles` rows reference their stable string ids by
+  value only, with no foreign-key constraint into either registry.
+- **Session-ready architecture, not yet Session-integrated:** `AnalysisProfileStore.snapshot(id)`
+  returns the normalized, self-contained `AnalysisProfileSnapshot` shape a future Session record
+  could embed (`{profileId, profileName, primaryStyle, secondaryStyles, focuses,
+  customMethodNotes, capturedAt}` - proven stable after later profile edits by
+  `tests/analysis-profile-store.test.mjs`), matching this codebase's existing snapshot philosophy
+  for Pattern data attached to a historical Scenario. Session records themselves were **not**
+  modified in this pass (no `analysisProfileId`/`analysisProfileSnapshot` field added to
+  `SessionRecord` yet) - the brief explicitly allowed deferring this, and `getAnalysisContext()`
+  (above) is the documented integration seam for whichever future pass wires it in.
+- **Explicit future-AI boundary, stated here at full strength per the brief's own instruction:**
+  **AI analysis freedom/strictness is intentionally NOT part of Analysis Profile. It will be
+  selected per AI analysis generation request**, at the moment a user presses "Generate AI
+  Analysis" inside a future Session feature - never persisted on the Profile itself, never
+  defaulted, never asked during onboarding. No file in this domain calls an LLM, builds a prompt,
+  chooses a provider, generates a scenario, or scores a pattern; `analysisPrinciples`/
+  `futurePromptGuidance` on each style are structured metadata only, read by nothing today.
+- **i18n:** all four languages (`fa`/`ar`/`en`/`es`) throughout - registry `name`/
+  `shortDescription`/category labels, onboarding copy, list/detail/report UI, validation and
+  delete-confirmation text. Registry `coreConcepts`/`analysisPrinciples`/`limitations`/
+  `futurePromptGuidance`/`requiredInputs` stay English-only internal metadata, matching the
+  brief's own "at minimum localize... style short descriptions" scope rather than translating
+  every internal field.
+- **Tests:** `tests/analysis-style-registry.test.mjs`, `analysis-focus-registry.test.mjs` (id
+  uniqueness, full-language coverage, cross-registry reference integrity, Hybrid-merge dedup, no
+  AI-freedom field anywhere); `analysis-profile-store.test.mjs` (the same `vm.runInNewContext`
+  harness `tests/patterns-sync.test.mjs` established - CRUD, default-uniqueness, invalid
+  style/focus rejection, secondary-style normalization, custom-notes round trip, snapshot
+  stability, last-profile delete guard, Strategy-link orphaning); `analysis-profiles-api-contract
+  .test.mjs` (user-scoped CRUD over real HTTP, cross-user 403/404, server-side default-uniqueness);
+  `analysis-profile-onboarding.test.mjs` (static source-assertion style, since `.jsx` has no
+  transform in this project's plain `node --test` runner - two steps only, no third question,
+  skip creates the exact safe default, first-run mount condition); `strategy-analysis-profile-
+  link.test.mjs` (link/clear round trip, never implicitly auto-selected, never AI-fillable).
+
 ## 8. AI Integration Points
 
 ### Server configuration

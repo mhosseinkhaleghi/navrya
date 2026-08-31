@@ -25,6 +25,7 @@ import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
 import { renderAccountProfile } from './accountProfileView.jsx';
 import { openIntake, INTAKE_ENUM_OPTIONS } from './mentalHealthIntakeModal.jsx';
+import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { openLogWizard } from './tradeLogModal.jsx';
 import { useAccounts } from './accountsView.jsx';
@@ -362,6 +363,34 @@ function ensureBackgroundLayer(navryaCharacter) {
   document.body.insertBefore(glow, document.body.firstChild);
   document.body.insertBefore(grid, document.body.firstChild);
   document.body.insertBefore(backdrop, document.body.firstChild);
+}
+
+// Analysis Profiles domain (see ARCHITECTURE.md §7.25). The brief's first-run rule: show the
+// two-step onboarding once, when the user genuinely has zero Analysis Profiles yet, and never
+// again once at least one exists. Deliberately mounted at the user-bootstrap level (this file's
+// own mount(), below) rather than any per-character DOM hack, since Analysis Profiles are
+// user-scoped, not character-scoped - the exact same reasoning Sessions/Patterns/Strategies
+// already follow for their own server-replica.js domains. "Set up later" never leaves the user
+// with zero profiles: it creates the safe General Market Analysis default the brief specifies.
+function AnalysisProfileFirstRunGate({ lang }) {
+  const [open, setOpen] = React.useState(true);
+  if (!open) return null;
+  function finish() { setOpen(false); }
+  function complete(draft) { if (window.TradeJournalAnalysisProfileStore) window.TradeJournalAnalysisProfileStore.create(draft); finish(); }
+  function skip() {
+    if (window.TradeJournalAnalysisProfileStore) {
+      // §5 of the brief names this default profile "General Market Analysis" verbatim - a fixed
+      // localized name distinct from the general_analysis style's own catalog display name
+      // ("General / Open Analysis"), not derived via suggestedName().
+      const defaultName = { fa: 'تحلیل عمومی بازار', ar: 'تحليل عام للسوق', en: 'General Market Analysis', es: 'Análisis general del mercado' };
+      window.TradeJournalAnalysisProfileStore.create({
+        name: defaultName[lang] || defaultName.en, primaryStyleId: 'general_analysis',
+        focusIds: ['market_structure', 'trend', 'key_levels', 'momentum']
+      });
+    }
+    finish();
+  }
+  return <AnalysisProfileOnboarding mode="first-run" lang={lang} onComplete={complete} onSkip={skip} />;
 }
 
 export function mountCharacterApp(character) {
@@ -2519,6 +2548,17 @@ export function mountCharacterApp(character) {
       createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);
       createRoot(headerRoot).render(<HeaderApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);
       createRoot(sessionsRoot).render(<SessionsApp character={character} navryaCharacter={navryaCharacter} store={store} />);
+
+      // Analysis Profiles domain first-run onboarding (see this file's own AnalysisProfileFirstRunGate,
+      // above, and ARCHITECTURE.md §7.25). Gated here, after the replica boot gate has already
+      // resolved above, so window.TradeJournalAnalysisProfileStore.listSync() reflects this
+      // account's real, hydrated data - never a false-empty read before hydration settles. Only
+      // ever shown when the user genuinely has zero profiles; a returning user with ≥1 profile
+      // never sees this root render anything.
+      const analysisOnboardingRoot = document.getElementById('navryaAnalysisProfileOnboardingRoot');
+      if (analysisOnboardingRoot && window.TradeJournalAnalysisProfileStore && !window.TradeJournalAnalysisProfileStore.listSync().length) {
+        createRoot(analysisOnboardingRoot).render(<AnalysisProfileFirstRunGate lang={String(document.documentElement.lang || 'en').toLowerCase()} />);
+      }
     });
 
     // The global assistant (replaces the retired global-ai-dock.js floating launcher) - always

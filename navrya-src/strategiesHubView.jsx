@@ -9,6 +9,7 @@ import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.j
 import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { AnalysisProfilesTab } from './analysisProfilesView.jsx';
 
 // React rewrite of the "Strategies" screen per the design handoff: a single index (Patterns /
 // Strategies tabs, card grid) + a 4-tab detail view (Details / Chat with AI / Report / Share).
@@ -32,7 +33,8 @@ const copy = {
     eyebrow: 'NAVRYA · WORKSHOP', title: 'استراتژی‌ها و الگوها',
     subtitle: 'قواعد اجرا، ریسک و الگوهای تشخیص در یک جا. هر الگو و هر استراتژی گزارش، گفتگوی هوش مصنوعی و صفحهٔ بازارچهٔ خودش را دارد.',
     summaryPatterns: 'الگوی ثبت‌شده', summaryDetections: 'کل تشخیص‌ها', summaryAvgRealization: 'میانگین تحقق',
-    tabPatterns: 'ثبت الگوها', tabStrategies: 'استراتژی‌ها',
+    tabPatterns: 'ثبت الگوها', tabStrategies: 'استراتژی‌ها', tabAnalysisProfiles: 'پروفایل‌های تحلیل',
+    analysisProfileFieldLabel: 'پروفایل تحلیل ترجیحی', analysisProfileNone: 'بدون پروفایل لینک‌شده',
     fromEvent: 'ساخت از یک رویداد', newPattern: 'الگوی جدید', newStrategy: 'استراتژی جدید',
     newPatternInstrumentsHint: 'دست‌کم یک ابزار معاملاتی را که این الگو برای آن معتبر است انتخاب یا اضافه کنید.', createPatternCta: 'ایجاد الگو', instrumentsLabel: 'ابزارها',
     searchPlaceholder: 'جستجو در نام یا توضیحات…', sortRecent: 'اخیر', sortRealization: 'بیشترین تحقق', sortUsage: 'بیشترین استفاده',
@@ -114,7 +116,8 @@ const copy = {
     eyebrow: 'NAVRYA · ورشة العمل', title: 'الاستراتيجيات والأنماط',
     subtitle: 'قواعد التنفيذ والمخاطرة وأنماط الاكتشاف في مكان واحد. لكل نمط واستراتيجية تقرير ومحادثة ذكاء اصطناعي وصفحة سوق خاصة به.',
     summaryPatterns: 'نمط مسجّل', summaryDetections: 'إجمالي الاكتشافات', summaryAvgRealization: 'متوسط التحقق',
-    tabPatterns: 'سجل الأنماط', tabStrategies: 'الاستراتيجيات',
+    tabPatterns: 'سجل الأنماط', tabStrategies: 'الاستراتيجيات', tabAnalysisProfiles: 'ملفات التحليل',
+    analysisProfileFieldLabel: 'ملف التحليل المفضل', analysisProfileNone: 'بدون ملف مرتبط',
     fromEvent: 'إنشاء من حدث', newPattern: 'نمط جديد', newStrategy: 'استراتيجية جديدة',
     newPatternInstrumentsHint: 'اختر أو أضف أداة واحدة على الأقل ينطبق عليها هذا النمط.', createPatternCta: 'إنشاء النمط', instrumentsLabel: 'الأدوات',
     searchPlaceholder: 'ابحث بالاسم أو الوصف…', sortRecent: 'الأحدث', sortRealization: 'الأعلى تحققاً', sortUsage: 'الأكثر استخداماً',
@@ -196,7 +199,8 @@ const copy = {
     eyebrow: 'NAVRYA · WORKSHOP', title: 'Strategies & Patterns',
     subtitle: 'Execution rules, risk and detection patterns in one place. Every pattern and strategy has its own report, AI chat and marketplace page.',
     summaryPatterns: 'Registered patterns', summaryDetections: 'Total detections', summaryAvgRealization: 'Avg. realization',
-    tabPatterns: 'Pattern registry', tabStrategies: 'Strategies',
+    tabPatterns: 'Pattern registry', tabStrategies: 'Strategies', tabAnalysisProfiles: 'Analysis Profiles',
+    analysisProfileFieldLabel: 'Preferred Analysis Profile', analysisProfileNone: 'No profile linked',
     fromEvent: 'Build from an event', newPattern: 'New pattern', newStrategy: 'New strategy',
     newPatternInstrumentsHint: 'Select or add at least one instrument this pattern applies to.', createPatternCta: 'Create pattern', instrumentsLabel: 'Instruments',
     searchPlaceholder: 'Search by name or description…', sortRecent: 'Recent', sortRealization: 'Highest realization', sortUsage: 'Most used',
@@ -278,7 +282,8 @@ const copy = {
     eyebrow: 'NAVRYA · TALLER', title: 'Estrategias y patrones',
     subtitle: 'Reglas de ejecución, riesgo y patrones de detección en un solo lugar. Cada patrón y estrategia tiene su propio informe, chat de IA y página de mercado.',
     summaryPatterns: 'Patrones registrados', summaryDetections: 'Detecciones totales', summaryAvgRealization: 'Realización media',
-    tabPatterns: 'Registro de patrones', tabStrategies: 'Estrategias',
+    tabPatterns: 'Registro de patrones', tabStrategies: 'Estrategias', tabAnalysisProfiles: 'Perfiles de análisis',
+    analysisProfileFieldLabel: 'Perfil de análisis preferido', analysisProfileNone: 'Sin perfil vinculado',
     fromEvent: 'Crear desde un evento', newPattern: 'Nuevo patrón', newStrategy: 'Nueva estrategia',
     newPatternInstrumentsHint: 'Selecciona o añade al menos un instrumento al que se aplica este patrón.', createPatternCta: 'Crear patrón', instrumentsLabel: 'Instrumentos',
     searchPlaceholder: 'Buscar por nombre o descripción…', sortRecent: 'Reciente', sortRealization: 'Mayor realización', sortUsage: 'Más usados',
@@ -733,11 +738,11 @@ function ItemCard({ item, kind, lang, onOpen, onReport, onShare, onDelete }) {
 // render it identically so switching between the three feels like one continuous screen, not
 // three unrelated pages. `rightSlot` carries whatever page-specific actions sit to its right
 // (the "+ New pattern/strategy" buttons for the first two, nothing for Positions).
-function TopTabBar({ lang, tab, setTab, patternsCount, strategiesCount, tradesCount, rightSlot }) {
+function TopTabBar({ lang, tab, setTab, patternsCount, strategiesCount, tradesCount, analysisProfilesCount, rightSlot }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 7, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)' }}>
-        {[['patterns', tr(lang, 'tabPatterns'), 'execution', patternsCount], ['strategies', tr(lang, 'tabStrategies'), 'strategies', strategiesCount], ['positions', tr(lang, 'tabPositions'), 'list-checks', tradesCount]].map(([id, label, icon, count]) => (
+        {[['patterns', tr(lang, 'tabPatterns'), 'execution', patternsCount], ['strategies', tr(lang, 'tabStrategies'), 'strategies', strategiesCount], ['positions', tr(lang, 'tabPositions'), 'list-checks', tradesCount], ['analysis-profiles', tr(lang, 'tabAnalysisProfiles'), 'sparkle', analysisProfilesCount]].map(([id, label, icon, count]) => (
           <button key={id} type="button" onClick={() => setTab(id)} style={{
             boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 10, height: 50, padding: '0 20px', borderRadius: 8, cursor: 'pointer',
             border: tab === id ? '2px solid var(--char-accent)' : '1px solid transparent', background: tab === id ? 'var(--char-active-surface)' : 'transparent',
@@ -806,7 +811,7 @@ function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
         <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{tr(lang, 'positionsSubtitle')}</p>
       </div>
 
-      <TopTabBar lang={lang} tab={tab} setTab={setTab} patternsCount={patternsCount} strategiesCount={strategiesCount} tradesCount={tradeStore ? tradeStore.listSync().length : 0} />
+      <TopTabBar lang={lang} tab={tab} setTab={setTab} patternsCount={patternsCount} strategiesCount={strategiesCount} tradesCount={tradeStore ? tradeStore.listSync().length : 0} analysisProfilesCount={window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.listSync().length : 0} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 9, height: 40, padding: '0 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flex: 1, minWidth: 240, maxWidth: 360, color: 'var(--text-dim)' }}>
@@ -927,6 +932,7 @@ function IndexView({ lang, tab, setTab, query, setQuery, sort, setSort, patterns
       <TopTabBar
         lang={lang} tab={tab} setTab={setTab} patternsCount={patterns.length} strategiesCount={strategies.length}
         tradesCount={window.TradeJournalTradeStore ? window.TradeJournalTradeStore.listSync().length : 0}
+        analysisProfilesCount={window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.listSync().length : 0}
         rightSlot={<>
           {tab === 'strategies' && <Button variant="secondary" icon="sparkle" onClick={onFromEvent}>{tr(lang, 'fromEvent')}</Button>}
           <Button variant="primary" icon="plus" onClick={onNew}>{tab === 'patterns' ? tr(lang, 'newPattern') : tr(lang, 'newStrategy')}</Button>
@@ -1172,6 +1178,21 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
   const strategyRef = React.useRef(strategy);
   strategyRef.current = strategy;
   function set(path, value) { window.TradeJournalStrategyEducationStore.setPath(strategyRef.current, path, value); onSave(strategyRef.current); setSavedAt(Date.now()); }
+  // Analysis Profiles domain (§7.25): a dedicated setter, deliberately bypassing the generic
+  // set()/setPath() above - that helper always coerces a non-numeric value through String(), which
+  // would turn "clear the link" (null) into the literal string "null" instead of a real null.
+  // Also intentionally never added to the AI-fillable allowlist a few lines above - linking a
+  // Strategy to an Analysis Profile is a real user decision, not an AI-suggestable field, matching
+  // the brief's own "no Strategy is implicitly selected" rule stated for the reverse direction.
+  function setLinkedProfile(id) {
+    window.TradeJournalStrategyEducationStore.save(Object.assign({}, strategyRef.current, { linkedAnalysisProfileId: id || null }));
+    onSave(strategyRef.current); setSavedAt(Date.now());
+  }
+  const analysisProfileOptions = [{ value: '', label: tr(lang, 'analysisProfileNone') }].concat(
+    (window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.listSync() : [])
+      .filter((p) => p.isActive)
+      .map((p) => ({ value: p.id, label: p.name || p.id }))
+  );
 
   // AI process registry (A4) - reuses the SAME process id strategy-education.js's legacy
   // renderDetail() already registers ('strategy-editor-' + strategy.id), with the exact same
@@ -1233,6 +1254,10 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
           <StrategyMagicField processId={'strategy-editor-' + strategy.id} path="name">
             <TextField_ label={tr(lang, 'strategyNameLabel')} value={strategy.name} placeholder={tr(lang, 'strategyNamePlaceholder')} onCommit={(v) => set('name', v)} />
           </StrategyMagicField>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 360 }}>
+            <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{tr(lang, 'analysisProfileFieldLabel')}</span>
+            <Select icon="strategies" value={strategy.linkedAnalysisProfileId || ''} options={analysisProfileOptions} onChange={setLinkedProfile} />
+          </label>
         </div>
       </Panel>
       {groups.map((g) => (
@@ -2113,6 +2138,17 @@ function StrategiesHub({ character }) {
     return (
       <div style={container}>
         <PositionsView lang={lang} tab={tab} setTab={setTab} patternsCount={patterns.length} strategiesCount={strategies.length} />
+      </div>
+    );
+  }
+  // Analysis Profiles domain (see ARCHITECTURE.md §7.25): a fully self-contained tab, same
+  // pattern as Positions above - no Analysis-Profile business logic lives in this file, only the
+  // tab entry and this one render branch, per the brief's "not internally coupled to Strategies"
+  // requirement (movable later to #ai/analysis-profiles with no rewrite).
+  if (tab === 'analysis-profiles') {
+    return (
+      <div style={container}>
+        <AnalysisProfilesTab lang={lang} character={character} />
       </div>
     );
   }

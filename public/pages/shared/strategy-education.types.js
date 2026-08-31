@@ -9,8 +9,13 @@
    * @typedef {{id:string,role:'user'|'assistant',content:string,createdAt:string,suggestions?:StrategyFieldSuggestion[]}} StrategyChatMessage
    * @typedef {{id:string,path:string,section:StrategyAttachmentCategory,value:string|number|null,mode:'append'|'replace',status:'pending'|'applied'|'rejected',createdAt:string}} StrategyFieldSuggestion
    * @typedef {{id:string,strategyId:string,detectedAt:string,source:{type:'session'|'trade'|'manual',sessionId?:string,scenarioId?:string,tradeId?:string},predictedOutcome:string,status:StrategyDetectionStatus,resolvedAt:string|null,note?:string}} StrategyDetectionEvent
-   * @typedef {{id:string,name:string,active:boolean,isPublic:boolean,origin:StrategyOrigin,positionManagement:{entryRules:string,stopLossRules:string,exitTargetRules:string,positionSizingRules:string,freeNotes:string,attachments:StrategyAttachment[]},riskManagement:{maxRiskPerTradePercent:number|null,dailyDrawdownLimitPercent:number|null,totalDrawdownLimitPercent:number|null,maxConcurrentTrades:number|null,maxProfitCapPerTrade:number|null,freeNotes:string,attachments:StrategyAttachment[]},overallFramework:{description:string,attachments:StrategyAttachment[]},chatHistory:StrategyChatMessage[],aiUnderstandingSummary:{positionManagement:string,riskManagement:string,overallFramework:string,updatedAt:string},detectionEvents:StrategyDetectionEvent[],createdAt:string,updatedAt:string}} Strategy
+   * @typedef {{id:string,name:string,active:boolean,isPublic:boolean,origin:StrategyOrigin,positionManagement:{entryRules:string,stopLossRules:string,exitTargetRules:string,positionSizingRules:string,freeNotes:string,attachments:StrategyAttachment[]},riskManagement:{maxRiskPerTradePercent:number|null,dailyDrawdownLimitPercent:number|null,totalDrawdownLimitPercent:number|null,maxConcurrentTrades:number|null,maxProfitCapPerTrade:number|null,freeNotes:string,attachments:StrategyAttachment[]},overallFramework:{description:string,attachments:StrategyAttachment[]},chatHistory:StrategyChatMessage[],aiUnderstandingSummary:{positionManagement:string,riskManagement:string,overallFramework:string,updatedAt:string},detectionEvents:StrategyDetectionEvent[],linkedAnalysisProfileId:string|null,createdAt:string,updatedAt:string}} Strategy
    */
+  // linkedAnalysisProfileId (Analysis Profiles domain, ARCHITECTURE.md §7.25): optional, loose
+  // reference to an AnalysisProfile id - a Strategy's own "preferred lens", never the reverse
+  // (AnalysisProfile never stores or implies a Strategy). Deliberately NOT added to
+  // textPaths/numericPaths below - it is set through its own dedicated UI control
+  // (strategiesHubView.jsx's setLinkedProfile()), not the generic AI-fillable field allowlist.
 
   window.TradeJournalStrategyEducationTypes = {
     sections: ['positionManagement', 'riskManagement', 'overallFramework'],
