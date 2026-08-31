@@ -121,8 +121,23 @@
         // No authenticated user yet - never treat this as "the account is empty." Hydration
         // simply has not run; isHydrated() stays false so a boot gate keeps waiting rather than
         // rendering a false-empty account.
-        state.hydratePromise = Promise.resolve();
-        return state.hydratePromise;
+        //
+        // PRODUCTION INCIDENT FIX (2026-08-31): this used to memoize into state.hydratePromise,
+        // permanently - a domain store whose own <script> tag runs before boot-language-gate.js's
+        // async auth check has resolved window.__NAVRYA_AUTH__ (a real race: that check is a
+        // network round trip, and plain sequential <script src> tags never wait for a PRIOR
+        // script's own async work to finish) would call hydrate() here, get this no-op resolved
+        // promise forever after, and never actually fetch its real data even once the user WAS
+        // available moments later - character-app.jsx's own boot gate (Promise.all of every
+        // domain's hydrate()) would then resolve near-instantly too, believing hydration had
+        // completed, while listSync() stayed permanently empty. Confirmed live: the Analysis
+        // Profile first-run gate kept reappearing on every reload even though the profile was
+        // real and already persisted server-side - GET .../analysis-profiles was never even
+        // requested. Returning a fresh, unmemoized Promise.resolve() here means the NEXT hydrate()
+        // call (e.g. from allReady()'s own boot gate, called after this script's own synchronous
+        // top-level code has already run) re-checks hasCurrentUser() for real and performs the
+        // actual fetch once auth has genuinely resolved.
+        return Promise.resolve();
       }
       state.hydratePromise = requestJson(config.hydrateUrl)
         .then(function (body) { setAllLocal((extractList(body) || []).map(deepClone)); state.hydrated = true; state.hydrationError = null; })
@@ -247,7 +262,9 @@
 
     function hydrate() {
       if (state.hydratePromise) return state.hydratePromise;
-      if (!hasCurrentUser()) { state.hydratePromise = Promise.resolve(); return state.hydratePromise; }
+      // PRODUCTION INCIDENT FIX (2026-08-31) - same unmemoized-retry fix as registerListDomain's
+      // own hydrate() above; see that function's comment for the full race-condition explanation.
+      if (!hasCurrentUser()) return Promise.resolve();
       state.hydratePromise = requestJson(config.hydrateUrl)
         .then(function (body) { setLocal(deepClone(extractDoc(body))); state.hydrated = true; state.hydrationError = null; })
         .catch(function (error) { state.hydrated = true; state.hydrationError = error; });
