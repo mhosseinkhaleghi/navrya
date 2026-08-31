@@ -71,10 +71,15 @@ test('the Analysis Style/focus areas/adherence, when supplied, are woven into th
 // Output budget policy - Initial largest, Update medium, Scenario Evaluation smallest (brief §4).
 // --------------------------------------------------------------------------------------------
 
-test('output budget: initial > update > scenario_evaluation, and AUTO applies no multiplier', () => {
+// Production incident, part 2 (2026-09-01): the original design asserted here (initial > update >
+// scenario_evaluation) turned out to be a false assumption - sessionAnalysisFormat is the exact
+// same, fully-required schema for every analysisType (nothing in it lets update/scenario_evaluation
+// emit a smaller structure), and update was reproduced live truncating at its old, smaller ceiling
+// even on the cheapest model tier. All three now intentionally share one generous budget.
+test('output budget: initial, update, and scenario_evaluation all share one generous ceiling (no schema-level reason for any to be smaller), and AUTO applies no multiplier', () => {
   assert.equal(sessionAnalysisOutputBudget('initial', 'auto'), SESSION_ANALYSIS_OUTPUT_BUDGET.initial);
-  assert.ok(SESSION_ANALYSIS_OUTPUT_BUDGET.initial > SESSION_ANALYSIS_OUTPUT_BUDGET.update);
-  assert.ok(SESSION_ANALYSIS_OUTPUT_BUDGET.update > SESSION_ANALYSIS_OUTPUT_BUDGET.scenario_evaluation);
+  assert.equal(SESSION_ANALYSIS_OUTPUT_BUDGET.initial, SESSION_ANALYSIS_OUTPUT_BUDGET.update);
+  assert.equal(SESSION_ANALYSIS_OUTPUT_BUDGET.update, SESSION_ANALYSIS_OUTPUT_BUDGET.scenario_evaluation);
 });
 
 test('output budget: efficient tightens and deep relaxes the ceiling relative to auto', () => {

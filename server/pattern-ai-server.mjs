@@ -1209,18 +1209,30 @@ const sessionAnalysisFormat = {
 const SESSION_ANALYSIS_TYPES = ['initial', 'update', 'scenario_evaluation'];
 // Distinct source labels per analysisType (brief §4) - one endpoint, three cost/health buckets.
 const SESSION_ANALYSIS_SOURCE = { initial: 'sessions.initialAnalysis', update: 'sessions.analysisUpdate', scenario_evaluation: 'sessions.scenarioEvaluation' };
-// Output-budget policy (brief §4): "largest output allowance" for Initial, "medium/compact" for
-// Update, "smallest" for Scenario Evaluation - threaded into callOpenAI (payload.max_output_tokens
-// is forwarded verbatim to the Responses API) / callAnthropic / callOpenAICompatible above via the
+// Output-budget policy (brief §4) - threaded into callOpenAI (payload.max_output_tokens is
+// forwarded verbatim to the Responses API) / callAnthropic / callOpenAICompatible above via the
 // same field name. Deliberately generous, not a hard essay-preventing clamp - "structured decision
 // intelligence", not a one-line summary.
-// initial raised 4096 -> 10000 (production incident: a real, detailed chart image against a
-// reasoning model routinely needs several thousand reasoning tokens *and* a full 15-block-type
-// JSON answer before finishing - max_output_tokens caps both together, so 4096 truncated
-// mid-JSON-string on genuinely complex real charts even though every synthetic/simple test image
-// stayed well under it. update/scenario_evaluation are unchanged - their content is narrower by
-// design and were not observed truncating.
-const SESSION_ANALYSIS_OUTPUT_BUDGET = { initial: 10000, update: 2200, scenario_evaluation: 1400 };
+//
+// PRODUCTION INCIDENT (2026-08-31, part 1): initial's own ceiling was raised 4096 -> 10000 first -
+// a real, detailed chart image against a reasoning model routinely needs several thousand
+// reasoning tokens *and* a full 15-block-type JSON answer before finishing (max_output_tokens caps
+// both together), so 4096 truncated mid-JSON-string on genuinely complex real charts even though
+// every synthetic/simple test image had stayed well under it.
+//
+// PRODUCTION INCIDENT, part 2 (2026-09-01): update/scenario_evaluation were left at their
+// original, much smaller ceilings ("medium/compact"/"smallest") on the assumption their responses
+// are inherently shorter - confirmed WRONG by both the schema and live traffic. sessionAnalysisFormat
+// is the exact same schema object for every analysisType, and its top-level `required` list
+// (thesis/stateMetrics/whatChanged/blocks/scenarios/scenarioEvaluations/watchItems/unknowns/
+// whatWouldChangeView/confidence/memoryUpdate - memoryUpdate itself requiring 8 more sub-fields
+// including free-text compactNarrative) is unconditional: nothing in the schema lets a smaller
+// analysisType emit a smaller structure. Reproduced live: even gpt-5.6-luna (the cheapest/fastest
+// tier, already proven sufficient for Initial) truncated an UPDATE call with a realistic session
+// memory + active scenarios + real chart image at the old 2200-token ceiling. All three types now
+// share the same generous budget - there was never real evidence update/scenario_evaluation could
+// safely be smaller, only an assumption.
+const SESSION_ANALYSIS_OUTPUT_BUDGET = { initial: 10000, update: 10000, scenario_evaluation: 10000 };
 // Deep analysis (brief's low-friction overflow menu option) relaxes the ceiling; Efficient
 // (brief §4's "remaining budget is low" indicator) tightens it. Both are client-resolved depth
 // labels (AUTO itself is resolved client-side too - see session-analysis-client.js's
