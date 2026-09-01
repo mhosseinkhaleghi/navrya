@@ -346,7 +346,7 @@ function ContextRow({ icon, label, count }) {
    own latest chart entry (buildSessionContextRefs().latestChartEntryId) when omitted, e.g. when
    opened from the whole-session Fate flow. `scenarioTargets` (optional, scenario ids) switches
    this into a SCENARIO_EVALUATION request instead of INITIAL/UPDATE. */
-export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, character, onClose, onResult, onAddScenario, onVisualizeScenario, onVisualizeAnalysis, addedScenarioKeys, scenarioVisualizations, analysisVisualization, scenarioTitleFor, scenarioTargets }) {
+export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, character, onClose, onResult, onAddScenario, onVisualizeScenario, onVisualizeAnalysis, addedScenarioKeys, scenarioVisualizations, analysisVisualization, scenarioTitleFor, scenarioTargets, autoRun }) {
   const activeLang = lang || 'fa';
   const rtl = activeLang === 'fa' || activeLang === 'ar';
 
@@ -474,6 +474,20 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     setPhase('result');
     if (onResult) onResult(outcome.result, { entry: targetEntry });
   }
+
+  // AI-access follow-up: programmatic trigger for the exact same "Analyze" flow the button below
+  // already runs - opened via the session.analysis.run Action Registry action
+  // (liveSessionView.jsx's runAiAnalysis() hub method) instead of a manual click. Deliberately
+  // calls startAnalysis(false) verbatim, never a second request-building path - a cache hit still
+  // resolves for free (session-analysis-client.js's own fingerprint check, see startAnalysis()'s
+  // own comment), so this is always safe to fire even when a saved result is already showing
+  // (phase starts at 'result' for hasSavedResult) - it just re-reports that same result upward,
+  // which is exactly what lets a voice/chat-triggered "run AI analysis" still narrate an existing
+  // answer aloud rather than silently doing nothing.
+  const autoRunFiredRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoRun && !autoRunFiredRef.current) { autoRunFiredRef.current = true; startAnalysis(false); }
+  }, [autoRun]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canGoBackToForm = phase !== 'generating';
 

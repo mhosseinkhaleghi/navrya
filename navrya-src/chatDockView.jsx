@@ -749,6 +749,29 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceState]);
 
+  // AI-access follow-up: liveSessionView.jsx's own AI Analysis flow (any of its 3 pre-existing
+  // manual triggers, or the new session.analysis.run Action Registry action) dispatches this event
+  // once a real result lands - completely independent of any specific chat turn, since the
+  // analysis itself runs entirely inside Live Session, never through submit()/core.sendChat() at
+  // all. Speaks the result's own short headline through the exact same PlaybackController queue
+  // every other reply already uses, but ONLY when Voice Mode is genuinely connected right now - a
+  // typed-only session never hears anything, and this never triggers a second /api/ai/chat call
+  // (the text is already known, produced by the analysis call itself). Reads voiceRef.current.
+  // state() fresh at event time (mount-once effect, empty deps) rather than closing over the
+  // `voiceState` React variable, which would otherwise always read its stale mount-time value.
+  React.useEffect(() => {
+    function onAnalysisReady(event) {
+      const headline = event && event.detail && event.detail.headline;
+      if (!headline || !voiceRef.current || !playbackControllerRef.current) return;
+      const currentState = voiceRef.current.state();
+      if (currentState === VOICE_STATES.IDLE || currentState === VOICE_STATES.ERROR) return;
+      const spoken = voiceText ? voiceText.toSpokenText(headline, i18n.language()) : headline;
+      playbackControllerRef.current.enqueue(spoken, { kind: 'ai-analysis-result', caption: headline });
+    }
+    window.addEventListener('tradejournal:ai-analysis-ready', onAnalysisReady);
+    return () => window.removeEventListener('tradejournal:ai-analysis-ready', onAnalysisReady);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   function toggleVoice() {
     if (!voiceRef.current) return;
     const current = voiceRef.current.state();

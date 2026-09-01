@@ -2189,6 +2189,22 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     setAnalysisEnvelope(envelope);
     setAnalysisEntry(meta && meta.entry);
     setAnalysisVisualization(null); // a genuinely new analysis has no visualization of its own yet
+    announceAnalysisResult(result);
+  }
+
+  // AI-access follow-up: the one shared "an AI Analysis result just landed" signal, fired from
+  // every real place a result lands (this function and applyAnalysisResult below) - whether the
+  // trigger was one of the 3 existing manual buttons or the new session.analysis.run Action
+  // Registry action makes no difference here. chatDockView.jsx listens for this and, only if Voice
+  // Mode is genuinely active right now, speaks `thesis.headline` (the schema's own short one-line
+  // field, distinct from the longer `.summary` - server/pattern-ai-server.mjs's own
+  // session_market_analysis schema) through the exact same PlaybackController queue every other
+  // spoken reply already uses. No new LLM call - this reuses text the analysis call already
+  // produced; a typed-only session (no Voice connection) simply never hears anything, by
+  // construction (chatDockView.jsx's own listener is what decides that, not this dispatch).
+  function announceAnalysisResult(result) {
+    const headline = result && result.thesis && result.thesis.headline;
+    if (headline) window.dispatchEvent(new CustomEvent('tradejournal:ai-analysis-ready', { detail: { headline } }));
   }
   async function handleVisualize(scenario, ctx) {
     setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
@@ -2401,6 +2417,17 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // entry that was open when clicked, not just a bare boolean, so the popup analyzes the chart
   // the trader was actually looking at rather than always defaulting to the session's latest one.
   const [sessionAnalysisEntry, setSessionAnalysisEntry] = React.useState(null);
+  // AI-access follow-up: true only for the one SessionAiAnalysisModal instance opened by
+  // runAiAnalysis() below (the session.analysis.run Action Registry action) - tells that instance
+  // to start itself immediately instead of waiting for a manual "Analyze" click. Reset to false
+  // whenever that modal closes or an analysis actually completes, so a LATER manual open of the
+  // same per-entry modal (setSessionAnalysisEntry from the button click at EntryDetailPanel) never
+  // accidentally inherits it.
+  const [sessionAnalysisAutoRun, setSessionAnalysisAutoRun] = React.useState(false);
+  // Resolves runAiAnalysis()'s own returned Promise once a result actually lands (applyAnalysisResult)
+  // or the modal closes without one (onClose below) - a ref, not state, since nothing ever renders
+  // off this value; it only ever needs to be "whichever pending call is currently outstanding."
+  const pendingAnalysisResolverRef = React.useRef(null);
   const railRef = React.useRef(null);
 
   // Production bug found via the Analysis Map feature (2026-08-31): this component calls hooks
@@ -2637,6 +2664,16 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       }
       Object.assign(s, patches.sessionPatch);
     }, 'ai_analysis_completed', tr(lang, 'aiAnalyzeButton'), null, false);
+    announceAnalysisResult(normalizedResult);
+    // AI-access follow-up: resolves runAiAnalysis()'s own returned Promise (session.analysis.run's
+    // submit()) with the real, already-persisted result - a no-op for the 3 pre-existing manual
+    // trigger paths, which never set this ref in the first place.
+    if (pendingAnalysisResolverRef.current) {
+      const resolve = pendingAnalysisResolverRef.current;
+      pendingAnalysisResolverRef.current = null;
+      resolve(patches.sessionPatch.aiSessionAnalysisResult);
+    }
+    setSessionAnalysisAutoRun(false);
     return patches.sessionPatch.aiSessionAnalysisResult;
   }
   // A model-proposed scenario becomes a real, persisted Scenario only on this explicit click
@@ -2737,7 +2774,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // current every render decouples what the hook actually calls from which render's own effect
   // closure happens to still be registered.
   const liveSessionHubRef = React.useRef(null);
-  liveSessionHubRef.current = { session, addEntry, addScenario, setChartModalOpen, withPreSessionCheckIn, selectEntry, setOpenScenarios };
+  liveSessionHubRef.current = { session, addEntry, addScenario, setChartModalOpen, withPreSessionCheckIn, selectEntry, setOpenScenarios, setSessionAnalysisEntry, setSessionAnalysisAutoRun };
   React.useEffect(() => {
     window.TradeJournalNavryaLiveSessionHub = {
       addChartEntry: () => { liveSessionHubRef.current.withPreSessionCheckIn(() => liveSessionHubRef.current.setChartModalOpen(true)); },
@@ -2766,7 +2803,22 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         liveSessionHubRef.current.selectEntry(owner.id);
         liveSessionHubRef.current.setOpenScenarios((prev) => new Set(prev).add(scenarioId));
         return true;
-      }
+      },
+      // AI-access follow-up: session.analysis.run's own submit() (character-app.jsx). Opens the
+      // real per-entry SessionAiAnalysisModal (the exact same one the "AI analysis" button on a
+      // chart entry opens) targeting the session's latest chart entry with an image, in autoRun
+      // mode - never a second, parallel analysis code path. Resolves once a real result lands
+      // (applyAnalysisResult, above) or the modal closes without one (the render site's own
+      // onClose, below) - never hangs the calling workflow forever either way.
+      runAiAnalysis: () => new Promise((resolve) => {
+        var s = liveSessionHubRef.current.session;
+        var entries = (s.entries || []).slice().reverse();
+        var target = entries.find((e) => e.type === 'chart' && (e.hasImage || e.preview || e.imageBlobId));
+        if (!target) { resolve(null); return; }
+        pendingAnalysisResolverRef.current = resolve;
+        liveSessionHubRef.current.setSessionAnalysisAutoRun(true);
+        liveSessionHubRef.current.setSessionAnalysisEntry(target);
+      })
     };
     return () => { delete window.TradeJournalNavryaLiveSessionHub; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2937,11 +2989,21 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       )}
       {/* Per-entry "AI analysis" trigger (EntryDetailPanel's own top button) - same full
           persist()/addScenario()/updateScenario() plumbing as FateSummaryModal's own embedded
-          instance above, just targeting the specific entry the trader had open when they clicked. */}
+          instance above, just targeting the specific entry the trader had open when they clicked.
+          Also the ONE instance runAiAnalysis() (session.analysis.run) opens, in autoRun mode. */}
       {sessionAnalysisEntry && (
         <SessionAiAnalysisModal
           session={session} character={character} lang={lang} entry={sessionAnalysisEntry}
-          onClose={() => setSessionAnalysisEntry(null)}
+          autoRun={sessionAnalysisAutoRun}
+          onClose={() => {
+            setSessionAnalysisEntry(null);
+            setSessionAnalysisAutoRun(false);
+            // Closed before a result ever landed (e.g. the trader dismissed it, or a real
+            // analysis error) - runAiAnalysis()'s own Promise must still settle, never hang the
+            // calling workflow forever. A no-op for the 3 pre-existing manual triggers, which
+            // never set this ref.
+            if (pendingAnalysisResolverRef.current) { const resolve = pendingAnalysisResolverRef.current; pendingAnalysisResolverRef.current = null; resolve(null); }
+          }}
           onResult={(result, meta) => applyAnalysisResult(meta && meta.entry, result)}
           onAddScenario={addAiScenario} onVisualizeScenario={runVisualizeAiScenario} onVisualizeAnalysis={runVisualizeAiAnalysis}
         />

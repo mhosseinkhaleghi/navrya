@@ -19,7 +19,10 @@ test('the per-entry "AI analysis" button opens the real popup, pinned to the ent
 test('the per-entry popup is wired to real persistence (onResult/onAddScenario/onVisualizeScenario), not left unwired', () => {
   assert.match(source, /\{sessionAnalysisEntry && \(/);
   assert.match(source, /entry=\{sessionAnalysisEntry\}/);
-  assert.match(source, /onClose=\{\(\) => setSessionAnalysisEntry\(null\)\}/);
+  // AI-access follow-up: onClose is now a small block (also clears sessionAnalysisAutoRun and
+  // resolves any pending runAiAnalysis() Promise - see tests/session-analysis-action.test.mjs) -
+  // still always clears sessionAnalysisEntry itself, unchanged.
+  assert.match(source, /onClose=\{\(\) => \{\s*setSessionAnalysisEntry\(null\);/);
   assert.match(source, /onAddScenario=\{addAiScenario\}/);
   assert.match(source, /onVisualizeScenario=\{runVisualizeAiScenario\}/);
 });

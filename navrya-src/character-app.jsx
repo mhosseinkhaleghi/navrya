@@ -1253,6 +1253,34 @@ export function mountCharacterApp(character) {
         resultContext: () => {}
       });
 
+      // AI-access follow-up: the user's own AI Analysis feature (sessionAiAnalysisModal.jsx ->
+      // POST /api/sessions/analyze) had no Action Registry action at all - reachable only via 3
+      // manual button clicks inside Live Session. No required/optional fields at all (unlike
+      // chartEntry/movementEntry above) - this always targets the session's own latest chart
+      // entry with an image, the exact same default sessionAiAnalysisModal.jsx already falls back
+      // to when opened with no pinned entry. entityAlreadyPersisted:true because the result modal
+      // stays open showing the analysis until explicitly closed, same reasoning as chartEntry.create.
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'session.analysis.run', domain: 'sessions', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Run the real AI Analysis on the current active trading Session\'s most recent chart entry - the same operation the in-app "AI analysis" button performs (a market thesis, key observations, and scenario watch items). This is a real analysis call and may take several seconds. Only available while a Session is actively open with at least one chart entry that has an image attached.',
+        aliases: ['run ai analysis', 'analyze the chart', 'analyze this session', 'analyze the market', 'what does the ai think'],
+        requiredFields: [], optionalFields: [],
+        available: (context) => {
+          var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
+          var session = sessionId && window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
+          return !!(session && (session.entries || []).some((e) => e.type === 'chart' && (e.hasImage || e.preview || e.imageBlobId)));
+        },
+        open: () => { if (store.getState().activeId !== 'sessions') store.setActiveId('sessions'); },
+        submit: () => new Promise((resolve) => {
+          pollFor(
+            () => window.TradeJournalNavryaLiveSessionHub,
+            (hub) => { hub.runAiAnalysis().then(resolve).catch(() => resolve(null)); },
+            () => resolve(null) // the Live Session workspace never mounted (unexpected)
+          );
+        }),
+        resultContext: () => {}
+      });
+
       // 2026-08-28 bug report: the real Pre-Session Check-In popup (preSessionCheckInModal.jsx)
       // shows itself as a precondition before session.movementEntry.create's/
       // session.scenario.create's own target UI ever opens - reactive, opened by app code
