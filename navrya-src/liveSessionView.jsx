@@ -10,7 +10,7 @@ import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFi
 import * as sessionsAdapter from './sessionsAdapter.js';
 import { openLogWizard } from './tradeLogModal.jsx';
 import { SessionAiAnalysisModal } from './sessionAiAnalysisModal.jsx';
-import { SessionAnalysisCard } from './sessionAnalysisCard.jsx';
+import { SessionAnalysisCard, ImageLightbox } from './sessionAnalysisCard.jsx';
 
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
@@ -96,7 +96,7 @@ const copy = {
     scenCountSuffix: 'سناریو', noScenarios: 'بدون سناریو', aiBadge: 'AI', startShort: 'شروع', endShort: 'پایان',
     counterOf: 'از', counterEntryWord: 'ورودی', counterNone: '۰ ورودی', keyboardHint: 'جابه‌جایی با کلیدهای ← →',
     kindChart: 'چارت', kindMove: 'حرکت', kindFate: 'سرنوشت',
-    aiAnalyzeButton: 'تحلیل AI', deleteEntryTitle: 'حذف ورودی', fullscreenTitle: 'نمایش تمام‌صفحه',
+    aiAnalyzeButton: 'تحلیل AI', deleteEntryTitle: 'حذف ورودی', fullscreenTitle: 'نمایش تمام‌صفحه', imageModeOriginal: 'چارت خام', imageModeAnalysis: 'تحلیل AI',
     noImageText: 'تصویری برای این ورودی ثبت نشده است', uploadImage: 'بارگذاری تصویر',
     noteLabel: 'یادداشت این ورودی', notePlaceholder: 'چه چیزی در این لحظه دیدید؟',
     aiStripTitle: 'تحلیل هوش مصنوعی این ورودی', aiReady: 'تحلیل آماده است', aiNotReady: 'هنوز تحلیل نشده',
@@ -166,7 +166,7 @@ const copy = {
     scenCountSuffix: 'سيناريو', noScenarios: 'بدون سيناريو', aiBadge: 'AI', startShort: 'البداية', endShort: 'النهاية',
     counterOf: 'من', counterEntryWord: 'إدخال', counterNone: '0 إدخال', keyboardHint: 'التنقل بمفاتيح ← →',
     kindChart: 'رسم', kindMove: 'حركة', kindFate: 'مصير',
-    aiAnalyzeButton: 'تحليل AI', deleteEntryTitle: 'حذف الإدخال', fullscreenTitle: 'عرض بملء الشاشة',
+    aiAnalyzeButton: 'تحليل AI', deleteEntryTitle: 'حذف الإدخال', fullscreenTitle: 'عرض بملء الشاشة', imageModeOriginal: 'الرسم الخام', imageModeAnalysis: 'تحليل AI',
     noImageText: 'لا توجد صورة لهذا الإدخال', uploadImage: 'رفع صورة',
     noteLabel: 'ملاحظة هذا الإدخال', notePlaceholder: 'ماذا رأيت في هذه اللحظة؟',
     aiStripTitle: 'تحليل الذكاء الاصطناعي لهذا الإدخال', aiReady: 'التحليل جاهز', aiNotReady: 'لم يُحلَّل بعد',
@@ -236,7 +236,7 @@ const copy = {
     scenCountSuffix: 'scenarios', noScenarios: 'No scenarios', aiBadge: 'AI', startShort: 'Start', endShort: 'End',
     counterOf: 'of', counterEntryWord: 'Entry', counterNone: '0 entries', keyboardHint: 'Navigate with ← → keys',
     kindChart: 'Chart', kindMove: 'Move', kindFate: 'Fate',
-    aiAnalyzeButton: 'AI analysis', deleteEntryTitle: 'Delete entry', fullscreenTitle: 'Show fullscreen',
+    aiAnalyzeButton: 'AI analysis', deleteEntryTitle: 'Delete entry', fullscreenTitle: 'Show fullscreen', imageModeOriginal: 'Raw chart', imageModeAnalysis: 'AI analysis',
     noImageText: 'No image is attached to this entry', uploadImage: 'Upload image',
     noteLabel: 'Note for this entry', notePlaceholder: 'What did you see at this moment?',
     aiStripTitle: 'AI analysis of this entry', aiReady: 'Analysis ready', aiNotReady: 'Not analyzed yet',
@@ -306,7 +306,7 @@ const copy = {
     scenCountSuffix: 'escenarios', noScenarios: 'Sin escenarios', aiBadge: 'AI', startShort: 'Inicio', endShort: 'Fin',
     counterOf: 'de', counterEntryWord: 'Entrada', counterNone: '0 entradas', keyboardHint: 'Navega con las teclas ← →',
     kindChart: 'Gráfico', kindMove: 'Movimiento', kindFate: 'Destino',
-    aiAnalyzeButton: 'Análisis IA', deleteEntryTitle: 'Eliminar entrada', fullscreenTitle: 'Ver en pantalla completa',
+    aiAnalyzeButton: 'Análisis IA', deleteEntryTitle: 'Eliminar entrada', fullscreenTitle: 'Ver en pantalla completa', imageModeOriginal: 'Gráfico original', imageModeAnalysis: 'Análisis IA',
     noImageText: 'No hay imagen adjunta a esta entrada', uploadImage: 'Subir imagen',
     noteLabel: 'Nota de esta entrada', notePlaceholder: '¿Qué viste en este momento?',
     aiStripTitle: 'Análisis de IA de esta entrada', aiReady: 'Análisis listo', aiNotReady: 'Aún sin analizar',
@@ -1089,6 +1089,15 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
         <button type="button" onClick={onToggle} style={{ display: 'grid', placeItems: 'center', width: 24, height: 24, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', flex: 'none' }}>
           <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={14} />
         </button>
+        {/* Production feedback (2026-09-01): an AI-added scenario looked identical to a manual
+            one anywhere in the UI - aiSource was already real, persisted, de-duplication-only
+            metadata (addAiScenario()/runVisualizeAiScenario() in this file), just never surfaced
+            visually. */}
+        {scenario.aiSource && (
+          <span title={tr(lang, 'aiAnalyzeButton')} style={{ display: 'flex', alignItems: 'center', gap: 3, flex: 'none', height: 20, padding: '0 7px', borderRadius: 999, border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)', fontSize: 9.5, fontWeight: 700, letterSpacing: '.04em' }}>
+            <Icon name="sparkle" size={10} />AI
+          </span>
+        )}
         <span dir="auto" style={{ fontSize: 12, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scenario.title || tr(lang, 'newScenarioTitle')}</span>
         <Chip tone="neutral">{tr(lang, 'completionLabel')} {completionPct}%</Chip>
         <Chip tone="success">{prob}%</Chip>
@@ -1267,7 +1276,72 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
 }
 
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, character }) {
+// Production feedback (2026-09-01): a generated overlay (the whole-analysis one, or a visualized
+// scenario's own) only ever appeared as a one-off image inside the analysis result - never
+// alongside the entry's own chart image, which is the ONE place a trader actually looks back at.
+// This gives the entry's real, original image a "mode" switcher between it and every ready
+// overlay this entry currently has (derived entirely from entry.aiAnalysisResult/entry.scenarios -
+// nothing new is persisted here), and replaces the old window.open()-in-a-new-tab "fullscreen"
+// button with the same in-app ImageLightbox sessionAnalysisCard.jsx's own generated-image previews
+// already use, so "enlarge" behaves identically everywhere in this app and can actually be
+// dismissed instead of leaving a new tab open.
+function EntryImageViewer({ entry, imageUrl, lang, onOpenSessionAnalysis, session }) {
+  const wholeViz = entry.aiAnalysisResult && entry.aiAnalysisResult.wholeVisualization;
+  const scenarioModes = (entry.scenarios || [])
+    .filter((sc) => sc.aiVisualization && sc.aiVisualization.status === 'ready' && sc.aiVisualization.imageDataUrl)
+    .map((sc) => ({ key: 'scenario-' + sc.id, label: sc.title || tr(lang, 'scenarioMap'), url: sc.aiVisualization.imageDataUrl }));
+  const modes = [
+    { key: 'original', label: tr(lang, 'imageModeOriginal'), url: imageUrl },
+    ...(wholeViz && wholeViz.status === 'ready' && wholeViz.imageDataUrl ? [{ key: 'analysis', label: tr(lang, 'imageModeAnalysis'), url: wholeViz.imageDataUrl }] : []),
+    ...scenarioModes
+  ];
+  const [activeKey, setActiveKey] = React.useState('original');
+  const [lightboxOpen, setLightboxOpen] = React.useState(false);
+  // A mode this entry no longer actually has (e.g. switched to a different timeline entry, or its
+  // own overlay was regenerated under a new fingerprint) must never leave the viewer stuck showing
+  // a stale/missing image - falls back to the one mode that always exists.
+  React.useEffect(() => { if (!modes.some((m) => m.key === activeKey)) setActiveKey('original'); }); // eslint-disable-line react-hooks/exhaustive-deps
+  const active = modes.find((m) => m.key === activeKey) || modes[0];
+
+  return (
+    <React.Fragment>
+      <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
+        <img src={active.url} alt="" onClick={() => setLightboxOpen(true)} style={{ display: 'block', width: '100%', height: 300, objectFit: 'cover', cursor: 'zoom-in' }} />
+        <span style={{ position: 'absolute', inset: 'auto 0 0 0', height: 64, background: 'linear-gradient(to top, rgba(3,8,7,.85), transparent)' }}></span>
+        <span style={{ position: 'absolute', bottom: 10, insetInlineStart: 12, display: 'flex', gap: 6 }}>
+          <Chip tone="accent">{entryTimeLabel(entry, lang)}</Chip>
+          <Chip tone="neutral">{sessionsAdapter.displayCity(entry.market || entry.tradingSession || session.market)}</Chip>
+        </span>
+        <button type="button" title={tr(lang, 'fullscreenTitle')} onClick={() => setLightboxOpen(true)} style={{ position: 'absolute', top: 10, insetInlineEnd: 10, display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.7)', color: 'var(--text-muted)' }}>
+          <Icon name="Maximize2" size={16} />
+        </button>
+        {/* Chart-shortcut trigger (2026-08-31 follow-up): the same real onOpenSessionAnalysis
+            trigger as the header button above, placed directly on the chart image itself so
+            a trader can start/reopen the analysis without first locating the header button. */}
+        <button type="button" title={tr(lang, 'aiAnalyzeButton')} onClick={onOpenSessionAnalysis} style={{ position: 'absolute', top: 10, insetInlineEnd: 52, display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'rgba(3,8,7,.7)', color: 'var(--char-accent)' }}>
+          <Icon name="sparkle" size={16} />
+        </button>
+      </span>
+      {modes.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {modes.map((m) => (
+            <button key={m.key} type="button" onClick={() => setActiveKey(m.key)} style={{
+              height: 26, padding: '0 10px', borderRadius: 999, cursor: 'pointer',
+              border: '1px solid ' + (m.key === active.key ? 'var(--char-accent)' : 'var(--border-hairline)'),
+              background: m.key === active.key ? 'var(--char-active-surface)' : 'transparent',
+              color: m.key === active.key ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 10.5
+            }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {lightboxOpen && <ImageLightbox src={active.url} onClose={() => setLightboxOpen(false)} />}
+    </React.Fragment>
+  );
+}
+
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, onAddAiScenario, onVisualizeAiScenario, onVisualizeAiAnalysis, scenarioTitleFor, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
@@ -1297,6 +1371,46 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
     return () => { mountedRef.current = false; };
   }, [entry.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Production feedback (2026-09-01): "show the analysis below the chart" - the completed result
+  // (entry.aiAnalysisResult, already the single real, persisted source of truth) now renders
+  // inline here too, not only inside the popup that started it. The popup still owns the
+  // form/generating/error flow for STARTING a fresh analysis; once one exists, both surfaces read
+  // the exact same entry field, so they can never disagree.
+  const result = entry.aiAnalysisResult;
+  const [visualizingKey, setVisualizingKey] = React.useState(null); // a scenario's own localKey, or 'whole-analysis', or null
+  const addedScenarioKeys = React.useMemo(() => {
+    const keys = new Set();
+    if (result) (entry.scenarios || []).forEach((sc) => { if (sc.aiSource && sc.aiSource.analysisId === result.analysisId) keys.add(sc.aiSource.generatedScenarioKey); });
+    return keys;
+  }, [entry, result]);
+  // Same real-persisted-Scenario hydration session-analysis-client.js's hydrateScenarioVisualizations()
+  // documents (production bug: a scenario's own generated image "disappeared again" the moment this
+  // panel remounted, because nothing reading result.scenarios[] ever looked at the real, already-
+  // added Scenario's own aiVisualization - only ephemeral per-mount React state, which is what a
+  // fresh remount always starts empty).
+  const scenarioVisualizations = React.useMemo(() => {
+    const client = window.TradeJournalSessionAnalysisClient;
+    const hydrated = client && result ? client.hydrateScenarioVisualizations(entry, result) : {};
+    return visualizingKey && visualizingKey !== 'whole-analysis' ? { ...hydrated, [visualizingKey]: { status: 'loading' } } : hydrated;
+  }, [entry, result, visualizingKey]);
+  const analysisVisualization = visualizingKey === 'whole-analysis' ? { status: 'loading' } : (result && result.wholeVisualization) || null;
+  async function handleAddAiScenario(aiScenario) {
+    if (!onAddAiScenario || !result) return;
+    onAddAiScenario(aiScenario, { entry, analysisId: result.analysisId, provider: result.provider, model: result.model });
+  }
+  async function handleVisualizeAiScenario(aiScenario) {
+    if (!onVisualizeAiScenario || !result) return;
+    setVisualizingKey(aiScenario.localKey);
+    await onVisualizeAiScenario(aiScenario, { entry, analysisId: result.analysisId });
+    setVisualizingKey(null);
+  }
+  async function handleVisualizeAiAnalysis() {
+    if (!onVisualizeAiAnalysis || !result) return;
+    setVisualizingKey('whole-analysis');
+    await onVisualizeAiAnalysis(result, { entry });
+    setVisualizingKey(null);
+  }
+
   return (
     <Panel variant="base" ornament padding={0}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
@@ -1314,23 +1428,7 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
         <div style={{ flex: 1, minWidth: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {entry.hasImage && imageUrl ? (
-            <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
-              <img src={imageUrl} alt="" style={{ display: 'block', width: '100%', height: 300, objectFit: 'cover' }} />
-              <span style={{ position: 'absolute', inset: 'auto 0 0 0', height: 64, background: 'linear-gradient(to top, rgba(3,8,7,.85), transparent)' }}></span>
-              <span style={{ position: 'absolute', bottom: 10, insetInlineStart: 12, display: 'flex', gap: 6 }}>
-                <Chip tone="accent">{entryTimeLabel(entry, lang)}</Chip>
-                <Chip tone="neutral">{sessionsAdapter.displayCity(entry.market || entry.tradingSession || session.market)}</Chip>
-              </span>
-              <button type="button" title={tr(lang, 'fullscreenTitle')} onClick={() => window.open(imageUrl, '_blank', 'noopener')} style={{ position: 'absolute', top: 10, insetInlineEnd: 10, display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.7)', color: 'var(--text-muted)' }}>
-                <Icon name="Maximize2" size={16} />
-              </button>
-              {/* Chart-shortcut trigger (2026-08-31 follow-up): the same real onOpenSessionAnalysis
-                  trigger as the header button above, placed directly on the chart image itself so
-                  a trader can start/reopen the analysis without first locating the header button. */}
-              <button type="button" title={tr(lang, 'aiAnalyzeButton')} onClick={onOpenSessionAnalysis} style={{ position: 'absolute', top: 10, insetInlineEnd: 52, display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'rgba(3,8,7,.7)', color: 'var(--char-accent)' }}>
-                <Icon name="sparkle" size={16} />
-              </button>
-            </span>
+            <EntryImageViewer entry={entry} imageUrl={imageUrl} lang={lang} onOpenSessionAnalysis={onOpenSessionAnalysis} session={session} />
           ) : (
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: 300, borderRadius: 10, border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.5)' }}>
               <span style={{ color: 'rgba(244,234,215,.2)' }}><Icon name="image" size={30} /></span>
@@ -1338,6 +1436,19 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
               <Button variant="secondary" size="sm" icon="upload" onClick={() => fileRef.current && fileRef.current.click()}>{tr(lang, 'uploadImage')}</Button>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) onAttachImage(entry, f); e.target.value = ''; }} />
             </span>
+          )}
+          {/* "Show the analysis below the chart" (2026-09-01 feedback) - inline, always-visible
+              once a result exists, reading the exact same entry.aiAnalysisResult the popup itself
+              writes; no separate state to go stale. */}
+          {result && (
+            <SessionAnalysisCard
+              result={result} lang={lang}
+              memoryReceipt={window.TradeJournalSessionAnalysisClient ? window.TradeJournalSessionAnalysisClient.buildMemoryReceipt(session) : null}
+              depth="auto" addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={scenarioVisualizations}
+              analysisVisualization={analysisVisualization} scenarioTitleFor={scenarioTitleFor}
+              onAddScenario={handleAddAiScenario} onVisualizeScenario={handleVisualizeAiScenario}
+              onVisualizeAnalysis={onVisualizeAiAnalysis ? handleVisualizeAiAnalysis : null}
+            />
           )}
           <AiMagicFill active={noteFilled}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2084,6 +2195,15 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     const outcome = onVisualizeAiScenario ? await onVisualizeAiScenario(scenario, ctx) : { ok: false };
     setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
   }
+  // Same "disappears again" fix as EntryDetailPanel's own inline card (see
+  // session-analysis-client.js's hydrateScenarioVisualizations() for the real cause) - this
+  // modal's own scenarioVisualizations state is ephemeral per-open, so a scenario visualized in an
+  // EARLIER open of this same Fate flow would otherwise vanish again here too.
+  const hydratedScenarioVisualizations = React.useMemo(() => {
+    const client = window.TradeJournalSessionAnalysisClient;
+    return client && analysisEntry && latest ? client.hydrateScenarioVisualizations(analysisEntry, latest) : {};
+  }, [analysisEntry, latest]);
+  const mergedScenarioVisualizations = React.useMemo(() => ({ ...hydratedScenarioVisualizations, ...scenarioVisualizations }), [hydratedScenarioVisualizations, scenarioVisualizations]);
   async function handleVisualizeAnalysis() {
     if (!analysisEntry || !latest) return;
     setAnalysisVisualization({ status: 'loading' });
@@ -2161,7 +2281,7 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
             <SessionAnalysisCard
               result={latest} lang={lang}
               memoryReceipt={window.TradeJournalSessionAnalysisClient ? window.TradeJournalSessionAnalysisClient.buildMemoryReceipt(session) : null}
-              depth="auto" addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={scenarioVisualizations}
+              depth="auto" addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={mergedScenarioVisualizations}
               scenarioTitleFor={scenarioTitleFor}
               onAddScenario={(scenario) => onAddAiScenario && analysisEntry && onAddAiScenario(scenario, { entry: analysisEntry, analysisId: latest.analysisId, provider: latest.provider, model: latest.model })}
               onVisualizeScenario={(scenario) => handleVisualize(scenario, { entry: analysisEntry, analysisId: latest.analysisId })}
@@ -2222,7 +2342,7 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
       <SessionAiAnalysisModal
         session={session} character={character} lang={lang} onClose={() => setAiPopupOpen(false)}
         onResult={handleAnalysisResult} onAddScenario={onAddAiScenario} onVisualizeScenario={handleVisualize} onVisualizeAnalysis={handleVisualizeAnalysis}
-        addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={scenarioVisualizations} analysisVisualization={analysisVisualization}
+        addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={mergedScenarioVisualizations} analysisVisualization={analysisVisualization}
         scenarioTitleFor={scenarioTitleFor}
       />
     )}
@@ -2749,6 +2869,8 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
                 onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
                 onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
                 onAddScenario={addScenario} onScenarioEvaluate={(entry, scenario) => setEvaluatingScenario({ entry, scenario })} character={character}
+                onAddAiScenario={addAiScenario} onVisualizeAiScenario={runVisualizeAiScenario} onVisualizeAiAnalysis={runVisualizeAiAnalysis}
+                scenarioTitleFor={(scenarioId) => { const found = flatScenarios(session).find((x) => x.scenario.id === scenarioId); return found ? found.scenario.title : ''; }}
               />
             ) : (
               <Panel variant="base" ornament padding="48px">

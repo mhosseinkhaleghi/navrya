@@ -418,7 +418,18 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     }
     return keys;
   }, [addedScenarioKeys, analysisMeta, analysisResult]);
-  const mergedVisualizations = React.useMemo(() => ({ ...(scenarioVisualizations || {}), ...localVisualizations }), [scenarioVisualizations, localVisualizations]);
+  // Production bug (2026-09-01): a scenario's own generated image "disappeared again" the moment
+  // this popup was closed and reopened - see session-analysis-client.js's own
+  // hydrateScenarioVisualizations() comment for the real cause (only ephemeral, per-mount React
+  // state was ever consulted, never the real, already-persisted Scenario's own aiVisualization).
+  // Lowest precedence here on purpose: a caller-supplied prop or a freshly-generated-this-session
+  // local result must still win over what was merely true when this popup first mounted.
+  const hydratedVisualizations = React.useMemo(() => {
+    const client = analysisClient();
+    const entryForHydration = analysisMeta && analysisMeta.entry;
+    return client && entryForHydration && analysisResult ? client.hydrateScenarioVisualizations(entryForHydration, analysisResult) : {};
+  }, [analysisMeta, analysisResult]);
+  const mergedVisualizations = React.useMemo(() => ({ ...hydratedVisualizations, ...(scenarioVisualizations || {}), ...localVisualizations }), [hydratedVisualizations, scenarioVisualizations, localVisualizations]);
   async function handleVisualizeLocal(scenario) {
     setLocalVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
     const ctx = { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId };

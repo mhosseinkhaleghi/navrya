@@ -308,8 +308,20 @@
     });
   }
 
+  // Production feedback (2026-09-01): "fully filled" - problem and executionPlan.actionPlan were
+  // silently left blank forever, since sessionAnalysisFormat's own scenario schema has no
+  // dedicated "weakness"/"action plan" field to copy from directly. Both have a genuine source in
+  // the SAME AI scenario object once you look past a literal field-name match: evidenceAgainst IS
+  // exactly what problemLabel/problemPlaceholder ask for ("نقطه ضعف یا ریسک این سناریو چیست؟" -
+  // what's the weakness/risk of this scenario), and confirmations (what to watch for as the trade
+  // develops) is genuine execution guidance, not invented. Numeric executionPlan fields
+  // (entryPrices/stopLoss/takeProfit) are deliberately still left null - the AI's own trigger/
+  // invalidation are prose ("below 76000"), not clean numbers a parser could safely turn into a
+  // real price without risking a wrong, silently-acted-on number.
   function buildScenarioDraftFromAi(aiScenario, context) {
     var evidenceText = (aiScenario.evidenceFor || []).map(function (line) { return '• ' + line; }).join('\n');
+    var problemText = (aiScenario.evidenceAgainst || []).map(function (line) { return '• ' + line; }).join('\n');
+    var actionPlanText = (aiScenario.confirmations || []).map(function (line) { return '• ' + line; }).join('\n');
     return {
       id: context.newId,
       entryId: context.entry.id,
@@ -318,10 +330,10 @@
       evidence: evidenceText,
       invalidationTagIds: [],
       invalidationNote: aiScenario.invalidation || '',
-      problem: '',
+      problem: problemText,
       trigger: aiScenario.trigger || '',
       probabilityHistory: [{ value: aiScenario.probability, loggedAt: new Date().toISOString() }],
-      executionPlan: { actionPlan: '', positionType: aiScenario.direction === 'long' ? 'Long' : aiScenario.direction === 'short' ? 'Short' : null, entryPrices: [], stopLoss: null, takeProfit: null, positionStatus: null },
+      executionPlan: { actionPlan: actionPlanText, positionType: aiScenario.direction === 'long' ? 'Long' : aiScenario.direction === 'short' ? 'Short' : null, entryPrices: [], stopLoss: null, takeProfit: null, positionStatus: null },
       occurred: false,
       status: 'pending',
       pattern: null,
@@ -365,6 +377,30 @@
   function findCachedVisualization(scenario, fingerprint) {
     var v = scenario && scenario.aiVisualization;
     return (v && v.fingerprint === fingerprint) ? v : null;
+  }
+
+  // Production bug (2026-09-01): a proposed AI scenario (result.scenarios[], keyed by its own
+  // localKey - a real Scenario has no such field) still visually "loses" its generated image the
+  // moment the popup/card that made the call is closed and reopened, EVEN THOUGH
+  // runVisualizeAiScenario() already persists it correctly onto the real, added Scenario's own
+  // aiVisualization. The gap was purely on the READ side: nothing displaying result.scenarios[]
+  // ever cross-referenced the real, already-added Scenario a proposal might correspond to - it
+  // only ever looked at ephemeral, per-popup-instance React state. This walks every proposal in
+  // `result`, finds its real persisted Scenario (same aiSource.analysisId/generatedScenarioKey
+  // match addAiScenario()/runVisualizeAiScenario() themselves already use for de-duplication), and
+  // returns a { [localKey]: aiVisualization } map any caller can merge UNDER its own ephemeral
+  // state (so a visualization generated THIS render still shows immediately, before the entry
+  // itself has been re-read from storage).
+  function hydrateScenarioVisualizations(entry, result) {
+    var map = {};
+    if (!entry || !result) return map;
+    (result.scenarios || []).forEach(function (proposed) {
+      var real = (entry.scenarios || []).find(function (sc) {
+        return sc.aiSource && sc.aiSource.analysisId === result.analysisId && sc.aiSource.generatedScenarioKey === proposed.localKey;
+      });
+      if (real && real.aiVisualization) map[proposed.localKey] = real.aiVisualization;
+    });
+    return map;
   }
 
   // Production bug (2026-08-31): a generated image's raw base64 data URL is easily 1-3MB - storing
@@ -509,6 +545,7 @@
     applyScenarioEvaluationPatch: applyScenarioEvaluationPatch,
     visualizeScenario: visualizeScenario,
     findCachedVisualization: findCachedVisualization,
+    hydrateScenarioVisualizations: hydrateScenarioVisualizations,
     visualizeAnalysis: visualizeAnalysis,
     buildAnalysisSnapshot: buildAnalysisSnapshot,
     findCachedAnalysisVisualization: findCachedAnalysisVisualization

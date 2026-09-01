@@ -70,12 +70,14 @@ test('scenarioAlreadyAdded finds a real persisted match by analysisId + generate
   assert.equal(client.scenarioAlreadyAdded(entry, 'a2', 'k1'), false, 'the same key from a different analysis must not count as already added');
 });
 
-test('buildScenarioDraftFromAi maps the AI proposal onto the exact existing Scenario field shape (title/description/trigger/invalidationNote/executionPlan)', async () => {
+test('buildScenarioDraftFromAi maps the AI proposal onto the exact existing Scenario field shape (title/description/trigger/invalidationNote/executionPlan), fully filled - never leaving problem/actionPlan blank', async () => {
   const { client } = await loadClient();
   const aiScenario = {
     localKey: 'k1', title: 'Breakout continuation', summary: 'Price breaks and holds above 65000', probability: 72,
     trigger: 'Close above 65000', invalidation: 'Close below 64500', direction: 'long',
-    evidenceFor: ['strong volume'], evidenceAgainst: [], confidence: 'medium', kind: 'breakout', role: 'primary'
+    evidenceFor: ['strong volume'], evidenceAgainst: ['thin liquidity above 65000'],
+    confirmations: ['higher low forms', 'break of the last swing high'],
+    confidence: 'medium', kind: 'breakout', role: 'primary'
   };
   const entry = { id: 'e1', scenarios: [] };
   const draft = client.buildScenarioDraftFromAi(aiScenario, { newId: 'sc-new', entry, analysisId: 'a1', provider: 'openai', model: 'gpt-5.6' });
@@ -85,6 +87,12 @@ test('buildScenarioDraftFromAi maps the AI proposal onto the exact existing Scen
   assert.equal(draft.trigger, 'Close above 65000');
   assert.equal(draft.invalidationNote, 'Close below 64500');
   assert.equal(draft.executionPlan.positionType, 'Long');
+  // Production feedback: "everything should be filled" - problem (the scenario's own weakness/
+  // risk field) comes from evidenceAgainst, and executionPlan.actionPlan (execution guidance) from
+  // confirmations - both were previously left as empty strings forever.
+  assert.match(draft.problem, /thin liquidity above 65000/);
+  assert.match(draft.executionPlan.actionPlan, /higher low forms/);
+  assert.match(draft.executionPlan.actionPlan, /break of the last swing high/);
   assert.equal(draft.probabilityHistory.length, 1);
   assert.equal(draft.probabilityHistory[0].value, 72);
   assert.equal(draft.occurred, false);
@@ -164,6 +172,34 @@ test('findCachedVisualization only matches when the fingerprint is identical', a
   const scenario = { aiVisualization: { status: 'ready', fingerprint: 'viz|e1|sc1|a1|img1' } };
   assert.ok(client.findCachedVisualization(scenario, 'viz|e1|sc1|a1|img1'));
   assert.equal(client.findCachedVisualization(scenario, 'viz|e1|sc1|a1|img2'), null);
+});
+
+// Production bug (2026-09-01): a proposed AI scenario's own generated image "disappeared again"
+// after the card/popup that made the call was closed and reopened - runVisualizeAiScenario()
+// (liveSessionView.jsx) already persisted it correctly onto the real, added Scenario, but nothing
+// displaying result.scenarios[] (keyed by localKey - a real Scenario has no such field) ever
+// cross-referenced that real Scenario, only ephemeral per-mount React state.
+test('hydrateScenarioVisualizations finds the real, already-added Scenario for a proposal (matched by aiSource.analysisId + generatedScenarioKey) and returns its persisted aiVisualization', async () => {
+  const { client } = await loadClient();
+  const result = { analysisId: 'a1', scenarios: [{ localKey: 'k1' }, { localKey: 'k2' }] };
+  const entry = {
+    scenarios: [
+      { id: 'real-sc-1', aiSource: { analysisId: 'a1', generatedScenarioKey: 'k1' }, aiVisualization: { status: 'ready', imageDataUrl: '/uploads/session/x.png' } },
+      // k2's real scenario was added but never visualized - must not appear in the map at all.
+      { id: 'real-sc-2', aiSource: { analysisId: 'a1', generatedScenarioKey: 'k2' } },
+      // A scenario from a DIFFERENT, earlier analysis must never be matched by key alone.
+      { id: 'real-sc-3', aiSource: { analysisId: 'a0', generatedScenarioKey: 'k1' }, aiVisualization: { status: 'ready', imageDataUrl: '/uploads/session/wrong.png' } }
+    ]
+  };
+  const map = client.hydrateScenarioVisualizations(entry, result);
+  assert.equal(map.k1.imageDataUrl, '/uploads/session/x.png');
+  assert.equal('k2' in map, false);
+});
+
+test('hydrateScenarioVisualizations returns an empty map when the entry or result is missing (never throws)', async () => {
+  const { client } = await loadClient();
+  assert.deepEqual(Object.keys(client.hydrateScenarioVisualizations(null, { scenarios: [] })), []);
+  assert.deepEqual(Object.keys(client.hydrateScenarioVisualizations({ scenarios: [] }, null)), []);
 });
 
 // Production incident: a generated image's raw base64 was previously embedded directly on the

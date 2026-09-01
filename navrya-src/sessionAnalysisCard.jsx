@@ -22,7 +22,7 @@ const copy = {
     thesisTitle: 'تز بازار', whatChangedTitle: 'چه چیزی تغییر کرد', tensionVs: 'در برابر',
     primaryScenario: 'سناریوی اصلی', alternativeScenario: 'سناریوی جایگزین', tailRiskScenario: 'ریسک دنباله‌ای',
     triggerLabel: 'محرک', invalidationLabel: 'نقطه ابطال', confidenceLabel: 'اطمینان',
-    addToSession: 'افزودن به سشن', added: 'افزوده شد', visualize: 'ترسیم سناریو', visualizing: 'در حال ترسیم…',
+    addToSession: 'افزودن سناریو', added: 'افزوده شد', visualize: 'ترسیم سناریو', visualizing: 'در حال ترسیم…',
     watchingTitle: 'در حال رصد', unknownsTitle: 'آنچه هنوز نمی‌دانم', changeViewTitle: 'چه چیزی نظرم را تغییر می‌دهد',
     confidenceTitle: 'میزان اطمینان تحلیل', deepAnalysis: 'تحلیل عمیق‌تر', collapse: 'بستن',
     noScenario: 'در حال حاضر سناریوی قابل‌اقدامی وجود ندارد.', tokenUsage: '{n} توکن',
@@ -38,7 +38,7 @@ const copy = {
     thesisTitle: 'أطروحة السوق', whatChangedTitle: 'ما الذي تغيّر', tensionVs: 'مقابل',
     primaryScenario: 'السيناريو الأساسي', alternativeScenario: 'سيناريو بديل', tailRiskScenario: 'مخاطرة الذيل',
     triggerLabel: 'المحفز', invalidationLabel: 'نقطة الإبطال', confidenceLabel: 'الثقة',
-    addToSession: 'إضافة إلى الجلسة', added: 'تمت الإضافة', visualize: 'تصور السيناريو', visualizing: 'جارٍ الرسم…',
+    addToSession: 'إضافة سيناريو', added: 'تمت الإضافة', visualize: 'تصور السيناريو', visualizing: 'جارٍ الرسم…',
     watchingTitle: 'قيد المراقبة', unknownsTitle: 'ما لا أعرفه بعد', changeViewTitle: 'ما الذي قد يغيّر رأيي',
     confidenceTitle: 'مستوى ثقة التحليل', deepAnalysis: 'تحليل أعمق', collapse: 'إغلاق',
     noScenario: 'لا يوجد سيناريو قابل للتنفيذ حالياً.', tokenUsage: '{n} رمز',
@@ -54,7 +54,7 @@ const copy = {
     thesisTitle: 'Market Thesis', whatChangedTitle: 'What Changed', tensionVs: 'VS',
     primaryScenario: 'Primary Scenario', alternativeScenario: 'Alternative Scenario', tailRiskScenario: 'Tail Risk',
     triggerLabel: 'Trigger', invalidationLabel: 'Invalidation', confidenceLabel: 'Confidence',
-    addToSession: '+ Add to Session', added: 'Added', visualize: 'Visualize Scenario', visualizing: 'Visualizing…',
+    addToSession: '+ Add Scenario', added: 'Added', visualize: 'Visualize Scenario', visualizing: 'Visualizing…',
     watchingTitle: 'AI Is Watching', unknownsTitle: "What I Don't Know Yet", changeViewTitle: 'What Would Change My View?',
     confidenceTitle: 'Analysis Confidence', deepAnalysis: 'Deep analysis', collapse: 'Collapse',
     noScenario: 'No actionable scenario yet.', tokenUsage: '{n} tokens',
@@ -70,7 +70,7 @@ const copy = {
     thesisTitle: 'Tesis de mercado', whatChangedTitle: 'Qué cambió', tensionVs: 'VS',
     primaryScenario: 'Escenario principal', alternativeScenario: 'Escenario alternativo', tailRiskScenario: 'Riesgo de cola',
     triggerLabel: 'Disparador', invalidationLabel: 'Invalidación', confidenceLabel: 'Confianza',
-    addToSession: '+ Añadir a la sesión', added: 'Añadido', visualize: 'Visualizar escenario', visualizing: 'Generando…',
+    addToSession: '+ Añadir escenario', added: 'Añadido', visualize: 'Visualizar escenario', visualizing: 'Generando…',
     watchingTitle: 'La IA está observando', unknownsTitle: 'Lo que aún no sé', changeViewTitle: 'Qué cambiaría mi opinión',
     confidenceTitle: 'Confianza del análisis', deepAnalysis: 'Análisis profundo', collapse: 'Cerrar',
     noScenario: 'Todavía no hay un escenario accionable.', tokenUsage: '{n} tokens',
@@ -86,6 +86,32 @@ function tr(lang, key, vars) {
   var value = (copy[lang] && copy[lang][key]) || copy.en[key] || key;
   if (vars) Object.keys(vars).forEach((name) => { value = value.replace('{' + name + '}', vars[name]); });
   return value;
+}
+
+// Same idempotent "inject once, keyframes only" convention as sessionAiAnalysisModal.jsx's own
+// GENERATING_MOTION_CSS (this app's one established way to get a real CSS animation out of a
+// pure-inline-style component). A one-shot confirm pop for "Add Scenario" -> "Added" (2026-09
+// follow-up: was an instant, un-animated label swap) - ScenarioCard below triggers it only on the
+// render where `added` actually just became true, never on mount already-added.
+const ADD_CONFIRM_MOTION_CSS = `
+@keyframes nv-scenario-added-pop{
+  0%{transform:scale(1)}
+  40%{transform:scale(1.06)}
+  100%{transform:scale(1)}
+}
+[data-nv-added="true"]{animation:nv-scenario-added-pop 480ms var(--ease-out,cubic-bezier(.22,.61,.36,1))}
+@media (prefers-reduced-motion:reduce){
+  [data-nv-added="true"]{animation:none!important}
+}
+`;
+function useAddConfirmMotion() {
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || document.getElementById('nv-scenario-added-motion')) return;
+    const el = document.createElement('style');
+    el.id = 'nv-scenario-added-motion';
+    el.textContent = ADD_CONFIRM_MOTION_CSS;
+    document.head.appendChild(el);
+  }, []);
 }
 
 const TREND_ICON = { up: 'TrendingUp', down: 'TrendingDown', improving: 'TrendingUp', weakening: 'TrendingDown', flat: 'Minus', unknown: 'Minus' };
@@ -166,9 +192,48 @@ function AnalysisBlock({ block, lang }) {
   );
 }
 
+// Shared full-bleed image lightbox (2026-09 follow-up: clicking a generated image did nothing;
+// the only "enlarge" affordance anywhere was EntryDetailPanel's own fullscreen button, which
+// opened a new browser tab instead of staying in-app). Same fixed/scrim/Escape/backdrop-click
+// pattern liveSessionView.jsx's own SessionModalShell already established for every other overlay
+// in this app - just framing an image instead of a card, and exported so liveSessionView.jsx's
+// own EntryImageViewer (the entry's chart image, with its own raw/AI-overlay mode switcher) can
+// reuse the exact same component rather than a second implementation.
+export function ImageLightbox({ src, onClose }) {
+  React.useEffect(() => {
+    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', padding: 24, background: 'var(--scrim)', backdropFilter: 'blur(3px)' }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <img src={src} alt="" style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 10, border: '1px solid var(--border-gold)', boxShadow: '0 12px 30px rgba(0,0,0,.5)', display: 'block' }} />
+      <button type="button" onClick={onClose} aria-label="close" style={{ position: 'absolute', top: 24, insetInlineEnd: 24, width: 40, height: 40, display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}>
+        <Icon name="close" size={18} />
+      </button>
+    </div>
+  );
+}
+
 function ScenarioCard({ scenario, lang, added, onAdd, onVisualize, visualization }) {
   const roleLabel = scenario.role === 'alternative' ? tr(lang, 'alternativeScenario') : scenario.role === 'tail_risk' ? tr(lang, 'tailRiskScenario') : tr(lang, 'primaryScenario');
   const vizStatus = visualization ? visualization.status : null;
+  useAddConfirmMotion();
+  const [justAdded, setJustAdded] = React.useState(false);
+  const wasAddedRef = React.useRef(added);
+  React.useEffect(() => {
+    if (added && !wasAddedRef.current) {
+      setJustAdded(true);
+      const t = window.setTimeout(() => setJustAdded(false), 480);
+      wasAddedRef.current = added;
+      return () => window.clearTimeout(t);
+    }
+    wasAddedRef.current = added;
+  }, [added]);
+  const [lightboxOpen, setLightboxOpen] = React.useState(false);
   return (
     <Panel variant="raised" ornament padding={14} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -191,19 +256,22 @@ function ScenarioCard({ scenario, lang, added, onAdd, onVisualize, visualization
 
       {vizStatus === 'ready' && visualization.imageDataUrl && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <img src={visualization.imageDataUrl} alt="" style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-gold)', display: 'block' }} />
+          <img src={visualization.imageDataUrl} alt="" onClick={() => setLightboxOpen(true)} style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-gold)', display: 'block', cursor: 'zoom-in' }} />
           <span style={{ fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(lang, 'original_data_note')}</span>
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 8 }}>
-        <Button variant={added ? 'ghost' : 'primary'} size="sm" icon={added ? 'check' : 'plus'} disabled={added} onClick={onAdd} fullWidth>
+        <Button data-nv-added={justAdded ? 'true' : undefined} variant={added ? 'ghost' : 'primary'} size="sm" icon={added ? 'check' : 'plus'} disabled={added} onClick={onAdd} fullWidth>
           {added ? tr(lang, 'added') : tr(lang, 'addToSession')}
         </Button>
         <Button variant="secondary" size="sm" icon="image" disabled={vizStatus === 'loading'} onClick={onVisualize} fullWidth>
           {vizStatus === 'loading' ? tr(lang, 'visualizing') : tr(lang, 'visualize')}
         </Button>
       </div>
+      {lightboxOpen && vizStatus === 'ready' && visualization.imageDataUrl && (
+        <ImageLightbox src={visualization.imageDataUrl} onClose={() => setLightboxOpen(false)} />
+      )}
     </Panel>
   );
 }
@@ -241,6 +309,7 @@ export function SessionAnalysisCard({
   const activeLang = lang || 'fa';
   const rtl = activeLang === 'fa' || activeLang === 'ar';
   const [deepOpen, setDeepOpen] = React.useState(false);
+  const [analysisLightboxOpen, setAnalysisLightboxOpen] = React.useState(false);
 
   const highBlocks = result.blocks.filter((b) => b.importance === 'high');
   const otherBlocks = result.blocks.filter((b) => b.importance !== 'high');
@@ -269,13 +338,16 @@ export function SessionAnalysisCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {analysisVisualization && analysisVisualization.status === 'ready' && analysisVisualization.imageDataUrl && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <img src={analysisVisualization.imageDataUrl} alt="" style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-gold)', display: 'block' }} />
+              <img src={analysisVisualization.imageDataUrl} alt="" onClick={() => setAnalysisLightboxOpen(true)} style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-gold)', display: 'block', cursor: 'zoom-in' }} />
               <span style={{ fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'original_data_note')}</span>
             </div>
           )}
           <Button variant="secondary" size="sm" icon="image" disabled={analysisVisualization && analysisVisualization.status === 'loading'} onClick={onVisualizeAnalysis}>
             {analysisVisualization && analysisVisualization.status === 'loading' ? tr(activeLang, 'visualizingAnalysis') : tr(activeLang, 'visualizeAnalysis')}
           </Button>
+          {analysisLightboxOpen && analysisVisualization && analysisVisualization.imageDataUrl && (
+            <ImageLightbox src={analysisVisualization.imageDataUrl} onClose={() => setAnalysisLightboxOpen(false)} />
+          )}
         </div>
       )}
 
