@@ -23,6 +23,7 @@ const copy = {
     primaryScenario: 'سناریوی اصلی', alternativeScenario: 'سناریوی جایگزین', tailRiskScenario: 'ریسک دنباله‌ای',
     triggerLabel: 'محرک', invalidationLabel: 'نقطه ابطال', confidenceLabel: 'اطمینان',
     addToSession: 'افزودن سناریو', added: 'افزوده شد', visualize: 'ترسیم سناریو', visualizing: 'در حال ترسیم…',
+    visualizeError: 'تولید تصویر ناموفق بود. دوباره تلاش کنید.',
     watchingTitle: 'در حال رصد', unknownsTitle: 'آنچه هنوز نمی‌دانم', changeViewTitle: 'چه چیزی نظرم را تغییر می‌دهد',
     confidenceTitle: 'میزان اطمینان تحلیل', deepAnalysis: 'تحلیل عمیق‌تر', collapse: 'بستن',
     noScenario: 'در حال حاضر سناریوی قابل‌اقدامی وجود ندارد.', tokenUsage: '{n} توکن',
@@ -31,7 +32,7 @@ const copy = {
     status_pending: 'در انتظار', status_strengthened: 'تقویت‌شده', status_weakened: 'تضعیف‌شده', status_partially_confirmed: 'تا حدی تایید‌شده', status_confirmed: 'تایید‌شده', status_invalidated: 'باطل‌شده',
     original: 'اصلی', scenarioMap: 'نقشه سناریو', regenerate: 'تحلیل مجدد',
     original_data_note: 'این تصویر یک روکش تصویری‌سازی‌شده است، نه داده واقعی بازار.',
-    visualizeAnalysis: 'ترسیم کل تحلیل روی چارت', visualizingAnalysis: 'در حال ترسیم تحلیل…'
+    visualizeAnalysis: 'ترسیم کل تحلیل روی چارت', visualizingAnalysis: 'در حال ترسیم تحلیل…', visualizeAnalysisError: 'تولید تصویر تحلیل ناموفق بود. دوباره تلاش کنید.'
   },
   ar: {
     header: 'تحليل الذكاء الاصطناعي للسوق', memoryChip: 'ذاكرة الجلسة · {n} حدث', depthAuto: 'تلقائي', depthEfficient: 'تحليل فعّال', depthDeep: 'تحليل عميق',
@@ -39,6 +40,7 @@ const copy = {
     primaryScenario: 'السيناريو الأساسي', alternativeScenario: 'سيناريو بديل', tailRiskScenario: 'مخاطرة الذيل',
     triggerLabel: 'المحفز', invalidationLabel: 'نقطة الإبطال', confidenceLabel: 'الثقة',
     addToSession: 'إضافة سيناريو', added: 'تمت الإضافة', visualize: 'تصور السيناريو', visualizing: 'جارٍ الرسم…',
+    visualizeError: 'فشل إنشاء الصورة. حاول مرة أخرى.',
     watchingTitle: 'قيد المراقبة', unknownsTitle: 'ما لا أعرفه بعد', changeViewTitle: 'ما الذي قد يغيّر رأيي',
     confidenceTitle: 'مستوى ثقة التحليل', deepAnalysis: 'تحليل أعمق', collapse: 'إغلاق',
     noScenario: 'لا يوجد سيناريو قابل للتنفيذ حالياً.', tokenUsage: '{n} رمز',
@@ -47,7 +49,7 @@ const copy = {
     status_pending: 'قيد الانتظار', status_strengthened: 'تعزّز', status_weakened: 'ضعُف', status_partially_confirmed: 'تأكّد جزئياً', status_confirmed: 'تأكّد', status_invalidated: 'أُبطل',
     original: 'الأصلي', scenarioMap: 'خريطة السيناريو', regenerate: 'إعادة التحليل',
     original_data_note: 'هذه صورة توضيحية مولّدة، وليست بيانات سوق حقيقية.',
-    visualizeAnalysis: 'رسم التحليل الكامل على الرسم البياني', visualizingAnalysis: 'جارٍ رسم التحليل…'
+    visualizeAnalysis: 'رسم التحليل الكامل على الرسم البياني', visualizingAnalysis: 'جارٍ رسم التحليل…', visualizeAnalysisError: 'فشل إنشاء صورة التحليل. حاول مرة أخرى.'
   },
   en: {
     header: 'AI Market Analysis', memoryChip: 'Session Memory · {n} events', depthAuto: 'Auto', depthEfficient: 'Efficient analysis', depthDeep: 'Deep analysis',
@@ -55,6 +57,7 @@ const copy = {
     primaryScenario: 'Primary Scenario', alternativeScenario: 'Alternative Scenario', tailRiskScenario: 'Tail Risk',
     triggerLabel: 'Trigger', invalidationLabel: 'Invalidation', confidenceLabel: 'Confidence',
     addToSession: '+ Add Scenario', added: 'Added', visualize: 'Visualize Scenario', visualizing: 'Visualizing…',
+    visualizeError: "Couldn't generate the image. Try again.",
     watchingTitle: 'AI Is Watching', unknownsTitle: "What I Don't Know Yet", changeViewTitle: 'What Would Change My View?',
     confidenceTitle: 'Analysis Confidence', deepAnalysis: 'Deep analysis', collapse: 'Collapse',
     noScenario: 'No actionable scenario yet.', tokenUsage: '{n} tokens',
@@ -63,7 +66,7 @@ const copy = {
     status_pending: 'Pending', status_strengthened: 'Strengthened', status_weakened: 'Weakened', status_partially_confirmed: 'Partially confirmed', status_confirmed: 'Confirmed', status_invalidated: 'Invalidated',
     original: 'Original', scenarioMap: 'Scenario Map', regenerate: 'Regenerate',
     original_data_note: 'This is an illustrative generated overlay, not real market data.',
-    visualizeAnalysis: 'Draw full analysis on chart', visualizingAnalysis: 'Drawing analysis…'
+    visualizeAnalysis: 'Draw full analysis on chart', visualizingAnalysis: 'Drawing analysis…', visualizeAnalysisError: "Couldn't generate the analysis image. Try again."
   },
   es: {
     header: 'Análisis de IA del mercado', memoryChip: 'Memoria de sesión · {n} eventos', depthAuto: 'Automático', depthEfficient: 'Análisis eficiente', depthDeep: 'Análisis profundo',
@@ -71,6 +74,7 @@ const copy = {
     primaryScenario: 'Escenario principal', alternativeScenario: 'Escenario alternativo', tailRiskScenario: 'Riesgo de cola',
     triggerLabel: 'Disparador', invalidationLabel: 'Invalidación', confidenceLabel: 'Confianza',
     addToSession: '+ Añadir escenario', added: 'Añadido', visualize: 'Visualizar escenario', visualizing: 'Generando…',
+    visualizeError: 'No se pudo generar la imagen. Inténtalo de nuevo.',
     watchingTitle: 'La IA está observando', unknownsTitle: 'Lo que aún no sé', changeViewTitle: 'Qué cambiaría mi opinión',
     confidenceTitle: 'Confianza del análisis', deepAnalysis: 'Análisis profundo', collapse: 'Cerrar',
     noScenario: 'Todavía no hay un escenario accionable.', tokenUsage: '{n} tokens',
@@ -79,7 +83,7 @@ const copy = {
     status_pending: 'Pendiente', status_strengthened: 'Reforzado', status_weakened: 'Debilitado', status_partially_confirmed: 'Parcialmente confirmado', status_confirmed: 'Confirmado', status_invalidated: 'Invalidado',
     original: 'Original', scenarioMap: 'Mapa de escenario', regenerate: 'Regenerar',
     original_data_note: 'Esta es una superposición ilustrativa generada, no datos reales del mercado.',
-    visualizeAnalysis: 'Dibujar el análisis completo en el gráfico', visualizingAnalysis: 'Dibujando el análisis…'
+    visualizeAnalysis: 'Dibujar el análisis completo en el gráfico', visualizingAnalysis: 'Dibujando el análisis…', visualizeAnalysisError: 'No se pudo generar la imagen del análisis. Inténtalo de nuevo.'
   }
 };
 function tr(lang, key, vars) {
@@ -260,6 +264,15 @@ function ScenarioCard({ scenario, lang, added, onAdd, onVisualize, visualization
           <span style={{ fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(lang, 'original_data_note')}</span>
         </div>
       )}
+      {/* Production feedback (2026-09-01): a failed generation previously left the button quietly
+          reverting to its plain state with zero explanation - the trader reported this as "doesn't
+          work" since nothing distinguished "failed" from "never tried". Now visibly surfaced. */}
+      {vizStatus === 'error' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--danger)', background: 'rgba(255,56,48,.08)' }}>
+          <Icon name="TriangleAlert" size={13} style={{ color: 'var(--danger)', flex: 'none' }} />
+          <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(lang, 'visualizeError')}</span>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <Button data-nv-added={justAdded ? 'true' : undefined} variant={added ? 'ghost' : 'primary'} size="sm" icon={added ? 'check' : 'plus'} disabled={added} onClick={onAdd} fullWidth>
@@ -340,6 +353,12 @@ export function SessionAnalysisCard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <img src={analysisVisualization.imageDataUrl} alt="" onClick={() => setAnalysisLightboxOpen(true)} style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-gold)', display: 'block', cursor: 'zoom-in' }} />
               <span style={{ fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'original_data_note')}</span>
+            </div>
+          )}
+          {analysisVisualization && analysisVisualization.status === 'error' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--danger)', background: 'rgba(255,56,48,.08)' }}>
+              <Icon name="TriangleAlert" size={13} style={{ color: 'var(--danger)', flex: 'none' }} />
+              <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(activeLang, 'visualizeAnalysisError')}</span>
             </div>
           )}
           <Button variant="secondary" size="sm" icon="image" loading={!!(analysisVisualization && analysisVisualization.status === 'loading')} onClick={onVisualizeAnalysis}>

@@ -1377,7 +1377,23 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
   // form/generating/error flow for STARTING a fresh analysis; once one exists, both surfaces read
   // the exact same entry field, so they can never disagree.
   const result = entry.aiAnalysisResult;
-  const [visualizingKey, setVisualizingKey] = React.useState(null); // a scenario's own localKey, or 'whole-analysis', or null
+  // Production feedback (2026-09-01): a freshly-generated visualization was silently discarded
+  // the instant its own loading state cleared - scenarioVisualizations/analysisVisualization used
+  // to derive ONLY from a bare `visualizingKey` (while loading) or the real, PERSISTED result
+  // (hydrateScenarioVisualizations()/result.wholeVisualization), nothing in between. That is
+  // correct for a scenario that has already been Added (its own aiVisualization genuinely does
+  // get persisted - see runVisualizeAiScenario() below), but a trader who clicks "Draw scenario"
+  // BEFORE "Add scenario" - a completely normal order, since Draw is how you'd decide whether to
+  // Add in the first place - had the real, already-generated image thrown away the moment loading
+  // ended, with the button just reverting to its plain state as if nothing had happened; the
+  // trader reported this as image generation simply "not working". A genuine failure had the
+  // exact same silent-revert symptom, with no error shown either. This ephemeral, per-mount state
+  // (mirrors FateSummaryModal's own scenarioVisualizations/analysisVisualization React state
+  // further down this file) now keeps whatever this session's own most recent visualize attempt
+  // produced - ready OR error - merged with the real hydrated/persisted data, which still wins
+  // once a scenario is actually Added and its own aiVisualization becomes real.
+  const [localScenarioVisualizations, setLocalScenarioVisualizations] = React.useState({});
+  const [localAnalysisVisualization, setLocalAnalysisVisualization] = React.useState(null);
   const addedScenarioKeys = React.useMemo(() => {
     const keys = new Set();
     if (result) (entry.scenarios || []).forEach((sc) => { if (sc.aiSource && sc.aiSource.analysisId === result.analysisId) keys.add(sc.aiSource.generatedScenarioKey); });
@@ -1391,24 +1407,24 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
   const scenarioVisualizations = React.useMemo(() => {
     const client = window.TradeJournalSessionAnalysisClient;
     const hydrated = client && result ? client.hydrateScenarioVisualizations(entry, result) : {};
-    return visualizingKey && visualizingKey !== 'whole-analysis' ? { ...hydrated, [visualizingKey]: { status: 'loading' } } : hydrated;
-  }, [entry, result, visualizingKey]);
-  const analysisVisualization = visualizingKey === 'whole-analysis' ? { status: 'loading' } : (result && result.wholeVisualization) || null;
+    return { ...hydrated, ...localScenarioVisualizations };
+  }, [entry, result, localScenarioVisualizations]);
+  const analysisVisualization = localAnalysisVisualization || (result && result.wholeVisualization) || null;
   async function handleAddAiScenario(aiScenario) {
     if (!onAddAiScenario || !result) return;
     onAddAiScenario(aiScenario, { entry, analysisId: result.analysisId, provider: result.provider, model: result.model });
   }
   async function handleVisualizeAiScenario(aiScenario) {
     if (!onVisualizeAiScenario || !result) return;
-    setVisualizingKey(aiScenario.localKey);
-    await onVisualizeAiScenario(aiScenario, { entry, analysisId: result.analysisId });
-    setVisualizingKey(null);
+    setLocalScenarioVisualizations((prev) => ({ ...prev, [aiScenario.localKey]: { status: 'loading' } }));
+    const outcome = await onVisualizeAiScenario(aiScenario, { entry, analysisId: result.analysisId });
+    setLocalScenarioVisualizations((prev) => ({ ...prev, [aiScenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
   }
   async function handleVisualizeAiAnalysis() {
     if (!onVisualizeAiAnalysis || !result) return;
-    setVisualizingKey('whole-analysis');
-    await onVisualizeAiAnalysis(result, { entry });
-    setVisualizingKey(null);
+    setLocalAnalysisVisualization({ status: 'loading' });
+    const outcome = await onVisualizeAiAnalysis(result, { entry });
+    setLocalAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error' });
   }
 
   return (
