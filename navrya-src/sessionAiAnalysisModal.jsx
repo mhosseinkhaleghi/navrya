@@ -3,6 +3,7 @@ import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.j
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
+import { AiThinkingOrb } from '../public/pages/shared/navrya/components/feedback/AiThinkingOrb.jsx';
 import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
 import { SessionAnalysisCard } from './sessionAnalysisCard.jsx';
 
@@ -29,7 +30,157 @@ function aiSettingsStore() { return window.TradeJournalAISettingsStore; }
 function analysisContextApi() { return window.TradeJournalAnalysisContext; }
 
 const ADHERENCE_LEVELS = ['open', 'balanced', 'strict'];
-const GENERATION_STAGES = ['readingChart', 'recallingMemory', 'reviewingScenarios', 'reviewingPatterns', 'applyingStyle', 'preparing'];
+
+// Honest, ever-varying "what the AI is doing" feed (brief §27 loading experience, revised
+// 2026-09-01): a real analysis call has no observable intermediate progress this client can
+// report - previously this cycled a FIXED list of 6 generic phrases every 1.4s, which visibly
+// looped 5-15+ times over a real 30-120s request (confirmed live: the trader reported it read as
+// obviously fake). Replaced with a much larger, shuffled, non-immediately-repeating pool, each
+// phrase tied to a real field this analysis call's structured JSON schema actually asks the model
+// to fill (thesis/stateMetrics/blocks/scenarios/scenarioEvaluations/watchItems/unknowns/
+// confidence/memoryUpdate) - see GeneratingView below, which shows only a small stacked handful at
+// a time, never the whole pool at once. `evaluation` phrases are appended only for a
+// SCENARIO_EVALUATION request (isEvaluation), matching that analysisType's own narrower system
+// prompt above.
+const AI_THINKING_PHRASES = {
+  fa: {
+    base: [
+      'در حال بررسی کندل‌های اخیر چارت…', 'در حال تشخیص محدوده‌های قیمتی کلیدی…', 'در حال بررسی حجم و شتاب حرکت…',
+      'در حال مرور حافظه سشن…', 'در حال بررسی خلاصه تحلیل قبلی…', 'در حال بررسی سناریوهای فعال…',
+      'در حال سنجش نقاط ابطال…', 'در حال تطبیق با الگوهای ثبت‌شده…', 'در حال بررسی استراتژی انتخابی…',
+      'در حال اعمال سبک تحلیل…', 'در حال شکل‌دادن به فرضیه اصلی بازار…', 'در حال یادداشت‌برداری از نواحی حمایت و مقاومت…',
+      'در حال بررسی تناقض‌های احتمالی در شواهد…', 'در حال تخمین احتمال سناریوهای جدید…', 'در حال سنجش سطح اطمینان تحلیل…',
+      'در حال نوشتن نکات قابل پایش…', 'در حال جمع‌بندی موارد نامشخص…', 'در حال آماده‌سازی خروجی نهایی…'
+    ],
+    evaluation: ['در حال ارزیابی وضعیت سناریوی انتخابی…', 'در حال بررسی محرک‌ها و شواهد تأییدکننده…']
+  },
+  ar: {
+    base: [
+      'جارٍ مراجعة الشموع الأخيرة للرسم البياني…', 'جارٍ تحديد المستويات السعرية الرئيسية…', 'جارٍ فحص الحجم وزخم الحركة…',
+      'جارٍ استرجاع ذاكرة الجلسة…', 'جارٍ مراجعة ملخص التحليل السابق…', 'جارٍ مراجعة السيناريوهات النشطة…',
+      'جارٍ تقييم نقاط الإبطال…', 'جارٍ المطابقة مع الأنماط المسجلة…', 'جارٍ مراجعة الاستراتيجية المختارة…',
+      'جارٍ تطبيق أسلوب التحليل…', 'جارٍ صياغة الفرضية الأساسية للسوق…', 'جارٍ تدوين مناطق الدعم والمقاومة…',
+      'جارٍ فحص التناقضات المحتملة في الأدلة…', 'جارٍ تقدير احتمالية سيناريوهات جديدة…', 'جارٍ تقييم مستوى الثقة في التحليل…',
+      'جارٍ كتابة النقاط الجديرة بالمتابعة…', 'جارٍ تجميع النقاط غير الواضحة…', 'جارٍ تجهيز المخرجات النهائية…'
+    ],
+    evaluation: ['جارٍ تقييم حالة السيناريو المحدد…', 'جارٍ مراجعة المحفزات والأدلة المؤكدة…']
+  },
+  en: {
+    base: [
+      'Reading the recent candles…', 'Mapping key price levels…', 'Checking volume and momentum…',
+      'Recalling session memory…', 'Reviewing the previous analysis summary…', 'Reviewing active scenarios…',
+      'Weighing invalidation points…', 'Matching against registered patterns…', 'Reviewing the selected strategy…',
+      'Applying the analysis style…', 'Shaping the primary market thesis…', 'Noting support and resistance zones…',
+      'Checking evidence for contradictions…', 'Estimating new scenario probabilities…', 'Weighing the overall confidence level…',
+      'Writing down watch items…', 'Gathering remaining unknowns…', 'Preparing the final structured output…'
+    ],
+    evaluation: ['Evaluating the targeted scenario…', 'Reviewing triggers and confirming evidence…']
+  },
+  es: {
+    base: [
+      'Leyendo las velas recientes…', 'Mapeando niveles de precio clave…', 'Revisando volumen y momentum…',
+      'Recuperando la memoria de la sesión…', 'Revisando el resumen del análisis anterior…', 'Revisando escenarios activos…',
+      'Evaluando puntos de invalidación…', 'Comparando con patrones registrados…', 'Revisando la estrategia seleccionada…',
+      'Aplicando el estilo de análisis…', 'Formulando la tesis principal del mercado…', 'Anotando zonas de soporte y resistencia…',
+      'Buscando contradicciones en la evidencia…', 'Estimando la probabilidad de nuevos escenarios…', 'Evaluando el nivel de confianza…',
+      'Redactando puntos a vigilar…', 'Reuniendo lo que aún no está claro…', 'Preparando el resultado final…'
+    ],
+    evaluation: ['Evaluando el escenario indicado…', 'Revisando disparadores y evidencia de confirmación…']
+  }
+};
+
+function shuffled(list) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = out[i]; out[i] = out[j]; out[j] = tmp;
+  }
+  return out;
+}
+
+// Drives the stacked status feed: draws phrases from a shuffled queue (never the same phrase
+// twice in a row, and never the same order twice), reshuffling only once the queue is exhausted -
+// so a long real request (observed live: 30-120s+ on some models) shows genuinely varied text
+// rather than a short fixed loop. Keeps only the last 4 emitted items in state; GeneratingView
+// below renders the last 3 of those, fading older ones rather than showing every phrase at once.
+function useAiThinkingFeed(active, phrases, intervalMs) {
+  const [items, setItems] = React.useState([]);
+  const queueRef = React.useRef([]);
+  const idRef = React.useRef(0);
+  const phrasesRef = React.useRef(phrases);
+  phrasesRef.current = phrases;
+  function nextPhrase() {
+    if (queueRef.current.length === 0) queueRef.current = shuffled(phrasesRef.current);
+    return queueRef.current.pop();
+  }
+  React.useEffect(() => {
+    if (!active) { setItems([]); queueRef.current = []; return undefined; }
+    setItems([{ id: idRef.current++, text: nextPhrase() }]);
+    const timer = window.setInterval(() => {
+      setItems((prev) => prev.concat([{ id: idRef.current++, text: nextPhrase() }]).slice(-4));
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+    // Deliberately keyed only on `active` - a new phrase pool (e.g. isEvaluation toggling) simply
+    // takes effect on the NEXT draw rather than restarting the whole feed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  return items;
+}
+
+const THINKING_FEED_CSS = `
+@keyframes nv-thinking-line-enter{
+  0%{opacity:0;transform:translateY(6px)}
+  100%{opacity:1;transform:translateY(0)}
+}
+[data-nv-thinking-line]{animation:nv-thinking-line-enter 380ms var(--ease-out,cubic-bezier(.22,.61,.36,1)) both}
+@media (prefers-reduced-motion:reduce){
+  [data-nv-thinking-line]{animation:none!important}
+}
+`;
+function useThinkingFeedMotion() {
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || document.getElementById('nv-thinking-feed-motion')) return;
+    const el = document.createElement('style');
+    el.id = 'nv-thinking-feed-motion';
+    el.textContent = THINKING_FEED_CSS;
+    document.head.appendChild(el);
+  }, []);
+}
+
+// The modal's 'generating' body: AiThinkingOrb (design-system loading motion, see that
+// component's own header comment) above a small stack of the live status feed - newest line at
+// the bottom, brightest; older lines fade upward and drop out once a 4th arrives. Replaces the
+// old fixed 6-item checklist entirely.
+function GeneratingView({ lang, active, isEvaluation }) {
+  useThinkingFeedMotion();
+  const pool = AI_THINKING_PHRASES[lang] || AI_THINKING_PHRASES.en;
+  const phrases = React.useMemo(() => pool.base.concat(isEvaluation ? pool.evaluation : []), [pool, isEvaluation]);
+  const items = useAiThinkingFeed(active, phrases, 1900);
+  const visible = items.slice(-3);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, padding: '20px 6px 8px' }}>
+      <AiThinkingOrb size={64} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minHeight: 78, width: '100%', maxWidth: 380 }}>
+        {visible.map((item, idx) => {
+          const fromBottom = visible.length - 1 - idx;
+          return (
+            <div
+              key={item.id} data-nv-thinking-line dir="auto"
+              style={{
+                textAlign: 'center', fontSize: fromBottom === 0 ? 12.5 : 11,
+                color: fromBottom === 0 ? 'var(--text-primary)' : 'var(--text-dim)',
+                opacity: fromBottom === 0 ? 1 : fromBottom === 1 ? 0.55 : 0.25,
+                transition: 'opacity 420ms var(--ease-out,ease), font-size 420ms var(--ease-out,ease)'
+              }}
+            >
+              {item.text}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const copy = {
   fa: {
@@ -53,9 +204,6 @@ const copy = {
     ctxActiveScenarios: 'سناریوی فعال', ctxPatternStates: 'وضعیت الگو',
     ctxStrategy: 'استراتژی / تگ الگو', ctxPreviousAnalysis: 'تحلیل قبلی هوش مصنوعی',
     startAnalysis: 'شروع تحلیل', cancel: 'انصراف', close: 'بستن', retry: 'تلاش دوباره', regenerate: 'تحلیل مجدد',
-    stage_readingChart: 'در حال خواندن آخرین چارت', stage_recallingMemory: 'در حال بازیابی حافظه سشن',
-    stage_reviewingScenarios: 'بررسی سناریوهای فعال', stage_reviewingPatterns: 'بررسی الگوها و استراتژی',
-    stage_applyingStyle: 'اعمال سبک تحلیل', stage_preparing: 'آماده‌سازی تحلیل',
     errorTitle: 'تحلیل انجام نشد', switchModel: 'تغییر مدل',
     err_MODEL_VISION_UNSUPPORTED: 'مدل انتخاب‌شده نمی‌تواند تصویر چارت را تحلیل کند.',
     err_NETWORK_ERROR: 'ارتباط با سرور تحلیل برقرار نشد.',
@@ -85,9 +233,6 @@ const copy = {
     ctxActiveScenarios: 'سيناريو نشط', ctxPatternStates: 'حالة النمط',
     ctxStrategy: 'استراتيجية / وسم النمط', ctxPreviousAnalysis: 'تحليل الذكاء الاصطناعي السابق',
     startAnalysis: 'بدء التحليل', cancel: 'إلغاء', close: 'إغلاق', retry: 'إعادة المحاولة', regenerate: 'إعادة التحليل',
-    stage_readingChart: 'جارٍ قراءة آخر مخطط', stage_recallingMemory: 'جارٍ استرجاع ذاكرة الجلسة',
-    stage_reviewingScenarios: 'مراجعة السيناريوهات النشطة', stage_reviewingPatterns: 'مراجعة الأنماط والاستراتيجية',
-    stage_applyingStyle: 'تطبيق أسلوب التحليل', stage_preparing: 'تجهيز التحليل',
     errorTitle: 'تعذّر إجراء التحليل', switchModel: 'تغيير النموذج',
     err_MODEL_VISION_UNSUPPORTED: 'النموذج المختار لا يمكنه تحليل صورة المخطط.',
     err_NETWORK_ERROR: 'تعذّر الاتصال بخادم التحليل.',
@@ -117,9 +262,6 @@ const copy = {
     ctxActiveScenarios: 'Active scenario', ctxPatternStates: 'Pattern state',
     ctxStrategy: 'Strategy / pattern tag', ctxPreviousAnalysis: 'Previous AI analysis',
     startAnalysis: 'Start analysis', cancel: 'Cancel', close: 'Close', retry: 'Retry', regenerate: 'Regenerate',
-    stage_readingChart: 'Reading the latest chart', stage_recallingMemory: 'Retrieving session memory',
-    stage_reviewingScenarios: 'Reviewing active scenarios', stage_reviewingPatterns: 'Reviewing patterns and strategy',
-    stage_applyingStyle: 'Applying the analysis style', stage_preparing: 'Preparing the analysis',
     errorTitle: 'Analysis failed', switchModel: 'Switch model',
     err_MODEL_VISION_UNSUPPORTED: 'The selected model cannot analyze chart images.',
     err_NETWORK_ERROR: "Couldn't reach the analysis server.",
@@ -149,9 +291,6 @@ const copy = {
     ctxActiveScenarios: 'Escenario activo', ctxPatternStates: 'Estado del patrón',
     ctxStrategy: 'Estrategia / etiqueta de patrón', ctxPreviousAnalysis: 'Análisis de IA anterior',
     startAnalysis: 'Iniciar análisis', cancel: 'Cancelar', close: 'Cerrar', retry: 'Reintentar', regenerate: 'Regenerar',
-    stage_readingChart: 'Leyendo el último gráfico', stage_recallingMemory: 'Recuperando la memoria de la sesión',
-    stage_reviewingScenarios: 'Revisando escenarios activos', stage_reviewingPatterns: 'Revisando patrones y estrategia',
-    stage_applyingStyle: 'Aplicando el estilo de análisis', stage_preparing: 'Preparando el análisis',
     errorTitle: 'El análisis falló', switchModel: 'Cambiar modelo',
     err_MODEL_VISION_UNSUPPORTED: 'El modelo elegido no puede analizar imágenes de gráficos.',
     err_NETWORK_ERROR: 'No se pudo conectar con el servidor de análisis.',
@@ -162,31 +301,6 @@ const copy = {
   }
 };
 function tr(lang, key) { return (copy[lang] && copy[lang][key]) || copy.en[key] || key; }
-
-// Same idempotent "inject once, keyframes only" convention as AiMagicFill.motion.js (this app's
-// one established way to get a real CSS animation out of a pure-inline-style component) - kept
-// inline here rather than its own .motion.js file since this animation has exactly one consumer,
-// unlike AiMagicFill's shared-everywhere glow. Respects prefers-reduced-motion the same way.
-const GENERATING_MOTION_CSS = `
-@keyframes nv-ai-analysis-stage-pulse{
-  0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--char-accent) 45%, transparent)}
-  70%{box-shadow:0 0 0 7px transparent}
-  100%{box-shadow:0 0 0 0 transparent}
-}
-[data-nv-ai-stage="active"]{animation:nv-ai-analysis-stage-pulse 1500ms var(--ease-out,cubic-bezier(.22,.61,.36,1)) infinite}
-@media (prefers-reduced-motion:reduce){
-  [data-nv-ai-stage="active"]{animation:none!important}
-}
-`;
-function useGeneratingMotion() {
-  React.useEffect(() => {
-    if (typeof document === 'undefined' || document.getElementById('nv-ai-analysis-motion')) return;
-    const el = document.createElement('style');
-    el.id = 'nv-ai-analysis-motion';
-    el.textContent = GENERATING_MOTION_CSS;
-    document.head.appendChild(el);
-  }, []);
-}
 
 // Existence-checked, reference-only session context - never the raw chart/scenario/pattern data
 // itself (this stays a light request payload, not a data dump). Mirrors analysis-context.js's own
@@ -218,35 +332,6 @@ function ContextRow({ icon, label, count }) {
       <span style={{ color: 'var(--char-accent)', flex: 'none', display: 'flex' }}><Icon name={icon} size={14} /></span>
       <span style={{ fontSize: 11.5, color: 'var(--text-primary)' }}>{label}</span>
       {count !== undefined && <span className="navrya-tabular" style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>× {count}</span>}
-    </div>
-  );
-}
-
-// Honest loading state (brief §27) - cycles which label is "current", never claims a stage
-// finished or shows a fabricated percentage, since a real request has no observable progress this
-// client can report. Every non-current label stays in the same neutral, un-checked state.
-function GeneratingStages({ lang, stageIndex }) {
-  useGeneratingMotion();
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 0' }}>
-      {GENERATION_STAGES.map((stage, i) => {
-        const active = i === stageIndex;
-        return (
-          <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, opacity: active ? 1 : 0.45 }}>
-            <span
-              data-nv-ai-stage={active ? 'active' : undefined}
-              style={{
-                width: 20, height: 20, flex: 'none', borderRadius: '50%', display: 'grid', placeItems: 'center',
-                border: '1px solid ' + (active ? 'var(--char-accent)' : 'var(--border-hairline)'),
-                background: 'transparent', color: 'var(--char-accent)'
-              }}
-            >
-              <Icon name="sparkle" size={11} />
-            </span>
-            <span style={{ fontSize: 12, color: active ? 'var(--text-primary)' : 'var(--text-muted)' }}>{tr(lang, 'stage_' + stage)}</span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -283,7 +368,6 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   const [adherenceIndex, setAdherenceIndex] = React.useState(1); // 0 open · 1 balanced (default) · 2 strict
   const [quickCreateOpen, setQuickCreateOpen] = React.useState(false);
   const [phase, setPhase] = React.useState(hasSavedResult ? 'result' : 'form'); // 'form' | 'generating' | 'result' | 'error'
-  const [stageIndex, setStageIndex] = React.useState(0);
   const [analysisResult, setAnalysisResult] = React.useState(hasSavedResult ? pinnedEntry.aiAnalysisResult : null);
   const [analysisMeta, setAnalysisMeta] = React.useState(hasSavedResult ? { cached: true, entry: pinnedEntry } : null);
   const [errorCode, setErrorCode] = React.useState(null);
@@ -375,7 +459,6 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
       forceRegenerate: !!forceRegenerate
     };
     requestRef.current = request;
-    setStageIndex(0);
     setPhase('generating');
     const outcome = await client.analyzeSession(request);
     if (!outcome.ok) {
@@ -391,16 +474,6 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     setPhase('result');
     if (onResult) onResult(outcome.result, { entry: targetEntry });
   }
-
-  // Loading experience (brief §27) - a real request has no observable intermediate stage this
-  // client can honestly report, so this only ever cycles WHICH phase-label is shown, never claims
-  // a stage is "done" or shows a fabricated percentage. Stops the moment startAnalysis()'s own
-  // await resolves (phase leaves 'generating').
-  React.useEffect(() => {
-    if (phase !== 'generating') return undefined;
-    const step = window.setInterval(() => setStageIndex((i) => (i + 1) % GENERATION_STAGES.length), 1400);
-    return () => window.clearInterval(step);
-  }, [phase]);
 
   const canGoBackToForm = phase !== 'generating';
 
@@ -546,7 +619,7 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
             </React.Fragment>
           )}
 
-          {phase === 'generating' && <GeneratingStages lang={activeLang} stageIndex={stageIndex} />}
+          {phase === 'generating' && <GeneratingView lang={activeLang} active={phase === 'generating'} isEvaluation={isEvaluation} />}
 
           {phase === 'error' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '22px 10px', textAlign: 'center' }}>

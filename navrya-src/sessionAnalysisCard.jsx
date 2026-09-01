@@ -265,7 +265,7 @@ function ScenarioCard({ scenario, lang, added, onAdd, onVisualize, visualization
         <Button data-nv-added={justAdded ? 'true' : undefined} variant={added ? 'ghost' : 'primary'} size="sm" icon={added ? 'check' : 'plus'} disabled={added} onClick={onAdd} fullWidth>
           {added ? tr(lang, 'added') : tr(lang, 'addToSession')}
         </Button>
-        <Button variant="secondary" size="sm" icon="image" disabled={vizStatus === 'loading'} onClick={onVisualize} fullWidth>
+        <Button variant="secondary" size="sm" icon="image" loading={vizStatus === 'loading'} onClick={onVisualize} fullWidth>
           {vizStatus === 'loading' ? tr(lang, 'visualizing') : tr(lang, 'visualize')}
         </Button>
       </div>
@@ -342,7 +342,7 @@ export function SessionAnalysisCard({
               <span style={{ fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'original_data_note')}</span>
             </div>
           )}
-          <Button variant="secondary" size="sm" icon="image" disabled={analysisVisualization && analysisVisualization.status === 'loading'} onClick={onVisualizeAnalysis}>
+          <Button variant="secondary" size="sm" icon="image" loading={!!(analysisVisualization && analysisVisualization.status === 'loading')} onClick={onVisualizeAnalysis}>
             {analysisVisualization && analysisVisualization.status === 'loading' ? tr(activeLang, 'visualizingAnalysis') : tr(activeLang, 'visualizeAnalysis')}
           </Button>
           {analysisLightboxOpen && analysisVisualization && analysisVisualization.imageDataUrl && (
