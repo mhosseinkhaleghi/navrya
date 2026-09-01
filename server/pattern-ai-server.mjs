@@ -1249,10 +1249,42 @@ const SESSION_ANALYSIS_OUTPUT_BUDGET = { initial: 10000, update: 10000, scenario
 // known to the client) - the server only ever maps an already-decided depth to a token ceiling.
 const SESSION_ANALYSIS_DEPTH_MULTIPLIER = { efficient: 0.55, auto: 1, deep: 1.6 };
 
-function sessionAnalysisOutputBudget(analysisType, depth) {
+// PRODUCTION INCIDENT, part 3 (2026-09-01): the trader reported Luna (economical) and Sol
+// (frontier) returning near-identical analyses despite being different, differently-priced GPT-5.6
+// tiers (ai-settings-store.js's own PROVIDER_CATALOG comment: Sol/frontier, Terra/balanced,
+// Luna/economical - three real, distinct OpenAI model ids, not a cosmetic label). Root cause:
+// analyzeSession() never set `reasoning.effort` at all, unlike this same file's dockChat() (see
+// its own turnTuning), which already treats reasoning.effort as the deliberate lever for tuning a
+// GPT-5.6-family reasoning model's actual thinking depth. Left unset, OpenAI applies its own
+// baseline effort to EVERY tier uniformly - so Sol was never actually asked to think any harder
+// than Luna, flattening the one difference that would otherwise separate them. Mirrors dockChat's
+// existing "OpenAI-only, safely ignored by the other three providers" reasoning field pattern.
+const SESSION_ANALYSIS_REASONING_EFFORT = { frontier: 'high', balanced: 'medium', economical: 'low' };
+// callOpenAI()'s own comment: for a reasoning model, max_output_tokens caps reasoning tokens AND
+// the visible JSON answer together. Asking Sol to reason at 'high' effort without more headroom
+// would spend more of the SAME shared budget on invisible reasoning tokens, re-truncating the
+// visible answer - i.e. silently reintroducing the ANALYSIS_OUTPUT_TRUNCATED incident fixed above,
+// just for the frontier tier this time. So the budget scales with effort too, not only with depth.
+const SESSION_ANALYSIS_REASONING_BUDGET_MULTIPLIER = { high: 1.3, medium: 1, low: 0.85 };
+
+// Bare `gpt-5.6` (providerDefaultModel.openai) resolves server-side to Sol (see
+// ai-settings-store.js's comment) so it is treated as frontier here too. An unrecognized/older
+// model id (gpt-4.1, gpt-4o, or a non-OpenAI provider) returns null - this app never guesses a
+// reasoning-effort value for a model it hasn't confirmed actually supports the field.
+function sessionAnalysisReasoningEffort(provider, model) {
+  if (provider !== 'openai') return null;
+  const id = typeof model === 'string' ? model.trim() : '';
+  if (id === 'gpt-5.6' || /-sol$/i.test(id)) return SESSION_ANALYSIS_REASONING_EFFORT.frontier;
+  if (/-terra$/i.test(id)) return SESSION_ANALYSIS_REASONING_EFFORT.balanced;
+  if (/-luna$/i.test(id)) return SESSION_ANALYSIS_REASONING_EFFORT.economical;
+  return null;
+}
+
+function sessionAnalysisOutputBudget(analysisType, depth, reasoningEffort) {
   const base = SESSION_ANALYSIS_OUTPUT_BUDGET[analysisType] || SESSION_ANALYSIS_OUTPUT_BUDGET.update;
-  const multiplier = SESSION_ANALYSIS_DEPTH_MULTIPLIER[depth] || 1;
-  return Math.round(base * multiplier);
+  const depthMultiplier = SESSION_ANALYSIS_DEPTH_MULTIPLIER[depth] || 1;
+  const reasoningMultiplier = SESSION_ANALYSIS_REASONING_BUDGET_MULTIPLIER[reasoningEffort] || 1;
+  return Math.round(base * depthMultiplier * reasoningMultiplier);
 }
 
 // Provider-level vision support, mirroring callOpenAICompatible()'s own `supportsVision = provider
@@ -1756,9 +1788,10 @@ async function analyzeSession(body) {
 
   const systemText = buildSessionAnalysisSystemPrompt(body, language);
   const contextText = buildSessionAnalysisContextText(body);
-  const budget = sessionAnalysisOutputBudget(analysisType, body.depth);
+  const reasoningEffort = sessionAnalysisReasoningEffort(resolvedProvider, body.model);
+  const budget = sessionAnalysisOutputBudget(analysisType, body.depth, reasoningEffort);
 
-  const { data: rawResult, usage, provider, model } = await callProvider(body.provider, body.apiKey, body.model, {
+  const { data: rawResult, usage, provider, model } = await callProvider(body.provider, body.apiKey, body.model, Object.assign({
     input: [
       { role: 'system', content: [{ type: 'input_text', text: systemText }] },
       { role: 'user', content: [{ type: 'input_text', text: contextText }, ...imageContent(images)] }
@@ -1770,7 +1803,7 @@ async function analyzeSession(body) {
     // for every analysis type since even "initial" alone was observed needing 43-56s on cheaper
     // tiers already, leaving little margin on the frontier tier.
     timeoutMs: 180000
-  }, SESSION_ANALYSIS_SOURCE[analysisType] || 'sessions.analyze');
+  }, reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}), SESSION_ANALYSIS_SOURCE[analysisType] || 'sessions.analyze');
 
   const data = validateSessionAnalysisResult(Object.assign({ analysisType }, rawResult), body);
   return { data, provider, model, usage };
@@ -2687,6 +2720,7 @@ export {
   __resetVoiceConfigCacheForTests, internalWalletCallWithRetry,
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
   buildSessionAnalysisSystemPrompt, buildSessionAnalysisContextText,
-  validateSessionAnalysisResult, sessionAnalysisOutputBudget, sessionAnalysisFormat,
-  SESSION_ANALYSIS_TYPES, SESSION_ANALYSIS_SOURCE, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT
+  validateSessionAnalysisResult, sessionAnalysisOutputBudget, sessionAnalysisFormat, sessionAnalysisReasoningEffort,
+  SESSION_ANALYSIS_TYPES, SESSION_ANALYSIS_SOURCE, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT,
+  SESSION_ANALYSIS_REASONING_EFFORT, SESSION_ANALYSIS_REASONING_BUDGET_MULTIPLIER
 };

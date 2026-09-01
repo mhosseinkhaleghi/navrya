@@ -8,7 +8,7 @@ import test, { after, afterEach } from 'node:test';
 const serverModule = await import('../server/pattern-ai-server.mjs');
 const {
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
-  buildSessionAnalysisSystemPrompt, sessionAnalysisOutputBudget,
+  buildSessionAnalysisSystemPrompt, sessionAnalysisOutputBudget, sessionAnalysisReasoningEffort,
   validateSessionAnalysisResult, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT
 } = serverModule;
 const server = serverModule.default;
@@ -88,6 +88,70 @@ test('output budget: efficient tightens and deep relaxes the ceiling relative to
   const deep = sessionAnalysisOutputBudget('update', 'deep');
   assert.ok(efficient < auto);
   assert.ok(deep > auto);
+});
+
+// --------------------------------------------------------------------------------------------
+// Production incident, part 3 (2026-09-01): Luna (economical) and Sol (frontier) returned
+// near-identical analyses - analyzeSession() never set reasoning.effort at all, so every GPT-5.6
+// tier got OpenAI's own baseline effort regardless of which one the trader actually picked.
+// --------------------------------------------------------------------------------------------
+
+test('sessionAnalysisReasoningEffort maps each real GPT-5.6 tier to a distinct effort, and the bare gpt-5.6 alias to frontier (it resolves server-side to Sol)', () => {
+  assert.equal(sessionAnalysisReasoningEffort('openai', 'gpt-5.6-sol'), 'high');
+  assert.equal(sessionAnalysisReasoningEffort('openai', 'gpt-5.6-terra'), 'medium');
+  assert.equal(sessionAnalysisReasoningEffort('openai', 'gpt-5.6-luna'), 'low');
+  assert.equal(sessionAnalysisReasoningEffort('openai', 'gpt-5.6'), 'high');
+});
+
+test('sessionAnalysisReasoningEffort returns null for a model/provider it has not confirmed supports the field, rather than guessing', () => {
+  assert.equal(sessionAnalysisReasoningEffort('openai', 'gpt-4.1'), null);
+  assert.equal(sessionAnalysisReasoningEffort('openai', 'gpt-4o'), null);
+  assert.equal(sessionAnalysisReasoningEffort('anthropic', 'claude-sonnet-4-5'), null);
+});
+
+test('output budget: a higher reasoning effort widens the ceiling too, so the extra reasoning tokens it spends do not crowd out the visible JSON answer out of the same shared budget', () => {
+  const noEffort = sessionAnalysisOutputBudget('initial', 'auto');
+  const low = sessionAnalysisOutputBudget('initial', 'auto', 'low');
+  const high = sessionAnalysisOutputBudget('initial', 'auto', 'high');
+  assert.equal(noEffort, SESSION_ANALYSIS_OUTPUT_BUDGET.initial);
+  assert.ok(low < noEffort, 'economical tier (low effort) should use LESS budget than the unset-effort baseline');
+  assert.ok(high > noEffort, 'frontier tier (high effort) should use MORE budget than the unset-effort baseline, to make room for its own extra reasoning tokens');
+});
+
+test('analyzeSession sends a real reasoning.effort field (and a correspondingly wider max_output_tokens) for the frontier GPT-5.6 tier', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+  };
+  await analyzeSession(Object.assign(validAnalysisBody(), { model: 'gpt-5.6-sol' }));
+  assert.equal(sentBody.reasoning.effort, 'high');
+  assert.ok(sentBody.max_output_tokens > SESSION_ANALYSIS_OUTPUT_BUDGET.initial, 'the frontier tier must get more than the baseline budget, not the same one Luna gets');
+});
+
+test('analyzeSession sends a lower reasoning.effort (and a correspondingly narrower budget) for the economical Luna tier', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+  };
+  await analyzeSession(Object.assign(validAnalysisBody(), { model: 'gpt-5.6-luna' }));
+  assert.equal(sentBody.reasoning.effort, 'low');
+  assert.ok(sentBody.max_output_tokens < SESSION_ANALYSIS_OUTPUT_BUDGET.initial);
+});
+
+test('analyzeSession never sends a reasoning field at all for a model it has not confirmed supports it (e.g. gpt-4.1), rather than guessing an effort value', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+  };
+  await analyzeSession(Object.assign(validAnalysisBody(), { model: 'gpt-4.1' }));
+  assert.equal('reasoning' in sentBody, false);
+  assert.equal(sentBody.max_output_tokens, SESSION_ANALYSIS_OUTPUT_BUDGET.initial);
 });
 
 // --------------------------------------------------------------------------------------------
