@@ -77,6 +77,22 @@ test('applyAnalysisResult() (the real, shared per-entry persistence function) re
   assert.match(fn, /setSessionAnalysisAutoRun\(false\);/);
 });
 
+// Regression: announceAnalysisResult() originally lived nested inside FateSummaryModal's own body
+// (defined right after that component's own handleAnalysisResult) - LiveSessionView's own
+// applyAnalysisResult() is a DIFFERENT top-level component/closure in this same file, so its call
+// to announceAnalysisResult() threw a real, live "announceAnalysisResult is not defined"
+// ReferenceError on every single real analysis completion (confirmed via real Playwright testing
+// against production). Fixed by hoisting the function to module scope, above both components -
+// this test pins that shape so it can never quietly regress back into either component's body.
+test('announceAnalysisResult is defined at module scope - above FateSummaryModal AND LiveSessionView, not nested inside either - so both of their own analysis-result handlers can actually call the SAME one function', () => {
+  const defIdx = liveSessionSrc.indexOf('function announceAnalysisResult');
+  const fateModalIdx = liveSessionSrc.indexOf('function FateSummaryModal(');
+  const liveSessionViewIdx = liveSessionSrc.indexOf('export function LiveSessionView(');
+  assert.ok(defIdx > -1 && fateModalIdx > -1 && liveSessionViewIdx > -1);
+  assert.ok(defIdx < fateModalIdx, 'announceAnalysisResult must be defined BEFORE FateSummaryModal - i.e. outside its body, not nested inside it');
+  assert.ok(defIdx < liveSessionViewIdx, 'announceAnalysisResult must be defined BEFORE LiveSessionView too - module scope, reachable from both components alike');
+});
+
 test('closing the auto-run modal before any result lands still resolves runAiAnalysis()\'s own Promise (with null) - never leaves the calling workflow hanging on a dismissed/errored analysis', () => {
   const block = liveSessionSrc.slice(liveSessionSrc.indexOf('{sessionAnalysisEntry && ('), liveSessionSrc.indexOf('{sessionAnalysisEntry && (') + 1200);
   assert.match(block, /onClose=\{\(\) => \{/);

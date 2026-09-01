@@ -2151,6 +2151,28 @@ function DirectionPicker({ label, value, onChange, lang }) {
   );
 }
 
+// AI-access follow-up: the one shared "an AI Analysis result just landed" signal, fired from
+// every real place a result lands - FateSummaryModal's own handleAnalysisResult() below AND
+// LiveSessionView's own applyAnalysisResult() further down - whether the trigger was one of the 3
+// pre-existing manual buttons or the new session.analysis.run Action Registry action makes no
+// difference here. Module scope, not nested inside either component, deliberately: it closes over
+// no component-local state at all (just result.thesis.headline + a CustomEvent dispatch), and
+// FateSummaryModal/LiveSessionView are two genuinely separate top-level components/closures in
+// this same file - a function defined inside one is not reachable from the other (the exact
+// ReferenceError this hoist fixes: this function used to live inside FateSummaryModal's own body,
+// where applyAnalysisResult - a different component's own function - could not see it at all).
+// chatDockView.jsx listens for this event and, only if Voice Mode is genuinely active right now,
+// speaks `thesis.headline` (the schema's own short one-line field, distinct from the longer
+// `.summary` - server/pattern-ai-server.mjs's own session_market_analysis schema) through the
+// exact same PlaybackController queue every other spoken reply already uses. No new LLM call -
+// this reuses text the analysis call already produced; a typed-only session (no Voice connection)
+// simply never hears anything, by construction (chatDockView.jsx's own listener decides that, not
+// this dispatch).
+function announceAnalysisResult(result) {
+  const headline = result && result.thesis && result.thesis.headline;
+  if (headline) window.dispatchEvent(new CustomEvent('tradejournal:ai-analysis-ready', { detail: { headline } }));
+}
+
 // Session fate, step 2 - the real whole-session summary. Ported from session-entry-flow.js's
 // openFateSummary(): move-strength/spike direction, an optional note, and the real
 // makeSessionAnalysis() computed from this session's own entries/scenarios/patterns - not an
@@ -2190,21 +2212,6 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     setAnalysisEntry(meta && meta.entry);
     setAnalysisVisualization(null); // a genuinely new analysis has no visualization of its own yet
     announceAnalysisResult(result);
-  }
-
-  // AI-access follow-up: the one shared "an AI Analysis result just landed" signal, fired from
-  // every real place a result lands (this function and applyAnalysisResult below) - whether the
-  // trigger was one of the 3 existing manual buttons or the new session.analysis.run Action
-  // Registry action makes no difference here. chatDockView.jsx listens for this and, only if Voice
-  // Mode is genuinely active right now, speaks `thesis.headline` (the schema's own short one-line
-  // field, distinct from the longer `.summary` - server/pattern-ai-server.mjs's own
-  // session_market_analysis schema) through the exact same PlaybackController queue every other
-  // spoken reply already uses. No new LLM call - this reuses text the analysis call already
-  // produced; a typed-only session (no Voice connection) simply never hears anything, by
-  // construction (chatDockView.jsx's own listener is what decides that, not this dispatch).
-  function announceAnalysisResult(result) {
-    const headline = result && result.thesis && result.thesis.headline;
-    if (headline) window.dispatchEvent(new CustomEvent('tradejournal:ai-analysis-ready', { detail: { headline } }));
   }
   async function handleVisualize(scenario, ctx) {
     setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
