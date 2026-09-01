@@ -13,6 +13,8 @@ const translations = {
     comSubPlans: 'Plans', comSubWallet: 'Wallet', comSubHistory: 'Configuration History',
     comUnlimited: 'Unlimited', comStorageBytes: 'Storage (bytes)', comLimitPatterns: 'Patterns', comLimitStrategies: 'Strategies', comLimitAccounts: 'Connected Accounts', comLimitSessions: 'Sessions', comLimitAnalysisSymbols: 'Analysis Symbols',
     comFeatureWallet: 'Wallet enabled', comFeatureAi: 'AI (wallet-based)', comFeatureVoice: 'Voice (wallet-based)', comFeatureAiPanelBuilder: 'AI Panel Builder',
+    comFeatureByok: 'Personal API key (BYOK)', comFeaturePremiumModels: 'Premium AI models (GPT-5.6 Sol, Claude Opus 4.1)',
+    comPlanDisplayName: 'Display name (blank = default)', comPlanTokenDiscount: 'AI token discount %',
     comSavePlan: 'Save plan', comMarkupPercent: 'Global markup %', comMultiplier: 'Multiplier', comGrossMargin: 'Gross margin', comMinTopUp: 'Minimum top-up (USD)', comSignupPromo: 'Signup promo credit (USD, retail)', comSaveWalletRules: 'Save wallet rules',
     comSimulatorTitle: 'AI Pricing Simulator', comProviderCost: 'Provider cost (USD)', comRetail: 'Retail', comProfit: 'Gross profit',
     comMarkupRulesTitle: 'Markup overrides', comScopeType: 'Scope type', comScopeKey: 'Scope key (feature/provider/model name)', comAddRule: 'Add override', comRemove: 'Remove', comNoRules: 'No overrides - the global markup applies to everything.',
@@ -25,7 +27,7 @@ const translations = {
     comHistoryTitle: 'Published configuration changes', comHistoryEmpty: 'No changes published yet.', comColKey: 'Config key', comColChangedBy: 'Changed by', comColSummary: 'Summary',
     comSubSubscriptions: 'Subscriptions', comSubStorage: 'Storage', comSubTransactions: 'Transactions',
     comPlanPrice: 'Price (USD / month)',
-    comStatActivePlus: 'Active Plus', comStatActivePersonalized: 'Active Personalized', comStatPastDue: 'Past due', comStatCanceling: 'Canceling', comStatExpired: 'Expired', comStatMrr: 'MRR',
+    comStatActivePlus: 'Active Plus', comStatActivePro: 'Active Pro', comStatActivePersonalized: 'Active Personalized', comStatPastDue: 'Past due', comStatCanceling: 'Canceling', comStatExpired: 'Expired', comStatMrr: 'MRR',
     comStorageProductsTitle: 'Storage Add-on Products', comProductName: 'Name', comProductPrice: 'Price (USD)', comCapacityGb: 'Capacity (GB)', comValidityDays: 'Validity (days)', comDisplayOrder: 'Display order', comEnabled: 'Enabled', comAddProduct: 'Add product', comSaveProduct: 'Save',
     comTransactionsTitle: 'Payment Transactions', comColType: 'Type', comColAmount: 'Amount', comColStatus: 'Status', comColProduct: 'Product', comColConfirmed: 'Confirmed', comConfirm: 'Confirm', comFail: 'Fail', comRefund: 'Refund', comNoTransactions: 'No transactions yet.',
     loading: 'Loading…', errorGeneric: 'Something went wrong.', retry: 'Retry',
@@ -2008,16 +2010,25 @@ function commercialSubNav(active) {
 
 const RESOURCE_LIMIT_KEYS = ['patterns', 'strategies', 'accounts', 'sessions', 'analysisSymbols'];
 const RESOURCE_LIMIT_LABELS = { patterns: 'comLimitPatterns', strategies: 'comLimitStrategies', accounts: 'comLimitAccounts', sessions: 'comLimitSessions', analysisSymbols: 'comLimitAnalysisSymbols' };
-const PLAN_FEATURE_KEYS = ['wallet', 'ai', 'voice', 'aiPanelBuilder'];
-const PLAN_FEATURE_LABELS = { wallet: 'comFeatureWallet', ai: 'comFeatureAi', voice: 'comFeatureVoice', aiPanelBuilder: 'comFeatureAiPanelBuilder' };
+// byok/premiumModels (real-money subscription rollout): gate the AI Assistant's "use your own API
+// key" section and the specific real premium model ids (ai-settings-store.js's
+// PROVIDER_CATALOG[*].premiumModels) respectively - read by resolveUserEntitlements() the exact
+// same way wallet/ai/voice/aiPanelBuilder already are, no new mechanism.
+const PLAN_FEATURE_KEYS = ['wallet', 'ai', 'voice', 'aiPanelBuilder', 'byok', 'premiumModels'];
+const PLAN_FEATURE_LABELS = { wallet: 'comFeatureWallet', ai: 'comFeatureAi', voice: 'comFeatureVoice', aiPanelBuilder: 'comFeatureAiPanelBuilder', byok: 'comFeatureByok', premiumModels: 'comFeaturePremiumModels' };
 
 function commercialPlansSubTab() {
   return api('/commercial/plans').then((data) => {
     const wrap = el('div', 'admin-grid');
-    ['free', 'plus', 'personalized'].forEach((plan) => {
+    ['free', 'plus', 'pro', 'personalized'].forEach((plan) => {
       const planConfig = data.plans[plan];
       const card = el('div', 'admin-card');
       card.append(el('h3', '', plan.charAt(0).toUpperCase() + plan.slice(1)));
+
+      // Admin-set display name (real-money subscription rollout) - overrides the client's
+      // localized default label when non-empty; left blank means "use the default name".
+      const displayNameField = field(t('comPlanDisplayName'), 'text', planConfig.displayName || '');
+      card.append(displayNameField.wrap);
 
       const limitInputs = {};
       RESOURCE_LIMIT_KEYS.forEach((key) => {
@@ -2042,6 +2053,10 @@ function commercialPlansSubTab() {
       const priceField = plan !== 'free' ? field(t('comPlanPrice'), 'number', planConfig.price.amountUsd) : null;
       if (priceField) card.append(priceField.wrap);
 
+      // Same "Free is fixed, nothing to discount" rule as price.
+      const discountField = plan !== 'free' ? field(t('comPlanTokenDiscount'), 'number', planConfig.tokenDiscountPercent || 0) : null;
+      if (discountField) card.append(discountField.wrap);
+
       const featureInputs = {};
       PLAN_FEATURE_KEYS.forEach((key) => {
         const featureLabel = el('label', 'field-check');
@@ -2060,8 +2075,9 @@ function commercialPlansSubTab() {
         RESOURCE_LIMIT_KEYS.forEach((key) => { limits[key] = limitInputs[key].unlimitedCheckbox.checked ? null : Number(limitInputs[key].input.value); });
         const features = {};
         PLAN_FEATURE_KEYS.forEach((key) => { features[key] = featureInputs[key].checked; });
-        const payload = { limits, storageBytes: Number(storageField.input.value), features };
+        const payload = { limits, storageBytes: Number(storageField.input.value), features, displayName: displayNameField.input.value };
         if (priceField) payload.price = { amountUsd: Number(priceField.input.value), billingInterval: 'month' };
+        if (discountField) payload.tokenDiscountPercent = Number(discountField.input.value);
         api('/commercial/plans/' + plan, { method: 'PATCH', body: JSON.stringify(payload) })
           .then(() => showToast(t('saved'))).catch((error) => showToast(error.message, 'danger'));
       };
@@ -2318,6 +2334,7 @@ function commercialSubscriptionsSubTab() {
     const s = data.stats;
     wrap.append(
       statCard('crown', fmtNumber(s.activePlus), t('comStatActivePlus')),
+      statCard('star', fmtNumber(s.activePro), t('comStatActivePro')),
       statCard('sparkles', fmtNumber(s.activePersonalized), t('comStatActivePersonalized')),
       statCard('alert-triangle', fmtNumber(s.pastDue), t('comStatPastDue')),
       statCard('clock', fmtNumber(s.canceling), t('comStatCanceling')),

@@ -32,7 +32,7 @@ test('ledgerEntryDisplay() reports a paid-vs-promo impact qualifier, not just th
 test('WalletActivityCard renders the reason, dated subtitle, signed amount, and impact qualifier for every entry', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const fnIdx = src.indexOf('function WalletActivityCard(');
-  const fn = src.slice(fnIdx, fnIdx + 3200);
+  const fn = src.slice(fnIdx, fnIdx + 4200);
   assert.match(fn, /\{d\.title\}/);
   assert.match(fn, /\{d\.subtitle\}/);
   assert.match(fn, /fmtDateTime\(entry\.createdAt\)/);

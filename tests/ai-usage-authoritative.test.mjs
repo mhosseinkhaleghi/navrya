@@ -56,6 +56,29 @@ test('recording usage for a billed=false (platform-funded) call still reports re
   assert.equal(record.linkedLedgerIdempotencyKey, null);
 });
 
+// Real-money subscription rollout: /usage/record must apply the exact same per-plan discount
+// settleAiCall() (wallet-service.mjs) applies, so this authoritative-but-unbilled-mode report
+// never shows a bigger retail number than the real settlement would have charged.
+test('a billed call for a user on a discounted plan (Pro, 20% off) reports the already-discounted retail charge, and records the discount percent used', async () => {
+  await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-4o', promptPricePer1k: 0.01, completionPricePer1k: 0.03, enabled: true });
+  const user = await repo.users.create({ displayName: 'Pro Trader' });
+  await repo.subscriptions.create({
+    userId: user.id, planId: 'pro', provider: 'manual', status: 'active',
+    currentPeriodStart: new Date().toISOString(), currentPeriodEnd: new Date(Date.now() + 30 * 86400000).toISOString(),
+    cancelAtPeriodEnd: false, priceAmountMicroUsd: 14990000, currency: 'usd'
+  });
+  const response = await internalPost('/usage/record', {
+    userId: user.id, feature: 'ai.chat', provider: 'openai', model: 'gpt-4o',
+    usage: { promptTokens: 1000, completionTokens: 500, totalTokens: 1500 },
+    billed: true, reservationId: 'reservation-pro-1'
+  });
+  const record = await response.json();
+  assert.equal(record.providerCostMicroUsd, 25000, 'the real provider cost is never discounted');
+  // Default markup is 200% (3x): $0.025 * 3 = $0.075 retail, then Pro's 20% discount = $0.06.
+  assert.equal(record.retailChargeMicroUsd, 60000);
+  assert.equal(record.tokenDiscountPercent, 20);
+});
+
 test('a request without the internal secret is rejected', async () => {
   const response = await fetch(`${baseUrl}/internal/usage/record`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: 'x' })

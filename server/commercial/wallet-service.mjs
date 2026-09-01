@@ -138,6 +138,18 @@ export async function reserveForAiCall(repo, { userId, feature, provider, model,
   return { ok: true, reservationId: result.reservation.id, markupPercent, retailMultiplier };
 }
 
+// Real-money subscription rollout: the CURRENT active plan's tokenDiscountPercent, applied on top
+// of the standard retail markup - never re-derived inline, so /wallet/settle and /usage/record
+// (routes.internal.mjs) always agree on what "this user's discount" means. Always re-resolved live
+// (resolveUserEntitlements() is never cached beyond commercial-config.mjs's own short TTL) - a
+// subscription that has since lapsed back to Free correctly yields 0 with no extra code, exactly
+// the "reverts to normal once the subscription ends" behavior asked for.
+export async function resolveTokenDiscountPercent(repo, userId) {
+  if (!userId) return 0;
+  const entitlements = await resolveUserEntitlements(userId, repo);
+  return entitlements.tokenDiscountPercent || 0;
+}
+
 // Settles a reservation using the REAL usage the provider reported - the estimate above never
 // determines the actual charge, only whether the hold was large enough to attempt the call.
 export async function settleAiCall(repo, { reservationId, provider, model, feature, usage }) {
@@ -147,9 +159,16 @@ export async function settleAiCall(repo, { reservationId, provider, model, featu
     promptTokens: usage && usage.promptTokens, completionTokens: usage && usage.completionTokens,
     cachedInputTokens: usage && usage.cachedInputTokens, cacheWriteInputTokens: usage && usage.cacheWriteInputTokens
   }) : 0;
-  const retailChargeMicroUsd = Math.round(providerCostMicroUsd * retailMultiplier);
+  const fullRetailChargeMicroUsd = Math.round(providerCostMicroUsd * retailMultiplier);
+  // The reservation record is the source of truth for WHICH user this call belongs to (it was
+  // stamped there at reserve() time) - never trust a second, separately-supplied userId here.
+  const reservation = await repo.wallet.getReservation(reservationId);
+  const tokenDiscountPercent = reservation ? await resolveTokenDiscountPercent(repo, reservation.userId) : 0;
+  const retailChargeMicroUsd = tokenDiscountPercent
+    ? Math.round(fullRetailChargeMicroUsd * (1 - tokenDiscountPercent / 100))
+    : fullRetailChargeMicroUsd;
   return repo.wallet.settle(reservationId, {
-    providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, provider, model, feature,
+    providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, tokenDiscountPercent, provider, model, feature,
     idempotencyKey: 'ai-settle:' + reservationId
   });
 }

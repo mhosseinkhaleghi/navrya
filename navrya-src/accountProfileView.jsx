@@ -88,7 +88,7 @@ const copy = {
     xpTypeAchievement: 'باز شدن دستاورد', xpTypeStreak: 'پاداش استمرار: {detail}',
 
     subActiveStatus: 'فعال', subPlanSuffix: 'پلن {plan}', subPerMonth: '/ ماه',
-    subPlanFree: 'رایگان', subPlanPlus: 'پلاس', subPlanPersonalized: 'اختصاصی',
+    subPlanFree: 'رایگان', subPlanPlus: 'پلاس', subPlanPro: 'پرو', subPlanPersonalized: 'اختصاصی',
     subRenews: 'تمدید در {date}', subCancelsNote: 'لغو در {date} · هر زمان قبل از آن می‌توانی تمدید کنی',
     subReactivate: 'فعال‌سازی مجدد', subCancelAtPeriodEnd: 'لغو در پایان دوره', subFreeNoBilling: 'پلن رایگان — صورتحسابی ثبت نشده است.',
     subStorageUsed: 'فضای ذخیره‌سازی مصرف‌شده', subWalletBalance: 'موجودی کیف پول', subPlanLimits: 'محدودیت‌های پلن',
@@ -104,9 +104,13 @@ const copy = {
     subFeatUnlimitedAccounts: 'حساب‌های معاملاتی نامحدود', subFeatSessionsOne: '{n} سشن معاملاتی', subFeatSessionsMany: '{n} سشن معاملاتی',
     subFeatUnlimitedSessions: 'سشن‌های معاملاتی نامحدود', subFeatSymbolsOne: '{n} نماد تحلیل', subFeatSymbolsMany: '{n} نماد تحلیل',
     subFeatUnlimitedSymbols: 'نمادهای تحلیل نامحدود', subFeatAiPanelBuilder: 'دسترسی به سازندهٔ پنل هوش مصنوعی',
+    subFeatPremiumModels: 'دسترسی به مدل‌های پیشرفتهٔ هوش مصنوعی', subFeatByok: 'استفاده از کلید شخصی', subFeatTokenDiscount: '{percent}٪ تخفیف مصرف توکن',
     subAiWallet: 'کیف پول هوش مصنوعی', subPromoPaid: 'هدیه {promo} · پرداختی {paid}',
     subWalletHint: 'هر پاسخ هوش مصنوعی — گفتگو، تحلیل الگو، مرور سشن — همان لحظه از این موجودی کسر می‌شود. دقیقاً ببین برای چی خرج شده، در «فعالیت کیف پول» پایین همین صفحه.',
     subAmountUsd: 'مبلغ (دلار)', subRequestTopUp: 'درخواست شارژ',
+    subPayMethodTitle: 'روش پرداخت', subPayMethodCrypto: 'ارز دیجیتال', subPayMethodVisa: 'کارت ویزا',
+    subPayMethodIranGateway: 'درگاه پرداخت ایران', subPayMethodComingSoon: 'به‌زودی',
+    subPayMethodNotAdded: 'این روش پرداخت هنوز اضافه نشده است.',
     subTopUpNotice: 'درخواست شارژ به مبلغ {amount} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
     subTopUpError: 'ثبت درخواست شارژ ممکن نشد: {error}',
     subTopUpMinTitle: 'مبلغ خیلی کم است',
@@ -114,6 +118,7 @@ const copy = {
     subTopUpMinOk: 'متوجه شدم',
     subWalletActivityTitle: 'فعالیت کیف پول — دلیل تغییر موجودی',
     subFilterAll: 'همه', subFilterUsage: 'مصرف هوش مصنوعی', subFilterCredit: 'شارژ و اعتبار', subNoActivity: 'هنوز فعالیتی ثبت نشده است.',
+    subAiUsageTotal: 'جمع مصرف هوش مصنوعی: {amount}',
     subLedgerAiUsage: 'مصرف هوش مصنوعی · {feature}', subLedgerAssistant: 'دستیار', subLedgerTopUp: 'شارژ کیف پول', subLedgerManualBilling: 'صورتحساب دستی',
     subLedgerSignupBonus: 'هدیهٔ ثبت‌نام', subLedgerPromoCredit: 'اعتبار هدیه', subLedgerAdminCredit: 'اعتبار مدیر', subLedgerManualAdjustment: 'تعدیل دستی',
     subLedgerRefundReversal: 'بازگشت وجه', subLedgerAdminDebit: 'کسر مدیر', subLedgerTopUpRefunded: 'شارژ بازگردانده شد',
@@ -187,7 +192,7 @@ const copy = {
     xpTypeAchievement: 'Achievement unlocked', xpTypeStreak: 'Streak bonus: {detail}',
 
     subActiveStatus: 'Active', subPlanSuffix: '{plan} Plan', subPerMonth: '/ month',
-    subPlanFree: 'Free', subPlanPlus: 'Plus', subPlanPersonalized: 'Personalized',
+    subPlanFree: 'Free', subPlanPlus: 'Plus', subPlanPro: 'Pro', subPlanPersonalized: 'Personalized',
     subRenews: 'Renews {date}', subCancelsNote: 'Cancels {date} · renew anytime before then',
     subReactivate: 'Reactivate', subCancelAtPeriodEnd: 'Cancel at Period End', subFreeNoBilling: 'Free plan — no billing on file.',
     subStorageUsed: 'Storage Used', subWalletBalance: 'Wallet Balance', subPlanLimits: 'Plan Limits',
@@ -203,9 +208,13 @@ const copy = {
     subFeatUnlimitedAccounts: 'Unlimited trading accounts', subFeatSessionsOne: '{n} trading session', subFeatSessionsMany: '{n} trading sessions',
     subFeatUnlimitedSessions: 'Unlimited trading sessions', subFeatSymbolsOne: '{n} analysis symbol', subFeatSymbolsMany: '{n} analysis symbols',
     subFeatUnlimitedSymbols: 'Unlimited analysis symbols', subFeatAiPanelBuilder: 'AI Panel Builder access',
+    subFeatPremiumModels: 'Access to premium AI models', subFeatByok: 'Bring your own API key', subFeatTokenDiscount: '{percent}% off AI usage',
     subAiWallet: 'AI Wallet', subPromoPaid: 'Promo {promo} · Paid {paid}',
     subWalletHint: "Every AI response — chat, pattern analysis, session review — draws from this balance the moment it's generated. See exactly what it was spent on in Wallet Activity below.",
     subAmountUsd: 'Amount (USD)', subRequestTopUp: 'Request Top-Up',
+    subPayMethodTitle: 'Payment method', subPayMethodCrypto: 'Crypto', subPayMethodVisa: 'Visa card',
+    subPayMethodIranGateway: 'Iran payment gateway', subPayMethodComingSoon: 'Coming soon',
+    subPayMethodNotAdded: 'This payment method has not been added yet.',
     subTopUpNotice: 'Top-up of {amount} requested — pending Admin confirmation (manual/test billing).',
     subTopUpError: 'Could not submit the top-up request: {error}',
     subTopUpMinTitle: 'Amount too low',
@@ -213,6 +222,7 @@ const copy = {
     subTopUpMinOk: 'Got it',
     subWalletActivityTitle: 'Wallet Activity — why your balance moved',
     subFilterAll: 'All', subFilterUsage: 'AI Usage', subFilterCredit: 'Top-Ups & Credits', subNoActivity: 'No activity yet.',
+    subAiUsageTotal: 'Total AI usage: {amount}',
     subLedgerAiUsage: 'AI Usage · {feature}', subLedgerAssistant: 'Assistant', subLedgerTopUp: 'Wallet Top-Up', subLedgerManualBilling: 'Manual billing',
     subLedgerSignupBonus: 'Signup Bonus', subLedgerPromoCredit: 'Promo credit', subLedgerAdminCredit: 'Admin Credit', subLedgerManualAdjustment: 'Manual adjustment',
     subLedgerRefundReversal: 'Refund Reversal', subLedgerAdminDebit: 'Admin Debit', subLedgerTopUpRefunded: 'Top-up refunded',
@@ -286,7 +296,7 @@ const copy = {
     xpTypeAchievement: 'فتح إنجاز', xpTypeStreak: 'مكافأة الاستمرارية: {detail}',
 
     subActiveStatus: 'نشط', subPlanSuffix: 'خطة {plan}', subPerMonth: '/ شهر',
-    subPlanFree: 'مجانية', subPlanPlus: 'بلس', subPlanPersonalized: 'مخصّصة',
+    subPlanFree: 'مجانية', subPlanPlus: 'بلس', subPlanPro: 'برو', subPlanPersonalized: 'مخصّصة',
     subRenews: 'التجديد في {date}', subCancelsNote: 'الإلغاء في {date} · يمكنك التجديد في أي وقت قبل ذلك',
     subReactivate: 'إعادة التفعيل', subCancelAtPeriodEnd: 'الإلغاء في نهاية الفترة', subFreeNoBilling: 'خطة مجانية — لا توجد فوترة مسجّلة.',
     subStorageUsed: 'المساحة المستخدَمة', subWalletBalance: 'رصيد المحفظة', subPlanLimits: 'حدود الخطة',
@@ -302,9 +312,13 @@ const copy = {
     subFeatUnlimitedAccounts: 'حسابات تداول غير محدودة', subFeatSessionsOne: '{n} جلسة تداول', subFeatSessionsMany: '{n} جلسات تداول',
     subFeatUnlimitedSessions: 'جلسات تداول غير محدودة', subFeatSymbolsOne: '{n} رمز تحليل', subFeatSymbolsMany: '{n} رموز تحليل',
     subFeatUnlimitedSymbols: 'رموز تحليل غير محدودة', subFeatAiPanelBuilder: 'الوصول إلى منشئ لوحة الذكاء الاصطناعي',
+    subFeatPremiumModels: 'الوصول إلى نماذج الذكاء الاصطناعي المتقدمة', subFeatByok: 'استخدام مفتاح API الخاص بك', subFeatTokenDiscount: 'خصم {percent}٪ على استخدام الذكاء الاصطناعي',
     subAiWallet: 'محفظة الذكاء الاصطناعي', subPromoPaid: 'هدية {promo} · مدفوع {paid}',
     subWalletHint: 'كل استجابة من الذكاء الاصطناعي — محادثة، تحليل نمط، مراجعة جلسة — تُخصم من هذا الرصيد فور توليدها. اطّلع بالضبط على ما أُنفق عليه في «نشاط المحفظة» أدناه.',
     subAmountUsd: 'المبلغ (دولار)', subRequestTopUp: 'طلب شحن الرصيد',
+    subPayMethodTitle: 'طريقة الدفع', subPayMethodCrypto: 'عملة رقمية', subPayMethodVisa: 'بطاقة فيزا',
+    subPayMethodIranGateway: 'بوابة الدفع الإيرانية', subPayMethodComingSoon: 'قريبًا',
+    subPayMethodNotAdded: 'لم تتم إضافة طريقة الدفع هذه بعد.',
     subTopUpNotice: 'تم إرسال طلب شحن بقيمة {amount} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
     subTopUpError: 'تعذّر إرسال طلب الشحن: {error}',
     subTopUpMinTitle: 'المبلغ منخفض جدًا',
@@ -312,6 +326,7 @@ const copy = {
     subTopUpMinOk: 'فهمت',
     subWalletActivityTitle: 'نشاط المحفظة — سبب تغيّر الرصيد',
     subFilterAll: 'الكل', subFilterUsage: 'استخدام الذكاء الاصطناعي', subFilterCredit: 'الشحن والاعتمادات', subNoActivity: 'لا يوجد نشاط بعد.',
+    subAiUsageTotal: 'إجمالي استخدام الذكاء الاصطناعي: {amount}',
     subLedgerAiUsage: 'استخدام الذكاء الاصطناعي · {feature}', subLedgerAssistant: 'المساعد', subLedgerTopUp: 'شحن المحفظة', subLedgerManualBilling: 'فوترة يدوية',
     subLedgerSignupBonus: 'مكافأة التسجيل', subLedgerPromoCredit: 'رصيد هدية', subLedgerAdminCredit: 'رصيد من المسؤول', subLedgerManualAdjustment: 'تعديل يدوي',
     subLedgerRefundReversal: 'استرداد المبلغ', subLedgerAdminDebit: 'خصم من المسؤول', subLedgerTopUpRefunded: 'تم استرداد الشحن',
@@ -385,7 +400,7 @@ const copy = {
     xpTypeAchievement: 'Logro desbloqueado', xpTypeStreak: 'Bono de racha: {detail}',
 
     subActiveStatus: 'Activo', subPlanSuffix: 'Plan {plan}', subPerMonth: '/ mes',
-    subPlanFree: 'Gratis', subPlanPlus: 'Plus', subPlanPersonalized: 'Personalizado',
+    subPlanFree: 'Gratis', subPlanPlus: 'Plus', subPlanPro: 'Pro', subPlanPersonalized: 'Personalizado',
     subRenews: 'Se renueva el {date}', subCancelsNote: 'Se cancela el {date} · puedes renovar en cualquier momento antes de eso',
     subReactivate: 'Reactivar', subCancelAtPeriodEnd: 'Cancelar al final del período', subFreeNoBilling: 'Plan gratuito — sin facturación registrada.',
     subStorageUsed: 'Almacenamiento usado', subWalletBalance: 'Saldo de la cartera', subPlanLimits: 'Límites del plan',
@@ -401,9 +416,13 @@ const copy = {
     subFeatUnlimitedAccounts: 'Cuentas de trading ilimitadas', subFeatSessionsOne: '{n} sesión de trading', subFeatSessionsMany: '{n} sesiones de trading',
     subFeatUnlimitedSessions: 'Sesiones de trading ilimitadas', subFeatSymbolsOne: '{n} símbolo de análisis', subFeatSymbolsMany: '{n} símbolos de análisis',
     subFeatUnlimitedSymbols: 'Símbolos de análisis ilimitados', subFeatAiPanelBuilder: 'Acceso al creador de paneles de IA',
+    subFeatPremiumModels: 'Acceso a modelos de IA premium', subFeatByok: 'Usa tu propia clave de API', subFeatTokenDiscount: '{percent}% de descuento en el uso de IA',
     subAiWallet: 'Cartera de IA', subPromoPaid: 'Promo {promo} · Pagado {paid}',
     subWalletHint: 'Cada respuesta de IA — chat, análisis de patrones, revisión de sesión — se descuenta de este saldo en el momento en que se genera. Consulta exactamente en qué se gastó en Actividad de la cartera, abajo.',
     subAmountUsd: 'Monto (USD)', subRequestTopUp: 'Solicitar recarga',
+    subPayMethodTitle: 'Método de pago', subPayMethodCrypto: 'Cripto', subPayMethodVisa: 'Tarjeta Visa',
+    subPayMethodIranGateway: 'Pasarela de pago de Irán', subPayMethodComingSoon: 'Próximamente',
+    subPayMethodNotAdded: 'Este método de pago aún no se ha agregado.',
     subTopUpNotice: 'Se solicitó una recarga de {amount} — pendiente de confirmación del administrador (facturación manual/de prueba).',
     subTopUpError: 'No se pudo enviar la solicitud de recarga: {error}',
     subTopUpMinTitle: 'Monto demasiado bajo',
@@ -411,6 +430,7 @@ const copy = {
     subTopUpMinOk: 'Entendido',
     subWalletActivityTitle: 'Actividad de la cartera — por qué cambió tu saldo',
     subFilterAll: 'Todo', subFilterUsage: 'Uso de IA', subFilterCredit: 'Recargas y créditos', subNoActivity: 'Aún no hay actividad.',
+    subAiUsageTotal: 'Uso total de IA: {amount}',
     subLedgerAiUsage: 'Uso de IA · {feature}', subLedgerAssistant: 'Asistente', subLedgerTopUp: 'Recarga de cartera', subLedgerManualBilling: 'Facturación manual',
     subLedgerSignupBonus: 'Bono de registro', subLedgerPromoCredit: 'Crédito promocional', subLedgerAdminCredit: 'Crédito del administrador', subLedgerManualAdjustment: 'Ajuste manual',
     subLedgerRefundReversal: 'Reversión de reembolso', subLedgerAdminDebit: 'Débito del administrador', subLedgerTopUpRefunded: 'Recarga reembolsada',
@@ -1305,8 +1325,18 @@ function humanizeSlug(slug) {
   return String(slug || '').split(/[-_]/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 const labelRow = { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)' };
-const PLAN_LABEL_KEY = { free: 'subPlanFree', plus: 'subPlanPlus', personalized: 'subPlanPersonalized' };
-function planLabel(lang, planId) { return planId ? tr(lang, PLAN_LABEL_KEY[planId] || planId) : ''; }
+const PLAN_LABEL_KEY = { free: 'subPlanFree', plus: 'subPlanPlus', pro: 'subPlanPro', personalized: 'subPlanPersonalized' };
+// An admin-set displayName (real-money subscription rollout - PATCH /api/admin/commercial/
+// plans/:plan) always wins over the localized default when present; `catalog` is the SAME
+// GET /api/sync/subscriptions/catalog response every caller here already fetches, never a second
+// name source. Falls back to the pre-existing localized label exactly as before when `catalog` is
+// omitted (a call site not yet passing it) or carries no override for this plan - fully backward
+// compatible.
+function planLabel(lang, planId, catalog) {
+  if (!planId) return '';
+  const override = catalog && catalog[planId] && catalog[planId].displayName;
+  return override || tr(lang, PLAN_LABEL_KEY[planId] || planId);
+}
 
 // Wallet-affecting actions in this tab dispatch this so the header's own HONOUR metric
 // (navrya-src/character-app.jsx's useWalletBalance()) refetches without a full page reload -
@@ -1349,7 +1379,7 @@ function ledgerEntryDisplay(lang, entry) {
   return { isCredit, title, subtitle, impact, amountLabel: (isCredit ? '+' : '-') + fmtMicroUsd(Math.abs(netMicroUsd)) };
 }
 
-const PLAN_ORDER = ['free', 'plus', 'personalized'];
+const PLAN_ORDER = ['free', 'plus', 'pro', 'personalized'];
 // [pluralKey, singularKey, unlimitedKey] per limit - matches this app's existing One/Many
 // pluralization convention (e.g. public/pages/shared/ai-i18n.js's aiAsstConversationsOne/Many).
 const LIMIT_KEYS = {
@@ -1370,10 +1400,15 @@ function planFeatureLines(lang, planConfig) {
     lines.push(val === null || val === undefined ? tr(lang, unlimitedKey) : tr(lang, val === 1 ? oneKey : manyKey, { n: val }));
   });
   if (planConfig.features && planConfig.features.aiPanelBuilder) lines.push(tr(lang, 'subFeatAiPanelBuilder'));
+  if (planConfig.features && planConfig.features.premiumModels) lines.push(tr(lang, 'subFeatPremiumModels'));
+  if (planConfig.features && planConfig.features.byok) lines.push(tr(lang, 'subFeatByok'));
+  // Real-money subscription rollout - shown only when the plan actually carries a discount, so
+  // Free (fixed at 0, never admin-editable) never gets a hollow "0% off" line.
+  if (planConfig.tokenDiscountPercent) lines.push(tr(lang, 'subFeatTokenDiscount', { percent: planConfig.tokenDiscountPercent }));
   return lines;
 }
 
-function PlanHero({ lang, plan, subscription, onToggleCancel }) {
+function PlanHero({ lang, plan, subscription, catalog, onToggleCancel }) {
   const [wallet, setWallet] = React.useState(null);
   const [storage, setStorage] = React.useState(null);
   React.useEffect(() => {
@@ -1395,7 +1430,7 @@ function PlanHero({ lang, plan, subscription, onToggleCancel }) {
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', boxShadow: '0 0 8px rgba(46,204,113,.6)' }}></span>
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--success)' }}>{tr(lang, 'subActiveStatus')}</span>
               </div>
-              <h2 style={{ margin: '3px 0 0', fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--parchment)' }}>{tr(lang, 'subPlanSuffix', { plan: planLabel(lang, plan) })}</h2>
+              <h2 style={{ margin: '3px 0 0', fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--parchment)' }}>{tr(lang, 'subPlanSuffix', { plan: planLabel(lang, plan, catalog) })}</h2>
             </div>
           </div>
           {subscription ? (
@@ -1448,9 +1483,9 @@ function PlanHero({ lang, plan, subscription, onToggleCancel }) {
   );
 }
 
-function UpgradeModal({ lang, planId, price, onClose, onConfirm }) {
+function UpgradeModal({ lang, planId, price, catalog, onClose, onConfirm }) {
   return (
-    <Modal open title={tr(lang, 'subUpgradeModalTitle', { plan: planLabel(lang, planId) })} icon="subscription" onClose={onClose} width={440}
+    <Modal open title={tr(lang, 'subUpgradeModalTitle', { plan: planLabel(lang, planId, catalog) })} icon="subscription" onClose={onClose} width={440}
       footer={(
         <>
           <span style={{ flex: 1 }} />
@@ -1489,7 +1524,7 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
                 <div style={{ alignSelf: 'center', padding: '4px 14px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>{tr(lang, 'subCurrentPlan')}</div>
               )}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(lang, planId)}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(lang, planId, catalog)}</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 7 }}>
                   <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {tr(lang, cfg.price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth')}</span>
@@ -1511,7 +1546,7 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
               ) : isPast ? (
                 <div style={{ fontSize: 11.5, color: 'var(--text-disabled)', textAlign: 'center', paddingTop: 8, borderTop: '1px solid var(--divider-gold)' }}>{tr(lang, 'subPreviousPlan')}</div>
               ) : (
-                <Button variant="primary" size="sm" style={{ justifyContent: 'center' }} onClick={() => onUpgrade(planId)}>{tr(lang, 'subUpgradeTo', { plan: planLabel(lang, planId) })}</Button>
+                <Button variant="primary" size="sm" style={{ justifyContent: 'center' }} onClick={() => onUpgrade(planId)}>{tr(lang, 'subUpgradeTo', { plan: planLabel(lang, planId, catalog) })}</Button>
               )}
             </Panel>
           );
@@ -1539,12 +1574,55 @@ function TopUpMinimumModal({ lang, minimumTopUpUsd, onClose }) {
   );
 }
 
+// Payment-method picker, shared by WalletCard's top-up flow and SubscriptionTab's upgrade flow -
+// never two separate pickers. Only "crypto" actually proceeds (into the existing, already-real BSC
+// invoice flow via `onProceed`) - Visa and the Iran gateway have no implementation yet, so picking
+// either shows an honest "not added yet" notice in place, exactly per the explicit instruction to
+// never claim an unbuilt path works. The Iran gateway option itself is only ever rendered for
+// `lang === 'fa'` (never shown to a non-Persian user, not merely disabled for them).
+function PaymentMethodModal({ lang, onProceed, onClose }) {
+  const [notAdded, setNotAdded] = React.useState(false);
+  const methods = [
+    { id: 'crypto', icon: 'wallet', label: tr(lang, 'subPayMethodCrypto'), implemented: true },
+    { id: 'visa', icon: 'credit-card', label: tr(lang, 'subPayMethodVisa'), implemented: false },
+    ...(lang === 'fa' ? [{ id: 'iran-gateway', icon: 'landmark', label: tr(lang, 'subPayMethodIranGateway'), implemented: false }] : [])
+  ];
+  return (
+    <Modal open title={tr(lang, 'subPayMethodTitle')} icon="wallet" onClose={onClose} width={420}
+      footer={(<><span style={{ flex: 1 }} /><Button variant="secondary" onClick={onClose}>{tr(lang, 'subCancel')}</Button></>)}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {methods.map((method) => (
+          <button
+            key={method.id} type="button"
+            onClick={() => { if (method.implemented) onProceed(method.id); else setNotAdded(true); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, height: 52, padding: '0 16px', borderRadius: 8, cursor: 'pointer',
+              border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)', color: 'var(--text-primary)', font: 'var(--type-body)', textAlign: 'start', width: '100%'
+            }}
+          >
+            <Icon name={method.icon} size={18} />
+            <span style={{ flex: 1 }}>{method.label}</span>
+            {!method.implemented && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'subPayMethodComingSoon')}</span>}
+          </button>
+        ))}
+        {notAdded && <Notice tone="accent" icon="status">{tr(lang, 'subPayMethodNotAdded')}</Notice>}
+      </div>
+    </Modal>
+  );
+}
+
 function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
   const [wallet, setWallet] = React.useState(null);
   const [amount, setAmount] = React.useState('10');
+  // Payment-method picker (task: crypto/Visa/Iran gateway) gates the real request - opened by the
+  // button below, only actually calling the network request once "crypto" (the one implemented
+  // rail) is chosen.
+  const [showPaymentMethod, setShowPaymentMethod] = React.useState(false);
   function reload() { fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {}); }
   React.useEffect(reload, []);
   function requestTopUp() {
+    setShowPaymentMethod(false);
     const amountUsd = Number(amount) || 0;
     fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd }) })
       .then((r) => r.json().then((body) => {
@@ -1582,16 +1660,19 @@ function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
         <div style={{ flex: '1 1 280px', minWidth: 260, maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={labelRow}>{tr(lang, 'subAmountUsd')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {[10, 25, 50].map((v) => (
+            {[5, 10, 25, 50].map((v) => (
               <Chip key={v} tone={Number(amount) === v ? 'accent' : 'neutral'} style={{ cursor: 'pointer' }} onClick={() => setAmount(String(v))}>${v}</Chip>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}><TextField value={amount} onChange={setAmount} type="number" /></div>
-            <Button variant="primary" onClick={requestTopUp}>{tr(lang, 'subRequestTopUp')}</Button>
+            <Button variant="primary" onClick={() => setShowPaymentMethod(true)}>{tr(lang, 'subRequestTopUp')}</Button>
           </div>
         </div>
       </div>
+      {showPaymentMethod && (
+        <PaymentMethodModal lang={lang} onProceed={requestTopUp} onClose={() => setShowPaymentMethod(false)} />
+      )}
     </Panel>
   );
 }
@@ -1620,9 +1701,16 @@ function WalletActivityCard({ lang }) {
     const net = (e.cashDeltaMicroUsd || 0) + (e.promoDeltaMicroUsd || 0);
     return filter === 'usage' ? net < 0 : net > 0;
   });
+  // Running total of AI consumption (task requirement) - every AI_SETTLEMENT row's real,
+  // already-discounted net spend, summed lifetime over whatever this ledger fetch returned. Never
+  // recomputed from provider cost/markup - this is the exact same number each row already shows,
+  // just added up, so it can never drift from what the rows themselves display.
+  const aiUsageTotalMicroUsd = entries
+    .filter((e) => e.type === 'AI_SETTLEMENT')
+    .reduce((sum, e) => sum + Math.abs((e.cashDeltaMicroUsd || 0) + (e.promoDeltaMicroUsd || 0)), 0);
   return (
     <Panel variant="base" ornament padding="22px 24px">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 4 }}>
         <div style={labelRow}>{tr(lang, 'subWalletActivityTitle')}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           {ledgerFilters(lang).map((f) => (
@@ -1630,6 +1718,11 @@ function WalletActivityCard({ lang }) {
           ))}
         </div>
       </div>
+      {aiUsageTotalMicroUsd > 0 && (
+        <div dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+          {tr(lang, 'subAiUsageTotal', { amount: fmtMicroUsd(aiUsageTotalMicroUsd) })}
+        </div>
+      )}
       {filtered.length === 0 ? (
         <div style={{ fontSize: 12.5, color: 'var(--text-dim)', padding: '12px 4px' }}>{tr(lang, 'subNoActivity')}</div>
       ) : (
@@ -1770,6 +1863,9 @@ function SubscriptionTab({ lang }) {
   const [catalog, setCatalog] = React.useState(null);
   const [notice, setNotice] = React.useState('');
   const [upgradeTarget, setUpgradeTarget] = React.useState(null);
+  // true once the user has confirmed the price on UpgradeModal - shows the payment-method picker
+  // next, and only actually submits the upgrade request once "crypto" is chosen there.
+  const [upgradeAwaitingPayment, setUpgradeAwaitingPayment] = React.useState(false);
   // Real BSC crypto invoice (task A) - set whenever a create-request response carries an
   // invoiceId (BILLING_PROVIDER=bsc_crypto is active); stays null under the Manual provider,
   // where the plain pending-admin-confirmation notice above is exactly correct as-is.
@@ -1788,12 +1884,13 @@ function SubscriptionTab({ lang }) {
   }, []);
 
   function requestUpgrade(planId) {
+    setUpgradeAwaitingPayment(false);
     fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
       .then((result) => {
         setUpgradeTarget(null);
         if (result.invoiceId) setInvoiceId(result.invoiceId);
-        else setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId) }));
+        else setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId, catalog) }));
         notifyWalletChanged();
       })
       .catch((error) => setNotice(tr(lang, 'subUpgradeError', { error: error.message })));
@@ -1810,19 +1907,27 @@ function SubscriptionTab({ lang }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
-      <PlanHero lang={lang} plan={subData.plan} subscription={subData.subscription} onToggleCancel={toggleCancel} />
+      <PlanHero lang={lang} plan={subData.plan} subscription={subData.subscription} catalog={catalog} onToggleCancel={toggleCancel} />
       <PlanComparisonGrid lang={lang} plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
       <WalletCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} onBelowMinimum={setBelowMinimumUsd} />
       <WalletActivityCard lang={lang} />
       <StorageCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
       <BillingHistoryCard lang={lang} />
-      {upgradeTarget && (
+      {upgradeTarget && !upgradeAwaitingPayment && (
         <UpgradeModal
           lang={lang}
           planId={upgradeTarget}
           price={catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price}
+          catalog={catalog}
           onClose={() => setUpgradeTarget(null)}
-          onConfirm={() => requestUpgrade(upgradeTarget)}
+          onConfirm={() => setUpgradeAwaitingPayment(true)}
+        />
+      )}
+      {upgradeTarget && upgradeAwaitingPayment && (
+        <PaymentMethodModal
+          lang={lang}
+          onProceed={() => requestUpgrade(upgradeTarget)}
+          onClose={() => { setUpgradeAwaitingPayment(false); setUpgradeTarget(null); }}
         />
       )}
       {invoiceId && (

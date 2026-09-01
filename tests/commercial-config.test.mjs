@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { getEffectiveCommercialConfig, invalidateCommercialConfigCache, getPlanConfig, retailMultiplierFor } from '../server/commercial/commercial-config.mjs';
-import { PLAN_DEFAULTS, WALLET_DEFAULTS } from '../server/commercial/commercial-defaults.mjs';
+import { PLAN_DEFAULTS, WALLET_DEFAULTS, PLAN_NAMES } from '../server/commercial/commercial-defaults.mjs';
 
 test('defaults match spec section 77 with zero overrides', async () => {
   const repo = createMemoryRepo();
@@ -51,4 +51,38 @@ test('the in-process cache is honored until invalidated', async () => {
   invalidateCommercialConfigCache();
   const fresh = await getEffectiveCommercialConfig(repo);
   assert.equal(fresh.wallet.signupPromoRetailUsd, 5);
+});
+
+// Real-money subscription rollout: a 4th plan ('pro'), a per-plan tokenDiscountPercent, and an
+// optional admin-set displayName - all merged through this exact same buildEffective() mechanism,
+// no new merge path.
+test('the new pro plan exists with the expected defaults, sitting between plus and personalized', async () => {
+  const repo = createMemoryRepo();
+  invalidateCommercialConfigCache();
+  const config = await getEffectiveCommercialConfig(repo);
+  assert.ok(PLAN_NAMES.includes('pro'), 'pro must be a real plan name');
+  assert.ok(config.plans.pro, 'pro must resolve to a real effective config');
+  assert.equal(config.plans.pro.features.premiumModels, true);
+  assert.equal(config.plans.plus.features.premiumModels, false, 'Plus must not unlock premium models by default - only pro/personalized do');
+  assert.equal(config.plans.free.tokenDiscountPercent, 0, 'Free must never carry a discount');
+});
+
+test('an admin can set a token discount for plus/pro/personalized, but Free silently ignores it (same rule as price)', async () => {
+  const repo = createMemoryRepo();
+  invalidateCommercialConfigCache();
+  await repo.commercialConfig.publish('plan:pro:tokenDiscountPercent', { percent: 20 }, { updatedBy: 'admin-1' });
+  invalidateCommercialConfigCache();
+  const config = await getEffectiveCommercialConfig(repo);
+  assert.equal(config.plans.pro.tokenDiscountPercent, 20);
+  assert.equal(config.plans.free.tokenDiscountPercent, 0, 'Free is fixed at 0 regardless of any override key someone might publish for it');
+});
+
+test('an admin can rename any plan (including Free) via displayName; a blank/absent override falls back to null (client uses its own localized default)', async () => {
+  const repo = createMemoryRepo();
+  invalidateCommercialConfigCache();
+  assert.equal((await getEffectiveCommercialConfig(repo)).plans.free.displayName, null);
+  await repo.commercialConfig.publish('plan:free:displayName', { name: 'Starter' }, { updatedBy: 'admin-1' });
+  invalidateCommercialConfigCache();
+  const config = await getEffectiveCommercialConfig(repo);
+  assert.equal(config.plans.free.displayName, 'Starter');
 });

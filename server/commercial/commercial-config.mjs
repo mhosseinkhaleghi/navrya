@@ -44,12 +44,16 @@ function buildEffective(overrideRows) {
   overrideRows.forEach((row) => {
     overridesByKey[row.configKey] = row;
     const value = row.value || {};
-    const planLimitsMatch = /^plan:(free|plus|personalized):limits$/.exec(row.configKey);
-    const planStorageMatch = /^plan:(free|plus|personalized):storageBytes$/.exec(row.configKey);
-    const planFeaturesMatch = /^plan:(free|plus|personalized):features$/.exec(row.configKey);
+    const planLimitsMatch = /^plan:(free|plus|pro|personalized):limits$/.exec(row.configKey);
+    const planStorageMatch = /^plan:(free|plus|pro|personalized):storageBytes$/.exec(row.configKey);
+    const planFeaturesMatch = /^plan:(free|plus|pro|personalized):features$/.exec(row.configKey);
     // Slice 2 - Free's price is never admin-editable (a $0 plan has no price to change), so this
     // match deliberately excludes it even though the regex above allows it for limits/features.
-    const planPriceMatch = /^plan:(plus|personalized):price$/.exec(row.configKey);
+    const planPriceMatch = /^plan:(plus|pro|personalized):price$/.exec(row.configKey);
+    // Same "free is fixed, never admin-editable" rule as price - a $0 tier has nothing to discount.
+    const planDiscountMatch = /^plan:(plus|pro|personalized):tokenDiscountPercent$/.exec(row.configKey);
+    // displayName IS allowed for free too (spec: an admin can rename every plan, including Free).
+    const planDisplayNameMatch = /^plan:(free|plus|pro|personalized):displayName$/.exec(row.configKey);
     if (planLimitsMatch) {
       const plan = plans[planLimitsMatch[1]];
       Object.keys(plan.limits).forEach((key) => {
@@ -66,6 +70,10 @@ function buildEffective(overrideRows) {
       const plan = plans[planPriceMatch[1]];
       if (Number.isFinite(value.amountUsd) && value.amountUsd >= 0) plan.price.amountUsd = value.amountUsd;
       if (value.billingInterval === 'month' || value.billingInterval === 'year') plan.price.billingInterval = value.billingInterval;
+    } else if (planDiscountMatch) {
+      if (Number.isFinite(value.percent) && value.percent >= 0 && value.percent <= 100) plans[planDiscountMatch[1]].tokenDiscountPercent = value.percent;
+    } else if (planDisplayNameMatch) {
+      plans[planDisplayNameMatch[1]].displayName = typeof value.name === 'string' && value.name.trim() ? value.name.trim() : null;
     } else if (row.configKey === 'wallet:markupPercent') {
       if (Number.isFinite(value.percent) && value.percent >= 0) wallet.markupPercent = value.percent;
     } else if (row.configKey === 'wallet:minimumTopUpUsd') {

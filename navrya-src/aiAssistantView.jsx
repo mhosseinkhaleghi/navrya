@@ -161,6 +161,24 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     fetch('/api/users/me/ai-usage-by-model').then((r) => r.json()).then((d) => setRealCostByModel(d.byModel || [])).catch(() => setRealCostByModel([]));
   }, []);
 
+  // Real-money subscription rollout: the CURRENT plan's feature flags (byok/premiumModels),
+  // reusing the exact same two endpoints SubscriptionTab already calls (accountProfileView.jsx) -
+  // never a third/parallel entitlements fetch. `planFeatures` defaults to an all-false shape so a
+  // slow/failed fetch fails CLOSED (locked), never open, on both gates below.
+  const [planFeatures, setPlanFeatures] = React.useState({ byok: false, premiumModels: false });
+  // 'model' | 'byok' | null - which lock the user just bumped into, so the inline notice below
+  // shows the right copy; null hides it entirely.
+  const [upgradeNotice, setUpgradeNotice] = React.useState(null);
+  React.useEffect(() => {
+    Promise.all([
+      fetch('/api/sync/subscriptions').then((r) => r.json()),
+      fetch('/api/sync/subscriptions/catalog').then((r) => r.json())
+    ]).then(([sub, cat]) => {
+      const plan = cat.plans && cat.plans[sub.plan];
+      if (plan) setPlanFeatures({ byok: !!plan.features.byok, premiumModels: !!plan.features.premiumModels });
+    }).catch(() => {});
+  }, []);
+
   // Every field this screen reads (key, model choice, voice, remember, budget) lives in
   // ai-settings-store.js, not component state - both stores dispatch a change event on every
   // write (including our own), so this listener is the single re-render trigger for the whole
@@ -374,6 +392,14 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
 
       {aiTab === 'engine' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {!!upgradeNotice && (
+            <Notice tone="accent" icon="crown">
+              {i18n.t(upgradeNotice === 'model' ? 'aiAsstPremiumModelLockedNotice' : 'aiAsstByokLockedNotice')}{' '}
+              <a href="#account/profile/subscriptions" onClick={() => setUpgradeNotice(null)} style={{ color: 'var(--char-accent)', textDecoration: 'underline', cursor: 'pointer' }}>
+                {i18n.t('aiAsstOpenSubscription')}
+              </a>
+            </Notice>
+          )}
           <Panel variant="prestige" ornament texture padding="18px 20px">
             <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
               <span style={{ width: 64, height: 64, flex: 'none', borderRadius: 999, border: '1px solid var(--border-gold)', background: 'linear-gradient(180deg,rgba(17,27,28,.94),rgba(7,11,15,.96))', boxShadow: 'var(--shadow-raised)', display: 'grid', placeItems: 'center' }}>
@@ -399,9 +425,16 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
                     const tier = entry && entry.modelTiers && entry.modelTiers[m];
                     const tierKey = tier && 'aiAsstModelTier' + tier.charAt(0).toUpperCase() + tier.slice(1);
                     const tierText = tierKey ? i18n.t(tierKey) : '';
-                    return { value: m, label: tierText ? label + ' — ' + tierText : label };
+                    const isPremiumLocked = entry && entry.premiumModels && entry.premiumModels.indexOf(m) > -1 && !planFeatures.premiumModels;
+                    const suffix = isPremiumLocked ? i18n.t('aiAsstModelNeedsSubscription') : tierText;
+                    return { value: m, label: suffix ? label + ' — ' + suffix : label };
                   })}
-                  onChange={(v) => settingsStore.saveSettings({ modelByProvider: { [model]: v } })} icon="sparkle" width={340}
+                  onChange={(v) => {
+                    const isPremiumLocked = entry && entry.premiumModels && entry.premiumModels.indexOf(v) > -1 && !planFeatures.premiumModels;
+                    if (isPremiumLocked) { setUpgradeNotice('model'); return; }
+                    settingsStore.saveSettings({ modelByProvider: { [model]: v } });
+                  }}
+                  icon="sparkle" width={340}
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginInlineStart: 8 }}>
@@ -543,7 +576,23 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
         </div>
       )}
 
-      {aiTab === 'keys' && (
+      {aiTab === 'keys' && !planFeatures.byok && (
+        // "Do NOT delete the section - lock it with an upgrade message" (task requirement): the
+        // BYOK tab itself stays reachable (EngineTabStrip's own tab strip is unaffected) but its
+        // content is replaced entirely by this locked state, never a disabled-but-visible form
+        // (a locked TextField would still let a determined user paste/submit via devtools; not
+        // rendering the real inputs at all is the only real lock).
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 860 }}>
+          <Panel variant="base" padding="28px 24px" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, textAlign: 'center' }}>
+            <Icon name="lock" size={28} />
+            <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)' }}>{i18n.t('aiAsstByokLockedTitle')}</span>
+            <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)', maxWidth: 480 }}>{i18n.t('aiAsstByokLockedBody')}</p>
+            <Button variant="primary" icon="crown" onClick={() => { location.hash = '#account/profile/subscriptions'; }}>{i18n.t('aiAsstOpenSubscription')}</Button>
+          </Panel>
+        </div>
+      )}
+
+      {aiTab === 'keys' && planFeatures.byok && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 860 }}>
           <Notice tone="accent" icon="key">{i18n.t('aiAsstKeyNotice')}</Notice>
           <Panel variant="base" padding="16px 20px 18px">

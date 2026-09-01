@@ -75,6 +75,51 @@ test('reserve -> settle spends promo before paid and records the real markup/ret
   assert.equal(before.paidBalanceMicroUsd, after.paidBalanceMicroUsd);
 });
 
+// Real-money subscription rollout: a subscriber's plan-level tokenDiscountPercent (Pro's default
+// is 20%) reduces the RETAIL charge at settlement time - never the provider's real cost, never
+// the token counts themselves, and never the reservation's own pre-call estimate (which stays a
+// conservative hold, true-up always happens here at settle).
+test('settleAiCall applies the active plan\'s token discount on top of the standard markup, and it is visible on the ledger entry', async () => {
+  const repo = createMemoryRepo();
+  await seedPricing(repo);
+  const user = await repo.users.create({ displayName: 'Trader' });
+  await repo.wallet.grant(user.id, { type: 'ADMIN_CREDIT', cashDeltaMicroUsd: toMicroUsd(10) });
+  await repo.subscriptions.create({
+    userId: user.id, planId: 'pro', provider: 'manual', status: 'active',
+    currentPeriodStart: new Date().toISOString(), currentPeriodEnd: new Date(Date.now() + 30 * 86400000).toISOString(),
+    cancelAtPeriodEnd: false, priceAmountMicroUsd: toMicroUsd(14.99), currency: 'usd'
+  });
+
+  const gate = await reserveForAiCall(repo, { userId: user.id, feature: 'aiChat', provider: 'openai', model: 'gpt', payload: { input: 'hi' } });
+  assert.equal(gate.ok, true);
+  const settled = await settleAiCall(repo, { reservationId: gate.reservationId, provider: 'openai', model: 'gpt', feature: 'aiChat', usage: { promptTokens: 1000, completionTokens: 1000 } });
+  assert.equal(settled.ok, true);
+  // Same provider cost/markup as the undiscounted test above ($0.09 -> $0.27 retail), then Pro's
+  // 20% discount: $0.27 * 0.8 = $0.216.
+  assert.equal(settled.ledgerEntry.providerCostMicroUsd, toMicroUsd(0.09), 'the real provider cost itself is never discounted');
+  assert.equal(settled.ledgerEntry.retailChargeMicroUsd, toMicroUsd(0.216));
+  assert.equal(settled.ledgerEntry.tokenDiscountPercent, 20, 'the discount actually applied must be visible on the ledger entry for admin/user transparency');
+});
+
+test('once the discounted subscription lapses (back to Free), a later call for the same user is charged full price again', async () => {
+  const repo = createMemoryRepo();
+  await seedPricing(repo);
+  const user = await repo.users.create({ displayName: 'Trader' });
+  await repo.wallet.grant(user.id, { type: 'ADMIN_CREDIT', cashDeltaMicroUsd: toMicroUsd(10) });
+  await repo.subscriptions.create({
+    userId: user.id, planId: 'pro', provider: 'manual', status: 'active',
+    // Already expired - entitlement-resolver.mjs re-checks currentPeriodEnd > now() on every read,
+    // so this must no longer count as "active" without any extra migration/expire step.
+    currentPeriodStart: new Date(Date.now() - 60 * 86400000).toISOString(), currentPeriodEnd: new Date(Date.now() - 30 * 86400000).toISOString(),
+    cancelAtPeriodEnd: false, priceAmountMicroUsd: toMicroUsd(14.99), currency: 'usd'
+  });
+
+  const gate = await reserveForAiCall(repo, { userId: user.id, feature: 'aiChat', provider: 'openai', model: 'gpt', payload: { input: 'hi' } });
+  const settled = await settleAiCall(repo, { reservationId: gate.reservationId, provider: 'openai', model: 'gpt', feature: 'aiChat', usage: { promptTokens: 1000, completionTokens: 1000 } });
+  assert.equal(settled.ledgerEntry.retailChargeMicroUsd, toMicroUsd(0.27), 'a lapsed subscription must never keep discounting - full retail applies exactly like a plain Free user');
+  assert.equal(settled.ledgerEntry.tokenDiscountPercent, 0);
+});
+
 // Production incident: Scenario Map's image generation (gpt-image-1) failed closed with
 // PROVIDER_PRICING_NOT_CONFIGURED on every attempt - the wallet pricing system was exclusively
 // token-based (prompt/completion price-per-1k), but OpenAI bills image generation per call, and

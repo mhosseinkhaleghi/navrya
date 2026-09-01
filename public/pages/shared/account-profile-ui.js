@@ -236,9 +236,26 @@
     // other NAVRYA screen (character-app.jsx registers it) - falls through to the vanilla DOM
     // page below untouched when the hook isn't present (e.g. a page that hasn't loaded the
     // NAVRYA bundle).
+    //
+    // Reported bug: entering this page sometimes showed a completely black/empty content area
+    // with nothing visible - no error text, nothing in the DOM. React's own AccountProfileView
+    // has a ProfileBoundary error boundary (accountProfileView.jsx) that DOES render a readable
+    // stack trace on a render-time crash, so a truly blank screen means the failure happened
+    // BEFORE React ever got to run - i.e. right here, in this un-guarded call (or in
+    // layer.show()'s own DOM swap) - which had no try/catch at all, so any throw here was
+    // silently swallowed by the browser's own event-loop error handling with nothing ever shown.
+    // This guard can never hide a REAL React render error (ProfileBoundary still owns that) - it
+    // only catches a failure in getting the page mounted/shown in the first place, and now shows
+    // a real, readable message instead of nothing.
     if (window.TradeJournalNavryaAccountProfile && window.TradeJournalNavryaAccountProfile.render) {
-      var reactPage = window.TradeJournalNavryaAccountProfile.render(state.tab);
-      layer.show(reactPage, 'account-profile');
+      try {
+        var reactPage = window.TradeJournalNavryaAccountProfile.render(state.tab);
+        layer.show(reactPage, 'account-profile');
+      } catch (error) {
+        var errorPage = el('section', 'panel-page account-profile-page');
+        errorPage.append(el('p', 'error-text', i18n.t('validationFailed') + (error && error.message ? ' (' + error.message + ')' : '')));
+        layer.show(errorPage, 'account-profile');
+      }
       return;
     }
     var page = el('section', 'panel-page account-profile-page');

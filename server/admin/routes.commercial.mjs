@@ -80,7 +80,7 @@ export function router(repo) {
     }
     if (body.features && typeof body.features === 'object') {
       const features = {};
-      ['wallet', 'ai', 'voice', 'aiPanelBuilder'].forEach((key) => { if (key in body.features) features[key] = Boolean(body.features[key]); });
+      ['wallet', 'ai', 'voice', 'aiPanelBuilder', 'byok', 'premiumModels'].forEach((key) => { if (key in body.features) features[key] = Boolean(body.features[key]); });
       await repo.commercialConfig.publish('plan:' + plan + ':features', features, { updatedBy: req.currentUser.id, changeSummary: 'Updated ' + plan + ' feature flags' });
     }
     // Slice 2 - Free has no price to change (it's fixed at $0, spec section 1), so this block is
@@ -90,6 +90,17 @@ export function router(repo) {
       if (!isNonNegativeNumber(amountUsd)) throw new ApiError(400, 'VALIDATION_FAILED');
       const billingInterval = body.price.billingInterval === 'year' ? 'year' : 'month';
       await repo.commercialConfig.publish('plan:' + plan + ':price', { amountUsd, billingInterval }, { updatedBy: req.currentUser.id, changeSummary: 'Updated ' + plan + ' price' });
+    }
+    // Real-money subscription rollout - same "free is fixed, nothing to discount" rule as price.
+    if ('tokenDiscountPercent' in body && plan !== 'free') {
+      const percent = Number(body.tokenDiscountPercent);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) throw new ApiError(400, 'VALIDATION_FAILED');
+      await repo.commercialConfig.publish('plan:' + plan + ':tokenDiscountPercent', { percent }, { updatedBy: req.currentUser.id, changeSummary: 'Updated ' + plan + ' token discount' });
+    }
+    // displayName IS allowed for Free too - an admin can rename every plan, even the $0 one.
+    if ('displayName' in body) {
+      const name = typeof body.displayName === 'string' ? body.displayName.trim().slice(0, 60) : '';
+      await repo.commercialConfig.publish('plan:' + plan + ':displayName', { name: name || null }, { updatedBy: req.currentUser.id, changeSummary: 'Renamed ' + plan + ' plan' });
     }
 
     invalidateCommercialConfigCache();

@@ -11,18 +11,51 @@
 // spec's own initial defaults. This is a plain new field on the same PLAN_DEFAULTS object, merged
 // through commercial-config.mjs's existing buildEffective() exactly like limits/storageBytes/
 // features already are - no new table, no new merge mechanism.
+//
+// 2026-09-01 additions (real-money subscription rollout):
+// - `tokenDiscountPercent`: a per-plan discount applied to the RETAIL AI charge (never to the
+//   provider's real cost, never to the token counts themselves) at settlement time only - see
+//   wallet-service.mjs's settleAiCall() and server/community/routes.internal.mjs's /usage/record,
+//   the two (and only) places a retail AI charge is ever computed. Free's is fixed at 0 (same
+//   "no admin edit for the $0 tier" rule price already follows) - a lapsed/free user simply gets
+//   no discount, exactly the "reverts to normal once the subscription ends" behavior the task
+//   asked for, for free by reusing entitlement-resolver.mjs's existing real-time plan lookup.
+// - `displayName`: an optional plain-string admin override of the plan's shown name (client falls
+//   back to the localized i18n label when this is null) - lets Admin rename any plan without a
+//   code change/redeploy, never itself localized (an admin-typed name is shown as-is in every
+//   language, the same way a product name usually is).
+// - `features.byok`/`features.premiumModels`: two new plan-gated feature flags. `byok` gates the
+//   "use your own API key" section of the AI Assistant screen; `premiumModels` gates the specific
+//   real, already-existing frontier model ids named in ai-settings-store.js's
+//   PROVIDER_CATALOG[*].premiumModels (GPT-5.6 Sol, Claude Opus 4.1) - never a made-up model name.
+// - The new `pro` plan sits between Plus and Personalized, introduced specifically to carry the
+//   premium-model unlock and a meaningful token discount as an upsell step before Personalized's
+//   full aiPanelBuilder tier. Every field below (price, limits, discount, features) is
+//   admin-editable exactly like the pre-existing three plans - these are starting defaults only.
 export const PLAN_DEFAULTS = {
   free: {
     limits: { patterns: 3, strategies: 3, accounts: 3, sessions: 10, analysisSymbols: 1 },
     storageBytes: 104857600, // 100 MB - see spec section 4, deliberately not the old 10MB value
-    features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false },
-    price: { amountUsd: 0, billingInterval: 'month' }
+    features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false, byok: false, premiumModels: false },
+    price: { amountUsd: 0, billingInterval: 'month' },
+    tokenDiscountPercent: 0,
+    displayName: null
   },
   plus: {
     limits: { patterns: null, strategies: null, accounts: null, sessions: null, analysisSymbols: null },
     storageBytes: 10737418240, // 10 GB
-    features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false },
-    price: { amountUsd: 4.99, billingInterval: 'month' }
+    features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false, byok: true, premiumModels: false },
+    price: { amountUsd: 4.99, billingInterval: 'month' },
+    tokenDiscountPercent: 10,
+    displayName: null
+  },
+  pro: {
+    limits: { patterns: null, strategies: null, accounts: null, sessions: null, analysisSymbols: null },
+    storageBytes: 10737418240,
+    features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false, byok: true, premiumModels: true },
+    price: { amountUsd: 14.99, billingInterval: 'month' },
+    tokenDiscountPercent: 20,
+    displayName: null
   },
   personalized: {
     // Inherits Plus (spec section 9) - expressed here as identical limits/storage rather than a
@@ -30,8 +63,10 @@ export const PLAN_DEFAULTS = {
     // admin without needing to know Personalized "extends" Plus.
     limits: { patterns: null, strategies: null, accounts: null, sessions: null, analysisSymbols: null },
     storageBytes: 10737418240,
-    features: { wallet: true, ai: true, voice: true, aiPanelBuilder: true },
-    price: { amountUsd: 59, billingInterval: 'month' }
+    features: { wallet: true, ai: true, voice: true, aiPanelBuilder: true, byok: true, premiumModels: true },
+    price: { amountUsd: 59, billingInterval: 'month' },
+    tokenDiscountPercent: 25,
+    displayName: null
   }
 };
 
@@ -55,7 +90,7 @@ export const WALLET_DEFAULTS = {
   signupPromoRetailUsd: 0.50
 };
 
-export const PLAN_NAMES = ['free', 'plus', 'personalized'];
+export const PLAN_NAMES = ['free', 'plus', 'pro', 'personalized'];
 export const RESOURCE_TYPES = ['patterns', 'strategies', 'accounts', 'sessions', 'analysisSymbols'];
 
 // Real BSC crypto payment provider configuration (admin-managed - see commercial-config.mjs's

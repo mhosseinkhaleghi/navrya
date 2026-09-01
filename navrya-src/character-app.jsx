@@ -4,6 +4,8 @@ import { Sidebar } from '../public/pages/shared/navrya/components/navigation/Sid
 import { CharacterHeader } from '../public/pages/shared/navrya/components/header/CharacterHeader.jsx';
 import { MarketSessionCard } from '../public/pages/shared/navrya/components/market/MarketSessionCard.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
+import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
+import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { SessionLibrary } from '../public/pages/shared/navrya/components/sessions/SessionLibrary.jsx';
 import { TIMEFRAMES as SESSION_TIMEFRAMES, SESSION_CITIES } from '../public/pages/shared/navrya/components/sessions/NewSessionDialog.jsx';
 import * as sessionEntryCards from './sessionEntryCardsView.jsx';
@@ -96,6 +98,64 @@ function useWalletBalance() {
     };
   }, []);
   return balance;
+}
+
+// Real-money subscription rollout: an attractive, hard-to-miss popup when the wallet is genuinely
+// depleted (balance <= 0) or the active subscription has real payment trouble ('past_due' -
+// server/commercial/subscription-service.mjs's recordPaymentFailure) - never for a plain Free
+// account that simply never upgraded (that is not "ran out of anything"). A fully lapsed/expired
+// subscription is not distinguishable from "never subscribed" from the client's own two existing
+// endpoints (an expired row stops being the "active" subscription entirely, per
+// entitlement-resolver.mjs's own real-time re-check) - this deliberately covers the two signals
+// that ARE real and unambiguous, rather than over-firing for every free user.
+// Dismissal is remembered in localStorage for a cool-down window so this never nags on every
+// single page navigation once the user has already seen and closed it.
+const WALLET_GATE_SNOOZE_MS = 30 * 60 * 1000; // 30 minutes
+const WALLET_GATE_SNOOZE_KEY = 'navrya:wallet-low-balance-snoozed-until';
+function WalletLowBalanceGate({ lang }) {
+  const t = stringsFor(lang);
+  const rtl = isRtl(lang);
+  const [reason, setReason] = React.useState(null); // 'balance' | 'past_due' | null
+  const [dismissed, setDismissed] = React.useState(false);
+  React.useEffect(() => {
+    function check() {
+      try {
+        const snoozedUntil = Number(localStorage.getItem(WALLET_GATE_SNOOZE_KEY)) || 0;
+        if (Date.now() < snoozedUntil) return;
+      } catch (_) { /* private-browsing/storage-disabled - never block the check over this */ }
+      Promise.all([
+        fetch('/api/sync/wallet').then((r) => r.json()).catch(() => null),
+        fetch('/api/sync/subscriptions').then((r) => r.json()).catch(() => null)
+      ]).then(([wallet, sub]) => {
+        if (wallet && wallet.totalBalanceMicroUsd <= 0) setReason('balance');
+        else if (sub && sub.subscription && sub.subscription.status === 'past_due') setReason('past_due');
+      });
+    }
+    check();
+    window.addEventListener('navrya:wallet-changed', check);
+    return () => window.removeEventListener('navrya:wallet-changed', check);
+  }, []);
+  function dismiss() {
+    try { localStorage.setItem(WALLET_GATE_SNOOZE_KEY, String(Date.now() + WALLET_GATE_SNOOZE_MS)); } catch (_) { /* best-effort only */ }
+    setDismissed(true);
+  }
+  if (!reason || dismissed) return null;
+  return (
+    <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
+      <Modal
+        open title={t.walletLowBalanceTitle} icon="wallet" onClose={dismiss} width={420}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="secondary" onClick={dismiss}>{t.walletLowBalanceDismiss}</Button>
+            <Button variant="primary" icon="crown" onClick={() => { dismiss(); location.hash = '#account/profile/subscriptions'; }}>{t.walletLowBalanceCta}</Button>
+          </>
+        )}
+      >
+        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-primary)', lineHeight: 1.6 }}>{t.walletLowBalanceBody}</p>
+      </Modal>
+    </div>
+  );
 }
 
 function useMetrics(sessions, t) {
@@ -2587,6 +2647,16 @@ export function mountCharacterApp(character) {
       if (analysisOnboardingRoot && window.TradeJournalAnalysisProfileStore && !window.TradeJournalAnalysisProfileStore.listSync().length) {
         createRoot(analysisOnboardingRoot).render(<AnalysisProfileFirstRunGate lang={String(document.documentElement.lang || 'en').toLowerCase()} />);
       }
+
+      // Real-money subscription rollout: a page-level popup when the wallet is depleted or the
+      // active subscription has hit payment trouble - no matching DOM anchor exists in any
+      // character page's static HTML shell (unlike the onboarding root above), so this creates its
+      // own container and appends it to <body>, the same "mount a fresh div, no template change
+      // needed" approach renderAccountProfile()/openCalculator() and friends already use for
+      // page-level overlays elsewhere in this app.
+      const walletGateRoot = document.createElement('div');
+      document.body.appendChild(walletGateRoot);
+      createRoot(walletGateRoot).render(<WalletLowBalanceGate lang={String(document.documentElement.lang || 'en').toLowerCase()} />);
     });
 
     // The global assistant (replaces the retired global-ai-dock.js floating launcher) - always

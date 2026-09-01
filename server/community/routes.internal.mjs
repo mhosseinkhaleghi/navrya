@@ -198,9 +198,17 @@ export function router(repo) {
     }) : 0;
     let retailChargeMicroUsd = 0;
     let linkedLedgerIdempotencyKey = null;
+    let tokenDiscountPercent = null;
     if (body.billed) {
       const { retailMultiplier } = await resolveRetailMultiplier(repo, { feature: body.feature, provider: body.provider, model: body.model });
-      retailChargeMicroUsd = Math.round(providerCostMicroUsd * retailMultiplier);
+      const fullRetailChargeMicroUsd = Math.round(providerCostMicroUsd * retailMultiplier);
+      // Same per-plan discount settleAiCall() applies (wallet-service.mjs) - kept in sync here so
+      // this authoritative-but-unbilled-mode report never shows a bigger number than the real
+      // charge would have been once wallet enforcement is on.
+      tokenDiscountPercent = await resolveUserEntitlements(body.userId, repo).then((e) => e.tokenDiscountPercent || 0);
+      retailChargeMicroUsd = tokenDiscountPercent
+        ? Math.round(fullRetailChargeMicroUsd * (1 - tokenDiscountPercent / 100))
+        : fullRetailChargeMicroUsd;
       if (body.reservationId) linkedLedgerIdempotencyKey = 'ai-settle:' + body.reservationId;
     }
     const record = await repo.usageEvents.create({
@@ -209,7 +217,7 @@ export function router(repo) {
       cachedInputTokens: usage.cachedInputTokens, cacheWriteInputTokens: usage.cacheWriteInputTokens, reasoningTokens: usage.reasoningTokens,
       usageRaw: usage.raw || null,
       source: body.source || 'gateway-dispatch', origin: 'gateway',
-      providerCostMicroUsd, retailChargeMicroUsd, linkedLedgerIdempotencyKey
+      providerCostMicroUsd, retailChargeMicroUsd, tokenDiscountPercent, linkedLedgerIdempotencyKey
     });
     res.status(201).json(record);
   }));

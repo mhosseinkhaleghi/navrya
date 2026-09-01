@@ -83,7 +83,7 @@ test('WalletCard routes WALLET_TOPUP_BELOW_MINIMUM to a dedicated onBelowMinimum
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const fnIdx = src.indexOf('function WalletCard(');
   assert.ok(fnIdx > -1, 'WalletCard must exist');
-  const fn = src.slice(fnIdx, fnIdx + 1800);
+  const fn = src.slice(fnIdx, fnIdx + 2200);
   assert.match(fn, /error\.details\.error === 'WALLET_TOPUP_BELOW_MINIMUM'/);
   assert.match(fn, /onBelowMinimum\(error\.details\.minimumTopUpUsd\)/);
 });

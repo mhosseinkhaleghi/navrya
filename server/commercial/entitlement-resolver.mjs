@@ -20,6 +20,11 @@ export async function resolveUserEntitlements(userId, repo) {
     plan,
     limits: { ...config.limits },
     features: { ...config.features },
-    storageBytes: config.storageBytes
+    storageBytes: config.storageBytes,
+    // Real-money subscription rollout: the per-plan AI token discount (wallet-service.mjs's
+    // settleAiCall() and routes.internal.mjs's /usage/record both read this, never a cached/
+    // stale copy - resolveUserEntitlements() itself is never cached beyond commercial-config.mjs's
+    // own short TTL, so a subscription lapsing back to Free reverts this to 0 on the very next call).
+    tokenDiscountPercent: config.tokenDiscountPercent || 0
   };
 }

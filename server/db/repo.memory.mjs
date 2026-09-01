@@ -446,7 +446,7 @@ export function createMemoryRepo() {
     // Mirrors repo.pg.mjs's usageEvents.create() exactly - see that method's own comment for why
     // model/feature/cost/origin/linkedLedgerIdempotencyKey are all optional and additive.
     async create({
-      userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey,
+      userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, tokenDiscountPercent, origin, linkedLedgerIdempotencyKey,
       cachedInputTokens, cacheWriteInputTokens, reasoningTokens, usageRaw
     }) {
       const record = {
@@ -454,6 +454,7 @@ export function createMemoryRepo() {
         promptTokens: promptTokens ?? null, completionTokens: completionTokens ?? null, totalTokens: totalTokens ?? null,
         source: String(source || 'unknown'), model: model || null, feature: feature || null,
         providerCostMicroUsd: providerCostMicroUsd ?? null, retailChargeMicroUsd: retailChargeMicroUsd ?? null,
+        tokenDiscountPercent: tokenDiscountPercent ?? null,
         origin: origin || 'client', linkedLedgerIdempotencyKey: linkedLedgerIdempotencyKey || null,
         // AI Cost Control (043_ai_cost_control.sql) - see repo.pg.mjs's mapUsageEvent() comment.
         cachedInputTokens: cachedInputTokens ?? null, cacheWriteInputTokens: cacheWriteInputTokens ?? null,
@@ -1555,6 +1556,12 @@ export function createMemoryRepo() {
       if (!state.walletAccounts.has(userId)) state.walletAccounts.set(userId, { userId, paidBalanceMicroUsd: 0, promoBalanceMicroUsd: 0, createdAt: now(), updatedAt: now() });
       return clone(state.walletAccounts.get(userId));
     },
+    // Plain read, no side effects - mirrors repo.pg.mjs's identical accessor. See that file's own
+    // comment for why settleAiCall() needs this before it can apply a plan's token discount.
+    async getReservation(reservationId) {
+      const reservation = state.walletReservations.get(reservationId);
+      return reservation ? clone(reservation) : null;
+    },
     async releaseStalePendingReservations(userId, thresholdMs = STALE_RESERVATION_THRESHOLD_MS) {
       sweepStalePendingReservationsMemory(userId, thresholdMs);
     },
@@ -1574,7 +1581,7 @@ export function createMemoryRepo() {
       state.walletReservations.set(reservation.id, reservation);
       return { ok: true, reservation: clone(reservation) };
     },
-    async settle(reservationId, { providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, provider, model, feature, idempotencyKey }) {
+    async settle(reservationId, { providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, tokenDiscountPercent, provider, model, feature, idempotencyKey }) {
       const reservation = state.walletReservations.get(reservationId);
       if (!reservation) throw new ApiError(404, 'WALLET_RESERVATION_NOT_FOUND');
       if (idempotencyKey) {
@@ -1595,6 +1602,7 @@ export function createMemoryRepo() {
         cashDeltaMicroUsd: -paidSpend, promoDeltaMicroUsd: -promoSpend,
         providerCostMicroUsd: providerCostMicroUsd ?? null, retailChargeMicroUsd: retailChargeMicroUsd ?? null,
         markupPercent: markupPercent ?? null, retailMultiplier: retailMultiplier ?? null,
+        tokenDiscountPercent: tokenDiscountPercent ?? null,
         provider: provider || null, model: model || null, feature: feature || null, sourceAction: 'ai-settlement',
         adminUserId: null, idempotencyKey: idempotencyKey || null, metadata: { reservationId }, createdAt: now()
       };
@@ -1757,12 +1765,13 @@ export function createMemoryRepo() {
     },
     async adminStats() {
       const nowMs = Date.now();
-      const stats = { activePlus: 0, activePersonalized: 0, pastDue: 0, canceling: 0, expired: 0, mrrMicroUsd: 0 };
+      const stats = { activePlus: 0, activePro: 0, activePersonalized: 0, pastDue: 0, canceling: 0, expired: 0, mrrMicroUsd: 0 };
       Array.from(state.subscriptions.values())
         .filter((sub) => (sub.currentPeriodEnd && new Date(sub.currentPeriodEnd).getTime() > nowMs) || sub.status === 'past_due' || sub.status === 'canceled')
         .forEach((sub) => {
           if (sub.status === 'active' && !sub.cancelAtPeriodEnd) {
             if (sub.planId === 'plus') stats.activePlus += 1;
+            if (sub.planId === 'pro') stats.activePro += 1;
             if (sub.planId === 'personalized') stats.activePersonalized += 1;
             stats.mrrMicroUsd += sub.priceAmountMicroUsd;
           }

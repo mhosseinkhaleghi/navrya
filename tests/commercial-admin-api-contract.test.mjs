@@ -78,6 +78,44 @@ test('an unknown plan name is rejected', async () => {
   assert.equal(result.status, 400);
 });
 
+// Real-money subscription rollout: the new 'pro' plan is a real, admin-editable plan exactly like
+// the three pre-existing ones - not a special case requiring a separate route or payload shape.
+test('the new pro plan is a real, editable plan - not rejected as unknown', async () => {
+  const admin = await createAdmin('Admin Pro');
+  const result = await api('PATCH', '/api/admin/commercial/plans/pro', { userId: admin.id, body: { limits: { patterns: 42 } } });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.plan.limits.patterns, 42);
+});
+
+test('an admin can rename any plan via displayName, including Free, and can set premiumModels/byok feature flags', async () => {
+  const admin = await createAdmin('Admin Rename');
+  const renamed = await api('PATCH', '/api/admin/commercial/plans/free', { userId: admin.id, body: { displayName: 'Starter' } });
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.body.plan.displayName, 'Starter');
+
+  const featured = await api('PATCH', '/api/admin/commercial/plans/pro', { userId: admin.id, body: { features: { premiumModels: false, byok: false } } });
+  assert.equal(featured.status, 200);
+  assert.equal(featured.body.plan.features.premiumModels, false, 'admin must be able to turn the premium-model unlock off too, not just on');
+  assert.equal(featured.body.plan.features.byok, false);
+});
+
+test('an admin can set a token discount for a paid plan, but it is silently ignored for Free (same rule as price)', async () => {
+  const admin = await createAdmin('Admin Discount');
+  const proResult = await api('PATCH', '/api/admin/commercial/plans/pro', { userId: admin.id, body: { tokenDiscountPercent: 35 } });
+  assert.equal(proResult.status, 200);
+  assert.equal(proResult.body.plan.tokenDiscountPercent, 35);
+
+  const freeResult = await api('PATCH', '/api/admin/commercial/plans/free', { userId: admin.id, body: { tokenDiscountPercent: 50 } });
+  assert.equal(freeResult.status, 200);
+  assert.equal(freeResult.body.plan.tokenDiscountPercent, 0, 'Free must stay fixed at 0 even if a caller sends a discount for it');
+});
+
+test('an out-of-range token discount percent is rejected', async () => {
+  const admin = await createAdmin('Admin Discount Bad');
+  const result = await api('PATCH', '/api/admin/commercial/plans/pro', { userId: admin.id, body: { tokenDiscountPercent: 150 } });
+  assert.equal(result.status, 400);
+});
+
 test('an admin markup change is applied, previewable via the retail multiplier, and audited', async () => {
   const admin = await createAdmin('Admin E');
   const result = await api('PATCH', '/api/admin/commercial/wallet-rules', { userId: admin.id, body: { markupPercent: 150 } });

@@ -132,6 +132,7 @@ function mapUsageEvent(row) {
     totalTokens: row.total_tokens, source: row.source, model: row.model, feature: row.feature,
     providerCostMicroUsd: row.provider_cost_micro_usd == null ? null : Number(row.provider_cost_micro_usd),
     retailChargeMicroUsd: row.retail_charge_micro_usd == null ? null : Number(row.retail_charge_micro_usd),
+    tokenDiscountPercent: row.token_discount_percent == null ? null : Number(row.token_discount_percent),
     origin: row.origin, linkedLedgerIdempotencyKey: row.linked_ledger_idempotency_key,
     // AI Cost Control (043_ai_cost_control.sql) - additive/nullable, see that migration's comment.
     cachedInputTokens: row.cached_input_tokens, cacheWriteInputTokens: row.cache_write_input_tokens,
@@ -921,18 +922,18 @@ export function createPgRepo(pool) {
     // called from server/pattern-ai-server.mjs's dispatch) is the only caller that passes
     // origin='gateway' plus real model/cost data.
     async create({
-      userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, origin, linkedLedgerIdempotencyKey,
+      userId, provider, promptTokens, completionTokens, totalTokens, source, model, feature, providerCostMicroUsd, retailChargeMicroUsd, tokenDiscountPercent, origin, linkedLedgerIdempotencyKey,
       cachedInputTokens, cacheWriteInputTokens, reasoningTokens, usageRaw
     }) {
       const id = newId('usageEvent');
       const { rows } = await pool.query(
         `INSERT INTO ai_usage_events
-           (id, user_id, provider, prompt_tokens, completion_tokens, total_tokens, source, model, feature, provider_cost_micro_usd, retail_charge_micro_usd, origin, linked_ledger_idempotency_key,
+           (id, user_id, provider, prompt_tokens, completion_tokens, total_tokens, source, model, feature, provider_cost_micro_usd, retail_charge_micro_usd, token_discount_percent, origin, linked_ledger_idempotency_key,
             cached_input_tokens, cache_write_input_tokens, reasoning_tokens, usage_raw)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
         [
           id, userId || null, String(provider || 'unknown'), promptTokens ?? null, completionTokens ?? null, totalTokens ?? null, String(source || 'unknown'),
-          model || null, feature || null, providerCostMicroUsd ?? null, retailChargeMicroUsd ?? null, origin || 'client', linkedLedgerIdempotencyKey || null,
+          model || null, feature || null, providerCostMicroUsd ?? null, retailChargeMicroUsd ?? null, tokenDiscountPercent ?? null, origin || 'client', linkedLedgerIdempotencyKey || null,
           cachedInputTokens ?? null, cacheWriteInputTokens ?? null, reasoningTokens ?? null, usageRaw ? JSON.stringify(usageRaw) : null
         ]
       );
@@ -2394,6 +2395,7 @@ export function createPgRepo(pool) {
       retailChargeMicroUsd: row.retail_charge_micro_usd == null ? null : Number(row.retail_charge_micro_usd),
       markupPercent: row.markup_percent == null ? null : Number(row.markup_percent),
       retailMultiplier: row.retail_multiplier == null ? null : Number(row.retail_multiplier),
+      tokenDiscountPercent: row.token_discount_percent == null ? null : Number(row.token_discount_percent),
       provider: row.provider, model: row.model, feature: row.feature, sourceAction: row.source_action,
       adminUserId: row.admin_user_id, idempotencyKey: row.idempotency_key, metadata: row.metadata, createdAt: row.created_at
     };
@@ -2443,6 +2445,14 @@ export function createPgRepo(pool) {
       if (rows[0]) return mapWalletAccount(rows[0]);
       const { rows: existing } = await pool.query('SELECT * FROM wallet_accounts WHERE user_id=$1', [userId]);
       return mapWalletAccount(existing[0]);
+    },
+    // Plain read, no lock/transaction - lets settleAiCall() (wallet-service.mjs) learn WHICH user a
+    // reservation belongs to before it computes the final (discount-applied) retail charge, since
+    // that computation must happen before calling settle() below. Returns null rather than
+    // throwing for an unknown id, matching settle()/release()'s own "not found" handling.
+    async getReservation(reservationId) {
+      const { rows } = await pool.query('SELECT * FROM wallet_reservations WHERE id=$1', [reservationId]);
+      return rows[0] ? mapWalletReservation(rows[0]) : null;
     },
     // Places a hold for an upcoming AI call. "Available" is the stored balance minus every OTHER
     // still-pending reservation for this user - reserving never mutates wallet_accounts itself
@@ -2501,7 +2511,7 @@ export function createPgRepo(pool) {
     // Resolves a reservation into a real charge, spending promo balance before paid (spec section
     // 23). Idempotent by idempotencyKey - a retried settle for a reservation that is no longer
     // 'pending' returns the already-recorded ledger entry instead of writing (or charging) again.
-    async settle(reservationId, { providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, provider, model, feature, idempotencyKey }) {
+    async settle(reservationId, { providerCostMicroUsd, retailChargeMicroUsd, markupPercent, retailMultiplier, tokenDiscountPercent, provider, model, feature, idempotencyKey }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -2528,10 +2538,10 @@ export function createPgRepo(pool) {
           const { rows } = await client.query(
             `INSERT INTO wallet_ledger
                (id, user_id, type, cash_delta_micro_usd, promo_delta_micro_usd, provider_cost_micro_usd, retail_charge_micro_usd,
-                markup_percent, retail_multiplier, provider, model, feature, source_action, idempotency_key, metadata)
-             VALUES ($1,$2,'AI_SETTLEMENT',$3,$4,$5,$6,$7,$8,$9,$10,$11,'ai-settlement',$12,$13) RETURNING *`,
+                markup_percent, retail_multiplier, token_discount_percent, provider, model, feature, source_action, idempotency_key, metadata)
+             VALUES ($1,$2,'AI_SETTLEMENT',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'ai-settlement',$13,$14) RETURNING *`,
             [newId('walletLedger'), userId, -paidSpend, -promoSpend, providerCostMicroUsd ?? null, retailChargeMicroUsd,
-              markupPercent ?? null, retailMultiplier ?? null, provider || null, model || null, feature || null,
+              markupPercent ?? null, retailMultiplier ?? null, tokenDiscountPercent ?? null, provider || null, model || null, feature || null,
               idempotencyKey || null, JSON.stringify({ reservationId })]
           );
           ledgerRow = rows[0];
@@ -2791,10 +2801,11 @@ export function createPgRepo(pool) {
         `SELECT plan_id, status, cancel_at_period_end, price_amount_micro_usd
          FROM user_subscriptions WHERE current_period_end > now() OR status IN ('past_due','canceled')`
       );
-      const stats = { activePlus: 0, activePersonalized: 0, pastDue: 0, canceling: 0, expired: 0, mrrMicroUsd: 0 };
+      const stats = { activePlus: 0, activePro: 0, activePersonalized: 0, pastDue: 0, canceling: 0, expired: 0, mrrMicroUsd: 0 };
       rows.forEach((row) => {
         if (row.status === 'active' && !row.cancel_at_period_end) {
           if (row.plan_id === 'plus') stats.activePlus += 1;
+          if (row.plan_id === 'pro') stats.activePro += 1;
           if (row.plan_id === 'personalized') stats.activePersonalized += 1;
           stats.mrrMicroUsd += Number(row.price_amount_micro_usd);
         }

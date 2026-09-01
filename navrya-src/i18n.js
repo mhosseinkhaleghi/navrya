@@ -31,6 +31,8 @@ export const NAVRYA_STRINGS = {
     characterTheme: 'Character theme', characterThemeHint: 'The selected character supplies the current skin. Changing it later alters colors and vocabulary, not data.',
     show: 'Show', hide: 'Hide', addPanel: 'Add panel', patternRegistry: 'Pattern Registry',
     nextGoalLabel: 'NEXT GOAL', goalMaxLevel: 'All goals complete', goalXpToGo: '{xp} XP to go',
+    walletLowBalanceTitle: 'Time to top up', walletLowBalanceBody: 'Your wallet balance has run out (or your subscription needs attention). Top up your wallet or check your plan to keep using AI features without interruption.',
+    walletLowBalanceCta: 'Go to Subscription', walletLowBalanceDismiss: 'Not now',
     // Character identity-plate title (the big display line under the header portrait/crest,
     // e.g. "THE COMMANDER") - keyed by navryaCharacter (design-system id: hunter/commander/
     // engineer/master, sage's design-system id - see characters.js), not this app's character id.
@@ -64,6 +66,8 @@ export const NAVRYA_STRINGS = {
     characterTheme: 'تم شخصیت', characterThemeHint: 'ظاهر فعلی از کاراکتر انتخاب‌شده می‌آید. تغییر تم فقط رنگ و واژگان را عوض می‌کند و داده‌ها ثابت می‌مانند.',
     show: 'نمایش', hide: 'پنهان‌کردن', addPanel: 'افزودن پنل', patternRegistry: 'ثبت الگو',
     nextGoalLabel: 'هدف بعدی', goalMaxLevel: 'همه هدف‌ها کامل شد', goalXpToGo: '{xp} امتیاز تا هدف بعدی',
+    walletLowBalanceTitle: 'وقت شارژ است', walletLowBalanceBody: 'موجودی کیف پولت تمام شده (یا اشتراکت نیاز به توجه دارد). برای استفادهٔ بدون وقفه از امکانات هوش مصنوعی، کیف پولت را شارژ کن یا پلن خود را بررسی کن.',
+    walletLowBalanceCta: 'رفتن به اشتراک', walletLowBalanceDismiss: 'فعلاً نه',
     charTitle: { hunter: 'شکارچی', commander: 'فرمانده', engineer: 'مهندس بازار', master: 'استاد بزرگ بازار' }
   },
   ar: {
@@ -94,6 +98,8 @@ export const NAVRYA_STRINGS = {
     characterTheme: 'سمة الشخصية', characterThemeHint: 'يوفر الشخصية المختارة المظهر الحالي. تغيير السمة لاحقاً يغيّر الألوان والمفردات فقط، لا البيانات.',
     show: 'إظهار', hide: 'إخفاء', addPanel: 'إضافة لوحة', patternRegistry: 'سجل الأنماط',
     nextGoalLabel: 'الهدف التالي', goalMaxLevel: 'تم إكمال كل الأهداف', goalXpToGo: '{xp} نقطة للهدف التالي',
+    walletLowBalanceTitle: 'حان وقت الشحن', walletLowBalanceBody: 'انتهى رصيد محفظتك (أو يحتاج اشتراكك إلى انتباه). اشحن محفظتك أو راجع خطتك لمواصلة استخدام ميزات الذكاء الاصطناعي دون انقطاع.',
+    walletLowBalanceCta: 'الذهاب إلى الاشتراك', walletLowBalanceDismiss: 'ليس الآن',
     charTitle: { hunter: 'الصياد', commander: 'القائد', engineer: 'مهندس السوق', master: 'الحكيم الأعظم للسوق' }
   },
   es: {
@@ -124,6 +130,8 @@ export const NAVRYA_STRINGS = {
     characterTheme: 'Tema del personaje', characterThemeHint: 'El personaje seleccionado aporta el aspecto actual. Cambiarlo después solo altera colores y vocabulario, no los datos.',
     show: 'Mostrar', hide: 'Ocultar', addPanel: 'Añadir panel', patternRegistry: 'Registro de patrones',
     nextGoalLabel: 'PRÓXIMA META', goalMaxLevel: 'Todas las metas completadas', goalXpToGo: '{xp} XP para la próxima meta',
+    walletLowBalanceTitle: 'Hora de recargar', walletLowBalanceBody: 'Tu saldo se ha agotado (o tu suscripción necesita atención). Recarga tu billetera o revisa tu plan para seguir usando las funciones de IA sin interrupciones.',
+    walletLowBalanceCta: 'Ir a Suscripción', walletLowBalanceDismiss: 'Ahora no',
     charTitle: { hunter: 'EL CAZADOR', commander: 'EL COMANDANTE', engineer: 'EL INGENIERO DE MERCADO', master: 'EL GRAN SABIO DEL MERCADO' }
   }
 };

@@ -61,17 +61,27 @@
   // state (brief §6) BEFORE ever sending an image, never by string-matching a model name in a UI
   // component. recommendedForChartAnalysis is a soft steering hint only (sorts/badges a model in
   // the picker) - it never disables a selection.
+  //
+  // `premiumModels` (2026-09-01, real-money subscription rollout): the exact, real, already-
+  // existing frontier model ids gated behind a paid plan's `features.premiumModels` flag (see
+  // commercial-defaults.mjs) - never a made-up model. aiAssistantView.jsx's Select composes a
+  // "needs a subscription" label for any id in this list when the account's active plan lacks the
+  // flag; selecting one without it opens an upgrade prompt instead of saving. Every other model
+  // (including every legacy id) is unaffected - this is presentation metadata on the SAME canonical
+  // catalog entry, never a second model list, exactly like modelLabels/modelTiers above.
   var PROVIDER_CATALOG = [
     {
       id: 'openai', label: 'OpenAI', endpoint: 'api.openai.com',
       models: ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6', 'gpt-4.1', 'gpt-4o'],
       modelLabels: { 'gpt-5.6-sol': 'GPT-5.6 Sol', 'gpt-5.6-terra': 'GPT-5.6 Terra', 'gpt-5.6-luna': 'GPT-5.6 Luna' },
       modelTiers: { 'gpt-5.6-sol': 'frontier', 'gpt-5.6-terra': 'balanced', 'gpt-5.6-luna': 'economical' },
+      premiumModels: ['gpt-5.6-sol'],
       supportsVoice: true, trait: 'spin', knockout: true,
       supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: true, recommendedForChartAnalysis: true
     },
     {
       id: 'anthropic', label: 'Claude', endpoint: 'api.anthropic.com', models: ['claude-sonnet-4-5', 'claude-opus-4-1'], supportsVoice: false, trait: 'tilt', knockout: false,
+      premiumModels: ['claude-opus-4-1'],
       supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
     },
     {
