@@ -132,8 +132,12 @@ export function CryptoInvoicePanel({ lang, tr, invoiceId, onConfirmed }) {
         {tr(lang, 'subInvoiceHint')}
       </p>
 
+      {/* sticky: inside the sheet this panel is taller than the modal's capped body, so a plain
+          last child would sit below the fold and have to be scrolled to */}
       {dto.status === 'pending' && !isExpired && (
-        <Button variant="primary" disabled={checking} onClick={() => check(txHash)} style={{ justifyContent: 'center' }}>{tr(lang, 'subInvoiceCheckNow')}</Button>
+        <div style={{ position: 'sticky', bottom: 0, paddingTop: 8, marginTop: -4, background: 'linear-gradient(to top, var(--ink-900) 70%, transparent)' }}>
+          <Button variant="primary" disabled={checking} onClick={() => check(txHash)} style={{ justifyContent: 'center', width: '100%' }}>{tr(lang, 'subInvoiceCheckNow')}</Button>
+        </div>
       )}
     </div>
   );
