@@ -3,8 +3,9 @@
 - Active task: `fix/google-sign-in-client` (owner: Codex).
 - Changed files: `public/pages/select/app.js`, `.env.example`, `.env.production.example`, and `tests/login-select-flow.test.mjs` configure and verify the new Google web client ID; this handoff records the work.
 - Validation: `node --test tests/login-select-flow.test.mjs` (16 passing), `npm run build`, and `git diff --check` passed with Node 22.
-- Remote state: task branch is based on current `origin/dev` at `cf7a500`.
-- Next action: commit the task branch; a release requires an explicit `dev`, `staging`, or `production` target, and production must contain the same `GOOGLE_CLIENT_ID` in its private `.env`.
+- Remote state: task branch commit `3bee1a28` is based on `origin/dev` at `cf7a500`; `origin/staging` is `95947514`, nine commits behind `dev`. Its latest workflow run `33551356266` verified successfully but skipped deployment because staging deployment is not enabled.
+- Staging status: neither `staging.navrya.com` nor `admin.staging.navrya.com` has DNS records. No staging server or live staging site is configured.
+- Next action: promote the task through `dev`, then explicitly request staging or production. Production must contain the same `GOOGLE_CLIENT_ID` in its private `.env` before release.
 
 - Rules: `AGENTS.md` plus the task-selected `skills/*/SKILL.md` files are mandatory for every contributor and agent.
 - Architecture: Vite/React client, Express Community API, AI API, PostgreSQL, Caddy, Docker Compose.
