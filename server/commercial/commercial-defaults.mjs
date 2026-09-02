@@ -84,13 +84,21 @@ export const DEFAULT_STORAGE_PRODUCTS = [
 
 export const WALLET_DEFAULTS = {
   markupPercent: 200, // retailMultiplier = 1 + markupPercent/100 = 3.00x (spec section 16)
-  // Lowered from 10 to 1 for real-money testing (explicit request) - still admin-editable
-  // afterward via Admin > Commercial > Wallet (PATCH /commercial/wallet-rules), same as before.
-  minimumTopUpUsd: 1,
+  // $5 is the product's advertised floor (the smallest amount chip the wallet UI offers). Still
+  // admin-editable afterward via Admin > Commercial > Wallet (PATCH /commercial/wallet-rules) -
+  // and because a stored override WINS over this default, migration 049 also brings any existing
+  // override down to 5, otherwise a deployment that had previously been set to 10 would keep
+  // rejecting the $5 the UI now offers.
+  minimumTopUpUsd: 5,
   signupPromoRetailUsd: 0.50
 };
 
 export const PLAN_NAMES = ['free', 'plus', 'pro', 'personalized'];
+// Every plan that can actually be PURCHASED - i.e. PLAN_NAMES minus the free tier. Derived rather
+// than written out a second time so adding a 5th plan to PLAN_NAMES can never again leave a
+// billing provider silently rejecting it (the exact bug 'pro' hit: both providers carried their
+// own hardcoded ['plus', 'personalized'] list and returned VALIDATION_FAILED for 'pro').
+export const PAID_PLAN_NAMES = PLAN_NAMES.filter((name) => name !== 'free');
 export const RESOURCE_TYPES = ['patterns', 'strategies', 'accounts', 'sessions', 'analysisSymbols'];
 
 // Real BSC crypto payment provider configuration (admin-managed - see commercial-config.mjs's

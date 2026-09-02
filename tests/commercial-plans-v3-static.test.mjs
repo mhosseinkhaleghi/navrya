@@ -59,9 +59,13 @@ test('accountProfileView.jsx: planLabel() prefers an admin-set displayName over 
   assert.match(fn, /return override \|\| tr\(lang, PLAN_LABEL_KEY\[planId\] \|\| planId\)/, 'must still fall back to the existing localized label when no override exists');
 });
 
-test('accountProfileView.jsx: WalletCard offers a $5 top-up chip alongside the existing amounts', async () => {
+// $5 is now the FLOOR, not just one chip among several: the presets are filtered against the
+// server's real minimumTopUpUsd so the wallet can never offer an amount the server then rejects.
+// wallet-topup-minimum.test.mjs owns the detail; this keeps the plans-v3 surface covered too.
+test('accountProfileView.jsx: WalletCard offers a $5 top-up amount, derived from the server minimum', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
-  assert.match(src, /\[5, 10, 25, 50\]\.map\(\(v\) =>/);
+  assert.match(src, /const TOPUP_PRESET_AMOUNTS = \[5, 10, 25, 50, 100\];/);
+  assert.match(src, /topUpChoices\(wallet\.minimumTopUpUsd\)\.map/);
 });
 
 test('accountProfileView.jsx: WalletActivityCard computes and renders a running total of real AI settlement spend', async () => {
@@ -73,22 +77,65 @@ test('accountProfileView.jsx: WalletActivityCard computes and renders a running 
   assert.match(fn, /subAiUsageTotal/);
 });
 
-test('accountProfileView.jsx: a PaymentMethodModal exists, offers crypto/Visa/Iran-gateway, gates the Iran option to fa only, and only crypto actually proceeds', async () => {
+test('accountProfileView.jsx: a PaymentSheet exists, offers crypto/Visa/Iran-gateway, gates the Iran option to fa only, and only crypto actually proceeds', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
-  const idx = src.indexOf('function PaymentMethodModal(');
-  assert.ok(idx > -1, 'PaymentMethodModal must exist');
-  const fn = src.slice(idx, idx + 1400);
+  const idx = src.indexOf('function PaymentSheet(');
+  assert.ok(idx > -1, 'PaymentSheet must exist');
+  const fn = src.slice(idx, idx + 2600);
   assert.match(fn, /id: 'crypto'.*implemented: true/);
   assert.match(fn, /id: 'visa'.*implemented: false/);
   assert.match(fn, /lang === 'fa'.*id: 'iran-gateway'/s, 'the Iran gateway option must only be offered for lang===fa');
-  assert.match(fn, /if \(method\.implemented\) onProceed\(method\.id\); else setNotAdded\(true\)/, 'only an implemented method may actually proceed; an unimplemented one must show the honest "not added" notice instead');
+  assert.match(fn, /if \(!chosen\.implemented\) \{ setNotAdded\(true\); return; \}/, 'an unimplemented method must show the honest "not added" notice and must NOT advance to the invoice step');
 });
 
-test('accountProfileView.jsx: both WalletCard\'s top-up and SubscriptionTab\'s upgrade flow route through the shared PaymentMethodModal before actually submitting', async () => {
+// The payment flow is ONE popup with two sliding steps, not a stack of separate modals, and the
+// upgrade no longer has a "confirm the request" step in front of it (explicitly removed).
+test('accountProfileView.jsx: PaymentSheet slides between its two steps inside one modal and shows a real invoice', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
-  assert.match(src, /<PaymentMethodModal lang=\{lang\} onProceed=\{requestTopUp\} onClose=\{\(\) => setShowPaymentMethod\(false\)\} \/>/, 'WalletCard must gate requestTopUp behind the picker');
-  assert.match(src, /onConfirm=\{\(\) => setUpgradeAwaitingPayment\(true\)\}/, 'confirming the upgrade price must show the payment picker next, not call requestUpgrade directly');
-  assert.match(src, /onProceed=\{\(\) => requestUpgrade\(upgradeTarget\)\}/, 'the upgrade only actually submits once a payment method is chosen');
+  const idx = src.indexOf('function PaymentSheet(');
+  const fn = src.slice(idx, idx + 8900);
+  assert.match(fn, /translateX\(0%\)' : 'translateX\(-50%\)/, 'the two steps must slide within one sheet');
+  assert.match(fn, /dir="ltr"[^>]*overflow: 'hidden'/, 'the clipping box must be LTR - in RTL it starts scrolled to the right and would show the last panel first');
+  assert.match(fn, /subPayInvoice/);
+  assert.match(fn, /subPayTotal/);
+  assert.match(fn, /subPayDiscountUnavailable/, 'the discount-code row must be honestly marked unavailable - there is no coupon backend');
+  assert.match(fn, /disabled placeholder=\{tr\(lang, 'subPayDiscountPlaceholder'\)\}/, 'the discount input must be disabled, never appear to accept a code');
+});
+
+test('accountProfileView.jsx: both WalletCard\'s top-up and SubscriptionTab\'s upgrade flow route through the shared PaymentSheet before actually submitting', async () => {
+  const src = await read('navrya-src', 'accountProfileView.jsx');
+  assert.match(src, /<PaymentSheet[\s\S]{0,400}onProceed=\{requestTopUp\}/, 'WalletCard must gate requestTopUp behind the sheet');
+  assert.match(src, /<PaymentSheet[\s\S]{0,500}onProceed=\{\(\) => requestUpgrade\(upgradeTarget\)\}/, 'the upgrade only actually submits from the sheet');
+  assert.doesNotMatch(src, /function UpgradeModal\(/, 'the separate upgrade-confirmation modal must be gone');
+  assert.doesNotMatch(src, /upgradeAwaitingPayment/, 'the two-popup handshake state must be gone with it');
+});
+
+// Both billing providers carried their own hardcoded ['plus', 'personalized'] list, so the 4th
+// plan was rejected with VALIDATION_FAILED at purchase time - the "Upgrade to Pro" button could
+// never have worked. Both now derive from PLAN_NAMES.
+test('both billing providers accept every paid plan, derived from PLAN_NAMES rather than a second hardcoded list', async () => {
+  const defaults = await read('server', 'commercial', 'commercial-defaults.mjs');
+  assert.match(defaults, /export const PAID_PLAN_NAMES = PLAN_NAMES\.filter\(\(name\) => name !== 'free'\);/);
+  for (const file of ['manual-billing-provider.mjs', 'bsc-crypto-billing-provider.mjs']) {
+    const src = await read('server', 'commercial', file);
+    assert.match(src, /import \{ PAID_PLAN_NAMES \} from '\.\/commercial-defaults\.mjs'/, file + ' must import the shared list');
+    assert.match(src, /if \(!PAID_PLAN_NAMES\.includes\(planId\)\) throw new ApiError\(400, 'VALIDATION_FAILED'\);/, file + ' must validate against it');
+    assert.doesNotMatch(src, /\['plus', 'personalized'\]/, file + ' must not keep its own plan list');
+  }
+});
+
+test('accountProfileView.jsx: every plan card band has a fixed height so the four cards line up row-for-row', async () => {
+  const src = await read('navrya-src', 'accountProfileView.jsx');
+  const idx = src.indexOf('function PlanComparisonGrid(');
+  const fn = src.slice(idx, idx + 6500);
+  assert.match(src, /const PLAN_SPEC_ROW_COUNT = 6;/);
+  assert.match(fn, /planFeatureLines\(lang, cfg\)\.slice\(0, PLAN_SPEC_ROW_COUNT\)/, 'every card must render the SAME six spec rows');
+  assert.match(fn, /height: 26, display: 'flex'/, 'the badge band must reserve its height even with no badge');
+  assert.match(fn, /height: 44, display: 'flex', alignItems: 'baseline'/, 'the price band must be fixed height');
+  assert.match(fn, /height: 30, display: 'flex'/, 'spec rows must be fixed height');
+  assert.match(fn, /height: 26, display: 'flex', alignItems: 'center', gap: 9/, 'perk rows must be fixed height');
+  assert.match(fn, /height: 40, marginTop: 14/, 'the CTA band must be fixed height so the buttons land on one line');
+  assert.match(src, /const PERK_ROWS = \[/, 'the three feature rows must render in every card, locked or checked');
 });
 
 test('account-profile-ui.js: the React-mount call is wrapped in a try/catch that shows a real error instead of a silent black screen (the reported bug)', async () => {

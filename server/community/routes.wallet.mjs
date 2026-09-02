@@ -2,6 +2,7 @@ import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
 import { getBillingProvider } from '../commercial/billing-provider-factory.mjs';
 import { buildInvoiceDto, checkInvoicePayment } from '../commercial/crypto-invoice-service.mjs';
+import { getWalletRules } from '../commercial/commercial-config.mjs';
 
 // Commercial System Slice 1/2 - the user-facing AI Wallet (spec section 55/57). Mounted at
 // /api/sync/wallet, same requireAuth()+csrfProtection() chain as every other /api/sync/* route.
@@ -13,12 +14,21 @@ import { buildInvoiceDto, checkInvoicePayment } from '../commercial/crypto-invoi
 export function router(repo) {
   const app = express.Router();
 
+  // minimumTopUpUsd is served ALONGSIDE the balance so the top-up UI can offer/validate amounts
+  // against the real, admin-configured floor up front. Without it the client could only discover
+  // the minimum by being rejected (400 WALLET_TOPUP_BELOW_MINIMUM) - which is exactly how the
+  // wallet came to offer a $5 amount chip that the server then refused. It is the SAME
+  // getWalletRules() value both billing providers enforce against, never a second source.
   app.get('/', asyncHandler(async (req, res) => {
-    const account = await repo.wallet.getAccount(req.currentUser.id);
+    const [account, walletRules] = await Promise.all([
+      repo.wallet.getAccount(req.currentUser.id),
+      getWalletRules(repo)
+    ]);
     res.json({
       paidBalanceMicroUsd: account.paidBalanceMicroUsd,
       promoBalanceMicroUsd: account.promoBalanceMicroUsd,
-      totalBalanceMicroUsd: account.paidBalanceMicroUsd + account.promoBalanceMicroUsd
+      totalBalanceMicroUsd: account.paidBalanceMicroUsd + account.promoBalanceMicroUsd,
+      minimumTopUpUsd: walletRules.minimumTopUpUsd
     });
   }));
 

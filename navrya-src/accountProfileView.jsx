@@ -93,7 +93,7 @@ const copy = {
     subReactivate: 'فعال‌سازی مجدد', subCancelAtPeriodEnd: 'لغو در پایان دوره', subFreeNoBilling: 'پلن رایگان — صورتحسابی ثبت نشده است.',
     subStorageUsed: 'فضای ذخیره‌سازی مصرف‌شده', subWalletBalance: 'موجودی کیف پول', subPlanLimits: 'محدودیت‌های پلن',
     subUnlimited: 'نامحدود', subFreeTierCaps: 'محدودیت‌های پلن رایگان',
-    subUpgradeModalTitle: 'ارتقا به {plan}', subCancel: 'انصراف', subConfirmRequest: 'تأیید درخواست',
+    subRecommended: 'پیشنهاد ما', subUpgradeModalTitle: 'ارتقا به {plan}', subCancel: 'انصراف', subConfirmRequest: 'تأیید درخواست',
     subUpgradeBilledNote: 'به‌محض تأیید این درخواست توسط مدیر، مبلغ {price} / {interval} از تو دریافت می‌شود. پلن فعلی‌ات تا آن زمان فعال می‌ماند.',
     subIntervalMonth: 'ماه', subIntervalYear: 'سال',
     subChooseYourPlan: 'انتخاب پلن', subUpgradesEffectNote: 'ارتقا فقط پس از تأیید مدیر اعمال می‌شود.',
@@ -111,6 +111,17 @@ const copy = {
     subPayMethodTitle: 'روش پرداخت', subPayMethodCrypto: 'ارز دیجیتال', subPayMethodVisa: 'کارت ویزا',
     subPayMethodIranGateway: 'درگاه پرداخت ایران', subPayMethodComingSoon: 'به‌زودی',
     subPayMethodNotAdded: 'این روش پرداخت هنوز اضافه نشده است.',
+    subPayMethodCryptoDesc: 'USDT روی شبکهٔ BNB Smart Chain', subPayMethodVisaDesc: 'پرداخت ارزی با کارت بین‌المللی',
+    subPayMethodIranGatewayDesc: 'درگاه بانکی داخلی', subPayMethodActive: 'فعال',
+    subPayStepMethod: 'گام ۱ از ۲ · روش پرداخت', subPayStepReview: 'گام ۲ از ۲ · بررسی و پرداخت',
+    subPayChooseMethod: 'روش پرداخت را انتخاب کنید', subPayChange: 'تغییر',
+    subPayInvoice: 'فاکتور', subPayTotal: 'جمع کل',
+    subPayLineItemTopUp: 'شارژ کیف پول هوش مصنوعی', subPayLineItemPlan: 'اشتراک {plan}',
+    subPayDiscountCode: 'کد تخفیف', subPayDiscountPlaceholder: 'کد تخفیف',
+    subPayDiscountUnavailable: 'کد تخفیف هنوز اضافه نشده است.',
+    subPayCurrencyNote: 'مبلغ به دلار آمریکا محاسبه و در لحظهٔ پرداخت تبدیل می‌شود.',
+    subPayBack: 'بازگشت', subPayConfirm: 'پرداخت {amount}',
+    subTopUpMinHint: 'حداقل مبلغ شارژ {amount} است', subTopUpAmountValid: 'مبلغ معتبر است',
     subTopUpNotice: 'درخواست شارژ به مبلغ {amount} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
     subTopUpError: 'ثبت درخواست شارژ ممکن نشد: {error}',
     subTopUpMinTitle: 'مبلغ خیلی کم است',
@@ -197,7 +208,7 @@ const copy = {
     subReactivate: 'Reactivate', subCancelAtPeriodEnd: 'Cancel at Period End', subFreeNoBilling: 'Free plan — no billing on file.',
     subStorageUsed: 'Storage Used', subWalletBalance: 'Wallet Balance', subPlanLimits: 'Plan Limits',
     subUnlimited: 'Unlimited', subFreeTierCaps: 'Free tier caps',
-    subUpgradeModalTitle: 'Upgrade to {plan}', subCancel: 'Cancel', subConfirmRequest: 'Confirm Request',
+    subRecommended: 'Recommended', subUpgradeModalTitle: 'Upgrade to {plan}', subCancel: 'Cancel', subConfirmRequest: 'Confirm Request',
     subUpgradeBilledNote: "You'll be billed {price} / {interval} once an admin confirms this request. Your current plan stays active until then.",
     subIntervalMonth: 'month', subIntervalYear: 'year',
     subChooseYourPlan: 'Choose Your Plan', subUpgradesEffectNote: 'Upgrades take effect once an admin confirms the request.',
@@ -215,6 +226,17 @@ const copy = {
     subPayMethodTitle: 'Payment method', subPayMethodCrypto: 'Crypto', subPayMethodVisa: 'Visa card',
     subPayMethodIranGateway: 'Iran payment gateway', subPayMethodComingSoon: 'Coming soon',
     subPayMethodNotAdded: 'This payment method has not been added yet.',
+    subPayMethodCryptoDesc: 'USDT on BNB Smart Chain', subPayMethodVisaDesc: 'International card payment',
+    subPayMethodIranGatewayDesc: 'Domestic bank gateway', subPayMethodActive: 'Active',
+    subPayStepMethod: 'Step 1 of 2 · Payment method', subPayStepReview: 'Step 2 of 2 · Review & pay',
+    subPayChooseMethod: 'Choose a payment method', subPayChange: 'Change',
+    subPayInvoice: 'Invoice', subPayTotal: 'Total',
+    subPayLineItemTopUp: 'AI wallet top-up', subPayLineItemPlan: '{plan} subscription',
+    subPayDiscountCode: 'Discount code', subPayDiscountPlaceholder: 'Discount code',
+    subPayDiscountUnavailable: 'Discount codes have not been added yet.',
+    subPayCurrencyNote: 'Charged in US dollars and converted at payment time.',
+    subPayBack: 'Back', subPayConfirm: 'Pay {amount}',
+    subTopUpMinHint: 'Minimum top-up is {amount}', subTopUpAmountValid: 'Amount is valid',
     subTopUpNotice: 'Top-up of {amount} requested — pending Admin confirmation (manual/test billing).',
     subTopUpError: 'Could not submit the top-up request: {error}',
     subTopUpMinTitle: 'Amount too low',
@@ -301,7 +323,7 @@ const copy = {
     subReactivate: 'إعادة التفعيل', subCancelAtPeriodEnd: 'الإلغاء في نهاية الفترة', subFreeNoBilling: 'خطة مجانية — لا توجد فوترة مسجّلة.',
     subStorageUsed: 'المساحة المستخدَمة', subWalletBalance: 'رصيد المحفظة', subPlanLimits: 'حدود الخطة',
     subUnlimited: 'غير محدود', subFreeTierCaps: 'حدود الخطة المجانية',
-    subUpgradeModalTitle: 'الترقية إلى {plan}', subCancel: 'إلغاء', subConfirmRequest: 'تأكيد الطلب',
+    subRecommended: 'موصى به', subUpgradeModalTitle: 'الترقية إلى {plan}', subCancel: 'إلغاء', subConfirmRequest: 'تأكيد الطلب',
     subUpgradeBilledNote: 'سيتم خصم {price} / {interval} بمجرد تأكيد المسؤول لهذا الطلب. تبقى خطتك الحالية فعّالة حتى ذلك الحين.',
     subIntervalMonth: 'شهر', subIntervalYear: 'سنة',
     subChooseYourPlan: 'اختر خطتك', subUpgradesEffectNote: 'تُفعَّل الترقيات فقط بعد تأكيد المسؤول للطلب.',
@@ -319,6 +341,17 @@ const copy = {
     subPayMethodTitle: 'طريقة الدفع', subPayMethodCrypto: 'عملة رقمية', subPayMethodVisa: 'بطاقة فيزا',
     subPayMethodIranGateway: 'بوابة الدفع الإيرانية', subPayMethodComingSoon: 'قريبًا',
     subPayMethodNotAdded: 'لم تتم إضافة طريقة الدفع هذه بعد.',
+    subPayMethodCryptoDesc: 'USDT على شبكة BNB Smart Chain', subPayMethodVisaDesc: 'دفع ببطاقة دولية',
+    subPayMethodIranGatewayDesc: 'بوابة مصرفية محلية', subPayMethodActive: 'مفعّل',
+    subPayStepMethod: 'الخطوة ١ من ٢ · طريقة الدفع', subPayStepReview: 'الخطوة ٢ من ٢ · المراجعة والدفع',
+    subPayChooseMethod: 'اختر طريقة الدفع', subPayChange: 'تغيير',
+    subPayInvoice: 'الفاتورة', subPayTotal: 'الإجمالي',
+    subPayLineItemTopUp: 'شحن محفظة الذكاء الاصطناعي', subPayLineItemPlan: 'اشتراك {plan}',
+    subPayDiscountCode: 'رمز الخصم', subPayDiscountPlaceholder: 'رمز الخصم',
+    subPayDiscountUnavailable: 'لم تتم إضافة رموز الخصم بعد.',
+    subPayCurrencyNote: 'يُحتسب المبلغ بالدولار الأمريكي ويُحوَّل عند الدفع.',
+    subPayBack: 'رجوع', subPayConfirm: 'ادفع {amount}',
+    subTopUpMinHint: 'الحد الأدنى للشحن هو {amount}', subTopUpAmountValid: 'المبلغ صالح',
     subTopUpNotice: 'تم إرسال طلب شحن بقيمة {amount} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
     subTopUpError: 'تعذّر إرسال طلب الشحن: {error}',
     subTopUpMinTitle: 'المبلغ منخفض جدًا',
@@ -405,7 +438,7 @@ const copy = {
     subReactivate: 'Reactivar', subCancelAtPeriodEnd: 'Cancelar al final del período', subFreeNoBilling: 'Plan gratuito — sin facturación registrada.',
     subStorageUsed: 'Almacenamiento usado', subWalletBalance: 'Saldo de la cartera', subPlanLimits: 'Límites del plan',
     subUnlimited: 'Ilimitado', subFreeTierCaps: 'Límites del plan gratuito',
-    subUpgradeModalTitle: 'Actualizar a {plan}', subCancel: 'Cancelar', subConfirmRequest: 'Confirmar solicitud',
+    subRecommended: 'Recomendado', subUpgradeModalTitle: 'Actualizar a {plan}', subCancel: 'Cancelar', subConfirmRequest: 'Confirmar solicitud',
     subUpgradeBilledNote: 'Se te cobrará {price} / {interval} en cuanto un administrador confirme esta solicitud. Tu plan actual sigue activo hasta entonces.',
     subIntervalMonth: 'mes', subIntervalYear: 'año',
     subChooseYourPlan: 'Elige tu plan', subUpgradesEffectNote: 'Las actualizaciones surten efecto solo cuando un administrador confirma la solicitud.',
@@ -423,6 +456,17 @@ const copy = {
     subPayMethodTitle: 'Método de pago', subPayMethodCrypto: 'Cripto', subPayMethodVisa: 'Tarjeta Visa',
     subPayMethodIranGateway: 'Pasarela de pago de Irán', subPayMethodComingSoon: 'Próximamente',
     subPayMethodNotAdded: 'Este método de pago aún no se ha agregado.',
+    subPayMethodCryptoDesc: 'USDT en BNB Smart Chain', subPayMethodVisaDesc: 'Pago con tarjeta internacional',
+    subPayMethodIranGatewayDesc: 'Pasarela bancaria nacional', subPayMethodActive: 'Activo',
+    subPayStepMethod: 'Paso 1 de 2 · Método de pago', subPayStepReview: 'Paso 2 de 2 · Revisar y pagar',
+    subPayChooseMethod: 'Elige un método de pago', subPayChange: 'Cambiar',
+    subPayInvoice: 'Factura', subPayTotal: 'Total',
+    subPayLineItemTopUp: 'Recarga de la billetera de IA', subPayLineItemPlan: 'Suscripción {plan}',
+    subPayDiscountCode: 'Código de descuento', subPayDiscountPlaceholder: 'Código de descuento',
+    subPayDiscountUnavailable: 'Los códigos de descuento aún no se han agregado.',
+    subPayCurrencyNote: 'Se cobra en dólares estadounidenses y se convierte al momento del pago.',
+    subPayBack: 'Atrás', subPayConfirm: 'Pagar {amount}',
+    subTopUpMinHint: 'La recarga mínima es {amount}', subTopUpAmountValid: 'El importe es válido',
     subTopUpNotice: 'Se solicitó una recarga de {amount} — pendiente de confirmación del administrador (facturación manual/de prueba).',
     subTopUpError: 'No se pudo enviar la solicitud de recarga: {error}',
     subTopUpMinTitle: 'Monto demasiado bajo',
@@ -1380,6 +1424,16 @@ function ledgerEntryDisplay(lang, entry) {
 }
 
 const PLAN_ORDER = ['free', 'plus', 'pro', 'personalized'];
+// The preset top-up amounts, filtered at render time against the server's REAL minimumTopUpUsd
+// (GET /api/sync/wallet) so the wallet can never again offer an amount the server then rejects
+// with 400 WALLET_TOPUP_BELOW_MINIMUM - the reported "$5 still errors" bug. An admin floor above
+// every preset still needs something clickable, hence the derived fallback.
+const TOPUP_PRESET_AMOUNTS = [5, 10, 25, 50, 100];
+function topUpChoices(minimumUsd) {
+  const min = Number(minimumUsd) > 0 ? Number(minimumUsd) : 0;
+  const usable = TOPUP_PRESET_AMOUNTS.filter((v) => v >= min);
+  return usable.length ? usable : [min, min * 2, min * 5].map((v) => Math.round(v));
+}
 // [pluralKey, singularKey, unlimitedKey] per limit - matches this app's existing One/Many
 // pluralization convention (e.g. public/pages/shared/ai-i18n.js's aiAsstConversationsOne/Many).
 const LIMIT_KEYS = {
@@ -1483,23 +1537,24 @@ function PlanHero({ lang, plan, subscription, catalog, onToggleCancel }) {
   );
 }
 
-function UpgradeModal({ lang, planId, price, catalog, onClose, onConfirm }) {
-  return (
-    <Modal open title={tr(lang, 'subUpgradeModalTitle', { plan: planLabel(lang, planId, catalog) })} icon="subscription" onClose={onClose} width={440}
-      footer={(
-        <>
-          <span style={{ flex: 1 }} />
-          <Button variant="secondary" onClick={onClose}>{tr(lang, 'subCancel')}</Button>
-          <Button variant="primary" onClick={onConfirm}>{tr(lang, 'subConfirmRequest')}</Button>
-        </>
-      )}
-    >
-      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        {price ? tr(lang, 'subUpgradeBilledNote', { price: fmtMicroUsd(Math.round(price.amountUsd * 1000000)), interval: tr(lang, price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth') }) : ''}
-      </p>
-    </Modal>
-  );
-}
+// The plan the comparison grid highlights. Purely presentational - it changes no price, no
+// entitlement and no server behaviour, and if an admin ever renames or removes this plan the grid
+// simply highlights nothing.
+const RECOMMENDED_PLAN = 'pro';
+// The three boolean plan features, rendered as the SAME three rows in every card (a check when the
+// plan has it, a lock when it does not) rather than only listing the ones a plan happens to
+// include - that is what lets the rows line up across columns.
+const PERK_ROWS = [
+  { key: 'premiumModels', label: 'subFeatPremiumModels' },
+  { key: 'byok', label: 'subFeatByok' },
+  { key: 'aiPanelBuilder', label: 'subFeatAiPanelBuilder' }
+];
+// Every band below has a FIXED height, so the four cards line up row-for-row and their CTAs sit on
+// one line - the alignment is structural, not a coincidence of how long each plan's text happens
+// to be. planFeatureLines()' first six entries are storage + the five limits, which every plan
+// always has; the optional feature/discount lines it appends after those are rendered separately
+// as the fixed perk rows and discount strip instead.
+const PLAN_SPEC_ROW_COUNT = 6;
 
 function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
   if (!catalog) return null;
@@ -1509,45 +1564,89 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
         <div style={{ ...labelRow, marginBottom: 4 }}>{tr(lang, 'subChooseYourPlan')}</div>
         <div style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(lang, 'subUpgradesEffectNote')}</div>
       </div>
-      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(238px, 1fr))', gap: 18 }}>
         {PLAN_ORDER.map((planId) => {
           const cfg = catalog[planId];
           if (!cfg) return null;
           const isCurrent = planId === plan;
           const isPast = PLAN_ORDER.indexOf(planId) < PLAN_ORDER.indexOf(plan);
-          const lines = planFeatureLines(lang, cfg);
+          const isRecommended = planId === RECOMMENDED_PLAN && !isCurrent && !isPast;
+          const specs = planFeatureLines(lang, cfg).slice(0, PLAN_SPEC_ROW_COUNT);
+          const features = cfg.features || {};
           return (
-            <Panel key={planId} variant={isCurrent ? 'active' : 'base'} ornament={isCurrent} ornamentSize={18} glow={isCurrent}
-              padding="22px 20px" style={{ flex: '1 1 260px', minWidth: 240, display: 'flex', flexDirection: 'column', gap: 14 }}
+            <Panel key={planId} variant={isCurrent ? 'active' : 'base'} ornament={isCurrent} ornamentSize={18} glow={isCurrent || isRecommended}
+              padding="22px 20px"
+              style={{
+                minWidth: 0, display: 'flex', flexDirection: 'column',
+                ...(isRecommended ? { border: '1px solid color-mix(in srgb, var(--char-accent) 90%, transparent)' } : null)
+              }}
             >
-              {isCurrent && (
-                <div style={{ alignSelf: 'center', padding: '4px 14px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>{tr(lang, 'subCurrentPlan')}</div>
-              )}
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(lang, planId, catalog)}</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 7 }}>
-                  <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {tr(lang, cfg.price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth')}</span>
-                </div>
+              {/* badge band - 26px whether or not this card has a badge */}
+              <div style={{ height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+                {isCurrent && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 12px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em' }}>{tr(lang, 'subCurrentPlan')}</span>
+                )}
+                {isRecommended && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 12px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em' }}>{tr(lang, 'subRecommended')}</span>
+                )}
               </div>
-              <ul style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: 0, padding: 0, listStyle: 'none' }}>
-                {lines.map((line) => (
-                  <li key={line} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 12.5, color: isCurrent ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.4 }}>
-                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: isCurrent ? 'var(--char-accent)' : 'var(--text-dim)', marginTop: 6, flex: 'none' }}></span>
-                    <span dir="ltr">{line}</span>
-                  </li>
+
+              <div style={{ height: 24, marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent || isRecommended ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(lang, planId, catalog)}</span>
+              </div>
+
+              <div style={{ height: 44, display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6, flex: 'none' }}>
+                <span dir="ltr" className="navrya-tabular" style={{ fontSize: 27, fontWeight: 700, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {tr(lang, cfg.price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth')}</span>
+              </div>
+
+              <div style={{ height: 1, background: 'var(--divider-gold)', margin: '12px 0', flex: 'none' }} />
+
+              <div style={{ flex: 'none' }}>
+                {specs.map((line) => (
+                  <div key={line} style={{ height: 30, display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', flex: 'none', background: isCurrent || isRecommended ? 'var(--char-accent)' : 'var(--text-dim)' }} />
+                    <span style={{ fontSize: 12.5, color: isCurrent ? 'var(--text-primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line}</span>
+                  </div>
                 ))}
-              </ul>
-              <div style={{ flex: 1 }}></div>
-              {isCurrent ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 12, color: 'var(--char-accent)', fontWeight: 600, paddingTop: 9, borderTop: '1px solid var(--divider-gold)' }}>
-                  <Icon name="check" size={14} />{tr(lang, 'subActivePlan')}
-                </div>
-              ) : isPast ? (
-                <div style={{ fontSize: 11.5, color: 'var(--text-disabled)', textAlign: 'center', paddingTop: 8, borderTop: '1px solid var(--divider-gold)' }}>{tr(lang, 'subPreviousPlan')}</div>
-              ) : (
-                <Button variant="primary" size="sm" style={{ justifyContent: 'center' }} onClick={() => onUpgrade(planId)}>{tr(lang, 'subUpgradeTo', { plan: planLabel(lang, planId, catalog) })}</Button>
-              )}
+              </div>
+
+              <div style={{ height: 1, background: 'var(--divider-gold)', margin: '12px 0', flex: 'none' }} />
+
+              <div style={{ flex: 'none' }}>
+                {PERK_ROWS.map((perk) => {
+                  const on = !!features[perk.key];
+                  return (
+                    <div key={perk.key} style={{ height: 26, display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                      <Icon name={on ? 'check' : 'lock'} size={13} style={{ flex: 'none', color: on ? 'var(--char-accent)' : 'var(--text-disabled)' }} />
+                      <span style={{ fontSize: 12, color: on ? 'var(--text-primary)' : 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr(lang, perk.label)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* token-discount strip - always 34px, so a plan without a discount does not shorten its card */}
+              <div style={{
+                height: 34, marginTop: 12, flex: 'none', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                fontSize: 11.5,
+                color: cfg.tokenDiscountPercent ? 'var(--char-accent)' : 'var(--text-disabled)',
+                background: cfg.tokenDiscountPercent ? 'color-mix(in srgb, var(--char-accent) 10%, transparent)' : 'transparent',
+                border: '1px solid ' + (cfg.tokenDiscountPercent ? 'color-mix(in srgb, var(--char-accent) 40%, transparent)' : 'var(--border-hairline)')
+              }}>
+                {cfg.tokenDiscountPercent ? tr(lang, 'subFeatTokenDiscount', { percent: cfg.tokenDiscountPercent }) : '—'}
+              </div>
+
+              <div style={{ height: 40, marginTop: 14, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isCurrent ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 12, fontWeight: 600, color: 'var(--char-accent)' }}>
+                    <Icon name="check" size={14} />{tr(lang, 'subActivePlan')}
+                  </span>
+                ) : isPast ? (
+                  <span style={{ fontSize: 11.5, color: 'var(--text-disabled)' }}>{tr(lang, 'subPreviousPlan')}</span>
+                ) : (
+                  <Button variant={isRecommended ? 'primary' : 'secondary'} size="sm" fullWidth style={{ justifyContent: 'center' }} onClick={() => onUpgrade(planId)}>{tr(lang, 'subUpgradeTo', { plan: planLabel(lang, planId, catalog) })}</Button>
+                )}
+              </div>
             </Panel>
           );
         })}
@@ -1574,39 +1673,151 @@ function TopUpMinimumModal({ lang, minimumTopUpUsd, onClose }) {
   );
 }
 
-// Payment-method picker, shared by WalletCard's top-up flow and SubscriptionTab's upgrade flow -
-// never two separate pickers. Only "crypto" actually proceeds (into the existing, already-real BSC
+// Checkout sheet, shared by WalletCard's top-up flow and SubscriptionTab's upgrade flow - never
+// two separate pickers, and never a second popup stacked on the first: both steps live in THIS
+// modal and slide horizontally, the way a normal checkout behaves.
+//
+// Step 1 picks the rail. Only "crypto" actually proceeds (into the existing, already-real BSC
 // invoice flow via `onProceed`) - Visa and the Iran gateway have no implementation yet, so picking
-// either shows an honest "not added yet" notice in place, exactly per the explicit instruction to
-// never claim an unbuilt path works. The Iran gateway option itself is only ever rendered for
-// `lang === 'fa'` (never shown to a non-Persian user, not merely disabled for them).
-function PaymentMethodModal({ lang, onProceed, onClose }) {
+// either shows an honest "not added yet" notice in place and does NOT advance, exactly per the
+// explicit instruction to never claim an unbuilt path works. The Iran gateway option itself is
+// only ever rendered for `lang === 'fa'` (never shown to a non-Persian user, not merely disabled).
+//
+// Step 2 shows the real invoice for this exact purchase. `amountUsd` is the SAME number the
+// server will charge (the wallet amount the user typed, or catalog[plan].price.amountUsd straight
+// from GET /subscriptions/catalog) - never a separate client-side price calculation.
+//
+// The discount-code row is rendered DISABLED with an honest "not added yet" line: there is no
+// coupon/discount-code implementation anywhere on the server (no table, no route, no validation),
+// so an input that appeared to accept a code would be inventing a feature. It is placed here, in
+// its designed position, so wiring a real one later is a drop-in.
+const PAY_SHEET_STEPS = 2;
+
+function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) {
+  const [step, setStep] = React.useState(0);
+  const [method, setMethod] = React.useState(null);
   const [notAdded, setNotAdded] = React.useState(false);
+  const methodPanel = React.useRef(null);
+  const reviewPanel = React.useRef(null);
+  const [bodyHeight, setBodyHeight] = React.useState(null);
+
   const methods = [
-    { id: 'crypto', icon: 'wallet', label: tr(lang, 'subPayMethodCrypto'), implemented: true },
-    { id: 'visa', icon: 'credit-card', label: tr(lang, 'subPayMethodVisa'), implemented: false },
-    ...(lang === 'fa' ? [{ id: 'iran-gateway', icon: 'landmark', label: tr(lang, 'subPayMethodIranGateway'), implemented: false }] : [])
+    { id: 'crypto', icon: 'wallet', label: tr(lang, 'subPayMethodCrypto'), desc: tr(lang, 'subPayMethodCryptoDesc'), implemented: true },
+    { id: 'visa', icon: 'credit-card', label: tr(lang, 'subPayMethodVisa'), desc: tr(lang, 'subPayMethodVisaDesc'), implemented: false },
+    ...(lang === 'fa' ? [{ id: 'iran-gateway', icon: 'landmark', label: tr(lang, 'subPayMethodIranGateway'), desc: tr(lang, 'subPayMethodIranGatewayDesc'), implemented: false }] : [])
   ];
+  const amountLabel = fmtMicroUsd(Math.round(Number(amountUsd || 0) * 1000000));
+
+  // The sheet's height follows whichever panel is showing, measured rather than hardcoded - a
+  // fixed height would clip the taller step in a language whose strings wrap differently.
+  React.useLayoutEffect(() => {
+    const el = step === 0 ? methodPanel.current : reviewPanel.current;
+    if (el) setBodyHeight(el.scrollHeight);
+  }, [step, lang, amountUsd, notAdded, methods.length]);
+
+  function pick(chosen) {
+    if (!chosen.implemented) { setNotAdded(true); return; }
+    setNotAdded(false);
+    setMethod(chosen);
+    setStep(1);
+  }
+
+  const footer = step === 0
+    ? (<><span style={{ flex: 1 }} /><Button variant="secondary" onClick={onClose}>{tr(lang, 'subCancel')}</Button></>)
+    : (
+      <>
+        <Button variant="ghost" onClick={() => setStep(0)}>{tr(lang, 'subPayBack')}</Button>
+        <span style={{ flex: 1 }} />
+        <Button variant="primary" onClick={() => onProceed(method.id)}>{tr(lang, 'subPayConfirm', { amount: amountLabel })}</Button>
+      </>
+    );
+
   return (
-    <Modal open title={tr(lang, 'subPayMethodTitle')} icon="wallet" onClose={onClose} width={420}
-      footer={(<><span style={{ flex: 1 }} /><Button variant="secondary" onClick={onClose}>{tr(lang, 'subCancel')}</Button></>)}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {methods.map((method) => (
-          <button
-            key={method.id} type="button"
-            onClick={() => { if (method.implemented) onProceed(method.id); else setNotAdded(true); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12, height: 52, padding: '0 16px', borderRadius: 8, cursor: 'pointer',
-              border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)', color: 'var(--text-primary)', font: 'var(--type-body)', textAlign: 'start', width: '100%'
-            }}
-          >
-            <Icon name={method.icon} size={18} />
-            <span style={{ flex: 1 }}>{method.label}</span>
-            {!method.implemented && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'subPayMethodComingSoon')}</span>}
-          </button>
-        ))}
-        {notAdded && <Notice tone="accent" icon="status">{tr(lang, 'subPayMethodNotAdded')}</Notice>}
+    <Modal open title={title} icon="wallet" onClose={onClose} width={460} footer={footer}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {Array.from({ length: PAY_SHEET_STEPS }).map((unused, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && (
+                <span style={{ flex: 1, height: 2, borderRadius: 2, background: 'rgba(244,234,215,.10)', overflow: 'hidden' }}>
+                  <span style={{ display: 'block', height: '100%', width: step >= i ? '100%' : '0%', background: 'var(--char-accent)', transition: 'width var(--dur-expand, 220ms) var(--ease-out)' }} />
+                </span>
+              )}
+              <span style={{ width: 7, height: 7, borderRadius: '50%', flex: 'none', background: step >= i ? 'var(--char-accent)' : 'var(--text-disabled)', transform: step === i ? 'scale(1.35)' : 'none', transition: 'background var(--dur-expand, 220ms) var(--ease-out), transform var(--dur-expand, 220ms) var(--ease-out)' }} />
+            </React.Fragment>
+          ))}
+          <span style={{ marginInlineStart: 6, fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+            {tr(lang, step === 0 ? 'subPayStepMethod' : 'subPayStepReview')}
+          </span>
+        </div>
+
+        {/* dir="ltr" is load-bearing: in an RTL container an overflow:hidden box starts scrolled
+            to its RIGHT edge, which would show the LAST panel instead of the first. */}
+        <div dir="ltr" style={{ overflow: 'hidden', height: bodyHeight == null ? 'auto' : bodyHeight, transition: 'height var(--dur-expand, 220ms) var(--ease-out)' }}>
+          <div style={{ display: 'flex', width: '200%', alignItems: 'flex-start', transform: step === 0 ? 'translateX(0%)' : 'translateX(-50%)', transition: 'transform 320ms var(--ease-out)' }}>
+
+            <div ref={methodPanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: '50%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'subPayChooseMethod')}</span>
+              {methods.map((entry) => (
+                <button
+                  key={entry.id} type="button" onClick={() => pick(entry)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, minHeight: 62, padding: '10px 14px', borderRadius: 9,
+                    cursor: entry.implemented ? 'pointer' : 'not-allowed', opacity: entry.implemented ? 1 : 0.6,
+                    border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)', color: 'var(--text-primary)',
+                    font: 'var(--type-body)', textAlign: 'start', width: '100%'
+                  }}
+                >
+                  <Icon name={entry.icon} size={18} />
+                  <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{entry.label}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{entry.desc}</span>
+                  </span>
+                  <span style={{ fontSize: 10.5, color: entry.implemented ? 'var(--char-accent)' : 'var(--text-dim)', flex: 'none' }}>
+                    {tr(lang, entry.implemented ? 'subPayMethodActive' : 'subPayMethodComingSoon')}
+                  </span>
+                </button>
+              ))}
+              {notAdded && <Notice tone="accent" icon="status">{tr(lang, 'subPayMethodNotAdded')}</Notice>}
+            </div>
+
+            <div ref={reviewPanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: '50%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 50, padding: '8px 14px', borderRadius: 9, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.45)' }}>
+                <Icon name={method ? method.icon : 'wallet'} size={16} />
+                <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-primary)' }}>{method ? method.label : ''}</span>
+                <Button variant="ghost" size="sm" onClick={() => setStep(0)}>{tr(lang, 'subPayChange')}</Button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{tr(lang, 'subPayDiscountCode')}</span>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}><TextField value="" onChange={() => {}} disabled placeholder={tr(lang, 'subPayDiscountPlaceholder')} /></div>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-dim)', flex: 'none' }}>{tr(lang, 'subPayMethodComingSoon')}</span>
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'subPayDiscountUnavailable')}</span>
+              </div>
+
+              <div style={{ borderRadius: 9, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.45)', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', height: 32, padding: '0 14px', borderBottom: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-muted)' }}>{tr(lang, 'subPayInvoice')}</span>
+                </div>
+                <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 26 }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{lineItem}</span>
+                    <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>{amountLabel}</span>
+                  </div>
+                  <div style={{ height: 1, background: 'var(--divider-gold)', margin: '8px 0' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 30 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'subPayTotal')}</span>
+                    <span dir="ltr" className="navrya-tabular" style={{ fontSize: 19, fontWeight: 700, color: 'var(--char-accent)' }}>{amountLabel}</span>
+                  </div>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-dim)', lineHeight: 1.5, marginTop: 2 }}>{tr(lang, 'subPayCurrencyNote')}</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
       </div>
     </Modal>
   );
@@ -1614,12 +1825,19 @@ function PaymentMethodModal({ lang, onProceed, onClose }) {
 
 function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
   const [wallet, setWallet] = React.useState(null);
-  const [amount, setAmount] = React.useState('10');
-  // Payment-method picker (task: crypto/Visa/Iran gateway) gates the real request - opened by the
-  // button below, only actually calling the network request once "crypto" (the one implemented
-  // rail) is chosen.
+  // Starts EMPTY on purpose: the first sensible default is the smallest amount the server actually
+  // accepts, which is only known once GET /api/sync/wallet answers with its minimumTopUpUsd.
+  const [amount, setAmount] = React.useState('');
+  // Checkout sheet (method -> invoice) gates the real request - opened by the button below, only
+  // actually calling the network request once "crypto" (the one implemented rail) is chosen and
+  // the invoice is confirmed.
   const [showPaymentMethod, setShowPaymentMethod] = React.useState(false);
-  function reload() { fetch('/api/sync/wallet').then((r) => r.json()).then(setWallet).catch(() => {}); }
+  function reload() {
+    fetch('/api/sync/wallet').then((r) => r.json()).then((data) => {
+      setWallet(data);
+      setAmount((current) => (current === '' ? String(topUpChoices(data.minimumTopUpUsd)[0]) : current));
+    }).catch(() => {});
+  }
   React.useEffect(reload, []);
   function requestTopUp() {
     setShowPaymentMethod(false);
@@ -1646,6 +1864,9 @@ function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
       });
   }
   if (!wallet) return null;
+  // Both come from the server's own answer, never a client-side constant.
+  const minTopUpUsd = Number(wallet.minimumTopUpUsd) > 0 ? Number(wallet.minimumTopUpUsd) : 0;
+  const belowMinimum = !(Number(amount) >= minTopUpUsd);
   return (
     <Panel variant="base" ornament padding="22px 24px">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 26 }}>
@@ -1659,19 +1880,38 @@ function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
         </div>
         <div style={{ flex: '1 1 280px', minWidth: 260, maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={labelRow}>{tr(lang, 'subAmountUsd')}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[5, 10, 25, 50].map((v) => (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {topUpChoices(wallet.minimumTopUpUsd).map((v) => (
               <Chip key={v} tone={Number(amount) === v ? 'accent' : 'neutral'} style={{ cursor: 'pointer' }} onClick={() => setAmount(String(v))}>${v}</Chip>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-            <div style={{ flex: 1 }}><TextField value={amount} onChange={setAmount} type="number" /></div>
-            <Button variant="primary" onClick={() => setShowPaymentMethod(true)}>{tr(lang, 'subRequestTopUp')}</Button>
+            <div style={{ flex: 1 }}>
+              <TextField value={amount} onChange={setAmount} type="number" min={minTopUpUsd} step="1" />
+            </div>
+            <Button variant="primary" disabled={belowMinimum} onClick={() => setShowPaymentMethod(true)}>{tr(lang, 'subRequestTopUp')}</Button>
+          </div>
+          {/* Live, up-front validation against the server's own floor - the shopper learns the
+              rule while typing instead of by being rejected after choosing a payment method. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 16 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', flex: 'none', background: belowMinimum ? 'var(--warning)' : 'var(--char-accent)' }} />
+            <span style={{ fontSize: 11, color: belowMinimum ? 'var(--warning)' : 'var(--char-accent)' }}>
+              {belowMinimum
+                ? tr(lang, 'subTopUpMinHint', { amount: fmtMicroUsd(Math.round(minTopUpUsd * 1000000)) })
+                : tr(lang, 'subTopUpAmountValid')}
+            </span>
           </div>
         </div>
       </div>
       {showPaymentMethod && (
-        <PaymentMethodModal lang={lang} onProceed={requestTopUp} onClose={() => setShowPaymentMethod(false)} />
+        <PaymentSheet
+          lang={lang}
+          title={tr(lang, 'subPayMethodTitle')}
+          lineItem={tr(lang, 'subPayLineItemTopUp')}
+          amountUsd={Number(amount) || 0}
+          onProceed={requestTopUp}
+          onClose={() => setShowPaymentMethod(false)}
+        />
       )}
     </Panel>
   );
@@ -1862,10 +2102,10 @@ function SubscriptionTab({ lang }) {
   const [subData, setSubData] = React.useState(null);
   const [catalog, setCatalog] = React.useState(null);
   const [notice, setNotice] = React.useState('');
+  // Picking a plan opens the checkout sheet directly - there is no separate "confirm the request"
+  // step any more (explicitly removed): the price the user is agreeing to is the invoice inside
+  // that sheet, and the request only submits from its own final button.
   const [upgradeTarget, setUpgradeTarget] = React.useState(null);
-  // true once the user has confirmed the price on UpgradeModal - shows the payment-method picker
-  // next, and only actually submits the upgrade request once "crypto" is chosen there.
-  const [upgradeAwaitingPayment, setUpgradeAwaitingPayment] = React.useState(false);
   // Real BSC crypto invoice (task A) - set whenever a create-request response carries an
   // invoiceId (BILLING_PROVIDER=bsc_crypto is active); stays null under the Manual provider,
   // where the plain pending-admin-confirmation notice above is exactly correct as-is.
@@ -1884,7 +2124,6 @@ function SubscriptionTab({ lang }) {
   }, []);
 
   function requestUpgrade(planId) {
-    setUpgradeAwaitingPayment(false);
     fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
       .then((result) => {
@@ -1913,21 +2152,14 @@ function SubscriptionTab({ lang }) {
       <WalletActivityCard lang={lang} />
       <StorageCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
       <BillingHistoryCard lang={lang} />
-      {upgradeTarget && !upgradeAwaitingPayment && (
-        <UpgradeModal
+      {upgradeTarget && (
+        <PaymentSheet
           lang={lang}
-          planId={upgradeTarget}
-          price={catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price}
-          catalog={catalog}
-          onClose={() => setUpgradeTarget(null)}
-          onConfirm={() => setUpgradeAwaitingPayment(true)}
-        />
-      )}
-      {upgradeTarget && upgradeAwaitingPayment && (
-        <PaymentMethodModal
-          lang={lang}
+          title={tr(lang, 'subUpgradeModalTitle', { plan: planLabel(lang, upgradeTarget, catalog) })}
+          lineItem={tr(lang, 'subPayLineItemPlan', { plan: planLabel(lang, upgradeTarget, catalog) })}
+          amountUsd={(catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price && catalog[upgradeTarget].price.amountUsd) || 0}
           onProceed={() => requestUpgrade(upgradeTarget)}
-          onClose={() => { setUpgradeAwaitingPayment(false); setUpgradeTarget(null); }}
+          onClose={() => setUpgradeTarget(null)}
         />
       )}
       {invoiceId && (

@@ -9,6 +9,7 @@ import { ApiError } from '../community/errors.mjs';
 import { BillingProvider } from './billing-provider.mjs';
 import { getPlanPrice, getWalletRules } from './commercial-config.mjs';
 import { toMicroUsd } from './wallet-service.mjs';
+import { PAID_PLAN_NAMES } from './commercial-defaults.mjs';
 
 export class ManualBillingProvider extends BillingProvider {
   constructor(repo) {
@@ -32,7 +33,7 @@ export class ManualBillingProvider extends BillingProvider {
   // this transaction later never re-reads live commercial config (spec section 2's price-snapshot
   // requirement).
   async createSubscription({ userId, planId }) {
-    if (!['plus', 'personalized'].includes(planId)) throw new ApiError(400, 'VALIDATION_FAILED');
+    if (!PAID_PLAN_NAMES.includes(planId)) throw new ApiError(400, 'VALIDATION_FAILED');
     const price = await getPlanPrice(this.repo, planId);
     const transaction = await this.repo.paymentTransactions.create({
       userId, type: 'subscription', provider: 'manual', externalTransactionId: newId('manualTx'),
