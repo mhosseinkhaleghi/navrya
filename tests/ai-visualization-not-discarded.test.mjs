@@ -33,21 +33,46 @@ test('EntryDetailPanel keeps real ephemeral state for a just-generated (not nece
 
 test('handleVisualizeAiScenario/handleVisualizeAiAnalysis record BOTH the loading state and the real outcome (ready or error) into that ephemeral state, not just fire-and-forget', () => {
   assert.match(liveSrc, /setLocalScenarioVisualizations\(\(prev\) => \(\{ \.\.\.prev, \[aiScenario\.localKey\]: \{ status: 'loading' \} \}\)\);/);
-  assert.match(liveSrc, /setLocalScenarioVisualizations\(\(prev\) => \(\{ \.\.\.prev, \[aiScenario\.localKey\]: outcome\.ok \? outcome\.visualization : \{ status: 'error' \} \}\)\);/);
+  assert.match(liveSrc, /setLocalScenarioVisualizations\(\(prev\) => \(\{ \.\.\.prev, \[aiScenario\.localKey\]: outcome\.ok \? outcome\.visualization : \{ status: 'error', errorCode: outcome\.error \} \}\)\);/);
   assert.match(liveSrc, /setLocalAnalysisVisualization\(\{ status: 'loading' \}\);/);
-  assert.match(liveSrc, /setLocalAnalysisVisualization\(outcome\.ok \? outcome\.visualization : \{ status: 'error' \}\);/);
+  assert.match(liveSrc, /setLocalAnalysisVisualization\(outcome\.ok \? outcome\.visualization : \{ status: 'error', errorCode: outcome\.error \}\);/);
 });
 
 test('sessionAnalysisCard renders a real, visible error notice for a failed scenario visualization or whole-analysis visualization, not silence', () => {
   assert.match(cardSrc, /\{vizStatus === 'error' && \(/);
-  assert.match(cardSrc, /tr\(lang, 'visualizeError'\)/);
   assert.match(cardSrc, /\{analysisVisualization && analysisVisualization\.status === 'error' && \(/);
-  assert.match(cardSrc, /tr\(activeLang, 'visualizeAnalysisError'\)/);
 });
 
 test('every language in sessionAnalysisCard has real visualizeError/visualizeAnalysisError copy, not a missing key falling back silently', () => {
   ['fa', 'ar', 'en', 'es'].forEach((lang) => {
     const re = new RegExp(lang + ':\\s*\\{[\\s\\S]*?visualizeError: ', 'm');
     assert.ok(re.test(cardSrc), 'missing visualizeError copy for lang ' + lang);
+  });
+});
+
+// Production feedback (2026-09-02): the generic "failed, try again" message hid WHY it failed -
+// several distinct causes (insufficient wallet balance, a save failure, a provider error) all
+// looked identical, so a trader hitting WALLET_INSUFFICIENT_BALANCE had no way to self-diagnose
+// (top up) rather than repeatedly retrying an image generation that will keep failing until they
+// do. The real error code is now threaded from the client's outcome.error through every one of the
+// three places a visualize outcome is recorded (FateSummaryModal.handleVisualize/
+// handleVisualizeAnalysis, EntryDetailPanel.handleVisualizeAiScenario/handleVisualizeAiAnalysis,
+// and the modal's own handleVisualizeLocal/handleVisualizeAnalysisLocal), and the card renders a
+// distinct, actionable message specifically for WALLET_INSUFFICIENT_BALANCE.
+const modalSrc = await readFile(new URL('../navrya-src/sessionAiAnalysisModal.jsx', import.meta.url), 'utf8');
+
+test('every place a visualize outcome is recorded threads the real error code through, not just a bare status:error', () => {
+  assert.match(liveSrc, /setScenarioVisualizations\(\(prev\) => \(\{ \.\.\.prev, \[scenario\.localKey\]: outcome\.ok \? outcome\.visualization : \{ status: 'error', errorCode: outcome\.error \} \}\)\);/);
+  assert.match(liveSrc, /setAnalysisVisualization\(outcome\.ok \? outcome\.visualization : \{ status: 'error', errorCode: outcome\.error \}\);/);
+  assert.match(modalSrc, /outcome\.ok \? outcome\.visualization : \{ status: 'error', errorCode: outcome\.error \} \}\)\);/);
+  assert.match(modalSrc, /setLocalAnalysisVisualization\(outcome\.ok \? outcome\.visualization : \{ status: 'error', errorCode: outcome\.error \}\);/);
+});
+
+test('sessionAnalysisCard shows a distinct, actionable message for WALLET_INSUFFICIENT_BALANCE specifically, not the generic failure message', () => {
+  assert.match(cardSrc, /visualization\.errorCode === 'WALLET_INSUFFICIENT_BALANCE' \? 'visualizeErrorBalance' : 'visualizeError'/);
+  assert.match(cardSrc, /analysisVisualization\.errorCode === 'WALLET_INSUFFICIENT_BALANCE' \? 'visualizeAnalysisErrorBalance' : 'visualizeAnalysisError'/);
+  ['fa', 'ar', 'en', 'es'].forEach((lang) => {
+    const re = new RegExp(lang + ':\\s*\\{[\\s\\S]*?visualizeErrorBalance: ', 'm');
+    assert.ok(re.test(cardSrc), 'missing visualizeErrorBalance copy for lang ' + lang);
   });
 });

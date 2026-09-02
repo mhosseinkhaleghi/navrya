@@ -1418,13 +1418,13 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
     if (!onVisualizeAiScenario || !result) return;
     setLocalScenarioVisualizations((prev) => ({ ...prev, [aiScenario.localKey]: { status: 'loading' } }));
     const outcome = await onVisualizeAiScenario(aiScenario, { entry, analysisId: result.analysisId });
-    setLocalScenarioVisualizations((prev) => ({ ...prev, [aiScenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
+    setLocalScenarioVisualizations((prev) => ({ ...prev, [aiScenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error', errorCode: outcome.error } }));
   }
   async function handleVisualizeAiAnalysis() {
     if (!onVisualizeAiAnalysis || !result) return;
     setLocalAnalysisVisualization({ status: 'loading' });
     const outcome = await onVisualizeAiAnalysis(result, { entry });
-    setLocalAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error' });
+    setLocalAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error', errorCode: outcome.error });
   }
 
   return (
@@ -2232,7 +2232,7 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
   async function handleVisualize(scenario, ctx) {
     setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
     const outcome = onVisualizeAiScenario ? await onVisualizeAiScenario(scenario, ctx) : { ok: false };
-    setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
+    setScenarioVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error', errorCode: outcome.error } }));
   }
   // Same "disappears again" fix as EntryDetailPanel's own inline card (see
   // session-analysis-client.js's hydrateScenarioVisualizations() for the real cause) - this
@@ -2247,7 +2247,7 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     if (!analysisEntry || !latest) return;
     setAnalysisVisualization({ status: 'loading' });
     const outcome = onVisualizeAiAnalysis ? await onVisualizeAiAnalysis(latest, { entry: analysisEntry }) : { ok: false };
-    setAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error' });
+    setAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error', errorCode: outcome.error });
   }
   const addedScenarioKeys = React.useMemo(() => {
     const keys = new Set();

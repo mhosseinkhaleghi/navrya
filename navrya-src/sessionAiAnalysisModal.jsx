@@ -521,7 +521,7 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     setLocalVisualizations((prev) => ({ ...prev, [scenario.localKey]: { status: 'loading' } }));
     const ctx = { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId };
     const outcome = onVisualizeScenario ? await onVisualizeScenario(scenario, ctx) : { ok: false };
-    setLocalVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error' } }));
+    setLocalVisualizations((prev) => ({ ...prev, [scenario.localKey]: outcome.ok ? outcome.visualization : { status: 'error', errorCode: outcome.error } }));
   }
   // A caller-supplied analysisVisualization (e.g. FateSummaryModal's own inline card, kept in sync
   // with the same persisted state) wins once set - same "caller state wins, local state is the
@@ -530,7 +530,7 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   async function handleVisualizeAnalysisLocal() {
     setLocalAnalysisVisualization({ status: 'loading' });
     const outcome = onVisualizeAnalysis ? await onVisualizeAnalysis(analysisResult, { entry: analysisMeta && analysisMeta.entry }) : { ok: false };
-    setLocalAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error' });
+    setLocalAnalysisVisualization(outcome.ok ? outcome.visualization : { status: 'error', errorCode: outcome.error });
   }
 
   return (

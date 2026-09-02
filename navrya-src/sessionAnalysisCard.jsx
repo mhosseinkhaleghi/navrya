@@ -24,6 +24,7 @@ const copy = {
     triggerLabel: 'محرک', invalidationLabel: 'نقطه ابطال', confidenceLabel: 'اطمینان',
     addToSession: 'افزودن سناریو', added: 'افزوده شد', visualize: 'ترسیم سناریو', visualizing: 'در حال ترسیم…',
     visualizeError: 'تولید تصویر ناموفق بود. دوباره تلاش کنید.',
+    visualizeErrorBalance: 'موجودی کیف پول شما کافی نیست. از بخش کیف پول یا اشتراک شارژ کنید.',
     watchingTitle: 'در حال رصد', unknownsTitle: 'آنچه هنوز نمی‌دانم', changeViewTitle: 'چه چیزی نظرم را تغییر می‌دهد',
     confidenceTitle: 'میزان اطمینان تحلیل', deepAnalysis: 'تحلیل عمیق‌تر', collapse: 'بستن',
     noScenario: 'در حال حاضر سناریوی قابل‌اقدامی وجود ندارد.', tokenUsage: '{n} توکن',
@@ -32,7 +33,8 @@ const copy = {
     status_pending: 'در انتظار', status_strengthened: 'تقویت‌شده', status_weakened: 'تضعیف‌شده', status_partially_confirmed: 'تا حدی تایید‌شده', status_confirmed: 'تایید‌شده', status_invalidated: 'باطل‌شده',
     original: 'اصلی', scenarioMap: 'نقشه سناریو', regenerate: 'تحلیل مجدد',
     original_data_note: 'این تصویر یک روکش تصویری‌سازی‌شده است، نه داده واقعی بازار.',
-    visualizeAnalysis: 'ترسیم کل تحلیل روی چارت', visualizingAnalysis: 'در حال ترسیم تحلیل…', visualizeAnalysisError: 'تولید تصویر تحلیل ناموفق بود. دوباره تلاش کنید.'
+    visualizeAnalysis: 'ترسیم کل تحلیل روی چارت', visualizingAnalysis: 'در حال ترسیم تحلیل…', visualizeAnalysisError: 'تولید تصویر تحلیل ناموفق بود. دوباره تلاش کنید.',
+    visualizeAnalysisErrorBalance: 'موجودی کیف پول شما کافی نیست. از بخش کیف پول یا اشتراک شارژ کنید.'
   },
   ar: {
     header: 'تحليل الذكاء الاصطناعي للسوق', memoryChip: 'ذاكرة الجلسة · {n} حدث', depthAuto: 'تلقائي', depthEfficient: 'تحليل فعّال', depthDeep: 'تحليل عميق',
@@ -41,6 +43,7 @@ const copy = {
     triggerLabel: 'المحفز', invalidationLabel: 'نقطة الإبطال', confidenceLabel: 'الثقة',
     addToSession: 'إضافة سيناريو', added: 'تمت الإضافة', visualize: 'تصور السيناريو', visualizing: 'جارٍ الرسم…',
     visualizeError: 'فشل إنشاء الصورة. حاول مرة أخرى.',
+    visualizeErrorBalance: 'رصيد محفظتك غير كافٍ. اشحن من قسم المحفظة أو الاشتراك.',
     watchingTitle: 'قيد المراقبة', unknownsTitle: 'ما لا أعرفه بعد', changeViewTitle: 'ما الذي قد يغيّر رأيي',
     confidenceTitle: 'مستوى ثقة التحليل', deepAnalysis: 'تحليل أعمق', collapse: 'إغلاق',
     noScenario: 'لا يوجد سيناريو قابل للتنفيذ حالياً.', tokenUsage: '{n} رمز',
@@ -49,7 +52,8 @@ const copy = {
     status_pending: 'قيد الانتظار', status_strengthened: 'تعزّز', status_weakened: 'ضعُف', status_partially_confirmed: 'تأكّد جزئياً', status_confirmed: 'تأكّد', status_invalidated: 'أُبطل',
     original: 'الأصلي', scenarioMap: 'خريطة السيناريو', regenerate: 'إعادة التحليل',
     original_data_note: 'هذه صورة توضيحية مولّدة، وليست بيانات سوق حقيقية.',
-    visualizeAnalysis: 'رسم التحليل الكامل على الرسم البياني', visualizingAnalysis: 'جارٍ رسم التحليل…', visualizeAnalysisError: 'فشل إنشاء صورة التحليل. حاول مرة أخرى.'
+    visualizeAnalysis: 'رسم التحليل الكامل على الرسم البياني', visualizingAnalysis: 'جارٍ رسم التحليل…', visualizeAnalysisError: 'فشل إنشاء صورة التحليل. حاول مرة أخرى.',
+    visualizeAnalysisErrorBalance: 'رصيد محفظتك غير كافٍ. اشحن من قسم المحفظة أو الاشتراك.'
   },
   en: {
     header: 'AI Market Analysis', memoryChip: 'Session Memory · {n} events', depthAuto: 'Auto', depthEfficient: 'Efficient analysis', depthDeep: 'Deep analysis',
@@ -58,6 +62,7 @@ const copy = {
     triggerLabel: 'Trigger', invalidationLabel: 'Invalidation', confidenceLabel: 'Confidence',
     addToSession: '+ Add Scenario', added: 'Added', visualize: 'Visualize Scenario', visualizing: 'Visualizing…',
     visualizeError: "Couldn't generate the image. Try again.",
+    visualizeErrorBalance: 'Your wallet balance is too low. Top up from Wallet or Subscription.',
     watchingTitle: 'AI Is Watching', unknownsTitle: "What I Don't Know Yet", changeViewTitle: 'What Would Change My View?',
     confidenceTitle: 'Analysis Confidence', deepAnalysis: 'Deep analysis', collapse: 'Collapse',
     noScenario: 'No actionable scenario yet.', tokenUsage: '{n} tokens',
@@ -66,7 +71,8 @@ const copy = {
     status_pending: 'Pending', status_strengthened: 'Strengthened', status_weakened: 'Weakened', status_partially_confirmed: 'Partially confirmed', status_confirmed: 'Confirmed', status_invalidated: 'Invalidated',
     original: 'Original', scenarioMap: 'Scenario Map', regenerate: 'Regenerate',
     original_data_note: 'This is an illustrative generated overlay, not real market data.',
-    visualizeAnalysis: 'Draw full analysis on chart', visualizingAnalysis: 'Drawing analysis…', visualizeAnalysisError: "Couldn't generate the analysis image. Try again."
+    visualizeAnalysis: 'Draw full analysis on chart', visualizingAnalysis: 'Drawing analysis…', visualizeAnalysisError: "Couldn't generate the analysis image. Try again.",
+    visualizeAnalysisErrorBalance: 'Your wallet balance is too low. Top up from Wallet or Subscription.'
   },
   es: {
     header: 'Análisis de IA del mercado', memoryChip: 'Memoria de sesión · {n} eventos', depthAuto: 'Automático', depthEfficient: 'Análisis eficiente', depthDeep: 'Análisis profundo',
@@ -75,6 +81,7 @@ const copy = {
     triggerLabel: 'Disparador', invalidationLabel: 'Invalidación', confidenceLabel: 'Confianza',
     addToSession: '+ Añadir escenario', added: 'Añadido', visualize: 'Visualizar escenario', visualizing: 'Generando…',
     visualizeError: 'No se pudo generar la imagen. Inténtalo de nuevo.',
+    visualizeErrorBalance: 'Tu saldo de billetera es insuficiente. Recarga desde Billetera o Suscripción.',
     watchingTitle: 'La IA está observando', unknownsTitle: 'Lo que aún no sé', changeViewTitle: 'Qué cambiaría mi opinión',
     confidenceTitle: 'Confianza del análisis', deepAnalysis: 'Análisis profundo', collapse: 'Cerrar',
     noScenario: 'Todavía no hay un escenario accionable.', tokenUsage: '{n} tokens',
@@ -83,7 +90,8 @@ const copy = {
     status_pending: 'Pendiente', status_strengthened: 'Reforzado', status_weakened: 'Debilitado', status_partially_confirmed: 'Parcialmente confirmado', status_confirmed: 'Confirmado', status_invalidated: 'Invalidado',
     original: 'Original', scenarioMap: 'Mapa de escenario', regenerate: 'Regenerar',
     original_data_note: 'Esta es una superposición ilustrativa generada, no datos reales del mercado.',
-    visualizeAnalysis: 'Dibujar el análisis completo en el gráfico', visualizingAnalysis: 'Dibujando el análisis…', visualizeAnalysisError: 'No se pudo generar la imagen del análisis. Inténtalo de nuevo.'
+    visualizeAnalysis: 'Dibujar el análisis completo en el gráfico', visualizingAnalysis: 'Dibujando el análisis…', visualizeAnalysisError: 'No se pudo generar la imagen del análisis. Inténtalo de nuevo.',
+    visualizeAnalysisErrorBalance: 'Tu saldo de billetera es insuficiente. Recarga desde Billetera o Suscripción.'
   }
 };
 function tr(lang, key, vars) {
@@ -270,7 +278,7 @@ function ScenarioCard({ scenario, lang, added, onAdd, onVisualize, visualization
       {vizStatus === 'error' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--danger)', background: 'rgba(255,56,48,.08)' }}>
           <Icon name="TriangleAlert" size={13} style={{ color: 'var(--danger)', flex: 'none' }} />
-          <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(lang, 'visualizeError')}</span>
+          <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(lang, visualization.errorCode === 'WALLET_INSUFFICIENT_BALANCE' ? 'visualizeErrorBalance' : 'visualizeError')}</span>
         </div>
       )}
 
@@ -358,7 +366,7 @@ export function SessionAnalysisCard({
           {analysisVisualization && analysisVisualization.status === 'error' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--danger)', background: 'rgba(255,56,48,.08)' }}>
               <Icon name="TriangleAlert" size={13} style={{ color: 'var(--danger)', flex: 'none' }} />
-              <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(activeLang, 'visualizeAnalysisError')}</span>
+              <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(activeLang, analysisVisualization.errorCode === 'WALLET_INSUFFICIENT_BALANCE' ? 'visualizeAnalysisErrorBalance' : 'visualizeAnalysisError')}</span>
             </div>
           )}
           <Button variant="secondary" size="sm" icon="image" loading={!!(analysisVisualization && analysisVisualization.status === 'loading')} onClick={onVisualizeAnalysis}>
