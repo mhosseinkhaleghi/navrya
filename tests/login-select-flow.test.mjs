@@ -12,11 +12,20 @@ import vm from 'node:vm';
 
 const root = process.cwd();
 const source = (file) => readFile(path.join(root, 'public', 'pages', 'select', file), 'utf8');
+const serverSource = (file) => readFile(path.join(root, 'server', 'community', file), 'utf8');
 
 test('the browser Google client ID is configured as a Google web client ID', async () => {
   const appSource = await source('app.js');
   assert.match(appSource, /const GOOGLE_CLIENT_ID = '[^']+\.apps\.googleusercontent\.com';/);
   assert.doesNotMatch(appSource, /const GOOGLE_CLIENT_ID = 'REPLACE_WITH_GOOGLE_CLIENT_ID';/);
+});
+
+test('the temporary production Google server client ID matches the browser client ID', async () => {
+  const [appSource, authSource] = await Promise.all([source('app.js'), serverSource('routes.auth.mjs')]);
+  const browserClientId = appSource.match(/const GOOGLE_CLIENT_ID = '([^']+)'/)[1];
+  const serverClientId = authSource.match(/const TEMPORARY_PRODUCTION_GOOGLE_CLIENT_ID = '([^']+)'/)[1];
+  assert.equal(serverClientId, browserClientId);
+  assert.match(authSource, /if \(process\.env\.NODE_ENV === 'production'\) return TEMPORARY_PRODUCTION_GOOGLE_CLIENT_ID;/);
 });
 
 function memoryStorage() {

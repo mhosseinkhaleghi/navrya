@@ -18,6 +18,16 @@ import { clearAuthCookies } from './security/cookies.mjs';
 import { sendMail } from './security/mailer.mjs';
 import { verifyToken as verifyLegacyToken, resolveAuthSecret as legacyAuthSecret } from './auth-tokens.mjs';
 
+// Temporary production bootstrap while the approved server operator does not have access to set
+// GOOGLE_CLIENT_ID in the private server .env. This is a public OAuth client ID, not a secret.
+// Once that environment value is verified, remove this override and restore env-only resolution.
+const TEMPORARY_PRODUCTION_GOOGLE_CLIENT_ID = '443787785968-2e2nvrnt4lsq70ob5i2pvj3ujo6uekmf.apps.googleusercontent.com';
+
+function googleClientId() {
+  if (process.env.NODE_ENV === 'production') return TEMPORARY_PRODUCTION_GOOGLE_CLIENT_ID;
+  return String(process.env.GOOGLE_CLIENT_ID || '').trim();
+}
+
 // Mounted at /api/auth, before the global requireAuth gate (server/community/app.mjs) - this
 // router applies requireAuth/optionalAuth itself, per route, exactly where identity is actually
 // needed (register/login/google/oidc/password-reset/legacy-exchange are necessarily pre-auth;
@@ -123,7 +133,7 @@ export function router(repo) {
     asyncHandler(async (req, res) => {
       const credential = (req.body || {}).credential;
       if (!credential) throw new ApiError(400, 'VALIDATION_FAILED');
-      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientId = googleClientId();
       if (!clientId) throw new ApiError(503, 'GOOGLE_AUTH_NOT_CONFIGURED');
 
       let payload;
