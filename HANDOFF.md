@@ -1,5 +1,11 @@
 # Handoff
 
+- Active task: `fix/google-sign-in-client` (owner: Codex).
+- Changed files: `public/pages/select/app.js`, `.env.example`, `.env.production.example`, and `tests/login-select-flow.test.mjs` configure and verify the new Google web client ID; this handoff records the work.
+- Validation: `node --test tests/login-select-flow.test.mjs` (16 passing), `npm run build`, and `git diff --check` passed with Node 22.
+- Remote state: task branch is based on current `origin/dev` at `cf7a500`.
+- Next action: commit the task branch; a release requires an explicit `dev`, `staging`, or `production` target, and production must contain the same `GOOGLE_CLIENT_ID` in its private `.env`.
+
 - Rules: `AGENTS.md` plus the task-selected `skills/*/SKILL.md` files are mandatory for every contributor and agent.
 - Architecture: Vite/React client, Express Community API, AI API, PostgreSQL, Caddy, Docker Compose.
 - Git: task branches start from and return to `dev`; staging and production publish only after an explicit user request.

@@ -13,6 +13,12 @@ import vm from 'node:vm';
 const root = process.cwd();
 const source = (file) => readFile(path.join(root, 'public', 'pages', 'select', file), 'utf8');
 
+test('the browser Google client ID is configured as a Google web client ID', async () => {
+  const appSource = await source('app.js');
+  assert.match(appSource, /const GOOGLE_CLIENT_ID = '[^']+\.apps\.googleusercontent\.com';/);
+  assert.doesNotMatch(appSource, /const GOOGLE_CLIENT_ID = 'REPLACE_WITH_GOOGLE_CLIENT_ID';/);
+});
+
 function memoryStorage() {
   const values = new Map();
   return { getItem: (key) => (values.has(key) ? values.get(key) : null), setItem: (key, value) => values.set(key, String(value)), removeItem: (key) => values.delete(key) };
