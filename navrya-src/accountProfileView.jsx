@@ -10,7 +10,7 @@ import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice
 import { RankCrest, RANK_TITLE } from '../public/pages/shared/navrya/components/identity/RankCrest.jsx';
 import { CharacterPortrait } from '../public/pages/shared/navrya/components/identity/CharacterPortrait.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
-import { CryptoInvoiceModal } from './cryptoInvoiceModal.jsx';
+import { CryptoInvoiceModal, CryptoInvoicePanel } from './cryptoInvoiceModal.jsx';
 
 // React rewrite of the Account Profile destination (sidebar "اشتراک", #account/profile[/tab])
 // per the design handoff: a persistent "dossier band" (rank/level/XP/next-reward) above a tab
@@ -122,6 +122,14 @@ const copy = {
     subPayCurrencyNote: 'مبلغ به دلار آمریکا محاسبه و در لحظهٔ پرداخت تبدیل می‌شود.',
     subPayBack: 'بازگشت', subPayConfirm: 'پرداخت {amount}',
     subTopUpMinHint: 'حداقل مبلغ شارژ {amount} است', subTopUpAmountValid: 'مبلغ معتبر است',
+    subPayStepInvoice: 'گام ۳ از ۳ · پرداخت',
+    subSpecStorage: 'فضای ابری', subSpecPatterns: 'الگوهای ذخیره‌شده', subSpecStrategies: 'استراتژی‌ها',
+    subSpecAccounts: 'حساب‌های معاملاتی', subSpecSessions: 'سشن‌های معاملاتی', subSpecSymbols: 'نمادهای تحلیل',
+    subSpecUnlimited: 'نامحدود', subTokenDiscountLabel: 'تخفیف مصرف توکن',
+    subWalletAddCredit: 'افزودن اعتبار', subWalletMinimumIs: 'حداقل مبلغ شارژ: {amount}',
+    subWalletCustomAmount: 'مبلغ دلخواه (دلار)', subWalletContinueToPay: 'ادامه به پرداخت',
+    subWalletLowBalance: 'موجودی کم', subWalletPromoLabel: 'هدیه', subWalletPaidLabel: 'پرداختی',
+    subWalletMethodsLabel: 'روش‌های پرداخت:',
     subTopUpNotice: 'درخواست شارژ به مبلغ {amount} ثبت شد — در انتظار تأیید مدیر (صورتحساب دستی/آزمایشی).',
     subTopUpError: 'ثبت درخواست شارژ ممکن نشد: {error}',
     subTopUpMinTitle: 'مبلغ خیلی کم است',
@@ -237,6 +245,14 @@ const copy = {
     subPayCurrencyNote: 'Charged in US dollars and converted at payment time.',
     subPayBack: 'Back', subPayConfirm: 'Pay {amount}',
     subTopUpMinHint: 'Minimum top-up is {amount}', subTopUpAmountValid: 'Amount is valid',
+    subPayStepInvoice: 'Step 3 of 3 · Payment',
+    subSpecStorage: 'Cloud storage', subSpecPatterns: 'Saved patterns', subSpecStrategies: 'Strategies',
+    subSpecAccounts: 'Trading accounts', subSpecSessions: 'Trading sessions', subSpecSymbols: 'Analysis symbols',
+    subSpecUnlimited: 'Unlimited', subTokenDiscountLabel: 'Token discount',
+    subWalletAddCredit: 'Add credit', subWalletMinimumIs: 'Minimum top-up: {amount}',
+    subWalletCustomAmount: 'Custom amount (USD)', subWalletContinueToPay: 'Continue to payment',
+    subWalletLowBalance: 'Low balance', subWalletPromoLabel: 'Promo', subWalletPaidLabel: 'Paid',
+    subWalletMethodsLabel: 'Payment methods:',
     subTopUpNotice: 'Top-up of {amount} requested — pending Admin confirmation (manual/test billing).',
     subTopUpError: 'Could not submit the top-up request: {error}',
     subTopUpMinTitle: 'Amount too low',
@@ -352,6 +368,14 @@ const copy = {
     subPayCurrencyNote: 'يُحتسب المبلغ بالدولار الأمريكي ويُحوَّل عند الدفع.',
     subPayBack: 'رجوع', subPayConfirm: 'ادفع {amount}',
     subTopUpMinHint: 'الحد الأدنى للشحن هو {amount}', subTopUpAmountValid: 'المبلغ صالح',
+    subPayStepInvoice: 'الخطوة ٣ من ٣ · الدفع',
+    subSpecStorage: 'مساحة سحابية', subSpecPatterns: 'الأنماط المحفوظة', subSpecStrategies: 'الاستراتيجيات',
+    subSpecAccounts: 'حسابات التداول', subSpecSessions: 'جلسات التداول', subSpecSymbols: 'رموز التحليل',
+    subSpecUnlimited: 'غير محدود', subTokenDiscountLabel: 'خصم استهلاك التوكن',
+    subWalletAddCredit: 'إضافة رصيد', subWalletMinimumIs: 'الحد الأدنى للشحن: {amount}',
+    subWalletCustomAmount: 'مبلغ مخصص (دولار)', subWalletContinueToPay: 'متابعة إلى الدفع',
+    subWalletLowBalance: 'رصيد منخفض', subWalletPromoLabel: 'هدية', subWalletPaidLabel: 'مدفوع',
+    subWalletMethodsLabel: 'طرق الدفع:',
     subTopUpNotice: 'تم إرسال طلب شحن بقيمة {amount} — في انتظار تأكيد المسؤول (فوترة يدوية/تجريبية).',
     subTopUpError: 'تعذّر إرسال طلب الشحن: {error}',
     subTopUpMinTitle: 'المبلغ منخفض جدًا',
@@ -467,6 +491,14 @@ const copy = {
     subPayCurrencyNote: 'Se cobra en dólares estadounidenses y se convierte al momento del pago.',
     subPayBack: 'Atrás', subPayConfirm: 'Pagar {amount}',
     subTopUpMinHint: 'La recarga mínima es {amount}', subTopUpAmountValid: 'El importe es válido',
+    subPayStepInvoice: 'Paso 3 de 3 · Pago',
+    subSpecStorage: 'Almacenamiento', subSpecPatterns: 'Patrones guardados', subSpecStrategies: 'Estrategias',
+    subSpecAccounts: 'Cuentas de trading', subSpecSessions: 'Sesiones de trading', subSpecSymbols: 'Símbolos de análisis',
+    subSpecUnlimited: 'Ilimitado', subTokenDiscountLabel: 'Descuento de tokens',
+    subWalletAddCredit: 'Añadir saldo', subWalletMinimumIs: 'Recarga mínima: {amount}',
+    subWalletCustomAmount: 'Importe personalizado (USD)', subWalletContinueToPay: 'Continuar al pago',
+    subWalletLowBalance: 'Saldo bajo', subWalletPromoLabel: 'Promo', subWalletPaidLabel: 'Pagado',
+    subWalletMethodsLabel: 'Métodos de pago:',
     subTopUpNotice: 'Se solicitó una recarga de {amount} — pendiente de confirmación del administrador (facturación manual/de prueba).',
     subTopUpError: 'No se pudo enviar la solicitud de recarga: {error}',
     subTopUpMinTitle: 'Monto demasiado bajo',
@@ -1555,6 +1587,21 @@ const PERK_ROWS = [
 // always has; the optional feature/discount lines it appends after those are rendered separately
 // as the fixed perk rows and discount strip instead.
 const PLAN_SPEC_ROW_COUNT = 6;
+// The six spec rows, rendered as label + value in two columns (matching the design file) rather
+// than one sentence per bullet. Every plan has all six, which is what keeps the rows lined up.
+const SPEC_ROWS = [
+  { key: 'storage', label: 'subSpecStorage' },
+  { key: 'patterns', label: 'subSpecPatterns' },
+  { key: 'strategies', label: 'subSpecStrategies' },
+  { key: 'accounts', label: 'subSpecAccounts' },
+  { key: 'sessions', label: 'subSpecSessions' },
+  { key: 'analysisSymbols', label: 'subSpecSymbols' }
+];
+function specValue(lang, cfg, key) {
+  if (key === 'storage') return fmtBytesGb(cfg.storageBytes);
+  const limit = cfg.limits ? cfg.limits[key] : null;
+  return limit === null || limit === undefined ? tr(lang, 'subSpecUnlimited') : digits(lang, limit);
+}
 
 function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
   if (!catalog) return null;
@@ -1581,62 +1628,65 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
                 ...(isRecommended ? { border: '1px solid color-mix(in srgb, var(--char-accent) 90%, transparent)' } : null)
               }}
             >
-              {/* badge band - 26px whether or not this card has a badge */}
-              <div style={{ height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-                {isCurrent && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 12px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em' }}>{tr(lang, 'subCurrentPlan')}</span>
-                )}
-                {isRecommended && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 12px', borderRadius: 999, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em' }}>{tr(lang, 'subRecommended')}</span>
+              {/* badge band - 26px whether or not this card has a badge. Every band below is
+                  start-aligned (right in RTL), matching the design file: centring the name and
+                  price is what made them read as sitting on top of each other. */}
+              <div style={{ height: 26, display: 'flex', alignItems: 'center', flex: 'none' }}>
+                {(isCurrent || isRecommended) && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 10px', borderRadius: 6, background: 'var(--char-accent)', color: 'var(--ink-950)', fontSize: 11, fontWeight: 700, letterSpacing: '.06em' }}>
+                    {tr(lang, isCurrent ? 'subCurrentPlan' : 'subRecommended')}
+                  </span>
                 )}
               </div>
 
-              <div style={{ height: 24, marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: isCurrent || isRecommended ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(lang, planId, catalog)}</span>
+              <div style={{ height: 26, marginTop: 14, display: 'flex', alignItems: 'center', flex: 'none' }}>
+                <span style={{ fontSize: 13, lineHeight: '20px', fontWeight: 700, letterSpacing: '.08em', color: isCurrent || isRecommended ? 'var(--char-accent)' : 'var(--text-muted)' }}>{planLabel(lang, planId, catalog)}</span>
               </div>
 
-              <div style={{ height: 44, display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6, flex: 'none' }}>
-                <span dir="ltr" className="navrya-tabular" style={{ fontSize: 27, fontWeight: 700, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
+              {/* an explicit lineHeight keeps the 34px figure inside its own 46px band - without it
+                  the glyph box overflowed upward into the name band above */}
+              <div style={{ height: 46, display: 'flex', alignItems: 'baseline', gap: 8, flex: 'none' }}>
+                <span dir="ltr" className="navrya-tabular" style={{ fontSize: 34, lineHeight: '42px', fontWeight: 800, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {tr(lang, cfg.price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth')}</span>
               </div>
 
-              <div style={{ height: 1, background: 'var(--divider-gold)', margin: '12px 0', flex: 'none' }} />
+              <div style={{ height: 1, background: 'var(--divider-gold)', margin: '14px 0', flex: 'none' }} />
 
               <div style={{ flex: 'none' }}>
-                {specs.map((line) => (
-                  <div key={line} style={{ height: 30, display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                    <span style={{ width: 4, height: 4, borderRadius: '50%', flex: 'none', background: isCurrent || isRecommended ? 'var(--char-accent)' : 'var(--text-dim)' }} />
-                    <span style={{ fontSize: 12.5, color: isCurrent ? 'var(--text-primary)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line}</span>
+                {SPEC_ROWS.map((row, i) => (
+                  <div key={row.key} style={{ height: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minWidth: 0, borderBottom: i === SPEC_ROWS.length - 1 ? 'none' : '1px solid rgba(244,234,215,.055)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr(lang, row.label)}</span>
+                    <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)', flex: 'none' }}>{specValue(lang, cfg, row.key)}</span>
                   </div>
                 ))}
               </div>
 
-              <div style={{ height: 1, background: 'var(--divider-gold)', margin: '12px 0', flex: 'none' }} />
+              <div style={{ height: 1, background: 'var(--divider-gold)', margin: '14px 0', flex: 'none' }} />
 
               <div style={{ flex: 'none' }}>
                 {PERK_ROWS.map((perk) => {
                   const on = !!features[perk.key];
                   return (
-                    <div key={perk.key} style={{ height: 26, display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                      <Icon name={on ? 'check' : 'lock'} size={13} style={{ flex: 'none', color: on ? 'var(--char-accent)' : 'var(--text-disabled)' }} />
+                    <div key={perk.key} style={{ height: 26, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <Icon name={on ? 'check' : 'lock'} size={14} strokeWidth={on ? 2.4 : 2} style={{ flex: 'none', color: on ? 'var(--char-accent)' : 'var(--text-disabled)' }} />
                       <span style={{ fontSize: 12, color: on ? 'var(--text-primary)' : 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr(lang, perk.label)}</span>
                     </div>
                   );
                 })}
               </div>
 
-              {/* token-discount strip - always 34px, so a plan without a discount does not shorten its card */}
+              {/* token-discount strip - label at the start, figure at the end (never centred), and
+                  always 36px so a plan without a discount does not shorten its card */}
               <div style={{
-                height: 34, marginTop: 12, flex: 'none', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                fontSize: 11.5,
-                color: cfg.tokenDiscountPercent ? 'var(--char-accent)' : 'var(--text-disabled)',
-                background: cfg.tokenDiscountPercent ? 'color-mix(in srgb, var(--char-accent) 10%, transparent)' : 'transparent',
-                border: '1px solid ' + (cfg.tokenDiscountPercent ? 'color-mix(in srgb, var(--char-accent) 40%, transparent)' : 'var(--border-hairline)')
+                height: 36, marginTop: 14, flex: 'none', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 12px',
+                background: cfg.tokenDiscountPercent ? 'var(--char-active-surface)' : 'rgba(3,8,7,.35)',
+                border: cfg.tokenDiscountPercent ? '1px solid color-mix(in srgb, var(--char-accent) 55%, transparent)' : '1px dashed rgba(244,234,215,.14)'
               }}>
-                {cfg.tokenDiscountPercent ? tr(lang, 'subFeatTokenDiscount', { percent: cfg.tokenDiscountPercent }) : '—'}
+                <span style={{ fontSize: 11.5, fontWeight: cfg.tokenDiscountPercent ? 600 : 500, color: cfg.tokenDiscountPercent ? 'var(--char-accent)' : 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr(lang, 'subTokenDiscountLabel')}</span>
+                <span dir="ltr" className="navrya-tabular" style={{ fontSize: 13, fontWeight: 700, flex: 'none', color: cfg.tokenDiscountPercent ? 'var(--char-accent)' : 'var(--text-disabled)' }}>{cfg.tokenDiscountPercent ? digits(lang, cfg.tokenDiscountPercent) + '٪' : '—'}</span>
               </div>
 
-              <div style={{ height: 40, marginTop: 14, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ height: 44, marginTop: 16, flex: 'none', display: 'flex', alignItems: 'center' }}>
                 {isCurrent ? (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 12, fontWeight: 600, color: 'var(--char-accent)' }}>
                     <Icon name="check" size={14} />{tr(lang, 'subActivePlan')}
@@ -1691,14 +1741,20 @@ function TopUpMinimumModal({ lang, minimumTopUpUsd, onClose }) {
 // coupon/discount-code implementation anywhere on the server (no table, no route, no validation),
 // so an input that appeared to accept a code would be inventing a feature. It is placed here, in
 // its designed position, so wiring a real one later is a drop-in.
-const PAY_SHEET_STEPS = 2;
+const PAY_SHEET_STEPS = 3;
 
-function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) {
+function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed }) {
   const [step, setStep] = React.useState(0);
   const [method, setMethod] = React.useState(null);
   const [notAdded, setNotAdded] = React.useState(false);
+  // Set once the request has actually been created server-side; moving to step 2 shows that real
+  // invoice INSIDE this same sheet rather than closing and opening a second popup over the page.
+  const [invoiceId, setInvoiceId] = React.useState(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [failure, setFailure] = React.useState('');
   const methodPanel = React.useRef(null);
   const reviewPanel = React.useRef(null);
+  const invoicePanel = React.useRef(null);
   const [bodyHeight, setBodyHeight] = React.useState(null);
 
   const methods = [
@@ -1711,9 +1767,9 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) 
   // The sheet's height follows whichever panel is showing, measured rather than hardcoded - a
   // fixed height would clip the taller step in a language whose strings wrap differently.
   React.useLayoutEffect(() => {
-    const el = step === 0 ? methodPanel.current : reviewPanel.current;
+    const el = [methodPanel, reviewPanel, invoicePanel][step].current;
     if (el) setBodyHeight(el.scrollHeight);
-  }, [step, lang, amountUsd, notAdded, methods.length]);
+  });
 
   function pick(chosen) {
     if (!chosen.implemented) { setNotAdded(true); return; }
@@ -1722,15 +1778,30 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) 
     setStep(1);
   }
 
+  // onProceed resolves with the created request. A crypto rail answers with a real invoiceId, so
+  // the sheet advances to its own invoice step; anything else (the manual provider) is finished
+  // server-side already and the sheet hands back to the page.
+  function submit() {
+    setSubmitting(true);
+    setFailure('');
+    Promise.resolve(onProceed(method.id))
+      .then((result) => {
+        if (result && result.invoiceId) { setInvoiceId(result.invoiceId); setStep(2); }
+        else onClose();
+      })
+      .catch((error) => setFailure(error && error.message ? error.message : String(error)))
+      .finally(() => setSubmitting(false));
+  }
+
   const footer = step === 0
     ? (<><span style={{ flex: 1 }} /><Button variant="secondary" onClick={onClose}>{tr(lang, 'subCancel')}</Button></>)
-    : (
+    : step === 1 ? (
       <>
         <Button variant="ghost" onClick={() => setStep(0)}>{tr(lang, 'subPayBack')}</Button>
         <span style={{ flex: 1 }} />
-        <Button variant="primary" onClick={() => onProceed(method.id)}>{tr(lang, 'subPayConfirm', { amount: amountLabel })}</Button>
+        <Button variant="primary" disabled={submitting} onClick={submit}>{tr(lang, 'subPayConfirm', { amount: amountLabel })}</Button>
       </>
-    );
+    ) : (<><span style={{ flex: 1 }} /><Button variant="secondary" onClick={onClose}>{tr(lang, 'subInvoiceClose')}</Button></>);
 
   return (
     <Modal open title={title} icon="wallet" onClose={onClose} width={460} footer={footer}>
@@ -1747,16 +1818,16 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) 
             </React.Fragment>
           ))}
           <span style={{ marginInlineStart: 6, fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-            {tr(lang, step === 0 ? 'subPayStepMethod' : 'subPayStepReview')}
+            {tr(lang, ['subPayStepMethod', 'subPayStepReview', 'subPayStepInvoice'][step])}
           </span>
         </div>
 
         {/* dir="ltr" is load-bearing: in an RTL container an overflow:hidden box starts scrolled
             to its RIGHT edge, which would show the LAST panel instead of the first. */}
         <div dir="ltr" style={{ overflow: 'hidden', height: bodyHeight == null ? 'auto' : bodyHeight, transition: 'height var(--dur-expand, 220ms) var(--ease-out)' }}>
-          <div style={{ display: 'flex', width: '200%', alignItems: 'flex-start', transform: step === 0 ? 'translateX(0%)' : 'translateX(-50%)', transition: 'transform 320ms var(--ease-out)' }}>
+          <div style={{ display: 'flex', width: '300%', alignItems: 'flex-start', transform: 'translateX(-' + (step * (100 / PAY_SHEET_STEPS)) + '%)', transition: 'transform 320ms var(--ease-out)' }}>
 
-            <div ref={methodPanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: '50%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div ref={methodPanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: (100 / PAY_SHEET_STEPS) + '%', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'subPayChooseMethod')}</span>
               {methods.map((entry) => (
                 <button
@@ -1781,7 +1852,7 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) 
               {notAdded && <Notice tone="accent" icon="status">{tr(lang, 'subPayMethodNotAdded')}</Notice>}
             </div>
 
-            <div ref={reviewPanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: '50%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div ref={reviewPanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: (100 / PAY_SHEET_STEPS) + '%', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 50, padding: '8px 14px', borderRadius: 9, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.45)' }}>
                 <Icon name={method ? method.icon : 'wallet'} size={16} />
                 <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-primary)' }}>{method ? method.label : ''}</span>
@@ -1814,6 +1885,12 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) 
                   <span style={{ fontSize: 10.5, color: 'var(--text-dim)', lineHeight: 1.5, marginTop: 2 }}>{tr(lang, 'subPayCurrencyNote')}</span>
                 </div>
               </div>
+
+              {!!failure && <Notice tone="danger" icon="status">{failure}</Notice>}
+            </div>
+
+            <div ref={invoicePanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: (100 / PAY_SHEET_STEPS) + '%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {invoiceId && <CryptoInvoicePanel lang={lang} tr={tr} invoiceId={invoiceId} onConfirmed={onConfirmed} />}
             </div>
 
           </div>
@@ -1823,15 +1900,13 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose }) 
   );
 }
 
-function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
+function WalletCard({ lang, onNotice, onBelowMinimum }) {
   const [wallet, setWallet] = React.useState(null);
   // Starts EMPTY on purpose: the first sensible default is the smallest amount the server actually
   // accepts, which is only known once GET /api/sync/wallet answers with its minimumTopUpUsd.
   const [amount, setAmount] = React.useState('');
-  // Checkout sheet (method -> invoice) gates the real request - opened by the button below, only
-  // actually calling the network request once "crypto" (the one implemented rail) is chosen and
-  // the invoice is confirmed.
-  const [showPaymentMethod, setShowPaymentMethod] = React.useState(false);
+  const [showCheckout, setShowCheckout] = React.useState(false);
+
   function reload() {
     fetch('/api/sync/wallet').then((r) => r.json()).then((data) => {
       setWallet(data);
@@ -1839,58 +1914,124 @@ function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
     }).catch(() => {});
   }
   React.useEffect(reload, []);
+
+  // Returns the created request so the checkout sheet can slide its own invoice step in. A
+  // below-minimum rejection still gets the dedicated popup and closes the sheet; every other
+  // failure is thrown so the sheet shows it in place rather than vanishing.
   function requestTopUp() {
-    setShowPaymentMethod(false);
     const amountUsd = Number(amount) || 0;
-    fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd }) })
+    return fetch('/api/sync/wallet/topup-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd }) })
       .then((r) => r.json().then((body) => {
-        // Below-minimum is handled as its own dedicated popup (onBelowMinimum), not the generic
-        // inline notice - it carries the real, server-configured minimumTopUpUsd (admin-editable
-        // via Admin > Commercial > Wallet), never a hardcoded client-side guess.
         if (!r.ok) { const error = new Error(body.error); error.details = body; throw error; }
         return body;
       }))
       .then((result) => {
-        // A real BSC crypto invoice (task A) - opens the payment modal instead of the plain
-        // "pending admin confirmation" notice, which stays exactly correct for the Manual provider
-        // (no invoiceId in that case).
-        if (result.invoiceId) onInvoice(result.invoiceId);
-        else onNotice(tr(lang, 'subTopUpNotice', { amount: fmtMicroUsd(amountUsd * 1000000) }));
         reload(); notifyWalletChanged();
+        if (!result.invoiceId) onNotice(tr(lang, 'subTopUpNotice', { amount: fmtMicroUsd(amountUsd * 1000000) }));
+        return result;
       })
       .catch((error) => {
-        if (error.details && error.details.error === 'WALLET_TOPUP_BELOW_MINIMUM') onBelowMinimum(error.details.minimumTopUpUsd);
-        else onNotice(tr(lang, 'subTopUpError', { error: error.message }));
+        if (error.details && error.details.error === 'WALLET_TOPUP_BELOW_MINIMUM') {
+          onBelowMinimum(error.details.minimumTopUpUsd);
+          return {};
+        }
+        throw new Error(tr(lang, 'subTopUpError', { error: error.message }));
       });
   }
+
   if (!wallet) return null;
   // Both come from the server's own answer, never a client-side constant.
   const minTopUpUsd = Number(wallet.minimumTopUpUsd) > 0 ? Number(wallet.minimumTopUpUsd) : 0;
-  const belowMinimum = !(Number(amount) >= minTopUpUsd);
+  const amountUsd = Number(amount) || 0;
+  const belowMinimum = !(amountUsd >= minTopUpUsd);
+  const lowBalance = wallet.totalBalanceMicroUsd < 1000000;
+  const boxed = { padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' };
+  const railChip = {
+    display: 'inline-flex', alignItems: 'center', gap: 7, height: 26, padding: '0 10px', borderRadius: 6,
+    fontSize: 11, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)'
+  };
+
   return (
     <Panel variant="base" ornament padding="22px 24px">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 26 }}>
-        <div style={{ flex: '1 1 320px', minWidth: 260 }}>
-          <div style={{ ...labelRow, marginBottom: 9 }}>{tr(lang, 'subAiWallet')}</div>
-          <div className="navrya-tabular" style={{ fontSize: 31, fontWeight: 700, color: 'var(--parchment)' }}>{fmtMicroUsd(wallet.totalBalanceMicroUsd)}</div>
-          <div dir="ltr" style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>{tr(lang, 'subPromoPaid', { promo: fmtMicroUsd(wallet.promoBalanceMicroUsd), paid: fmtMicroUsd(wallet.paidBalanceMicroUsd) })}</div>
-          <p style={{ fontSize: 12, color: 'var(--text-dim)', maxWidth: 380, margin: '14px 0 0', lineHeight: 1.6 }}>
-            {tr(lang, 'subWalletHint')}
-          </p>
-        </div>
-        <div style={{ flex: '1 1 280px', minWidth: 260, maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={labelRow}>{tr(lang, 'subAmountUsd')}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {topUpChoices(wallet.minimumTopUpUsd).map((v) => (
-              <Chip key={v} tone={Number(amount) === v ? 'accent' : 'neutral'} style={{ cursor: 'pointer' }} onClick={() => setAmount(String(v))}>${v}</Chip>
-            ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) 1px minmax(280px, 1.15fr)', gap: 24, alignItems: 'stretch' }}>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-muted)' }}>{tr(lang, 'subAiWallet')}</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span dir="ltr" className="navrya-tabular" style={{ fontSize: 38, lineHeight: '44px', fontWeight: 800, color: 'var(--parchment)' }}>{fmtMicroUsd(wallet.totalBalanceMicroUsd)}</span>
+            {lowBalance && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 8px', borderRadius: 6, fontSize: 10.5, color: 'var(--warning)', background: 'rgba(255,176,32,.10)', border: '1px solid rgba(255,176,32,.38)' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />
+                {tr(lang, 'subWalletLowBalance')}
+              </span>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-            <div style={{ flex: 1 }}>
-              <TextField value={amount} onChange={setAmount} type="number" min={minTopUpUsd} step="1" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+            <div style={boxed}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 4 }}>{tr(lang, 'subWalletPromoLabel')}</div>
+              <div dir="ltr" className="navrya-tabular" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{fmtMicroUsd(wallet.promoBalanceMicroUsd)}</div>
             </div>
-            <Button variant="primary" disabled={belowMinimum} onClick={() => setShowPaymentMethod(true)}>{tr(lang, 'subRequestTopUp')}</Button>
+            <div style={boxed}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 4 }}>{tr(lang, 'subWalletPaidLabel')}</div>
+              <div dir="ltr" className="navrya-tabular" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{fmtMicroUsd(wallet.paidBalanceMicroUsd)}</div>
+            </div>
           </div>
+          <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.65, color: 'var(--text-dim)' }}>{tr(lang, 'subWalletHint')}</p>
+        </div>
+
+        <div style={{ background: 'var(--divider-gold)' }} />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'subWalletAddCredit')}</span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+              {tr(lang, 'subWalletMinimumIs', { amount: '' })}
+              <span dir="ltr" className="navrya-tabular" style={{ color: 'var(--char-accent)', fontWeight: 700 }}>{fmtMicroUsd(Math.round(minTopUpUsd * 1000000))}</span>
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {topUpChoices(wallet.minimumTopUpUsd).map((v) => {
+              const on = amountUsd === v;
+              return (
+                <button
+                  key={v} type="button" onClick={() => setAmount(String(v))}
+                  style={{
+                    height: 34, minWidth: 62, padding: '0 14px', borderRadius: 8, cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                    color: on ? 'var(--char-accent)' : 'var(--text-muted)',
+                    background: on ? 'var(--char-active-surface)' : 'rgba(3,8,7,.45)',
+                    border: '1px solid ' + (on ? 'var(--char-accent)' : 'var(--border-gold)'),
+                    transition: 'background 160ms var(--ease-out), border-color 160ms var(--ease-out), color 160ms var(--ease-out)'
+                  }}
+                >${v}</button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 7, flex: '1 1 170px', minWidth: 0 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{tr(lang, 'subWalletCustomAmount')}</span>
+              <span style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <span dir="ltr" style={{ position: 'absolute', insetInlineStart: 14, fontSize: 13, color: 'var(--text-muted)', pointerEvents: 'none' }}>$</span>
+                <input
+                  dir="ltr" type="number" min={minTopUpUsd} step="1" value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="navrya-tabular"
+                  style={{
+                    height: 44, width: '100%', boxSizing: 'border-box', padding: '0 14px 0 30px', borderRadius: 8,
+                    background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', fontFamily: 'inherit',
+                    fontSize: 13, fontWeight: 600, border: '1px solid ' + (belowMinimum ? 'var(--warning)' : 'var(--border-gold)'),
+                    outline: 'none', textAlign: 'start'
+                  }}
+                />
+              </span>
+            </label>
+            <Button variant="primary" icon="wallet" disabled={belowMinimum} onClick={() => setShowCheckout(true)} style={{ flex: 'none' }}>
+              {tr(lang, 'subWalletContinueToPay')} · <span dir="ltr" className="navrya-tabular">{fmtMicroUsd(Math.round(amountUsd * 1000000))}</span>
+            </Button>
+          </div>
+
           {/* Live, up-front validation against the server's own floor - the shopper learns the
               rule while typing instead of by being rejected after choosing a payment method. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 16 }}>
@@ -1901,16 +2042,27 @@ function WalletCard({ lang, onNotice, onInvoice, onBelowMinimum }) {
                 : tr(lang, 'subTopUpAmountValid')}
             </span>
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'subWalletMethodsLabel')}</span>
+            <span style={{ ...railChip, color: 'var(--text-muted)' }}><Icon name="wallet" size={13} style={{ color: 'var(--char-accent)' }} />{tr(lang, 'subPayMethodCrypto')}</span>
+            <span style={{ ...railChip, color: 'var(--text-muted)' }}><Icon name="credit-card" size={13} />{tr(lang, 'subPayMethodVisa')}</span>
+            {lang === 'fa' && (
+              <span style={{ ...railChip, color: 'var(--text-disabled)' }}><Icon name="landmark" size={13} />{tr(lang, 'subPayMethodIranGateway')} · {tr(lang, 'subPayMethodComingSoon')}</span>
+            )}
+          </div>
         </div>
       </div>
-      {showPaymentMethod && (
+
+      {showCheckout && (
         <PaymentSheet
           lang={lang}
           title={tr(lang, 'subPayMethodTitle')}
           lineItem={tr(lang, 'subPayLineItemTopUp')}
-          amountUsd={Number(amount) || 0}
+          amountUsd={amountUsd}
           onProceed={requestTopUp}
-          onClose={() => setShowPaymentMethod(false)}
+          onConfirmed={() => { reload(); notifyWalletChanged(); }}
+          onClose={() => setShowCheckout(false)}
         />
       )}
     </Panel>
@@ -2123,18 +2275,17 @@ function SubscriptionTab({ lang }) {
     fetch('/api/sync/subscriptions/catalog').then((r) => r.json()).then((d) => setCatalog(d.plans)).catch(() => setCatalog(null));
   }, []);
 
+  // Returns the created request so the checkout sheet can slide its own invoice step in rather
+  // than closing and reopening a second popup over the page.
   function requestUpgrade(planId) {
-    fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
+    return fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
       .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
       .then((result) => {
-        setUpgradeTarget(null);
-        if (result.invoiceId) setInvoiceId(result.invoiceId);
-        else setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId, catalog) }));
         notifyWalletChanged();
+        if (!result.invoiceId) setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId, catalog) }));
+        return result;
       })
-      // The sheet must close on failure too - it renders over the page, so a notice left behind it
-      // would be invisible and the checkout would look frozen rather than refused.
-      .catch((error) => { setUpgradeTarget(null); setNotice(tr(lang, 'subUpgradeError', { error: error.message })); });
+      .catch((error) => { throw new Error(tr(lang, 'subUpgradeError', { error: error.message })); });
   }
   function toggleCancel() {
     const sub = subData && subData.subscription;
@@ -2150,7 +2301,7 @@ function SubscriptionTab({ lang }) {
       {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
       <PlanHero lang={lang} plan={subData.plan} subscription={subData.subscription} catalog={catalog} onToggleCancel={toggleCancel} />
       <PlanComparisonGrid lang={lang} plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
-      <WalletCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} onBelowMinimum={setBelowMinimumUsd} />
+      <WalletCard lang={lang} onNotice={setNotice} onBelowMinimum={setBelowMinimumUsd} />
       <WalletActivityCard lang={lang} />
       <StorageCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
       <BillingHistoryCard lang={lang} />
@@ -2161,7 +2312,8 @@ function SubscriptionTab({ lang }) {
           lineItem={tr(lang, 'subPayLineItemPlan', { plan: planLabel(lang, upgradeTarget, catalog) })}
           amountUsd={(catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price && catalog[upgradeTarget].price.amountUsd) || 0}
           onProceed={() => requestUpgrade(upgradeTarget)}
-          onClose={() => setUpgradeTarget(null)}
+          onConfirmed={() => { reloadSub(); notifyWalletChanged(); }}
+          onClose={() => { setUpgradeTarget(null); reloadSub(); }}
         />
       )}
       {invoiceId && (

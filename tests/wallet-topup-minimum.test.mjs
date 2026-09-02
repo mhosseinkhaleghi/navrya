@@ -105,9 +105,9 @@ test('WalletCard validates the typed amount against the server minimum before th
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const fnIdx = src.indexOf('function WalletCard(');
   assert.ok(fnIdx > -1, 'WalletCard must exist');
-  const fn = src.slice(fnIdx, fnIdx + 6000);
+  const fn = src.slice(fnIdx, fnIdx + 12000);
   assert.match(fn, /const minTopUpUsd = Number\(wallet\.minimumTopUpUsd\)/);
-  assert.match(fn, /const belowMinimum = !\(Number\(amount\) >= minTopUpUsd\)/);
+  assert.match(fn, /const belowMinimum = !\(amountUsd >= minTopUpUsd\)/);
   assert.match(fn, /disabled=\{belowMinimum\}/, 'the CTA must be blocked while the amount is below the floor');
   assert.match(fn, /subTopUpMinHint/, 'the minimum must be stated inline while typing, not only after a rejection');
 });
@@ -115,7 +115,7 @@ test('WalletCard validates the typed amount against the server minimum before th
 test('WalletCard still routes a server WALLET_TOPUP_BELOW_MINIMUM to the dedicated onBelowMinimum popup', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const fnIdx = src.indexOf('function WalletCard(');
-  const fn = src.slice(fnIdx, fnIdx + 6000);
+  const fn = src.slice(fnIdx, fnIdx + 12000);
   assert.match(fn, /error\.details\.error === 'WALLET_TOPUP_BELOW_MINIMUM'/);
   assert.match(fn, /onBelowMinimum\(error\.details\.minimumTopUpUsd\)/);
 });

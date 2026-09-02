@@ -10,6 +10,7 @@ import test from 'node:test';
 // convention (see header-wallet-balance-static.test.mjs/wallet-activity-rendering-static.test.mjs).
 const root = process.cwd();
 const read = (...parts) => readFile(path.join(root, ...parts), 'utf8');
+const PLAN_SPEC_ROW_COUNT_EXPECTED = 6;
 
 test('ai-settings-store.js gates the exact real premium model ids (GPT-5.6 Sol, Claude Opus 4.1) - never a made-up model name', async () => {
   const src = await read('public', 'pages', 'shared', 'ai-settings-store.js');
@@ -88,13 +89,16 @@ test('accountProfileView.jsx: a PaymentSheet exists, offers crypto/Visa/Iran-gat
   assert.match(fn, /if \(!chosen\.implemented\) \{ setNotAdded\(true\); return; \}/, 'an unimplemented method must show the honest "not added" notice and must NOT advance to the invoice step');
 });
 
-// The payment flow is ONE popup with two sliding steps, not a stack of separate modals, and the
-// upgrade no longer has a "confirm the request" step in front of it (explicitly removed).
-test('accountProfileView.jsx: PaymentSheet slides between its two steps inside one modal and shows a real invoice', async () => {
+// The payment flow is ONE popup with three sliding steps - method, invoice, then the real crypto
+// invoice itself - not a stack of separate modals, and the upgrade no longer has a "confirm the
+// request" step in front of it (explicitly removed).
+test('accountProfileView.jsx: PaymentSheet slides between its three steps inside one modal, ending on the real invoice', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const idx = src.indexOf('function PaymentSheet(');
-  const fn = src.slice(idx, idx + 8900);
-  assert.match(fn, /translateX\(0%\)' : 'translateX\(-50%\)/, 'the two steps must slide within one sheet');
+  const fn = src.slice(idx, idx + 10500);
+  assert.match(src, /const PAY_SHEET_STEPS = 3;/, 'the sheet must carry a third step for the invoice');
+  assert.match(fn, /transform: 'translateX\(-' \+ \(step \* \(100 \/ PAY_SHEET_STEPS\)\) \+ '%\)'/, 'all three steps must slide within one sheet');
+  assert.match(fn, /<CryptoInvoicePanel lang=\{lang\} tr=\{tr\} invoiceId=\{invoiceId\}/, 'the invoice must render INSIDE the sheet, never as a second popup');
   assert.match(fn, /dir="ltr"[^>]*overflow: 'hidden'/, 'the clipping box must be LTR - in RTL it starts scrolled to the right and would show the last panel first');
   assert.match(fn, /subPayInvoice/);
   assert.match(fn, /subPayTotal/);
@@ -129,12 +133,14 @@ test('accountProfileView.jsx: every plan card band has a fixed height so the fou
   const idx = src.indexOf('function PlanComparisonGrid(');
   const fn = src.slice(idx, idx + 6500);
   assert.match(src, /const PLAN_SPEC_ROW_COUNT = 6;/);
-  assert.match(fn, /planFeatureLines\(lang, cfg\)\.slice\(0, PLAN_SPEC_ROW_COUNT\)/, 'every card must render the SAME six spec rows');
+  assert.match(src, /const SPEC_ROWS = \[/, 'every card must render the SAME six spec rows');
+  assert.equal(src.match(/\{ key: '[a-zA-Z]+', label: 'subSpec/g).length, PLAN_SPEC_ROW_COUNT_EXPECTED, 'there must be exactly six spec rows');
   assert.match(fn, /height: 26, display: 'flex'/, 'the badge band must reserve its height even with no badge');
-  assert.match(fn, /height: 44, display: 'flex', alignItems: 'baseline'/, 'the price band must be fixed height');
+  assert.match(fn, /height: 46, display: 'flex', alignItems: 'baseline'/, 'the price band must be fixed height');
+  assert.match(fn, /fontSize: 34, lineHeight: '42px'/, 'the price needs an explicit line-height or its glyph box overflows into the name band above');
   assert.match(fn, /height: 30, display: 'flex'/, 'spec rows must be fixed height');
-  assert.match(fn, /height: 26, display: 'flex', alignItems: 'center', gap: 9/, 'perk rows must be fixed height');
-  assert.match(fn, /height: 40, marginTop: 14/, 'the CTA band must be fixed height so the buttons land on one line');
+  assert.match(fn, /height: 26, display: 'flex', alignItems: 'center', gap: 8/, 'perk rows must be fixed height');
+  assert.match(fn, /height: 44, marginTop: 16/, 'the CTA band must be fixed height so the buttons land on one line');
   assert.match(src, /const PERK_ROWS = \[/, 'the three feature rows must render in every card, locked or checked');
 });
 
