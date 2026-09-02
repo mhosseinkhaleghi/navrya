@@ -2132,7 +2132,9 @@ function SubscriptionTab({ lang }) {
         else setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId, catalog) }));
         notifyWalletChanged();
       })
-      .catch((error) => setNotice(tr(lang, 'subUpgradeError', { error: error.message })));
+      // The sheet must close on failure too - it renders over the page, so a notice left behind it
+      // would be invisible and the checkout would look frozen rather than refused.
+      .catch((error) => { setUpgradeTarget(null); setNotice(tr(lang, 'subUpgradeError', { error: error.message })); });
   }
   function toggleCancel() {
     const sub = subData && subData.subscription;
