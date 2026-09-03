@@ -21,11 +21,24 @@
     return exact || (list || []).find(function (x) { return String(x.name || '').trim().toLowerCase().indexOf(needle) > -1; }) || null;
   }
 
+  // AI dashboard's Memory tab, per-domain privacy toggles (ai-companion-profile.js's
+  // dataAccessPrefs). Every getRelevant*() below checks this at its own top, so a domain the user
+  // turned off never reaches the model - not merely hidden in a UI. Fails OPEN (true) when the
+  // Companion store isn't loaded, matching every one of these domains' real behavior before this
+  // toggle existed (never a silent narrowing just because a script hasn't loaded yet).
+  function domainAllowed(domain) {
+    var profile = window.TradeJournalAICompanionProfile;
+    if (!profile || typeof profile.dataAccessPrefs !== 'function') return true;
+    var prefs = profile.dataAccessPrefs() || {};
+    return prefs[domain] !== false;
+  }
+
   // context: {activeStrategyId?, query?}. Returns at most one Strategy's own summary (never
   // implicitly substitutes a different one - section 18's own "never implicitly use another
   // Strategy") - the linked-strategy id, then a name match, in that order; null if neither
   // resolves rather than a guess.
   function getRelevantStrategies(query, context) {
+    if (!domainAllowed('patternsStrategies')) return [];
     var store = window.TradeJournalStrategyEducationStore;
     if (!store || typeof store.listActive !== 'function') return [];
     var list = store.listActive();
@@ -40,6 +53,7 @@
   }
 
   function getRelevantPatterns(query, context) {
+    if (!domainAllowed('patternsStrategies')) return [];
     var store = window.TradeJournalPatternStore;
     if (!store || typeof store.listForScenarios !== 'function') return [];
     var list = store.listForScenarios();
@@ -54,6 +68,7 @@
   // filtering only - never asks an embedding system to answer what the store can answer directly
   // (section 19).
   function getRelevantSessions(query, context) {
+    if (!domainAllowed('tradesSessions')) return [];
     // window.TradeJournalWorkspace (session-workspace-logic.js) - the real, classic-script,
     // character-scoped Session store every live-session UI already reads/writes through; the
     // real navrya-src/sessionsAdapter.js is a plain ES module with no window export of its own.
@@ -77,6 +92,7 @@
   // "how many losing trades this week" must be answered from real store data, never from the LLM
   // counting raw chat context (section 20 - "The LLM explains. NAVRYA computes.").
   function getRelevantTrades(query, context) {
+    if (!domainAllowed('tradesSessions')) return [];
     var store = window.TradeJournalTradeStore;
     if (!store || typeof store.listSync !== 'function') return [];
     var ctx = context || {};
@@ -102,6 +118,7 @@
   // match, same order/precedent as getRelevantStrategies above; null resolves to [] rather than
   // a guess.
   function getRelevantAccounts(query, context) {
+    if (!domainAllowed('accounts')) return [];
     var store = window.TradeJournalAccountsStore;
     var engine = window.TradeJournalAccountsEngine;
     var tradeStore = window.TradeJournalTradeStore;
@@ -131,6 +148,7 @@
   // exactly one real implementation of "what counts as a validated, current stress reading."
   var STRESS_RECENCY_MS = 24 * 60 * 60 * 1000;
   function getRelevantPsychologyContext() {
+    if (!domainAllowed('mentalHealth')) return [];
     var proactiveEngine = window.TradeJournalAIProactiveEngine;
     if (proactiveEngine && typeof proactiveEngine.buildTradeContext === 'function') {
       var ctx = proactiveEngine.buildTradeContext({ proposedFields: {} });

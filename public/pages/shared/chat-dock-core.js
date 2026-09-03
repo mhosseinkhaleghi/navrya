@@ -586,6 +586,18 @@
         if (wireProductContext) requestBody.productContext = wireProductContext;
       } catch (_) { /* no-op - product knowledge is additive, never load-bearing */ }
     }
+    // AI dashboard's Persona tab (tone sliders/free-text prompt/pinned facts) - unlike
+    // companionContext below, this is UNCONDITIONAL: it is how the assistant talks, not what it
+    // suggests doing next, so it still applies mid-workflow. Additive/best-effort like every other
+    // context package here; null when the user never touched the Persona tab (see
+    // ai-companion-profile.js's personaStylePackage()).
+    var companionProfile = window.TradeJournalAICompanionProfile;
+    if (companionProfile && typeof companionProfile.personaStylePackage === 'function') {
+      try {
+        var personaPackage = companionProfile.personaStylePackage();
+        if (personaPackage) requestBody.personaStyle = personaPackage;
+      } catch (_) { /* no-op */ }
+    }
     // Journey G: the trimmed, read-only Companion package (phase/nextBestStep/responseStance/
     // communication preferences - see ai-journey-engine.js's companionContext()) - purely
     // additive/best-effort, same fallback posture as productContext above. Never sent while a

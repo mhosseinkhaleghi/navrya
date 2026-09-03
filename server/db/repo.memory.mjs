@@ -506,6 +506,19 @@ export function createMemoryRepo() {
       });
       return Array.from(buckets.entries()).map(([key, totalTokens]) => { const [provider, day] = key.split('|'); return { provider, day, totalTokens }; });
     },
+    // Mirrors repo.pg.mjs's aggregateByProviderAndDayForUser() exactly - see that method's own
+    // comment.
+    async aggregateByProviderAndDayForUser(userId, { since } = {}) {
+      let values = Array.from(state.usageEvents.values()).filter((e) => e.userId === userId);
+      if (since) values = values.filter((e) => new Date(e.createdAt) >= new Date(since));
+      const buckets = new Map();
+      values.forEach((e) => {
+        const day = e.createdAt.slice(0, 10);
+        const key = e.provider + '|' + day;
+        buckets.set(key, (buckets.get(key) || 0) + (e.totalTokens || 0));
+      });
+      return Array.from(buckets.entries()).map(([key, totalTokens]) => { const [provider, day] = key.split('|'); return { provider, day, totalTokens }; });
+    },
     async aggregateByUser() {
       const result = {};
       Array.from(state.usageEvents.values()).forEach((e) => { if (e.userId) result[e.userId] = (result[e.userId] || 0) + (e.totalTokens || 0); });
@@ -1836,7 +1849,7 @@ export function createMemoryRepo() {
         id: newId('cryptoInvoice'), transactionId, provider: provider || 'bsc_crypto', chainId, assetSymbol, tokenContract, tokenDecimals,
         recipientAddress, atomicAmount: String(atomicAmount), usdAmountMicroUsd, exchangeRateSnapshot,
         status: 'pending', expiresAt, gatewayInvoiceId: gatewayInvoiceId || null, txHash: null, confirmationCount: 0,
-        createdAt: now(), confirmedAt: null
+        createdAt: now(), confirmedAt: null, mismatchCreditedMicroUsd: null
       };
       state.cryptoInvoices.set(record.id, record);
       return clone(record);
@@ -1864,12 +1877,13 @@ export function createMemoryRepo() {
       record.txHash = txHash;
       return { ok: true, invoice: clone(record) };
     },
-    async updateStatus(id, status, { confirmationCount, confirmedAt } = {}) {
+    async updateStatus(id, status, { confirmationCount, confirmedAt, mismatchCreditedMicroUsd } = {}) {
       const record = state.cryptoInvoices.get(id);
       if (!record) return null;
       record.status = status;
       if (confirmationCount != null) record.confirmationCount = confirmationCount;
       record.confirmedAt = confirmedAt || null;
+      if (mismatchCreditedMicroUsd != null) record.mismatchCreditedMicroUsd = mismatchCreditedMicroUsd;
       return clone(record);
     }
   };

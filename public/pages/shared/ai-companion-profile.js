@@ -21,6 +21,24 @@
 
   function now() { return new Date().toISOString(); }
 
+  // AI Dashboard's Persona tab (free-text prompt + tone sliders + pinned facts) - additive to
+  // this same small document, per ARCHITECTURE.md's "one document per user, no child tables"
+  // rule; companion_state is stored as one verbatim JSONB column (018_companion_state.sql), so
+  // every field below needs no migration. TONE_DIMENSION_KEYS deliberately excludes
+  // "initiative" - that dimension writes through the EXISTING preferences.initiativePreference
+  // field instead (setPreference()), so ai-journey-engine.js's existing reader keeps working
+  // unchanged rather than gaining a second, competing notion of initiative.
+  var TONE_DIMENSION_KEYS = ['explicitness', 'detail', 'warmth', 'humor', 'jargon'];
+  var CUSTOM_INSTRUCTIONS_MAX = 600;
+  var PINNED_FACT_MAX_LEN = 140;
+  var PINNED_FACTS_MAX_COUNT = 10;
+
+  function defaultToneDimensions() {
+    var out = {};
+    TONE_DIMENSION_KEYS.forEach(function (k) { out[k] = 50; });
+    return out;
+  }
+
   function empty() {
     var stamp = now();
     return {
@@ -33,8 +51,23 @@
       preferences: {
         experienceLevel: null, explanationDepth: null, teachingPreference: null,
         initiativePreference: 'normal', interactionPreference: null
-      }
+      },
+      personaPreset: null, // UI convenience label only (e.g. "coach") - never read by the server
+      toneDimensions: defaultToneDimensions(), // 0-100 per TONE_DIMENSION_KEYS
+      customInstructions: '', // free-text style prompt, threaded into the system prompt server-side
+      pinnedFacts: [], // string[], always sent to the model - see personaStylePackage()
+      // Real default is "everything on" - matches every one of these domains' CURRENT always-on
+      // behavior (getRelevantAccounts()/getRelevantPsychologyContext() etc. in ai-user-memory.js
+      // had no toggle before this field existed), so adding this preference never silently
+      // changes an existing user's AI context. Turning one off is an explicit, opt-in narrowing.
+      dataAccessPrefs: { tradesSessions: true, patternsStrategies: true, mentalHealth: true, accounts: true }
     };
+  }
+
+  function clampPercent(value, fallback) {
+    var n = Number(value);
+    if (!isFinite(n)) return fallback;
+    return Math.max(0, Math.min(100, Math.round(n)));
   }
 
   function normalize(raw) {
@@ -46,6 +79,15 @@
     out.skippedOptional = Array.isArray(raw.skippedOptional) ? raw.skippedOptional.slice() : [];
     out.preferences = Object.assign({}, base.preferences, raw.preferences || {});
     if (['low', 'normal', 'high'].indexOf(out.preferences.initiativePreference) === -1) out.preferences.initiativePreference = 'normal';
+    out.personaPreset = typeof raw.personaPreset === 'string' ? raw.personaPreset : null;
+    var rawTone = raw.toneDimensions || {};
+    out.toneDimensions = defaultToneDimensions();
+    TONE_DIMENSION_KEYS.forEach(function (k) { if (k in rawTone) out.toneDimensions[k] = clampPercent(rawTone[k], 50); });
+    out.customInstructions = typeof raw.customInstructions === 'string' ? raw.customInstructions.slice(0, CUSTOM_INSTRUCTIONS_MAX) : '';
+    out.pinnedFacts = Array.isArray(raw.pinnedFacts)
+      ? raw.pinnedFacts.filter(function (f) { return typeof f === 'string' && f.trim(); }).map(function (f) { return f.trim().slice(0, PINNED_FACT_MAX_LEN); }).slice(0, PINNED_FACTS_MAX_COUNT)
+      : [];
+    out.dataAccessPrefs = Object.assign({}, base.dataAccessPrefs, raw.dataAccessPrefs || {});
     return out;
   }
 
@@ -115,6 +157,67 @@
     return save(s);
   }
 
+  // --- Persona tab (AI dashboard) ---
+  function personaPreset() { return load().personaPreset; }
+  function setPersonaPreset(id) { var s = load(); s.personaPreset = id || null; return save(s); }
+
+  function toneDimensions() { return load().toneDimensions; }
+  function setToneDimension(key, value) {
+    var s = load();
+    if (TONE_DIMENSION_KEYS.indexOf(key) === -1) return s;
+    s.toneDimensions[key] = clampPercent(value, s.toneDimensions[key]);
+    return save(s);
+  }
+
+  function customInstructions() { return load().customInstructions; }
+  function setCustomInstructions(text) {
+    var s = load();
+    s.customInstructions = String(text || '').slice(0, CUSTOM_INSTRUCTIONS_MAX);
+    return save(s);
+  }
+
+  function pinnedFacts() { return load().pinnedFacts; }
+  function addPinnedFact(text) {
+    var s = load();
+    var value = String(text || '').trim().slice(0, PINNED_FACT_MAX_LEN);
+    if (!value || s.pinnedFacts.length >= PINNED_FACTS_MAX_COUNT) return s;
+    s.pinnedFacts = s.pinnedFacts.concat([value]);
+    return save(s);
+  }
+  function removePinnedFact(index) {
+    var s = load();
+    s.pinnedFacts = s.pinnedFacts.filter(function (_, i) { return i !== index; });
+    return save(s);
+  }
+
+  function dataAccessPrefs() { return load().dataAccessPrefs; }
+  function setDataAccessPref(key, value) {
+    var s = load();
+    if (!(key in s.dataAccessPrefs)) return s;
+    s.dataAccessPrefs[key] = !!value;
+    return save(s);
+  }
+
+  // The wire package chat-dock-core.js attaches to every /api/ai/chat call as
+  // requestBody.personaStyle (server/pattern-ai-server.mjs's buildPersonaStyleText()) -
+  // deliberately UNCONDITIONAL, unlike ai-journey-engine.js's companionContext() (never
+  // suppressed by an open form/workflow - tone/style should still apply mid-workflow). Returns
+  // null (send nothing) when the user has never touched the Persona tab, so an untouched account
+  // costs zero extra prompt tokens - never a block of default-50 filler.
+  function personaStylePackage() {
+    var s = load();
+    var touchedTone = TONE_DIMENSION_KEYS.some(function (k) { return s.toneDimensions[k] !== 50; });
+    var hasText = !!s.customInstructions.trim();
+    var hasPins = s.pinnedFacts.length > 0;
+    if (!touchedTone && !hasText && !hasPins) return null;
+    return {
+      toneDimensions: Object.assign({}, s.toneDimensions),
+      initiativePreference: s.preferences.initiativePreference,
+      customInstructions: s.customInstructions,
+      pinnedFacts: s.pinnedFacts.slice()
+    };
+  }
+
   window.TradeJournalAICompanionProfile = {
     load: load, save: save, get: get,
     preferences: preferences, initiativePreference: initiativePreference, setPreference: setPreference,
@@ -122,6 +225,12 @@
     setCurrentGoal: setCurrentGoal, currentGoal: currentGoal,
     dismissStep: dismissStep, isDismissed: isDismissed,
     snoozeStep: snoozeStep, isSnoozed: isSnoozed,
-    skipOptionalStep: skipOptionalStep, isSkipped: isSkipped
+    skipOptionalStep: skipOptionalStep, isSkipped: isSkipped,
+    personaPreset: personaPreset, setPersonaPreset: setPersonaPreset,
+    toneDimensions: toneDimensions, setToneDimension: setToneDimension,
+    customInstructions: customInstructions, setCustomInstructions: setCustomInstructions,
+    pinnedFacts: pinnedFacts, addPinnedFact: addPinnedFact, removePinnedFact: removePinnedFact,
+    dataAccessPrefs: dataAccessPrefs, setDataAccessPref: setDataAccessPref,
+    personaStylePackage: personaStylePackage
   };
 }());

@@ -12,7 +12,6 @@ import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFi
 import { CharacterPortrait } from '../public/pages/shared/navrya/components/identity/CharacterPortrait.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { CHARACTERS } from './characters.js';
-import { SPANS, loadBoard, saveBoard, catalogForLang, resolveCustomEntry, addCustomPanel } from './dashboardView.jsx';
 import { createStore } from './store.js';
 
 // ============================================================================
@@ -215,101 +214,6 @@ function SectionShell({ icon, title, right, children }) {
 }
 
 // ============================================================================
-// AI panel builder - real /api/ai/chat call (chat-dock-core.js's sendChat), drafting real
-// panels onto the real Dashboard board via dashboardView.jsx's own addCustomPanel().
-// ============================================================================
-function AiPanelBuilderSection({ t, lang, character }) {
-  const [prompt, setPrompt] = React.useState('');
-  const [drafts, setDrafts] = React.useState([]);
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const aiSettings = window.TradeJournalAISettingsStore;
-  const configured = aiSettings ? !!aiSettings.getKey(aiSettings.activeProvider()) : false;
-
-  // AI process registry (A4) - mountedRef template. This section is always present while the
-  // Settings page is open (no separate show/hide toggle), so mounted === "on this settings tab".
-  const mountedRef = React.useRef(true);
-  React.useEffect(() => {
-    mountedRef.current = true;
-    const registry = window.TradeJournalAIProcessRegistry;
-    if (!registry) return undefined;
-    registry.register('settings-ai-panel-builder', {
-      allowlist: ['prompt'],
-      isOpen: () => mountedRef.current,
-      applyValue: (path, value) => { if (path === 'prompt') setPrompt(String(value ?? '')); }
-    });
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  async function generate() {
-    const text = prompt.trim();
-    if (!text || busy) return;
-    setError('');
-    if (!window.TradeJournalChatDockCore || !configured) { setError(t('aiNotConfigured')); return; }
-    setBusy(true);
-    try {
-      const result = await window.TradeJournalChatDockCore.sendChat({
-        text: 'Draft one dashboard panel idea for a trading journal app from this request, in ' + lang + '. Reply with 1-2 plain sentences describing what the panel would show - no markdown, no preamble. Request: ' + text
-      });
-      const desc = result && result.reply ? result.reply.trim() : t('draftedNote');
-      setDrafts((list) => list.concat([{ id: 'draft-' + Date.now(), title: text.slice(0, 42), desc }]));
-      setPrompt('');
-    } catch (_) {
-      setError(t('aiErrorGeneric'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <SectionShell icon="sparkle" title={t('aiBuilderTitle')} right={<Chip tone={configured ? 'accent' : 'neutral'} dot>{configured ? t('aiReady') : t('aiNotConfigured')}</Chip>}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={{ margin: 0, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('aiBuilderSubtitle')}</p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {(copy[lang] || copy.en).quickPrompts.map((label) => (
-            <button key={label} type="button" onClick={() => setPrompt(label)} style={{ padding: '7px 12px', borderRadius: 6, cursor: 'pointer', border: '1px dashed var(--divider-gold)', background: 'rgba(3,8,7,.5)', color: 'var(--text-muted)', font: 'var(--type-caption)' }}>{label}</button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', overflow: 'hidden' }}>
-          <textarea
-            rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t('promptPlaceholder')}
-            style={{ resize: 'vertical', boxSizing: 'border-box', padding: 14, border: 0, background: 'transparent', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, borderTop: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.5)' }}>
-            <span style={{ font: 'var(--type-caption)', color: error ? 'var(--danger)' : 'var(--text-muted)' }}>{error || (busy ? t('hintBusy') : prompt ? t('hintTyped') : t('hintEmpty'))}</span>
-            <span style={{ flex: 1 }} />
-            {!configured && (
-              <button type="button" onClick={() => { location.hash = '#ai-settings'; }} style={{ height: 36, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-caption)', letterSpacing: '.06em', textTransform: 'uppercase' }}>{t('goToAiSettings')}</button>
-            )}
-            <Button variant="primary" icon="sparkle" size="sm" disabled={!prompt.trim() || busy} onClick={generate}>{t('generatePanel')}</Button>
-          </div>
-        </div>
-        {!!drafts.length && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('draftsLabel')}</span>
-            {drafts.map((d) => (
-              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
-                <span style={{ width: 34, height: 34, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 6, border: '1px solid var(--divider-gold)', color: 'var(--gold-warm)' }}><Icon name="dashboard" size={17} /></span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
-                  <span dir="auto" style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
-                  <span dir="auto" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.desc}</span>
-                </div>
-                <button type="button" onClick={() => { addCustomPanel(character, d.title, d.desc); setDrafts((list) => list.filter((x) => x.id !== d.id)); }} style={{ height: 36, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)', font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase' }}>
-                  <Icon name="plus" size={14} />{t('addToBoard')}
-                </button>
-                <button type="button" onClick={() => setDrafts((list) => list.filter((x) => x.id !== d.id))} aria-label={t('discardDraft')} style={{ width: 36, height: 36, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-muted)' }}>
-                  <Icon name="close" size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </SectionShell>
-  );
-}
-
-// ============================================================================
 // Character - real active-character switch (the same postMessage the app's login/select flow
 // listens for) plus a real, persisted quick-switcher preference (app-settings-store.js).
 // ============================================================================
@@ -410,72 +314,6 @@ function VoiceGenderSection({ t }) {
           </div>
         ))}
       </div>
-    </SectionShell>
-  );
-}
-
-// ============================================================================
-// Manage panels - reads/writes the exact record dashboardView.jsx's DashboardView renders,
-// via the same loadBoard()/saveBoard(). Hidden panels stay on the board (position/span kept)
-// but are skipped by the real Dashboard's own visibleBoard filter.
-// ============================================================================
-function ManagePanelsSection({ t, lang, character }) {
-  const [state, setState] = React.useState(() => loadBoard(character));
-  const [dragId, setDragId] = React.useState(null);
-  const CAT = React.useMemo(() => catalogForLang(lang), [lang]);
-  React.useEffect(() => { saveBoard(character, state); }, [character, state]);
-
-  function entryOf(id) { return CAT[id] || resolveCustomEntry(id, state.custom); }
-  function setSpan(id, dir) {
-    const cur = state.spans[id] || (entryOf(id) ? entryOf(id).span : 4);
-    const i = SPANS.indexOf(cur);
-    const next = SPANS[Math.min(SPANS.length - 1, Math.max(0, i + dir))];
-    setState((s) => ({ ...s, spans: { ...s.spans, [id]: next } }));
-  }
-  function toggleHidden(id) { setState((s) => ({ ...s, hidden: { ...s.hidden, [id]: !s.hidden[id] } })); }
-  function removePanel(id) { setState((s) => ({ ...s, board: s.board.filter((x) => x !== id) })); }
-  function reorder(targetId) {
-    if (!dragId || dragId === targetId) return;
-    setState((s) => {
-      const board = s.board.filter((x) => x !== dragId);
-      board.splice(board.indexOf(targetId), 0, dragId);
-      return { ...s, board };
-    });
-    setDragId(null);
-  }
-
-  const shown = state.board.filter((id) => !state.hidden[id]).length;
-  return (
-    <SectionShell icon="dashboard" title={t('managePanelsTitle')} right={<span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('shownOfTotal', { shown: digits(lang, shown), total: digits(lang, state.board.length) })}</span>}>
-      {!state.board.length ? (
-        <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{t('noPanelsYet')}</span>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {state.board.map((id) => {
-            const entry = entryOf(id);
-            if (!entry) return null;
-            const on = !state.hidden[id];
-            const span = state.spans[id] || entry.span;
-            return (
-              <div
-                key={id} draggable onDragStart={() => setDragId(id)} onDragOver={(e) => e.preventDefault()} onDrop={() => reorder(id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px', borderRadius: 8, border: '1px solid ' + (on ? 'var(--border-hairline)' : 'var(--divider-gold)'), background: 'rgba(3,8,7,.45)' }}
-              >
-                <span style={{ display: 'flex', color: 'var(--text-muted)', cursor: 'grab' }} title={t('dragToReorder')}><Icon name="grip-vertical" size={16} /></span>
-                <span style={{ display: 'flex', color: 'var(--char-accent)' }}><Icon name={entry.icon} size={17} /></span>
-                <span dir="auto" style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: on ? 'var(--text-primary)' : 'var(--text-disabled)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.title}</span>
-                <button type="button" onClick={() => setSpan(id, -1)} aria-label={t('narrowPanel')} disabled={span <= SPANS[0]} style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)', color: 'var(--text-muted)', opacity: span <= SPANS[0] ? .4 : 1 }}><Icon name="minus" size={14} /></button>
-                <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', minWidth: 36, textAlign: 'center' }}>{span + '/12'}</span>
-                <button type="button" onClick={() => setSpan(id, 1)} aria-label={t('widenPanel')} disabled={span >= 12} style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)', color: 'var(--text-muted)', opacity: span >= 12 ? .4 : 1 }}><Icon name="plus" size={14} /></button>
-                <Toggle checked={on} onChange={() => toggleHidden(id)} aria-label={t('toggleShowHide')} />
-                <button type="button" onClick={() => removePanel(id)} aria-label={t('removePanel')} title={t('removePanel')} style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.6)', color: 'var(--text-muted)' }}>
-                  <Icon name="trash" size={14} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </SectionShell>
   );
 }
@@ -750,15 +588,15 @@ export function SettingsView({ character, store }) {
         <h1 style={{ margin: 0, font: 'var(--type-display-lg)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase', color: 'var(--parchment)' }}>{t('title')}</h1>
         <p style={{ margin: '6px 0 0', font: 'var(--type-body)', color: 'var(--text-muted)', maxWidth: 680 }}>{t('subtitle')}</p>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          <AiPanelBuilderSection t={t} lang={lang} character={character} />
-          <ManagePanelsSection t={t} lang={lang} character={character} />
-        </div>
+      {/* Panel Builder moved to the AI Assistant page's own "Panel Builder" tab - it's an AI
+          capability, not a setting (its "installed panels" list moved with it). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <CharacterSection t={t} lang={lang} character={character} />
           <VoiceGenderSection t={t} />
           <RegionLanguageSection t={t} lang={lang} store={store} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <AlertsSection t={t} lang={lang} />
           <TradingDefaultsSection t={t} lang={lang} />
           <CompanionSection t={t} />

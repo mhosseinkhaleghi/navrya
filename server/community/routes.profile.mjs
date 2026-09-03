@@ -217,6 +217,16 @@ export function router(repo) {
     res.json({ byModel, days });
   }));
 
+  // AI dashboard's Costs & Usage tab (daily-by-engine chart) - real per-day token totals from the
+  // same ai_usage_events rows /me/usage already aggregates by month/lifetime, never a second
+  // ledger. Defaults to 30 days, same cap/floor as /me/ai-usage-by-model above.
+  app.get('/me/usage-by-day', asyncHandler(async (req, res) => {
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const byDay = await repo.usageEvents.aggregateByProviderAndDayForUser(req.currentUser.id, { since });
+    res.json({ byDay, days });
+  }));
+
   // The client sends only the event's identity (type, sourceType/sourceId, dedupeKey) - never a
   // points value. Every award is looked up from POINTS_BY_TYPE, re-verified against the real
   // owning record when one exists, deduplicated, and capped, all server-side.

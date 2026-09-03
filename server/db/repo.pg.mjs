@@ -981,6 +981,17 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query(text, params);
       return rows.map((row) => ({ provider: row.provider, day: row.day, totalTokens: Number(row.total_tokens || 0) }));
     },
+    // AI dashboard's Costs & Usage tab (daily-by-engine chart) - the per-user counterpart to
+    // aggregateByProviderAndDay() above (that one is global/admin-only). Same day-grouping,
+    // scoped to one real user's own rows, same convention as summaryForUser().
+    async aggregateByProviderAndDayForUser(userId, { since } = {}) {
+      const params = [userId];
+      let text = "SELECT provider, date_trunc('day', created_at) AS day, SUM(COALESCE(total_tokens,0)) AS total_tokens FROM ai_usage_events WHERE user_id=$1";
+      if (since) { params.push(since); text += ` AND created_at >= $${params.length}`; }
+      text += ' GROUP BY provider, day ORDER BY day ASC';
+      const { rows } = await pool.query(text, params);
+      return rows.map((row) => ({ provider: row.provider, day: row.day, totalTokens: Number(row.total_tokens || 0) }));
+    },
     async aggregateByUser() {
       const { rows } = await pool.query('SELECT user_id, SUM(COALESCE(total_tokens,0)) AS total FROM ai_usage_events WHERE user_id IS NOT NULL GROUP BY user_id');
       const result = {};
@@ -2889,7 +2900,8 @@ export function createPgRepo(pool) {
       recipientAddress: row.recipient_address, atomicAmount: row.atomic_amount, usdAmountMicroUsd: Number(row.usd_amount_micro_usd),
       exchangeRateSnapshot: row.exchange_rate_snapshot == null ? null : Number(row.exchange_rate_snapshot),
       status: row.status, expiresAt: row.expires_at, gatewayInvoiceId: row.gateway_invoice_id, txHash: row.tx_hash,
-      confirmationCount: row.confirmation_count, createdAt: row.created_at, confirmedAt: row.confirmed_at
+      confirmationCount: row.confirmation_count, createdAt: row.created_at, confirmedAt: row.confirmed_at,
+      mismatchCreditedMicroUsd: row.mismatch_credited_micro_usd == null ? null : Number(row.mismatch_credited_micro_usd)
     };
   }
   // Real BSC crypto payment invoices (task A) - one row per payment_transactions row, created
@@ -2933,10 +2945,10 @@ export function createPgRepo(pool) {
       const existing = await pool.query('SELECT * FROM crypto_invoices WHERE tx_hash=$1', [txHash]).catch(() => ({ rows: [] }));
       return { ok: false, claimedByOtherInvoice: existing.rows.length > 0 && existing.rows[0].id !== id };
     },
-    async updateStatus(id, status, { confirmationCount, confirmedAt } = {}) {
+    async updateStatus(id, status, { confirmationCount, confirmedAt, mismatchCreditedMicroUsd } = {}) {
       const { rows } = await pool.query(
-        'UPDATE crypto_invoices SET status=$2, confirmation_count=COALESCE($3, confirmation_count), confirmed_at=$4 WHERE id=$1 RETURNING *',
-        [id, status, confirmationCount ?? null, confirmedAt || null]
+        'UPDATE crypto_invoices SET status=$2, confirmation_count=COALESCE($3, confirmation_count), confirmed_at=$4, mismatch_credited_micro_usd=COALESCE($5, mismatch_credited_micro_usd) WHERE id=$1 RETURNING *',
+        [id, status, confirmationCount ?? null, confirmedAt || null, mismatchCreditedMicroUsd ?? null]
       );
       return rows[0] ? mapCryptoInvoice(rows[0]) : null;
     }
