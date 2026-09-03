@@ -47,7 +47,7 @@ const translations = {
     commanderName: 'The Commander', commanderRole: 'Commander', commanderRank: 'Field Commander · III', commanderMotto: 'Emotion is my enemy; discipline is my law.', commanderBullet1: 'Risk and capital command', commanderBullet2: 'Discipline under pressure', commanderBullet3: 'Fast strategic decisions', commanderBullet4: 'Lead your trades',
     sageName: 'The Sage', sageRole: 'Market Sage', sageRank: 'Grand Market Sage · IV', sageMotto: 'The goal is not profit; it is understanding.', sageBullet1: 'Continuous deep learning', sageBullet2: 'Build patterns and laws', sageBullet3: 'Focus on the market’s essence', sageBullet4: 'Search for market wisdom',
     authErrorOffline: 'Could not reach the server. Is the community backend running? (npm run dev:community-api)',
-    authSuccess: 'You’re in — pick your character.', googleNotConfigured: 'Google sign-in is not configured yet.', googleError: 'Google sign-in failed.',
+    authSuccess: 'You’re in — pick your character.', googleNotConfigured: 'Google sign-in is not configured yet.', googleError: 'Google sign-in failed.', googleSigningIn: 'Signing in with Google…',
     err_INVALID_EMAIL: 'Enter a valid email address.', err_PASSWORD_TOO_SHORT: 'Password must be at least 15 characters.', err_VALIDATION_FAILED: 'Please fill in every field.',
     err_EMAIL_TAKEN: 'An account with this email already exists — log in instead.', err_INVALID_CREDENTIALS: 'Incorrect email or password.', err_ACCOUNT_SUSPENDED: 'This account has been suspended.',
     err_EMAIL_ALREADY_REGISTERED: 'This email already has a password account — log in with email/password instead.',
@@ -83,7 +83,7 @@ const translations = {
     commanderName: 'فرمانده', commanderRole: 'فرمانده بازار', commanderRank: 'فرماندهٔ میدان · III', commanderMotto: 'احساسات دشمن من است؛ انضباط قانون من.', commanderBullet1: 'مدیریت ریسک و سرمایه', commanderBullet2: 'انضباط در فشار', commanderBullet3: 'تصمیم‌های سریع و راهبردی', commanderBullet4: 'رهبری مسیر معاملات',
     sageName: 'استاد', sageRole: 'استاد بازار', sageRank: 'استاد بزرگ بازار · IV', sageMotto: 'هدف سود نیست؛ هدف فهم بازار است.', sageBullet1: 'یادگیری عمیق و مداوم', sageBullet2: 'ساخت الگوها و قوانین', sageBullet3: 'تمرکز بر جوهر بازار', sageBullet4: 'جست‌وجوی خرد بازار',
     authErrorOffline: 'اتصال به سرور برقرار نشد. سرور بخش انجمن اجرا شده؟ (npm run dev:community-api)',
-    authSuccess: 'آماده‌ای — شخصیتت را انتخاب کن.', googleNotConfigured: 'ورود با گوگل هنوز تنظیم نشده است.', googleError: 'ورود با گوگل ناموفق بود.',
+    authSuccess: 'آماده‌ای — شخصیتت را انتخاب کن.', googleNotConfigured: 'ورود با گوگل هنوز تنظیم نشده است.', googleError: 'ورود با گوگل ناموفق بود.', googleSigningIn: 'در حال ورود با گوگل…',
     err_INVALID_EMAIL: 'یک ایمیل معتبر وارد کن.', err_PASSWORD_TOO_SHORT: 'رمز عبور باید حداقل ۱۵ کاراکتر باشد.', err_VALIDATION_FAILED: 'همهٔ فیلدها را پر کن.',
     err_EMAIL_TAKEN: 'حسابی با این ایمیل قبلاً ساخته شده — به‌جای آن وارد شو.', err_INVALID_CREDENTIALS: 'ایمیل یا رمز عبور اشتباه است.', err_ACCOUNT_SUSPENDED: 'این حساب مسدود شده است.',
     err_EMAIL_ALREADY_REGISTERED: 'این ایمیل قبلاً با رمز عبور ثبت شده — با ایمیل/رمز وارد شو.',
@@ -119,7 +119,7 @@ const translations = {
     commanderName: 'القائد', commanderRole: 'قائد السوق', commanderRank: 'قائد الميدان · III', commanderMotto: 'العاطفة عدوي والانضباط قانوني.', commanderBullet1: 'إدارة المخاطر ورأس المال', commanderBullet2: 'انضباط تحت الضغط', commanderBullet3: 'قرارات استراتيجية سريعة', commanderBullet4: 'قيادة مسار صفقاتك',
     sageName: 'الحكيم', sageRole: 'حكيم السوق', sageRank: 'الحكيم الأعظم للسوق · IV', sageMotto: 'الهدف ليس الربح بل الفهم.', sageBullet1: 'تعلم عميق مستمر', sageBullet2: 'بناء الأنماط والقوانين', sageBullet3: 'التركيز على جوهر السوق', sageBullet4: 'البحث عن حكمة السوق',
     authErrorOffline: 'تعذر الوصول إلى الخادم. هل خادم المجتمع يعمل؟ (npm run dev:community-api)',
-    authSuccess: 'أنت جاهز — اختر شخصيتك.', googleNotConfigured: 'تسجيل الدخول عبر Google غير مُهيأ بعد.', googleError: 'فشل تسجيل الدخول عبر Google.',
+    authSuccess: 'أنت جاهز — اختر شخصيتك.', googleNotConfigured: 'تسجيل الدخول عبر Google غير مُهيأ بعد.', googleError: 'فشل تسجيل الدخول عبر Google.', googleSigningIn: 'جارٍ تسجيل الدخول عبر Google…',
     err_INVALID_EMAIL: 'أدخل بريدًا إلكترونيًا صالحًا.', err_PASSWORD_TOO_SHORT: 'يجب أن تتكون كلمة المرور من 15 حرفًا على الأقل.', err_VALIDATION_FAILED: 'يرجى ملء كل الحقول.',
     err_EMAIL_TAKEN: 'يوجد حساب بهذا البريد الإلكتروني بالفعل — سجّل الدخول بدلاً من ذلك.', err_INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.', err_ACCOUNT_SUSPENDED: 'هذا الحساب موقوف.',
     err_EMAIL_ALREADY_REGISTERED: 'هذا البريد الإلكتروني مسجل بالفعل بكلمة مرور — سجّل الدخول بالبريد الإلكتروني وكلمة المرور بدلاً من ذلك.',
@@ -155,7 +155,7 @@ const translations = {
     commanderName: 'El comandante', commanderRole: 'Comandante', commanderRank: 'Comandante de Campo · III', commanderMotto: 'La emoción es mi enemigo; la disciplina mi ley.', commanderBullet1: 'Control de riesgo y capital', commanderBullet2: 'Disciplina bajo presión', commanderBullet3: 'Decisiones estratégicas rápidas', commanderBullet4: 'Lidera tus operaciones',
     sageName: 'El sabio', sageRole: 'Sabio del mercado', sageRank: 'Gran Sabio del Mercado · IV', sageMotto: 'La meta no es el beneficio; es comprender.', sageBullet1: 'Aprendizaje profundo continuo', sageBullet2: 'Crea patrones y leyes', sageBullet3: 'Enfoque en la esencia del mercado', sageBullet4: 'Busca sabiduría de mercado',
     authErrorOffline: 'No se pudo conectar con el servidor. ¿Está corriendo el backend de comunidad? (npm run dev:community-api)',
-    authSuccess: 'Listo — elige tu personaje.', googleNotConfigured: 'El inicio de sesión con Google aún no está configurado.', googleError: 'Error al iniciar sesión con Google.',
+    authSuccess: 'Listo — elige tu personaje.', googleNotConfigured: 'El inicio de sesión con Google aún no está configurado.', googleError: 'Error al iniciar sesión con Google.', googleSigningIn: 'Iniciando sesión con Google…',
     err_INVALID_EMAIL: 'Introduce un correo electrónico válido.', err_PASSWORD_TOO_SHORT: 'La contraseña debe tener al menos 15 caracteres.', err_VALIDATION_FAILED: 'Completa todos los campos.',
     err_EMAIL_TAKEN: 'Ya existe una cuenta con este correo — inicia sesión en su lugar.', err_INVALID_CREDENTIALS: 'Correo o contraseña incorrectos.', err_ACCOUNT_SUSPENDED: 'Esta cuenta ha sido suspendida.',
     err_EMAIL_ALREADY_REGISTERED: 'Este correo ya tiene una cuenta con contraseña — inicia sesión con correo/contraseña en su lugar.',
@@ -201,6 +201,8 @@ const tabSignin = el('tabSignin');
 const tabSignup = el('tabSignup');
 const googleBtn = el('googleBtn');
 const googleLabel = el('googleLabel');
+const googleAuthModal = el('googleAuthModal');
+const googleAuthModalLabel = el('googleAuthModalLabel');
 const nameField = el('nameField');
 const nameInput = el('nameInput');
 const emailInput = el('emailInput');
@@ -475,12 +477,28 @@ function initGoogle() {
   window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
   googleReady = true;
 }
+function setGoogleButtonBusy(busy) {
+  googleBtn.classList.toggle('is-loading', busy);
+  googleBtn.disabled = busy;
+}
+function showGoogleAuthModal(state) {
+  googleAuthModalLabel.textContent = copy().googleSigningIn;
+  googleAuthModal.dataset.state = state;
+  googleAuthModal.hidden = false;
+}
+function hideGoogleAuthModal() {
+  googleAuthModal.hidden = true;
+}
 async function handleGoogleCredential(response) {
+  setGoogleButtonBusy(false);
+  showGoogleAuthModal('loading');
   try {
     await window.TradeJournalDevUserSwitcher.loginWithGoogle(response.credential);
-    showToast(copy().authSuccess);
-    goToStep('character');
+    googleAuthModal.dataset.state = 'success';
+    googleAuthModalLabel.textContent = copy().authSuccess;
+    window.setTimeout(() => { hideGoogleAuthModal(); goToStep('character'); }, 650);
   } catch (error) {
+    hideGoogleAuthModal();
     showToast(describeAuthError(error) || copy().googleError);
   }
 }
@@ -490,7 +508,16 @@ googleBtn.addEventListener('click', () => {
     showToast(copy().googleNotConfigured);
     return;
   }
-  window.google.accounts.id.prompt();
+  setGoogleButtonBusy(true);
+  // isNotDisplayed()/isSkippedMoment() cover the silent-failure case (third-party cookies
+  // blocked, browser policy, etc.) where Google never shows its own UI at all - without this
+  // the button would stay stuck in its loading state with no feedback.
+  window.google.accounts.id.prompt((notification) => {
+    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+      setGoogleButtonBusy(false);
+      showToast(copy().googleError);
+    }
+  });
 });
 window.setTimeout(initGoogle, 0);
 

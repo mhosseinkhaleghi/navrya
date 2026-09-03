@@ -65,7 +65,7 @@ function characterCard(id) {
 }
 
 function buildSandbox(localStorage, isStoredUserValidImpl) {
-  const ids = ['stepChipAccount', 'stepChipCharacter', 'stepAccount', 'stepCharacter', 'showcaseMedia', 'showcaseCount', 'showcaseBody', 'showcaseRole', 'showcaseTitle', 'showcaseQuote', 'showcaseTrait0', 'showcaseTrait1', 'showcaseTrait2', 'showcaseTrait3', 'authCardTitle', 'authCardSub', 'tabSignin', 'tabSignup', 'googleBtn', 'googleLabel', 'nameField', 'nameInput', 'emailInput', 'passwordInput', 'forgotLink', 'passwordChecklist', 'passwordStrengthFill', 'pwReqLength', 'pwReqCommon', 'pwReqIdentifier', 'authError', 'continueBtn', 'continueLabel', 'switchPrompt', 'switchAction', 'pickedBar', 'pickedCrest', 'pickedTitle', 'pickedPlaceholder', 'backBtn', 'enterBtn', 'languageButton', 'languageMenu', 'currentLanguage', 'toast'];
+  const ids = ['stepChipAccount', 'stepChipCharacter', 'stepAccount', 'stepCharacter', 'showcaseMedia', 'showcaseCount', 'showcaseBody', 'showcaseRole', 'showcaseTitle', 'showcaseQuote', 'showcaseTrait0', 'showcaseTrait1', 'showcaseTrait2', 'showcaseTrait3', 'authCardTitle', 'authCardSub', 'tabSignin', 'tabSignup', 'googleBtn', 'googleLabel', 'googleAuthModal', 'googleAuthModalLabel', 'nameField', 'nameInput', 'emailInput', 'passwordInput', 'forgotLink', 'passwordChecklist', 'passwordStrengthFill', 'pwReqLength', 'pwReqCommon', 'pwReqIdentifier', 'authError', 'continueBtn', 'continueLabel', 'switchPrompt', 'switchAction', 'pickedBar', 'pickedCrest', 'pickedTitle', 'pickedPlaceholder', 'backBtn', 'enterBtn', 'languageButton', 'languageMenu', 'currentLanguage', 'toast'];
   const byId = {};
   for (const id of ids) byId[id] = new FakeNode('div');
   byId.stepCharacter.hidden = true; // matches index.html's `hidden` attribute
@@ -135,9 +135,10 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
 // Node's) so a stub that throws `new TypeError(...)` produces an error app.js's own
 // `error instanceof TypeError` check actually recognizes - vm contexts each have their own
 // realm.
-async function load(localStorage, overridesFactory, isStoredUserValidImpl) {
+async function load(localStorage, overridesFactory, isStoredUserValidImpl, googleImpl) {
   const { sandbox, els } = buildSandbox(localStorage, isStoredUserValidImpl);
   sandbox.window.parent.postMessage = (message, targetOrigin) => { els.postMessages.push(message); els.postMessageTargetOrigins.push(targetOrigin); };
+  if (googleImpl) sandbox.window.google = googleImpl;
   const context = vm.createContext(sandbox);
   if (overridesFactory) {
     const SandboxTypeError = vm.runInContext('TypeError', context);
@@ -171,6 +172,39 @@ test('the Google button never crashes when Google Identity Services is unavailab
   assert.match(els.toast.className, /show/, 'a "not configured" toast is shown instead of silently failing');
   assert.equal(els.stepAccount.hidden, false, 'still on the account step');
   assert.equal(els.stepCharacter.hidden, true);
+});
+
+test('choosing a Google account shows the loading modal then the success state, and does not jump to the Character step immediately', async () => {
+  let googleCallback = null;
+  const google = { accounts: { id: { initialize: (opts) => { googleCallback = opts.callback; }, prompt: () => {} } } };
+  const els = await load(memoryStorage(), null, undefined, google);
+  fire(els.googleBtn, 'click');
+  assert.match(els.googleBtn.className, /is-loading/, 'button shows a loading state as soon as it is clicked');
+  await googleCallback({ credential: 'fake-id-token' });
+  assert.doesNotMatch(els.googleBtn.className, /is-loading/, 'button loading clears once the modal takes over');
+  assert.equal(els.googleAuthModal.hidden, false);
+  assert.equal(els.googleAuthModal.dataset.state, 'success');
+  assert.equal(els.googleAuthModalLabel.textContent, 'You’re in — pick your character.', 'label switches to the success copy');
+  assert.equal(els.stepCharacter.hidden, true, 'advancing is deferred, the success state gets a beat on screen first');
+});
+
+test('a failed Google credential exchange hides the auth modal and shows the same toast as other auth errors', async () => {
+  let googleCallback = null;
+  const google = { accounts: { id: { initialize: (opts) => { googleCallback = opts.callback; }, prompt: () => {} } } };
+  const els = await load(memoryStorage(), () => ({ loginWithGoogle: async () => { throw new Error('GOOGLE_TOKEN_INVALID'); } }), undefined, google);
+  fire(els.googleBtn, 'click');
+  await googleCallback({ credential: 'bad-token' });
+  assert.equal(els.googleAuthModal.hidden, true, 'modal is dismissed on error');
+  assert.match(els.toast.className, /show/);
+  assert.equal(els.stepCharacter.hidden, true, 'still on the account step');
+});
+
+test('a Google prompt that never displays (e.g. third-party cookies blocked) clears the button loading state instead of leaving it stuck', async () => {
+  const google = { accounts: { id: { initialize: () => {}, prompt: (notify) => notify({ isNotDisplayed: () => true, isSkippedMoment: () => false }) } } };
+  const els = await load(memoryStorage(), null, undefined, google);
+  fire(els.googleBtn, 'click');
+  assert.doesNotMatch(els.googleBtn.className, /is-loading/);
+  assert.match(els.toast.className, /show/);
 });
 
 test('submitting the sign-in form calls login() with the entered credentials and advances to the Character step', async () => {

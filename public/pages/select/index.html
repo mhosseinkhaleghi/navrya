@@ -320,6 +320,15 @@
     </main>
 
     <div class="toast" id="toast" role="status"></div>
+    <div class="google-auth-modal" id="googleAuthModal" role="status" aria-live="polite" hidden>
+      <div class="google-auth-modal-box">
+        <div class="google-auth-modal-icon">
+          <div class="google-auth-spinner" aria-hidden="true"></div>
+          <svg class="google-auth-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7" /></svg>
+        </div>
+        <span class="google-auth-modal-label" id="googleAuthModalLabel"></span>
+      </div>
+    </div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="../shared/csrf-fetch-patch.js"></script>
     <script src="../shared/dev-user-switcher.js"></script>
