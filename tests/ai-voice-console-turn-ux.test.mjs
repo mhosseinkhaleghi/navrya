@@ -41,11 +41,11 @@ test('the PROCESSING label distinguishes a manual "End message" click from an or
 // of that behavior - chatDockView.jsx's endVoiceMessage() calls ONLY finishUserTurn(), never
 // disconnect()/startNewChat() - see tests/ai-voice-manual-finish.test.mjs's own dedicated test.
 // This test only confirms VoiceConsole.jsx itself never invents a second, competing action for
-// the same button - onVoiceEndMessage is a distinct prop from the close control (onVoiceToggle).
-test('the main action button\'s userSpeaking handler (onVoiceEndMessage) is a distinct prop from the console\'s own close control (onVoiceToggle, used by the header/footer close buttons) - VoiceConsole never substitutes one for the other', () => {
-  assert.match(voiceConsoleSrc, /onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,/);
+// the same button - onVoiceEndMessage is a distinct prop from the close control (onVoiceEnd).
+test('the main action button\'s userSpeaking handler (onVoiceEndMessage) is distinct from the console\'s end-session control (onVoiceEnd, used by header/footer close buttons)', () => {
+  assert.match(voiceConsoleSrc, /onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,/);
   assert.match(voiceConsoleSrc, /userSpeaking \? onVoiceEndMessage : undefined;/);
-  assert.doesNotMatch(voiceConsoleSrc, /userSpeaking \? onVoiceToggle/, 'End message mode must never be wired to the close/disconnect control');
+  assert.doesNotMatch(voiceConsoleSrc, /userSpeaking \? onVoiceEnd(?!Message)/, 'End message mode must never be wired to the close/disconnect control');
 });
 
 // ---- Part C: caption visibility ----
