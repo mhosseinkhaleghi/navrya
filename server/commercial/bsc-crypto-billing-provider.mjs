@@ -54,7 +54,7 @@ async function requireBscConfig(repo) {
   };
 }
 
-function computeAtomicAmount(amountMicroUsd, decimals, exchangeRateSnapshot) {
+export function computeAtomicAmount(amountMicroUsd, decimals, exchangeRateSnapshot) {
   if (exchangeRateSnapshot === 1) {
     // Exact integer math for the common stablecoin (1:1) case - never a float.
     return (BigInt(amountMicroUsd) * (10n ** BigInt(decimals)) / 1000000n).toString();
@@ -62,6 +62,21 @@ function computeAtomicAmount(amountMicroUsd, decimals, exchangeRateSnapshot) {
   const usd = amountMicroUsd / 1000000;
   const tokenAmount = usd / exchangeRateSnapshot;
   return BigInt(Math.round(tokenAmount * Math.pow(10, decimals))).toString();
+}
+
+// The inverse of computeAtomicAmount - what an on-chain amount is actually worth in microUSD.
+// Used only for a transfer that reached the right recipient on the right token/chain but for a
+// DIFFERENT amount than invoiced (crypto-invoice-service.mjs's mismatch-credit path) - the payer
+// still sent real, verifiable value, so it is credited to their wallet at its own real worth
+// rather than the invoice's now-irrelevant amount.
+export function atomicAmountToMicroUsd(atomicAmount, decimals, exchangeRateSnapshot) {
+  if (exchangeRateSnapshot === 1) {
+    // Exact integer math, rounded DOWN (BigInt division truncates) - never credit a fraction of a
+    // cent more than what was actually, verifiably received.
+    return Number((BigInt(atomicAmount) * 1000000n) / (10n ** BigInt(decimals)));
+  }
+  const tokenAmount = Number(atomicAmount) / Math.pow(10, decimals);
+  return Math.floor(tokenAmount * exchangeRateSnapshot * 1000000);
 }
 
 export class BscCryptoBillingProvider extends BillingProvider {

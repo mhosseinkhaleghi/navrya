@@ -158,7 +158,18 @@ const copy = {
     subInvoiceStatusPending: 'در انتظار پرداخت…', subInvoiceStatusConfirmed: 'پرداخت تأیید شد!', subInvoiceStatusExpired: 'این فاکتور منقضی شده است.',
     subInvoiceHint: 'دقیقاً همین مبلغ را روی شبکه BNB Smart Chain به آدرس بالا ارسال کن. پرداخت تو به‌صورت خودکار شناسایی می‌شود.',
     subInvoiceClose: 'بستن', subInvoiceCheckNow: 'بررسی الان',
-    subInvoiceTxHashLabel: 'شناسه تراکنش (اختیاری)', subInvoiceTxHashPlaceholder: 'اگر شناسه تراکنش را داری اینجا وارد کن'
+    subInvoiceTxHashLabel: 'شناسه تراکنش', subInvoiceTxHashPlaceholder: 'شناسهٔ تراکنش را اینجا وارد کن',
+    subInvoiceTxHashRequired: 'برای بررسی، شناسهٔ تراکنش را وارد کن.',
+    subInvoiceMismatchNote: 'اگر مبلغ واریزی شما با مبلغ فاکتور تفاوت داشته باشد — چه کمتر و چه بیشتر — این خرید انجام نمی‌شود، اما مبلغ واقعی واریزی‌تان مستقیماً به کیف پول هوش مصنوعی‌تان اضافه خواهد شد.',
+    subInvoiceMismatchCredited: 'مبلغ واریزی شما با مبلغ این فاکتور مطابقت نداشت. به‌جای این خرید، {amount} مستقیماً به کیف پول شما اضافه شد.',
+    subInvoiceOverpaidCredited: 'شما بیشتر از مبلغ فاکتور واریز کردید. این خرید انجام شد و مابه‌التفاوت، {amount}، به کیف پول شما اضافه شد.',
+    subInvoiceCheckError: 'بررسی پرداخت ممکن نشد: {error}',
+    subInvoiceReasonNotFound: 'این تراکنش هنوز روی شبکه دیده نشده است. کمی صبر کن و دوباره بررسی کن.',
+    subInvoiceReasonFailed: 'این تراکنش روی شبکه ناموفق بوده است.',
+    subInvoiceReasonNoTransfer: 'هیچ واریزی مطابق با این آدرس و توکن پیدا نشد. آدرس، شبکه (BNB Smart Chain) و نوع توکن (USDT) را دوباره بررسی کن.',
+    subInvoiceReasonChainMismatch: 'این تراکنش روی شبکهٔ اشتباهی ثبت شده است.',
+    subInvoiceReasonConfirming: 'تراکنش شما دیده شد و در انتظار تأیید شبکه است — کمی بعد دوباره بررسی کن.',
+    subInvoiceReasonAlreadyClaimed: 'این شناسهٔ تراکنش قبلاً برای فاکتور دیگری استفاده شده است.'
   },
   en: {
     dossierEyebrow: 'NAVRYA · DOSSIER', dossierTitle: 'Dossier, progress & subscription',
@@ -281,7 +292,18 @@ const copy = {
     subInvoiceStatusPending: 'Waiting for payment…', subInvoiceStatusConfirmed: 'Payment confirmed!', subInvoiceStatusExpired: 'This invoice has expired.',
     subInvoiceHint: 'Send exactly this amount on BNB Smart Chain to the address above. Your payment is detected automatically.',
     subInvoiceClose: 'Close', subInvoiceCheckNow: 'Check Now',
-    subInvoiceTxHashLabel: 'Transaction hash (optional)', subInvoiceTxHashPlaceholder: 'Paste your transaction hash if you have it'
+    subInvoiceTxHashLabel: 'Transaction hash', subInvoiceTxHashPlaceholder: 'Paste your transaction hash here',
+    subInvoiceTxHashRequired: 'Enter the transaction hash to check.',
+    subInvoiceMismatchNote: 'If the amount you send differs from this invoice - lower or higher - this purchase will not go through, but the real amount you sent will be credited directly to your AI wallet.',
+    subInvoiceMismatchCredited: 'Your deposit did not match this invoice. Instead of this purchase, {amount} was credited directly to your wallet.',
+    subInvoiceOverpaidCredited: 'You sent more than this invoice. The purchase went through, and the difference, {amount}, was credited to your wallet.',
+    subInvoiceCheckError: 'Could not check the payment: {error}',
+    subInvoiceReasonNotFound: 'This transaction has not been seen on the network yet. Wait a bit and check again.',
+    subInvoiceReasonFailed: 'This transaction failed on the network.',
+    subInvoiceReasonNoTransfer: 'No transfer matching this address and token was found. Double-check the address, the network (BNB Smart Chain) and the token (USDT).',
+    subInvoiceReasonChainMismatch: 'This transaction was recorded on the wrong network.',
+    subInvoiceReasonConfirming: 'Your transaction was seen and is waiting on network confirmations - check again shortly.',
+    subInvoiceReasonAlreadyClaimed: 'This transaction hash was already used for a different invoice.'
   },
   ar: {
     dossierEyebrow: 'NAVRYA · الملف', dossierTitle: 'الملف والتقدم والاشتراك',
@@ -404,7 +426,18 @@ const copy = {
     subInvoiceStatusPending: 'في انتظار الدفع…', subInvoiceStatusConfirmed: 'تم تأكيد الدفع!', subInvoiceStatusExpired: 'انتهت صلاحية هذه الفاتورة.',
     subInvoiceHint: 'أرسل هذا المبلغ بالضبط على شبكة BNB Smart Chain إلى العنوان أعلاه. سيتم اكتشاف دفعتك تلقائيًا.',
     subInvoiceClose: 'إغلاق', subInvoiceCheckNow: 'تحقّق الآن',
-    subInvoiceTxHashLabel: 'رقم المعاملة (اختياري)', subInvoiceTxHashPlaceholder: 'الصق رقم المعاملة إن كان متوفرًا لديك'
+    subInvoiceTxHashLabel: 'رقم المعاملة', subInvoiceTxHashPlaceholder: 'الصق رقم المعاملة هنا',
+    subInvoiceTxHashRequired: 'أدخل رقم المعاملة للتحقّق.',
+    subInvoiceMismatchNote: 'إذا كان المبلغ المُرسَل مختلفًا عن مبلغ هذه الفاتورة - أقل أو أكثر - فلن تكتمل عملية الشراء هذه، لكن المبلغ الفعلي المُرسَل سيُضاف مباشرةً إلى محفظة الذكاء الاصطناعي الخاصة بك.',
+    subInvoiceMismatchCredited: 'المبلغ المُرسَل لا يطابق هذه الفاتورة. بدلاً من هذا الشراء، تمت إضافة {amount} مباشرةً إلى محفظتك.',
+    subInvoiceOverpaidCredited: 'لقد أرسلت أكثر من مبلغ هذه الفاتورة. تم إتمام الشراء، وأُضيف الفرق، {amount}، إلى محفظتك.',
+    subInvoiceCheckError: 'تعذّر التحقق من الدفع: {error}',
+    subInvoiceReasonNotFound: 'لم تُشاهَد هذه المعاملة على الشبكة بعد. انتظر قليلاً وتحقّق مجددًا.',
+    subInvoiceReasonFailed: 'فشلت هذه المعاملة على الشبكة.',
+    subInvoiceReasonNoTransfer: 'لم يُعثر على تحويل مطابق لهذا العنوان والعملة. تحقّق من العنوان والشبكة (BNB Smart Chain) ونوع العملة (USDT).',
+    subInvoiceReasonChainMismatch: 'سُجِّلت هذه المعاملة على شبكة خاطئة.',
+    subInvoiceReasonConfirming: 'شُوهِدَت معاملتك وهي بانتظار تأكيدات الشبكة - تحقّق مجددًا بعد قليل.',
+    subInvoiceReasonAlreadyClaimed: 'رقم المعاملة هذا استُخدم بالفعل لفاتورة أخرى.'
   },
   es: {
     dossierEyebrow: 'NAVRYA · EXPEDIENTE', dossierTitle: 'Expediente, progreso y suscripción',
@@ -527,7 +560,18 @@ const copy = {
     subInvoiceStatusPending: 'Esperando el pago…', subInvoiceStatusConfirmed: '¡Pago confirmado!', subInvoiceStatusExpired: 'Esta factura ha vencido.',
     subInvoiceHint: 'Envía exactamente este monto en BNB Smart Chain a la dirección de arriba. Tu pago se detecta automáticamente.',
     subInvoiceClose: 'Cerrar', subInvoiceCheckNow: 'Verificar ahora',
-    subInvoiceTxHashLabel: 'Hash de la transacción (opcional)', subInvoiceTxHashPlaceholder: 'Pega el hash de tu transacción si lo tienes'
+    subInvoiceTxHashLabel: 'Hash de la transacción', subInvoiceTxHashPlaceholder: 'Pega aquí el hash de tu transacción',
+    subInvoiceTxHashRequired: 'Ingresa el hash de la transacción para verificar.',
+    subInvoiceMismatchNote: 'Si el monto que envías difiere del de esta factura — menor o mayor —, esta compra no se completará, pero el monto real enviado se acreditará directamente en tu billetera de IA.',
+    subInvoiceMismatchCredited: 'Tu depósito no coincidió con esta factura. En lugar de esta compra, se acreditaron {amount} directamente en tu billetera.',
+    subInvoiceOverpaidCredited: 'Enviaste más del monto de esta factura. La compra se completó y la diferencia, {amount}, se acreditó en tu billetera.',
+    subInvoiceCheckError: 'No se pudo verificar el pago: {error}',
+    subInvoiceReasonNotFound: 'Esta transacción aún no se ha visto en la red. Espera un momento y vuelve a verificar.',
+    subInvoiceReasonFailed: 'Esta transacción falló en la red.',
+    subInvoiceReasonNoTransfer: 'No se encontró ninguna transferencia que coincida con esta dirección y token. Verifica la dirección, la red (BNB Smart Chain) y el token (USDT).',
+    subInvoiceReasonChainMismatch: 'Esta transacción se registró en la red equivocada.',
+    subInvoiceReasonConfirming: 'Tu transacción fue detectada y espera confirmaciones de la red — vuelve a verificar en breve.',
+    subInvoiceReasonAlreadyClaimed: 'Este hash de transacción ya se usó para otra factura.'
   }
 };
 
@@ -1755,6 +1799,10 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
   const methodPanel = React.useRef(null);
   const reviewPanel = React.useRef(null);
   const invoicePanel = React.useRef(null);
+  // The invoice panel's own imperative Check Now action, plus its reported checking/canCheck
+  // state - the footer button lives HERE (next to Close), never floating inside the panel itself.
+  const invoiceApiRef = React.useRef(null);
+  const [invoiceStatus, setInvoiceStatus] = React.useState({ checking: false, canCheck: false });
   const [bodyHeight, setBodyHeight] = React.useState(null);
 
   const methods = [
@@ -1801,7 +1849,15 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
         <span style={{ flex: 1 }} />
         <Button variant="primary" disabled={submitting} onClick={submit}>{tr(lang, 'subPayConfirm', { amount: amountLabel })}</Button>
       </>
-    ) : (<><span style={{ flex: 1 }} /><Button variant="secondary" onClick={onClose}>{tr(lang, 'subInvoiceClose')}</Button></>);
+    ) : (
+      <>
+        <Button variant="secondary" onClick={onClose}>{tr(lang, 'subInvoiceClose')}</Button>
+        <span style={{ flex: 1 }} />
+        {invoiceStatus.canCheck && (
+          <Button variant="primary" loading={invoiceStatus.checking} onClick={() => invoiceApiRef.current && invoiceApiRef.current.checkNow()}>{tr(lang, 'subInvoiceCheckNow')}</Button>
+        )}
+      </>
+    );
 
   return (
     <Modal open title={title} icon="wallet" onClose={onClose} width={460} footer={footer}>
@@ -1890,7 +1946,7 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
             </div>
 
             <div ref={invoicePanel} dir={lang === 'en' || lang === 'es' ? 'ltr' : 'rtl'} style={{ width: (100 / PAY_SHEET_STEPS) + '%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {invoiceId && <CryptoInvoicePanel lang={lang} tr={tr} invoiceId={invoiceId} onConfirmed={onConfirmed} />}
+              {invoiceId && <CryptoInvoicePanel ref={invoiceApiRef} lang={lang} tr={tr} invoiceId={invoiceId} onConfirmed={onConfirmed} onStatus={setInvoiceStatus} />}
             </div>
 
           </div>

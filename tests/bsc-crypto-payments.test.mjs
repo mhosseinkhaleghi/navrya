@@ -151,7 +151,13 @@ test('creating a top-up with BSC configured returns a safe invoice DTO - no RPC 
   assert.equal(dto.assetSymbol, 'USDT');
   assert.equal(dto.recipientAddress, DEPOSIT_ADDRESS);
   assert.equal(dto.status, 'pending');
-  assert.match(dto.paymentUri, /^ethereum:/);
+  // paymentUri/the QR are the PLAIN recipient address - never an EIP-681 `ethereum:{contract}@...`
+  // request URI. That richer format is real and spec-correct, but a wallet that only reads the
+  // address right after `ethereum:` would read the TOKEN CONTRACT, not the recipient, and could
+  // send straight to it - a plain address is what every wallet's basic "scan an address" flow
+  // already handles correctly.
+  assert.equal(dto.paymentUri, DEPOSIT_ADDRESS);
+  assert.doesNotMatch(dto.paymentUri, /^ethereum:/);
   assert.match(dto.qrCodeDataUri, /^data:image\/png;base64,/, 'the QR code is generated server-side, never left for the client to build from raw wallet data');
   const serialized = JSON.stringify(dto);
   assert.doesNotMatch(serialized, /mock-rpc\.invalid/i);
@@ -224,38 +230,67 @@ test('a check with the wrong recipient address is rejected', async () => {
   assert.equal(result.reason, 'NO_MATCHING_TRANSFER');
 });
 
-test('a check with an insufficient amount is rejected (under-payment never accepted)', async () => {
+// The amount match for the ORIGINAL invoiced purchase is still EXACT - an under-payment can never
+// silently activate it at a partial price. But a real, sufficiently-confirmed transfer to the
+// right recipient/token/chain is real money received, never simply discarded: it is credited
+// directly to the payer's wallet instead, for exactly what they verifiably sent.
+test('a check with an insufficient amount never activates the invoiced purchase, but credits the wallet for exactly what was sent', async () => {
   await setBscConfig(repo);
   mockRpc({ chainId: 56 });
-  const { headers } = await createUserAndCookie('Underpay');
+  const { user, headers } = await createUserAndCookie('Underpay');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
-  const { invoiceId } = await createResp.json();
+  const { invoiceId, transactionId } = await createResp.json();
+  const before = await repo.wallet.getAccount(user.id);
 
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 5n * 10n ** 18n }) }); // only $5 worth sent, $10 expected
   const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'c'.repeat(64) }) });
   const result = await checkResp.json();
-  assert.equal(result.status, 'pending');
-  assert.equal(result.reason, 'NO_MATCHING_TRANSFER');
+  assert.equal(result.status, 'mismatched_credited');
+  assert.equal(result.creditedMicroUsd, 5000000);
+  assert.equal(result.invoice.status, 'failed', 'the invoiced $10 top-up itself must never be treated as fulfilled by a $5 payment');
+  assert.equal(result.invoice.mismatchCreditedMicroUsd, 5000000);
+  const after = await repo.wallet.getAccount(user.id);
+  assert.equal(after.paidBalanceMicroUsd - before.paidBalanceMicroUsd, 5000000, 'the wallet must be credited for exactly the $5 actually received, never the invoiced $10');
+  const transaction = await repo.paymentTransactions.get(transactionId);
+  assert.equal(transaction.status, 'failed');
+
+  // Idempotent: re-checking (a re-poll, a retried click) must never credit a second time.
+  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+  const secondResult = await secondCheck.json();
+  assert.equal(secondResult.status, 'mismatched_credited');
+  const afterSecond = await repo.wallet.getAccount(user.id);
+  assert.deepEqual(afterSecond, after, 'a second check must never credit the mismatch a second time');
 });
 
-// SECURITY (task C.5): the amount match is now EXACT, not "greater than or equal to". An
-// over-payment is just as much a non-match as an under-payment - there is no audited overpayment
-// policy in this pass, so accepting more than expected would be silently inventing one.
-test('a check with an amount GREATER than expected (over-payment) is also rejected - exact match only, never >=', async () => {
+// An over-payment still completes the invoiced purchase at the INVOICED price (never re-priced
+// upward just because more arrived) - only the EXCESS beyond the invoice is credited to the
+// wallet as its own separate credit.
+test('a check with an amount GREATER than expected (over-payment) still completes the purchase at the invoiced price, crediting only the excess', async () => {
   await setBscConfig(repo);
   mockRpc({ chainId: 56 });
   const { user, headers } = await createUserAndCookie('Overpay');
   const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
-  const { invoiceId } = await createResp.json();
+  const { invoiceId, transactionId } = await createResp.json();
   const before = await repo.wallet.getAccount(user.id);
 
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 15n * 10n ** 18n }) }); // $15 sent, $10 expected
   const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'f'.repeat(64) }) });
   const result = await checkResp.json();
-  assert.equal(result.status, 'pending');
-  assert.equal(result.reason, 'NO_MATCHING_TRANSFER');
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.overpaidCreditedMicroUsd, 5000000, 'only the $5 excess over the $10 invoice is its own credit');
+  assert.equal(result.invoice.mismatchCreditedMicroUsd, 5000000);
   const after = await repo.wallet.getAccount(user.id);
-  assert.deepEqual(after, before, 'an over-payment must never credit anything without an explicit, audited overpayment policy');
+  // The invoiced $10 top-up itself lands via confirmTransaction()'s normal wallet.grant(), plus
+  // the separate $5 excess credit - $15 total, matching exactly what was actually sent.
+  assert.equal(after.paidBalanceMicroUsd - before.paidBalanceMicroUsd, 15000000);
+  const transaction = await repo.paymentTransactions.get(transactionId);
+  assert.equal(transaction.status, 'confirmed');
+
+  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+  const secondResult = await secondCheck.json();
+  assert.equal(secondResult.status, 'confirmed');
+  const afterSecond = await repo.wallet.getAccount(user.id);
+  assert.deepEqual(afterSecond, after, 'a second check must never credit the overpayment excess a second time');
 });
 
 test('a check with too few confirmations stays pending, never confirmed, and can succeed later once enough accumulate', async () => {

@@ -7,25 +7,34 @@
 import QRCode from 'qrcode';
 import { ApiError } from '../community/errors.mjs';
 import { verifyBscTransfer } from './bsc-chain-client.mjs';
-import { confirmTransaction } from './payment-service.mjs';
+import { confirmTransaction, failTransaction } from './payment-service.mjs';
 import { resolveBscRuntimeConfig } from './bsc-config.mjs';
+import { atomicAmountToMicroUsd } from './bsc-crypto-billing-provider.mjs';
 
 // The ONLY thing the browser ever receives about an invoice - no RPC URL, no webhook secret, no
-// credential of any kind (task A.4/A.9). paymentUri is a real, standards-based EIP-681 request
-// URI (`ethereum:{contract}@{chainId}/transfer?address={recipient}&uint256={amount}`) real
-// wallets can parse to pre-fill a transfer; qrCodeDataUri is that same URI rendered to a PNG data
-// URI server-side (the `qrcode` package - task A.5) so the client never needs its own QR library
-// or ever handles anything more sensitive than a string to display.
+// credential of any kind (task A.4/A.9). qrCodeDataUri encodes the PLAIN recipient address alone
+// (the `qrcode` package - task A.5) - deliberately NOT an EIP-681 `ethereum:{contract}@{chainId}/
+// transfer?...` request URI. That richer format is real and spec-correct, but a wallet that does
+// not fully support it reads only the address right after `ethereum:` - which in that format is
+// the TOKEN CONTRACT, not the recipient - and could send straight to the contract address,
+// silently misdirecting real funds. A plain address string is what every wallet's basic
+// "scan an address" flow already handles correctly; network and amount are shown as their own
+// text fields alongside the QR (never relied on to be read out of it).
 export async function buildInvoiceDto(invoice, repo) {
   const config = await resolveBscRuntimeConfig(repo);
   const confirmationsRequired = config.confirmationsRequired;
-  const paymentUri = `ethereum:${invoice.tokenContract}@${invoice.chainId}/transfer?address=${invoice.recipientAddress}&uint256=${invoice.atomicAmount}`;
+  const paymentUri = invoice.recipientAddress;
   const qrCodeDataUri = await QRCode.toDataURL(paymentUri, { margin: 1, width: 240 });
   return {
     invoiceId: invoice.id, transactionId: invoice.transactionId, chainId: invoice.chainId, chainName: 'BNB Smart Chain (BSC)',
     assetSymbol: invoice.assetSymbol, recipientAddress: invoice.recipientAddress, atomicAmount: invoice.atomicAmount,
     tokenDecimals: invoice.tokenDecimals, usdAmountMicroUsd: invoice.usdAmountMicroUsd, expiresAt: invoice.expiresAt,
-    status: invoice.status, paymentUri, qrCodeDataUri, confirmationsRequired, confirmationCount: invoice.confirmationCount
+    status: invoice.status, paymentUri, qrCodeDataUri, confirmationsRequired, confirmationCount: invoice.confirmationCount,
+    mismatchCreditedMicroUsd: invoice.mismatchCreditedMicroUsd ?? null,
+    // Not sensitive (it is only ever the hash the SAME user already submitted for this invoice) -
+    // exposed so the client can tell "a hash is already on file, Check Now can run with no new
+    // input" apart from "nothing submitted yet, the field is required first".
+    txHash: invoice.txHash || null
   };
 }
 
@@ -51,7 +60,13 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
   const invoice = await repo.cryptoInvoices.get(invoiceId);
   if (!invoice) throw new ApiError(404, 'CRYPTO_INVOICE_NOT_FOUND');
   if (invoice.status === 'confirmed') return { status: 'confirmed', invoice };
-  if (invoice.status === 'expired' || invoice.status === 'failed') return { status: invoice.status, invoice };
+  if (invoice.status === 'expired') return { status: 'expired', invoice };
+  // A 'failed' invoice this function itself moved to that status (the under-payment path below)
+  // already told the caller the real outcome once, at the moment it happened; report it the same
+  // way on every later poll instead of the generic status a plain failure would get.
+  if (invoice.status === 'failed') {
+    return { status: invoice.mismatchCreditedMicroUsd != null ? 'mismatched_credited' : 'failed', invoice, creditedMicroUsd: invoice.mismatchCreditedMicroUsd };
+  }
 
   if (new Date(invoice.expiresAt).getTime() <= Date.now()) {
     const expired = await repo.cryptoInvoices.updateStatus(invoiceId, 'expired');
@@ -75,9 +90,56 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
 
   const verification = await verifyBscTransfer({ rpcUrl: config.rpcUrl, txHash: candidateHash, expected, confirmationsRequired });
   if (!verification.ok) {
+    // A real, sufficiently-confirmed transfer reached OUR recipient address, on the right chain/
+    // token - just for a different amount than invoiced. Split by direction:
+    //   - UNDER-payment: never silently activate the invoiced purchase at a partial price. The
+    //     purchase fails; the payer's wallet is credited for the actual amount they verifiably
+    //     sent instead (never left stranded).
+    //   - OVER-payment: the purchase still completes at the INVOICED price (never re-priced
+    //     upward just because more arrived) - only the EXCESS beyond the invoice is credited to
+    //     the wallet as its own separate credit.
+    // Both are idempotent via the wallet ledger's own idempotencyKey - re-polling (or a webhook
+    // replay) for the same invoice can never double-credit either one.
+    if (verification.reason === 'AMOUNT_MISMATCH') {
+      const transaction = await repo.paymentTransactions.get(invoice.transactionId);
+      const actualAtomic = BigInt(verification.actualAtomicAmount);
+      const invoicedAtomic = BigInt(invoice.atomicAmount);
+      const baseMetadata = {
+        invoiceId, txHash: candidateHash,
+        invoicedAtomicAmount: invoice.atomicAmount, actualAtomicAmount: verification.actualAtomicAmount
+      };
+
+      if (actualAtomic > invoicedAtomic) {
+        const excessMicroUsd = atomicAmountToMicroUsd((actualAtomic - invoicedAtomic).toString(), invoice.tokenDecimals, invoice.exchangeRateSnapshot);
+        await repo.cryptoInvoices.updateStatus(invoiceId, 'confirmed', {
+          confirmationCount: verification.confirmations, confirmedAt: new Date().toISOString(), mismatchCreditedMicroUsd: excessMicroUsd
+        });
+        const confirmResult = await confirmTransaction(repo, invoice.transactionId, { adminUserId: null });
+        if (excessMicroUsd > 0) {
+          await repo.wallet.grant(transaction.userId, {
+            type: 'TOP_UP', cashDeltaMicroUsd: excessMicroUsd, sourceAction: 'crypto-invoice-overpayment',
+            idempotencyKey: 'crypto-overpay:' + invoiceId, metadata: baseMetadata
+          });
+        }
+        const finalInvoice = await repo.cryptoInvoices.get(invoiceId);
+        return { status: 'confirmed', invoice: finalInvoice, alreadyProcessed: confirmResult.alreadyProcessed, overpaidCreditedMicroUsd: excessMicroUsd };
+      }
+
+      const creditedMicroUsd = atomicAmountToMicroUsd(verification.actualAtomicAmount, invoice.tokenDecimals, invoice.exchangeRateSnapshot);
+      await repo.wallet.grant(transaction.userId, {
+        type: 'TOP_UP', cashDeltaMicroUsd: creditedMicroUsd, sourceAction: 'crypto-invoice-underpayment',
+        idempotencyKey: 'crypto-mismatch:' + invoiceId, metadata: baseMetadata
+      });
+      await failTransaction(repo, invoice.transactionId).catch(() => {});
+      const failedInvoice = await repo.cryptoInvoices.updateStatus(invoiceId, 'failed', {
+        confirmationCount: verification.confirmations, confirmedAt: new Date().toISOString(), mismatchCreditedMicroUsd: creditedMicroUsd
+      });
+      return { status: 'mismatched_credited', invoice: failedInvoice, creditedMicroUsd };
+    }
     // Never marks the invoice failed just because it isn't confirmed YET (e.g. insufficient
-    // confirmations still accumulating) - only a genuine mismatch or expiry changes status;
-    // "not yet" stays pending so the next poll can succeed once enough confirmations land.
+    // confirmations still accumulating) - only a genuine mismatch-with-enough-confirmations or
+    // expiry changes status; "not yet" stays pending so the next poll can succeed once enough
+    // confirmations land, or once the right transfer actually appears.
     return { status: 'pending', invoice: claim.invoice, reason: verification.reason, confirmations: verification.confirmations };
   }
 

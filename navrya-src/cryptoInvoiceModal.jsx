@@ -4,6 +4,7 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
+import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 
 // Real BSC crypto invoice modal (task A.5) - built on the existing Modal shell per its own
 // design contract (Modal.prompt.md: neutral --ink-900 surface, accent icon tile, footer actions,
@@ -23,6 +24,8 @@ function fmtAtomicAmount(atomicAmount, decimals) {
   return whole.toString() + (fractionStr ? '.' + fractionStr : '');
 }
 
+function fmtMicroUsd(microUsd) { return '$' + (microUsd / 1000000).toFixed(2); }
+
 function fmtCountdown(expiresAt, now) {
   const remainingMs = new Date(expiresAt).getTime() - now;
   if (remainingMs <= 0) return null;
@@ -32,34 +35,69 @@ function fmtCountdown(expiresAt, now) {
   return minutes + ':' + String(seconds).padStart(2, '0');
 }
 
-// The invoice body on its own, with its own "check now" action row. Extracted so the checkout
-// sheet can show it as its LAST STEP instead of closing itself and opening a second popup on top
-// - paying and then watching the payment land is one continuous flow, not two windows.
-// CryptoInvoiceModal below is the same panel in a Modal, still used where there is no sheet to
-// slide it into (the storage add-on purchase).
-export function CryptoInvoicePanel({ lang, tr, invoiceId, onConfirmed }) {
+// A per-poll reason (from checkInvoicePayment's own return shape) that never changes dto.status
+// on its own - "insufficient confirmations" or "no matching transfer yet" both stay 'pending'.
+// Without surfacing this, clicking Check Now while any of these applies looks like it does
+// nothing at all - the exact reported bug.
+function reasonKey(reason) {
+  return {
+    TRANSACTION_NOT_FOUND: 'subInvoiceReasonNotFound',
+    TRANSACTION_FAILED: 'subInvoiceReasonFailed',
+    NO_MATCHING_TRANSFER: 'subInvoiceReasonNoTransfer',
+    CHAIN_MISMATCH: 'subInvoiceReasonChainMismatch',
+    INSUFFICIENT_CONFIRMATIONS: 'subInvoiceReasonConfirming',
+    TX_HASH_ALREADY_CLAIMED: 'subInvoiceReasonAlreadyClaimed',
+    CLAIM_FAILED: 'subInvoiceReasonAlreadyClaimed'
+  }[reason] || null;
+}
+
+// Shared by both the standalone modal (storage add-on purchase) and the in-sheet panel (wallet
+// top-up / subscription checkout) - one implementation, so the two can never quietly drift apart.
+function useCryptoInvoice(invoiceId, onConfirmed) {
   const [dto, setDto] = React.useState(null);
   const [txHash, setTxHash] = React.useState('');
   const [checking, setChecking] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
-  const [now, setNow] = React.useState(() => Date.now());
+  // The concrete outcome of the LAST check - separate from dto, because a reason (still waiting
+  // on confirmations, no transfer found yet, wrong network...) or a request-level failure changes
+  // neither dto.status nor anything else the old code looked at, which is exactly why "Check Now"
+  // used to look like it did nothing.
+  const [outcome, setOutcome] = React.useState(null);
 
   const load = React.useCallback(() => {
-    fetch('/api/sync/wallet/invoices/' + invoiceId).then((r) => r.json()).then(setDto).catch(() => {});
+    fetch('/api/sync/wallet/invoices/' + invoiceId).then((r) => r.json())
+      .then((data) => { if (data && data.invoiceId) { setDto(data); setTxHash((cur) => cur || data.txHash || ''); } })
+      .catch(() => {});
   }, [invoiceId]);
   React.useEffect(load, [load]);
 
   const check = React.useCallback((manualTxHash) => {
     setChecking(true);
+    setOutcome(null);
     fetch('/api/sync/wallet/invoices/' + invoiceId + '/check', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: manualTxHash || undefined })
     })
-      .then((r) => r.json())
-      .then((result) => {
-        setDto(result.invoice);
-        if (result.status === 'confirmed' && onConfirmed) onConfirmed();
+      .then((r) => r.json().then((body) => ({ ok: r.ok, body })))
+      .then(({ ok, body }) => {
+        // A thrown ApiError (missing tx hash, RPC/config trouble) has NO `.invoice` at all - the
+        // old code did `setDto(result.invoice)` unconditionally here, which set dto to `undefined`
+        // and made the whole panel disappear. Never let that happen again.
+        if (!ok || !body.invoice) { setOutcome({ kind: 'error', error: body.error || 'UNKNOWN' }); return; }
+        setDto(body.invoice);
+        // An overpayment still completes the purchase (never re-priced upward); the excess lands
+        // on dto.mismatchCreditedMicroUsd via setDto above, which the confirmed-status render
+        // already shows on its own - no separate outcome needed for this case.
+        // Both 'confirmed' (including an overpayment's extra credit) and 'mismatched_credited'
+        // are already fully reflected in dto itself (status + mismatchCreditedMicroUsd) via
+        // setDto above - the render below reads dto directly, so no separate outcome is needed
+        // for either.
+        if (body.status === 'confirmed' || body.status === 'mismatched_credited') {
+          if (onConfirmed) onConfirmed();
+          return;
+        }
+        if (body.reason) setOutcome({ kind: 'reason', reason: body.reason });
       })
-      .catch(() => {})
+      .catch(() => setOutcome({ kind: 'error', error: 'NETWORK_ERROR' }))
       .finally(() => setChecking(false));
   }, [invoiceId, onConfirmed]);
 
@@ -69,11 +107,6 @@ export function CryptoInvoicePanel({ lang, tr, invoiceId, onConfirmed }) {
     return () => clearInterval(id);
   }, [dto && dto.status, check]);
 
-  React.useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
   function copyAddress() {
     if (!dto) return;
     navigator.clipboard.writeText(dto.recipientAddress).then(() => {
@@ -82,22 +115,77 @@ export function CryptoInvoicePanel({ lang, tr, invoiceId, onConfirmed }) {
     }).catch(() => {});
   }
 
+  return { dto, txHash, setTxHash, checking, copied, copyAddress, check, outcome };
+}
+
+// The invoice body itself, with no Modal/footer of its own - the checkout sheet renders this as
+// its LAST sliding step (paying and then watching the payment land is one continuous flow, not a
+// second popup on top) and puts "Check Now" in ITS OWN footer, next to "Close", via the exposed
+// imperative handle. CryptoInvoiceModal below is the same content wrapped in its own Modal, still
+// used where there is no sheet to slide it into (the storage add-on purchase).
+export const CryptoInvoicePanel = React.forwardRef(function CryptoInvoicePanel({ lang, tr, invoiceId, onConfirmed, onStatus }, ref) {
+  const { dto, txHash, setTxHash, checking, copied, copyAddress, check, outcome } = useCryptoInvoice(invoiceId, onConfirmed);
+
+  const isTerminal = !!dto && (dto.status === 'confirmed' || dto.status === 'expired' || dto.status === 'failed');
+  const canCheck = !!dto && dto.status === 'pending' && !!(dto.txHash || txHash.trim());
+
+  React.useImperativeHandle(ref, () => ({ checkNow: () => check(txHash) }), [check, txHash]);
+  React.useEffect(() => { if (onStatus) onStatus({ checking, canCheck: canCheck && !isTerminal }); }, [checking, canCheck, isTerminal, onStatus]);
+
   if (!dto) return null;
+  return <CryptoInvoiceBody lang={lang} tr={tr} dto={dto} txHash={txHash} setTxHash={setTxHash} copied={copied} copyAddress={copyAddress} outcome={outcome} />;
+});
+
+export function CryptoInvoiceModal({ lang, tr, invoiceId, onClose, onConfirmed }) {
+  const { dto, txHash, setTxHash, checking, copied, copyAddress, check, outcome } = useCryptoInvoice(invoiceId, onConfirmed);
+  if (!dto) return null;
+  const isExpired = dto.status === 'expired';
+  const canCheck = dto.status === 'pending' && !!(dto.txHash || txHash.trim());
+
+  return (
+    <Modal open title={tr(lang, 'subInvoiceTitle')} icon="wallet" onClose={onClose} width={480}
+      footer={(
+        <>
+          <span style={{ flex: 1 }} />
+          <Button variant="secondary" onClick={onClose}>{tr(lang, 'subInvoiceClose')}</Button>
+          {dto.status === 'pending' && !isExpired && (
+            <Button variant="primary" disabled={!canCheck} loading={checking} onClick={() => check(txHash)}>{tr(lang, 'subInvoiceCheckNow')}</Button>
+          )}
+        </>
+      )}
+    >
+      <CryptoInvoiceBody lang={lang} tr={tr} dto={dto} txHash={txHash} setTxHash={setTxHash} copied={copied} copyAddress={copyAddress} outcome={outcome} />
+    </Modal>
+  );
+}
+
+// The content both the standalone Modal and the in-sheet panel render identically - status chip,
+// QR, network/amount facts, recipient address, mismatch note, tx-hash field and the last check's
+// outcome. Neither wrapper renders its own "Check Now" here; each puts that button in its own
+// footer instead (Modal's footer, or the checkout sheet's footer via the imperative handle).
+function CryptoInvoiceBody({ lang, tr, dto, txHash, setTxHash, copied, copyAddress, outcome }) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+
   const countdown = dto.status === 'pending' ? fmtCountdown(dto.expiresAt, now) : null;
   const isExpired = dto.status === 'expired' || (dto.status === 'pending' && countdown === null);
-  const statusTone = dto.status === 'confirmed' ? 'accent' : isExpired ? 'danger' : 'neutral';
+  const isMismatchCredited = dto.status === 'failed' && dto.mismatchCreditedMicroUsd != null;
+  const statusTone = dto.status === 'confirmed' ? 'accent' : isMismatchCredited ? 'accent' : isExpired || dto.status === 'failed' ? 'danger' : 'neutral';
   const statusLabel = dto.status === 'confirmed' ? tr(lang, 'subInvoiceStatusConfirmed')
-    : isExpired ? tr(lang, 'subInvoiceStatusExpired') : tr(lang, 'subInvoiceStatusPending');
+    : isMismatchCredited ? tr(lang, 'subInvoiceMismatchCredited', { amount: fmtMicroUsd(dto.mismatchCreditedMicroUsd) })
+      : isExpired ? tr(lang, 'subInvoiceStatusExpired') : tr(lang, 'subInvoiceStatusPending');
   const label = { fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-muted)' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Chip tone={statusTone} dot>{statusLabel}</Chip>
 
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 10, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)' }}>
-        {/* eslint-disable-next-line jsx-a11y/alt-text -- server-generated QR, no descriptive alt beyond its function */}
-        <img src={dto.qrCodeDataUri} width={168} height={168} alt="QR" />
-      </div>
+      {!isMismatchCredited && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 10, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)' }}>
+          {/* eslint-disable-next-line jsx-a11y/alt-text -- server-generated QR, no descriptive alt beyond its function */}
+          <img src={dto.qrCodeDataUri} width={168} height={168} alt="QR" />
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
         <div style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
@@ -110,145 +198,56 @@ export function CryptoInvoicePanel({ lang, tr, invoiceId, onConfirmed }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        <span style={label}>{tr(lang, 'subInvoiceRecipient')}</span>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span dir="ltr" style={{ flex: 1, fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-primary)', wordBreak: 'break-all', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)' }}>{dto.recipientAddress}</span>
-          <Button variant="secondary" size="sm" icon="copy" onClick={copyAddress}>{copied ? tr(lang, 'subInvoiceCopied') : tr(lang, 'subInvoiceCopy')}</Button>
-        </div>
-      </div>
-
-      {dto.status === 'pending' && (
-        <>
-          <div dir="ltr" style={{ fontSize: 11.5, color: isExpired ? 'var(--danger)' : 'var(--text-dim)' }}>
-            {isExpired ? tr(lang, 'subInvoiceExpired') : tr(lang, 'subInvoiceExpiresIn', { time: countdown })}
-          </div>
-          <TextField label={tr(lang, 'subInvoiceTxHashLabel')} value={txHash} onChange={setTxHash} placeholder={tr(lang, 'subInvoiceTxHashPlaceholder')} dir="ltr" />
-        </>
-      )}
-
-      <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.6, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <Icon name="status" size={13} style={{ flex: 'none', marginTop: 2 }} />
-        {tr(lang, 'subInvoiceHint')}
-      </p>
-
-      {/* sticky: inside the sheet this panel is taller than the modal's capped body, so a plain
-          last child would sit below the fold and have to be scrolled to */}
-      {dto.status === 'pending' && !isExpired && (
-        <div style={{ position: 'sticky', bottom: 0, paddingTop: 8, marginTop: -4, background: 'linear-gradient(to top, var(--ink-900) 70%, transparent)' }}>
-          <Button variant="primary" disabled={checking} onClick={() => check(txHash)} style={{ justifyContent: 'center', width: '100%' }}>{tr(lang, 'subInvoiceCheckNow')}</Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function CryptoInvoiceModal({ lang, tr, invoiceId, onClose, onConfirmed }) {
-  const [dto, setDto] = React.useState(null);
-  const [txHash, setTxHash] = React.useState('');
-  const [checking, setChecking] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
-  const [now, setNow] = React.useState(() => Date.now());
-
-  const load = React.useCallback(() => {
-    fetch('/api/sync/wallet/invoices/' + invoiceId).then((r) => r.json()).then(setDto).catch(() => {});
-  }, [invoiceId]);
-  React.useEffect(load, [load]);
-
-  const check = React.useCallback((manualTxHash) => {
-    setChecking(true);
-    fetch('/api/sync/wallet/invoices/' + invoiceId + '/check', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: manualTxHash || undefined })
-    })
-      .then((r) => r.json())
-      .then((result) => {
-        setDto(result.invoice);
-        if (result.status === 'confirmed' && onConfirmed) onConfirmed();
-      })
-      .catch(() => {})
-      .finally(() => setChecking(false));
-  }, [invoiceId, onConfirmed]);
-
-  // Auto-poll while the invoice is genuinely still pending - stops entirely once confirmed/
-  // expired/failed, never keeps hammering the verification endpoint after a terminal state.
-  React.useEffect(() => {
-    if (!dto || dto.status !== 'pending') return undefined;
-    const id = setInterval(() => check(), POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [dto && dto.status, check]);
-
-  React.useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  function copyAddress() {
-    if (!dto) return;
-    navigator.clipboard.writeText(dto.recipientAddress).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
-  }
-
-  if (!dto) return null;
-  const countdown = dto.status === 'pending' ? fmtCountdown(dto.expiresAt, now) : null;
-  const isExpired = dto.status === 'expired' || (dto.status === 'pending' && countdown === null);
-  const statusTone = dto.status === 'confirmed' ? 'accent' : isExpired ? 'danger' : 'neutral';
-  const statusLabel = dto.status === 'confirmed' ? tr(lang, 'subInvoiceStatusConfirmed')
-    : isExpired ? tr(lang, 'subInvoiceStatusExpired') : tr(lang, 'subInvoiceStatusPending');
-
-  return (
-    <Modal open title={tr(lang, 'subInvoiceTitle')} icon="wallet" onClose={onClose} width={480}
-      footer={(
-        <>
-          <span style={{ flex: 1 }} />
-          <Button variant="secondary" onClick={onClose}>{tr(lang, 'subInvoiceClose')}</Button>
-          {dto.status === 'pending' && !isExpired && (
-            <Button variant="primary" disabled={checking} onClick={() => check(txHash)}>{tr(lang, 'subInvoiceCheckNow')}</Button>
-          )}
-        </>
-      )}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Chip tone={statusTone} dot>{statusLabel}</Chip>
-
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 12, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'var(--surface-card)' }}>
-          {/* eslint-disable-next-line jsx-a11y/alt-text -- server-generated QR, no descriptive alt beyond its function */}
-          <img src={dto.qrCodeDataUri} width={200} height={200} alt="QR" />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{tr(lang, 'subInvoiceNetwork')}</span>
-          <span dir="ltr" style={{ fontSize: 13, color: 'var(--text-primary)' }}>{dto.chainName} · {dto.assetSymbol}</span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{tr(lang, 'subInvoiceAmount')}</span>
-          <span dir="ltr" className="navrya-tabular" style={{ fontSize: 20, fontWeight: 700, color: 'var(--gold-warm)' }}>{fmtAtomicAmount(dto.atomicAmount, dto.tokenDecimals)} {dto.assetSymbol}</span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{tr(lang, 'subInvoiceRecipient')}</span>
+      {!isMismatchCredited && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={label}>{tr(lang, 'subInvoiceRecipient')}</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span dir="ltr" style={{ flex: 1, fontFamily: 'monospace', fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-all', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)' }}>{dto.recipientAddress}</span>
+            <span dir="ltr" style={{ flex: 1, fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-primary)', wordBreak: 'break-all', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)' }}>{dto.recipientAddress}</span>
             <Button variant="secondary" size="sm" icon="copy" onClick={copyAddress}>{copied ? tr(lang, 'subInvoiceCopied') : tr(lang, 'subInvoiceCopy')}</Button>
           </div>
         </div>
+      )}
 
-        {dto.status === 'pending' && (
-          <>
-            <div dir="ltr" style={{ fontSize: 12, color: isExpired ? 'var(--danger)' : 'var(--text-dim)' }}>
-              {isExpired ? tr(lang, 'subInvoiceExpired') : tr(lang, 'subInvoiceExpiresIn', { time: countdown })}
-            </div>
-            <TextField label={tr(lang, 'subInvoiceTxHashLabel')} value={txHash} onChange={setTxHash} placeholder={tr(lang, 'subInvoiceTxHashPlaceholder')} dir="ltr" />
-          </>
-        )}
+      {dto.status === 'pending' && (
+        <>
+          <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'subInvoiceExpiresIn', { time: countdown })}</div>
+          <TextField
+            label={tr(lang, 'subInvoiceTxHashLabel')} value={txHash} onChange={setTxHash}
+            placeholder={tr(lang, 'subInvoiceTxHashPlaceholder')} dir="ltr"
+            hint={!txHash.trim() ? tr(lang, 'subInvoiceTxHashRequired') : undefined}
+          />
+        </>
+      )}
 
-        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <Icon name="status" size={14} style={{ flex: 'none', marginTop: 2 }} />
+      {/* The one piece of feedback this screen was entirely missing - what the last click on
+          Check Now actually found, good or bad, instead of silently changing nothing. */}
+      {outcome && outcome.kind === 'error' && (
+        <Notice tone="danger" icon="status">{tr(lang, 'subInvoiceCheckError', { error: outcome.error })}</Notice>
+      )}
+      {outcome && outcome.kind === 'reason' && reasonKey(outcome.reason) && (
+        <Notice tone={outcome.reason === 'CHAIN_MISMATCH' || outcome.reason === 'TX_HASH_ALREADY_CLAIMED' || outcome.reason === 'CLAIM_FAILED' || outcome.reason === 'TRANSACTION_FAILED' ? 'danger' : 'accent'} icon="status">
+          {tr(lang, reasonKey(outcome.reason))}
+        </Notice>
+      )}
+      {/* Durable across a reload, unlike `outcome` (which only lives for the check that just ran)
+          - dto.mismatchCreditedMicroUsd on a CONFIRMED invoice always means "the purchase went
+          through and this much extra was credited on top", whatever check produced it. */}
+      {dto.status === 'confirmed' && dto.mismatchCreditedMicroUsd > 0 && (
+        <Notice tone="accent" icon="status">{tr(lang, 'subInvoiceOverpaidCredited', { amount: fmtMicroUsd(dto.mismatchCreditedMicroUsd) })}</Notice>
+      )}
+
+      {!isMismatchCredited && dto.status !== 'confirmed' && (
+        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.6, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <Icon name="status" size={13} style={{ flex: 'none', marginTop: 2 }} />
           {tr(lang, 'subInvoiceHint')}
         </p>
-      </div>
-    </Modal>
+      )}
+      {dto.status === 'pending' && (
+        <p style={{ margin: 0, fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <Icon name="status" size={13} style={{ flex: 'none', marginTop: 2, color: 'var(--gold-warm)' }} />
+          {tr(lang, 'subInvoiceMismatchNote')}
+        </p>
+      )}
+    </div>
   );
 }

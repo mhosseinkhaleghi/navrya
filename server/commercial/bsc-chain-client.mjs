@@ -87,14 +87,24 @@ export async function verifyBscTransfer({ rpcUrl, txHash, expected, confirmation
   const transfers = decodeTransferLogs(receipt, expected.tokenContract);
   const expectedAtomic = BigInt(expected.atomicAmount);
   const recipientLower = expected.recipient.toLowerCase();
-  const matching = transfers.find((t) => t.to.toLowerCase() === recipientLower && t.value === expectedAtomic);
-  if (!matching) return { ok: false, reason: 'NO_MATCHING_TRANSFER' };
+  const toRecipient = transfers.filter((t) => t.to.toLowerCase() === recipientLower);
+  const matching = toRecipient.find((t) => t.value === expectedAtomic);
+  // A real transfer of the right token, on the right chain, TO THE RIGHT RECIPIENT, just not for
+  // the invoiced amount. Never silently activate the invoiced purchase at the wrong price - the
+  // caller (crypto-invoice-service.mjs) instead credits the payer's wallet for what was actually,
+  // verifiably sent, but ONLY once it clears the SAME confirmation threshold as an exact match
+  // (checked below) - a reorg must never be able to un-send a credit already made.
+  const mismatched = !matching && toRecipient[0];
+  if (!matching && !mismatched) return { ok: false, reason: 'NO_MATCHING_TRANSFER' };
 
   const currentBlock = await getBlockNumber(rpcUrl);
   const receiptBlock = parseInt(receipt.blockNumber, 16);
   const confirmations = Math.max(0, currentBlock - receiptBlock + 1);
-  if (confirmations < confirmationsRequired) return { ok: false, reason: 'INSUFFICIENT_CONFIRMATIONS', confirmations };
+  if (confirmations < confirmationsRequired) {
+    return { ok: false, reason: 'INSUFFICIENT_CONFIRMATIONS', confirmations, mismatched: !matching };
+  }
 
+  if (!matching) return { ok: false, reason: 'AMOUNT_MISMATCH', actualAtomicAmount: mismatched.value.toString(), confirmations };
   return { ok: true, confirmations };
 }
 

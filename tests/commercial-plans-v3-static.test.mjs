@@ -95,11 +95,15 @@ test('accountProfileView.jsx: a PaymentSheet exists, offers crypto/Visa/Iran-gat
 test('accountProfileView.jsx: PaymentSheet slides between its three steps inside one modal, ending on the real invoice', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const idx = src.indexOf('function PaymentSheet(');
-  const fn = src.slice(idx, idx + 10500);
+  const fn = src.slice(idx, idx + 12000);
   assert.match(src, /const PAY_SHEET_STEPS = 3;/, 'the sheet must carry a third step for the invoice');
   assert.match(fn, /transform: 'translateX\(-' \+ \(step \* \(100 \/ PAY_SHEET_STEPS\)\) \+ '%\)'/, 'all three steps must slide within one sheet');
-  assert.match(fn, /<CryptoInvoicePanel lang=\{lang\} tr=\{tr\} invoiceId=\{invoiceId\}/, 'the invoice must render INSIDE the sheet, never as a second popup');
+  assert.match(fn, /<CryptoInvoicePanel ref=\{invoiceApiRef\}[^>]*invoiceId=\{invoiceId\}/, 'the invoice must render INSIDE the sheet, never as a second popup');
   assert.match(fn, /dir="ltr"[^>]*overflow: 'hidden'/, 'the clipping box must be LTR - in RTL it starts scrolled to the right and would show the last panel first');
+  // Check Now must live in the sheet's OWN footer, next to Close - never floating inside the
+  // invoice panel's own content (which used to sit below the fold, half-hidden).
+  assert.match(fn, /subInvoiceClose'\)\}<\/Button>\s*<span style=\{\{ flex: 1 \}\} \/>\s*\{invoiceStatus\.canCheck/, 'Close and Check Now must be siblings in the same footer branch');
+  assert.match(fn, /invoiceApiRef\.current && invoiceApiRef\.current\.checkNow\(\)/, 'the footer button must call the panel\'s own imperative Check Now action');
   assert.match(fn, /subPayInvoice/);
   assert.match(fn, /subPayTotal/);
   assert.match(fn, /subPayDiscountUnavailable/, 'the discount-code row must be honestly marked unavailable - there is no coupon backend');
