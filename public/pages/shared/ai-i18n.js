@@ -202,7 +202,7 @@
       aiCostsCapTitle: 'سقف ماهانهٔ توکن', aiCostsCapHint: 'وقتی به سقف برسی، آن موتور تا ماه بعد پاسخ نمی‌دهد.', aiCostsCapUnsetShort: 'سقفی نیست',
 
       aiMemoryTitle: 'حافظه', aiMemorySubtitle: 'دستیار از دفتر خودت می‌خواند، نه از یک نسخهٔ جداگانه.',
-      aiMemoryBucketsTitle: 'حافظه چقدر پر است', aiMemoryLiveLabel: 'تریدها و سشن‌ها', aiMemoryLiveNote: 'لحظه‌ای از دفتر خوانده می‌شود — ذخیره نمی‌شود',
+      aiMemoryBucketsTitle: 'حافظه چقدر پر است', aiMemoryLiveLabel: 'تریدها و سشن‌ها', aiMemoryLiveNote: 'لحظه‌ای از دفتر خوانده می‌شود — ذخیره نمی‌شود', aiMemoryLiveShort: 'زنده',
       aiMemoryFootnote: 'فقط تاریخچهٔ گفتگو ذخیره می‌شود. الگو، استراتژی، ترید و سشن هر بار مستقیم از دفتر خودت خوانده می‌شوند، پس هیچ‌وقت کهنه نمی‌شوند.',
       aiMemoryPrivacyTitle: 'حریم خصوصی به تفکیک دامنه',
       aiMemoryPrivacyTrades: 'تریدها و سشن‌ها', aiMemoryPrivacyTradesHint: 'برای تحلیل عملکرد لازم است',
@@ -220,7 +220,34 @@
       aiActivitySoonVoice: 'دقیقهٔ ویس مود', aiActivitySoonVoiceNote: 'مدت جلسهٔ ویس در هیچ جدولی ثبت نمی‌شود؛ این عدد به یک لایهٔ اندازه‌گیری تازه در سرور نیاز دارد.',
       aiActivitySoonHeatmap: 'در چه ساعت‌هایی سراغ دستیار می‌روی', aiActivitySoonHeatmapNote: 'زمان هر فراخوانی ثبت می‌شود، فقط جمع‌بندی ساعتی ساخته نشده.',
       aiActivitySoonLeaderboard: 'کارنامهٔ موتورها', aiActivitySoonLeaderboardNote: '«مفید بود» از بازخورد صریح تو می‌آید و «درست درآمد» از مقایسهٔ پیش‌بینی با نتیجهٔ واقعی — هیچ‌کدام امروز ثبت نمی‌شوند.',
-      aiActivitySoonTraining: 'آموزش الگو و استراتژی', aiActivitySoonTrainingNote: 'خلاصهٔ درک دستیار روی هر استراتژی از قبل ذخیره می‌شود؛ فقط هیچ‌جا نمایش داده نمی‌شود.'
+      aiActivitySoonTraining: 'آموزش الگو و استراتژی', aiActivitySoonTrainingNote: 'خلاصهٔ درک دستیار روی هر استراتژی از قبل ذخیره می‌شود؛ فقط هیچ‌جا نمایش داده نمی‌شود.',
+
+      aiAsstActive: 'فعال', aiAsstSelect: 'انتخاب', aiAsstPlatformKey: 'کلید پلتفرم',
+      aiDashAllConversations: 'همهٔ گفتگوها', aiDashPanelCount: '{n} پنل',
+
+      aiPersonaPercentValue: '{n}٪',
+      aiPersonaCustomTry: 'امتحان کن', aiPersonaListenByVoice: 'با صدا بشنو', aiPersonaListenByVoiceSoon: 'پخش صوتی پیش‌نمایش هنوز وصل نشده',
+      aiPersonaVoiceSpeed: 'سرعت گفتار', aiPersonaVoiceWarmth: 'گرمی صدا', aiPersonaVoiceEmotion: 'شدت هیجان',
+
+      aiPanelMovedNotice: 'این بخش پیش‌تر داخل «تنظیمات» بود. حالا کنار بقیهٔ قابلیت‌های هوش مصنوعی است — چون یک قابلیت است، نه یک تنظیم.',
+      perGenerationCost: 'هر تولید ≈ $0.0021 از کیف پول', installsOnBoard: 'روی برد {character} نصب می‌شود', speakIt: 'با صدا بگو',
+      draftsCount: '{count} پیش‌نویس', draftPreviewLabel: 'پیش‌نمایش', editDraftText: 'ویرایش متن',
+      aiPanelLivePreviewTitle: 'پیش‌نمایش زندهٔ داده', aiPanelLivePreviewBody: 'الان پیش‌نویس فقط توصیف پنل است. قدم بعد این است که پنل قبل از نصب، با دادهٔ واقعیِ خودت رندر شود تا پیش از افزودن ببینی چه شکلی می‌شود.',
+      goToDashboard: 'رفتن به داشبورد معاملاتی', editPanel: 'ویرایش پنل',
+
+      aiCostsTokensUnit: 'توکن', aiCostsToday: 'امروز', aiCostsChartZeroDays: 'روزهای بدون مصرف',
+
+      aiActivityRealSourceCaption: 'از دفتر مصرف واقعی خوانده می‌شود',
+      aiActivityAnalysisSession: 'تحلیل سشن', aiActivityAnalysisTrade: 'تحلیل ترید', aiActivityAnalysisPattern: 'آموزش الگو',
+      aiActivityAnalysisStrategy: 'استراتژی', aiActivityAnalysisPsychology: 'روان‌شناسی',
+      aiActivityListenMinutes: 'دقیقهٔ شنیدن', aiActivitySpeakMinutes: 'دقیقهٔ گفتن',
+      daySat: 'شنبه', daySun: 'یک‌شنبه', dayMon: 'دوشنبه', dayTue: 'سه‌شنبه', dayWed: 'چهارشنبه', dayThu: 'پنج‌شنبه', dayFri: 'جمعه',
+      aiActivityLeaderEngine: 'موتور', aiActivityLeaderHelpful: 'مفید بود', aiActivityLeaderRight: 'درست درآمد', aiActivityLeaderSample: 'نمونه',
+      aiActivityTrainingIntro: 'دستیار هر الگو و استراتژی را چقدر کامل فهمیده — بر پایهٔ اینکه شرط ورود، مدیریت ریسک و حالت خروج تعریف شده‌اند یا نه.',
+      aiActivityTrainingLondon: 'شکست ساختار لندن', aiActivityTrainingHns: 'سر و شانه', aiActivityTrainingReversion: 'بازگشت به میانگین', aiActivityTrainingNyGap: 'گپ باز نیویورک',
+      aiActivityTrainingGapsIntro: 'شکاف‌ها: کاری که چند دقیقه وقت می‌برد و کیفیت هر جواب بعدی را بالا می‌برد.',
+      aiActivityTrainingGap1: 'دستیار دربارهٔ مدیریت پوزیشن در «گپ باز نیویورک» چیزی نمی‌داند.',
+      aiActivityTrainingGap2: 'حالت خروج «بازگشت به میانگین» تعریف نشده است.'
     },
     ar: {
       aiSettingsTitle: 'الذكاء الاصطناعي', aiSettingsHelp: 'أدر مزوّد الخدمة ومفتاحك الخاص وحالة الصوت واستهلاك التوكنات وذاكرة المساعد من هنا.',
@@ -558,7 +585,7 @@
       aiCostsCapTitle: 'Monthly token cap', aiCostsCapHint: 'Once you hit the cap, that engine stops responding until next month.', aiCostsCapUnsetShort: 'No cap',
 
       aiMemoryTitle: 'Memory', aiMemorySubtitle: 'The assistant reads from your own journal, not a separate copy.',
-      aiMemoryBucketsTitle: 'How full memory is', aiMemoryLiveLabel: 'Trades & sessions', aiMemoryLiveNote: 'Read live from your journal — never stored separately',
+      aiMemoryBucketsTitle: 'How full memory is', aiMemoryLiveLabel: 'Trades & sessions', aiMemoryLiveNote: 'Read live from your journal — never stored separately', aiMemoryLiveShort: 'Live',
       aiMemoryFootnote: 'Only conversation history is stored. Patterns, strategies, trades and sessions are read fresh from your own journal every time, so they\'re never stale.',
       aiMemoryPrivacyTitle: 'Privacy by domain',
       aiMemoryPrivacyTrades: 'Trades & sessions', aiMemoryPrivacyTradesHint: 'Needed for performance analysis',
@@ -576,7 +603,34 @@
       aiActivitySoonVoice: 'Voice mode minutes', aiActivitySoonVoiceNote: 'Voice session duration isn\'t recorded anywhere yet - this needs a new server-side metering layer.',
       aiActivitySoonHeatmap: 'When you use the assistant', aiActivitySoonHeatmapNote: 'Each call\'s time is recorded; the hourly rollup just hasn\'t been built.',
       aiActivitySoonLeaderboard: 'Engine scorecard', aiActivitySoonLeaderboardNote: '"Was it helpful" comes from your own feedback; "was it right" from comparing a prediction to the real outcome - neither is recorded today.',
-      aiActivitySoonTraining: 'Pattern & strategy training', aiActivitySoonTrainingNote: 'The assistant\'s understanding summary for each strategy is already stored; it just isn\'t shown anywhere yet.'
+      aiActivitySoonTraining: 'Pattern & strategy training', aiActivitySoonTrainingNote: 'The assistant\'s understanding summary for each strategy is already stored; it just isn\'t shown anywhere yet.',
+
+      aiAsstActive: 'Active', aiAsstSelect: 'Select', aiAsstPlatformKey: 'Platform key',
+      aiDashAllConversations: 'All conversations', aiDashPanelCount: '{n} panels',
+
+      aiPersonaPercentValue: '{n}%',
+      aiPersonaCustomTry: 'Try it', aiPersonaListenByVoice: 'Listen by voice', aiPersonaListenByVoiceSoon: 'Voice playback for this preview isn\'t wired up yet',
+      aiPersonaVoiceSpeed: 'Speech rate', aiPersonaVoiceWarmth: 'Voice warmth', aiPersonaVoiceEmotion: 'Emotional intensity',
+
+      aiPanelMovedNotice: 'This section used to live in Settings. It now sits alongside the rest of the AI capabilities - it\'s a capability, not a setting.',
+      perGenerationCost: 'Each generation ≈ $0.0021 from your wallet', installsOnBoard: 'Installs on the {character} board', speakIt: 'Speak it',
+      draftsCount: '{count} drafts', draftPreviewLabel: 'Preview', editDraftText: 'Edit text',
+      aiPanelLivePreviewTitle: 'Live data preview', aiPanelLivePreviewBody: 'Right now a draft is only a description. The next step is rendering the panel with your own real data before you add it, so you see what it looks like first.',
+      goToDashboard: 'Go to trading dashboard', editPanel: 'Edit panel',
+
+      aiCostsTokensUnit: 'tokens', aiCostsToday: 'Today', aiCostsChartZeroDays: 'Days with no usage',
+
+      aiActivityRealSourceCaption: 'Read from the real usage ledger',
+      aiActivityAnalysisSession: 'Session analysis', aiActivityAnalysisTrade: 'Trade analysis', aiActivityAnalysisPattern: 'Pattern training',
+      aiActivityAnalysisStrategy: 'Strategy', aiActivityAnalysisPsychology: 'Psychology',
+      aiActivityListenMinutes: 'Minutes listened', aiActivitySpeakMinutes: 'Minutes spoken',
+      daySat: 'Sat', daySun: 'Sun', dayMon: 'Mon', dayTue: 'Tue', dayWed: 'Wed', dayThu: 'Thu', dayFri: 'Fri',
+      aiActivityLeaderEngine: 'Engine', aiActivityLeaderHelpful: 'Was helpful', aiActivityLeaderRight: 'Was right', aiActivityLeaderSample: 'Sample',
+      aiActivityTrainingIntro: 'How completely the assistant understands each pattern and strategy - based on whether entry rules, risk management, and an exit plan are defined.',
+      aiActivityTrainingLondon: 'London structure break', aiActivityTrainingHns: 'Head & shoulders', aiActivityTrainingReversion: 'Mean reversion', aiActivityTrainingNyGap: 'New York gap open',
+      aiActivityTrainingGapsIntro: 'Gaps: work that takes a few minutes and raises the quality of every later answer.',
+      aiActivityTrainingGap1: 'The assistant doesn\'t know anything about position management in "New York gap open".',
+      aiActivityTrainingGap2: 'No exit plan is defined for "Mean reversion".'
     },
     es: {
       aiSettingsTitle: 'IA', aiSettingsHelp: 'Gestiona el proveedor, tu propia clave de API, el modo de voz, el uso de tokens y la memoria del asistente aquí.',

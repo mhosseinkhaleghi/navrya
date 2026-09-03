@@ -12,7 +12,11 @@ const FRAMES = {
   raised: { border: '1px solid var(--border-hairline)', background: 'color-mix(in srgb, var(--char-atmosphere) 30%, var(--ink-900))', boxShadow: 'var(--shadow-raised)' },
   prestige: { border: '1px solid var(--border-gold-strong)', background: 'color-mix(in srgb, var(--char-atmosphere) 42%, var(--ink-950))', boxShadow: 'var(--shadow-panel)' },
   active: { border: '1px solid color-mix(in srgb, var(--char-accent) 90%, transparent)', background: 'var(--char-active-surface)', boxShadow: 'var(--glow-active)' },
-  quiet: { border: '1px solid transparent', background: 'transparent' }
+  quiet: { border: '1px solid transparent', background: 'transparent' },
+  // "Coming soon" / not-yet-real content - a dashed gold-warm border + flat dark background,
+  // never an opacity fade on the whole panel (design handoff convention, identical across every
+  // AI dashboard mockup: Main/Persona/PanelBuilder/Costs/Activity.dc.html's `.panel.soon`).
+  soon: { border: '1px dashed rgba(214,175,107,.42)', background: 'rgba(3,8,7,.5)' }
 };
 
 const CORNERS = [
