@@ -6,7 +6,7 @@ import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs'
 import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, costMicroUsdFor } from '../commercial/wallet-service.mjs';
 import { resolveRetailMultiplier } from '../commercial/markup.mjs';
 
-const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
+const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
 
 // Server-to-server only - never called by a browser. pattern-ai-server.mjs (a plain node:http

@@ -139,8 +139,8 @@ function ChatRow({ chat, engineGlyph, expanded, detail, onToggle, onDelete, onCo
 }
 
 function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) {
-  const catalog = React.useMemo(() => settingsStore.providerCatalog(), []);
   const [model, setModel] = React.useState(() => settingsStore.activeProvider());
+  const catalog = React.useMemo(() => settingsStore.visibleProviderCatalog(model), [model, settingsStore]);
   const [aiTab, setAiTab] = React.useState('engine');
   const [openChatId, setOpenChatId] = React.useState(null);
   const [openChatDetail, setOpenChatDetail] = React.useState(null);

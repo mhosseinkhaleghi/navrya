@@ -8,7 +8,7 @@ import { refreshProviderCosts, latestExternalCostForRange } from '../commercial/
 import { reconcileInternalWalletUsage, reconcileExternalProviderCost, resolveVarianceTolerancePercent } from '../commercial/provider-cost/reconciliation-service.mjs';
 import { invalidateCommercialConfigCache } from '../commercial/commercial-config.mjs';
 
-const KNOWN_COST_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
+const KNOWN_COST_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 const RANGE_PRESET_MS = { '24h': 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 };
 const MAX_CUSTOM_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
 

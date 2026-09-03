@@ -236,9 +236,10 @@ test('analyzeSession rejects MODEL_VISION_UNSUPPORTED before ever calling the pr
   assert.equal(calls, 0, 'no provider/health call may happen once the vision check rejects');
 });
 
-test('SESSION_ANALYSIS_VISION_SUPPORT matches the gateway\'s own per-provider vision gate (kimi vision-capable, deepseek not)', () => {
+test('SESSION_ANALYSIS_VISION_SUPPORT matches the gateway\'s own per-provider vision gate (Gemini and Kimi vision-capable, DeepSeek not)', () => {
   assert.equal(SESSION_ANALYSIS_VISION_SUPPORT.openai, true);
   assert.equal(SESSION_ANALYSIS_VISION_SUPPORT.anthropic, true);
+  assert.equal(SESSION_ANALYSIS_VISION_SUPPORT.gemini, true);
   assert.equal(SESSION_ANALYSIS_VISION_SUPPORT.kimi, true);
   assert.equal(SESSION_ANALYSIS_VISION_SUPPORT.deepseek, false);
 });

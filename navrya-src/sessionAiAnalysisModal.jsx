@@ -397,7 +397,7 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
   // Re-read on every render (profiles/settings can change while this popup is open, e.g. a quick
   // profile just created) rather than snapshotting once at mount.
   const profiles = profileStore() ? profileStore().listSync().filter((p) => p.isActive) : [];
-  const catalog = aiSettingsStore() ? aiSettingsStore().providerCatalog() : [];
+  const catalog = aiSettingsStore() ? aiSettingsStore().visibleProviderCatalog(provider) : [];
 
   const modelOptions = React.useMemo(() => {
     const out = [];

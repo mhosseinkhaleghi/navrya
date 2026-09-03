@@ -1182,7 +1182,7 @@ function buildUserProfilePage(user) {
 
 // --- AI tab ---
 
-const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
+const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 
 // Section 7.16 follow-up: the AI tab now also surfaces per-provider health (is it actually
 // working right now, or did it just disconnect - GET /ai/health, Part 1), this-month cost
@@ -2936,7 +2936,7 @@ function commercialAiCostControlSubTab() {
   });
 }
 
-function listAdaptersProvidersForSelect() { return ['openai', 'anthropic', 'kimi', 'deepseek']; }
+function listAdaptersProvidersForSelect() { return ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek']; }
 
 const COMMERCIAL_SUB_TAB_BUILDERS = {
   plans: commercialPlansSubTab, wallet: commercialWalletSubTab, subscriptions: commercialSubscriptionsSubTab,

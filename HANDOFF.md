@@ -1,5 +1,10 @@
 # Handoff
 
+- Active task: `feat/gemini-provider` (owner: Codex, branch: `feat/gemini-provider`).
+- Changed files: Gemini is an additive native GenerateContent gateway provider with server/admin/env/Docker wiring, model glyph, regenerated character bundles, and focused regression coverage; Kimi remains integrated and is hidden from ordinary selectors unless already active.
+- Validation: Node 22 `COMMUNITY_API_PORT=0 npm test` (2,336 passing), `npm run build`, and `git diff --check` passed.
+- Next: set `GEMINI_API_KEY` in the approved deployment secret store, configure Gemini pricing before enabling `AI_WALLET_ENFORCED` for Gemini calls, promote this task branch to `dev` only on an explicit request, then perform a real signed-in Gemini text/vision check. Gemini voice is intentionally not part of this change.
+
 - Active task: `fix/google-sign-in-client` (owner: Codex).
 - Changed files: `public/pages/select/app.js`, `server/community/routes.auth.mjs`, `.env.example`, `.env.production.example`, and `tests/login-select-flow.test.mjs` configure and verify the new Google web client ID; this handoff records the work.
 - Validation: `node --test tests/login-select-flow.test.mjs` (17 passing), full `npm test` (2,333 passing), `npm run build`, and `git diff --check` passed with Node 22.

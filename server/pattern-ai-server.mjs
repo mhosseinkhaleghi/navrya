@@ -52,9 +52,9 @@ const languageNames = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 
 // the three browser AI clients (pattern-registry-ai.js, strategy-education-ai.js,
 // mental-health-ai.js) never send a `provider` field, so they keep hitting OpenAI exactly
 // as before. Only the new dock/gateway routes let the client pick a different provider.
-const providerEnvKey = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', kimi: 'KIMI_API_KEY', deepseek: 'DEEPSEEK_API_KEY' };
-const providerEnvModel = { openai: 'OPENAI_MODEL', anthropic: 'ANTHROPIC_MODEL', kimi: 'KIMI_MODEL', deepseek: 'DEEPSEEK_MODEL' };
-const providerDefaultModel = { openai: 'gpt-5.6', anthropic: 'claude-sonnet-4-5', kimi: 'moonshot-v1-8k', deepseek: 'deepseek-chat' };
+const providerEnvKey = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY', kimi: 'KIMI_API_KEY', deepseek: 'DEEPSEEK_API_KEY' };
+const providerEnvModel = { openai: 'OPENAI_MODEL', anthropic: 'ANTHROPIC_MODEL', gemini: 'GEMINI_MODEL', kimi: 'KIMI_MODEL', deepseek: 'DEEPSEEK_MODEL' };
+const providerDefaultModel = { openai: 'gpt-5.6', anthropic: 'claude-sonnet-4-5', gemini: 'gemini-2.5-pro', kimi: 'moonshot-v1-8k', deepseek: 'deepseek-chat' };
 // Scenario Map/Analysis Map's one image-generation model (callOpenAIImageEdit(), the OpenAI-only
 // images/edits endpoint) - named once so the actual API call, the provider/model these routes
 // report back for billing, and the wallet-reservation pinning (IMAGE_GENERATION_ROUTES below) can
@@ -689,6 +689,78 @@ async function callAnthropic(payload, apiKey, model) {
   }
 }
 
+function geminiInlineData(dataUrl) {
+  const match = /^data:([^;]+);base64,(.+)$/u.exec(String(dataUrl || ''));
+  return match ? { inlineData: { mimeType: match[1], data: match[2] } } : null;
+}
+
+// Gemini uses its native GenerateContent API, not the OpenAI compatibility layer. NAVRYA owns
+// conversation state and action safety, so requests remain stateless and never enable provider
+// tools. The existing schema is forwarded as Gemini structured output and validated again below.
+async function callGemini(payload, apiKey, model) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
+  try {
+    const schema = payload.text.format.schema;
+    const systemParts = [];
+    const contents = [];
+    payload.input.forEach((item) => {
+      const parts = [];
+      (item.content || []).forEach((part) => {
+        if (part.type === 'input_text' || part.type === 'output_text') parts.push({ text: String(part.text || '') });
+        else if (part.type === 'input_image') {
+          const inlineData = geminiInlineData(part.image_url);
+          if (inlineData) parts.push(inlineData);
+        } else if (part.type === 'input_file') {
+          const inlineData = geminiInlineData(part.file_data);
+          if (inlineData) parts.push(inlineData);
+        }
+      });
+      if (item.role === 'system') {
+        systemParts.push(...parts);
+      } else if (parts.length) {
+        contents.push({ role: item.role === 'assistant' ? 'model' : 'user', parts });
+      }
+    });
+    const generationConfig = { responseMimeType: 'application/json', responseSchema: schema };
+    if (Number.isFinite(payload.max_output_tokens)) generationConfig.maxOutputTokens = payload.max_output_tokens;
+    const body = { contents, generationConfig };
+    if (systemParts.length) body.systemInstruction = { parts: systemParts };
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || `GEMINI_${response.status}`);
+    const candidate = result.candidates?.[0];
+    if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
+    const content = (candidate?.content?.parts || []).filter((part) => !part.thought && typeof part.text === 'string').map((part) => part.text).join('');
+    if (!content) throw new Error('EMPTY_MODEL_RESPONSE');
+    let data;
+    try {
+      data = JSON.parse(content);
+    } catch (_) {
+      throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
+    }
+    assertRequiredKeys(data, schema);
+    const usageMetadata = result.usageMetadata || null;
+    const usage = usageMetadata ? {
+      promptTokens: usageMetadata.promptTokenCount ?? null,
+      completionTokens: usageMetadata.candidatesTokenCount ?? null,
+      totalTokens: usageMetadata.totalTokenCount ?? null,
+      cachedInputTokens: usageMetadata.cachedContentTokenCount ?? null,
+      cacheWriteInputTokens: null,
+      reasoningTokens: usageMetadata.thoughtsTokenCount ?? null,
+      raw: usageMetadata
+    } : { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null };
+    return { data, usage };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const compatibleBaseUrl = { kimi: 'https://api.moonshot.cn/v1/chat/completions', deepseek: 'https://api.deepseek.com/chat/completions' };
 
 // Kimi and DeepSeek are OpenAI-compatible chat-completions APIs. Neither offers strict
@@ -821,6 +893,7 @@ async function callProvider(providerInput, apiKeyOverride, modelOverride, payloa
     const providerCallStartedAt = Date.now();
     const outcome = provider === 'openai' ? await callOpenAI(payload, key, model)
       : provider === 'anthropic' ? await callAnthropic(payload, key, model)
+      : provider === 'gemini' ? await callGemini(payload, key, model)
       : await callOpenAICompatible(provider, payload, key, model);
     const latencyMs = Date.now() - startedAt;
     reportProviderHealth({ provider, ok: true, errorCode: null, latencyMs, source });
@@ -1292,7 +1365,7 @@ function sessionAnalysisOutputBudget(analysisType, depth, reasoningEffort) {
 // named map here rather than re-deriving it, since the Session Analysis route needs to reject a
 // request server-side (brief §6: "DO NOT send the chart and pretend analysis happened") before
 // ever reaching that per-provider caller.
-const SESSION_ANALYSIS_VISION_SUPPORT = { openai: true, anthropic: true, kimi: true, deepseek: false };
+const SESSION_ANALYSIS_VISION_SUPPORT = { openai: true, anthropic: true, gemini: true, kimi: true, deepseek: false };
 
 // Renders an AnalysisStyle (public/pages/shared/analysis-style-registry.js's shape, resolved
 // client-side via window.TradeJournalAnalysisContext.getAnalysisContext() and sent as
@@ -2714,7 +2787,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default server;
 export {
-  callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
+  callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
   historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests, internalWalletCallWithRetry,

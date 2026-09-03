@@ -5,7 +5,7 @@ import test, { after, afterEach } from 'node:test';
 // module scope (this is intentional - server/pattern-ai-server.mjs is run directly via
 // `npm run dev:api`). We close it in `after` so this test file's process can exit.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { callProvider, callOpenAI, callAnthropic, callOpenAICompatible } = serverModule;
+const { callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -92,6 +92,51 @@ test('maps Anthropic tool-use output and computes totalTokens from input+output 
     cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null,
     raw: { input_tokens: 20, output_tokens: 8 }
   }, 'Anthropic never reports total_tokens directly - it must be computed');
+});
+
+test('Gemini uses its native structured-output API, preserves multimodal conversation input, and normalizes real usage metadata', async () => {
+  let calledUrl = null;
+  let sentBody = null;
+  let sentHeaders = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    calledUrl = String(url);
+    sentHeaders = options.headers;
+    sentBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'internal reasoning' }, { text: JSON.stringify({ reply: 'ok' }) }] } }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 14, cachedContentTokenCount: 2, thoughtsTokenCount: 3 }
+      })
+    };
+  };
+  const result = await callProvider('gemini', 'gemini-key', 'gemini-2.5-pro', {
+    input: [
+      { role: 'system', content: [{ type: 'input_text', text: 'follow NAVRYA rules' }] },
+      { role: 'user', content: [{ type: 'input_text', text: 'read this chart' }, { type: 'input_image', image_url: 'data:image/png;base64,AAAA' }] },
+      { role: 'assistant', content: [{ type: 'output_text', text: 'a prior reply' }] },
+      { role: 'user', content: [{ type: 'input_file', file_data: 'data:application/pdf;base64,BBBB' }] }
+    ],
+    max_output_tokens: 512,
+    text: { format: { schema: { type: 'object', properties: { reply: { type: 'string' } }, required: ['reply'] } } }
+  });
+  assert.match(calledUrl, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-2\.5-pro:generateContent/);
+  assert.equal(sentHeaders['x-goog-api-key'], 'gemini-key');
+  assert.deepEqual(sentBody.systemInstruction, { parts: [{ text: 'follow NAVRYA rules' }] });
+  assert.equal(sentBody.contents[1].role, 'model', 'NAVRYA assistant history maps to Gemini\'s model role');
+  assert.deepEqual(sentBody.contents[0].parts[1], { inlineData: { mimeType: 'image/png', data: 'AAAA' } });
+  assert.deepEqual(sentBody.contents[2].parts[0], { inlineData: { mimeType: 'application/pdf', data: 'BBBB' } });
+  assert.equal(sentBody.generationConfig.responseMimeType, 'application/json');
+  assert.equal(sentBody.generationConfig.maxOutputTokens, 512);
+  assert.deepEqual(result.data, { reply: 'ok' });
+  assert.deepEqual(result.usage, {
+    promptTokens: 10, completionTokens: 4, totalTokens: 14,
+    cachedInputTokens: 2, cacheWriteInputTokens: null, reasoningTokens: 3,
+    raw: { promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 14, cachedContentTokenCount: 2, thoughtsTokenCount: 3 }
+  });
+  assert.equal(result.provider, 'gemini');
+  assert.equal(result.model, 'gemini-2.5-pro');
 });
 
 test('a Kimi/DeepSeek response missing a required schema key throws SCHEMA_VALIDATION_FAILED, not a fabricated field', async () => {
@@ -195,9 +240,10 @@ test('throws a provider-specific *_API_KEY_MISSING error when no key is availabl
   });
 });
 
-test('callOpenAI/callAnthropic/callOpenAICompatible are exported directly for lower-level testing', () => {
+test('per-provider callers are exported directly for lower-level testing', () => {
   assert.equal(typeof callOpenAI, 'function');
   assert.equal(typeof callAnthropic, 'function');
+  assert.equal(typeof callGemini, 'function');
   assert.equal(typeof callOpenAICompatible, 'function');
 });
 

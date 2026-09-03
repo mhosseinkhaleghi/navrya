@@ -180,9 +180,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   const rtl = i18n.direction() === 'rtl';
   const historyStore = window.TradeJournalAiChatHistoryStore;
 
-  const models = React.useMemo(() => settingsStore.providerCatalog().map((p) => ({
+  const models = React.useMemo(() => settingsStore.visibleProviderCatalog(providerId).map((p) => ({
     id: p.id, label: core.providerLabel(p.id), trait: p.trait, knockout: !!p.knockout
-  })), []);
+  })), [providerId]);
   // NAVRYA chat dock redesign: the redesigned reply panel's header shows a real avatar/label for
   // the engine that answered - the same "current model" ChatDock.jsx's own pill already resolves
   // from `models`/`providerId`, recomputed the same way rather than a second source of truth.

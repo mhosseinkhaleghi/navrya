@@ -43,7 +43,7 @@ test('defaults to openai and a per-provider default model', async () => {
   // Objects built inside the vm sandbox have a different realm's Object.prototype, so compare
   // field-by-field rather than via assert.deepEqual (mirrors ai-usage-store.test.mjs's identical
   // cross-realm caveat).
-  ['openai', 'anthropic', 'kimi', 'deepseek'].forEach((id) => {
+  ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'].forEach((id) => {
     assert.equal(settings.budgetByProvider[id], null, id + ' must default to no budget');
   });
   assert.equal(store.activeModel(), settings.modelByProvider.openai);
@@ -88,8 +88,21 @@ test('the provider catalog is the single source of truth for voice support - onl
   const byId = Object.fromEntries(catalog.map(p => [p.id, p]));
   assert.equal(byId.openai.supportsVoice, true);
   assert.equal(byId.anthropic.supportsVoice, false);
+  assert.equal(byId.gemini.supportsVoice, false);
   assert.equal(byId.kimi.supportsVoice, false);
   assert.equal(byId.deepseek.supportsVoice, false);
+});
+
+test('Gemini is a visible, multimodal structured-output provider while Kimi remains in the full catalog but is paused in ordinary selectors', async () => {
+  const store = await settingsSandbox();
+  const gemini = store.providerCatalog().find((entry) => entry.id === 'gemini');
+  assert.deepEqual(Array.from(gemini.models), ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']);
+  assert.equal(gemini.supportsVision, true);
+  assert.equal(gemini.supportsStructuredOutput, true);
+  assert.equal(gemini.supportsReasoning, true);
+  assert.equal(store.visibleProviderCatalog().some((entry) => entry.id === 'gemini'), true);
+  assert.equal(store.visibleProviderCatalog().some((entry) => entry.id === 'kimi'), false);
+  assert.equal(store.visibleProviderCatalog('kimi').some((entry) => entry.id === 'kimi'), true, 'a legacy Kimi selection must never be rendered as a different provider');
 });
 
 test('saveSettings merges modelByProvider instead of replacing the whole map', async () => {

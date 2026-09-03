@@ -16,7 +16,7 @@ NAVRYA is a local-first trading journal and scenario-planning interface. A user 
 | Charts | Native `<canvas>` drawing; no charting dependency |
 | Persistence | `localStorage` for records/layout/settings plus IndexedDB for uploaded file blobs, for every feature except Community |
 | AI backend | Small Node.js `http` server for AI endpoints only |
-| External AI | Multi-provider gateway (OpenAI, Anthropic, Kimi, DeepSeek) called only from the Node server; OpenAI remains the default when no provider/key is specified |
+| External AI | Multi-provider gateway (OpenAI, Anthropic, Gemini, Kimi, DeepSeek) called only from the Node server; OpenAI remains the default when no provider/key is specified. Kimi remains available for existing selections but is paused in normal provider selectors. |
 | Community backend | Express + PostgreSQL (`pg`), a separate process/port from the AI server - the project's first real database (Section 4) |
 | Tests | Node's built-in `node:test` runner |
 
@@ -72,7 +72,7 @@ tradejournal-react/
 │       ├── icon-system.*         # Lucide upgrade/render layer
 │       └── vendor/               # Vendored Lucide script and license
 ├── server/
-│   ├── pattern-ai-server.mjs     # Multi-provider (OpenAI/Anthropic/Kimi/DeepSeek) JSON API gateway
+│   ├── pattern-ai-server.mjs     # Multi-provider (OpenAI/Anthropic/Gemini/Kimi/DeepSeek) JSON API gateway
 │   ├── community-api-server.mjs  # Community backend entrypoint (Express, real pg-backed repo, binds a real port)
 │   ├── community/                # App factory (app.mjs), routes (incl. trading-sessions - 7.18), dev-mode auth - Section 4
 │   ├── admin/                    # Admin routes + requireAdmin auth middleware - Section 7.16
