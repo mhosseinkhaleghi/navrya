@@ -45,7 +45,7 @@ export function getAdapter(id) {
 // supportsActualCosts:false/supportsBalance:false/supportsUsage:false, which is exactly the
 // signal the admin UI/route layer uses to render "No official cost reconciliation adapter
 // configured" instead of silently omitting the provider or inventing a $0 row for it.
-const KNOWN_COST_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
+const KNOWN_COST_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 
 export function listAdapters() {
   return KNOWN_COST_PROVIDERS.map((id) => {

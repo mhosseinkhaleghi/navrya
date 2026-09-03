@@ -4,7 +4,7 @@
     fa: {
       aiSettingsTitle: 'هوش مصنوعی', aiSettingsHelp: 'ارائه‌دهنده، کلید شخصی، حالت صوتی، مصرف توکن و حافظهٔ دستیار را از اینجا مدیریت کن.',
       aiProviderLabel: 'ارائه‌دهنده', aiModelLabel: 'مدل',
-      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
+      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderGemini: 'Gemini', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
       aiKeyLabel: 'کلید API شخصی (اختیاری)', aiKeyPlaceholder: 'کلید API خودت را وارد کن',
       aiTestConnection: 'تست اتصال', aiTestConnectionOk: 'اتصال برقرار شد.', aiTestConnectionFailed: 'اتصال ناموفق بود.',
       aiKeyPersistToggle: 'این کلید در مرورگر ذخیره شود', aiKeyPersistWarning: 'این کلید در مرورگرت ذخیره می‌شود و رمزنگاری‌شده نیست.',
@@ -225,7 +225,7 @@
     ar: {
       aiSettingsTitle: 'الذكاء الاصطناعي', aiSettingsHelp: 'أدر مزوّد الخدمة ومفتاحك الخاص وحالة الصوت واستهلاك التوكنات وذاكرة المساعد من هنا.',
       aiProviderLabel: 'المزوّد', aiModelLabel: 'النموذج',
-      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
+      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderGemini: 'Gemini', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
       aiKeyLabel: 'مفتاح API الخاص (اختياري)', aiKeyPlaceholder: 'أدخل مفتاح API الخاص بك',
       aiTestConnection: 'اختبار الاتصال', aiTestConnectionOk: 'تم الاتصال بنجاح.', aiTestConnectionFailed: 'فشل الاتصال.',
       aiKeyPersistToggle: 'حفظ هذا المفتاح في المتصفح', aiKeyPersistWarning: 'سيُحفظ هذا المفتاح في متصفحك وهو غير مشفّر.',
@@ -362,7 +362,7 @@
     en: {
       aiSettingsTitle: 'AI', aiSettingsHelp: 'Manage the provider, your own API key, voice mode, token usage, and the assistant\'s memory here.',
       aiProviderLabel: 'Provider', aiModelLabel: 'Model',
-      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
+      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderGemini: 'Gemini', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
       aiKeyLabel: 'Your own API key (optional)', aiKeyPlaceholder: 'Enter your API key',
       aiTestConnection: 'Test connection', aiTestConnectionOk: 'Connected successfully.', aiTestConnectionFailed: 'Connection failed.',
       aiKeyPersistToggle: 'Remember this key in the browser', aiKeyPersistWarning: 'This will be stored in your browser and is not encrypted.',
@@ -581,7 +581,7 @@
     es: {
       aiSettingsTitle: 'IA', aiSettingsHelp: 'Gestiona el proveedor, tu propia clave de API, el modo de voz, el uso de tokens y la memoria del asistente aquí.',
       aiProviderLabel: 'Proveedor', aiModelLabel: 'Modelo',
-      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
+      aiProviderOpenAI: 'ChatGPT', aiProviderAnthropic: 'Claude', aiProviderGemini: 'Gemini', aiProviderKimi: 'Kimi', aiProviderDeepseek: 'DeepSeek',
       aiKeyLabel: 'Tu propia clave de API (opcional)', aiKeyPlaceholder: 'Introduce tu clave de API',
       aiTestConnection: 'Probar conexión', aiTestConnectionOk: 'Conexión exitosa.', aiTestConnectionFailed: 'Conexión fallida.',
       aiKeyPersistToggle: 'Recordar esta clave en el navegador', aiKeyPersistWarning: 'Esto se guardará en tu navegador y no está cifrado.',

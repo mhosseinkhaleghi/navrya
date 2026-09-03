@@ -3,7 +3,7 @@ import { assetUrl } from '../core/AssetBase.jsx';
 import { useAssistantMotion, TRAIT_ANIM } from './motion.js';
 
 /* One engine's real logo, normalised onto the ink surface. Files live under
-   assets/models/{id}.webp (provider-supplied, see ARCHITECTURE.md's Global AI Assistant
+   assets/models/{id}.webp (or the Gemini SVG, see ARCHITECTURE.md's Global AI Assistant
    section). Black-on-white marks (OpenAI, Kimi) are knocked out to white so they read on the
    dark dock; the two already-coloured marks (Anthropic's sunburst, DeepSeek's whale) keep
    their own brand colour - `model.knockout` picks which. */
@@ -14,7 +14,7 @@ export function ModelGlyph({ model, size = 18, animate = false, muted = false, s
   if (muted) filters.push('grayscale(1)');
   return (
     <img
-      src={assetUrl('assets/models/' + model.id + '.webp')} alt="" aria-hidden="true" draggable="false"
+      src={assetUrl('assets/models/' + model.id + (model.id === 'gemini' ? '.svg' : '.webp'))} alt="" aria-hidden="true" draggable="false"
       style={{
         width: size, height: size, flex: 'none', display: 'block', objectFit: 'contain',
         transformOrigin: 'center',

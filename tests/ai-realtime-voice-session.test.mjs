@@ -6,7 +6,7 @@ import test, { after, afterEach } from 'node:test';
 // exported mintRealtimeClientSecret() against a stubbed OpenAI /v1/realtime/client_secrets
 // response, never a reimplementation of its logic.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { mintRealtimeClientSecret, __resetVoiceConfigCacheForTests } = serverModule;
+const { mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, __resetVoiceConfigCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -272,4 +272,39 @@ test('surfaces a clear error when OpenAI rejects the token request', async () =>
   await withEnv({ OPENAI_API_KEY: 'bad-key' }, async () => {
     await assert.rejects(() => mintRealtimeClientSecret({ language: 'en' }), /REALTIME_TOKEN_FAILED_401/);
   });
+});
+
+test('mints one-use constrained Gemini Live credentials and never returns the permanent Gemini key', async () => {
+  let request = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    request = { url: String(url), options };
+    return { ok: true, json: async () => ({ name: 'auth_tokens/live-test', expireTime: '2026-09-03T00:30:00Z' }) };
+  };
+  const result = await mintGeminiLiveToken({ language: 'fa', apiKey: 'gemini-permanent-secret' });
+  assert.equal(request.url, 'https://generativelanguage.googleapis.com/v1beta/auth_tokens');
+  assert.equal(request.options.headers['x-goog-api-key'], 'gemini-permanent-secret');
+  const body = JSON.parse(request.options.body);
+  assert.equal(body.uses, 1);
+  assert.equal(body.liveConnectConstraints.model, 'models/gemini-3.5-transcribe-live');
+  assert.deepEqual(body.liveConnectConstraints.config.responseModalities, ['TEXT']);
+  assert.equal(result.provider, 'gemini-live');
+  assert.equal(result.token, 'auth_tokens/live-test');
+  assert.doesNotMatch(JSON.stringify(result), /gemini-permanent-secret/);
+});
+
+test('Gemini TTS reads the approved text server-side and returns only provider audio, never its API key', async () => {
+  let request = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    request = { url: String(url), options };
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'pcm-base64', mimeType: 'audio/L16;rate=24000' } }] } }] }) };
+  };
+  const result = await speakWithGemini({ language: 'en', text: 'Approved NAVRYA reply.', apiKey: 'gemini-permanent-secret' });
+  assert.match(request.url, /models\/gemini-3\.1-flash-tts-preview:generateContent$/);
+  const body = JSON.parse(request.options.body);
+  assert.deepEqual(body.generationConfig.responseModalities, ['AUDIO']);
+  assert.match(body.contents[0].parts[0].text, /Approved NAVRYA reply\./);
+  assert.equal(result.audioBase64, 'pcm-base64');
+  assert.doesNotMatch(JSON.stringify(result), /gemini-permanent-secret/);
 });

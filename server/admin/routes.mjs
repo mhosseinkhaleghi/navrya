@@ -12,7 +12,7 @@ import { router as voiceProvidersRouter } from './routes.voice-providers.mjs';
 import { router as commercialRouter } from './routes.commercial.mjs';
 import { router as conversationScenariosRouter } from './routes.conversation-scenarios.mjs';
 
-const KNOWN_PROVIDERS = ['openai', 'anthropic', 'kimi', 'deepseek'];
+const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 const SORTABLE_COLUMNS = ['displayName', 'createdAt', 'lastLoginAt', 'isOnline', 'hoursOnline', 'purchaseCount', 'totalMockSpent', 'totalTokensUsed'];
 // 3x the 45s client heartbeat interval (admin-heartbeat.js) - a missed beat or two shouldn't
 // flip a still-open tab to "offline"; matches repo.pg.mjs's ONLINE_THRESHOLD_SECONDS.

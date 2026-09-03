@@ -25,7 +25,7 @@
     return { wrap: wrap, get: function () { return input.value === '' ? null : Number(input.value); } };
   }
 
-  function providerLabel(id) { var suffix = { openai: 'OpenAI', anthropic: 'Anthropic', kimi: 'Kimi', deepseek: 'Deepseek' }[id] || (id.charAt(0).toUpperCase() + id.slice(1)); return i18n.t('aiProvider' + suffix); }
+  function providerLabel(id) { var suffix = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini', kimi: 'Kimi', deepseek: 'Deepseek' }[id] || (id.charAt(0).toUpperCase() + id.slice(1)); return i18n.t('aiProvider' + suffix); }
 
   function memorySnapshot() {
     var patterns = (window.TradeJournalPatternStore && window.TradeJournalPatternStore.listSync()) || [];
@@ -86,7 +86,7 @@
     card.append(el('h3', '', i18n.t('aiSettingsTitle')), el('p', '', i18n.t('aiSettingsHelp')));
 
     var settings = settingsStore.settings();
-    var catalog = settingsStore.providerCatalog();
+    var catalog = settingsStore.visibleProviderCatalog(settings.provider);
 
     var providerSelect = selectField(i18n.t('aiProviderLabel'), catalog.map(function (p) { return [p.id, providerLabel(p.id)]; }), settings.provider);
     var activeCatalogEntry = catalog.filter(function (p) { return p.id === settings.provider; })[0] || catalog[0];

@@ -31,3 +31,17 @@ test('both pattern-ai and community-api services receive AI_WALLET_ENFORCED - th
   assert.match(patternAiBlock, /AI_WALLET_ENFORCED:\s*\$\{AI_WALLET_ENFORCED:-false\}/);
   assert.match(communityApiBlock, /AI_WALLET_ENFORCED:\s*\$\{AI_WALLET_ENFORCED:-false\}/);
 });
+
+test('production forwards Gemini credentials only to the AI gateway and documents the matching server-side variables', () => {
+  const patternAiBlock = serviceBlock(compose, 'pattern-ai');
+  const communityApiBlock = serviceBlock(compose, 'community-api');
+  assert.match(patternAiBlock, /GEMINI_API_KEY:\s*\$\{GEMINI_API_KEY:-\}/);
+  assert.match(patternAiBlock, /GEMINI_MODEL:\s*\$\{GEMINI_MODEL:-gemini-2\.5-pro\}/);
+  assert.match(patternAiBlock, /GEMINI_LIVE_MODEL:\s*\$\{GEMINI_LIVE_MODEL:-gemini-3\.5-transcribe-live\}/);
+  assert.match(patternAiBlock, /GEMINI_TTS_MODEL:\s*\$\{GEMINI_TTS_MODEL:-gemini-3\.1-flash-tts-preview\}/);
+  assert.doesNotMatch(communityApiBlock, /GEMINI_API_KEY/);
+  assert.match(productionEnv, /^GEMINI_API_KEY=$/m);
+  assert.match(productionEnv, /^GEMINI_MODEL=gemini-2\.5-pro$/m);
+  assert.match(productionEnv, /^GEMINI_LIVE_MODEL=gemini-3\.5-transcribe-live$/m);
+  assert.match(productionEnv, /^GEMINI_TTS_MODEL=gemini-3\.1-flash-tts-preview$/m);
+});

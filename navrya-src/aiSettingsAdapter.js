@@ -29,6 +29,6 @@ export function clearChatHistory(kind) {
 }
 
 export function providerLabel(i18n, id) {
-  var suffix = { openai: 'OpenAI', anthropic: 'Anthropic', kimi: 'Kimi', deepseek: 'Deepseek' }[id] || (id.charAt(0).toUpperCase() + id.slice(1));
+  var suffix = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini', kimi: 'Kimi', deepseek: 'Deepseek' }[id] || (id.charAt(0).toUpperCase() + id.slice(1));
   return i18n.t('aiProvider' + suffix);
 }

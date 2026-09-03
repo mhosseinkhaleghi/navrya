@@ -52,9 +52,9 @@ const languageNames = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 
 // the three browser AI clients (pattern-registry-ai.js, strategy-education-ai.js,
 // mental-health-ai.js) never send a `provider` field, so they keep hitting OpenAI exactly
 // as before. Only the new dock/gateway routes let the client pick a different provider.
-const providerEnvKey = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', kimi: 'KIMI_API_KEY', deepseek: 'DEEPSEEK_API_KEY' };
-const providerEnvModel = { openai: 'OPENAI_MODEL', anthropic: 'ANTHROPIC_MODEL', kimi: 'KIMI_MODEL', deepseek: 'DEEPSEEK_MODEL' };
-const providerDefaultModel = { openai: 'gpt-5.6', anthropic: 'claude-sonnet-4-5', kimi: 'moonshot-v1-8k', deepseek: 'deepseek-chat' };
+const providerEnvKey = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY', kimi: 'KIMI_API_KEY', deepseek: 'DEEPSEEK_API_KEY' };
+const providerEnvModel = { openai: 'OPENAI_MODEL', anthropic: 'ANTHROPIC_MODEL', gemini: 'GEMINI_MODEL', kimi: 'KIMI_MODEL', deepseek: 'DEEPSEEK_MODEL' };
+const providerDefaultModel = { openai: 'gpt-5.6', anthropic: 'claude-sonnet-4-5', gemini: 'gemini-2.5-pro', kimi: 'moonshot-v1-8k', deepseek: 'deepseek-chat' };
 // Scenario Map/Analysis Map's one image-generation model (callOpenAIImageEdit(), the OpenAI-only
 // images/edits endpoint) - named once so the actual API call, the provider/model these routes
 // report back for billing, and the wallet-reservation pinning (IMAGE_GENERATION_ROUTES below) can
@@ -689,6 +689,78 @@ async function callAnthropic(payload, apiKey, model) {
   }
 }
 
+function geminiInlineData(dataUrl) {
+  const match = /^data:([^;]+);base64,(.+)$/u.exec(String(dataUrl || ''));
+  return match ? { inlineData: { mimeType: match[1], data: match[2] } } : null;
+}
+
+// Gemini uses its native GenerateContent API, not the OpenAI compatibility layer. NAVRYA owns
+// conversation state and action safety, so requests remain stateless and never enable provider
+// tools. The existing schema is forwarded as Gemini structured output and validated again below.
+async function callGemini(payload, apiKey, model) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
+  try {
+    const schema = payload.text.format.schema;
+    const systemParts = [];
+    const contents = [];
+    payload.input.forEach((item) => {
+      const parts = [];
+      (item.content || []).forEach((part) => {
+        if (part.type === 'input_text' || part.type === 'output_text') parts.push({ text: String(part.text || '') });
+        else if (part.type === 'input_image') {
+          const inlineData = geminiInlineData(part.image_url);
+          if (inlineData) parts.push(inlineData);
+        } else if (part.type === 'input_file') {
+          const inlineData = geminiInlineData(part.file_data);
+          if (inlineData) parts.push(inlineData);
+        }
+      });
+      if (item.role === 'system') {
+        systemParts.push(...parts);
+      } else if (parts.length) {
+        contents.push({ role: item.role === 'assistant' ? 'model' : 'user', parts });
+      }
+    });
+    const generationConfig = { responseMimeType: 'application/json', responseSchema: schema };
+    if (Number.isFinite(payload.max_output_tokens)) generationConfig.maxOutputTokens = payload.max_output_tokens;
+    const body = { contents, generationConfig };
+    if (systemParts.length) body.systemInstruction = { parts: systemParts };
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || `GEMINI_${response.status}`);
+    const candidate = result.candidates?.[0];
+    if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
+    const content = (candidate?.content?.parts || []).filter((part) => !part.thought && typeof part.text === 'string').map((part) => part.text).join('');
+    if (!content) throw new Error('EMPTY_MODEL_RESPONSE');
+    let data;
+    try {
+      data = JSON.parse(content);
+    } catch (_) {
+      throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
+    }
+    assertRequiredKeys(data, schema);
+    const usageMetadata = result.usageMetadata || null;
+    const usage = usageMetadata ? {
+      promptTokens: usageMetadata.promptTokenCount ?? null,
+      completionTokens: usageMetadata.candidatesTokenCount ?? null,
+      totalTokens: usageMetadata.totalTokenCount ?? null,
+      cachedInputTokens: usageMetadata.cachedContentTokenCount ?? null,
+      cacheWriteInputTokens: null,
+      reasoningTokens: usageMetadata.thoughtsTokenCount ?? null,
+      raw: usageMetadata
+    } : { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null };
+    return { data, usage };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const compatibleBaseUrl = { kimi: 'https://api.moonshot.cn/v1/chat/completions', deepseek: 'https://api.deepseek.com/chat/completions' };
 
 // Kimi and DeepSeek are OpenAI-compatible chat-completions APIs. Neither offers strict
@@ -821,6 +893,7 @@ async function callProvider(providerInput, apiKeyOverride, modelOverride, payloa
     const providerCallStartedAt = Date.now();
     const outcome = provider === 'openai' ? await callOpenAI(payload, key, model)
       : provider === 'anthropic' ? await callAnthropic(payload, key, model)
+      : provider === 'gemini' ? await callGemini(payload, key, model)
       : await callOpenAICompatible(provider, payload, key, model);
     const latencyMs = Date.now() - startedAt;
     reportProviderHealth({ provider, ok: true, errorCode: null, latencyMs, source });
@@ -1292,7 +1365,7 @@ function sessionAnalysisOutputBudget(analysisType, depth, reasoningEffort) {
 // named map here rather than re-deriving it, since the Session Analysis route needs to reject a
 // request server-side (brief §6: "DO NOT send the chart and pretend analysis happened") before
 // ever reaching that per-provider caller.
-const SESSION_ANALYSIS_VISION_SUPPORT = { openai: true, anthropic: true, kimi: true, deepseek: false };
+const SESSION_ANALYSIS_VISION_SUPPORT = { openai: true, anthropic: true, gemini: true, kimi: true, deepseek: false };
 
 // Renders an AnalysisStyle (public/pages/shared/analysis-style-registry.js's shape, resolved
 // client-side via window.TradeJournalAnalysisContext.getAnalysisContext() and sent as
@@ -2171,6 +2244,98 @@ const REALTIME_PERSIAN_DELIVERY_INSTRUCTION = ' When the sentence you are asked 
 // and the trading vocabulary around them, in every supported language.
 const REALTIME_TRANSCRIPTION_PROMPT = 'A user is speaking to NAVRYA, a trading journal and planning app, to create a trading Session or plan a Trade. They may say a market city (London, New York, Tokyo, Sydney) or a chart timeframe (five minutes, fifteen minutes, one hour, four hours, one day - i.e. 5m, 15m, 1h, 4h, 1D) in English, Persian (Farsi), Arabic, or Spanish, along with trading terms like entry price, stop loss, take profit, risk percent, long, or short.';
 const REALTIME_TRANSCRIPTION_KEYWORDS = ['New York', 'London', 'Tokyo', 'Sydney', '5m', '15m', '1h', '4h', '1D', 'five minutes', 'fifteen minutes', 'one hour', 'four hours', 'stop loss', 'take profit', 'entry price', 'risk percent'];
+const GEMINI_LIVE_TRANSCRIBE_MODEL = 'gemini-3.5-transcribe-live';
+const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
+const GEMINI_TTS_VOICE_BY_LANGUAGE = { fa: 'Kore', ar: 'Puck', en: 'Kore', es: 'Aoede' };
+
+function geminiVoiceForLanguage(language) { return GEMINI_TTS_VOICE_BY_LANGUAGE[language] || GEMINI_TTS_VOICE_BY_LANGUAGE.en; }
+
+async function resolveGeminiVoiceKey(body) {
+  let key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey.trim() : '';
+  if (!key) {
+    const configured = await adminKeys();
+    key = (configured && configured.gemini) || '';
+  }
+  if (!key) key = process.env.GEMINI_API_KEY || '';
+  if (!key) throw new Error('GEMINI_API_KEY_MISSING');
+  return key;
+}
+
+// Gemini Live is used for speech recognition only. NAVRYA still routes every final transcript
+// through dockChat(), then Gemini TTS reads back that exact, already-approved reply. This keeps
+// Voice Mode's existing "one brain" safety contract intact while using Google's Live transport.
+async function mintGeminiLiveToken(body) {
+  const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
+  const startedAt = Date.now();
+  try {
+    const key = await resolveGeminiVoiceKey(body);
+    const model = process.env.GEMINI_LIVE_MODEL || GEMINI_LIVE_TRANSCRIBE_MODEL;
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens', {
+      method: 'POST',
+      headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uses: 1,
+        expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(Date.now() + 60 * 1000).toISOString(),
+        liveConnectConstraints: {
+          model: `models/${model}`,
+          config: {
+            responseModalities: ['TEXT'],
+            inputAudioTranscription: {
+              languageCodes: [({ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' })[language]],
+              customVocabulary: REALTIME_TRANSCRIPTION_KEYWORDS,
+              mode: 'SMART'
+            }
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) throw new Error('GEMINI_LIVE_TOKEN_FAILED_' + response.status);
+    const data = await response.json();
+    if (!data || typeof data.name !== 'string' || !data.name) throw new Error('GEMINI_LIVE_TOKEN_INVALID');
+    reportProviderHealth({ provider: 'gemini', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.live-session' });
+    return { provider: 'gemini-live', token: data.name, expiresAt: data.expireTime || null, model, language, voice: geminiVoiceForLanguage(language) };
+  } catch (error) {
+    reportProviderHealth({ provider: 'gemini', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.live-session' });
+    throw error;
+  }
+}
+
+async function speakWithGemini(body) {
+  const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : null;
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (!language) throw new Error('UNSUPPORTED_LANGUAGE');
+  if (!text) throw new Error('TEXT_REQUIRED');
+  if (text.length > ELEVENLABS_SPEAK_TEXT_MAX) throw new Error('TEXT_TOO_LONG');
+  const startedAt = Date.now();
+  try {
+    const key = await resolveGeminiVoiceKey(body);
+    const model = process.env.GEMINI_TTS_MODEL || GEMINI_TTS_MODEL;
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: `Read this exact NAVRYA reply naturally and warmly. Do not add, omit, or alter anything:\n${text}` }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: geminiVoiceForLanguage(language) } } }
+        }
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!response.ok) throw new Error('GEMINI_TTS_FAILED_' + response.status);
+    const data = await response.json();
+    const parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+    const audio = Array.isArray(parts) && parts.find((part) => part && part.inlineData && part.inlineData.data);
+    if (!audio) throw new Error('GEMINI_TTS_AUDIO_MISSING');
+    reportProviderHealth({ provider: 'gemini', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.tts' });
+    return { provider: 'gemini', model, audioBase64: audio.inlineData.data, mimeType: audio.inlineData.mimeType || 'audio/L16;rate=24000', latencyMs: Date.now() - startedAt };
+  } catch (error) {
+    reportProviderHealth({ provider: 'gemini', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.tts' });
+    throw error;
+  }
+}
 
 // Dynamic VAD (Voice Mode performance pass): the initial eagerness a fresh connect() mints with -
 // a reconnect passes whatever aiVoiceRealtime.js's own currentEagerness last was (see that
@@ -2603,6 +2768,7 @@ const server = http.createServer(async (request, response) => {
       // never makes. This app supports BYOK-only operation by design (docs/ai/realtime-deployment.md) -
       // `false` here means "no server-funded key," not "Voice Mode is broken."
       realtimeConfigured: Boolean(process.env.OPENAI_API_KEY),
+      geminiLiveConfigured: Boolean(process.env.GEMINI_API_KEY),
       aiWalletEnforced: aiWalletEnforced(),
       version: process.env.RENDER_GIT_COMMIT ? process.env.RENDER_GIT_COMMIT.slice(0, 12) : (process.env.npm_package_version || null)
     });
@@ -2693,6 +2859,8 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/sessions/visualize-analysis') result = await visualizeAnalysis(body);
     else if (request.url === '/api/ai/test-connection') result = await testConnection(body);
     else if (request.url === '/api/ai/realtime/session') result = await mintRealtimeClientSecret(body, session.userId);
+    else if (request.url === '/api/ai/gemini-live/session') result = await mintGeminiLiveToken(body);
+    else if (request.url === '/api/ai/gemini-live/speak') result = await speakWithGemini(body);
     // Admin-only hardened replacement for the old isolated /api/ai/voice/test-tts-fa (see
     // adminTestVoiceProviderTts()'s own header comment for what changed and why).
     else if (request.url === '/api/ai/voice/test-tts') result = await adminTestVoiceProviderTts(body, session);
@@ -2758,8 +2926,8 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default server;
 export {
-  callProvider, callOpenAI, callAnthropic, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
-  historyItem, dockChat, mintRealtimeClientSecret, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
+  callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
+  historyItem, dockChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests, internalWalletCallWithRetry,
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,

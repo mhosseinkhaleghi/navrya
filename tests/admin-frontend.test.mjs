@@ -326,6 +326,7 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
     providers: [
       { provider: 'openai', status: 'healthy', configured: true, lastEventAt: '2026-08-17T10:00:00Z', lastOk: true, lastErrorCode: null, lastLatencyMs: 220, last24h: { calls: 5, failures: 0, successRatePercent: 100, avgLatencyMs: 210 } },
       { provider: 'anthropic', status: 'disconnected', configured: true, lastEventAt: '2026-08-17T09:00:00Z', lastOk: false, lastErrorCode: 'ANTHROPIC_401', lastLatencyMs: 90, last24h: { calls: 2, failures: 1, successRatePercent: 50, avgLatencyMs: 100 } },
+      { provider: 'gemini', status: 'unconfigured', configured: false, lastEventAt: null, lastOk: null, lastErrorCode: null, lastLatencyMs: null, last24h: { calls: 0, failures: 0, successRatePercent: null, avgLatencyMs: null } },
       { provider: 'kimi', status: 'unconfigured', configured: false, lastEventAt: null, lastOk: null, lastErrorCode: null, lastLatencyMs: null, last24h: { calls: 0, failures: 0, successRatePercent: null, avgLatencyMs: null } },
       { provider: 'deepseek', status: 'unknown', configured: true, lastEventAt: null, lastOk: null, lastErrorCode: null, lastLatencyMs: null, last24h: { calls: 0, failures: 0, successRatePercent: null, avgLatencyMs: null } }
     ],
@@ -357,7 +358,7 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
   assert.match(texts, /Heavy User/, 'the top-users table must render the real display name from GET /users');
   assert.match(texts, /4,200|4200/, 'the top-users table must render the real token total');
   const testButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test now');
-  assert.equal(testButtons.length, 4, 'every one of the four providers must have its own Test now action');
+  assert.equal(testButtons.length, 5, 'every configured provider must have its own Test now action');
 });
 
 // ElevenLabs voice-provider follow-up (character/gender redesign): the two tests above only ever
@@ -424,7 +425,7 @@ test('the AI tab still renders key/pricing management when the newer usage/healt
   const fetchImpl = (url) => {
     const u = String(url);
     if (u.indexOf('/ai/health') > -1 || u.indexOf('/ai/usage') > -1 || u.indexOf('/finance/overview') > -1 || u.indexOf('/api/admin/users') > -1) return Promise.resolve(failing);
-    if (u.indexOf('/ai/keys') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([{ provider: 'openai', isSet: true, updatedAt: null }, { provider: 'anthropic', isSet: false, updatedAt: null }, { provider: 'kimi', isSet: false, updatedAt: null }, { provider: 'deepseek', isSet: false, updatedAt: null }]) });
+    if (u.indexOf('/ai/keys') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([{ provider: 'openai', isSet: true, updatedAt: null }, { provider: 'anthropic', isSet: false, updatedAt: null }, { provider: 'gemini', isSet: false, updatedAt: null }, { provider: 'kimi', isSet: false, updatedAt: null }, { provider: 'deepseek', isSet: false, updatedAt: null }]) });
     if (u.indexOf('/ai/pricing') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     if (u.indexOf('/voice-providers/') > -1) return Promise.resolve(failing);
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
@@ -435,5 +436,5 @@ test('the AI tab still renders key/pricing management when the newer usage/healt
   assert.doesNotMatch(texts, /Something went wrong/, 'a failure in the newer usage/health/finance/topUsers sections must never take down the whole tab');
   assert.match(texts, /openai/, 'the per-provider key cards must still render');
   const saveKeyButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Save key');
-  assert.equal(saveKeyButtons.length, 4, 'key management must stay fully usable for every provider regardless of the other sections failing');
+  assert.equal(saveKeyButtons.length, 5, 'key management must stay fully usable for every provider regardless of the other sections failing');
 });

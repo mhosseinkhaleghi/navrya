@@ -85,7 +85,11 @@
       supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
     },
     {
-      id: 'kimi', label: 'Kimi', endpoint: 'api.moonshot.cn', models: ['moonshot-v1-8k', 'moonshot-v1-32k'], supportsVoice: false, trait: 'wink', knockout: true,
+      id: 'gemini', label: 'Gemini', endpoint: 'generativelanguage.googleapis.com', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'], supportsVoice: true, trait: 'spin', knockout: false,
+      supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
+    },
+    {
+      id: 'kimi', label: 'Kimi', endpoint: 'api.moonshot.cn', models: ['moonshot-v1-8k', 'moonshot-v1-32k'], supportsVoice: false, trait: 'wink', knockout: true, visible: false,
       supportsVision: true, supportsStructuredOutput: false, supportsReasoning: false, supportsImageGeneration: false, recommendedForChartAnalysis: false
     },
     {
@@ -184,7 +188,15 @@
     saveSettings(patch);
   }
 
-  function providerCatalog() { return PROVIDER_CATALOG.map(function (p) { return Object.assign({}, p, { models: p.models.slice() }); }); }
+  function cloneCatalog(entries) { return entries.map(function (p) { return Object.assign({}, p, { models: p.models.slice() }); }); }
+
+  // Kimi remains a supported legacy provider. Normal selectors hide it while it is paused, but a
+  // user with Kimi already selected must still see the real active provider rather than a
+  // misleading fallback icon/model.
+  function providerCatalog() { return cloneCatalog(PROVIDER_CATALOG); }
+  function visibleProviderCatalog(activeProvider) {
+    return cloneCatalog(PROVIDER_CATALOG.filter(function (p) { return p.visible !== false || p.id === activeProvider; }));
+  }
 
   function capabilitiesFor(provider) {
     var entry = PROVIDER_CATALOG.filter(function (p) { return p.id === provider; })[0];
@@ -207,7 +219,7 @@
     settings: settings, saveSettings: saveSettings,
     getKey: getKey, setKey: setKey, clearKey: clearKey,
     setVoice: setVoice, setBudget: setBudget,
-    providerCatalog: providerCatalog, activeProvider: activeProvider, activeModel: activeModel,
+    providerCatalog: providerCatalog, visibleProviderCatalog: visibleProviderCatalog, activeProvider: activeProvider, activeModel: activeModel,
     capabilitiesFor: capabilitiesFor
   };
 }());

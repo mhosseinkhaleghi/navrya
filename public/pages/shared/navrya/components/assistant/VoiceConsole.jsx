@@ -22,7 +22,7 @@ const CONNECT_PHASES = { requesting_permission: 1, connecting: 1, reconnecting: 
 const PHASE_CODE = {
   requesting_permission: 'CONNECTING', connecting: 'CONNECTING', reconnecting: 'RECONNECTING',
   listening: 'LISTENING', user_speaking: 'SPEAKING', interrupted: 'LISTENING',
-  processing: 'THINKING', assistant_speaking: 'REPLYING', error: 'MIC DENIED'
+  processing: 'THINKING', assistant_speaking: 'REPLYING', error: 'VOICE ERROR'
 };
 
 const VOICE_CONSOLE_CSS = `
@@ -287,7 +287,7 @@ export function VoiceConsole({
         </span>
         <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{model ? model.label : ''} · VOICE</span>
         <span aria-hidden="true" style={{ width: 1, height: 18, background: 'var(--border-hairline)' }} />
-        <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{PHASE_CODE[voiceState] || ''}</span>
+        <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{denied ? 'MIC DENIED' : (PHASE_CODE[voiceState] || '')}</span>
         <span style={{ flex: 1 }} />
         <span className="navrya-tabular" style={{ font: 'var(--type-countdown)', fontSize: 15, color: 'var(--parchment)' }}>{mm}:{ss}</span>
         <button type="button" aria-label={strings.minimize} title={strings.minimize} onClick={onMinimize} style={{ width: 32, height: 32, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
