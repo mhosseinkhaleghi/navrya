@@ -4,8 +4,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-- `feat/gemini-provider` (Codex, current branch): Gemini added as an additive GenerateContent provider; current follow-up adds Gemini Live mic transcription (one-use browser tokens) + server-side Gemini TTS. Voice console now distinguishes permission-denied from config/connection errors. Focused Gemini Voice suite 106/106, build passes; a parallel full-suite run hit 7 pre-existing server-runner crashes under forced ephemeral ports (not a feature failure). Next: run validation gates, test a real multi-turn Gemini Voice session (needs `GEMINI_API_KEY` + billing), set Gemini pricing before enabling `AI_WALLET_ENFORCED` for Gemini. No browser/deploy verification yet.
-- `fix/google-sign-in-client` (Codex): Google web client ID fixed and tested (17/17 focused + 2,333 full suite). Blocked in production: deploy workflow verified the commit but failed in "Deploy the tested commit on the server" right after SSH config; live site still serves the old client ID. Needs an operator to inspect/repair/rerun the deploy step, no manual SSH/Caddy workaround. Staging (`staging.navrya.com`) still has no DNS/server configured.
+- `feat/gemini-provider` (Claude, current branch): Gemini GenerateContent provider + Gemini Live voice transport shipped; added a loading/success modal + button spinner for Google sign-in on the select page (matches shared `Modal.jsx` design tokens: scrim, ink-900, motion durations). Pushed to `dev` (2,345/2,345 full suite, build clean). Next: real multi-turn Gemini Voice session test (needs `GEMINI_API_KEY` + billing), set Gemini pricing before enabling `AI_WALLET_ENFORCED` for Gemini, browser-verify the new Google-auth modal. No browser/deploy verification yet on either piece.
 
 ## Known pending
 
@@ -35,3 +34,4 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 - 2026-08-30: AI Cost Control admin dashboard (external OpenAI cost reconciliation, encrypted provider credentials) shipped and verified live (2,041 tests).
 - 2026-08-31: Session AI Analysis header button fixed to open the right popup.
 - 2026-09-02: commercial-plans-v3 (Pro plan, per-plan token discount, BYOK/premium-model gating, crypto/Visa payment-method modal) shipped and verified live (2,315 tests).
+- 2026-09-03: Google sign-in client ID fix confirmed live in production (verified via direct request, serves the correct client ID) — the earlier stuck-deploy blocker is resolved.
