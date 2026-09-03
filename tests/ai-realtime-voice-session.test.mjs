@@ -286,8 +286,8 @@ test('mints one-use constrained Gemini Live credentials and never returns the pe
   assert.equal(request.options.headers['x-goog-api-key'], 'gemini-permanent-secret');
   const body = JSON.parse(request.options.body);
   assert.equal(body.uses, 1);
-  assert.equal(body.liveConnectConstraints.model, 'models/gemini-3.5-transcribe-live');
-  assert.deepEqual(body.liveConnectConstraints.config.responseModalities, ['TEXT']);
+  assert.equal(body.bidiGenerateContentSetup.model, 'models/gemini-3.5-transcribe-live');
+  assert.deepEqual(body.bidiGenerateContentSetup.generationConfig.responseModalities, ['TEXT']);
   assert.equal(result.provider, 'gemini-live');
   assert.equal(result.token, 'auth_tokens/live-test');
   assert.doesNotMatch(JSON.stringify(result), /gemini-permanent-secret/);

@@ -2277,15 +2277,15 @@ async function mintGeminiLiveToken(body) {
         uses: 1,
         expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
         newSessionExpireTime: new Date(Date.now() + 60 * 1000).toISOString(),
-        liveConnectConstraints: {
+        // The REST auth_tokens endpoint accepts AuthToken fields directly. Pin the Live setup
+        // here so the browser's short-lived token cannot widen its model or capabilities.
+        bidiGenerateContentSetup: {
           model: `models/${model}`,
-          config: {
-            responseModalities: ['TEXT'],
-            inputAudioTranscription: {
-              languageCodes: [({ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' })[language]],
-              customVocabulary: REALTIME_TRANSCRIPTION_KEYWORDS,
-              mode: 'SMART'
-            }
+          generationConfig: { responseModalities: ['TEXT'] },
+          inputAudioTranscription: {
+            languageCodes: [({ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' })[language]],
+            customVocabulary: REALTIME_TRANSCRIPTION_KEYWORDS,
+            mode: 'SMART'
           }
         }
       }),
