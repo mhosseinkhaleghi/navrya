@@ -182,6 +182,12 @@ export function createGeminiLiveSession(options) {
       socket.onmessage = (event) => {
         let message;
         try { message = JSON.parse(event.data); } catch (_) { return; }
+        if (message.error) {
+          const error = new Error(`GEMINI_LIVE_SETUP_FAILED_${message.error.code || 'UNKNOWN'}`);
+          error.code = error.message;
+          fail(error);
+          return;
+        }
         if (message.setupComplete) {
           if (settled) return;
           settled = true;

@@ -472,7 +472,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   async function fetchGeminiLiveSession(language) {
     const response = await fetch('/api/ai/gemini-live/session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: settingsStore.getKey('gemini'), language })
+      body: JSON.stringify({ language })
     });
     if (!response.ok) {
       let code = 'GEMINI_LIVE_SESSION_FAILED';
@@ -485,7 +485,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   async function fetchGeminiSpeak(language, text) {
     const response = await fetch('/api/ai/gemini-live/speak', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: settingsStore.getKey('gemini'), language, text })
+      body: JSON.stringify({ language, text })
     });
     if (!response.ok) {
       let code = 'GEMINI_TTS_FAILED';
