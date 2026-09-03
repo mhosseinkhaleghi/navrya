@@ -34,10 +34,17 @@ test('saveBoard() still dispatches tradejournal:dashboard-board-changed unchange
   assert.match(text, /window\.dispatchEvent\(new CustomEvent\('tradejournal:dashboard-board-changed', \{ detail: \{ character \} \}\)\);/);
 });
 
-test('settingsView.jsx\'s "Manage panels" section still imports the same real loadBoard/saveBoard/addCustomPanel from dashboardView.jsx - never a parallel copy of its own', async () => {
-  const text = await source('settingsView.jsx');
+test('aiAssistantView.jsx\'s Panel Builder tab ("Manage panels" card) still imports the same real loadBoard/saveBoard/addCustomPanel from dashboardView.jsx - never a parallel copy of its own', async () => {
+  // Moved here from settingsView.jsx (AI dashboard redesign): the AI panel builder and its
+  // installed-panels list are an AI capability, not a setting, so both sections relocated
+  // together to the AI Assistant page's own Panel Builder tab. settingsView.jsx no longer
+  // imports from dashboardView.jsx at all.
+  const text = await source('aiAssistantView.jsx');
   assert.match(text, /import \{ SPANS, loadBoard, saveBoard, catalogForLang, resolveCustomEntry, addCustomPanel \} from '\.\/dashboardView\.jsx';/);
-  assert.doesNotMatch(text, /localStorage\s*\.\s*\w+\s*\(/, 'settingsView.jsx must never read/write the board directly - only through the shared functions');
+  assert.doesNotMatch(text, /localStorage\s*\.\s*\w+\s*\(/, 'aiAssistantView.jsx must never read/write the board directly - only through the shared functions');
+
+  const settingsText = await source('settingsView.jsx');
+  assert.doesNotMatch(settingsText, /dashboardView\.jsx/, 'settingsView.jsx must not import from dashboardView.jsx any more - Panel Builder moved out');
 });
 
 test("panel-system.js's dead localStorage-backed panel-grid mechanism (load/save/storeKey/presets/makeCanvas/makeSettings/updatePanel/managerRow/panelCard/bodyFor) is removed, not migrated - confirmed unreachable: window.TradeJournalNavryaCanvas is always set before any user interaction (navrya-src/entries/{character}.jsx -> mountCharacterApp())", async () => {

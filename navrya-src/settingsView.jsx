@@ -18,10 +18,9 @@ import { createStore } from './store.js';
 // Redesign of Settings against the design handoff code-codex/setting/NavryaSettings.dc.html.
 // Per the request, "Account & data" (billing/export/sign-out/delete-account - already served by
 // the real, separate Subscriptions and Account Profile screens) is intentionally NOT rebuilt
-// here. Every other section below is wired to a real store:
-//  - AI panel builder -> the same /api/ai/chat call the floating assistant uses
-//    (chat-dock-core.js's sendChat), drafting real panels onto the real Dashboard board.
-//  - Manage panels -> the exact board record navrya-src/dashboardView.jsx itself reads/writes.
+// here. The AI panel builder and its "Manage panels" list have since moved to the AI Assistant
+// page's own Panel Builder tab (navrya-src/aiAssistantView.jsx) - it's an AI capability, not a
+// setting. Every remaining section below is wired to a real store:
 //  - Character -> the same postMessage character switch the app already uses elsewhere.
 //  - Region & language -> Language calls the app's one real language store (navrya-src/store.js);
 //    country/timezone/currency/week-start/clock-format are new, genuinely persisted fields (see

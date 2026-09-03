@@ -86,13 +86,17 @@ test('every mutation (setWalkthroughSeen/dismissStep/snoozeStep/skipOptionalStep
   assert.equal(state.currentGoal, 'strategies');
 });
 
-test('never persists a derivable fact - only walkthrough/dismiss/snooze/skip/goal/preferences are ever written', async () => {
+test('never persists a derivable fact - only walkthrough/dismiss/snooze/skip/goal/preferences/persona/privacy fields are ever written', async () => {
   const localStorage = memoryStorage();
   const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) } });
   await flush();
   store.setWalkthroughSeen();
   const stored = store.load();
-  assert.deepEqual(Object.keys(stored).sort(), ['currentGoal', 'dismissedSteps', 'lastUpdatedAt', 'preferences', 'skippedOptional', 'snoozedSteps', 'version', 'walkthroughSeenAt'].sort());
+  // AI dashboard's Persona tab added five more fields (customInstructions/dataAccessPrefs/
+  // personaPreset/pinnedFacts/toneDimensions) - all genuine user-set preferences, exactly this
+  // document's own kind of content (never a derivable fact like "hasPattern"), so they belong on
+  // this allowlist too.
+  assert.deepEqual(Object.keys(stored).sort(), ['currentGoal', 'customInstructions', 'dataAccessPrefs', 'dismissedSteps', 'lastUpdatedAt', 'personaPreset', 'pinnedFacts', 'preferences', 'skippedOptional', 'snoozedSteps', 'toneDimensions', 'version', 'walkthroughSeenAt'].sort());
 });
 
 test('initiativePreference defaults to normal and is validated against the known three values', async () => {
