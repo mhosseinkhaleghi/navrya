@@ -63,8 +63,9 @@ test('DockButton still supports its distinct danger styling (red border/tint) fo
   assert.match(voiceConsoleSrc, /triangle-alert/);
 });
 
-test('chatDockView.jsx wires the real Voice control to the real Journey E adapter: toggleVoice (connect/disconnect) and a new toggleVoiceMute reading/flipping the adapter\'s own isMuted()', () => {
-  assert.match(dockViewSrc, /onVoiceToggle=\{toggleVoice\} onVoiceMuteToggle=\{toggleVoiceMute\}/);
+test('chatDockView.jsx keeps retry and end-session distinct: toggleVoice retries an error, while endVoice always disconnects, and mute reads/flips the adapter\'s own isMuted()', () => {
+  assert.match(dockViewSrc, /onVoiceToggle=\{toggleVoice\} onVoiceEnd=\{endVoice\} onVoiceMuteToggle=\{toggleVoiceMute\}/);
+  assert.match(dockViewSrc, /function endVoice\(\) \{[\s\S]*?voiceRef\.current\.disconnect\(\);/);
   assert.match(dockViewSrc, /function toggleVoiceMute\(\) \{[\s\S]*?voiceRef\.current\.mute\(!voiceRef\.current\.isMuted\(\)\);/);
 });
 

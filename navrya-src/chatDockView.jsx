@@ -821,6 +821,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     }
   }
 
+  // ERROR is retryable through toggleVoice(), so ending Voice needs a separate path.
+  function endVoice() {
+    if (!voiceRef.current) return;
+    voiceRef.current.disconnect();
+    setVoiceErrorStage(null);
+  }
+
   function toggleVoiceMute() {
     if (!voiceRef.current) return;
     voiceRef.current.mute(!voiceRef.current.isMuted());
@@ -941,7 +948,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
         voiceManualFinishPending={voiceManualFinishPending}
-        onVoiceToggle={toggleVoice} onVoiceMuteToggle={toggleVoiceMute} onVoiceInterrupt={interruptVoice}
+        onVoiceToggle={toggleVoice} onVoiceEnd={endVoice} onVoiceMuteToggle={toggleVoiceMute} onVoiceInterrupt={interruptVoice}
         onVoiceEndMessage={endVoiceMessage}
         voiceErrorLabel={voiceErrorMessageForStage(i18n, voiceErrorStage)}
         getVoiceMediaStream={() => voiceRef.current && voiceRef.current.getMediaStream()}

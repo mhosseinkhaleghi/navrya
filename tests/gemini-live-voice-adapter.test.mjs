@@ -39,3 +39,17 @@ test('a configuration or Live connection error is never mislabeled as microphone
     assert.match(adapter, /error\.code \|\| \(error\.name && error\.name !== 'Error'/);
   });
 });
+
+test('Gemini errors can explicitly end Voice and always release failed transport resources before retrying', () => {
+  const chatDock = path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatDock.jsx');
+  const consolePath = path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'VoiceConsole.jsx');
+  return Promise.all([readFile(chatDock, 'utf8'), readFile(consolePath, 'utf8')]).then(([chatDockSource, consoleSource]) => {
+    assert.match(adapter, /function failAndCleanup\(error, stage\) \{[\s\S]*?teardown\(\);[\s\S]*?reportFailure\(error, stage\);/);
+    assert.match(adapter, /async function connect\(\) \{[\s\S]*?teardown\(\);[\s\S]*?intentionalClose = false;/);
+    assert.match(adapter, /socket\.onclose = \(\) => \{[\s\S]*?if \(!settled\) fail\(error\);[\s\S]*?else failAndCleanup\(error, 'live_connection'\);/);
+    assert.match(dock, /onVoiceEnd=\{endVoice\}/);
+    assert.match(chatDockSource, /onVoiceEnd=\{onVoiceEnd\}/);
+    assert.match(consoleSource, /<DeniedCard strings=\{strings\} onRetry=\{onVoiceToggle\} onEnd=\{onVoiceEnd\}/);
+    assert.match(consoleSource, /aria-label=\{strings\.close\} title=\{strings\.close\} onClick=\{onVoiceEnd\}/);
+  });
+});

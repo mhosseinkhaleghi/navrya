@@ -166,7 +166,7 @@ function ThinkingIndicator({ model, label }) {
   );
 }
 
-function DeniedCard({ strings, onRetry }) {
+function DeniedCard({ strings, onRetry, onEnd }) {
   return (
     <div style={{ width: '100%', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid color-mix(in srgb,var(--danger) 45%,transparent)', background: 'rgba(255,56,48,.08)' }}>
       <span style={{ width: 34, height: 34, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', border: '1px solid color-mix(in srgb,var(--danger) 50%,transparent)', color: 'var(--danger)' }}>
@@ -176,13 +176,22 @@ function DeniedCard({ strings, onRetry }) {
         <span style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{strings.deniedTitle}</span>
         <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{strings.deniedBody}</span>
       </span>
-      <button
-        type="button" onClick={onRetry}
-        style={{ flex: 'none', height: 36, padding: '0 14px', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border-gold)', background: 'transparent', font: 'var(--type-body)', color: 'var(--text-primary)' }}
-      >
-        <Icon name="rotate-cw" size={15} />
-        {strings.retry}
-      </button>
+      <span style={{ flex: 'none', display: 'flex', gap: 8 }}>
+        <button
+          type="button" onClick={onRetry}
+          style={{ height: 36, padding: '0 14px', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border-gold)', background: 'transparent', font: 'var(--type-body)', color: 'var(--text-primary)' }}
+        >
+          <Icon name="rotate-cw" size={15} />
+          {strings.retry}
+        </button>
+        <button
+          type="button" onClick={onEnd}
+          style={{ height: 36, padding: '0 14px', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border-hairline)', background: 'transparent', font: 'var(--type-body)', color: 'var(--text-muted)' }}
+        >
+          <Icon name="x" size={15} />
+          {strings.close}
+        </button>
+      </span>
     </div>
   );
 }
@@ -207,7 +216,7 @@ function CaptionBox({ label, text, caret, tone }) {
 export function VoiceConsole({
   voiceState, voiceMuted, model, elapsedSeconds, dotColor, phaseLabel, phaseCaption,
   voicePermissionDenied, voiceHeardText, voiceReplyCaption, voiceManualFinishPending,
-  onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,
+  onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,
   getVoiceMediaStream, strings
 }) {
   useAssistantMotion();
@@ -241,7 +250,7 @@ export function VoiceConsole({
     function isEditable(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); }
     let spaceHeld = false;
     function onKeyDown(e) {
-      if (e.key === 'Escape') { onVoiceToggle && onVoiceToggle(); return; }
+      if (e.key === 'Escape') { onVoiceEnd && onVoiceEnd(); return; }
       if (e.code === 'Space' && !e.repeat && !isEditable(document.activeElement)) {
         e.preventDefault();
         if (!voiceMuted) { spaceHeld = true; onVoiceMuteToggle && onVoiceMuteToggle(); }
@@ -293,7 +302,7 @@ export function VoiceConsole({
         <button type="button" aria-label={strings.minimize} title={strings.minimize} onClick={onMinimize} style={{ width: 32, height: 32, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
           <Icon name="chevron-down" size={16} />
         </button>
-        <button type="button" aria-label={strings.close} title={strings.close} onClick={onVoiceToggle} style={{ width: 32, height: 32, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
+        <button type="button" aria-label={strings.close} title={strings.close} onClick={onVoiceEnd} style={{ width: 32, height: 32, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
           <Icon name="x" size={16} />
         </button>
       </div>
@@ -313,8 +322,8 @@ export function VoiceConsole({
 
           {showMeter && <VoiceMeter voiceState={voiceState} muted={voiceMuted} getVoiceMediaStream={getVoiceMediaStream} count={48} height={68} color={dotColor} />}
           {thinking && <ThinkingIndicator model={model} label={strings.analysing} />}
-          {denied && <DeniedCard strings={strings} onRetry={onVoiceToggle} />}
-          {errored && <DeniedCard strings={{ deniedTitle: strings.errorLabel, deniedBody: strings.errorLabel, retry: strings.retry }} onRetry={onVoiceToggle} />}
+          {denied && <DeniedCard strings={strings} onRetry={onVoiceToggle} onEnd={onVoiceEnd} />}
+          {errored && <DeniedCard strings={{ deniedTitle: strings.errorLabel, deniedBody: strings.errorLabel, retry: strings.retry, close: strings.close }} onRetry={onVoiceToggle} onEnd={onVoiceEnd} />}
         </div>
 
         {showHeard && (
@@ -340,7 +349,7 @@ export function VoiceConsole({
           <Icon name={voiceMuted ? 'mic-off' : 'mic'} size={19} />
         </button>
         <button
-          type="button" aria-label={strings.type} onClick={onVoiceToggle}
+          type="button" aria-label={strings.type} onClick={onVoiceEnd}
           style={{ height: 44, flex: 'none', padding: '0 14px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', font: 'var(--type-body)', color: 'var(--text-muted)' }}
         >
           <Icon name="keyboard" size={19} />
@@ -384,7 +393,7 @@ export function VoiceConsole({
 }
 
 /* Collapsed pill - same live meter/timer, fits back into the dock's own row height. */
-export function VoiceMiniBar({ voiceState, voiceMuted, dotColor, phaseLabel, elapsedSeconds, onExpand, onVoiceToggle, getVoiceMediaStream, strings }) {
+export function VoiceMiniBar({ voiceState, voiceMuted, dotColor, phaseLabel, elapsedSeconds, onExpand, onVoiceToggle, onVoiceEnd, getVoiceMediaStream, strings }) {
   useAssistantMotion();
   const mm = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
   const ss = String(elapsedSeconds % 60).padStart(2, '0');
@@ -406,7 +415,7 @@ export function VoiceMiniBar({ voiceState, voiceMuted, dotColor, phaseLabel, ela
       <button type="button" aria-label={strings.expand} title={strings.expand} onClick={onExpand} style={{ width: 36, height: 36, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
         <Icon name="chevron-up" size={18} />
       </button>
-      <button type="button" aria-label={strings.close} title={strings.close} onClick={onVoiceToggle} style={{ width: 36, height: 36, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid color-mix(in srgb,var(--danger) 45%,transparent)', background: 'rgba(255,56,48,.1)', color: 'var(--danger)' }}>
+      <button type="button" aria-label={strings.close} title={strings.close} onClick={onVoiceEnd} style={{ width: 36, height: 36, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid color-mix(in srgb,var(--danger) 45%,transparent)', background: 'rgba(255,56,48,.1)', color: 'var(--danger)' }}>
         <Icon name="x" size={18} />
       </button>
     </div>

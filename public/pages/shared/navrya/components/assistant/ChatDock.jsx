@@ -119,7 +119,7 @@ export function ChatDock({
   // the user's own "End message" click, not an ordinary VAD-driven turn - see chatDockView.jsx's
   // own comment on why this is tracked separately from the generic PROCESSING/`thinking` state.
   voiceManualFinishPending = false,
-  onVoiceToggle, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, voiceErrorLabel, voiceLabels = {},
+  onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, voiceErrorLabel, voiceLabels = {},
   getVoiceMediaStream, voiceHeardText, voiceReplyCaption,
   // Journey G UX correction: the one real "the user just deliberately engaged with the dock"
   // signal - fired alongside the existing local `focused` styling state, never replacing it.
@@ -352,7 +352,7 @@ export function ChatDock({
           {!idle && voiceMinimized && (
             <VoiceMiniBar
               voiceState={voiceState} voiceMuted={voiceMuted} dotColor={dotColor} phaseLabel={phaseLabel}
-              elapsedSeconds={voiceElapsed} onExpand={() => setVoiceMinimized(false)} onVoiceToggle={onVoiceToggle}
+              elapsedSeconds={voiceElapsed} onExpand={() => setVoiceMinimized(false)} onVoiceToggle={onVoiceToggle} onVoiceEnd={onVoiceEnd}
               getVoiceMediaStream={getVoiceMediaStream}
               strings={{ expand: voiceLabels.expand, close: voiceLabels.close }}
             />
@@ -363,7 +363,7 @@ export function ChatDock({
               dotColor={dotColor} phaseLabel={phaseLabel} phaseCaption={phaseCaption}
               voicePermissionDenied={voicePermissionDenied} voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
               voiceManualFinishPending={voiceManualFinishPending}
-              onVoiceToggle={onVoiceToggle} onVoiceMuteToggle={onVoiceMuteToggle} onVoiceInterrupt={onVoiceInterrupt}
+              onVoiceToggle={onVoiceToggle} onVoiceEnd={onVoiceEnd} onVoiceMuteToggle={onVoiceMuteToggle} onVoiceInterrupt={onVoiceInterrupt}
               onVoiceEndMessage={onVoiceEndMessage}
               onMinimize={() => setVoiceMinimized(true)} getVoiceMediaStream={getVoiceMediaStream}
               strings={{

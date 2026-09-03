@@ -85,12 +85,33 @@ export function createGeminiLiveSession(options) {
     if (processor) { try { processor.disconnect(); } catch (_) {} processor.onaudioprocess = null; processor = null; }
     if (micNode) { try { micNode.disconnect(); } catch (_) {} micNode = null; }
     if (mediaStream) { mediaStream.getTracks().forEach((track) => track.stop()); mediaStream = null; }
-    if (socket) { try { socket.close(); } catch (_) {} socket = null; }
+    if (socket) {
+      const closingSocket = socket;
+      socket = null;
+      closingSocket.onopen = closingSocket.onmessage = closingSocket.onerror = closingSocket.onclose = null;
+      try { closingSocket.close(); } catch (_) {}
+    }
     if (audioContext) { audioContext.close().catch(() => {}); audioContext = null; }
   }
   function reportFailure(error, stage) {
     setState(VOICE_STATES.ERROR);
     onError({ code: errorCode(error), stage });
+  }
+  function failAndCleanup(error, stage) {
+    if (state === VOICE_STATES.ERROR) return;
+    teardown();
+    reportFailure(error, stage);
+  }
+  function failureStage(error) {
+    const code = String(errorCode(error));
+    const status = error && error.status;
+    if (status === 401 || code === 'AUTH_SESSION_REQUIRED' || code === 'ACCOUNT_SUSPENDED') return 'session_auth';
+    if (status === 429 || /_429$/.test(code)) return 'session_quota';
+    if (/_API_KEY_MISSING$/.test(code)) return 'key_missing';
+    if (/TOKEN_FAILED_(401|403)/.test(code)) return 'key_rejected';
+    if (/TOKEN_FAILED_404/.test(code)) return 'model_unavailable';
+    if (code === 'PROVIDER_TIMEOUT' || code === 'GEMINI_LIVE_CONNECT_TIMEOUT') return 'token_mint_timeout';
+    return 'live_connection';
   }
   function send(message) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
@@ -143,7 +164,14 @@ export function createGeminiLiveSession(options) {
     return new Promise((resolve, reject) => {
       const url = `${LIVE_SOCKET_URL}?access_token=${encodeURIComponent(creds.token)}`;
       socket = new WebSocket(url);
-      const timeout = setTimeout(() => reject(new Error('GEMINI_LIVE_CONNECT_TIMEOUT')), 15000);
+      let settled = false;
+      function fail(error) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      }
+      const timeout = setTimeout(() => fail(new Error('GEMINI_LIVE_CONNECT_TIMEOUT')), 15000);
       socket.onopen = () => {
         send({ setup: {
           model: `models/${creds.model}`,
@@ -154,7 +182,14 @@ export function createGeminiLiveSession(options) {
       socket.onmessage = (event) => {
         let message;
         try { message = JSON.parse(event.data); } catch (_) { return; }
-        if (message.setupComplete) { clearTimeout(timeout); setState(VOICE_STATES.LISTENING); resolve(); return; }
+        if (message.setupComplete) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          setState(VOICE_STATES.LISTENING);
+          resolve();
+          return;
+        }
         const content = message.serverContent || {};
         const text = content.inputTranscription && String(content.inputTranscription.text || '').trim();
         if (text && !handledTranscripts.has(text)) {
@@ -164,14 +199,19 @@ export function createGeminiLiveSession(options) {
           onFinalTranscript(text);
         }
       };
-      socket.onerror = () => { clearTimeout(timeout); reject(new Error('GEMINI_LIVE_SOCKET_FAILED')); };
+      socket.onerror = () => fail(new Error('GEMINI_LIVE_SOCKET_FAILED'));
       socket.onclose = () => {
         clearTimeout(timeout);
-        if (!intentionalClose && state !== VOICE_STATES.ERROR && state !== VOICE_STATES.IDLE) reportFailure(new Error('GEMINI_LIVE_SOCKET_CLOSED'), 'live_connection');
+        if (intentionalClose || state === VOICE_STATES.IDLE || state === VOICE_STATES.ERROR) return;
+        const error = new Error('GEMINI_LIVE_SOCKET_CLOSED');
+        if (!settled) fail(error);
+        else failAndCleanup(error, 'live_connection');
       };
     });
   }
   async function connect() {
+    // Retrying after an error must not reuse a microphone/socket/context from the failed attempt.
+    teardown();
     intentionalClose = false;
     setState(VOICE_STATES.REQUESTING_PERMISSION);
     try {
@@ -188,8 +228,7 @@ export function createGeminiLiveSession(options) {
       wireMicrophone();
       await openSocket(creds);
     } catch (error) {
-      teardown();
-      reportFailure(error, /TOKEN_FAILED_401|TOKEN_FAILED_403/.test(errorCode(error)) ? 'key_rejected' : /_API_KEY_MISSING$/.test(errorCode(error)) ? 'key_missing' : 'live_connection');
+      failAndCleanup(error, failureStage(error));
       throw error;
     }
   }
