@@ -3,10 +3,11 @@
 - Active task: `fix/google-sign-in-client` (owner: Codex).
 - Changed files: `public/pages/select/app.js`, `server/community/routes.auth.mjs`, `.env.example`, `.env.production.example`, and `tests/login-select-flow.test.mjs` configure and verify the new Google web client ID; this handoff records the work.
 - Validation: `node --test tests/login-select-flow.test.mjs` (17 passing), full `npm test` (2,333 passing), `npm run build`, and `git diff --check` passed with Node 22.
-- Remote state: the task branch is based on `origin/dev` at `cf7a500`; `origin/staging` is `95947514`, nine commits behind `dev`. Its latest workflow run `33551356266` verified successfully but skipped deployment because staging deployment is not enabled.
+- Remote state: `dev` and `main` are both `af652877`, while `origin/staging` is `95947514`, twelve commits behind `dev`. Its latest workflow run `33551356266` verified successfully but skipped deployment because staging deployment is not enabled.
 - Staging status: neither `staging.navrya.com` nor `admin.staging.navrya.com` has DNS records. No staging server or live staging site is configured.
 - Temporary production auth configuration: production now uses the public client ID in source while no approved operator can change its private `.env`; development still reads `GOOGLE_CLIENT_ID` from its environment. When server access is restored, set the same value in production `.env`, remove the temporary source override, and keep the browser/server-ID regression test aligned.
-- Next action: promote the task through `dev`, then explicitly request staging or production.
+- Production release attempt (2026-09-03): Actions run `33697472795` verified `af652877` successfully, but failed in `Deploy the tested commit on the server` immediately after SSH configuration. The protected job log is unavailable to the current connection. Live `https://app.navrya.com/pages/select/app.js` still serves the old Google client ID, confirming the server did not update.
+- Exact blocker: an authorized repository/server operator must inspect that failed deploy step, repair the server-side failure, and rerun the production workflow. Do not use a manual SSH deployment or Caddy restart as a workaround.
 
 - Rules: `AGENTS.md` plus the task-selected `skills/*/SKILL.md` files are mandatory for every contributor and agent.
 - Architecture: Vite/React client, Express Community API, AI API, PostgreSQL, Caddy, Docker Compose.
