@@ -1054,6 +1054,10 @@ function ActivityTab({ i18n, chats, usageMonth, avgTokens }) {
 function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) {
   const [model, setModel] = React.useState(() => settingsStore.activeProvider());
   const catalog = React.useMemo(() => settingsStore.visibleProviderCatalog(model), [model, settingsStore]);
+  // Top-level page tab (dashboard/engines/persona/panelbuilder/costs/memory/activity) - separate
+  // from `aiTab` below, which is the Engines tab's OWN internal engine/keys sub-tab and is
+  // completely unaffected by this addition.
+  const [topTab, setTopTab] = React.useState('dashboard');
   const [aiTab, setAiTab] = React.useState('engine');
   const [openChatId, setOpenChatId] = React.useState(null);
   const [openChatDetail, setOpenChatDetail] = React.useState(null);
@@ -1072,6 +1076,27 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   const [realCostByModel, setRealCostByModel] = React.useState(null);
   React.useEffect(() => {
     fetch('/api/users/me/ai-usage-by-model').then((r) => r.json()).then((d) => setRealCostByModel(d.byModel || [])).catch(() => setRealCostByModel([]));
+  }, []);
+
+  // Dashboard tab's wallet card: the real balance (/api/sync/wallet, same endpoint
+  // accountProfileView.jsx's own wallet UI already reads) plus a runway estimate computed from
+  // real last-30-day retail charges (a SEPARATE, days-scoped fetch - never repurposing
+  // realCostByModel above, which stays lifetime-scoped for the Engines tab exactly as before).
+  // null runway (not 0) when there's no recent spend to extrapolate from.
+  const [walletBalanceUsd, setWalletBalanceUsd] = React.useState(null);
+  const [walletRunwayDays, setWalletRunwayDays] = React.useState(null);
+  React.useEffect(() => {
+    Promise.all([
+      fetch('/api/sync/wallet').then((r) => r.json()).catch(() => null),
+      fetch('/api/users/me/ai-usage-by-model?days=30').then((r) => r.json()).catch(() => null)
+    ]).then(([wallet, recent]) => {
+      const balanceUsd = wallet ? (Number(wallet.totalBalanceMicroUsd) || 0) / 1000000 : null;
+      setWalletBalanceUsd(balanceUsd);
+      const rows = (recent && recent.byModel) || [];
+      const totalMicroUsd = rows.reduce((sum, row) => sum + (Number(row.retailChargeMicroUsd) || 0), 0);
+      const avgDailyUsd = totalMicroUsd / 1000000 / 30;
+      setWalletRunwayDays(balanceUsd != null && avgDailyUsd > 0 ? Math.round(balanceUsd / avgDailyUsd) : null);
+    });
   }, []);
 
   // Real-money subscription rollout: the CURRENT plan's feature flags (byok/premiumModels),
@@ -1172,6 +1197,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   React.useEffect(() => () => { clearTimeout(testTimer.current); clearTimeout(clearMessageTimer.current); }, []);
 
   const rtl = i18n.direction() === 'rtl';
+  const character = currentNavryaCharacter();
   const settings = settingsStore.settings();
   const entry = catalog.find((p) => p.id === model) || catalog[0];
   const engLabel = providerLabel(i18n, model);
@@ -1206,6 +1232,10 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     setOpenChatId(null);
     settingsStore.saveSettings({ provider: nextId });
   }
+  // Dashboard tab's own engine cards need to both pick the engine AND actually switch to the
+  // Engines tab so the user sees the result - selectEngine() alone only sets the internal
+  // engine/keys sub-tab, which is invisible while topTab isn't 'engines'.
+  function selectEngineFromDashboard(nextId) { selectEngine(nextId); setTopTab('engines'); }
   function selectKeysTab() { setAiTab('keys'); }
 
   function setKeyMessageFor(id, value) {
@@ -1285,12 +1315,19 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     { id: 'mentalHealth', label: i18n.t('aiMemoryMentalHealth'), count: memory.mentalHealth ? memory.mentalHealth.chatHistory.length : 0 }
   ];
 
+  const HEADER_COPY = {
+    dashboard: ['aiDashTitle', 'aiDashSubtitle'], engines: ['aiAsstTitle', 'aiAsstSubtitle'],
+    persona: ['aiPersonaTitle', 'aiPersonaSubtitle'], panelbuilder: ['aiTabPanelBuilder', 'aiPanelPageSubtitle'],
+    costs: ['aiTabCosts', 'aiCostsSubtitle'], memory: ['aiMemoryTitle', 'aiMemorySubtitle'], activity: ['aiActivityTitle', 'aiActivitySubtitle']
+  };
+  const [headerTitleKey, headerSubtitleKey] = HEADER_COPY[topTab] || HEADER_COPY.dashboard;
+
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, padding: '0 2px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ font: 'var(--type-display-lg)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase' }}>{i18n.t('aiAsstTitle')}</div>
-          <p style={{ margin: 0, maxWidth: 660, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t('aiAsstSubtitle')}</p>
+          <div style={{ font: 'var(--type-display-lg)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase' }}>{i18n.t(headerTitleKey)}</div>
+          <p style={{ margin: 0, maxWidth: 660, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t(headerSubtitleKey)}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
           <Chip tone="accent" dot>{i18n.t('aiAsstActiveInDock')}</Chip>
@@ -1298,6 +1335,18 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
         </div>
       </div>
 
+      <TopTabs active={topTab} onSelect={setTopTab} i18n={i18n} />
+
+      {topTab === 'dashboard' && (
+        <DashboardTab
+          i18n={i18n} catalog={catalog} model={model} usageMonth={usageMonth} chats={chats} engGlyph={engGlyph}
+          walletBalanceUsd={walletBalanceUsd} walletRunwayDays={walletRunwayDays}
+          onSelectEngine={selectEngineFromDashboard} onGoTab={setTopTab} onNewChat={newChat} onContinueChat={continueInDock}
+        />
+      )}
+
+      {topTab === 'engines' && (
+        <React.Fragment>
       <EngineTabStrip
         catalog={catalog} model={model} aiTab={aiTab} usageMonthByProvider={usageMonth.byProvider}
         onSelectEngine={selectEngine} onSelectKeys={selectKeysTab} i18n={i18n}
@@ -1546,6 +1595,14 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
           </div>
         </div>
       )}
+        </React.Fragment>
+      )}
+
+      {topTab === 'persona' && <PersonaTab i18n={i18n} onGoTab={setTopTab} />}
+      {topTab === 'panelbuilder' && <PanelBuilderTab i18n={i18n} character={character} />}
+      {topTab === 'costs' && <CostsTab i18n={i18n} catalog={catalog} usageStore={usageStore} settingsStore={settingsStore} realCostByModel={realCostByModel} />}
+      {topTab === 'memory' && <MemoryTab i18n={i18n} memory={memory} memoryRows={memoryRows} onClearBucket={clearMemoryBucket} onExport={exportMemory} />}
+      {topTab === 'activity' && <ActivityTab i18n={i18n} chats={chats} usageMonth={usageMonth} avgTokens={avgTokens} />}
     </div>
   );
 }
