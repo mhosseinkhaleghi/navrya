@@ -23,6 +23,19 @@ The relevant skill is the operating procedure. Implementation and focused tests 
 - Keep one canonical source of truth per concern. Extend a public adapter when cross-feature access is needed instead of reading another module's internals.
 - Make the smallest coherent change. Do not rewrite, reformat, or refactor unrelated code.
 - Read only task-relevant skills and references. Keep reports compact, avoid repeated summaries, and record durable context once in `HANDOFF.md` or the relevant skill.
+- `ARCHITECTURE.md` is a reference manual, not a session primer. Grep its headings (`grep -n "^#" ARCHITECTURE.md`) for the relevant section and read only that, never the whole file, unless doing a full architecture audit.
+- `dist/` and `public/pages/**/*.js` are generated, duplicated build output. Never read or grep them directly; the source is `navrya-src/` and `server/`.
+- Treat any file over ~20K tokens (~80KB) as a reference doc: grep the heading you need, then read only that section, never the whole file start to finish.
+- Exclude `node_modules`, `dist`, `build`, `coverage`, `vendor`, and `package-lock.json` from any recursive search.
+- Never read `.env`/`.env.*` files in full. Grep for the one key needed.
+- Push exploration spanning more than a few files to a background/sub-agent and keep only the synthesized answer in the main task.
+
+## Execution style
+
+- Do not ask a clarifying question when a reasonable default exists. State the assumption in one line and proceed. Only stop for a decision that is genuinely ambiguous, or for anything destructive, hard to reverse, or outside this contract's explicit approval gates (git/deploy policy below).
+- No preamble, no restating the request back, no trailing summary of what was just done unless asked. Report results, not process.
+- Batch independent discovery/reads into one pass instead of a back-and-forth series of single lookups.
+- Never drive the app through a browser (Playwright, MCP browser/preview tools, screenshots, clicking through a UI flow) unless the user explicitly asks for that verification on this task. Development, plus the focused `node --test` file(s) for the change, is the job; the user does visual/UI testing and reports back. A cheap `curl`/`WebFetch` check that a deployed URL returns the expected status, or that a live bundle contains an expected marker string, is not UI testing and stays required by `skills/navrya-deployment/SKILL.md`'s release checks.
 
 ## Working and response language
 
@@ -51,7 +64,7 @@ The relevant skill is the operating procedure. Implementation and focused tests 
 
 - One task branch has one owner. Declare files before editing and do not edit the same file concurrently.
 - Only the primary agent integrates, commits, and pushes shared work.
-- Update `HANDOFF.md` with active branch, owner, changed files, validation, remote state, and next action.
+- Update `HANDOFF.md` with one compact line per entry: `branch (owner): what shipped, one clause | validation: pass count only | next: one clause`. No inline commit hashes, workflow run IDs, or byte-exact sizes, `git log` already has those. Collapse a resolved entry to one history line instead of leaving the full entry in place, and cap the file at roughly 60 lines by archiving or cutting old entries.
 
 ## Source documents
 

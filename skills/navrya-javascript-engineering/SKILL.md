@@ -28,10 +28,16 @@ Use Node.js 22 or newer. This repository uses JavaScript with JSDoc, React 18, V
 
 ## Validation
 
-Run the narrowest relevant test first, then the required release gate:
+Run only the test file(s) relevant to the change during iteration:
 
 ```sh
-npm test
+node --test tests/<relevant>.test.mjs
+```
+
+Do not run the full `npm test` (197 files, 2,000+ tests) as a routine iteration step, it is slow and its output is expensive to read back in full. `scripts/push-to-dev.sh` already runs the full `npm test` and `npm run build` gate internally and fails closed before touching `dev`, so do not run them manually again right before calling it either, that duplicates the same run for nothing. Run the full suite yourself only to investigate a gate failure, and read the tail summary instead of every line:
+
+```sh
+npm test 2>&1 | tail -n 30
 npm run build
 ```
 
