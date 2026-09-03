@@ -85,7 +85,7 @@
       supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
     },
     {
-      id: 'gemini', label: 'Gemini', endpoint: 'generativelanguage.googleapis.com', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'], supportsVoice: false, trait: 'spin', knockout: false,
+      id: 'gemini', label: 'Gemini', endpoint: 'generativelanguage.googleapis.com', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'], supportsVoice: true, trait: 'spin', knockout: false,
       supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
     },
     {

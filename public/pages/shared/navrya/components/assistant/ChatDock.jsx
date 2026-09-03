@@ -93,8 +93,8 @@ function voicePhaseLabel(voiceState, voiceMuted, voiceErrorLabel, voiceLabels) {
   })[voiceState] || '';
 }
 
-function voicePhaseCaption(voiceState, voiceMuted, voiceLabels) {
-  if (voiceState === 'error') return voiceLabels.captionDenied;
+function voicePhaseCaption(voiceState, voiceMuted, voicePermissionDenied, voiceErrorLabel, voiceLabels) {
+  if (voiceState === 'error') return voicePermissionDenied ? voiceLabels.captionDenied : (voiceErrorLabel || voiceLabels.error);
   if (voiceMuted) return voiceLabels.captionMuted;
   return ({
     requesting_permission: voiceLabels.captionConnecting, connecting: voiceLabels.captionConnecting,
@@ -239,7 +239,7 @@ export function ChatDock({
 
   const dotColor = voiceState === 'error' ? 'var(--danger,#e05a5a)' : voiceMuted ? 'var(--steel)' : (VOICE_STATE_DOT[voiceState] || 'var(--char-accent)');
   const phaseLabel = voicePhaseLabel(voiceState, voiceMuted, voiceErrorLabel, voiceLabels);
-  const phaseCaption = voicePhaseCaption(voiceState, voiceMuted, voiceLabels);
+  const phaseCaption = voicePhaseCaption(voiceState, voiceMuted, voicePermissionDenied, voiceErrorLabel, voiceLabels);
 
   return (
     <React.Fragment>

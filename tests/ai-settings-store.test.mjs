@@ -82,13 +82,13 @@ test('clearKey removes a key from memory', async () => {
   assert.equal(store.getKey('kimi'), '');
 });
 
-test('the provider catalog is the single source of truth for voice support - only openai supports it', async () => {
+test('the provider catalog is the single source of truth for voice support - OpenAI and Gemini support it', async () => {
   const store = await settingsSandbox();
   const catalog = store.providerCatalog();
   const byId = Object.fromEntries(catalog.map(p => [p.id, p]));
   assert.equal(byId.openai.supportsVoice, true);
   assert.equal(byId.anthropic.supportsVoice, false);
-  assert.equal(byId.gemini.supportsVoice, false);
+  assert.equal(byId.gemini.supportsVoice, true);
   assert.equal(byId.kimi.supportsVoice, false);
   assert.equal(byId.deepseek.supportsVoice, false);
 });

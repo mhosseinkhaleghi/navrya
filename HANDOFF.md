@@ -1,9 +1,9 @@
 # Handoff
 
 - Active task: `feat/gemini-provider` (owner: Codex, branch: `feat/gemini-provider`).
-- Changed files: Gemini is an additive native GenerateContent gateway provider with server/admin/env/Docker wiring, model glyph, regenerated character bundles, and focused regression coverage; Kimi remains integrated and is hidden from ordinary selectors unless already active.
-- Validation: Node 22 `COMMUNITY_API_PORT=0 npm test` (2,336 passing), `npm run build`, and `git diff --check` passed.
-- Next: set `GEMINI_API_KEY` in the approved deployment secret store, configure Gemini pricing before enabling `AI_WALLET_ENFORCED` for Gemini calls, promote this task branch to `dev` only on an explicit request, then perform a real signed-in Gemini text/vision check. Gemini voice is intentionally not part of this change.
+- Changed files: Gemini remains an additive native GenerateContent gateway provider; the current follow-up adds Gemini Live microphone transcription with one-use constrained browser tokens and server-side Gemini TTS for NAVRYA-approved replies only. OpenAI Voice remains unchanged; Kimi remains integrated and hidden from ordinary selectors unless already active. The Voice console now labels a true permission denial separately from a configuration or connection error.
+- Validation: the Gemini Voice focused regression set passes 106/106 with isolated ports, `npm run build` passes, and `git diff --check` passes. A parallel full-suite run encountered seven pre-existing server-runner crashes (`SIGSEGV`/one dependent fetch failure) under forced ephemeral ports, so it is not recorded as a feature failure or a green full-suite run. No browser or deployment verification has been claimed.
+- Next: run the local validation gates, then use a signed-in browser with a valid Gemini API key and billing to test a multi-turn Gemini Voice session. Set `GEMINI_API_KEY` in the approved deployment secret store and configure Gemini pricing before enabling `AI_WALLET_ENFORCED` for Gemini calls. Promote only on an explicit request.
 
 - Active task: `fix/google-sign-in-client` (owner: Codex).
 - Changed files: `public/pages/select/app.js`, `server/community/routes.auth.mjs`, `.env.example`, `.env.production.example`, and `tests/login-select-flow.test.mjs` configure and verify the new Google web client ID; this handoff records the work.

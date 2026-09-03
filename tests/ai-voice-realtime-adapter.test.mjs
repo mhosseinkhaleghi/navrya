@@ -223,9 +223,12 @@ test('voice turns are serialized through TurnCoordinator - never processed concu
 // stays a pure transport, see this file's own test above) - POST /api/ai/voice/speak, same-origin,
 // same session-cookie auth every other /api/ai/* route uses. Only reached at all when the mint
 // response reported ttsProvider:'elevenlabs'; the key never leaves the server.
-test('fetchVoiceProviderSpeak POSTs to the same-origin /api/ai/voice/speak endpoint and is wired into createVoiceSession as fetchSpeakAudio', () => {
+test('fetchVoiceProviderSpeak remains wired into the OpenAI transport, while Gemini uses its own same-origin Live session and TTS endpoints', () => {
   assert.match(dockViewSource, /async function fetchVoiceProviderSpeak\(language, text\)[\s\S]{0,400}fetch\('\/api\/ai\/voice\/speak', \{/);
-  assert.match(dockViewSource, /fetchSpeakAudio: fetchVoiceProviderSpeak/);
+  assert.match(dockViewSource, /fetch\('\/api\/ai\/gemini-live\/session', \{/);
+  assert.match(dockViewSource, /fetch\('\/api\/ai\/gemini-live\/speak', \{/);
+  assert.match(dockViewSource, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  assert.match(dockViewSource, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak/);
 });
 
 // ElevenLabs voice-provider follow-up (per-character/gender voice routing): both the mint and

@@ -170,12 +170,13 @@ test('no browser SpeechSynthesis is ever used as a second, competing voice engin
   assert.doesNotMatch(dockViewSrc, /speechSynthesis|SpeechSynthesisUtterance/i);
 });
 
-test('the Voice session, TurnCoordinator, and PlaybackController are all created exactly once per ChatDock mount (empty-deps effect) and torn down on unmount - no duplicate session/listeners/queues on a remount', () => {
-  const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('voiceRef.current = createVoiceSession({'), dockViewSrc.indexOf('function toggleVoice()'));
+test('the provider-aware Voice session, TurnCoordinator, and PlaybackController are recreated only when the active provider changes and torn down cleanly', () => {
+  const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('const useGeminiLive = providerId === \'gemini\';'), dockViewSrc.indexOf('function toggleVoice()'));
+  assert.match(effectBlock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
   assert.match(effectBlock, /playbackControllerRef\.current = window\.TradeJournalAIVoicePlaybackController\.create\(/);
   assert.match(effectBlock, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
   assert.match(effectBlock, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); \};/);
-  assert.match(effectBlock, /\}, \[\]\);/);
+  assert.match(effectBlock, /\}, \[providerId\]\);/);
 });
 
 test('every one of the new voiceDock* keys exists, with a real (non-empty, non-key-name) value, in all four supported languages', () => {

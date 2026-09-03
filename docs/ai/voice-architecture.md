@@ -3,6 +3,9 @@
 `navrya-src/aiVoiceRealtime.js` → `window.TradeJournalAIVoiceRealtime` (browser transport adapter)
 `server/pattern-ai-server.mjs` → `mintRealtimeClientSecret()` / `POST /api/ai/realtime/session`
 
+`navrya-src/geminiLiveVoice.js` → Gemini Live browser transport adapter
+`server/pattern-ai-server.mjs` → `POST /api/ai/gemini-live/session` / `POST /api/ai/gemini-live/speak`
+
 Adds OpenAI Realtime Voice (browser WebRTC) as a second input/output *channel* for the existing
 ChatDock/Copilot runtime. It is not a second AI brain: the Realtime model never decides what
 NAVRYA should do or say. It transcribes speech and, on request, reads back an exact sentence
@@ -70,6 +73,24 @@ Mic → getUserMedia → RealtimeSession (WebRTC) → OpenAI Realtime API
                                     ▼
         session.transport.requestResponse({ instructions: speak(voiceReply) })
 ```
+
+## Gemini Voice: separate transport, same decision path
+
+Gemini Voice is an additive option selected by choosing Gemini in the existing provider control;
+it does not replace or change the OpenAI Voice path. Its microphone audio goes directly from the
+browser to Gemini Live using a server-minted, one-use constrained token. The browser never gets
+`GEMINI_API_KEY`.
+
+Gemini Live is deliberately used for finalized transcription rather than autonomous replies.
+Each final transcript still takes the same `chatDockView.jsx` → `submit()` route above. Gemini TTS
+then renders only the resulting approved `voiceReply`/`reply`; it has no access to tools, action
+selection, workflow state, or the ability to alter the answer. This preserves the one-brain
+contract and keeps text, OpenAI Voice, and Gemini Voice in one conversation.
+
+The server controls `GEMINI_LIVE_MODEL` (default `gemini-3.5-transcribe-live`) and
+`GEMINI_TTS_MODEL` (default `gemini-3.1-flash-tts-preview`). They are supplied to the `pattern-ai`
+service only. The Gemini integration is implemented and regression-tested, but it is not marked
+browser-verified or release-ready until a signed-in user completes a real Gemini key/billing test.
 
 ## E2/E4/E5 needed zero action- or feature-specific voice code
 

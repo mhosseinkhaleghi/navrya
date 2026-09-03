@@ -4,6 +4,7 @@ import { ChatDock } from '../public/pages/shared/navrya/components/assistant/Cha
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
 import { CompanionCard } from '../public/pages/shared/navrya/components/assistant/CompanionCard.jsx';
 import { createVoiceSession, VOICE_STATES } from './aiVoiceRealtime.js';
+import { createGeminiLiveSession } from './geminiLiveVoice.js';
 
 function fieldLabel(tradeI18n, key) { return tradeI18n ? tradeI18n.t(key) : key; }
 function fieldNumber(tradeI18n, value) { return tradeI18n ? tradeI18n.number(value, { maximumFractionDigits: 4 }) : String(value); }
@@ -468,6 +469,32 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return response.json();
   }
 
+  async function fetchGeminiLiveSession(language) {
+    const response = await fetch('/api/ai/gemini-live/session', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: settingsStore.getKey('gemini'), language })
+    });
+    if (!response.ok) {
+      let code = 'GEMINI_LIVE_SESSION_FAILED';
+      try { const body = await response.json(); if (body && body.error) code = body.error; } catch (_) {}
+      const error = new Error(code); error.code = code; error.status = response.status; throw error;
+    }
+    return response.json();
+  }
+
+  async function fetchGeminiSpeak(language, text) {
+    const response = await fetch('/api/ai/gemini-live/speak', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: settingsStore.getKey('gemini'), language, text })
+    });
+    if (!response.ok) {
+      let code = 'GEMINI_TTS_FAILED';
+      try { const body = await response.json(); if (body && body.error) code = body.error; } catch (_) {}
+      throw new Error(code);
+    }
+    return response.json();
+  }
+
   // ElevenLabs voice-provider follow-up: injected into aiVoiceRealtime.js as fetchSpeakAudio, the
   // same pattern as fetchRealtimeSession above - that module keeps zero knowledge of the real HTTP
   // endpoint. Only reached when mintRealtimeClientSecret()'s own response (fetchRealtimeSession's
@@ -579,10 +606,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   React.useEffect(() => {
-    voiceRef.current = createVoiceSession({
+    const useGeminiLive = providerId === 'gemini';
+    const createTransport = useGeminiLive ? createGeminiLiveSession : createVoiceSession;
+    voiceRef.current = createTransport({
       language: i18n.language(),
-      fetchSession: fetchRealtimeSession,
-      fetchSpeakAudio: fetchVoiceProviderSpeak,
+      fetchSession: useGeminiLive ? fetchGeminiLiveSession : fetchRealtimeSession,
+      fetchSpeakAudio: useGeminiLive ? fetchGeminiSpeak : fetchVoiceProviderSpeak,
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,
@@ -715,7 +744,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     });
     return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [providerId]);
 
   // Journey G UX correction, item 7: the real trigger point for the Voice Companion opening -
   // aiVoiceRealtime.js's own connect() (a pure transport, untouched - see that file's header
