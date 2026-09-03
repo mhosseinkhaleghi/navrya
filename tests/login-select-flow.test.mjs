@@ -49,6 +49,7 @@ class FakeNode {
     return {
       add(c) { if (self.className.split(' ').indexOf(c) === -1) self.className = (self.className + ' ' + c).trim(); },
       remove(c) { self.className = self.className.split(' ').filter((x) => x !== c).join(' '); },
+      contains(c) { return self.className.split(' ').indexOf(c) > -1; },
       toggle(c, on) { const has = self.className.split(' ').indexOf(c) > -1; const want = on === undefined ? !has : on; if (want && !has) this.add(c); else if (!want && has) this.remove(c); }
     };
   }
@@ -65,7 +66,7 @@ function characterCard(id) {
 }
 
 function buildSandbox(localStorage, isStoredUserValidImpl) {
-  const ids = ['stepChipAccount', 'stepChipCharacter', 'stepAccount', 'stepCharacter', 'showcaseMedia', 'showcaseCount', 'showcaseBody', 'showcaseRole', 'showcaseTitle', 'showcaseQuote', 'showcaseTrait0', 'showcaseTrait1', 'showcaseTrait2', 'showcaseTrait3', 'authCardTitle', 'authCardSub', 'tabSignin', 'tabSignup', 'googleBtn', 'googleLabel', 'googleAuthModal', 'googleAuthModalLabel', 'nameField', 'nameInput', 'emailInput', 'passwordInput', 'forgotLink', 'passwordChecklist', 'passwordStrengthFill', 'pwReqLength', 'pwReqCommon', 'pwReqIdentifier', 'authError', 'continueBtn', 'continueLabel', 'switchPrompt', 'switchAction', 'pickedBar', 'pickedCrest', 'pickedTitle', 'pickedPlaceholder', 'backBtn', 'enterBtn', 'languageButton', 'languageMenu', 'currentLanguage', 'toast'];
+  const ids = ['stepChipAccount', 'stepChipCharacter', 'stepAccount', 'stepCharacter', 'showcaseMedia', 'showcaseCount', 'showcaseBody', 'showcaseRole', 'showcaseTitle', 'showcaseQuote', 'showcaseTrait0', 'showcaseTrait1', 'showcaseTrait2', 'showcaseTrait3', 'authCardTitle', 'authCardSub', 'tabSignin', 'tabSignup', 'googleBtn', 'googleLabel', 'googleAuthModal', 'googleAuthModalLabel', 'googleAuthModalHint', 'nameField', 'nameInput', 'emailInput', 'passwordInput', 'forgotLink', 'passwordChecklist', 'passwordStrengthFill', 'pwReqLength', 'pwReqCommon', 'pwReqIdentifier', 'authError', 'continueBtn', 'continueLabel', 'switchPrompt', 'switchAction', 'pickedBar', 'pickedCrest', 'pickedTitle', 'pickedPlaceholder', 'backBtn', 'enterBtn', 'languageButton', 'languageMenu', 'currentLanguage', 'toast'];
   const byId = {};
   for (const id of ids) byId[id] = new FakeNode('div');
   byId.stepCharacter.hidden = true; // matches index.html's `hidden` attribute
@@ -95,12 +96,22 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
     addEventListener() {}
   };
 
+  // Deferred (non-zero-delay) setTimeout calls are queued here instead of either running
+  // synchronously or being silently dropped - a test that cares about one (the debounced
+  // Google-prompt-error check, the success-state auto-advance) calls els.flushTimeouts() to run
+  // every call still pending, in order. clearTimeout actually cancels (removes from the queue)
+  // so a flush never fires something the real code already cancelled. A test that never calls
+  // flushTimeouts sees the exact same "never fires" behavior as before any of this existed.
+  const pendingTimeouts = new Map();
+  let nextTimeoutId = 1;
   const sandbox = {
     window: {}, document, localStorage: localStorage || memoryStorage(),
-    // A real (deferred) setTimeout stand-in: showToast() schedules a delayed "hide again"
-    // callback that must NOT run synchronously. Only fire zero-delay calls (initGoogle's
-    // `window.setTimeout(initGoogle, 0)`) synchronously.
-    setTimeout: (fn, delay) => { if (!delay) fn(); return 0; }, clearTimeout() {},
+    // Only fire zero-delay calls (initGoogle's `window.setTimeout(initGoogle, 0)`) synchronously.
+    setTimeout: (fn, delay) => {
+      if (!delay) { fn(); return 0; }
+      const id = nextTimeoutId++; pendingTimeouts.set(id, fn); return id;
+    },
+    clearTimeout: (id) => { pendingTimeouts.delete(id); },
     setInterval: () => 0, clearInterval() {}
   };
   sandbox.window = Object.assign(sandbox.window, {
@@ -126,7 +137,8 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
       ...byId, langButtons, characterCards,
       hunterCard: characters.hunter.card, hunterSelect: characters.hunter.selectButton,
       engineerCard: characters.engineer.card, engineerSelect: characters.engineer.selectButton,
-      postMessages: [], postMessageTargetOrigins: []
+      postMessages: [], postMessageTargetOrigins: [],
+      flushTimeouts: () => { const fns = Array.from(pendingTimeouts.values()); pendingTimeouts.clear(); fns.forEach((fn) => fn()); }
     }
   };
 }
@@ -166,12 +178,22 @@ test('switching to the Sign up tab reveals the trader-name field; switching back
   assert.equal(els.nameField.hidden, true);
 });
 
-test('the Google button never crashes when Google Identity Services is unavailable, and shows a toast instead of advancing', async () => {
+test('the Google button never crashes when Google Identity Services is unavailable, and shows the auth modal\'s error state instead of advancing', async () => {
   const els = await load(memoryStorage());
   fire(els.googleBtn, 'click');
-  assert.match(els.toast.className, /show/, 'a "not configured" toast is shown instead of silently failing');
+  assert.equal(els.googleAuthModal.hidden, false, 'the modal itself carries the error, not a toast');
+  assert.equal(els.googleAuthModal.dataset.state, 'error');
+  assert.match(els.googleAuthModalLabel.textContent, /not configured/);
   assert.equal(els.stepAccount.hidden, false, 'still on the account step');
   assert.equal(els.stepCharacter.hidden, true);
+});
+
+test('clicking the Google button shows the loading modal immediately, before Google ever hands back a credential', async () => {
+  const google = { accounts: { id: { initialize: () => {}, prompt: () => {} } } };
+  const els = await load(memoryStorage(), null, undefined, google);
+  fire(els.googleBtn, 'click');
+  assert.equal(els.googleAuthModal.hidden, false, 'no gap where nothing is visible while Google\'s own picker loads');
+  assert.equal(els.googleAuthModal.dataset.state, 'loading');
 });
 
 test('choosing a Google account shows the loading modal then the success state, and does not jump to the Character step immediately', async () => {
@@ -181,30 +203,60 @@ test('choosing a Google account shows the loading modal then the success state, 
   fire(els.googleBtn, 'click');
   assert.match(els.googleBtn.className, /is-loading/, 'button shows a loading state as soon as it is clicked');
   await googleCallback({ credential: 'fake-id-token' });
-  assert.doesNotMatch(els.googleBtn.className, /is-loading/, 'button loading clears once the modal takes over');
+  assert.doesNotMatch(els.googleBtn.className, /is-loading/, 'button loading clears once the modal resolves');
   assert.equal(els.googleAuthModal.hidden, false);
   assert.equal(els.googleAuthModal.dataset.state, 'success');
   assert.equal(els.googleAuthModalLabel.textContent, 'You’re in — pick your character.', 'label switches to the success copy');
   assert.equal(els.stepCharacter.hidden, true, 'advancing is deferred, the success state gets a beat on screen first');
 });
 
-test('a failed Google credential exchange hides the auth modal and shows the same toast as other auth errors', async () => {
+test('a failed Google credential exchange turns the modal into its error state (same message as other auth errors) instead of hiding it', async () => {
   let googleCallback = null;
   const google = { accounts: { id: { initialize: (opts) => { googleCallback = opts.callback; }, prompt: () => {} } } };
   const els = await load(memoryStorage(), () => ({ loginWithGoogle: async () => { throw new Error('GOOGLE_TOKEN_INVALID'); } }), undefined, google);
   fire(els.googleBtn, 'click');
   await googleCallback({ credential: 'bad-token' });
-  assert.equal(els.googleAuthModal.hidden, true, 'modal is dismissed on error');
-  assert.match(els.toast.className, /show/);
+  assert.equal(els.googleAuthModal.hidden, false, 'stays open so the user can read why, instead of a toast');
+  assert.equal(els.googleAuthModal.dataset.state, 'error');
+  assert.equal(els.googleAuthModalLabel.textContent, 'GOOGLE_TOKEN_INVALID');
   assert.equal(els.stepCharacter.hidden, true, 'still on the account step');
+  fire(els.googleAuthModal, 'click');
+  assert.equal(els.googleAuthModal.hidden, true, 'tapping the error modal dismisses it');
 });
 
-test('a Google prompt that never displays (e.g. third-party cookies blocked) clears the button loading state instead of leaving it stuck', async () => {
+test('a Google prompt that never displays (e.g. third-party cookies blocked) shows the modal\'s error state once the grace window elapses, instead of leaving the button stuck', async () => {
   const google = { accounts: { id: { initialize: () => {}, prompt: (notify) => notify({ isNotDisplayed: () => true, isSkippedMoment: () => false }) } } };
   const els = await load(memoryStorage(), null, undefined, google);
   fire(els.googleBtn, 'click');
+  assert.equal(els.googleAuthModal.dataset.state, 'loading', 'not yet committed to an error before the grace window elapses');
+  els.flushTimeouts();
   assert.doesNotMatch(els.googleBtn.className, /is-loading/);
-  assert.match(els.toast.className, /show/);
+  assert.equal(els.googleAuthModal.dataset.state, 'error');
+  assert.equal(els.googleAuthModalHint.textContent, 'Tap to dismiss');
+});
+
+test('a Google credential arriving just after a skipped-moment notification wins the race - no error flash before success', async () => {
+  let googleCallback = null;
+  const google = { accounts: { id: {
+    initialize: (opts) => { googleCallback = opts.callback; },
+    prompt: (notify) => notify({ isNotDisplayed: () => false, isSkippedMoment: () => true })
+  } } };
+  const els = await load(memoryStorage(), null, undefined, google);
+  fire(els.googleBtn, 'click');
+  await googleCallback({ credential: 'fake-id-token' });
+  els.flushTimeouts();
+  assert.notEqual(els.googleAuthModal.dataset.state, 'error', 'a credential that already arrived must win over the debounced error check');
+  assert.equal(els.googleAuthModal.dataset.state, 'success');
+});
+
+test('a Google prompt blocked by Chrome\'s own third-party sign-in setting shows an actionable message, not the generic one', async () => {
+  const google = { accounts: { id: { initialize: () => {}, prompt: (notify) => notify({ isNotDisplayed: () => true, isSkippedMoment: () => false, getNotDisplayedReason: () => 'suppressed_by_user' }) } } };
+  const els = await load(memoryStorage(), null, undefined, google);
+  fire(els.googleBtn, 'click');
+  els.flushTimeouts();
+  assert.doesNotMatch(els.googleBtn.className, /is-loading/);
+  assert.equal(els.googleAuthModal.dataset.state, 'error');
+  assert.match(els.googleAuthModalLabel.textContent, /icon left of your address bar/);
 });
 
 test('submitting the sign-in form calls login() with the entered credentials and advances to the Character step', async () => {

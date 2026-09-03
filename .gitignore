@@ -2,6 +2,8 @@ node_modules/
 graphify-out/
 uploads/
 .env
+docker-compose.override.yml
+public/version.json
 dist/
 tailadmin-reference/
 # Persian Voice Quality gate: ad-hoc real-audio A/B tooling + generated WAV output - matches this

@@ -44,7 +44,7 @@ const copy = {
     rankLabel: 'رتبهٔ کنونی', levelWord: 'LEVEL', pathToLevel: 'مسیر تا سطح {n}',
     xpOf: '{xp} از {max} امتیاز', xpToNext: '{xp} امتیاز تا سطح بعد', maxLevelLine: 'به بالاترین سطح رسیدید',
     pendingSync: '{n} امتیاز در انتظار همگام‌سازی', nextRewardLabel: 'پاداش بعدی',
-    tabIdentity: 'هویت', tabLevel: 'سطح و پیشرفت', tabAch: 'دستاوردها', tabSub: 'اشتراک', tabRole: 'نقش',
+    tabIdentity: 'هویت', tabLevel: 'سطح و پیشرفت', tabAch: 'دستاوردها', tabSub: 'اشتراک', tabRole: 'نقش', logoutBtn: 'خروج از حساب',
 
     pathTitle: 'مسیر پیشرفت', pathHint: 'هر سطح یک توانایی تازه در محصول باز می‌کند', pathOfLine: 'سطح {cur} از {max}',
     gateTitle: 'دروازهٔ سطح {n}', gateSub: 'امتیاز تنها بخشی از ماجراست؛ برای عبور باید این کارها را هم تمام کنید.',
@@ -178,7 +178,7 @@ const copy = {
     rankLabel: 'Current rank', levelWord: 'LEVEL', pathToLevel: 'Path to level {n}',
     xpOf: '{xp} of {max} XP', xpToNext: '{xp} XP to next level', maxLevelLine: 'Maximum level reached',
     pendingSync: '{n} XP pending sync', nextRewardLabel: 'Next reward',
-    tabIdentity: 'Identity', tabLevel: 'Level & progress', tabAch: 'Achievements', tabSub: 'Subscription', tabRole: 'Role',
+    tabIdentity: 'Identity', tabLevel: 'Level & progress', tabAch: 'Achievements', tabSub: 'Subscription', tabRole: 'Role', logoutBtn: 'Log out',
 
     pathTitle: 'Progression path', pathHint: 'Every level unlocks a new product ability', pathOfLine: 'Level {cur} of {max}',
     gateTitle: 'Level {n} gate', gateSub: 'XP is only part of it - you also need to finish these to pass.',
@@ -312,7 +312,7 @@ const copy = {
     rankLabel: 'الرتبة الحالية', levelWord: 'LEVEL', pathToLevel: 'المسار إلى المستوى {n}',
     xpOf: '{xp} من {max} نقطة', xpToNext: '{xp} نقطة للمستوى التالي', maxLevelLine: 'تم بلوغ أعلى مستوى',
     pendingSync: '{n} نقطة بانتظار المزامنة', nextRewardLabel: 'المكافأة التالية',
-    tabIdentity: 'الهوية', tabLevel: 'المستوى والتقدم', tabAch: 'الإنجازات', tabSub: 'الاشتراك', tabRole: 'الدور',
+    tabIdentity: 'الهوية', tabLevel: 'المستوى والتقدم', tabAch: 'الإنجازات', tabSub: 'الاشتراك', tabRole: 'الدور', logoutBtn: 'تسجيل الخروج',
 
     pathTitle: 'مسار التقدم', pathHint: 'كل مستوى يفتح قدرة جديدة في المنتج', pathOfLine: 'المستوى {cur} من {max}',
     gateTitle: 'بوابة المستوى {n}', gateSub: 'النقاط جزء فقط من القصة - يجب إكمال هذه أيضاً للعبور.',
@@ -446,7 +446,7 @@ const copy = {
     rankLabel: 'Rango actual', levelWord: 'NIVEL', pathToLevel: 'Camino al nivel {n}',
     xpOf: '{xp} de {max} XP', xpToNext: '{xp} XP para el siguiente nivel', maxLevelLine: 'Nivel máximo alcanzado',
     pendingSync: '{n} XP pendiente de sincronización', nextRewardLabel: 'Próxima recompensa',
-    tabIdentity: 'Identidad', tabLevel: 'Nivel y progreso', tabAch: 'Logros', tabSub: 'Suscripción', tabRole: 'Rol',
+    tabIdentity: 'Identidad', tabLevel: 'Nivel y progreso', tabAch: 'Logros', tabSub: 'Suscripción', tabRole: 'Rol', logoutBtn: 'Cerrar sesión',
 
     pathTitle: 'Camino de progresión', pathHint: 'Cada nivel desbloquea una nueva capacidad del producto', pathOfLine: 'Nivel {cur} de {max}',
     gateTitle: 'Puerta del nivel {n}', gateSub: 'El XP es solo una parte - también debes completar esto para avanzar.',
@@ -2457,10 +2457,11 @@ function AccountProfileView({ initialTab, character }) {
           <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.25, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'dossierTitle')}</h1>
           <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{tr(lang, 'dossierSubtitle')}</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <SummaryTile icon="trending-up" label={tr(lang, 'statLevel')} value={digits(lang, level)} />
           <SummaryTile icon="zap" label={tr(lang, 'statXp')} value={digits(lang, profile.xpTotal)} />
           <SummaryTile icon="trophy" label={tr(lang, 'statAch')} value={ratio(lang, achDone, achTotal)} />
+          <Button variant="ghost" size="md" icon="logout" onClick={() => window.TradeJournalDevUserSwitcher.logout()}>{tr(lang, 'logoutBtn')}</Button>
         </div>
       </div>
 

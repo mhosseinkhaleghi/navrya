@@ -59,7 +59,7 @@ function checkBasicAuth(req) {
 // what tests inject a fake repo into; the real, pg-backed, port-binding instance lives only
 // in server/community-api-server.mjs so that importing THIS module never risks a port
 // collision between multiple test files that each want their own createApp() instance.
-export function createApp({ repo, uploadsDir }) {
+export function createApp({ repo, uploadsDir, authDeps }) {
   const app = express();
 
   // Exactly the deployment topology's own reverse-proxy hop count (Caddy in front, one hop -
@@ -142,7 +142,7 @@ export function createApp({ repo, uploadsDir }) {
   // requireAuth/csrfProtection below.
   app.use('/api/webhooks', routesWebhooksBsc.router(repo));
 
-  app.use('/api/auth', routesAuth.router(repo)); // register/login/google/logout/sessions/password/email - bootstraps identity, applies its own per-route auth+CSRF
+  app.use('/api/auth', routesAuth.router(repo, authDeps)); // register/login/google/logout/sessions/password/email - bootstraps identity, applies its own per-route auth+CSRF (authDeps: test-only Google-verify override)
   app.use('/api/auth/oidc', routesAuthOidc.router(repo)); // generic OIDC start/callback
 
   app.use(requireAuth(repo));

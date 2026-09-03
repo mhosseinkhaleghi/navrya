@@ -28,6 +28,17 @@ function googleClientId() {
   return String(process.env.GOOGLE_CLIENT_ID || '').trim();
 }
 
+// Extracted so tests can inject a fake (router's second, optional `deps` param) instead of
+// needing a real Google-signed ID token - nothing about the real path below changes.
+async function defaultVerifyGoogleCredential(clientId, credential) {
+  try {
+    const ticket = await new OAuth2Client(clientId).verifyIdToken({ idToken: credential, audience: clientId });
+    return ticket.getPayload();
+  } catch (_) {
+    throw new ApiError(401, 'GOOGLE_TOKEN_INVALID');
+  }
+}
+
 // Mounted at /api/auth, before the global requireAuth gate (server/community/app.mjs) - this
 // router applies requireAuth/optionalAuth itself, per route, exactly where identity is actually
 // needed (register/login/google/oidc/password-reset/legacy-exchange are necessarily pre-auth;
@@ -56,7 +67,8 @@ function dummyHash() {
   return dummyHashPromise;
 }
 
-export function router(repo) {
+export function router(repo, deps = {}) {
+  const verifyGoogleCredential = deps.verifyGoogleCredential || defaultVerifyGoogleCredential;
   const r = express.Router();
 
   // ---- Registration / login / Google -------------------------------------------------------
@@ -136,13 +148,7 @@ export function router(repo) {
       const clientId = googleClientId();
       if (!clientId) throw new ApiError(503, 'GOOGLE_AUTH_NOT_CONFIGURED');
 
-      let payload;
-      try {
-        const ticket = await new OAuth2Client(clientId).verifyIdToken({ idToken: credential, audience: clientId });
-        payload = ticket.getPayload();
-      } catch (_) {
-        throw new ApiError(401, 'GOOGLE_TOKEN_INVALID');
-      }
+      const payload = await verifyGoogleCredential(clientId, credential);
       if (!payload || payload.email_verified !== true) throw new ApiError(401, 'GOOGLE_EMAIL_NOT_VERIFIED');
 
       const issuer = 'https://accounts.google.com';
@@ -177,6 +183,38 @@ export function router(repo) {
       const csrfToken = issueSessionCookies(res, rawId, record.id);
       await recordSecurityEvent(repo, { req, userId: user.id, type: 'register', detail: { provider: 'google', email } });
       res.status(201).json({ user: selfUserView(await repo.users.get(user.id)), csrfToken });
+    })
+  );
+
+  // Lets an already-authenticated (password-login) session additionally attach Google sign-in to
+  // the SAME account, so a future "Sign in with Google" resolves straight to it instead of
+  // hitting /google's own EMAIL_ALREADY_REGISTERED refusal. Security model is the opposite of
+  // /google's: which account gets linked comes ONLY from req.currentUser (proven by requireAuth,
+  // i.e. the caller already proved ownership via password login), never from Google's email
+  // claim - unlike an unauthenticated request, there is no email to trust here in the first
+  // place. repo.externalIdentities.link (pg and memory both) refuses IDENTITY_ALREADY_LINKED
+  // when that Google identity already belongs to a different account, and is a harmless no-op
+  // if it is already this account's own - never silently reassigns a link (ADR-0001 section 3).
+  r.post(
+    '/google/link',
+    requireAuth(repo),
+    csrfProtection(),
+    rateLimit({ windowMs: 15 * 60 * 1000, max: 30, keyFn: ipKey('google-link') }),
+    asyncHandler(async (req, res) => {
+      const credential = (req.body || {}).credential;
+      if (!credential) throw new ApiError(400, 'VALIDATION_FAILED');
+      const clientId = googleClientId();
+      if (!clientId) throw new ApiError(503, 'GOOGLE_AUTH_NOT_CONFIGURED');
+
+      const payload = await verifyGoogleCredential(clientId, credential);
+      if (!payload || payload.email_verified !== true) throw new ApiError(401, 'GOOGLE_EMAIL_NOT_VERIFIED');
+
+      await repo.externalIdentities.link({
+        userId: req.currentUser.id, issuer: 'https://accounts.google.com', subject: payload.sub,
+        emailAtLink: normalizeEmail(payload.email)
+      });
+      await recordSecurityEvent(repo, { req, userId: req.currentUser.id, type: 'google_link', detail: {} });
+      res.status(200).json({ user: selfUserView(req.currentUser) });
     })
   );
 

@@ -147,36 +147,64 @@ svg.icon { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: 
 }
 
 /* Matches the shared Modal.jsx dialog shell (scrim + blur backdrop, ink-900 surface, gold frame)
-   so this vanilla pre-login page reads as the same product as the React app past login. */
+   AND Panel.jsx's ornamented-corner "prestige" treatment (see .ga-corner below, a plain-CSS port
+   of Panel.jsx's Ornament) so this pre-login page reads as part of the same gamification system,
+   not a generic browser dialog bolted on in front of it. */
 .google-auth-modal {
   position: fixed; inset: 0; z-index: 7; display: flex; align-items: center; justify-content: center;
   background: var(--scrim); backdrop-filter: blur(3px); animation: navrya-scrim-in var(--dur-hover) var(--ease-out);
 }
 .google-auth-modal[hidden] { display: none; }
 .google-auth-modal-box {
-  display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 36px 44px;
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 36px 44px;
   border: 1px solid var(--border-gold-strong); border-radius: var(--radius-12); background: var(--ink-900);
   box-shadow: var(--shadow-panel); animation: navrya-modal-in var(--dur-expand) var(--ease-out);
 }
-.google-auth-modal-icon { position: relative; width: 36px; height: 36px; }
-.google-auth-spinner, .google-auth-check {
-  position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box;
+.google-auth-modal[data-state="loading"] .google-auth-modal-box { animation: navrya-modal-in var(--dur-expand) var(--ease-out), navrya-glow-pulse 2.2s var(--ease-standard) infinite; }
+.google-auth-modal[data-state="success"] .google-auth-modal-box { box-shadow: var(--shadow-panel), 0 0 40px rgba(90, 212, 150, .35); }
+.ga-corner { position: absolute; width: 12px; height: 12px; pointer-events: none; }
+.ga-corner-tl { top: 4px; left: 4px; border-top: 1px solid var(--border-gold-strong); border-left: 1px solid var(--border-gold-strong); }
+.ga-corner-tr { top: 4px; right: 4px; border-top: 1px solid var(--border-gold-strong); border-right: 1px solid var(--border-gold-strong); }
+.ga-corner-bl { bottom: 4px; left: 4px; border-bottom: 1px solid var(--border-gold-strong); border-left: 1px solid var(--border-gold-strong); }
+.ga-corner-br { bottom: 4px; right: 4px; border-bottom: 1px solid var(--border-gold-strong); border-right: 1px solid var(--border-gold-strong); }
+
+.google-auth-modal-icon { position: relative; width: 40px; height: 40px; }
+.google-auth-glogo, .google-auth-spinner, .google-auth-check, .google-auth-error-icon {
+  position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; opacity: 0; transform: scale(.6);
   transition: opacity var(--dur-progress) var(--ease-standard), transform var(--dur-progress) var(--ease-standard);
 }
+.google-auth-glogo { width: 20px; height: 20px; margin: auto; }
 .google-auth-spinner {
   border-radius: 50%; border: 3px solid rgba(244, 234, 215, .18); border-top-color: var(--gold-warm);
   animation: navrya-spin .8s linear infinite;
 }
-.google-auth-check { opacity: 0; transform: scale(.6); stroke: var(--gold-warm); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.google-auth-check { stroke: var(--gold-warm); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.google-auth-error-icon { stroke: var(--danger); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .google-auth-modal-label { color: var(--text-primary); font: var(--type-body); text-align: center; }
-.google-auth-modal[data-state="success"] .google-auth-spinner { opacity: 0; transform: scale(.6); }
-.google-auth-modal[data-state="success"] .google-auth-check { opacity: 1; transform: scale(1); }
+.google-auth-modal-hint { display: none; color: var(--text-muted); font: var(--type-caption); text-align: center; margin-top: -8px; }
+.google-auth-modal[data-state="loading"] .google-auth-glogo,
+.google-auth-modal[data-state="loading"] .google-auth-spinner { opacity: 1; transform: scale(1); }
+.google-auth-modal[data-state="success"] .google-auth-check { opacity: 1; transform: scale(1); animation: navrya-pop var(--dur-expand) var(--ease-out); }
+.google-auth-modal[data-state="error"] .google-auth-error-icon { opacity: 1; transform: scale(1); }
+.google-auth-modal[data-state="error"] .google-auth-modal-hint { display: block; }
+.google-auth-modal[data-state="error"] { cursor: pointer; }
 
 @keyframes navrya-spin { to { transform: rotate(360deg); } }
 @keyframes navrya-scrim-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes navrya-modal-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes navrya-glow-pulse {
+  0%, 100% { box-shadow: var(--shadow-panel), 0 0 0 rgba(183, 138, 74, 0); }
+  50% { box-shadow: var(--shadow-panel), 0 0 26px rgba(183, 138, 74, .28); }
+}
+@keyframes navrya-pop {
+  0% { opacity: 0; transform: scale(.6); }
+  60% { opacity: 1; transform: scale(1.25); }
+  100% { opacity: 1; transform: scale(1); }
+}
 @media (prefers-reduced-motion: reduce) {
   .google-auth-spinner, .google-btn.is-loading::after { animation: none; }
+  .google-auth-modal[data-state="loading"] .google-auth-modal-box { animation: navrya-modal-in var(--dur-expand) var(--ease-out); }
+  .google-auth-modal[data-state="success"] .google-auth-check { animation: none; }
 }
 
 .or-divider { display: flex; align-items: center; gap: 14px; }

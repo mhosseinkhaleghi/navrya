@@ -70,7 +70,31 @@
     }, []);
 
     React.useEffect(function () { document.title = current.title; }, [current]);
-    return React.createElement('main', { className: 'app-frame' }, React.createElement('iframe', { key: page, ref: iframeRef, title: current.title, src: current.source }));
+    return React.createElement('main', { className: 'app-frame' },
+      React.createElement('iframe', { key: page, ref: iframeRef, title: current.title, src: current.source }),
+      React.createElement(VersionBadge)
+    );
+  }
+
+  // Reads the build/dev-server-generated public/version.json (see scripts/write-version.mjs) so
+  // every page - including the login/select screen, since it's routed through this same outer
+  // shell - can show exactly which commit is running. Silently renders nothing if the file is
+  // missing (e.g. this shell opened without ever running dev/build through npm).
+  function VersionBadge() {
+    const state = React.useState(null);
+    const info = state[0];
+    const setInfo = state[1];
+    React.useEffect(function () {
+      fetch('version.json').then(function (r) { return r.ok ? r.json() : null; }).then(setInfo).catch(function () {});
+    }, []);
+    if (!info) return null;
+    return React.createElement('div', {
+      style: {
+        position: 'fixed', left: 8, bottom: 6, zIndex: 1, pointerEvents: 'none',
+        font: '500 10px/1.4 -apple-system, BlinkMacSystemFont, sans-serif', letterSpacing: '.02em',
+        color: 'rgba(244, 234, 215, .35)', userSelect: 'none'
+      }
+    }, 'v' + info.version + (info.dirty ? '*' : ''));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));

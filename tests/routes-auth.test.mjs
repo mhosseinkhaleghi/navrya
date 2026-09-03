@@ -5,13 +5,27 @@ import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { parseCookie } from 'cookie';
 import { sessionCookieName, csrfCookieName } from '../server/community/security/cookies.mjs';
 import { __resetRateLimitStoreForTests, createMemoryRateLimitStore, __setRateLimitStoreForTests } from '../server/community/security/rate-limit.mjs';
+import { ApiError } from '../server/community/errors.mjs';
 
 let server, baseUrl, repo;
 
+// A fake Google ID-token verifier (routes.auth.mjs's injectable `deps.verifyGoogleCredential`) -
+// the "credential" is just the JSON-encoded payload it should resolve to, since there is no way
+// to produce a real Google-signed token in a test. Mirrors defaultVerifyGoogleCredential's own
+// contract: throws the same ApiError a real invalid/unparseable token would.
+async function fakeVerifyGoogleCredential(clientId, credential) {
+  try { return JSON.parse(credential); }
+  catch (_) { throw new ApiError(401, 'GOOGLE_TOKEN_INVALID'); }
+}
+function fakeGoogleCredential(sub, email, emailVerified = true) {
+  return JSON.stringify({ sub, email, email_verified: emailVerified, name: 'Google User' });
+}
+
 before(async () => {
   process.env.ALLOWED_ORIGINS = 'http://app.example.test';
+  process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
   repo = createMemoryRepo();
-  server = createApp({ repo, uploadsDir: '/tmp' }).listen(0);
+  server = createApp({ repo, uploadsDir: '/tmp', authDeps: { verifyGoogleCredential: fakeVerifyGoogleCredential } }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
@@ -338,4 +352,54 @@ test('legacy-exchange, while inside its sunset window, trades a real legacy bear
   } finally {
     delete process.env.LEGACY_AUTH_SUNSET_AT;
   }
+});
+
+test('google/link: an authenticated (password) session can attach Google, and /google login then resolves to that same account instead of EMAIL_ALREADY_REGISTERED', async () => {
+  const { jar, body } = await register(uniqueEmail());
+  const credential = fakeGoogleCredential('g-sub-link-1', 'a-different-address@example.com');
+  const headers = { 'Content-Type': 'application/json', Cookie: cookieHeader(jar), 'x-csrf-token': jar[csrfCookieName()] };
+
+  const linkResponse = await fetch(`${baseUrl}/api/auth/google/link`, { method: 'POST', headers, body: JSON.stringify({ credential }) });
+  assert.equal(linkResponse.status, 200);
+  assert.equal((await linkResponse.json()).user.id, body.user.id);
+
+  const loginResponse = await fetch(`${baseUrl}/api/auth/google`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential }) });
+  assert.equal(loginResponse.status, 200, 'no longer hits EMAIL_ALREADY_REGISTERED now that the identity is linked');
+  assert.equal((await loginResponse.json()).user.id, body.user.id, 'resolves to the SAME account that was password-registered');
+});
+
+test('google/link: never reassigns a Google identity that already belongs to a different account', async () => {
+  const credential = fakeGoogleCredential('g-sub-shared', 'shared@example.com');
+  const owner = await register(uniqueEmail());
+  const ownerLink = await fetch(`${baseUrl}/api/auth/google/link`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookieHeader(owner.jar), 'x-csrf-token': owner.jar[csrfCookieName()] },
+    body: JSON.stringify({ credential })
+  });
+  assert.equal(ownerLink.status, 200);
+
+  const intruder = await register(uniqueEmail());
+  const intruderLink = await fetch(`${baseUrl}/api/auth/google/link`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookieHeader(intruder.jar), 'x-csrf-token': intruder.jar[csrfCookieName()] },
+    body: JSON.stringify({ credential })
+  });
+  assert.equal(intruderLink.status, 409);
+  assert.equal((await intruderLink.json()).error, 'IDENTITY_ALREADY_LINKED');
+});
+
+test('google/link: re-linking the same Google identity to the same account is a harmless no-op', async () => {
+  const { jar } = await register(uniqueEmail());
+  const credential = fakeGoogleCredential('g-sub-idempotent', 'idempotent@example.com');
+  const headers = { 'Content-Type': 'application/json', Cookie: cookieHeader(jar), 'x-csrf-token': jar[csrfCookieName()] };
+  const first = await fetch(`${baseUrl}/api/auth/google/link`, { method: 'POST', headers, body: JSON.stringify({ credential }) });
+  assert.equal(first.status, 200);
+  const second = await fetch(`${baseUrl}/api/auth/google/link`, { method: 'POST', headers, body: JSON.stringify({ credential }) });
+  assert.equal(second.status, 200);
+});
+
+test('google/link: requires an authenticated session - never linkable from a logged-out request', async () => {
+  const response = await fetch(`${baseUrl}/api/auth/google/link`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential: fakeGoogleCredential('g-sub-anon', 'anon@example.com') })
+  });
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, 'AUTH_SESSION_REQUIRED');
 });
