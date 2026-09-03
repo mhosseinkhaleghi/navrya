@@ -76,7 +76,15 @@ When asked to push work to development, run only:
 scripts/push-to-dev.sh
 ```
 
-It rejects dirty or stale work, runs the full test/build gate, and fast-forwards `dev`. GitHub Actions then verifies `dev` only. It does not publish an environment.
+It rejects dirty or stale work, runs the full test/build gate, and fast-forwards `dev`. GitHub Actions then verifies `dev` only. It does not publish an environment. It also hard-requires Node 22+; `.nvmrc` pins this, run `nvm use` first if your shell doesn't pick it up automatically.
+
+Known flake: `npm test` can fail exactly 3 tests in `tests/community-api-server.test.mjs` with `EADDRINUSE 127.0.0.1:8788`, a leftover local server (from an earlier `npm run dev:community-api` or browser-verification session) still bound to that fixed port. Confirm and fix before treating it as a real regression:
+
+```sh
+lsof -nP -iTCP:8788 -sTCP:LISTEN
+kill <that PID>
+scripts/push-to-dev.sh
+```
 
 Only after the explicit request "publish staging" or "push to staging", publish the current verified `dev` revision with:
 
