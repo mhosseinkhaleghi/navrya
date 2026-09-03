@@ -24,7 +24,7 @@
   // anything else, and turning user-scope-guard.js into an ES module the very first script could
   // import was judged a bigger, riskier change for this pass than keeping one small duplicate.
   var root = document.documentElement;
-  var DEFAULT_LANG = 'fa'; // matches every character page's own pre-existing default (<html lang="fa" dir="rtl">)
+  var DEFAULT_LANG = 'en'; // matches the chooser's pre-auth default and avoids an unexpected fa/rtl fallback
   var TIMEOUT_MS = 5000;
   var OWNER_USER_ID_KEY = 'tradejournal:owner-user-id:v1';
 
@@ -120,6 +120,7 @@
     window.__TJ_LANGUAGE_HYDRATE_FAILED__ = true;
     applyLangDir(DEFAULT_LANG);
     reveal();
+    redirectToAccount();
   }
 
   // Dashboard pages (every character page this script loads on) redirect an unauthenticated

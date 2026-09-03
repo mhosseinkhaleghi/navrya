@@ -13,8 +13,8 @@ import { selfUserView } from './security/user-views.mjs';
 import { recordSecurityEvent } from './security/audit.mjs';
 import { rateLimit, ipKey, ipAndIdentifierKey } from './security/rate-limit.mjs';
 import { randomToken, sha256Hex } from './security/crypto-util.mjs';
-import { csrfProtection, issueCsrfToken } from './security/csrf.mjs';
-import { clearAuthCookies } from './security/cookies.mjs';
+import { csrfProtection, issueCsrfToken, verifyCsrfToken } from './security/csrf.mjs';
+import { appendSetCookie, clearAuthCookies, readCsrfCookie, serializeCsrfCookie } from './security/cookies.mjs';
 import { sendMail } from './security/mailer.mjs';
 import { verifyToken as verifyLegacyToken, resolveAuthSecret as legacyAuthSecret } from './auth-tokens.mjs';
 
@@ -52,6 +52,21 @@ function normalizeEmail(email) {
 }
 function looksLikeEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+}
+function sessionLanguage(value) {
+  return value === 'fa' || value === 'ar' || value === 'en' || value === 'es' ? value : 'en';
+}
+function sessionCharacter(value) {
+  return value === 'hunter' || value === 'engineer' || value === 'commander' || value === 'sage' ? value : null;
+}
+function csrfTokenForSession(req, res) {
+  const existing = readCsrfCookie(req);
+  if (verifyCsrfToken(existing, req.sessionId)) return existing;
+  const token = issueCsrfToken(req.sessionId);
+  const expiresAt = new Date(req.sessionRecord.absoluteExpiresAt).getTime();
+  const maxAgeSeconds = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+  appendSetCookie(res, serializeCsrfCookie(token, { maxAgeSeconds }));
+  return token;
 }
 
 // Timing-attack mitigation (instruction #5: "missing-account login is cheaper than
@@ -223,19 +238,21 @@ export function router(repo, deps = {}) {
     '/session',
     optionalAuth(repo),
     asyncHandler(async (req, res) => {
-      if (!req.currentUser) return res.json({ authenticated: false, user: null, csrfToken: null, language: null });
-      // Re-issuing a CSRF token for the SAME session id (not a new session) - issueCsrfToken
-      // mints a fresh nonce each call, all equally valid against this session id, so calling it
-      // again here is correct and requires no extra cookie write.
+      if (!req.currentUser) return res.json({ authenticated: false, user: null, csrfToken: null, language: null, character: null });
+      // The bootstrap response returns the same token that the browser's CSRF cookie carries.
+      // If that cookie is missing or invalid, mint and set a replacement atomically. Returning
+      // a new token without replacing the cookie breaks the signed double-submit contract.
       // Bundles the language preference into this SAME response (one early bootstrap request,
       // per the frontend boot-sequencing requirement) rather than a second round trip to
       // /api/sync/preferences - public/pages/shared/boot-language-gate.js is this response's
       // one and only caller for the zero-flash boot gate.
       const prefs = await repo.userPreferences.listByUser(req.currentUser.id);
       const languagePref = prefs.find((p) => p.id === 'language');
+      const characterPref = prefs.find((p) => p.id === 'character');
       res.json({
-        authenticated: true, user: selfUserView(req.currentUser), csrfToken: issueCsrfToken(req.sessionId),
-        language: languagePref ? languagePref.value : null
+        authenticated: true, user: selfUserView(req.currentUser), csrfToken: csrfTokenForSession(req, res),
+        language: sessionLanguage(languagePref && languagePref.value),
+        character: sessionCharacter(characterPref && characterPref.value)
       });
     })
   );

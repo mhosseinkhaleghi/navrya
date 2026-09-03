@@ -121,13 +121,12 @@ test('loginWithGoogle(credential) POSTs the credential to /api/auth/google', asy
   assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'real-user-id-99');
 });
 
-test('logout() calls POST /api/auth/logout with the real CSRF token, then clears in-memory auth state and purges local caches', async () => {
+test('logout() delegates the CSRF header to csrf-fetch-patch.js, then clears state only after a confirmed server logout', async () => {
   let loggedOutViaServer = false;
-  let sawCsrfHeader = null;
   const fetchImpl = async (url, options) => {
     if (url === '/api/auth/logout') {
       loggedOutViaServer = true;
-      sawCsrfHeader = options.headers['x-csrf-token'];
+      assert.equal(options.headers, undefined, 'the central cookie-mirroring fetch patch owns CSRF headers');
       return { ok: true, json: async () => ({ ok: true }) };
     }
     return { ok: true, json: async () => ({ authenticated: false }) };
@@ -136,21 +135,30 @@ test('logout() calls POST /api/auth/logout with the real CSRF token, then clears
   window.__NAVRYA_AUTH__ = { authenticated: true, userId: 'user-1', user: { id: 'user-1' }, csrfToken: 'real-csrf-token' };
   await window.TradeJournalDevUserSwitcher.logout();
   assert.ok(loggedOutViaServer, 'logout must actually revoke the session server-side, not just clear local state');
-  assert.equal(sawCsrfHeader, 'real-csrf-token');
   assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), '');
   assert.equal(window.top.location.hash, '/', 'logout navigates to the account/login route');
 });
 
-test('logout() still purges/navigates even if the server call fails (offline) - never leaves stale local state behind', async () => {
+test('logout() keeps local auth and route intact when the server call fails, so a live server session is never mistaken for a logout', async () => {
   const fetchImpl = async (url) => {
     if (url === '/api/auth/logout') return Promise.reject(new TypeError('Failed to fetch'));
     return { ok: true, json: async () => ({ authenticated: false }) };
   };
   const { window } = await load(fetchImpl, { noSettingsPanel: true });
   window.__NAVRYA_AUTH__ = { authenticated: true, userId: 'user-1', user: { id: 'user-1' }, csrfToken: 'real-csrf-token' };
-  await window.TradeJournalDevUserSwitcher.logout();
-  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), '');
-  assert.equal(window.top.location.hash, '/');
+  await assert.rejects(() => window.TradeJournalDevUserSwitcher.logout(), /Failed to fetch/);
+  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'user-1');
+  assert.equal(window.top.location.hash, '');
+});
+
+test('logout() rejects a CSRF failure without clearing local auth or routing to the chooser', async () => {
+  const { window } = await load(async (url) => {
+    if (url === '/api/auth/logout') return { ok: false, status: 403, json: async () => ({ error: 'CSRF_TOKEN_MISSING' }) };
+    return { ok: true, json: async () => ({ authenticated: false }) };
+  }, { noSettingsPanel: true, authReady: { authenticated: true, userId: 'user-1', user: { id: 'user-1' }, csrfToken: 'old-token' } });
+  await assert.rejects(() => window.TradeJournalDevUserSwitcher.logout(), (error) => error.code === 'CSRF_TOKEN_MISSING');
+  assert.equal(window.TradeJournalDevUserSwitcher.currentUserId(), 'user-1');
+  assert.equal(window.top.location.hash, '');
 });
 
 test('isStoredUserValid() reflects the real, already-resolved session bootstrap - true when authenticated, false when not', async () => {

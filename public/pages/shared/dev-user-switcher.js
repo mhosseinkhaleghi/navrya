@@ -24,16 +24,25 @@
   function dir() { var l = lang(); return l === 'fa' || l === 'ar' ? 'rtl' : 'ltr'; }
 
   var copy = {
-    fa: { title: 'حساب کاربری', current: 'وارد شده به‌عنوان', logoutBtn: 'خروج', loggedOut: 'با موفقیت خارج شدید.', adminLink: 'پنل مدیریت' },
-    ar: { title: 'حساب المستخدم', current: 'مسجّل الدخول باسم', logoutBtn: 'تسجيل الخروج', loggedOut: 'تم تسجيل الخروج.', adminLink: 'لوحة الإدارة' },
-    en: { title: 'Account', current: 'Logged in as', logoutBtn: 'Log out', loggedOut: 'Logged out.', adminLink: 'Admin' },
-    es: { title: 'Cuenta', current: 'Sesión iniciada como', logoutBtn: 'Cerrar sesión', loggedOut: 'Sesión cerrada.', adminLink: 'Administración' }
+    fa: { title: 'حساب کاربری', current: 'وارد شده به‌عنوان', logoutBtn: 'خروج', loggedOut: 'با موفقیت خارج شدید.', logoutFailed: 'خروج انجام نشد. دوباره تلاش کنید.', adminLink: 'پنل مدیریت' },
+    ar: { title: 'حساب المستخدم', current: 'مسجّل الدخول باسم', logoutBtn: 'تسجيل الخروج', loggedOut: 'تم تسجيل الخروج.', logoutFailed: 'تعذر تسجيل الخروج. حاول مرة أخرى.', adminLink: 'لوحة الإدارة' },
+    en: { title: 'Account', current: 'Logged in as', logoutBtn: 'Log out', loggedOut: 'Logged out.', logoutFailed: 'Could not log out. Try again.', adminLink: 'Admin' },
+    es: { title: 'Cuenta', current: 'Sesión iniciada como', logoutBtn: 'Cerrar sesión', loggedOut: 'Sesión cerrada.', logoutFailed: 'No se pudo cerrar sesión. Inténtalo de nuevo.', adminLink: 'Administración' }
   };
   function t(key) { var l = lang(); return (copy[l] && copy[l][key]) || copy.en[key] || key; }
 
-  function authState() { return window.__NAVRYA_AUTH__ || { authenticated: false, userId: null, user: null, csrfToken: null }; }
+  function authState() { return window.__NAVRYA_AUTH__ || { authenticated: false, userId: null, user: null, csrfToken: null, character: null }; }
   function currentUserId() { return authState().userId || ''; }
   function setAuthState(next) { window.__NAVRYA_AUTH__ = next; }
+  function authFromSession(body) {
+    return {
+      authenticated: Boolean(body && body.authenticated),
+      userId: body && body.user ? body.user.id : null,
+      user: (body && body.user) || null,
+      csrfToken: (body && body.csrfToken) || null,
+      character: body && typeof body.character === 'string' ? body.character : null
+    };
+  }
 
   // On the four character pages, boot-language-gate.js (loaded first, in <head>) already started
   // the one early GET /api/auth/session call and will populate window.__NAVRYA_AUTH_READY__/
@@ -45,17 +54,12 @@
     window.__NAVRYA_AUTH_READY__ = fetch('/api/auth/session', { credentials: 'include' })
       .then(function (response) { return response.ok ? response.json() : { authenticated: false }; })
       .then(function (body) {
-        var auth = {
-          authenticated: Boolean(body && body.authenticated),
-          userId: body && body.user ? body.user.id : null,
-          user: (body && body.user) || null,
-          csrfToken: (body && body.csrfToken) || null
-        };
+        var auth = authFromSession(body);
         setAuthState(auth);
         return auth;
       })
       .catch(function () {
-        var auth = { authenticated: false, userId: null, user: null, csrfToken: null };
+        var auth = { authenticated: false, userId: null, user: null, csrfToken: null, character: null };
         setAuthState(auth);
         return auth;
       });
@@ -74,7 +78,7 @@
   }
 
   function applyLocalLogoutEffects() {
-    setAuthState({ authenticated: false, userId: null, user: null, csrfToken: null });
+    setAuthState({ authenticated: false, userId: null, user: null, csrfToken: null, character: null });
     if (window.TradeJournalUserScopeGuard) window.TradeJournalUserScopeGuard.purgeAll();
     window.top.location.hash = '/';
   }
@@ -88,7 +92,7 @@
           error.code = body && body.error;
           throw error;
         }
-        setAuthState({ authenticated: true, userId: body.user.id, user: body.user, csrfToken: body.csrfToken || null });
+        setAuthState({ authenticated: true, userId: body.user.id, user: body.user, csrfToken: body.csrfToken || null, character: null });
         return body.user;
       });
     });
@@ -104,19 +108,22 @@
     return handleAuthResponse(fetch('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ credential: credential }) }));
   }
 
-  // Attempts real server-side revocation FIRST (the session must actually die, not just look
-  // logged-out locally), then purges every user-scoped local cache, then tells other tabs, then
-  // navigates to the login route - in that order, so a slow/failed network call never leaves
-  // stale local data behind, and a purge never runs before the thing it's protecting against
-  // (a still-valid server session) has actually been asked to end.
+  // Confirm real server-side revocation BEFORE changing local state. csrf-fetch-patch.js owns
+  // the signed double-submit header, so it always mirrors the current CSRF cookie instead of a
+  // stale value returned by an earlier session bootstrap. A failed logout must not pretend to
+  // succeed: that would route to the chooser while the cookie still authenticates it.
   function logout() {
-    var csrf = authState().csrfToken;
-    var request = csrf
-      ? fetch('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'x-csrf-token': csrf } }).catch(function () { /* best-effort - see below */ })
-      : Promise.resolve();
-    return request.then(function () {
+    return fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).then(function (response) {
+      if (response.ok || response.status === 401) return;
+      return response.json().catch(function () { return {}; }).then(function (body) {
+        var error = new Error((body && body.error) || 'LOGOUT_FAILED');
+        error.status = response.status;
+        error.code = body && body.error;
+        throw error;
+      });
+    }).then(function () {
       if (window.TradeJournalUserScopeGuard) window.TradeJournalUserScopeGuard.purgeAll();
-      setAuthState({ authenticated: false, userId: null, user: null, csrfToken: null });
+      setAuthState({ authenticated: false, userId: null, user: null, csrfToken: null, character: null });
       broadcastLogout();
       window.top.location.hash = '/';
     });
@@ -129,6 +136,16 @@
   function isStoredUserValid() {
     var ready = window.__NAVRYA_AUTH_READY__ || Promise.resolve(authState());
     return ready.then(function (auth) { return Boolean(auth && auth.authenticated); });
+  }
+  function refreshSession() {
+    return fetch('/api/auth/session', { credentials: 'include' }).then(function (response) {
+      if (!response.ok) throw new Error('SESSION_REFRESH_FAILED');
+      return response.json();
+    }).then(function (body) {
+      var auth = authFromSession(body);
+      setAuthState(auth);
+      return auth;
+    });
   }
   function ensureUser() {
     return isStoredUserValid().then(function (valid) {
@@ -149,7 +166,7 @@
 
     var logoutBtn = button(t('logoutBtn'), 'tj-secondary');
     logoutBtn.onclick = function () {
-      logout().then(function () { toast(t('loggedOut'), 'success'); });
+      logout().then(function () { toast(t('loggedOut'), 'success'); }).catch(function () { toast(t('logoutFailed'), 'error'); });
     };
     card.append(logoutBtn);
 
@@ -179,7 +196,7 @@
   setTimeout(ensureSwitcher, 0);
 
   window.TradeJournalDevUserSwitcher = {
-    currentUserId: currentUserId, ensureUser: ensureUser, isStoredUserValid: isStoredUserValid,
+    currentUserId: currentUserId, ensureUser: ensureUser, isStoredUserValid: isStoredUserValid, refreshSession: refreshSession,
     register: register, login: login, loginWithGoogle: loginWithGoogle, logout: logout
   };
 }());

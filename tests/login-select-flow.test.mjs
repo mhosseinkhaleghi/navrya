@@ -104,8 +104,13 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
   // flushTimeouts sees the exact same "never fires" behavior as before any of this existed.
   const pendingTimeouts = new Map();
   let nextTimeoutId = 1;
+  const fetchCalls = [];
   const sandbox = {
     window: {}, document, localStorage: localStorage || memoryStorage(),
+    fetch: async (url, options) => {
+      fetchCalls.push([url, options]);
+      return { ok: true, json: async () => ({}) };
+    },
     // Only fire zero-delay calls (initGoogle's `window.setTimeout(initGoogle, 0)`) synchronously.
     setTimeout: (fn, delay) => {
       if (!delay) { fn(); return 0; }
@@ -115,7 +120,7 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
     setInterval: () => 0, clearInterval() {}
   };
   sandbox.window = Object.assign(sandbox.window, {
-    document, localStorage: sandbox.localStorage, setTimeout: sandbox.setTimeout, setInterval: sandbox.setInterval, clearInterval: sandbox.clearInterval,
+    document, localStorage: sandbox.localStorage, fetch: sandbox.fetch, setTimeout: sandbox.setTimeout, setInterval: sandbox.setInterval, clearInterval: sandbox.clearInterval,
     requestAnimationFrame: (fn) => fn(),
     // A real, non-file: origin - exercises the same targetOrigin branch a real https deployment
     // takes (ADR-0001's postMessage hardening), not the file:// '*' exception.
@@ -137,7 +142,7 @@ function buildSandbox(localStorage, isStoredUserValidImpl) {
       ...byId, langButtons, characterCards,
       hunterCard: characters.hunter.card, hunterSelect: characters.hunter.selectButton,
       engineerCard: characters.engineer.card, engineerSelect: characters.engineer.selectButton,
-      postMessages: [], postMessageTargetOrigins: [],
+      postMessages: [], postMessageTargetOrigins: [], fetchCalls,
       flushTimeouts: () => { const fns = Array.from(pendingTimeouts.values()); pendingTimeouts.clear(); fns.forEach((fn) => fn()); }
     }
   };
@@ -194,6 +199,15 @@ test('clicking the Google button shows the loading modal immediately, before Goo
   fire(els.googleBtn, 'click');
   assert.equal(els.googleAuthModal.hidden, false, 'no gap where nothing is visible while Google\'s own picker loads');
   assert.equal(els.googleAuthModal.dataset.state, 'loading');
+});
+
+test('a visible Google account chooser can wait past the old timeout without the page replacing it with an error', async () => {
+  const google = { accounts: { id: { initialize: () => {}, prompt: () => {} } } };
+  const els = await load(memoryStorage(), null, undefined, google);
+  fire(els.googleBtn, 'click');
+  els.flushTimeouts();
+  assert.equal(els.googleAuthModal.dataset.state, 'loading');
+  assert.match(els.googleBtn.className, /is-loading/);
 });
 
 test('choosing a Google account shows the loading modal then the success state, and does not jump to the Character step immediately', async () => {
@@ -339,6 +353,13 @@ test('returning browser (a session token the server still accepts): boots straig
   assert.equal(loginCalled, false);
 });
 
+test('a returning authenticated user with a saved character opens that dashboard directly and is not asked again', async () => {
+  const els = await load(memoryStorage(), () => ({ refreshSession: async () => ({ authenticated: true, character: 'sage' }) }), async () => true);
+  assert.equal(els.postMessages.length, 1);
+  assert.equal(els.postMessages[0].character, 'sage');
+  assert.equal(els.stepCharacter.hidden, true);
+});
+
 test('returning browser with a STALE token (the server no longer accepts it): stays on the Account step instead of silently advancing', async () => {
   const localStorage = memoryStorage();
   localStorage.setItem('tradejournal:auth-token', 'stale-token-from-a-wiped-backend');
@@ -366,11 +387,13 @@ test('clicking Enter after picking a character posts tradejournal:character-sele
   els.passwordInput.value = 'abcd';
   await Promise.all(fire(els.continueBtn, 'click'));
   fire(els.engineerSelect, 'click');
-  fire(els.enterBtn, 'click');
+  await Promise.all(fire(els.enterBtn, 'click'));
   assert.equal(els.postMessages.length, 1);
   assert.equal(els.postMessages[0].type, 'tradejournal:character-selected');
   assert.equal(els.postMessages[0].character, 'engineer');
   assert.equal(els.postMessageTargetOrigins[0], 'https://app.navrya.com', 'the real parent origin must be targeted explicitly, never the literal wildcard \'*\'');
+  const saved = els.fetchCalls.find(([url]) => url === '/api/sync/preferences');
+  assert.equal(JSON.parse(saved[1].body).value, 'engineer', 'the selection is saved to the authenticated account before navigation');
 });
 
 test('Enter does nothing while no character is picked', async () => {

@@ -104,9 +104,29 @@ test('DELETE resets one preference to its client-side default by removing the ro
   assert.equal(list.body.preferences.length, 0);
 });
 
+test('DELETE accepts validated language and character keys without requiring a value', async () => {
+  const user = await createUser('Preference Reset User');
+  await api('POST', '/api/sync/preferences', { userId: user.id, body: { id: 'language', value: 'es' } });
+  await api('POST', '/api/sync/preferences', { userId: user.id, body: { id: 'character', value: 'sage' } });
+  assert.equal((await api('DELETE', '/api/sync/preferences/language', { userId: user.id })).status, 204);
+  assert.equal((await api('DELETE', '/api/sync/preferences/character', { userId: user.id })).status, 204);
+});
+
 test('POST with no id is rejected with VALIDATION_FAILED', async () => {
   const user = await createUser('Bad Request User');
   const result = await api('POST', '/api/sync/preferences', { userId: user.id, body: { value: 70 } });
   assert.equal(result.status, 400);
   assert.equal(result.body.error, 'VALIDATION_FAILED');
+});
+
+test('preference keys, values, and the language enum are bounded and validated before persistence', async () => {
+  const user = await createUser('Validated Preference User');
+  const invalidKey = await api('POST', '/api/sync/preferences', { userId: user.id, body: { id: 'language;drop', value: 'en' } });
+  const invalidLanguage = await api('POST', '/api/sync/preferences', { userId: user.id, body: { id: 'language', value: '<script>' } });
+  const invalidCharacter = await api('POST', '/api/sync/preferences', { userId: user.id, body: { id: 'character', value: 'admin' } });
+  const oversized = await api('POST', '/api/sync/preferences', { userId: user.id, body: { id: 'panelLayout', value: 'x'.repeat(16 * 1024) } });
+  [invalidKey, invalidLanguage, invalidCharacter, oversized].forEach((result) => {
+    assert.equal(result.status, 400);
+    assert.equal(result.body.error, 'VALIDATION_FAILED');
+  });
 });

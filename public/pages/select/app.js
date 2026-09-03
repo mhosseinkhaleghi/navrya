@@ -165,7 +165,6 @@ const translations = {
 };
 
 const languageNames = { en: 'English', fa: 'فارسی', ar: 'العربية', es: 'Español' };
-const CHARACTER_STORAGE_KEY = 'tradejournal:character';
 const SLIDE_INTERVAL_MS = 5000;
 
 // Phase 8e of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
@@ -173,9 +172,10 @@ const SLIDE_INTERVAL_MS = 5000;
 // preference to, so a per-user preference is meaningless here. Hardcoded to the same default
 // this page already used ('en', confirmed from the removed localStorage fallback and from
 // <html lang="en" dir="ltr">'s own first-paint default) rather than migrated - the language
-// picker below still works for the rest of this one page load, it just never persists across a
-// reload any more (nothing replaces the old tradejournal-language key on this page).
+// picker below is only persisted after successful authentication, when it can be safely scoped
+// to the real user. A returning user's existing preference is never overwritten by this page.
 let activeLanguage = 'en';
+let languageWasExplicitlySelected = false;
 let toastTimer;
 let mode = 'signin'; // 'signin' | 'signup'
 let slide = 0; // index into CHAR_META, drives the account-step showcase
@@ -258,6 +258,7 @@ languageButton.addEventListener('click', () => {
 });
 document.querySelectorAll('[data-language]').forEach((button) => button.addEventListener('click', () => {
   applyLanguage(button.dataset.language);
+  languageWasExplicitlySelected = true;
   languageMenu.hidden = true;
   languageButton.setAttribute('aria-expanded', 'false');
 }));
@@ -272,7 +273,7 @@ function goToStep(step) {
   stepCharacter.hidden = onAccount;
   stepChipAccount.classList.toggle('is-on', onAccount);
   stepChipCharacter.classList.toggle('is-on', !onAccount);
-  if (onAccount) { startSlideTimer(); } else { stopSlideTimer(); prefillPreviousCharacter(); }
+  if (onAccount) startSlideTimer(); else stopSlideTimer();
 }
 
 // ---------- Account step: showcase carousel ----------
@@ -456,8 +457,9 @@ async function submitAuth() {
     } else {
       await switcher.login({ email: emailInput.value.trim(), password: passwordInput.value });
     }
+    await persistExplicitLanguage();
     showToast(copy().authSuccess);
-    goToStep('character');
+    if (!(await openSavedCharacter())) goToStep('character');
   } catch (error) {
     authError.textContent = describeAuthError(error);
   } finally {
@@ -485,11 +487,6 @@ function setGoogleButtonBusy(busy) {
 // Every Google-flow outcome (config missing, prompt silently blocked, credential exchange
 // rejected, success) resolves inside this one modal instead of some paths using it and others
 // falling back to the page's plain toast - one consistent place to look, always.
-// Safety net: if Google's own picker never resolves at all (no credential, no
-// isNotDisplayed/isSkippedMoment callback either) the modal previously had no way out of its
-// loading state - a bare spinner forever, with none of the messaging/graphics this modal exists
-// to show. Cleared the moment Google actually responds, however it responds.
-let googleTimeoutId = null;
 // Google can invoke prompt()'s notification callback with isSkippedMoment()/isNotDisplayed()
 // true for an early sub-moment (e.g. the silent auto-select attempt) and STILL deliver a real
 // credential moments later via a completely separate callback (initialize()'s own `callback`,
@@ -509,7 +506,6 @@ function showGoogleAuthLoading() {
   googleAuthModalLabel.textContent = copy().googleSigningIn;
 }
 function showGoogleAuthError(message) {
-  clearTimeout(googleTimeoutId);
   showGoogleAuthModal('error');
   googleAuthModalLabel.textContent = message;
   googleAuthModalHint.textContent = copy().googleErrorDismissHint;
@@ -523,14 +519,14 @@ googleAuthModal.addEventListener('click', () => {
 });
 async function handleGoogleCredential(response) {
   googleCredentialHandled = true;
-  clearTimeout(googleTimeoutId);
   showGoogleAuthLoading();
   try {
     await window.TradeJournalDevUserSwitcher.loginWithGoogle(response.credential);
+    await persistExplicitLanguage();
     setGoogleButtonBusy(false);
     googleAuthModal.dataset.state = 'success';
     googleAuthModalLabel.textContent = copy().authSuccess;
-    window.setTimeout(() => { hideGoogleAuthModal(); goToStep('character'); }, 650);
+    window.setTimeout(async () => { hideGoogleAuthModal(); if (!(await openSavedCharacter())) goToStep('character'); }, 650);
   } catch (error) {
     showGoogleAuthError(describeAuthError(error) || copy().googleError);
   }
@@ -546,8 +542,6 @@ googleBtn.addEventListener('click', () => {
   // Google's own picker is loading previously had no feedback beyond the button's own spinner.
   showGoogleAuthLoading();
   googleCredentialHandled = false;
-  clearTimeout(googleTimeoutId);
-  googleTimeoutId = window.setTimeout(() => showGoogleAuthError(copy().googleTimeout), 8000);
   // isNotDisplayed()/isSkippedMoment() cover the silent-failure case (third-party cookies
   // blocked, browser policy, etc.) where Google never shows its own UI at all - without this
   // the modal would stay stuck in its loading state with no feedback. getNotDisplayedReason()
@@ -567,6 +561,19 @@ googleBtn.addEventListener('click', () => {
   });
 });
 window.setTimeout(initGoogle, 0);
+
+// The chooser is pre-auth until register/login succeeds. If the trader explicitly picked a
+// language here, persist it only after that trusted session exists; never overwrite a returning
+// trader's saved preference merely because this page's pre-auth default is English.
+async function persistExplicitLanguage() {
+  if (!languageWasExplicitlySelected || typeof window.fetch !== 'function') return;
+  try {
+    await window.fetch('/api/sync/preferences', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'language', value: activeLanguage })
+    });
+  } catch (_) { /* authentication succeeded; keep the chosen language for this page load */ }
+}
 
 // ---------- Character step ----------
 function selectCharacter(id) {
@@ -588,34 +595,46 @@ document.querySelectorAll('.select-character').forEach((button) => button.addEve
   if (card) selectCharacter(card.dataset.character);
 }));
 
-// A returning browser that skipped straight to the character step (see isLoggedIn() below)
-// starts with its last pick already highlighted - a fresh browser, or one that just registered,
-// starts with nothing selected and the Enter button disabled.
-function prefillPreviousCharacter() {
-  if (selectedCharacter) return;
-  let stored = null;
-  try { stored = localStorage.getItem(CHARACTER_STORAGE_KEY); } catch (_) { /* storage blocked */ }
-  if (stored && CHAR_META.some((c) => c.id === stored)) selectCharacter(stored);
-}
-
 backBtn.addEventListener('click', () => goToStep('account'));
-enterBtn.addEventListener('click', () => {
-  if (!selectedCharacter) return;
-  try { localStorage.setItem(CHARACTER_STORAGE_KEY, selectedCharacter); } catch (_) { /* storage blocked */ }
-  // Target the real parent origin explicitly (never '*') so a malicious/unexpected parent frame
-  // can never receive this message - src/release.js's own listener additionally verifies
-  // event.source is its own currently-mounted iframe before acting on it. `file://` pages have no
-  // meaningful origin to target, so '*' is unavoidable there specifically (this app explicitly
-  // supports being opened directly as a file).
+function knownCharacter(value) { return CHAR_META.some((meta) => meta.id === value); }
+function openCharacter(character) {
   const targetOrigin = window.location.protocol === 'file:' ? '*' : window.location.origin;
-  window.parent.postMessage({ type: 'tradejournal:character-selected', character: selectedCharacter }, targetOrigin);
+  window.parent.postMessage({ type: 'tradejournal:character-selected', character }, targetOrigin);
+}
+async function persistCharacter(character) {
+  const response = await window.fetch('/api/sync/preferences', {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'character', value: character })
+  });
+  if (!response.ok) throw new Error('CHARACTER_SAVE_FAILED');
+  if (window.__NAVRYA_AUTH__) window.__NAVRYA_AUTH__.character = character;
+}
+async function openSavedCharacter() {
+  const switcher = window.TradeJournalDevUserSwitcher;
+  if (!switcher || typeof switcher.refreshSession !== 'function') return false;
+  try {
+    const auth = await switcher.refreshSession();
+    if (!auth.authenticated || !knownCharacter(auth.character)) return false;
+    openCharacter(auth.character);
+    return true;
+  } catch (_) { return false; }
+}
+enterBtn.addEventListener('click', async () => {
+  if (!selectedCharacter) return;
+  enterBtn.disabled = true;
+  try {
+    await persistCharacter(selectedCharacter);
+    openCharacter(selectedCharacter);
+  } catch (_) {
+    showToast(copy().authErrorOffline);
+    enterBtn.disabled = false;
+  }
 });
 
 // ---------- Boot ----------
 // Real-login gate: a browser with no valid session lands on the account step. A returning
-// browser whose stored token the server still accepts skips straight to the character step -
-// isLoggedIn() asks dev-user-switcher.js's isStoredUserValid(), which checks the token against
-// the server (once per page load) rather than trusting local storage.
+// browser with a current session opens its saved server-side character. A user is shown this
+// step only once, when their authenticated account has no saved character preference yet.
 function isLoggedIn() {
   const switcher = window.TradeJournalDevUserSwitcher;
   return switcher ? switcher.isStoredUserValid() : Promise.resolve(false);
@@ -623,4 +642,4 @@ function isLoggedIn() {
 
 applyLanguage(activeLanguage);
 goToStep('account');
-isLoggedIn().then((valid) => { if (valid) goToStep('character'); });
+isLoggedIn().then(async (valid) => { if (valid && !(await openSavedCharacter())) goToStep('character'); });

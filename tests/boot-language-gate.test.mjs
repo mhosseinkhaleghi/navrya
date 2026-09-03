@@ -44,12 +44,12 @@ async function runGate({ localStorage, fetchImpl, timers, topLocation } = {}) {
   return { root, window: sandbox.window, scheduled, top };
 }
 
-test('unauthenticated (no session): reveals with the real fa/rtl default AND redirects to the account route (window.top.location.hash)', async () => {
+test('unauthenticated (no session): reveals with the en/ltr default AND redirects to the account route (window.top.location.hash)', async () => {
   const { root, top } = await runGate({
     fetchImpl: async () => ({ ok: true, json: async () => ({ authenticated: false, user: null, csrfToken: null, language: null }) })
   });
-  assert.equal(root.lang, 'fa');
-  assert.equal(root.dir, 'rtl');
+  assert.equal(root.lang, 'en');
+  assert.equal(root.dir, 'ltr');
   assert.equal(root.style.visibility, 'visible');
   assert.equal(top.location.hash, '/', 'an unauthenticated dashboard visit must redirect to the account/character-select route');
 });
@@ -120,21 +120,23 @@ test('an unrecognized saved language value falls back to the honest default rath
   const { root } = await runGate({
     fetchImpl: async () => ({ ok: true, json: async () => ({ authenticated: true, user: { id: 'u1' }, csrfToken: 'c', language: 'klingon' }) })
   });
-  assert.equal(root.lang, 'fa');
-  assert.equal(root.dir, 'rtl');
+  assert.equal(root.lang, 'en');
+  assert.equal(root.dir, 'ltr');
 });
 
-test('a hydration failure (non-ok response) reveals with the default AND sets the explicit failure flag - never silently shown as success', async () => {
-  const { root, window } = await runGate({ fetchImpl: async () => ({ ok: false, status: 500 }) });
-  assert.equal(root.lang, 'fa');
+test('a hydration failure (non-ok response) redirects to account with the default and explicit failure flag', async () => {
+  const { root, window, top } = await runGate({ fetchImpl: async () => ({ ok: false, status: 500 }) });
+  assert.equal(root.lang, 'en');
   assert.equal(root.style.visibility, 'visible');
   assert.equal(window.__TJ_LANGUAGE_HYDRATE_FAILED__, true);
+  assert.equal(top.location.hash, '/');
 });
 
-test('a network-level fetch rejection is treated the same as a non-ok response - reveals with the default and sets the failure flag', async () => {
-  const { root, window } = await runGate({ fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
-  assert.equal(root.lang, 'fa');
+test('a network-level fetch rejection is treated the same as a non-ok response and redirects to account', async () => {
+  const { root, window, top } = await runGate({ fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
+  assert.equal(root.lang, 'en');
   assert.equal(window.__TJ_LANGUAGE_HYDRATE_FAILED__, true);
+  assert.equal(top.location.hash, '/');
 });
 
 test('a timeout aborts the request and reveals with the default, marking the failure flag - a hung network must never leave the page invisible forever', async () => {
@@ -163,6 +165,7 @@ test('a timeout aborts the request and reveals with the default, marking the fai
   await sandbox.window.__NAVRYA_AUTH_READY__;
   assert.equal(rootNode.style.visibility, 'visible');
   assert.equal(sandbox.window.__TJ_LANGUAGE_HYDRATE_FAILED__, true);
+  assert.equal(sandbox.window.top.location.hash, '/');
 });
 
 // ---- Static assertions for the pieces this suite cannot execute directly ----

@@ -1,6 +1,23 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
 
+const PREFERENCE_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+const SUPPORTED_LANGUAGES = new Set(['fa', 'ar', 'en', 'es']);
+const SUPPORTED_CHARACTERS = new Set(['hunter', 'engineer', 'commander', 'sage']);
+const MAX_VALUE_BYTES = 16 * 1024;
+
+function assertPreferenceId(id) {
+  if (typeof id !== 'string' || !PREFERENCE_ID.test(id)) throw new ApiError(400, 'VALIDATION_FAILED');
+}
+function assertPreferenceInput(id, value) {
+  assertPreferenceId(id);
+  if (id === 'language' && !SUPPORTED_LANGUAGES.has(value)) throw new ApiError(400, 'VALIDATION_FAILED');
+  if (id === 'character' && !SUPPORTED_CHARACTERS.has(value)) throw new ApiError(400, 'VALIDATION_FAILED');
+  let encoded;
+  try { encoded = JSON.stringify(value); } catch (_) { throw new ApiError(400, 'VALIDATION_FAILED'); }
+  if (encoded === undefined || Buffer.byteLength(encoded, 'utf8') > MAX_VALUE_BYTES) throw new ApiError(400, 'VALIDATION_FAILED');
+}
+
 // Phase 8 of the local-first-to-server-authoritative migration (see ARCHITECTURE.md's Known
 // Constraints section). Mounted at /api/sync/preferences, behind requireAuth - see
 // routes.trading-sessions.mjs's comment for why /api/sync/* is its own prefix. Generic
@@ -20,7 +37,7 @@ export function router(repo) {
 
   app.post('/', asyncHandler(async (req, res) => {
     const { id, value } = req.body || {};
-    if (!id) throw new ApiError(400, 'VALIDATION_FAILED');
+    assertPreferenceInput(id, value);
     const saved = await repo.userPreferences.upsert(req.currentUser.id, id, value);
     res.status(200).json(saved);
   }));
@@ -29,6 +46,7 @@ export function router(repo) {
   // an explicit "null override", so a later change to that key's own hardcoded default is
   // honored immediately rather than staying pinned to whatever null once meant.
   app.delete('/:id', asyncHandler(async (req, res) => {
+    assertPreferenceId(req.params.id);
     await repo.userPreferences.remove(req.currentUser.id, req.params.id);
     res.status(204).end();
   }));

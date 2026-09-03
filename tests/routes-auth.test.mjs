@@ -176,6 +176,7 @@ test('GET /session: reports authenticated:false with no cookie, and the real sel
   assert.equal(authedBody.authenticated, true);
   assert.equal(authedBody.user.email, email);
   assert.ok(authedBody.csrfToken);
+  assert.equal(authedBody.csrfToken, jar[csrfCookieName()], 'session bootstrap must return the cookie-backed CSRF token, never a disconnected nonce');
 });
 
 test('logout requires a valid CSRF token (double-submit + signature), and actually revokes the session server-side', async () => {
