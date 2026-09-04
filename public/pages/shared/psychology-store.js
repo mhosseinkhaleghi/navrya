@@ -178,6 +178,46 @@
     });
   }
 
+  // A live read of how close the trader is to the state their own history says they trade worst
+  // in. Three real signals off real fields, and deliberately NOT a score out of 100: a band is
+  // honest about its own precision in a way a number never is.
+  //
+  // The thresholds are the ones the revenge guard already acts on elsewhere (two losses in a row,
+  // or one inside the last half hour) rather than a new model invented here.
+  function tiltReading(trades,now){
+    now=now||new Date();
+    var closed=closedTrades(trades).filter(function(t){return t.closedAt;})
+      .sort(function(a,b){return new Date(b.closedAt)-new Date(a.closedAt);});
+    var lossStreak=0;
+    for(var i=0;i<closed.length;i++){ if(closed[i].outcome==='loss')lossStreak+=1; else break; }
+    var lastLoss=closed.filter(function(t){return t.outcome==='loss';})[0]||null;
+    var minutesSinceLoss=lastLoss?Math.max(0,Math.round((now-new Date(lastLoss.closedAt))/60000)):null;
+    var openCount=(trades||[]).filter(function(t){return t&&(t.status==='open'||t.status==='hunting');}).length;
+    var level='calm';
+    if(lossStreak>=2||(lossStreak>=1&&minutesSinceLoss!=null&&minutesSinceLoss<=30))level='high';
+    else if(lossStreak>=1)level='watch';
+    return{level:level,lossStreak:lossStreak,minutesSinceLoss:minutesSinceLoss,openCount:openCount};
+  }
+
+  // The three numbers a trader is asked for on every emotion log, averaged over the trailing
+  // `days`. Each is null (an honest gap, never a default 5) when nothing was logged - the same
+  // rule disciplineWeekly()/emotionalWeatherDaily() already follow for an empty bucket.
+  function selfRatings(trades,days,now){
+    days=days||30;now=now||new Date();
+    var since=now.getTime()-days*86400000;
+    var stress=[],focus=[],plan=[];
+    (trades||[]).forEach(function(trade){
+      (trade.emotionLog||[]).forEach(function(entry){
+        if(new Date(entry.timestamp).getTime()<since)return;
+        if(Number.isFinite(Number(entry.stressLevel)))stress.push(Number(entry.stressLevel));
+        if(Number.isFinite(Number(entry.focusQuality)))focus.push(Number(entry.focusQuality));
+        if(Number.isFinite(Number(entry.planCommitment)))plan.push(Number(entry.planCommitment));
+      });
+    });
+    function mean(list){return list.length?Math.round(list.reduce(function(s,v){return s+v;},0)/list.length*10)/10:null;}
+    return{stress:mean(stress),focus:mean(focus),planCommitment:mean(plan),sampleSize:stress.length};
+  }
+
   window.TradeJournalPsychologyStore={
     settings:settings,
     saveSettings:saveSettings,
@@ -188,6 +228,8 @@
     disciplineWeekly:disciplineWeekly,
     emotionFrequency:emotionFrequency,
     emotionalWeatherDaily:emotionalWeatherDaily,
-    lastClosedTrade:lastClosedTrade
+    lastClosedTrade:lastClosedTrade,
+    tiltReading:tiltReading,
+    selfRatings:selfRatings
   };
 }());

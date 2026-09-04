@@ -13,7 +13,7 @@ import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
 import { RoutineTab } from './routineTab.jsx';
 import { MoodTab } from './moodTab.jsx';
 import { TherapistTab } from './therapistTab.jsx';
-import { EmotionMap, DisciplineTrend, TradeArc } from './psychologyCharts.jsx';
+import { EmotionMap, DisciplineTrend, TradeArc, TiltMeter, RatingGauge } from './psychologyCharts.jsx';
 
 // ============================================================================
 // Small shared building blocks
@@ -174,6 +174,13 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
     return values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
   })();
   const planAdherencePct = closed.length ? Math.max(0, Math.round(100 - profile.behavioralPatterns.planDeviationRate)) : null;
+  const tilt = psych.tiltReading(trades);
+  const ratings = psych.selfRatings(trades, 30);
+  const gauges = [
+    { key: 'stress', value: ratings.stress, tone: ratings.stress == null ? 'var(--text-disabled)' : ratings.stress >= 7 ? 'var(--danger)' : ratings.stress >= 5 ? 'var(--warning)' : 'var(--success)' },
+    { key: 'focus', value: ratings.focus, tone: ratings.focus == null ? 'var(--text-disabled)' : ratings.focus >= 7 ? 'var(--success)' : ratings.focus >= 5 ? 'var(--warning)' : 'var(--danger)' },
+    { key: 'plan', value: ratings.planCommitment, tone: ratings.planCommitment == null ? 'var(--text-disabled)' : ratings.planCommitment >= 7 ? 'var(--success)' : ratings.planCommitment >= 5 ? 'var(--warning)' : 'var(--danger)' }
+  ];
 
   const metrics = [
     { icon: 'streak', label: i18n.t('psyDisciplineStreakTitle'), value: i18n.t('psyDisciplineStreakDays', { count: streak }) },
@@ -185,6 +192,50 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <MetricRow metrics={metrics} />
+
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 16, flexWrap: 'wrap' }}>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 420px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <SectionLabel>{i18n.t('psyRatingsTitle')}</SectionLabel>
+              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyRatingsNote', { count: i18n.number(ratings.sampleSize) })}</Caption>
+            </div>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {gauges.map((g) => (
+                <div key={g.key} style={{ flex: '1 1 150px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <RatingGauge i18n={i18n} value={g.value} tone={g.tone} />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                    <SectionLabel>{i18n.t('psyRating_' + g.key)}</SectionLabel>
+                    <span className="navrya-tabular" style={{ font: 'var(--type-metric-value)', color: g.tone }}>
+                      {g.value == null ? '—' : i18n.number(g.value) + ' / 10'}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 260px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SectionLabel>{i18n.t('psyTiltTitle')}</SectionLabel>
+            <TiltMeter i18n={i18n} reading={tilt} />
+            <div style={{ height: 1, background: 'var(--border-hairline)' }}></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {[
+                [i18n.t('psyTiltSinceLoss'), tilt.minutesSinceLoss == null ? '—' : i18n.t('psyTiltMinutes', { count: i18n.number(tilt.minutesSinceLoss) })],
+                [i18n.t('psyTiltLossStreak'), i18n.number(tilt.lossStreak)],
+                [i18n.t('psyTiltOpen'), i18n.number(tilt.openCount)]
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Caption style={{ flex: 1 }}>{label}</Caption>
+                  <span className="navrya-tabular" style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-muted)' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      </div>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

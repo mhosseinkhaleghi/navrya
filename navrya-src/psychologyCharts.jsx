@@ -198,3 +198,62 @@ export function TradeArc({ i18n, stages, width = 280, height = 150 }) {
     </svg>
   );
 }
+
+// ============================================================================
+// TILT METER - the live read, as a band rather than a score
+// ============================================================================
+const TILT_BANDS = [
+  { id: 'calm', from: -90, to: -30, tone: 'var(--success)' },
+  { id: 'watch', from: -22, to: 22, tone: 'var(--warning)' },
+  { id: 'high', from: 30, to: 90, tone: 'var(--danger)' }
+];
+
+// Polar helper for the gauge arcs: angle 0 is straight up, negative is anticlockwise.
+function polar(cx, cy, r, deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+function arcPath(cx, cy, r, from, to) {
+  const [x1, y1] = polar(cx, cy, r, from), [x2, y2] = polar(cx, cy, r, to);
+  return 'M' + x1 + ' ' + y1 + ' A' + r + ' ' + r + ' 0 0 1 ' + x2 + ' ' + y2;
+}
+
+export function TiltMeter({ i18n, reading, width = 200, height = 122 }) {
+  const cx = width / 2, cy = 100, r = 82;
+  const needleDeg = reading.level === 'high' ? 58 : reading.level === 'watch' ? 0 : -58;
+  const tone = reading.level === 'high' ? 'var(--danger)' : reading.level === 'watch' ? 'var(--warning)' : 'var(--success)';
+
+  return (
+    <svg width="100%" viewBox={'0 0 ' + width + ' ' + height} style={{ display: 'block' }} role="img" aria-label={i18n.t('psyTilt_' + reading.level)}>
+      <path d={arcPath(cx, cy, r, -90, 90)} fill="none" stroke="rgba(244,234,215,.08)" strokeWidth="13" strokeLinecap="round"></path>
+      {TILT_BANDS.map((b) => (
+        <path key={b.id} d={arcPath(cx, cy, r, b.from, b.to)} fill="none" stroke={b.tone} strokeWidth="13" strokeLinecap="round"></path>
+      ))}
+      <line
+        x1={cx} y1={cy} x2={cx} y2={cy - 60} stroke="var(--text-primary)" strokeWidth="3" strokeLinecap="round"
+        transform={'rotate(' + needleDeg + ' ' + cx + ' ' + cy + ')'}
+      ></line>
+      <circle cx={cx} cy={cy} r="7" fill="var(--ink-950)" stroke="var(--gold-warm)" strokeWidth="2"></circle>
+      <text x={cx} y={height - 3} textAnchor="middle" fill={tone} style={{ font: '500 13px var(--font-ui)' }}>{i18n.t('psyTilt_' + reading.level)}</text>
+    </svg>
+  );
+}
+
+// ============================================================================
+// SELF-RATING GAUGE - one of the three numbers a trader logs on every entry
+// ============================================================================
+export function RatingGauge({ i18n, value, tone, width = 84, height = 54 }) {
+  const cx = width / 2, cy = 46, r = 34;
+  const total = Math.PI * r;
+  // A null value draws the track only. Filling it to a default would be the exact fabrication
+  // selfRatings() returns null to avoid.
+  const filled = value == null ? 0 : Math.max(0, Math.min(1, value / 10)) * total;
+  return (
+    <svg width={width} height={height} viewBox={'0 0 ' + width + ' ' + height} style={{ display: 'block', flex: 'none' }} aria-hidden="true">
+      <path d={arcPath(cx, cy, r, -90, 90)} fill="none" stroke="rgba(244,234,215,.1)" strokeWidth="8" strokeLinecap="round"></path>
+      {value != null && (
+        <path d={arcPath(cx, cy, r, -90, 90)} fill="none" stroke={tone} strokeWidth="8" strokeLinecap="round" strokeDasharray={filled + ' ' + total}></path>
+      )}
+    </svg>
+  );
+}

@@ -207,3 +207,80 @@ test('all four character pages load psychology-store after trade-store and psych
     assert.ok(html.indexOf('psychology.css') > html.indexOf('trade-system.css'), character + ' psychology.css order');
   }
 });
+
+// --- tiltReading(): the live read behind the OVERVIEW tilt meter ---
+
+const AGO = minutes => new Date(Date.now() - minutes * 60000).toISOString();
+
+test('tiltReading reports calm when the most recent closed trade was a win', async () => {
+  const psych = await psychologyStore();
+  const reading = psych.tiltReading([
+    closedTrade({ outcome: 'win', closedAt: AGO(10) }),
+    closedTrade({ outcome: 'loss', closedAt: AGO(400) })
+  ]);
+  assert.equal(reading.level, 'calm');
+  assert.equal(reading.lossStreak, 0);
+});
+
+test('tiltReading escalates to high on two consecutive losses, however long ago', async () => {
+  const psych = await psychologyStore();
+  const reading = psych.tiltReading([
+    closedTrade({ outcome: 'loss', closedAt: AGO(600) }),
+    closedTrade({ outcome: 'loss', closedAt: AGO(700) })
+  ]);
+  assert.equal(reading.level, 'high');
+  assert.equal(reading.lossStreak, 2);
+});
+
+test('tiltReading escalates to high on a single loss inside the last half hour, and only watches an older one', async () => {
+  const psych = await psychologyStore();
+  const fresh = psych.tiltReading([closedTrade({ outcome: 'loss', closedAt: AGO(5) })]);
+  assert.equal(fresh.level, 'high');
+
+  const stale = psych.tiltReading([closedTrade({ outcome: 'loss', closedAt: AGO(180) })]);
+  assert.equal(stale.level, 'watch');
+  assert.equal(stale.lossStreak, 1);
+});
+
+test('tiltReading counts open and hunting positions, and reports no last loss as null rather than zero', async () => {
+  const psych = await psychologyStore();
+  const reading = psych.tiltReading([
+    closedTrade({ outcome: 'win', closedAt: AGO(60) }),
+    { id: 'a', status: 'open' }, { id: 'b', status: 'hunting' }, { id: 'c', status: 'closed' }
+  ]);
+  assert.equal(reading.openCount, 2);
+  assert.equal(reading.minutesSinceLoss, null);
+});
+
+// --- selfRatings(): the three numbers behind the OVERVIEW gauges ---
+
+test('selfRatings averages the three logged numbers over the window', async () => {
+  const psych = await psychologyStore();
+  const at = iso => ({ timestamp: iso, stressLevel: 6, focusQuality: 8, planCommitment: 4 });
+  const ratings = psych.selfRatings([
+    closedTrade({ emotionLog: [at(AGO(60)), at(AGO(120))] })
+  ], 30);
+  assert.equal(ratings.stress, 6);
+  assert.equal(ratings.focus, 8);
+  assert.equal(ratings.planCommitment, 4);
+  assert.equal(ratings.sampleSize, 2);
+});
+
+test('selfRatings returns null for a metric with nothing logged, never a default of five', async () => {
+  const psych = await psychologyStore();
+  const ratings = psych.selfRatings([
+    closedTrade({ emotionLog: [{ timestamp: AGO(60), stressLevel: 7 }] })
+  ], 30);
+  assert.equal(ratings.stress, 7);
+  assert.equal(ratings.focus, null);
+  assert.equal(ratings.planCommitment, null);
+});
+
+test('selfRatings ignores logs older than the window', async () => {
+  const psych = await psychologyStore();
+  const ratings = psych.selfRatings([
+    closedTrade({ emotionLog: [{ timestamp: AGO(60 * 24 * 60), stressLevel: 9, focusQuality: 1, planCommitment: 1 }] })
+  ], 30);
+  assert.equal(ratings.stress, null);
+  assert.equal(ratings.sampleSize, 0);
+});
