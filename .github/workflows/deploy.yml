@@ -114,7 +114,7 @@ jobs:
             # image is rebuilt cold. A previous successful release left Caddy serving an older
             # checked-in character bundle even though the repository checkout had advanced.
             docker compose --env-file .env -f docker-compose.production.yml build pattern-ai community-api migrate
-            docker compose --env-file .env -f docker-compose.production.yml build --no-cache web
+            docker compose --env-file .env -f docker-compose.production.yml build --no-cache --build-arg NAVRYA_BUILD_COMMIT="$DEPLOY_SHA" --build-arg NAVRYA_BUILD_COMMIT_COUNT="$(git rev-list --count "$DEPLOY_SHA")" web
             # The remote script itself arrives on stdin via the SSH heredoc. Detach the migration
             # container from that stream so it cannot consume every release command that follows.
             docker compose --env-file .env -f docker-compose.production.yml run --rm -T migrate </dev/null

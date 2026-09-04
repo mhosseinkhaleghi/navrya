@@ -7,6 +7,8 @@ RUN npm ci
 
 FROM dependencies AS build
 COPY . .
+ARG NAVRYA_BUILD_COMMIT
+ARG NAVRYA_BUILD_COMMIT_COUNT
 RUN npm run build
 
 FROM caddy:2.10-alpine AS web

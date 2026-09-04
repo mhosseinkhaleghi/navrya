@@ -25,7 +25,7 @@ git fetch --prune origin
 git cat-file -e "${TARGET_SHA}^{commit}"
 git checkout --detach "${TARGET_SHA}"
 
-docker compose --env-file .env -f docker-compose.production.yml build
+docker compose --env-file .env -f docker-compose.production.yml build --build-arg NAVRYA_BUILD_COMMIT="$TARGET_SHA" --build-arg NAVRYA_BUILD_COMMIT_COUNT="$(git rev-list --count "$TARGET_SHA")"
 docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans
 
 sleep 5

@@ -30,7 +30,7 @@ secret value. The `.env` file stays only on the server and must never be committ
 Run the migration before starting the full stack:
 
 ```sh
-docker compose --env-file .env -f docker-compose.production.yml build
+docker compose --env-file .env -f docker-compose.production.yml build --build-arg NAVRYA_BUILD_COMMIT="$(git rev-parse HEAD)" --build-arg NAVRYA_BUILD_COMMIT_COUNT="$(git rev-list --count HEAD)"
 docker compose --env-file .env -f docker-compose.production.yml run --rm migrate
 docker compose --env-file .env -f docker-compose.production.yml up -d
 ```

@@ -7,12 +7,20 @@ import { readFileSync, writeFileSync } from 'node:fs';
 // milestone); MINOR/PATCH are derived from the total commit count, so they always advance with
 // zero manual bumping and never collide or go backwards.
 const major = JSON.parse(readFileSync('package.json', 'utf8')).version.split('.')[0];
-const commitCount = Number(execSync('git rev-list --count HEAD').toString().trim());
+// Docker deliberately excludes .git and does not install Git. Release callers pass only
+// non-secret metadata from the exact checkout they are building; local builds still use Git.
+const buildCommit = process.env.NAVRYA_BUILD_COMMIT;
+const buildCount = process.env.NAVRYA_BUILD_COMMIT_COUNT;
+const explicitMetadata = Boolean(buildCommit || buildCount);
+if (explicitMetadata && (!/^[a-f0-9]{7,40}$/i.test(buildCommit || '') || !/^[1-9]\d*$/.test(buildCount || ''))) {
+  throw new Error('NAVRYA_BUILD_COMMIT and NAVRYA_BUILD_COMMIT_COUNT must both contain valid release metadata');
+}
+const commitCount = explicitMetadata ? Number(buildCount) : Number(execSync('git rev-list --count HEAD').toString().trim());
 const minor = String(Math.floor(commitCount / 100)).padStart(2, '0');
 const patch = String(commitCount % 100).padStart(2, '0');
 const version = `${major}.${minor}.${patch}`;
-const commit = execSync('git rev-parse --short HEAD').toString().trim();
-const dirty = execSync('git status --porcelain').toString().trim().length > 0;
+const commit = explicitMetadata ? buildCommit.slice(0, 7) : execSync('git rev-parse --short HEAD').toString().trim();
+const dirty = explicitMetadata ? false : execSync('git status --porcelain').toString().trim().length > 0;
 
 writeFileSync('public/version.json', JSON.stringify({ version, commit, dirty }, null, 2) + '\n');
 console.log(`version.json: ${version}${dirty ? ' (dirty)' : ''} [${commit}]`);
