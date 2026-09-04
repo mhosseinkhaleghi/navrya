@@ -53,6 +53,9 @@ test('Docker and every documented release build pass both version metadata field
     const source = await readFile(new URL(file, root), 'utf8');
     assert.match(source, /--build-arg NAVRYA_BUILD_COMMIT=/, file);
     assert.match(source, /--build-arg NAVRYA_BUILD_COMMIT_COUNT=/, file);
+    if (file.startsWith('.github/')) {
+      assert.match(source, /ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 /, file);
+    }
   }
   const workflow = await readFile(new URL('.github/workflows/deploy.yml', root), 'utf8');
   assert.match(workflow, /NAVRYA_BUILD_COMMIT="\$DEPLOY_SHA"/);

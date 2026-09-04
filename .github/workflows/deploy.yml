@@ -55,7 +55,7 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           DEPLOY_SHA: ${{ github.sha }}
         run: |
-          ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" "DEPLOY_SHA='$DEPLOY_SHA' bash -s" <<'REMOTE_SCRIPT'
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" "DEPLOY_SHA='$DEPLOY_SHA' bash -s" <<'REMOTE_SCRIPT'
             # Bash parses a complete function definition before executing it. Running that
             # function with stdin closed prevents any nested Docker command from consuming the
             # remaining SSH heredoc and silently truncating the release.

@@ -53,5 +53,5 @@ jobs:
           SERVER_PORT: ${{ secrets.STAGING_SERVER_PORT }}
           SERVER_USER: ${{ secrets.STAGING_SERVER_USER }}
         run: |
-          ssh -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" \
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "${SERVER_PORT:-22}" "$SERVER_USER@$SERVER_HOST" \
             "set -eu; cd /opt/navrya; git fetch --prune origin $DEPLOY_REF; git checkout $DEPLOY_REF; git reset --hard origin/$DEPLOY_REF; docker compose --env-file .env -f docker-compose.production.yml build --build-arg NAVRYA_BUILD_COMMIT=\$(git rev-parse HEAD) --build-arg NAVRYA_BUILD_COMMIT_COUNT=\$(git rev-list --count HEAD); docker compose --env-file .env -f docker-compose.production.yml run --rm migrate; docker compose --env-file .env -f docker-compose.production.yml up -d --remove-orphans; docker image prune -f"
