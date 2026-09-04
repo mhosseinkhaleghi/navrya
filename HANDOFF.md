@@ -4,7 +4,6 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-- `fix/docker-build-version-metadata` (Codex): fixes the verified Docker release failure by passing exact checkout metadata to version generation; owns Dockerfile, release workflows, rollback/bootstrap commands, version script and regression test | validation: 13 focused tests passed | next: guarded production release and live version/bundle verification
 - `fix/session-auth-routing` (Codex): fixed CSRF/logout, Google chooser wait, fail-closed auth bootstrap, server-backed character/language preferences, and Gemini Voice token schema/error cleanup | validation: 125 focused tests passed | next: user browser verification
 - `feat/gemini-provider` (Claude, current branch): Gemini GenerateContent provider + Gemini Live voice transport shipped; added a loading/success modal + button spinner for Google sign-in on the select page (matches shared `Modal.jsx` design tokens: scrim, ink-900, motion durations). Pushed to `dev` (2,345/2,345 full suite, build clean). Next: real multi-turn Gemini Voice session test (needs `GEMINI_API_KEY` + billing), set Gemini pricing before enabling `AI_WALLET_ENFORCED` for Gemini, browser-verify the new Google-auth modal. No browser/deploy verification yet on either piece.
 
@@ -18,6 +17,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Shipped history
 
+- 2026-09-04: `fix/docker-build-version-metadata` (Codex): published current dev including ROUTINE to production app.navrya.com/admin.navrya.com; fixed Git-free Docker version generation and SSH keepalives; Actions deploy succeeded, live version and all four bundle hashes match, HTTPS/auth checks pass | validation: 2,375 tests passed | next: user functional verification
 - 2026-08-24: agent skills + staging deploy automation promoted (730 tests).
 - 2026-08-24: production release `b562bede` verified/deployed (1,390 tests).
 - 2026-08-24: stale-container incident (migrate step ate SSH stdin) found and fixed across two follow-up releases.
