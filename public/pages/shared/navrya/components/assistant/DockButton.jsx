@@ -1,7 +1,7 @@
 import React from 'react';
 import { Icon } from '../core/Icon.jsx';
 
-export function DockButton({ icon, label, tone = 'ghost', active = false, disabled = false, danger = false, onClick }) {
+export function DockButton({ icon, label, tone = 'ghost', active = false, disabled = false, danger = false, onClick, className }) {
   const [hover, setHover] = React.useState(false);
   const primary = tone === 'primary';
   const base = {
@@ -33,7 +33,7 @@ export function DockButton({ icon, label, tone = 'ghost', active = false, disabl
       };
   return (
     <button
-      type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
+      type="button" className={className} aria-label={label} title={label} disabled={disabled} onClick={onClick}
       aria-pressed={tone === 'ghost' && active ? true : undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ ...base, ...skin }}

@@ -26,7 +26,11 @@ test('Gemini remains the Voice transport while finalized voice turns use the con
 
 test('Gemini Voice sends 16 kHz PCM transcription and routes only final text through the existing ChatDock coordinator', () => {
   assert.match(adapter, /const INPUT_SAMPLE_RATE = 16000;/);
+  assert.match(adapter, /const LIVE_TRANSCRIPTION_LOCALES = Object\.freeze\(\{ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' \}\);/);
+  assert.match(adapter, /function normalizeLanguage\(value\) \{[\s\S]*?return Object\.prototype\.hasOwnProperty\.call\(LIVE_TRANSCRIPTION_LOCALES, value\) \? value : 'en';/);
+  assert.match(adapter, /setLanguage: \(value\) => \{ language = normalizeLanguage\(value\); \}/);
   assert.match(adapter, /mimeType: 'audio\/pcm;rate=16000'/);
+  assert.match(adapter, /inputAudioTranscription: \{ languageCodes: \[LIVE_TRANSCRIPTION_LOCALES\[language\]\], mode: 'SMART' \}/);
   assert.match(adapter, /content\.inputTranscription/);
   assert.match(adapter, /onFinalTranscript\(text\)/);
   assert.match(dock, /onFinalTranscript: onVoiceTranscript/);

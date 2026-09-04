@@ -75,7 +75,7 @@ export function SessionLibrary({
         <p style={{ margin: 0, font: 'var(--type-body)', fontSize: 12, lineHeight: '18px', color: 'var(--text-muted)' }}>{subtitle}</p>
       </div>
 
-      <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="navrya-session-toolbar" style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
         <Button variant="primary" icon="new-session" iconAfter="plus" onClick={() => setDialog(true)}>{newSessionLabel}</Button>
         <Select value={filter} onChange={setFilter} options={SESSION_FILTERS} icon="filter" width={190} />
         <Select value={instrumentFilter} onChange={setInstrumentFilter} options={instrumentOptions} icon="target" width={170} />
@@ -87,7 +87,7 @@ export function SessionLibrary({
       {visible.length === 0 ? (
         <SessionEmptyState {...emptyStateProps} />
       ) : (
-        <div style={{
+        <div className="navrya-session-grid" style={{
           display: 'grid', gap: 16,
           gridTemplateColumns: view === 'grid' ? 'repeat(auto-fill, minmax(340px, 1fr))' : '1fr'
         }}>

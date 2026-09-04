@@ -60,17 +60,69 @@ function CollapsedRail({ character, items, activeId, onNavigate, progress }) {
   );
 }
 
+function useViewportWidth() {
+  const [width, setWidth] = React.useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
+  React.useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return width;
+}
+
 /* Full compact sidebar. Nav scrolls · lower modules stay pinned. 256px expanded / 72px collapsed. */
 export function Sidebar({
   character = 'hunter', items = SIDEBAR_ITEMS, activeId = 'sessions', collapsed = false,
   height = 900, quote, reward, rewardXp, rewardLabel, rewardProgress = 73, onRewardOpen, onNavigate, onToggle,
-  activeLabel = 'ACTIVE', collapseLabel, rtl = false, style, ...rest
+  activeLabel = 'ACTIVE', collapseLabel, rtl = false, style, className, ...rest
 }) {
+  const viewportWidth = useViewportWidth();
+  const mobile = viewportWidth <= 720;
+  const compact = !mobile && (collapsed || viewportWidth <= 1100);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  React.useEffect(() => {
+    const open = (event) => setMobileOpen(!event.detail || event.detail.open !== false);
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setMobileOpen(false); };
+    window.addEventListener('navrya:mobile-menu', open);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('navrya:mobile-menu', open);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+  React.useEffect(() => { if (!mobile) setMobileOpen(false); }, [mobile]);
+  React.useEffect(() => {
+    if (!mobile || !mobileOpen) return undefined;
+    const root = document.documentElement;
+    const body = document.body;
+    root.classList.add('navrya-mobile-nav-open');
+    const previous = {
+      bodyOverflow: body.style.overflow,
+      bodyOverscrollBehavior: body.style.overscrollBehavior,
+      bodyTouchAction: body.style.touchAction
+    };
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
+    body.style.touchAction = 'none';
+    return () => {
+      root.classList.remove('navrya-mobile-nav-open');
+      body.style.overflow = previous.bodyOverflow;
+      body.style.overscrollBehavior = previous.bodyOverscrollBehavior;
+      body.style.touchAction = previous.bodyTouchAction;
+    };
+  }, [mobile, mobileOpen]);
+  const navigate = (id) => {
+    if (onNavigate) onNavigate(id);
+    if (mobile) setMobileOpen(false);
+  };
   return (
+    <React.Fragment>
+      {mobileOpen && <button type="button" className="navrya-mobile-menu-backdrop" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
     <nav
       aria-label="Primary"
+      className={['navrya-sidebar', mobileOpen ? 'navrya-sidebar--mobile-open' : '', className].filter(Boolean).join(' ')}
       style={{
-        position: 'relative', width: collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)', height,
+        position: 'relative', width: compact ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)', height: mobile ? '100dvh' : height,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold)',
         background: 'linear-gradient(180deg, var(--char-atmosphere) 0%, color-mix(in srgb, var(--char-atmosphere) 42%, var(--ink-950)) 55%, var(--ink-950) 100%)',
@@ -79,9 +131,10 @@ export function Sidebar({
       }}
       {...rest}
     >
-      <BrandStrip character={character} collapsed={collapsed} />
-      {collapsed ? (
-        <CollapsedRail character={character} items={items} activeId={activeId} onNavigate={onNavigate} progress={rewardProgress} />
+      {mobile && <button type="button" className="navrya-mobile-nav-close" aria-label="Close navigation" onClick={() => setMobileOpen(false)}><Icon name="close" size={20} /></button>}
+      <BrandStrip character={character} collapsed={compact} />
+      {compact ? (
+        <CollapsedRail character={character} items={items} activeId={activeId} onNavigate={navigate} progress={rewardProgress} />
       ) : (
         <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div className="navrya-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingTop: 4 }}>
@@ -90,7 +143,7 @@ export function Sidebar({
                 key={it.id} icon={it.icon} label={it.label} active={it.id === activeId}
                 activeLabel={activeLabel} rtl={rtl}
                 first={i === 0} last={i === items.length - 1}
-                onClick={() => onNavigate && onNavigate(it.id)}
+                onClick={() => navigate(it.id)}
               />
             ))}
           </div>
@@ -103,7 +156,7 @@ export function Sidebar({
           </div>
         </div>
       )}
-      {!collapsed && (
+      {!compact && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sidebar-gap)', padding: 'var(--sidebar-pad)' }}>
           <QuoteCard character={character} quote={quote} />
           <RewardCard
@@ -115,11 +168,12 @@ export function Sidebar({
           <CollapseControl collapsed={false} onToggle={onToggle} label={collapseLabel} />
         </div>
       )}
-      {collapsed && (
+      {compact && (
         <div style={{ padding: 10 }}>
           <CollapseControl collapsed onToggle={onToggle} label={collapseLabel} />
         </div>
       )}
     </nav>
+    </React.Fragment>
   );
 }

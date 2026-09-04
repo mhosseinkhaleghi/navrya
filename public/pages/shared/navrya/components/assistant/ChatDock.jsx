@@ -276,7 +276,7 @@ export function ChatDock({
         {/* Purely decorative (no onClick of its own) - never allowed to sit in front of and
             swallow a click meant for whatever's underneath, e.g. a tall modal's own footer
             button in the same bottom-of-viewport band this raised z-index now shares with it. */}
-        {withMascot && <ModelMascot model={active} size={52} style={{ flex: 'none', paddingBottom: 2, pointerEvents: 'none' }} />}
+        {withMascot && <span className="navrya-dock-mascot" style={{ flex: 'none', paddingBottom: 2, pointerEvents: 'none' }}><ModelMascot model={active} size={52} /></span>}
 
         <div ref={rowRef} data-navrya-assistant="dock-surface" style={{ flex: 1, minWidth: 0 }}>
           {idle && (
@@ -297,13 +297,13 @@ export function ChatDock({
                 transition: 'border-color 200ms var(--ease-out),box-shadow 200ms var(--ease-out),background 200ms var(--ease-out)'
               }}
             >
-              <DockButton icon="plus" label={addLabel} active={addActive} onClick={onAdd} />
-              {onNewChat && <DockButton icon="square-pen" label={newChatLabel} onClick={onNewChat} />}
-              {onHistory && <DockButton icon="history" label={historyLabel} active={historyActive} onClick={onHistory} />}
+              <DockButton className="navrya-dock-secondary-action" icon="plus" label={addLabel} active={addActive} onClick={onAdd} />
+              {onNewChat && <DockButton className="navrya-dock-secondary-action" icon="square-pen" label={newChatLabel} onClick={onNewChat} />}
+              {onHistory && <DockButton className="navrya-dock-secondary-action" icon="history" label={historyLabel} active={historyActive} onClick={onHistory} />}
               {list && (
                 <React.Fragment>
                   <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />
-                  <ModelSwitcher models={list} value={active.id} onChange={onModelChange} />
+                  <ModelSwitcher className="navrya-dock-model-switcher" models={list} value={active.id} onChange={onModelChange} />
                   <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />
                 </React.Fragment>
               )}
@@ -329,7 +329,7 @@ export function ChatDock({
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
                 {onToggleTherapist && (
-                  <DockButton icon="psychology" label={therapistLabel} active={therapistActive} onClick={onToggleTherapist} />
+                  <DockButton className="navrya-dock-therapist" icon="psychology" label={therapistLabel} active={therapistActive} onClick={onToggleTherapist} />
                 )}
                 {/* NAVRYA chat dock redesign (NavryaChatDock.dc.html): a dedicated, always-
                     available mic shortcut, distinct from the dual-purpose end button below it -
@@ -338,12 +338,12 @@ export function ChatDock({
                     whatever is currently typed, mirroring the design's own separate mic control
                     rather than a decorative duplicate of the same action. */}
                 {onVoiceToggle && (
-                  <DockButton icon="mic" label={voiceLabels.start} disabled={busy} onClick={onVoiceToggle} />
+                  <DockButton className="navrya-dock-mic" icon="mic" label={voiceLabels.start} disabled={busy} onClick={onVoiceToggle} />
                 )}
                 <DockButton
                   icon={showSend ? 'arrow-up' : 'audio-lines'}
                   tone="primary" disabled={showSend && !ready}
-                  label={showSend ? sendLabel : voiceLabels.start}
+                  className="navrya-dock-primary-action" label={showSend ? sendLabel : voiceLabels.start}
                   onClick={mainAction}
                 />
               </div>

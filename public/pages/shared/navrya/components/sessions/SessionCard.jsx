@@ -27,6 +27,7 @@ export function SessionCard({
   const chartH = chartHeight || (compact ? 200 : '100%');
   return (
     <article
+      className={'navrya-session-card navrya-session-card--' + (compact ? 'compact' : 'row')}
       style={{
         display: 'flex', flexDirection: compact ? 'column' : 'row', overflow: 'hidden',
         height: compact ? '100%' : 360, boxSizing: 'border-box',
@@ -43,7 +44,7 @@ export function SessionCard({
         borderBottom: compact ? '1px solid var(--border-hairline)' : 0
       }}>
         <img
-          src={thumbnail || assetUrl('assets/sessions/chart-session-london.webp')} alt=""
+          src={thumbnail || assetUrl('assets/sessions/session-no-chart.png')} alt=""
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
         />
         {edition && (

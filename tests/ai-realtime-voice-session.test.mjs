@@ -305,7 +305,9 @@ test('Gemini TTS reads the approved text server-side and returns only provider a
   const body = JSON.parse(request.options.body);
   assert.deepEqual(body.generationConfig.responseModalities, ['AUDIO']);
   assert.match(body.contents[0].parts[0].text, /Approved NAVRYA reply\./);
-  assert.match(body.contents[0].parts[0].text, /calm, reflective market mentor/i);
+  assert.match(body.contents[0].parts[0].text, /The Market Sage: a seasoned market mentor/i);
+  assert.match(body.contents[0].parts[0].text, /interface language for this reply is English/i);
+  assert.match(body.contents[0].parts[0].text, /never the transcript's language, meaning, numbers, or safety content/i);
   assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
   assert.equal(result.character, 'sage');
   assert.equal(result.voice, 'Sulafat');

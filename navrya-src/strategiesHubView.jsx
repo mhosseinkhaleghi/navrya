@@ -804,7 +804,7 @@ function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
   const columns = '1fr .8fr 1.1fr .9fr .9fr .6fr .8fr .9fr 1fr .8fr';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="navrya-positions-view" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9, maxWidth: 640, paddingTop: 6 }}>
         <span style={{ fontSize: 11, letterSpacing: '.14em', color: 'var(--char-accent)' }}>{tr(lang, 'eyebrow')}</span>
         <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.25, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'positionsTitle')}</h1>
@@ -813,7 +813,7 @@ function PositionsView({ lang, tab, setTab, patternsCount, strategiesCount }) {
 
       <TopTabBar lang={lang} tab={tab} setTab={setTab} patternsCount={patternsCount} strategiesCount={strategiesCount} tradesCount={tradeStore ? tradeStore.listSync().length : 0} analysisProfilesCount={window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.listSync().length : 0} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <div className="navrya-strategy-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 9, height: 40, padding: '0 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flex: 1, minWidth: 240, maxWidth: 360, color: 'var(--text-dim)' }}>
           <Icon name="search" size={16} />
           <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tr(lang, 'positionsSearchPlaceholder')} style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
@@ -915,14 +915,14 @@ function IndexView({ lang, tab, setTab, query, setQuery, sort, setSort, patterns
   const avgRealization = patternRealRates.length ? Math.round(patternRealRates.reduce((a, b) => a + b, 0) / patternRealRates.length) : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 28, flexWrap: 'wrap', paddingTop: 6 }}>
+    <div className="navrya-strategy-index" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="navrya-strategy-heading" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 28, flexWrap: 'wrap', paddingTop: 6 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, maxWidth: 640 }}>
           <span style={{ fontSize: 11, letterSpacing: '.14em', color: 'var(--char-accent)' }}>{tr(lang, 'eyebrow')}</span>
           <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.25, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'title')}</h1>
           <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{tr(lang, 'subtitle')}</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="navrya-strategy-summary" style={{ display: 'flex', gap: 10 }}>
           <SummaryTile icon="execution" label={tr(lang, 'summaryPatterns')} value={digits(lang, patterns.length)} />
           <SummaryTile icon="ScanSearch" label={tr(lang, 'summaryDetections')} value={digits(lang, totalDet)} />
           <SummaryTile icon="CircleCheck" label={tr(lang, 'summaryAvgRealization')} value={avgRealization === null ? '—' : digits(lang, avgRealization) + '٪'} />
@@ -939,7 +939,7 @@ function IndexView({ lang, tab, setTab, query, setQuery, sort, setSort, patterns
         </>}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <div className="navrya-strategy-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 9, height: 40, padding: '0 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flex: 1, minWidth: 240, maxWidth: 360, color: 'var(--text-dim)' }}>
           <Icon name="search" size={16} />
           <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={tr(lang, 'searchPlaceholder')} style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
@@ -960,7 +960,7 @@ function IndexView({ lang, tab, setTab, query, setQuery, sort, setSort, patterns
           </div>
         </Panel>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(392px,1fr))', gap: 16, alignItems: 'start' }}>
+        <div className="navrya-strategy-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(392px,1fr))', gap: 16, alignItems: 'start' }}>
           {sorted.map((it) => (
             <ItemCard key={it.id} item={it} kind={tab === 'patterns' ? 'pattern' : 'strategy'} lang={lang}
               onOpen={() => onOpen(tab === 'patterns' ? 'pattern' : 'strategy', it.id, 'details')}
@@ -2136,7 +2136,7 @@ function StrategiesHub({ character }) {
   const container = { display: 'flex', flexDirection: 'column', gap: 16 };
   if (tab === 'positions') {
     return (
-      <div style={container}>
+      <div className="navrya-strategies-hub" style={container}>
         <PositionsView lang={lang} tab={tab} setTab={setTab} patternsCount={patterns.length} strategiesCount={strategies.length} />
       </div>
     );
@@ -2154,7 +2154,7 @@ function StrategiesHub({ character }) {
   }
   if (!item) {
     return (
-      <div style={container}>
+      <div className="navrya-strategies-hub" style={container}>
         <IndexView lang={lang} tab={tab} setTab={setTab} query={query} setQuery={setQuery} sort={sort} setSort={setSort}
           patterns={patterns} strategies={strategies} onOpen={openItem} onDelete={removeItem} onNew={createNew} onFromEvent={fromEvent} />
         {newPatternInstruments !== null && (
@@ -2175,7 +2175,7 @@ function StrategiesHub({ character }) {
     );
   }
   return (
-    <div style={container}>
+    <div className="navrya-strategies-hub" style={container}>
       <DetailView lang={lang} kind={openKind} item={item} dtab={dtab} setDtab={setDtab} onBack={back} onSave={onSave}
         onAiSteps={aiWriteSteps} onGoChat={() => setDtab('chat')} onFromEventAi={aiWriteSteps}
         onDelete={() => removeItem(openKind, item.id)} onToggleActive={toggleActive} />

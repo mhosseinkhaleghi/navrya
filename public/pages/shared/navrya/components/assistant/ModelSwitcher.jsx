@@ -50,10 +50,10 @@ function ModelChip({ model, selected, onClick }) {
 }
 
 /* Radio row of engine glyphs. Lives on the left of the ChatDock, after the add button. */
-export function ModelSwitcher({ models, value, onChange, style, ...rest }) {
+export function ModelSwitcher({ models, value, onChange, style, className, ...rest }) {
   useAssistantMotion();
   return (
-    <div role="radiogroup" aria-label="Assistant engine" style={{ display: 'flex', alignItems: 'center', gap: 2, ...style }} {...rest}>
+    <div className={className} role="radiogroup" aria-label="Assistant engine" style={{ display: 'flex', alignItems: 'center', gap: 2, ...style }} {...rest}>
       {models.map((m) => (
         <ModelChip key={m.id} model={m} selected={m.id === value} onClick={() => onChange && onChange(m.id)} />
       ))}

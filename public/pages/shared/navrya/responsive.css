@@ -1,0 +1,142 @@
+/* Shared NAVRYA shell responsiveness. These selectors intentionally sit above the legacy
+   character CSS so every edition gains the same geometry without four divergent layouts. */
+body .app-shell {
+  width: min(100%, 2240px);
+  padding: clamp(12px, 1.9vw, 34px) clamp(14px, 2.4vw, 52px) 56px;
+}
+
+.navrya-shell { gap: clamp(12px, 1.25vw, 24px); }
+.navrya-main { min-width: 0; }
+.navrya-mobile-menu-toggle,
+.navrya-mobile-nav-close,
+.navrya-mobile-menu-backdrop { display: none; }
+
+@media (max-width: 1120px) {
+  .navrya-shell { gap: 12px; }
+}
+
+@media (min-width: 721px) and (max-width: 1560px) {
+  /* CharacterHeader switches to its two-row layout in JSX at this same width.  Keep the
+     content shell fluid too, so the row below it never inherits a desktop-only minimum. */
+  body .app-shell { padding-inline: clamp(14px, 2vw, 28px); }
+  .navrya-main, .navrya-main > *, .panel-page { min-width: 0; }
+}
+
+@media (max-width: 720px) {
+  html, body { width: 100%; max-width: 100%; overflow-x: hidden; overscroll-behavior-x: none; }
+  html.navrya-mobile-nav-open { overflow: hidden; overscroll-behavior: none; }
+  body .app-shell { width: 100%; min-height: 100dvh; padding: 8px 8px max(148px, calc(var(--navrya-chat-dock-reserved, 0px) + 12px)); }
+  .navrya-shell { display: block; margin-top: 10px; }
+  .navrya-main { width: 100%; }
+  .app-shell .content { padding-bottom: max(24px, var(--navrya-chat-dock-reserved, 0px)); }
+
+  .navrya-scroll,
+  .navrya-scroll::-webkit-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .navrya-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+  #navryaHeaderRoot { position: relative; z-index: 30; }
+  .navrya-header-collapse,
+  .navrya-header-rail { display: none !important; }
+  .navrya-mobile-menu-toggle {
+    position: absolute; inset-block-start: 12px; inset-inline-end: 12px; z-index: 2;
+    width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px;
+    border: 1px solid var(--border-gold); background: rgba(3, 8, 7, .9); color: var(--gold-warm);
+    box-shadow: var(--shadow-panel); cursor: pointer;
+  }
+
+  #navryaSidebarRoot { position: fixed; inset: 0; z-index: 500; pointer-events: none; }
+  .navrya-mobile-menu-backdrop {
+    display: block; position: fixed; inset: 0; width: 100%; height: 100%; padding: 0; border: 0;
+    pointer-events: auto; background: rgba(1, 4, 4, .78); backdrop-filter: blur(10px); cursor: pointer;
+  }
+  .navrya-sidebar {
+    position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important;
+    max-width: none !important; pointer-events: auto; border-radius: 0 !important; overflow: hidden !important;
+    transform: translateX(-105%); transition: transform 260ms var(--ease-out), box-shadow 260ms var(--ease-out) !important;
+    box-shadow: none !important;
+  }
+  html[dir="rtl"] .navrya-sidebar { transform: translateX(105%); }
+  .navrya-sidebar--mobile-open { transform: translateX(0) !important; box-shadow: var(--shadow-panel) !important; }
+  .navrya-sidebar::after {
+    content: ''; position: absolute; inset: auto -12vw 5% auto; width: 54vw; height: 54vw; pointer-events: none;
+    border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--char-accent) 24%, transparent), transparent 67%);
+    filter: blur(10px); opacity: .68;
+  }
+  .navrya-mobile-nav-close {
+    position: absolute; inset-block-start: 18px; inset-inline-end: 18px; z-index: 3;
+    width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px;
+    border: 1px solid var(--border-gold); background: rgba(3, 8, 7, .82); color: var(--text-primary); cursor: pointer;
+  }
+  .navrya-sidebar .navrya-scroll { overflow-y: auto !important; overflow-x: hidden !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: 66px !important; }
+  .navrya-sidebar [aria-label="Collapse sidebar"] { display: none !important; }
+
+  .navrya-session-toolbar { display: grid !important; grid-template-columns: minmax(0, 1fr); gap: 8px !important; }
+  .navrya-session-toolbar > * { width: 100% !important; min-width: 0 !important; margin-inline: 0 !important; }
+  .navrya-session-grid { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
+  .navrya-session-card--row { flex-direction: column !important; height: auto !important; }
+  .navrya-session-card--row > :first-child { flex: none !important; height: 184px !important; border-inline-end: 0 !important; border-bottom: 1px solid var(--border-hairline) !important; }
+  .navrya-session-card--row > :last-child { width: 100% !important; padding: 14px !important; }
+  .navrya-session-card--compact > :first-child { height: 176px !important; }
+
+  [data-navrya-assistant="dock"] { left: 8px !important; right: 8px !important; bottom: max(8px, env(safe-area-inset-bottom)) !important; gap: 0 !important; max-width: none !important; }
+  .navrya-dock-mascot { display: none !important; }
+  [data-navrya-assistant="dock"] [data-navrya-chat-dock] { gap: 6px !important; padding: 8px !important; }
+  [data-navrya-chat-dock] .navrya-dock-secondary-action,
+  [data-navrya-chat-dock] .navrya-dock-model-switcher,
+  [data-navrya-chat-dock] .navrya-dock-model-switcher + span,
+  [data-navrya-chat-dock] .navrya-dock-secondary-action + span { display: none !important; }
+  [data-navrya-chat-dock] .navrya-dock-primary-action { width: 42px !important; height: 42px !important; }
+  [data-navrya-chat-dock] .navrya-dock-mic { width: 38px !important; height: 38px !important; }
+  [data-navrya-assistant="voice-console"] { width: 100%; max-height: calc(100dvh - 16px); border-radius: 12px !important; }
+  .navrya-voice-console-header { gap: 7px !important; padding: 10px 12px !important; }
+  .navrya-voice-console-model,
+  .navrya-voice-console-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .navrya-voice-console-model { max-width: 96px; }
+  .navrya-voice-console-status { max-width: 82px; }
+  .navrya-voice-console-divider { display: none !important; }
+  .navrya-voice-console-content { max-height: min(34dvh, 272px) !important; }
+  .navrya-voice-console-content > div { padding: 14px 14px 10px !important; gap: 10px !important; }
+  .navrya-voice-console-caption { margin: 0 14px 8px !important; padding: 12px !important; min-height: 0 !important; }
+  .navrya-voice-console-caption p { font-size: 14px !important; line-height: 21px !important; }
+  .navrya-voice-console-error-card { display: grid !important; grid-template-columns: 34px minmax(0, 1fr); align-items: start !important; padding: 12px !important; }
+  .navrya-voice-console-error-actions { grid-column: 1 / -1; display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .navrya-voice-console-error-actions button { justify-content: center; min-width: 0; padding-inline: 8px !important; }
+  .navrya-voice-console-controls { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px !important; padding: 10px 12px !important; }
+  .navrya-voice-console-mute,
+  .navrya-voice-console-type,
+  .navrya-voice-console-captions { width: 100% !important; }
+  .navrya-voice-console-main-action { grid-column: 1 / -1; width: 100%; justify-content: center; order: 4; }
+  .navrya-voice-console-volume,
+  .navrya-voice-console-speed,
+  .navrya-voice-console-footer { display: none !important; }
+
+  /* The desktop board is a 12-column canvas. On a phone every panel is full-width, controls
+     become tap targets, and action text cannot escape the page edge. */
+  .navrya-dashboard-heading { align-items: stretch !important; gap: 12px !important; }
+  .navrya-dashboard-heading > :first-child { min-width: 0 !important; }
+  .navrya-dashboard-heading h1 { font-size: clamp(26px, 8vw, 34px) !important; }
+  .navrya-dashboard-actions { display: grid !important; grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .navrya-dashboard-actions > * { width: 100% !important; justify-content: center !important; }
+  .navrya-dashboard-toolbar { display: grid !important; grid-template-columns: minmax(0, 1fr); padding: 10px !important; }
+  .navrya-dashboard-toolbar > span[style*="flex: 1"] { display: none !important; }
+  .navrya-dashboard-toolbar button { width: 100%; justify-content: center; }
+  .navrya-dashboard-panel-library { grid-template-columns: minmax(0, 1fr) !important; padding: 12px !important; }
+  .navrya-dashboard-grid { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
+  .navrya-dashboard-grid > section { grid-column: auto !important; min-width: 0; }
+
+  .navrya-strategy-heading { align-items: stretch !important; gap: 14px !important; }
+  .navrya-strategy-heading h1 { font-size: clamp(26px, 8vw, 34px) !important; }
+  .navrya-strategy-summary { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px !important; }
+  .navrya-strategy-summary > * { min-width: 0; }
+  .navrya-strategy-toolbar { display: grid !important; grid-template-columns: minmax(0, 1fr); }
+  .navrya-strategy-toolbar > * { width: 100% !important; max-width: none !important; min-width: 0 !important; }
+  .navrya-strategy-toolbar > span { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px !important; }
+  .navrya-strategy-toolbar > span button { min-width: 0; padding-inline: 6px !important; }
+  .navrya-strategy-card-grid { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
+  .navrya-subscription-actions { display: grid !important; grid-template-columns: minmax(0, 1fr); }
+  .navrya-subscription-actions button { width: 100%; min-height: 40px !important; }
+}
+
+@media (max-width: 380px) {
+  [data-navrya-chat-dock] .navrya-dock-therapist { display: none !important; }
+}

@@ -3,6 +3,11 @@ import { VOICE_STATES } from './aiVoiceRealtime.js';
 const LIVE_SOCKET_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
 const INPUT_SAMPLE_RATE = 16000;
 const OUTPUT_SAMPLE_RATE = 24000;
+const LIVE_TRANSCRIPTION_LOCALES = Object.freeze({ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' });
+
+function normalizeLanguage(value) {
+  return Object.prototype.hasOwnProperty.call(LIVE_TRANSCRIPTION_LOCALES, value) ? value : 'en';
+}
 
 function errorCode(error) {
   return error && (error.code || (error.name && error.name !== 'Error' ? error.name : '') || error.message) || 'GEMINI_LIVE_FAILED';
@@ -56,7 +61,7 @@ function socketMessageText(value) {
 // reply, preserving the existing single decision and action path for voice and typed input.
 export function createGeminiLiveSession(options) {
   options = options || {};
-  let language = options.language || 'en';
+  let language = normalizeLanguage(options.language);
   let state = VOICE_STATES.IDLE;
   let muted = false;
   let mediaStream = null;
@@ -183,7 +188,7 @@ export function createGeminiLiveSession(options) {
         send({ setup: {
           model: `models/${creds.model}`,
           generationConfig: { responseModalities: ['TEXT'] },
-          inputAudioTranscription: { languageCodes: [({ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' })[language] || 'en-US'], mode: 'SMART' }
+          inputAudioTranscription: { languageCodes: [LIVE_TRANSCRIPTION_LOCALES[language]], mode: 'SMART' }
         } });
       };
       socket.onmessage = async (event) => {
@@ -278,5 +283,5 @@ export function createGeminiLiveSession(options) {
       element.play().catch(reject);
     });
   }
-  return { connect, disconnect, mute, interrupt, speak, playAudioUrl, finishUserTurn, markPlaybackEnded, setLanguage: (value) => { language = value || 'en'; }, setEagerness: () => false, state: () => state, isMuted: () => muted, getMediaStream: () => mediaStream };
+  return { connect, disconnect, mute, interrupt, speak, playAudioUrl, finishUserTurn, markPlaybackEnded, setLanguage: (value) => { language = normalizeLanguage(value); }, setEagerness: () => false, state: () => state, isMuted: () => muted, getMediaStream: () => mediaStream };
 }

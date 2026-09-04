@@ -34,6 +34,13 @@ document.documentElement.lang
 language `ai-i18n.js` doesn't support yet, or a malformed request) falls back to `'en'` rather
 than being sent to OpenAI unchecked.
 
+Gemini Voice applies the same allowlist twice: the server pins its constrained transcription token
+to the current language, and the browser adapter normalizes the current value before it opens the
+Live socket. Gemini TTS receives the same selected language as an explicit delivery constraint.
+Character selection changes only delivery: Hunter is watchful, Commander decisive, Engineer
+evidence-led, and Sage calm and reflective. It never selects a language, translates a reply, or
+changes the approved transcript.
+
 ## What was actually verified per language
 
 All four were exercised with real synthesized speech through the real OpenAI Realtime API - see

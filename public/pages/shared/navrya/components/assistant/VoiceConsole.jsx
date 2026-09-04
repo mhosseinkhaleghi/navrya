@@ -168,7 +168,7 @@ function ThinkingIndicator({ model, label }) {
 
 function DeniedCard({ strings, onRetry, onEnd }) {
   return (
-    <div style={{ width: '100%', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid color-mix(in srgb,var(--danger) 45%,transparent)', background: 'rgba(255,56,48,.08)' }}>
+    <div className="navrya-voice-console-error-card" style={{ width: '100%', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid color-mix(in srgb,var(--danger) 45%,transparent)', background: 'rgba(255,56,48,.08)' }}>
       <span style={{ width: 34, height: 34, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', border: '1px solid color-mix(in srgb,var(--danger) 50%,transparent)', color: 'var(--danger)' }}>
         <Icon name="triangle-alert" size={18} />
       </span>
@@ -176,7 +176,7 @@ function DeniedCard({ strings, onRetry, onEnd }) {
         <span style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{strings.deniedTitle}</span>
         <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{strings.deniedBody}</span>
       </span>
-      <span style={{ flex: 'none', display: 'flex', gap: 8 }}>
+      <span className="navrya-voice-console-error-actions" style={{ flex: 'none', display: 'flex', gap: 8 }}>
         <button
           type="button" onClick={onRetry}
           style={{ height: 36, padding: '0 14px', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border-gold)', background: 'transparent', font: 'var(--type-body)', color: 'var(--text-primary)' }}
@@ -198,7 +198,7 @@ function DeniedCard({ strings, onRetry, onEnd }) {
 
 function CaptionBox({ label, text, caret, tone }) {
   return (
-    <div style={{
+    <div className="navrya-voice-console-caption" style={{
       position: 'relative', margin: '0 22px 4px', padding: '14px 16px', borderRadius: 10, minHeight: 64, boxSizing: 'border-box',
       border: '1px solid ' + (tone === 'reply' ? 'var(--divider-gold)' : 'var(--border-hairline)'),
       background: tone === 'reply' ? 'rgba(214,175,107,.06)' : 'rgba(3,8,7,.5)'
@@ -269,7 +269,7 @@ export function VoiceConsole({
 
   return (
     <div
-      data-navrya-assistant="voice-console"
+      data-navrya-assistant="voice-console" className="navrya-voice-console"
       style={{
         position: 'relative', borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold-strong)',
         background: 'linear-gradient(180deg,rgba(17,27,28,.97),rgba(7,11,15,.98))',
@@ -282,7 +282,7 @@ export function VoiceConsole({
       <span aria-hidden="true" style={{ position: 'absolute', bottom: 5, insetInlineEnd: 5, width: 14, height: 14, borderBottom: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineEnd: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
       <span aria-hidden="true" style={{ position: 'absolute', bottom: 5, insetInlineStart: 5, width: 14, height: 14, borderBottom: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineStart: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
 
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border-hairline)' }}>
+      <div className="navrya-voice-console-header" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border-hairline)' }}>
         {/* NAVRYA chat dock redesign consistency pass: the same one-time header sweep
             ChatResponsePopover.jsx's header now plays (NavryaChatDock.dc.html) - purely
             decorative, plays once on mount, touches nothing about the real voice transport/turn
@@ -294,9 +294,9 @@ export function VoiceConsole({
         <span style={{ width: 30, height: 30, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)' }}>
           <ModelGlyph model={model} size={16} />
         </span>
-        <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{model ? model.label : ''} · VOICE</span>
-        <span aria-hidden="true" style={{ width: 1, height: 18, background: 'var(--border-hairline)' }} />
-        <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{denied ? 'MIC DENIED' : (PHASE_CODE[voiceState] || '')}</span>
+        <span className="navrya-voice-console-model" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{model ? model.label : ''} · VOICE</span>
+        <span className="navrya-voice-console-divider" aria-hidden="true" style={{ width: 1, height: 18, background: 'var(--border-hairline)' }} />
+        <span className="navrya-voice-console-status" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{denied ? 'MIC DENIED' : (PHASE_CODE[voiceState] || '')}</span>
         <span style={{ flex: 1 }} />
         <span className="navrya-tabular" style={{ font: 'var(--type-countdown)', fontSize: 15, color: 'var(--parchment)' }}>{mm}:{ss}</span>
         <button type="button" aria-label={strings.minimize} title={strings.minimize} onClick={onMinimize} style={{ width: 32, height: 32, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
@@ -311,7 +311,7 @@ export function VoiceConsole({
           footer controls below, both of which stay outside this wrapper and therefore always
           reachable - is its own bounded, scrollable region so a short viewport (or a long reply
           caption) can never push the mute/main-action/captions-toggle controls off-screen. */}
-      <div className="navrya-scroll" style={{ maxHeight: '46vh', overflowY: 'auto', boxSizing: 'border-box' }}>
+      <div className="navrya-scroll navrya-voice-console-content" style={{ maxHeight: '46vh', overflowY: 'auto', boxSizing: 'border-box' }}>
         <div style={{ position: 'relative', padding: '20px 22px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
             <span aria-hidden="true" style={{ width: 9, height: 9, flex: 'none', borderRadius: 999, background: dotColor, animation: 'navrya-halo 1150ms var(--ease-standard) infinite' }} />
@@ -341,15 +341,15 @@ export function VoiceConsole({
         {showReply && <CaptionBox label={strings.replyLabel} text={voiceReplyCaption} caret={false} tone="reply" />}
       </div>
 
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+      <div className="navrya-voice-console-controls" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
         <button
-          type="button" aria-label={voiceMuted ? strings.unmute : strings.mute} onClick={onVoiceMuteToggle}
+          type="button" className="navrya-voice-console-mute" aria-label={voiceMuted ? strings.unmute : strings.mute} onClick={onVoiceMuteToggle}
           style={{ width: 44, height: 44, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid ' + (voiceMuted ? 'var(--border-gold-strong)' : 'var(--border-hairline)'), background: voiceMuted ? 'var(--char-active-surface)' : 'transparent', color: voiceMuted ? 'var(--char-accent)' : 'var(--text-muted)' }}
         >
           <Icon name={voiceMuted ? 'mic-off' : 'mic'} size={19} />
         </button>
         <button
-          type="button" aria-label={strings.type} onClick={onVoiceEnd}
+          type="button" className="navrya-voice-console-type" aria-label={strings.type} onClick={onVoiceEnd}
           style={{ height: 44, flex: 'none', padding: '0 14px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', font: 'var(--type-body)', color: 'var(--text-muted)' }}
         >
           <Icon name="keyboard" size={19} />
@@ -357,7 +357,7 @@ export function VoiceConsole({
         </button>
         <span style={{ flex: 1 }} />
         <button
-          type="button" onClick={mainActionable ? mainActionHandler : undefined} aria-label={mainActionLabel} disabled={!mainActionable}
+          type="button" className="navrya-voice-console-main-action" onClick={mainActionable ? mainActionHandler : undefined} aria-label={mainActionLabel} disabled={!mainActionable}
           style={{
             height: 56, flex: 'none', padding: '0 24px', borderRadius: 'var(--radius-pill)', display: 'flex', alignItems: 'center', gap: 10,
             cursor: mainActionable ? 'pointer' : 'default', border: '1px solid transparent',
@@ -372,18 +372,18 @@ export function VoiceConsole({
         </button>
         <span style={{ flex: 1 }} />
         <button
-          type="button" aria-label={captionsOn ? strings.captionsOn : strings.captionsOff} onClick={() => setCaptionsOn((v) => !v)}
+          type="button" className="navrya-voice-console-captions" aria-label={captionsOn ? strings.captionsOn : strings.captionsOff} onClick={() => setCaptionsOn((v) => !v)}
           style={{ width: 44, height: 44, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid ' + (captionsOn ? 'var(--border-gold-strong)' : 'var(--border-hairline)'), background: 'transparent', color: captionsOn ? 'var(--text-primary)' : 'var(--text-muted)' }}
         >
           <Icon name="captions" size={19} />
         </button>
-        <span aria-hidden="true" style={{ width: 44, height: 44, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', border: '1px solid var(--border-hairline)', color: 'var(--text-muted)' }}>
+        <span className="navrya-voice-console-volume" aria-hidden="true" style={{ width: 44, height: 44, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', border: '1px solid var(--border-hairline)', color: 'var(--text-muted)' }}>
           <Icon name="volume-2" size={19} />
         </span>
-        <span aria-hidden="true" style={{ flex: 'none', height: 44, padding: '0 12px', borderRadius: 10, display: 'grid', placeItems: 'center', border: '1px solid var(--border-hairline)', font: 'var(--type-body)', color: 'var(--text-muted)' }}>1×</span>
+        <span className="navrya-voice-console-speed" aria-hidden="true" style={{ flex: 'none', height: 44, padding: '0 12px', borderRadius: 10, display: 'grid', placeItems: 'center', border: '1px solid var(--border-hairline)', font: 'var(--type-body)', color: 'var(--text-muted)' }}>1×</span>
       </div>
 
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '9px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.65)', flexWrap: 'wrap' }}>
+      <div className="navrya-voice-console-footer" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '9px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.65)', flexWrap: 'wrap' }}>
         <span style={{ font: 'var(--type-caption)', fontSize: 11, color: 'var(--text-muted)' }}>Esc — {strings.close}</span>
         <span aria-hidden="true" style={{ width: 1, height: 12, background: 'var(--border-hairline)' }} />
         <span style={{ font: 'var(--type-caption)', fontSize: 11, color: 'var(--text-muted)' }}>Space — {strings.mute}</span>

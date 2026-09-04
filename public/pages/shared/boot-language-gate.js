@@ -136,7 +136,7 @@
   var timer = setTimeout(function () { if (controller) controller.abort(); }, TIMEOUT_MS);
 
   window.__NAVRYA_AUTH_READY__ = fetch('/api/auth/session', {
-    credentials: 'include', signal: controller ? controller.signal : undefined
+    credentials: 'include', cache: 'no-store', signal: controller ? controller.signal : undefined
   })
     .then(function (response) {
       clearTimeout(timer);

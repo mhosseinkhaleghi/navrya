@@ -11,4 +11,7 @@ A saved session — chart snapshot on the left, ledger detail and four actions o
 - Detail fields are INSTRUMENT and LAST UPDATE, split by a 1px gold divider, tabular numerals.
 - `layout="compact"` is the grid card — 200px chart on top, detail below, several side by side at `minmax(340px, 1fr)`. `layout="row"` is the wide ledger card. SessionLibrary picks per view toggle.
 - `edition` overlays the character badge on the chart, bottom-left.
+- A real `thumbnail` is always rendered untouched. When no chart image exists, render the shared
+  `assets/sessions/session-no-chart.png` celestial empty-state artwork instead; never substitute
+  a decorative or fabricated chart.
 - Elevation is `0 18px 38px rgba(0,0,0,.34)` — the ledger card sits above the library surface.

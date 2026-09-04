@@ -38,8 +38,14 @@ export function createStore(character) {
   // sync now, not just cross-tab-in-one-browser the old shared localStorage key gave. See
   // boot-language-gate.js for the first-paint read of this same preference.
   function setLanguage(lang) {
-    document.documentElement.lang = lang;
-    document.documentElement.dir = lang === 'fa' || lang === 'ar' ? 'rtl' : 'ltr';
+    const language = String(lang || '').toLowerCase();
+    if (!['fa', 'ar', 'en', 'es'].includes(language)) return;
+    lang = language;
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === 'fa' || language === 'ar' ? 'rtl' : 'ltr';
+    // Keep the authenticated bootstrap snapshot coherent for same-document navigation while
+    // the server-backed preference write (already keepalive) is completing.
+    if (window.__NAVRYA_AUTH__) window.__NAVRYA_AUTH__.language = language;
     if (window.TradeJournalUserPreferences) window.TradeJournalUserPreferences.setPref('language', lang);
     set({ language: lang });
   }

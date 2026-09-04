@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node scripts/write-version.mjs && vite",
     "dev:api": "node --env-file-if-exists=.env server/pattern-ai-server.mjs",
-    "dev:community-api": "node --env-file-if-exists=.env server/community-api-server.mjs",
+    "dev:community-api": "NO_PROXY=\"${NO_PROXY:+$NO_PROXY,}www.googleapis.com,oauth2.googleapis.com,accounts.google.com\" no_proxy=\"${no_proxy:+$no_proxy,}www.googleapis.com,oauth2.googleapis.com,accounts.google.com\" node --env-file-if-exists=.env server/community-api-server.mjs",
     "db:migrate": "node --env-file-if-exists=.env server/db/migrate.mjs",
     "test": "node --test tests/*.test.mjs",
     "build": "node scripts/write-version.mjs && node navrya-src/build.mjs && vite build",

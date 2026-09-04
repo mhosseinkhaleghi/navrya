@@ -246,10 +246,14 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const nextCityLabel = marketLabels[nextSession.city.toLowerCase().replace(' ', '-')] || nextSession.city;
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
+      <button
+        type="button" className="navrya-mobile-menu-toggle" aria-label="Open navigation" aria-controls="navryaSidebarRoot"
+        onClick={() => window.dispatchEvent(new CustomEvent('navrya:mobile-menu', { detail: { open: true } }))}
+      ><Icon name="menu" size={20} /></button>
       {/* Full header, collapsible to nothing - the "Collapse header" button sits over its own
           bottom-left corner (absolute, matching the design handoff) so it never displaces the
           header's own content. */}
-      <div style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 400 : 0, opacity: headerOpen ? 1 : 0 }}>
+      <div className="navrya-header-expanded" style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 400 : 0, opacity: headerOpen ? 1 : 0 }}>
         <div style={{ position: 'relative' }}>
           <CharacterHeader
             character={navryaCharacter}
@@ -271,7 +275,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
             markets={markets}
           />
           <button
-            type="button" onClick={() => setHeaderOpen(false)}
+            type="button" className="navrya-header-collapse" onClick={() => setHeaderOpen(false)}
             style={{
               position: 'absolute', [rtl ? 'right' : 'left']: 24, bottom: 14, width: 196, height: 40, boxSizing: 'border-box',
               display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderRadius: 8, cursor: 'pointer',
@@ -286,7 +290,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
       </div>
       {/* Compact live-clock rail shown in place of the header once collapsed - the same four
           MarketSessionCard rows the full header's own market strip uses, just laid out inline. */}
-      <div style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 0 : 80, opacity: headerOpen ? 0 : 1 }}>
+      <div className="navrya-header-rail" style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 0 : 80, opacity: headerOpen ? 0 : 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, height: 72, boxSizing: 'border-box', padding: '0 14px', borderRadius: 12, border: '1px solid var(--border-gold)', background: 'linear-gradient(90deg, var(--char-atmosphere) 0%, var(--surface-780, var(--surface-800)) 38%, var(--ink-900) 100%)', boxShadow: 'var(--shadow-panel)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             {markets.map((m) => (

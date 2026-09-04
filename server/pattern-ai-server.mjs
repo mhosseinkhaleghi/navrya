@@ -2269,22 +2269,23 @@ const REALTIME_TRANSCRIPTION_KEYWORDS = ['New York', 'London', 'Tokyo', 'Sydney'
 const GEMINI_LIVE_TRANSCRIBE_MODEL = 'gemini-3.5-transcribe-live';
 const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
 const GEMINI_TTS_VOICE_BY_LANGUAGE = { fa: 'Kore', ar: 'Puck', en: 'Kore', es: 'Aoede' };
+const GEMINI_TTS_LANGUAGE_NAMES = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 'Spanish' };
 const GEMINI_TTS_CHARACTER_STYLE = {
   hunter: {
     voices: { male: 'Algenib', female: 'Iapetus' },
-    direction: 'A quiet, alert field guide. Use measured pacing, crisp articulation, and controlled confidence.'
+    direction: 'The Hunter: a patient, watchful scout. Keep the voice low-key and focused, with measured pacing, crisp articulation, and a brief controlled pause before an important timing or risk call. Sound prepared, never menacing or whispery.'
   },
   commander: {
     voices: { male: 'Kore', female: 'Pulcherrima' },
-    direction: 'A calm field commander. Sound decisive and focused, with firm but never aggressive delivery.'
+    direction: 'The Commander: a composed field leader. Deliver the next action and its consequence with decisive, purposeful clarity. Keep a firm, steady cadence, never barking, aggressive, or theatrical.'
   },
   engineer: {
     voices: { male: 'Iapetus', female: 'Despina' },
-    direction: 'A precise analytical systems guide. Keep a clear, measured pace and make technical points easy to follow.'
+    direction: 'The Market Engineer: a practical systems analyst. Sound precise, grounded, and evidence-led. Use a clear, structured rhythm that makes conditions, cause and effect, and validation easy to follow. Never sound robotic or clinical.'
   },
   sage: {
     voices: { male: 'Sadaltager', female: 'Sulafat' },
-    direction: 'A calm, reflective market mentor. Use warm authority, unhurried pacing, and thoughtful pauses.'
+    direction: 'The Market Sage: a seasoned market mentor. Use warm, quiet authority, an unhurried pace, and small thoughtful pauses around uncertainty or probability. Sound insightful and calm, never mystical, vague, or theatrical.'
   }
 };
 const GEMINI_TTS_CHARACTERS = Object.keys(GEMINI_TTS_CHARACTER_STYLE);
@@ -2299,7 +2300,8 @@ function geminiVoiceProfile(body, language) {
     character,
     gender,
     voice: profile.voices[gender] || geminiVoiceForLanguage(language),
-    direction: profile.direction
+    direction: profile.direction,
+    languageName: GEMINI_TTS_LANGUAGE_NAMES[language]
   };
 }
 
@@ -2370,7 +2372,7 @@ async function speakWithGemini(body) {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: `Read the transcript exactly. Do not add, omit, or alter anything.\n\nAUDIO PROFILE\n${voiceProfile.direction}\n\nDIRECTOR'S NOTES\nKeep the delivery natural and game-like, but never theatrical. Preserve the transcript's language and meaning exactly.\n\nTRANSCRIPT\n${text}` }] }],
+        contents: [{ role: 'user', parts: [{ text: `Read the transcript exactly. Do not add, omit, translate, or alter anything.\n\nAUDIO PROFILE\n${voiceProfile.direction}\n\nLANGUAGE\nThe NAVRYA interface language for this reply is ${voiceProfile.languageName}. Speak only that language with natural native prosody. Preserve canonical symbols, instruments, cities, prices, and timeframes exactly as written.\n\nDIRECTOR'S NOTES\nKeep the delivery natural and game-like, but never theatrical. The profile changes delivery only, never the transcript's language, meaning, numbers, or safety content.\n\nTRANSCRIPT\n${text}` }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceProfile.voice } } }

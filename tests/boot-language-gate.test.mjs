@@ -59,6 +59,7 @@ test('authenticated, with a real saved language preference: applies it, reveals,
     fetchImpl: async (url, options) => {
       assert.equal(url, '/api/auth/session');
       assert.equal(options.credentials, 'include');
+      assert.equal(options.cache, 'no-store');
       return { ok: true, json: async () => ({ authenticated: true, user: { id: 'user-42', displayName: 'Trader' }, csrfToken: 'csrf-xyz', language: 'es' }) };
     }
   });

@@ -995,20 +995,20 @@ export function DashboardView({ character }) {
   const ctx = { t, lang, character, now, custom: state.custom };
 
   return (
-    <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, flexWrap: 'wrap' }}>
+    <div className="navrya-dashboard-view" dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="navrya-dashboard-heading" style={{ display: 'flex', alignItems: 'flex-end', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 280 }}>
           <h1 style={{ margin: 0, font: 'var(--type-display-lg)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase', color: 'var(--parchment)' }}>{t('title')}</h1>
           <p style={{ margin: '6px 0 0', font: 'var(--type-body)', color: 'var(--text-muted)', maxWidth: 640 }}>{t('subtitle')}</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div className="navrya-dashboard-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <Button variant="primary" icon="new-session" onClick={() => { if (window.TradeJournalPanelLayer) window.TradeJournalPanelLayer.render('library'); }}>{t('startSession')}</Button>
           <Button variant="secondary" icon="edit" onClick={() => openLogWizard()}>{t('logTrade')}</Button>
           <Button variant="secondary" icon="execution" onClick={() => openCalculator()}>{t('calculator')}</Button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flexWrap: 'wrap' }}>
+      <div className="navrya-dashboard-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flexWrap: 'wrap' }}>
         <span style={{ color: 'var(--gold-warm)', display: 'flex' }}><Icon name="dashboard" size={16} /></span>
         <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('panelsOnBoard', { n: digits(lang, visibleBoard.length), m: digits(lang, tray.length) })}</span>
         <span style={{ flex: 1 }} />
@@ -1040,7 +1040,7 @@ export function DashboardView({ character }) {
           {!tray.length ? (
             <div style={{ padding: 16 }}><span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>—</span></div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 12, padding: 16 }}>
+            <div className="navrya-dashboard-panel-library" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 12, padding: 16 }}>
               {tray.map((id) => (
                 <button key={id} type="button" onClick={() => add(id)} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 8, padding: 14, borderRadius: 8, cursor: 'pointer', border: '1px dashed var(--divider-gold)', background: 'rgba(11,20,21,.5)' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 9, color: 'var(--char-accent)' }}>
@@ -1062,7 +1062,7 @@ export function DashboardView({ character }) {
           </div>
         </Panel>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,minmax(0,1fr))', gap: 16 }}>
+        <div className="navrya-dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(12,minmax(0,1fr))', gap: 16 }}>
           {visibleBoard.map((id) => {
             const cat = entryOf(id);
             if (!cat) return null;

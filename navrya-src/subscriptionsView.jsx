@@ -72,7 +72,7 @@ function PlanSection({ i18n }) {
   const upgradeTargets = data.plan === 'free' ? ['plus', 'personalized'] : data.plan === 'plus' ? ['personalized'] : [];
 
   return (
-    <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <Panel className="navrya-subscription-plan" variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{tOr(i18n, 'planSectionTitle', 'Plan')}</span>
@@ -90,14 +90,14 @@ function PlanSection({ i18n }) {
         )}
       </div>
       {data.subscription && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="navrya-subscription-actions" style={{ display: 'flex', gap: 8 }}>
           {data.subscription.cancelAtPeriodEnd
             ? <button type="button" onClick={() => reactivateSubscription(data.subscription.id)} style={{ height: 34, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-muted)' }}>{tOr(i18n, 'planReactivate', 'Reactivate')}</button>
             : <button type="button" onClick={() => cancelSubscription(data.subscription.id)} style={{ height: 34, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-muted)' }}>{tOr(i18n, 'planCancel', 'Cancel at period end')}</button>}
         </div>
       )}
       {!!upgradeTargets.length && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="navrya-subscription-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {upgradeTargets.map((planId) => (
             <button key={planId} type="button" onClick={() => requestUpgrade(planId)} style={{ height: 34, padding: '0 14px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)', color: 'var(--text-primary)' }}>
               {tOr(i18n, 'planUpgradeTo', 'Upgrade to {plan}').replace('{plan}', planId.charAt(0).toUpperCase() + planId.slice(1))}
@@ -136,7 +136,7 @@ function StorageSection({ i18n }) {
 
   if (!storage) return null;
   return (
-    <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <Panel className="navrya-subscription-storage" variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{tOr(i18n, 'storageSectionTitle', 'Storage')}</span>
       <strong style={{ font: 'var(--type-heading)', color: 'var(--parchment)' }}>{fmtBytesGb(storage.usedBytes)} / {fmtBytesGb(storage.quotaBytes)}</strong>
       {!!(storage.entitlements && storage.entitlements.length) && (
@@ -149,7 +149,7 @@ function StorageSection({ i18n }) {
         </div>
       )}
       {!!products.length && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="navrya-subscription-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {products.map((product) => (
             <button key={product.id} type="button" onClick={() => requestPurchase(product.id)} style={{ height: 34, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-muted)' }}>
               {product.name} — {fmtUsd(product.priceAmountMicroUsd)}
@@ -174,7 +174,7 @@ function SubscriptionsView({ i18n }) {
   }, []);
   const rtl = i18n.direction() === 'rtl';
   return (
-    <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="navrya-subscriptions-view" dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <PlanSection i18n={i18n} />
       <WalletBalanceSection i18n={i18n} />
       <StorageSection i18n={i18n} />
