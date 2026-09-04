@@ -186,7 +186,7 @@ function PreSessionCheckInModal({ session, onDone }) {
           <AiMagicFill active={sleepFilled}><RatingRow label={t('mhSleepQuality')} value={sleepQuality} onChange={setSleepQuality} /></AiMagicFill>
           <AiMagicFill active={stressFilled}><RatingRow label={t('mhCurrentStress')} value={currentStressLevel} onChange={setCurrentStressLevel} /></AiMagicFill>
           <YesNoRow label={t('mhSomethingToProve')} value={somethingToProveToday} onChange={setSomethingToProveToday} t={t} />
-          <AiMagicFill active={eventFilled}>
+          <AiMagicFill active={eventFilled} value={significantPersonalEvent}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <SectionLabel>{t('mhSignificantEventPlaceholder')}</SectionLabel>
             <input

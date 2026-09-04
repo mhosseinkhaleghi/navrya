@@ -1110,9 +1110,9 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       </div>
       {open && (
         <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--border-hairline)', paddingTop: 12 }}>
-          <AiMagicFill active={titleFilled}><TextField label={tr(lang, 'scenarioTitleLabel')} value={scenario.title} onCommit={(v) => onUpdate({ title: v })} /></AiMagicFill>
-          <AiMagicFill active={descriptionFilled}><TextAreaField label={tr(lang, 'scenarioDescLabel')} value={scenario.description} placeholder={tr(lang, 'scenarioDescPlaceholder')} onCommit={(v) => onUpdate({ description: v })} /></AiMagicFill>
-          <AiMagicFill active={evidenceFilled}><TextAreaField label={tr(lang, 'evidenceLabel')} value={scenario.evidence} placeholder={tr(lang, 'evidencePlaceholder')} onCommit={(v) => onUpdate({ evidence: v })} /></AiMagicFill>
+          <AiMagicFill active={titleFilled} value={scenario.title}><TextField label={tr(lang, 'scenarioTitleLabel')} value={scenario.title} onCommit={(v) => onUpdate({ title: v })} /></AiMagicFill>
+          <AiMagicFill active={descriptionFilled} value={scenario.description}><TextAreaField label={tr(lang, 'scenarioDescLabel')} value={scenario.description} placeholder={tr(lang, 'scenarioDescPlaceholder')} onCommit={(v) => onUpdate({ description: v })} /></AiMagicFill>
+          <AiMagicFill active={evidenceFilled} value={scenario.evidence}><TextAreaField label={tr(lang, 'evidenceLabel')} value={scenario.evidence} placeholder={tr(lang, 'evidencePlaceholder')} onCommit={(v) => onUpdate({ evidence: v })} /></AiMagicFill>
 
           <AiMagicFill active={patternNameFilled}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1157,8 +1157,8 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
             )}
           </div>
 
-          <AiMagicFill active={problemFilled}><TextAreaField label={tr(lang, 'problemLabel')} value={scenario.problem} placeholder={tr(lang, 'problemPlaceholder')} onCommit={(v) => onUpdate({ problem: v })} /></AiMagicFill>
-          <AiMagicFill active={triggerFilled}><TextAreaField label={tr(lang, 'triggerLabel')} value={scenario.trigger} placeholder={tr(lang, 'triggerPlaceholder')} onCommit={(v) => onUpdate({ trigger: v })} /></AiMagicFill>
+          <AiMagicFill active={problemFilled} value={scenario.problem}><TextAreaField label={tr(lang, 'problemLabel')} value={scenario.problem} placeholder={tr(lang, 'problemPlaceholder')} onCommit={(v) => onUpdate({ problem: v })} /></AiMagicFill>
+          <AiMagicFill active={triggerFilled} value={scenario.trigger}><TextAreaField label={tr(lang, 'triggerLabel')} value={scenario.trigger} placeholder={tr(lang, 'triggerPlaceholder')} onCommit={(v) => onUpdate({ trigger: v })} /></AiMagicFill>
 
           <AiMagicFill active={probabilityFilled}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1185,21 +1185,21 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
               </span>
             </AiMagicFill>
             <span style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-              <AiMagicFill active={entryPricesFilled}>
+              <AiMagicFill active={entryPricesFilled} value={(plan.entryPrices || []).join(', ')}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{tr(lang, 'entryPriceLabel')}</span>
                   <input type="text" className="navrya-tabular" defaultValue={(plan.entryPrices || []).join(', ')} style={{ ...inputStyle, height: 32, fontSize: 11 }}
                     onBlur={(e) => onUpdate({ executionPlan: { ...plan, entryPrices: e.target.value.split(',').map((x) => Number(x.trim())).filter((n) => !Number.isNaN(n)) } })} />
                 </label>
               </AiMagicFill>
-              <AiMagicFill active={stopLossFilled}>
+              <AiMagicFill active={stopLossFilled} value={plan.stopLoss ?? ''}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontSize: 9, color: 'var(--danger)' }}>{tr(lang, 'stopLabel')}</span>
                   <input type="text" className="navrya-tabular" defaultValue={plan.stopLoss ?? ''} style={{ ...inputStyle, height: 32, fontSize: 11 }}
                     onBlur={(e) => onUpdate({ executionPlan: { ...plan, stopLoss: e.target.value ? Number(e.target.value) : null } })} />
                 </label>
               </AiMagicFill>
-              <AiMagicFill active={takeProfitFilled}>
+              <AiMagicFill active={takeProfitFilled} value={plan.takeProfit ?? ''}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontSize: 9, color: 'var(--success)' }}>{tr(lang, 'targetLabel')}</span>
                   <input type="text" className="navrya-tabular" defaultValue={plan.takeProfit ?? ''} style={{ ...inputStyle, height: 32, fontSize: 11 }}
@@ -1248,7 +1248,7 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
             <AiMagicFill active={invalidationTagsFilled}>
               <InvalidationTags lang={lang} tags={scenario.invalidationTagIds} readOnly={readOnly} onChange={(tags) => onUpdate({ invalidationTagIds: tags })} />
             </AiMagicFill>
-            <AiMagicFill active={invalidationNoteFilled}>
+            <AiMagicFill active={invalidationNoteFilled} value={scenario.invalidationNote}>
               <TextAreaField label={tr(lang, 'invalidationNoteLabel')} value={scenario.invalidationNote} placeholder={tr(lang, 'invalidationNotePlaceholder')} onCommit={(v) => onUpdate({ invalidationNote: v })} />
             </AiMagicFill>
           </div>
@@ -1466,7 +1466,7 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
               onVisualizeAnalysis={onVisualizeAiAnalysis ? handleVisualizeAiAnalysis : null}
             />
           )}
-          <AiMagicFill active={noteFilled}>
+          <AiMagicFill active={noteFilled} value={note || ''}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--text-muted)' }}><Icon name="edit" size={14} />{tr(lang, 'noteLabel')}</span>
               <textarea defaultValue={note || ''} placeholder={tr(lang, 'notePlaceholder')} dir="auto" style={{ ...textareaStyle, minHeight: 74, padding: '10px 12px' }}

@@ -309,10 +309,10 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
       <div style={{ flex: '1 1 330px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
         <SectionLabel>{t('logTheNumbers')}</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 }}>
-          <AiMagicFill active={entryFilled}><div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('entryPrice')}</MetricLabel><NumField value={trade.entry} onChange={(v) => setField('entry', v)} placeholder="0.00" unit="usd" /></div></AiMagicFill>
-          <AiMagicFill active={stopFilled}><div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('stopLoss')}</MetricLabel><NumField value={trade.stop} onChange={(v) => setField('stop', v)} placeholder="0.00" unit="usd" /></div></AiMagicFill>
+          <AiMagicFill active={entryFilled} value={trade.entry}><div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('entryPrice')}</MetricLabel><NumField value={trade.entry} onChange={(v) => setField('entry', v)} placeholder="0.00" unit="usd" /></div></AiMagicFill>
+          <AiMagicFill active={stopFilled} value={trade.stop}><div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('stopLoss')}</MetricLabel><NumField value={trade.stop} onChange={(v) => setField('stop', v)} placeholder="0.00" unit="usd" /></div></AiMagicFill>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('takeProfit')}</MetricLabel><NumField value={trade.tp} onChange={(v) => setField('tp', v)} placeholder="0.00" unit="usd" /></div>
-          <AiMagicFill active={riskPercentFilled}>
+          <AiMagicFill active={riskPercentFilled} value={trade.riskPercent || (solved.valid && solved.r.riskPercent !== null && solved.r.riskPercent !== undefined ? plainNum(solved.r.riskPercent, 2) : '')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <MetricLabel>{t('riskPercent')}</MetricLabel>
               <NumField
@@ -321,7 +321,7 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
               />
             </div>
           </AiMagicFill>
-          <AiMagicFill active={leverageFilled}>
+          <AiMagicFill active={leverageFilled} value={trade.leverage}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <MetricLabel>{t('leverage')}</MetricLabel>
               <NumField value={trade.leverage} onChange={(v) => setField('leverage', v)} placeholder="10" unit="x" />
@@ -491,7 +491,7 @@ function StepSeen({ t, types, trade, toggleConcept, patterns, togglePattern, pat
           <Button variant="secondary" icon="plus" onClick={onAddPattern}>{t('logSave')}</Button>
         </div>
       </div>
-      <AiMagicFill active={chartNoteFilled}>
+      <AiMagicFill active={chartNoteFilled} value={trade.chartNote}>
         <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
           <SectionLabel>{t('logInYourWords')}</SectionLabel>
           <textarea

@@ -791,7 +791,7 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
               </div>
             </AiMagicFill>
 
-            <AiMagicFill active={entryFilled}>
+            <AiMagicFill active={entryFilled} value={entry}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                   <FromImageDot show={filled.indexOf('entry') > -1} title={t('calcReadFromScreenshot')} />
@@ -801,7 +801,7 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
               </div>
             </AiMagicFill>
 
-            <AiMagicFill active={stopFilled}>
+            <AiMagicFill active={stopFilled} value={stop}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                   <FromImageDot show={filled.indexOf('stop') > -1} title={t('calcReadFromScreenshot')} />

@@ -203,9 +203,35 @@ test('every real, AI-fillable ScenarioEditor field (title/description/evidence/p
 });
 
 test('every real, AI-fillable field is actually WRAPPED in <AiMagicFill active={...FieldFilled}> in the real JSX, not just subscribed to and unused', () => {
+  // 2026-09-05 ("type, don't glow"): the tag's own closing '>' is no longer required to sit
+  // directly after active={...} - a free-text field's AiMagicFill now also carries a real
+  // value={...} prop (see the dedicated typewriter-reveal tests below) between the two. Checking
+  // only that active={varName} appears as part of a real <AiMagicFill ...> opening tag keeps this
+  // test's own actual purpose (wired, not just subscribed-and-unused) without over-fitting to a
+  // JSX shape this feature deliberately changed for a known subset of these fields.
   for (const varName of ['titleFilled', 'descriptionFilled', 'evidenceFilled', 'problemFilled', 'triggerFilled', 'positionTypeFilled', 'entryPricesFilled', 'stopLossFilled', 'takeProfitFilled', 'patternNameFilled', 'probabilityFilled', 'invalidationNoteFilled', 'invalidationTagsFilled', 'noteFilled']) {
-    const re = new RegExp(`<AiMagicFill active=\\{${varName}\\}>`);
+    const re = new RegExp(`<AiMagicFill active=\\{${varName}\\}`);
     assert.match(liveSessionSrc, re, `${varName} must actually be passed to a real <AiMagicFill active={...}> in the rendered JSX`);
+  }
+});
+
+// 2026-09-05 ("type, don't glow"): every genuine free-text ScenarioEditor/EntryDetailPanel field
+// (never a choice/toggle/slider/select one - those deliberately keep the "press" treatment with no
+// value prop at all, see AiMagicFill.jsx's own value-prop branch) now also passes AiMagicFill a
+// real value={...} so it can reveal the just-applied text instead of only glowing.
+test('every free-text AiMagicFill site in liveSessionView.jsx also passes a real value={...} prop (the typewriter-reveal target) - choice/toggle/slider/select fields deliberately do not', () => {
+  for (const [varName, valueExpr] of [
+    ['titleFilled', 'scenario.title'], ['descriptionFilled', 'scenario.description'], ['evidenceFilled', 'scenario.evidence'],
+    ['problemFilled', 'scenario.problem'], ['triggerFilled', 'scenario.trigger'],
+    ['entryPricesFilled', "(plan.entryPrices || []).join(', ')"], ['stopLossFilled', 'plan.stopLoss ?? \'\''], ['takeProfitFilled', 'plan.takeProfit ?? \'\''],
+    ['invalidationNoteFilled', 'scenario.invalidationNote'], ['noteFilled', "note || ''"]
+  ]) {
+    const re = new RegExp(`<AiMagicFill active=\\{${varName}\\} value=\\{${valueExpr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`);
+    assert.match(liveSessionSrc, re, `${varName} must pass value={${valueExpr}} to AiMagicFill`);
+  }
+  for (const varName of ['positionTypeFilled', 'patternNameFilled', 'probabilityFilled', 'invalidationTagsFilled']) {
+    const re = new RegExp(`<AiMagicFill active=\\{${varName}\\} value=`);
+    assert.doesNotMatch(liveSessionSrc, re, `${varName} is a choice/toggle/slider field - it must keep the "press" treatment, never a value prop`);
   }
 });
 
@@ -270,6 +296,14 @@ test('preSessionCheckInModal.jsx calls retargetOrStart() on mount and restorePre
 test('preSessionCheckInModal.jsx wires all 3 of its own AI-fillable fields to useAiFieldFill and wraps each in a real <AiMagicFill>', () => {
   for (const [varName, fieldPath] of [['sleepFilled', 'sleepQuality'], ['stressFilled', 'currentStressLevel'], ['eventFilled', 'significantPersonalEvent']]) {
     assert.match(preSessionCheckInSrc, new RegExp(`const ${varName} = useAiFieldFill\\('mh-pre-session-checkin', '${fieldPath}'\\)`));
-    assert.match(preSessionCheckInSrc, new RegExp(`<AiMagicFill active=\\{${varName}\\}>`));
+    // 2026-09-05 ("type, don't glow"): eventFilled's own tag also carries a real value={...} prop
+    // (see the dedicated test below) - only the tag's presence is asserted here, not its full shape.
+    assert.match(preSessionCheckInSrc, new RegExp(`<AiMagicFill active=\\{${varName}\\}`));
   }
+});
+
+test('eventFilled (the one genuine free-text field of the three) also passes value={significantPersonalEvent} - sleepFilled/stressFilled are rating buttons and deliberately keep the "press" treatment with no value prop', () => {
+  assert.match(preSessionCheckInSrc, /<AiMagicFill active=\{eventFilled\} value=\{significantPersonalEvent\}>/);
+  assert.doesNotMatch(preSessionCheckInSrc, /<AiMagicFill active=\{sleepFilled\} value=/);
+  assert.doesNotMatch(preSessionCheckInSrc, /<AiMagicFill active=\{stressFilled\} value=/);
 });

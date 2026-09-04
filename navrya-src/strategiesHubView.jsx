@@ -1082,8 +1082,8 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
             <span style={{ fontSize: 11, letterSpacing: '.1em', color: 'var(--char-accent)' }}>{tr(lang, 'defTitle')}</span>
             {savedAt && <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={13} />{tr(lang, 'changesSaved')}</span>}
           </span>
-          <AiMagicFill active={nameFilled}><TextField_ label={tr(lang, 'nameLabel')} value={pattern.name} onCommit={(v) => patch({ name: v })} /></AiMagicFill>
-          <AiMagicFill active={descriptionFilled}><TextAreaField_ label={tr(lang, 'descLabel')} value={pattern.description} rows={3} onCommit={(v) => patch({ description: v })} help={tr(lang, 'descHelp')} /></AiMagicFill>
+          <AiMagicFill active={nameFilled} value={pattern.name}><TextField_ label={tr(lang, 'nameLabel')} value={pattern.name} onCommit={(v) => patch({ name: v })} /></AiMagicFill>
+          <AiMagicFill active={descriptionFilled} value={pattern.description}><TextAreaField_ label={tr(lang, 'descLabel')} value={pattern.description} rows={3} onCommit={(v) => patch({ description: v })} help={tr(lang, 'descHelp')} /></AiMagicFill>
           <AiMagicFill active={thresholdFilled}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: 14, borderRadius: 10, border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.05)' }}>
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1158,9 +1158,9 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
 // list (below), so a hook can't be called directly inside that .map() callback (Rules of Hooks) -
 // this tiny wrapper component gives each rendered field its OWN useAiFieldFill instance instead,
 // the standard, correct way to give per-list-item hook state.
-function StrategyMagicField({ processId, path, children }) {
+function StrategyMagicField({ processId, path, value, children }) {
   const active = useAiFieldFill(processId, path);
-  return <AiMagicFill active={active}>{children}</AiMagicFill>;
+  return <AiMagicFill active={active} value={value}>{children}</AiMagicFill>;
 }
 
 function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
@@ -1251,7 +1251,7 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
       <Panel variant="base" padding="18px 20px 20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {savedAt && <span style={{ display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-end', fontSize: 11, color: 'var(--success)' }}><Icon name="check" size={13} />{tr(lang, 'changesSaved')}</span>}
-          <StrategyMagicField processId={'strategy-editor-' + strategy.id} path="name">
+          <StrategyMagicField processId={'strategy-editor-' + strategy.id} path="name" value={strategy.name}>
             <TextField_ label={tr(lang, 'strategyNameLabel')} value={strategy.name} placeholder={tr(lang, 'strategyNamePlaceholder')} onCommit={(v) => set('name', v)} />
           </StrategyMagicField>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 360 }}>
@@ -1273,7 +1273,7 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
             {!g.frameworkOnly && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
                 {g.fields.map((f) => (
-                  <StrategyMagicField key={f.key} processId={'strategy-editor-' + strategy.id} path={f.key}>
+                  <StrategyMagicField key={f.key} processId={'strategy-editor-' + strategy.id} path={f.key} value={f.value == null ? '' : f.value}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{f.label}</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1285,7 +1285,7 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
                 ))}
               </div>
             )}
-            <StrategyMagicField processId={'strategy-editor-' + strategy.id} path={g.noteKey}>
+            <StrategyMagicField processId={'strategy-editor-' + strategy.id} path={g.noteKey} value={g.note || ''}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{tr(lang, 'freeNoteLabel')}</span>
                 <textarea defaultValue={g.note || ''} dir="auto" rows={2} placeholder={tr(lang, 'freeNotePlaceholder')} onBlur={(e) => { if (e.target.value !== (g.note || '')) set(g.noteKey, e.target.value); }} style={textareaStyle} />
