@@ -685,7 +685,7 @@ function PsychSection({ i18n, mi, profile, onOpenChecklist }) {
 }
 
 function TrackingSection({ i18n, mi, psych, trades, closed, profile, dueCheckIn, checkInDismissed, onDismissCheckIn, onRunCheckIn }) {
-  const weather = psych.emotionalWeatherDaily(trades, 7);
+  const weather = psych.emotionalWeatherDaily(trades, 90);
   const weeklyScore = profile.healthReportCache.weeklyScore;
   const weekTrades = closed.filter((t) => (new Date(t.closedAt || t.createdAt)).getTime() >= Date.now() - 7 * 86400000);
   const snapshots = profile.progressTracking.weeklySnapshots.slice(-8);
@@ -712,18 +712,47 @@ function TrackingSection({ i18n, mi, psych, trades, closed, profile, dueCheckIn,
               <SectionLabel>{mi.t('mhEmotionalWeatherTitle')}</SectionLabel>
               <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyWeatherNote')}</Caption>
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 150 }}>
+            {/* A calendar, not seven bars. The pattern worth catching here is monthly - a
+                tense last week of every month, a bad Monday - and a seven-day window is too
+                short to contain one. A day with no log stays an empty cell, never a zero. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(15, minmax(0, 1fr))', gap: 4 }}>
               {weather.map((w, i) => {
-                const fill = w.avgStress == null ? 'var(--border-hairline)' : w.avgStress >= 7 ? 'color-mix(in srgb, var(--warning) 70%, transparent)' : w.avgStress >= 5 ? 'color-mix(in srgb, var(--char-accent) 75%, transparent)' : 'color-mix(in srgb, var(--char-accent) 40%, transparent)';
-                const label = new Date(w.date).toLocaleDateString(i18n.locale(), { weekday: 'short' });
+                const s = w.avgStress;
+                const fill = s == null ? 'rgba(244,234,215,.06)'
+                  : s <= 3 ? 'color-mix(in srgb, var(--success) 75%, transparent)'
+                    : s <= 5 ? 'color-mix(in srgb, var(--char-accent) 60%, transparent)'
+                      : s <= 7 ? 'color-mix(in srgb, var(--warning) 60%, transparent)'
+                        : 'color-mix(in srgb, var(--danger) 65%, transparent)';
+                const day = new Date(w.date);
                 return (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
-                    <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{w.avgStress != null ? w.avgStress : '—'}</span>
-                    <span style={{ width: '100%', borderRadius: 4, display: 'block', height: (w.avgStress != null ? Math.max(4, Math.round(w.avgStress / 10 * 110)) : 4) + 'px', background: fill }}></span>
-                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em', textTransform: 'uppercase' }}>{label}</span>
-                  </div>
+                  <span
+                    key={i}
+                    title={i18n.date(day, { dateStyle: 'medium' }) + (s == null ? ' · ' + i18n.t('psyWeatherNoLog') : ' · ' + i18n.number(s))}
+                    style={{
+                      aspectRatio: '1', borderRadius: 3, display: 'grid', placeItems: 'center',
+                      background: fill, border: '1px solid ' + (s == null ? 'var(--border-hairline)' : 'rgba(3,8,7,.5)')
+                    }}
+                  >
+                    <span className="navrya-tabular" style={{ font: '400 8px/10px var(--font-ui)', color: s == null ? 'var(--text-disabled)' : 'var(--ink-950)' }}>
+                      {s == null ? '' : Math.round(s)}
+                    </span>
+                  </span>
                 );
               })}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Caption>{i18n.t('psyWeatherCalm')}</Caption>
+              <span style={{ display: 'flex', gap: 3 }}>
+                {['var(--success)', 'var(--char-accent)', 'var(--warning)', 'var(--danger)'].map((tone, i) => (
+                  <span key={i} style={{ width: 13, height: 13, borderRadius: 3, display: 'block', background: 'color-mix(in srgb, ' + tone + ' 65%, transparent)' }}></span>
+                ))}
+              </span>
+              <Caption>{i18n.t('psyWeatherTense')}</Caption>
+              <span style={{ width: 13, height: 13, borderRadius: 3, display: 'block', background: 'rgba(244,234,215,.06)', border: '1px solid var(--border-hairline)', marginInlineStart: 8 }}></span>
+              <Caption>{i18n.t('psyWeatherNoLog')}</Caption>
+              <Caption className="navrya-tabular" style={{ marginInlineStart: 'auto' }}>
+                {i18n.t('psyWeatherLogged', { count: i18n.number(weather.filter((w) => w.avgStress != null).length), total: i18n.number(weather.length) })}
+              </Caption>
             </div>
           </div>
         </Panel>
