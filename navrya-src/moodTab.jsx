@@ -5,6 +5,7 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
+import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 
 // The MOOD tab (Mood.dc.html on the approved canvas) and the calm room it can open
 // (CalmRoom.dc.html). Nothing here needs a new store: a day's mood IS a PreSessionCheckIn, which
@@ -35,111 +36,195 @@ function Caption({ children, style, className }) {
 
 // Reduced-motion is honoured by the tokens themselves (motion.css zeroes the duration vars under
 // prefers-reduced-motion), but a looping keyframe has no duration var to zero - so the media
-// query is repeated here for the two animations this screen adds.
+// query is repeated here for the animations this screen adds.
 const KEYFRAMES = `
 @keyframes navrya-mood-aura { 0%,100% { opacity:.4; transform:scale(1) } 50% { opacity:.92; transform:scale(1.07) } }
 @keyframes navrya-mood-breathe { 0% { transform:scale(.62); opacity:.5 } 33% { transform:scale(1); opacity:1 } 50% { transform:scale(1); opacity:1 } 100% { transform:scale(.62); opacity:.5 } }
+@keyframes navrya-mood-spin { from { transform:rotate(0) } to { transform:rotate(360deg) } }
 @media (prefers-reduced-motion: reduce) {
-  .navrya-mood-aura, .navrya-mood-breathe { animation: none !important }
+  .navrya-mood-aura, .navrya-mood-breathe, .navrya-mood-spin { animation: none !important }
 }`;
 
 function Keyframes() {
   return <style>{KEYFRAMES}</style>;
 }
 
+// A small, non-interactive preview of the breathing pacer - the same visual promise the always-
+// reachable calm-room card on the design canvas makes: this is what opening it looks like, not
+// just a link with an icon.
+function BreathPreview({ size = 96, label }) {
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flex: 'none' }}>
+      <svg className="navrya-mood-spin" width={size} height={size} viewBox={'0 0 ' + size + ' ' + size} style={{ position: 'absolute', inset: 0, display: 'block', animation: 'navrya-mood-spin 24s linear infinite' }} aria-hidden="true">
+        <circle cx={size / 2} cy={size / 2} r={size / 2 - 8} fill="none" stroke="rgba(102,201,78,.18)" strokeWidth="1" strokeDasharray="2 12"></circle>
+        <circle cx={size / 2} cy="6" r="2.5" fill="var(--char-light-glow, #8AF7B4)"></circle>
+      </svg>
+      <span className="navrya-mood-breathe" aria-hidden="true" style={{ position: 'absolute', inset: size * 0.14, borderRadius: 999, display: 'block', border: '2px solid var(--char-emerald, #35D07F)', background: 'radial-gradient(circle,rgba(53,208,127,.16),rgba(3,8,7,.7))', animation: 'navrya-mood-breathe 12s cubic-bezier(.4,0,.2,1) infinite' }}></span>
+      {label && (
+        <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+          <span style={{ font: '600 ' + Math.round(size * 0.19) + 'px/1 var(--font-display)', letterSpacing: '.14em', color: 'var(--char-light-glow, #8AF7B4)' }}>{label}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ============================================================================
-// CALM ROOM - a scrim over the app, not a route. Opened from a tense/angry mood
-// or from the protective guards.
+// CALM ROOM - the real app Modal shell (blur + scrim + close + ESC + click-outside), not a
+// hand-rolled overlay. Opened from a tense/angry mood, from the protective guards, or manually.
 // ============================================================================
-export function CalmRoom({ i18n, reason, onClose }) {
-  const [seconds, setSeconds] = React.useState(4 * 60);
+export function CalmRoom({ i18n, psych, profile, trades, reason, onClose }) {
+  const settings = psych.settings();
+  const totalSeconds = Math.max(60, (settings.postTradeReflection.cooldownMinutes || 15) * 60);
+  const [seconds, setSeconds] = React.useState(totalSeconds);
   const [why, setWhy] = React.useState('');
+  const [breathDone, setBreathDone] = React.useState(false);
+  const [muted, setMuted] = React.useState(false);
 
   React.useEffect(() => {
     const id = setInterval(() => setSeconds((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Both gates must clear before the room lets go: the timer, and a written reason. The reason is
-  // the point - it is what gets read back in the weekly review, not a formality.
+  // One full breathing cycle (4 in + 2 hold + 6 out = 12s) satisfies the gate on its own, the same
+  // as actually following the pacer through once; the skip button satisfies it immediately for
+  // whoever does not want a forced-meditation experience - matching the design's own "رد کردن
+  // تنفس" control rather than making breathing mandatory.
+  React.useEffect(() => {
+    if (breathDone) return undefined;
+    const id = setTimeout(() => setBreathDone(true), 12000);
+    return () => clearTimeout(id);
+  }, [breathDone]);
+
+  // Three real gates, all required - the timer, a full breath cycle (or an explicit skip), and a
+  // written reason of real length. The written reason is the point, not a formality: it is what
+  // comes back in the weekly review.
   const timerDone = seconds === 0;
   const reasonGiven = why.trim().length >= 10;
-  const canLeave = timerDone && reasonGiven;
+  const canLeave = timerDone && reasonGiven && breathDone;
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss = String(seconds % 60).padStart(2, '0');
 
+  const worst = psych.worstRevengeTrade(trades || []);
+  const reflections = (profile.continuousTracking && profile.continuousTracking.postTradeReflections) || [];
+  const worstReflection = worst ? reflections.find((r) => r.tradeId === worst.tradeId) : null;
+  // A real count of how often the revenge cool-down has actually armed, from
+  // postTradeReflection.revengeCheck - never a fabricated "stayed until it cleared" completion
+  // rate, since that outcome is not tracked anywhere yet.
+  const cooldownFires = reflections.filter((r) => r.revengeCheck && r.revengeCheck.cooldownTimerStartedAt).length;
+
+  const gates = [
+    [breathDone, i18n.t('moodGateBreath')],
+    [timerDone, i18n.t('moodGateTimer', { value: mm + ':' + ss })],
+    [reasonGiven, i18n.t('moodGateReason')]
+  ];
+
   return (
-    <div
-      role="dialog" aria-modal="true" aria-label={i18n.t('moodCalmTitle')}
-      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 24, boxSizing: 'border-box', overflow: 'auto' }}
+    <Modal
+      open title={i18n.t('moodCalmTitle')} icon="honour" onClose={onClose} width={980}
+      style={{ background: 'linear-gradient(180deg,rgba(46,204,113,.07),var(--ink-900))' }}
+      footer={(
+        <React.Fragment>
+          <Caption style={{ flex: 1 }}>{i18n.t('moodCalmAfter')}</Caption>
+          {cooldownFires > 0 && <Chip tone="neutral">{i18n.t('moodCalmFiredCount', { count: i18n.number(cooldownFires) })}</Chip>}
+        </React.Fragment>
+      )}
     >
       <Keyframes />
-      <Panel variant="prestige" ornament texture padding={0} style={{ width: 'min(940px, 100%)', background: 'linear-gradient(180deg,rgba(46,204,113,.06),color-mix(in srgb, var(--char-atmosphere) 42%, var(--ink-950)))' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 22px', borderBottom: '1px solid var(--divider-gold)', flexWrap: 'wrap' }}>
-          <span style={{ width: 38, height: 38, flex: 'none', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--char-accent) 50%, transparent)', background: 'var(--char-active-surface)', display: 'grid', placeItems: 'center', color: 'var(--char-accent)' }}>
-            <Icon name="honour" size={19} />
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
-            <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{i18n.t('moodCalmTitle')}</span>
-            <Caption>{i18n.t('moodCalmSubtitle')}</Caption>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <Caption style={{ flex: '1 1 260px' }}>{i18n.t('moodCalmSubtitle')}</Caption>
+        {reason && <Chip tone="danger" dot>{reason}</Chip>}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 22, flexWrap: 'wrap' }}>
+        {/* breathing pacer */}
+        <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, paddingInlineEnd: 22, borderInlineEnd: '1px solid var(--border-hairline)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+            <SectionLabel>{i18n.t('moodBreathTitle')}</SectionLabel>
+            <Chip tone="accent" style={{ marginInlineStart: 'auto' }}>{i18n.t('moodBreathPattern')}</Chip>
           </div>
-          {reason && <Chip tone="danger" dot>{reason}</Chip>}
+          <BreathPreview size={220} label={i18n.t('moodBreathIn')} />
+          <Caption style={{ textAlign: 'center', lineHeight: '18px' }}>{i18n.t('moodBreathHint')}</Caption>
+          <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+            <Button variant="secondary" size="sm" onClick={() => setMuted((m) => !m)} style={{ flex: 1 }}>
+              {i18n.t(muted ? 'moodBreathUnmute' : 'moodBreathMute')}
+            </Button>
+            <Button variant="ghost" size="sm" disabled={breathDone} onClick={() => setBreathDone(true)} style={{ flex: 1 }}>
+              {i18n.t(breathDone ? 'moodBreathDone' : 'moodBreathSkip')}
+            </Button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 380px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, padding: '26px 24px', borderInlineEnd: '1px solid var(--border-hairline)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-              <SectionLabel>{i18n.t('moodBreathTitle')}</SectionLabel>
-              <Chip tone="accent" style={{ marginInlineStart: 'auto' }}>{i18n.t('moodBreathPattern')}</Chip>
-            </div>
-            <div style={{ position: 'relative', width: 260, height: 260 }}>
-              <span className="navrya-mood-breathe" aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: 999, display: 'block', background: 'radial-gradient(circle,rgba(53,208,127,.3),transparent 66%)', animation: 'navrya-mood-breathe 12s cubic-bezier(.4,0,.2,1) infinite' }}></span>
-              <span className="navrya-mood-breathe" aria-hidden="true" style={{ position: 'absolute', inset: 32, borderRadius: 999, display: 'block', border: '2px solid var(--char-emerald, #35D07F)', background: 'radial-gradient(circle,rgba(53,208,127,.14),rgba(3,8,7,.72))', animation: 'navrya-mood-breathe 12s cubic-bezier(.4,0,.2,1) infinite' }}></span>
-              <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
-                <span className="navrya-tabular" style={{ font: '600 34px/1 var(--font-display)', color: 'var(--char-light-glow, #8AF7B4)' }}>{mm}:{ss}</span>
-              </span>
-            </div>
-            <Caption style={{ textAlign: 'center', lineHeight: '18px' }}>{i18n.t('moodBreathHint')}</Caption>
-          </div>
-
-          <div style={{ flex: '1 1 400px', display: 'flex', flexDirection: 'column', gap: 16, padding: '26px 24px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <SectionLabel>{i18n.t('moodExitGate')}</SectionLabel>
-              <Caption style={{ lineHeight: '18px' }}>{i18n.t('moodExitGateBody')}</Caption>
-              <TextField
-                label={i18n.t('moodExitReason')} value={why} onChange={setWhy}
-                placeholder={i18n.t('moodExitReasonPlaceholder')}
-                hint={reasonGiven ? undefined : i18n.t('moodExitReasonHint')}
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {[[timerDone, i18n.t('moodGateTimer', { value: mm + ':' + ss })], [reasonGiven, i18n.t('moodGateReason')]].map(([ok, label]) => (
-                <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                  <span style={{
-                    width: 20, height: 20, flex: 'none', borderRadius: 6, display: 'grid', placeItems: 'center',
-                    border: '1px solid ' + (ok ? 'color-mix(in srgb, var(--char-accent) 60%, transparent)' : 'rgba(244,234,215,.18)'),
-                    background: ok ? 'var(--char-accent)' : 'transparent', color: 'var(--ink-950)'
-                  }}>{ok && <Icon name="check" size={13} />}</span>
-                  <Caption style={{ flex: 1 }}>{label}</Caption>
+        {/* deterrent + exit gate */}
+        <div style={{ flex: '1 1 380px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {worst ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '15px 16px', borderRadius: 8, border: '1px solid rgba(255,56,48,.45)', background: 'rgba(255,56,48,.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <SectionLabel>{i18n.t('moodCalmDeterrentTitle')}</SectionLabel>
+                <Caption style={{ marginInlineStart: 'auto' }}>{i18n.date(worst.closedAt)}</Caption>
+              </div>
+              <div style={{ display: 'flex', gap: 14 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                  <Caption>{i18n.t('moodCalmLoss')}</Caption>
+                  <span className="navrya-tabular" style={{ font: '600 20px/24px var(--font-display)', color: 'var(--danger)' }}>{i18n.money(worst.pnl)}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                  <Caption>{i18n.t('moodCalmGapLabel')}</Caption>
+                  <span className="navrya-tabular" style={{ font: '600 20px/24px var(--font-display)', color: 'var(--text-primary)' }}>{i18n.t('moodCalmGapMinutes', { value: i18n.number(worst.minutesSinceLoss) })}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                  <Caption>{i18n.t('moodCalmSizeLabel')}</Caption>
+                  <span className="navrya-tabular" style={{ font: '600 20px/24px var(--font-display)', color: worst.sizeRatio != null ? 'var(--warning)' : 'var(--text-disabled)' }}>
+                    {worst.sizeRatio != null ? i18n.t('moodCalmSizeRatio', { value: i18n.number(worst.sizeRatio) }) : '—'}
+                  </span>
+                </div>
+              </div>
+              {worstReflection && worstReflection.sentenceOfTheDay && (
+                <span style={{ font: 'italic 400 14px/22px var(--font-quote, Georgia, serif)', color: 'var(--parchment)', borderInlineStart: '2px solid rgba(255,56,48,.5)', paddingInlineStart: 12 }}>
+                  «{worstReflection.sentenceOfTheDay}»
                 </span>
-              ))}
+              )}
             </div>
+          ) : (
+            <Notice tone="accent" icon="honour">{i18n.t('moodNoRevengeYet')}</Notice>
+          )}
 
-            <div style={{ height: 1, background: 'var(--border-hairline)' }}></div>
-            <Button variant="primary" fullWidth disabled={!canLeave} onClick={onClose}>{i18n.t('moodCalmLeave')}</Button>
-            <Caption style={{ textAlign: 'center' }}>{i18n.t('moodCalmLeaveHint')}</Caption>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <SectionLabel>{i18n.t('moodExitGate')}</SectionLabel>
+            <Caption style={{ lineHeight: '18px' }}>{i18n.t('moodExitGateBody')}</Caption>
+            <TextField
+              label={i18n.t('moodExitReason')} value={why} onChange={setWhy}
+              placeholder={i18n.t('moodExitReasonPlaceholder')}
+              hint={reasonGiven ? undefined : i18n.t('moodExitReasonHint')}
+            />
           </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+            {gates.map(([ok, label]) => (
+              <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <span style={{
+                  width: 20, height: 20, flex: 'none', borderRadius: 6, display: 'grid', placeItems: 'center',
+                  border: '1px solid ' + (ok ? 'color-mix(in srgb, var(--char-accent) 60%, transparent)' : 'rgba(244,234,215,.18)'),
+                  background: ok ? 'var(--char-accent)' : 'transparent', color: 'var(--ink-950)'
+                }}>{ok && <Icon name="check" size={13} />}</span>
+                <Caption style={{ flex: 1 }}>{label}</Caption>
+              </span>
+            ))}
+          </div>
+
+          <div style={{ height: 1, background: 'var(--border-hairline)' }}></div>
+          <Button variant="primary" fullWidth disabled={!canLeave} onClick={onClose}>{i18n.t('moodCalmLeave')}</Button>
+          <Caption style={{ textAlign: 'center' }}>{i18n.t('moodCalmLeaveHint')}</Caption>
         </div>
-      </Panel>
-    </div>
+      </div>
+    </Modal>
   );
 }
 
 // ============================================================================
 // MOOD TAB
 // ============================================================================
-export function MoodTab({ i18n, mhStore, profile, trades, onLogged }) {
+export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
   const [picked, setPicked] = React.useState(null);
   const [sleep, setSleep] = React.useState(3);
   const [prove, setProve] = React.useState(false);
@@ -158,6 +243,17 @@ export function MoodTab({ i18n, mhStore, profile, trades, onLogged }) {
   const stress = active ? active.stress : (latest ? latest.currentStressLevel : null);
   const rgb = active ? active.rgb : '172,169,148';
 
+  // A specific, computed reason beats a generic one: when the tilt reading itself justifies it
+  // (two or more losses close together), the calm room's header chip names the real streak and
+  // gap rather than only naming the mood that triggered it.
+  function calmReasonFor(moodId) {
+    const t = psych.tiltReading(trades || []);
+    if (t.lossStreak >= 2 && t.minutesSinceLoss != null) {
+      return i18n.t('moodCalmReason_streak', { count: i18n.number(t.lossStreak), minutes: i18n.number(t.minutesSinceLoss) });
+    }
+    return i18n.t('moodCalmReason_' + moodId);
+  }
+
   function log(moodId) {
     const m = BY_ID[moodId];
     mhStore.addPreSessionCheckIn(mhStore.load(), null, {
@@ -172,7 +268,7 @@ export function MoodTab({ i18n, mhStore, profile, trades, onLogged }) {
     if (onLogged) onLogged();
     // The two moods that mean "do not trade right now" open the room themselves. Waiting for the
     // trader to go looking for help in that state is exactly when they will not.
-    if (moodId === 'angry' || moodId === 'tense') setCalm(i18n.t('moodCalmReason_' + moodId));
+    if (moodId === 'angry' || moodId === 'tense') setCalm(calmReasonFor(moodId));
   }
 
   const rhythm = todays
@@ -182,7 +278,7 @@ export function MoodTab({ i18n, mhStore, profile, trades, onLogged }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Keyframes />
-      {calm && <CalmRoom i18n={i18n} reason={calm} onClose={() => setCalm(null)} />}
+      {calm && <CalmRoom i18n={i18n} psych={psych} profile={profile} trades={trades} reason={calm} onClose={() => setCalm(null)} />}
 
       {/* the aura stage */}
       <Panel
@@ -304,46 +400,47 @@ export function MoodTab({ i18n, mhStore, profile, trades, onLogged }) {
         </Panel>
       </div>
 
-      {/* today's rhythm, straight from today's own check-ins */}
-      <Panel variant="base" ornament padding="18px 20px 20px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <SectionLabel>{i18n.t('moodRhythmTitle')}</SectionLabel>
-            <Chip tone="neutral">{i18n.t('moodLogsToday', { count: i18n.number(todays.length) })}</Chip>
-            <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('moodRhythmHint')}</Caption>
-          </div>
-          {rhythm.length ? (
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 9, height: 150 }}>
-              {rhythm.map((r, i) => {
-                const tone = r.value >= 8 ? 'var(--danger)' : r.value >= 6 ? 'var(--warning)' : 'var(--char-accent)';
-                return (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, justifyContent: 'flex-end', height: '100%' }}>
-                    <Caption className="navrya-tabular">{i18n.number(r.value)}</Caption>
-                    <span style={{ width: '100%', borderRadius: '4px 4px 2px 2px', display: 'block', height: Math.max(6, Math.round(r.value / 10 * 112)), background: 'linear-gradient(180deg,' + tone + ',color-mix(in srgb,' + tone + ' 30%, transparent))' }}></span>
-                    <Caption className="navrya-tabular">{r.at.toLocaleTimeString(i18n.locale(), { hour: '2-digit', minute: '2-digit' })}</Caption>
-                  </div>
-                );
-              })}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        {/* today's rhythm, straight from today's own check-ins */}
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 460px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <SectionLabel>{i18n.t('moodRhythmTitle')}</SectionLabel>
+              <Chip tone="neutral">{i18n.t('moodLogsToday', { count: i18n.number(todays.length) })}</Chip>
+              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('moodRhythmHint')}</Caption>
             </div>
-          ) : <Caption>{i18n.t('moodRhythmEmpty')}</Caption>}
-        </div>
-      </Panel>
-
-      {/* the room, always reachable - not only when a bad mood opened it */}
-      <Panel variant="base" ornament padding="18px 20px 20px">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--char-accent) 45%, transparent)', background: 'var(--char-active-surface)', display: 'grid', placeItems: 'center', color: 'var(--char-accent)' }}>
-            <Icon name="honour" size={20} />
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 300px', minWidth: 0 }}>
-            <span style={{ font: 'var(--type-username)', color: 'var(--text-primary)' }}>{i18n.t('moodCalmTitle')}</span>
-            <Caption style={{ lineHeight: '17px' }}>{i18n.t('moodCalmAlways')}</Caption>
+            {rhythm.length ? (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 9, height: 150 }}>
+                {rhythm.map((r, i) => {
+                  const tone = r.value >= 8 ? 'var(--danger)' : r.value >= 6 ? 'var(--warning)' : 'var(--char-accent)';
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, justifyContent: 'flex-end', height: '100%' }}>
+                      <Caption className="navrya-tabular">{i18n.number(r.value)}</Caption>
+                      <span style={{ width: '100%', borderRadius: '4px 4px 2px 2px', display: 'block', height: Math.max(6, Math.round(r.value / 10 * 112)), background: 'linear-gradient(180deg,' + tone + ',color-mix(in srgb,' + tone + ' 30%, transparent))' }}></span>
+                      <Caption className="navrya-tabular">{r.at.toLocaleTimeString(i18n.locale(), { hour: '2-digit', minute: '2-digit' })}</Caption>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <Caption>{i18n.t('moodRhythmEmpty')}</Caption>}
           </div>
-          <Button variant="secondary" onClick={() => setCalm(i18n.t('moodCalmReason_manual'))} style={{ flex: 'none' }}>
-            {i18n.t('moodCalmOpen')}
-          </Button>
-        </div>
-      </Panel>
+        </Panel>
+
+        {/* the room, always reachable - not only when a bad mood opened it */}
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 300px', borderColor: 'rgba(102,201,78,.45)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+              <SectionLabel>{i18n.t('moodCalmTitle')}</SectionLabel>
+              <Chip tone="accent" style={{ marginInlineStart: 'auto' }}>{i18n.t('moodBreathPattern')}</Chip>
+            </div>
+            <BreathPreview size={130} label={i18n.t('moodBreathIn')} />
+            <Caption style={{ textAlign: 'center', lineHeight: '18px' }}>{i18n.t('moodCalmAlways')}</Caption>
+            <Button variant="primary" fullWidth onClick={() => setCalm(i18n.t('moodCalmReason_manual'))}>
+              {i18n.t('moodCalmOpen')}
+            </Button>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }

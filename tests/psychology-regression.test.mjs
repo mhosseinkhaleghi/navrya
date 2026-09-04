@@ -284,3 +284,50 @@ test('selfRatings ignores logs older than the window', async () => {
   assert.equal(ratings.stress, null);
   assert.equal(ratings.sampleSize, 0);
 });
+
+// --- worstRevengeTrade(): the calm room's deterrent card ---
+
+test('worstRevengeTrade finds the single worst pnl among losses that followed a loss within 30 minutes', async () => {
+  const psych = await psychologyStore();
+  const base = new Date('2026-08-24T10:00:00Z');
+  const at = (min) => new Date(base.getTime() + min * 60000).toISOString();
+  const trades = [
+    closedTrade({ outcome: 'loss', pnl: -40, closedAt: at(0) }),
+    closedTrade({ outcome: 'loss', pnl: -312, closedAt: at(4) }), // 4 min after a loss -> candidate, worst
+    closedTrade({ outcome: 'loss', pnl: -20, closedAt: at(25) })  // 21 min after the previous loss -> also a candidate, not worst
+  ];
+  const worst = psych.worstRevengeTrade(trades);
+  assert.equal(worst.pnl, -312);
+  assert.equal(worst.minutesSinceLoss, 4);
+});
+
+test('worstRevengeTrade returns null when no loss ever followed another loss within 30 minutes', async () => {
+  const psych = await psychologyStore();
+  const base = new Date('2026-08-24T10:00:00Z');
+  const at = (min) => new Date(base.getTime() + min * 60000).toISOString();
+  const trades = [
+    closedTrade({ outcome: 'win', pnl: 40, closedAt: at(0) }),
+    closedTrade({ outcome: 'loss', pnl: -50, closedAt: at(10) }),
+    closedTrade({ outcome: 'loss', pnl: -60, closedAt: at(120) }) // 110 min later - too far apart
+  ];
+  assert.equal(psych.worstRevengeTrade(trades), null);
+});
+
+test('worstRevengeTrade computes a real sizeRatio from riskPercent, and leaves it null without enough samples', async () => {
+  const psych = await psychologyStore();
+  const base = new Date('2026-08-24T10:00:00Z');
+  const at = (min) => new Date(base.getTime() + min * 60000).toISOString();
+
+  const withRisk = psych.worstRevengeTrade([
+    closedTrade({ outcome: 'loss', pnl: -10, closedAt: at(0), riskPercent: 1 }),
+    closedTrade({ outcome: 'loss', pnl: -10, closedAt: at(1), riskPercent: 1 }),
+    closedTrade({ outcome: 'loss', pnl: -300, closedAt: at(5), riskPercent: 3.5 })
+  ]);
+  assert.equal(withRisk.sizeRatio, 3.5);
+
+  const withoutRisk = psych.worstRevengeTrade([
+    closedTrade({ outcome: 'loss', pnl: -10, closedAt: at(0) }),
+    closedTrade({ outcome: 'loss', pnl: -300, closedAt: at(5) })
+  ]);
+  assert.equal(withoutRisk.sizeRatio, null);
+});

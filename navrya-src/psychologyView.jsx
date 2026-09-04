@@ -1241,7 +1241,7 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
         <div style={{ flex: '1 1 700px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {psyTab === 'overview' && <OverviewTab i18n={i18n} psych={psych} trades={trades} closed={closed} profile={profile} />}
           {psyTab === 'routine' && <RoutineTab i18n={i18n} />}
-          {psyTab === 'mood' && <MoodTab i18n={i18n} mhStore={mhStore} profile={profile} trades={trades} onLogged={forceRerender} />}
+          {psyTab === 'mood' && <MoodTab i18n={i18n} psych={psych} mhStore={mhStore} profile={profile} trades={trades} onLogged={forceRerender} />}
           {psyTab === 'therapist' && <TherapistTab i18n={i18n} mhStore={mhStore} profile={profile} onChanged={forceRerender} />}
           {psyTab === 'journeys' && <JourneysTab i18n={i18n} trades={trades} openJourney={openJourney} setOpenJourney={setOpenJourney} />}
           {psyTab === 'insights' && <InsightsTab i18n={i18n} insights={insights} dismissedIds={dismissedIds} onDismiss={(idx) => setDismissedIds((s) => new Set(s).add(idx))} onAddAsTrigger={addInsightAsTrigger} />}

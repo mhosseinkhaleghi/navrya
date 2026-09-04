@@ -218,6 +218,39 @@
     return{stress:mean(stress),focus:mean(focus),planCommitment:mean(plan),sampleSize:stress.length};
   }
 
+  // The single worst trade the calm room's deterrent card can point at: a closed loss that
+  // followed another closed loss within half an hour - the same window tiltReading() already
+  // treats as "still hot" - picked by the biggest pnl loss among those candidates. Returns null
+  // (never a fabricated example) when no such pair exists in the trader's history yet.
+  //
+  // sizeRatio is real when riskPercent was logged on enough trades to have a median to compare
+  // against; otherwise it stays null rather than inventing a multiplier.
+  function worstRevengeTrade(trades){
+    var closed=closedTrades(trades).filter(function(t){return t.closedAt;})
+      .sort(function(a,b){return new Date(a.closedAt)-new Date(b.closedAt);});
+    var riskSamples=closed.map(function(t){return Number(t.riskPercent);}).filter(function(v){return Number.isFinite(v);});
+    var medianRisk=null;
+    if(riskSamples.length){
+      var sorted=riskSamples.slice().sort(function(a,b){return a-b;}),mid=Math.floor(sorted.length/2);
+      medianRisk=sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;
+    }
+    var worst=null;
+    for(var i=1;i<closed.length;i++){
+      var cur=closed[i],prev=closed[i-1];
+      if(cur.outcome!=='loss'||prev.outcome!=='loss')continue;
+      var gapMin=Math.round((new Date(cur.closedAt)-new Date(prev.closedAt))/60000);
+      if(gapMin<0||gapMin>30)continue;
+      var pnl=Number(cur.pnl);
+      if(!Number.isFinite(pnl))continue;
+      if(!worst||pnl<worst.pnl){
+        var risk=Number(cur.riskPercent);
+        var sizeRatio=(Number.isFinite(risk)&&medianRisk)?Math.round(risk/medianRisk*10)/10:null;
+        worst={tradeId:cur.id,pnl:pnl,minutesSinceLoss:gapMin,sizeRatio:sizeRatio,closedAt:cur.closedAt};
+      }
+    }
+    return worst;
+  }
+
   window.TradeJournalPsychologyStore={
     settings:settings,
     saveSettings:saveSettings,
@@ -230,6 +263,7 @@
     emotionalWeatherDaily:emotionalWeatherDaily,
     lastClosedTrade:lastClosedTrade,
     tiltReading:tiltReading,
-    selfRatings:selfRatings
+    selfRatings:selfRatings,
+    worstRevengeTrade:worstRevengeTrade
   };
 }());
