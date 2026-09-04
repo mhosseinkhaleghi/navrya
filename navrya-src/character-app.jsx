@@ -250,10 +250,10 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
         type="button" className="navrya-mobile-menu-toggle" aria-label="Open navigation" aria-controls="navryaSidebarRoot"
         onClick={() => window.dispatchEvent(new CustomEvent('navrya:mobile-menu', { detail: { open: true } }))}
       ><Icon name="menu" size={20} /></button>
-      {/* Header actions live in their own row. They must never occupy the same pixels as the
-          market rail, and expanded/collapsed states deliberately keep the control at inline-end. */}
+      {/* Both header states reserve the same bottom-end spot for their icon-only toggle. */}
       <div className="navrya-header-expanded" style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 420 : 0, opacity: headerOpen ? 1 : 0 }}>
-        <CharacterHeader
+        <div className="navrya-header-surface" style={{ position: 'relative' }}>
+          <CharacterHeader
             character={navryaCharacter}
             title={t.charTitle && t.charTitle[navryaCharacter]}
             name={s.profile ? s.profile.displayName : undefined}
@@ -271,13 +271,13 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
             nextSession={{ city: nextCityLabel, startsIn: nextSession.startsIn }}
             nextSessionLabel={t.nextSession} startsInLabel={t.startsIn}
             markets={markets}
-        />
-        <div className="navrya-header-toggle-row" style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
+          />
           <button
             type="button" className="navrya-header-collapse" onClick={() => setHeaderOpen(false)}
             style={{
+              position: 'absolute', insetInlineStart: 14, insetBlockEnd: 14, zIndex: 1,
               width: 44, height: 36, boxSizing: 'border-box',
-              display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderRadius: 8, cursor: 'pointer',
+              display: 'grid', placeItems: 'center', padding: 0, borderRadius: 8, cursor: 'pointer',
               border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)', color: 'var(--text-muted)',
               font: 'var(--type-section-label)', letterSpacing: '.1em', textTransform: 'uppercase'
             }}
@@ -290,7 +290,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
       {/* Compact live-clock rail shown in place of the header once collapsed - the same four
           MarketSessionCard rows the full header's own market strip uses, just laid out inline. */}
       <div className="navrya-header-rail" style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 0 : 80, opacity: headerOpen ? 0 : 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, height: 72, boxSizing: 'border-box', padding: '0 14px', borderRadius: 12, border: '1px solid var(--border-gold)', background: 'linear-gradient(90deg, var(--char-atmosphere) 0%, var(--surface-780, var(--surface-800)) 38%, var(--ink-900) 100%)', boxShadow: 'var(--shadow-panel)' }}>
+        <div className="navrya-header-rail-surface" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, height: 72, boxSizing: 'border-box', padding: '0 14px 0 72px', borderRadius: 12, border: '1px solid var(--border-gold)', background: 'linear-gradient(90deg, var(--char-atmosphere) 0%, var(--surface-780, var(--surface-800)) 38%, var(--ink-900) 100%)', boxShadow: 'var(--shadow-panel)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             {markets.map((m) => (
               <MarketSessionCard key={m.market} market={m.market} state={m.state} countdown={m.countdown} cityLabel={m.cityLabel} minWidth={190} height={52} style={{ flex: '1 1 0' }} />
@@ -302,7 +302,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
           </div>
           <button
             type="button" className="navrya-header-expand" onClick={() => setHeaderOpen(true)} aria-label={t.expandHeader} title={t.expandHeader}
-            style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}
+            style={{ position: 'absolute', insetInlineStart: 14, insetBlockEnd: 14, width: 44, height: 44, display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}
           >
             <Icon name="chevrons-down" size={18} />
           </button>

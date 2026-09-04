@@ -16,8 +16,8 @@ body .app-shell {
 }
 
 @media (min-width: 721px) and (max-width: 1560px) {
-  /* The desktop header has a fixed two-row composition. Keep the shell fluid so no region is
-     compressed into another one while the market cards use their contained rail. */
+  /* The original desktop header stacks its utility/market region below the identity region.
+     Keep the content shell fluid so that layout never inherits a desktop-only minimum. */
   body .app-shell { padding-inline: clamp(14px, 2vw, 28px); }
   .navrya-main, .navrya-main > *, .panel-page { min-width: 0; }
 }

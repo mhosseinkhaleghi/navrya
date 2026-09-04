@@ -64,10 +64,11 @@ export function CharacterHeader({
   const viewportWidth = useViewportWidth();
   const viewportHeight = useViewportHeight();
   const compactDesktop = viewportWidth <= 1680;
-  const narrowDesktop = viewportWidth <= 1180;
+  const stacked = viewportWidth <= 1560;
+  const wideDesktop = viewportWidth > 1320;
   const mobile = viewportWidth <= 720;
   const shortHeight = viewportHeight <= 820;
-  const portraitSize = mobile ? 76 : (shortHeight ? 88 : (compactDesktop ? 108 : 124));
+  const portraitSize = mobile ? 76 : (shortHeight ? 108 : (compactDesktop ? 160 : 200));
   const headerPad = mobile ? 10 : (shortHeight ? '10px 16px' : 'var(--header-pad)');
   const gutter = mobile ? 8 : (shortHeight ? 8 : 'var(--header-gutter)');
   const marketTileHeight = shortHeight ? 44 : 'var(--metric-tile-h)';
@@ -114,40 +115,73 @@ export function CharacterHeader({
       }}
       {...rest}
     >
-      <div className="navrya-header-primary-row" style={{ display: 'grid', gridTemplateColumns: narrowDesktop ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(252px,.72fr) minmax(0,1.34fr) minmax(300px,.82fr)', alignItems: 'stretch', gap: gutter }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: gutter, minWidth: 0 }}>
-          <BrandLockup character={character} orientation="horizontal" style={{ minWidth: 0, flex: '1 1 auto' }} markSize={compactDesktop ? 38 : 46} wordmarkSize={compactDesktop ? 20 : 23} />
-          <CharacterPortrait character={character} size={portraitSize} onEdit={onEditPortrait} style={{ margin: 0, flex: 'none' }} />
+      {wideDesktop ? (
+        <div className="navrya-header-wide-classic" style={{ display: 'flex', alignItems: 'stretch', gap: gutter, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: gutter, flex: 'none' }}>
+            <BrandLockup character={character} style={{ width: 'var(--region-brand)', flex: 'none', paddingTop: shortHeight ? 4 : 14, alignSelf: 'flex-start' }} markSize={shortHeight ? 36 : 54} />
+            <CharacterPortrait character={character} size={portraitSize} onEdit={onEditPortrait} style={{ margin: '0 8px' }} />
+          </div>
+          <div style={{ flex: '1 1 var(--region-identity)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: shortHeight ? 8 : 12, paddingTop: shortHeight ? 0 : 6 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
+              <CharacterIdentity character={character} name={name} handle={handle} title={title} quote={shortHeight ? undefined : (quote || d.quote)} onClick={onIdentityClick} titleSize={shortHeight ? 21 : 34} style={{ flex: '1 1 200px', minWidth: 200 }} />
+              <LevelBadge level={level ?? d.level} label={levelLabel} />
+            </div>
+            <XPProgress value={xp ?? d.xp} max={xpMax ?? d.xpMax} />
+            <MetricRow metrics={metrics} style={{ marginTop: 'auto', flexWrap: 'wrap' }} />
+          </div>
+          <div style={{ flex: '0 0 auto', minWidth: 508, display: 'flex', flexDirection: 'column', gap: shortHeight ? 6 : 10 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: gutter }}>
+              <RankCrest character={character} style={{ flex: 'none', paddingTop: shortHeight ? 0 : 8 }} label={rankLabel} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 'none' }}>
+                <UtilityPanel date={date} language={language} uptime={uptime} uptimeLabel={uptimeLabel} onLanguageChange={onLanguageChange} onSettings={onSettings} width={344} />
+                <NextSessionPanel city={nextSession.city} startsIn={nextSession.startsIn} nextSessionLabel={nextSessionLabel} startsInLabel={startsInLabel} width={344} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', minHeight: marketTileHeight, marginTop: 'auto' }}>
+              {markets.map((m) => (
+                <MarketSessionCard key={m.market} market={m.market} state={m.state} countdown={m.countdown} cityLabel={m.cityLabel} minWidth={0} height={marketTileHeight} style={{ flex: '1 1 0' }} />
+              ))}
+            </div>
+          </div>
         </div>
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: shortHeight ? 6 : 8 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, minWidth: 0 }}>
+      ) : (
+      <div style={{ display: stacked ? 'grid' : 'flex', gridTemplateColumns: stacked ? 'minmax(0,.82fr) minmax(0,1.18fr)' : undefined, alignItems: 'stretch', gap: gutter, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: gutter, flex: 'none' }}>
+          <BrandLockup character={character} style={{ width: 'var(--region-brand)', flex: 'none', paddingTop: shortHeight ? 4 : 14, alignSelf: 'flex-start' }} markSize={shortHeight ? 36 : 54} />
+          <CharacterPortrait character={character} size={portraitSize} onEdit={onEditPortrait} style={{ margin: '0 8px' }} />
+        </div>
+        <div style={{ flex: stacked ? 'none' : '1 1 var(--region-identity)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: shortHeight ? 8 : 12, paddingTop: shortHeight ? 0 : 6 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
             <CharacterIdentity
               character={character} name={name} handle={handle} title={title}
-              quote={undefined} onClick={onIdentityClick}
-              titleSize={shortHeight ? 21 : 25} style={{ flex: '1 1 auto', minWidth: 0 }}
+              quote={shortHeight ? undefined : (quote || d.quote)} onClick={onIdentityClick}
+              titleSize={shortHeight ? 21 : 34} style={{ flex: '1 1 200px', minWidth: 200 }}
             />
             <LevelBadge level={level ?? d.level} label={levelLabel} />
           </div>
           <XPProgress value={xp ?? d.xp} max={xpMax ?? d.xpMax} />
-          <MetricRow metrics={metrics} style={{ minWidth: 0 }} />
+          <MetricRow metrics={metrics} style={{ marginTop: 'auto', flexWrap: 'wrap' }} />
         </div>
-        <div style={{ gridColumn: narrowDesktop ? '1 / -1' : undefined, minWidth: 0, alignSelf: 'stretch' }}>
-          <UtilityPanel date={date} language={language} uptime={uptime} uptimeLabel={uptimeLabel} onLanguageChange={onLanguageChange} onSettings={onSettings} width="100%" />
+        <div style={{ gridColumn: stacked ? '1 / -1' : undefined, flex: stacked ? 'none' : '0 0 auto', minWidth: stacked ? 0 : 508, width: stacked ? '100%' : undefined, display: 'flex', flexDirection: 'column', gap: shortHeight ? 6 : 10 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: gutter, flexWrap: stacked ? 'wrap' : 'nowrap' }}>
+            <RankCrest character={character} style={{ flex: 'none', paddingTop: shortHeight ? 0 : 8 }} label={rankLabel} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: stacked ? '1 1 260px' : 'none', flexShrink: stacked ? 1 : 0, minWidth: stacked ? 260 : undefined }}>
+              <UtilityPanel date={date} language={language} uptime={uptime} uptimeLabel={uptimeLabel} onLanguageChange={onLanguageChange} onSettings={onSettings} width={stacked ? '100%' : 344} />
+              <NextSessionPanel city={nextSession.city} startsIn={nextSession.startsIn} nextSessionLabel={nextSessionLabel} startsInLabel={startsInLabel} width={stacked ? '100%' : 344} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', minHeight: marketTileHeight, marginTop: 'auto', overflowX: stacked ? 'auto' : 'visible', paddingBottom: stacked ? 2 : 0 }}>
+            {markets.map((m) => (
+              <MarketSessionCard
+                key={m.market} market={m.market} state={m.state} countdown={m.countdown} cityLabel={m.cityLabel}
+                minWidth={stacked ? 'var(--market-card-min-w)' : 0} height={marketTileHeight}
+                style={{ flex: stacked ? '0 0 auto' : '1 1 0' }}
+              />
+            ))}
+          </div>
         </div>
       </div>
-      <div className="navrya-header-market-row" style={{ display: 'flex', alignItems: 'stretch', gap: gutter, minWidth: 0 }}>
-        <RankCrest character={character} size={shortHeight ? 58 : 72} style={{ flex: '0 0 auto', minWidth: 190 }} label={rankLabel} />
-        <NextSessionPanel city={nextSession.city} startsIn={nextSession.startsIn} nextSessionLabel={nextSessionLabel} startsInLabel={startsInLabel} width={narrowDesktop ? 260 : 300} />
-        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', minWidth: 0, flex: '1 1 auto', overflowX: 'auto', paddingBottom: 2 }}>
-          {markets.map((m) => (
-            <MarketSessionCard
-              key={m.market} market={m.market} state={m.state} countdown={m.countdown} cityLabel={m.cityLabel}
-              minWidth={narrowDesktop ? 156 : 0} height={marketTileHeight}
-              style={{ flex: narrowDesktop ? '0 0 auto' : '1 1 0' }}
-            />
-          ))}
-        </div>
-      </div>
+      )}
     </header>
   );
 }

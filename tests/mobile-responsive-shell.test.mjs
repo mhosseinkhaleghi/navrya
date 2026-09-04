@@ -4,10 +4,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 const root = process.cwd();
-const [responsiveCss, sidebar, header, chatDock, voiceConsole, sessionCard, dashboard, strategies, subscriptions, dossier, settings, community, assistant] = await Promise.all([
+const [responsiveCss, sidebar, header, characterApp, chatDock, voiceConsole, sessionCard, dashboard, strategies, subscriptions, dossier, settings, community, assistant] = await Promise.all([
   readFile(path.join(root, 'public/pages/shared/navrya/responsive.css'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/navigation/Sidebar.jsx'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/header/CharacterHeader.jsx'), 'utf8'),
+  readFile(path.join(root, 'navrya-src/character-app.jsx'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/assistant/ChatDock.jsx'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/assistant/VoiceConsole.jsx'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/sessions/SessionCard.jsx'), 'utf8'),
@@ -39,9 +40,11 @@ test('the phone header is a compact identity layout and does not expose desktop 
   assert.match(header, /if \(mobile\) \{[\s\S]*?navrya-character-header--mobile/);
   assert.match(header, /quote=\{undefined\}/);
   assert.match(header, /orientation="horizontal" showEdition=\{false\}/);
-  assert.match(header, /const narrowDesktop = viewportWidth <= 1180;/);
-  assert.match(header, /navrya-header-primary-row/);
-  assert.match(header, /navrya-header-market-row/);
+  assert.match(header, /const wideDesktop = viewportWidth > 1320;/);
+  assert.match(header, /navrya-header-wide-classic/);
+  assert.match(characterApp, /className="navrya-header-surface"/);
+  assert.match(characterApp, /className="navrya-header-rail-surface"/);
+  assert.match(characterApp, /insetInlineStart: 14, insetBlockEnd: 14/);
   assert.match(responsiveCss, /\.navrya-header-collapse,\s*\.navrya-header-rail \{ display: none !important; \}/);
 });
 
