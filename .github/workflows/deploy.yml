@@ -24,7 +24,22 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npm audit --omit=dev --audit-level=high
+      # Retried - the audit bulk-advisory endpoint (registry.npmjs.org/-/npm/v1/security/
+      # advisories/bulk) occasionally times out on its own network call with no finding at all
+      # (confirmed independently against the real registry, unrelated to this repo's
+      # dependencies), which otherwise fails this step and blocks deploy exactly as a real
+      # high/critical finding would - indistinguishable from the outside. A genuine vulnerability
+      # still fails every attempt and blocks the build exactly as before; only a transient network
+      # timeout gets a second chance to reach the endpoint before this step gives up.
+      - name: npm audit (high+ only, retried against registry timeouts)
+        run: |
+          for attempt in 1 2 3; do
+            if npm audit --omit=dev --audit-level=high; then exit 0; fi
+            echo "npm audit attempt $attempt failed - retrying in 20s" >&2
+            sleep 20
+          done
+          echo "npm audit failed after 3 attempts" >&2
+          exit 1
 
   deploy:
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}
