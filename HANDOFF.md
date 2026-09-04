@@ -4,19 +4,21 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-- `fix/session-auth-routing` (Codex): session UI now uses a true no-chart empty state, cache-safe language bootstrap, and a responsive shell with locked phone navigation, a compact non-overflowing brand/dock/Voice UI, full-width phone boards, and an earlier stacked laptop header that preserves all data; Gemini Voice has character-specific game delivery with a strict shared-language path for STT, chat, and TTS; local Google token verification bypasses the blocking proxy only for Google certificate hosts | validation: 46 focused tests passed | next: user browser verification
-- `feat/gemini-provider` (Claude, current branch): Gemini GenerateContent provider + Gemini Live voice transport shipped; added a loading/success modal + button spinner for Google sign-in on the select page (matches shared `Modal.jsx` design tokens: scrim, ink-900, motion durations). Pushed to `dev` (2,345/2,345 full suite, build clean). Next: real multi-turn Gemini Voice session test (needs `GEMINI_API_KEY` + billing), set Gemini pricing before enabling `AI_WALLET_ENFORCED` for Gemini, browser-verify the new Google-auth modal. No browser/deploy verification yet on either piece.
+(nothing in flight)
 
 ## Known pending
 
 - GitHub branch protection is still not enabled (needs a signed-in repo admin).
 - GPT-5.6 Sol/Terra/Luna: no `provider_model_pricing` rows yet, calls fail closed until an admin adds them.
+- Gemini: needs a real multi-turn Voice session test (`GEMINI_API_KEY` + billing) and Gemini pricing set before enabling `AI_WALLET_ENFORCED` for it.
 - Market chart screenshot capture: mechanism verified live; real chart-pixel content only checked in headless Chrome (cross-origin iframe compositing gap), needs one real non-headless confirmation.
 - AI Cost Control: needs a real OpenAI org admin key + project id (Admin > Commercial > AI Cost Control) before external reconciliation shows real data.
 - Visa / Iran payment gateway: intentionally unimplemented, shown as "coming soon."
+- No `gh` CLI / GitHub token available in this shell - can't independently confirm an Actions deploy run succeeded after a production push, only that the guarded script's own test/build gate passed and the push itself succeeded.
 
 ## Shipped history
 
+- 2026-09-04: session-auth-routing hardening (responsive mobile shell, locked phone nav, Gemini Voice shared-language STT/chat/TTS path) + Google sign-in rework (immediate loading/success/error modal matching the gamification design system with ornamented corners and a real Google logo, account-linking so a password account can also sign in via Google, dossier logout button, numeric version badge) promoted to production (`main`) via the guarded script; full suite + build passed inside its own gate. User browser-verified login live. Actions run itself not independently confirmed (no `gh` access this session).
 - 2026-09-04: `docs/psychology-release-verified` (Codex): published Mood/Calm Room, Therapist/review queue, chart redesign, tilt/gauges, My File rebuild and 90-day weather calendar to app.navrya.com/admin.navrya.com; Actions and live version/four bundle hashes/HTTPS/auth checks pass | validation: 2,382 tests passed | next: user functional verification; later crypto Check Now fix remains dev-only
 - 2026-09-04: `fix/docker-build-version-metadata` (Codex): published current dev including ROUTINE to production app.navrya.com/admin.navrya.com; fixed Git-free Docker version generation and SSH keepalives; Actions deploy succeeded, live version and all four bundle hashes match, HTTPS/auth checks pass | validation: 2,375 tests passed | next: user functional verification
 - 2026-08-24: agent skills + staging deploy automation promoted (730 tests).
