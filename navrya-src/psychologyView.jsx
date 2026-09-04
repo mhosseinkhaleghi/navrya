@@ -437,8 +437,21 @@ function ProtectiveTab({ i18n, psych, savedAt, onSaved }) {
 // ============================================================================
 // Tab 5 - My file
 // ============================================================================
+// The four transparency questions are the only intake answers that arm a red flag directly:
+// mental-health-collector.js's detectRedFlags() raises `hiding_losses` the moment
+// lossKnownToFamily is false. That is worth saying on the cell itself - a question whose stakes
+// are invisible gets answered carelessly or not at all.
+const TRANSPARENCY = [
+  { key: 'profitKnownToFamily', label: 'mhProfitKnown', arms: false },
+  { key: 'lossKnownToFamily', label: 'mhLossKnown', arms: true },
+  { key: 'capitalKnownToFamily', label: 'mhCapitalKnown', arms: false },
+  { key: 'tradingActivityKnownToFamily', label: 'mhActivityKnown', arms: false }
+];
+
 function IntakeSection({ i18n, mi, profile, onOpenIntake }) {
   const intake = profile.intake;
+  const matrix = intake.transparencyMatrix || {};
+
   const rows = [
     [mi.t('mhAge'), intake.demographics.age],
     [mi.t('mhCapitalType'), intake.financialContext.capitalType ? mi.t('mhCapitalType_' + intake.financialContext.capitalType) : null],
@@ -447,28 +460,104 @@ function IntakeSection({ i18n, mi, profile, onOpenIntake }) {
     [mi.t('mhCapitalAllocation'), intake.financialContext.capitalAllocationPercent != null ? intake.financialContext.capitalAllocationPercent + '%' : null],
     [mi.t('mhBorrowedMoney'), intake.financialContext.borrowedMoneyForTrading == null ? null : (intake.financialContext.borrowedMoneyForTrading ? mi.t('mhYes') : mi.t('mhNo'))]
   ];
+
+  // Progress counts the real intake paths the types file declares, so it cannot drift out of step
+  // with the questionnaire itself the way a hardcoded total would.
+  const paths = (window.TradeJournalMentalHealthTypes && window.TradeJournalMentalHealthTypes.intakePaths) || [];
+  const store = window.TradeJournalMentalHealthStore;
+  const answered = store ? paths.filter((path) => {
+    const value = store.getPath(profile, path);
+    return value !== null && value !== undefined && value !== '' && !(Array.isArray(value) && !value.length);
+  }).length : 0;
+  const pct = paths.length ? Math.round(answered / paths.length * 100) : 0;
+
+  const hidden = TRANSPARENCY.filter((c) => matrix[c.key] === false).length;
+  const unanswered = TRANSPARENCY.filter((c) => matrix[c.key] == null).length;
+  const armsFlag = matrix.lossKnownToFamily === false;
+  const via = intake.filledVia || 'form';
+
   return (
-    <Panel variant="base" ornament padding="18px 20px 20px">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <SectionLabel>{mi.t('mhTabIntake')}</SectionLabel>
-          <Chip tone={intake.completed ? 'success' : 'neutral'} dot>{i18n.t(intake.completed ? 'psyIntakeComplete' : 'psyIntakeIncomplete')}</Chip>
-          {intake.completed && <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyIntakeAnswered', { value: i18n.date(intake.completedAt) })}</Caption>}
-          <Button variant="secondary" size="sm" icon="edit" onClick={onOpenIntake} style={intake.completed ? {} : { marginInlineStart: 'auto' }}>{i18n.t(intake.completed ? 'psyEditIntake' : 'psyStartIntake')}</Button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-          {rows.map(([label, value]) => (
-            <div key={label} style={{ border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase', textWrap: 'pretty' }}>{label}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ flex: 1, font: 'var(--type-username)', color: 'var(--text-primary)', textWrap: 'pretty' }}>{value == null || value === '' ? '—' : String(value)}</span>
-                <Button variant="ghost" size="sm" icon="edit" onClick={onOpenIntake}></Button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <SectionLabel>{mi.t('mhTabIntake')}</SectionLabel>
+            <Chip tone={intake.completed ? 'success' : 'neutral'} dot>{i18n.t(intake.completed ? 'psyIntakeComplete' : 'psyIntakeIncomplete')}</Chip>
+            <Chip tone="neutral">{i18n.t('psyIntakeVia_' + via)}</Chip>
+            <span className="navrya-tabular" style={{ marginInlineStart: 'auto', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
+              {i18n.t('psyIntakeProgress', { done: i18n.number(answered), total: i18n.number(paths.length) })}
+            </span>
+            <Button variant="secondary" size="sm" icon="edit" onClick={onOpenIntake}>{i18n.t(intake.completed ? 'psyEditIntake' : 'psyStartIntake')}</Button>
+          </div>
+
+          <div style={{ height: 8, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', borderRadius: 999, width: pct + '%', background: 'linear-gradient(90deg,color-mix(in srgb, var(--char-accent) 55%, transparent),var(--char-accent))', transition: 'width var(--dur-progress) var(--ease-out)' }}></div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {rows.map(([label, value]) => (
+              <div key={label} style={{ border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase', textWrap: 'pretty' }}>{label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ flex: 1, font: 'var(--type-username)', color: 'var(--text-primary)', textWrap: 'pretty' }}>{value == null || value === '' ? '—' : String(value)}</span>
+                  <Button variant="ghost" size="sm" icon="edit" aria-label={i18n.t('psyEditIntake')} onClick={onOpenIntake}></Button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    </Panel>
+      </Panel>
+
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <SectionLabel>{i18n.t('psyTransparencyTitle')}</SectionLabel>
+            {armsFlag && <Chip tone="danger" dot>{i18n.t('psyTransparencyArmed')}</Chip>}
+            <Caption style={{ marginInlineStart: 'auto' }}>{mi.t('mhTransparencyHint')}</Caption>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+            {TRANSPARENCY.map((cell) => {
+              const value = matrix[cell.key];
+              const known = value === true, hiddenCell = value === false;
+              const tone = known ? 'var(--success)' : hiddenCell ? 'var(--warning)' : 'var(--text-disabled)';
+              return (
+                <button
+                  key={cell.key} type="button" onClick={onOpenIntake}
+                  style={{
+                    display: 'flex', flexDirection: 'column', gap: 10, padding: 14, minHeight: 104, boxSizing: 'border-box',
+                    borderRadius: 8, cursor: 'pointer', textAlign: 'start', font: 'inherit',
+                    border: '1px solid ' + (hiddenCell && cell.arms ? 'rgba(255,56,48,.4)' : hiddenCell ? 'rgba(255,176,32,.32)' : known ? 'color-mix(in srgb, var(--success) 35%, transparent)' : 'var(--border-hairline)'),
+                    background: hiddenCell && cell.arms ? 'rgba(255,56,48,.05)' : hiddenCell ? 'rgba(255,176,32,.05)' : known ? 'rgba(46,204,113,.05)' : 'rgba(11,16,22,.4)'
+                  }}
+                >
+                  <span style={{ flex: 1, font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)', textWrap: 'pretty' }}>{mi.t(cell.label)}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{
+                      width: 16, height: 16, flex: 'none', borderRadius: 4, display: 'grid', placeItems: 'center',
+                      border: '1px solid ' + (known ? 'var(--success)' : 'rgba(244,234,215,.2)'),
+                      background: known ? 'var(--success)' : 'transparent', color: 'var(--ink-950)'
+                    }}>{known && <Icon name="check" size={11} />}</span>
+                    <Caption style={{ color: tone }}>{value == null ? i18n.t('psyTransparencyUnanswered') : mi.t(known ? 'mhYes' : 'mhNo')}</Caption>
+                    {cell.arms && hiddenCell && <Chip tone="danger" style={{ height: 20, fontSize: 10 }}>{i18n.t('psyTransparencyArmsFlag')}</Chip>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <Notice tone={armsFlag ? 'danger' : hidden ? 'warning' : 'accent'} icon="honour">
+            {armsFlag
+              ? i18n.t('psyTransparencyNoteArmed')
+              : unanswered === TRANSPARENCY.length
+                ? i18n.t('psyTransparencyNoteEmpty')
+                : hidden
+                  ? i18n.t('psyTransparencyNoteHidden', { count: i18n.number(hidden) })
+                  : i18n.t('psyTransparencyNoteOpen')}
+          </Notice>
+        </div>
+      </Panel>
+    </div>
   );
 }
 
@@ -521,23 +610,58 @@ function PsychSection({ i18n, mi, profile, onOpenChecklist }) {
         </div>
       </Panel>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 420px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <SectionLabel>{i18n.t('psyBiasMeterTitle')}</SectionLabel>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <SectionLabel>{i18n.t('psyBiasMeterTitle')}</SectionLabel>
+              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyBiasGapHint')}</Caption>
+            </div>
             {biases.length ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {biases.map((b) => {
-                  const value = b.computedIndicatorScore != null ? Math.round(b.computedIndicatorScore * 10) : Math.round(b.selfRating * 20);
+                  // Two separate readings, kept separate. Collapsing them into one bar - which is
+                  // what this meter used to do, falling back to selfRating when no computed score
+                  // existed - hid the only thing worth looking at: where the trader's own estimate
+                  // and their trade history disagree. A bias they under-rate is where the work is.
+                  const self = b.selfRating != null ? Math.round(b.selfRating * 20) : null;
+                  const data = b.computedIndicatorScore != null ? Math.round(b.computedIndicatorScore * 10) : null;
+                  const gap = self != null && data != null ? data - self : null;
+                  const verdict = gap == null ? null : gap > 15 ? 'under' : gap < -15 ? 'over' : 'close';
+                  const tone = verdict === 'under' ? 'var(--danger)' : verdict === 'over' ? 'var(--char-accent)' : 'var(--success)';
+                  const lo = Math.min(self == null ? 0 : self, data == null ? 0 : data);
+                  const hi = Math.max(self == null ? 0 : self, data == null ? 0 : data);
                   return (
-                    <div key={b.type} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <span style={{ width: 150, flex: 'none', font: 'var(--type-body)', color: 'var(--text-primary)' }}>{mi.t('mhBias_' + b.type)}</span>
-                      <span style={{ flex: 1, height: 10, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden', display: 'block' }}>
-                        <span style={{ display: 'block', height: '100%', borderRadius: 999, background: value >= 55 ? 'var(--warning)' : 'var(--char-accent)', transition: 'width var(--dur-progress) var(--ease-out)', width: value + '%' }}></span>
-                      </span>
-                      <span className="navrya-tabular" style={{ width: 44, flex: 'none', textAlign: 'end', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{value}</span>
+                    <div key={b.type} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ flex: 1, minWidth: 140, font: 'var(--type-body)', color: 'var(--text-primary)' }}>{mi.t('mhBias_' + b.type)}</span>
+                        {verdict && <Chip tone={verdict === 'under' ? 'danger' : verdict === 'over' ? 'accent' : 'success'} style={{ flex: 'none' }}>{i18n.t('psyBiasGap_' + verdict)}</Chip>}
+                      </div>
+                      <div style={{ position: 'relative', height: 22 }}>
+                        <span style={{ position: 'absolute', insetInline: 0, top: 10, height: 2, background: 'rgba(244,234,215,.08)', display: 'block' }}></span>
+                        {self != null && data != null && (
+                          <span style={{ position: 'absolute', top: 10, height: 2, background: tone, insetInlineStart: lo + '%', width: (hi - lo) + '%', display: 'block' }}></span>
+                        )}
+                        {self != null && (
+                          <span title={i18n.t('psyBiasSelf')} style={{ position: 'absolute', top: 3, insetInlineStart: self + '%', marginInlineStart: -8, width: 16, height: 16, borderRadius: 999, border: '2px solid rgba(244,234,215,.5)', background: 'var(--ink-950)', display: 'block' }}></span>
+                        )}
+                        {data != null && (
+                          <span title={i18n.t('psyBiasData')} style={{ position: 'absolute', top: 3, insetInlineStart: data + '%', marginInlineStart: -8, width: 16, height: 16, borderRadius: 999, background: tone, border: '2px solid var(--ink-950)', display: 'block' }}></span>
+                        )}
+                      </div>
+                      {b.exampleThisMonth && <Caption style={{ textWrap: 'pretty' }}>{b.exampleThisMonth}</Caption>}
                     </div>
                   );
                 })}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', paddingTop: 4 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 999, border: '2px solid rgba(244,234,215,.5)', boxSizing: 'border-box', display: 'block' }}></span>
+                    <Caption>{i18n.t('psyBiasSelf')}</Caption>
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 999, background: 'var(--warning)', display: 'block' }}></span>
+                    <Caption>{i18n.t('psyBiasData')}</Caption>
+                  </span>
+                </div>
               </div>
             ) : <Caption>{i18n.t('psyBiasMeterEmpty')}</Caption>}
           </div>
@@ -665,28 +789,106 @@ function TrackingSection({ i18n, mi, psych, trades, closed, profile, dueCheckIn,
 }
 
 function FlagsSection({ i18n, mi, profile, onResolve }) {
-  const mandatory = (window.TradeJournalMentalHealthTypes && window.TradeJournalMentalHealthTypes.mandatoryReferralRedFlags) || [];
+  const types = window.TradeJournalMentalHealthTypes || {};
+  const mandatory = types.mandatoryReferralRedFlags || [];
+  const allTypes = (types.redFlagTypes || []).filter((t) => t !== 'custom');
+  const active = profile.redFlags.active || [];
+  const resolved = profile.redFlags.resolved || [];
+  const activeByType = {};
+  active.forEach((f) => { activeByType[f.type] = f; });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Notice tone="warning" icon="honour">{i18n.t('psyRedFlagsWarning')}</Notice>
-      {profile.redFlags.active.length ? profile.redFlags.active.map((flag) => (
-        <Panel key={flag.id} variant="base" ornament padding="18px 20px">
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-            <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 8, border: '1px solid rgba(255,56,48,.45)', background: 'rgba(255,56,48,.08)', display: 'grid', placeItems: 'center', color: 'var(--danger)' }}>
-              <Icon name="Flag" size={22} />
-            </span>
-            <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{mi.t('mhRedFlag_' + flag.type)}</span>
-                <Chip tone="danger" dot>{i18n.t(mandatory.indexOf(flag.type) > -1 ? 'psyFlagSeverityHigh' : 'psyFlagSeverityReview')}</Chip>
-                <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{i18n.date(flag.detectedAt)}</span>
+
+      {active.length ? active.map((flag) => {
+        const isMandatory = mandatory.indexOf(flag.type) > -1;
+        return (
+          <Panel key={flag.id} variant="base" ornament padding="18px 20px" style={isMandatory ? { borderColor: 'rgba(255,56,48,.55)', background: 'rgba(255,56,48,.04)' } : undefined}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+                <span style={{ width: 40, height: 40, flex: 'none', borderRadius: 8, border: '1px solid rgba(255,56,48,.45)', background: 'rgba(255,56,48,.08)', display: 'grid', placeItems: 'center', color: 'var(--danger)' }}>
+                  <Icon name="Flag" size={22} />
+                </span>
+                <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)' }}>{mi.t('mhRedFlag_' + flag.type)}</span>
+                    <Chip tone="danger" dot>{i18n.t(isMandatory ? 'psyFlagSeverityHigh' : 'psyFlagSeverityReview')}</Chip>
+                    <span className="navrya-tabular" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{i18n.date(flag.detectedAt)}</span>
+                  </div>
+                  <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t('psyRedFlagBody_' + flag.type)}</p>
+                </div>
+                <Button variant="secondary" size="sm" icon="check" onClick={() => onResolve(flag.id)}>{i18n.t('psyMarkReviewed')}</Button>
               </div>
-              <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t('psyRedFlagBody_' + flag.type)}</p>
+
+              {/* A mandatory-referral flag carries the real safety copy, given the same weight as
+                  the alert itself - mental-health-store.js sets professionalReferralShown for
+                  exactly these types, and mental-health-safety.js already owns the wording. */}
+              {flag.professionalReferralShown && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 8, border: '1px solid rgba(255,56,48,.4)', background: 'rgba(255,56,48,.06)' }}>
+                  <span style={{ font: 'var(--type-username)', color: 'var(--text-primary)' }}>{mi.t('mhSafetyTitle')}</span>
+                  <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{mi.t('mhSafetyBody')}</span>
+                </div>
+              )}
             </div>
-            <Button variant="secondary" size="sm" icon="check" onClick={() => onResolve(flag.id)}>{i18n.t('psyMarkReviewed')}</Button>
+          </Panel>
+        );
+      }) : <Panel variant="base" ornament padding="18px 20px"><Caption>{i18n.t('psyNoActiveFlags')}</Caption></Panel>}
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        {/* What is being watched, whether or not anything has fired. A list of five quiet rows is
+            more reassuring than an empty screen, and it says plainly which three force a referral. */}
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 420px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <SectionLabel>{i18n.t('psyFlagsWatchTitle')}</SectionLabel>
+              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyFlagsWatchHint')}</Caption>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {allTypes.map((type) => {
+                const fired = !!activeByType[type];
+                const isMandatory = mandatory.indexOf(type) > -1;
+                return (
+                  <div key={type} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', borderRadius: 8,
+                    border: '1px solid ' + (fired ? 'rgba(255,56,48,.35)' : isMandatory ? 'rgba(214,175,107,.3)' : 'var(--border-hairline)'),
+                    background: fired ? 'rgba(255,56,48,.05)' : 'rgba(11,16,22,.4)'
+                  }}>
+                    <span style={{ width: 8, height: 8, flex: 'none', marginTop: 6, borderRadius: 999, background: fired ? 'var(--danger)' : 'var(--success)' }}></span>
+                    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{mi.t('mhRedFlag_' + type)}</span>
+                        {isMandatory && <Chip tone="gold" style={{ height: 18, fontSize: 9 }}>{i18n.t('psyFlagMandatory')}</Chip>}
+                      </span>
+                      <Caption style={{ textWrap: 'pretty' }}>{i18n.t('psyRedFlagBody_' + type)}</Caption>
+                    </span>
+                    <Chip tone={fired ? 'danger' : 'success'} style={{ flex: 'none' }}>{i18n.t(fired ? 'psyFlagStateActive' : 'psyFlagStateClear')}</Chip>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </Panel>
-      )) : <Panel variant="base" ornament padding="18px 20px"><Caption>{i18n.t('psyNoActiveFlags')}</Caption></Panel>}
+
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 300px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <SectionLabel>{i18n.t('psyFlagsResolvedTitle')}</SectionLabel>
+              <Chip tone="neutral" style={{ marginInlineStart: 'auto' }}>{i18n.number(resolved.length)}</Chip>
+            </div>
+            {resolved.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {resolved.slice(-6).reverse().map((flag) => (
+                  <div key={flag.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,16,22,.4)' }}>
+                    <span style={{ flex: 1, minWidth: 0, font: 'var(--type-body)', fontSize: 12, color: 'var(--text-muted)' }}>{mi.t('mhRedFlag_' + flag.type)}</span>
+                    <span className="navrya-tabular" style={{ flex: 'none', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.date(flag.detectedAt)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <Caption>{i18n.t('psyFlagsResolvedEmpty')}</Caption>}
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
