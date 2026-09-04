@@ -89,6 +89,27 @@ jobs:
             # decryption error on a real admin trying to save a credential.
             : "${ENCRYPTION_KEY:?ENCRYPTION_KEY missing in server .env}"
 
+            # Reclaim disk BEFORE the cold web build, not after it.
+            #
+            # `build --no-cache web` below orphans a complete set of image layers on every
+            # release. Until now the only prune was the LAST line of this script, filtered to
+            # `until=24h` - which by construction cannot reclaim that same-day garbage. So a
+            # second release inside 24h ran the disk down, and because that prune was the last
+            # line, `set -e` meant a FAILED deploy never pruned at all, making the next attempt
+            # likelier to fail again. The production deploy history showed exactly that shape:
+            # the second release of a given day failed, and the next morning's succeeded.
+            #
+            # Dangling (untagged) images are precisely that orphaned garbage, and are never a
+            # rollback target: scripts/rollback.sh rebuilds from the target commit rather than
+            # reusing a retained image, so reclaiming them here shortens no recovery path.
+            #
+            # Every command here is advisory - a diagnostic or a reclaim must never be the thing
+            # that fails a release, so each is `|| true` under this script's `set -e`.
+            echo "--- disk before reclaim ---"; df -h / || true
+            docker image prune -f || true
+            docker builder prune -f || true
+            echo "--- disk after reclaim ---"; df -h / || true
+
             # Application services can use Docker's normal content-addressed cache, but the web
             # image is rebuilt cold. A previous successful release left Caddy serving an older
             # checked-in character bundle even though the repository checkout had advanced.
@@ -117,10 +138,10 @@ jobs:
 
             echo "${DEPLOY_SHA}" > .last-deployed-sha
 
-            # Prune only images older than 24h - keeps yesterday's (and this deploy's previous)
-            # image available for a fast rollback instead of deleting it the moment this
-            # deploy succeeds. See scripts/rollback.sh for the one-command rollback path.
-            docker image prune -f --filter "until=24h"
+            # Tagged images older than 24h, on the way out. This is a tidy-up, not the load-
+            # bearing reclaim - that one now runs before the build above, because a prune placed
+            # after `set -e` only ever runs on the releases that did not need it.
+            docker image prune -f --filter "until=24h" || true
             }
             deploy_release </dev/null
           REMOTE_SCRIPT
