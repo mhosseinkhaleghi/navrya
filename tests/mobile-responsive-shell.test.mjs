@@ -4,15 +4,20 @@ import path from 'node:path';
 import test from 'node:test';
 
 const root = process.cwd();
-const [responsiveCss, sidebar, header, chatDock, voiceConsole, dashboard, strategies, subscriptions] = await Promise.all([
+const [responsiveCss, sidebar, header, chatDock, voiceConsole, sessionCard, dashboard, strategies, subscriptions, dossier, settings, community, assistant] = await Promise.all([
   readFile(path.join(root, 'public/pages/shared/navrya/responsive.css'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/navigation/Sidebar.jsx'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/header/CharacterHeader.jsx'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/assistant/ChatDock.jsx'), 'utf8'),
   readFile(path.join(root, 'public/pages/shared/navrya/components/assistant/VoiceConsole.jsx'), 'utf8'),
+  readFile(path.join(root, 'public/pages/shared/navrya/components/sessions/SessionCard.jsx'), 'utf8'),
   readFile(path.join(root, 'navrya-src/dashboardView.jsx'), 'utf8'),
   readFile(path.join(root, 'navrya-src/strategiesHubView.jsx'), 'utf8'),
-  readFile(path.join(root, 'navrya-src/subscriptionsView.jsx'), 'utf8')
+  readFile(path.join(root, 'navrya-src/subscriptionsView.jsx'), 'utf8'),
+  readFile(path.join(root, 'navrya-src/accountProfileView.jsx'), 'utf8'),
+  readFile(path.join(root, 'navrya-src/settingsView.jsx'), 'utf8'),
+  readFile(path.join(root, 'navrya-src/communityView.jsx'), 'utf8'),
+  readFile(path.join(root, 'navrya-src/aiAssistantView.jsx'), 'utf8')
 ]);
 
 test('the phone navigation overlay locks the document but preserves its own contained navigation scroll', () => {
@@ -34,7 +39,9 @@ test('the phone header is a compact identity layout and does not expose desktop 
   assert.match(header, /if \(mobile\) \{[\s\S]*?navrya-character-header--mobile/);
   assert.match(header, /quote=\{undefined\}/);
   assert.match(header, /orientation="horizontal" showEdition=\{false\}/);
-  assert.match(header, /const stacked = viewportWidth <= 1560;/);
+  assert.match(header, /const narrowDesktop = viewportWidth <= 1180;/);
+  assert.match(header, /navrya-header-primary-row/);
+  assert.match(header, /navrya-header-market-row/);
   assert.match(responsiveCss, /\.navrya-header-collapse,\s*\.navrya-header-rail \{ display: none !important; \}/);
 });
 
@@ -50,10 +57,21 @@ test('dashboard, strategies, and subscriptions expose responsive layout hooks in
   assert.match(responsiveCss, /\.navrya-subscription-actions \{ display: grid !important;/);
 });
 
+test('dossier, settings, community, and AI assistant views expose phone layout hooks', () => {
+  assert.match(dossier, /className="navrya-dossier-heading"/);
+  assert.match(dossier, /className="navrya-dossier-tabs"/);
+  assert.match(settings, /className="navrya-settings-grid"/);
+  assert.match(community, /className="navrya-community-toolbar"/);
+  assert.match(assistant, /className="navrya-ai-assistant-heading"/);
+  assert.match(responsiveCss, /\.navrya-settings-grid, \.navrya-community-feed \{ grid-template-columns: minmax\(0, 1fr\) !important; \}/);
+  assert.match(responsiveCss, /\.navrya-ai-assistant-heading \{ align-items: stretch !important; flex-direction: column;/);
+});
+
 test('the phone dock preserves its voice action while suppressing optional desktop controls', () => {
   assert.match(chatDock, /className="navrya-dock-primary-action"/);
   assert.match(chatDock, /className="navrya-dock-secondary-action"/);
-  assert.match(responsiveCss, /\.navrya-dock-secondary-action,\s*\[data-navrya-chat-dock\] \.navrya-dock-model-switcher/);
+  assert.match(responsiveCss, /\.navrya-dock-secondary-action,\s*\[data-navrya-chat-dock\] \.navrya-dock-secondary-action \+ span/);
+  assert.match(responsiveCss, /\.navrya-dock-model-switcher \{\s*display: flex !important;/);
   assert.match(responsiveCss, /\.navrya-dock-primary-action \{ width: 42px !important; height: 42px !important; \}/);
 });
 
@@ -66,4 +84,11 @@ test('the voice console has dedicated phone geometry rather than desktop control
   assert.match(responsiveCss, /\.navrya-voice-console-controls \{ display: grid !important; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
   assert.match(responsiveCss, /\.navrya-voice-console-main-action \{ grid-column: 1 \/ -1;/);
   assert.match(responsiveCss, /\.navrya-voice-console-error-actions \{ grid-column: 1 \/ -1;/);
+  assert.match(voiceConsole, /className="navrya-voice-mini-label"/);
+  assert.match(responsiveCss, /\[data-navrya-assistant="voice-mini"\] \{ max-width: 100%; min-width: 0;/);
+});
+
+test('sessions use the chart-empty asset instead of a fabricated chart screenshot', () => {
+  assert.match(sessionCard, /session-no-chart\.svg/);
+  assert.doesNotMatch(sessionCard, /session-no-chart\.png/);
 });

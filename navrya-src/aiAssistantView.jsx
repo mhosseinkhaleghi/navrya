@@ -1664,13 +1664,13 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   const [headerTitleKey, headerSubtitleKey] = HEADER_COPY[topTab] || HEADER_COPY.dashboard;
 
   return (
-    <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, padding: '0 2px' }}>
+    <div className="navrya-ai-assistant-view" dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="navrya-ai-assistant-heading" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, padding: '0 2px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ font: 'var(--type-display-lg)', color: 'var(--text-primary)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase' }}>{i18n.t(headerTitleKey)}</div>
           <p style={{ margin: 0, maxWidth: 660, font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t(headerSubtitleKey)}</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+        <div className="navrya-ai-assistant-status" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
           <Chip tone="accent" dot>{i18n.t('aiAsstActiveInDock')}</Chip>
           <Chip tone="neutral">{engLabel}</Chip>
         </div>

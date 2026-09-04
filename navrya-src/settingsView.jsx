@@ -582,14 +582,14 @@ export function SettingsView({ character, store }) {
   const rtl = lang === 'fa' || lang === 'ar';
   const t = (key, vars) => tr(lang, key, vars);
   return (
-    <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="navrya-settings-view" dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
         <h1 style={{ margin: 0, font: 'var(--type-display-lg)', letterSpacing: 'var(--tracking-display)', textTransform: 'uppercase', color: 'var(--parchment)' }}>{t('title')}</h1>
         <p style={{ margin: '6px 0 0', font: 'var(--type-body)', color: 'var(--text-muted)', maxWidth: 680 }}>{t('subtitle')}</p>
       </div>
       {/* Panel Builder moved to the AI Assistant page's own "Panel Builder" tab - it's an AI
           capability, not a setting (its "installed panels" list moved with it). */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
+      <div className="navrya-settings-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <CharacterSection t={t} lang={lang} character={character} />
           <VoiceGenderSection t={t} />

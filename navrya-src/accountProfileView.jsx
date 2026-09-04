@@ -2454,14 +2454,14 @@ function AccountProfileView({ initialTab, character }) {
   ];
 
   return (
-    <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 28, flexWrap: 'wrap', paddingTop: 6 }}>
+    <div className="navrya-dossier-view" dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="navrya-dossier-heading" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 28, flexWrap: 'wrap', paddingTop: 6 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, maxWidth: 660 }}>
           <span style={{ fontSize: 11, letterSpacing: '.14em', color: 'var(--char-accent)' }}>{tr(lang, 'dossierEyebrow')}</span>
           <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.25, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'dossierTitle')}</h1>
           <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{tr(lang, 'dossierSubtitle')}</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="navrya-dossier-summary" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <SummaryTile icon="trending-up" label={tr(lang, 'statLevel')} value={digits(lang, level)} />
           <SummaryTile icon="zap" label={tr(lang, 'statXp')} value={digits(lang, profile.xpTotal)} />
           <SummaryTile icon="trophy" label={tr(lang, 'statAch')} value={ratio(lang, achDone, achTotal)} />
@@ -2471,7 +2471,7 @@ function AccountProfileView({ initialTab, character }) {
 
       <DossierBand lang={lang} character={character} profile={profile} pendingXp={pendingXp} nextGoal={nextGoal} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 7, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)', alignSelf: 'flex-start' }}>
+      <div className="navrya-dossier-tabs" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 7, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)', alignSelf: 'flex-start' }}>
         {TABS.map((t) => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)} style={{
             boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 10, height: 50, padding: '0 20px', borderRadius: 8, cursor: 'pointer',

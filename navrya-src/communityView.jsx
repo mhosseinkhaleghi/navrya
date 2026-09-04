@@ -413,7 +413,7 @@ function FeedView({ i18n, newPostOpen, onNewPostOpenChange }) {
     return () => window.clearInterval(timer);
   }, []);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 16, alignItems: 'start' }}>
+    <div className="navrya-community-feed" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 16, alignItems: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Panel variant="base" radius={12} style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
           <Avatar user={{ id: currentUserId() }} size={44} />
@@ -453,13 +453,13 @@ function CommunityShell({ i18n, tab, itemId }) {
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+    <div className="navrya-community-view" dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
       <div>
         <h1 style={{ margin: '0 0 4px', font: 'var(--type-display-lg)', fontSize: 22, lineHeight: '28px', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--parchment)' }}>{i18n.t('communityTitle')}</h1>
         <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)', maxWidth: 660 }}>{i18n.t('communityHint')}</p>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, borderBottom: '1px solid var(--border-hairline)', paddingBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 8, padding: 5, borderRadius: 12, border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)' }}>
+      <div className="navrya-community-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, borderBottom: '1px solid var(--border-hairline)', paddingBottom: 16, flexWrap: 'wrap' }}>
+        <div className="navrya-community-tabs" style={{ display: 'flex', gap: 8, padding: 5, borderRadius: 12, border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)' }}>
           {TABS.map(([id, key, icon]) => {
             const active = id === tab;
             return (

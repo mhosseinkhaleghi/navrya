@@ -4,7 +4,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-(nothing in flight)
+- fix/responsive-design-reconciliation (Codex): reconciled Hossein's current design with a compact two-row header, safe mobile shell/dock layouts, and a native chart-empty asset | validation: 25 focused tests passed | next: promote to dev, then production
 
 ## Known pending
 

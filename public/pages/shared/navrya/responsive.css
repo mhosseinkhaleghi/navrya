@@ -16,8 +16,8 @@ body .app-shell {
 }
 
 @media (min-width: 721px) and (max-width: 1560px) {
-  /* CharacterHeader switches to its two-row layout in JSX at this same width.  Keep the
-     content shell fluid too, so the row below it never inherits a desktop-only minimum. */
+  /* The desktop header has a fixed two-row composition. Keep the shell fluid so no region is
+     compressed into another one while the market cards use their contained rail. */
   body .app-shell { padding-inline: clamp(14px, 2vw, 28px); }
   .navrya-main, .navrya-main > *, .panel-page { min-width: 0; }
 }
@@ -82,9 +82,11 @@ body .app-shell {
   .navrya-dock-mascot { display: none !important; }
   [data-navrya-assistant="dock"] [data-navrya-chat-dock] { gap: 6px !important; padding: 8px !important; }
   [data-navrya-chat-dock] .navrya-dock-secondary-action,
-  [data-navrya-chat-dock] .navrya-dock-model-switcher,
-  [data-navrya-chat-dock] .navrya-dock-model-switcher + span,
   [data-navrya-chat-dock] .navrya-dock-secondary-action + span { display: none !important; }
+  [data-navrya-chat-dock] .navrya-dock-model-switcher {
+    display: flex !important; flex: 0 1 92px; min-width: 0; overflow-x: auto; scrollbar-width: none;
+  }
+  [data-navrya-chat-dock] .navrya-dock-model-switcher::-webkit-scrollbar { display: none; }
   [data-navrya-chat-dock] .navrya-dock-primary-action { width: 42px !important; height: 42px !important; }
   [data-navrya-chat-dock] .navrya-dock-mic { width: 38px !important; height: 38px !important; }
   [data-navrya-assistant="voice-console"] { width: 100%; max-height: calc(100dvh - 16px); border-radius: 12px !important; }
@@ -109,6 +111,9 @@ body .app-shell {
   .navrya-voice-console-volume,
   .navrya-voice-console-speed,
   .navrya-voice-console-footer { display: none !important; }
+  [data-navrya-assistant="voice-mini"] { max-width: 100%; min-width: 0; gap: 8px !important; padding-inline: 10px !important; }
+  .navrya-voice-mini-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .navrya-voice-mini-timer { flex: none; }
 
   /* The desktop board is a 12-column canvas. On a phone every panel is full-width, controls
      become tap targets, and action text cannot escape the page edge. */
@@ -135,6 +140,21 @@ body .app-shell {
   .navrya-strategy-card-grid { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
   .navrya-subscription-actions { display: grid !important; grid-template-columns: minmax(0, 1fr); }
   .navrya-subscription-actions button { width: 100%; min-height: 40px !important; }
+
+  .navrya-dossier-heading { align-items: stretch !important; gap: 14px !important; }
+  .navrya-dossier-heading h1 { font-size: clamp(26px, 8vw, 34px) !important; }
+  .navrya-dossier-summary { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px !important; }
+  .navrya-dossier-summary > * { width: auto !important; min-width: 0; }
+  .navrya-dossier-tabs { align-self: stretch !important; overflow-x: auto; scrollbar-width: none; }
+  .navrya-dossier-tabs::-webkit-scrollbar { display: none; }
+  .navrya-dossier-tabs button { flex: 0 0 auto; padding-inline: 14px !important; }
+  .navrya-settings-grid, .navrya-community-feed { grid-template-columns: minmax(0, 1fr) !important; }
+  .navrya-community-toolbar { align-items: stretch !important; }
+  .navrya-community-tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .navrya-community-tabs::-webkit-scrollbar { display: none; }
+  .navrya-community-tabs button { flex: 0 0 auto; }
+  .navrya-ai-assistant-heading { align-items: stretch !important; flex-direction: column; gap: 12px !important; }
+  .navrya-ai-assistant-status { flex-wrap: wrap; }
 }
 
 @media (max-width: 380px) {

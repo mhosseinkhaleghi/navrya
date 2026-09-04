@@ -407,10 +407,10 @@ export function VoiceMiniBar({ voiceState, voiceMuted, dotColor, phaseLabel, ela
       }}
     >
       <span aria-hidden="true" style={{ width: 8, height: 8, flex: 'none', borderRadius: 999, background: dotColor, animation: 'navrya-halo 1150ms var(--ease-standard) infinite' }} />
-      <span style={{ font: 'var(--type-body)', fontSize: 14, color: 'var(--parchment)', whiteSpace: 'nowrap' }}>{phaseLabel}</span>
+      <span className="navrya-voice-mini-label" style={{ font: 'var(--type-body)', fontSize: 14, color: 'var(--parchment)', whiteSpace: 'nowrap' }}>{phaseLabel}</span>
       <span aria-hidden="true" style={{ width: 1, height: 20, flex: 'none', background: 'var(--border-hairline)' }} />
       <VoiceMeter voiceState={voiceState} muted={voiceMuted} getVoiceMediaStream={getVoiceMediaStream} count={14} height={22} barWidth={2} gap={3} color={dotColor} />
-      <span className="navrya-tabular" style={{ font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-muted)' }}>{mm}:{ss}</span>
+      <span className="navrya-voice-mini-timer navrya-tabular" style={{ font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-muted)' }}>{mm}:{ss}</span>
       <span style={{ flex: 1 }} />
       <button type="button" aria-label={strings.expand} title={strings.expand} onClick={onExpand} style={{ width: 36, height: 36, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
         <Icon name="chevron-up" size={18} />

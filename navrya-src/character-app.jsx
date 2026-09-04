@@ -250,12 +250,10 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
         type="button" className="navrya-mobile-menu-toggle" aria-label="Open navigation" aria-controls="navryaSidebarRoot"
         onClick={() => window.dispatchEvent(new CustomEvent('navrya:mobile-menu', { detail: { open: true } }))}
       ><Icon name="menu" size={20} /></button>
-      {/* Full header, collapsible to nothing - the "Collapse header" button sits over its own
-          bottom-left corner (absolute, matching the design handoff) so it never displaces the
-          header's own content. */}
-      <div className="navrya-header-expanded" style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 400 : 0, opacity: headerOpen ? 1 : 0 }}>
-        <div style={{ position: 'relative' }}>
-          <CharacterHeader
+      {/* Header actions live in their own row. They must never occupy the same pixels as the
+          market rail, and expanded/collapsed states deliberately keep the control at inline-end. */}
+      <div className="navrya-header-expanded" style={{ overflow: 'hidden', transition: 'max-height 220ms cubic-bezier(.22,.61,.36,1), opacity 220ms cubic-bezier(.22,.61,.36,1)', maxHeight: headerOpen ? 420 : 0, opacity: headerOpen ? 1 : 0 }}>
+        <CharacterHeader
             character={navryaCharacter}
             title={t.charTitle && t.charTitle[navryaCharacter]}
             name={s.profile ? s.profile.displayName : undefined}
@@ -273,18 +271,19 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
             nextSession={{ city: nextCityLabel, startsIn: nextSession.startsIn }}
             nextSessionLabel={t.nextSession} startsInLabel={t.startsIn}
             markets={markets}
-          />
+        />
+        <div className="navrya-header-toggle-row" style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
           <button
             type="button" className="navrya-header-collapse" onClick={() => setHeaderOpen(false)}
             style={{
-              position: 'absolute', [rtl ? 'right' : 'left']: 24, bottom: 14, width: 196, height: 40, boxSizing: 'border-box',
+              width: 44, height: 36, boxSizing: 'border-box',
               display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderRadius: 8, cursor: 'pointer',
               border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)', color: 'var(--text-muted)',
               font: 'var(--type-section-label)', letterSpacing: '.1em', textTransform: 'uppercase'
             }}
+            aria-label={t.collapseHeader} title={t.collapseHeader}
           >
             <Icon name="chevrons-up" size={18} />
-            {t.collapseHeader}
           </button>
         </div>
       </div>
@@ -302,7 +301,7 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
             <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-countdown)', color: 'var(--gold-warm)' }}>{nextSession.startsIn}</span>
           </div>
           <button
-            type="button" onClick={() => setHeaderOpen(true)} aria-label={t.expandHeader} title={t.expandHeader}
+            type="button" className="navrya-header-expand" onClick={() => setHeaderOpen(true)} aria-label={t.expandHeader} title={t.expandHeader}
             style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}
           >
             <Icon name="chevrons-down" size={18} />

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Chart awaiting capture</title>
+  <desc id="desc">A NAVRYA-styled empty market-chart panel with a subtle grid, an inactive signal path, and no market data.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07130f"/><stop offset=".58" stop-color="#050b0a"/><stop offset="1" stop-color="#0c0813"/></linearGradient>
+    <radialGradient id="glow" cx="50%" cy="48%" r="46%"><stop stop-color="#5bd649" stop-opacity=".16"/><stop offset=".58" stop-color="#a35ad7" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <pattern id="grid" width="80" height="60" patternUnits="userSpaceOnUse"><path d="M80 0H0V60" fill="none" stroke="#d6af6b" stroke-opacity=".1" stroke-width="1"/></pattern>
+    <filter id="soft"><feGaussianBlur stdDeviation="9"/></filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+  <rect x="72" y="74" width="1456" height="752" rx="18" fill="#030807" fill-opacity=".45" stroke="#d6af6b" stroke-opacity=".38" stroke-width="2"/>
+  <rect x="72" y="74" width="1456" height="752" rx="18" fill="url(#glow)"/>
+  <path d="M132 616H1468" stroke="#d6af6b" stroke-opacity=".32" stroke-dasharray="10 15" stroke-width="2"/>
+  <path d="M206 544 C358 486 438 566 575 474 S831 385 948 488 S1176 591 1382 360" fill="none" stroke="#5bd649" stroke-opacity=".46" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 18"/>
+  <path d="M206 544 C358 486 438 566 575 474 S831 385 948 488 S1176 591 1382 360" fill="none" stroke="#5bd649" stroke-opacity=".2" stroke-width="22" stroke-linecap="round" stroke-dasharray="10 18" filter="url(#soft)"/>
+  <g stroke="#d6af6b" stroke-opacity=".42" stroke-width="3" fill="none">
+    <path d="M342 392V518M322 426H362V482H322Z"/>
+    <path d="M518 452V618M498 488H538V568H498Z"/>
+    <path d="M706 336V480M686 372H726V442H686Z"/>
+    <path d="M902 396V560M882 430H922V518H882Z"/>
+    <path d="M1110 446V640M1090 494H1130V592H1090Z"/>
+    <path d="M1294 300V466M1274 350H1314V424H1274Z"/>
+  </g>
+  <g transform="translate(800 450)">
+    <circle r="102" fill="#050b0a" fill-opacity=".86" stroke="#d6af6b" stroke-opacity=".56" stroke-width="3"/>
+    <circle r="76" fill="none" stroke="#5bd649" stroke-opacity=".58" stroke-width="3" stroke-dasharray="7 11"/>
+    <path d="M0-48 16-16 48 0 16 16 0 48-16 16-48 0-16-16Z" fill="#d6af6b" fill-opacity=".9"/>
+    <circle r="10" fill="#5bd649"/>
+  </g>
+  <g fill="#e9e1cc" text-anchor="middle" font-family="Georgia, serif">
+    <text x="800" y="650" font-size="31" letter-spacing="8" fill-opacity=".9">CHART AWAITS CAPTURE</text>
+    <text x="800" y="690" font-family="Arial, sans-serif" font-size="19" letter-spacing="3" fill="#b7b09d" fill-opacity=".76">LOG A SESSION TO BUILD YOUR MARKET RECORD</text>
+  </g>
+  <path d="M94 108h34M94 108v34M1506 108h-34M1506 108v34M94 792h34M94 792v-34M1506 792h-34M1506 792v-34" fill="none" stroke="#d6af6b" stroke-opacity=".72" stroke-width="3"/>
+</svg>
