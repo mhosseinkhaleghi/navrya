@@ -171,13 +171,15 @@ test('no browser SpeechSynthesis is ever used as a second, competing voice engin
   assert.doesNotMatch(dockViewSrc, /speechSynthesis|SpeechSynthesisUtterance/i);
 });
 
-test('the provider-aware Voice session, TurnCoordinator, and PlaybackController are recreated only when the active provider changes and torn down cleanly', () => {
-  const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('const useGeminiLive = providerId === \'gemini\';'), dockViewSrc.indexOf('function toggleVoice()'));
-  assert.match(effectBlock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+test('the Gemini Voice transport is independent of the active chat provider and is torn down cleanly', () => {
+  const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('// Text-provider selection must never disconnect'), dockViewSrc.indexOf('function toggleVoice()'));
+  assert.match(effectBlock, /voiceRef\.current = createGeminiLiveSession\(\{/);
+  assert.match(effectBlock, /fetchSession: fetchGeminiLiveSession/);
+  assert.match(effectBlock, /fetchSpeakAudio: fetchGeminiSpeak/);
   assert.match(effectBlock, /playbackControllerRef\.current = window\.TradeJournalAIVoicePlaybackController\.create\(/);
   assert.match(effectBlock, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
   assert.match(effectBlock, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); \};/);
-  assert.match(effectBlock, /\}, \[providerId\]\);/);
+  assert.match(effectBlock, /\}, \[\]\);/);
 });
 
 test('every one of the new voiceDock* keys exists, with a real (non-empty, non-key-name) value, in all four supported languages', () => {
