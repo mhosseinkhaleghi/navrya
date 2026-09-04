@@ -52,7 +52,7 @@ function Keyframes() {
 // A small, non-interactive preview of the breathing pacer - the same visual promise the always-
 // reachable calm-room card on the design canvas makes: this is what opening it looks like, not
 // just a link with an icon.
-function BreathPreview({ size = 96, label }) {
+export function BreathPreview({ size = 96, label }) {
   return (
     <div style={{ position: 'relative', width: size, height: size, flex: 'none' }}>
       <svg className="navrya-mood-spin" width={size} height={size} viewBox={'0 0 ' + size + ' ' + size} style={{ position: 'absolute', inset: 0, display: 'block', animation: 'navrya-mood-spin 24s linear infinite' }} aria-hidden="true">

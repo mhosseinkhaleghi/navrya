@@ -331,3 +331,250 @@ test('worstRevengeTrade computes a real sizeRatio from riskPercent, and leaves i
   ]);
   assert.equal(withoutRisk.sizeRatio, null);
 });
+
+// --- journeyArcShapes() / holdTimeByExitTone() / openPositionMoods(): the JourneysTab panels ---
+
+function logEntry(stress, dominant, overrides) {
+  return Object.assign({ stage: 'entry', stressLevel: stress, dominantEmotions: dominant ? [dominant] : [], emotionDetails: [], timestamp: new Date().toISOString() }, overrides || {});
+}
+
+test('journeyArcShapes classifies a clean rise and a clean fall correctly', async () => {
+  const psych = await psychologyStore();
+  const trades = [
+    closedTrade({ emotionLog: [logEntry(3), logEntry(9)] }), // rising
+    closedTrade({ emotionLog: [logEntry(8), logEntry(2)] }), // falling
+    closedTrade({ emotionLog: [logEntry(4), logEntry(4)] })  // steady
+  ];
+  const shapes = psych.journeyArcShapes(trades, 1);
+  const by = Object.fromEntries(shapes.map((s) => [s.shape, s]));
+  assert.equal(by.rising.sampleSize, 1);
+  assert.equal(by.falling.sampleSize, 1);
+  assert.equal(by.steady.sampleSize, 1);
+});
+
+test('journeyArcShapes detects a bowl shape (peak strictly in the middle)', async () => {
+  const psych = await psychologyStore();
+  const trades = [closedTrade({ emotionLog: [logEntry(3), logEntry(9), logEntry(3)] })];
+  const shapes = psych.journeyArcShapes(trades, 1);
+  assert.equal(shapes.find((s) => s.shape === 'bowl').sampleSize, 1);
+});
+
+test('journeyArcShapes ignores trades with fewer than two stress readings', async () => {
+  const psych = await psychologyStore();
+  const trades = [closedTrade({ emotionLog: [logEntry(5)] }), closedTrade({ emotionLog: [] })];
+  const shapes = psych.journeyArcShapes(trades, 1);
+  assert.ok(shapes.every((s) => s.sampleSize === 0));
+});
+
+test('holdTimeByExitTone computes real minutes from real timestamps, skipping trades without an exit log', async () => {
+  const psych = await psychologyStore();
+  const created = new Date('2026-08-24T10:00:00Z').toISOString();
+  const closedAt = new Date('2026-08-24T10:30:00Z').toISOString();
+  const rows = psych.holdTimeByExitTone([
+    closedTrade({ outcome: 'win', createdAt: created, closedAt, emotionLog: [logEntry(3, 'calm')] }),
+    closedTrade({ outcome: 'loss', createdAt: created, closedAt, emotionLog: [] }) // no exit log -> skipped
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].avgMinutes, 30);
+  assert.equal(rows[0].tone, 'positive');
+  assert.equal(rows[0].sampleSize, 1);
+});
+
+test('openPositionMoods returns only open/hunting trades that carry a real emotion log, with no fabricated P&L', async () => {
+  const psych = await psychologyStore();
+  const rows = psych.openPositionMoods([
+    { id: 't1', status: 'open', direction: 'long', instrument: 'XAUUSD', emotionLog: [logEntry(6, 'anxious', { emotionDetails: [{ tags: ['news'] }] })] },
+    { id: 't2', status: 'open', direction: 'short', emotionLog: [] }, // no log -> excluded
+    { id: 't3', status: 'closed', direction: 'long', emotionLog: [logEntry(4, 'calm')] } // closed -> excluded
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].tradeId, 't1');
+  assert.equal(rows[0].stressLevel, 6);
+  assert.deepEqual([...rows[0].dominantEmotions], ['anxious']);
+  assert.deepEqual([...rows[0].tags], ['news']);
+  assert.ok(!('pnl' in rows[0]));
+});
+
+// ---------------------------------------------------------------------------
+// aiInsightCards - local, computed-not-generated pattern search (Insights tab)
+// ---------------------------------------------------------------------------
+function many(n, build) { return Array.from({ length: n }, (_, i) => build(i)); }
+
+test('aiInsightCards headline emotion-spread card names the real best/worst emotion by avg P&L, gated by sample size', async () => {
+  const psych = await psychologyStore();
+  const trades = [
+    ...many(10, () => closedTrade({ outcome: 'win', pnl: 50, emotionLog: [logEntry(3, 'calm')] })),
+    ...many(10, () => closedTrade({ outcome: 'loss', pnl: -40, emotionLog: [logEntry(9, 'revenge')] }))
+  ];
+  const { cards } = psych.aiInsightCards(trades, [], {}, 8);
+  const headline = cards.find((c) => c.kind === 'emotionSpread');
+  assert.ok(headline);
+  assert.equal(headline.best.emotion, 'calm');
+  assert.equal(headline.worst.emotion, 'revenge');
+  assert.equal(headline.best.sampleSize, 10);
+});
+
+test('aiInsightCards drops the emotion-spread card when neither side clears the sample threshold', async () => {
+  const psych = await psychologyStore();
+  const trades = [
+    closedTrade({ outcome: 'win', pnl: 50, emotionLog: [logEntry(3, 'calm')] }),
+    closedTrade({ outcome: 'loss', pnl: -40, emotionLog: [logEntry(9, 'revenge')] })
+  ];
+  const { cards } = psych.aiInsightCards(trades, [], {}, 8);
+  assert.ok(!cards.find((c) => c.kind === 'emotionSpread'));
+});
+
+test('aiInsightCards hour-window card only fires when the worst 2-hour window AND the rest of the day both clear the sample threshold', async () => {
+  const psych = await psychologyStore();
+  const day = (h, m) => new Date(2026, 0, 1, h, m || 0).toISOString();
+  const trades = [
+    // 16:00-17:59 window: mostly losses (real losing window)
+    ...many(10, (i) => closedTrade({ outcome: i < 2 ? 'win' : 'loss', closedAt: day(16, i) })),
+    // rest of the day, spread across non-adjacent hours: mostly wins
+    ...many(10, (i) => closedTrade({ outcome: i < 8 ? 'win' : 'loss', closedAt: day((i % 5) * 4, i) }))
+  ];
+  const { cards } = psych.aiInsightCards(trades, [], {}, 8);
+  const window = cards.find((c) => c.kind === 'hourWindow');
+  assert.ok(window);
+  assert.equal(window.startHour, 16);
+  assert.ok(window.winRate < window.restWinRate);
+});
+
+test('aiInsightCards symbol-stress card names the real highest-stress instrument versus the rest', async () => {
+  const psych = await psychologyStore();
+  const trades = [
+    ...many(9, () => closedTrade({ instrument: 'XAUUSD', emotionLog: [logEntry(9, 'anxious')] })),
+    ...many(9, () => closedTrade({ instrument: 'EURUSD', emotionLog: [logEntry(3, 'calm')] }))
+  ];
+  const { cards } = psych.aiInsightCards(trades, [], {}, 8);
+  const symbol = cards.find((c) => c.kind === 'symbolStress');
+  assert.ok(symbol);
+  assert.equal(symbol.instrument, 'XAUUSD');
+  assert.ok(symbol.avgStress > symbol.restAvgStress);
+});
+
+test('aiInsightCards sleep-quality correlation reads real PreSessionCheckIn.sleepQuality against the NEXT calendar day\'s real win rate', async () => {
+  const psych = await psychologyStore();
+  const lowDay = new Date(2026, 0, 5), lowNext = new Date(2026, 0, 6);
+  const highDay = new Date(2026, 0, 10), highNext = new Date(2026, 0, 11);
+  const checkins = [
+    { createdAt: lowDay.toISOString(), sleepQuality: 3 },
+    { createdAt: highDay.toISOString(), sleepQuality: 9 }
+  ];
+  const trades = [
+    ...many(8, () => closedTrade({ outcome: 'loss', closedAt: lowNext.toISOString() })),
+    ...many(8, () => closedTrade({ outcome: 'win', closedAt: highNext.toISOString() }))
+  ];
+  const { correlations } = psych.aiInsightCards(trades, checkins, {}, 8);
+  const sleep = correlations.find((c) => c.kind === 'sleepNextDay');
+  assert.ok(sleep);
+  assert.equal(sleep.lowWinRate, 0);
+  assert.equal(sleep.highWinRate, 100);
+});
+
+test('aiInsightCards skips a next-day bucket that received both a low- and a high-sleep checkin (ambiguous), never guessing', async () => {
+  const psych = await psychologyStore();
+  const day = new Date(2026, 0, 5);
+  const checkins = [{ createdAt: day.toISOString(), sleepQuality: 3 }, { createdAt: day.toISOString(), sleepQuality: 9 }];
+  const trades = many(10, () => closedTrade({ outcome: 'win', closedAt: new Date(2026, 0, 6).toISOString() }));
+  const { correlations } = psych.aiInsightCards(trades, checkins, {}, 8);
+  assert.ok(!correlations.find((c) => c.kind === 'sleepNextDay'));
+});
+
+test('aiInsightCards "something to prove" correlation reads real somethingToProveToday against the SAME day\'s real avg P&L', async () => {
+  const psych = await psychologyStore();
+  const yesDay = new Date(2026, 0, 5), noDay = new Date(2026, 0, 6);
+  const checkins = [{ createdAt: yesDay.toISOString(), somethingToProveToday: true }, { createdAt: noDay.toISOString(), somethingToProveToday: false }];
+  const trades = [
+    ...many(8, () => closedTrade({ pnl: -20, closedAt: yesDay.toISOString() })),
+    ...many(8, () => closedTrade({ pnl: 30, closedAt: noDay.toISOString() }))
+  ];
+  const { correlations } = psych.aiInsightCards(trades, checkins, {}, 8);
+  const prove = correlations.find((c) => c.kind === 'proveToday');
+  assert.ok(prove);
+  assert.equal(prove.yesAvgPnl, -20);
+  assert.equal(prove.noAvgPnl, 30);
+});
+
+test('aiInsightCards personal-event correlation reads real significantPersonalEvent against real trade.emotionLog.planCommitment', async () => {
+  const psych = await psychologyStore();
+  const withDay = new Date(2026, 0, 5), withoutDay = new Date(2026, 0, 6);
+  const checkins = [
+    { createdAt: withDay.toISOString(), significantPersonalEvent: 'خبر بد از خانواده' },
+    { createdAt: withoutDay.toISOString(), significantPersonalEvent: null }
+  ];
+  const trades = [
+    ...many(8, () => closedTrade({ closedAt: withDay.toISOString(), emotionLog: [logEntry(6, 'anxious', { planCommitment: 3 })] })),
+    ...many(8, () => closedTrade({ closedAt: withoutDay.toISOString(), emotionLog: [logEntry(4, 'calm', { planCommitment: 8 })] }))
+  ];
+  const { correlations } = psych.aiInsightCards(trades, checkins, {}, 8);
+  const event = correlations.find((c) => c.kind === 'personalEvent');
+  assert.ok(event);
+  assert.equal(event.withAvgCommitment, 3);
+  assert.equal(event.withoutAvgCommitment, 8);
+});
+
+test('aiInsightCards routine-completion correlation reads a real per-day routine-store progress map against real avg stress that day', async () => {
+  const psych = await psychologyStore();
+  const fullDay = '2026-1-5', partialDay = '2026-1-6';
+  const routineDays = { [fullDay]: { total: 6, complete: true }, [partialDay]: { total: 6, complete: false } };
+  const trades = [
+    ...many(8, () => closedTrade({ closedAt: new Date(2026, 0, 5, 12).toISOString(), emotionLog: [logEntry(3, 'calm')] })),
+    ...many(8, () => closedTrade({ closedAt: new Date(2026, 0, 6, 12).toISOString(), emotionLog: [logEntry(8, 'anxious')] }))
+  ];
+  const { correlations } = psych.aiInsightCards(trades, [], routineDays, 8);
+  const routine = correlations.find((c) => c.kind === 'routineCompletion');
+  assert.ok(routine);
+  assert.equal(routine.fullAvgStress, 3);
+  assert.equal(routine.partialAvgStress, 8);
+});
+
+// ---------------------------------------------------------------------------
+// cooldownHistory / cooldownHistorySummary (Protective tab)
+// ---------------------------------------------------------------------------
+function reflection(overrides) {
+  return Object.assign({ id: 'refl-' + Math.random().toString(36).slice(2), tradeId: 't1', revengeCheck: null }, overrides || {});
+}
+
+test('cooldownHistory only counts a real fired cooldown - revengeCheck.choice "recover" with a real cooldownTimerStartedAt', async () => {
+  const psych = await psychologyStore();
+  const reflections = [
+    reflection({ tradeId: 't1', revengeCheck: { shown: true, choice: 'recover', cooldownTimerStartedAt: new Date(2026, 0, 1, 10, 0).toISOString() } }),
+    reflection({ tradeId: 't2', revengeCheck: { shown: true, choice: 'rest', cooldownTimerStartedAt: null } }), // declined to reopen - no cooldown fired
+    reflection({ tradeId: 't3', revengeCheck: { shown: true, choice: 'saw_setup', cooldownTimerStartedAt: null } }) // claimed a real setup - no cooldown fired
+  ];
+  const rows = psych.cooldownHistory([{ id: 't1' }, { id: 't2' }, { id: 't3' }], reflections, 15);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].tradeId, 't1');
+});
+
+test('cooldownHistory objectively reads whether the trader held the cooldown, from real trade timestamps - not self-reported', async () => {
+  const psych = await psychologyStore();
+  // Two separate, non-overlapping 15-minute cooldown windows, so a trade opened inside one
+  // never also counts as breaking the other.
+  const heldStart = new Date(2026, 0, 1, 10, 0);
+  const brokeStart = new Date(2026, 0, 1, 11, 0);
+  const reflections = [
+    reflection({ tradeId: 'held-source', revengeCheck: { shown: true, choice: 'recover', cooldownTimerStartedAt: heldStart.toISOString() } }),
+    reflection({ tradeId: 'broke-source', revengeCheck: { shown: true, choice: 'recover', cooldownTimerStartedAt: brokeStart.toISOString() } })
+  ];
+  const trades = [
+    { id: 'held-source', createdAt: new Date(2026, 0, 1, 9, 0).toISOString() },
+    { id: 'broke-source', createdAt: new Date(2026, 0, 1, 10, 45).toISOString() },
+    // opened 10 minutes into broke-source's 15-minute cooldown - a real break
+    { id: 'broke-into', createdAt: new Date(2026, 0, 1, 11, 10).toISOString() }
+  ];
+  const rows = psych.cooldownHistory(trades, reflections, 15);
+  const held = rows.find((r) => r.tradeId === 'held-source');
+  const broke = rows.find((r) => r.tradeId === 'broke-source');
+  assert.equal(held.held, true);
+  assert.equal(broke.held, false);
+});
+
+test('cooldownHistorySummary reports real held/broke counts, never a fabricated compliance rate', async () => {
+  const psych = await psychologyStore();
+  const rows = [{ held: true }, { held: true }, { held: false }];
+  const summary = psych.cooldownHistorySummary(rows);
+  // Spread out of the vm sandbox's realm before comparing - see the file's other cross-realm notes.
+  assert.deepEqual({ ...summary }, { total: 3, held: 2, broke: 1 });
+});

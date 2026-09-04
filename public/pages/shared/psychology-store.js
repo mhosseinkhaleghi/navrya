@@ -251,6 +251,325 @@
     return worst;
   }
 
+  // Emotion-name categorisation, mirrored from psychologyView.jsx's own NEGATIVE/POSITIVE arrays
+  // (kept duplicated rather than imported - the store must not depend on the view module).
+  var TONE_POSITIVE=['calm','confident','excited'];
+  var TONE_NEGATIVE=['revenge','angry','afraid','anxious','fatigued','restless','overconfident'];
+  function toneOf(name){
+    if(TONE_POSITIVE.indexOf(name)>-1)return'positive';
+    if(TONE_NEGATIVE.indexOf(name)>-1)return'negative';
+    return'neutral';
+  }
+
+  // Classifies the stress arc of every multi-log CLOSED trade (entry -> ... -> exit) into one of
+  // four real shapes, and reports each shape's real win rate - the same minSamples threshold
+  // every other mirror in this file already uses, so a thin shape reads as insufficient, never a
+  // fabricated rate.
+  function journeyArcShapes(trades,minSamples){
+    minSamples=minSamples||3;
+    var buckets={rising:[],falling:[],steady:[],bowl:[]};
+    closedTrades(trades).forEach(function(trade){
+      var log=(trade.emotionLog||[]).filter(function(e){return Number.isFinite(Number(e.stressLevel));});
+      if(log.length<2)return;
+      var first=Number(log[0].stressLevel),last=Number(log[log.length-1].stressLevel);
+      var peak=Math.max.apply(null,log.map(function(e){return Number(e.stressLevel);}));
+      var peakIsMiddle=log.length>2&&peak>first+1&&peak>last+1;
+      var shape=peakIsMiddle?'bowl':(last-first>=2?'rising':(first-last>=2?'falling':'steady'));
+      buckets[shape].push(trade);
+    });
+    return Object.keys(buckets).map(function(shape){
+      var rows=buckets[shape],example=rows[0]?rows[0].emotionLog.filter(function(e){return Number.isFinite(Number(e.stressLevel));}).map(function(e){return{stage:e.stage,value:Number(e.stressLevel)};}):null;
+      return Object.assign({shape:shape,example:example},summarize(rows,minSamples));
+    });
+  }
+
+  // Average hold time in minutes, bucketed by outcome and the TONE of the emotion logged at
+  // exit. A trade missing createdAt/closedAt or any exit log entry is skipped entirely rather
+  // than counted at a fabricated duration.
+  function holdTimeByExitTone(trades){
+    var buckets={};
+    closedTrades(trades).forEach(function(trade){
+      var log=trade.emotionLog||[];
+      if(!log.length||!trade.createdAt||!trade.closedAt)return;
+      var exit=log[log.length-1],dominant=(exit.dominantEmotions||[])[0];
+      if(!dominant)return;
+      var minutes=(new Date(trade.closedAt)-new Date(trade.createdAt))/60000;
+      if(!Number.isFinite(minutes)||minutes<0)return;
+      var key=(trade.outcome||'unknown')+':'+toneOf(dominant)+':'+dominant;
+      (buckets[key]=buckets[key]||[]).push(minutes);
+    });
+    return Object.keys(buckets).map(function(key){
+      var parts=key.split(':'),values=buckets[key];
+      return{
+        outcome:parts[0],tone:parts[1],emotion:parts[2],
+        avgMinutes:Math.round(values.reduce(function(s,v){return s+v;},0)/values.length),
+        sampleSize:values.length
+      };
+    });
+  }
+
+  // Open (or hunting) positions carrying at least one logged emotion entry - the real data
+  // mental-health-collector.js's legacy openTradeMoodCard() (public/pages/shared/psychology-ui.js)
+  // already reads, never surfaced in the React rebuild. No live P&L is computed here - that needs
+  // a current market price this store does not have, so it is never fabricated.
+  function openPositionMoods(trades){
+    return (trades||[]).filter(function(t){return t&&(t.status==='open'||t.status==='hunting')&&(t.emotionLog||[]).length;})
+      .map(function(trade){
+        var entry=trade.emotionLog[trade.emotionLog.length-1],tags=[];
+        (entry.emotionDetails||[]).forEach(function(d){(d.tags||[]).forEach(function(tag){if(tags.indexOf(tag)===-1)tags.push(tag);});});
+        return{
+          tradeId:trade.id,direction:trade.direction,instrument:trade.instrument||null,
+          stressLevel:Number.isFinite(Number(entry.stressLevel))?Number(entry.stressLevel):null,
+          dominantEmotions:entry.dominantEmotions||[],tags:tags
+        };
+      });
+  }
+
+  // ---------------------------------------------------------------------
+  // AI Insights tab: local, computed-not-generated pattern cards.
+  //
+  // The design artboard (Insights.dc.html) shows AI-authored prose with specific fabricated
+  // numbers ("8 of the last losing trades", "62 check-ins"). None of that copy is replicated
+  // verbatim - instead this reruns the SAME kind of pattern search the mock illustrates, but for
+  // real, against data this app actually has: trade-store's pnl/instrument/closedAt/emotionLog,
+  // and the two v2 continuous-tracking records that already carry exactly the fields the mock's
+  // correlation cards imply (mental-health.types.js PreSessionCheckIn: sleepQuality,
+  // somethingToProveToday, significantPersonalEvent) plus routine-store's per-day adherence.
+  // Every candidate is symmetrically sample-gated - BOTH sides of a comparison must clear
+  // minSamples, or the candidate is dropped rather than shown thin. Nothing here calls an LLM;
+  // it is a deterministic reducer over real rows, so it is fully covered by
+  // tests/psychology-regression.test.mjs the same way every other function in this file is.
+  function tradesByDayClosed(trades){
+    var map={};
+    closedTrades(trades).filter(function(t){return t.closedAt;}).forEach(function(t){
+      var d=new Date(t.closedAt);
+      if(isNaN(d.getTime()))return;
+      var key=dayKey(d);
+      (map[key]=map[key]||[]).push(t);
+    });
+    return map;
+  }
+  function keyOfIso(iso){
+    var d=iso?new Date(iso):null;
+    return d&&!isNaN(d.getTime())?dayKey(d):null;
+  }
+  function nextDayKeyOf(key){
+    var parts=String(key).split('-');
+    var d=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+    d.setDate(d.getDate()+1);
+    return dayKey(d);
+  }
+  function winRateOf(rows){
+    if(!rows.length)return null;
+    var wins=rows.filter(function(r){return r.outcome==='win';}).length;
+    return wins/rows.length*100;
+  }
+  function avgOf(rows,pick){
+    var vals=rows.map(pick).filter(function(v){return Number.isFinite(v);});
+    if(!vals.length)return null;
+    return vals.reduce(function(s,v){return s+v;},0)/vals.length;
+  }
+  function lastStressOf(trade){var e=lastEmotion(trade);return e?Number(e.stressLevel):NaN;}
+  function lastCommitmentOf(trade){var e=lastEmotion(trade);return e?Number(e.planCommitment):NaN;}
+
+  function emotionSpreadCard(trades,minSamples){
+    var mirror=emotionalMirror(trades,minSamples).filter(function(m){return !m.insufficient&&m.avgPnl!=null;});
+    if(mirror.length<2)return null;
+    var sorted=mirror.slice().sort(function(a,b){return b.avgPnl-a.avgPnl;});
+    var best=sorted[0],worst=sorted[sorted.length-1];
+    if(!(best.avgPnl>worst.avgPnl))return null;
+    return{
+      kind:'emotionSpread',
+      best:{emotion:best.emotion,avgPnl:best.avgPnl,sampleSize:best.sampleSize},
+      worst:{emotion:worst.emotion,avgPnl:worst.avgPnl,sampleSize:worst.sampleSize},
+      spread:sorted.map(function(m){return{emotion:m.emotion,avgPnl:m.avgPnl,sampleSize:m.sampleSize};}),
+      sampleSize:best.sampleSize+worst.sampleSize
+    };
+  }
+  function hourWindowCard(trades,minSamples){
+    var closed=closedTrades(trades).filter(function(t){return t.closedAt;});
+    if(closed.length<minSamples*2)return null;
+    var buckets=[];
+    for(var h=0;h<24;h+=2){
+      buckets.push({startHour:h,rows:closed.filter(function(t){
+        var hh=new Date(t.closedAt).getHours();
+        return hh===h||hh===h+1;
+      })});
+    }
+    var eligible=buckets.filter(function(b){return b.rows.length>=minSamples;});
+    if(!eligible.length)return null;
+    eligible.forEach(function(b){b.winRate=winRateOf(b.rows);b.avgStress=avgOf(b.rows,lastStressOf);});
+    var worst=eligible.slice().sort(function(a,b){return a.winRate-b.winRate;})[0];
+    var restRows=closed.filter(function(t){
+      var hh=new Date(t.closedAt).getHours();
+      return hh!==worst.startHour&&hh!==worst.startHour+1;
+    });
+    if(restRows.length<minSamples)return null;
+    var restWinRate=winRateOf(restRows);
+    if(restWinRate==null||!(worst.winRate<restWinRate))return null;
+    return{
+      kind:'hourWindow',startHour:worst.startHour,endHour:worst.startHour+2,
+      winRate:worst.winRate,avgStress:worst.avgStress,sampleSize:worst.rows.length,
+      restWinRate:restWinRate,restAvgStress:avgOf(restRows,lastStressOf),restSampleSize:restRows.length
+    };
+  }
+  function symbolStressCard(trades,minSamples){
+    var closed=closedTrades(trades).filter(function(t){return t.instrument&&(t.emotionLog||[]).length;});
+    var buckets={};
+    closed.forEach(function(t){(buckets[t.instrument]=buckets[t.instrument]||[]).push(t);});
+    var candidates=Object.keys(buckets)
+      .filter(function(s){return buckets[s].length>=minSamples;})
+      .map(function(s){return{instrument:s,rows:buckets[s],avgStress:avgOf(buckets[s],lastStressOf)};})
+      .filter(function(x){return x.avgStress!=null;});
+    if(!candidates.length)return null;
+    var worst=candidates.slice().sort(function(a,b){return b.avgStress-a.avgStress;})[0];
+    var rest=closed.filter(function(t){return t.instrument!==worst.instrument;});
+    if(rest.length<minSamples)return null;
+    var restAvgStress=avgOf(rest,lastStressOf);
+    if(restAvgStress==null||!(worst.avgStress>restAvgStress))return null;
+    return{
+      kind:'symbolStress',instrument:worst.instrument,avgStress:worst.avgStress,sampleSize:worst.rows.length,
+      restAvgStress:restAvgStress,restSampleSize:rest.length
+    };
+  }
+  function sleepNextDayCorrelation(trades,checkins,minSamples){
+    var byDay=tradesByDayClosed(trades),bucketOf={};
+    (checkins||[]).forEach(function(c){
+      var key=keyOfIso(c.createdAt);
+      var quality=Number(c.sleepQuality);
+      if(!key||!Number.isFinite(quality))return;
+      var nk=nextDayKeyOf(key),bucket=quality<=4?'low':(quality>=7?'high':null);
+      if(!bucket)return;
+      bucketOf[nk]=(bucketOf[nk]&&bucketOf[nk]!==bucket)?'mixed':bucket;
+    });
+    var lowRows=[],highRows=[];
+    Object.keys(bucketOf).forEach(function(nk){
+      var bucket=bucketOf[nk],rows=byDay[nk]||[];
+      if(!rows.length||bucket==='mixed')return;
+      if(bucket==='low')lowRows=lowRows.concat(rows);else highRows=highRows.concat(rows);
+    });
+    if(lowRows.length<minSamples||highRows.length<minSamples)return null;
+    return{
+      lowWinRate:winRateOf(lowRows),lowSampleSize:lowRows.length,
+      highWinRate:winRateOf(highRows),highSampleSize:highRows.length
+    };
+  }
+  function proveTodayCorrelation(trades,checkins,minSamples){
+    var byDay=tradesByDayClosed(trades),bucketOf={};
+    (checkins||[]).forEach(function(c){
+      var key=keyOfIso(c.createdAt);
+      if(!key)return;
+      var val=!!c.somethingToProveToday;
+      bucketOf[key]=(bucketOf[key]!==undefined&&bucketOf[key]!==val)?'mixed':val;
+    });
+    var yesRows=[],noRows=[];
+    Object.keys(bucketOf).forEach(function(key){
+      var val=bucketOf[key],rows=byDay[key]||[];
+      if(!rows.length||val==='mixed')return;
+      if(val)yesRows=yesRows.concat(rows);else noRows=noRows.concat(rows);
+    });
+    if(yesRows.length<minSamples||noRows.length<minSamples)return null;
+    return{
+      yesAvgPnl:avgOf(yesRows,function(t){return Number(t.pnl);}),yesSampleSize:yesRows.length,
+      noAvgPnl:avgOf(noRows,function(t){return Number(t.pnl);}),noSampleSize:noRows.length
+    };
+  }
+  function personalEventCorrelation(trades,checkins,minSamples){
+    var byDay=tradesByDayClosed(trades),bucketOf={};
+    (checkins||[]).forEach(function(c){
+      var key=keyOfIso(c.createdAt);
+      if(!key)return;
+      var val=!!(c.significantPersonalEvent&&String(c.significantPersonalEvent).trim());
+      bucketOf[key]=(bucketOf[key]!==undefined&&bucketOf[key]!==val)?'mixed':val;
+    });
+    var withRows=[],withoutRows=[];
+    Object.keys(bucketOf).forEach(function(key){
+      var val=bucketOf[key],rows=(byDay[key]||[]).filter(function(t){return(t.emotionLog||[]).length;});
+      if(!rows.length||val==='mixed')return;
+      if(val)withRows=withRows.concat(rows);else withoutRows=withoutRows.concat(rows);
+    });
+    if(withRows.length<minSamples||withoutRows.length<minSamples)return null;
+    return{
+      withAvgCommitment:avgOf(withRows,lastCommitmentOf),withSampleSize:withRows.length,
+      withoutAvgCommitment:avgOf(withoutRows,lastCommitmentOf),withoutSampleSize:withoutRows.length
+    };
+  }
+  function routineCompletionCorrelation(trades,routineDays,minSamples){
+    var byDay=tradesByDayClosed(trades),fullRows=[],partialRows=[];
+    Object.keys(routineDays||{}).forEach(function(key){
+      var info=routineDays[key],rows=(byDay[key]||[]).filter(function(t){return(t.emotionLog||[]).length;});
+      if(!rows.length||!info||!info.total)return;
+      if(info.complete)fullRows=fullRows.concat(rows);else partialRows=partialRows.concat(rows);
+    });
+    if(fullRows.length<minSamples||partialRows.length<minSamples)return null;
+    return{
+      fullAvgStress:avgOf(fullRows,lastStressOf),fullSampleSize:fullRows.length,
+      partialAvgStress:avgOf(partialRows,lastStressOf),partialSampleSize:partialRows.length
+    };
+  }
+  // routineDays: plain {dayKey:{total,complete}} map - the view builds it from
+  // window.TradeJournalRoutineStore (kept out of this file so it stays a pure trades-in reducer,
+  // and so the sandboxed test harness never needs to load routine-store.js to exercise this).
+  function aiInsightCards(trades,checkins,routineDays,minSamples){
+    minSamples=minSamples||8;
+    var cards=[];
+    var emotionSpread=emotionSpreadCard(trades,minSamples);
+    if(emotionSpread)cards.push(emotionSpread);
+    var hourWindow=hourWindowCard(trades,minSamples);
+    if(hourWindow)cards.push(hourWindow);
+    var symbolStress=symbolStressCard(trades,minSamples);
+    if(symbolStress)cards.push(symbolStress);
+
+    var correlations=[];
+    var sleepNextDay=sleepNextDayCorrelation(trades,checkins,minSamples);
+    if(sleepNextDay)correlations.push(Object.assign({kind:'sleepNextDay'},sleepNextDay));
+    var proveToday=proveTodayCorrelation(trades,checkins,minSamples);
+    if(proveToday)correlations.push(Object.assign({kind:'proveToday'},proveToday));
+    var personalEvent=personalEventCorrelation(trades,checkins,minSamples);
+    if(personalEvent)correlations.push(Object.assign({kind:'personalEvent'},personalEvent));
+    var routineCompletion=routineCompletionCorrelation(trades,routineDays,minSamples);
+    if(routineCompletion)correlations.push(Object.assign({kind:'routineCompletion'},routineCompletion));
+
+    return{cards:cards,correlations:correlations,minSamples:minSamples};
+  }
+
+  // ---------------------------------------------------------------------
+  // Protective tab: real cooldown-guard firing history.
+  //
+  // A "fire" is a PostTradeReflection whose revengeCheck.choice was 'recover' ("yes, to make up
+  // for it") - postTradeReflectionModal.jsx only starts revengeCheck.cooldownTimerStartedAt for
+  // that choice, never for 'rest' or 'saw_setup'. Whether the trader actually held the cooldown
+  // is not self-reported (nothing asks them afterward) - it is read back objectively from trade
+  // history: any OTHER trade opened inside [start, start+cooldownMinutes] means it broke.
+  function cooldownHistory(trades,reflections,cooldownMinutes){
+    cooldownMinutes=cooldownMinutes||15;
+    var byId={};
+    (trades||[]).forEach(function(t){byId[t.id]=t;});
+    return (reflections||[])
+      .filter(function(r){return r.revengeCheck&&r.revengeCheck.shown&&r.revengeCheck.choice==='recover'&&r.revengeCheck.cooldownTimerStartedAt;})
+      .map(function(r){
+        var start=new Date(r.revengeCheck.cooldownTimerStartedAt).getTime();
+        var end=start+cooldownMinutes*60000;
+        var source=byId[r.tradeId]||null;
+        var broke=(trades||[]).some(function(t){
+          if(t.id===r.tradeId)return false;
+          var opened=t.openedAt||t.createdAt;
+          if(!opened)return false;
+          var ts=new Date(opened).getTime();
+          return ts>start&&ts<=end;
+        });
+        return{
+          tradeId:r.tradeId,instrument:source?source.instrument:null,direction:source?source.direction:null,
+          startedAt:r.revengeCheck.cooldownTimerStartedAt,held:!broke
+        };
+      })
+      .sort(function(a,b){return new Date(b.startedAt)-new Date(a.startedAt);});
+  }
+  function cooldownHistorySummary(rows){
+    var total=(rows||[]).length,held=(rows||[]).filter(function(r){return r.held;}).length;
+    return{total:total,held:held,broke:total-held};
+  }
+
   window.TradeJournalPsychologyStore={
     settings:settings,
     saveSettings:saveSettings,
@@ -264,6 +583,12 @@
     lastClosedTrade:lastClosedTrade,
     tiltReading:tiltReading,
     selfRatings:selfRatings,
-    worstRevengeTrade:worstRevengeTrade
+    worstRevengeTrade:worstRevengeTrade,
+    journeyArcShapes:journeyArcShapes,
+    holdTimeByExitTone:holdTimeByExitTone,
+    openPositionMoods:openPositionMoods,
+    aiInsightCards:aiInsightCards,
+    cooldownHistory:cooldownHistory,
+    cooldownHistorySummary:cooldownHistorySummary
   };
 }());
