@@ -13,6 +13,7 @@ import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
 import { RoutineTab } from './routineTab.jsx';
 import { MoodTab } from './moodTab.jsx';
 import { TherapistTab } from './therapistTab.jsx';
+import { EmotionMap, DisciplineTrend, TradeArc } from './psychologyCharts.jsx';
 
 // ============================================================================
 // Small shared building blocks
@@ -146,7 +147,20 @@ function FileRail({ i18n, mi, profile, closed, goFile, activeSection, onRunCheck
 function OverviewTab({ i18n, psych, trades, closed, profile }) {
   const streak = psych.disciplineStreak(trades);
   const totalLogs = closed.reduce((sum, t) => sum + (t.emotionLog || []).length, 0);
-  const mirror = psych.emotionFrequency(trades, 30).slice(0, 5);
+  // The map needs both halves: how often an emotion shows up (emotionFrequency) and what it cost
+  // when it did (emotionalMirror). Only emotions with BOTH can be placed - one without a
+  // profitable/costly reading has no y position, and inventing one would be a fabricated number.
+  const frequency = psych.emotionFrequency(trades, 30);
+  const performance = psych.emotionalMirror(closed, 8);
+  const perfBy = {};
+  performance.forEach((row) => { perfBy[row.emotion] = row; });
+  const mapRows = frequency.map((f) => {
+    const perf = perfBy[f.emotion];
+    if (!perf || perf.insufficient || perf.avgPnl == null) return null;
+    return { emotion: f.emotion, freq: f.pct, pnl: perf.avgPnl, n: perf.sampleSize };
+  }).filter(Boolean).slice(0, 6);
+  // Everything the map cannot honestly place is named underneath it rather than dropped silently.
+  const thinRows = frequency.filter((f) => !mapRows.some((m) => m.emotion === f.emotion)).slice(0, 6);
   const weekly = psych.disciplineWeekly(trades, 12);
   const scored = weekly.filter((w) => w.score != null);
   const recent4 = scored.slice(-4), prior4 = scored.slice(-8, -4);
@@ -178,19 +192,19 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
               <SectionLabel>{i18n.t('psyEmotionalMirrorTitle')}</SectionLabel>
               <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyMirrorNote', { days: 30, count: totalLogs })}</Caption>
             </div>
-            {mirror.length ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {mirror.map((row) => (
-                  <div key={row.emotion} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <span style={{ width: 104, flex: 'none', font: 'var(--type-body)', color: 'var(--text-primary)' }}>{i18n.t(row.emotion)}</span>
-                    <span style={{ flex: 1, height: 10, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden', display: 'block' }}>
-                      <span style={{ display: 'block', height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,color-mix(in srgb, var(--char-accent) 45%, transparent),var(--char-accent))', transition: 'width var(--dur-progress) var(--ease-out)', width: Math.min(100, row.pct) + '%' }}></span>
-                    </span>
-                    <span className="navrya-tabular" style={{ width: 92, flex: 'none', textAlign: 'end', font: 'var(--type-caption)', letterSpacing: '.06em', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{row.pct}%</span>
-                  </div>
-                ))}
-              </div>
+            {mapRows.length ? (
+              <EmotionMap i18n={i18n} rows={mapRows} />
             ) : <Caption>{i18n.t('psyMirrorEmpty')}</Caption>}
+            {thinRows.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <Caption>{i18n.t('psyMapThinTitle')}</Caption>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  {thinRows.map((row) => (
+                    <Chip key={row.emotion} tone="neutral">{i18n.t(row.emotion)} · {i18n.number(row.pct)}%</Chip>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </Panel>
         <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
@@ -201,15 +215,7 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
               <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyLast12Weeks')}</Caption>
             </div>
             {scored.length ? (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 186, paddingTop: 6 }}>
-                {weekly.map((w, i) => (
-                  <div key={w.weekStart} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
-                    <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{w.score != null ? w.score : '—'}</span>
-                    <span style={{ width: '100%', borderRadius: '4px 4px 2px 2px', background: w.score != null ? 'linear-gradient(180deg,var(--char-accent),color-mix(in srgb, var(--char-accent) 30%, transparent))' : 'var(--border-hairline)', display: 'block', height: (w.score != null ? Math.max(2, Math.round(w.score / 100 * 120)) : 2) + 'px' }}></span>
-                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em' }}>{'W' + (i + 1)}</span>
-                  </div>
-                ))}
-              </div>
+              <DisciplineTrend i18n={i18n} weeks={weekly} />
             ) : <Caption>{i18n.t('psyDisciplineEmpty')}</Caption>}
           </div>
         </Panel>
@@ -224,7 +230,7 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
 function JourneyRow({ i18n, trade, expanded, onToggle }) {
   const log = trade.emotionLog || [];
   const path = log.map((e) => ({ tone: emotionTone((e.dominantEmotions || [])[0]), label: stageLabel(i18n, e.stage) + ' · ' + ((e.dominantEmotions || [])[0] ? i18n.t(e.dominantEmotions[0]) : '—') }));
-  const stages = log.map((e) => ({ label: stageLabel(i18n, e.stage), value: e.stressLevel, height: Math.max(4, Math.round(Number(e.stressLevel || 0) / 10 * 110)) }));
+  const stages = log.map((e) => ({ label: stageLabel(i18n, e.stage), value: Number(e.stressLevel || 0) }));
   return (
     <div style={{ border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -247,14 +253,8 @@ function JourneyRow({ i18n, trade, expanded, onToggle }) {
       </div>
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-hairline)', paddingTop: 14, display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 260px', display: 'flex', alignItems: 'flex-end', gap: 16, height: 150 }}>
-            {stages.map((s, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
-                <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--char-accent)' }}>{s.value}</span>
-                <span style={{ width: '100%', maxWidth: 64, borderRadius: '4px 4px 2px 2px', background: 'linear-gradient(180deg,var(--char-accent),color-mix(in srgb, var(--char-accent) 30%, transparent))', display: 'block', height: s.height + 'px' }}></span>
-                <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', letterSpacing: '.04em', textTransform: 'uppercase' }}>{s.label}</span>
-              </div>
-            ))}
+          <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+            <TradeArc i18n={i18n} stages={stages} />
           </div>
           <div style={{ width: 300, flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 6 }}>
             <SectionLabel>{i18n.t('psyWhatJourneySays')}</SectionLabel>
