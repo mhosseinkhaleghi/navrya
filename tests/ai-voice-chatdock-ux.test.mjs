@@ -171,11 +171,19 @@ test('no browser SpeechSynthesis is ever used as a second, competing voice engin
   assert.doesNotMatch(dockViewSrc, /speechSynthesis|SpeechSynthesisUtterance/i);
 });
 
-test('the Gemini Voice transport is independent of the active chat provider and is torn down cleanly', () => {
+// Regression (2026-09-04, live production incident): the Voice transport is NOT unconditionally
+// Gemini - it briefly was, hardcoded, taking real OpenAI Realtime ("ChatGPT voice") out of reach
+// for every non-Gemini user in production. The mount effect itself never re-runs when the active
+// chat provider changes ([] deps, so an active session is never torn down mid-conversation by a
+// provider switch) - but WHICH transport it constructs at that one mount still depends on
+// providerId (Gemini only for providerId === 'gemini', OpenAI Realtime for everyone else).
+test('the Voice transport (OpenAI Realtime for non-Gemini providers, Gemini Live only for providerId===\'gemini\') is chosen once at mount and torn down cleanly - never re-selected on a later chat-provider switch', () => {
   const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('// Text-provider selection must never disconnect'), dockViewSrc.indexOf('function toggleVoice()'));
-  assert.match(effectBlock, /voiceRef\.current = createGeminiLiveSession\(\{/);
-  assert.match(effectBlock, /fetchSession: fetchGeminiLiveSession/);
-  assert.match(effectBlock, /fetchSpeakAudio: fetchGeminiSpeak/);
+  assert.match(effectBlock, /const useGeminiLive = providerId === 'gemini';/);
+  assert.match(effectBlock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  assert.match(effectBlock, /voiceRef\.current = createTransport\(\{/);
+  assert.match(effectBlock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
+  assert.match(effectBlock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
   assert.match(effectBlock, /playbackControllerRef\.current = window\.TradeJournalAIVoicePlaybackController\.create\(/);
   assert.match(effectBlock, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
   assert.match(effectBlock, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); \};/);

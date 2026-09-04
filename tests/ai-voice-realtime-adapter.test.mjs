@@ -223,12 +223,35 @@ test('voice turns are serialized through TurnCoordinator - never processed concu
 // stays a pure transport, see this file's own test above) - POST /api/ai/voice/speak, same-origin,
 // same session-cookie auth every other /api/ai/* route uses. Only reached at all when the mint
 // response reported ttsProvider:'elevenlabs'; the key never leaves the server.
-test('Gemini owns the same-origin Voice transport while OpenAI remains available for non-Gemini voice providers', () => {
+// Regression (2026-09-04, live production incident): the transport-selection conditional below
+// was briefly removed entirely, hardcoding every user - regardless of their own chosen text
+// provider - onto the Gemini Live transport. That took real OpenAI Realtime ("ChatGPT voice", the
+// transport this app has always used) completely out of reach for every non-Gemini user, live,
+// with no fallback - a Gemini-side credential/billing/model problem then took down Voice Mode for
+// everyone. These assertions check the actual CONDITIONAL STRUCTURE (both branches present and
+// keyed on the SAME `useGeminiLive` flag), not just that both providers' helper functions exist
+// somewhere in the file as dead text - the exact "false confidence" gap that let this regression
+// through with every other Voice test still green.
+test('the voice-transport mount effect picks OpenAI Realtime (createVoiceSession) for every provider except Gemini, and Gemini Live only for providerId === \'gemini\' - never one hardcoded transport for everyone', () => {
+  const effectBody = dockViewSource.slice(dockViewSource.indexOf('const useGeminiLive = providerId'), dockViewSource.indexOf('const useGeminiLive = providerId') + 700);
+  assert.match(effectBody, /const useGeminiLive = providerId === 'gemini';/);
+  assert.match(effectBody, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  assert.match(effectBody, /voiceRef\.current = createTransport\(\{/);
+  assert.match(effectBody, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
+  assert.match(effectBody, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
+});
+
+test('the voice-transport mount effect never re-runs on a later provider switch (empty deps) - the useGeminiLive branch fixes WHICH transport is chosen without reintroducing the "disconnects an active session on provider switch" bug the hardcoded-Gemini version was trying to avoid', () => {
+  const effectStart = dockViewSource.indexOf('const useGeminiLive = providerId');
+  const effectEnd = dockViewSource.indexOf('}, []);', effectStart);
+  assert.ok(effectStart > -1 && effectEnd > -1, 'could not find the voice-transport mount effect and its own closing []-deps');
+});
+
+test('both real HTTP endpoints (OpenAI Realtime and Gemini Live) are still real, reachable fetch calls, not just present as dead text', () => {
   assert.match(dockViewSource, /async function fetchVoiceProviderSpeak\(language, text\)[\s\S]{0,400}fetch\('\/api\/ai\/voice\/speak', \{/);
+  assert.match(dockViewSource, /async function fetchRealtimeSession\(language, options\)[\s\S]{0,600}fetch\('\/api\/ai\/realtime\/session', \{/);
   assert.match(dockViewSource, /fetch\('\/api\/ai\/gemini-live\/session', \{/);
   assert.match(dockViewSource, /fetch\('\/api\/ai\/gemini-live\/speak', \{/);
-  assert.match(dockViewSource, /voiceRef\.current = createGeminiLiveSession\(\{/);
-  assert.match(dockViewSource, /fetchSpeakAudio: fetchGeminiSpeak/);
 });
 
 // ElevenLabs voice-provider follow-up (per-character/gender voice routing): both the mint and

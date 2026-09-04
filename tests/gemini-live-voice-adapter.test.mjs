@@ -17,11 +17,18 @@ test('Gemini Voice uses a constrained short-lived Live token, never a browser-ex
   assert.doesNotMatch(dock, /apiKey: settingsStore\.getKey\('gemini'\)/);
 });
 
-test('Gemini remains the Voice transport while finalized voice turns use the configured OpenAI chat provider', () => {
+// Regression (2026-09-04, live production incident): Gemini is NOT "the" Voice transport for
+// everyone - it briefly was, hardcoded, which took real OpenAI Realtime ("ChatGPT voice") away
+// from every non-Gemini user in production with no fallback. Gemini Live is only ever chosen for
+// providerId === 'gemini'; see tests/ai-voice-realtime-adapter.test.mjs's own dedicated tests for
+// the full conditional-structure assertions - this test only re-confirms Gemini's own two fetch
+// helpers still exist and are still wired into that same conditional, not that they're the sole path.
+test('Gemini Live is used only for providerId === \'gemini\' (never unconditionally); finalized voice turns always use the configured OpenAI chat provider regardless of which Voice transport spoke them', () => {
   assert.match(dock, /provider: source === 'voice' \? 'openai' : undefined/);
-  assert.match(dock, /voiceRef\.current = createGeminiLiveSession\(\{/);
-  assert.match(dock, /fetchSession: fetchGeminiLiveSession/);
-  assert.match(dock, /fetchSpeakAudio: fetchGeminiSpeak/);
+  assert.match(dock, /const useGeminiLive = providerId === 'gemini';/);
+  assert.match(dock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  assert.match(dock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
+  assert.match(dock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
 });
 
 test('Gemini Voice sends 16 kHz PCM transcription and routes only final text through the existing ChatDock coordinator', () => {
