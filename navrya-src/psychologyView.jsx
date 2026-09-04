@@ -10,6 +10,7 @@ import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice
 import { MetricRow } from '../public/pages/shared/navrya/components/metrics/MetricRow.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
+import { RoutineTab } from './routineTab.jsx';
 
 // ============================================================================
 // Small shared building blocks
@@ -780,6 +781,7 @@ function GrowthTab({ i18n, mi, psych, mhStore, profile, closed, triggerDraft, se
 function TabStrip({ i18n, psyTab, setPsyTab }) {
   const TABS = [
     { id: 'overview', label: i18n.t('psyTabOverview'), icon: 'dashboard' },
+    { id: 'routine', label: i18n.t('psyTabRoutine'), icon: 'calendar' },
     { id: 'journeys', label: i18n.t('psyTabJourneys'), icon: 'strategies' },
     { id: 'insights', label: i18n.t('psyTabInsights'), icon: 'sparkle' },
     { id: 'protective', label: i18n.t('psyTabProtective'), icon: 'honour' },
@@ -952,6 +954,7 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 700px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {psyTab === 'overview' && <OverviewTab i18n={i18n} psych={psych} trades={trades} closed={closed} profile={profile} />}
+          {psyTab === 'routine' && <RoutineTab i18n={i18n} />}
           {psyTab === 'journeys' && <JourneysTab i18n={i18n} trades={trades} openJourney={openJourney} setOpenJourney={setOpenJourney} />}
           {psyTab === 'insights' && <InsightsTab i18n={i18n} insights={insights} dismissedIds={dismissedIds} onDismiss={(idx) => setDismissedIds((s) => new Set(s).add(idx))} onAddAsTrigger={addInsightAsTrigger} />}
           {psyTab === 'protective' && <ProtectiveTab i18n={i18n} psych={psych} savedAt={protectiveSavedAt} onSaved={() => setProtectiveSavedAt(i18n.date(new Date(), { dateStyle: 'medium', timeStyle: 'short' }))} />}
@@ -973,7 +976,7 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
 // psychology-ui.js's renderPage() defers to this hook when present - state.tab stays owned by
 // psychology-ui.js's own controller (onTabChange calls back into it), only the DOM building
 // changes. tab/onTabChange are an opaque string passthrough - this screen owns a wider tab
-// vocabulary (overview/journeys/insights/protective/file/growth) than the legacy controller
+// vocabulary (overview/routine/journeys/insights/protective/file/growth) than the legacy controller
 // ever knew about, which is fine since its own tab-switch branches are unreachable dead code
 // once this hook exists (mirrors ai-settings-ui.js's identical fallback-hook pattern).
 export function renderPsychology(tab, onTabChange) {
