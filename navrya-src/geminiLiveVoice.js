@@ -45,6 +45,12 @@ function audioBufferFromPcm(context, bytes) {
   for (let index = 0; index < frames; index += 1) output[index] = view.getInt16(index * 2, true) / 0x8000;
   return buffer;
 }
+function socketMessageText(value) {
+  if (typeof value === 'string') return Promise.resolve(value);
+  if (value instanceof ArrayBuffer) return Promise.resolve(new TextDecoder().decode(value));
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return value.text();
+  return Promise.reject(new Error('GEMINI_LIVE_MESSAGE_INVALID'));
+}
 
 // Gemini Live supplies final transcription. Gemini TTS speaks only NAVRYA's already-approved
 // reply, preserving the existing single decision and action path for voice and typed input.
@@ -164,6 +170,7 @@ export function createGeminiLiveSession(options) {
     return new Promise((resolve, reject) => {
       const url = `${LIVE_SOCKET_URL}?access_token=${encodeURIComponent(creds.token)}`;
       socket = new WebSocket(url);
+      socket.binaryType = 'arraybuffer';
       let settled = false;
       function fail(error) {
         if (settled) return;
@@ -179,9 +186,15 @@ export function createGeminiLiveSession(options) {
           inputAudioTranscription: { languageCodes: [({ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' })[language] || 'en-US'], mode: 'SMART' }
         } });
       };
-      socket.onmessage = (event) => {
+      socket.onmessage = async (event) => {
         let message;
-        try { message = JSON.parse(event.data); } catch (_) { return; }
+        try { message = JSON.parse(await socketMessageText(event.data)); } catch (_) { return; }
+        if (message.error) {
+          const error = new Error(`GEMINI_LIVE_SETUP_FAILED_${message.error.code || 'UNKNOWN'}`);
+          error.code = error.message;
+          fail(error);
+          return;
+        }
         if (message.setupComplete) {
           if (settled) return;
           settled = true;

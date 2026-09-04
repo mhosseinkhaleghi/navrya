@@ -12,6 +12,8 @@ const dockViewSource = await readFile(path.join(root, 'navrya-src', 'chatDockVie
 const voiceRealtimeSource = await readFile(path.join(root, 'navrya-src', 'aiVoiceRealtime.js'), 'utf8');
 const chatDockSource = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatDock.jsx'), 'utf8');
 const i18nSource = await readFile(path.join(root, 'public', 'pages', 'shared', 'ai-i18n.js'), 'utf8');
+const companionOpeningStart = dockViewSource.indexOf('function deliverCompanionOpening()');
+const companionOpeningEnd = dockViewSource.indexOf('\n  React.useEffect(() => {', companionOpeningStart);
 
 // --- Item 1: no automatic first-run popup on ordinary app load ---
 
@@ -50,12 +52,12 @@ test('deliverCompanionOpening() is triggered from exactly one place: the CONNECT
   // creation effect (both empty-deps, i.e. real mount-time code).
   const refreshEffect = dockViewSource.slice(dockViewSource.indexOf('function refreshCompanion()'), dockViewSource.indexOf('function onModelChange'));
   assert.doesNotMatch(refreshEffect, /deliverCompanionOpening/);
-  const sessionCreateEffect = dockViewSource.slice(dockViewSource.indexOf("const useGeminiLive = providerId === 'gemini';"), dockViewSource.indexOf('const previousVoiceStateRef'));
+  const sessionCreateEffect = dockViewSource.slice(companionOpeningEnd, dockViewSource.indexOf('const previousVoiceStateRef'));
   assert.doesNotMatch(sessionCreateEffect, /deliverCompanionOpening\(\)/);
 });
 
 test('no duplicate opening: openingDeliveredForConnectionRef guards a second call within the same connection, and is reset back to false on IDLE/ERROR so a genuinely NEW connect() gets a fresh opening', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf("const useGeminiLive = providerId === 'gemini';"));
+  const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
   assert.match(fn, /if \(openingDeliveredForConnectionRef\.current\) return;/);
   assert.match(fn, /openingDeliveredForConnectionRef\.current = true;/);
   const effect = dockViewSource.slice(dockViewSource.indexOf('const previousVoiceStateRef'), dockViewSource.indexOf('function toggleVoice()'));
@@ -82,7 +84,7 @@ test('the render gate lets the CompanionCard show DURING companionOpeningActive 
 });
 
 test('for the fresh-welcome opening specifically, the visual card is captured BEFORE voiceOpening() marks the walkthrough seen, so the real Start/What is NAVRYA?/Later card still shows synchronized with the spoken greeting', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf("const useGeminiLive = providerId === 'gemini';"));
+  const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
   const preOpeningIndex = fn.indexOf('var preOpeningCard = orchestrator.currentCard();');
   const voiceOpeningIndex = fn.indexOf('var opening = orchestrator.voiceOpening();');
   assert.ok(preOpeningIndex > -1 && voiceOpeningIndex > -1 && preOpeningIndex < voiceOpeningIndex, 'currentCard() must be captured before voiceOpening() runs (and may mark the walkthrough seen)');
@@ -98,7 +100,7 @@ test('for the fresh-welcome opening specifically, the visual card is captured BE
 // unchanged either way - it interrupts ANY ASSISTANT_SPEAKING playback regardless of what
 // initiated it.
 test('the Voice Companion opening is delivered via the exact same PlaybackController every real turn\'s reply already speaks through, so it is interruptible by the SAME existing barge-in handling - no new interruption code was added anywhere', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf("const useGeminiLive = providerId === 'gemini';"));
+  const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
   assert.match(fn, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ kind: 'companion-opening', caption: opening\.text \}\)/);
   assert.doesNotMatch(fn, /voiceRef\.current\.speak\(/, 'deliverCompanionOpening() must never call speak() directly - only through PlaybackController, like every other reply');
   // fix/voice-mode-turn-ux (Part B): aiVoiceRealtime.js's own barge-in handling now notifies the
@@ -116,7 +118,7 @@ test('the Voice Companion opening is delivered via the exact same PlaybackContro
 // so PlaybackController's own serialization (never voiceTurnQueue, which no longer exists) is what
 // prevents a barge-in-triggered second speak() call from overlapping this one.
 test('the opening is routed through the SAME PlaybackController every real voice turn already serializes speech through, so a barge-in mid-opening can never overlap a second speak() call', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf("const useGeminiLive = providerId === 'gemini';"));
+  const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
   assert.match(fn, /playbackControllerRef\.current\.enqueue\(/);
   assert.doesNotMatch(dockViewSource, /voiceTurnQueue\.current/, 'the old coupled queue variable must be fully removed (a historical mention in a comment explaining the redesign is fine, an actual live reference is not)');
 });
@@ -126,14 +128,14 @@ test('the opening is routed through the SAME PlaybackController every real voice
 test('awaitingCompanionOpeningReplyRef is set true only inside deliverCompanionOpening, and is read-and-cleared exactly once at the top of onVoiceTranscript - so only the ONE next transcript is ever special', () => {
   const setCalls = dockViewSource.match(/awaitingCompanionOpeningReplyRef\.current = true;/g) || [];
   assert.equal(setCalls.length, 1);
-  const onVoiceTranscriptBody = dockViewSource.slice(dockViewSource.indexOf('function onVoiceTranscript(transcriptText)'), dockViewSource.indexOf("const useGeminiLive = providerId === 'gemini';"));
+  const onVoiceTranscriptBody = dockViewSource.slice(dockViewSource.indexOf('function onVoiceTranscript(transcriptText)'), companionOpeningStart);
   assert.match(onVoiceTranscriptBody, /const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef\.current;\s*\n\s*awaitingCompanionOpeningReplyRef\.current = false;/);
 });
 
 // --- Item 16: safety priority ---
 
 test('Therapist Mode suppresses the proactive Voice Companion opening entirely - checked before the orchestrator is ever consulted', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('function deliverCompanionOpening()'), dockViewSource.indexOf("const useGeminiLive = providerId === 'gemini';"));
+  const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
   const therapistCheckIndex = fn.indexOf('if (therapistMode) return;');
   const orchestratorReadIndex = fn.indexOf('window.TradeJournalAICompanionOrchestrator');
   assert.ok(therapistCheckIndex > -1 && orchestratorReadIndex > -1 && therapistCheckIndex < orchestratorReadIndex, 'Therapist Mode must be checked BEFORE the orchestrator is ever consulted');

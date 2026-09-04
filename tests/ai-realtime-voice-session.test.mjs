@@ -300,11 +300,15 @@ test('Gemini TTS reads the approved text server-side and returns only provider a
     request = { url: String(url), options };
     return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'pcm-base64', mimeType: 'audio/L16;rate=24000' } }] } }] }) };
   };
-  const result = await speakWithGemini({ language: 'en', text: 'Approved NAVRYA reply.', apiKey: 'gemini-permanent-secret' });
+  const result = await speakWithGemini({ language: 'en', text: 'Approved NAVRYA reply.', character: 'sage', gender: 'female', apiKey: 'gemini-permanent-secret' });
   assert.match(request.url, /models\/gemini-3\.1-flash-tts-preview:generateContent$/);
   const body = JSON.parse(request.options.body);
   assert.deepEqual(body.generationConfig.responseModalities, ['AUDIO']);
   assert.match(body.contents[0].parts[0].text, /Approved NAVRYA reply\./);
+  assert.match(body.contents[0].parts[0].text, /calm, reflective market mentor/i);
+  assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');
+  assert.equal(result.character, 'sage');
+  assert.equal(result.voice, 'Sulafat');
   assert.equal(result.audioBase64, 'pcm-base64');
   assert.doesNotMatch(JSON.stringify(result), /gemini-permanent-secret/);
 });

@@ -694,6 +694,28 @@ function geminiInlineData(dataUrl) {
   return match ? { inlineData: { mimeType: match[1], data: match[2] } } : null;
 }
 
+function geminiResponseSchema(value) {
+  if (Array.isArray(value)) return value.map(geminiResponseSchema);
+  if (!value || typeof value !== 'object') return value;
+  const output = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === 'additionalProperties') continue;
+    if (key === 'type' && Array.isArray(nested)) {
+      const concreteTypes = nested.filter((type) => type !== 'null');
+      output.type = concreteTypes[0] || 'string';
+      if (nested.includes('null')) output.nullable = true;
+      continue;
+    }
+    if (key === 'enum' && Array.isArray(nested) && nested.includes(null)) {
+      output.enum = nested.filter((entry) => entry !== null);
+      output.nullable = true;
+      continue;
+    }
+    output[key] = geminiResponseSchema(nested);
+  }
+  return output;
+}
+
 // Gemini uses its native GenerateContent API, not the OpenAI compatibility layer. NAVRYA owns
 // conversation state and action safety, so requests remain stateless and never enable provider
 // tools. The existing schema is forwarded as Gemini structured output and validated again below.
@@ -722,7 +744,7 @@ async function callGemini(payload, apiKey, model) {
         contents.push({ role: item.role === 'assistant' ? 'model' : 'user', parts });
       }
     });
-    const generationConfig = { responseMimeType: 'application/json', responseSchema: schema };
+    const generationConfig = { responseMimeType: 'application/json', responseSchema: geminiResponseSchema(schema) };
     if (Number.isFinite(payload.max_output_tokens)) generationConfig.maxOutputTokens = payload.max_output_tokens;
     const body = { contents, generationConfig };
     if (systemParts.length) body.systemInstruction = { parts: systemParts };
@@ -2247,8 +2269,39 @@ const REALTIME_TRANSCRIPTION_KEYWORDS = ['New York', 'London', 'Tokyo', 'Sydney'
 const GEMINI_LIVE_TRANSCRIBE_MODEL = 'gemini-3.5-transcribe-live';
 const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
 const GEMINI_TTS_VOICE_BY_LANGUAGE = { fa: 'Kore', ar: 'Puck', en: 'Kore', es: 'Aoede' };
+const GEMINI_TTS_CHARACTER_STYLE = {
+  hunter: {
+    voices: { male: 'Algenib', female: 'Iapetus' },
+    direction: 'A quiet, alert field guide. Use measured pacing, crisp articulation, and controlled confidence.'
+  },
+  commander: {
+    voices: { male: 'Kore', female: 'Pulcherrima' },
+    direction: 'A calm field commander. Sound decisive and focused, with firm but never aggressive delivery.'
+  },
+  engineer: {
+    voices: { male: 'Iapetus', female: 'Despina' },
+    direction: 'A precise analytical systems guide. Keep a clear, measured pace and make technical points easy to follow.'
+  },
+  sage: {
+    voices: { male: 'Sadaltager', female: 'Sulafat' },
+    direction: 'A calm, reflective market mentor. Use warm authority, unhurried pacing, and thoughtful pauses.'
+  }
+};
+const GEMINI_TTS_CHARACTERS = Object.keys(GEMINI_TTS_CHARACTER_STYLE);
+const GEMINI_TTS_GENDERS = ['male', 'female'];
 
 function geminiVoiceForLanguage(language) { return GEMINI_TTS_VOICE_BY_LANGUAGE[language] || GEMINI_TTS_VOICE_BY_LANGUAGE.en; }
+function geminiVoiceProfile(body, language) {
+  const character = GEMINI_TTS_CHARACTERS.includes(body.character) ? body.character : 'hunter';
+  const gender = GEMINI_TTS_GENDERS.includes(body.gender) ? body.gender : 'male';
+  const profile = GEMINI_TTS_CHARACTER_STYLE[character];
+  return {
+    character,
+    gender,
+    voice: profile.voices[gender] || geminiVoiceForLanguage(language),
+    direction: profile.direction
+  };
+}
 
 async function resolveGeminiVoiceKey(body) {
   let key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey.trim() : '';
@@ -2312,14 +2365,15 @@ async function speakWithGemini(body) {
   try {
     const key = await resolveGeminiVoiceKey(body);
     const model = process.env.GEMINI_TTS_MODEL || GEMINI_TTS_MODEL;
+    const voiceProfile = geminiVoiceProfile(body, language);
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: `Read this exact NAVRYA reply naturally and warmly. Do not add, omit, or alter anything:\n${text}` }] }],
+        contents: [{ role: 'user', parts: [{ text: `Read the transcript exactly. Do not add, omit, or alter anything.\n\nAUDIO PROFILE\n${voiceProfile.direction}\n\nDIRECTOR'S NOTES\nKeep the delivery natural and game-like, but never theatrical. Preserve the transcript's language and meaning exactly.\n\nTRANSCRIPT\n${text}` }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: geminiVoiceForLanguage(language) } } }
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceProfile.voice } } }
         }
       }),
       signal: AbortSignal.timeout(30000)
@@ -2330,7 +2384,7 @@ async function speakWithGemini(body) {
     const audio = Array.isArray(parts) && parts.find((part) => part && part.inlineData && part.inlineData.data);
     if (!audio) throw new Error('GEMINI_TTS_AUDIO_MISSING');
     reportProviderHealth({ provider: 'gemini', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.tts' });
-    return { provider: 'gemini', model, audioBase64: audio.inlineData.data, mimeType: audio.inlineData.mimeType || 'audio/L16;rate=24000', latencyMs: Date.now() - startedAt };
+    return { provider: 'gemini', model, character: voiceProfile.character, voice: voiceProfile.voice, audioBase64: audio.inlineData.data, mimeType: audio.inlineData.mimeType || 'audio/L16;rate=24000', latencyMs: Date.now() - startedAt };
   } catch (error) {
     reportProviderHealth({ provider: 'gemini', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.tts' });
     throw error;
