@@ -17,6 +17,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Shipped history
 
+- 2026-09-04: `docs/psychology-release-verified` (Codex): published Mood/Calm Room, Therapist/review queue, chart redesign, tilt/gauges, My File rebuild and 90-day weather calendar to app.navrya.com/admin.navrya.com; Actions and live version/four bundle hashes/HTTPS/auth checks pass | validation: 2,382 tests passed | next: user functional verification; later crypto Check Now fix remains dev-only
 - 2026-09-04: `fix/docker-build-version-metadata` (Codex): published current dev including ROUTINE to production app.navrya.com/admin.navrya.com; fixed Git-free Docker version generation and SSH keepalives; Actions deploy succeeded, live version and all four bundle hashes match, HTTPS/auth checks pass | validation: 2,375 tests passed | next: user functional verification
 - 2026-08-24: agent skills + staging deploy automation promoted (730 tests).
 - 2026-08-24: production release `b562bede` verified/deployed (1,390 tests).
