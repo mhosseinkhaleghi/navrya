@@ -116,6 +116,25 @@ test('A6 OFF (default): sending a message never touches TradeJournalMentalHealth
   assert.equal(result.reply, 'general help');
 });
 
+test('a voice-originated turn can use the configured OpenAI model while typed chat remains on another provider', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    fetch: async (_url, options) => {
+      fetchCall = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ reply: 'voice reply', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  window.TradeJournalAISettingsStore.saveSettings({
+    provider: 'gemini', modelByProvider: { gemini: 'gemini-2.5-flash', openai: 'gpt-5.6-luna' }
+  });
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'How is my risk?', therapistMode: false, transcript: [], source: 'voice', provider: 'openai' });
+
+  assert.equal(fetchCall.provider, 'openai');
+  assert.equal(fetchCall.model, 'gpt-5.6-luna');
+  assert.equal(fetchCall.source, 'voice');
+});
+
 test('A6 ON: therapist mode routes through TradeJournalMentalHealthAI.chat(), appends to the profile chat history, and never calls the OFF-mode gateway', async () => {
   const addMessageCalls = [];
   const mentalHealthStore = {

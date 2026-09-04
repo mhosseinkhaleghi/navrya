@@ -13,8 +13,15 @@ test('Gemini Voice uses a constrained short-lived Live token, never a browser-ex
   assert.doesNotMatch(adapter, /GEMINI_API_KEY/);
   assert.match(dock, /fetch\('\/api\/ai\/gemini-live\/session', \{/);
   assert.match(dock, /async function fetchGeminiLiveSession\(language\) \{[\s\S]*?body: JSON\.stringify\(\{ language \}\)/);
-  assert.match(dock, /async function fetchGeminiSpeak\(language, text\) \{[\s\S]*?body: JSON\.stringify\(\{ language, text \}\)/);
+  assert.match(dock, /async function fetchGeminiSpeak\(language, text\) \{[\s\S]*?body: JSON\.stringify\(\{ language, text, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
   assert.doesNotMatch(dock, /apiKey: settingsStore\.getKey\('gemini'\)/);
+});
+
+test('Gemini remains the Voice transport while finalized voice turns use the configured OpenAI chat provider', () => {
+  assert.match(dock, /provider: source === 'voice' \? 'openai' : undefined/);
+  assert.match(dock, /voiceRef\.current = createGeminiLiveSession\(\{/);
+  assert.match(dock, /fetchSession: fetchGeminiLiveSession/);
+  assert.match(dock, /fetchSpeakAudio: fetchGeminiSpeak/);
 });
 
 test('Gemini Voice sends 16 kHz PCM transcription and routes only final text through the existing ChatDock coordinator', () => {

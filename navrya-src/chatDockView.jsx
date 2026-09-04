@@ -336,6 +336,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // is passed through only as debug metadata (chat-dock-core.js's debugLastTurn()).
       const result = await core.sendChat({
         text: value, therapistMode, transcript, conversationId: activeConversationId, source,
+        // Gemini Voice owns only transcription/TTS. Voice-originated text uses the already
+        // configured OpenAI conversation provider, so Gemini chat quota cannot break Voice.
+        provider: source === 'voice' ? 'openai' : undefined,
         companionIntent: options && options.companionIntent, explainStepId: options && options.explainStepId,
         // Journey G UX correction, item 10: set for exactly the one voice turn that immediately
         // follows a spoken Companion opening (see onVoiceTranscript below) - chat-dock-core.js's
@@ -485,7 +488,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   async function fetchGeminiSpeak(language, text) {
     const response = await fetch('/api/ai/gemini-live/speak', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language, text })
+      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() })
     });
     if (!response.ok) {
       let code = 'GEMINI_TTS_FAILED';
@@ -606,12 +609,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   React.useEffect(() => {
-    const useGeminiLive = providerId === 'gemini';
-    const createTransport = useGeminiLive ? createGeminiLiveSession : createVoiceSession;
-    voiceRef.current = createTransport({
+    // Text-provider selection must never disconnect or replace an active Voice transport.
+    // Gemini Live remains the server-tokenized transcription/TTS transport for every provider;
+    // finalized transcripts choose their chat provider explicitly in submit() above.
+    voiceRef.current = createGeminiLiveSession({
       language: i18n.language(),
-      fetchSession: useGeminiLive ? fetchGeminiLiveSession : fetchRealtimeSession,
-      fetchSpeakAudio: useGeminiLive ? fetchGeminiSpeak : fetchVoiceProviderSpeak,
+      fetchSession: fetchGeminiLiveSession,
+      fetchSpeakAudio: fetchGeminiSpeak,
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,
@@ -744,7 +748,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     });
     return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerId]);
+  }, []);
 
   // Journey G UX correction, item 7: the real trigger point for the Voice Companion opening -
   // aiVoiceRealtime.js's own connect() (a pure transport, untouched - see that file's header

@@ -322,6 +322,13 @@
     }
 
     var active = settingsStore.settings();
+    // The dock has one explicit, closed provider override for Voice Mode. This leaves typed
+    // chat on the user's selected provider, while Gemini Voice can stay transport-only and
+    // its unavailable/quota-limited text models cannot fail a finalized voice turn.
+    var requestedProvider = options && options.provider === 'openai' ? 'openai' : active.provider;
+    var requestedModel = requestedProvider === active.provider
+      ? settingsStore.activeModel()
+      : ((active.modelByProvider && active.modelByProvider[requestedProvider]) || null);
     var activeProcess = registry ? registry.activeOpenProcess() : null;
     // Journey H2, Gate 2: captured BEFORE any of the exclusion rules below narrow activeProcess
     // down for the (unrelated) purpose of still permitting fresh action-discovery - surface-help
@@ -564,7 +571,7 @@
 
     var tContextStart = now();
     var requestBody = {
-      provider: active.provider, apiKey: settingsStore.getKey(active.provider), model: settingsStore.activeModel(),
+      provider: requestedProvider, apiKey: settingsStore.getKey(requestedProvider), model: requestedModel,
       language: i18n.language(), message: text, chatHistory: transcript.slice(-24),
       activeProcess: activeProcess ? { id: activeProcess.id, allowlist: modelFacingAllowlist(activeProcess.allowlist) } : null
     };
