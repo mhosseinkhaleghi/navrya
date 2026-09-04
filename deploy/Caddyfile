@@ -30,6 +30,22 @@
 		# trailing-slash directory path served the wrong 632-byte shell - this is what broke the
 		# whole app on any fresh navigation/reload. Adding the directory-index candidate fixes it.
 		try_files {path} {path}/index.html /index.html
+		# PRODUCTION INCIDENT FIX (2026-09-04): the character app bundles
+		# (navrya-{hunter,commander,engineer,sage}-sessions-app.js) and admin/index.html's own
+		# app.js are served under a fixed, never-versioned filename with no query-string/content
+		# hash - Vite's default `public/` passthrough copies them into dist/ verbatim, byte-
+		# identical path every deploy. With no Cache-Control header at all (the previous state),
+		# browsers fall back to their own heuristic caching, which can and did serve an old,
+		# already-fixed-server-side bug straight out of a returning user's disk cache for an
+		# indeterminate time after a real deploy - confirmed twice live (an admin seeing a stale
+		# Conversation Studio panel, then a user seeing a Voice Mode regression that had already
+		# been fixed and redeployed). `no-cache` (NOT `no-store`) keeps every real caching/
+		# conditional-GET benefit (a Caddy `file_server` already sets ETag/Last-Modified, so an
+		# unchanged file still round-trips as a cheap 304, not a full re-download) while forcing a
+		# real revalidation with this server on every load - the one guarantee that matters here:
+		# a fresh deploy is visible on the very next page load, not "eventually, once each
+		# individual browser's own cache heuristic happens to expire."
+		header Cache-Control "no-cache"
 		file_server
 	}
 }
