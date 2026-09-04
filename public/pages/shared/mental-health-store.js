@@ -235,7 +235,7 @@
   function addPreSessionCheckIn(profile, sessionId, data) {
     var record = normalize(profile);
     record.continuousTracking.preSessionCheckIns.push(Object.assign({
-      id: uid('checkin'), sessionId: sessionId, sleepQuality: 5, currentStressLevel: 5, somethingToProveToday: false, significantPersonalEvent: null
+      id: uid('checkin'), sessionId: sessionId, mood: null, sleepQuality: 5, currentStressLevel: 5, somethingToProveToday: false, significantPersonalEvent: null
     }, data || {}, { createdAt: now() }));
     return save(record);
   }

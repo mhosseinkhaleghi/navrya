@@ -21,7 +21,7 @@
    * @typedef {{administeredAt:string,rawScore:number,interpretation:string,source:string}} StandardizedTestResult
    * @typedef {{scenarioId:'A_stop_loss'|'B_revenge'|'C_fomo'|'D_patience'|'E_identity',choice:string,sliderValue:number|null,freeText:string|null,measuresConstruct:string,respondedAt:string}} ScenarioResponse
    * @typedef {{type:BiasType,selfRating:number,exampleThisMonth:string,computedIndicatorScore:number|null}} BiasSelfRating
-   * @typedef {{id:string,sessionId:string,sleepQuality:number,currentStressLevel:number,somethingToProveToday:boolean,significantPersonalEvent:string|null,createdAt:string}} PreSessionCheckIn
+   * @typedef {{id:string,sessionId:string,mood:'calm'|'focused'|'hopeful'|'tense'|'flat'|'angry'|null,sleepQuality:number,currentStressLevel:number,somethingToProveToday:boolean,significantPersonalEvent:string|null,createdAt:string}} PreSessionCheckIn
    * @typedef {{id:string,tradeId:string,sleepQuality:number,significantPersonalEvent:string|null,createdAt:string}} PreTradeContext
    * @typedef {{id:string,tradeId:string,emotionThermometer:string[],setupQualityRating:number,planAdherenceRating:number,emotionManagementRating:number,deviatedFromPlan:'none'|'slightly'|'yes',deviationReason:string|null,wouldTakeAgain:'yes'|'no'|'unsure',revengeCheck:{shown:boolean,choice:'rest'|'recover'|'saw_setup'|null,cooldownTimerStartedAt:string|null}|null,sentenceOfTheDay:string|null,createdAt:string}} PostTradeReflection
    * WeeklyCheckIn is the real, answerable counterpart to WeeklySnapshot above (which only ever
