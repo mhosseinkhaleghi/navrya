@@ -25,7 +25,18 @@ async function rpcCall(rpcUrl, method, params) {
     signal: AbortSignal.timeout(10000)
   });
   if (!response.ok) throw new ApiError(503, 'BSC_RPC_UNAVAILABLE');
-  const body = await response.json();
+  // A real RPC endpoint - especially one sitting behind a CDN/WAF - can answer a 200 with a body
+  // that is not valid JSON at all (an HTML challenge/error page) whenever it rejects the request
+  // for a reason that never reaches the JSON-RPC layer (e.g. a malformed hex param). Uncaught,
+  // that SyntaxError propagated all the way to the generic 500 COMMUNITY_API_FAILED - the exact
+  // opaque failure this wrapping exists to prevent; every other failure in this module already
+  // surfaces as a clean ApiError.
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new ApiError(503, 'BSC_RPC_INVALID_RESPONSE');
+  }
   if (body.error) throw new ApiError(503, 'BSC_RPC_ERROR', null, { message: body.error.message });
   return body.result;
 }
@@ -58,7 +69,18 @@ export function decodeTransferLogs(receipt, tokenContract) {
   const contractLower = tokenContract.toLowerCase();
   return (receipt.logs || [])
     .filter((log) => log.address && log.address.toLowerCase() === contractLower && log.topics && log.topics[0] === TRANSFER_EVENT_TOPIC && log.topics.length === 3)
-    .map((log) => ({ from: topicToAddress(log.topics[1]), to: topicToAddress(log.topics[2]), value: BigInt(log.data) }));
+    .map((log) => {
+      // A standards-compliant Transfer log always carries a 32-byte `data` field - but this is
+      // real, external chain data (a non-standard token, or a differently-shaped log this repo
+      // has never seen), so a malformed value must be skipped, never allowed to throw and take
+      // the whole request down with it (BigInt('0x') / BigInt('') both throw a raw SyntaxError).
+      try {
+        return { from: topicToAddress(log.topics[1]), to: topicToAddress(log.topics[2]), value: BigInt(log.data) };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 // The single place every BSC payment confirmation path (the client's own "check now" poll, or the

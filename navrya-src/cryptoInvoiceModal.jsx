@@ -47,9 +47,14 @@ function reasonKey(reason) {
     CHAIN_MISMATCH: 'subInvoiceReasonChainMismatch',
     INSUFFICIENT_CONFIRMATIONS: 'subInvoiceReasonConfirming',
     TX_HASH_ALREADY_CLAIMED: 'subInvoiceReasonAlreadyClaimed',
-    CLAIM_FAILED: 'subInvoiceReasonAlreadyClaimed'
+    CLAIM_FAILED: 'subInvoiceReasonAlreadyClaimed',
+    INVALID_TX_HASH: 'subInvoiceReasonInvalidHash'
   }[reason] || null;
 }
+
+// A real transaction hash is always exactly `0x` + 64 hex characters - checked client-side too so
+// a mistyped/partial paste gets an immediate, specific hint instead of a round trip to find out.
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 
 // Shared by both the standalone modal (storage add-on purchase) and the in-sheet panel (wallet
 // top-up / subscription checkout) - one implementation, so the two can never quietly drift apart.
@@ -127,7 +132,7 @@ export const CryptoInvoicePanel = React.forwardRef(function CryptoInvoicePanel({
   const { dto, txHash, setTxHash, checking, copied, copyAddress, check, outcome } = useCryptoInvoice(invoiceId, onConfirmed);
 
   const isTerminal = !!dto && (dto.status === 'confirmed' || dto.status === 'expired' || dto.status === 'failed');
-  const canCheck = !!dto && dto.status === 'pending' && !!(dto.txHash || txHash.trim());
+  const canCheck = !!dto && dto.status === 'pending' && (!!dto.txHash || TX_HASH_RE.test(txHash.trim()));
 
   React.useImperativeHandle(ref, () => ({ checkNow: () => check(txHash) }), [check, txHash]);
   React.useEffect(() => { if (onStatus) onStatus({ checking, canCheck: canCheck && !isTerminal }); }, [checking, canCheck, isTerminal, onStatus]);
@@ -140,7 +145,7 @@ export function CryptoInvoiceModal({ lang, tr, invoiceId, onClose, onConfirmed }
   const { dto, txHash, setTxHash, checking, copied, copyAddress, check, outcome } = useCryptoInvoice(invoiceId, onConfirmed);
   if (!dto) return null;
   const isExpired = dto.status === 'expired';
-  const canCheck = dto.status === 'pending' && !!(dto.txHash || txHash.trim());
+  const canCheck = dto.status === 'pending' && (!!dto.txHash || TX_HASH_RE.test(txHash.trim()));
 
   return (
     <Modal open title={tr(lang, 'subInvoiceTitle')} icon="wallet" onClose={onClose} width={480}
@@ -214,7 +219,11 @@ function CryptoInvoiceBody({ lang, tr, dto, txHash, setTxHash, copied, copyAddre
           <TextField
             label={tr(lang, 'subInvoiceTxHashLabel')} value={txHash} onChange={setTxHash}
             placeholder={tr(lang, 'subInvoiceTxHashPlaceholder')} dir="ltr"
-            hint={!txHash.trim() ? tr(lang, 'subInvoiceTxHashRequired') : undefined}
+            hint={
+              !txHash.trim() ? tr(lang, 'subInvoiceTxHashRequired')
+                : !TX_HASH_RE.test(txHash.trim()) ? tr(lang, 'subInvoiceReasonInvalidHash')
+                  : undefined
+            }
           />
         </>
       )}

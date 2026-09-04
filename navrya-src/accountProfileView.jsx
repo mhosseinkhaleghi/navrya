@@ -169,7 +169,8 @@ const copy = {
     subInvoiceReasonNoTransfer: 'هیچ واریزی مطابق با این آدرس و توکن پیدا نشد. آدرس، شبکه (BNB Smart Chain) و نوع توکن (USDT) را دوباره بررسی کن.',
     subInvoiceReasonChainMismatch: 'این تراکنش روی شبکهٔ اشتباهی ثبت شده است.',
     subInvoiceReasonConfirming: 'تراکنش شما دیده شد و در انتظار تأیید شبکه است — کمی بعد دوباره بررسی کن.',
-    subInvoiceReasonAlreadyClaimed: 'این شناسهٔ تراکنش قبلاً برای فاکتور دیگری استفاده شده است.'
+    subInvoiceReasonAlreadyClaimed: 'این شناسهٔ تراکنش قبلاً برای فاکتور دیگری استفاده شده است.',
+    subInvoiceReasonInvalidHash: 'این شناسهٔ تراکنش معتبر نیست — باید با 0x شروع شود و ۶۴ کاراکتر باشد.'
   },
   en: {
     dossierEyebrow: 'NAVRYA · DOSSIER', dossierTitle: 'Dossier, progress & subscription',
@@ -303,7 +304,8 @@ const copy = {
     subInvoiceReasonNoTransfer: 'No transfer matching this address and token was found. Double-check the address, the network (BNB Smart Chain) and the token (USDT).',
     subInvoiceReasonChainMismatch: 'This transaction was recorded on the wrong network.',
     subInvoiceReasonConfirming: 'Your transaction was seen and is waiting on network confirmations - check again shortly.',
-    subInvoiceReasonAlreadyClaimed: 'This transaction hash was already used for a different invoice.'
+    subInvoiceReasonAlreadyClaimed: 'This transaction hash was already used for a different invoice.',
+    subInvoiceReasonInvalidHash: 'This transaction hash is not valid - it must start with 0x and be 64 characters long.'
   },
   ar: {
     dossierEyebrow: 'NAVRYA · الملف', dossierTitle: 'الملف والتقدم والاشتراك',
@@ -437,7 +439,8 @@ const copy = {
     subInvoiceReasonNoTransfer: 'لم يُعثر على تحويل مطابق لهذا العنوان والعملة. تحقّق من العنوان والشبكة (BNB Smart Chain) ونوع العملة (USDT).',
     subInvoiceReasonChainMismatch: 'سُجِّلت هذه المعاملة على شبكة خاطئة.',
     subInvoiceReasonConfirming: 'شُوهِدَت معاملتك وهي بانتظار تأكيدات الشبكة - تحقّق مجددًا بعد قليل.',
-    subInvoiceReasonAlreadyClaimed: 'رقم المعاملة هذا استُخدم بالفعل لفاتورة أخرى.'
+    subInvoiceReasonAlreadyClaimed: 'رقم المعاملة هذا استُخدم بالفعل لفاتورة أخرى.',
+    subInvoiceReasonInvalidHash: 'رقم المعاملة هذا غير صالح - يجب أن يبدأ بـ 0x ويتكوّن من 64 حرفًا.'
   },
   es: {
     dossierEyebrow: 'NAVRYA · EXPEDIENTE', dossierTitle: 'Expediente, progreso y suscripción',
@@ -571,7 +574,8 @@ const copy = {
     subInvoiceReasonNoTransfer: 'No se encontró ninguna transferencia que coincida con esta dirección y token. Verifica la dirección, la red (BNB Smart Chain) y el token (USDT).',
     subInvoiceReasonChainMismatch: 'Esta transacción se registró en la red equivocada.',
     subInvoiceReasonConfirming: 'Tu transacción fue detectada y espera confirmaciones de la red — vuelve a verificar en breve.',
-    subInvoiceReasonAlreadyClaimed: 'Este hash de transacción ya se usó para otra factura.'
+    subInvoiceReasonAlreadyClaimed: 'Este hash de transacción ya se usó para otra factura.',
+    subInvoiceReasonInvalidHash: 'Este hash de transacción no es válido - debe empezar con 0x y tener 64 caracteres.'
   }
 };
 

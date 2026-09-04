@@ -73,8 +73,19 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
     return { status: 'expired', invoice: expired };
   }
 
-  const candidateHash = txHash || invoice.txHash;
+  // .trim() before anything else - a hash copy-pasted from a wallet app or block explorer very
+  // commonly carries a trailing newline/space, which would otherwise reach the RPC call below as
+  // part of the parameter and could get a malformed-request response from the provider.
+  const candidateHash = (txHash || invoice.txHash || '').trim() || null;
   if (!candidateHash) throw new ApiError(400, 'TX_HASH_REQUIRED');
+  // A real 32-byte transaction hash is always exactly `0x` + 64 hex chars. Rejecting anything
+  // else HERE - before it ever reaches the network - is what actually fixes the reported bug: an
+  // invalid hash sent straight to a real RPC endpoint could get back a non-JSON-RPC response (an
+  // HTML error page from a WAF/gateway in front of it), which used to throw an uncaught exception
+  // and surface as the opaque 500 COMMUNITY_API_FAILED instead of a clear, specific answer.
+  if (!/^0x[0-9a-fA-F]{64}$/.test(candidateHash)) {
+    return { status: 'pending', invoice, reason: 'INVALID_TX_HASH' };
+  }
 
   const expected = { chainId: invoice.chainId, tokenContract: invoice.tokenContract, recipient: invoice.recipientAddress, atomicAmount: invoice.atomicAmount };
   const config = await resolveBscRuntimeConfig(repo);

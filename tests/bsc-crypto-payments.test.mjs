@@ -199,6 +199,113 @@ test('checking an invoice without supplying a transaction hash is rejected (TX_H
   assert.deepEqual(after, before, 'omitting the tx hash must never credit anything');
 });
 
+// Real-world regression: a malformed hash (wrong length, whitespace, not hex) sent straight to a
+// real RPC endpoint could get back a non-JSON-RPC response (an HTML error page from a WAF/gateway
+// in front of it), which threw an uncaught exception all the way up to the generic 500
+// COMMUNITY_API_FAILED - the exact opaque failure a real user hit in production. The fix rejects
+// an invalid hash BEFORE it ever reaches the network, so this must never even attempt an RPC call.
+test('a malformed transaction hash is rejected as INVALID_TX_HASH before any RPC call is made, never a 500', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 });
+  const { user, headers } = await createUserAndCookie('Malformed Hash User');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+  const before = await repo.wallet.getAccount(user.id);
+
+  // Any fetch to the RPC sentinel now fails the test outright - proves INVALID_TX_HASH is caught
+  // before ever making a network call, not merely after a failed one.
+  globalThis.fetch = async (url, options) => {
+    if (String(url) === RPC_URL_SENTINEL) throw new Error('must never reach the RPC for a malformed hash');
+    return originalFetch(url, options);
+  };
+
+  for (const badHash of ['0x' + 'a'.repeat(55), 'not-a-hash-at-all', '0x' + 'g'.repeat(64)]) {
+    const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: badHash }) });
+    assert.equal(checkResp.status, 200, `a malformed hash must be a clean 200 pending answer, never a 500 (input: ${JSON.stringify(badHash)})`);
+    const body = await checkResp.json();
+    assert.equal(body.status, 'pending');
+    assert.equal(body.reason, 'INVALID_TX_HASH');
+  }
+  const after = await repo.wallet.getAccount(user.id);
+  assert.deepEqual(after, before, 'a malformed hash must never credit anything');
+});
+
+// A hash with surrounding whitespace (a very common real-world copy-paste artifact from a wallet
+// app or block explorer) must still be accepted - trimmed before validation, not rejected outright.
+test('a transaction hash with surrounding whitespace is trimmed and still verified normally', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 });
+  const { headers } = await createUserAndCookie('Whitespace Hash User');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+
+  mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
+  const hashWithWhitespace = '  0x' + 'd'.repeat(64) + '\n';
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: hashWithWhitespace }) });
+  const body = await checkResp.json();
+  assert.equal(body.status, 'confirmed', 'trimmed, the hash is a valid 64-char hex string and the matching transfer confirms normally');
+});
+
+// Real-world regression companion: if the RPC endpoint (or something sitting in front of it, like
+// a CDN/WAF) answers with a 200 whose body is not valid JSON at all, the raw JSON.parse
+// SyntaxError used to propagate uncaught all the way to the generic 500 COMMUNITY_API_FAILED. It
+// must now surface as a clean, specific ApiError instead.
+test('an RPC response that is not valid JSON surfaces as a clean BSC_RPC_INVALID_RESPONSE, never an uncaught exception', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 }); // invoice creation itself cross-checks chain id, before the check below
+  const { headers } = await createUserAndCookie('Bad RPC Response User');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== RPC_URL_SENTINEL) return originalFetch(url, options);
+    // Simulates a WAF/gateway intercepting the request with an HTML error page instead of JSON.
+    return { ok: true, json: async () => { throw new SyntaxError('Unexpected token < in JSON at position 0'); } };
+  };
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'e'.repeat(64) }) });
+  assert.equal(checkResp.status, 503);
+  const body = await checkResp.json();
+  assert.equal(body.error, 'BSC_RPC_INVALID_RESPONSE');
+});
+
+// A non-standard/malformed Transfer log (e.g. missing its 32-byte `data` field) must never crash
+// the whole request - it is simply excluded from the decoded transfers, same as a log from an
+// unrelated contract already is.
+test('a malformed Transfer log (bad data field) is skipped, not thrown - a co-located valid transfer still confirms', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 }); // invoice creation itself cross-checks chain id, before the custom fetch below
+  const { headers } = await createUserAndCookie('Malformed Log User');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== RPC_URL_SENTINEL) return originalFetch(url, options);
+    const body = JSON.parse(options.body);
+    if (body.method === 'eth_chainId') return { ok: true, json: async () => ({ result: '0x38' }) };
+    if (body.method === 'eth_blockNumber') return { ok: true, json: async () => ({ result: '0x69' }) };
+    if (body.method === 'eth_getTransactionReceipt') {
+      return {
+        ok: true, json: async () => ({
+          result: {
+            status: '0x1', blockNumber: '0x64',
+            logs: [
+              // Malformed: topics/address match, but `data` is empty - would throw BigInt('0x').
+              { address: TOKEN_CONTRACT, topics: [TRANSFER_EVENT_TOPIC, padTopic(PAYER_ADDRESS), padTopic(DEPOSIT_ADDRESS)], data: '0x' },
+              // The real, valid transfer for the full invoiced amount, alongside it in the same tx.
+              { address: TOKEN_CONTRACT, topics: [TRANSFER_EVENT_TOPIC, padTopic(PAYER_ADDRESS), padTopic(DEPOSIT_ADDRESS)], data: '0x' + (10n * 10n ** 18n).toString(16) }
+            ]
+          }
+        })
+      };
+    }
+    throw new Error('unexpected RPC method in test: ' + body.method);
+  };
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'f'.repeat(63) + '0' }) });
+  assert.equal(checkResp.status, 200, 'a malformed sibling log must never crash the whole request');
+  const body = await checkResp.json();
+  assert.equal(body.status, 'confirmed');
+});
+
 test('a check with the wrong chain id is rejected and never credits the wallet', async () => {
   await setBscConfig(repo);
   mockRpc({ chainId: 56 });
@@ -303,7 +410,7 @@ test('a check with too few confirmations stays pending, never confirmed, and can
 
   // Only 2 confirmations so far (blockNumber 101 - receiptBlock 100 + 1 = 2), needs 5.
   mockRpc({ chainId: 56, blockNumber: 101, receipt: makeReceipt({ blockNumber: 100, amount: expectedAmount }) });
-  const firstCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xdeadbeef' }) });
+  const firstCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'deadbeef'.repeat(8) }) });
   const firstResult = await firstCheck.json();
   assert.equal(firstResult.status, 'pending');
   assert.equal(firstResult.reason, 'INSUFFICIENT_CONFIRMATIONS');
@@ -331,7 +438,7 @@ test('a fully verified payment credits the wallet EXACTLY ONCE even if checked/r
 
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 25n * 10n ** 18n }) });
   for (let i = 0; i < 3; i += 1) {
-    const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xsamehash' }) });
+    const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'a5'.repeat(32) }) });
     const result = await checkResp.json();
     assert.equal(result.status, 'confirmed');
   }
@@ -349,11 +456,11 @@ test('the same on-chain tx hash can never confirm two different invoices (transa
   const { invoiceId: secondInvoiceId } = await createSecond.json();
 
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
-  const firstCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${firstInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xreused' }) });
+  const firstCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${firstInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'e'.repeat(60) + 'f1f2' }) });
   assert.equal((await firstCheck.json()).status, 'confirmed');
   const afterFirst = await repo.wallet.getAccount(user.id);
 
-  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${secondInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xreused' }) });
+  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${secondInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'e'.repeat(60) + 'f1f2' }) });
   const secondResult = await secondCheck.json();
   assert.equal(secondResult.status, 'pending', 'the second invoice must never be confirmed by a hash already claimed by another invoice');
   assert.equal(secondResult.reason, 'TX_HASH_ALREADY_CLAIMED');
@@ -375,9 +482,9 @@ test('two invoices for the same amount, each with their own distinct real transa
   const before = await repo.wallet.getAccount(user.id);
 
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
-  const firstCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${firstInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xfirsttx' }) });
+  const firstCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${firstInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'a'.repeat(60) + 'f1f5' }) });
   assert.equal((await firstCheck.json()).status, 'confirmed');
-  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${secondInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xsecondtx' }) });
+  const secondCheck = await fetch(`${baseUrl}/api/sync/wallet/invoices/${secondInvoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + 'b'.repeat(60) + 'f2f6' }) });
   assert.equal((await secondCheck.json()).status, 'confirmed');
   const after = await repo.wallet.getAccount(user.id);
   assert.equal(after.paidBalanceMicroUsd, before.paidBalanceMicroUsd + 20000000, 'both distinct payments must land - $10 + $10');
@@ -435,7 +542,7 @@ test('webhook: a validly-signed payload triggers the same real verification and 
   const { invoiceId } = await createResp.json();
 
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
-  const payload = JSON.stringify({ invoiceId, txHash: '0xwebhookhash' });
+  const payload = JSON.stringify({ invoiceId, txHash: '0x' + 'c'.repeat(60) + 'f3f7' });
   const signature = crypto.createHmac('sha256', 'real-secret').update(payload).digest('hex');
   const response = await fetch(`${baseUrl}/api/webhooks/bsc`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-webhook-signature': signature }, body: payload
