@@ -171,6 +171,44 @@ services:
       timeout: 5s
       retries: 10
 
+  # Launch-readiness audit fix (P0-1) - a one-shot job, same shape/convention as `migrate` above,
+  # meant to be triggered by host cron (see DEPLOYMENT.md) or run by hand for a restore drill
+  # (docs/BACKUP-AND-RESTORE.md), never `restart: unless-stopped` like the long-running services.
+  #
+  # Every RESTIC_*/BACKUP_* value below deliberately defaults to an EMPTY string (`:-`, never the
+  # hard-required `:?`) - `scripts/backup.sh`'s own guards are what actually enforce these are set,
+  # and only when the `backup` service is explicitly run. Using `:?` here instead would make Compose
+  # refuse to interpolate THIS ENTIRE FILE - breaking `up -d` for web/pattern-ai/community-api too -
+  # the moment a server hasn't configured backups yet, which must never be able to take down the
+  # rest of the stack.
+  backup:
+    build:
+      context: .
+      target: backup
+    command: ['bash', 'backup.sh']
+    restart: 'no'
+    environment:
+      TZ: UTC
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UPLOADS_DIR: /uploads
+      # See docs/BACKUP-AND-RESTORE.md for how to point this at S3/B2/R2/SFTP/rest-server/etc. -
+      # any restic-supported backend. BACKUP_AWS_* are the credential names for an S3-compatible
+      # backend specifically; a different backend needs its own credential vars added here.
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${BACKUP_AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${BACKUP_AWS_DEFAULT_REGION:-}
+      BACKUP_RETENTION_DAILY: ${BACKUP_RETENTION_DAILY:-14}
+      BACKUP_RETENTION_WEEKLY: ${BACKUP_RETENTION_WEEKLY:-8}
+      BACKUP_RETENTION_MONTHLY: ${BACKUP_RETENTION_MONTHLY:-12}
+    volumes:
+      # Read-only - a backup job must never be able to write into live upload data.
+      - uploads_data:/uploads:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   caddy_data:
   caddy_config:

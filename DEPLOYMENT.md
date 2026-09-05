@@ -35,6 +35,15 @@ docker compose --env-file .env -f docker-compose.production.yml run --rm migrate
 docker compose --env-file .env -f docker-compose.production.yml up -d
 ```
 
+Then set up off-server backups - **do this before real user data accumulates, not after.** Set
+`RESTIC_REPOSITORY`/`RESTIC_PASSWORD`/backend credentials in `.env`, install the nightly cron job,
+and run a real restore drill. See `docs/BACKUP-AND-RESTORE.md` for the full procedure:
+
+```sh
+crontab -e
+# add: 0 3 * * * cd /opt/navrya && docker compose --env-file .env -f docker-compose.production.yml run --rm -T backup >> /var/log/navrya-backup.log 2>&1
+```
+
 ## GitHub Actions secrets
 
 Add these repository Actions secrets:

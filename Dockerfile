@@ -39,3 +39,19 @@ COPY server ./server
 COPY public/pages/shared/ai-conversation-matcher.js ./public/pages/shared/ai-conversation-matcher.js
 RUN mkdir -p /app/uploads && chown -R node:node /app
 USER node
+
+# Launch-readiness audit fix (P0-1, docs/PUBLIC-LAUNCH-READINESS-AUDIT.md): PostgreSQL and the
+# uploads volume previously had no backup mechanism at all. This is a small, separate image
+# (never based on the `app`/node stages above - a backup job needs pg_dump + restic, not Node)
+# purely for the one-shot `backup` service in docker-compose.production.yml, invoked on a schedule
+# via host cron (see DEPLOYMENT.md) or by hand for a restore drill (docs/BACKUP-AND-RESTORE.md).
+# `postgresql16-client` must track the Postgres major version the `postgres` service below actually
+# runs (postgres:16-alpine) - bump both together if that image tag ever changes.
+FROM alpine:3.20 AS backup
+RUN apk add --no-cache bash postgresql16-client restic coreutils tzdata ca-certificates \
+  && addgroup -S backup && adduser -S backup -G backup
+WORKDIR /backup
+COPY scripts/backup.sh scripts/restore.sh ./
+RUN chmod +x backup.sh restore.sh
+USER backup
+ENTRYPOINT ["/bin/bash"]
