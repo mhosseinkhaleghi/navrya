@@ -80,6 +80,7 @@ function WeeklyCheckInModal({ onDone }) {
   const [biggestLesson, setBiggestLesson] = React.useState('');
   const [moodNextWeek, setMoodNextWeek] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
+  const saveRef = React.useRef(null);
 
   function close() { if (onDone) onDone(); }
 
@@ -87,24 +88,6 @@ function WeeklyCheckInModal({ onDone }) {
     const esc = (e) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', esc);
     return () => document.removeEventListener('keydown', esc);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    const registry = window.TradeJournalAIProcessRegistry;
-    if (!registry) return undefined;
-    let mounted = true;
-    registry.register('mh-weekly-checkin', {
-      allowlist: ['disciplineRating', 'biggestWin', 'biggestLesson'],
-      isOpen: () => mounted,
-      activeStep: () => 'checkin',
-      applyValue: (path, value) => {
-        if (path === 'disciplineRating') setDisciplineRating(Number(value));
-        else if (path === 'biggestWin') setBiggestWin(String(value || ''));
-        else if (path === 'biggestLesson') setBiggestLesson(String(value || ''));
-      }
-    });
-    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -118,6 +101,29 @@ function WeeklyCheckInModal({ onDone }) {
     if (window.TradeJournalTradeUI) window.TradeJournalTradeUI.toast(t('mhWeeklyCheckInSaved'), 'success');
     close();
   }
+
+  // Keep the registration's submit closure current after live AI writes re-render this modal.
+  // It delegates to the same save() handler the visible Save button uses.
+  saveRef.current = save;
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    let mounted = true;
+    registry.register('mh-weekly-checkin', {
+      layer: 'foreground', actionId: 'psychology.weeklyCheckIn.fill',
+      allowlist: ['disciplineRating', 'biggestWin', 'biggestLesson'],
+      isOpen: () => mounted,
+      activeStep: () => 'checkin',
+      applyValue: (path, value) => {
+        if (path === 'disciplineRating') setDisciplineRating(Number(value));
+        else if (path === 'biggestWin') setBiggestWin(String(value || ''));
+        else if (path === 'biggestLesson') setBiggestLesson(String(value || ''));
+      },
+      submit: () => saveRef.current && saveRef.current()
+    });
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div

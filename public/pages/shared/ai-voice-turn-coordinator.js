@@ -23,9 +23,34 @@
     var submitFn = opts.submit; // (text, meta) => Promise<result>
     var onResult = typeof opts.onResult === 'function' ? opts.onResult : function () {};
     var getEpoch = typeof opts.getEpoch === 'function' ? opts.getEpoch : function () { return 0; };
+    var now = typeof opts.now === 'function' ? opts.now : function () { return Date.now(); };
     var nextTurnId = 1;
+    var generation = 0;
+    var resetReasons = {};
 
     var queue = Promise.resolve();
+
+    function reasonFor(staleGeneration) {
+      return resetReasons[staleGeneration] || 'stale-generation';
+    }
+
+    function isCurrent(meta) {
+      if (!meta) return false;
+      return meta.generation === generation && meta.epochAtEnqueue === getEpoch();
+    }
+
+    // A Promise cannot be forcibly detached from the chain it already belongs to. Resetting the
+    // coordinator therefore creates a NEW generation with a fresh resolved queue: a replacement
+    // turn dispatches immediately even if an abandoned provider request never settles. Every old
+    // link checks its captured generation before calling submit() and again before publishing its
+    // result, so the detached chain can neither execute a queued side effect nor surface a late
+    // reply. The caller separately aborts the underlying request when it has an AbortController.
+    function reset(reason) {
+      resetReasons[generation] = reason || 'reset';
+      generation += 1;
+      queue = Promise.resolve();
+      return generation;
+    }
 
     // handleFinalTranscript(text, extraMeta) - assigns a turnId, enqueues submit() strictly after
     // the PREVIOUS turn's own submit() resolves (never after that previous turn's playback).
@@ -34,9 +59,25 @@
     function handleFinalTranscript(text, extraMeta) {
       var turnId = nextTurnId++;
       var epochAtEnqueue = getEpoch();
-      var meta = Object.assign({}, extraMeta, { turnId: turnId, epochAtEnqueue: epochAtEnqueue });
+      var generationAtEnqueue = generation;
+      var meta = Object.assign({}, extraMeta, {
+        turnId: turnId,
+        epochAtEnqueue: epochAtEnqueue,
+        generation: generationAtEnqueue,
+        queuedAt: now()
+      });
       var turnPromise = queue.catch(function () {}).then(function () {
+        if (generationAtEnqueue !== generation) {
+          onResult(null, Object.assign({}, meta, {
+            discarded: true,
+            ok: false,
+            reason: reasonFor(generationAtEnqueue)
+          }));
+          return null;
+        }
         var submitResult;
+        meta.routeAt = now();
+        meta.submitStartedAt = meta.routeAt;
         try {
           submitResult = typeof submitFn === 'function' ? submitFn(text, meta) : null;
         } catch (syncError) {
@@ -44,12 +85,23 @@
         }
         return Promise.resolve(submitResult).then(
           function (result) {
-            var stillCurrent = getEpoch() === epochAtEnqueue;
-            onResult(stillCurrent ? result : null, Object.assign({}, meta, { discarded: !stillCurrent, ok: true }));
+            meta.submitEndedAt = now();
+            var stillCurrent = isCurrent(meta);
+            onResult(stillCurrent ? result : null, Object.assign({}, meta, {
+              discarded: !stillCurrent,
+              ok: true,
+              reason: stillCurrent ? null : reasonFor(generationAtEnqueue)
+            }));
             return result;
           },
           function (error) {
-            onResult(null, Object.assign({}, meta, { discarded: true, ok: false, error: error }));
+            meta.submitEndedAt = now();
+            onResult(null, Object.assign({}, meta, {
+              discarded: true,
+              ok: false,
+              error: error,
+              reason: generationAtEnqueue === generation ? 'submit-failed' : reasonFor(generationAtEnqueue)
+            }));
             return null;
           }
         );
@@ -58,7 +110,12 @@
       return turnPromise;
     }
 
-    return { handleFinalTranscript: handleFinalTranscript };
+    return {
+      handleFinalTranscript: handleFinalTranscript,
+      reset: reset,
+      generation: function () { return generation; },
+      isCurrent: isCurrent
+    };
   }
 
   window.TradeJournalAIVoiceTurnCoordinator = { create: createTurnCoordinator };

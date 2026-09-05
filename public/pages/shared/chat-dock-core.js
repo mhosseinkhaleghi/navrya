@@ -31,6 +31,12 @@
     return (allowlist || []).filter(function (path) { return !AI_INTERNAL_ONLY_FIELDS[path]; });
   }
 
+  // Voice must never turn a credential into provider input, chat history, debug data, or TTS.
+  // This deliberately errs on the side of asking for manual entry whenever a spoken turn names
+  // a credential class; ordinary non-sensitive fields continue through the normal path.
+  var SENSITIVE_VOICE_PATTERN = /(?:\b(?:password|passcode|otp|one[- ]?time(?: password| code)?|api[\s-]?key|secret(?: key)?|access token|private key)\b|رمز(?:\s*عبور)?|گذرواژه|کد\s*(?:یکبار|یک‌بار|تأیید)|کلید\s*(?:ای‌پی‌آی|api)|توکن|كلمة\s*المرور|رمز\s*(?:المرور|التحقق)|مفتاح\s*(?:واجهة|api)|contraseña|clave\s*(?:secreta|api)|código\s*(?:otp|de verificación)|secreto)/i;
+  function isSensitiveVoiceText(text) { return SENSITIVE_VOICE_PATTERN.test(String(text || '')); }
+
   // Production repair pass, section 12: a development-only diagnostic of exactly what the LAST
   // sendChat() turn's own action-discovery/workflow pipeline decided - sanitized metadata only
   // (real ids and field PATHS, never field values, never a message's own text, never an API key).
@@ -48,6 +54,58 @@
   // (a monotonic clock) exclusively - never Date.now()/wall-clock time, which can jump backward
   // across a system clock adjustment and silently produce a negative "duration."
   var lastLatency = null;
+  var CHAT_REQUEST_DEADLINE_MS = 25000;
+  var chatRequestGeneration = 0;
+  var nextChatRequestId = 1;
+  var pendingChatRequests = {};
+
+  function cancelPendingRequests(reason) {
+    chatRequestGeneration += 1;
+    Object.keys(pendingChatRequests).forEach(function (id) {
+      var pending = pendingChatRequests[id];
+      pending.cancelReason = reason || 'cancelled';
+      if (pending.timer) clearTimeout(pending.timer);
+      try { pending.controller.abort(); } catch (_) { /* already settled */ }
+    });
+  }
+
+  function beginChatRequest(deadlineMs) {
+    var id = String(nextChatRequestId++);
+    var controller = new AbortController();
+    var record = {
+      id: id,
+      generation: chatRequestGeneration,
+      controller: controller,
+      timedOut: false,
+      cancelReason: null,
+      timer: null
+    };
+    var limit = Number(deadlineMs);
+    if (!Number.isFinite(limit) || limit <= 0) limit = CHAT_REQUEST_DEADLINE_MS;
+    record.timer = setTimeout(function () {
+      record.timedOut = true;
+      record.cancelReason = 'deadline';
+      try { controller.abort(); } catch (_) { /* already settled */ }
+    }, limit);
+    pendingChatRequests[id] = record;
+    return record;
+  }
+
+  function chatRequestIsCurrent(record) {
+    return !!record && record.generation === chatRequestGeneration && pendingChatRequests[record.id] === record;
+  }
+
+  function finishChatRequest(record) {
+    if (!record) return;
+    if (record.timer) clearTimeout(record.timer);
+    if (pendingChatRequests[record.id] === record) delete pendingChatRequests[record.id];
+  }
+
+  function discardedChatResult(record) {
+    var result = { kind: 'discarded', reason: (record && record.cancelReason) || 'stale' };
+    finishChatRequest(record);
+    return result;
+  }
   function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
   function debugLastLatency() { return lastLatency; }
   // Called by chatDockView.jsx once the reply has actually been committed to the DOM (a
@@ -105,6 +163,13 @@
     // docs/ai/companion-orchestration.md's "Explain-only mode" section.
     var companionIntent = (options && options.companionIntent) === 'explain' ? 'explain' : null;
     if (!text) return null;
+
+    if (source === 'voice' && isSensitiveVoiceText(text)) {
+      var secureReply = i18n.t('aiDockSensitiveManual');
+      setLastTurnDebug({ path: 'secure-manual' });
+      recordZeroNetworkLatency('SECURE_MANUAL', t0, {});
+      return { kind: 'secure-manual', reply: secureReply, voiceReply: secureReply, suggestions: [], activeProcess: null, conversationId: conversationId };
+    }
 
     // P0 safety preflight: mental-health-safety.js's checkText() is the one authoritative,
     // deterministic (no network, no model call) self-harm/crisis gate every psychology-adjacent
@@ -624,13 +689,31 @@
     var requestBytes = 0;
     try { requestBytes = JSON.stringify(requestBody).length; } catch (_) { /* diagnostic only */ }
     var tFetchStart = now();
-    var response = await fetch('/api/ai/chat', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
-    var payload = await response.json();
+    var chatRequest = beginChatRequest(options && options.deadlineMs);
+    var response;
+    var payload;
+    try {
+      response = await fetch('/api/ai/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody), signal: chatRequest.controller.signal
+      });
+      if (!chatRequestIsCurrent(chatRequest)) return discardedChatResult(chatRequest);
+      payload = await response.json();
+      if (!chatRequestIsCurrent(chatRequest)) return discardedChatResult(chatRequest);
+      if (chatRequest.timer) { clearTimeout(chatRequest.timer); chatRequest.timer = null; }
+    } catch (error) {
+      if (chatRequest.timedOut) { finishChatRequest(chatRequest); throw new Error('AI_REQUEST_TIMEOUT'); }
+      if (!chatRequestIsCurrent(chatRequest) || (error && error.name === 'AbortError')) return discardedChatResult(chatRequest);
+      finishChatRequest(chatRequest);
+      throw error;
+    } finally {
+      // Keep a still-current record alive until all client-side application/persistence work has
+      // completed below. A cancelled/stale request is removed immediately; the normal path is
+      // released by finishChatRequest() just before its final return.
+      if (!chatRequestIsCurrent(chatRequest)) finishChatRequest(chatRequest);
+    }
     var tResponseParsed = now();
-    if (!response.ok) throw new Error(payload.error || 'AI_REQUEST_FAILED');
+    if (!response.ok) { finishChatRequest(chatRequest); throw new Error(payload.error || 'AI_REQUEST_FAILED'); }
     if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage, source: 'chatDock.chat' });
     // AI billing operational fix (requirement 3) - a billed chat turn debits the wallet
     // server-side (server/pattern-ai-server.mjs's dispatch), but nothing previously told the
@@ -660,7 +743,8 @@
         // SECOND turn appends to it instead of starting a duplicate conversation - awaited on
         // purpose, a one-time-per-conversation cost, not a per-turn one.
         try {
-          var created = await historyStore.startConversation(active.provider, text, payload.reply, usedTokens);
+          var created = await historyStore.startConversation(requestedProvider, text, payload.reply, usedTokens);
+          if (!chatRequestIsCurrent(chatRequest)) return discardedChatResult(chatRequest);
           nextConversationId = created ? created.id : null;
         } catch (_) { /* no-op - history sync is best-effort */ }
       }
@@ -770,6 +854,8 @@
       turnType: networkTurnType, aiCallMade: true
     };
 
+    if (!chatRequestIsCurrent(chatRequest)) return discardedChatResult(chatRequest);
+    finishChatRequest(chatRequest);
     if (tookWorkflowPath) {
       var result = { kind: 'workflow', reply: payload.reply, voiceReply: payload.voiceReply || null, workflow: workflowResult, activeProcess: activeProcess, conversationId: nextConversationId };
       if (proactiveFindings.length) { result.kind = 'proactive-warning'; result.proactive = proactiveFindings; result.reply = buildProactiveReply(proactiveFindings); result.voiceReply = null; }
@@ -1007,6 +1093,8 @@
     sendChat: sendChat,
     applySuggestion: applySuggestion,
     resetConversationState: resetConversationState,
+    cancelPendingRequests: cancelPendingRequests,
+    isSensitiveVoiceText: isSensitiveVoiceText,
     analyzeScreenshot: analyzeScreenshot,
     applyExtractionToWizard: applyExtractionToWizard,
     debugLastTurn: debugLastTurn,

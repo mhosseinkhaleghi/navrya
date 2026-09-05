@@ -53,6 +53,82 @@ test('a real output_audio_buffer.stopped for the active entry settles it as genu
   gate.resolve();
 });
 
+test('a resolved speak() request is only generation completion: it does not settle playback or start the queued reply until real audio started+stopped', async () => {
+  const module = await sandbox();
+  const spoken = [];
+  const settled = [];
+  const controller = module.create({
+    speak: (text) => { spoken.push(text); return Promise.resolve(); },
+    onSettled: (entry) => settled.push(entry)
+  });
+  controller.enqueue('first', {});
+  controller.enqueue('second', {});
+  await tick();
+  await tick();
+  assert.deepEqual(spoken, ['first'], 'a second response must not start merely because response generation completed');
+  assert.equal(settled.length, 0, 'no real playback-stop event means the first entry is still active');
+
+  controller.notifyAudioBufferStarted(null);
+  controller.notifyAudioBufferStopped(null);
+  await tick();
+  assert.deepEqual(spoken, ['first', 'second']);
+  assert.equal(settled.length, 1);
+  assert.equal(settled[0].spoken, true);
+});
+
+test('the controller watchdog stops the underlying audio before settling a timed-out reply and advancing its queue', async () => {
+  const module = await sandbox();
+  const spoken = [];
+  const settled = [];
+  let interrupted = 0;
+  const controller = module.create({
+    speak: (text) => { spoken.push(text); return new Promise(() => {}); },
+    interrupt: () => { interrupted += 1; },
+    playbackTimeoutMs: 10,
+    onSettled: (entry) => settled.push(entry)
+  });
+  controller.enqueue('timed out', {});
+  controller.enqueue('next', {});
+  controller.notifyAudioBufferStarted(null);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  assert.equal(interrupted, 1, 'timeout must actively stop the original audio before any fallback/next playback');
+  assert.equal(settled[0].text, 'timed out');
+  assert.equal(settled[0].spoken, false);
+  assert.equal(settled[0].reason, 'timeout');
+  assert.deepEqual(spoken, ['timed out', 'next']);
+  controller.interrupt();
+});
+
+test('canPlay is re-read when a queued entry becomes current, so assistant audio cannot start during fresh user speech', async () => {
+  const module = await sandbox();
+  const spoken = [];
+  const settled = [];
+  let userSpeaking = false;
+  const firstGate = deferred();
+  const controller = module.create({
+    speak: (text) => {
+      spoken.push(text);
+      return text === 'first' ? firstGate.promise : Promise.resolve();
+    },
+    canPlay: () => !userSpeaking,
+    onSettled: (entry) => settled.push(entry)
+  });
+  controller.enqueue('first', {});
+  controller.enqueue('must not speak over user', {});
+  controller.notifyAudioBufferStarted(null);
+  userSpeaking = true;
+  controller.notifyAudioBufferStopped(null);
+  await tick();
+
+  assert.deepEqual(spoken, ['first']);
+  const blocked = settled.find((entry) => entry.text === 'must not speak over user');
+  assert.equal(blocked.spoken, false);
+  assert.equal(blocked.skipped, true);
+  assert.equal(blocked.reason, 'playback-blocked');
+  firstGate.resolve();
+});
+
 test('a stopped event that arrives BEFORE any started event for the active entry is ignored (invalid ordering) - it must never be treated as proof playback finished', async () => {
   const module = await sandbox();
   const settled = [];

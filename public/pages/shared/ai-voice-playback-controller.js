@@ -37,6 +37,7 @@
     // codebase.
     var playAudioUrlFn = opts.playAudioUrl;
     var interruptFn = opts.interrupt; // () => void - normally aiVoiceRealtime.js's own interrupt()
+    var canPlay = typeof opts.canPlay === 'function' ? opts.canPlay : function () { return true; };
     var onSettled = typeof opts.onSettled === 'function' ? opts.onSettled : function () {};
     // Fires exactly once per entry, the moment ITS OWN real output-audio buffer genuinely starts
     // (notifyAudioBufferStarted below) - never at enqueue time, never at speak()-call time. This is
@@ -44,6 +45,13 @@
     // actually about to be heard (Part C), rather than the instant a later business result becomes
     // ready while an earlier reply is still playing/queued.
     var onAudioStart = typeof opts.onAudioStart === 'function' ? opts.onAudioStart : function () {};
+    var playbackTimeoutMs = Number(opts.playbackTimeoutMs) > 0 ? Number(opts.playbackTimeoutMs) : 15000;
+    var scheduleTimeout = typeof opts.scheduleTimeout === 'function'
+      ? opts.scheduleTimeout
+      : (typeof setTimeout === 'function' ? setTimeout : null);
+    var cancelTimeout = typeof opts.cancelTimeout === 'function'
+      ? opts.cancelTimeout
+      : (typeof clearTimeout === 'function' ? clearTimeout : function () {});
     var nextResponseId = 1;
 
     var queue = [];
@@ -62,6 +70,13 @@
         processNext();
         return;
       }
+      var allowed = false;
+      try { allowed = canPlay(entry) !== false; } catch (_canPlayError) { allowed = false; }
+      if (!allowed) {
+        onSettled(Object.assign({}, entry, { spoken: false, skipped: true, reason: 'playback-blocked' }));
+        processNext();
+        return;
+      }
       current = entry;
       var audioStarted = false;
       var settled = false;
@@ -69,6 +84,7 @@
       var settleOnce = function (spoken, reason) {
         if (settled || current !== entry) return; // idempotent - a real event AND the natural speak()-promise fallback can both race to call this
         settled = true;
+        if (currentInternal && currentInternal.timeoutTimer) cancelTimeout(currentInternal.timeoutTimer);
         current = null;
         currentInternal = null;
         onSettled(Object.assign({}, entry, { spoken: spoken, reason: reason || null }));
@@ -78,9 +94,20 @@
         markAudioStarted: function () { if (audioStarted) return false; audioStarted = true; return true; },
         hasAudioStarted: function () { return audioStarted; },
         markInterrupted: function () { if (interrupted) return false; interrupted = true; return true; },
-        settleOnce: settleOnce
+        settleOnce: settleOnce,
+        timeoutTimer: null
       };
+      if (scheduleTimeout) {
+        currentInternal.timeoutTimer = scheduleTimeout(function () {
+          if (!currentInternal || current !== entry) return;
+          if (currentInternal.markInterrupted() && typeof interruptFn === 'function') {
+            try { interruptFn(); } catch (_interruptError) { /* settle below regardless */ }
+          }
+          currentInternal.settleOnce(false, 'timeout');
+        }, playbackTimeoutMs);
+      }
       var result;
+      var publishedAudio = !!(entry.audioUrl && typeof playAudioUrlFn === 'function');
       try {
         // Journey H2, Gate 3: an entry carrying a real audioUrl (see enqueue()'s own comment)
         // plays the pre-generated file instead of synthesizing speech - entering this exact same
@@ -89,7 +116,7 @@
         // could ever emit, unlike the OpenAI Realtime path below) - markAudioStarted()'s own
         // idempotency guard means a later real event for a FALLBACK attempt (see the .catch()
         // below) can never double-fire the caption.
-        if (entry.audioUrl && typeof playAudioUrlFn === 'function') {
+        if (publishedAudio) {
           if (currentInternal.markAudioStarted()) onAudioStart(Object.assign({}, current));
           result = Promise.resolve().then(function () { return playAudioUrlFn(entry.audioUrl); })
             .catch(function () {
@@ -97,23 +124,36 @@
               // published file NEVER re-runs business logic - the text is already known, so this
               // only ever changes HOW the same entry gets spoken, falling back to the normal live
               // TTS engine for this exact entry.
-              return typeof speakFn === 'function' ? speakFn(entry.text) : Promise.resolve();
+              publishedAudio = false;
+              if (typeof interruptFn === 'function') {
+                try { interruptFn(); } catch (_interruptError) { /* dynamic fallback still gets one chance */ }
+              }
+              return typeof speakFn === 'function' ? speakFn(entry.text) : Promise.reject(new Error('playback unavailable'));
             });
         } else {
-          result = typeof speakFn === 'function' ? speakFn(entry.text) : Promise.resolve();
+          result = typeof speakFn === 'function' ? speakFn(entry.text) : Promise.reject(new Error('playback unavailable'));
         }
       } catch (_err) {
+        if (typeof interruptFn === 'function') {
+          try { interruptFn(); } catch (_interruptError) { /* settle below regardless */ }
+        }
         settleOnce(false, 'error');
         return;
       }
-      // Kept as a genuine safety net (never the primary settlement path any more - see
-      // notifyAudioBufferStopped/Cleared/interrupt below) for a genuinely lost/never-fired raw
-      // event: aiVoiceRealtime.js's own speak() still resolves this promise on the SDK's high-level
-      // audio_stopped/audio_interrupted/error, or its own bounded 12s watchdog. settleOnce()'s own
-      // `current !== entry` guard means this can NEVER fire late against a newer entry.
+      // A dynamic TTS Promise resolving only proves response generation/request completion. It is
+      // deliberately NOT a playback-complete signal: only output_audio_buffer.stopped/cleared,
+      // interrupt(), or the watchdog may settle that path. A published <audio> Promise is the one
+      // exception because its transport contract resolves from the element's real `ended` event.
       Promise.resolve(result).then(
-        function () { settleOnce(entry.epoch === epoch, entry.epoch === epoch ? null : 'stale-epoch'); },
-        function () { settleOnce(false, 'error'); }
+        function () {
+          if (publishedAudio) settleOnce(entry.epoch === epoch, entry.epoch === epoch ? null : 'stale-epoch');
+        },
+        function () {
+          if (typeof interruptFn === 'function') {
+            try { interruptFn(); } catch (_interruptError) { /* settle below regardless */ }
+          }
+          settleOnce(false, 'error');
+        }
       );
     }
 

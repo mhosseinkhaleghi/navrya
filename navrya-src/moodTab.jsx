@@ -230,6 +230,9 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
   const [prove, setProve] = React.useState(false);
   const [event, setEvent] = React.useState('');
   const [calm, setCalm] = React.useState(null);
+  const pickedRef = React.useRef(picked);
+  const logRef = React.useRef(null);
+  pickedRef.current = picked;
 
   const checkIns = (profile.continuousTracking && profile.continuousTracking.preSessionCheckIns) || [];
   const todayKey = new Date().toDateString();
@@ -270,6 +273,40 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
     // trader to go looking for help in that state is exactly when they will not.
     if (moodId === 'angry' || moodId === 'tense') setCalm(calmReasonFor(moodId));
   }
+  logRef.current = log;
+
+  // The Mood card is a real Pre-Session Check-In authoring surface. Voice writes the same local
+  // React draft controls first; its eventual submit delegates to log(), the exact handler a
+  // trader invokes by pressing one of the visible mood cards.
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    let mounted = true;
+    registry.register('psychology-mood-log', {
+      actionId: 'psychology.mood.log',
+      allowlist: ['mood', 'sleepQuality', 'somethingToProveToday', 'significantPersonalEvent'],
+      isOpen: () => mounted,
+      activeStep: () => 'mood',
+      validateValue: (path, value) => {
+        if (path === 'mood') return !!BY_ID[String(value || '').toLowerCase()];
+        if (path === 'sleepQuality') return Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 5;
+        if (path === 'somethingToProveToday') return typeof value === 'boolean';
+        return true;
+      },
+      applyValue: (path, value) => {
+        if (path === 'mood') setPicked(String(value).toLowerCase());
+        else if (path === 'sleepQuality') setSleep(Number(value));
+        else if (path === 'somethingToProveToday') setProve(value);
+        else if (path === 'significantPersonalEvent') setEvent(String(value || ''));
+      },
+      submit: () => {
+        const moodId = pickedRef.current;
+        if (!BY_ID[moodId]) return { submitted: false, reason: 'invalid', field: 'mood' };
+        return logRef.current(moodId);
+      }
+    });
+    return () => { mounted = false; };
+  }, []);
 
   const rhythm = todays
     .map((c) => ({ at: new Date(c.createdAt), value: Number(c.currentStressLevel) }))

@@ -2085,6 +2085,7 @@ function StrategiesHub({ character }) {
   // the same real StrategyEducationStore.create() the "New strategy" button already calls.
   function createNewStrategy() { const s = window.TradeJournalStrategyEducationStore.create(); setTab('strategies'); openItem('strategy', s.id, 'details'); return s; }
   function openExistingStrategy(id, tabId) { setTab('strategies'); openItem('strategy', id, tabId || 'details'); }
+  function openAnalysisProfiles() { setOpenKind(null); setOpenId(null); setTab('analysis-profiles'); }
   // Same window-hook handoff convention every other NAVRYA modal/view already exposes
   // (TradeJournalNavryaTradeCalculator, TradeJournalNavryaLiveSession, ...) - this one is scoped
   // to this component's own mount/unmount lifecycle (StrategiesHub is a per-view React root,
@@ -2093,7 +2094,8 @@ function StrategiesHub({ character }) {
   React.useEffect(() => {
     window.TradeJournalNavryaPatternHub = { createNew: createNewPattern, openExisting: openExistingPattern };
     window.TradeJournalNavryaStrategyHub = { createNew: createNewStrategy, openExisting: openExistingStrategy };
-    return () => { delete window.TradeJournalNavryaPatternHub; delete window.TradeJournalNavryaStrategyHub; };
+    window.TradeJournalNavryaAnalysisProfilesShellHub = { open: openAnalysisProfiles };
+    return () => { delete window.TradeJournalNavryaPatternHub; delete window.TradeJournalNavryaStrategyHub; delete window.TradeJournalNavryaAnalysisProfilesShellHub; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   function removeItem(kind, id) {
     if (!window.confirm(tr(lang, 'deleteConfirm'))) return;

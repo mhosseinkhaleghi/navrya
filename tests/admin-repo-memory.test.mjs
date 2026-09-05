@@ -235,6 +235,21 @@ test('aiChatHistory.appendAndSave concatenates only the new messages it is given
   assert.equal(appended.tokens, 25, 'tokens must accumulate (10 + 15), never be replaced by the latest call\'s value alone');
 });
 
+test('aiChatHistory create/append are idempotent for a client conversation id and turn id', async () => {
+  const repo = createMemoryRepo();
+  const user = await seedUser(repo);
+  const initial = [{ role: 'user', content: 'a', turnId: 'turn-1' }, { role: 'assistant', content: 'b', turnId: 'turn-1' }];
+  const first = await repo.aiChatHistory.create({ id: 'aiConv-client-test', userId: user.id, provider: 'openai', title: 'T', messages: initial, tokens: 5, turnId: 'turn-1' });
+  const replayedCreate = await repo.aiChatHistory.create({ id: 'aiConv-client-test', userId: user.id, provider: 'openai', title: 'T', messages: initial, tokens: 5, turnId: 'turn-1' });
+  assert.equal(replayedCreate.id, first.id);
+
+  const delta = [{ role: 'user', content: 'c', turnId: 'turn-2' }, { role: 'assistant', content: 'd', turnId: 'turn-2' }];
+  await repo.aiChatHistory.appendAndSave(user.id, first.id, { messages: delta, tokens: 7, turnId: 'turn-2' });
+  const replayedAppend = await repo.aiChatHistory.appendAndSave(user.id, first.id, { messages: delta, tokens: 7, turnId: 'turn-2' });
+  assert.equal(replayedAppend.messages.length, 4, 'replaying one persistence job must not duplicate either message');
+  assert.equal(replayedAppend.tokens, 12, 'replaying one turn must not charge/count its tokens twice');
+});
+
 test('aiChatHistory conversations are isolated per user - another user can neither read, append to, nor delete one that is not theirs', async () => {
   const repo = createMemoryRepo();
   const owner = await seedUser(repo, 'Owner');

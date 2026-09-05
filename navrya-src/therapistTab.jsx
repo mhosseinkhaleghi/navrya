@@ -45,6 +45,8 @@ function statusTone(status) {
 
 export function TherapistTab({ i18n, mhStore, profile, onChanged }) {
   const [view, setView] = React.useState('pending');
+  const viewRef = React.useRef(view);
+  viewRef.current = view;
 
   const messages = profile.chatHistory || [];
   // Suggestions live inside the messages that produced them; the queue is the flattened view,
@@ -66,6 +68,24 @@ export function TherapistTab({ i18n, mhStore, profile, onChanged }) {
     all.filter((s) => (s.status || 'pending') === 'pending').forEach((s) => { record = mhStore.applySuggestion(record, s, status); });
     if (onChanged) onChanged();
   }
+
+  // This tab deliberately exposes only its real queue filter. Applying or rejecting a therapist
+  // suggestion remains the existing explicit per-suggestion human decision; a voice command must
+  // not bypass that consent boundary by inventing a bulk-approval path.
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    let mounted = true;
+    registry.register('psychology-therapist-review', {
+      actionId: 'psychology.therapist.review',
+      allowlist: ['queueView'],
+      isOpen: () => mounted,
+      activeStep: () => viewRef.current,
+      validateValue: (path, value) => path !== 'queueView' || ['pending', 'applied', 'rejected'].indexOf(value) !== -1,
+      applyValue: (path, value) => { if (path === 'queueView') setView(value); }
+    });
+    return () => { mounted = false; };
+  }, []);
 
   // Whether the dock starts in therapist mode - the same ai-settings-store.js flag
   // chatDockView.jsx seeds its own toggle from, read defensively since the psychology page can

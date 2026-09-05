@@ -1711,6 +1711,18 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
     });
   }
 
+  // Voice actions only ask this live shell to do what the visible tab strip and check-in button
+  // already do. The ref keeps the mount-once public hook on the latest real React callbacks.
+  const psychologyHubRef = React.useRef(null);
+  psychologyHubRef.current = { openTab: setPsyTab, runWeeklyCheckIn: runCheckIn };
+  React.useEffect(() => {
+    window.TradeJournalNavryaPsychologyHub = {
+      openTab: (nextTab) => psychologyHubRef.current.openTab(nextTab),
+      runWeeklyCheckIn: () => psychologyHubRef.current.runWeeklyCheckIn()
+    };
+    return () => { delete window.TradeJournalNavryaPsychologyHub; };
+  }, []);
+
   function saveTrigger() {
     if (!triggerDraft.desc.trim()) return;
     let p = mhStore.load();
