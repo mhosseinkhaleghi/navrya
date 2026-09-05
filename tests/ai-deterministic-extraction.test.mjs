@@ -132,27 +132,6 @@ test('extracts known Session city names, EN + FA', async () => {
   assert.equal(x.extractDeterministicFields('یک سشن نیویورک شروع کن', { domain: 'session' }).city, 'New York');
 });
 
-test('session city/timeframe extraction supports Persian, Arabic and Spanish phrases plus native digits', async () => {
-  const x = await extractionSandbox();
-  assert.deepEqual(clone(x.extractDeterministicFields('سشن نیویورک روی ۱۵ دقیقه', { domain: 'session' })), {
-    timeframe: '15m', city: 'New York'
-  });
-  assert.deepEqual(clone(x.extractDeterministicFields('افتح جلسة نيويورك على ١٥ دقيقة', { domain: 'session' })), {
-    timeframe: '15m', city: 'New York'
-  });
-  assert.deepEqual(clone(x.extractDeterministicFields('abre una sesión de Nueva York en 15 minutos', { domain: 'session' })), {
-    timeframe: '15m', city: 'New York'
-  });
-});
-
-test('instrument extraction only selects one exact code from the supplied real Instrument Catalog', async () => {
-  const x = await extractionSandbox();
-  const context = { domain: 'session', instrumentCatalog: [{ code: 'XAUUSD' }, { code: 'BTCUSDT' }] };
-  assert.equal(x.extractDeterministicFields('سشن نیویورک برای XAUUSD روی ۱۵ دقیقه باز کن', context).instrument, 'XAUUSD');
-  assert.equal(x.extractDeterministicFields('open New York for eurusd on 15m', context).instrument, undefined, 'an absent catalog code must never be invented');
-  assert.equal(x.extractDeterministicFields('compare XAUUSD with BTCUSDT', context).instrument, undefined, 'two different catalog matches are ambiguous');
-});
-
 test('a self-correcting city mention resolves to the LAST stated city, not whichever comes first in the known-cities list', async () => {
   const x = await extractionSandbox();
   assert.equal(x.extractDeterministicFields('London, no, New York', { domain: 'session' }).city, 'New York');

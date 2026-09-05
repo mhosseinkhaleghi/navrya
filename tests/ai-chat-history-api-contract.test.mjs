@@ -101,30 +101,6 @@ test('two concurrent PATCH /:id appends to the same conversation both survive - 
   assert.equal(final.body.tokens, 3, 'both concurrent appends\' own token counts must both be counted, not one overwriting the other');
 });
 
-test('replaying the same turnId is an idempotent success and never duplicates history or tokens', async () => {
-  const user = await createUser('Trader-idempotent');
-  const conversationId = 'aiConv-client-api-idempotent';
-  const firstBody = {
-    id: conversationId, provider: 'openai', title: 'T', turnId: 'turn-1', tokens: 2,
-    messages: [{ role: 'user', content: 'a', turnId: 'turn-1' }, { role: 'assistant', content: 'b', turnId: 'turn-1' }]
-  };
-  const created = await api('POST', '/api/sync/ai-chat-history', { userId: user.id, body: firstBody });
-  const replayedCreate = await api('POST', '/api/sync/ai-chat-history', { userId: user.id, body: firstBody });
-  assert.equal(created.status, 201);
-  assert.equal(replayedCreate.status, 201);
-  assert.equal(replayedCreate.body.id, conversationId);
-
-  const patchBody = {
-    turnId: 'turn-2', tokens: 3,
-    messages: [{ role: 'user', content: 'c', turnId: 'turn-2' }, { role: 'assistant', content: 'd', turnId: 'turn-2' }]
-  };
-  assert.equal((await api('PATCH', '/api/sync/ai-chat-history/' + conversationId, { userId: user.id, body: patchBody })).status, 200);
-  assert.equal((await api('PATCH', '/api/sync/ai-chat-history/' + conversationId, { userId: user.id, body: patchBody })).status, 200);
-  const final = await api('GET', '/api/sync/ai-chat-history/' + conversationId, { userId: user.id });
-  assert.equal(final.body.messages.length, 4);
-  assert.equal(final.body.tokens, 5);
-});
-
 test('a conversation belonging to another user cannot be fetched, appended to, or deleted - 404 in every case, never a leak', async () => {
   const owner = await createUser('Owner');
   const stranger = await createUser('Stranger');

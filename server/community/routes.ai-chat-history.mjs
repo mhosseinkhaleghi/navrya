@@ -22,7 +22,7 @@ export function router(repo) {
   app.post('/', asyncHandler(async (req, res) => {
     const body = req.body || {};
     if (!Array.isArray(body.messages) || !body.messages.length) throw new ApiError(400, 'VALIDATION_FAILED');
-    const record = await repo.aiChatHistory.create({ id: body.id, userId: req.currentUser.id, provider: body.provider, title: body.title, messages: body.messages, tokens: body.tokens, turnId: body.turnId });
+    const record = await repo.aiChatHistory.create({ userId: req.currentUser.id, provider: body.provider, title: body.title, messages: body.messages, tokens: body.tokens });
     res.status(201).json(record);
   }));
 
@@ -35,7 +35,7 @@ export function router(repo) {
   app.patch('/:id', asyncHandler(async (req, res) => {
     const body = req.body || {};
     if (!Array.isArray(body.messages) || !body.messages.length) throw new ApiError(400, 'VALIDATION_FAILED');
-    const record = await repo.aiChatHistory.appendAndSave(req.currentUser.id, req.params.id, { title: body.title, messages: body.messages, tokens: body.tokens, turnId: body.turnId });
+    const record = await repo.aiChatHistory.appendAndSave(req.currentUser.id, req.params.id, { title: body.title, messages: body.messages, tokens: body.tokens });
     if (!record) throw new ApiError(404, 'CONVERSATION_NOT_FOUND');
     res.json(record);
   }));

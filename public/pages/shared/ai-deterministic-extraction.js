@@ -18,11 +18,9 @@
 
   // Persian-indic digits (۰-۹) -> plain ASCII, so "۴" parses as 4. Applied before every numeric
   // regex below - a real, common form NAVRYA's own Persian users type numbers in.
+  var FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
   function faToAsciiDigits(text) {
-    return String(text || '').replace(/[\u06F0-\u06F9\u0660-\u0669]/g, function (ch) {
-      var code = ch.charCodeAt(0);
-      return String(code >= 0x06F0 ? code - 0x06F0 : code - 0x0660);
-    });
+    return String(text || '').replace(/[۰-۹]/g, function (ch) { return String(FA_DIGITS.indexOf(ch)); });
   }
 
   function toNum(raw) {
@@ -105,8 +103,6 @@
   var TIMEFRAME_TOKENS = ['5m', '15m', '1h', '4h', '1D'];
   var TIMEFRAME_WORD_PATTERN = /(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)\b/i;
   var TIMEFRAME_WORD_PATTERN_FA = /(\d+)\s*(دقیقه|ساعت|روز)/;
-  var TIMEFRAME_WORD_PATTERN_AR = /(\d+)\s*(دقيقة|دقائق|ساعة|ساعات|يوم|أيام)/;
-  var TIMEFRAME_WORD_PATTERN_ES = /(\d+)\s*(minuto|minutos|hora|horas|día|días)\b/i;
 
   function extractTimeframe(text) {
     var lower = text.toLowerCase();
@@ -132,28 +128,12 @@
       var candidateFa = mfa[1] + unitFa;
       return TIMEFRAME_TOKENS.indexOf(candidateFa) > -1 ? candidateFa : null;
     }
-    var mar = lastRegexMatch(faToAsciiDigits(text), [TIMEFRAME_WORD_PATTERN_AR]);
-    if (mar) {
-      var unitAr = /^\u062f/.test(mar[2]) ? 'm' : /^\u0633/.test(mar[2]) ? 'h' : 'D';
-      var candidateAr = mar[1] + unitAr;
-      return TIMEFRAME_TOKENS.indexOf(candidateAr) > -1 ? candidateAr : null;
-    }
-    var mes = lastRegexMatch(faToAsciiDigits(text), [TIMEFRAME_WORD_PATTERN_ES]);
-    if (mes) {
-      var unitEs = /^minuto/i.test(mes[2]) ? 'm' : /^hora/i.test(mes[2]) ? 'h' : 'D';
-      var candidateEs = mes[1] + unitEs;
-      return TIMEFRAME_TOKENS.indexOf(candidateEs) > -1 ? candidateEs : null;
-    }
     return null;
   }
 
   // ---- known market/Session city names (NewSessionDialog.jsx's own SESSION_CITIES) ----
   var SESSION_CITIES = ['London', 'New York', 'Tokyo', 'Sydney'];
   var SESSION_CITY_ALIASES_FA = { 'نیویورک': 'New York', 'لندن': 'London', 'توکیو': 'Tokyo', 'سیدنی': 'Sydney' };
-  var SESSION_CITY_ALIASES_I18N = {
-    'نيويورك': 'New York', 'لندن': 'London', 'طوكيو': 'Tokyo', 'توكيو': 'Tokyo', 'سيدني': 'Sydney',
-    'nueva york': 'New York', 'londres': 'London', 'tokio': 'Tokyo', 'sidney': 'Sydney', 'sídney': 'Sydney'
-  };
 
   function extractSessionCity(text) {
     var cityMatches = [];
@@ -166,29 +146,9 @@
       var idx = text.indexOf(alias);
       while (idx > -1) { cityMatches.push({ index: idx, city: SESSION_CITY_ALIASES_FA[alias] }); idx = text.indexOf(alias, idx + 1); }
     });
-    var folded = String(text || '').toLowerCase();
-    Object.keys(SESSION_CITY_ALIASES_I18N).forEach(function (alias) {
-      var idx = folded.indexOf(alias);
-      while (idx > -1) { cityMatches.push({ index: idx, city: SESSION_CITY_ALIASES_I18N[alias] }); idx = folded.indexOf(alias, idx + 1); }
-    });
     if (!cityMatches.length) return null;
     cityMatches.sort(function (a, b) { return a.index - b.index; });
     return cityMatches[cityMatches.length - 1].city;
-  }
-
-  // Instrument names are never guessed. The caller supplies the real Instrument Catalog and a
-  // turn resolves only when exactly one distinct catalog code occurs as a whole token.
-  function extractInstrument(text, catalog) {
-    var matches = {};
-    (catalog || []).forEach(function (entry) {
-      var code = String(entry && entry.code || '').trim();
-      if (!code) return;
-      var escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      var re = new RegExp('(^|[^A-Z0-9])' + escaped + '(?=$|[^A-Z0-9])', 'i');
-      if (re.test(String(text || ''))) matches[code.toUpperCase()] = code;
-    });
-    var keys = Object.keys(matches);
-    return keys.length === 1 ? matches[keys[0]] : null;
   }
 
   // ---- bare number: the ENTIRE message, once trimmed and its optional %/currency decoration
@@ -235,8 +195,6 @@
       if (timeframe) out.timeframe = timeframe;
       var city = extractSessionCity(raw);
       if (city) out.city = city;
-      var instrument = extractInstrument(raw, context && context.instrumentCatalog);
-      if (instrument) out.instrument = instrument;
     }
     return out;
   }

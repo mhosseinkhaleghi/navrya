@@ -3467,19 +3467,15 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query('SELECT * FROM ai_chat_history WHERE id=$1 AND user_id=$2', [id, userId]);
       return rows[0] ? mapConversation(rows[0]) : null;
     },
-    async create({ id: requestedId, userId, provider, title, messages, tokens, turnId }) {
+    async create({ userId, provider, title, messages, tokens }) {
       if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
-      const id = requestedId ? String(requestedId) : newId('aiConv');
+      const id = newId('aiConv');
       const { rows } = await pool.query(
         `INSERT INTO ai_chat_history (id, user_id, title, provider, messages, total_tokens, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,now()) ON CONFLICT (id) DO NOTHING RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,now()) RETURNING *`,
         [id, userId, title || 'Untitled conversation', provider || 'openai', JSON.stringify(messages), Math.max(0, Number(tokens) || 0)]
       );
-      if (rows[0]) return mapConversation(rows[0]);
-      const { rows: existingRows } = await pool.query('SELECT * FROM ai_chat_history WHERE id=$1 AND user_id=$2', [id, userId]);
-      const existing = existingRows[0] ? mapConversation(existingRows[0]) : null;
-      if (existing && turnId && existing.messages.some((message) => message && message.turnId === String(turnId))) return existing;
-      throw new ApiError(409, 'CONVERSATION_ID_CONFLICT');
+      return mapConversation(rows[0]);
     },
     // Atomic append, not a whole-array replace: `messages` here is ONLY the new turn(s) being
     // added, concatenated onto the real, current row value server-side via jsonb's own `||`
@@ -3493,14 +3489,8 @@ export function createPgRepo(pool) {
     // from what any later GET (a different tab, a different device, a page reload) would ever see
     // again. total_tokens is likewise INCREMENTED (this call's own new tokens only), never
     // replaced.
-    async appendAndSave(userId, id, { title, messages, tokens, turnId }) {
+    async appendAndSave(userId, id, { title, messages, tokens }) {
       if (!Array.isArray(messages) || !messages.length) throw new ApiError(400, 'VALIDATION_FAILED');
-      if (turnId) {
-        const { rows: existingRows } = await pool.query('SELECT * FROM ai_chat_history WHERE id=$1 AND user_id=$2', [id, userId]);
-        if (!existingRows[0]) return null;
-        const existing = mapConversation(existingRows[0]);
-        if (existing.messages.some((message) => message && message.turnId === String(turnId))) return existing;
-      }
       const { rows } = await pool.query(
         `UPDATE ai_chat_history SET messages=messages || $3::jsonb, title=COALESCE($4, title), total_tokens=total_tokens+$5, updated_at=now()
          WHERE id=$1 AND user_id=$2 RETURNING *`,

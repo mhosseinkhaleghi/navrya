@@ -2278,17 +2278,10 @@ export function createMemoryRepo() {
       const record = state.aiChatHistory.get(id);
       return record && record.userId === userId ? clone(record) : null;
     },
-    async create({ id, userId, provider, title, messages, tokens, turnId }) {
+    async create({ userId, provider, title, messages, tokens }) {
       requireUser(userId);
       if (!Array.isArray(messages)) throw new ApiError(400, 'VALIDATION_FAILED');
-      const requestedId = id ? String(id) : newId('aiConv');
-      const existing = state.aiChatHistory.get(requestedId);
-      if (existing) {
-        if (existing.userId !== userId) throw new ApiError(409, 'CONVERSATION_ID_CONFLICT');
-        if (turnId && existing.messages.some((message) => message && message.turnId === String(turnId))) return clone(existing);
-        throw new ApiError(409, 'CONVERSATION_ID_CONFLICT');
-      }
-      const record = { id: requestedId, userId, title: title || 'Untitled conversation', provider: provider || 'openai', messages, tokens: Math.max(0, Number(tokens) || 0), updatedAt: now() };
+      const record = { id: newId('aiConv'), userId, title: title || 'Untitled conversation', provider: provider || 'openai', messages, tokens: Math.max(0, Number(tokens) || 0), updatedAt: now() };
       state.aiChatHistory.set(record.id, record);
       return clone(record);
     },
@@ -2297,11 +2290,10 @@ export function createMemoryRepo() {
     // a client-supplied full array replacing it (see repo.pg.mjs's own comment for the lost-update
     // race this replaces). tokens is likewise INCREMENTED (this call's own new tokens only), never
     // replaced.
-    async appendAndSave(userId, id, { title, messages, tokens, turnId }) {
+    async appendAndSave(userId, id, { title, messages, tokens }) {
       if (!Array.isArray(messages) || !messages.length) throw new ApiError(400, 'VALIDATION_FAILED');
       const existing = state.aiChatHistory.get(id);
       if (!existing || existing.userId !== userId) return null;
-      if (turnId && existing.messages.some((message) => message && message.turnId === String(turnId))) return clone(existing);
       const record = { ...existing, messages: existing.messages.concat(messages), title: title || existing.title, tokens: (existing.tokens || 0) + Math.max(0, Number(tokens) || 0), updatedAt: now() };
       state.aiChatHistory.set(id, record);
       return clone(record);

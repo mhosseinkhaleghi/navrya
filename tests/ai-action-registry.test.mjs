@@ -36,39 +36,6 @@ test('get() returns a registered action with every default filled in', async () 
   assert.deepEqual(clone(action.requiredFields), []);
   assert.equal(typeof action.open, 'function');
   assert.equal(typeof action.submit, 'function');
-  assert.equal(action.completionPolicy, 'auto-submit');
-});
-
-test('registerAction() normalizes lifecycle policy once, keeping entityAlreadyPersisted only as a legacy adapter', async () => {
-  const registry = await registrySandbox();
-  registry.registerAction({ id: 'legacy.persisted', entityAlreadyPersisted: true });
-  registry.registerAction({ id: 'account.create', completionPolicy: 'explicit-confirm' });
-  registry.registerAction({ id: 'session.analysis.run', entityAlreadyPersisted: true, completionPolicy: 'command' });
-
-  assert.equal(registry.get('legacy.persisted').completionPolicy, 'persist-on-change');
-  assert.equal(registry.get('account.create').completionPolicy, 'explicit-confirm');
-  assert.equal(registry.get('session.analysis.run').completionPolicy, 'command', 'the explicit command policy must win over the legacy persisted flag');
-});
-
-test('resolveDeterministic() returns one high-confidence action only and catalogFor() supports explicit safe shortlists', async () => {
-  const registry = await registrySandbox();
-  registry.registerAction({
-    id: 'session.create', domain: 'sessions',
-    deterministicMatch: (text) => text === 'new session' ? { confidence: 'high', fields: [] } : null
-  });
-  registry.registerAction({ id: 'account.create', domain: 'accounts' });
-
-  assert.deepEqual(clone(registry.catalogFor({}, { actionIds: ['account.create'] }).map((entry) => entry.id)), ['account.create']);
-  assert.deepEqual(clone(registry.catalogFor({}, { domain: 'sessions' }).map((entry) => entry.id)), ['session.create']);
-  assert.deepEqual(clone(registry.resolveDeterministic('new session', {})), {
-    actionId: 'session.create', confidence: 'high', fields: []
-  });
-
-  registry.registerAction({
-    id: 'session.reopen', domain: 'sessions',
-    deterministicMatch: (text) => text === 'new session' ? { confidence: 'high', fields: [] } : null
-  });
-  assert.equal(registry.resolveDeterministic('new session', {}), null, 'two high-confidence matches are ambiguous and must fall back to the model');
 });
 
 test('get() returns null for an unknown action id', async () => {

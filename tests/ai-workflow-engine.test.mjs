@@ -107,10 +107,10 @@ test('start() called the old two-argument way (no initialFields) still passes un
 // workflow.status bookkeeping formality for these actions, but clearing `current` to null meant a
 // slower follow-up turn ("Set max risk to 1%." arriving a beat after the ~3s grace window) found
 // no workflow left to continue, fell back to fresh action-discovery, and lost the field.
-test('a persist-on-change action never schedules a submit once required fields complete - it just stays collecting so later turns keep landing on the same live workflow', async () => {
+test('an action declaring entityAlreadyPersisted never schedules a submit once required fields complete - it just stays collecting so later turns keep landing on the same live workflow', async () => {
   const submitCalls = [];
   const action = {
-    id: 'pattern.create', requiredFields: ['name'], completionPolicy: 'persist-on-change',
+    id: 'pattern.create', requiredFields: ['name'], entityAlreadyPersisted: true,
     submit: async (known) => { submitCalls.push(known); return { id: 'should-not-happen' }; }
   };
   const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
@@ -124,9 +124,9 @@ test('a persist-on-change action never schedules a submit once required fields c
   assert.deepEqual(clone(engine.current().known), { name: 'Sweep' });
 });
 
-test('a later turn on a persist-on-change workflow still applies a genuinely new field, arriving well after what would have been the old grace window', async () => {
+test('a later turn on an entityAlreadyPersisted workflow still applies a genuinely new field, arriving well after what would have been the old grace window', async () => {
   const applyCalls = [];
-  const action = { id: 'strategy.create', requiredFields: ['name'], completionPolicy: 'persist-on-change', optionalFields: ['riskManagement.maxRiskPerTradePercent'] };
+  const action = { id: 'strategy.create', requiredFields: ['name'], entityAlreadyPersisted: true, optionalFields: ['riskManagement.maxRiskPerTradePercent'] };
   const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
   engine.setSubmitGraceMs(10);
   engine.start('strategy.create', {});
@@ -218,116 +218,6 @@ test('applyKnownFields() merges known fields and calls TradeJournalAIProcessRegi
   assert.deepEqual(clone(applyCalls), [['session-create', 'city', 'New York', 'replace']]);
   assert.deepEqual(clone(workflow.known), { city: 'New York' });
   assert.deepEqual(clone(workflow.missing), ['timeframe'], 'timeframe is still missing, city no longer is');
-});
-
-test('applyValue applied:false never changes known/missing/status and exposes the rejected field and reason', async () => {
-  const submitCalls = [];
-  const action = {
-    id: 'session.create', requiredFields: ['city'], completionPolicy: 'auto-submit',
-    submit: (known) => submitCalls.push(known)
-  };
-  const engine = await engineSandbox({
-    actionRegistry: fakeActionRegistry(action),
-    processRegistry: { applyValue: () => ({ applied: false, reason: 'invalid' }) }
-  });
-  engine.setSubmitGraceMs(0);
-  engine.start('session.create', {});
-  const workflow = await engine.applyKnownFields([{ path: 'city', value: 'Atlantis' }], {});
-  await new Promise((resolve) => setTimeout(resolve, 10));
-
-  assert.deepEqual(clone(workflow.known), {});
-  assert.deepEqual(clone(workflow.missing), ['city']);
-  assert.equal(workflow.status, 'collecting');
-  assert.deepEqual(clone(workflow.lastFieldResults), [{ path: 'city', applied: false, reason: 'invalid' }]);
-  assert.equal(submitCalls.length, 0);
-});
-
-test('readback mismatch after a reported apply success leaves the field missing and prevents submit', async () => {
-  const action = { id: 'session.create', requiredFields: ['city'], completionPolicy: 'auto-submit', submit: () => { throw new Error('must not submit'); } };
-  const engine = await engineSandbox({
-    actionRegistry: fakeActionRegistry(action),
-    processRegistry: {
-      applyValue: () => ({ applied: true, value: 'London' }),
-      readValues: () => ({ read: true, values: { city: 'Tokyo' } })
-    }
-  });
-  engine.start('session.create', {});
-  const workflow = await engine.applyKnownFields([{ path: 'city', value: 'London' }], {});
-  assert.deepEqual(clone(workflow.known), {});
-  assert.deepEqual(clone(workflow.missing), ['city']);
-  assert.deepEqual(clone(workflow.lastFieldResults), [{ path: 'city', applied: false, reason: 'rejected' }]);
-});
-
-test('ensureWorkflowForActiveProcess() adopts an exact manually-opened form without calling action.open, then live-applies its allowlisted field', async () => {
-  let openCalls = 0;
-  const applied = [];
-  const action = { id: 'account.create', requiredFields: [], optionalFields: ['firm'], completionPolicy: 'explicit-confirm', open: () => { openCalls += 1; } };
-  const processRegistry = {
-    adoptActiveProcess: (id, revision) => id === 'account-manual-form' && revision === 7
-      ? { adopted: true, process: { id, actionId: 'account.create', allowlist: ['firm', 'confirm'], revision: 7 } }
-      : { adopted: false, reason: 'stale' },
-    applyValue: (id, path, value) => { applied.push([id, path, value]); return { applied: true, value }; }
-  };
-  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry });
-  const adoption = engine.ensureWorkflowForActiveProcess({ id: 'account-manual-form', revision: 7 }, {});
-  assert.equal(adoption.adopted, true);
-  assert.equal(openCalls, 0, 'a manually-opened real form is adopted; action.open() must not open a duplicate');
-  assert.deepEqual(clone(adoption.workflow.missing), ['confirm']);
-
-  const workflow = await engine.applyKnownFields([{ path: 'firm', value: 'Apex' }], {});
-  assert.deepEqual(clone(applied), [['account-manual-form', 'firm', 'Apex']]);
-  assert.deepEqual(clone(workflow.known), { firm: 'Apex' });
-  assert.deepEqual(clone(workflow.missing), ['confirm']);
-});
-
-test('ensureWorkflowForActiveProcess() surfaces stale/not-active adoption and never creates a workflow', async () => {
-  const action = { id: 'account.create', requiredFields: [], completionPolicy: 'explicit-confirm' };
-  const engine = await engineSandbox({
-    actionRegistry: fakeActionRegistry(action),
-    processRegistry: { adoptActiveProcess: () => ({ adopted: false, reason: 'stale' }) }
-  });
-  assert.deepEqual(clone(engine.ensureWorkflowForActiveProcess({ id: 'account-manual-form', revision: 3 }, {})), { adopted: false, reason: 'stale' });
-  assert.equal(engine.current(), null);
-});
-
-test('explicit-confirm workflows survive a pause, require confirmation, and submit exactly once', async () => {
-  const submitCalls = [];
-  const action = {
-    id: 'account.create', requiredFields: [], optionalFields: ['firm'],
-    completionPolicy: 'explicit-confirm', confirmationField: 'confirm',
-    submit: async (known) => { submitCalls.push(clone(known)); return { id: 'account-1' }; }, resultContext: () => {}
-  };
-  const engine = await engineSandbox({
-    actionRegistry: fakeActionRegistry(action),
-    processRegistry: { applyValue: (id, path, value) => ({ applied: true, value }), query: () => ({ open: true }) }
-  });
-  engine.setSubmitGraceMs(0);
-  engine.start('account.create', {});
-  await engine.applyKnownFields([{ path: 'firm', value: 'Apex' }], {});
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  assert.ok(engine.current(), 'the form workflow stays alive across pauses until Save/Cancel');
-  assert.deepEqual(clone(engine.current().missing), ['confirm']);
-  assert.equal(submitCalls.length, 0);
-
-  await engine.applyKnownFields([{ path: 'confirm', value: true }], {});
-  await engine.applyKnownFields([{ path: 'confirm', value: true }], {});
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(submitCalls.length, 1, 'one voice confirmation can trigger at most one save');
-  assert.equal(engine.current(), null);
-});
-
-test('command completion runs its effect once even when legacy entityAlreadyPersisted is also present', async () => {
-  let runs = 0;
-  const action = {
-    id: 'session.analysis.run', requiredFields: [], entityAlreadyPersisted: true,
-    completionPolicy: 'command', submit: async () => { runs += 1; return { analysis: true }; }, resultContext: () => {}
-  };
-  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: {} });
-  engine.start('session.analysis.run', {});
-  await engine.applyKnownFields([], {});
-  await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(runs, 1);
-  assert.equal(engine.current(), null);
 });
 
 // Found via real end-to-end browser testing: the model can just as reasonably extract "15

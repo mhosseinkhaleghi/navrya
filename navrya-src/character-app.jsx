@@ -2338,7 +2338,14 @@ export function mountCharacterApp(character) {
         });
 
         window.TradeJournalAIActionRegistry.registerAction({
-          id: 'psychology.routine.create', domain: 'psychology', riskLevel: 'low',
+          // entityAlreadyPersisted (this engine's own real switch, not the newer completionPolicy
+          // concept some in-progress work elsewhere introduces): the Routine builder stays open
+          // for continued editing after its required fields first complete, mirroring
+          // pattern.create/strategy.create's own precedent exactly - without it, F15's own
+          // already-documented submit-grace-window race would fire the instant template/name/days
+          // are all known, clearing this workflow before a same-breath "also warn me on losses"
+          // follow-up could ever land on the still-open real editor.
+          id: 'psychology.routine.create', domain: 'psychology', riskLevel: 'low', entityAlreadyPersisted: true,
           description: 'Open the real Routine builder. template, name, and days are the actual first-step controls; supported day ids are sat, sun, mon, tue, wed, thu, fri. Rules are optional real toggle controls. Never invent routine steps: the selected real template supplies them.',
           aliases: ['build a routine', 'create a routine', 'new trading routine'],
           requiredFields: ['template', 'name', 'days'], optionalFields: ['rules.warn', 'rules.streak', 'rules.remind', 'rules.watch', 'rules.partial', 'rules.carry'],
@@ -2350,7 +2357,12 @@ export function mountCharacterApp(character) {
         });
 
         window.TradeJournalAIActionRegistry.registerAction({
-          id: 'psychology.routine.edit', domain: 'psychology', riskLevel: 'low', completionPolicy: 'manual-only',
+          // entityAlreadyPersisted, not completionPolicy: this engine's real, understood switch.
+          // requiredFields is empty here (every field is optional) - without entityAlreadyPersisted
+          // the engine's own missingFields() would report zero missing the INSTANT this opens,
+          // before the trader has said anything at all, and schedule a real submit()/save almost
+          // immediately (the exact bug entityAlreadyPersisted exists to prevent, per F15).
+          id: 'psychology.routine.edit', domain: 'psychology', riskLevel: 'low', entityAlreadyPersisted: true,
           description: 'Open the currently active real Routine builder for editing. Use it when the trader asks to review or change their active routine; every changed field still lands in that one existing draft.',
           aliases: ['edit my routine', 'change my routine', 'review my routine'],
           requiredFields: [], optionalFields: ['template', 'name', 'days', 'rules.warn', 'rules.streak', 'rules.remind', 'rules.watch', 'rules.partial', 'rules.carry'],
@@ -2362,7 +2374,11 @@ export function mountCharacterApp(character) {
         });
 
         window.TradeJournalAIActionRegistry.registerAction({
-          id: 'psychology.therapist.review', domain: 'psychology', riskLevel: 'low', completionPolicy: 'manual-only',
+          // entityAlreadyPersisted: same reasoning as psychology.routine.edit above - requiredFields
+          // is empty (queueView is the only, optional field), so without this the engine would
+          // schedule submit() (a no-op here, but still an unnecessary status churn/workflow-clear)
+          // the instant the queue opens, before the trader has said anything.
+          id: 'psychology.therapist.review', domain: 'psychology', riskLevel: 'low', entityAlreadyPersisted: true,
           description: 'Open the real Therapist review queue. queueView can only be pending, applied, or rejected. Never approve, reject, or bulk-apply a suggestion by voice: those existing review buttons remain an explicit human consent boundary.',
           aliases: ['open therapist review', 'show therapist suggestions', 'review therapist queue'],
           requiredFields: [], optionalFields: ['queueView'],
@@ -2374,7 +2390,12 @@ export function mountCharacterApp(character) {
         });
 
         window.TradeJournalAIActionRegistry.registerAction({
-          id: 'profile.analysis.create', domain: 'strategies', riskLevel: 'low',
+          // entityAlreadyPersisted, matching pattern.create/strategy.create's own precedent exactly
+          // (a real two-step editor the trader keeps interacting with after the required set first
+          // completes) - without it, F15's own submit-grace-window race would fire the instant
+          // primaryStyleId/focusIds/name are all known, clearing this workflow before a same-breath
+          // "also add a secondary style" follow-up could land on the still-open real editor.
+          id: 'profile.analysis.create', domain: 'strategies', riskLevel: 'low', entityAlreadyPersisted: true,
           description: 'Open the real two-step Analysis Profile creator. Ask for a real primary analysis style first, then the trader\'s real focus areas and profile name; optional secondary styles and custom-method notes are only used when the trader explicitly supplies them.',
           aliases: ['create analysis profile', 'new analysis profile', 'make an analysis profile'],
           requiredFields: ['primaryStyleId', 'focusIds', 'name'], optionalFields: ['secondaryStyleIds', 'customMethodNotes'],
@@ -2386,7 +2407,9 @@ export function mountCharacterApp(character) {
         });
 
         window.TradeJournalAIActionRegistry.registerAction({
-          id: 'profile.analysis.edit', domain: 'strategies', riskLevel: 'low',
+          // entityAlreadyPersisted: same reasoning as profile.analysis.create above - the resolved
+          // existing profile's real editor stays open for continued editing.
+          id: 'profile.analysis.edit', domain: 'strategies', riskLevel: 'low', entityAlreadyPersisted: true,
           description: 'Open one existing Analysis Profile by exact name and edit its real style, focus, custom-method note, or displayed name. profileName identifies the existing profile; it is not a rename. If zero or more than one profile has that name, ask which profile instead of guessing.',
           aliases: ['edit analysis profile', 'update analysis profile', 'change analysis profile'],
           requiredFields: ['profileName'], optionalFields: ['primaryStyleId', 'secondaryStyleIds', 'customMethodNotes', 'focusIds', 'name'],

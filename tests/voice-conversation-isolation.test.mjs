@@ -37,23 +37,3 @@ test('TurnCoordinator reads conversationEpochRef fresh (a live getter, not a val
 test('conversationEpochRef starts at 0 and is a ref (not React state) - it must be readable synchronously from inside plain callbacks (TurnCoordinator\'s getEpoch, PlaybackController entries) without waiting for a re-render', () => {
   assert.match(dockViewSource, /const conversationEpochRef = React\.useRef\(0\);/);
 });
-
-test('transcript and conversation id use synchronous canonical refs in submit(), so two fast turns never read a render-time closure or create two conversations', () => {
-  assert.match(dockViewSource, /const transcriptRef = React\.useRef\(\[\]\);/);
-  assert.match(dockViewSource, /const activeConversationIdRef = React\.useRef\(null\);/);
-  const submit = dockViewSource.slice(dockViewSource.indexOf('async function submit(value, options)'), dockViewSource.indexOf('// Always points at the current render'));
-  assert.match(submit, /transcript: transcriptRef\.current/);
-  assert.match(submit, /conversationId: activeConversationIdRef\.current/);
-  assert.doesNotMatch(submit, /\btranscript, conversationId: activeConversationId\b/);
-  assert.match(submit, /transcriptRef\.current = nextTranscript;/);
-  assert.match(submit, /activeConversationIdRef\.current = result\.conversationId;/);
-});
-
-test('every move-on path resets both the request coordinator and the provider request itself, not playback alone', () => {
-  const startNewChat = dockViewSource.slice(dockViewSource.indexOf('function startNewChat()'), dockViewSource.indexOf('async function toggleHistory()'));
-  assert.match(startNewChat, /cancelPendingVoiceWork\('new-chat'/);
-  const resume = dockViewSource.slice(dockViewSource.indexOf('async function resumeConversation(id)'), dockViewSource.indexOf('// Lets the AI Assistant screen'));
-  assert.match(resume, /cancelPendingVoiceWork\('conversation-switch'/);
-  const end = dockViewSource.slice(dockViewSource.indexOf('function endVoice()'), dockViewSource.indexOf('function toggleVoiceMute()'));
-  assert.match(end, /cancelPendingVoiceWork\('voice-disconnect'/);
-});

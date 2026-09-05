@@ -77,56 +77,8 @@ test('applyValue() rejects a path outside the registered allowlist and never inv
   let called = null;
   registry.register('trade-emotion-log', { allowlist: ['note'], applyValue: (path, value) => { called = [path, value]; } });
   const result = registry.applyValue('trade-emotion-log', 'dominantEmotions', ['calm'], 'append');
-  assert.deepEqual(clone(result), { applied: false, reason: 'not-allowed' });
-  assert.equal(registry.applyValueLegacy('trade-emotion-log', 'dominantEmotions', ['calm'], 'append'), false);
+  assert.equal(result, false);
   assert.equal(called, null, 'an out-of-allowlist path must never reach the underlying mutation function');
-});
-
-test('applyValue() returns a structured rejection for unregistered, not-allowed, invalid, and handler-rejected writes', async () => {
-  const registry = await registrySandbox();
-  assert.deepEqual(clone(registry.applyValue('missing', 'city', 'London')), { applied: false, reason: 'unregistered' });
-
-  registry.register('session-create', {
-    allowlist: ['city', 'timeframe'],
-    validateValue: (path, value) => path !== 'timeframe' || value === '15m',
-    applyValue: (path) => path === 'city' ? false : undefined
-  });
-  assert.deepEqual(clone(registry.applyValue('session-create', 'instrument', 'XAUUSD')), { applied: false, reason: 'not-allowed' });
-  assert.deepEqual(clone(registry.applyValue('session-create', 'timeframe', 'fifteen-ish')), { applied: false, reason: 'invalid' });
-  assert.deepEqual(clone(registry.applyValue('session-create', 'city', 'London')), { applied: false, reason: 'rejected' });
-});
-
-test('adoptActiveProcess() only adopts the exact topmost active registration and rejects a stale revision', async () => {
-  const registry = await registrySandbox();
-  registry.register('background-form', { actionId: 'settings.update', allowlist: ['value'], isOpen: () => true });
-  registry.register('account-manual-form', { actionId: 'account.create', layer: 'foreground', allowlist: ['firm'], isOpen: () => true });
-  const active = registry.activeOpenProcess();
-
-  assert.equal(typeof active.revision, 'number');
-  assert.deepEqual(clone(registry.adoptActiveProcess('background-form')), { adopted: false, reason: 'not-active' });
-  assert.deepEqual(clone(registry.adoptActiveProcess('account-manual-form', active.revision - 1)), { adopted: false, reason: 'stale' });
-  assert.deepEqual(clone(registry.adoptActiveProcess('account-manual-form', active.revision)), {
-    adopted: true,
-    process: {
-      id: 'account-manual-form', actionId: 'account.create', allowlist: ['firm'],
-      step: null, layer: 'foreground', revision: active.revision
-    }
-  });
-});
-
-test('readValues()/getValue() expose only allowlisted committed values through the registration public adapter', async () => {
-  const registry = await registrySandbox();
-  const committed = { firm: 'Apex', currency: 'USD', secret: 'never expose' };
-  registry.register('account-manual-form', {
-    allowlist: ['firm', 'currency'],
-    readValues: (paths) => Object.fromEntries(paths.map((path) => [path, committed[path]]))
-  });
-
-  assert.deepEqual(clone(registry.readValues('account-manual-form', ['firm', 'currency'])), {
-    read: true, values: { firm: 'Apex', currency: 'USD' }
-  });
-  assert.deepEqual(clone(registry.getValue('account-manual-form', 'firm')), { read: true, value: 'Apex' });
-  assert.deepEqual(clone(registry.getValue('account-manual-form', 'secret')), { read: false, reason: 'not-allowed' });
 });
 
 test('applyValue() for an in-allowlist path invokes the flow\'s own applyValue and reports success', async () => {
@@ -134,8 +86,7 @@ test('applyValue() for an in-allowlist path invokes the flow\'s own applyValue a
   let called = null;
   registry.register('trade-emotion-log', { allowlist: ['note'], applyValue: (path, value, mode) => { called = [path, value, mode]; } });
   const result = registry.applyValue('trade-emotion-log', 'note', 'felt calm at entry', 'replace');
-  assert.deepEqual(clone(result), { applied: true, value: 'felt calm at entry' });
-  assert.equal(registry.applyValueLegacy('trade-emotion-log', 'note', 'felt calm at entry', 'replace'), true);
+  assert.equal(result, true);
   assert.deepEqual(called, ['note', 'felt calm at entry', 'replace']);
 });
 
@@ -156,7 +107,7 @@ test('a persisted-style flow (intake/pattern/strategy pattern) routes an approve
     }
   });
   const ok = registry.applyValue('mh-intake', 'intake.demographics.age', 29, 'replace');
-  assert.deepEqual(clone(ok), { applied: true, value: 29 });
+  assert.equal(ok, true);
   assert.deepEqual(applySuggestionCalls, [['sug-1', 'applied']], 'the dock never mutates profile data itself - it must always go through the store\'s own applySuggestion');
 });
 
@@ -166,7 +117,7 @@ test('registrations default isOpen/activeStep/allowlist/applyValue so a minimal 
   const result = registry.query('bare-process');
   assert.equal(result.open, false);
   assert.equal(result.step, null);
-  assert.deepEqual(clone(registry.applyValue('bare-process', 'anything', 1)), { applied: false, reason: 'not-allowed' });
+  assert.equal(registry.applyValue('bare-process', 'anything', 1), false);
 });
 
 test('activeOpenProcess() prefers the most recently (re-)registered process when more than one is open at once', async () => {
@@ -275,11 +226,11 @@ test('a registration that omits layer defaults to background, unaffected unless 
   assert.equal(registry.activeOpenProcess(), null, 'not open yet');
 });
 
-test('snapshot(processId) returns { open, step, layer, revision } for one registration, and a safe default for an unknown id', async () => {
+test('snapshot(processId) returns { open, step, layer } for one registration, and a safe default for an unknown id', async () => {
   const registry = await registrySandbox();
   registry.register('trade-wizard', { layer: 'foreground', isOpen: () => true, activeStep: () => 2 });
-  assert.deepEqual(clone(registry.snapshot('trade-wizard')), { open: true, step: 2, layer: 'foreground', revision: 1 });
-  assert.deepEqual(clone(registry.snapshot('never-registered')), { open: false, step: null, layer: null, revision: null });
+  assert.deepEqual(clone(registry.snapshot('trade-wizard')), { open: true, step: 2, layer: 'foreground' });
+  assert.deepEqual(clone(registry.snapshot('never-registered')), { open: false, step: null, layer: null });
 });
 
 test('applyValue() drives goToStep() before applyValue() when stepForPath resolves a step other than the current one', async () => {
@@ -342,7 +293,7 @@ test('applyValue() emits on TradeJournalAIFieldFillBus (when present) with the p
 test('applyValue() never throws when TradeJournalAIFieldFillBus is absent (every character page loads it, but the write path must not hard-depend on it)', async () => {
   const registry = await registrySandbox();
   registry.register('session-create', { allowlist: ['city'], applyValue: () => {} });
-  assert.deepEqual(clone(registry.applyValue('session-create', 'city', 'newYork', 'replace')), { applied: true, value: 'newYork' });
+  assert.equal(registry.applyValue('session-create', 'city', 'newYork', 'replace'), true);
 });
 
 test('applyValue() never throws when TradeJournalAIFieldFillBus.emit itself throws - the real write must already be committed either way', async () => {
@@ -352,6 +303,6 @@ test('applyValue() never throws when TradeJournalAIFieldFillBus.emit itself thro
   const registry = sandbox.window.TradeJournalAIProcessRegistry;
   let applied = null;
   registry.register('session-create', { allowlist: ['city'], applyValue: (path, value) => { applied = [path, value]; } });
-  assert.deepEqual(clone(registry.applyValue('session-create', 'city', 'newYork', 'replace')), { applied: true, value: 'newYork' });
+  assert.equal(registry.applyValue('session-create', 'city', 'newYork', 'replace'), true);
   assert.deepEqual(applied, ['city', 'newYork']);
 });

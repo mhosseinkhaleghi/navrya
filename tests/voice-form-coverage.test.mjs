@@ -6,7 +6,7 @@ import test from 'node:test';
 const root = process.cwd();
 const source = (...parts) => readFile(path.join(root, ...parts), 'utf8');
 
-const [characterSrc, weeklySrc, reflectionSrc, moodSrc, routineSrc, therapistSrc, profileOnboardingSrc, profilesViewSrc, strategiesHubSrc, processRegistrySrc, workflowEngineSrc, chatDockSrc] = await Promise.all([
+const [characterSrc, weeklySrc, reflectionSrc, moodSrc, routineSrc, therapistSrc, profileOnboardingSrc, profilesViewSrc, strategiesHubSrc, processRegistrySrc] = await Promise.all([
   source('navrya-src', 'character-app.jsx'),
   source('navrya-src', 'weeklyCheckInModal.jsx'),
   source('navrya-src', 'postTradeReflectionModal.jsx'),
@@ -16,9 +16,7 @@ const [characterSrc, weeklySrc, reflectionSrc, moodSrc, routineSrc, therapistSrc
   source('navrya-src', 'analysisProfileOnboarding.jsx'),
   source('navrya-src', 'analysisProfilesView.jsx'),
   source('navrya-src', 'strategiesHubView.jsx'),
-  source('public', 'pages', 'shared', 'ai-process-registry.js'),
-  source('public', 'pages', 'shared', 'ai-workflow-engine.js'),
-  source('public', 'pages', 'shared', 'chat-dock-core.js')
+  source('public', 'pages', 'shared', 'ai-process-registry.js')
 ]);
 
 function actionBlock(id) {
@@ -87,25 +85,40 @@ test('Analysis Profile create/edit actions open the existing Strategies tab edit
   assert.match(strategiesHubSrc, /window\.TradeJournalNavryaAnalysisProfilesShellHub = \{ open: openAnalysisProfiles \}/);
 });
 
-test('resolution-only references remain workflow state without being misapplied to a real form allowlist', () => {
-  assert.match(workflowEngineSrc, /function isResolutionOnlyField\(action, path\)/);
-  assert.match(workflowEngineSrc, /if \(isResolutionOnlyField\(action, field\.path\)\) \{/);
-  assert.match(workflowEngineSrc, /resolutionOnlyFields\.forEach/);
+// Release-scope note (2026-09-05): an earlier pass of this work also added a proactive
+// "prepare and wait for a rendered frame before the reply reaches chat/TTS" mechanism
+// (prepareNextQuestion/waitForVisualStep in ai-workflow-engine.js, prepareForPath/moveToPathStep in
+// ai-process-registry.js) plus a resolutionOnlyFields concept for fields like tradeReference/
+// profileName that identify an entity without ever being a real form control. That work shipped
+// alongside real, unrelated regressions in the same shared engine files (a submit-retry bug, and a
+// stricter allowlist-confirmation rule that silently broke several already-shipped high-risk
+// actions - trade.cancel among them - whose gate fields target a process registered with an
+// intentionally empty allowlist). Both concerns lived in the same files, so this release keeps the
+// battle-tested engine (public/pages/shared/ai-process-registry.js / ai-workflow-engine.js,
+// unchanged) and ships only the six new forms below on top of it - every one of them still fully
+// voice/chat-fillable, live-applying, and correctable, through the SAME allowlist/applyValue/
+// entityAlreadyPersisted path every existing action already uses. The three genuinely multi-step
+// forms among them (Post-Trade Reflection, Routine builder, Analysis Profile) still declare real
+// stepForPath/goToStep - the engine's own existing, already-proven per-registration mechanism
+// (trade-wizard/mh-intake have used it for months) - so Voice still drives the visible wizard step
+// in lockstep with whichever field it just supplied; only the newer, proactive "wait for a browser
+// paint before the reply can be spoken" refinement is deferred to a later, isolated pass once the
+// engine rewrite above is finished and its own regressions are resolved.
+test('the three new multi-step forms (Post-Trade Reflection, Routine builder, Analysis Profile) declare stepForPath/goToStep, the engine\'s existing per-registration step-follow mechanism - not a second, parallel navigation path', () => {
+  for (const src of [reflectionSrc, routineSrc, profileOnboardingSrc]) {
+    assert.match(src, /stepForPath: \(path\) =>/);
+    assert.match(src, /goToStep[,:]/, 'goToStep must be declared, either as the bare shorthand or an inline function');
+  }
+  assert.match(processRegistrySrc, /if \(typeof entry\.stepForPath === 'function' && typeof entry\.goToStep === 'function'\) \{/);
 });
 
-test('every stepped voice workflow prepares the real next step and waits for a visual frame before the reply/TTS dispatch can continue', () => {
-  assert.match(processRegistrySrc, /function moveToPathStep\(entry, path\)/);
-  assert.match(processRegistrySrc, /function prepareForPath\(processId, path\)/);
-  assert.match(processRegistrySrc, /var stepTransition = moveToPathStep\(entry, path\);/);
-  assert.match(workflowEngineSrc, /function waitForVisualStep\(\)/);
-  assert.match(workflowEngineSrc, /async function prepareNextQuestion\(workflow, action\)/);
-  assert.match(workflowEngineSrc, /registry\.prepareForPath\(workflow\.processId, nextPath\)/);
-  assert.match(workflowEngineSrc, /await waitForVisualStep\(\);/);
-  assert.match(workflowEngineSrc, /var nextQuestion = await prepareNextQuestion\(workflow, action\);/);
-
-  const applyAt = chatDockSrc.indexOf('workflowResult = await workflowEngine.applyKnownFields');
-  const replyAt = chatDockSrc.indexOf("var result = { kind: 'workflow', reply: payload.reply", applyAt);
-  assert.ok(applyAt !== -1 && replyAt > applyAt, 'the workflow (including next-step preparation) completes before its reply can reach chat or Voice playback');
+test('resolution-only reference fields (tradeReference, profileName) never reach the real form allowlist - they resolve which entity to open, then sit harmlessly in workflow state, exactly like every other field the target registry does not recognize', () => {
+  // The kept engine has no dedicated resolutionOnlyFields concept - the SAME real protection
+  // already exists structurally: applyValue() only ever accepts a path in the target's own
+  // allowlist, and neither 'mh-post-trade-reflection' nor 'analysis-profile-editor' lists
+  // tradeReference/profileName in theirs, so the real modal can never receive either as a value.
+  assert.doesNotMatch(reflectionSrc, /allowlist:[^\]]*tradeReference/);
+  assert.doesNotMatch(profileOnboardingSrc, /allowlist:[^\]]*profileName/);
 });
 
 test('payment-only forms stay outside conversational action coverage', () => {

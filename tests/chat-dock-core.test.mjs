@@ -41,7 +41,7 @@ async function coreSandbox(overrides) {
   const sandbox = {
     window: {}, document, localStorage: overrides.localStorage || { getItem: () => null, setItem() {}, removeItem() {} },
     fetch: overrides.fetch || (async () => { throw new Error('fetch must not be called in this test'); }),
-    Set, Math, JSON, console, Date, Promise, setTimeout, clearTimeout, AbortController,
+    Set, Math, JSON, console, Date, Promise, setTimeout, clearTimeout,
     CustomEvent: overrides.CustomEvent || class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } }
   };
   sandbox.window = Object.assign(sandbox.window, {
@@ -208,109 +208,6 @@ test('resetConversationState() releases a mid-flight workflow and a pending Proa
 
   assert.equal(window.TradeJournalAIWorkflowEngine.current(), null, 'the old conversation\'s workflow must not survive into a new one');
   assert.equal(window.TradeJournalAIProactiveEngine.pendingConfirmation(), null, 'the old conversation\'s pending confirmation must not survive into a new one');
-});
-
-test('voice adopts the exact manually-opened process when no workflow exists and applies a valid suggestion without an Apply click', async () => {
-  let applied = null;
-  const window = await coreSandbox({
-    withWorkflowEngine: true,
-    fetch: async () => ({
-      ok: true,
-      json: async () => ({
-        reply: 'Name filled.',
-        suggestions: [{ path: 'name', value: 'Atlas' }],
-        provider: 'openai',
-        usage: { totalTokens: 1 }
-      })
-    })
-  });
-  window.TradeJournalAIProcessRegistry.register('manual-account-form', {
-    layer: 'foreground',
-    allowlist: ['name'],
-    isOpen: () => true,
-    applyValue: (path, value) => { applied = { path, value }; return true; },
-    readValues: () => ({ name: applied && applied.value })
-  });
-
-  const result = await window.TradeJournalChatDockCore.sendChat({
-    text: 'نام حساب Atlas است', therapistMode: false, transcript: [], source: 'voice'
-  });
-
-  assert.deepEqual(applied, { path: 'name', value: 'Atlas' });
-  assert.equal(result.kind, 'workflow');
-  assert.deepEqual(clone(result.suggestions || []), [], 'a successfully applied voice value must never be returned as a click-to-Apply suggestion');
-});
-
-test('cancelling a stuck chat request invalidates its late result and a later turn can run immediately', async () => {
-  let releaseFirst;
-  let callCount = 0;
-  const window = await coreSandbox({
-    fetch: async (_url, options) => {
-      callCount += 1;
-      if (callCount === 1) {
-        return new Promise((resolve) => { releaseFirst = () => resolve({
-          ok: true,
-          json: async () => ({ reply: 'stale', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } })
-        }); });
-      }
-      return { ok: true, json: async () => ({ reply: 'fresh', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) };
-    }
-  });
-
-  const first = window.TradeJournalChatDockCore.sendChat({ text: 'first', therapistMode: false, transcript: [], source: 'voice' });
-  await Promise.resolve();
-  window.TradeJournalChatDockCore.cancelPendingRequests('superseded-voice-turn');
-  const second = await window.TradeJournalChatDockCore.sendChat({ text: 'second', therapistMode: false, transcript: [], source: 'voice' });
-  releaseFirst();
-  const stale = await first;
-
-  assert.equal(second.reply, 'fresh');
-  assert.equal(stale.kind, 'discarded');
-  assert.equal(callCount, 2);
-});
-
-test('a chat request deadline aborts a non-responsive fetch and does not poison the following turn', async () => {
-  let callCount = 0;
-  const window = await coreSandbox({
-    fetch: async (_url, options) => {
-      callCount += 1;
-      if (callCount === 1) {
-        return new Promise((_resolve, reject) => {
-          options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
-        });
-      }
-      return { ok: true, json: async () => ({ reply: 'next turn', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) };
-    }
-  });
-
-  await assert.rejects(
-    window.TradeJournalChatDockCore.sendChat({ text: 'hang', therapistMode: false, transcript: [], source: 'voice', deadlineMs: 10 }),
-    /AI_REQUEST_TIMEOUT/
-  );
-  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'continue', therapistMode: false, transcript: [], source: 'voice' });
-  assert.equal(result.reply, 'next turn');
-  assert.equal(callCount, 2);
-});
-
-test('voice refuses sensitive credentials before network/history and never echoes the secret', async () => {
-  let fetched = false;
-  let historyTouched = false;
-  const window = await coreSandbox({
-    fetch: async () => { fetched = true; throw new Error('must not fetch'); },
-    historyStore: {
-      startConversation: async () => { historyTouched = true; },
-      appendExchange: async () => { historyTouched = true; }
-    }
-  });
-
-  const result = await window.TradeJournalChatDockCore.sendChat({
-    text: 'my password is hunter2', therapistMode: false, transcript: [], source: 'voice'
-  });
-
-  assert.equal(result.kind, 'secure-manual');
-  assert.equal(fetched, false);
-  assert.equal(historyTouched, false);
-  assert.doesNotMatch(result.reply, /hunter2/i);
 });
 
 test('analyzeScreenshot posts to /api/trades/extract-fields and records usage', async () => {
@@ -564,7 +461,12 @@ test('a Scenario/Entry-shaped workflow still in its own pending-submit grace win
     }
   });
   let scenarioOpen = false;
-  window.TradeJournalAIProcessRegistry.register('live-session-scenario-fake1', { allowlist: [], isOpen: () => scenarioOpen });
+  // allowlist must include 'title' - ai-process-registry.js's applyValue() only ever reports a
+  // field applied (and ai-workflow-engine.js only ever adds it to workflow.known) once the real
+  // registry confirms it, matching the real live-session-scenario-{id} registration's own
+  // allowlist; an empty one here would leave 'title' perpetually missing and this workflow stuck
+  // in 'collecting', never reaching its own grace window.
+  window.TradeJournalAIProcessRegistry.register('live-session-scenario-fake1', { allowlist: ['title'], isOpen: () => scenarioOpen });
   window.TradeJournalAIActionRegistry.registerAction({
     id: 'session.scenario.create', requiredFields: ['title'], optionalFields: [],
     open: () => { scenarioOpen = true; return { processId: 'live-session-scenario-fake1' }; }, submit: async () => undefined, resultContext: () => {}
@@ -1124,24 +1026,6 @@ test('appendExchange (an ongoing conversation) is fire-and-forget - sendChat() r
   // Never actually resolved above (resolveAppend was captured but never called) - proves sendChat()
   // truly did not await it, rather than merely resolving fast enough in practice.
   assert.equal(typeof resolveAppend, 'function');
-});
-
-test('the first conversation history write is also off the reply/UI critical path when the canonical store supplies a client id', async () => {
-  let started = false;
-  const window = await coreSandbox({
-    historyStore: {
-      newConversationId: () => 'aiConv-client-fast',
-      startConversation: () => { started = true; return new Promise(() => {}); },
-      appendExchange: async () => { throw new Error('not an append'); }
-    },
-    fetch: async () => ({ ok: true, json: async () => ({ reply: 'ready', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) })
-  });
-
-  const pending = window.TradeJournalChatDockCore.sendChat({ text: 'first', therapistMode: false, transcript: [], turnId: 'turn-fast' });
-  const result = await Promise.race([pending, new Promise((resolve) => setTimeout(() => resolve('timed-out'), 50))]);
-  assert.notEqual(result, 'timed-out', 'a server history write must not delay applying/rendering the current turn');
-  assert.equal(started, true);
-  assert.equal(result.conversationId, 'aiConv-client-fast');
 });
 
 // --- Latency pass, section 12: turn-type-aware reasoning/verbosity tuning is exercised through
