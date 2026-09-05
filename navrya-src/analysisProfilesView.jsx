@@ -376,6 +376,29 @@ export function AnalysisProfilesTab({ lang }) {
     }
   }
 
+  // These are the same two state transitions as the visible New profile/Edit controls. The
+  // parent Strategies hub uses this narrow public handoff only after it has switched to this
+  // already-mounted real tab; it never creates a second profile editor or persistence path.
+  const profileHubRef = React.useRef(null);
+  profileHubRef.current = {
+    create: () => { setOpenId(null); setWizard({ mode: 'create' }); },
+    editExisting: (id) => {
+      const target = profiles.find((profile) => profile.id === id);
+      if (!target) return false;
+      setOpenId(target.id);
+      setDtab('overview');
+      setWizard({ mode: 'edit', existingProfile: target });
+      return true;
+    }
+  };
+  React.useEffect(() => {
+    window.TradeJournalNavryaAnalysisProfilesHub = {
+      create: () => profileHubRef.current.create(),
+      editExisting: (id) => profileHubRef.current.editExisting(id)
+    };
+    return () => { delete window.TradeJournalNavryaAnalysisProfilesHub; };
+  }, []);
+
   if (openProfile) {
     return (
       <React.Fragment>

@@ -104,11 +104,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // navigations (A6: the mode must always be visibly true to what's on screen).
   const [therapistMode, setTherapistMode] = React.useState(() => !!settingsStore.settings().therapistModeDefault);
   const [transcript, setTranscript] = React.useState([]);
+  // React state is the render projection; these refs are the synchronous canonical values used by
+  // submit(). Two finalized transcripts can finish before React commits the first setState, so a
+  // render-time closure is not a safe source for either conversation history or its server id.
+  const transcriptRef = React.useRef([]);
   const [popover, setPopover] = React.useState(null);
   // Which server-side conversation (ai-chat-history-store.js) the current thread is saved as -
   // null until the first successful reply of a fresh session creates one. A real, growing,
   // resumable conversation now, not "every question is its own disconnected history card".
   const [activeConversationId, setActiveConversationId] = React.useState(null);
+  const activeConversationIdRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyList, setHistoryList] = React.useState([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
@@ -139,6 +144,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // derives its own "is a session live" boolean internally rather than this file collapsing the
   // state for it.
   const [voiceState, setVoiceState] = React.useState(VOICE_STATES.IDLE);
+  const voiceStateRef = React.useRef(VOICE_STATES.IDLE);
   const [voiceMuted, setVoiceMuted] = React.useState(false);
   // fix/voice-mode-hosted-connection (Phase 3): the sanitized stage aiVoiceRealtime.js's connect()
   // classified the most recent failure into (see that file's classifyMintFailureStage()/
@@ -175,8 +181,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // against each other; chatDockView.jsx connects the two by handing a finished turn's text to
   // PlaybackController.enqueue() - a fire-and-forget call TurnCoordinator never awaits.
   const conversationEpochRef = React.useRef(0);
+  const requestGenerationRef = React.useRef(0);
   const turnCoordinatorRef = React.useRef(null);
   const playbackControllerRef = React.useRef(null);
+  const voiceTransportProviderRef = React.useRef(null);
+  const pendingVoiceProviderRef = React.useRef(null);
+  const voiceRuntimeMountedRef = React.useRef(false);
+  const pendingSubmitCountRef = React.useRef(0);
   const fileInputRef = React.useRef(null);
   const rtl = i18n.direction() === 'rtl';
   const historyStore = window.TradeJournalAiChatHistoryStore;
@@ -196,6 +207,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     function onSettingsChanged(event) {
       const next = (event.detail && event.detail.provider) || settingsStore.activeProvider();
       setProviderId(next);
+      selectVoiceTransportProvider(next);
     }
     window.addEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
     return () => window.removeEventListener('tradejournal:ai-settings-changed', onSettingsChanged);
@@ -218,9 +230,26 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   function onModelChange(nextProvider) {
     setProviderId(nextProvider);
     settingsStore.saveSettings({ provider: nextProvider });
+    selectVoiceTransportProvider(nextProvider);
   }
 
   function closePopover() { setPopover((p) => (p ? { ...p, open: false } : p)); }
+
+  function replaceTranscript(nextTranscript) {
+    transcriptRef.current = nextTranscript;
+    setTranscript(nextTranscript);
+  }
+
+  function replaceConversationId(nextId) {
+    activeConversationIdRef.current = nextId;
+    setActiveConversationId(nextId);
+  }
+
+  function cancelPendingVoiceWork(reason) {
+    requestGenerationRef.current += 1;
+    if (core && typeof core.cancelPendingRequests === 'function') core.cancelPendingRequests(reason);
+    if (turnCoordinatorRef.current && typeof turnCoordinatorRef.current.reset === 'function') turnCoordinatorRef.current.reset(reason);
+  }
 
   // New Chat: clears the visible thread and the server-conversation link - the next message
   // starts a brand-new conversation rather than appending to whatever was open before. Also
@@ -234,12 +263,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // spoken (PlaybackController.invalidate() drops it and interrupts anything playing right now -
   // see ai-voice-playback-controller.js) must never reach the new conversation.
   function startNewChat() {
-    setTranscript([]);
-    setActiveConversationId(null);
+    replaceTranscript([]);
+    replaceConversationId(null);
     setPopover(null);
     setHistoryOpen(false);
     if (core && typeof core.resetConversationState === 'function') core.resetConversationState();
     conversationEpochRef.current += 1;
+    cancelPendingVoiceWork('new-chat');
     if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
     // fix/voice-mode-turn-ux: New Chat is a "the user has moved on" moment for the voice-specific
     // caption (Part C req 7) and any manual "End message" commit still awaiting its server ack
@@ -275,11 +305,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       if (!record) return;
       const messages = record.messages || [];
       conversationEpochRef.current += 1;
+      cancelPendingVoiceWork('conversation-switch');
       if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
       setVoiceReplyCaption('');
       if (voiceRef.current) voiceRef.current.cancelManualFinish();
-      setTranscript(messages.slice(-24));
-      setActiveConversationId(record.id);
+      replaceTranscript(messages.slice(-24));
+      replaceConversationId(record.id);
       setPopover({ open: true, state: 'answer', messages, suggestions: [], activeProcessId: null });
     } catch (_err) { /* no-op - resuming is best-effort */ }
   }
@@ -313,14 +344,26 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     });
   }
 
+  function isSubmitStillCurrent(conversationEpoch, requestGeneration, options) {
+    if (conversationEpoch !== conversationEpochRef.current || requestGeneration !== requestGenerationRef.current) return false;
+    const turnMeta = options && options.voiceTurnMeta;
+    const coordinator = turnCoordinatorRef.current;
+    return !turnMeta || !coordinator || typeof coordinator.isCurrent !== 'function' || coordinator.isCurrent(turnMeta);
+  }
+
   async function submit(value, options) {
     const source = (options && options.source) === 'voice' ? 'voice' : 'text';
+    const sensitiveVoiceText = source === 'voice' && core && typeof core.isSensitiveVoiceText === 'function' && core.isSensitiveVoiceText(value);
+    const visibleValue = sensitiveVoiceText ? i18n.t('aiDockSensitiveManual') : value;
+    const conversationEpochAtStart = conversationEpochRef.current;
+    const requestGenerationAtStart = requestGenerationRef.current;
     // Sending any message is unambiguously an explicit engagement with the dock (item 1/14) -
     // harmless to set unconditionally here even for a Voice-sourced turn, which already set it
     // itself the moment Voice was pressed (toggleVoice()).
     setDockExplicitlyOpened(true);
     setText('');
-    setPopover((p) => ({ open: true, state: 'thinking', prompt: value, messages: p && p.messages }));
+    setPopover((p) => ({ open: true, state: 'thinking', prompt: visibleValue, messages: p && p.messages }));
+    pendingSubmitCountRef.current += 1;
     setBusy(true);
     // NAVRYA chat dock redesign: real per-turn timestamp/latency for the message-grid's timestamp
     // row (never fabricated - a conversation resumed from server history simply has no `at` on
@@ -335,34 +378,52 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // (CompanionCard's own explainPrompt), never a synthetic "continue" message. explainStepId
       // is passed through only as debug metadata (chat-dock-core.js's debugLastTurn()).
       const result = await core.sendChat({
-        text: value, therapistMode, transcript, conversationId: activeConversationId, source,
-        // Gemini Voice owns only transcription/TTS. Voice-originated text uses the already
-        // configured OpenAI conversation provider, so Gemini chat quota cannot break Voice.
-        provider: source === 'voice' ? 'openai' : undefined,
+        text: value, therapistMode, transcript: transcriptRef.current, conversationId: activeConversationIdRef.current, source,
+        // Voice transport selection and business-reasoning provider selection are independent
+        // concerns, but they honor the same saved provider. Omitting an override here lets the
+        // core read the canonical current selection instead of silently forcing every spoken turn
+        // through OpenAI even when the user explicitly selected another provider.
         companionIntent: options && options.companionIntent, explainStepId: options && options.explainStepId,
         // Journey G UX correction, item 10: set for exactly the one voice turn that immediately
         // follows a spoken Companion opening (see onVoiceTranscript below) - chat-dock-core.js's
         // own deterministic Start/Later/Explain classifier only ever runs when this is true.
         awaitingCompanionOpeningReply: options && options.awaitingCompanionOpeningReply
       });
+      if (!isSubmitStillCurrent(conversationEpochAtStart, requestGenerationAtStart, options)) {
+        return { kind: 'discarded', reply: '', voiceReply: '' };
+      }
       const renderStampAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-      if (!result) { setBusy(false); return null; }
+      if (!result) return null;
       if (result.kind === 'safety') {
         // Mirrors the retired global-ai-dock.js exactly: the user turn is still recorded, but
         // no assistant turn exists to append when the safety gate stops the reply.
-        setTranscript((t) => t.concat([{ role: 'user', content: value, at: sentAt }]).slice(-24));
+        const nextTranscript = transcriptRef.current.concat([{ role: 'user', content: visibleValue, at: sentAt }]).slice(-24);
+        replaceTranscript(nextTranscript);
         const safetyNode = window.TradeJournalMentalHealthSafety
           ? window.TradeJournalMentalHealthSafety.renderSafetyCard(closePopover)
           : null;
-        setPopover({ open: true, state: 'safety', prompt: value, safetyNode });
+        setPopover({ open: true, state: 'safety', prompt: visibleValue, safetyNode });
         return { kind: 'safety', reply: '' };
+      } else if (result.kind === 'secure-manual') {
+        // Sensitive voice input is never copied into React state, the visible transcript, a
+        // popover prompt, playback metadata, or TTS. The core has already stopped before provider
+        // and history persistence; this projection contains only a localized non-secret marker
+        // and its safe manual-entry instruction.
+        const safeReply = result.reply || i18n.t('aiDockSensitiveManual');
+        const nextTranscript = transcriptRef.current.concat([
+          { role: 'user', content: i18n.t('aiDockSensitiveManual'), at: sentAt },
+          { role: 'assistant', content: safeReply, at: Date.now(), latencyMs: Date.now() - sentAt }
+        ]).slice(-24);
+        replaceTranscript(nextTranscript);
+        setPopover({ open: true, state: 'answer', messages: nextTranscript, suggestions: [], activeProcessId: null });
+        return { kind: 'secure-manual', reply: safeReply, voiceReply: safeReply };
       } else {
-        const nextTranscript = transcript.concat([
-          { role: 'user', content: value, at: sentAt },
+        const nextTranscript = transcriptRef.current.concat([
+          { role: 'user', content: visibleValue, at: sentAt },
           { role: 'assistant', content: result.reply || '', at: Date.now(), latencyMs: Date.now() - sentAt }
         ]).slice(-24);
-        setTranscript(nextTranscript);
-        if (result.conversationId) setActiveConversationId(result.conversationId);
+        replaceTranscript(nextTranscript);
+        if (result.conversationId) replaceConversationId(result.conversationId);
         setPopover({
           open: true, state: 'answer', messages: nextTranscript,
           suggestions: (result.suggestions || []).map((s, i) => ({ id: s.id || 'sugg-' + i, ...s })),
@@ -396,17 +457,21 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         };
       }
     } catch (_err) {
-      const nextTranscript = transcript.concat([{ role: 'user', content: value, at: sentAt }, { role: 'assistant', content: i18n.t('aiDockError'), at: Date.now() }]).slice(-24);
-      setTranscript(nextTranscript);
+      if (!isSubmitStillCurrent(conversationEpochAtStart, requestGenerationAtStart, options)) {
+        return { kind: 'discarded', reply: '', voiceReply: '' };
+      }
+      const nextTranscript = transcriptRef.current.concat([{ role: 'user', content: visibleValue, at: sentAt }, { role: 'assistant', content: i18n.t('aiDockError'), at: Date.now() }]).slice(-24);
+      replaceTranscript(nextTranscript);
       setPopover({ open: true, state: 'answer', messages: nextTranscript });
       return { kind: 'error', reply: i18n.t('aiDockError') };
     } finally {
-      setBusy(false);
+      pendingSubmitCountRef.current = Math.max(0, pendingSubmitCountRef.current - 1);
+      setBusy(pendingSubmitCountRef.current > 0);
     }
   }
 
   // Always points at the current render's `submit` closure (itself closing over the current
-  // transcript/activeConversationId/therapistMode) - the voice session below is created once
+  // synchronous transcriptRef/activeConversationIdRef plus current therapistMode) - the voice session below is created once
   // and must never call a stale copy of submit() from the render it was constructed in.
   const submitRef = React.useRef(submit);
   submitRef.current = submit;
@@ -547,7 +612,8 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // regardless of how it's classified (start/later/explain/ambiguous).
   const awaitingCompanionOpeningReplyRef = React.useRef(false);
   function onVoiceTranscript(transcriptText) {
-    setVoiceHeardText(transcriptText);
+    const sensitive = core && typeof core.isSensitiveVoiceText === 'function' && core.isSensitiveVoiceText(transcriptText);
+    setVoiceHeardText(sensitive ? i18n.t('aiDockSensitiveManual') : transcriptText);
     const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef.current;
     awaitingCompanionOpeningReplyRef.current = false;
     const transcriptAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -608,44 +674,55 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     else setCompanionOpeningActive(false);
   }
 
-  React.useEffect(() => {
-    // Text-provider selection must never disconnect or replace an active Voice transport - the
-    // empty deps array below is deliberate (a mount-once effect, not re-run on a later provider
-    // switch). But WHICH transport gets constructed at that one mount still has to depend on the
-    // provider the user actually has selected: only 'gemini' gets the Gemini Live transport
-    // (server-tokenized STT/TTS, navrya-src/geminiLiveVoice.js); every other provider - including
-    // the real OpenAI Realtime path (aiVoiceRealtime.js, WebRTC) this app has always called
-    // "ChatGPT voice" - keeps using createVoiceSession, exactly as it did before Gemini Voice was
-    // added. A prior pass hardcoded this to Gemini unconditionally while fixing the real,
-    // legitimate "don't tear down an active session on provider switch" concern - that took away
-    // OpenAI voice access for every non-Gemini user, live in production, since Gemini itself was
-    // never confirmed working end-to-end with real credentials/billing (see HANDOFF.md's own
-    // still-open "Known pending" note). Restored here, keeping the same never-re-run [] deps.
-    const useGeminiLive = providerId === 'gemini';
+  function voiceNow() {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  }
+
+  function currentConnectionMatches(entry) {
+    const adapter = voiceRef.current;
+    if (!adapter) return false;
+    if (entry && entry.connectionEpoch != null && typeof adapter.connectionEpoch === 'function') {
+      return adapter.connectionEpoch() === entry.connectionEpoch;
+    }
+    return true;
+  }
+
+  function handleVoiceStateChange(nextState) {
+    voiceStateRef.current = nextState;
+    setVoiceState(nextState);
+    // Fresh speech supersedes any inference/reply still belonging to the previous utterance. The
+    // provider request is aborted, the coordinator gets a detached generation, and playback is
+    // stopped locally before a stale result can speak over the user.
+    if (nextState === VOICE_STATES.USER_SPEAKING) {
+      cancelPendingVoiceWork('superseding-voice-turn');
+      if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
+    }
+    if ((nextState === VOICE_STATES.IDLE || nextState === VOICE_STATES.ERROR) && pendingVoiceProviderRef.current) {
+      const deferredProvider = pendingVoiceProviderRef.current;
+      Promise.resolve().then(() => {
+        if (!voiceRuntimeMountedRef.current || pendingVoiceProviderRef.current !== deferredProvider) return;
+        const state = voiceRef.current && voiceRef.current.state();
+        if (!voiceRef.current || state === VOICE_STATES.IDLE || state === VOICE_STATES.ERROR) rebuildVoiceTransport(deferredProvider);
+      });
+    }
+  }
+
+  function createVoiceTransportFor(targetProvider) {
+    const useGeminiLive = targetProvider === 'gemini';
     const createTransport = useGeminiLive ? createGeminiLiveSession : createVoiceSession;
-    voiceRef.current = createTransport({
+    return createTransport({
       language: i18n.language(),
       fetchSession: useGeminiLive ? fetchGeminiLiveSession : fetchRealtimeSession,
       fetchSpeakAudio: useGeminiLive ? fetchGeminiSpeak : fetchVoiceProviderSpeak,
-      onStateChange: setVoiceState,
+      onStateChange: handleVoiceStateChange,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,
-      // Every failure aiVoiceRealtime.js's connect() reports now carries a sanitized stage label
-      // (see that file's classifyMintFailureStage()/classifySdpFailureStage()) - stored as-is and
-      // resolved to a localized message below (voiceErrorMessageForStage). A failure mode this
-      // dock doesn't specifically recognize (e.g. 'reconnect', 'interrupt', 'speak', 'session' -
-      // none of which are connection-diagnostic stages) still falls back to the original generic
-      // Voice error message, unchanged from before this pass.
       onError: (detail) => {
+        cancelPendingVoiceWork('fatal-voice-error');
+        if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
         setVoiceErrorStage((detail && detail.stage) || null);
-        setVoiceState(VOICE_STATES.ERROR);
+        handleVoiceStateChange(VOICE_STATES.ERROR);
       },
-      // fix/voice-mode-turn-ux (Part A/B): pure relays into PlaybackController, read fresh via
-      // playbackControllerRef.current on every call (never captured once) so they stay correct
-      // across a reconnect (this createVoiceSession() instance is only ever created once per dock
-      // mount; PlaybackController's own instance is created right below, in the same effect, so by
-      // the time any of these three callbacks can actually fire - only ever after a real connect() -
-      // playbackControllerRef.current already points at it).
       onOutputAudioBufferEvent: (type, responseId) => {
         const pc = playbackControllerRef.current;
         if (!pc) return;
@@ -654,12 +731,49 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         else if (type === 'output_audio_buffer.cleared') pc.notifyAudioBufferCleared(responseId);
       },
       onResponseCreated: (responseId) => { if (playbackControllerRef.current) playbackControllerRef.current.setCurrentResponseId(responseId); },
-      // The ONE place a real barge-in ever reaches PlaybackController - aiVoiceRealtime.js itself
-      // never calls its own transport-level interrupt() in response to a barge-in any more (see
-      // that file's own onTransportEvent comment); this is what replaces that direct, queue-
-      // bypassing call with the controller-owned path (Part B).
-      onBargeIn: () => { if (playbackControllerRef.current) playbackControllerRef.current.interrupt(); }
+      onBargeIn: () => {
+        const pc = playbackControllerRef.current;
+        if (pc && (pc.isSpeaking() || pc.queueLength())) pc.interrupt();
+      }
     });
+  }
+
+  function rebuildVoiceTransport(targetProvider) {
+    if (!voiceRuntimeMountedRef.current) {
+      pendingVoiceProviderRef.current = targetProvider;
+      return;
+    }
+    const previous = voiceRef.current;
+    pendingVoiceProviderRef.current = null;
+    voiceTransportProviderRef.current = targetProvider;
+    voiceRef.current = null;
+    if (previous) previous.disconnect();
+    voiceRef.current = createVoiceTransportFor(targetProvider);
+    voiceStateRef.current = VOICE_STATES.IDLE;
+    setVoiceState(VOICE_STATES.IDLE);
+  }
+
+  function selectVoiceTransportProvider(targetProvider) {
+    if (!targetProvider || voiceTransportProviderRef.current === targetProvider) {
+      pendingVoiceProviderRef.current = null;
+      return;
+    }
+    if (!voiceRuntimeMountedRef.current) {
+      pendingVoiceProviderRef.current = targetProvider;
+      return;
+    }
+    const currentState = voiceRef.current ? voiceRef.current.state() : VOICE_STATES.IDLE;
+    if (currentState !== VOICE_STATES.IDLE && currentState !== VOICE_STATES.ERROR) {
+      pendingVoiceProviderRef.current = targetProvider;
+      return;
+    }
+    cancelPendingVoiceWork('provider-change');
+    if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
+    rebuildVoiceTransport(targetProvider);
+  }
+
+  React.useEffect(() => {
+    voiceRuntimeMountedRef.current = true;
     // Voice Mode performance pass: PlaybackController owns only speech - speak()/interrupt() are
     // read fresh from voiceRef.current on every call (never captured once), so they stay correct
     // across a reconnect (aiVoiceRealtime.js's own returned object identity never changes; only

@@ -29,6 +29,25 @@
   }
 
   function notifyChanged() { window.dispatchEvent(new CustomEvent('tradejournal:ai-chat-history-changed')); }
+  var pendingWrites = {};
+
+  function newConversationId() {
+    return 'aiConv-client-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function messagesForTurn(questionText, answerText, turnId) {
+    var messages = [{ role: 'user', content: questionText }, { role: 'assistant', content: answerText || '' }];
+    if (turnId) messages.forEach(function (message) { message.turnId = String(turnId); });
+    return messages;
+  }
+
+  function enqueueWrite(id, work) {
+    var previous = pendingWrites[id] || Promise.resolve();
+    var task = previous.catch(function () { /* a prior best-effort write must not wedge later ones */ }).then(work);
+    pendingWrites[id] = task;
+    task.then(function () { if (pendingWrites[id] === task) delete pendingWrites[id]; }, function () { if (pendingWrites[id] === task) delete pendingWrites[id]; });
+    return task;
+  }
 
   async function request(method, path, body) {
     var headers = authHeaders();
@@ -54,9 +73,15 @@
 
   // Creates the conversation with its first exchange already in it - called once, after the
   // dock's first successful reply in a fresh session.
-  async function startConversation(provider, questionText, answerText, tokens) {
-    var messages = [{ role: 'user', content: questionText }, { role: 'assistant', content: answerText || '' }];
-    var record = await request('POST', '/', { provider: provider, title: titleFrom(questionText), messages: messages, tokens: Math.max(0, Number(tokens) || 0) });
+  async function startConversation(provider, questionText, answerText, tokens, options) {
+    var turnId = options && options.turnId;
+    var conversationId = options && options.conversationId;
+    var messages = messagesForTurn(questionText, answerText, turnId);
+    var body = { provider: provider, title: titleFrom(questionText), messages: messages, tokens: Math.max(0, Number(tokens) || 0) };
+    if (conversationId) body.id = String(conversationId);
+    if (turnId) body.turnId = String(turnId);
+    var write = function () { return request('POST', '/', body); };
+    var record = conversationId ? await enqueueWrite(String(conversationId), write) : await write();
     notifyChanged();
     return record;
   }
@@ -69,9 +94,12 @@
   // straddling a fast one) could each read the same base array and each overwrite the other's
   // appended turn. Sending only the delta removes the race entirely, and also removes the GET
   // round trip this used to make on every single ongoing-conversation turn.
-  async function appendExchange(id, questionText, answerText, tokens) {
-    var newMessages = [{ role: 'user', content: questionText }, { role: 'assistant', content: answerText || '' }];
-    var record = await request('PATCH', '/' + encodeURIComponent(id), { messages: newMessages, tokens: Math.max(0, Number(tokens) || 0) });
+  async function appendExchange(id, questionText, answerText, tokens, options) {
+    var turnId = options && options.turnId;
+    var newMessages = messagesForTurn(questionText, answerText, turnId);
+    var body = { messages: newMessages, tokens: Math.max(0, Number(tokens) || 0) };
+    if (turnId) body.turnId = String(turnId);
+    var record = await enqueueWrite(String(id), function () { return request('PATCH', '/' + encodeURIComponent(id), body); });
     notifyChanged();
     return record;
   }
@@ -92,7 +120,7 @@
   }
 
   window.TradeJournalAiChatHistoryStore = {
-    listFor: listFor, get: get, startConversation: startConversation, appendExchange: appendExchange,
+    listFor: listFor, get: get, startConversation: startConversation, appendExchange: appendExchange, newConversationId: newConversationId,
     remove: remove, clear: clear, titleFrom: titleFrom, snippetFrom: snippetFrom
   };
 }());

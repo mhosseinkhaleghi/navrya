@@ -135,21 +135,33 @@ function PostTradeReflectionModal({ trade, settings, onClose }) {
   // 'mh-post-trade-reflection', so the global assistant dock can still suggest values into it.
   const stepRef = React.useRef(step);
   stepRef.current = step;
+  const stepsRef = React.useRef(steps);
+  stepsRef.current = steps;
+  const finishRef = React.useRef(null);
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     let mounted = true;
     registry.register('mh-post-trade-reflection', {
+      layer: 'foreground', actionId: 'psychology.postTradeReflection.fill',
       allowlist: ['setupQualityRating', 'planAdherenceRating', 'emotionManagementRating', 'deviationReason', 'sentenceOfTheDay'],
       isOpen: () => mounted,
       activeStep: () => steps[stepRef.current],
+      stepForPath: (path) => {
+        if (path === 'setupQualityRating' || path === 'planAdherenceRating' || path === 'emotionManagementRating') return 'ratings';
+        if (path === 'deviationReason') return 'plan';
+        if (path === 'sentenceOfTheDay') return 'sentence';
+        return null;
+      },
+      goToStep,
       applyValue: (path, value) => {
         if (path === 'setupQualityRating') setSetupQualityRating(Number(value));
         else if (path === 'planAdherenceRating') setPlanAdherenceRating(Number(value));
         else if (path === 'emotionManagementRating') setEmotionManagementRating(Number(value));
         else if (path === 'deviationReason') setDeviationReason(String(value || ''));
         else if (path === 'sentenceOfTheDay') setSentenceOfTheDay(String(value || ''));
-      }
+      },
+      submit: () => finishRef.current && finishRef.current()
     });
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,6 +183,14 @@ function PostTradeReflectionModal({ trade, settings, onClose }) {
     mh.addPostTradeReflection(mh.load(), trade.id, data);
     if (window.TradeJournalTradeUI) window.TradeJournalTradeUI.toast(t('mhPostTradeSaved'), 'success');
     onClose();
+  }
+  finishRef.current = finish;
+
+  // This is the same state setter every visible step control ultimately uses. The Process
+  // Registry calls it before applying a field or before Voice asks for the next field.
+  function goToStep(stepKey) {
+    const index = stepsRef.current.indexOf(stepKey);
+    if (index >= 0) setStep(index);
   }
 
   function goNext() {

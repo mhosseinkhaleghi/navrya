@@ -222,6 +222,9 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   const [focusIds, setFocusIds] = React.useState(seed ? seed.focusIds || [] : []);
   const [name, setName] = React.useState(seed ? seed.name || '' : '');
   const [nameTouched, setNameTouched] = React.useState(Boolean(seed && seed.name));
+  const stepRef = React.useRef(step);
+  const completeRef = React.useRef(null);
+  stepRef.current = step;
 
   React.useEffect(() => {
     if (nameTouched) return;
@@ -282,6 +285,52 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
       isDefault: seed ? seed.isDefault : undefined
     };
   }
+
+  // The real primary button and AI submit share this exact completion handler. The registration
+  // below only writes the controlled state this component already owns; persistence remains in
+  // AnalysisProfilesTab's existing onComplete path.
+  function complete() { return onComplete(buildDraft()); }
+  completeRef.current = complete;
+
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    let mounted = true;
+    registry.register('analysis-profile-editor', {
+      layer: 'foreground', actionId: mode === 'edit' ? 'profile.analysis.edit' : 'profile.analysis.create',
+      allowlist: ['primaryStyleId', 'secondaryStyleIds', 'customMethodNotes', 'focusIds', 'name'],
+      isOpen: () => mounted,
+      activeStep: () => stepRef.current,
+      stepForPath: (path) => {
+        if (path === 'primaryStyleId' || path === 'secondaryStyleIds' || path === 'customMethodNotes') return 1;
+        if (path === 'focusIds' || path === 'name') return 2;
+        return null;
+      },
+      goToStep: (nextStep) => setStep(Number(nextStep) === 2 ? 2 : 1),
+      validateValue: (path, value) => {
+        const hasStyle = (id) => !!(styles && styles.get && styles.get(id));
+        const hasFocus = (id) => !!(focuses && focuses.get && focuses.get(id));
+        if (path === 'primaryStyleId') return hasStyle(value);
+        if (path === 'secondaryStyleIds') return Array.isArray(value) && value.length <= 2 && value.every(hasStyle);
+        if (path === 'focusIds') return Array.isArray(value) && value.every(hasFocus);
+        return true;
+      },
+      applyValue: (path, value) => {
+        if (path === 'primaryStyleId') { pickPrimary(value); return; }
+        if (path === 'secondaryStyleIds') {
+          setHybridMode(value.length > 0);
+          setSecondaryStyleIds(value.slice(0, 2));
+          return;
+        }
+        if (path === 'customMethodNotes') { setCustomMethodNotes(String(value || '')); return; }
+        if (path === 'focusIds') { setFocusIds(value.slice()); return; }
+        if (path === 'name') { setName(String(value || '')); setNameTouched(true); }
+      },
+      submit: () => completeRef.current()
+    });
+    return () => { mounted = false; };
+    // style/focus registries are stable page-level catalogs; state setters are React-stable.
+  }, []);
 
   function handleClose() {
     if (mode === 'first-run') { if (onSkip) onSkip(); }
@@ -460,7 +509,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
         <React.Fragment>
           <Button variant="ghost" onClick={() => setStep(1)}>{tr(activeLang, 'back')}</Button>
           <span style={{ marginInlineStart: 'auto' }}>
-            <Button variant="primary" icon="check" onClick={() => onComplete(buildDraft())}>{tr(activeLang, 'create')}</Button>
+            <Button variant="primary" icon="check" onClick={complete}>{tr(activeLang, 'create')}</Button>
           </span>
         </React.Fragment>
       )}

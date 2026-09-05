@@ -6,6 +6,11 @@
   // rest of this app's local-first, app-owns-state design. Resets on page reload, the same
   // lifecycle as the ChatDock's own in-memory transcript.
   var current = null;
+  var lastLifecycle = null;
+
+  function monotonicNow() {
+    return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+  }
 
   // Found via real end-to-end testing of the exact scenario this exists to support: "15 minutes"
   // immediately followed by "no, make that 5 minutes" - if the LAST required field submits the
@@ -18,17 +23,67 @@
   // via real end-to-end testing to often run 1-3s on its own), so a correction typed right after
   // seeing the first value applied has real room to land before commit, not a race against it.
   var SUBMIT_GRACE_MS = 3000;
+  var COMPLETION_POLICIES = {
+    'auto-submit': true,
+    'explicit-confirm': true,
+    'persist-on-change': true,
+    command: true,
+    'manual-only': true
+  };
 
   // 'session.create' -> 'session-create': matches the id the target UI registers with
   // TradeJournalAIProcessRegistry under. Kept as one mapping so an action never has to duplicate
   // its own process id.
   function processIdFor(actionId) { return String(actionId).replace(/\./g, '-'); }
 
+  function completionPolicyFor(action) {
+    return action && COMPLETION_POLICIES[action.completionPolicy] ? action.completionPolicy : 'auto-submit';
+  }
+
+  function requiredFieldsFor(action) {
+    var fields = (action.requiredFields || []).slice();
+    if (completionPolicyFor(action) === 'explicit-confirm') {
+      var confirmationField = action.confirmationField || 'confirm';
+      if (fields.indexOf(confirmationField) === -1) fields.push(confirmationField);
+    }
+    return fields;
+  }
+
   function missingFields(action, known) {
-    return action.requiredFields.filter(function (field) {
+    return requiredFieldsFor(action).filter(function (field) {
       var value = known[field];
       return value === undefined || value === null || value === '';
     });
+  }
+
+  // A name/reference can be necessary to resolve which real editor to open without ever being a
+  // control on that editor. Those fields still belong to the one workflow's known state, but must
+  // never be pushed through a form registration that correctly rejects them as not fillable.
+  function isResolutionOnlyField(action, path) {
+    return !!(action && Array.isArray(action.resolutionOnlyFields) && action.resolutionOnlyFields.indexOf(path) !== -1);
+  }
+
+  function makeWorkflow(action, processId) {
+    var workflow = {
+      workflowId: 'wf-' + Date.now().toString(36),
+      actionId: action.id,
+      processId: processId,
+      completionPolicy: completionPolicyFor(action),
+      status: 'collecting',
+      known: {},
+      missing: requiredFieldsFor(action),
+      lastFieldResults: [],
+      lastError: null,
+      submitAttempted: false,
+      lifecycle: {
+        workflowId: null, actionId: action.id, processId: processId,
+        applyStartedAt: null, applyCompletedAt: null, submitScheduledAt: null,
+        submitStartedAt: null, submitCompletedAt: null, submitOutcome: null
+      }
+    };
+    workflow.lifecycle.workflowId = workflow.workflowId;
+    lastLifecycle = workflow.lifecycle;
+    return workflow;
   }
 
   // Journey F: an action whose target UI has a STABLE, well-known process id (session.create ->
@@ -58,20 +113,14 @@
     var actionRegistry = window.TradeJournalAIActionRegistry;
     var action = actionRegistry && actionRegistry.get(actionId);
     if (!action) return null;
-    current = {
-      workflowId: 'wf-' + Date.now().toString(36),
-      actionId: actionId,
-      processId: processIdFor(actionId),
-      status: 'collecting',
-      known: {},
-      missing: action.requiredFields.slice()
-    };
+    current = makeWorkflow(action, processIdFor(actionId));
     try {
       current.pendingOpen = Promise.resolve(action.open(context, initialFields));
     } catch (_) {
       // opening is best-effort - the workflow state is still usable even if navigation/opening
       // partly failed (a synchronous throw is treated the same as open() resolving to nothing).
       current.pendingOpen = Promise.resolve(null);
+      current.lastError = { stage: 'open', reason: 'rejected' };
     }
     return current;
   }
@@ -85,6 +134,60 @@
   function captureUiSnapshot(workflow) {
     var guard = window.TradeJournalAIUiRevisionGuard;
     workflow.uiSnapshot = guard && typeof guard.capture === 'function' ? guard.capture(workflow.processId) : null;
+    var registry = window.TradeJournalAIProcessRegistry;
+    var processSnapshot = registry && typeof registry.snapshot === 'function' ? registry.snapshot(workflow.processId) : null;
+    workflow.processRevision = processSnapshot && processSnapshot.open ? processSnapshot.revision : null;
+  }
+
+  // Returning from sendChat() is what lets chat render (and Voice queue) the assistant's next
+  // question. Two animation frames guarantee that a step change requested through the real React
+  // setter has had one browser paint before either channel can present that question.
+  function waitForVisualStep() {
+    return new Promise(function (resolve) {
+      if (typeof requestAnimationFrame !== 'function') { setTimeout(resolve, 0); return; }
+      requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+    });
+  }
+
+  // Move to the step that owns the next required answer *before* the model's already-produced
+  // reply leaves this workflow. This deliberately reuses Process Registry's stepForPath/goToStep
+  // declaration, so no action, chat, or speech code owns a second wizard map.
+  async function prepareNextQuestion(workflow, action) {
+    var registry = window.TradeJournalAIProcessRegistry;
+    if (!registry || typeof registry.prepareForPath !== 'function') return { moved: false, path: null };
+    var nextPath = missingFields(action, workflow.known).find(function (path) { return !isResolutionOnlyField(action, path); });
+    if (!nextPath) return { moved: false, path: null };
+    var prepared;
+    try { prepared = registry.prepareForPath(workflow.processId, nextPath); } catch (_) { prepared = null; }
+    if (!prepared || !prepared.prepared || !prepared.moved) return { moved: false, path: nextPath };
+    await waitForVisualStep();
+    return { moved: true, path: nextPath, step: prepared.step };
+  }
+
+  // Adopt a form the user opened manually. The Process Registry performs the exact-active and
+  // revision checks and returns only a public capability descriptor; this engine never reads its
+  // private registrations. Crucially, action.open() is not called, so adoption cannot open a
+  // duplicate modal/entity.
+  function ensureWorkflowForActiveProcess(activeProcess, context) {
+    var descriptor = typeof activeProcess === 'string' ? { id: activeProcess } : (activeProcess || {});
+    var processRegistry = window.TradeJournalAIProcessRegistry;
+    if (!descriptor.id || !processRegistry || typeof processRegistry.adoptActiveProcess !== 'function') return { adopted: false, reason: 'unsupported' };
+    if (current) {
+      if (current.processId === descriptor.id) return { adopted: true, existing: true, workflow: current };
+      return { adopted: false, reason: 'workflow-conflict' };
+    }
+    var adoption = processRegistry.adoptActiveProcess(descriptor.id, descriptor.revision);
+    if (!adoption || !adoption.adopted) return adoption || { adopted: false, reason: 'rejected' };
+    var process = adoption.process || {};
+    var actionRegistry = window.TradeJournalAIActionRegistry;
+    var action = actionRegistry && process.actionId ? actionRegistry.get(process.actionId) : null;
+    if (!action) return { adopted: false, reason: 'unsupported' };
+    current = makeWorkflow(action, process.id);
+    current.pendingOpen = null;
+    current.processRevision = process.revision;
+    current.adopted = true;
+    captureUiSnapshot(current);
+    return { adopted: true, workflow: current };
   }
 
   // Applies each {path, value} pair to the real, already-open UI via
@@ -100,6 +203,7 @@
     var processRegistry = window.TradeJournalAIProcessRegistry;
     var action = actionRegistry && actionRegistry.get(workflow.actionId);
     if (!action) return current;
+    workflow.lifecycle.applyStartedAt = monotonicNow();
 
     // Journey F: resolve start()'s stashed open() result exactly once, on this workflow's first
     // applyKnownFields() call - see start()'s own comment on why this is deferred rather than
@@ -108,9 +212,12 @@
     // pattern scheduleSubmit() below already uses for the identical reason.
     if (workflow.pendingOpen) {
       var openResult = null;
-      try { openResult = await workflow.pendingOpen; } catch (_) { /* best-effort, matching start()'s own synchronous-throw handling */ }
+      try { openResult = await workflow.pendingOpen; } catch (_) { workflow.lastError = { stage: 'open', reason: 'rejected' }; }
       if (current !== workflow) return current;
-      if (openResult && typeof openResult === 'object' && openResult.processId) workflow.processId = openResult.processId;
+      if (openResult && typeof openResult === 'object' && openResult.processId) {
+        workflow.processId = openResult.processId;
+        workflow.lifecycle.processId = openResult.processId;
+      }
       workflow.pendingOpen = null;
     }
 
@@ -125,7 +232,7 @@
       captureUiSnapshot(workflow);
     } else if (revisionGuard && typeof revisionGuard.hasDiverged === 'function') {
       var divergence = revisionGuard.hasDiverged(workflow.uiSnapshot);
-      if (divergence === 'closed' || divergence === 'surface') {
+      if (divergence === 'closed' || divergence === 'surface' || divergence === 'revision') {
         // The real UI this workflow was driving is genuinely gone (closed, or a different surface
         // is now topmost) - resurrecting this workflow's stale assumptions onto whatever the user
         // has since moved to by hand would be exactly the "AI restores an overridden value" bug
@@ -133,6 +240,7 @@
         // always authoritative). Clear it - a later turn re-evaluates fresh against whatever the
         // real UI actually shows next, the same way chat-dock-core.js's own activeProcess
         // resolution already fills an open process it didn't itself start.
+        workflow.lifecycle.applyCompletedAt = monotonicNow();
         if (current === workflow) current = null;
         return null;
       }
@@ -154,6 +262,10 @@
     }
 
     var appliedAny = false;
+    var stepChanged = false;
+    var acceptedFields = [];
+    var resolutionOnlyFields = [];
+    workflow.lastFieldResults = [];
     (fields || []).forEach(function (field) {
       if (!field || !field.path || field.value === undefined || field.value === null || field.value === '') return;
       // A raw extracted value is untrusted app input, exactly like a typed form value - run it
@@ -166,7 +278,10 @@
       if (typeof action.normalizeField === 'function') {
         try { value = action.normalizeField(field.path, value); } catch (_) { value = null; }
       }
-      if (value === undefined || value === null || value === '') return;
+      if (value === undefined || value === null || value === '') {
+        workflow.lastFieldResults.push({ path: field.path, applied: false, reason: 'invalid' });
+        return;
+      }
       // Only push into the real UI when this is a genuinely new/changed value for this path -
       // a model that re-echoes a field it already extracted on an earlier turn (e.g. repeating
       // city: 'New York' on the turn that only actually supplied timeframe) must never silently
@@ -182,11 +297,32 @@
       // dropped. JSON.stringify compares the real content instead, and agrees with String() on
       // every scalar value already covered by Journey A's own tests (same equal/not-equal
       // outcome), so this changes nothing for city/timeframe-shaped fields.
-      var isNewOrChanged = current.known[field.path] === undefined || JSON.stringify(current.known[field.path]) !== JSON.stringify(value);
-      current.known[field.path] = value;
-      if (processRegistry && isNewOrChanged) { processRegistry.applyValue(current.processId, field.path, value, field.mode || 'replace'); appliedAny = true; }
+      var isNewOrChanged = workflow.known[field.path] === undefined || JSON.stringify(workflow.known[field.path]) !== JSON.stringify(value);
+      if (!isNewOrChanged) return;
+      if (isResolutionOnlyField(action, field.path)) {
+        resolutionOnlyFields.push({ path: field.path, value: value });
+        return;
+      }
+      var rawResult = { applied: false, reason: 'unregistered' };
+      if (processRegistry && typeof processRegistry.applyValue === 'function') {
+        rawResult = workflow.processRevision === undefined || workflow.processRevision === null
+          ? processRegistry.applyValue(workflow.processId, field.path, value, field.mode || 'replace')
+          : processRegistry.applyValue(workflow.processId, field.path, value, field.mode || 'replace', { expectedRevision: workflow.processRevision });
+      }
+      // Compatibility for old registry/test adapters: explicit false is rejection; true,
+      // undefined, and historical side-effect return values mean the legacy call completed.
+      var normalizedResult;
+      if (rawResult && typeof rawResult === 'object' && typeof rawResult.applied === 'boolean') normalizedResult = rawResult;
+      else if (rawResult === false) normalizedResult = { applied: false, reason: 'rejected' };
+      else normalizedResult = { applied: true, value: value };
+      if (!normalizedResult.applied) {
+        workflow.lastFieldResults.push({ path: field.path, applied: false, reason: normalizedResult.reason || 'rejected' });
+        return;
+      }
+      acceptedFields.push({ path: field.path, value: normalizedResult.value === undefined ? value : normalizedResult.value });
+      if (normalizedResult.stepChanged) stepChanged = true;
+      appliedAny = true;
     });
-    current.missing = missingFields(action, current.known);
 
     // applyValue() above lands on the real UI's own React state setter - React does not commit
     // and re-render synchronously from here, so the target's own submit() (a closure over its
@@ -198,11 +334,43 @@
     if (appliedAny) await new Promise(function (resolve) { setTimeout(resolve, 0); });
     if (current !== workflow) return current;
 
+    var readback = null;
+    if (acceptedFields.length && processRegistry && typeof processRegistry.readValues === 'function') {
+      try { readback = processRegistry.readValues(workflow.processId, acceptedFields.map(function (field) { return field.path; })); } catch (_) { readback = { read: false, reason: 'rejected' }; }
+    }
+    acceptedFields.forEach(function (field) {
+      var committed = !readback || readback.read !== true || (readback.values && JSON.stringify(readback.values[field.path]) === JSON.stringify(field.value));
+      if (!committed) {
+        workflow.lastFieldResults.push({ path: field.path, applied: false, reason: 'rejected' });
+        return;
+      }
+      workflow.known[field.path] = field.value;
+      workflow.lastFieldResults.push({ path: field.path, applied: true, value: field.value });
+    });
+    resolutionOnlyFields.forEach(function (field) {
+      workflow.known[field.path] = field.value;
+      workflow.lastFieldResults.push({ path: field.path, applied: true, value: field.value, resolutionOnly: true });
+    });
+    workflow.missing = missingFields(action, workflow.known);
+    workflow.lifecycle.applyCompletedAt = monotonicNow();
+
+    // A reply can contain the next question even when this turn carried no value at all (for
+    // example, opening Intake starts on its orientation screen while its first answer is on
+    // Demographics). Prepare that real step before the reply reaches text or TTS.
+    var nextQuestion = await prepareNextQuestion(workflow, action);
+    if (current !== workflow) return current;
+    if (nextQuestion.moved) stepChanged = true;
+    // A correction can revisit an already-known field after the required set is complete, so
+    // there may be no next missing question to provide the wait above. It still deserves the
+    // same visual-step-first guarantee before the acknowledgement is rendered or spoken.
+    if (stepChanged && !nextQuestion.moved) await waitForVisualStep();
+    if (current !== workflow) return current;
+
     // Journey H1: re-baseline the known-good snapshot AFTER this turn's own field application (and
     // any resulting real step-advance it triggered via ai-process-registry.js's own
     // stepForPath/goToStep) has settled - so the guard above never mistakes THIS engine's own
     // legitimate step-follow for a human's independent action on the very next turn.
-    if (appliedAny) captureUiSnapshot(workflow);
+    if (appliedAny || stepChanged) captureUiSnapshot(workflow);
 
     // Any turn re-evaluates from scratch - a previously scheduled submit must never fire against
     // whatever is current by the time it would run; if the set is still complete after this turn,
@@ -225,15 +393,19 @@
     // real target UI stays open (pruneIfAbandoned already clears it once that closes), so any
     // later turn keeps landing on the same live workflow instead of racing a timer that exists
     // for a different kind of action entirely.
-    if ((current.status === 'collecting' || current.status === 'pending-submit') && !current.missing.length) {
-      if (action.entityAlreadyPersisted) current.status = 'collecting';
-      else scheduleSubmit(current, action, context);
+    if ((workflow.status === 'collecting' || workflow.status === 'pending-submit') && !workflow.missing.length) {
+      var completionPolicy = completionPolicyFor(action);
+      if (completionPolicy === 'persist-on-change' || completionPolicy === 'manual-only') workflow.status = 'collecting';
+      else if (completionPolicy === 'command') scheduleSubmit(workflow, action, context, 0, { requireOpenProcess: false });
+      else scheduleSubmit(workflow, action, context, completionPolicy === 'explicit-confirm' ? 0 : SUBMIT_GRACE_MS);
     }
-    return current;
+    return workflow;
   }
 
-  function scheduleSubmit(workflow, action, context) {
+  function scheduleSubmit(workflow, action, context, delayMs, options) {
+    if (workflow.submitAttempted || workflow.status === 'submitting') return;
     workflow.status = 'pending-submit';
+    workflow.lifecycle.submitScheduledAt = monotonicNow();
     workflow.pendingSubmitTimer = setTimeout(function () {
       // The module-level `current` may have moved on (cancelled, superseded by a new start(), or
       // this exact submit already ran) by the time this fires - never act unless this scheduled
@@ -246,10 +418,13 @@
       // is the same live isOpen() every other read of "is this process open" already goes
       // through; treat "no longer open" as an implicit cancel, never a reason to press on.
       var processRegistry = window.TradeJournalAIProcessRegistry;
-      var stillOpen = !processRegistry || typeof processRegistry.query !== 'function' || processRegistry.query(workflow.processId).open;
+      var requireOpenProcess = !options || options.requireOpenProcess !== false;
+      var stillOpen = !requireOpenProcess || !processRegistry || typeof processRegistry.query !== 'function' || processRegistry.query(workflow.processId).open;
       if (!stillOpen) { if (current === workflow) current = null; return; }
       workflow.pendingSubmitTimer = null;
       workflow.status = 'submitting';
+      workflow.submitAttempted = true;
+      workflow.lifecycle.submitStartedAt = monotonicNow();
       var submitFn = typeof action.submit === 'function' ? action.submit : function () { return undefined; };
       // Promise.resolve().then(() => submitFn(...)), not Promise.resolve(submitFn(...)): found
       // while building Journey B - tradeCalculatorModal.jsx's own submit() is a plain, synchronous
@@ -262,18 +437,40 @@
       // normal promise rejection either way, so the existing failure-recovery fallback catches it.
       Promise.resolve().then(function () { return submitFn(workflow.known, context); }).then(function (result) {
         if (current !== workflow) return;
+        if (result && typeof result === 'object' && (result.submitted === false || result.applied === false)) {
+          workflow.status = 'collecting';
+          workflow.submitAttempted = false;
+          workflow.lastError = { stage: 'submit', reason: result.reason || 'rejected', field: result.field || null };
+          if (completionPolicyFor(action) === 'explicit-confirm') delete workflow.known[action.confirmationField || 'confirm'];
+          workflow.missing = missingFields(action, workflow.known);
+          workflow.lifecycle.submitCompletedAt = monotonicNow();
+          workflow.lifecycle.submitOutcome = 'rejected';
+          return;
+        }
         try { action.resultContext(result); } catch (_) { /* navigation to the result is best-effort */ }
+        workflow.lifecycle.submitCompletedAt = monotonicNow();
+        workflow.lifecycle.submitOutcome = 'applied';
         current = null;
       }, function () {
         // A failed submit must never lose the values already applied live to the real, still-open
         // form - leave the workflow collecting so a retry (or the user finishing manually) still
         // works, matching the app-wide rule that an AI failure never rolls back applied state.
-        if (current === workflow) workflow.status = 'collecting';
+        if (current === workflow) {
+          workflow.status = 'collecting';
+          workflow.lastError = { stage: 'submit', reason: 'rejected' };
+          workflow.lifecycle.submitCompletedAt = monotonicNow();
+          workflow.lifecycle.submitOutcome = 'rejected';
+          if (completionPolicyFor(action) === 'explicit-confirm') {
+            delete workflow.known[action.confirmationField || 'confirm'];
+            workflow.missing = missingFields(action, workflow.known);
+          }
+        }
       });
-    }, SUBMIT_GRACE_MS);
+    }, delayMs === undefined ? SUBMIT_GRACE_MS : Math.max(0, Number(delayMs) || 0));
   }
 
   function currentWorkflow() { return current; }
+  function debugLastLifecycle() { return lastLifecycle ? Object.assign({}, lastLifecycle) : null; }
 
   // Found via real end-to-end testing: closing the real dialog (X/Cancel) *before* the required
   // set ever completes leaves the workflow sitting in 'collecting' forever - nothing else was
@@ -353,10 +550,13 @@
 
   window.TradeJournalAIWorkflowEngine = {
     start: start,
+    ensureWorkflowForActiveProcess: ensureWorkflowForActiveProcess,
+    adoptActiveProcess: ensureWorkflowForActiveProcess,
     retargetOrStart: retargetOrStart,
     restorePreviousProcessId: restorePreviousProcessId,
     applyKnownFields: applyKnownFields,
     current: currentWorkflow,
+    debugLastLifecycle: debugLastLifecycle,
     pruneIfAbandoned: pruneIfAbandoned,
     cancel: cancel,
     // Exposed for tests (and any future caller with a reason to tune it) rather than a

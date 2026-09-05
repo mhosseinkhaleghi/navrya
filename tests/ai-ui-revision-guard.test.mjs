@@ -37,11 +37,19 @@ test('capture() returns null for a process that is not open (nothing to guard)',
   assert.equal(guard.capture('trade-wizard'), null);
 });
 
-test('capture() snapshots {processId, layer, step} for an open process', async () => {
-  const state = { processes: { 'trade-wizard': { open: true, step: 2, layer: 'foreground' } } };
+test('capture() snapshots {processId, layer, step, revision} for an open process', async () => {
+  const state = { processes: { 'trade-wizard': { open: true, step: 2, layer: 'foreground', revision: 4 } } };
   const guard = await guardSandbox(fakeRegistry(state));
   const snap = guard.capture('trade-wizard');
-  assert.deepEqual(clone(snap), { processId: 'trade-wizard', layer: 'foreground', step: 2 });
+  assert.deepEqual(clone(snap), { processId: 'trade-wizard', layer: 'foreground', step: 2, revision: 4 });
+});
+
+test('hasDiverged() reports revision when the exact surface was re-registered while an async turn was in flight', async () => {
+  const state = { processes: { 'account-manual-form': { open: true, step: null, layer: 'foreground', revision: 7 } }, topmostId: 'account-manual-form' };
+  const guard = await guardSandbox(fakeRegistry(state));
+  const captured = guard.capture('account-manual-form');
+  state.processes['account-manual-form'] = { open: true, step: null, layer: 'foreground', revision: 8 };
+  assert.equal(guard.hasDiverged(captured), 'revision');
 });
 
 test('hasDiverged() is false for a null/undefined capture (nothing was ever captured)', async () => {

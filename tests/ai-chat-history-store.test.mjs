@@ -13,7 +13,8 @@ async function storeSandbox(fetchFn, token) {
   const sandbox = {
     window: {},
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    fetch: fetchFn || (async () => { throw new Error('fetch must not be called in this test'); })
+    fetch: fetchFn || (async () => { throw new Error('fetch must not be called in this test'); }),
+    Date, Math
   };
   sandbox.window = Object.assign(sandbox.window, {
     fetch: sandbox.fetch,
@@ -83,6 +84,25 @@ test('appendExchange sends only this turn\'s own new messages (no GET first) and
   assert.deepEqual(result.messages, [{ role: 'user', content: 'follow-up question' }, { role: 'assistant', content: 'follow-up answer' }], 'only the new turn is ever sent - appending onto the existing history is the server\'s own job now');
   assert.equal(result.tokens, 12);
   assert.deepEqual(events, ['tradejournal:ai-chat-history-changed']);
+});
+
+test('client conversation/turn ids make background history persistence idempotent', async () => {
+  const calls = [];
+  const { window } = await storeSandbox(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ method: options.method, body });
+    return jsonResponse(options.method === 'POST' ? 201 : 200, { id: body.id || 'conv-client-1', messages: body.messages, tokens: body.tokens });
+  });
+
+  assert.match(window.TradeJournalAiChatHistoryStore.newConversationId(), /^aiConv-client-/);
+  await window.TradeJournalAiChatHistoryStore.startConversation('openai', 'first', 'answer', 2, { conversationId: 'conv-client-1', turnId: 'turn-1' });
+  await window.TradeJournalAiChatHistoryStore.appendExchange('conv-client-1', 'next', 'reply', 3, { turnId: 'turn-2' });
+
+  assert.equal(calls[0].body.id, 'conv-client-1');
+  assert.equal(calls[0].body.turnId, 'turn-1');
+  assert.ok(calls[0].body.messages.every((message) => message.turnId === 'turn-1'));
+  assert.equal(calls[1].body.turnId, 'turn-2');
+  assert.ok(calls[1].body.messages.every((message) => message.turnId === 'turn-2'));
 });
 
 test('remove() DELETEs the conversation and fires the changed event', async () => {

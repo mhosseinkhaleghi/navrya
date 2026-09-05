@@ -187,6 +187,22 @@ export function createVoiceSession(options) {
   var onOutputAudioBufferEvent = (options && options.onOutputAudioBufferEvent) || function () {};
   var onResponseCreated = (options && options.onResponseCreated) || function () {};
   var onBargeIn = (options && options.onBargeIn) || function () {};
+  // Browser primitives are dependency-injected only for focused lifecycle tests. Production uses
+  // these defaults, so the adapter stays the sole owner of SDK/WebRTC resources while tests can
+  // exercise the real state machine without constructing a browser or faking source assertions.
+  var runtime = (options && options.runtime) || {};
+  var getUserMedia = runtime.getUserMedia || function (constraints) { return navigator.mediaDevices.getUserMedia(constraints); };
+  var createAgent = runtime.createAgent || function (config) { return new RealtimeAgent(config); };
+  var createTransport = runtime.createTransport || function (config) { return new OpenAIRealtimeWebRTC(config); };
+  var createRealtimeSession = runtime.createSession || function (agent, config) { return new RealtimeSession(agent, config); };
+  var createAudioElement = runtime.createAudioElement || function () { return document.createElement('audio'); };
+  var locationOrigin = runtime.locationOrigin || ((typeof window !== 'undefined' && window.location) ? window.location.origin : 'http://localhost');
+  var connectTimeoutMs = typeof runtime.connectTimeoutMs === 'number' ? runtime.connectTimeoutMs : CONNECT_TIMEOUT_MS;
+  var playbackTimeoutMs = typeof runtime.playbackTimeoutMs === 'number' ? runtime.playbackTimeoutMs : 12000;
+  var reconnectBaseDelayMs = typeof runtime.reconnectBaseDelayMs === 'number' ? runtime.reconnectBaseDelayMs : RECONNECT_BASE_DELAY_MS;
+  var reconnectMaxDelayMs = typeof runtime.reconnectMaxDelayMs === 'number' ? runtime.reconnectMaxDelayMs : RECONNECT_MAX_DELAY_MS;
+  var reconnectMaxAttempts = typeof runtime.reconnectMaxAttempts === 'number' ? runtime.reconnectMaxAttempts : RECONNECT_MAX_ATTEMPTS;
+  var random = runtime.random || Math.random;
 
   var state = VOICE_STATES.IDLE;
   var session = null;
@@ -261,6 +277,15 @@ export function createVoiceSession(options) {
   var intentionalDisconnect = false;
   var reconnectAttempt = 0;
   var reconnectTimer = null;
+  // A connect attempt owns every resource it creates until the session is fully connected. This
+  // prevents a late permission/token/SDP result from being published into a newer generation.
+  // `connectPromise` makes connect() single-flight; disconnect() invalidates it immediately so a
+  // retry is never stuck behind an unanswerable browser permission prompt.
+  var activeConnectAttempt = null;
+  var connectPromise = null;
+  // Separate from connectionEpoch: barge-in can invalidate a pending TTS fetch without tearing
+  // down the live transcription connection.
+  var playbackEpoch = 0;
   // Dynamic VAD (Voice Mode performance pass): the eagerness this session was minted with (or
   // last successfully pushed via setEagerness()) - tracked so setEagerness() can skip sending a
   // session.update when the caller asks for the exact value already in effect (task requirement:
@@ -336,7 +361,7 @@ export function createVoiceSession(options) {
   // finish, RECONNECTING/ERROR from a real connection problem) - task requirement: a stale event
   // must never overwrite USER_SPEAKING or PROCESSING.
   function markPlaybackEnded() {
-    if (state === VOICE_STATES.ASSISTANT_SPEAKING || state === VOICE_STATES.INTERRUPTED) setState(VOICE_STATES.LISTENING);
+    if (state === VOICE_STATES.ASSISTANT_SPEAKING || state === VOICE_STATES.INTERRUPTED || state === VOICE_STATES.PROCESSING) setState(VOICE_STATES.LISTENING);
   }
 
   function holdMicForManualFinish() {
@@ -363,7 +388,11 @@ export function createVoiceSession(options) {
   }
   var EMPTY_BUFFER_COMMIT_ERROR_GRACE_MS = 2000;
 
-  function onTransportEvent(event) {
+  function onTransportEvent(event, myEpoch, expectedSession, expectedTransport) {
+    // Every callback is session-identity AND generation guarded. Checking the epoch alone is not
+    // enough: a failed attempt and a replacement attempt can otherwise share observable state
+    // while queued SDK callbacks from the old object are still draining.
+    if (myEpoch !== connectionEpoch || session !== expectedSession || transport !== expectedTransport) return;
     if (!event || typeof event.type !== 'string') return;
     recentEventTypes.push(event.type);
     if (recentEventTypes.length > 12) recentEventTypes.shift();
@@ -419,6 +448,10 @@ export function createVoiceSession(options) {
       // schemas: present on started/stopped only via passthrough, never on cleared) - see this
       // file's own header comment.
       onOutputAudioBufferEvent(event.type, event.response_id || null);
+      // Raw output-buffer stop/clear is the browser playback boundary. The SDK's high-level
+      // audio_stopped event is derived from response.output_audio.done (generation completion)
+      // and therefore must never settle speak() by itself.
+      if (event.type !== TRANSPORT_OUTPUT_AUDIO_BUFFER_STARTED && pendingSpeakSettle) pendingSpeakSettle();
       return;
     }
     if (event.type === TRANSPORT_RESPONSE_CREATED) {
@@ -451,6 +484,54 @@ export function createVoiceSession(options) {
 
   function clearReconnectTimer() { if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; } }
 
+  function stopMediaStream(stream) {
+    if (!stream || typeof stream.getTracks !== 'function') return;
+    stream.getTracks().forEach(function (track) { try { track.stop(); } catch (_e) { /* best-effort */ } });
+  }
+
+  function stopAudioElement(element, detach) {
+    if (!element) return;
+    try { element.pause(); } catch (_e) { /* best-effort */ }
+    try { element.currentTime = 0; } catch (_e2) { /* best-effort */ }
+    if (detach) { try { element.srcObject = null; } catch (_e3) { /* best-effort */ } }
+  }
+
+  function isCurrentConnection(myEpoch, expectedSession, expectedTransport) {
+    return myEpoch === connectionEpoch && session === expectedSession && transport === expectedTransport;
+  }
+
+  function isCurrentAttempt(attempt) {
+    return !!attempt && !attempt.cancelled && activeConnectAttempt === attempt && attempt.epoch === connectionEpoch;
+  }
+
+  function cleanupConnectAttempt(attempt) {
+    if (!attempt || attempt.cleaned) return;
+    attempt.cleaned = true;
+    if (attempt.deadlineTimer) { clearTimeout(attempt.deadlineTimer); attempt.deadlineTimer = null; }
+    if (attempt.abortController) { try { attempt.abortController.abort(); } catch (_e) { /* already aborted */ } }
+    var closingSession = attempt.session;
+    attempt.session = null;
+    attempt.transport = null;
+    if (closingSession) { try { closingSession.close(); } catch (_e2) { /* already closed */ } }
+    stopMediaStream(attempt.mediaStream);
+    attempt.mediaStream = null;
+    stopAudioElement(attempt.audioElement, true);
+    attempt.audioElement = null;
+    if (activeConnectAttempt === attempt) activeConnectAttempt = null;
+  }
+
+  function cancelActiveConnectAttempt() {
+    var attempt = activeConnectAttempt;
+    if (!attempt) return;
+    activeConnectAttempt = null;
+    attempt.cancelled = true;
+    if (attempt.rejectCancellation) {
+      attempt.rejectCancellation(Object.assign(new Error('VOICE_CONNECT_CANCELLED'), { name: 'AbortError' }));
+      attempt.rejectCancellation = null;
+    }
+    cleanupConnectAttempt(attempt);
+  }
+
   // Tears down the transport/session/media without touching `state` or the reconnect timer - the
   // two real callers (the public disconnect() and a reconnect about to retry) each drive `state`
   // and reconnectTimer themselves, since they mean different things (IDLE + no future retry vs.
@@ -462,10 +543,19 @@ export function createVoiceSession(options) {
     // teardown path (a genuine disconnect() and a reconnect about to retry both call this).
     clearPendingManualFinish();
     activeSpeechItemId = null;
-    if (session) { try { session.close(); } catch (_e) { /* already closed */ } session = null; }
+    playbackEpoch += 1;
+    // Clear canonical identities before close()/track.stop(): either operation may synchronously
+    // dispatch one last event, which must already look stale to every listener.
+    var closingSession = session;
+    var closingStream = mediaStream;
+    var closingAudio = audioEl;
+    session = null;
     transport = null;
-    if (mediaStream) { mediaStream.getTracks().forEach(function (track) { track.stop(); }); mediaStream = null; }
+    mediaStream = null;
     audioEl = null;
+    if (closingSession) { try { closingSession.close(); } catch (_e) { /* already closed */ } }
+    stopMediaStream(closingStream);
+    stopAudioElement(closingAudio, true);
     // ElevenLabs voice-provider follow-up: a torn-down session (disconnect(), or a reconnect about
     // to retry) must never leave ElevenLabs audio audibly playing on into it - that audio lives
     // entirely outside session.close() above (it was never part of the WebRTC transport), so it
@@ -488,15 +578,16 @@ export function createVoiceSession(options) {
   // reconnect attempt, or gives up into ERROR once RECONNECT_MAX_ATTEMPTS is exhausted.
   function scheduleReconnect(myEpoch) {
     if (myEpoch !== connectionEpoch) return; // superseded by a newer connection already - not our concern any more
+    if (reconnectTimer) return; // one drop can surface through several SDK events; one timer owns it
     teardownTransport();
-    if (reconnectAttempt >= RECONNECT_MAX_ATTEMPTS) {
+    if (reconnectAttempt >= reconnectMaxAttempts) {
       setState(VOICE_STATES.ERROR);
       onError({ code: 'VOICE_RECONNECT_EXHAUSTED', stage: 'reconnect' });
       return;
     }
     reconnectAttempt += 1;
-    var delay = Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * Math.pow(2, reconnectAttempt - 1));
-    var jitter = delay * (0.5 + Math.random() * 0.5);
+    var delay = Math.min(reconnectMaxDelayMs, reconnectBaseDelayMs * Math.pow(2, reconnectAttempt - 1));
+    var jitter = delay * (0.5 + random() * 0.5);
     setState(VOICE_STATES.RECONNECTING);
     reconnectTimer = setTimeout(function () {
       reconnectTimer = null;
@@ -505,9 +596,8 @@ export function createVoiceSession(options) {
     }, jitter);
   }
 
-  async function connect(connectOptions) {
+  async function performConnect(connectOptions) {
     var isReconnect = !!(connectOptions && connectOptions.isReconnect);
-    if (session) return;
     if (typeof fetchSession !== 'function') throw new Error('VOICE_MISCONFIGURED');
     intentionalDisconnect = false;
     // Dynamic VAD: a fresh, user-initiated connect() has no turn context yet, so it always mints
@@ -516,27 +606,58 @@ export function createVoiceSession(options) {
     // session back to a slower-to-decide default right when a quick yes/no is expected.
     if (!isReconnect) { reconnectAttempt = 0; clearReconnectTimer(); currentEagerness = 'medium'; }
     var myEpoch = ++connectionEpoch;
-    var abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var attempt = {
+      epoch: myEpoch,
+      cancelled: false,
+      cleaned: false,
+      abortController: (typeof AbortController !== 'undefined') ? new AbortController() : null,
+      rejectCancellation: null,
+      deadlineTimer: null,
+      mediaStream: null,
+      audioElement: null,
+      transport: null,
+      session: null
+    };
+    activeConnectAttempt = attempt;
     var timedOut = false;
     // ONE overall deadline for the whole attempt (mic + token mint + SDP/ICE + session ack
     // combined), not a fresh timer per phase - each Promise.race below shares this exact same
     // promise, so time already spent on an earlier phase counts against the phases after it
     // rather than each phase getting its own full CONNECT_TIMEOUT_MS budget.
     var deadline = new Promise(function (_resolve, reject) {
-      setTimeout(function () {
+      attempt.deadlineTimer = setTimeout(function () {
         timedOut = true;
-        if (abortController) abortController.abort();
+        if (attempt.abortController) attempt.abortController.abort();
         reject(Object.assign(new Error('VOICE_CONNECT_TIMEOUT'), { name: 'VOICE_CONNECT_TIMEOUT' }));
-      }, CONNECT_TIMEOUT_MS);
+      }, connectTimeoutMs);
     });
-    deadline.catch(function () {}); // Promise.race below attaches its own handler on the winning path; this only guards the case where the race that WOULD have consumed it is never reached (an early return above a later race call)
+    var cancelled = new Promise(function (_resolve, reject) { attempt.rejectCancellation = reject; });
+    deadline.catch(function () {});
+    cancelled.catch(function () {});
 
     setState(isReconnect ? VOICE_STATES.RECONNECTING : VOICE_STATES.REQUESTING_PERMISSION);
     // Mic readiness and connection setup run in parallel where safe (task requirement): the
     // ephemeral-secret mint is independent of microphone permission until both are actually
     // needed to build the transport, so kick both off immediately rather than sequentially.
-    var micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
-    var credsPromise = Promise.resolve().then(function () { return fetchSession(language, { signal: abortController && abortController.signal, eagerness: currentEagerness }); });
+    var micSettled = false;
+    var mintSettled = false;
+    var micPromise = Promise.resolve().then(function () { return getUserMedia({ audio: true }); }).then(function (stream) {
+      micSettled = true;
+      if (!isCurrentAttempt(attempt)) { stopMediaStream(stream); return null; }
+      attempt.mediaStream = stream;
+      return stream;
+    }, function (error) {
+      micSettled = true;
+      error.voiceConnectPhase = 'microphone';
+      throw error;
+    });
+    var credsPromise = Promise.resolve().then(function () {
+      return fetchSession(language, { signal: attempt.abortController && attempt.abortController.signal, eagerness: currentEagerness });
+    }).then(function (creds) { mintSettled = true; return creds; }, function (error) {
+      mintSettled = true;
+      error.voiceConnectPhase = 'mint';
+      throw error;
+    });
     // A rejection on either promise is otherwise "unhandled" the moment we stop awaiting the
     // OTHER one below (e.g. mic denied while the token mint is still in flight) - Node/browsers
     // both warn loudly about that; this keeps the real error (thrown further down) as the one
@@ -544,26 +665,16 @@ export function createVoiceSession(options) {
     micPromise.catch(function () {});
     credsPromise.catch(function () {});
 
-    try {
-      mediaStream = await Promise.race([micPromise, deadline]);
-    } catch (permissionError) {
-      if (myEpoch !== connectionEpoch) return; // superseded mid-flight (disconnect()/a newer connect() already ran)
-      setState(VOICE_STATES.ERROR);
-      // 'microphone_permission' whether the browser prompt was actively denied or simply never
-      // answered before the shared deadline elapsed - both are the same real diagnostic bucket
-      // from the user's point of view ("Voice never got mic access").
-      onError({ code: transportErrorCode(permissionError), stage: 'microphone_permission' });
-      throw permissionError;
-    }
-    if (!isReconnect) setState(VOICE_STATES.CONNECTING);
     // Tracks which phase of the remaining pipeline is currently in flight, purely for
     // classifyMintFailureStage()/classifySdpFailureStage() below if the shared catch block is
     // reached - never read anywhere else, never affects control flow, timing, or the epoch guards
     // already in place on every await below.
-    var phase = 'mint';
+    var phase = 'permission_and_mint';
     try {
-      var creds = await Promise.race([credsPromise, deadline]);
-      if (myEpoch !== connectionEpoch) return; // superseded while the mint was in flight
+      var prerequisites = await Promise.race([Promise.all([micPromise, credsPromise]), deadline, cancelled]);
+      if (!isCurrentAttempt(attempt) || !prerequisites[0]) { cleanupConnectAttempt(attempt); return false; }
+      var creds = prerequisites[1];
+      setState(isReconnect ? VOICE_STATES.RECONNECTING : VOICE_STATES.CONNECTING);
       // ElevenLabs voice-provider follow-up: read fresh from every mint (initial connect AND
       // reconnect) - an admin can change/disable a language's config between the two, and the
       // reconnected session must speak according to whatever is configured NOW, not whatever was
@@ -571,14 +682,14 @@ export function createVoiceSession(options) {
       currentTtsProvider = creds.ttsProvider === 'elevenlabs' ? 'elevenlabs' : 'openai';
       currentElevenLabsVoice = creds.elevenLabs || null;
       phase = 'sdp';
-      var agent = new RealtimeAgent({
+      var agent = createAgent({
         name: 'navrya-voice-transport',
         instructions: 'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says. When a separate system message asks you to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, and nothing else.',
         tools: [],
         voice: creds.voice
       });
-      audioEl = document.createElement('audio');
-      audioEl.autoplay = true;
+      attempt.audioElement = createAudioElement('realtime');
+      attempt.audioElement.autoplay = true;
       // fix/voice-mode-hosted-connection: without an explicit baseUrl, this SDK version's
       // OpenAIRealtimeWebRTC posts the SDP offer straight from the browser to
       // `https://api.openai.com/v1/realtime/calls` (see its own constructor:
@@ -591,20 +702,22 @@ export function createVoiceSession(options) {
       // absolute, same-origin URL. The relay endpoint (server/pattern-ai-server.mjs's
       // handleRealtimeCallRelay) forwards the exact same SDP + ephemeral Bearer credential to the
       // exact same OpenAI upstream; nothing about the SDP/ICE/negotiation semantics changes here.
-      transport = new OpenAIRealtimeWebRTC({
-        mediaStream: mediaStream, audioElement: audioEl,
-        baseUrl: new URL('/api/ai/realtime/call', window.location.origin).href
+      attempt.transport = createTransport({
+        mediaStream: attempt.mediaStream, audioElement: attempt.audioElement,
+        baseUrl: new URL('/api/ai/realtime/call', locationOrigin).href
       });
+      var localTransport = attempt.transport;
       // Direct transport-level listener, not session.on(...) - RealtimeSession never re-emits
       // 'connection_change' (see this file's own header comment). Only ever acts while this is
       // still the current connection (myEpoch check) and only for an UNEXPECTED drop, never one
       // this module's own disconnect() caused (intentionalDisconnect).
-      transport.on('connection_change', function (status) {
-        if (myEpoch !== connectionEpoch || intentionalDisconnect) return;
+      localTransport.on('connection_change', function (status) {
+        if (!isCurrentConnection(myEpoch, localSession, localTransport) || intentionalDisconnect) return;
         if (status === 'disconnected') scheduleReconnect(myEpoch);
       });
-      session = new RealtimeSession(agent, { model: creds.model, transport: transport });
-      session.on('transport_event', onTransportEvent);
+      attempt.session = createRealtimeSession(agent, { model: creds.model, transport: localTransport });
+      var localSession = attempt.session;
+      localSession.on('transport_event', function (event) { onTransportEvent(event, myEpoch, localSession, localTransport); });
       // fix/voice-mode-turn-ux (Part A): neither 'audio_start' nor 'audio_stopped' drives `state`
       // any more - both are derived by the SDK from response-generation-lifecycle events
       // (response.output_audio.done for audio_stopped - verified against
@@ -619,9 +732,9 @@ export function createVoiceSession(options) {
       // could arrive, PlaybackController's own synchronous interrupt() path has almost always
       // already settled things (see that module's own comment on why it never waits for this
       // event); this is a harmless no-op in the ordinary case, not a second source of truth.
-      session.on('audio_interrupted', function () { if (myEpoch === connectionEpoch) markPlaybackEnded(); });
-      session.on('error', function (e) {
-        if (myEpoch !== connectionEpoch) return;
+      localSession.on('audio_interrupted', function () { if (isCurrentConnection(myEpoch, localSession, localTransport)) { if (pendingSpeakSettle) pendingSpeakSettle(); markPlaybackEnded(); } });
+      localSession.on('error', function (e) {
+        if (!isCurrentConnection(myEpoch, localSession, localTransport)) return;
         // fix/voice-mode-turn-ux (Part D req #12): a manual finishUserTurn() commit losing a real
         // race against the server's own VAD auto-commit for the same turn surfaces as exactly this
         // kind of error. finishUserTurn() is the only place in this codebase that ever sends
@@ -645,6 +758,10 @@ export function createVoiceSession(options) {
           clearPendingManualFinish();
           return;
         }
+        // A fatal session error invalidates and closes every resource before exposing ERROR. A
+        // user Retry therefore always creates a clean attempt instead of returning early because
+        // the dead session object is still truthy.
+        teardownTransport();
         setState(VOICE_STATES.ERROR);
         onError({ code: transportErrorCode(e && e.error), stage: 'session' });
       });
@@ -652,25 +769,57 @@ export function createVoiceSession(options) {
       // version's session.connect() has no AbortSignal of its own (verified against its source),
       // so a timeout here stops US from waiting, not the underlying negotiation; the catch block
       // below still tears everything down exactly like any other failed connect().
-      await Promise.race([session.connect({ apiKey: creds.value }), deadline]);
-      if (myEpoch !== connectionEpoch) return; // superseded while SDP/ICE was in flight
+      await Promise.race([localSession.connect({ apiKey: creds.value }), deadline, cancelled]);
+      if (!isCurrentAttempt(attempt)) { cleanupConnectAttempt(attempt); return false; }
+      // Publish resources atomically only after every await has passed its generation check.
+      session = localSession;
+      transport = localTransport;
+      mediaStream = attempt.mediaStream;
+      audioEl = attempt.audioElement;
+      attempt.mediaStream = null;
+      attempt.audioElement = null;
+      attempt.session = null;
+      attempt.transport = null;
+      if (attempt.deadlineTimer) { clearTimeout(attempt.deadlineTimer); attempt.deadlineTimer = null; }
+      attempt.cleaned = true;
+      activeConnectAttempt = null;
       reconnectAttempt = 0;
       setState(VOICE_STATES.LISTENING);
+      return true;
     } catch (connectError) {
-      if (myEpoch !== connectionEpoch) return; // a newer connect()/disconnect() already superseded this attempt
-      var failedStage = phase === 'mint'
-        ? classifyMintFailureStage(connectError, timedOut)
-        : classifySdpFailureStage(connectError, timedOut, transport);
-      teardownTransport();
+      var wasCurrent = myEpoch === connectionEpoch && !attempt.cancelled;
+      var failedTransport = attempt.transport;
+      cleanupConnectAttempt(attempt);
+      if (!wasCurrent || connectError.name === 'AbortError') return false;
+      var failedStage;
+      if (connectError.voiceConnectPhase === 'microphone' || (timedOut && !micSettled)) failedStage = 'microphone_permission';
+      else if (connectError.voiceConnectPhase === 'mint' || phase !== 'sdp') failedStage = classifyMintFailureStage(connectError, timedOut && micSettled && !mintSettled);
+      else failedStage = classifySdpFailureStage(connectError, timedOut, failedTransport);
+      onError({ code: transportErrorCode(connectError), stage: failedStage, recoverable: isReconnect });
+      if (isReconnect) { scheduleReconnect(myEpoch); return false; }
       setState(VOICE_STATES.ERROR);
-      onError({ code: transportErrorCode(connectError), stage: failedStage });
       throw connectError;
     }
+  }
+
+  function connect(connectOptions) {
+    if (session) return Promise.resolve(true);
+    if (connectPromise) return connectPromise;
+    var operation = performConnect(connectOptions);
+    var tracked = operation.finally(function () { if (connectPromise === tracked) connectPromise = null; });
+    connectPromise = tracked;
+    return tracked;
   }
 
   function disconnect() {
     intentionalDisconnect = true;
     connectionEpoch += 1; // invalidate every in-flight/scheduled listener and reconnect from this connection generation
+    playbackEpoch += 1;
+    // Do not leave the public single-flight promise pointing at a permission prompt that the
+    // browser cannot natively abort. The cancellation race wakes performConnect immediately;
+    // should permission resolve later, its own generation guard stops the newly granted track.
+    connectPromise = null;
+    cancelActiveConnectAttempt();
     clearReconnectTimer();
     reconnectAttempt = 0;
     teardownTransport();
@@ -729,6 +878,7 @@ export function createVoiceSession(options) {
   // own onSettled, itself already synchronous with this call) is what moves `state` back to
   // LISTENING when appropriate.
   function interrupt() {
+    playbackEpoch += 1;
     // ElevenLabs voice-provider follow-up: stop first, unconditionally - this audio is entirely
     // outside the OpenAI session below, so session.interrupt() alone would never touch it, and a
     // barge-in must cancel whichever engine is actually speaking (mission requirement: "Barge-in
@@ -743,6 +893,8 @@ export function createVoiceSession(options) {
     try {
       session.interrupt();
     } catch (interruptError) {
+      if (pendingSpeakSettle) pendingSpeakSettle();
+      teardownTransport();
       setState(VOICE_STATES.ERROR);
       onError({ code: transportErrorCode(interruptError), stage: 'interrupt' });
     }
@@ -780,8 +932,9 @@ export function createVoiceSession(options) {
   // error settlement) - only renamed and split out of speak() so it can also serve as the
   // exactly-once fallback target from speakViaElevenLabs() below (mission requirement: a fallback
   // must use "the same text, only once, never duplicated").
-  function speakViaOpenAI(text) {
+  function speakViaOpenAI(text, myPlaybackEpoch) {
     if (!session || !text) return Promise.resolve();
+    if (state === VOICE_STATES.USER_SPEAKING || myPlaybackEpoch !== playbackEpoch) return Promise.resolve();
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
     try {
       session.transport.requestResponse({
@@ -793,9 +946,19 @@ export function createVoiceSession(options) {
       return Promise.resolve();
     }
     var activeSession = session;
+    var activeConnectionEpoch = connectionEpoch;
     return new Promise(function (resolve) {
       var settled = false;
-      var timer = setTimeout(function () { settle(); }, 12000);
+      var timer = setTimeout(function () {
+        // A missing output-buffer stop is a real playback failure, not permission for fallback
+        // audio to overlap the old stream. Cancel provider output and pause the owned element
+        // before releasing the caller's promise.
+        if (myPlaybackEpoch === playbackEpoch && isCurrentConnection(activeConnectionEpoch, activeSession, activeSession.transport)) {
+          try { activeSession.interrupt(); } catch (_e) { /* already disconnected */ }
+          stopAudioElement(audioEl, false);
+        }
+        settle();
+      }, playbackTimeoutMs);
       function settle() {
         if (settled) return;
         settled = true;
@@ -804,7 +967,6 @@ export function createVoiceSession(options) {
         resolve();
       }
       pendingSpeakSettle = settle;
-      activeSession.once('audio_stopped', settle);
       activeSession.once('audio_interrupted', settle);
       activeSession.once('error', settle);
     });
@@ -819,15 +981,16 @@ export function createVoiceSession(options) {
   // .cleared) both keep working unmodified. `responseId` is always null here (there is no OpenAI
   // response for this turn at all) - notifyAudioBufferStarted/Stopped/Cleared already treat a null
   // id as "always matches" (opportunistic correlation only, see that module's own comment).
-  function playElevenLabsAudio(result, myEpoch) {
-    if (!elevenLabsAudioEl) elevenLabsAudioEl = document.createElement('audio');
+  function playElevenLabsAudio(result, myEpoch, myPlaybackEpoch) {
+    if (myEpoch !== connectionEpoch || myPlaybackEpoch !== playbackEpoch) return Promise.resolve();
+    if (!elevenLabsAudioEl) elevenLabsAudioEl = createAudioElement('elevenlabs');
     var el = elevenLabsAudioEl;
     el.src = 'data:' + (result.mimeType || 'audio/mpeg') + ';base64,' + result.audioBase64;
     return new Promise(function (resolve) {
       var settled = false;
       // Same 12s last-resort safety net as speakViaOpenAI's own watchdog - a genuinely stuck/never-
       // firing 'ended'/'error' event must never block the playback queue forever.
-      var timer = setTimeout(function () { settle(false); }, 12000);
+      var timer = setTimeout(function () { stopNow(); }, playbackTimeoutMs);
       function settle(natural) {
         if (settled) return;
         settled = true;
@@ -836,7 +999,7 @@ export function createVoiceSession(options) {
         el.removeEventListener('error', onPlaybackError);
         if (pendingSpeakSettle === settleFromTeardown) pendingSpeakSettle = null;
         if (elevenLabsStopFn === stopNow) elevenLabsStopFn = null;
-        if (myEpoch === connectionEpoch) {
+        if (myEpoch === connectionEpoch && myPlaybackEpoch === playbackEpoch) {
           onOutputAudioBufferEvent(natural ? TRANSPORT_OUTPUT_AUDIO_BUFFER_STOPPED : TRANSPORT_OUTPUT_AUDIO_BUFFER_CLEARED, null);
         }
         resolve();
@@ -856,7 +1019,7 @@ export function createVoiceSession(options) {
       pendingSpeakSettle = settleFromTeardown;
       elevenLabsStopFn = stopNow;
       var playPromise = el.play();
-      var reportStarted = function () { if (myEpoch === connectionEpoch && elevenLabsStopFn === stopNow) onOutputAudioBufferEvent(TRANSPORT_OUTPUT_AUDIO_BUFFER_STARTED, null); };
+      var reportStarted = function () { if (myEpoch === connectionEpoch && myPlaybackEpoch === playbackEpoch && elevenLabsStopFn === stopNow) onOutputAudioBufferEvent(TRANSPORT_OUTPUT_AUDIO_BUFFER_STARTED, null); };
       if (playPromise && typeof playPromise.then === 'function') {
         // A play() rejection (e.g. browser autoplay policy) still must not leave this unsettled -
         // treated as a finished (non-fatal) turn, same posture as onPlaybackError above.
@@ -874,29 +1037,31 @@ export function createVoiceSession(options) {
   // an ordinary fallback condition, see that route's own comment - or a network/parse failure on
   // the request). Never both engines speak the same reply (mission: "Never two audio outputs for
   // one response").
-  function speakViaElevenLabs(text) {
+  function speakViaElevenLabs(text, myPlaybackEpoch) {
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
     var myEpoch = connectionEpoch;
     return Promise.resolve().then(function () {
       return fetchSpeakAudio(language, text);
     }).then(function (result) {
-      if (myEpoch !== connectionEpoch) return; // superseded mid-fetch - never play stale audio into a torn-down/superseded session
-      if (!result || result.fallback) return speakViaOpenAI(text);
-      return playElevenLabsAudio(result, myEpoch);
+      if (myEpoch !== connectionEpoch || myPlaybackEpoch !== playbackEpoch || state === VOICE_STATES.USER_SPEAKING) return;
+      if (!result || result.fallback) return speakViaOpenAI(text, myPlaybackEpoch);
+      return playElevenLabsAudio(result, myEpoch, myPlaybackEpoch);
     }, function () {
       // The fetch/parse itself failed (network error, non-2xx, malformed JSON) - same exactly-once
       // fallback contract as an explicit {fallback:true} response.
-      if (myEpoch !== connectionEpoch) return;
-      return speakViaOpenAI(text);
+      if (myEpoch !== connectionEpoch || myPlaybackEpoch !== playbackEpoch || state === VOICE_STATES.USER_SPEAKING) return;
+      return speakViaOpenAI(text, myPlaybackEpoch);
     });
   }
 
   function speak(text) {
     if (!session || !text) return Promise.resolve();
+    if (state === VOICE_STATES.USER_SPEAKING) return Promise.resolve();
+    var myPlaybackEpoch = ++playbackEpoch;
     if (currentTtsProvider === 'elevenlabs' && currentElevenLabsVoice && typeof fetchSpeakAudio === 'function') {
-      return speakViaElevenLabs(text);
+      return speakViaElevenLabs(text, myPlaybackEpoch);
     }
-    return speakViaOpenAI(text);
+    return speakViaOpenAI(text, myPlaybackEpoch);
   }
 
   // Journey H2, Gate 3 (Conversation Studio voice asset pipeline): plays a single pre-generated,
@@ -926,15 +1091,17 @@ export function createVoiceSession(options) {
   // intentional stop, which is not a broken file.
   function playAudioUrl(url) {
     if (!url) return Promise.resolve();
+    if (state === VOICE_STATES.USER_SPEAKING) return Promise.resolve();
+    var myPlaybackEpoch = ++playbackEpoch;
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
-    if (!publishedAudioEl) publishedAudioEl = document.createElement('audio');
+    if (!publishedAudioEl) publishedAudioEl = createAudioElement('published');
     var el = publishedAudioEl;
     el.src = url;
     return new Promise(function (resolve, reject) {
       var settled = false;
       // Same 12s last-resort safety net as every other playback path in this file - a genuinely
       // stuck/never-firing 'ended'/'error' event must never block the playback queue forever.
-      var timer = setTimeout(function () { settle(false); }, 12000);
+      var timer = setTimeout(function () { stopAndReject(); }, playbackTimeoutMs);
       function settle(ok) {
         if (settled) return;
         settled = true;
@@ -945,11 +1112,13 @@ export function createVoiceSession(options) {
         if (ok) resolve(); else reject(new Error('published audio playback failed'));
       }
       function onEnded() { settle(true); }
-      function onPlaybackError() { settle(false); }
+      function onPlaybackError() { stopAndReject(); }
+      function stopAndReject() { try { el.pause(); el.currentTime = 0; } catch (_e) { /* best-effort */ } settle(false); }
       function stopNow() { try { el.pause(); el.currentTime = 0; } catch (_e) { /* best-effort */ } settle(true); }
       el.addEventListener('ended', onEnded);
       el.addEventListener('error', onPlaybackError);
       publishedAudioStopFn = stopNow;
+      if (myPlaybackEpoch !== playbackEpoch) { stopNow(); return; }
       var playPromise = el.play();
       if (playPromise && typeof playPromise.then === 'function') {
         // A play() rejection (e.g. browser autoplay policy) is a genuine failure here - unlike

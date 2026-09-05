@@ -212,6 +212,10 @@ function BuildView({ i18n, store, draft, setDraft, editingId, onSave, onCancel }
   const templates = store.templates();
   const library = store.stepLibrary();
   const used = new Set(draft.steps.map((s) => s.id));
+  const stepRef = React.useRef(step);
+  const onSaveRef = React.useRef(onSave);
+  stepRef.current = step;
+  onSaveRef.current = onSave;
 
   const STEPS = [
     { n: 1, title: i18n.t('routineWizard1'), note: i18n.t('routineWizard1Note') },
@@ -241,6 +245,45 @@ function BuildView({ i18n, store, draft, setDraft, editingId, onSave, onCancel }
     });
   }
   function toggleRule(key) { setDraft((d) => ({ ...d, rules: { ...d.rules, [key]: !d.rules[key] } })); }
+
+  // This wizard owns the same draft state for manual and conversational edits. Template is kept
+  // as a first-class field because its existing manual handler intentionally seeds the real step
+  // list and default name; Voice calls that handler rather than rebuilding either value itself.
+  React.useEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    let mounted = true;
+    registry.register('psychology-routine-editor', {
+      actionId: 'psychology.routine.create',
+      allowlist: ['template', 'name', 'days', 'rules.warn', 'rules.streak', 'rules.remind', 'rules.watch', 'rules.partial', 'rules.carry'],
+      isOpen: () => mounted,
+      activeStep: () => stepRef.current,
+      stepForPath: (path) => {
+        if (path === 'template' || path === 'name' || path === 'days') return 1;
+        if (path.indexOf('rules.') === 0) return 3;
+        return null;
+      },
+      goToStep: (nextStep) => setStep(Math.max(1, Math.min(4, Number(nextStep) || 1))),
+      validateValue: (path, value) => {
+        if (path === 'template') return !!templates[String(value || '')];
+        if (path === 'days') return Array.isArray(value) && value.every((day) => DAY_LABELS.some(([id]) => id === day));
+        if (path.indexOf('rules.') === 0) return typeof value === 'boolean';
+        return true;
+      },
+      applyValue: (path, value) => {
+        if (path === 'template') { pickTemplate(String(value)); return; }
+        if (path === 'name') { setDraft((d) => ({ ...d, name: String(value || ''), nameTouched: true })); return; }
+        if (path === 'days') { setDraft((d) => ({ ...d, days: value.slice() })); return; }
+        if (path.indexOf('rules.') === 0) {
+          const key = path.slice('rules.'.length);
+            setDraft((d) => ({ ...d, rules: { ...d.rules, [key]: value } }));
+        }
+      },
+      submit: () => onSaveRef.current()
+    });
+    return () => { mounted = false; };
+    // The state setters are stable and the current submit callback is ref-backed above.
+  }, []);
 
   const RULES = [
     ['warn', i18n.t('routineRuleWarn'), i18n.t('routineRuleWarnBody')],
@@ -487,6 +530,15 @@ export function RoutineTab({ i18n }) {
     return () => window.removeEventListener('tradejournal:routine-changed', onChange);
   }, []);
 
+  const routineHubRef = React.useRef(null);
+  React.useEffect(() => {
+    window.TradeJournalNavryaRoutineHub = {
+      create: () => routineHubRef.current && routineHubRef.current.startNew(),
+      editActive: () => routineHubRef.current && routineHubRef.current.startEdit()
+    };
+    return () => { delete window.TradeJournalNavryaRoutineHub; };
+  }, []);
+
   if (!store) return null;
   const routine = store.active();
 
@@ -504,6 +556,8 @@ export function RoutineTab({ i18n }) {
     else store.create(draft);
     setMode(null); setDraft(null);
   }
+
+  routineHubRef.current = { startNew, startEdit };
 
   // No routine yet, and not mid-build: the empty state IS the invitation to build one.
   if (!routine && mode !== 'build') {

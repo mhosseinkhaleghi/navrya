@@ -22,6 +22,7 @@ import { renderAiAssistant } from './aiAssistantView.jsx';
 import { renderCommunity } from './communityView.jsx';
 import { openPublishFlow } from './publishFlowModal.jsx';
 import { renderPsychology } from './psychologyView.jsx';
+import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
 import { renderPatternRegistry } from './patternRegistryView.jsx';
 import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
@@ -2135,6 +2136,274 @@ export function mountCharacterApp(character) {
         'intake.transparencyMatrix.profitKnownToFamily': true, 'intake.transparencyMatrix.lossKnownToFamily': true,
         'intake.transparencyMatrix.capitalKnownToFamily': true, 'intake.transparencyMatrix.tradingActivityKnownToFamily': true
       };
+
+      // The psychology forms below all open their already-real React surfaces, then wait for the
+      // form's existing Process Registry registration before Workflow Engine writes anything.
+      function openPsychologyProcess(tabId, processId) {
+        return new Promise((resolve) => {
+          if (store.getState().activeId !== 'psychology') store.setActiveId('psychology');
+          pollFor(
+            () => window.TradeJournalNavryaPsychologyHub,
+            (hub) => {
+              hub.openTab(tabId);
+              const registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query(processId).open,
+                () => resolve({ processId }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        });
+      }
+
+      function resolvePostTradeReflectionTrade(context, initialFields) {
+        const tradeStore = window.TradeJournalTradeStore;
+        const closed = tradeStore && tradeStore.listSync ? tradeStore.listSync().filter((trade) => trade.status === 'closed') : [];
+        if (!closed.length) return null;
+        const referenceField = (initialFields || []).find((field) => field && field.path === 'tradeReference');
+        const reference = String(referenceField && referenceField.value != null ? referenceField.value : '').trim().toLowerCase();
+        const activeTradeId = context && context.activeEntities && context.activeEntities.tradeId;
+        if (!reference && activeTradeId) return closed.find((trade) => trade.id === activeTradeId) || null;
+        if (/^(?:last|latest|most recent)(?:\s+closed)?(?:\s+trade)?$/.test(reference)) {
+          return closed.slice().sort((a, b) => new Date(b.closedAt || b.updatedAt || 0) - new Date(a.closedAt || a.updatedAt || 0))[0] || null;
+        }
+        const matches = closed.filter((trade) => String(trade.id || '').toLowerCase() === reference);
+        return matches.length === 1 ? matches[0] : null;
+      }
+
+      function normalizeReflectionRating(path, value) {
+        if (['disciplineRating', 'setupQualityRating', 'planAdherenceRating', 'emotionManagementRating'].indexOf(path) === -1) return value;
+        const rating = Number(value);
+        return Number.isInteger(rating) && rating >= 1 && rating <= 10 ? rating : null;
+      }
+
+      function openRoutineEditor(method) {
+        return new Promise((resolve) => {
+          if (store.getState().activeId !== 'psychology') store.setActiveId('psychology');
+          pollFor(
+            () => window.TradeJournalNavryaPsychologyHub,
+            (psychologyHub) => {
+              psychologyHub.openTab('routine');
+              pollFor(
+                () => window.TradeJournalNavryaRoutineHub,
+                (routineHub) => {
+                  routineHub[method]();
+                  const registry = window.TradeJournalAIProcessRegistry;
+                  pollFor(
+                    () => registry && registry.query('psychology-routine-editor').open,
+                    () => resolve({ processId: 'psychology-routine-editor' }),
+                    () => resolve(null)
+                  );
+                },
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        });
+      }
+
+      function normalizeRoutineTemplate(value) {
+        const templates = window.TradeJournalRoutineStore && window.TradeJournalRoutineStore.templates ? window.TradeJournalRoutineStore.templates() : {};
+        const raw = String(value || '').trim().toLowerCase();
+        return Object.keys(templates).find((id) => id.toLowerCase() === raw || String(templates[id].name || '').trim().toLowerCase() === raw) || null;
+      }
+
+      function normalizeRoutineDays(value) {
+        const values = Array.isArray(value) ? value : String(value || '').split(',');
+        const valid = ['sat', 'sun', 'mon', 'tue', 'wed', 'thu', 'fri'];
+        const days = values.map((day) => String(day || '').trim().toLowerCase()).filter((day) => valid.indexOf(day) !== -1);
+        return days.length ? Array.from(new Set(days)) : null;
+      }
+
+      function normalizeMoodValue(path, value) {
+        if (path === 'mood') {
+          const mood = String(value || '').trim().toLowerCase();
+          return ['calm', 'focused', 'hopeful', 'tense', 'flat', 'angry'].indexOf(mood) !== -1 ? mood : null;
+        }
+        if (path === 'sleepQuality') {
+          const sleep = Number(value);
+          return Number.isInteger(sleep) && sleep >= 1 && sleep <= 5 ? sleep : null;
+        }
+        if (path === 'somethingToProveToday') return typeof value === 'boolean' ? value : null;
+        return value;
+      }
+
+      function resolveCatalogValue(registry, raw) {
+        const value = String(raw || '').trim().toLowerCase();
+        if (!value || !registry || !registry.list) return null;
+        const matches = registry.list().filter((item) => item.id === value || Object.keys(item.name || {}).some((language) => String(item.name[language] || '').trim().toLowerCase() === value));
+        return matches.length === 1 ? matches[0].id : null;
+      }
+
+      function normalizeAnalysisProfileField(path, value) {
+        const styleRegistry = window.TradeJournalAnalysisStyleRegistry;
+        const focusRegistry = window.TradeJournalAnalysisFocusRegistry;
+        if (path === 'primaryStyleId') return resolveCatalogValue(styleRegistry, value);
+        if (path === 'secondaryStyleIds' || path === 'focusIds') {
+          const registry = path === 'secondaryStyleIds' ? styleRegistry : focusRegistry;
+          const values = Array.isArray(value) ? value : String(value || '').split(',');
+          const ids = values.map((item) => resolveCatalogValue(registry, item)).filter(Boolean);
+          return ids.length ? Array.from(new Set(ids)) : null;
+        }
+        return value;
+      }
+
+      function openAnalysisProfileEditor(mode, profileId) {
+        return new Promise((resolve) => {
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          pollFor(
+            () => window.TradeJournalNavryaAnalysisProfilesShellHub,
+            (shellHub) => {
+              shellHub.open();
+              pollFor(
+                () => window.TradeJournalNavryaAnalysisProfilesHub,
+                (profilesHub) => {
+                  const opened = mode === 'edit' ? profilesHub.editExisting(profileId) : (profilesHub.create(), true);
+                  if (!opened) { resolve(null); return; }
+                  const registry = window.TradeJournalAIProcessRegistry;
+                  pollFor(
+                    () => registry && registry.query('analysis-profile-editor').open,
+                    () => resolve({ processId: 'analysis-profile-editor' }),
+                    () => resolve(null)
+                  );
+                },
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        });
+      }
+
+      if (window.TradeJournalAIActionRegistry) {
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'psychology.weeklyCheckIn.fill', domain: 'psychology', riskLevel: 'low',
+          description: 'Open NAVRYA\'s real Weekly Check-In and collect the trader\'s own discipline rating, biggest win, and biggest lesson. Never infer a reflection answer; ask for each answer the trader has not supplied.',
+          aliases: ['run weekly check-in', 'weekly check in', 'weekly reflection', 'review my trading week'],
+          requiredFields: ['disciplineRating', 'biggestWin', 'biggestLesson'], optionalFields: [],
+          available: () => true,
+          normalizeField: normalizeReflectionRating,
+          open: () => new Promise((resolve) => {
+            openWeeklyCheckIn();
+            const registry = window.TradeJournalAIProcessRegistry;
+            pollFor(
+              () => registry && registry.query('mh-weekly-checkin').open,
+              () => resolve({ processId: 'mh-weekly-checkin' }),
+              () => resolve(null)
+            );
+          }),
+          submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('mh-weekly-checkin'),
+          resultContext: () => {}
+        });
+
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'psychology.postTradeReflection.fill', domain: 'psychology', riskLevel: 'low',
+          description: 'Open the real Post-Trade Reflection for one specific closed trade. tradeReference identifies that closed trade: use “last trade” only when the trader explicitly asks for the most recent closed trade, or use an exact trade id. It never creates a reflection for an ambiguous trade. Then collect the trader\'s own ratings, plan-deviation reason, and sentence of the day.',
+          aliases: ['reflect on my last trade', 'post trade reflection', 'do the reflection for my last trade', 'review that closed trade'],
+          requiredFields: ['setupQualityRating', 'planAdherenceRating', 'emotionManagementRating', 'deviationReason', 'sentenceOfTheDay'], optionalFields: ['tradeReference'],
+          resolutionOnlyFields: ['tradeReference'],
+          available: () => {
+            const tradeStore = window.TradeJournalTradeStore;
+            return !!(tradeStore && tradeStore.listSync && tradeStore.listSync().some((trade) => trade.status === 'closed'));
+          },
+          normalizeField: normalizeReflectionRating,
+          open: (context, initialFields) => new Promise((resolve) => {
+            const trade = resolvePostTradeReflectionTrade(context, initialFields);
+            if (!trade) { resolve(null); return; }
+            openPostTradeReflection(trade);
+            const registry = window.TradeJournalAIProcessRegistry;
+            pollFor(
+              () => registry && registry.query('mh-post-trade-reflection').open,
+              () => resolve({ processId: 'mh-post-trade-reflection' }),
+              () => resolve(null)
+            );
+          }),
+          submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('mh-post-trade-reflection'),
+          resultContext: () => {}
+        });
+
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'psychology.mood.log', domain: 'psychology', riskLevel: 'low',
+          description: 'Open the real Mood check-in, then log only the mood, sleep quality, “something to prove” answer, and personal event the trader explicitly states. A mood check-in creates the same real pre-session record as pressing a mood card manually.',
+          aliases: ['log my mood', 'mood check in', 'how i feel before trading'],
+          requiredFields: ['mood'], optionalFields: ['sleepQuality', 'somethingToProveToday', 'significantPersonalEvent'],
+          available: () => true,
+          normalizeField: normalizeMoodValue,
+          open: () => openPsychologyProcess('mood', 'psychology-mood-log'),
+          submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('psychology-mood-log'),
+          resultContext: () => {}
+        });
+
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'psychology.routine.create', domain: 'psychology', riskLevel: 'low',
+          description: 'Open the real Routine builder. template, name, and days are the actual first-step controls; supported day ids are sat, sun, mon, tue, wed, thu, fri. Rules are optional real toggle controls. Never invent routine steps: the selected real template supplies them.',
+          aliases: ['build a routine', 'create a routine', 'new trading routine'],
+          requiredFields: ['template', 'name', 'days'], optionalFields: ['rules.warn', 'rules.streak', 'rules.remind', 'rules.watch', 'rules.partial', 'rules.carry'],
+          available: () => !!window.TradeJournalRoutineStore,
+          normalizeField: (path, value) => path === 'template' ? normalizeRoutineTemplate(value) : path === 'days' ? normalizeRoutineDays(value) : value,
+          open: () => openRoutineEditor('create'),
+          submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('psychology-routine-editor'),
+          resultContext: () => {}
+        });
+
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'psychology.routine.edit', domain: 'psychology', riskLevel: 'low', completionPolicy: 'manual-only',
+          description: 'Open the currently active real Routine builder for editing. Use it when the trader asks to review or change their active routine; every changed field still lands in that one existing draft.',
+          aliases: ['edit my routine', 'change my routine', 'review my routine'],
+          requiredFields: [], optionalFields: ['template', 'name', 'days', 'rules.warn', 'rules.streak', 'rules.remind', 'rules.watch', 'rules.partial', 'rules.carry'],
+          available: () => !!(window.TradeJournalRoutineStore && window.TradeJournalRoutineStore.active && window.TradeJournalRoutineStore.active()),
+          normalizeField: (path, value) => path === 'template' ? normalizeRoutineTemplate(value) : path === 'days' ? normalizeRoutineDays(value) : value,
+          open: () => openRoutineEditor('editActive'),
+          submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('psychology-routine-editor'),
+          resultContext: () => {}
+        });
+
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'psychology.therapist.review', domain: 'psychology', riskLevel: 'low', completionPolicy: 'manual-only',
+          description: 'Open the real Therapist review queue. queueView can only be pending, applied, or rejected. Never approve, reject, or bulk-apply a suggestion by voice: those existing review buttons remain an explicit human consent boundary.',
+          aliases: ['open therapist review', 'show therapist suggestions', 'review therapist queue'],
+          requiredFields: [], optionalFields: ['queueView'],
+          available: () => true,
+          normalizeField: (path, value) => path !== 'queueView' ? value : ['pending', 'applied', 'rejected'].indexOf(String(value || '').toLowerCase()) !== -1 ? String(value).toLowerCase() : null,
+          open: () => openPsychologyProcess('therapist', 'psychology-therapist-review'),
+          submit: () => undefined,
+          resultContext: () => {}
+        });
+
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'profile.analysis.create', domain: 'strategies', riskLevel: 'low',
+          description: 'Open the real two-step Analysis Profile creator. Ask for a real primary analysis style first, then the trader\'s real focus areas and profile name; optional secondary styles and custom-method notes are only used when the trader explicitly supplies them.',
+          aliases: ['create analysis profile', 'new analysis profile', 'make an analysis profile'],
+          requiredFields: ['primaryStyleId', 'focusIds', 'name'], optionalFields: ['secondaryStyleIds', 'customMethodNotes'],
+          available: () => !!window.TradeJournalAnalysisProfileStore,
+          normalizeField: normalizeAnalysisProfileField,
+          open: () => openAnalysisProfileEditor('create'),
+          submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('analysis-profile-editor'),
+          resultContext: () => {}
+        });
+
+        window.TradeJournalAIActionRegistry.registerAction({
+          id: 'profile.analysis.edit', domain: 'strategies', riskLevel: 'low',
+          description: 'Open one existing Analysis Profile by exact name and edit its real style, focus, custom-method note, or displayed name. profileName identifies the existing profile; it is not a rename. If zero or more than one profile has that name, ask which profile instead of guessing.',
+          aliases: ['edit analysis profile', 'update analysis profile', 'change analysis profile'],
+          requiredFields: ['profileName'], optionalFields: ['primaryStyleId', 'secondaryStyleIds', 'customMethodNotes', 'focusIds', 'name'],
+          resolutionOnlyFields: ['profileName'],
+          available: () => !!window.TradeJournalAnalysisProfileStore,
+          normalizeField: normalizeAnalysisProfileField,
+          open: (context, initialFields) => {
+            const field = (initialFields || []).find((item) => item && item.path === 'profileName');
+            const name = String(field && field.value != null ? field.value : '').trim().toLowerCase();
+            const profiles = window.TradeJournalAnalysisProfileStore && window.TradeJournalAnalysisProfileStore.listSync ? window.TradeJournalAnalysisProfileStore.listSync() : [];
+            const matches = profiles.filter((profile) => String(profile.name || '').trim().toLowerCase() === name);
+            return matches.length === 1 ? openAnalysisProfileEditor('edit', matches[0].id) : Promise.resolve(null);
+          },
+          submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('analysis-profile-editor'),
+          resultContext: () => {}
+        });
+      }
 
       // Journey H1: closes a confirmed gap - the real Psychology Intake wizard
       // (mentalHealthIntakeModal.jsx, 13 steps) has always had a real 'mh-intake' Process Registry

@@ -20,6 +20,13 @@ through to `open()` as a second argument, so an action whose `open()` must first
 existing real entity by name (never guess - F53) can do that lookup before deciding what (if
 anything) to open.
 
+**Voice coverage update**: Weekly Check-In, Post-Trade Reflection, Mood, Routine, Therapist
+review, and Analysis Profile creation/editing are action-startable through their existing React
+surfaces. Their fields use the same Process Registry apply path as every other action. For any
+stepped registration, Workflow Engine now prepares the next field's declared real step and waits
+for a rendered frame before the reply can reach chat or Voice TTS. Crypto invoices and subscription
+purchase remain intentionally outside both registries.
+
 **F15 found and fixed two real, general bugs** (neither specific to Strategy - both equally affect
 `pattern.create`/`pattern.edit`, fixed there too):
 1. **A submit-grace-window race**: an action whose real entity already persists the instant
@@ -94,6 +101,13 @@ targeting it would be driving legacy DOM, not a `Modal`/NAVRYA component - noted
 | `pattern.edit` (F2) | patterns | patternName (resolution-only, never applied to the real UI) | name, description, completionThreshold, instruments (resolved strictly against the catalog) | `pattern-editor-{id}` (dynamic - resolved by exact, case-insensitive name match; zero/ambiguous matches resolve nothing, never guessed) |
 | `strategy.create` (F15) | strategies | name | full real Strategy allowlist | `strategy-editor-{id}` |
 | `strategy.edit` (F15) | strategies | strategyName (resolution-only) | name + full real Strategy allowlist | `strategy-editor-{id}` |
+| `psychology.weeklyCheckIn.fill` | psychology | disciplineRating, biggestWin, biggestLesson | - | `mh-weekly-checkin` (opens `openWeeklyCheckIn()` and submits through its existing save handler) |
+| `psychology.postTradeReflection.fill` | psychology | setupQualityRating, planAdherenceRating, emotionManagementRating, deviationReason, sentenceOfTheDay | tradeReference (resolution-only) | `mh-post-trade-reflection` (opens only an active or explicitly identified recent closed Trade via `openPostTradeReflection(trade)`, never guesses) |
+| `psychology.mood.log` | psychology | mood | sleepQuality, somethingToProveToday, significantPersonalEvent | `psychology-mood-log` (the real pre-session mood flow) |
+| `psychology.routine.create` / `.edit` | psychology | template, name, days / - | real routine-rule toggles | `psychology-routine-editor` (the existing builder; edit opens only the current active Routine) |
+| `psychology.therapist.review` | psychology | - | queueView | `psychology-therapist-review` (view filter only; individual/bulk approve and reject remain human-click-only) |
+| `profile.analysis.create` | strategies | primaryStyleId, focusIds, name | secondaryStyleIds, customMethodNotes | `analysis-profile-editor` (existing two-step onboarding) |
+| `profile.analysis.edit` | strategies | profileName (resolution-only) | primaryStyleId, focusIds, name, secondaryStyleIds, customMethodNotes | `analysis-profile-editor` (exact, case-insensitive name resolution; zero/ambiguous matches do not open) |
 | `session.chartEntry.create` (F19) | sessions | - | timeframe, market, date, note | `live-session-chart-entry` (fixed id, entityAlreadyPersisted - a real modal the user explicitly closes; **never auto-submits - the real form's own `file` requirement is not, and must never become, AI-fillable; see F19 notes below**) |
 | `session.movementEntry.create` (F19) | sessions | - | note | `live-session-entry-{id}` (dynamic; deliberately NOT entityAlreadyPersisted - see F19 notes below) |
 | `session.analysis.run` | sessions | - | - | `session-analysis-run` (fixed id via the default `processIdFor()` mapping; entityAlreadyPersisted - the real AI Analysis result modal stays open until explicitly closed). Runs the real `POST /api/sessions/analyze` call (`session-analysis-client.js`'s `analyzeSession()`, the exact same one the in-app "AI analysis" button uses - never a second request-building path) against the Session's latest chart entry with an image; `submit()` awaits the real result via `liveSessionView.jsx`'s `runAiAnalysis()` hub method. Once a result lands (from this action OR any of the 3 pre-existing manual triggers alike), `liveSessionView.jsx` dispatches `tradejournal:ai-analysis-ready` with the result's own `thesis.headline`; `chatDockView.jsx` speaks it through the existing PlaybackController queue only when Voice Mode is genuinely connected - no new LLM call, text mode never sees the tag-free headline spoken aloud at all. |
@@ -620,13 +634,22 @@ Nothing for Journey F to drive here until the live UI itself gains this capabili
 | Mark hunting trade open | `dashboardView.jsx` / `liveSessionView.jsx` | - (plain button) | - | Positions panel button | `tradeStore.updateStatus(id,'open')` | NO | **no confirm - low risk, reversible-ish** |
 | Cancel hunting trade | same | - | - | Positions panel button | `tradeStore.updateStatus(id,'cancelled')` | NO | **no confirm today** |
 
+### Strategies / Analysis Profiles
+
+| Workflow | Real UI | Process id | Allowlist | Open | Save | Action? | Confirm? |
+|---|---|---|---|---|---|---|---|
+| Analysis Profile create/edit | `analysisProfileOnboarding.jsx` / `analysisProfilesView.jsx` | `analysis-profile-editor` | primaryStyleId, secondaryStyleIds, customMethodNotes, focusIds, name | New Profile / Edit | existing `AnalysisProfileStore` create/update path | **YES - `profile.analysis.create` / `.edit`** | normal; edit resolves an exact existing name, never guesses |
+
 ### Psychology
 
 | Workflow | Real UI | Process id | Allowlist | Open | Save | Action? | Confirm? |
 |---|---|---|---|---|---|---|---|
 | Pre-Session Check-in | `preSessionCheckInModal.jsx` | `mh-pre-session-checkin` | sleepQuality, currentStressLevel, significantPersonalEvent | gated before first session entry | `mh.addPreSessionCheckIn()` | NO | normal - **F58 applies: never fabricate the numeric ratings** |
-| Post-Trade Reflection | `postTradeReflectionModal.jsx` | `mh-post-trade-reflection` | setupQualityRating, planAdherenceRating, emotionManagementRating, deviationReason, sentenceOfTheDay | auto-opens after a close | `mh.addPostTradeReflection()` | NO | normal - `sentenceOfTheDay` is safety-screened |
-| Weekly Check-in | `weeklyCheckInModal.jsx` | `mh-weekly-checkin` | disciplineRating, biggestWin, biggestLesson | "Run check-in now" | `mh.addWeeklyCheckIn()` | NO | normal |
+| Post-Trade Reflection | `postTradeReflectionModal.jsx` | `mh-post-trade-reflection` | setupQualityRating, planAdherenceRating, emotionManagementRating, deviationReason, sentenceOfTheDay | auto-opens after a close / explicit closed-trade action | `mh.addPostTradeReflection()` | **YES - `psychology.postTradeReflection.fill`** | normal - `sentenceOfTheDay` is safety-screened |
+| Weekly Check-in | `weeklyCheckInModal.jsx` | `mh-weekly-checkin` | disciplineRating, biggestWin, biggestLesson | "Run check-in now" / action | `mh.addWeeklyCheckIn()` | **YES - `psychology.weeklyCheckIn.fill`** | normal |
+| Mood check-in | `moodTab.jsx` | `psychology-mood-log` | mood, sleepQuality, somethingToProveToday, significantPersonalEvent | Psychology Mood tab | existing `log()` / Pre-Session Check-in flow | **YES - `psychology.mood.log`** | normal |
+| Routine builder | `routineTab.jsx` | `psychology-routine-editor` | template, name, days, rule toggles | Psychology Routine tab | existing `RoutineStore.create()` / `.update()` path | **YES - `psychology.routine.create` / `.edit`** | normal |
+| Therapist review filter | `therapistTab.jsx` | `psychology-therapist-review` | queueView | Psychology Therapist tab | none - view only | **YES - `psychology.therapist.review`** | approve/reject/bulk actions remain click-only |
 | Monthly Bias Checklist | `mental-health-continuous.js` (**legacy DOM, see Section 0**) | `mh-bias-checklist` | per-bias-type `.selfRating`/`.example` × 7 types | `psychologyView.jsx` "Run checklist" | `store.saveBiasChecklist()` | NO | normal, but implemented on non-React DOM |
 | Mental Health Intake | `mentalHealthIntakeModal.jsx` | `mh-intake` | 12 dotted paths (demographics/financialContext/tradingHistory/motivation/firstBigLossReaction/transparencyMatrix) | first-run / Psychology menu | `store.save(intake.completed=true)` | NO | normal - **F59 applies** |
 

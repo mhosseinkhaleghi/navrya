@@ -34,7 +34,7 @@
     if (!registry || !processId) return null;
     var snap = typeof registry.snapshot === 'function' ? registry.snapshot(processId) : null;
     if (!snap || !snap.open) return null;
-    return { processId: processId, layer: snap.layer, step: snap.step };
+    return { processId: processId, layer: snap.layer, step: snap.step, revision: snap.revision };
   }
 
   // Returns false (no divergence), or one of 'closed' | 'surface' | 'step' - never a bare
@@ -50,6 +50,7 @@
       if (!topmost || topmost.id !== captured.processId) return 'surface'; // a different surface is now topmost
     }
     if (captured.step !== undefined && captured.step !== null && current.step !== captured.step) return 'step'; // the SAME wizard moved, under the user's own hand
+    if (captured.revision !== undefined && captured.revision !== null && current.revision !== captured.revision) return 'revision';
     return false;
   }
 
