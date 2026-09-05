@@ -34,6 +34,7 @@ import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
 import { csrfProtection } from './security/csrf.mjs';
 import { requireUploadOwnership } from './security/upload-ownership.mjs';
+import { resolveRedisClient } from './security/rate-limit.mjs';
 
 // Shared-secret gate for the public preview deploy - BASIC_AUTH_USER/PASS are unset in local
 // dev (checkBasicAuth then always passes), and set as Render env vars once a real link is
@@ -84,8 +85,19 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   app.get('/readyz', async (req, res) => {
     let dbOk = false;
     try { const health = await repo.health(); dbOk = Boolean(health.dbOk); } catch (_) { dbOk = false; }
-    const ready = dbOk;
-    res.status(ready ? 200 : 503).json({ ready, checks: { database: dbOk } });
+    // Launch-readiness audit fix (P2): rate limiting and AI quota both depend on Redis in
+    // production (security/rate-limit.mjs refuses to boot on a memory store there), but this
+    // probe never reflected that - an operator had no way to see "Redis is down" here even
+    // though real requests were already failing because of it. `resolveRedisClient()` returns
+    // null when REDIS_URL is genuinely unset (local/test) - that is never itself a readiness
+    // failure, only an unreachable CONFIGURED Redis is.
+    let redisOk = true;
+    const redisClient = resolveRedisClient();
+    if (redisClient) {
+      try { await redisClient.ping(); } catch (_) { redisOk = false; }
+    }
+    const ready = dbOk && redisOk;
+    res.status(ready ? 200 : 503).json({ ready, checks: { database: dbOk, redis: redisOk } });
   });
 
   app.use((req, res, next) => {
