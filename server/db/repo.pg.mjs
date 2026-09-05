@@ -836,6 +836,22 @@ export function createPgRepo(pool) {
         [id, targetType, targetId, reporterId, trimmedReason]
       );
       return mapReport(rows[0]);
+    },
+    // Launch-readiness audit fix (P1-4): reports could be created since day one but nothing ever
+    // read them back - reports_status_idx (003_marketplace_and_messaging.sql) anticipated this
+    // exact query shape from the start.
+    async list({ status } = {}) {
+      const { rows } = status
+        ? await pool.query('SELECT * FROM reports WHERE status=$1 ORDER BY created_at DESC', [status])
+        : await pool.query('SELECT * FROM reports ORDER BY created_at DESC');
+      return rows.map(mapReport);
+    },
+    async updateStatus(id, status) {
+      if (!['open', 'reviewed', 'dismissed'].includes(status)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows: existingRows } = await pool.query('SELECT id FROM reports WHERE id=$1', [id]);
+      if (!existingRows[0]) throw new ApiError(404, 'REPORT_NOT_FOUND');
+      const { rows } = await pool.query('UPDATE reports SET status=$2 WHERE id=$1 RETURNING *', [id, status]);
+      return mapReport(rows[0]);
     }
   };
 

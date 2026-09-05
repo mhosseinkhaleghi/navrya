@@ -1,9 +1,15 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
+import { rateLimit, sessionKey } from './security/rate-limit.mjs';
 
 function assertParticipant(thread, userId) {
   if (thread.buyerId !== userId && thread.sellerId !== userId) throw new ApiError(403, 'NOT_THREAD_PARTICIPANT');
 }
+
+// Launch-readiness audit fix (P1-3) - see routes.posts.mjs's identical comment for the full
+// reasoning; same primitive, applied here to thread creation and message sending.
+const threadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, keyFn: sessionKey('messages-thread') });
+const messageLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, keyFn: sessionKey('messages-send') });
 
 // Mounted at /api/messages, behind requireAuth. Threads are either anchored to a specific
 // marketplace listing (buyer asking the seller about that item) or general (started from
@@ -32,7 +38,7 @@ export function router(repo) {
   // Either the existing product-anchored flow (listingId) or a general DM to any user
   // (counterpartyId, from Community's "New message" dialog) - repo.threads.findOrCreate resolves
   // both to the same idempotent thread lookup.
-  app.post('/threads', asyncHandler(async (req, res) => {
+  app.post('/threads', threadLimiter, asyncHandler(async (req, res) => {
     const { listingId, counterpartyId } = req.body || {};
     if (!listingId && !counterpartyId) throw new ApiError(400, 'VALIDATION_FAILED');
     const thread = await repo.threads.findOrCreate({ listingId, counterpartyId, buyerId: req.currentUser.id });
@@ -48,7 +54,7 @@ export function router(repo) {
     res.json({ thread, messages });
   }));
 
-  app.post('/threads/:id/messages', asyncHandler(async (req, res) => {
+  app.post('/threads/:id/messages', messageLimiter, asyncHandler(async (req, res) => {
     const thread = await repo.threads.get(req.params.id);
     if (!thread) throw new ApiError(404, 'THREAD_NOT_FOUND');
     assertParticipant(thread, req.currentUser.id);

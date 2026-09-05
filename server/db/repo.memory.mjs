@@ -380,6 +380,20 @@ export function createMemoryRepo() {
       const record = { id: newId('report'), targetType, targetId, reporterId, reason: trimmedReason, status: 'open', createdAt: now() };
       state.reports.set(record.id, record);
       return clone(record);
+    },
+    // Launch-readiness audit fix (P1-4) - see repo.pg.mjs's identical comment.
+    async list({ status } = {}) {
+      return Array.from(state.reports.values())
+        .filter((r) => !status || r.status === status)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+        .map(clone);
+    },
+    async updateStatus(id, status) {
+      if (!['open', 'reviewed', 'dismissed'].includes(status)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const record = state.reports.get(id);
+      if (!record) throw new ApiError(404, 'REPORT_NOT_FOUND');
+      record.status = status;
+      return clone(record);
     }
   };
 

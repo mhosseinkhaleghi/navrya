@@ -61,6 +61,38 @@ const server = createApp({ repo, uploadsDir }).listen(port, host, () => {
   }
 });
 
+// Launch-readiness audit fix (P2): auth_sessions/auth_transactions grow forever without this -
+// deleteExpired() has existed on both repo domains since the original auth rework
+// (docs/auth/IMPLEMENTATION_STATUS.md section 1, honestly flagged there as "no cron/scheduler
+// wiring was added yet"), but nothing ever called it. Wired here as a simple in-process interval
+// rather than a separate scheduler/cron container - this is cheap, idempotent, best-effort
+// cleanup, not a job that needs its own retry/alerting infrastructure. Only runs against a real
+// repo: the memory fallback resets on restart anyway, so unbounded growth is never a real concern
+// there.
+const SESSION_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+let sessionCleanupTimer = null;
+if (!usingMemoryRepo) {
+  const runExpiredCleanup = async () => {
+    try {
+      const cutoff = new Date().toISOString();
+      const [expiredSessions, expiredTransactions] = await Promise.all([
+        repo.authSessions.deleteExpired(cutoff),
+        repo.authTransactions.deleteExpired(cutoff)
+      ]);
+      if (expiredSessions || expiredTransactions) {
+        console.log(`[cleanup] removed ${expiredSessions} expired auth_sessions row(s), ${expiredTransactions} expired auth_transactions row(s)`);
+      }
+    } catch (error) {
+      // Best-effort - a failed sweep must never crash the process or block a real request; it
+      // just tries again on the next interval.
+      console.error('[cleanup] expired-session sweep failed:', error.message);
+    }
+  };
+  sessionCleanupTimer = setInterval(runExpiredCleanup, SESSION_CLEANUP_INTERVAL_MS);
+  sessionCleanupTimer.unref(); // never keeps the process alive on its own
+  runExpiredCleanup(); // also once at startup, not only after the first interval elapses
+}
+
 // Graceful shutdown: stop accepting new connections, let in-flight requests finish, then close
 // the DB pool - a rolling deploy/restart should never abruptly cut off a request that was
 // already being served. SIGTERM is what `docker compose stop`/most orchestrators send first
@@ -70,6 +102,7 @@ async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[community-api] ${signal} received, shutting down gracefully...`);
+  if (sessionCleanupTimer) clearInterval(sessionCleanupTimer);
   server.close(async (error) => {
     if (error) console.error('[community-api] error while closing HTTP server:', error.message);
     if (!usingMemoryRepo && typeof repo.health === 'function') {

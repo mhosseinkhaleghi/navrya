@@ -481,6 +481,26 @@ export function router(repo, uploadsDir) {
     res.json(updated);
   }));
 
+  // Launch-readiness audit fix (P1-4): reports (posts/comments/listings/messages) could be
+  // created since day one (server/community/routes.posts.mjs) but nothing ever read them back -
+  // "reporting exists but there is no moderation queue" was a real, named gap. This is the
+  // review surface: list (optionally by status) and move a report through
+  // open -> reviewed/dismissed, same audit-logged PATCH shape as every other admin mutation here.
+  app.get('/reports', asyncHandler(async (req, res) => {
+    const status = req.query.status && req.query.status !== 'all' ? req.query.status : undefined;
+    const [reports, users] = await Promise.all([repo.reports.list({ status }), repo.users.list()]);
+    const byId = {};
+    users.forEach((u) => { byId[u.id] = u; });
+    res.json(reports.map((report) => ({ ...report, reporterName: byId[report.reporterId] ? byId[report.reporterId].displayName : null })));
+  }));
+
+  app.patch('/reports/:id', asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const updated = await repo.reports.updateStatus(req.params.id, body.status);
+    await audit(req, 'community.report.update', 'report', req.params.id, { status: body.status });
+    res.json(updated);
+  }));
+
   // AI Cost Control correction: this route has always been a token-count x admin-set rate-card
   // ESTIMATE (never a reconciled provider invoice, never gateway-settled cost) - the `aiCostByProvider`
   // shape below is unchanged (no existing caller breaks), but the response now says so explicitly

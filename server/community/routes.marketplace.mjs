@@ -1,6 +1,13 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
 import { saveImages } from '../storage/storage.mjs';
+import { rateLimit, sessionKey } from './security/rate-limit.mjs';
+
+// Launch-readiness audit fix (P1-3) - see routes.posts.mjs's identical comment for the full
+// reasoning; same primitive, applied here to listing creation, purchases, and ratings.
+const listingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, keyFn: sessionKey('marketplace-listing') });
+const purchaseLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, keyFn: sessionKey('marketplace-purchase') });
+const ratingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, keyFn: sessionKey('marketplace-rating') });
 
 function requiredFields(body, fields) {
   for (const field of fields) if (body[field] === undefined || body[field] === null || body[field] === '') throw new ApiError(400, 'VALIDATION_FAILED');
@@ -31,7 +38,7 @@ export function router(repo, uploadsDir) {
     res.json(await repo.listings.listPublished({ type: req.query.type, limit, before: req.query.before }));
   }));
 
-  app.post('/listings', asyncHandler(async (req, res) => {
+  app.post('/listings', listingLimiter, asyncHandler(async (req, res) => {
     const body = req.body || {};
     requiredFields(body, ['type', 'sourceId', 'title', 'priceAmount', 'previewContent', 'fullContent', 'evidenceAsOf']);
     // 'subscription' added for the Account Profile feature (Section 5/1 of the migration) -
@@ -66,7 +73,7 @@ export function router(repo, uploadsDir) {
     res.json(await repo.listings.update(req.params.id, req.body || {}));
   }));
 
-  app.post('/listings/:id/purchase', asyncHandler(async (req, res) => {
+  app.post('/listings/:id/purchase', purchaseLimiter, asyncHandler(async (req, res) => {
     const listing = await repo.listings.get(req.params.id);
     if (!listing) throw new ApiError(404, 'LISTING_NOT_FOUND');
     const purchase = await repo.purchases.create({ listingId: listing.id, buyerId: req.currentUser.id, priceAtPurchase: listing.priceAmount });
@@ -87,7 +94,7 @@ export function router(repo, uploadsDir) {
     res.json({ ratings: enriched, average, count: ratings.length });
   }));
 
-  app.post('/listings/:id/ratings', asyncHandler(async (req, res) => {
+  app.post('/listings/:id/ratings', ratingLimiter, asyncHandler(async (req, res) => {
     const { rating, reviewText } = req.body || {};
     const record = await repo.ratings.create({ listingId: req.params.id, buyerId: req.currentUser.id, rating, reviewText });
     res.status(201).json(record);
