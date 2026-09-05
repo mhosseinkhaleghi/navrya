@@ -30,6 +30,7 @@ import * as routesStorage from './routes.storage.mjs';
 import * as routesConversationScenariosSync from './routes.conversation-scenarios-sync.mjs';
 import * as routesConversationScenarioExposuresSync from './routes.conversation-scenario-exposures-sync.mjs';
 import * as routesWebhooksBsc from './routes.webhooks-bsc.mjs';
+import * as routesErrors from './routes.errors.mjs';
 import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
 import { csrfProtection } from './security/csrf.mjs';
@@ -113,6 +114,10 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   // the path prefix only; body-parser skips re-parsing an already-parsed body, so the general
   // parser below is a no-op for these paths.
   app.use('/api/auth', express.json({ limit: '32kb' }));
+  // Same small-body-before-the-general-parser precedent, applied to the error-telemetry beacon
+  // (P1-1) - a real client error event is a short message plus a few short metadata fields, never
+  // anything close to the general 60mb image-upload ceiling.
+  app.use('/api/errors', express.json({ limit: '8kb' }));
   // Real BSC crypto webhook (task A.6) - needs the RAW request body to verify its HMAC signature
   // (server/commercial/bsc-crypto-billing-provider.mjs's verifyWebhook()), so this is parsed as
   // raw bytes, BEFORE the general JSON parser below would otherwise consume it, exactly like the
@@ -160,6 +165,10 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   // entirely by its own HMAC signature (see the raw-body middleware above), never by
   // requireAuth/csrfProtection below.
   app.use('/api/webhooks', routesWebhooksBsc.router(repo));
+  // Public, deliberately pre-auth (P1-1) - a boot failure or a pre-login character-chooser error
+  // has no session to attach to. See routes.errors.mjs's own comment for the real abuse defenses
+  // (rate limit, field caps, upsert-based aggregation) this relies on instead of requireAuth.
+  app.use('/api/errors', routesErrors.router(repo));
 
   app.use('/api/auth', routesAuth.router(repo, authDeps)); // register/login/google/logout/sessions/password/email - bootstraps identity, applies its own per-route auth+CSRF (authDeps: test-only Google-verify override)
   app.use('/api/auth/oidc', routesAuthOidc.router(repo)); // generic OIDC start/callback

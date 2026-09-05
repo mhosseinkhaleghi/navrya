@@ -125,6 +125,14 @@ function mapRating(row) { return { id: row.id, listingId: row.listing_id, buyerI
 function mapThread(row) { return { id: row.id, listingId: row.listing_id, buyerId: row.buyer_id, sellerId: row.seller_id, createdAt: row.created_at }; }
 function mapMessage(row) { return { id: row.id, threadId: row.thread_id, senderId: row.sender_id, content: row.content, createdAt: row.created_at, readAt: row.read_at }; }
 function mapReport(row) { return { id: row.id, targetType: row.target_type, targetId: row.target_id, reporterId: row.reporter_id, reason: row.reason, status: row.status, createdAt: row.created_at }; }
+// Launch-readiness audit fix (P1-1, 052_client_errors.sql).
+function mapClientError(row) {
+  return {
+    id: row.id, fingerprint: row.fingerprint, releaseVersion: row.release_version, source: row.source,
+    message: row.message, route: row.route, firstSeenAt: row.first_seen_at, lastSeenAt: row.last_seen_at,
+    occurrenceCount: row.occurrence_count, samplePayload: row.sample_payload, status: row.status
+  };
+}
 function mapSession(row) { return { id: row.id, userId: row.user_id, startedAt: row.started_at, lastHeartbeatAt: row.last_heartbeat_at, endedAt: row.ended_at }; }
 function mapUsageEvent(row) {
   return {
@@ -852,6 +860,37 @@ export function createPgRepo(pool) {
       if (!existingRows[0]) throw new ApiError(404, 'REPORT_NOT_FOUND');
       const { rows } = await pool.query('UPDATE reports SET status=$2 WHERE id=$1 RETURNING *', [id, status]);
       return mapReport(rows[0]);
+    }
+  };
+
+  // Launch-readiness audit fix (P1-1, 052_client_errors.sql). One row per (fingerprint,
+  // releaseVersion) - a repeated error is an UPDATE (bump last_seen_at/occurrence_count), never a
+  // new row, so 100,000 identical client errors never become 100,000 writes.
+  const clientErrors = {
+    async record({ fingerprint, releaseVersion, source, message, route, samplePayload }) {
+      const { rows } = await pool.query(
+        `INSERT INTO client_errors (id, fingerprint, release_version, source, message, route, sample_payload)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (fingerprint, release_version) DO UPDATE SET
+           last_seen_at = now(), occurrence_count = client_errors.occurrence_count + 1
+         RETURNING *`,
+        [newId('clienterr'), fingerprint, releaseVersion || 'unknown', source === 'server' ? 'server' : 'client',
+          String(message || '').slice(0, 500), route ? String(route).slice(0, 200) : null, JSON.stringify(samplePayload ?? null)]
+      );
+      return mapClientError(rows[0]);
+    },
+    async list({ status, limit } = {}) {
+      const { rows } = status
+        ? await pool.query('SELECT * FROM client_errors WHERE status=$1 ORDER BY last_seen_at DESC LIMIT $2', [status, limit || 100])
+        : await pool.query('SELECT * FROM client_errors ORDER BY last_seen_at DESC LIMIT $1', [limit || 100]);
+      return rows.map(mapClientError);
+    },
+    async updateStatus(id, status) {
+      if (!['open', 'investigating', 'resolved', 'ignored'].includes(status)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows: existingRows } = await pool.query('SELECT id FROM client_errors WHERE id=$1', [id]);
+      if (!existingRows[0]) throw new ApiError(404, 'CLIENT_ERROR_NOT_FOUND');
+      const { rows } = await pool.query('UPDATE client_errors SET status=$2 WHERE id=$1 RETURNING *', [id, status]);
+      return mapClientError(rows[0]);
     }
   };
 
@@ -4098,6 +4137,6 @@ export function createPgRepo(pool) {
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
-    providerCostCredentials, providerCostSync, providerBalanceSnapshots
+    providerCostCredentials, providerCostSync, providerBalanceSnapshots, clientErrors
   };
 }

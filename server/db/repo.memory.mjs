@@ -16,7 +16,7 @@ export function createMemoryRepo() {
   const state = {
     users: new Map(), credentials: new Map(), posts: new Map(), comments: new Map(), likes: new Map(),
     listings: new Map(), purchases: new Map(), ratings: new Map(),
-    threads: new Map(), messages: new Map(), reports: new Map(),
+    threads: new Map(), messages: new Map(), reports: new Map(), clientErrors: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), auditLog: new Map(),
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
@@ -392,6 +392,41 @@ export function createMemoryRepo() {
       if (!['open', 'reviewed', 'dismissed'].includes(status)) throw new ApiError(400, 'VALIDATION_FAILED');
       const record = state.reports.get(id);
       if (!record) throw new ApiError(404, 'REPORT_NOT_FOUND');
+      record.status = status;
+      return clone(record);
+    }
+  };
+
+  // Launch-readiness audit fix (P1-1) - see repo.pg.mjs's identical comment. One row per
+  // (fingerprint, releaseVersion); a repeat is an in-place bump, never a new row.
+  const clientErrors = {
+    async record({ fingerprint, releaseVersion, source, message, route, samplePayload }) {
+      const version = releaseVersion || 'unknown';
+      const existing = Array.from(state.clientErrors.values()).find((e) => e.fingerprint === fingerprint && e.releaseVersion === version);
+      if (existing) {
+        existing.lastSeenAt = now();
+        existing.occurrenceCount += 1;
+        return clone(existing);
+      }
+      const record = {
+        id: newId('clienterr'), fingerprint, releaseVersion: version, source: source === 'server' ? 'server' : 'client',
+        message: String(message || '').slice(0, 500), route: route ? String(route).slice(0, 200) : null,
+        firstSeenAt: now(), lastSeenAt: now(), occurrenceCount: 1, samplePayload: samplePayload ?? null, status: 'open'
+      };
+      state.clientErrors.set(record.id, record);
+      return clone(record);
+    },
+    async list({ status, limit } = {}) {
+      return Array.from(state.clientErrors.values())
+        .filter((e) => !status || e.status === status)
+        .sort((a, b) => (a.lastSeenAt < b.lastSeenAt ? 1 : -1))
+        .slice(0, limit || 100)
+        .map(clone);
+    },
+    async updateStatus(id, status) {
+      if (!['open', 'investigating', 'resolved', 'ignored'].includes(status)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const record = state.clientErrors.get(id);
+      if (!record) throw new ApiError(404, 'CLIENT_ERROR_NOT_FOUND');
       record.status = status;
       return clone(record);
     }
@@ -2759,6 +2794,6 @@ export function createMemoryRepo() {
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
-    providerCostCredentials, providerCostSync, providerBalanceSnapshots
+    providerCostCredentials, providerCostSync, providerBalanceSnapshots, clientErrors
   };
 }

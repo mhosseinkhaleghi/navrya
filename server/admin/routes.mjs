@@ -501,6 +501,23 @@ export function router(repo, uploadsDir) {
     res.json(updated);
   }));
 
+  // Launch-readiness audit fix (P1-1): the error-telemetry review surface - same shape as the
+  // /reports pair above. Server-side implementation only this pass (routes.errors.mjs,
+  // repo.clientErrors) - no dedicated admin UI panel/tab yet, same honest "API exists, UI is a
+  // fast-follow" scope as the reports queue.
+  app.get('/errors', asyncHandler(async (req, res) => {
+    const status = req.query.status && req.query.status !== 'all' ? req.query.status : undefined;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    res.json(await repo.clientErrors.list({ status, limit }));
+  }));
+
+  app.patch('/errors/:id', asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const updated = await repo.clientErrors.updateStatus(req.params.id, body.status);
+    await audit(req, 'client-error.update', 'client_error', req.params.id, { status: body.status });
+    res.json(updated);
+  }));
+
   // AI Cost Control correction: this route has always been a token-count x admin-set rate-card
   // ESTIMATE (never a reconciled provider invoice, never gateway-settled cost) - the `aiCostByProvider`
   // shape below is unchanged (no existing caller breaks), but the response now says so explicitly
