@@ -1068,6 +1068,15 @@ export function createMemoryRepo() {
         });
       });
       return count;
+    },
+    // P0-2 launch-readiness fix (server/community/security/upload-ownership.mjs) - resolves the
+    // real owner of a chart-entry image uploaded before storage_objects existed. Returns a plain
+    // userId or null, mirroring repo.pg.mjs's identical method.
+    async findOwnerByEntryImageUrl(imageUrl) {
+      for (const session of state.tradingSessions.values()) {
+        if ((session.entries || []).some((entry) => entry.imageUrl === imageUrl)) return session.userId;
+      }
+      return null;
     }
   };
 
@@ -1128,6 +1137,13 @@ export function createMemoryRepo() {
       if (!record) return;
       if (record.userId !== userId) throw new ApiError(403, 'NOT_PATTERN_OWNER');
       state.patterns.delete(id);
+    },
+    // P0-2 launch-readiness fix - see tradingSessions.findOwnerByEntryImageUrl()'s own comment.
+    async findOwnerByScreenshotUrl(imageUrl) {
+      for (const pattern of state.patterns.values()) {
+        if ((pattern.referenceScreenshots || []).some((shot) => shot.imageUrl === imageUrl)) return pattern.userId;
+      }
+      return null;
     }
   };
 
@@ -1199,6 +1215,15 @@ export function createMemoryRepo() {
       if (!record) return;
       if (record.userId !== userId) throw new ApiError(403, 'NOT_STRATEGY_OWNER');
       state.strategies.delete(id);
+    },
+    // P0-2 launch-readiness fix - see tradingSessions.findOwnerByEntryImageUrl()'s own comment.
+    async findOwnerByAttachmentUrl(fileUrl) {
+      for (const strategy of state.strategies.values()) {
+        const sections = [strategy.positionManagement, strategy.riskManagement, strategy.overallFramework];
+        const hit = sections.some((section) => section && (section.attachments || []).some((item) => item.fileUrl === fileUrl));
+        if (hit) return strategy.userId;
+      }
+      return null;
     }
   };
 
@@ -1355,6 +1380,13 @@ export function createMemoryRepo() {
       if (!record) return;
       if (record.userId !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
       state.trades.delete(id);
+    },
+    // P0-2 launch-readiness fix - see tradingSessions.findOwnerByEntryImageUrl()'s own comment.
+    async findOwnerByScreenshotUrl(imageUrl) {
+      for (const trade of state.trades.values()) {
+        if ((trade.screenshots || []).some((shot) => shot.imageUrl === imageUrl)) return trade.userId;
+      }
+      return null;
     }
   };
 
@@ -2160,6 +2192,15 @@ export function createMemoryRepo() {
       if (!record) return null;
       record.deletedAt = now();
       return clone(record);
+    },
+    // P0-2 launch-readiness fix (server/community/security/upload-ownership.mjs) - the fast
+    // ownership lookup for every upload made since this domain existed. Returns a plain userId or
+    // null, matching every other findOwnerBy*() method's shape, not the full record.
+    async findActiveByObjectKey(objectKey) {
+      const record = Array.from(state.storageObjects.values())
+        .filter((o) => o.objectKey === objectKey && !o.deletedAt)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+      return record ? record.userId : null;
     }
   };
 

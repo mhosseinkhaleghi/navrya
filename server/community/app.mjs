@@ -33,6 +33,7 @@ import * as routesWebhooksBsc from './routes.webhooks-bsc.mjs';
 import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
 import { csrfProtection } from './security/csrf.mjs';
+import { requireUploadOwnership } from './security/upload-ownership.mjs';
 
 // Shared-secret gate for the public preview deploy - BASIC_AUTH_USER/PASS are unset in local
 // dev (checkBasicAuth then always passes), and set as Render env vars once a real link is
@@ -117,18 +118,24 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   // Session/pattern/strategy/trade screenshots are private trading-journal/mental-health-adjacent
   // media (Section 7.18) - never publicly reachable, unlike Community's own posts/listings
   // images, which are public by product design (a feed post or a marketplace storefront image is
-  // meant to be visible to other users). This requires a real session before serving anything
-  // under those four category prefixes; everything else under /uploads stays public.
-  // Honest, named gap (see docs/auth/IMPLEMENTATION_STATUS.md): this enforces "a real logged-in
-  // NAVRYA user", not yet "the specific owner of this exact file" - a per-owner reverse-index
-  // check (or short-lived signed URLs) was judged too large an addition for this pass and is
-  // flagged as follow-up work, not silently skipped.
+  // meant to be visible to other users). Everything else under /uploads stays public.
+  //
+  // Launch-readiness audit fix (P0-2, 2026-09-04): a real session used to be the ONLY check here -
+  // any authenticated NAVRYA user, not the file's actual owner, could read another user's private
+  // screenshot if they could guess/enumerate its filename. requireUploadOwnership() (see
+  // security/upload-ownership.mjs) closes this: it resolves the file's real owner (via
+  // storage_objects for anything uploaded through the normal upload endpoints, falling back to
+  // the owning domain row for images uploaded before that table existed) and only lets the request
+  // through when that owner is the current session's user - never merely "a" logged-in user.
   const PRIVATE_UPLOAD_CATEGORIES = new Set(['session', 'pattern', 'strategy', 'trade']);
-  app.use('/uploads', (req, res, next) => {
-    const category = req.path.split('/')[1];
-    if (!PRIVATE_UPLOAD_CATEGORIES.has(category)) return next();
-    return requireAuth(repo)(req, res, next);
-  }, express.static(uploadsDir));
+  function isPrivateUploadPath(req) {
+    return PRIVATE_UPLOAD_CATEGORIES.has(req.path.split('/')[1]);
+  }
+  app.use('/uploads',
+    (req, res, next) => (isPrivateUploadPath(req) ? requireAuth(repo)(req, res, next) : next()),
+    (req, res, next) => (isPrivateUploadPath(req) ? requireUploadOwnership(repo)(req, res, next) : next()),
+    express.static(uploadsDir)
+  );
 
   // Public - the admin frontend's login/test-mode gate reads this BEFORE anyone is
   // identified, to decide whether to show the "TEST MODE" banner or a real login screen.

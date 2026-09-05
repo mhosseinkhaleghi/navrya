@@ -1732,6 +1732,18 @@ export function createPgRepo(pool) {
         [userId, patternId]
       );
       return rows[0].n;
+    },
+    // P0-2 launch-readiness fix (server/community/security/upload-ownership.mjs's fallback tier) -
+    // resolves the real owner of a chart-entry image uploaded before storage_objects existed.
+    // Returns a plain userId or null, never a row shape - the one thing this call site needs.
+    async findOwnerByEntryImageUrl(imageUrl) {
+      const { rows } = await pool.query(
+        `SELECT s.user_id FROM trading_session_entries e
+         JOIN trading_sessions s ON s.id = e.session_id
+         WHERE e.image_url=$1 LIMIT 1`,
+        [imageUrl]
+      );
+      return rows[0] ? rows[0].user_id : null;
     }
   };
 
@@ -1845,6 +1857,16 @@ export function createPgRepo(pool) {
       if (!rows[0]) return;
       if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_PATTERN_OWNER');
       await pool.query('DELETE FROM patterns WHERE id=$1', [id]); // cascades to stages/screenshots/chat messages
+    },
+    // P0-2 launch-readiness fix - see tradingSessions.findOwnerByEntryImageUrl()'s own comment.
+    async findOwnerByScreenshotUrl(imageUrl) {
+      const { rows } = await pool.query(
+        `SELECT p.user_id FROM pattern_screenshots ps
+         JOIN patterns p ON p.id = ps.pattern_id
+         WHERE ps.image_url=$1 LIMIT 1`,
+        [imageUrl]
+      );
+      return rows[0] ? rows[0].user_id : null;
     }
   };
 
@@ -1965,6 +1987,16 @@ export function createPgRepo(pool) {
       if (!rows[0]) return;
       if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_STRATEGY_OWNER');
       await pool.query('DELETE FROM strategies WHERE id=$1', [id]); // cascades to attachments/chat/detection events
+    },
+    // P0-2 launch-readiness fix - see tradingSessions.findOwnerByEntryImageUrl()'s own comment.
+    async findOwnerByAttachmentUrl(fileUrl) {
+      const { rows } = await pool.query(
+        `SELECT s.user_id FROM strategy_attachments a
+         JOIN strategies s ON s.id = a.strategy_id
+         WHERE a.file_url=$1 LIMIT 1`,
+        [fileUrl]
+      );
+      return rows[0] ? rows[0].user_id : null;
     }
   };
 
@@ -2183,6 +2215,16 @@ export function createPgRepo(pool) {
       if (!rows[0]) return;
       if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_TRADE_OWNER');
       await pool.query('DELETE FROM trades WHERE id=$1', [id]); // cascades to screenshots/emotion log
+    },
+    // P0-2 launch-readiness fix - see tradingSessions.findOwnerByEntryImageUrl()'s own comment.
+    async findOwnerByScreenshotUrl(imageUrl) {
+      const { rows } = await pool.query(
+        `SELECT t.user_id FROM trade_screenshots ts
+         JOIN trades t ON t.id = ts.trade_id
+         WHERE ts.image_url=$1 LIMIT 1`,
+        [imageUrl]
+      );
+      return rows[0] ? rows[0].user_id : null;
     }
   };
 
@@ -3318,6 +3360,17 @@ export function createPgRepo(pool) {
     async markDeleted(id) {
       const { rows } = await pool.query('UPDATE storage_objects SET deleted_at=now() WHERE id=$1 RETURNING *', [id]);
       return rows[0] ? mapStorageObject(rows[0]) : null;
+    },
+    // P0-2 launch-readiness fix (server/community/security/upload-ownership.mjs) - the fast,
+    // indexed ownership lookup for every upload made since this table existed (051_upload_
+    // ownership_indexes.sql adds the object_key index this depends on). Returns a plain userId or
+    // null, matching every other findOwnerBy*() method's shape, not the full mapped row.
+    async findActiveByObjectKey(objectKey) {
+      const { rows } = await pool.query(
+        'SELECT user_id FROM storage_objects WHERE object_key=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1',
+        [objectKey]
+      );
+      return rows[0] ? rows[0].user_id : null;
     }
   };
 
