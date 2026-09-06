@@ -119,25 +119,50 @@ function __resetAdminModelOverrideCacheForTests() {
 }
 
 let adminGeminiVoiceProfileCache = { data: null, fetchedAt: 0 };
+let adminGeminiVoiceProfileRefresh = null;
 const ADMIN_GEMINI_VOICE_PROFILE_CACHE_TTL_MS = 10000;
-async function adminGeminiVoiceProfiles() {
-  if (Date.now() - adminGeminiVoiceProfileCache.fetchedAt < ADMIN_GEMINI_VOICE_PROFILE_CACHE_TTL_MS) return adminGeminiVoiceProfileCache.data || {};
-  try {
-    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/internal/admin-gemini-voice-profiles';
-    const headers = process.env.INTERNAL_API_SECRET ? { 'x-internal-secret': process.env.INTERNAL_API_SECRET } : {};
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
-    const rows = response.ok ? await response.json() : [];
-    const byCharacter = {};
-    (Array.isArray(rows) ? rows : []).forEach((row) => { if (row && GEMINI_VOICE_CHARACTERS.includes(row.character)) byCharacter[row.character] = row; });
-    adminGeminiVoiceProfileCache = { data: byCharacter, fetchedAt: Date.now() };
-  } catch (_) {
-    adminGeminiVoiceProfileCache = { data: adminGeminiVoiceProfileCache.data, fetchedAt: Date.now() };
+function geminiVoiceProfilesByCharacter(rows) {
+  const byCharacter = {};
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    if (row && GEMINI_VOICE_CHARACTERS.includes(row.character)) byCharacter[row.character] = row;
+  });
+  return byCharacter;
+}
+
+// Voice profile rules are presentation preferences only. Never put their Admin bridge on the
+// approved GPT decision path: use the last known profile/default immediately, then refresh the
+// non-secret configuration in the background for the next turn.
+function refreshAdminGeminiVoiceProfiles() {
+  if (adminGeminiVoiceProfileRefresh) return adminGeminiVoiceProfileRefresh;
+  const refresh = (async () => {
+    try {
+      const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/internal/admin-gemini-voice-profiles';
+      const headers = process.env.INTERNAL_API_SECRET ? { 'x-internal-secret': process.env.INTERNAL_API_SECRET } : {};
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+      const rows = response.ok ? await response.json() : [];
+      adminGeminiVoiceProfileCache = { data: geminiVoiceProfilesByCharacter(rows), fetchedAt: Date.now() };
+    } catch (_) {
+      adminGeminiVoiceProfileCache = { data: adminGeminiVoiceProfileCache.data, fetchedAt: Date.now() };
+    }
+    return adminGeminiVoiceProfileCache.data || {};
+  })();
+  adminGeminiVoiceProfileRefresh = refresh;
+  void refresh.finally(() => {
+    if (adminGeminiVoiceProfileRefresh === refresh) adminGeminiVoiceProfileRefresh = null;
+  });
+  return refresh;
+}
+
+function currentAdminGeminiVoiceProfiles() {
+  if (Date.now() - adminGeminiVoiceProfileCache.fetchedAt >= ADMIN_GEMINI_VOICE_PROFILE_CACHE_TTL_MS) {
+    void refreshAdminGeminiVoiceProfiles();
   }
   return adminGeminiVoiceProfileCache.data || {};
 }
 
 function __resetAdminGeminiVoiceProfileCacheForTests() {
   adminGeminiVoiceProfileCache = { data: null, fetchedAt: 0 };
+  adminGeminiVoiceProfileRefresh = null;
 }
 
 // Same bridge shape as adminKeys() above, but Redis-version-aware: the internal route
@@ -1652,11 +1677,11 @@ const VOICE_CHARACTER_REPLY_STYLE = {
   engineer: 'You are speaking as the Market Engineer: precise, evidence-led, and systematic. Explain conditions, validation, and cause-and-effect clearly.',
   sage: 'You are speaking as the Market Sage: calm, seasoned, and insightful. Teach the lesson in the moment, connect it to a deliberate plan, and keep uncertainty honest.'
 };
-async function voiceCharacterReplyStyle(body, voiceSource) {
+function voiceCharacterReplyStyle(body, voiceSource) {
   if (!voiceSource) return '';
   const character = Object.prototype.hasOwnProperty.call(VOICE_CHARACTER_REPLY_STYLE, body.character) ? body.character : 'hunter';
   const rule = body.voiceTransport === 'gemini'
-    ? mergeGeminiVoiceProfile(character, (await adminGeminiVoiceProfiles())[character]).interactionRule
+    ? mergeGeminiVoiceProfile(character, currentAdminGeminiVoiceProfiles()[character]).interactionRule
     : VOICE_CHARACTER_REPLY_STYLE[character];
   return ` ${rule} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
 }
@@ -2222,7 +2247,7 @@ async function dockChat(body, externalSignal) {
   // unconditional (unlike companionContextText above) and carries real instructional weight.
   const personaStyleText = buildPersonaStyleText(body.personaStyle);
   const voiceSource = body.source === 'voice';
-  const voiceCharacterStyle = await voiceCharacterReplyStyle(body, voiceSource);
+  const voiceCharacterStyle = voiceCharacterReplyStyle(body, voiceSource);
   // Persian Voice Quality gate, section 9-11: the gap this pass found is that voiceReply was
   // ONLY ever asked to be "shorter" - never told that written Persian and spoken Persian are
   // different registers. This addendum is deliberately AUDIO-STYLE guidance only (never a fact/
@@ -2389,10 +2414,10 @@ async function geminiVoiceFailureCode(response, prefix) {
   const message = detail && detail.error && typeof detail.error.message === 'string' ? detail.error.message : '';
   return /location is not supported/i.test(message) ? `${prefix}_LOCATION_UNSUPPORTED` : `${prefix}_FAILED_${response.status}`;
 }
-async function geminiVoiceProfile(body, language) {
+function geminiVoiceProfile(body, language) {
   const character = GEMINI_VOICE_CHARACTERS.includes(body.character) ? body.character : 'hunter';
   const gender = GEMINI_VOICE_GENDERS.includes(body.gender) ? body.gender : 'male';
-  const profile = mergeGeminiVoiceProfile(character, body._adminProfileOverride || (await adminGeminiVoiceProfiles())[character]);
+  const profile = mergeGeminiVoiceProfile(character, body._adminProfileOverride || currentAdminGeminiVoiceProfiles()[character]);
   return {
     character,
     gender,
@@ -2464,7 +2489,7 @@ async function speakWithGemini(body) {
   try {
     const key = await resolveGeminiVoiceKey(body);
     const model = process.env.GEMINI_TTS_MODEL || GEMINI_TTS_MODEL;
-    const voiceProfile = await geminiVoiceProfile(body, language);
+    const voiceProfile = geminiVoiceProfile(body, language);
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
@@ -2502,7 +2527,7 @@ async function adminTestGeminiVoice(session, body = {}) {
   const previewProfile = body.profile && typeof body.profile === 'object'
     ? normalizeGeminiVoiceProfileInput({ ...body.profile, character })
     : null;
-  const activeProfile = mergeGeminiVoiceProfile(character, previewProfile || (await adminGeminiVoiceProfiles())[character]);
+  const activeProfile = mergeGeminiVoiceProfile(character, previewProfile || currentAdminGeminiVoiceProfiles()[character]);
   const greeting = activeProfile.greeting[language] || activeProfile.greeting.en;
   const startedAt = Date.now();
   const live = await mintGeminiLiveToken({ language });

@@ -210,7 +210,35 @@ test('a voice-sourced turn applies only an allowlisted character delivery frame,
   assert.match(systemText, /preserve every fact, number, safety warning, and required confirmation/);
 });
 
-test('a Gemini Voice turn reads the saved role interaction rule while an OpenAI Voice turn remains on its own transport profile', async () => {
+test('a delayed Gemini Voice profile refresh cannot delay the approved GPT decision call', async () => {
+  __resetAdminGeminiVoiceProfileCacheForTests();
+  const getBody = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok', action: null });
+  const original = globalThis.fetch;
+  let releaseProfileRefresh;
+  const pendingProfileRefresh = new Promise((resolve) => { releaseProfileRefresh = resolve; });
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes('/internal/admin-gemini-voice-profiles')) {
+      return pendingProfileRefresh;
+    }
+    return original(url, options);
+  };
+  let deadline;
+  try {
+    const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () => new Promise((resolve, reject) => {
+      deadline = setTimeout(() => reject(new Error('GPT core waited on Gemini profile refresh')), 100);
+      dockChat({ provider: 'openai', message: 'help me plan', language: 'en', source: 'voice', voiceTransport: 'gemini', character: 'sage' }).then(resolve, reject);
+    }));
+    assert.equal(result.provider, 'openai');
+    assert.match(getBody().input[0].content[0].text, /Speak as the Market Sage/);
+  } finally {
+    clearTimeout(deadline);
+    releaseProfileRefresh({ ok: true, json: async () => [] });
+    await new Promise((resolve) => setImmediate(resolve));
+    __resetAdminGeminiVoiceProfileCacheForTests();
+  }
+});
+
+test('a Gemini Voice turn adopts a saved role interaction rule after its background refresh', async () => {
   __resetAdminGeminiVoiceProfileCacheForTests();
   const getBody = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok', action: null });
   const original = globalThis.fetch;
@@ -220,6 +248,9 @@ test('a Gemini Voice turn reads the saved role interaction rule while an OpenAI 
     }
     return original(url, options);
   };
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'warm up the profile cache', language: 'en', source: 'voice', voiceTransport: 'gemini', character: 'sage' }));
+  await new Promise((resolve) => setImmediate(resolve));
   await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
     dockChat({ provider: 'openai', message: 'help me plan', language: 'en', source: 'voice', voiceTransport: 'gemini', character: 'sage' }));
   assert.match(getBody().input[0].content[0].text, /Teach one calm lesson before the next action/);

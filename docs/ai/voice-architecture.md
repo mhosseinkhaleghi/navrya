@@ -123,7 +123,9 @@ returns a short playable role greeting. It never stores the draft. **Save role r
 same profile live through the DB-free internal bridge. The speech rule affects Gemini TTS. The
 interaction rule is added only to a Gemini Voice-originated turn and is explicitly delivery-only;
 the OpenAI conversation brain, deterministic workflow, facts, warnings, and confirmations remain
-authoritative.
+authoritative. Profile reads are best-effort background refreshes: a cold, slow, or unavailable
+Admin bridge uses the last known/default delivery profile immediately and can never delay, abort,
+or otherwise interrupt the GPT decision call.
 
 ## E2/E4/E5 needed zero action- or feature-specific voice code
 
