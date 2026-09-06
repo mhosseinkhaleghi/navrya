@@ -353,10 +353,15 @@ function RegionLanguageSection({ t, lang, store }) {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('settings-region-language', {
-      allowlist: ['language'].concat(rows.map((row) => 'region.' + row.key)),
+      // Slice U1-c (execution brief section 9 item 10, "ordinary settings" - clock format):
+      // clock24 is a real, existing setting (the two-button 24h/12h toggle just below), but was
+      // never itself in `rows` (it has no options list to validate against the way every other
+      // row here does) - added as its own explicit allowlist entry with its own boolean check.
+      allowlist: ['language', 'region.clock24'].concat(rows.map((row) => 'region.' + row.key)),
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
         if (path === 'language') { if (languageOptions.some((o) => o.value === value)) store.setLanguage(value); return; }
+        if (path === 'region.clock24') { if (value === true || value === false) patch({ clock24: value }); return; }
         const row = rows.find((r) => 'region.' + r.key === path);
         if (row && row.options.some((o) => optionValue(o) === value)) { const p = {}; p[row.key] = value; patch(p); }
       }
@@ -412,27 +417,54 @@ function AlertsSection({ t }) {
   const [prefs, setPrefs] = React.useState(() => (appSettings ? appSettings.settings() : { alerts: {} }));
   const [cooldownOn, setCooldownOn] = React.useState(() => (mh ? mh.load().activeInterventions.cooldownTimerEnabled : false));
   function patchAlert(key, value) { if (appSettings) setPrefs(appSettings.saveSettings({ alerts: { [key]: value } })); }
-  function toggleCooldown() {
+  // Slice U1-c (execution brief section 9 item 10, "alerts/cooldowns"): now takes the target
+  // value directly (matching every other row's own directional onToggle) instead of blindly
+  // flipping whatever it currently is - a real UI toggle already reports its own target value
+  // (the JSX below no longer special-cases this row), and a directional voice/AI request ("turn
+  // on the cool-down lock") could never be honored by a blind flip.
+  function setCooldown(value) {
     if (!mh) return;
     const profile = mh.load();
-    profile.activeInterventions.cooldownTimerEnabled = !profile.activeInterventions.cooldownTimerEnabled;
+    profile.activeInterventions.cooldownTimerEnabled = !!value;
     mh.save(profile);
-    setCooldownOn(profile.activeInterventions.cooldownTimerEnabled);
+    setCooldownOn(!!value);
   }
   const rows = [
     { key: 'sessionOpen', label: t('sessionOpenLabel'), hint: t('sessionOpenHint'), on: prefs.alerts.sessionOpen, onToggle: (v) => patchAlert('sessionOpen', v) },
     { key: 'position', label: t('positionLabel'), hint: t('positionHint'), on: prefs.alerts.position, onToggle: (v) => patchAlert('position', v) },
     { key: 'emotion', label: t('emotionLabel'), hint: t('emotionHint'), on: prefs.alerts.emotionCheckIns, onToggle: (v) => patchAlert('emotionCheckIns', v) },
-    { key: 'cooldown', label: t('cooldownLabel'), hint: t('cooldownHint'), on: cooldownOn, onToggle: toggleCooldown },
+    { key: 'cooldown', label: t('cooldownLabel'), hint: t('cooldownHint'), on: cooldownOn, onToggle: setCooldown },
     { key: 'community', label: t('communityLabel'), hint: t('communityHint'), on: prefs.alerts.communityReplies, onToggle: (v) => patchAlert('communityReplies', v) },
     { key: 'sound', label: t('soundLabel'), hint: t('soundHint'), on: prefs.alerts.sound, onToggle: (v) => patchAlert('sound', v) }
   ];
+  // Slice U1-c: every one of the six real toggles above is now AI-fillable through the exact
+  // same onToggle each real Toggle control already calls - a boolean-only allowlist, since none
+  // of these six has any other shape. Mount-once (same convention as settings-region-language/
+  // settings-trading-defaults just below) is safe here: patchAlert()/setCooldown() only ever read
+  // the stable appSettings/mh globals and their own two arguments, never any closed-over render
+  // state - so capturing the first render's closures is not a staleness risk.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-alerts', {
+      allowlist: rows.map((row) => row.key),
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (value !== true && value !== false) return;
+        const row = rows.find((r) => r.key === path);
+        if (row) row.onToggle(value);
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <SectionShell icon="bell" title={t('alertsTitle')}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {rows.map((row, i) => (
           <Toggle
-            key={row.key} checked={!!row.on} onChange={row.key === 'cooldown' ? toggleCooldown : (v) => row.onToggle(v)}
+            key={row.key} checked={!!row.on} onChange={(v) => row.onToggle(v)}
             label={row.label} hint={row.hint}
             style={{ padding: '11px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--border-hairline)' : 'none' }}
           />
@@ -520,10 +552,14 @@ function TradingDefaultsSection({ t, lang }) {
 // TradeJournalAICompanionOrchestrator.setCurrentGoal() (not the profile store directly) so the
 // same cooldown-reset + republish every other Companion interaction gets also applies here -
 // the Companion card reflects a freshly-set goal immediately, not after a cooldown window.
-function CompanionGoalSelect({ t }) {
-  const profileStore = window.TradeJournalAICompanionProfile;
-  const orchestrator = window.TradeJournalAICompanionOrchestrator;
-  const [goal, setGoal] = React.useState(() => (profileStore ? profileStore.currentGoal() : null));
+const COMPANION_GOAL_OPTIONS = ['', 'patterns', 'strategies', 'sessions', 'trades', 'psychology'];
+const COMPANION_INITIATIVE_OPTIONS = ['low', 'normal', 'high'];
+
+// Slice U1-c (execution brief section 9 item 10, "goal and companion initiative"): now a plain
+// controlled component (goal/onChange as props) instead of owning its own local state - the
+// parent (CompanionSection) is what registers the single AI process covering both this field and
+// initiative below, so both need to live in the same component to share one processId/allowlist.
+function CompanionGoalSelect({ t, goal, onChange }) {
   const options = [
     { value: '', label: t('companionGoalNone') },
     { value: 'patterns', label: t('companionGoalPatterns') },
@@ -532,35 +568,65 @@ function CompanionGoalSelect({ t }) {
     { value: 'trades', label: t('companionGoalTrades') },
     { value: 'psychology', label: t('companionGoalPsychology') }
   ];
-  function change(value) {
-    const domainOrNull = value || null;
-    setGoal(domainOrNull);
-    if (orchestrator) orchestrator.setCurrentGoal(domainOrNull);
-    else if (profileStore) profileStore.setCurrentGoal(domainOrNull); // orchestrator not loaded yet (defensive fallback) - still persists/prioritizes correctly
-  }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
         <span style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: 'var(--text-primary)' }}>{t('companionGoalLabel')}</span>
         <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('companionGoalHint')}</span>
       </div>
-      <Select value={goal || ''} options={options} onChange={change} width={220} />
+      <Select value={goal || ''} options={options} onChange={onChange} width={220} />
     </div>
   );
 }
 
 function CompanionSection({ t }) {
   const profileStore = window.TradeJournalAICompanionProfile;
+  const orchestrator = window.TradeJournalAICompanionOrchestrator;
   const [initiative, setInitiative] = React.useState(() => (profileStore ? profileStore.initiativePreference() : 'normal'));
+  const [goal, setGoal] = React.useState(() => (profileStore ? profileStore.currentGoal() : null));
   const options = [
     { value: 'low', label: t('companionInitiativeLow') },
     { value: 'normal', label: t('companionInitiativeNormal') },
     { value: 'high', label: t('companionInitiativeHigh') }
   ];
-  function change(value) {
+  function changeInitiative(value) {
     setInitiative(value);
     if (profileStore) profileStore.setPreference('initiativePreference', value);
   }
+  // Item 3 (Journey G follow-up): goes through TradeJournalAICompanionOrchestrator.setCurrentGoal()
+  // (not the profile store directly) so the same cooldown-reset + republish every other Companion
+  // interaction gets also applies here - the Companion card reflects a freshly-set goal
+  // immediately, not after a cooldown window.
+  function changeGoal(value) {
+    const domainOrNull = value || null;
+    setGoal(domainOrNull);
+    if (orchestrator) orchestrator.setCurrentGoal(domainOrNull);
+    else if (profileStore) profileStore.setCurrentGoal(domainOrNull); // orchestrator not loaded yet (defensive fallback) - still persists/prioritizes correctly
+  }
+  // Slice U1-c: both real controls in this section, through the exact same changeInitiative()/
+  // changeGoal() the Select components themselves call - never a fabricated capability (Low/
+  // Normal/High and the five real domains only), matching this section's own existing "never
+  // bypasses safety/cooldown gating" guarantee exactly.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-companion', {
+      allowlist: ['initiative', 'goal'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'initiative' && COMPANION_INITIATIVE_OPTIONS.indexOf(value) !== -1) { changeInitiative(value); return; }
+        if (path !== 'goal') return;
+        // character-app.jsx's own normalizeField sends the literal string 'none' for an explicit
+        // clear request - never '' itself, which ai-workflow-engine.js's own applyKnownFields()
+        // would silently treat as absent extraction (a no-op) rather than a genuine clear.
+        const domain = value === 'none' ? '' : value;
+        if (COMPANION_GOAL_OPTIONS.indexOf(domain == null ? '' : domain) !== -1) changeGoal(domain);
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <SectionShell icon="assistant" title={t('companionTitle')}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -569,9 +635,9 @@ function CompanionSection({ t }) {
             <span style={{ font: 'var(--type-username)', letterSpacing: '.04em', color: 'var(--text-primary)' }}>{t('companionInitiativeLabel')}</span>
             <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('companionInitiativeHint')}</span>
           </div>
-          <Select value={initiative} options={options} onChange={change} width={160} />
+          <Select value={initiative} options={options} onChange={changeInitiative} width={160} />
         </div>
-        <CompanionGoalSelect t={t} />
+        <CompanionGoalSelect t={t} goal={goal} onChange={changeGoal} />
       </div>
     </SectionShell>
   );

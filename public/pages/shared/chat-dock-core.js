@@ -432,7 +432,11 @@
     // ai-assistant-engine above. Its own confirm/reject continuation is entirely handled by the
     // deterministic gate fast-path earlier in this function (before activeProcess is even used), so,
     // like those three, unconditional exclusion costs nothing - fresh re-discovery is exactly as good.
-    if (activeProcess && (activeProcess.id === 'settings-trading-defaults' || activeProcess.id === 'settings-region-language' || activeProcess.id === 'ai-assistant-engine' || activeProcess.id === 'session-delete-confirm')) activeProcess = null;
+    // Slice U1-c: settings-alerts/settings-companion are the exact same shape as the three above
+    // (available: () => true, open() only navigates+polls, entityAlreadyPersisted: true so their
+    // own workflow never completes on its own) - excluded unconditionally for the identical
+    // reason, not merely added to the conditional passiveWorkflowMatch check further below.
+    if (activeProcess && (activeProcess.id === 'settings-trading-defaults' || activeProcess.id === 'settings-region-language' || activeProcess.id === 'ai-assistant-engine' || activeProcess.id === 'settings-alerts' || activeProcess.id === 'settings-companion' || activeProcess.id === 'session-delete-confirm')) activeProcess = null;
     // Production repair pass, section 11: a registration with a deliberately EMPTY allowlist
     // (tradeDetailsModal.jsx's own 'trade-details-{id}', registered purely so ai-context-builder.js
     // can resolve "this trade" - it has no fillable field of its own at all) is, by construction,
@@ -539,8 +543,10 @@
     // excludes these ids) and returned action:null no matter what was said, for the rest of that
     // page visit. Same reasoning as trade-details- below: open() for all three only navigates and
     // polls, never mutates, so a fresh re-discovery costs nothing.
+    // Slice U1-c: settings-alerts/settings-companion added alongside the three above - same
+    // entityAlreadyPersisted shape, same never-self-completing workflow, same fix.
     var workflowProcessId = currentWorkflow ? String(currentWorkflow.processId || '') : '';
-    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0 || workflowProcessId === 'settings-trading-defaults' || workflowProcessId === 'settings-region-language' || workflowProcessId === 'ai-assistant-engine' || workflowProcessId === 'session-delete-confirm';
+    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0 || workflowProcessId === 'settings-trading-defaults' || workflowProcessId === 'settings-region-language' || workflowProcessId === 'ai-assistant-engine' || workflowProcessId === 'settings-alerts' || workflowProcessId === 'settings-companion' || workflowProcessId === 'session-delete-confirm';
     var workflowBlocksDiscovery = currentWorkflow && !workflowProcessExcluded;
     var availableActions = null;
     if (workflowEngine && actionRegistry && !activeProcess && !workflowBlocksDiscovery) {

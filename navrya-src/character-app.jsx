@@ -2611,17 +2611,61 @@ export function mountCharacterApp(character) {
         // Section 16: a user SPEAKING Persian must never, by itself, change the app language -
         // only an explicit request to change the interface/app language may set `language`.
         id: 'settings.language.update', domain: 'settings', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Change the real interface language and/or Region & language preferences (country, timezone, account currency, week start) in Settings. `language` must ONLY be set from an EXPLICIT request to change NAVRYA\'s interface/app language (e.g. "change the app language to Persian", "switch the interface to Spanish") - never merely because the user is speaking a different language. Only real, currently supported values ever apply; never invent a locale, country, or timezone NAVRYA does not actually offer.',
-        aliases: ['change navrya to persian', 'switch the interface to spanish', 'change the app language', 'set my timezone', 'change my region'],
-        requiredFields: [], optionalFields: ['language', 'region.country', 'region.timezone', 'region.currency', 'region.weekStart'],
+        description: 'Change the real interface language and/or Region & language preferences (country, timezone, account currency, week start, clock format) in Settings. `language` must ONLY be set from an EXPLICIT request to change NAVRYA\'s interface/app language (e.g. "change the app language to Persian", "switch the interface to Spanish") - never merely because the user is speaking a different language. clock24 is true for 24-hour format, false for 12-hour format - only from an explicit request about the clock/time format. Only real, currently supported values ever apply; never invent a locale, country, or timezone NAVRYA does not actually offer.',
+        aliases: ['change navrya to persian', 'switch the interface to spanish', 'change the app language', 'set my timezone', 'change my region', 'switch to 24 hour time', 'use 12 hour clock'],
+        requiredFields: [], optionalFields: ['language', 'region.country', 'region.timezone', 'region.currency', 'region.weekStart', 'region.clock24'],
         available: () => true,
-        normalizeField: (path, value) => (path === 'language' ? normalizeSettingsLanguage(value) : value),
+        // Slice U1-c: clock24 is a real boolean, not a validated-options row like the others - a
+        // model could plausibly extract '24'/'12', '24-hour'/'12-hour', or the raw boolean itself
+        // for the same underlying request; every other shape is rejected (left missing) rather
+        // than guessed.
+        normalizeField: (path, value) => {
+          if (path === 'language') return normalizeSettingsLanguage(value);
+          if (path !== 'region.clock24') return value;
+          if (value === true || value === false) return value;
+          var text = String(value == null ? '' : value).trim().toLowerCase();
+          if (text === '24' || text === '24h' || text === '24-hour' || text === 'true') return true;
+          if (text === '12' || text === '12h' || text === '12-hour' || text === 'false') return false;
+          return null;
+        },
         open: () => new Promise((resolve) => {
           if (store.getState().activeId !== 'settings') store.setActiveId('settings');
           var registry = window.TradeJournalAIProcessRegistry;
           pollFor(
             () => registry && registry.query('settings-region-language').open,
             () => resolve({ processId: 'settings-region-language' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Slice U1-c (execution brief section 9 item 10, "alerts/cooldowns"): every one of the
+        // six real toggles in Settings' own Alerts & discipline section - the cool-down lock
+        // (MentalHealthStore's own field) alongside the five ordinary notification prefs
+        // (app-settings-store.js). entityAlreadyPersisted: true - every toggle applies and
+        // persists immediately, no separate Save step (matches settings.trading.update/
+        // settings.language.update's own precedent).
+        id: 'settings.alerts.update', domain: 'settings', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Turn a real alert/notification preference on or off in Settings: sessionOpen (session-open reminder), position (open-position alert), emotionCheckIns (emotion check-in prompts), cooldown (the forced cool-down lock after two consecutive losses), community (community reply notifications), sound (notification sound). Every value is a real boolean (on/off) - only from an explicit request to turn one specifically on or off, never inferred from unrelated conversation.',
+        aliases: ['turn on the cool-down lock', 'turn off session alerts', 'disable community notifications', 'mute notification sounds', 'enable emotion check-in reminders'],
+        requiredFields: [], optionalFields: ['sessionOpen', 'position', 'emotionCheckIns', 'cooldown', 'community', 'sound'],
+        available: () => true,
+        normalizeField: function (path, value) {
+          if (value === true || value === false) return value;
+          var text = String(value == null ? '' : value).trim().toLowerCase();
+          if (text === 'on' || text === 'true' || text === 'enable' || text === 'enabled') return true;
+          if (text === 'off' || text === 'false' || text === 'disable' || text === 'disabled') return false;
+          return null;
+        },
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'settings') store.setActiveId('settings');
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('settings-alerts').open,
+            () => resolve({ processId: 'settings-alerts' }),
             () => resolve(null)
           );
         }),
@@ -2678,6 +2722,46 @@ export function mountCharacterApp(character) {
           pollFor(
             () => registry && registry.query('ai-assistant-engine').open,
             () => resolve({ processId: 'ai-assistant-engine' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Slice U1-c (execution brief section 9 item 10, "goal and companion initiative"): the
+        // real AI Companion preferences in Settings - never bypasses the safety/cooldown gating
+        // in ai-companion-orchestrator.js, only how often a new nudge appears and which domain's
+        // suggestions are prioritized. entityAlreadyPersisted: true - both fields apply and
+        // persist immediately, no separate Save step.
+        id: 'settings.companion.update', domain: 'settings', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Change the real AI Companion preferences in Settings: initiative (how proactive the Companion card is - low, normal, or high) and goal (which area to prioritize suggestions for - patterns, strategies, sessions, trades, psychology, or none). Only real, currently offered values ever apply - never invent a domain or initiative level NAVRYA does not actually offer.',
+        aliases: ['make the companion more proactive', 'set companion initiative to low', 'focus my goal on patterns', 'clear my current goal', 'set my goal to strategies'],
+        requiredFields: [], optionalFields: ['initiative', 'goal'],
+        available: () => true,
+        normalizeField: function (path, value) {
+          if (path === 'initiative') {
+            var initiativeText = String(value || '').trim().toLowerCase();
+            return ['low', 'normal', 'high'].indexOf(initiativeText) !== -1 ? initiativeText : null;
+          }
+          if (path === 'goal') {
+            // 'none' (never '') is the real "clear the goal" signal - ai-workflow-engine.js's own
+            // applyKnownFields() unconditionally treats an empty-string value as absent extraction
+            // (a no-op), the exact "explicit clear vs. plain omission" gap Slice W1 addressed - an
+            // actual clear request must reach the real setter as a genuine, non-empty value.
+            var goalText = String(value == null ? '' : value).trim().toLowerCase();
+            if (goalText === '' || goalText === 'none' || goalText === 'no goal' || goalText === 'clear') return 'none';
+            return ['patterns', 'strategies', 'sessions', 'trades', 'psychology'].indexOf(goalText) !== -1 ? goalText : null;
+          }
+          return value;
+        },
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'settings') store.setActiveId('settings');
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('settings-companion').open,
+            () => resolve({ processId: 'settings-companion' }),
             () => resolve(null)
           );
         }),

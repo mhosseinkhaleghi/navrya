@@ -61,10 +61,48 @@ test('profile.role.update requires role and delegates validation to the real reg
   assert.match(accountProfileSrc, /REAL_ROLES\.some\(\(r\) => r\.id === value\)/);
 });
 
-test('settings.trading.update, settings.language.update, and settings.ai.update are all entityAlreadyPersisted (their real UI applies and persists every field immediately, no separate Save step)', () => {
-  for (const id of ['settings.trading.update', 'settings.language.update', 'settings.ai.update']) {
+test('settings.trading.update, settings.language.update, settings.ai.update, settings.alerts.update, and settings.companion.update are all entityAlreadyPersisted (their real UI applies and persists every field immediately, no separate Save step)', () => {
+  for (const id of ['settings.trading.update', 'settings.language.update', 'settings.ai.update', 'settings.alerts.update', 'settings.companion.update']) {
     assert.match(actionBlock(id), /entityAlreadyPersisted: true/);
   }
+});
+
+// Slice U1-c (execution brief section 9 item 10, "alerts/cooldowns"): every one of the six real
+// toggles in Settings' own Alerts & discipline section.
+test('settings.alerts.update declares all six real toggles as optional, boolean-only fields - never inferred from unrelated conversation', () => {
+  const block = actionBlock('settings.alerts.update');
+  assert.match(block, /optionalFields: \['sessionOpen', 'position', 'emotionCheckIns', 'cooldown', 'community', 'sound'\]/);
+  assert.match(block, /if \(text === 'on' \|\| text === 'true' \|\| text === 'enable' \|\| text === 'enabled'\) return true;/);
+  assert.match(block, /if \(text === 'off' \|\| text === 'false' \|\| text === 'disable' \|\| text === 'disabled'\) return false;/);
+});
+
+test('the real settings-alerts registration now exists, covering the same six keys through each row\'s own real onToggle - the cool-down lock is now directional (takes the target value), never a blind flip', () => {
+  const registration = /registry\.register\('settings-alerts', \{[\s\S]*?\n {4}\}\);/.exec(settingsViewSrc);
+  assert.ok(registration);
+  assert.match(registration[0], /allowlist: rows\.map\(\(row\) => row\.key\)/);
+  assert.match(settingsViewSrc, /function setCooldown\(value\) \{/);
+  assert.doesNotMatch(settingsViewSrc, /function toggleCooldown/, 'the old blind-flip toggle must be gone, replaced by the directional setCooldown()');
+});
+
+// Slice U1-c (execution brief section 9 item 10, "goal and companion initiative").
+test('settings.companion.update validates initiative against the real low/normal/high set and goal against the real five domains (or the explicit "none" clear sentinel) - never an invented value', () => {
+  const block = actionBlock('settings.companion.update');
+  assert.match(block, /optionalFields: \['initiative', 'goal'\]/);
+  assert.match(block, /\['low', 'normal', 'high'\]\.indexOf\(initiativeText\) !== -1 \? initiativeText : null;/);
+  assert.match(block, /\['patterns', 'strategies', 'sessions', 'trades', 'psychology'\]\.indexOf\(goalText\) !== -1 \? goalText : null;/);
+  // The clear sentinel must be a real, non-empty string ('none') - an empty string would be
+  // silently treated as absent extraction by ai-workflow-engine.js's own applyKnownFields(),
+  // exactly the "explicit clear vs. plain omission" gap Slice W1 addressed.
+  assert.match(block, /if \(goalText === '' \|\| goalText === 'none' \|\| goalText === 'no goal' \|\| goalText === 'clear'\) return 'none';/);
+});
+
+test('the real settings-companion registration covers both initiative and goal through the exact same changeInitiative()/changeGoal() the real Select controls call, and correctly translates the \'none\' clear sentinel back to a real empty domain', () => {
+  const registration = /registry\.register\('settings-companion', \{[\s\S]*?\n {4}\}\);/.exec(settingsViewSrc);
+  assert.ok(registration);
+  assert.match(registration[0], /allowlist: \['initiative', 'goal'\]/);
+  assert.match(registration[0], /const domain = value === 'none' \? '' : value;/);
+  assert.match(settingsViewSrc, /function changeGoal\(value\) \{/);
+  assert.match(settingsViewSrc, /if \(orchestrator\) orchestrator\.setCurrentGoal\(domainOrNull\);/);
 });
 
 test('settings.trading.update\'s own description explicitly distinguishes the Settings default from a currently-open Trade\'s risk field or a Strategy\'s max-risk rule', () => {
@@ -106,9 +144,13 @@ test('account-profile-identity and account-profile-role now expose submit() thro
 test('settings-region-language\'s allowlist now includes language, validated against the real languageOptions and applied through the real store.setLanguage()', () => {
   const registration = /registry\.register\('settings-region-language', \{[\s\S]*?\n {4}\}\);/.exec(settingsViewSrc);
   assert.ok(registration);
-  assert.match(registration[0], /allowlist: \['language'\]\.concat/);
+  // Slice U1-c (execution brief section 9 item 10, "clock format"): region.clock24 - the real,
+  // pre-existing 24h/12h toggle - is now also in this same allowlist, with its own boolean check
+  // (it has no options list to validate against the way every `rows` entry does).
+  assert.match(registration[0], /allowlist: \['language', 'region\.clock24'\]\.concat/);
   assert.match(registration[0], /languageOptions\.some\(\(o\) => o\.value === value\)/);
   assert.match(registration[0], /store\.setLanguage\(value\)/);
+  assert.match(registration[0], /if \(path === 'region\.clock24'\) \{ if \(value === true \|\| value === false\) patch\(\{ clock24: value \}\); return; \}/);
 });
 
 test('every new action resolves its real process id and navigates to the real page/tab in open(), never mutating anything before the field-level applyValue/submit steps', () => {
@@ -122,6 +164,16 @@ test('every new action resolves its real process id and navigates to the real pa
 test('chat-dock-core.js excludes settings-ai-panel-builder/account-profile-identity/account-profile-role conditionally (unless a workflow is already genuinely continuing through them), and settings-trading-defaults/settings-region-language/ai-assistant-engine UNCONDITIONALLY (they need no entity resolution, so a fresh re-discovery is always at least as good as continuation - required since their entityAlreadyPersisted workflow never completes on its own)', () => {
   assert.match(chatDockCoreSrc, /settings-ai-panel-builder\|account-profile-identity\|account-profile-role/);
   assert.match(chatDockCoreSrc, /activeProcess\.id === 'settings-trading-defaults' \|\| activeProcess\.id === 'settings-region-language' \|\| activeProcess\.id === 'ai-assistant-engine'/);
+});
+
+// Slice U1-c: settings-alerts/settings-companion are the exact same entityAlreadyPersisted,
+// never-self-completing shape as settings-trading-defaults/settings-region-language/
+// ai-assistant-engine - missing this exclusion would reproduce the identical F33-F36 bug class
+// (once started, EVERY later message, even something entirely unrelated, would silently return
+// action:null for the rest of the page visit).
+test('settings-alerts and settings-companion are added to BOTH the unconditional activeProcess exclusion and the workflowProcessExcluded check - the same F33-F36 fix, not just one half of it', () => {
+  assert.match(chatDockCoreSrc, /activeProcess\.id === 'ai-assistant-engine' \|\| activeProcess\.id === 'settings-alerts' \|\| activeProcess\.id === 'settings-companion' \|\| activeProcess\.id === 'session-delete-confirm'/);
+  assert.match(chatDockCoreSrc, /workflowProcessId === 'ai-assistant-engine' \|\| workflowProcessId === 'settings-alerts' \|\| workflowProcessId === 'settings-companion' \|\| workflowProcessId === 'session-delete-confirm'/);
 });
 
 test('the unconditional settings exclusion runs BEFORE currentWorkflow is even read, so it can never depend on / race with workflow state - mirrors live-session-entry-/live-session-scenario- above it', () => {
