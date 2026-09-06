@@ -21,7 +21,7 @@ const translations = {
   en: {
     brandTagline: 'Track. Analyze. Master.',
     stepAccountLabel: 'Account', stepCharacterLabel: 'Character',
-    showcaseEyebrow: 'Four paths · one discipline', howThisPathTrades: 'How this path trades',
+    showcaseEyebrow: 'Four paths · one discipline', howThisPathTrades: 'How this path trades', letsStart: 'Let’s start',
     tabSignin: 'Sign in', tabSignup: 'Sign up',
     authTitleSignin: 'Welcome back', authTitleSignup: 'Create account',
     authSubSignin: 'Sign in to continue your trading journey.', authSubSignup: 'Open a ledger and begin the discipline.',
@@ -57,7 +57,7 @@ const translations = {
   fa: {
     brandTagline: 'ثبت کن. تحلیل کن. استاد شو.',
     stepAccountLabel: 'حساب', stepCharacterLabel: 'شخصیت',
-    showcaseEyebrow: 'چهار مسیر · یک انضباط', howThisPathTrades: 'این مسیر چطور معامله می‌کند',
+    showcaseEyebrow: 'چهار مسیر · یک انضباط', howThisPathTrades: 'این مسیر چطور معامله می‌کند', letsStart: 'شروع کنیم',
     tabSignin: 'ورود', tabSignup: 'ثبت‌نام',
     authTitleSignin: 'خوش آمدید', authTitleSignup: 'ساخت حساب کاربری',
     authSubSignin: 'برای ادامهٔ مسیر معاملاتی‌ات وارد شو.', authSubSignup: 'یک دفتر باز کن و انضباط را آغاز کن.',
@@ -93,7 +93,7 @@ const translations = {
   ar: {
     brandTagline: 'سجّل. حلّل. أتقن.',
     stepAccountLabel: 'الحساب', stepCharacterLabel: 'الشخصية',
-    showcaseEyebrow: 'أربعة مسارات · انضباط واحد', howThisPathTrades: 'كيف يتداول هذا المسار',
+    showcaseEyebrow: 'أربعة مسارات · انضباط واحد', howThisPathTrades: 'كيف يتداول هذا المسار', letsStart: 'لنبدأ',
     tabSignin: 'تسجيل الدخول', tabSignup: 'إنشاء حساب',
     authTitleSignin: 'مرحباً بعودتك', authTitleSignup: 'إنشاء حسابك',
     authSubSignin: 'سجّل الدخول لمتابعة رحلتك في التداول.', authSubSignup: 'افتح دفترًا وابدأ الانضباط.',
@@ -129,7 +129,7 @@ const translations = {
   es: {
     brandTagline: 'Registra. Analiza. Domina.',
     stepAccountLabel: 'Cuenta', stepCharacterLabel: 'Personaje',
-    showcaseEyebrow: 'Cuatro caminos · una disciplina', howThisPathTrades: 'Cómo opera este camino',
+    showcaseEyebrow: 'Cuatro caminos · una disciplina', howThisPathTrades: 'Cómo opera este camino', letsStart: 'Comencemos',
     tabSignin: 'Iniciar sesión', tabSignup: 'Regístrate',
     authTitleSignin: 'Bienvenido de nuevo', authTitleSignup: 'Crea tu cuenta',
     authSubSignin: 'Inicia sesión para continuar tu viaje de trading.', authSubSignup: 'Abre un libro y comienza la disciplina.',
@@ -223,6 +223,10 @@ const pickedTitle = el('pickedTitle');
 const pickedPlaceholder = el('pickedPlaceholder');
 const backBtn = el('backBtn');
 const enterBtn = el('enterBtn');
+const mobileStartBtn = el('mobileStartBtn');
+const authDrawerScrim = el('authDrawerScrim');
+const authDrawerWrap = el('authDrawerWrap');
+const authDrawerHandle = el('authDrawerHandle');
 
 function copy() { return translations[activeLanguage] || translations.en; }
 
@@ -274,6 +278,9 @@ function goToStep(step) {
   stepChipAccount.classList.toggle('is-on', onAccount);
   stepChipCharacter.classList.toggle('is-on', !onAccount);
   if (onAccount) startSlideTimer(); else stopSlideTimer();
+  // Always land back on the collapsed slider + "Let's start" bar (mobile's own bottom-sheet
+  // trigger - see .mobile-start-btn/.auth-drawer-wrap in styles.css), never re-opened mid-transition.
+  if (onAccount) closeAuthDrawer();
 }
 
 // ---------- Account step: showcase carousel ----------
@@ -425,6 +432,25 @@ function setMode(next) {
 tabSignin.addEventListener('click', () => setMode('signin'));
 tabSignup.addEventListener('click', () => setMode('signup'));
 switchAction.addEventListener('click', () => setMode(mode === 'signup' ? 'signin' : 'signup'));
+
+// ---------- Mobile auth drawer ----------
+// Below 720px (styles.css's own breakpoint) the auth card becomes a bottom-sheet drawer, collapsed
+// behind the full-bleed showcase slider until "Let's start" is tapped. Above that breakpoint
+// .auth-drawer-wrap is plain display:contents and these are inert no-ops.
+function openAuthDrawer() {
+  authDrawerWrap.classList.add('is-open');
+  authDrawerScrim.classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+}
+function closeAuthDrawer() {
+  authDrawerWrap.classList.remove('is-open');
+  authDrawerScrim.classList.remove('is-open');
+  document.body.style.overflow = '';
+}
+mobileStartBtn.addEventListener('click', openAuthDrawer);
+authDrawerScrim.addEventListener('click', closeAuthDrawer);
+authDrawerHandle.addEventListener('click', closeAuthDrawer);
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAuthDrawer(); });
 
 // Distinguishes "the request never reached a server" (fetch itself rejects with a TypeError -
 // almost always because the Community backend process isn't running) from "a server responded

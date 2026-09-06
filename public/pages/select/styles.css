@@ -57,7 +57,7 @@ svg.icon { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: 
 /* ---------- Shell ---------- */
 .navrya-main {
   position: relative; z-index: 1; flex: 1; display: flex;
-  max-width: 1400px; width: 100%; margin: 0 auto; padding: 16px 40px; box-sizing: border-box;
+  max-width: clamp(1400px, 92vw, 1800px); width: 100%; margin: 0 auto; padding: 16px 40px; box-sizing: border-box;
 }
 .step-panel { width: 100%; }
 .step-panel[hidden] { display: none; }
@@ -128,6 +128,12 @@ svg.icon { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: 
 .auth-card-head { display: flex; flex-direction: column; gap: 8px; }
 .auth-card-head h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 26px; line-height: 32px; letter-spacing: .06em; text-transform: uppercase; color: var(--parchment); }
 .auth-card-head p { margin: 0; font: var(--type-body); color: var(--text-muted); }
+
+/* Mobile-only bottom-sheet: on desktop (see .account-grid) this wrapper is transparent
+   (display:contents) so .auth-card stays a direct grid item, unchanged from before. Below 720px
+   (@media below) it becomes the fixed, slide-up drawer and these two become visible. */
+.auth-drawer-wrap { display: contents; }
+.auth-drawer-scrim, .mobile-start-btn { display: none; }
 
 .auth-tabs { display: flex; gap: 6px; padding: 5px; border-radius: var(--radius-8); border: var(--frame-outer); background: rgba(0, 0, 0, .5); }
 .auth-tab { flex: 1; height: 38px; border-radius: var(--radius-6); border: 1px solid transparent; background: transparent; color: var(--text-muted); font: var(--type-body); letter-spacing: .08em; text-transform: uppercase; transition: color var(--dur-hover) var(--ease-out); }
@@ -424,7 +430,7 @@ html[dir="rtl"] .language-menu { right: 0; left: auto; }
 html[dir="rtl"] .language-menu button { text-align: right; }
 /* Directional chevrons (trait bullets, Continue/Enter "forward", Back) point the other way in
    RTL so they still read as forward/back relative to the text direction. */
-html[dir="rtl"] .trait-row svg, html[dir="rtl"] .btn-primary svg, html[dir="rtl"] .btn-ghost svg { transform: scaleX(-1); }
+html[dir="rtl"] .trait-row svg, html[dir="rtl"] .btn-primary svg, html[dir="rtl"] .btn-ghost svg, html[dir="rtl"] .mobile-start-btn svg { transform: scaleX(-1); }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1200px) {
@@ -439,13 +445,39 @@ html[dir="rtl"] .trait-row svg, html[dir="rtl"] .btn-primary svg, html[dir="rtl"
 }
 @media (max-width: 720px) {
   .page-header { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px 20px; }
-  .navrya-main { padding: 16px; }
+  .navrya-main { padding: 16px 16px 82px; }
+  .showcase { margin: 0 -16px; border-radius: 0; border-left: none; border-right: none; min-height: 70vh; }
   .showcase-body { padding: 20px; }
   .showcase-title { font-size: 28px; line-height: 34px; }
   .showcase-traits-grid { grid-template-columns: 1fr; }
+  .slide-btn { flex-direction: column; gap: 5px; padding: 8px 4px 7px; }
+  .slide-btn span { white-space: normal; overflow: visible; text-overflow: clip; text-align: center; }
   .auth-card { padding: 20px; }
+  .mobile-start-btn {
+    display: flex; position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 4;
+    height: 50px; align-items: center; justify-content: center; gap: 9px;
+    border-radius: var(--radius-8); border: 1px solid var(--gold-warm); background: var(--gold-warm);
+    color: var(--ink-950); font: var(--type-body); font-weight: 600; letter-spacing: .02em;
+    box-shadow: var(--shadow-panel);
+  }
+  .auth-drawer-scrim {
+    display: block; position: fixed; inset: 0; z-index: 4; background: var(--scrim); backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity var(--dur-hover) var(--ease-out);
+  }
+  .auth-drawer-scrim.is-open { opacity: 1; pointer-events: auto; }
+  .auth-drawer-wrap {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    transform: translateY(100%); transition: transform var(--dur-expand) var(--ease-out);
+  }
+  .auth-drawer-wrap.is-open { transform: translateY(0); }
+  .auth-drawer-wrap .auth-card { border-radius: var(--radius-12) var(--radius-12) 0 0; border-bottom: none; max-height: 88vh; overflow-y: auto; padding-top: 8px; }
+  .auth-drawer-handle { display: flex; justify-content: center; padding: 6px 0 10px; cursor: pointer; }
+  .auth-drawer-handle span { display: block; width: 40px; height: 4px; border-radius: var(--radius-pill); background: var(--border-gold-strong); }
   .characters { grid-template-columns: 1fr; }
   .picked-bar { flex-direction: column; align-items: stretch; gap: 16px; }
   .picked-actions { justify-content: stretch; }
   .picked-actions button { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-drawer-wrap, .auth-drawer-scrim { transition: none; }
 }

@@ -97,7 +97,14 @@
           </div>
         </section>
 
+        <button type="button" class="mobile-start-btn" id="mobileStartBtn">
+          <span data-i18n="letsStart">Let's start</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" class="icon"><use href="#i-chevron-right" /></svg>
+        </button>
+        <div class="auth-drawer-scrim" id="authDrawerScrim"></div>
+        <div class="auth-drawer-wrap" id="authDrawerWrap" role="dialog" aria-modal="true" aria-labelledby="authCardTitle">
         <section class="auth-card">
+          <div class="auth-drawer-handle" id="authDrawerHandle"><span></span></div>
           <div class="auth-card-head">
             <h2 id="authCardTitle"></h2>
             <p id="authCardSub"></p>
@@ -177,6 +184,7 @@
             <span class="secure-tag" data-i18n="secureEntryTag">NAVRYA v1.0 · Secure entry</span>
           </div>
         </section>
+        </div>
       </section>
 
       <!-- Step 02 · Character -->
