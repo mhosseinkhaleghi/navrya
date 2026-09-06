@@ -206,7 +206,7 @@ test('a voice-sourced turn applies only an allowlisted character delivery frame,
   assert.equal(result.provider, 'openai');
   const body = getBody();
   const systemText = body.input[0].content[0].text;
-  assert.match(systemText, /You are speaking as the Market Sage/);
+  assert.match(systemText, /You are speaking as the Market Master/);
   assert.match(systemText, /preserve every fact, number, safety warning, and required confirmation/);
 });
 
@@ -229,7 +229,7 @@ test('a delayed Gemini Voice profile refresh cannot delay the approved GPT decis
       dockChat({ provider: 'openai', message: 'help me plan', language: 'en', source: 'voice', voiceTransport: 'gemini', character: 'sage' }).then(resolve, reject);
     }));
     assert.equal(result.provider, 'openai');
-    assert.match(getBody().input[0].content[0].text, /Speak as the Market Sage/);
+    assert.match(getBody().input[0].content[0].text, /Speak as the Market Master/);
   } finally {
     clearTimeout(deadline);
     releaseProfileRefresh({ ok: true, json: async () => [] });

@@ -51,10 +51,10 @@ export const CHARACTERS = {
   sage: {
     navryaCharacter: 'master',
     voiceOpening: {
-      en: 'I am the Market Sage. Every trade can teach us; we will turn today’s observation into a calmer, wiser plan for the next one.',
-      fa: 'من حکیم بازارم. هر معامله می‌تواند چیزی به ما بیاموزد؛ مشاهده امروز را به نقشه‌ای آرام‌تر و پخته‌تر برای معامله بعدی تبدیل می‌کنیم.',
-      ar: 'أنا حكيم السوق. كل صفقة يمكن أن تعلّمنا شيئاً؛ سنحوّل ملاحظة اليوم إلى خطة أهدأ وأكثر حكمة للصفقة التالية.',
-      es: 'Soy el Sabio del Mercado. Cada operación puede enseñarnos algo; convertiremos la observación de hoy en un plan más sereno y sabio para la próxima.'
+      en: 'I am the Market Master. Every trade can teach us; we will turn today’s observation into a calmer, wiser plan for the next one.',
+      fa: 'من استاد بازارم. هر معامله می‌تواند چیزی به ما بیاموزد؛ مشاهده امروز را به نقشه‌ای آرام‌تر و پخته‌تر برای معامله بعدی تبدیل می‌کنیم.',
+      ar: 'أنا أستاذ السوق. كل صفقة يمكن أن تعلّمنا شيئاً؛ سنحوّل ملاحظة اليوم إلى خطة أهدأ وأكثر حكمة للصفقة التالية.',
+      es: 'Soy el Maestro del Mercado. Cada operación puede enseñarnos algo; convertiremos la observación de hoy en un plan más sereno y sabio para la próxima.'
     },
     quotes: {
       fa: 'هر معامله یک معلم است؛\nهر اشتباه یک درس،\nو هر جلسه یک قدم به سوی درک عمیق‌تر بازار.',

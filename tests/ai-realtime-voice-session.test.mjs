@@ -267,7 +267,7 @@ test('OpenAI Realtime selects a distinct valid voice and delivery direction for 
     const body = JSON.parse(getRequest().options.body);
     assert.equal(body.session.audio.output.voice, voice, character + ' voice');
     assert.equal(result.voice, voice, character + ' returned voice');
-    assert.match(body.session.instructions, new RegExp('Deliver this exact text as ' + (character === 'engineer' ? 'the Market Engineer' : character === 'sage' ? 'the Market Sage' : 'The ' + character[0].toUpperCase() + character.slice(1))));
+    assert.match(body.session.instructions, new RegExp('Deliver this exact text as ' + (character === 'engineer' ? 'the Market Engineer' : character === 'sage' ? 'the Market Master' : 'The ' + character[0].toUpperCase() + character.slice(1))));
   }
 });
 
@@ -369,7 +369,7 @@ test('the admin Gemini Voice diagnostic validates Live and TTS, and returns only
   assert.equal(result.ok, true);
   assert.equal(result.liveModel, 'gemini-3.5-transcribe-live');
   assert.equal(result.ttsModel, 'gemini-3.1-flash-tts-preview');
-  assert.equal(result.greeting, 'I am the Market Sage. Gemini Voice is ready. Every trade can teach us a calmer, wiser plan for the next one.');
+  assert.equal(result.greeting, 'I am the Market Master. Gemini Voice is ready. Every trade can teach us a calmer, wiser plan for the next one.');
   const ttsRequest = requests.find((request) => !request.target.includes('/auth_tokens'));
   assert.match(JSON.parse(ttsRequest.options.body).contents[0].parts[0].text, /elder, warm, resonant mentor/);
   assert.equal(result.mimeType, 'audio/wav');
@@ -412,7 +412,7 @@ test('Gemini TTS reads the approved text server-side and returns only provider a
   const body = JSON.parse(request.options.body);
   assert.deepEqual(body.generationConfig.responseModalities, ['AUDIO']);
   assert.match(body.contents[0].parts[0].text, /Approved NAVRYA reply\./);
-  assert.match(body.contents[0].parts[0].text, /The Market Sage: an elder, seasoned market mentor/i);
+  assert.match(body.contents[0].parts[0].text, /The Market Master: an elder, seasoned market mentor/i);
   assert.match(body.contents[0].parts[0].text, /interface language for this reply is English/i);
   assert.match(body.contents[0].parts[0].text, /never the transcript's language, meaning, numbers, or safety content/i);
   assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');

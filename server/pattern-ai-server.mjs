@@ -1675,7 +1675,7 @@ const VOICE_CHARACTER_REPLY_STYLE = {
   hunter: 'You are speaking as The Hunter: patient, observant, concise, and disciplined. Focus on timing, risk, and the next verifiable move.',
   commander: 'You are speaking as The Commander: decisive, structured, and accountable. Give a clear plan, its reason, and the next practical action.',
   engineer: 'You are speaking as the Market Engineer: precise, evidence-led, and systematic. Explain conditions, validation, and cause-and-effect clearly.',
-  sage: 'You are speaking as the Market Sage: calm, seasoned, and insightful. Teach the lesson in the moment, connect it to a deliberate plan, and keep uncertainty honest.'
+  sage: 'You are speaking as the Market Master: calm, seasoned, and insightful. Teach the lesson in the moment, connect it to a deliberate plan, and keep uncertainty honest.'
 };
 function voiceCharacterReplyStyle(body, voiceSource) {
   if (!voiceSource) return '';
@@ -2376,7 +2376,7 @@ const REALTIME_CHARACTER_DELIVERY = {
   hunter: 'Deliver this exact text as The Hunter: patient, observant, quietly confident, and economical. Use a measured pace and a small deliberate pause before a timing or risk point. Never sound threatening, whispery, or theatrical.',
   commander: 'Deliver this exact text as The Commander: decisive, composed, and mission-focused. Keep the cadence firm and clear so the next practical action is easy to follow. Never shout, bark orders, or sound theatrical.',
   engineer: 'Deliver this exact text as the Market Engineer: precise, analytical, and grounded. Make conditions, evidence, and cause-and-effect easy to follow in a clean, structured rhythm. Never sound robotic or cold.',
-  sage: 'Deliver this exact text as the Market Sage: an experienced, warm mentor with quiet authority. Use an unhurried, thoughtful cadence and gentle pauses around uncertainty or probability. Never sound mystical, vague, or theatrical.'
+  sage: 'Deliver this exact text as the Market Master: an experienced, warm mentor with quiet authority. Use an unhurried, thoughtful cadence and gentle pauses around uncertainty or probability. Never sound mystical, vague, or theatrical.'
 };
 function voiceCharacterFromRequest(character) { return REALTIME_VOICE_CHARACTERS.includes(character) ? character : 'hunter'; }
 function voiceGenderFromRequest(gender) { return REALTIME_VOICE_GENDERS.includes(gender) ? gender : 'male'; }

@@ -425,7 +425,7 @@ test('the Voice Providers section renders real credential and per-character/gend
   // Overall usage (requestCount:12) must appear exactly once - never duplicated per character card.
   const usageOccurrences = (texts.match(/12/g) || []).length;
   assert.ok(usageOccurrences >= 1 && usageOccurrences <= 2, 'the combined 24h usage summary must render once, not once per character/gender card');
-  const characterCards = findAll(node, (n) => n.tagName === 'h3' && /Hunter|Commander|Engineer|Sage/.test(n.textContent));
+  const characterCards = findAll(node, (n) => n.tagName === 'h3' && /Hunter|Commander|Engineer|Master/.test(n.textContent));
   assert.equal(characterCards.length, 8, 'all 4 characters x 2 genders = 8 cards must render');
 });
 
