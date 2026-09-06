@@ -1847,6 +1847,70 @@ export function mountCharacterApp(character) {
       });
 
       window.TradeJournalAIActionRegistry.registerAction({
+        // Slice U1-e (execution brief section 9 item 9, "real Marketplace search/sort"): the
+        // exact same query/sort state the real SearchField/Select controls already own - never a
+        // second, parallel search mechanism. Only meaningful while browsing the storefront list
+        // (available() below), never the detail view of one specific listing.
+        id: 'marketplace.search', domain: 'marketplace', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Search and/or sort the real Marketplace listing list by title/seller name, and change the sort order (newest, price low to high, price high to low, or best selling). Only while browsing the Marketplace list itself, never a specific listing\'s own detail page.',
+        aliases: ['search the marketplace for', 'sort the marketplace by price', 'show best selling listings', 'find listings by'],
+        requiredFields: [], optionalFields: ['query', 'sort'],
+        normalizeField: function (path, value) {
+          if (path !== 'sort') return value;
+          var text = String(value || '').trim().toLowerCase();
+          var map = { newest: 'marketplaceSortNewest', 'price low': 'marketplaceSortPriceLow', 'price low to high': 'marketplaceSortPriceLow', 'price high': 'marketplaceSortPriceHigh', 'price high to low': 'marketplaceSortPriceHigh', 'best selling': 'marketplaceSortBestSelling' };
+          return map[text] || null;
+        },
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (location.hash.indexOf('#community/marketplace') !== 0) location.hash = '#community/marketplace';
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('marketplace-storefront').open,
+            () => resolve({ processId: 'marketplace-storefront' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Slice U1-e (execution brief section 9 item 9, "real existing listing opening"): a real
+        // navigation only, never a mutation - reuses the exact same real 'marketplace-listing-'+id
+        // registration (marketplaceView.jsx) marketplace.rate/messageSeller already target once a
+        // listing is open, just resolved by title instead of assuming one is already showing.
+        // Exact, case-insensitive title match only - zero or multiple matches resolve nothing,
+        // the same "never guess" rule patternName/strategyName/accountName already established.
+        id: 'marketplace.listing.open', domain: 'marketplace', riskLevel: 'low',
+        description: 'Open a specific Marketplace listing by its exact title, to view its details. listingTitle must be the exact name the user said; NAVRYA resolves the real listing from it, never a guessed one - if it does not resolve to exactly one real, currently listed item, ask which one instead of guessing.',
+        aliases: ['open the listing for', 'show me the marketplace listing for', 'view this strategy on marketplace', 'open this pattern listing'],
+        requiredFields: ['listingTitle'], optionalFields: [],
+        available: () => true,
+        open: (context, initialFields) => new Promise((resolve) => {
+          var titleField = (initialFields || []).filter((f) => f && f.path === 'listingTitle')[0];
+          var wanted = titleField ? String(titleField.value == null ? '' : titleField.value).trim().toLowerCase() : '';
+          if (!wanted) { resolve(null); return; }
+          var store = window.TradeJournalCommunityStore;
+          if (!store) { resolve(null); return; }
+          store.listListings({}).then((listings) => {
+            var matches = (listings || []).filter((l) => String(l.title || '').trim().toLowerCase() === wanted);
+            if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess
+            var listingId = matches[0].id;
+            location.hash = '#community/marketplace/' + encodeURIComponent(listingId);
+            var registry = window.TradeJournalAIProcessRegistry;
+            pollFor(
+              () => registry && registry.query('marketplace-listing-' + listingId).open,
+              () => resolve({ processId: 'marketplace-listing-' + listingId }),
+              () => resolve(null)
+            );
+          }).catch(() => resolve(null));
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
         // F27-31: resolves whichever of Pattern/Strategy is currently open - real, existing
         // pattern-editor-{id}/strategy-editor-{id} registrations, never a guess between them.
         id: 'marketplace.publish', domain: 'marketplace', riskLevel: 'high',

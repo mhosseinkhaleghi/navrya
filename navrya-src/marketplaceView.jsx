@@ -95,6 +95,26 @@ export function MarketplaceStorefront({ i18n }) {
         .then((pairs) => setSellers(Object.fromEntries(pairs)));
     });
   }, []);
+  // Slice U1-e (execution brief section 9 item 9, "real Marketplace search/sort"): the exact
+  // same query/sort state the real SearchField/Select controls above already own - AI-fillable
+  // through the same live filter, never a second/parallel search mechanism. Read fresh via refs
+  // (setQuery/setSort are stable setState references, but validating `sort` against SORT_OPTIONS
+  // needs no state at all, so this is defensive consistency, not a real staleness fix).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('marketplace-storefront', {
+      allowlist: ['query', 'sort'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'query') { setQuery(String(value == null ? '' : value)); return; }
+        if (path === 'sort' && SORT_OPTIONS.indexOf(value) !== -1) setSort(value);
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const filtered = React.useMemo(() => {
     if (!listings) return null;
     const needle = query.trim().toLowerCase();

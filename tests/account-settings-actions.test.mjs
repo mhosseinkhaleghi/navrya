@@ -171,9 +171,9 @@ test('chat-dock-core.js excludes settings-ai-panel-builder/account-profile-ident
 // ai-assistant-engine - missing this exclusion would reproduce the identical F33-F36 bug class
 // (once started, EVERY later message, even something entirely unrelated, would silently return
 // action:null for the rest of the page visit).
-test('settings-alerts, settings-companion, and settings-voice-gender are added to BOTH the unconditional activeProcess exclusion and the workflowProcessExcluded check - the same F33-F36 fix, not just one half of it', () => {
-  assert.match(chatDockCoreSrc, /activeProcess\.id === 'ai-assistant-engine' \|\| activeProcess\.id === 'settings-alerts' \|\| activeProcess\.id === 'settings-companion' \|\| activeProcess\.id === 'settings-voice-gender' \|\| activeProcess\.id === 'session-delete-confirm'/);
-  assert.match(chatDockCoreSrc, /workflowProcessId === 'ai-assistant-engine' \|\| workflowProcessId === 'settings-alerts' \|\| workflowProcessId === 'settings-companion' \|\| workflowProcessId === 'settings-voice-gender' \|\| workflowProcessId === 'session-delete-confirm'/);
+test('settings-alerts, settings-companion, settings-voice-gender, and marketplace-storefront are added to BOTH the unconditional activeProcess exclusion and the workflowProcessExcluded check - the same F33-F36 fix, not just one half of it', () => {
+  assert.match(chatDockCoreSrc, /activeProcess\.id === 'ai-assistant-engine' \|\| activeProcess\.id === 'settings-alerts' \|\| activeProcess\.id === 'settings-companion' \|\| activeProcess\.id === 'settings-voice-gender' \|\| activeProcess\.id === 'marketplace-storefront' \|\| activeProcess\.id === 'session-delete-confirm'/);
+  assert.match(chatDockCoreSrc, /workflowProcessId === 'ai-assistant-engine' \|\| workflowProcessId === 'settings-alerts' \|\| workflowProcessId === 'settings-companion' \|\| workflowProcessId === 'settings-voice-gender' \|\| workflowProcessId === 'marketplace-storefront' \|\| workflowProcessId === 'session-delete-confirm'/);
 });
 
 // Slice U1-d: settings-character is deliberately NOT in either exclusion list - it is never

@@ -212,3 +212,47 @@ test('none of the seven new actions ever touch API keys, auth tokens, or admin c
     assert.doesNotMatch(actionBlock(id), /apiKey|authToken|credential|admin/i);
   }
 });
+
+// --- Slice U1-e (execution brief section 9 item 9, "real Marketplace search/sort" + "existing
+// listing opening") ---
+
+test('marketplace.search only fills the real query/sort state the storefront\'s own SearchField/Select already own - sort is validated/mapped to the exact real i18n keys the component expects, never an invented value', () => {
+  const block = actionBlock('marketplace.search');
+  assert.match(block, /entityAlreadyPersisted: true/);
+  assert.match(block, /optionalFields: \['query', 'sort'\]/);
+  assert.match(block, /newest: 'marketplaceSortNewest'/);
+  assert.match(block, /'price high to low': 'marketplaceSortPriceHigh'/);
+});
+
+test('the real marketplace-storefront registration exists, with an allowlist of exactly query/sort, and sort is validated against the real SORT_OPTIONS list', () => {
+  const registration = /registry\.register\('marketplace-storefront', \{[\s\S]*?\n {4}\}\);/.exec(marketplaceViewSrc);
+  assert.ok(registration);
+  assert.match(registration[0], /allowlist: \['query', 'sort'\]/);
+  assert.match(registration[0], /if \(path === 'sort' && SORT_OPTIONS\.indexOf\(value\) !== -1\) setSort\(value\);/);
+});
+
+test('marketplace-storefront and marketplace.search are excluded from the same entityAlreadyPersisted-workflow bug class every other such settings/search action already is', () => {
+  assert.match(chatDockCoreSrc, /activeProcess\.id === 'marketplace-storefront'/);
+  assert.match(chatDockCoreSrc, /workflowProcessId === 'marketplace-storefront'/);
+});
+
+test('marketplace.listing.open requires listingTitle and resolves it via an exact, case-insensitive title match against the real listing list - zero or multiple matches resolve nothing, never guessed', () => {
+  const block = actionBlock('marketplace.listing.open');
+  assert.match(block, /requiredFields: \['listingTitle'\], optionalFields: \[\]/);
+  assert.match(block, /store\.listListings\(\{\}\)\.then\(\(listings\) => \{/);
+  assert.match(block, /String\(l\.title \|\| ''\)\.trim\(\)\.toLowerCase\(\) === wanted/);
+  assert.match(block, /if \(matches\.length !== 1\) \{ resolve\(null\); return; \} \/\/ zero or ambiguous - never guess/);
+});
+
+test('marketplace.listing.open navigates via the real #community/marketplace/{id} hash and polls for the exact same real marketplace-listing-{id} registration marketplace.rate/messageSeller already target once open', () => {
+  const block = actionBlock('marketplace.listing.open');
+  assert.match(block, /location\.hash = '#community\/marketplace\/' \+ encodeURIComponent\(listingId\);/);
+  assert.match(block, /registry\.query\('marketplace-listing-' \+ listingId\)\.open/);
+  assert.match(block, /\(\) => resolve\(\{ processId: 'marketplace-listing-' \+ listingId \}\),/);
+});
+
+test('marketplace.search and marketplace.listing.open never touch API keys, auth tokens, or admin credentials', () => {
+  for (const id of ['marketplace.search', 'marketplace.listing.open']) {
+    assert.doesNotMatch(actionBlock(id), /apiKey|authToken|credential|admin/i);
+  }
+});
