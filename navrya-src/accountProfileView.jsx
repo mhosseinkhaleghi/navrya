@@ -1232,17 +1232,21 @@ function IdentityTab({ lang, i18n, character, profile, onSaved }) {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('account-profile-identity', {
-      // avatarDataUrl deliberately stays out of the AI-fillable allowlist here (F33 section 8):
-      // there is no way for the model to supply a real picked file, and it must never fabricate
-      // one or claim an upload succeeded. The real field/applyValue path stays for any future
-      // human-triggered flow; profile.edit (character-app.jsx) simply never targets it.
-      allowlist: ['displayName', 'email', 'phone', 'avatarDataUrl'],
+      // Slice W1 (field/gate contracts), audit finding: avatarDataUrl was documented here as
+      // "deliberately out of the AI-fillable allowlist" (F33 section 8) - there is no way for the
+      // model to supply a real picked file, and it must never fabricate one or claim an upload
+      // succeeded - but the allowlist below still literally included it, and applyValue() still had
+      // a live setter branch for it. profile.edit (character-app.jsx) never actually asks for this
+      // field today, but the seam itself must not exist regardless of what any one caller currently
+      // requests - a future action, or a bug in this one's own field schema, would otherwise reach
+      // straight through to a real, silent avatar change. The manual file picker (pickFile() below)
+      // is completely unaffected - it never goes through this registry at all.
+      allowlist: ['displayName', 'email', 'phone'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
         if (path === 'displayName') setName(String(value ?? ''));
         else if (path === 'email') setEmail(String(value ?? ''));
         else if (path === 'phone') setPhone(String(value ?? ''));
-        else if (path === 'avatarDataUrl') setAvatarDataUrl(value || null);
       },
       submit: () => submitRef.current()
     });

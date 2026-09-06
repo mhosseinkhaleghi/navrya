@@ -144,6 +144,27 @@ test('the real DOM registrations extend their allowlist with the matching synthe
   assert.match(messagesViewSrc, /registry\.register\('messages-thread-reply', \{\s*[\s\S]*?allowlist: \['draft', 'send'\]/);
 });
 
+// Slice W1 (field/gate contracts), audit finding: marketplace.messageSeller targets
+// 'messages-thread-reply' (the previous test pins its real allowlist as ['draft', 'send']), but
+// the action's own field schema declared 'text' - every extracted message body silently failed
+// ai-process-registry.js's own allowlist check, so voice/chat could never actually fill the
+// message draft for this specific action. message.reply (the other action targeting the same
+// real process) already used the correct 'draft' name - only messageSeller was wrong.
+test('marketplace.messageSeller declares the same field name its real target (messages-thread-reply) actually accepts - draft, not text', () => {
+  const block = actionBlock('marketplace.messageSeller');
+  assert.match(block, /optionalFields: \['draft'\]/);
+  assert.doesNotMatch(block, /optionalFields: \['text'\]/);
+});
+
+// message.compose is a DIFFERENT process (messages-compose, the "New Message" composer, not the
+// thread-reply panel) whose own real allowlist genuinely is ['text', 'recipientName', 'send'] -
+// confirming here that this action's matching 'text' field name is correct and must never be
+// "fixed" to 'draft' by mistake alongside marketplace.messageSeller's real bug above.
+test('message.compose correctly uses text (its real target, messages-compose, actually accepts text) - a different process from messages-thread-reply, never to be confused with marketplace.messageSeller\'s fix', () => {
+  const block = actionBlock('message.compose');
+  assert.match(block, /optionalFields: \['recipientName', 'text'\]/);
+});
+
 test('every new modal/panel exposing submit() to the registry does so through a ref kept current every render, avoiding the ScenarioEditor-class stale-closure bug', () => {
   for (const src of [communityViewSrc, publishFlowSrc, messagesViewSrc]) {
     assert.match(src, /const submitRef = React\.useRef\(null\);/);

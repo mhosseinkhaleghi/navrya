@@ -155,6 +155,23 @@
 
     var appliedAny = false;
     (fields || []).forEach(function (field) {
+      // Slice W1 (field/gate contracts): explicit requested-clear semantics. An OMITTED field
+      // (simply absent from this turn's extraction) must remain the no-op it always was - that
+      // case is unaffected below. A field arriving with mode:'clear' is a DIFFERENT, deliberate
+      // signal ("the user explicitly asked to clear this") that must reach the real setter/
+      // readback even though its value is empty/null - the exact case the old unconditional
+      // falsy-value skip below could never distinguish from mere omission. Only ever honored for a
+      // field the action itself declares clearable (action.clearableFields) - a field with no
+      // sensible "empty" state stays exactly as unclearable as before this change.
+      if (field && field.path && field.mode === 'clear') {
+        var clearableFields = Array.isArray(action.clearableFields) ? action.clearableFields : [];
+        if (clearableFields.indexOf(field.path) === -1) return; // not a field this action permits clearing
+        current.known[field.path] = null;
+        // Clearing a REQUIRED field must reopen missing status - missingFields() below already
+        // does this correctly once `known` genuinely holds null, so no separate branch is needed.
+        if (processRegistry) { processRegistry.applyValue(current.processId, field.path, null, 'clear'); appliedAny = true; }
+        return;
+      }
       if (!field || !field.path || field.value === undefined || field.value === null || field.value === '') return;
       // A raw extracted value is untrusted app input, exactly like a typed form value - run it
       // through the action's own normalizeField() (e.g. "15 minutes" -> "15m" for session.create,

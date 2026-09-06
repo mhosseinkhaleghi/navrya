@@ -42,6 +42,18 @@ test('profile.edit never fills avatarDataUrl - the model cannot supply a real pi
   assert.doesNotMatch(block, /avatarDataUrl/);
 });
 
+// Slice W1 (field/gate contracts), audit finding: profile.edit itself never asks for
+// avatarDataUrl (the test above), but the REAL registration's own allowlist/applyValue still had
+// a live seam for it regardless of what any one action requests - a future action, or a bug in
+// this one's own field schema, would otherwise reach straight through to a real, silent avatar
+// change. This pins that the seam is gone at its actual source, not merely unreached today.
+test('the real account-profile-identity registration has no avatarDataUrl seam at all - not just an unused one - so no caller (present or future) can ever silently change the avatar through it', () => {
+  const registerBlock = accountProfileSrc.slice(accountProfileSrc.indexOf("registry.register('account-profile-identity'"), accountProfileSrc.indexOf('return () => { mountedRef.current = false; };'));
+  assert.match(registerBlock, /allowlist: \['displayName', 'email', 'phone'\],/);
+  const applyValueBlock = registerBlock.slice(registerBlock.indexOf('applyValue: (path, value) => {'), registerBlock.indexOf('submit: () => submitRef.current()'));
+  assert.doesNotMatch(applyValueBlock, /avatarDataUrl/, 'no applyValue branch for avatarDataUrl - the manual file picker never goes through this registry at all');
+});
+
 test('profile.role.update requires role and delegates validation to the real registration - never accepts an authorization role', () => {
   const block = actionBlock('profile.role.update');
   assert.match(block, /requiredFields: \['role'\]/);

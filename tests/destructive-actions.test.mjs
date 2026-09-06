@@ -126,11 +126,37 @@ test('none of the six destructive actions ever declares a fillable field for pas
 });
 
 test('chat-dock-core.js resolves an explicit REJECTION or CONFIRMATION of a pending single-gate-field workflow deterministically and client-side, never left to the model\'s own free-form JSON extraction', () => {
-  assert.match(chatDockCoreSrc, /gateWorkflow\.missing\.length === 1 && \/\^\(confirm\|send\|publish\)\/i\.test\(gateWorkflow\.missing\[0\]\)/);
+  // Slice W1 (field/gate contracts): the old /^(confirm|send|publish)/i prefix-match guess is
+  // gone - detection now reads the action's own explicit gateField declaration (character-app.jsx),
+  // which cannot be fooled by a real, ordinary field merely NAMED like a gate, and works for any
+  // gate field name, not only ones matching that specific prefix pattern.
+  assert.match(chatDockCoreSrc, /var gateAction = gateWorkflow && actionRegistry \? actionRegistry\.get\(gateWorkflow\.actionId\) : null;/);
+  assert.match(chatDockCoreSrc, /gateAction && gateAction\.gateField && Array\.isArray\(gateWorkflow\.missing\) && gateWorkflow\.missing\.length === 1 && gateWorkflow\.missing\[0\] === gateAction\.gateField/);
   assert.match(chatDockCoreSrc, /gateDecision === 'reject'/);
   assert.match(chatDockCoreSrc, /gateDecision === 'confirm'/);
   assert.match(chatDockCoreSrc, /workflowEngine\.cancel\(\)/);
   assert.match(chatDockCoreSrc, /workflowEngine\.applyKnownFields\(\[\{ path: gateField, value: true \}\], gateContext\)/);
+});
+
+// Slice W1: every one of the 13 original gate actions (F37's own table) now declares gateField
+// explicitly - the SAME field name normalizeGateField() already enforced, just made introspectable
+// instead of only implicit in which normalizeField function happens to be assigned.
+test('every one of the 13 original gate actions declares gateField explicitly, matching the exact field name its own normalizeGateField() call already uses', () => {
+  const GATE_ACTIONS = [
+    ['trade.cancel', 'confirm'], ['pattern.delete', 'confirm'], ['strategy.delete', 'confirm'],
+    ['session.delete', 'confirm'], ['trade.delete', 'confirm'],
+    ['scenario.delete', 'confirmDelete'], ['entry.delete', 'confirmDelete'],
+    ['community.post.create', 'publish'],
+    ['community.comment.create', 'send'], ['marketplace.messageSeller', 'send'],
+    ['message.compose', 'send'], ['message.reply', 'send'],
+    ['marketplace.publish', 'confirmPublish']
+  ];
+  assert.equal(GATE_ACTIONS.length, 13);
+  for (const [id, field] of GATE_ACTIONS) {
+    const block = actionBlock(id);
+    assert.match(block, new RegExp(`normalizeField: normalizeGateField\\('${field}'\\),`), `${id} must call normalizeGateField('${field}')`);
+    assert.match(block, new RegExp(`gateField: '${field}',`), `${id} must declare gateField: '${field}'`);
+  }
 });
 
 test('an explicit false on a gate field is normalized to null (never applied) rather than counting as "known" - ai-workflow-engine.js\'s own missingFields() treats any non-undefined/null/empty value as resolved, which would otherwise silently auto-complete-and-clear a confirmation workflow with nothing actually confirmed', () => {

@@ -240,8 +240,16 @@
     // isn't a gate at all) is never mistaken for a decision on this workflow at all -
     // REJECT_PATTERN's own "no"/"don't" would otherwise cancel an in-progress session.create or
     // trade.calculator workflow the user never asked to abandon.
+    // Slice W1 (field/gate contracts): each gate action now declares its own gate field
+    // explicitly (character-app.jsx's gateField property, added alongside the existing
+    // normalizeGateField() call) - this replaces the old /^(confirm|send|publish)/i prefix-match
+    // guess, which would have wrongly treated a real, ordinary field merely NAMED like a gate
+    // (e.g. a hypothetical "confirmedPrice") as one, and could never recognize a genuine gate
+    // field with a different name pattern. The comment above still documents F37's own real
+    // history/reasoning for why this fast-path exists at all - only the detection itself changed.
     var gateWorkflow = workflowEngine ? workflowEngine.current() : null;
-    if (gateWorkflow && Array.isArray(gateWorkflow.missing) && gateWorkflow.missing.length === 1 && /^(confirm|send|publish)/i.test(gateWorkflow.missing[0]) && proactiveEngine && typeof proactiveEngine.interpretConfirmationText === 'function') {
+    var gateAction = gateWorkflow && actionRegistry ? actionRegistry.get(gateWorkflow.actionId) : null;
+    if (gateWorkflow && gateAction && gateAction.gateField && Array.isArray(gateWorkflow.missing) && gateWorkflow.missing.length === 1 && gateWorkflow.missing[0] === gateAction.gateField && proactiveEngine && typeof proactiveEngine.interpretConfirmationText === 'function') {
       var gateField = gateWorkflow.missing[0];
       var gateDecision = proactiveEngine.interpretConfirmationText(text);
       if (gateDecision === 'reject') {

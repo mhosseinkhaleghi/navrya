@@ -1613,6 +1613,11 @@ export function mountCharacterApp(character) {
         aliases: ['cancel this trade', 'abandon this trade', 'cancel the trade'],
         requiredFields: ['confirm'], optionalFields: [],
         normalizeField: normalizeGateField('confirm'),
+        // Slice W1 (field/gate contracts): explicit, engine-readable declaration that 'confirm' is
+        // a workflow-only confirmation field - never a real form field, never written to any
+        // record. Lets a caller (chat-dock-core.js's own gate fast-path, the future coverage
+        // matrix) ask the action directly instead of inferring it from a field-name convention.
+        gateField: 'confirm',
         available: (context) => { var t = resolveActiveTrade(context); return !!(t && t.status === 'hunting'); },
         open: (context) => new Promise((resolve) => {
           var trade = resolveActiveTrade(context);
@@ -1761,6 +1766,9 @@ export function mountCharacterApp(character) {
         aliases: ['create a community post', 'write a post', 'draft a post', 'compose a community post'],
         requiredFields: ['publish'], optionalFields: ['text'],
         normalizeField: normalizeGateField('publish'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - this action's
+        // own gate field is named publish instead.
+        gateField: 'publish',
         available: () => true,
         open: () => new Promise((resolve) => {
           if (location.hash.indexOf('#community/feed') !== 0 && location.hash.indexOf('#community') !== 0) location.hash = '#community/feed';
@@ -1791,6 +1799,9 @@ export function mountCharacterApp(character) {
         aliases: ['reply to this post', 'comment on this post', 'draft a reply', 'write a comment'],
         requiredFields: ['send'], optionalFields: ['draft'],
         normalizeField: normalizeGateField('send'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - this action's
+        // own gate field is named send instead.
+        gateField: 'send',
         available: (context) => !!resolveActivePostId(context),
         open: (context) => new Promise((resolve) => {
           var postId = resolveActivePostId(context);
@@ -1814,6 +1825,9 @@ export function mountCharacterApp(character) {
         aliases: ['publish this pattern', 'publish this strategy', 'publish this to marketplace', 'list this on marketplace'],
         requiredFields: ['confirmPublish'], optionalFields: ['title', 'description', 'priceAmount', 'priceCurrency', 'previewItemCount'],
         normalizeField: normalizeGateField('confirmPublish'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - this action's
+        // own gate field is named confirmPublish instead.
+        gateField: 'confirmPublish',
         available: (context) => !!(resolveActivePatternId(context) || resolveActiveStrategyId(context)),
         // Journey H1: previously routed through the orphaned, pre-NAVRYA legacy pages
         // (window.TradeJournalPatternRegistry/StrategyEducation, pattern-registry.js/
@@ -1898,8 +1912,15 @@ export function mountCharacterApp(character) {
         id: 'marketplace.messageSeller', domain: 'marketplace', riskLevel: 'high',
         description: 'Message the seller of the Marketplace listing currently open, filling the real message draft - this does NOT send anything by itself. send must ONLY be set to true once the user has explicitly asked to actually send the message now. Only available while a real Marketplace listing is open.',
         aliases: ['message this seller', 'message the seller', 'ask the seller', 'contact this seller'],
-        requiredFields: ['send'], optionalFields: ['text'],
+        // Slice W1 (field/gate contracts), audit finding: this targets 'messages-thread-reply'
+        // (see open() below), whose real registration (messagesView.jsx) only ever accepts a
+        // 'draft' path - the old 'text' field name here silently failed the allowlist check on
+        // every turn, so voice/chat could never actually fill the message body for this action.
+        requiredFields: ['send'], optionalFields: ['draft'],
         normalizeField: normalizeGateField('send'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - this action's
+        // own gate field is named send instead.
+        gateField: 'send',
         available: (context) => !!resolveActiveListingId(context),
         open: (context) => new Promise((resolve) => {
           var listingId = resolveActiveListingId(context);
@@ -1936,6 +1957,9 @@ export function mountCharacterApp(character) {
         aliases: ['message someone', 'send a message to', 'write a message to', 'compose a message'],
         requiredFields: ['send'], optionalFields: ['recipientName', 'text'],
         normalizeField: normalizeGateField('send'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - this action's
+        // own gate field is named send instead.
+        gateField: 'send',
         available: () => true,
         open: () => new Promise((resolve) => {
           if (location.hash.indexOf('#community/messages') !== 0) location.hash = '#community/messages';
@@ -1970,6 +1994,9 @@ export function mountCharacterApp(character) {
         aliases: ['reply to this', 'send a reply', 'respond to this message'],
         requiredFields: ['send'], optionalFields: ['draft'],
         normalizeField: normalizeGateField('send'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - this action's
+        // own gate field is named send instead.
+        gateField: 'send',
         available: () => { var registry = window.TradeJournalAIProcessRegistry; return !!(registry && registry.query('messages-thread-reply').open); },
         open: () => new Promise((resolve) => {
           var registry = window.TradeJournalAIProcessRegistry;
@@ -2653,6 +2680,11 @@ export function mountCharacterApp(character) {
         aliases: ['delete this pattern', 'delete the pattern', 'remove this pattern', 'delete pattern'],
         requiredFields: ['confirm'], optionalFields: ['patternName'],
         normalizeField: normalizeGateField('confirm'),
+        // Slice W1 (field/gate contracts): explicit, engine-readable declaration that 'confirm' is
+        // a workflow-only confirmation field - never a real form field, never written to any
+        // record. Lets a caller (chat-dock-core.js's own gate fast-path, the future coverage
+        // matrix) ask the action directly instead of inferring it from a field-name convention.
+        gateField: 'confirm',
         available: () => true,
         open: (context, initialFields) => new Promise((resolve) => {
           var nameField = (initialFields || []).filter((f) => f && f.path === 'patternName')[0];
@@ -2710,6 +2742,11 @@ export function mountCharacterApp(character) {
         aliases: ['delete this strategy', 'delete the strategy', 'remove this strategy', 'delete strategy'],
         requiredFields: ['confirm'], optionalFields: ['strategyName'],
         normalizeField: normalizeGateField('confirm'),
+        // Slice W1 (field/gate contracts): explicit, engine-readable declaration that 'confirm' is
+        // a workflow-only confirmation field - never a real form field, never written to any
+        // record. Lets a caller (chat-dock-core.js's own gate fast-path, the future coverage
+        // matrix) ask the action directly instead of inferring it from a field-name convention.
+        gateField: 'confirm',
         available: () => true,
         open: (context, initialFields) => new Promise((resolve) => {
           var nameField = (initialFields || []).filter((f) => f && f.path === 'strategyName')[0];
@@ -2762,6 +2799,11 @@ export function mountCharacterApp(character) {
         aliases: ['delete this session', 'delete the session', 'remove this session', 'delete session'],
         requiredFields: ['confirm'], optionalFields: [],
         normalizeField: normalizeGateField('confirm'),
+        // Slice W1 (field/gate contracts): explicit, engine-readable declaration that 'confirm' is
+        // a workflow-only confirmation field - never a real form field, never written to any
+        // record. Lets a caller (chat-dock-core.js's own gate fast-path, the future coverage
+        // matrix) ask the action directly instead of inferring it from a field-name convention.
+        gateField: 'confirm',
         available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
         open: (context) => new Promise((resolve) => {
           var id = context && context.activeEntities && context.activeEntities.sessionId;
@@ -2805,6 +2847,9 @@ export function mountCharacterApp(character) {
         aliases: ['delete this scenario', 'delete the scenario', 'remove this scenario'],
         requiredFields: ['confirmDelete'], optionalFields: [],
         normalizeField: normalizeGateField('confirmDelete'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - same
+        // declarative purpose, this action's own gate field is named confirmDelete instead.
+        gateField: 'confirmDelete',
         available: (context) => !!(context && context.activeEntities && context.activeEntities.scenarioId),
         open: (context) => new Promise((resolve) => {
           var id = context && context.activeEntities && context.activeEntities.scenarioId;
@@ -2836,6 +2881,9 @@ export function mountCharacterApp(character) {
         aliases: ['delete this entry', 'delete the entry', 'remove this entry'],
         requiredFields: ['confirmDelete'], optionalFields: [],
         normalizeField: normalizeGateField('confirmDelete'),
+        // Slice W1 (field/gate contracts): see the 'confirm' sibling comment above - same
+        // declarative purpose, this action's own gate field is named confirmDelete instead.
+        gateField: 'confirmDelete',
         available: (context) => !!(context && context.activeEntities && context.activeEntities.entryId),
         open: (context) => new Promise((resolve) => {
           var id = context && context.activeEntities && context.activeEntities.entryId;
@@ -2863,6 +2911,11 @@ export function mountCharacterApp(character) {
         aliases: ['delete this trade', 'delete the trade', 'remove this trade', 'delete trade record'],
         requiredFields: ['confirm'], optionalFields: [],
         normalizeField: normalizeGateField('confirm'),
+        // Slice W1 (field/gate contracts): explicit, engine-readable declaration that 'confirm' is
+        // a workflow-only confirmation field - never a real form field, never written to any
+        // record. Lets a caller (chat-dock-core.js's own gate fast-path, the future coverage
+        // matrix) ask the action directly instead of inferring it from a field-name convention.
+        gateField: 'confirm',
         available: (context) => !!resolveActiveTrade(context),
         open: (context) => new Promise((resolve) => {
           var trade = resolveActiveTrade(context);

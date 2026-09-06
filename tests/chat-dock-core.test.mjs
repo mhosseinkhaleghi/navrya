@@ -523,7 +523,7 @@ test('a workflow still "collecting" (not pending-submit) whose process is exclud
   window.TradeJournalAIProcessRegistry.register('trade-details-fake1', { allowlist: [], isOpen: () => true });
   let cancelled = null;
   window.TradeJournalAIActionRegistry.registerAction({
-    id: 'trade.cancel', requiredFields: ['confirm'], optionalFields: [],
+    id: 'trade.cancel', requiredFields: ['confirm'], optionalFields: [], gateField: 'confirm',
     open: () => ({ processId: 'trade-details-fake1' }),
     submit: async (known) => { if (known.confirm !== true) return undefined; cancelled = true; return { id: 'trade-1', status: 'cancelled' }; },
     resultContext: () => {}
@@ -917,7 +917,7 @@ test('confirming a gate-field-only workflow (F37\'s existing fast path) complete
   const window = await coreSandbox({ withWorkflowEngine: true });
   window.TradeJournalAIProcessRegistry.register('pattern-delete-confirm', { allowlist: ['confirm'], isOpen: () => true });
   window.TradeJournalAIActionRegistry.registerAction({
-    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [],
+    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [], gateField: 'confirm',
     open: () => ({ processId: 'pattern-delete-confirm' }),
     submit: async (known) => { spies.submitted = known; return { deleted: true }; }, resultContext: () => {}
   });
@@ -981,7 +981,7 @@ test('Persian gate confirmation (Yes./No.): voiceReply speaks the directive\'s o
   confirmWindow.document.documentElement.lang = 'fa';
   confirmWindow.TradeJournalAIProcessRegistry.register('pattern-delete-confirm', { allowlist: ['confirm'], isOpen: () => true });
   confirmWindow.TradeJournalAIActionRegistry.registerAction({
-    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [],
+    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [], gateField: 'confirm',
     open: () => ({ processId: 'pattern-delete-confirm' }), submit: async () => ({ deleted: true }), resultContext: () => {}
   });
   confirmWindow.TradeJournalAIWorkflowEngine.start('pattern.delete', {}, []);
@@ -994,7 +994,7 @@ test('Persian gate confirmation (Yes./No.): voiceReply speaks the directive\'s o
   rejectWindow.document.documentElement.lang = 'fa';
   rejectWindow.TradeJournalAIProcessRegistry.register('pattern-delete-confirm', { allowlist: ['confirm'], isOpen: () => true });
   rejectWindow.TradeJournalAIActionRegistry.registerAction({
-    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [],
+    id: 'pattern.delete', requiredFields: ['confirm'], optionalFields: [], gateField: 'confirm',
     open: () => ({ processId: 'pattern-delete-confirm' }), submit: async () => ({ deleted: true }), resultContext: () => {}
   });
   rejectWindow.TradeJournalAIWorkflowEngine.start('pattern.delete', {}, []);

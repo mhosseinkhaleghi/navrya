@@ -254,6 +254,67 @@ test('applyKnownFields() leaves a field missing (never applies it, never submits
   assert.equal(submitCalls.length, 0, 'submit must not fire while a required field was rejected by normalization');
 });
 
+// Slice W1 (field/gate contracts): explicit requested-clear semantics, the four cases the brief
+// itself calls out. Each gets its own dedicated test rather than folding them into one, since
+// each pins a genuinely distinct code path (the plain omission skip vs. the new mode:'clear'
+// branch vs. missingFields() vs. normalizeGateField(), covered separately in
+// tests/destructive-actions.test.mjs).
+
+test('requested-clear case 1: an OMITTED field (simply absent from this turn\'s extraction) remains a no-op - never confused with an explicit clear', async () => {
+  const applyCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city'], optionalFields: ['timeframe'], clearableFields: ['timeframe'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'timeframe', value: '15m' }], {});
+  // A later turn that says nothing about timeframe at all (city is the only field extracted) -
+  // the field the model simply did not mention this turn must stay exactly as it was.
+  const workflow = await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  assert.deepEqual(clone(workflow.known), { city: 'New York', timeframe: '15m' }, 'an unmentioned field must never be touched, let alone cleared');
+  assert.deepEqual(clone(applyCalls), [
+    ['session-create', 'timeframe', '15m', 'replace'],
+    ['session-create', 'city', 'New York', 'replace']
+  ]);
+});
+
+test('requested-clear case 2: an explicit mode:\'clear\' on a field the action declares clearable reaches the real setter with a real empty/null value - the exact signal plain omission can never express', async () => {
+  const applyCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city'], optionalFields: ['timeframe'], clearableFields: ['timeframe'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'city', value: 'New York' }, { path: 'timeframe', value: '15m' }], {});
+  const workflow = await engine.applyKnownFields([{ path: 'timeframe', value: null, mode: 'clear' }], {});
+  assert.deepEqual(applyCalls[applyCalls.length - 1], ['session-create', 'timeframe', null, 'clear'], 'the real setter must receive the clear itself, not be left unaware');
+  assert.equal(workflow.known.timeframe, null, 'known must genuinely hold null - not merely "still whatever it was"');
+});
+
+test('requested-clear case 2b: mode:\'clear\' on a field the action does NOT declare clearable is refused - a field with no sensible "empty" state stays exactly as unclearable as before this change', async () => {
+  const applyCalls = [];
+  const action = { id: 'session.create', requiredFields: ['city'] }; // no clearableFields at all
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: (...args) => applyCalls.push(args) } });
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  const workflow = await engine.applyKnownFields([{ path: 'city', value: null, mode: 'clear' }], {});
+  assert.deepEqual(clone(applyCalls), [['session-create', 'city', 'New York', 'replace']], 'the refused clear must never reach the real setter');
+  assert.equal(workflow.known.city, 'New York', 'the previously-known value must be completely untouched by a refused clear');
+});
+
+test('requested-clear case 3: clearing a REQUIRED field reopens missing status - the workflow genuinely goes back to asking for it, not silently treating null as "still known"', async () => {
+  const action = { id: 'session.create', requiredFields: ['city'], clearableFields: ['city'] };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('session.create', {});
+  const filled = await engine.applyKnownFields([{ path: 'city', value: 'New York' }], {});
+  assert.deepEqual(clone(filled.missing), [], 'the required field starts out satisfied');
+  const cleared = await engine.applyKnownFields([{ path: 'city', value: null, mode: 'clear' }], {});
+  assert.deepEqual(clone(cleared.missing), ['city'], 'clearing the one required field must reopen it as missing again');
+});
+
+// Case 4 (false/unset confirmation never counts as affirmative consent) is a gate-field concern,
+// not a general form-field one - already covered end-to-end (normalizeGateField() rejecting an
+// explicit false, and plain omission never populating `known` at all) by
+// tests/destructive-actions.test.mjs's own "an explicit false on a gate field is normalized to
+// null" test and this file's own missingFields()/start() tests proving an unmentioned field is
+// never implicitly known. No engine code changed for this case - it was already correct.
+
 test('applyKnownFields() skips re-applying a field whose value is unchanged from what is already known - protects a manual edit from being silently clobbered by a re-echoed value', async () => {
   const applyCalls = [];
   const action = { id: 'session.create', requiredFields: ['city', 'timeframe'] };
