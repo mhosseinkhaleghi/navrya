@@ -78,6 +78,21 @@ var CONNECT_TIMEOUT_MS = 15000;
 var RECONNECT_BASE_DELAY_MS = 500;
 var RECONNECT_MAX_DELAY_MS = 8000;
 var RECONNECT_MAX_ATTEMPTS = 5;
+// Slice R2 (transport repair), audit finding T1: a reconnect attempt's own connect() call can fail
+// again (e.g. a second consecutive token-mint failure) - these stages never benefit from another
+// attempt (bad/rejected credentials, no key configured, an unsupported model, a suspended account),
+// so they still end the retry loop immediately; every other stage gets the same bounded retry a
+// fresh unexpected drop already gets (see scheduleReconnect() below).
+var TERMINAL_CONNECT_STAGES = { session_auth: true, key_missing: true, key_rejected: true, model_unavailable: true };
+// Slice R2, audit finding T6: a flat "give up after N seconds no matter what" watchdog wrongly
+// abandons a healthy long reply mid-playback - PlaybackController's own `current` entry is
+// released the moment that fires, so a later real interrupt() can no longer reach it while the
+// physical audio keeps playing, and the next queued reply can start speaking on top of it (see
+// armPlaybackWatchdog() below). FIRST_AUDIO_DEADLINE_MS bounds only "nothing ever started;
+// PLAYBACK_STALL_DEADLINE_MS is the much longer bound applied once real progress has been seen -
+// a last-resort recovery from a genuinely stuck stream, not a normal way playback ends.
+var FIRST_AUDIO_DEADLINE_MS = 12000;
+var PLAYBACK_STALL_DEADLINE_MS = 60000;
 // fix/voice-mode-turn-ux (Part D, "End message"): bounds a manual input_audio_buffer.commit round
 // trip (client commit -> server input_audio_buffer.committed ack). Deliberately much shorter than
 // CONNECT_TIMEOUT_MS/the 12s speak() fallback - this is a same-connection, already-open-data-
@@ -235,6 +250,11 @@ export function createVoiceSession(options) {
   // the OpenAI session's own transport-level interrupt() and would otherwise keep playing straight
   // through a cancellation. Cleared the instant it's used or the entry settles for any other reason.
   var elevenLabsStopFn = null;
+  // Slice R2, audit finding T5: identifies the CURRENTLY active speak() call across its own async
+  // gap (the ElevenLabs fetch, before elevenLabsStopFn even exists to cancel) - see
+  // speakViaElevenLabs()'s own comment. Cleared by interrupt() the instant a real interruption
+  // happens; a fresh speak() always replaces it with its own new token.
+  var activeSpeakToken = null;
 
   // Journey H2, Gate 3 (Conversation Studio voice asset pipeline): a THIRD, dedicated <audio>
   // element for pre-generated, admin-approved published audio - deliberately never sharing
@@ -544,8 +564,9 @@ export function createVoiceSession(options) {
     micPromise.catch(function () {});
     credsPromise.catch(function () {});
 
+    var grantedStream;
     try {
-      mediaStream = await Promise.race([micPromise, deadline]);
+      grantedStream = await Promise.race([micPromise, deadline]);
     } catch (permissionError) {
       if (myEpoch !== connectionEpoch) return; // superseded mid-flight (disconnect()/a newer connect() already ran)
       setState(VOICE_STATES.ERROR);
@@ -555,6 +576,16 @@ export function createVoiceSession(options) {
       onError({ code: transportErrorCode(permissionError), stage: 'microphone_permission' });
       throw permissionError;
     }
+    // Slice R2, audit finding T2: a mic grant that resolves AFTER a newer connect()/disconnect()
+    // has already run must never be adopted - assigning straight into the shared `mediaStream`
+    // variable unconditionally (the old behavior) left a live orphaned track and moved state to
+    // CONNECTING even though the user had already left Voice Mode. Stop the just-granted stream
+    // immediately instead, and never wire it up.
+    if (myEpoch !== connectionEpoch) {
+      try { grantedStream.getTracks().forEach(function (track) { track.stop(); }); } catch (_e) {}
+      return;
+    }
+    mediaStream = grantedStream;
     if (!isReconnect) setState(VOICE_STATES.CONNECTING);
     // Tracks which phase of the remaining pipeline is currently in flight, purely for
     // classifyMintFailureStage()/classifySdpFailureStage() below if the shared catch block is
@@ -604,7 +635,11 @@ export function createVoiceSession(options) {
         if (status === 'disconnected') scheduleReconnect(myEpoch);
       });
       session = new RealtimeSession(agent, { model: creds.model, transport: transport });
-      session.on('transport_event', onTransportEvent);
+      // Slice R2, audit finding T3: unlike every other session listener registered below, this raw
+      // relay had no epoch check at all - a queued/late event from a session that has since been
+      // superseded (a fresh connect() ran, or disconnect() tore it down) could still invoke
+      // onFinalTranscript and move state to PROCESSING for a conversation the user already left.
+      session.on('transport_event', function (event) { if (myEpoch === connectionEpoch) onTransportEvent(event); });
       // fix/voice-mode-turn-ux (Part A): neither 'audio_start' nor 'audio_stopped' drives `state`
       // any more - both are derived by the SDK from response-generation-lifecycle events
       // (response.output_audio.done for audio_stopped - verified against
@@ -661,6 +696,17 @@ export function createVoiceSession(options) {
       var failedStage = phase === 'mint'
         ? classifyMintFailureStage(connectError, timedOut)
         : classifySdpFailureStage(connectError, timedOut, transport);
+      // Slice R2, audit finding T1: a reconnect attempt (scheduleReconnect() calling this same
+      // connect() again with isReconnect:true) that itself fails must continue the SAME bounded
+      // retry loop, not fall straight to a terminal ERROR after only one retry - the old behavior
+      // matched the audit's own description exactly ("a token-mint failure during retry goes to
+      // ERROR/throw without scheduling another attempt"). Terminal-class failures never benefit
+      // from a retry (see TERMINAL_CONNECT_STAGES's own comment) and always fall through below,
+      // exactly like a fresh, non-reconnect connect() failing always has.
+      if (isReconnect && !TERMINAL_CONNECT_STAGES[failedStage] && reconnectAttempt < RECONNECT_MAX_ATTEMPTS) {
+        scheduleReconnect(myEpoch); // owns teardown, state, and eventual exhaustion reporting
+        return;
+      }
       teardownTransport();
       setState(VOICE_STATES.ERROR);
       onError({ code: transportErrorCode(connectError), stage: failedStage });
@@ -729,6 +775,10 @@ export function createVoiceSession(options) {
   // own onSettled, itself already synchronous with this call) is what moves `state` back to
   // LISTENING when appropriate.
   function interrupt() {
+    // Slice R2, audit finding T5: invalidate the active speak() call FIRST, unconditionally - a
+    // pending ElevenLabs fetch (no elevenLabsStopFn yet, see speakViaElevenLabs()'s own comment)
+    // has nothing else to cancel it, and would otherwise still start playback once it resolves.
+    activeSpeakToken = null;
     // ElevenLabs voice-provider follow-up: stop first, unconditionally - this audio is entirely
     // outside the OpenAI session below, so session.interrupt() alone would never touch it, and a
     // barge-in must cancel whichever engine is actually speaking (mission requirement: "Barge-in
@@ -780,6 +830,22 @@ export function createVoiceSession(options) {
   // error settlement) - only renamed and split out of speak() so it can also serve as the
   // exactly-once fallback target from speakViaElevenLabs() below (mission requirement: a fallback
   // must use "the same text, only once, never duplicated").
+  // Slice R2, audit finding T6: replaces a flat "give up after 12s no matter what" timer with a
+  // two-stage deadline - FIRST_AUDIO_DEADLINE_MS only for "nothing ever started" (a genuinely hung
+  // request), then PLAYBACK_STALL_DEADLINE_MS once `element` has fired real, browser-native
+  // progress (`timeupdate`/`playing`, only ever fired while actually playing) - reset on every
+  // such event, so a healthy clip of any length is never abandoned mid-playback, only a genuinely
+  // stuck one. Returns a disarm() to call once the caller has settled for any other real reason.
+  function armPlaybackWatchdog(element, onGiveUp) {
+    var timer = setTimeout(onGiveUp, FIRST_AUDIO_DEADLINE_MS);
+    function onProgress() { clearTimeout(timer); timer = setTimeout(onGiveUp, PLAYBACK_STALL_DEADLINE_MS); }
+    if (element) { element.addEventListener('timeupdate', onProgress); element.addEventListener('playing', onProgress); }
+    return function disarm() {
+      clearTimeout(timer);
+      if (element) { element.removeEventListener('timeupdate', onProgress); element.removeEventListener('playing', onProgress); }
+    };
+  }
+
   function speakViaOpenAI(text) {
     if (!session || !text) return Promise.resolve();
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
@@ -793,13 +859,18 @@ export function createVoiceSession(options) {
       return Promise.resolve();
     }
     var activeSession = session;
+    // The real WebRTC sink audioEl already handed to the transport (see connect()'s own comment
+    // on why a real element is created instead of letting the SDK manage an invisible one) - its
+    // own timeupdate/playing events are objective, browser-native proof audio is genuinely
+    // progressing, exactly what armPlaybackWatchdog() needs (audit finding T6).
+    var activeAudioEl = audioEl;
     return new Promise(function (resolve) {
       var settled = false;
-      var timer = setTimeout(function () { settle(); }, 12000);
+      var disarm = armPlaybackWatchdog(activeAudioEl, function () { settle(); });
       function settle() {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        disarm();
         if (pendingSpeakSettle === settle) pendingSpeakSettle = null;
         resolve();
       }
@@ -825,13 +896,15 @@ export function createVoiceSession(options) {
     el.src = 'data:' + (result.mimeType || 'audio/mpeg') + ';base64,' + result.audioBase64;
     return new Promise(function (resolve) {
       var settled = false;
-      // Same 12s last-resort safety net as speakViaOpenAI's own watchdog - a genuinely stuck/never-
-      // firing 'ended'/'error' event must never block the playback queue forever.
-      var timer = setTimeout(function () { settle(false); }, 12000);
+      // Slice R2, audit finding T6: same two-stage first-audio/stall watchdog as speakViaOpenAI's
+      // own (armPlaybackWatchdog's own comment) - a genuinely stuck/never-firing 'ended'/'error'
+      // event must never block the playback queue forever, but a healthy long clip must not lose
+      // ownership just because 12 flat seconds elapsed since it started.
+      var disarm = armPlaybackWatchdog(el, function () { settle(false); });
       function settle(natural) {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        disarm();
         el.removeEventListener('ended', onEnded);
         el.removeEventListener('error', onPlaybackError);
         if (pendingSpeakSettle === settleFromTeardown) pendingSpeakSettle = null;
@@ -874,27 +947,36 @@ export function createVoiceSession(options) {
   // an ordinary fallback condition, see that route's own comment - or a network/parse failure on
   // the request). Never both engines speak the same reply (mission: "Never two audio outputs for
   // one response").
-  function speakViaElevenLabs(text) {
+  // Slice R2, audit finding T5: a pending fetch has no interrupt-generation fence, only
+  // connectionEpoch (which an ordinary interrupt()/barge-in never changes) - so an interrupt()
+  // that lands while this fetch is still in flight had nothing to cancel, and the fetched audio
+  // played anyway once it resolved, moments after the user had already been told the reply
+  // stopped. `token` is a fresh object per speak() call, cleared by interrupt() the instant a real
+  // interruption happens; the fetch continuation below checks it's still the active one before
+  // ever reaching playback.
+  function speakViaElevenLabs(text, token) {
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
     var myEpoch = connectionEpoch;
     return Promise.resolve().then(function () {
       return fetchSpeakAudio(language, text);
     }).then(function (result) {
-      if (myEpoch !== connectionEpoch) return; // superseded mid-fetch - never play stale audio into a torn-down/superseded session
+      if (myEpoch !== connectionEpoch || token !== activeSpeakToken) return; // superseded or interrupted mid-fetch - never play stale/cancelled audio
       if (!result || result.fallback) return speakViaOpenAI(text);
       return playElevenLabsAudio(result, myEpoch);
     }, function () {
       // The fetch/parse itself failed (network error, non-2xx, malformed JSON) - same exactly-once
       // fallback contract as an explicit {fallback:true} response.
-      if (myEpoch !== connectionEpoch) return;
+      if (myEpoch !== connectionEpoch || token !== activeSpeakToken) return;
       return speakViaOpenAI(text);
     });
   }
 
   function speak(text) {
     if (!session || !text) return Promise.resolve();
+    var token = {};
+    activeSpeakToken = token;
     if (currentTtsProvider === 'elevenlabs' && currentElevenLabsVoice && typeof fetchSpeakAudio === 'function') {
-      return speakViaElevenLabs(text);
+      return speakViaElevenLabs(text, token);
     }
     return speakViaOpenAI(text);
   }
@@ -932,13 +1014,15 @@ export function createVoiceSession(options) {
     el.src = url;
     return new Promise(function (resolve, reject) {
       var settled = false;
-      // Same 12s last-resort safety net as every other playback path in this file - a genuinely
-      // stuck/never-firing 'ended'/'error' event must never block the playback queue forever.
-      var timer = setTimeout(function () { settle(false); }, 12000);
+      // Slice R2, audit finding T6: same two-stage first-audio/stall watchdog as every other
+      // playback path in this file (armPlaybackWatchdog's own comment) - a genuinely stuck/never-
+      // firing 'ended'/'error' event must never block the playback queue forever, but a healthy
+      // long published clip must not lose ownership just because 12 flat seconds elapsed.
+      var disarm = armPlaybackWatchdog(el, function () { settle(false); });
       function settle(ok) {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        disarm();
         el.removeEventListener('ended', onEnded);
         el.removeEventListener('error', onPlaybackError);
         if (publishedAudioStopFn === stopNow) publishedAudioStopFn = null;
@@ -1026,6 +1110,11 @@ export function createVoiceSession(options) {
     // fix/voice-mode-turn-ux (Part D, "End message"): finishes only the current user utterance -
     // see finishUserTurn()'s own comment for the full precondition/state-machine contract.
     finishUserTurn: finishUserTurn,
+    // Slice R2, audit finding T12: OpenAI Realtime has a real manual-commit mechanism (see
+    // finishUserTurn()'s own comment) - true here, false on the Gemini Live adapter (see
+    // geminiLiveVoice.js's own supportsManualFinish()), so the caller's "End message" control can
+    // honestly reflect which adapter is actually active.
+    supportsManualFinish: function () { return true; },
     cancelManualFinish: cancelManualFinish,
     hasPendingManualFinish: function () { return !!pendingManualFinish; },
     state: function () { return state; },

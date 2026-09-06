@@ -216,6 +216,9 @@ function CaptionBox({ label, text, caret, tone }) {
 export function VoiceConsole({
   voiceState, voiceMuted, model, elapsedSeconds, dotColor, phaseLabel, phaseCaption,
   voicePermissionDenied, voiceHeardText, voiceReplyCaption, voiceManualFinishPending,
+  // Slice R2, audit finding T12: defaults to true (the OpenAI Realtime adapter's real capability)
+  // so every existing caller that never passes this keeps the exact prior behavior.
+  voiceSupportsManualFinish = true,
   onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,
   getVoiceMediaStream, strings
 }) {
@@ -241,10 +244,16 @@ export function VoiceConsole({
   // fix/voice-mode-turn-ux (Part D): the centre pill button now has a real action in TWO live
   // phases, not one - ASSISTANT_SPEAKING ("Stop reply", unchanged) and USER_SPEAKING ("End
   // message", new). PROCESSING/LISTENING keep the existing disabled-state rendering.
-  const mainActionable = replying || userSpeaking;
-  const mainActionHandler = replying ? onVoiceInterrupt : userSpeaking ? onVoiceEndMessage : undefined;
-  const mainActionLabel = replying ? strings.stopReply : userSpeaking ? strings.endMessage : (thinking && voiceManualFinishPending ? strings.endingMessage : phaseLabel);
-  const mainActionIcon = replying ? 'square' : userSpeaking ? 'send' : 'check';
+  // Slice R2, audit finding T12: USER_SPEAKING only becomes an actionable "End message" button
+  // when the active adapter actually supports finishing a turn early (voiceSupportsManualFinish) -
+  // Gemini Live has no real client-side mechanism for this (see geminiLiveVoice.js's own comment),
+  // so it falls through to the same disabled-state rendering PROCESSING/LISTENING already use,
+  // instead of presenting a button that would do nothing.
+  const canManualFinish = userSpeaking && voiceSupportsManualFinish;
+  const mainActionable = replying || canManualFinish;
+  const mainActionHandler = replying ? onVoiceInterrupt : canManualFinish ? onVoiceEndMessage : undefined;
+  const mainActionLabel = replying ? strings.stopReply : canManualFinish ? strings.endMessage : (thinking && voiceManualFinishPending ? strings.endingMessage : phaseLabel);
+  const mainActionIcon = replying ? 'square' : canManualFinish ? 'send' : 'check';
 
   React.useEffect(() => {
     function isEditable(el) { return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); }

@@ -119,6 +119,11 @@ export function ChatDock({
   // the user's own "End message" click, not an ordinary VAD-driven turn - see chatDockView.jsx's
   // own comment on why this is tracked separately from the generic PROCESSING/`thinking` state.
   voiceManualFinishPending = false,
+  // Slice R2 (transport repair), audit finding T12: true for every adapter except Gemini Live,
+  // which has no real client-side "end just this turn" mechanism (see geminiLiveVoice.js's own
+  // finishUserTurn()/supportsManualFinish() comment) - defaults to true so every existing caller
+  // that never passes this keeps the exact prior OpenAI Realtime behavior.
+  voiceSupportsManualFinish = true,
   onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, voiceErrorLabel, voiceLabels = {},
   getVoiceMediaStream, voiceHeardText, voiceReplyCaption,
   // Journey G UX correction: the one real "the user just deliberately engaged with the dock"
@@ -362,7 +367,7 @@ export function ChatDock({
               voiceState={voiceState} voiceMuted={voiceMuted} model={active} elapsedSeconds={voiceElapsed}
               dotColor={dotColor} phaseLabel={phaseLabel} phaseCaption={phaseCaption}
               voicePermissionDenied={voicePermissionDenied} voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
-              voiceManualFinishPending={voiceManualFinishPending}
+              voiceManualFinishPending={voiceManualFinishPending} voiceSupportsManualFinish={voiceSupportsManualFinish}
               onVoiceToggle={onVoiceToggle} onVoiceEnd={onVoiceEnd} onVoiceMuteToggle={onVoiceMuteToggle} onVoiceInterrupt={onVoiceInterrupt}
               onVoiceEndMessage={onVoiceEndMessage}
               onMinimize={() => setVoiceMinimized(true)} getVoiceMediaStream={getVoiceMediaStream}

@@ -100,7 +100,10 @@ test('the barge-in handler never calls session.interrupt() or this module\'s own
 
 test('speak() routes to ElevenLabs only when the resolved config actually supports it, and always falls back to the OpenAI path otherwise - never decided by anything other than the server-reported ttsProvider/elevenLabs', () => {
   const speakBody = source.slice(source.indexOf('function speak(text)'), source.length);
-  assert.match(speakBody, /if \(currentTtsProvider === 'elevenlabs' && currentElevenLabsVoice && typeof fetchSpeakAudio === 'function'\) \{\s*return speakViaElevenLabs\(text\);/);
+  // Slice R2, audit finding T5: speakViaElevenLabs now takes the fresh per-call `token` created
+  // here, so a later interrupt() (which clears activeSpeakToken) can be detected even while its
+  // fetch is still pending - see speakViaElevenLabs()'s own comment.
+  assert.match(speakBody, /if \(currentTtsProvider === 'elevenlabs' && currentElevenLabsVoice && typeof fetchSpeakAudio === 'function'\) \{\s*return speakViaElevenLabs\(text, token\);/);
   assert.match(speakBody, /return speakViaOpenAI\(text\);\s*\}/);
 });
 
@@ -111,11 +114,33 @@ test('currentTtsProvider/currentElevenLabsVoice are read fresh from every connec
 });
 
 test('speakViaElevenLabs falls back to the exact same text through speakViaOpenAI exactly once - on an explicit {fallback:true} response AND on a rejected/failed fetch alike - and playElevenLabsAudio only ever runs on the one remaining, mutually exclusive success branch', () => {
-  const body = source.slice(source.indexOf('function speakViaElevenLabs(text)'), source.indexOf('function speak(text)'));
+  const body = source.slice(source.indexOf('function speakViaElevenLabs(text, token)'), source.indexOf('function speak(text)'));
   assert.match(body, /if \(!result \|\| result\.fallback\) return speakViaOpenAI\(text\);\s*return playElevenLabsAudio\(result, myEpoch\);/,
     'the success callback must be a single if/return followed by exactly one further statement - fallback OR play, never both for the same outcome');
   assert.match(body, /\}, function \(\) \{[\s\S]*?return speakViaOpenAI\(text\);\s*\}\);/,
     'the rejection branch must also fall back to speakViaOpenAI(text) - not swallow the failure silently');
+});
+
+// Slice R2, audit finding T5: a pending ElevenLabs fetch previously had no way to notice an
+// interrupt() that happened while it was still in flight (only connectionEpoch was checked, and
+// an ordinary barge-in never changes that) - the fetched audio played anyway once it resolved,
+// moments after the user had already been told the reply stopped.
+test('speakViaElevenLabs checks both connectionEpoch and the caller-supplied token before ever reaching playback or fallback - an interrupt() that clears activeSpeakToken mid-fetch must be able to cancel it', () => {
+  const body = source.slice(source.indexOf('function speakViaElevenLabs(text, token)'), source.indexOf('function speak(text)'));
+  assert.match(body, /if \(myEpoch !== connectionEpoch \|\| token !== activeSpeakToken\) return; \/\/ superseded or interrupted mid-fetch - never play stale\/cancelled audio/);
+  assert.match(body, /if \(myEpoch !== connectionEpoch \|\| token !== activeSpeakToken\) return;\s*\n\s*return speakViaOpenAI\(text\);/);
+});
+
+test('interrupt() clears activeSpeakToken first, unconditionally, before stopping whichever engine is actually playing - a pending fetch has nothing else to cancel it', () => {
+  const interruptBody = source.slice(source.indexOf('function interrupt()'), source.indexOf('// Called only by the caller'));
+  const tokenIdx = interruptBody.indexOf('activeSpeakToken = null;');
+  const elIdx = interruptBody.indexOf('if (elevenLabsStopFn)');
+  assert.ok(tokenIdx > -1 && elIdx > -1 && tokenIdx < elIdx);
+});
+
+test('speak() mints a fresh token per call and assigns it to activeSpeakToken before dispatching to either engine', () => {
+  const speakBody = source.slice(source.indexOf('function speak(text)'), source.indexOf('function speak(text)') + 400);
+  assert.match(speakBody, /var token = \{\};\s*\n\s*activeSpeakToken = token;/);
 });
 
 test('playElevenLabsAudio relays synthetic output_audio_buffer.started/stopped/cleared through the SAME onOutputAudioBufferEvent callback the real WebRTC path uses, so PlaybackController captions/settlement keep working unmodified regardless of which engine spoke', () => {
@@ -164,7 +189,10 @@ test('playAudioUrl resolves on a natural end, but REJECTS on a real playback fai
   const body = source.slice(source.indexOf('function playAudioUrl(url)'), source.indexOf('function setLanguage'));
   assert.match(body, /function onEnded\(\) \{ settle\(true\); \}/);
   assert.match(body, /function onPlaybackError\(\) \{ settle\(false\); \}/);
-  assert.match(body, /setTimeout\(function \(\) \{ settle\(false\); \}, 12000\)/);
+  // Slice R2, audit finding T6: the old flat 12000ms watchdog is now the shared two-stage
+  // first-audio/stall armPlaybackWatchdog() (see its own comment and dedicated tests below) - a
+  // healthy long published clip must not lose ownership just because 12 flat seconds elapsed.
+  assert.match(body, /var disarm = armPlaybackWatchdog\(el, function \(\) \{ settle\(false\); \}\);/);
   assert.match(body, /playPromise\.catch\(function \(\) \{ settle\(false\); \}\);/);
   assert.match(body, /if \(ok\) resolve\(\); else reject\(new Error\('published audio playback failed'\)\);/);
 });
@@ -276,11 +304,25 @@ test('the text handed to PlaybackController is only ever what NAVRYA\'s own dete
 // response.create while the first one's audio was still playing - the Realtime API rejects an
 // overlapping response, surfacing as a transient session error mid-conversation.
 test('speak() returns a Promise that only resolves once the response has actually finished (audio_stopped), with a bounded safety timeout - callers can await full completion before starting the next turn', () => {
-  assert.match(source, /function speak\(text\) \{[\s\S]*?return Promise\.resolve\(\);/);
+  assert.match(source, /function speakViaOpenAI\(text\) \{[\s\S]*?return Promise\.resolve\(\);/);
   assert.match(source, /return new Promise\(function \(resolve\)/);
   assert.match(source, /activeSession\.once\('audio_stopped', settle\)/);
   assert.match(source, /activeSession\.once\('error', settle\)/);
-  assert.match(source, /setTimeout\(function \(\) \{ settle\(\); \}, 12000\)/);
+  // Slice R2, audit finding T6: the old flat 12000ms timer is now armPlaybackWatchdog() - see its
+  // own dedicated tests below for the two-stage first-audio/stall behavior this replaces it with.
+  assert.match(source, /var disarm = armPlaybackWatchdog\(activeAudioEl, function \(\) \{ settle\(\); \}\);/);
+});
+
+// Slice R2, audit finding T6: armPlaybackWatchdog() itself - shared by speakViaOpenAI,
+// playElevenLabsAudio and playAudioUrl (each asserted individually elsewhere in this file).
+test('armPlaybackWatchdog arms a short first-audio deadline, then a much longer stall deadline once real element progress (timeupdate/playing) is observed - never a single flat timeout', () => {
+  const fn = source.slice(source.indexOf('function armPlaybackWatchdog'), source.indexOf('function speakViaOpenAI'));
+  assert.match(fn, /var timer = setTimeout\(onGiveUp, FIRST_AUDIO_DEADLINE_MS\);/);
+  assert.match(fn, /function onProgress\(\) \{ clearTimeout\(timer\); timer = setTimeout\(onGiveUp, PLAYBACK_STALL_DEADLINE_MS\); \}/);
+  assert.match(fn, /addEventListener\('timeupdate', onProgress\)/);
+  assert.match(fn, /addEventListener\('playing', onProgress\)/);
+  assert.match(source, /var FIRST_AUDIO_DEADLINE_MS = 12000;/);
+  assert.match(source, /var PLAYBACK_STALL_DEADLINE_MS = 60000;/);
 });
 
 // Regression: 'audio_interrupted' was missing from speak()'s own settle listeners. Verified
@@ -368,6 +410,45 @@ test('reconnect gives up into ERROR after RECONNECT_MAX_ATTEMPTS - never retries
   assert.match(fn, /if \(reconnectAttempt >= RECONNECT_MAX_ATTEMPTS\) \{/);
   assert.match(fn, /setState\(VOICE_STATES\.ERROR\);/);
   assert.match(fn, /onError\(\{ code: 'VOICE_RECONNECT_EXHAUSTED', stage: 'reconnect' \}\);/);
+});
+
+// Slice R2, audit finding T1: a reconnect attempt's own connect() call previously had no path
+// back into scheduleReconnect() on its own failure - it always went straight to terminal ERROR
+// after exactly one retry, regardless of RECONNECT_MAX_ATTEMPTS, whenever a SECOND consecutive
+// failure (e.g. the token mint failing again) happened during a reconnect.
+test('a reconnect attempt that itself fails re-enters scheduleReconnect() (continuing the bounded retry loop) unless the failure is terminal or attempts are exhausted - never straight to ERROR after only one retry', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectBody, /if \(isReconnect && !TERMINAL_CONNECT_STAGES\[failedStage\] && reconnectAttempt < RECONNECT_MAX_ATTEMPTS\) \{\s*\n\s*scheduleReconnect\(myEpoch\); \/\/ owns teardown, state, and eventual exhaustion reporting\s*\n\s*return;\s*\n\s*\}/);
+  // The terminal-only exemption must appear BEFORE the unconditional terminal path below it -
+  // a terminal-class failure (bad key, rejected credentials, unsupported model, suspended
+  // account) must still end the loop immediately even mid-reconnect.
+  const terminalIdx = connectBody.indexOf('TERMINAL_CONNECT_STAGES[failedStage]');
+  const teardownIdx = connectBody.indexOf('teardownTransport();');
+  assert.ok(terminalIdx > -1 && teardownIdx > -1 && terminalIdx < teardownIdx);
+});
+
+test('TERMINAL_CONNECT_STAGES lists only genuinely non-retryable failure classes - a retry can never fix bad/missing credentials, an unsupported model, or a suspended account', () => {
+  assert.match(source, /var TERMINAL_CONNECT_STAGES = \{ session_auth: true, key_missing: true, key_rejected: true, model_unavailable: true \};/);
+});
+
+// Slice R2, audit finding T2: the raw getUserMedia() result used to be assigned straight into the
+// shared `mediaStream` variable with no epoch check at all - a late-arriving grant (mic permission
+// resolved only after the user had already left Voice Mode) left a live orphaned track and moved
+// state to CONNECTING for a connection attempt that no longer existed.
+test('a mic grant that resolves after a newer connect()/disconnect() has already run is never adopted - its tracks are stopped immediately instead of being assigned to the shared mediaStream', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('} catch (connectError) {'));
+  assert.match(connectBody, /var grantedStream;\s*\n\s*try \{\s*\n\s*grantedStream = await Promise\.race\(\[micPromise, deadline\]\);/);
+  assert.match(connectBody, /if \(myEpoch !== connectionEpoch\) \{\s*\n\s*try \{ grantedStream\.getTracks\(\)\.forEach\(function \(track\) \{ track\.stop\(\); \}\); \} catch \(_e\) \{\}\s*\n\s*return;\s*\n\s*\}\s*\n\s*mediaStream = grantedStream;/);
+});
+
+// Slice R2, audit finding T3: every other session listener (audio_interrupted, error,
+// connection_change) already checks myEpoch === connectionEpoch before doing anything, but the
+// raw transport_event relay had none - a queued/late event from a superseded session could still
+// invoke onFinalTranscript and move state to PROCESSING for a conversation the user already left.
+test('the raw transport_event listener is wrapped in an epoch check, unlike the old unconditional session.on binding', () => {
+  const connectBody = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectBody, /session\.on\('transport_event', function \(event\) \{ if \(myEpoch === connectionEpoch\) onTransportEvent\(event\); \}\);/);
+  assert.doesNotMatch(connectBody, /session\.on\('transport_event', onTransportEvent\);/, 'must not bind the handler directly/unconditionally any more');
 });
 
 test('a reconnect scheduled for an old connection is abandoned if a newer connect()/disconnect() has since run (connectionEpoch changed) - never fires against state that has already moved on', () => {

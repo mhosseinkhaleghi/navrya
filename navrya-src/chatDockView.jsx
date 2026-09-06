@@ -166,6 +166,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // leaves PROCESSING for any reason (a real transcript arriving, the manual-finish timeout falling
   // back to LISTENING, or a fatal error) - see the previousVoiceStateRef effect below.
   const [voiceManualFinishPending, setVoiceManualFinishPending] = React.useState(false);
+  // Slice R2 (transport repair), audit finding T12: which adapter is mounted decides whether "End
+  // message" is a real capability - OpenAI Realtime has one, Gemini Live does not (see
+  // geminiLiveVoice.js's own finishUserTurn()/supportsManualFinish() comment). Read once, right
+  // after the mount effect below constructs the transport, since which adapter is active never
+  // changes for the lifetime of one mount (matches that effect's own never-re-run [] deps).
+  const [voiceSupportsManualFinish, setVoiceSupportsManualFinish] = React.useState(true);
   // Voice Mode console (ChatDock.jsx/VoiceConsole.jsx): the real, finalized text NAVRYA just
   // heard (shown during PROCESSING) and the real reply text it's about to speak (timed-revealed
   // during ASSISTANT_SPEAKING) - both set right where onVoiceTranscript already has them, never
@@ -762,6 +768,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // bypassing call with the controller-owned path (Part B).
       onBargeIn: () => { if (playbackControllerRef.current) playbackControllerRef.current.interrupt(); }
     });
+    // Slice R2 (transport repair), audit finding T12: read once, right after this mount-once
+    // effect constructs the transport - which adapter is active never changes for this mount's
+    // lifetime (this effect's own never-re-run [] deps), so there is no later moment this needs
+    // re-checking. Defensive `&&` covers a legacy/test double missing the accessor entirely.
+    setVoiceSupportsManualFinish(!voiceRef.current.supportsManualFinish || voiceRef.current.supportsManualFinish());
     // Voice Mode performance pass: PlaybackController owns only speech - speak()/interrupt() are
     // read fresh from voiceRef.current on every call (never captured once), so they stay correct
     // across a reconnect (aiVoiceRealtime.js's own returned object identity never changes; only
@@ -1079,7 +1090,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         placeholder={i18n.t('aiDockPlaceholder')}
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
-        voiceManualFinishPending={voiceManualFinishPending}
+        voiceManualFinishPending={voiceManualFinishPending} voiceSupportsManualFinish={voiceSupportsManualFinish}
         onVoiceToggle={toggleVoice} onVoiceEnd={endVoice} onVoiceMuteToggle={toggleVoiceMute} onVoiceInterrupt={interruptVoice}
         onVoiceEndMessage={endVoiceMessage}
         voiceErrorLabel={voiceErrorMessageForStage(i18n, voiceErrorStage)}

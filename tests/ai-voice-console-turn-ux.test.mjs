@@ -14,12 +14,24 @@ const root = process.cwd();
 const voiceConsoleSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'VoiceConsole.jsx'), 'utf8');
 const chatDockSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatDock.jsx'), 'utf8');
 const responsePopoverSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
+const dockViewSrc = await readFile(path.join(root, 'navrya-src', 'chatDockView.jsx'), 'utf8');
+const realtimeSrc = await readFile(path.join(root, 'navrya-src', 'aiVoiceRealtime.js'), 'utf8');
+const geminiSrc = await readFile(path.join(root, 'navrya-src', 'geminiLiveVoice.js'), 'utf8');
 
 // ---- Part D: button modes ----
 
 test('the centre pill button is real/active in exactly two live phases - ASSISTANT_SPEAKING ("Stop reply") and USER_SPEAKING ("End message") - and disabled everywhere else (PROCESSING/LISTENING/etc)', () => {
-  assert.match(voiceConsoleSrc, /const mainActionable = replying \|\| userSpeaking;/);
-  assert.match(voiceConsoleSrc, /const mainActionHandler = replying \? onVoiceInterrupt : userSpeaking \? onVoiceEndMessage : undefined;/);
+  // Slice R2 (transport repair), audit finding T12: USER_SPEAKING is only actionable when the
+  // active adapter actually supports finishing a turn early (voiceSupportsManualFinish, true for
+  // OpenAI Realtime, false for Gemini Live - see geminiLiveVoice.js's own comment) - see the
+  // dedicated capability test below for the full canManualFinish gate.
+  assert.match(voiceConsoleSrc, /const canManualFinish = userSpeaking && voiceSupportsManualFinish;/);
+  assert.match(voiceConsoleSrc, /const mainActionable = replying \|\| canManualFinish;/);
+  assert.match(voiceConsoleSrc, /const mainActionHandler = replying \? onVoiceInterrupt : canManualFinish \? onVoiceEndMessage : undefined;/);
+});
+
+test('voiceSupportsManualFinish defaults to true so every existing caller that never passes it keeps the exact prior OpenAI Realtime behavior', () => {
+  assert.match(voiceConsoleSrc, /voiceSupportsManualFinish = true,/);
 });
 
 test('"End message" is wired to a distinct callback (onVoiceEndMessage) from "Stop reply" (onVoiceInterrupt) - they are never the same function, so End message can never accidentally interrupt playback or vice versa', () => {
@@ -28,8 +40,8 @@ test('"End message" is wired to a distinct callback (onVoiceEndMessage) from "St
 });
 
 test('the button label/aria-label/icon all switch together for every mode (icon AND text AND handler in lockstep - no decoy control, matching this codebase\'s own "no decoy buttons" rule)', () => {
-  assert.match(voiceConsoleSrc, /const mainActionLabel = replying \? strings\.stopReply : userSpeaking \? strings\.endMessage : \(thinking && voiceManualFinishPending \? strings\.endingMessage : phaseLabel\);/);
-  assert.match(voiceConsoleSrc, /const mainActionIcon = replying \? 'square' : userSpeaking \? 'send' : 'check';/);
+  assert.match(voiceConsoleSrc, /const mainActionLabel = replying \? strings\.stopReply : canManualFinish \? strings\.endMessage : \(thinking && voiceManualFinishPending \? strings\.endingMessage : phaseLabel\);/);
+  assert.match(voiceConsoleSrc, /const mainActionIcon = replying \? 'square' : canManualFinish \? 'send' : 'check';/);
   assert.match(voiceConsoleSrc, /onClick=\{mainActionable \? mainActionHandler : undefined\} aria-label=\{mainActionLabel\} disabled=\{!mainActionable\}/);
 });
 
@@ -44,8 +56,24 @@ test('the PROCESSING label distinguishes a manual "End message" click from an or
 // the same button - onVoiceEndMessage is a distinct prop from the close control (onVoiceEnd).
 test('the main action button\'s userSpeaking handler (onVoiceEndMessage) is distinct from the console\'s end-session control (onVoiceEnd, used by header/footer close buttons)', () => {
   assert.match(voiceConsoleSrc, /onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,/);
-  assert.match(voiceConsoleSrc, /userSpeaking \? onVoiceEndMessage : undefined;/);
-  assert.doesNotMatch(voiceConsoleSrc, /userSpeaking \? onVoiceEnd(?!Message)/, 'End message mode must never be wired to the close/disconnect control');
+  assert.match(voiceConsoleSrc, /canManualFinish \? onVoiceEndMessage : undefined;/);
+  assert.doesNotMatch(voiceConsoleSrc, /canManualFinish \? onVoiceEnd(?!Message)/, 'End message mode must never be wired to the close/disconnect control');
+});
+
+// Slice R2, audit finding T12: the full chain from the mounted adapter's real capability through
+// to the button rendering as a disabled/non-actionable pill for Gemini Live, exactly like
+// PROCESSING/LISTENING already render, instead of presenting a control that would do nothing.
+test('chatDockView.jsx reads the mounted transport\'s real supportsManualFinish() once, right after constructing it, and threads it through ChatDock.jsx down to VoiceConsole.jsx', () => {
+  assert.match(dockViewSrc, /const \[voiceSupportsManualFinish, setVoiceSupportsManualFinish\] = React\.useState\(true\);/);
+  assert.match(dockViewSrc, /setVoiceSupportsManualFinish\(!voiceRef\.current\.supportsManualFinish \|\| voiceRef\.current\.supportsManualFinish\(\)\);/);
+  assert.match(dockViewSrc, /voiceManualFinishPending=\{voiceManualFinishPending\} voiceSupportsManualFinish=\{voiceSupportsManualFinish\}/);
+  assert.match(chatDockSrc, /voiceSupportsManualFinish = true,/);
+  assert.match(chatDockSrc, /voiceManualFinishPending=\{voiceManualFinishPending\} voiceSupportsManualFinish=\{voiceSupportsManualFinish\}/);
+});
+
+test('both real adapters expose supportsManualFinish() explicitly - true for OpenAI Realtime, false for Gemini Live - never left to silent duck-typing', () => {
+  assert.match(realtimeSrc, /supportsManualFinish: function \(\) \{ return true; \}/);
+  assert.match(geminiSrc, /function supportsManualFinish\(\) \{ return false; \}/);
 });
 
 // ---- Part C: caption visibility ----
