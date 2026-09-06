@@ -4,6 +4,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
+- docs/voice-provider-research (Codex): researched free multilingual voice and Gemini/GPT/Claude API prices, current Voice still pins OpenAI reasoning and buffers Gemini TTS | validation: 0 | next: verify Gemini Live account quota and four-language latency before choosing an implementation
 - feat/gemini-voice-studio (Codex): distinct responsive Gemini Voice Studio with role-coloured delivery profiles, separate from ElevenLabs routing | validation: 12 focused tests passed | next: promote to dev on request
 - feat/gemini-voice-profiles (Codex): separate Gemini Voice profile editor, non-blocking GPT-safe refresh, and release-gate fixture/login/config/voice-contract compatibility repairs | validation: 217 focused tests passed | next: guarded dev/production promotion on request
 - fix/gemini-voice-admin-key (Codex): provider-selected OpenAI/Gemini Voice transport, separate Gemini text and Voice diagnostics, and account-synced selection are covered | validation: 160 focused tests passed | next: promote to dev on request

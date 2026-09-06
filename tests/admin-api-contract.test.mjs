@@ -139,6 +139,25 @@ test('Admin can preview-ready-save a bounded Gemini Voice role rule without mixi
   assert.ok(audit.some((entry) => entry.action === 'ai.geminiVoiceProfile.set' && entry.targetId === 'sage'));
 });
 
+test('live report: the male/female voice dropdowns offered several wrongly-gendered voices (Kore, a female voice, was even the SAVED default for Commander\'s "male" slot) - the two lists must never overlap, every character default must be correctly gendered, and a gender-mismatched voice (a real voice, just the wrong one) must be rejected the same as a nonsense one', async () => {
+  const admin = await createAdmin('Gemini Voice gender operator');
+  const defaults = await api('GET', '/api/admin/ai/gemini-voice-profiles', { userId: admin.id });
+  assert.equal(defaults.status, 200);
+  assert.ok(defaults.body.voicesMale.length > 0 && defaults.body.voicesFemale.length > 0);
+  assert.deepEqual(defaults.body.voicesMale.filter((v) => defaults.body.voicesFemale.includes(v)), [], 'no voice may appear in both lists');
+  defaults.body.profiles.forEach((profile) => {
+    assert.ok(defaults.body.voicesMale.includes(profile.voiceMale), profile.character + '.voiceMale (' + profile.voiceMale + ') must be an actual male voice');
+    assert.ok(defaults.body.voicesFemale.includes(profile.voiceFemale), profile.character + '.voiceFemale (' + profile.voiceFemale + ') must be an actual female voice');
+  });
+  // Kore is a real, allowed voice - just a female one. Submitting it as voiceMale must be
+  // rejected exactly like an unknown string, never silently accepted because it's "on the list".
+  const mismatched = await api('POST', '/api/admin/ai/gemini-voice-profiles', {
+    userId: admin.id,
+    body: { character: 'hunter', voiceMale: 'Kore', voiceFemale: 'Kore', speechRule: 'valid', interactionRule: 'valid' }
+  });
+  assert.equal(mismatched.status, 400);
+});
+
 test('PATCH /api/admin/users/:id changes role/suspendedAt and writes one audit log row', async () => {
   const admin = await createAdmin('Admin3');
   const target = await createUser('Target User');

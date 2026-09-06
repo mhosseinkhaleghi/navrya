@@ -11,7 +11,7 @@ import { getEffectiveXpConfig, invalidateXpConfigCache, SERVER_ONLY_ACHIEVEMENT_
 import { router as voiceProvidersRouter } from './routes.voice-providers.mjs';
 import { router as commercialRouter } from './routes.commercial.mjs';
 import { router as conversationScenariosRouter } from './routes.conversation-scenarios.mjs';
-import { GEMINI_TTS_VOICE_OPTIONS, GEMINI_VOICE_CHARACTERS, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from '../ai/gemini-voice-profiles.mjs';
+import { GEMINI_TTS_VOICE_OPTIONS_MALE, GEMINI_TTS_VOICE_OPTIONS_FEMALE, GEMINI_VOICE_CHARACTERS, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from '../ai/gemini-voice-profiles.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 // Admin's server fallback catalog. This is intentionally not the trader-facing model picker:
@@ -345,7 +345,8 @@ export function router(repo, uploadsDir) {
     const byCharacter = {};
     rows.forEach((row) => { byCharacter[row.character] = row; });
     res.json({
-      voices: GEMINI_TTS_VOICE_OPTIONS,
+      voicesMale: GEMINI_TTS_VOICE_OPTIONS_MALE,
+      voicesFemale: GEMINI_TTS_VOICE_OPTIONS_FEMALE,
       profiles: GEMINI_VOICE_CHARACTERS.map((character) => mergeGeminiVoiceProfile(character, byCharacter[character]))
     });
   }));

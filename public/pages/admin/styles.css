@@ -201,7 +201,7 @@ html[dir="rtl"] select { background-position:left 10px center; padding:0 12px 0 
 .gemini-voice-rules { display:grid; gap:10px; }
 .gemini-voice-prompt textarea { min-height:92px; line-height:1.5; }
 .gemini-voice-safety-note { margin:12px 0 14px; padding:9px 10px; border-inline-start:2px solid var(--voice-accent); color:#b7b3c3; background:rgba(255,255,255,.025); font-size:11.5px; line-height:1.5; }
-.gemini-voice-actions { display:grid; grid-template-columns:minmax(130px, 1fr) auto auto; align-items:end; gap:8px; }
+.gemini-voice-actions { display:grid; grid-template-columns:minmax(110px, 1fr) minmax(130px, 1fr) auto auto; align-items:end; gap:8px; }
 .gemini-voice-actions .field { margin:0; }
 .gemini-voice-test-btn { border-color:rgba(193,162,255,.45); color:#e7ddff; background:rgba(165,102,255,.08); }
 .gemini-voice-save-btn { border-color:transparent; background:linear-gradient(120deg, var(--voice-accent), #824dd5); box-shadow:0 8px 18px color-mix(in srgb, var(--voice-accent) 20%, transparent); }

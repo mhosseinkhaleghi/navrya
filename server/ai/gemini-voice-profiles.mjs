@@ -3,11 +3,23 @@ export const GEMINI_VOICE_GENDERS = ['male', 'female'];
 
 // Kept deliberately small and reviewed. Admins can tune a role's delivery, but cannot send an
 // arbitrary voice id to the live TTS endpoint and accidentally break every caller.
-export const GEMINI_TTS_VOICE_OPTIONS = ['Algenib', 'Iapetus', 'Kore', 'Pulcherrima', 'Despina', 'Sadaltager', 'Sulafat'];
+//
+// Split by ACTUAL voice gender (per Google's own prebuilt-voice documentation), never one flat
+// list reused for both dropdowns - live report: the male dropdown was offering several
+// female-sounding voices (and vice versa) because both selects drew from the same unfiltered
+// array. Each list is validated independently below (mergeGeminiVoiceProfile/
+// normalizeGeminiVoiceProfileInput), so a stale or hand-crafted mismatched pairing (e.g. a
+// voiceMale value that is actually a female voice) can never be saved or served, not just hidden
+// from the dropdown.
+export const GEMINI_TTS_VOICE_OPTIONS_MALE = ['Algenib', 'Charon', 'Iapetus', 'Sadaltager'];
+export const GEMINI_TTS_VOICE_OPTIONS_FEMALE = ['Kore', 'Despina', 'Pulcherrima', 'Sulafat'];
+export const GEMINI_TTS_VOICE_OPTIONS = GEMINI_TTS_VOICE_OPTIONS_MALE.concat(GEMINI_TTS_VOICE_OPTIONS_FEMALE);
 
 export const GEMINI_VOICE_PROFILE_DEFAULTS = {
   hunter: {
-    voices: { male: 'Algenib', female: 'Iapetus' },
+    // Iapetus is a male voice (see the split list above) and was wrongly assigned here as
+    // "female" - swapped for Kore, a real female voice, freeing Iapetus for Commander below.
+    voices: { male: 'Algenib', female: 'Kore' },
     speechRule: 'The Hunter: a patient, watchful scout. Keep the voice low-key, close, and focused, with measured pacing, crisp articulation, and a brief controlled pause before an important timing or risk call. Sound prepared and disciplined, never menacing, whispery, or theatrical.',
     interactionRule: 'Speak as The Hunter: patient, observant, concise, and disciplined. Focus on timing, risk, and the next verifiable move.',
     greeting: {
@@ -18,7 +30,9 @@ export const GEMINI_VOICE_PROFILE_DEFAULTS = {
     }
   },
   commander: {
-    voices: { male: 'Kore', female: 'Pulcherrima' },
+    // Kore is a female voice (see the split list above) and was wrongly assigned here as "male" -
+    // swapped for Charon, a real male voice (also newly added to the curated list).
+    voices: { male: 'Charon', female: 'Pulcherrima' },
     speechRule: 'The Commander: a composed field leader. Deliver the next action and its consequence with decisive, purposeful clarity. Keep a firm, forward-moving cadence with clean sentence endings. Sound authoritative but respectful, never barking, aggressive, or theatrical.',
     interactionRule: 'Speak as The Commander: decisive, structured, and accountable. Give a clear plan, its reason, and the next practical action.',
     greeting: {
@@ -69,8 +83,8 @@ export function mergeGeminiVoiceProfile(character, saved = {}) {
   const defaults = GEMINI_VOICE_PROFILE_DEFAULTS[character];
   return {
     character,
-    voiceMale: GEMINI_TTS_VOICE_OPTIONS.includes(saved.voiceMale) ? saved.voiceMale : defaults.voices.male,
-    voiceFemale: GEMINI_TTS_VOICE_OPTIONS.includes(saved.voiceFemale) ? saved.voiceFemale : defaults.voices.female,
+    voiceMale: GEMINI_TTS_VOICE_OPTIONS_MALE.includes(saved.voiceMale) ? saved.voiceMale : defaults.voices.male,
+    voiceFemale: GEMINI_TTS_VOICE_OPTIONS_FEMALE.includes(saved.voiceFemale) ? saved.voiceFemale : defaults.voices.female,
     speechRule: textOrNull(saved.speechRule, 1200) || defaults.speechRule,
     interactionRule: textOrNull(saved.interactionRule, 900) || defaults.interactionRule,
     greeting: defaults.greeting,
@@ -83,7 +97,7 @@ export function normalizeGeminiVoiceProfileInput(input = {}) {
   assertGeminiVoiceCharacter(character);
   const voiceMale = String(input.voiceMale || '').trim();
   const voiceFemale = String(input.voiceFemale || '').trim();
-  if (!GEMINI_TTS_VOICE_OPTIONS.includes(voiceMale) || !GEMINI_TTS_VOICE_OPTIONS.includes(voiceFemale)) throw new Error('GEMINI_VOICE_NOT_ALLOWED');
+  if (!GEMINI_TTS_VOICE_OPTIONS_MALE.includes(voiceMale) || !GEMINI_TTS_VOICE_OPTIONS_FEMALE.includes(voiceFemale)) throw new Error('GEMINI_VOICE_NOT_ALLOWED');
   const speechRule = textOrNull(input.speechRule, 1200);
   const interactionRule = textOrNull(input.interactionRule, 900);
   if (!speechRule || !interactionRule) throw new Error('VALIDATION_FAILED');

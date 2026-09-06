@@ -345,7 +345,7 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
     if (u.indexOf('/voice-providers/characters') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     if (u.indexOf('/voice-providers/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ characters: [], overallUsage24h: null }) });
     if (u.indexOf('/ai/gemini-voice-profiles') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({
-      voices: ['Algenib', 'Iapetus'], profiles: [{ character: 'hunter', voiceMale: 'Algenib', voiceFemale: 'Iapetus', speechRule: 'Patient, grounded delivery.', interactionRule: 'Patient, grounded interaction.' }]
+      voicesMale: ['Algenib'], voicesFemale: ['Kore'], profiles: [{ character: 'hunter', voiceMale: 'Algenib', voiceFemale: 'Kore', speechRule: 'Patient, grounded delivery.', interactionRule: 'Patient, grounded interaction.' }]
     }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
   };
