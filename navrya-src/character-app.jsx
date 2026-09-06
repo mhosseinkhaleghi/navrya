@@ -1392,6 +1392,39 @@ export function mountCharacterApp(character) {
         resultContext: () => {}
       });
 
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Slice U1-f (execution brief section 9 item 5, "a startable Fate operation wrapping its
+        // existing two-surface flow"): the exact same real trigger the PulseBand's own "Fate"
+        // button already calls - never a fabricated shortcut. No fields of its own; the real
+        // two-step flow (a final chart entry, then a written summary) is already AI-fillable once
+        // open, through its own existing live-session-fate-entry/live-session-fate-summary
+        // registrations (the general "adopt the currently open real form" mechanism every
+        // manually-opened process already gets).
+        id: 'session.fate.run', domain: 'sessions', riskLevel: 'low',
+        description: 'Start the real Session Fate flow for the current active trading Session - a real, two-step flow (a final chart entry, then a written session outcome summary), the same "Fate" button already performs. Only available while a Session is actively open.',
+        aliases: ['run session fate', 'start session fate', 'wrap up this session', 'close this session with fate'],
+        requiredFields: [], optionalFields: [],
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
+          pollFor(
+            () => window.TradeJournalNavryaLiveSessionHub,
+            (hub) => {
+              hub.startFate();
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('live-session-fate-entry').open,
+                () => resolve({ processId: 'live-session-fate-entry' }),
+                () => resolve(null) // the pre-session check-in gate may have deferred it - a known, rare edge case (same as runAiAnalysis's own)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
       // 2026-08-28 bug report: the real Pre-Session Check-In popup (preSessionCheckInModal.jsx)
       // shows itself as a precondition before session.movementEntry.create's/
       // session.scenario.create's own target UI ever opens - reactive, opened by app code

@@ -128,7 +128,7 @@ test('session.chartEntry.create/movementEntry.create/scenario.create/scenario.ed
 
 test('liveSessionView.jsx exposes a real window hook (TradeJournalNavryaLiveSessionHub) driving the same real addEntry/addScenario/setChartModalOpen functions the human UI already uses - not a second Session-mutation path, via a ref kept current every render to avoid the F9-class stale-closure bug', () => {
   assert.match(liveSessionSrc, /const liveSessionHubRef = React\.useRef\(null\);/);
-  assert.match(liveSessionSrc, /liveSessionHubRef\.current = \{ session, addEntry, addScenario, setChartModalOpen, withPreSessionCheckIn, selectEntry, setOpenScenarios, setSessionAnalysisEntry, setSessionAnalysisAutoRun \};/);
+  assert.match(liveSessionSrc, /liveSessionHubRef\.current = \{ session, addEntry, addScenario, setChartModalOpen, withPreSessionCheckIn, selectEntry, setOpenScenarios, setSessionAnalysisEntry, setSessionAnalysisAutoRun, setFateStep \};/);
   assert.match(liveSessionSrc, /window\.TradeJournalNavryaLiveSessionHub = \{/);
   assert.match(liveSessionSrc, /addChartEntry: \(\) => \{ liveSessionHubRef\.current\.withPreSessionCheckIn/);
   assert.match(liveSessionSrc, /addMovementEntry: \(\) => \{/);

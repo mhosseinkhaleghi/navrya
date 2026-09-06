@@ -2797,7 +2797,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // current every render decouples what the hook actually calls from which render's own effect
   // closure happens to still be registered.
   const liveSessionHubRef = React.useRef(null);
-  liveSessionHubRef.current = { session, addEntry, addScenario, setChartModalOpen, withPreSessionCheckIn, selectEntry, setOpenScenarios, setSessionAnalysisEntry, setSessionAnalysisAutoRun };
+  liveSessionHubRef.current = { session, addEntry, addScenario, setChartModalOpen, withPreSessionCheckIn, selectEntry, setOpenScenarios, setSessionAnalysisEntry, setSessionAnalysisAutoRun, setFateStep };
   React.useEffect(() => {
     window.TradeJournalNavryaLiveSessionHub = {
       addChartEntry: () => { liveSessionHubRef.current.withPreSessionCheckIn(() => liveSessionHubRef.current.setChartModalOpen(true)); },
@@ -2841,7 +2841,14 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         pendingAnalysisResolverRef.current = resolve;
         liveSessionHubRef.current.setSessionAnalysisAutoRun(true);
         liveSessionHubRef.current.setSessionAnalysisEntry(target);
-      })
+      }),
+      // Slice U1-f (execution brief section 9 item 5, "a startable Fate operation wrapping its
+      // existing two-surface flow"): the exact same real trigger the PulseBand's own "Fate"
+      // button already calls (withPreSessionCheckIn gate, then the real two-step FateEntryModal/
+      // FateSummaryModal flow) - never a fabricated shortcut. If the pre-session check-in gate
+      // defers the flow (not yet answered for this session), fateStep stays null here - the same
+      // known, rare edge case runAiAnalysis's own comment already documents for that gate.
+      startFate: () => { liveSessionHubRef.current.withPreSessionCheckIn(() => liveSessionHubRef.current.setFateStep('entry')); }
     };
     return () => { delete window.TradeJournalNavryaLiveSessionHub; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
