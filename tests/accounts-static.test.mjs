@@ -78,3 +78,22 @@ test('account.create/account.edit never declare a submit that persists - only th
   const formBlock = view.slice(view.indexOf("registry.register('account-manual-form'"), view.indexOf("registry.register('account-manual-form'") + 800);
   assert.doesNotMatch(formBlock, /submit:/, 'the account-manual-form process registration must not declare a submit function');
 });
+
+// Real production bug (2026-09-06): account.create has an empty requiredFields (every one of its
+// ~23 fields is optional) and account.edit's only required field (accountName) resolves on turn
+// one, while ~23 optional rule fields may still need several more turns to fill. Without
+// entityAlreadyPersisted, ai-workflow-engine.js's own "!missing.length -> scheduleSubmit()" rule
+// (the same F15 class already fixed for pattern.create/strategy.create/routine.edit/
+// therapist.review/profile.analysis.*) called this action's own no-op submit() and cleared the
+// workflow within one SUBMIT_GRACE_MS window (~3s) of opening/resolving - found via a real user
+// report ("I said personal, the form never changed"): by the time the answer arrived, the
+// workflow had already silently self-completed, so the next turn fell through to the
+// disconnected suggestions[]/Apply-Discard popover path instead of live-applying to the still-open
+// real form.
+test('account.create and account.edit declare entityAlreadyPersisted:true, so their own multi-turn optional-field fill outlives the submit grace window instead of self-completing the instant requiredFields is satisfied', async () => {
+  const character = await read('navrya-src', 'character-app.jsx');
+  const createBlock = character.slice(character.indexOf("id: 'account.create'"), character.indexOf("id: 'account.edit'"));
+  const editBlock = character.slice(character.indexOf("id: 'account.edit'"), character.indexOf("id: 'account.open'"));
+  assert.match(createBlock, /id: 'account\.create'.*entityAlreadyPersisted: true/s);
+  assert.match(editBlock, /id: 'account\.edit'.*entityAlreadyPersisted: true/s);
+});

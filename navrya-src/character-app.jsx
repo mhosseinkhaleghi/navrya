@@ -1128,7 +1128,20 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       var ACCOUNT_FIELDS = (window.TradeJournalAccountsTypes && window.TradeJournalAccountsTypes.manualAccountPaths) || [];
       window.TradeJournalAIActionRegistry.registerAction({
-        id: 'account.create', domain: 'accounts', riskLevel: 'low',
+        // entityAlreadyPersisted: requiredFields is empty (every one of the ~23 account fields is
+        // optional), so missingFields() is already empty the INSTANT this form opens, before the
+        // trader has said a single word. Without this flag, ai-workflow-engine.js's own
+        // "!missing.length -> scheduleSubmit()" rule (the same F15 class already fixed once for
+        // pattern.create/strategy.create, and again this pass for routine.edit/therapist.review/
+        // profile.analysis.create+edit) would call this action's own no-op submit() and clear the
+        // workflow within one SUBMIT_GRACE_MS window (~3s) of opening - found via a real user
+        // report: "I said personal, it never changed" - by the time the answer arrived, the
+        // workflow had already silently self-completed, so the next turn fell through to the
+        // disconnected suggestions[]/Apply-Discard path instead of live-applying to the still-open
+        // real form. The account itself still only persists on a real, human "Create account" click
+        // (submit() below stays a no-op) - this flag only keeps the WORKFLOW open long enough for
+        // that multi-turn fill to actually happen.
+        id: 'account.create', domain: 'accounts', riskLevel: 'low', entityAlreadyPersisted: true,
         description: 'Open the real "create account" form for a new prop-firm or personal trading Account (this is the Accounts ledger - distinct from the user\'s own profile, see navigate.to). Every account here is manual - NAVRYA has no live broker/prop-firm connection, so this only opens the visible form and fills the fields you are given; the account itself is never created until the human clicks "Create account" themselves, even once every field is filled.',
         aliases: ['create an account', 'new account', 'add an account', 'create a prop account', 'add a personal account', 'set up a trading account'],
         requiredFields: [], optionalFields: ACCOUNT_FIELDS,
@@ -1158,7 +1171,12 @@ export function mountCharacterApp(character) {
       // that function's own comment on why it is stricter than resolveStrategyId/resolvePatternIds
       // (an account is a real money boundary; an ambiguous name must never be guessed).
       window.TradeJournalAIActionRegistry.registerAction({
-        id: 'account.edit', domain: 'accounts', riskLevel: 'low',
+        // entityAlreadyPersisted: same reasoning as account.create above - once the one required
+        // field (accountName) resolves, missingFields() reports zero missing while ~23 optional
+        // rule fields may still need several more turns to fill; without this flag the workflow
+        // would self-complete/clear ~3s after accountName resolves instead of staying open for
+        // that follow-up editing.
+        id: 'account.edit', domain: 'accounts', riskLevel: 'low', entityAlreadyPersisted: true,
         description: 'Open an EXISTING trading Account\'s rules for editing, by its firm/label name. accountName identifies which existing Account to open - it is never a rename. Only select this once the user has actually named which existing Account they mean; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing.',
         aliases: ['edit an account', 'edit the account', 'update account rules', 'change the account rules', 'open the account settings'],
         requiredFields: ['accountName'], optionalFields: ACCOUNT_FIELDS,
