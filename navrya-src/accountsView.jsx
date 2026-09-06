@@ -1245,11 +1245,30 @@ function AccountDetail({ lang, account, allTrades, tab, setTab, onBack, onEdit }
   // "this account" via resolveActiveIdByPrefix('account-detail-').
   const mountedRef = React.useRef(true);
   React.useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, [account.id]);
+  // Slice U1-a (execution brief section 9 item 1, "extend account.open for actual detail
+  // tabs"): the allowlist was empty ("this entity is on screen" only, per the comment above) -
+  // this real detail view already supports switching tabs (setTab, already a prop here), voice/
+  // chat just had no way to request it. 'tab' is validated against the exact real tab ids this
+  // view itself offers - never an invented value - and 'pretrade' is deliberately excluded for
+  // an archived account, mirroring Defect #3's own read-only rule (the visible `tabs` array just
+  // below excludes it identically), so a spoken request can never switch to a tab this account's
+  // own UI would never show as a real option.
   React.useLayoutEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
-    registry.register('account-detail-' + account.id, { allowlist: [], isOpen: () => mountedRef.current });
-  }, [account.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    registry.register('account-detail-' + account.id, {
+      allowlist: ['tab'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path !== 'tab') return;
+        const requested = String(value == null ? '' : value).trim();
+        const validTabs = account.status === 'archived'
+          ? ['overview', 'rules', 'performance', 'behaviour']
+          : ['overview', 'rules', 'pretrade', 'performance', 'behaviour'];
+        if (validTabs.indexOf(requested) !== -1) setTab(requested);
+      }
+    });
+  }, [account.id, account.status]); // eslint-disable-line react-hooks/exhaustive-deps
   const mark = String(account.firm || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'NA';
   const archived = account.status === 'archived';
   // Defect #3: an archived account is read-only - Pre-trade check (the one tab that exists
@@ -1362,11 +1381,13 @@ export function ManualAccountModal({ lang, editing, onClose, onSaved }) {
   const valid = String(man.firm || '').trim().length > 0;
 
   // AI can fill this visible form field-by-field (Journey/A4 process-registry contract, same
-  // mechanism tradeCalculatorModal.jsx uses) but this registration deliberately declares no
-  // `submit` - only the human clicking "Create account"/"Save changes" below ever calls
-  // window.TradeJournalAccountsStore.save(). Per the product brief: "AI can fill a visible form
-  // but cannot silently save, archive, delete, bypass risk controls, or claim a rule is
-  // satisfied." registry.submit('account-manual-form') is therefore always a safe no-op.
+  // mechanism tradeCalculatorModal.jsx uses). Slice U1-a (execution brief section 9 item 1): this
+  // registration now also declares a real `submit`, reached only through account.create/
+  // account.edit's own explicit `save` gate field (character-app.jsx, same established pattern as
+  // every other confirm/send/publish gate) - an EXPLICIT, separate "save it"/"create the account
+  // now" request, never bundled into ordinary field-filling and never autosaved just because every
+  // field happens to be present. Ordinary field-filling is completely unchanged; the human's own
+  // "Create account"/"Save changes" button below still calls the exact same save() directly.
   const mountedRef = React.useRef(true);
   React.useEffect(() => () => { mountedRef.current = false; }, []);
   React.useLayoutEffect(() => {
@@ -1386,7 +1407,8 @@ export function ManualAccountModal({ lang, editing, onClose, onSaved }) {
         const fieldMap = { firm: 'firm', program: 'program', platform: 'platform', numberMasked: 'number', currency: 'currency', startDate: 'start', startingBalance: 'balance' };
         const field = fieldMap[path];
         if (field) setMan((m) => ({ ...m, [field]: value }));
-      }
+      },
+      submit: () => submitRef.current()
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const preview = manToAccount(man, editing);
@@ -1394,16 +1416,23 @@ export function ManualAccountModal({ lang, editing, onClose, onSaved }) {
   const previewRules = engine.evaluateRules(preview, previewMetrics);
 
   function save() {
-    if (!valid) return;
+    if (!valid) return undefined;
     const store = window.TradeJournalAccountsStore;
     const saved = store.save(manToAccount(man, editing));
     onSaved(saved.id);
+    return saved;
   }
   function removeAccount() {
     if (!editing) return;
     window.TradeJournalAccountsStore.remove(editing.id);
     onClose();
   }
+  // Read fresh on every render (never captured once in the registration effect above) - the exact
+  // stale-closure fix already established across this codebase (messagesView.jsx/
+  // accountProfileView.jsx) - save() closes over man/editing/valid, all of which change on every
+  // keystroke/field-fill after the registration effect's own one-time [] run.
+  const submitRef = React.useRef(save);
+  submitRef.current = save;
 
   const identityFields = man.kind === 'prop'
     ? [['firm', tr(lang, 'manFirm')], ['program', tr(lang, 'manProgram')], ['platform', tr(lang, 'manPlatform')], ['number', tr(lang, 'manNumber')]]

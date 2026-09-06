@@ -1127,24 +1127,33 @@ export function mountCharacterApp(character) {
     // rule is satisfied."
     if (window.TradeJournalAIActionRegistry) {
       var ACCOUNT_FIELDS = (window.TradeJournalAccountsTypes && window.TradeJournalAccountsTypes.manualAccountPaths) || [];
+      // Slice U1-a (execution brief section 9 item 1): same normalizeGateField() pattern already
+      // established for every other confirm/send/publish gate (see trade.cancel's own copy) -
+      // rejects an explicit false so it is never counted as "known", never applied to the real
+      // form. Locally duplicated near its own point of use, matching this file's own convention.
+      function normalizeGateField(gateFieldName) {
+        return function (path, value) {
+          if (path === gateFieldName && (value === false || value === 'false')) return null;
+          return value;
+        };
+      }
       window.TradeJournalAIActionRegistry.registerAction({
-        // entityAlreadyPersisted: requiredFields is empty (every one of the ~23 account fields is
-        // optional), so missingFields() is already empty the INSTANT this form opens, before the
-        // trader has said a single word. Without this flag, ai-workflow-engine.js's own
-        // "!missing.length -> scheduleSubmit()" rule (the same F15 class already fixed once for
-        // pattern.create/strategy.create, and again this pass for routine.edit/therapist.review/
-        // profile.analysis.create+edit) would call this action's own no-op submit() and clear the
-        // workflow within one SUBMIT_GRACE_MS window (~3s) of opening - found via a real user
-        // report: "I said personal, it never changed" - by the time the answer arrived, the
-        // workflow had already silently self-completed, so the next turn fell through to the
-        // disconnected suggestions[]/Apply-Discard path instead of live-applying to the still-open
-        // real form. The account itself still only persists on a real, human "Create account" click
-        // (submit() below stays a no-op) - this flag only keeps the WORKFLOW open long enough for
-        // that multi-turn fill to actually happen.
-        id: 'account.create', domain: 'accounts', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Open the real "create account" form for a new prop-firm or personal trading Account (this is the Accounts ledger - distinct from the user\'s own profile, see navigate.to). Every account here is manual - NAVRYA has no live broker/prop-firm connection, so this only opens the visible form and fills the fields you are given; the account itself is never created until the human clicks "Create account" themselves, even once every field is filled.',
+        // Slice U1-a: this intentionally changes the historical manual-save-only policy - `save`
+        // is now a real, required gate field (same F37 pattern as every destructive/send/publish
+        // action) instead of entityAlreadyPersisted:true. Ordinary field-filling is completely
+        // unaffected (every one of the ~23 account fields stays optional, live-applied to the
+        // still-open real form exactly as before) - only an EXPLICIT, separate "save it"/"create
+        // the account now" resolves the one required field and lets the real handler run
+        // (accountsView.jsx's own save(), via account-manual-form's now-real submit()). Making
+        // `save` required (never empty requiredFields) is what actually prevents the original F15
+        // premature-completion bug this used to guard against with entityAlreadyPersisted - missing
+        // can never reach zero until a genuine save is confirmed, so there is no autosave window
+        // this policy change could reopen; no funds/order execution is involved either way.
+        id: 'account.create', domain: 'accounts', riskLevel: 'low',
+        description: 'Open the real "create account" form for a new prop-firm or personal trading Account (this is the Accounts ledger - distinct from the user\'s own profile, see navigate.to). Every account here is manual - NAVRYA has no live broker/prop-firm connection, so this only opens the visible form and fills the fields you are given; save must ONLY be set to true once the user has explicitly and separately asked to actually save/create the account now (e.g. "save it", "create the account") - never merely because every field happens to be filled, and never inferred from the original create request alone.',
         aliases: ['create an account', 'new account', 'add an account', 'create a prop account', 'add a personal account', 'set up a trading account'],
-        requiredFields: [], optionalFields: ACCOUNT_FIELDS,
+        requiredFields: ['save'], optionalFields: ACCOUNT_FIELDS,
+        gateField: 'save', normalizeField: normalizeGateField('save'),
         available: () => true,
         open: () => new Promise((resolve) => {
           if (store.getState().activeId !== 'accounts') store.setActiveId('accounts');
@@ -1162,7 +1171,10 @@ export function mountCharacterApp(character) {
             () => resolve(null)
           );
         }),
-        submit: () => undefined,
+        submit: (known) => {
+          if (known.save !== true && known.save !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('account-manual-form');
+        },
         resultContext: () => {}
       });
 
@@ -1171,15 +1183,14 @@ export function mountCharacterApp(character) {
       // that function's own comment on why it is stricter than resolveStrategyId/resolvePatternIds
       // (an account is a real money boundary; an ambiguous name must never be guessed).
       window.TradeJournalAIActionRegistry.registerAction({
-        // entityAlreadyPersisted: same reasoning as account.create above - once the one required
-        // field (accountName) resolves, missingFields() reports zero missing while ~23 optional
-        // rule fields may still need several more turns to fill; without this flag the workflow
-        // would self-complete/clear ~3s after accountName resolves instead of staying open for
-        // that follow-up editing.
-        id: 'account.edit', domain: 'accounts', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Open an EXISTING trading Account\'s rules for editing, by its firm/label name. accountName identifies which existing Account to open - it is never a rename. Only select this once the user has actually named which existing Account they mean; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing.',
+        // Slice U1-a: same explicit-save gate as account.create above, added alongside the
+        // existing accountName resolution requirement - see that action's own comment for the
+        // full policy-change reasoning.
+        id: 'account.edit', domain: 'accounts', riskLevel: 'low',
+        description: 'Open an EXISTING trading Account\'s rules for editing, by its firm/label name. accountName identifies which existing Account to open - it is never a rename. Only select this once the user has actually named which existing Account they mean; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing. save must ONLY be set to true once the user has explicitly and separately asked to actually save the changes now - never merely because every field happens to be filled.',
         aliases: ['edit an account', 'edit the account', 'update account rules', 'change the account rules', 'open the account settings'],
-        requiredFields: ['accountName'], optionalFields: ACCOUNT_FIELDS,
+        requiredFields: ['accountName', 'save'], optionalFields: ACCOUNT_FIELDS,
+        gateField: 'save', normalizeField: normalizeGateField('save'),
         available: () => true,
         open: (context, initialFields) => new Promise((resolve) => {
           var nameField = (initialFields || []).filter((f) => f && f.path === 'accountName')[0];
@@ -1205,7 +1216,10 @@ export function mountCharacterApp(character) {
             () => resolve(null)
           );
         }),
-        submit: () => undefined,
+        submit: (known) => {
+          if (known.save !== true && known.save !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('account-manual-form');
+        },
         resultContext: () => {}
       });
 
@@ -1214,9 +1228,20 @@ export function mountCharacterApp(character) {
       // open() itself.
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'account.open', domain: 'accounts', riskLevel: 'low',
-        description: 'Open an EXISTING trading Account by its firm/label name to view its overview, rules, pre-trade check, performance and behaviour tabs. A real navigation only, never a mutation. accountName identifies which existing Account to open; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing.',
+        description: 'Open an EXISTING trading Account by its firm/label name to view its overview, rules, pre-trade check, performance and behaviour tabs. A real navigation only, never a mutation. accountName identifies which existing Account to open; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing. tab optionally jumps straight to one exact tab - overview, rules, pretrade (pre-trade check), performance, or behaviour - only when the user actually asked for that specific tab; defaults to overview otherwise. Once already open, a later turn asking to switch tabs ("show me the rules") reaches the same real tab control directly.',
         aliases: ['open my account', 'open the account', 'show me my account', 'go to my account', 'view account', 'select account'],
-        requiredFields: ['accountName'], optionalFields: [],
+        requiredFields: ['accountName'], optionalFields: ['tab'],
+        // Slice U1-a: 'tab' only ever picks WHICH real, already-existing tab to show - it is
+        // never itself a mutation (mirrors the resolution-only classification patternName/
+        // strategyName already get in edit/delete actions), so normalizeField here validates
+        // against the exact real tab ids account-detail-{id}'s own registration accepts (see
+        // accountsView.jsx) rather than trusting an invented value through to the real setter.
+        normalizeField: (path, value) => {
+          if (path !== 'tab') return value;
+          var valid = ['overview', 'rules', 'pretrade', 'performance', 'behaviour'];
+          var requested = String(value == null ? '' : value).trim();
+          return valid.indexOf(requested) !== -1 ? requested : null;
+        },
         available: () => true,
         open: (context, initialFields) => new Promise((resolve) => {
           var nameField = (initialFields || []).filter((f) => f && f.path === 'accountName')[0];
@@ -1227,11 +1252,15 @@ export function mountCharacterApp(character) {
           var list = accountsStore ? accountsStore.listActive() : [];
           var targetId = helpers ? helpers.resolveAccountId(accountName, list) : null;
           if (!targetId) { resolve(null); return; } // zero or ambiguous - never guess
+          var tabField = (initialFields || []).filter((f) => f && f.path === 'tab')[0];
+          var VALID_ACCOUNT_TABS = ['overview', 'rules', 'pretrade', 'performance', 'behaviour'];
+          var requestedTab = tabField ? String(tabField.value == null ? '' : tabField.value).trim() : '';
+          var initialTab = VALID_ACCOUNT_TABS.indexOf(requestedTab) !== -1 ? requestedTab : undefined;
           if (store.getState().activeId !== 'accounts') store.setActiveId('accounts');
           pollFor(
             () => window.TradeJournalNavryaAccountsHub,
             (hub) => {
-              hub.open(targetId);
+              hub.open(targetId, initialTab);
               var registry = window.TradeJournalAIProcessRegistry;
               pollFor(
                 () => registry && registry.query('account-detail-' + targetId).open,

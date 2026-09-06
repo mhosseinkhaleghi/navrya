@@ -69,31 +69,55 @@ test('character-app.jsx registers account.create, account.edit, and account.open
   });
 });
 
-test('account.create/account.edit never declare a submit that persists - only the human-facing form save button ever calls AccountsStore.save()', async () => {
+// Slice U1-a (execution brief section 9 item 1): the historical manual-save-only policy was
+// intentionally changed - account.create/account.edit now declare a real `save` gate field (the
+// same normalizeGateField()/gateField pattern established for every other confirm/send/publish
+// action) and a submit() that actually persists, but ONLY once that field is explicitly true - an
+// ordinary field-filling turn (save never mentioned) still never persists anything, exactly as
+// before. No funds/order execution or autosave is introduced by this change.
+test('account.create/account.edit only persist through an explicit save gate - never as a side effect of ordinary field-filling', async () => {
   const character = await read('navrya-src', 'character-app.jsx');
   const view = await read('navrya-src', 'accountsView.jsx');
   const createBlock = character.slice(character.indexOf("id: 'account.create'"), character.indexOf("id: 'account.edit'"));
-  assert.match(createBlock, /submit: \(\) => undefined/);
+  const editBlock = character.slice(character.indexOf("id: 'account.edit'"), character.indexOf("id: 'account.open'"));
+  for (const block of [createBlock, editBlock]) {
+    assert.match(block, /gateField: 'save', normalizeField: normalizeGateField\('save'\),/);
+    assert.match(block, /submit: \(known\) => \{\s*\n\s*if \(known\.save !== true && known\.save !== 'true'\) return undefined;\s*\n\s*return window\.TradeJournalAIProcessRegistry && window\.TradeJournalAIProcessRegistry\.submit\('account-manual-form'\);/);
+  }
+  assert.match(createBlock, /requiredFields: \['save'\], optionalFields: ACCOUNT_FIELDS,/);
+  assert.match(editBlock, /requiredFields: \['accountName', 'save'\], optionalFields: ACCOUNT_FIELDS,/);
+  // The real process registration itself now declares a real submit (accountsView.jsx's own
+  // save(), read fresh every render via submitRef - never a stale closure) - reached only through
+  // the gate above, never bundled into ordinary applyValue() field-filling.
   assert.match(view, /registry\.register\('account-manual-form'/);
-  const formBlock = view.slice(view.indexOf("registry.register('account-manual-form'"), view.indexOf("registry.register('account-manual-form'") + 800);
-  assert.doesNotMatch(formBlock, /submit:/, 'the account-manual-form process registration must not declare a submit function');
+  const formBlock = view.slice(view.indexOf("registry.register('account-manual-form'"), view.indexOf("registry.register('account-manual-form'") + 900);
+  assert.match(formBlock, /submit: \(\) => submitRef\.current\(\)/);
 });
 
-// Real production bug (2026-09-06): account.create has an empty requiredFields (every one of its
-// ~23 fields is optional) and account.edit's only required field (accountName) resolves on turn
-// one, while ~23 optional rule fields may still need several more turns to fill. Without
-// entityAlreadyPersisted, ai-workflow-engine.js's own "!missing.length -> scheduleSubmit()" rule
-// (the same F15 class already fixed for pattern.create/strategy.create/routine.edit/
-// therapist.review/profile.analysis.*) called this action's own no-op submit() and cleared the
-// workflow within one SUBMIT_GRACE_MS window (~3s) of opening/resolving - found via a real user
-// report ("I said personal, the form never changed"): by the time the answer arrived, the
-// workflow had already silently self-completed, so the next turn fell through to the
-// disconnected suggestions[]/Apply-Discard popover path instead of live-applying to the still-open
-// real form.
-test('account.create and account.edit declare entityAlreadyPersisted:true, so their own multi-turn optional-field fill outlives the submit grace window instead of self-completing the instant requiredFields is satisfied', async () => {
+// The original F15-class bug this test used to pin entityAlreadyPersisted for is now prevented a
+// different, more correct way: `save` is a REQUIRED field (never empty requiredFields), so
+// missingFields() can never reach zero - and ai-workflow-engine.js's own scheduleSubmit() never
+// fires - until a genuine, explicit save is confirmed. entityAlreadyPersisted is gone entirely;
+// there is no autosave window this policy change could reopen.
+test('account.create and account.edit no longer declare entityAlreadyPersisted - the required save gate field itself is what now prevents premature auto-completion', async () => {
   const character = await read('navrya-src', 'character-app.jsx');
   const createBlock = character.slice(character.indexOf("id: 'account.create'"), character.indexOf("id: 'account.edit'"));
   const editBlock = character.slice(character.indexOf("id: 'account.edit'"), character.indexOf("id: 'account.open'"));
-  assert.match(createBlock, /id: 'account\.create'.*entityAlreadyPersisted: true/s);
-  assert.match(editBlock, /id: 'account\.edit'.*entityAlreadyPersisted: true/s);
+  assert.doesNotMatch(createBlock, /entityAlreadyPersisted/);
+  assert.doesNotMatch(editBlock, /entityAlreadyPersisted/);
+});
+
+// Slice U1-a: account.open can now jump straight to a specific real detail tab, and (once
+// already open) a later turn can switch tabs live - the exact same real setTab() control the
+// human-facing tab bar already uses, never a fabricated second navigation mechanism.
+test('account.open validates tab against the exact real tab ids account-detail-{id} accepts, both at initial open and for a later live switch', async () => {
+  const character = await read('navrya-src', 'character-app.jsx');
+  const view = await read('navrya-src', 'accountsView.jsx');
+  const openBlock = character.slice(character.indexOf("id: 'account.open'"), character.indexOf("id: 'account.open'") + 3500);
+  assert.match(openBlock, /optionalFields: \['tab'\]/);
+  assert.match(openBlock, /var valid = \['overview', 'rules', 'pretrade', 'performance', 'behaviour'\];/);
+  assert.match(openBlock, /hub\.open\(targetId, initialTab\);/);
+  const registrationBlock = view.slice(view.indexOf("registry.register('account-detail-'"), view.indexOf("registry.register('account-detail-'") + 900);
+  assert.match(registrationBlock, /allowlist: \['tab'\],/);
+  assert.match(registrationBlock, /if \(validTabs\.indexOf\(requested\) !== -1\) setTab\(requested\);/);
 });
