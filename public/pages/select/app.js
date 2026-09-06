@@ -438,18 +438,20 @@ switchAction.addEventListener('click', () => setMode(mode === 'signup' ? 'signin
 // behind the full-bleed showcase slider until "Let's start" is tapped. Above that breakpoint
 // .auth-drawer-wrap is plain display:contents and these are inert no-ops.
 function openAuthDrawer() {
+  if (!authDrawerWrap || !authDrawerScrim) return;
   authDrawerWrap.classList.add('is-open');
   authDrawerScrim.classList.add('is-open');
   document.body.style.overflow = 'hidden';
 }
 function closeAuthDrawer() {
+  if (!authDrawerWrap || !authDrawerScrim) return;
   authDrawerWrap.classList.remove('is-open');
   authDrawerScrim.classList.remove('is-open');
   document.body.style.overflow = '';
 }
-mobileStartBtn.addEventListener('click', openAuthDrawer);
-authDrawerScrim.addEventListener('click', closeAuthDrawer);
-authDrawerHandle.addEventListener('click', closeAuthDrawer);
+if (mobileStartBtn) mobileStartBtn.addEventListener('click', openAuthDrawer);
+if (authDrawerScrim) authDrawerScrim.addEventListener('click', closeAuthDrawer);
+if (authDrawerHandle) authDrawerHandle.addEventListener('click', closeAuthDrawer);
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAuthDrawer(); });
 
 // Distinguishes "the request never reached a server" (fetch itself rejects with a TypeError -
