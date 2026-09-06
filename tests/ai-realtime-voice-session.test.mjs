@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { after, afterEach } from 'node:test';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 // Journey E (Realtime Voice) E0: server-side ephemeral-credential minting. Same
 // globalThis.fetch-stubbing convention as tests/ai-dock-chat-quality.test.mjs - proves the real
@@ -376,6 +378,26 @@ test('the admin Gemini Voice diagnostic validates Live and TTS, and returns only
   await assert.rejects(() => adminTestGeminiVoice({ role: 'user' }), /ADMIN_REQUIRED/);
   __resetAdminKeyCacheForTests();
   __resetAdminGeminiVoiceProfileCacheForTests();
+});
+
+// Live production report: the admin's own "Test rule" button surfaced a real Gemini API 429
+// (rate-limited) as a generic, misleading "500 Internal Server Error" - geminiVoiceFailureCode()
+// already embeds the true upstream status in the thrown message (e.g. GEMINI_TTS_FAILED_429), but
+// the request handler's error->status switch had no case for it and fell through to the 500
+// default. No HTTP harness exists in this file to drive the handler end to end (every test above
+// calls the exported functions directly), so this is a source-structure regression guard, the same
+// convention navrya-src/chatDockView.jsx's own test files already use for logic with no render/
+// request harness - it fails loudly if this case is ever removed or the regex/status-mapping order
+// changes back to something that swallows the real upstream status again.
+test('a GEMINI_TTS_FAILED_<status>/GEMINI_LIVE_TOKEN_FAILED_<status> error is mapped to that REAL upstream HTTP status, never a generic 500', async () => {
+  const source = await readFile(path.join(process.cwd(), 'server', 'pattern-ai-server.mjs'), 'utf8');
+  const catchBlock = source.slice(source.indexOf('} catch (error) {', source.indexOf('server = http.createServer')), source.indexOf('const errorCode ='));
+  assert.match(catchBlock, /\/\^GEMINI_\(\?:TTS\|LIVE_TOKEN\)_FAILED_\(\\d\+\)\$\/\.test\(error\.message \|\| ''\) \? Number\(\(error\.message \|\| ''\)\.match\(\/\(\\d\+\)\$\/\)\[1\]\)/);
+  // Must come before the final `: 500` default so it actually intercepts the case rather than
+  // being dead code after an earlier, broader match.
+  const patternIndex = catchBlock.indexOf("GEMINI_(?:TTS|LIVE_TOKEN)_FAILED_");
+  const defaultIndex = catchBlock.lastIndexOf(': 500');
+  assert.ok(patternIndex > -1 && defaultIndex > -1 && patternIndex < defaultIndex);
 });
 
 test('Gemini TTS reads the approved text server-side and returns only provider audio, never its API key', async () => {

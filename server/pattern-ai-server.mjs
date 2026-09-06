@@ -3133,6 +3133,13 @@ const server = http.createServer(async (request, response) => {
     const status = error.message === 'REQUEST_TOO_LARGE' ? 413
       : error.message === 'INVALID_JSON' ? 400
       : /_API_KEY_MISSING$/.test(error.message || '') ? 503
+      // geminiVoiceFailureCode() embeds the real upstream HTTP status in the message (e.g.
+      // GEMINI_TTS_FAILED_429 when Gemini itself rate-limits the call) - surface that real status
+      // (429, 503, ...) instead of a misleading generic 500 for what is an expected, transient
+      // upstream condition, never a bug in this server. LOCATION_UNSUPPORTED (no trailing digits)
+      // doesn't match this and falls through to 500 unchanged - the client already translates that
+      // specific message into a friendly string regardless of status code.
+      : /^GEMINI_(?:TTS|LIVE_TOKEN)_FAILED_(\d+)$/.test(error.message || '') ? Number((error.message || '').match(/(\d+)$/)[1])
       : error.message === 'ADMIN_REQUIRED' ? 403
       : error.message === 'UNSUPPORTED_LANGUAGE' ? 400
       : error.message === 'ELEVENLABS_NOT_CONFIGURED' ? 503
