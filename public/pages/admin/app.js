@@ -79,7 +79,7 @@ const translations = {
     aiPageSubtitle: 'Provider keys, pricing, live health, ElevenLabs voice routing, and platform-wide usage.',
     aiProviderKeysTitle: 'Provider keys & pricing', statHealthyProviders: 'Healthy providers',
 voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-managed ElevenLabs credentials and per-language voice routing for the live Voice Mode. Changes apply immediately - no redeploy needed.',
-    geminiVoiceProfilesTitle: 'Gemini Voice Profiles', geminiVoiceProfilesHint: 'Gemini-only delivery and interaction rules. Test a draft before saving. These do not change text-provider keys, workflows, facts, or safety rules.', geminiVoiceProfilesUnavailable: 'Gemini Voice profiles are unavailable until the database migration is applied.', geminiVoiceProfileRole: '{role} delivery profile', geminiVoiceMale: 'Male voice', geminiVoiceFemale: 'Female voice', geminiVoiceSpeechRule: 'Speech delivery rule', geminiVoiceInteractionRule: 'Spoken interaction rule', geminiVoiceSafetyHint: 'The generated rule tunes voice and spoken framing only. NAVRYA still controls approved answers, warnings, confirmations, and actions.', geminiVoicePreviewGender: 'Preview voice', geminiVoiceTestRule: 'Test rule', geminiVoiceTestingRule: 'Testing rule…', geminiVoiceTestOk: 'Gemini Live and this Voice rule are ready.', geminiVoiceSaveRule: 'Save role rule',
+    geminiVoiceProfilesTitle: 'Gemini Voice Studio', geminiVoiceStudioKicker: 'Gemini Live · Voice Studio', geminiVoiceStudioBoundary: 'Voice-only controls', geminiVoiceStudioLive: 'Gemini Live', geminiVoiceProfilesHint: 'Gemini-only delivery and interaction rules. Test a draft before saving. These do not change text-provider keys, workflows, facts, or safety rules.', geminiVoiceProfilesUnavailable: 'Gemini Voice profiles are unavailable until the database migration is applied.', geminiVoiceProfileRole: '{role} delivery profile', geminiVoiceMale: 'Male voice', geminiVoiceFemale: 'Female voice', geminiVoiceSpeechRule: 'Speech delivery rule', geminiVoiceInteractionRule: 'Spoken interaction rule', geminiVoiceSafetyHint: 'The generated rule tunes voice and spoken framing only. NAVRYA still controls approved answers, warnings, confirmations, and actions.', geminiVoicePreviewGender: 'Preview voice', geminiVoiceTestRule: 'Test rule', geminiVoiceTestingRule: 'Testing rule…', geminiVoiceTestOk: 'Gemini Live and this Voice rule are ready.', geminiVoiceSaveRule: 'Save role rule',
     vpCredentialsTitle: 'Credential profiles', vpAddCredential: 'Add credential profile', vpLabelPlaceholder: 'Profile name (e.g. Primary ElevenLabs Account)', vpKeyPlaceholder: 'Paste the ElevenLabs API key', vpReplaceKeyHint: 'Leave blank to keep the current key', vpSaveCredential: 'Save profile', vpNoCredentials: 'No credential profiles yet.',
     vpKeyHint: 'Key ends in {hint}', vpValidate: 'Validate', vpValidating: 'Validating…', vpDelete: 'Delete', vpDeleteConfirm: 'Delete this credential profile? Any language using it will fall back until a new one is selected.', vpDeleted: 'Credential deleted.',
     vpEnabled: 'Enabled', vpDisabled: 'Disabled', vpValidationUnknown: 'Not validated yet', vpValidationValid: 'Valid', vpValidationInvalid: 'Invalid', vpValidationRestricted: 'Restricted (scope/IP)', vpLastValidated: 'Last validated {date}', vpNeverValidated: 'Never validated', vpValidationErrorCode: 'Reason: {code}', vpValidateInconclusive: 'Could not reach ElevenLabs right now ({code}) - this does not mean the key is invalid. Try validating again.',
@@ -271,7 +271,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiPageSubtitle: 'کلیدهای سرویس‌دهنده، قیمت‌گذاری، سلامت زنده، مسیردهی صدای ElevenLabs و مصرف کل پلتفرم.',
     aiProviderKeysTitle: 'کلیدهای سرویس‌دهنده و قیمت‌گذاری', statHealthyProviders: 'سرویس‌دهنده‌های سالم',
 voiceProvidersTitle: 'ارائه‌دهنده‌های صدا (ElevenLabs)', voiceProvidersHint: 'کلیدهای ElevenLabs و مسیردهی صدا به‌ازای هر زبان، مدیریت‌شده توسط ادمین - برای حالت صوتی زنده. تغییرات بلافاصله اعمال می‌شوند، بدون نیاز به دیپلوی دوباره.',
-    geminiVoiceProfilesTitle: 'پروفایل‌های صدای Gemini', geminiVoiceProfilesHint: 'قواعد لحن و تعامل مخصوص صدای Gemini. پیش‌نویس را قبل از ذخیره آزمایش کن. این بخش کلیدهای متن، گردش‌کارها، واقعیت‌ها یا قواعد ایمنی را تغییر نمی‌دهد.', geminiVoiceProfilesUnavailable: 'پروفایل‌های صدای Gemini تا اجرای مایگریشن دیتابیس در دسترس نیستند.', geminiVoiceProfileRole: 'پروفایل اجرای {role}', geminiVoiceMale: 'صدای مرد', geminiVoiceFemale: 'صدای زن', geminiVoiceSpeechRule: 'قاعده اجرای صدا', geminiVoiceInteractionRule: 'قاعده تعامل گفتاری', geminiVoiceSafetyHint: 'قاعده تولیدشده فقط لحن صدا و چارچوب گفتاری را تنظیم می‌کند. پاسخ تأییدشده، هشدارها، تأییدها و اقدامات همچنان زیر کنترل NAVRYA هستند.', geminiVoicePreviewGender: 'صدای پیش‌نمایش', geminiVoiceTestRule: 'تست قاعده', geminiVoiceTestingRule: 'در حال تست قاعده…', geminiVoiceTestOk: 'Gemini Live و این قاعده صوتی آماده‌اند.', geminiVoiceSaveRule: 'ذخیره قاعده نقش',
+    geminiVoiceProfilesTitle: 'استودیوی صدای Gemini', geminiVoiceStudioKicker: 'Gemini Live · استودیوی صدا', geminiVoiceStudioBoundary: 'کنترل‌های فقط صوتی', geminiVoiceStudioLive: 'Gemini Live', geminiVoiceProfilesHint: 'قواعد لحن و تعامل مخصوص صدای Gemini. پیش‌نویس را قبل از ذخیره آزمایش کن. این بخش کلیدهای متن، گردش‌کارها، واقعیت‌ها یا قواعد ایمنی را تغییر نمی‌دهد.', geminiVoiceProfilesUnavailable: 'پروفایل‌های صدای Gemini تا اجرای مایگریشن دیتابیس در دسترس نیستند.', geminiVoiceProfileRole: 'پروفایل اجرای {role}', geminiVoiceMale: 'صدای مرد', geminiVoiceFemale: 'صدای زن', geminiVoiceSpeechRule: 'قاعده اجرای صدا', geminiVoiceInteractionRule: 'قاعده تعامل گفتاری', geminiVoiceSafetyHint: 'قاعده تولیدشده فقط لحن صدا و چارچوب گفتاری را تنظیم می‌کند. پاسخ تأییدشده، هشدارها، تأییدها و اقدامات همچنان زیر کنترل NAVRYA هستند.', geminiVoicePreviewGender: 'صدای پیش‌نمایش', geminiVoiceTestRule: 'تست قاعده', geminiVoiceTestingRule: 'در حال تست قاعده…', geminiVoiceTestOk: 'Gemini Live و این قاعده صوتی آماده‌اند.', geminiVoiceSaveRule: 'ذخیره قاعده نقش',
     vpCredentialsTitle: 'پروفایل‌های کلید', vpAddCredential: 'افزودن پروفایل کلید', vpLabelPlaceholder: 'نام پروفایل (مثلاً حساب اصلی ElevenLabs)', vpKeyPlaceholder: 'کلید API ElevenLabs را وارد کن', vpReplaceKeyHint: 'برای نگه‌داشتن کلید فعلی، خالی بگذار', vpSaveCredential: 'ذخیرهٔ پروفایل', vpNoCredentials: 'هنوز پروفایل کلیدی ثبت نشده است.',
     vpKeyHint: 'کلید با {hint} تمام می‌شود', vpValidate: 'اعتبارسنجی', vpValidating: 'در حال اعتبارسنجی…', vpDelete: 'حذف', vpDeleteConfirm: 'این پروفایل کلید حذف شود؟ هر زبانی که از آن استفاده می‌کند، تا انتخاب یک پروفایل جدید به حالت پیش‌فرض برمی‌گردد.', vpDeleted: 'کلید حذف شد.',
     vpEnabled: 'فعال', vpDisabled: 'غیرفعال', vpValidationUnknown: 'هنوز اعتبارسنجی نشده', vpValidationValid: 'معتبر', vpValidationInvalid: 'نامعتبر', vpValidationRestricted: 'محدودشده (دسترسی/IP)', vpLastValidated: 'آخرین اعتبارسنجی {date}', vpNeverValidated: 'هرگز اعتبارسنجی نشده', vpValidationErrorCode: 'دلیل: {code}', vpValidateInconclusive: 'در حال حاضر امکان اتصال به ElevenLabs نبود ({code}) - این به معنای نامعتبر بودن کلید نیست. دوباره اعتبارسنجی کن.',
@@ -459,7 +459,7 @@ voiceProvidersTitle: 'ارائه‌دهنده‌های صدا (ElevenLabs)', voi
     aiPageSubtitle: 'مفاتيح المزوّدين، التسعير، الحالة الحية، توجيه صوت ElevenLabs، والاستخدام على مستوى المنصة.',
     aiProviderKeysTitle: 'مفاتيح المزوّدين والتسعير', statHealthyProviders: 'مزوّدون سليمون',
 voiceProvidersTitle: 'مزوّدو الصوت (ElevenLabs)', voiceProvidersHint: 'مفاتيح ElevenLabs وتوجيه الصوت لكل لغة، تديرها الإدارة - لوضع الصوت المباشر. تُطبَّق التغييرات فورًا دون الحاجة لإعادة النشر.',
-    geminiVoiceProfilesTitle: 'ملفات Gemini الصوتية', geminiVoiceProfilesHint: 'قواعد نبرة وتفاعل خاصة بصوت Gemini. اختبر المسودة قبل الحفظ. لا تغيّر هذه القواعد مفاتيح مزود النص أو سير العمل أو الحقائق أو قواعد الأمان.', geminiVoiceProfilesUnavailable: 'ملفات Gemini الصوتية غير متاحة حتى يتم تطبيق ترحيل قاعدة البيانات.', geminiVoiceProfileRole: 'ملف أداء {role}', geminiVoiceMale: 'صوت رجل', geminiVoiceFemale: 'صوت امرأة', geminiVoiceSpeechRule: 'قاعدة أداء الصوت', geminiVoiceInteractionRule: 'قاعدة التفاعل المنطوق', geminiVoiceSafetyHint: 'تضبط القاعدة المولدة الصوت والإطار المنطوق فقط. تظل الإجابات المعتمدة والتحذيرات والتأكيدات والإجراءات تحت تحكم NAVRYA.', geminiVoicePreviewGender: 'صوت المعاينة', geminiVoiceTestRule: 'اختبار القاعدة', geminiVoiceTestingRule: 'يجري اختبار القاعدة…', geminiVoiceTestOk: 'Gemini Live وهذه القاعدة الصوتية جاهزان.', geminiVoiceSaveRule: 'حفظ قاعدة الدور',
+    geminiVoiceProfilesTitle: 'استوديو صوت Gemini', geminiVoiceStudioKicker: 'Gemini Live · استوديو الصوت', geminiVoiceStudioBoundary: 'عناصر تحكم صوتية فقط', geminiVoiceStudioLive: 'Gemini Live', geminiVoiceProfilesHint: 'قواعد نبرة وتفاعل خاصة بصوت Gemini. اختبر المسودة قبل الحفظ. لا تغيّر هذه القواعد مفاتيح مزود النص أو سير العمل أو الحقائق أو قواعد الأمان.', geminiVoiceProfilesUnavailable: 'ملفات Gemini الصوتية غير متاحة حتى يتم تطبيق ترحيل قاعدة البيانات.', geminiVoiceProfileRole: 'ملف أداء {role}', geminiVoiceMale: 'صوت رجل', geminiVoiceFemale: 'صوت امرأة', geminiVoiceSpeechRule: 'قاعدة أداء الصوت', geminiVoiceInteractionRule: 'قاعدة التفاعل المنطوق', geminiVoiceSafetyHint: 'تضبط القاعدة المولدة الصوت والإطار المنطوق فقط. تظل الإجابات المعتمدة والتحذيرات والتأكيدات والإجراءات تحت تحكم NAVRYA.', geminiVoicePreviewGender: 'صوت المعاينة', geminiVoiceTestRule: 'اختبار القاعدة', geminiVoiceTestingRule: 'يجري اختبار القاعدة…', geminiVoiceTestOk: 'Gemini Live وهذه القاعدة الصوتية جاهزان.', geminiVoiceSaveRule: 'حفظ قاعدة الدور',
     vpCredentialsTitle: 'ملفات المفاتيح', vpAddCredential: 'إضافة ملف مفتاح', vpLabelPlaceholder: 'اسم الملف (مثال: حساب ElevenLabs الرئيسي)', vpKeyPlaceholder: 'أدخل مفتاح API الخاص بـ ElevenLabs', vpReplaceKeyHint: 'اتركه فارغًا للاحتفاظ بالمفتاح الحالي', vpSaveCredential: 'حفظ الملف', vpNoCredentials: 'لا توجد ملفات مفاتيح بعد.',
     vpKeyHint: 'المفتاح ينتهي بـ {hint}', vpValidate: 'تحقّق', vpValidating: 'جارٍ التحقّق…', vpDelete: 'حذف', vpDeleteConfirm: 'هل تريد حذف ملف المفتاح هذا؟ أي لغة تستخدمه ستعود إلى الوضع الافتراضي حتى يتم اختيار ملف جديد.', vpDeleted: 'تم حذف المفتاح.',
     vpEnabled: 'مفعّل', vpDisabled: 'معطّل', vpValidationUnknown: 'لم يتم التحقّق بعد', vpValidationValid: 'صالح', vpValidationInvalid: 'غير صالح', vpValidationRestricted: 'مقيّد (صلاحيات/IP)', vpLastValidated: 'آخر تحقّق {date}', vpNeverValidated: 'لم يتم التحقّق مطلقًا', vpValidationErrorCode: 'السبب: {code}', vpValidateInconclusive: 'تعذّر الوصول إلى ElevenLabs الآن ({code}) - هذا لا يعني أن المفتاح غير صالح. حاول التحقّق مرة أخرى.',
@@ -647,7 +647,7 @@ voiceProvidersTitle: 'مزوّدو الصوت (ElevenLabs)', voiceProvidersHint:
     aiPageSubtitle: 'Claves de proveedores, precios, estado en vivo, enrutamiento de voz ElevenLabs y uso de toda la plataforma.',
     aiProviderKeysTitle: 'Claves de proveedores y precios', statHealthyProviders: 'Proveedores saludables',
 voiceProvidersTitle: 'Proveedores de voz (ElevenLabs)', voiceProvidersHint: 'Credenciales de ElevenLabs y enrutamiento de voz por idioma, gestionados por el administrador, para el Modo de Voz en vivo. Los cambios se aplican de inmediato, sin necesidad de reimplementar.',
-    geminiVoiceProfilesTitle: 'Perfiles de voz de Gemini', geminiVoiceProfilesHint: 'Reglas de entrega e interacción solo para Gemini Voice. Prueba un borrador antes de guardarlo. No cambian las claves del proveedor de texto, los flujos, los hechos ni las reglas de seguridad.', geminiVoiceProfilesUnavailable: 'Los perfiles de Gemini Voice no están disponibles hasta aplicar la migración de base de datos.', geminiVoiceProfileRole: 'Perfil de entrega de {role}', geminiVoiceMale: 'Voz masculina', geminiVoiceFemale: 'Voz femenina', geminiVoiceSpeechRule: 'Regla de entrega de voz', geminiVoiceInteractionRule: 'Regla de interacción hablada', geminiVoiceSafetyHint: 'La regla generada ajusta solo la voz y el encuadre hablado. NAVRYA conserva las respuestas aprobadas, avisos, confirmaciones y acciones.', geminiVoicePreviewGender: 'Voz de vista previa', geminiVoiceTestRule: 'Probar regla', geminiVoiceTestingRule: 'Probando regla…', geminiVoiceTestOk: 'Gemini Live y esta regla de voz están listos.', geminiVoiceSaveRule: 'Guardar regla de rol',
+    geminiVoiceProfilesTitle: 'Estudio de voz Gemini', geminiVoiceStudioKicker: 'Gemini Live · Estudio de voz', geminiVoiceStudioBoundary: 'Controles solo de voz', geminiVoiceStudioLive: 'Gemini Live', geminiVoiceProfilesHint: 'Reglas de entrega e interacción solo para Gemini Voice. Prueba un borrador antes de guardarlo. No cambian las claves del proveedor de texto, los flujos, los hechos ni las reglas de seguridad.', geminiVoiceProfilesUnavailable: 'Los perfiles de Gemini Voice no están disponibles hasta aplicar la migración de base de datos.', geminiVoiceProfileRole: 'Perfil de entrega de {role}', geminiVoiceMale: 'Voz masculina', geminiVoiceFemale: 'Voz femenina', geminiVoiceSpeechRule: 'Regla de entrega de voz', geminiVoiceInteractionRule: 'Regla de interacción hablada', geminiVoiceSafetyHint: 'La regla generada ajusta solo la voz y el encuadre hablado. NAVRYA conserva las respuestas aprobadas, avisos, confirmaciones y acciones.', geminiVoicePreviewGender: 'Voz de vista previa', geminiVoiceTestRule: 'Probar regla', geminiVoiceTestingRule: 'Probando regla…', geminiVoiceTestOk: 'Gemini Live y esta regla de voz están listos.', geminiVoiceSaveRule: 'Guardar regla de rol',
     vpCredentialsTitle: 'Perfiles de credenciales', vpAddCredential: 'Añadir perfil de credencial', vpLabelPlaceholder: 'Nombre del perfil (p. ej., Cuenta principal de ElevenLabs)', vpKeyPlaceholder: 'Introduce la clave API de ElevenLabs', vpReplaceKeyHint: 'Déjalo vacío para conservar la clave actual', vpSaveCredential: 'Guardar perfil', vpNoCredentials: 'Aún no hay perfiles de credenciales.',
     vpKeyHint: 'La clave termina en {hint}', vpValidate: 'Validar', vpValidating: 'Validando…', vpDelete: 'Eliminar', vpDeleteConfirm: '¿Eliminar este perfil de credencial? Cualquier idioma que lo use volverá al estado predeterminado hasta que se seleccione un nuevo perfil.', vpDeleted: 'Clave eliminada.',
     vpEnabled: 'Habilitado', vpDisabled: 'Deshabilitado', vpValidationUnknown: 'Aún no validado', vpValidationValid: 'Válido', vpValidationInvalid: 'No válido', vpValidationRestricted: 'Restringido (permisos/IP)', vpLastValidated: 'Última validación {date}', vpNeverValidated: 'Nunca validado', vpValidationErrorCode: 'Motivo: {code}', vpValidateInconclusive: 'No se pudo contactar con ElevenLabs ahora mismo ({code}) - esto no significa que la clave sea inválida. Vuelve a validar.',
@@ -1462,30 +1462,49 @@ function aiTab() {
 // The rules only tune Gemini Voice delivery and its voice-originated interaction framing. They
 // never give Gemini tools or the authority to alter NAVRYA's workflow, facts, or safety gates.
 function geminiVoiceProfilesSection(data) {
-  const section = el('div');
-  section.append(sectionHead('geminiVoiceProfilesTitle'));
-  section.append(el('p', 'hint', t('geminiVoiceProfilesHint')));
-  const grid = el('div', 'admin-grid-2');
-  (data.profiles || []).forEach((profile) => grid.append(geminiVoiceProfileCard(profile, data.voices || [])));
-  if (!(data.profiles || []).length) section.append(el('p', 'hint', t('geminiVoiceProfilesUnavailable')));
-  else section.append(grid);
+  const section = el('section', 'gemini-voice-studio');
+  const intro = el('div', 'gemini-voice-studio-intro');
+  const introCopy = el('div', 'gemini-voice-studio-copy');
+  introCopy.append(
+    el('span', 'gemini-voice-studio-kicker', t('geminiVoiceStudioKicker')),
+    el('h3', '', t('geminiVoiceProfilesTitle')),
+    el('p', '', t('geminiVoiceProfilesHint'))
+  );
+  intro.append(introCopy, el('span', 'gemini-voice-studio-boundary', t('geminiVoiceStudioBoundary')));
+  section.append(intro);
+
+  const profiles = data.profiles || [];
+  if (!profiles.length) {
+    section.append(el('p', 'gemini-voice-empty', t('geminiVoiceProfilesUnavailable')));
+    return section;
+  }
+
+  const grid = el('div', 'gemini-voice-profile-grid');
+  profiles.forEach((profile) => grid.append(geminiVoiceProfileCard(profile, data.voices || [])));
+  section.append(grid);
   return section;
 }
 
 function geminiVoiceProfileCard(profile, voices) {
-  const card = el('div', 'admin-card admin-card-nested');
+  const card = el('article', 'gemini-voice-profile gemini-voice-profile--' + profile.character);
   const titleKey = VP_CHARACTER_NAME_KEY[profile.character] || profile.character;
-  card.append(el('h3', '', t(titleKey)));
-  card.append(el('p', 'hint', t('geminiVoiceProfileRole', { role: t(titleKey) })));
+  const profileHead = el('div', 'gemini-voice-profile-head');
+  const identity = el('div', 'gemini-voice-profile-identity');
+  identity.append(el('span', 'gemini-voice-profile-mark', profile.character.slice(0, 1).toUpperCase()));
+  const identityCopy = el('div');
+  identityCopy.append(el('h3', '', t(titleKey)), el('p', '', t('geminiVoiceProfileRole', { role: t(titleKey) })));
+  identity.append(identityCopy);
+  profileHead.append(identity, el('span', 'gemini-voice-profile-live', t('geminiVoiceStudioLive')));
+  card.append(profileHead);
 
   const male = selectField(t('geminiVoiceMale'), voices.map((voice) => ({ value: voice, text: voice })), profile.voiceMale);
   const female = selectField(t('geminiVoiceFemale'), voices.map((voice) => ({ value: voice, text: voice })), profile.voiceFemale);
-  const voiceRow = el('div', 'admin-pricing-row');
+  const voiceRow = el('div', 'gemini-voice-voice-grid');
   voiceRow.append(male.wrap, female.wrap);
   card.append(voiceRow);
 
   function promptField(label, value, maxLength) {
-    const wrap = el('label', 'field');
+    const wrap = el('label', 'field gemini-voice-prompt');
     wrap.append(el('span', 'field-label', label));
     const textarea = document.createElement('textarea');
     textarea.value = value || ''; textarea.maxLength = maxLength; textarea.rows = 5;
@@ -1494,13 +1513,15 @@ function geminiVoiceProfileCard(profile, voices) {
   }
   const speechRule = promptField(t('geminiVoiceSpeechRule'), profile.speechRule, 1200);
   const interactionRule = promptField(t('geminiVoiceInteractionRule'), profile.interactionRule, 900);
-  card.append(speechRule.wrap, interactionRule.wrap, el('p', 'hint', t('geminiVoiceSafetyHint')));
+  const rules = el('div', 'gemini-voice-rules');
+  rules.append(speechRule.wrap, interactionRule.wrap);
+  card.append(rules, el('p', 'gemini-voice-safety-note', t('geminiVoiceSafetyHint')));
 
   const previewGender = selectField(t('geminiVoicePreviewGender'), [
     { value: 'male', text: t('vpGenderMale') }, { value: 'female', text: t('vpGenderFemale') }
   ], 'male');
-  const testBtn = el('button', 'btn btn-secondary btn-sm', t('geminiVoiceTestRule'));
-  const saveBtn = el('button', 'btn btn-primary btn-sm', t('geminiVoiceSaveRule'));
+  const testBtn = el('button', 'btn btn-secondary btn-sm gemini-voice-test-btn', t('geminiVoiceTestRule'));
+  const saveBtn = el('button', 'btn btn-primary btn-sm gemini-voice-save-btn', t('geminiVoiceSaveRule'));
   const audio = document.createElement('audio');
   audio.controls = true; audio.className = 'admin-voice-test-audio'; audio.hidden = true;
   const payload = () => ({
@@ -1535,7 +1556,7 @@ function geminiVoiceProfileCard(profile, voices) {
       .catch((error) => showToast(error.message, 'danger'))
       .finally(() => { saveBtn.disabled = false; });
   };
-  const buttonRow = el('div', 'admin-card-actions');
+  const buttonRow = el('div', 'gemini-voice-actions');
   buttonRow.append(previewGender.wrap, testBtn, saveBtn);
   card.append(buttonRow, audio);
   return card;

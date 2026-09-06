@@ -364,6 +364,10 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
   assert.equal(testButtons.length, 5, 'every configured provider must have its own Test now action');
   const geminiVoiceTests = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test rule');
   assert.equal(geminiVoiceTests.length, 1, 'Gemini Voice must live in its own end-of-page profile section, not inside text-provider health');
+  const geminiStudio = findAll(node, (n) => n.className === 'gemini-voice-studio')[0];
+  assert.ok(geminiStudio, 'Gemini Voice must render in its own studio surface, distinct from ElevenLabs character routing');
+  const hunterStudioProfile = findAll(node, (n) => String(n.className).includes('gemini-voice-profile--hunter'))[0];
+  assert.ok(hunterStudioProfile, 'each Gemini Voice role must keep a dedicated, character-coloured studio profile');
 });
 
 // ElevenLabs voice-provider follow-up (character/gender redesign): the two tests above only ever

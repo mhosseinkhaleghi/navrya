@@ -168,6 +168,45 @@ html[dir="rtl"] select { background-position:left 10px center; padding:0 12px 0 
 
 .admin-card ul { margin:0; padding-inline-start:18px; display:flex; flex-direction:column; gap:4px; font-size:13px; }
 
+/* ---------- Gemini Voice Studio ----------
+   This deliberately does not share the ElevenLabs credential/routing-card treatment above.
+   Gemini profiles are creative delivery drafts: a calmer, violet studio surface with one role
+   per card, while credential routing stays in its operational, status-oriented section. */
+.gemini-voice-studio { margin-top:30px; padding:1px; border-radius:18px; background:linear-gradient(120deg, rgba(165,102,255,.72), rgba(99,209,255,.32), rgba(165,102,255,.12)); box-shadow:0 22px 48px rgba(6,4,20,.24); }
+.gemini-voice-studio > * { border-radius:17px; }
+.gemini-voice-studio-intro { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:22px 24px; background:linear-gradient(120deg, #17102b, #101b32 62%, #0c1422); }
+.gemini-voice-studio-copy { min-width:0; }
+.gemini-voice-studio-kicker { display:block; margin-bottom:6px; color:#cfb4ff; font-size:10px; font-weight:800; letter-spacing:1.1px; text-transform:uppercase; }
+.gemini-voice-studio h3 { margin:0; color:#fbf8ff; font-size:20px; letter-spacing:-.25px; }
+.gemini-voice-studio-copy p { max-width:72ch; margin:7px 0 0; color:#b9b5ca; font-size:13px; line-height:1.55; }
+.gemini-voice-studio-boundary, .gemini-voice-profile-live { display:inline-flex; align-items:center; justify-content:center; width:max-content; white-space:nowrap; border:1px solid rgba(201,155,255,.48); border-radius:999px; color:#e6d7ff; background:rgba(165,102,255,.12); font-size:11px; font-weight:800; letter-spacing:.35px; }
+.gemini-voice-studio-boundary { padding:8px 11px; }
+.gemini-voice-empty { margin:0; padding:20px 24px; color:#c7c1d6; background:#0d1422; }
+.gemini-voice-profile-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1px; background:rgba(165,102,255,.32); border-radius:0 0 17px 17px; overflow:hidden; }
+.gemini-voice-profile { --voice-accent:#b06cff; --voice-soft:rgba(176,108,255,.14); min-width:0; padding:20px; background:radial-gradient(circle at 95% 0, var(--voice-soft), transparent 38%), #0b1220; }
+.gemini-voice-profile--hunter { --voice-accent:#69d675; --voice-soft:rgba(105,214,117,.13); }
+.gemini-voice-profile--commander { --voice-accent:#ff7566; --voice-soft:rgba(255,117,102,.13); }
+.gemini-voice-profile--engineer { --voice-accent:#52a8ff; --voice-soft:rgba(82,168,255,.13); }
+.gemini-voice-profile--sage { --voice-accent:#c26cff; --voice-soft:rgba(194,108,255,.15); }
+.gemini-voice-profile-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:18px; }
+.gemini-voice-profile-identity { display:flex; align-items:center; min-width:0; gap:11px; }
+.gemini-voice-profile-mark { display:grid; place-items:center; width:34px; height:34px; flex:none; border:1px solid color-mix(in srgb, var(--voice-accent) 72%, transparent); border-radius:11px; color:var(--voice-accent); background:var(--voice-soft); box-shadow:inset 0 0 18px var(--voice-soft); font-size:14px; font-weight:900; }
+.gemini-voice-profile h3 { margin:0; color:#f8f7fc; font-size:16px; }
+.gemini-voice-profile-identity p { margin:3px 0 0; overflow:hidden; color:#aaa8ba; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.gemini-voice-profile-live { padding:5px 8px; border-color:color-mix(in srgb, var(--voice-accent) 55%, transparent); color:var(--voice-accent); background:var(--voice-soft); font-size:9.5px; }
+.gemini-voice-voice-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-bottom:12px; }
+.gemini-voice-profile .field { color:#c6c2d0; }
+.gemini-voice-profile .field select, .gemini-voice-profile .field textarea { border-color:rgba(182,171,210,.2); background:#111a2b; }
+.gemini-voice-profile .field select:focus, .gemini-voice-profile .field textarea:focus { border-color:var(--voice-accent); box-shadow:0 0 0 3px var(--voice-soft); }
+.gemini-voice-rules { display:grid; gap:10px; }
+.gemini-voice-prompt textarea { min-height:92px; line-height:1.5; }
+.gemini-voice-safety-note { margin:12px 0 14px; padding:9px 10px; border-inline-start:2px solid var(--voice-accent); color:#b7b3c3; background:rgba(255,255,255,.025); font-size:11.5px; line-height:1.5; }
+.gemini-voice-actions { display:grid; grid-template-columns:minmax(130px, 1fr) auto auto; align-items:end; gap:8px; }
+.gemini-voice-actions .field { margin:0; }
+.gemini-voice-test-btn { border-color:rgba(193,162,255,.45); color:#e7ddff; background:rgba(165,102,255,.08); }
+.gemini-voice-save-btn { border-color:transparent; background:linear-gradient(120deg, var(--voice-accent), #824dd5); box-shadow:0 8px 18px color-mix(in srgb, var(--voice-accent) 20%, transparent); }
+.gemini-voice-profile .admin-voice-test-audio { width:100%; margin:12px 0 0; filter:hue-rotate(10deg) saturate(.8); }
+
 /* ---------- User profile page (Users tab: list -> dedicated profile, replaces the old
    inline-accordion row) ---------- */
 .admin-row-clickable { cursor:pointer; }
@@ -269,6 +308,7 @@ html[dir="rtl"] .language-menu button { text-align:right; }
    before the sidebar collapses at 880px, so it steps down to 2 columns earlier. */
 @media (max-width:1200px) {
   .admin-grid-3 { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .gemini-voice-profile-grid { grid-template-columns:1fr; }
 }
 
 /* ---------- Responsive: sidebar becomes an overlay drawer below the breakpoint ---------- */
@@ -281,6 +321,11 @@ html[dir="rtl"] .language-menu button { text-align:right; }
   .admin-layout.collapsed .admin-brand strong, .admin-layout.collapsed .admin-nav button span, .admin-layout.collapsed .admin-back-link span { display:inline; }
   .admin-content { padding:16px 14px 40px; }
   .admin-grid, .admin-grid-3, .admin-stat-row, .admin-pricing-row, .admin-cred-add-row, .admin-form-row { grid-template-columns:1fr; }
+  .gemini-voice-studio { margin-top:22px; }
+  .gemini-voice-studio-intro { align-items:flex-start; flex-direction:column; padding:18px; }
+  .gemini-voice-profile { padding:16px; }
+  .gemini-voice-voice-grid, .gemini-voice-actions { grid-template-columns:1fr; }
+  .gemini-voice-actions .btn { width:100%; }
   .admin-limit-row { flex-wrap:wrap; }
   .admin-current-user #currentUserName { display:none; }
 }
