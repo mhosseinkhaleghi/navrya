@@ -758,7 +758,22 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     setCompanionCard(opening.kind === 'freshWelcome' && preOpeningCard ? preOpeningCard : orchestrator.currentCard());
     setCompanionOpeningActive(true);
     var characterProfile = CHARACTERS[voiceCharacter()];
-    var roleIntroduction = characterProfile && characterProfile.voiceOpening && (characterProfile.voiceOpening[i18n.language()] || characterProfile.voiceOpening.en);
+    // Critical bug report: the role introduction ("I am the Commander.") was being spoken on
+    // EVERY connection alongside the context-dependent half (opening.text, above) - the exact
+    // same sentence on every refresh, forever. It must introduce the character exactly once,
+    // persisted across refreshes (unlike openingDeliveredForConnectionRef above, which only ever
+    // covers a single connection) - and again only when the user actually switches to a different
+    // character via Settings, never on an ordinary reload of the same one. Compared against "the
+    // last character actually introduced" (companion-state, server-synced - same store/pattern as
+    // hasSeenWalkthrough above) rather than a plain seen/not-seen boolean, so switching TO a
+    // different character always replays it, even one this account has heard before - matching
+    // the product ask exactly ("switching role toggles it again"), with no separate reset needed
+    // on the Settings side.
+    var companionProfileStore = window.TradeJournalAICompanionProfile;
+    var currentCharacterId = voiceCharacter();
+    var includeRoleIntroduction = !(companionProfileStore && companionProfileStore.hasSeenRoleIntroFor(currentCharacterId));
+    var roleIntroduction = includeRoleIntroduction && characterProfile && characterProfile.voiceOpening && (characterProfile.voiceOpening[i18n.language()] || characterProfile.voiceOpening.en);
+    if (roleIntroduction && companionProfileStore) companionProfileStore.setRoleIntroSeen(currentCharacterId);
     // The role introduction is deterministic product copy, never a second model call. It gives
     // a selected character a recognizable first voice moment while the orchestrator remains the
     // sole owner of factual/contextual opening text and all its safety gates.

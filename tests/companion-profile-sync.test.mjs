@@ -95,8 +95,10 @@ test('never persists a derivable fact - only walkthrough/dismiss/snooze/skip/goa
   // AI dashboard's Persona tab added five more fields (customInstructions/dataAccessPrefs/
   // personaPreset/pinnedFacts/toneDimensions) - all genuine user-set preferences, exactly this
   // document's own kind of content (never a derivable fact like "hasPattern"), so they belong on
-  // this allowlist too.
-  assert.deepEqual(Object.keys(stored).sort(), ['currentGoal', 'customInstructions', 'dataAccessPrefs', 'dismissedSteps', 'lastUpdatedAt', 'personaPreset', 'pinnedFacts', 'preferences', 'skippedOptional', 'snoozedSteps', 'toneDimensions', 'version', 'walkthroughSeenAt'].sort());
+  // this allowlist too. roleIntroSeenForCharacter (which character's spoken role introduction was
+  // last given) is the same kind of fact again - which character a real spoken sentence already
+  // named cannot be re-derived from anything else, so it has to be remembered, not recomputed.
+  assert.deepEqual(Object.keys(stored).sort(), ['currentGoal', 'customInstructions', 'dataAccessPrefs', 'dismissedSteps', 'lastUpdatedAt', 'personaPreset', 'pinnedFacts', 'preferences', 'roleIntroSeenForCharacter', 'skippedOptional', 'snoozedSteps', 'toneDimensions', 'version', 'walkthroughSeenAt'].sort());
 });
 
 test('initiativePreference defaults to normal and is validated against the known three values', async () => {

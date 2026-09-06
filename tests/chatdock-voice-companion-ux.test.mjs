@@ -64,6 +64,25 @@ test('no duplicate opening: openingDeliveredForConnectionRef guards a second cal
   assert.match(effect, /voiceState === VOICE_STATES\.IDLE \|\| voiceState === VOICE_STATES\.ERROR\) openingDeliveredForConnectionRef\.current = false/);
 });
 
+test('live production report: the role introduction ("I am the Commander.") repeated on every connection forever, including a plain page refresh - it must persist across refreshes (unlike openingDeliveredForConnectionRef, which only ever covers one connection) and replay only on a genuine character switch', () => {
+  const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
+  assert.match(fn, /hasSeenRoleIntroFor\(currentCharacterId\)/, 'must check persisted per-character state, not just the per-connection ref');
+  assert.match(fn, /companionProfileStore\.setRoleIntroSeen\(currentCharacterId\)/, 'must record which character was actually introduced');
+  // The persisted check must gate roleIntroduction itself, not run after it's already been used.
+  const gateIndex = fn.indexOf('includeRoleIntroduction =');
+  const roleIntroIndex = fn.indexOf('var roleIntroduction =');
+  assert.ok(gateIndex > -1 && roleIntroIndex > -1 && gateIndex < roleIntroIndex);
+});
+
+test('ai-companion-profile.js persists roleIntroSeenForCharacter server-side (companion-state), the same store/pattern as hasSeenWalkthrough - never localStorage, never character-blind', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const profileSource = await readFile(path.join(process.cwd(), 'public', 'pages', 'shared', 'ai-companion-profile.js'), 'utf8');
+  assert.match(profileSource, /roleIntroSeenForCharacter: null/);
+  assert.match(profileSource, /function setRoleIntroSeen\(character\) \{ var s = load\(\); s\.roleIntroSeenForCharacter = character \|\| null; return save\(s\); \}/);
+  assert.match(profileSource, /function hasSeenRoleIntroFor\(character\) \{ return load\(\)\.roleIntroSeenForCharacter === character; \}/);
+});
+
 // --- Item 6: consent boundary - Voice must be explicitly started before ANY spoken opening ---
 
 test('deliverCompanionOpening is only ever reachable through connect(), which is only ever called from the user\'s own explicit toggleVoice() press - never from a mount effect, never unconditionally', () => {
@@ -101,7 +120,7 @@ test('for the fresh-welcome opening specifically, the visual card is captured BE
 // initiated it.
 test('the Voice Companion opening is delivered via the exact same PlaybackController every real turn\'s reply already speaks through, so it is interruptible by the SAME existing barge-in handling - no new interruption code was added anywhere', () => {
   const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
-  assert.match(fn, /roleIntroduction = characterProfile && characterProfile\.voiceOpening/);
+  assert.match(fn, /roleIntroduction = includeRoleIntroduction && characterProfile && characterProfile\.voiceOpening/);
   assert.match(fn, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ kind: 'companion-opening', caption: openingText \}\)/);
   assert.doesNotMatch(fn, /voiceRef\.current\.speak\(/, 'deliverCompanionOpening() must never call speak() directly - only through PlaybackController, like every other reply');
   // fix/voice-mode-turn-ux (Part B): aiVoiceRealtime.js's own barge-in handling now notifies the

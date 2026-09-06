@@ -44,6 +44,12 @@
     return {
       version: 1, lastUpdatedAt: stamp,
       walkthroughSeenAt: null,
+      // The character the spoken role introduction ("I am the Commander.") was last given for -
+      // chatDockView.jsx's deliverCompanionOpening() replays it only when the CURRENT character
+      // doesn't match this, so it survives an ordinary refresh (still matches) but always replays
+      // on a genuine character switch via Settings (never matches the new one, even if this
+      // account has heard that character's intro before - see that file's own comment).
+      roleIntroSeenForCharacter: null,
       currentGoal: null,
       dismissedSteps: {}, // dedupeKey -> iso, permanently acknowledged ("Later" on a step's own card)
       snoozedSteps: {}, // stepId -> iso snoozeUntil
@@ -130,6 +136,9 @@
 
   function setWalkthroughSeen() { var s = load(); if (!s.walkthroughSeenAt) { s.walkthroughSeenAt = now(); return save(s); } return s; }
   function hasSeenWalkthrough() { return !!load().walkthroughSeenAt; }
+
+  function setRoleIntroSeen(character) { var s = load(); s.roleIntroSeenForCharacter = character || null; return save(s); }
+  function hasSeenRoleIntroFor(character) { return load().roleIntroSeenForCharacter === character; }
 
   function setCurrentGoal(goalId) { var s = load(); s.currentGoal = goalId || null; return save(s); }
   function currentGoal() { return load().currentGoal; }
@@ -222,6 +231,7 @@
     load: load, save: save, get: get,
     preferences: preferences, initiativePreference: initiativePreference, setPreference: setPreference,
     setWalkthroughSeen: setWalkthroughSeen, hasSeenWalkthrough: hasSeenWalkthrough,
+    setRoleIntroSeen: setRoleIntroSeen, hasSeenRoleIntroFor: hasSeenRoleIntroFor,
     setCurrentGoal: setCurrentGoal, currentGoal: currentGoal,
     dismissStep: dismissStep, isDismissed: isDismissed,
     snoozeStep: snoozeStep, isSnoozed: isSnoozed,
