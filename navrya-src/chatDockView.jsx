@@ -449,6 +449,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         // configured OpenAI conversation provider, so Gemini chat quota cannot break Voice.
         provider: source === 'voice' ? 'openai' : undefined,
         character: options && options.character,
+        voiceTransport: options && options.voiceTransport,
         companionIntent: options && options.companionIntent, explainStepId: options && options.explainStepId,
         // Journey G UX correction, item 10: set for exactly the one voice turn that immediately
         // follows a spoken Companion opening (see onVoiceTranscript below) - chat-dock-core.js's
@@ -852,7 +853,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // (conversationEpochRef.current), so a New Chat/conversation switch mid-flight is always seen
     // by both the enqueue-time and resolve-time checks (see ai-voice-turn-coordinator.js).
     turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create({
-      submit: (text, meta) => submitRef.current(text, { source: 'voice', character: voiceCharacter(), awaitingCompanionOpeningReply: meta.awaitingCompanionOpeningReply }),
+      submit: (text, meta) => submitRef.current(text, { source: 'voice', character: voiceCharacter(), voiceTransport: providerId === 'gemini' ? 'gemini' : 'openai', awaitingCompanionOpeningReply: meta.awaitingCompanionOpeningReply }),
       getEpoch: () => conversationEpochRef.current,
       onResult: (result, meta) => {
         // The conversation moved on (New Chat/switch) while this turn's own submit() was in

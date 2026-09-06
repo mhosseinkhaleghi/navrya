@@ -113,6 +113,32 @@ test('Admin can view and allowlist-change the live Gemini fallback model without
   assert.ok(audit.some((entry) => entry.action === 'ai.model.set' && entry.details.model === 'gemini-2.5-flash'));
 });
 
+test('Admin can preview-ready-save a bounded Gemini Voice role rule without mixing it into provider keys or text-model settings', async () => {
+  const admin = await createAdmin('Gemini Voice operator');
+  const defaults = await api('GET', '/api/admin/ai/gemini-voice-profiles', { userId: admin.id });
+  assert.equal(defaults.status, 200);
+  assert.equal(defaults.body.profiles.length, 4);
+  assert.equal(defaults.body.profiles.find((profile) => profile.character === 'sage').speechRule.includes('elder'), true);
+  const saved = await api('POST', '/api/admin/ai/gemini-voice-profiles', {
+    userId: admin.id,
+    body: {
+      character: 'sage', voiceMale: 'Sadaltager', voiceFemale: 'Sulafat',
+      speechRule: 'An elder market mentor: warm, resonant, deliberate, and never theatrical.',
+      interactionRule: 'Teach one useful lesson, then guide the next calm action.'
+    }
+  });
+  assert.equal(saved.status, 201);
+  assert.equal(saved.body.character, 'sage');
+  assert.equal(saved.body.interactionRule, 'Teach one useful lesson, then guide the next calm action.');
+  const invalid = await api('POST', '/api/admin/ai/gemini-voice-profiles', {
+    userId: admin.id,
+    body: { character: 'sage', voiceMale: 'not-a-voice', voiceFemale: 'Sulafat', speechRule: 'valid', interactionRule: 'valid' }
+  });
+  assert.equal(invalid.status, 400);
+  const audit = await repo.auditLog.list({ limit: 100 });
+  assert.ok(audit.some((entry) => entry.action === 'ai.geminiVoiceProfile.set' && entry.targetId === 'sage'));
+});
+
 test('PATCH /api/admin/users/:id changes role/suspendedAt and writes one audit log row', async () => {
   const admin = await createAdmin('Admin3');
   const target = await createUser('Target User');

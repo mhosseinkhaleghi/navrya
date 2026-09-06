@@ -11,6 +11,7 @@ import { getEffectiveXpConfig, invalidateXpConfigCache, SERVER_ONLY_ACHIEVEMENT_
 import { router as voiceProvidersRouter } from './routes.voice-providers.mjs';
 import { router as commercialRouter } from './routes.commercial.mjs';
 import { router as conversationScenariosRouter } from './routes.conversation-scenarios.mjs';
+import { GEMINI_TTS_VOICE_OPTIONS, GEMINI_VOICE_CHARACTERS, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from '../ai/gemini-voice-profiles.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 // Admin's server fallback catalog. This is intentionally not the trader-facing model picker:
@@ -334,6 +335,34 @@ export function router(repo, uploadsDir) {
     const record = await repo.adminModelOverrides.upsert({ provider, model, updatedBy: req.currentUser.id });
     await audit(req, 'ai.model.set', 'adminModelOverride', provider, { model: record.model });
     res.status(201).json(record);
+  }));
+
+  // Gemini Voice is an independent delivery-profile surface. It does not store a key, alter
+  // Gemini text-chat settings, or weaken the approved workflow/safety path. Every saved rule is
+  // bounded and merged with reviewed defaults by the gateway before it reaches a live session.
+  app.get('/ai/gemini-voice-profiles', asyncHandler(async (_req, res) => {
+    const rows = await repo.adminGeminiVoiceProfiles.list();
+    const byCharacter = {};
+    rows.forEach((row) => { byCharacter[row.character] = row; });
+    res.json({
+      voices: GEMINI_TTS_VOICE_OPTIONS,
+      profiles: GEMINI_VOICE_CHARACTERS.map((character) => mergeGeminiVoiceProfile(character, byCharacter[character]))
+    });
+  }));
+
+  app.post('/ai/gemini-voice-profiles', requireRecentReauth(), asyncHandler(async (req, res) => {
+    let input;
+    try {
+      input = normalizeGeminiVoiceProfileInput(req.body || {});
+    } catch (error) {
+      throw new ApiError(400, error.message === 'GEMINI_VOICE_PROFILE_TOO_LONG' || error.message === 'GEMINI_VOICE_NOT_ALLOWED' ? error.message : 'VALIDATION_FAILED');
+    }
+    const record = await repo.adminGeminiVoiceProfiles.upsert({ ...input, updatedBy: req.currentUser.id });
+    await audit(req, 'ai.geminiVoiceProfile.set', 'adminGeminiVoiceProfile', record.character, {
+      voiceMale: record.voiceMale, voiceFemale: record.voiceFemale,
+      speechRuleLength: record.speechRule.length, interactionRuleLength: record.interactionRule.length
+    });
+    res.status(201).json(mergeGeminiVoiceProfile(record.character, record));
   }));
 
   app.get('/ai/usage', asyncHandler(async (req, res) => {

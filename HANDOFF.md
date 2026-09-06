@@ -4,7 +4,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-- feat/character-voice-personality (Codex): admin-selectable Gemini fallback model with live-runtime reporting, distinct role voice delivery, and localized role greetings | validation: 105 focused tests passed | next: local review, then promote on request
+- feat/character-voice-personality (Codex): Gemini model control, distinct role delivery, plus a separate auditable Gemini Voice profile editor with unsaved rule previews | validation: 108 focused tests passed | next: local review, then promote on request
 - fix/gemini-voice-admin-key (Codex): provider-selected OpenAI/Gemini Voice transport, separate Gemini text and Voice diagnostics, and account-synced selection are covered | validation: 160 focused tests passed | next: promote to dev on request
 
 ## Known pending

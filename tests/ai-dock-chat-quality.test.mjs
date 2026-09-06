@@ -7,7 +7,7 @@ import test, { after, afterEach } from 'node:test';
 // globalThis.fetch-stubbing convention tests/ai-gateway.test.mjs already established for
 // callProvider()/callOpenAI(), not a new pattern invented for this file.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { dockChat } = serverModule;
+const { dockChat, __resetAdminGeminiVoiceProfileCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -208,6 +208,22 @@ test('a voice-sourced turn applies only an allowlisted character delivery frame,
   const systemText = body.input[0].content[0].text;
   assert.match(systemText, /You are speaking as the Market Sage/);
   assert.match(systemText, /preserve every fact, number, safety warning, and required confirmation/);
+});
+
+test('a Gemini Voice turn reads the saved role interaction rule while an OpenAI Voice turn remains on its own transport profile', async () => {
+  __resetAdminGeminiVoiceProfileCacheForTests();
+  const getBody = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok', action: null });
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes('/internal/admin-gemini-voice-profiles')) {
+      return { ok: true, json: async () => [{ character: 'sage', voiceMale: 'Sadaltager', voiceFemale: 'Sulafat', speechRule: 'Warm voice.', interactionRule: 'Teach one calm lesson before the next action.' }] };
+    }
+    return original(url, options);
+  };
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () =>
+    dockChat({ provider: 'openai', message: 'help me plan', language: 'en', source: 'voice', voiceTransport: 'gemini', character: 'sage' }));
+  assert.match(getBody().input[0].content[0].text, /Teach one calm lesson before the next action/);
+  __resetAdminGeminiVoiceProfileCacheForTests();
 });
 
 // Persian Voice Quality gate, section 9-11: voiceReply was previously only ever told to be

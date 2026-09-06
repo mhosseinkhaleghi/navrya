@@ -106,8 +106,24 @@ Admin → AI exposes the effective Gemini fallback model, its source (Admin over
 or reviewed code default), and a strict allowlisted selector. Saving it is audited and reaches the
 DB-free gateway through the internal model-config bridge within its short cache window. A trader's
 explicit model selection still wins for that one request; the Admin setting governs model-less
-calls such as the server-side connection test and default runtime fallback. The Gemini Voice test
-also lets an admin preview each role/gender greeting rather than always testing Hunter.
+calls such as the server-side connection test and default runtime fallback.
+
+### Gemini Voice Profiles
+
+Gemini Voice appears as its own final Admin section, separate from provider keys/model selection
+and ElevenLabs. Each fixed role has a reviewed default male/female Gemini voice, a **speech
+delivery rule**, and a **spoken interaction rule**. The defaults explicitly define audible
+character: Hunter is watchful and measured, Commander purposeful, Engineer structured, and Market
+Sage an elder, warm, resonant, unhurried mentor. The profile editor is allowlisted for roles and
+prebuilt voices, bounded in length, audited, and persisted through
+`admin_gemini_voice_profiles`.
+
+**Test rule** sends the unsaved profile draft only to the admin-only Gemini Live/TTS diagnostic and
+returns a short playable role greeting. It never stores the draft. **Save role rule** makes the
+same profile live through the DB-free internal bridge. The speech rule affects Gemini TTS. The
+interaction rule is added only to a Gemini Voice-originated turn and is explicitly delivery-only;
+the OpenAI conversation brain, deterministic workflow, facts, warnings, and confirmations remain
+authoritative.
 
 ## E2/E4/E5 needed zero action- or feature-specific voice code
 

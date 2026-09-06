@@ -18,7 +18,7 @@ export function createMemoryRepo() {
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(), clientErrors: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
-    adminKeys: new Map(), adminModelOverrides: new Map(), auditLog: new Map(),
+    adminKeys: new Map(), adminModelOverrides: new Map(), adminGeminiVoiceProfiles: new Map(), auditLog: new Map(),
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), trades: new Map(), accounts: new Map(),
@@ -723,6 +723,20 @@ export function createMemoryRepo() {
     },
     async get(provider) { const record = state.adminModelOverrides.get(provider); return record ? clone(record) : null; },
     async list() { return Array.from(state.adminModelOverrides.values()).map(clone); }
+  };
+
+  const adminGeminiVoiceProfiles = {
+    async list() { return Array.from(state.adminGeminiVoiceProfiles.values()).sort((a, b) => a.character.localeCompare(b.character)).map(clone); },
+    async get(character) { const record = state.adminGeminiVoiceProfiles.get(character); return record ? clone(record) : null; },
+    async upsert({ character, voiceMale, voiceFemale, speechRule, interactionRule, updatedBy }) {
+      const existing = state.adminGeminiVoiceProfiles.get(character);
+      const record = {
+        character, voiceMale, voiceFemale, speechRule, interactionRule, updatedBy: updatedBy || null,
+        createdAt: existing ? existing.createdAt : now(), updatedAt: now()
+      };
+      state.adminGeminiVoiceProfiles.set(character, record);
+      return clone(record);
+    }
   };
 
   const auditLog = {
@@ -2799,7 +2813,7 @@ export function createMemoryRepo() {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, adminModelOverrides, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
+    providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,

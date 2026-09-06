@@ -6,7 +6,7 @@ import test, { after, afterEach } from 'node:test';
 // exported mintRealtimeClientSecret() against a stubbed OpenAI /v1/realtime/client_secrets
 // response, never a reimplementation of its logic.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { callProvider, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, __resetAdminModelOverrideCacheForTests } = serverModule;
+const { callProvider, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, __resetAdminModelOverrideCacheForTests, __resetAdminGeminiVoiceProfileCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -345,26 +345,37 @@ test('an Admin Gemini model override is the live fallback for model-less calls, 
 
 test('the admin Gemini Voice diagnostic validates Live and TTS, and returns only a short playable greeting to admins', async () => {
   __resetAdminKeyCacheForTests();
+  __resetAdminGeminiVoiceProfileCacheForTests();
   const requests = [];
   globalThis.fetch = async (url, options) => {
     const target = String(url);
     if (target.includes('/internal/admin-ai-keys')) return { ok: true, json: async () => ({ gemini: 'admin-gemini-secret' }) };
+    if (target.includes('/internal/admin-gemini-voice-profiles')) return { ok: true, json: async () => [] };
     if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     requests.push({ target, options });
     if (target.includes('/auth_tokens')) return { ok: true, json: async () => ({ name: 'auth_tokens/admin-test', expireTime: '2026-09-06T00:30:00Z' }) };
     return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'pcm-base64', mimeType: 'audio/L16;rate=24000' } }] } }] }) };
   };
-  const result = await withEnv({ GEMINI_API_KEY: '' }, () => adminTestGeminiVoice({ role: 'admin' }));
+  const result = await withEnv({ GEMINI_API_KEY: '' }, () => adminTestGeminiVoice({ role: 'admin' }, {
+    character: 'sage', gender: 'female', profile: {
+      voiceMale: 'Sadaltager', voiceFemale: 'Sulafat',
+      speechRule: 'An elder, warm, resonant mentor with unhurried thoughtful pauses.',
+      interactionRule: 'Teach one calm lesson before the next action.'
+    }
+  }));
   assert.deepEqual(requests.map((request) => request.target.includes('/auth_tokens') ? 'live' : 'tts'), ['live', 'tts']);
   assert.equal(result.ok, true);
   assert.equal(result.liveModel, 'gemini-3.5-transcribe-live');
   assert.equal(result.ttsModel, 'gemini-3.1-flash-tts-preview');
-  assert.equal(result.greeting, 'I am the Hunter. Gemini Voice is ready. We will wait for the setup worth taking.');
+  assert.equal(result.greeting, 'I am the Market Sage. Gemini Voice is ready. Every trade can teach us a calmer, wiser plan for the next one.');
+  const ttsRequest = requests.find((request) => !request.target.includes('/auth_tokens'));
+  assert.match(JSON.parse(ttsRequest.options.body).contents[0].parts[0].text, /elder, warm, resonant mentor/);
   assert.equal(result.mimeType, 'audio/wav');
   assert.match(Buffer.from(result.audioBase64, 'base64').subarray(0, 12).toString('ascii'), /^RIFF.{4}WAVE$/s);
   assert.doesNotMatch(JSON.stringify(result), /admin-gemini-secret|auth_tokens\/admin-test/);
   await assert.rejects(() => adminTestGeminiVoice({ role: 'user' }), /ADMIN_REQUIRED/);
   __resetAdminKeyCacheForTests();
+  __resetAdminGeminiVoiceProfileCacheForTests();
 });
 
 test('Gemini TTS reads the approved text server-side and returns only provider audio, never its API key', async () => {

@@ -344,6 +344,9 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
     if (u.indexOf('/voice-providers/credentials') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     if (u.indexOf('/voice-providers/characters') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     if (u.indexOf('/voice-providers/health') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({ characters: [], overallUsage24h: null }) });
+    if (u.indexOf('/ai/gemini-voice-profiles') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve({
+      voices: ['Algenib', 'Iapetus'], profiles: [{ character: 'hunter', voiceMale: 'Algenib', voiceFemale: 'Iapetus', speechRule: 'Patient, grounded delivery.', interactionRule: 'Patient, grounded interaction.' }]
+    }) });
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ authEnforced: false }) });
   };
   const { app } = await load({ count: 0 }, fetchImpl);
@@ -359,8 +362,8 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
   assert.match(texts, /4,200|4200/, 'the top-users table must render the real token total');
   const testButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test now');
   assert.equal(testButtons.length, 5, 'every configured provider must have its own Test now action');
-  const geminiVoiceTests = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test Gemini Voice');
-  assert.equal(geminiVoiceTests.length, 1, 'Gemini must expose a separate Voice diagnostic, not present its text check as Voice health');
+  const geminiVoiceTests = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test rule');
+  assert.equal(geminiVoiceTests.length, 1, 'Gemini Voice must live in its own end-of-page profile section, not inside text-provider health');
 });
 
 // ElevenLabs voice-provider follow-up (character/gender redesign): the two tests above only ever

@@ -6,6 +6,7 @@ import { sha256Hex } from './community/security/crypto-util.mjs';
 import { resolveRealtimeLeaseStore } from './community/security/realtime-lease-store.mjs';
 import * as elevenlabs from './community/elevenlabs-client.mjs';
 import { ElevenLabsError } from './community/elevenlabs-client.mjs';
+import { GEMINI_VOICE_CHARACTERS, GEMINI_VOICE_GENDERS, geminiVoiceForProfile, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from './ai/gemini-voice-profiles.mjs';
 // Note on CORS here: this gateway's `Access-Control-Allow-Origin: '*'` (see json() below) is
 // deliberately NOT tightened to an allowlist in this pass. Since identity now travels as a
 // HttpOnly, host-only session cookie (never a bearer header a cross-origin script could attach
@@ -115,6 +116,28 @@ async function adminModelOverrides(forceRefresh = false) {
 
 function __resetAdminModelOverrideCacheForTests() {
   adminModelOverrideCache = { data: null, fetchedAt: 0 };
+}
+
+let adminGeminiVoiceProfileCache = { data: null, fetchedAt: 0 };
+const ADMIN_GEMINI_VOICE_PROFILE_CACHE_TTL_MS = 10000;
+async function adminGeminiVoiceProfiles() {
+  if (Date.now() - adminGeminiVoiceProfileCache.fetchedAt < ADMIN_GEMINI_VOICE_PROFILE_CACHE_TTL_MS) return adminGeminiVoiceProfileCache.data || {};
+  try {
+    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + '/internal/admin-gemini-voice-profiles';
+    const headers = process.env.INTERNAL_API_SECRET ? { 'x-internal-secret': process.env.INTERNAL_API_SECRET } : {};
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+    const rows = response.ok ? await response.json() : [];
+    const byCharacter = {};
+    (Array.isArray(rows) ? rows : []).forEach((row) => { if (row && GEMINI_VOICE_CHARACTERS.includes(row.character)) byCharacter[row.character] = row; });
+    adminGeminiVoiceProfileCache = { data: byCharacter, fetchedAt: Date.now() };
+  } catch (_) {
+    adminGeminiVoiceProfileCache = { data: adminGeminiVoiceProfileCache.data, fetchedAt: Date.now() };
+  }
+  return adminGeminiVoiceProfileCache.data || {};
+}
+
+function __resetAdminGeminiVoiceProfileCacheForTests() {
+  adminGeminiVoiceProfileCache = { data: null, fetchedAt: 0 };
 }
 
 // Same bridge shape as adminKeys() above, but Redis-version-aware: the internal route
@@ -1629,10 +1652,13 @@ const VOICE_CHARACTER_REPLY_STYLE = {
   engineer: 'You are speaking as the Market Engineer: precise, evidence-led, and systematic. Explain conditions, validation, and cause-and-effect clearly.',
   sage: 'You are speaking as the Market Sage: calm, seasoned, and insightful. Teach the lesson in the moment, connect it to a deliberate plan, and keep uncertainty honest.'
 };
-function voiceCharacterReplyStyle(body, voiceSource) {
+async function voiceCharacterReplyStyle(body, voiceSource) {
   if (!voiceSource) return '';
   const character = Object.prototype.hasOwnProperty.call(VOICE_CHARACTER_REPLY_STYLE, body.character) ? body.character : 'hunter';
-  return ` ${VOICE_CHARACTER_REPLY_STYLE[character]} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
+  const rule = body.voiceTransport === 'gemini'
+    ? mergeGeminiVoiceProfile(character, (await adminGeminiVoiceProfiles())[character]).interactionRule
+    : VOICE_CHARACTER_REPLY_STYLE[character];
+  return ` ${rule} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
 }
 
 // A1: provider-agnostic general chat for the global dock (A3/A6, therapist-mode OFF).
@@ -2196,7 +2222,7 @@ async function dockChat(body, externalSignal) {
   // unconditional (unlike companionContextText above) and carries real instructional weight.
   const personaStyleText = buildPersonaStyleText(body.personaStyle);
   const voiceSource = body.source === 'voice';
-  const voiceCharacterStyle = voiceCharacterReplyStyle(body, voiceSource);
+  const voiceCharacterStyle = await voiceCharacterReplyStyle(body, voiceSource);
   // Persian Voice Quality gate, section 9-11: the gap this pass found is that voiceReply was
   // ONLY ever asked to be "shorter" - never told that written Persian and spoken Persian are
   // different registers. This addendum is deliberately AUDIO-STYLE guidance only (never a fact/
@@ -2356,26 +2382,6 @@ const GEMINI_LIVE_TRANSCRIBE_MODEL = 'gemini-3.5-transcribe-live';
 const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
 const GEMINI_TTS_VOICE_BY_LANGUAGE = { fa: 'Kore', ar: 'Puck', en: 'Kore', es: 'Aoede' };
 const GEMINI_TTS_LANGUAGE_NAMES = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 'Spanish' };
-const GEMINI_TTS_CHARACTER_STYLE = {
-  hunter: {
-    voices: { male: 'Algenib', female: 'Iapetus' },
-    direction: 'The Hunter: a patient, watchful scout. Keep the voice low-key, close, and focused, with measured pacing, crisp articulation, and a brief controlled pause before an important timing or risk call. Sound prepared and disciplined, never menacing, whispery, or theatrical.'
-  },
-  commander: {
-    voices: { male: 'Kore', female: 'Pulcherrima' },
-    direction: 'The Commander: a composed field leader. Deliver the next action and its consequence with decisive, purposeful clarity. Keep a firm, forward-moving cadence with clean sentence endings. Sound authoritative but respectful, never barking, aggressive, or theatrical.'
-  },
-  engineer: {
-    voices: { male: 'Iapetus', female: 'Despina' },
-    direction: 'The Market Engineer: a practical systems analyst. Sound precise, grounded, and evidence-led. Use a clear, slightly brisk structured rhythm that makes conditions, cause and effect, and validation easy to follow. Never sound robotic, clinical, or emotionally flat.'
-  },
-  sage: {
-    voices: { male: 'Sadaltager', female: 'Sulafat' },
-    direction: 'The Market Sage: an elder, seasoned market mentor. Use warm, resonant quiet authority, an unhurried pace, and small thoughtful pauses around uncertainty or probability. Sound wise, humane, and calm, never mystical, vague, sleepy, or theatrical.'
-  }
-};
-const GEMINI_TTS_CHARACTERS = Object.keys(GEMINI_TTS_CHARACTER_STYLE);
-const GEMINI_TTS_GENDERS = ['male', 'female'];
 
 function geminiVoiceForLanguage(language) { return GEMINI_TTS_VOICE_BY_LANGUAGE[language] || GEMINI_TTS_VOICE_BY_LANGUAGE.en; }
 async function geminiVoiceFailureCode(response, prefix) {
@@ -2383,15 +2389,15 @@ async function geminiVoiceFailureCode(response, prefix) {
   const message = detail && detail.error && typeof detail.error.message === 'string' ? detail.error.message : '';
   return /location is not supported/i.test(message) ? `${prefix}_LOCATION_UNSUPPORTED` : `${prefix}_FAILED_${response.status}`;
 }
-function geminiVoiceProfile(body, language) {
-  const character = GEMINI_TTS_CHARACTERS.includes(body.character) ? body.character : 'hunter';
-  const gender = GEMINI_TTS_GENDERS.includes(body.gender) ? body.gender : 'male';
-  const profile = GEMINI_TTS_CHARACTER_STYLE[character];
+async function geminiVoiceProfile(body, language) {
+  const character = GEMINI_VOICE_CHARACTERS.includes(body.character) ? body.character : 'hunter';
+  const gender = GEMINI_VOICE_GENDERS.includes(body.gender) ? body.gender : 'male';
+  const profile = mergeGeminiVoiceProfile(character, body._adminProfileOverride || (await adminGeminiVoiceProfiles())[character]);
   return {
     character,
     gender,
-    voice: profile.voices[gender] || geminiVoiceForLanguage(language),
-    direction: profile.direction,
+    voice: geminiVoiceForProfile(profile, gender) || geminiVoiceForLanguage(language),
+    direction: profile.speechRule,
     languageName: GEMINI_TTS_LANGUAGE_NAMES[language]
   };
 }
@@ -2458,7 +2464,7 @@ async function speakWithGemini(body) {
   try {
     const key = await resolveGeminiVoiceKey(body);
     const model = process.env.GEMINI_TTS_MODEL || GEMINI_TTS_MODEL;
-    const voiceProfile = geminiVoiceProfile(body, language);
+    const voiceProfile = await geminiVoiceProfile(body, language);
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
@@ -2484,33 +2490,6 @@ async function speakWithGemini(body) {
   }
 }
 
-const GEMINI_VOICE_TEST_GREETING = {
-  hunter: {
-    en: 'I am the Hunter. Gemini Voice is ready. We will wait for the setup worth taking.',
-    fa: 'من شکارچی‌ام. صدای جمینای آماده است. برای ستاپی که ارزشش را دارد صبر می‌کنیم.',
-    ar: 'أنا الصياد. صوت جيميني جاهز. سننتظر الإعداد الذي يستحق التنفيذ.',
-    es: 'Soy el Cazador. La voz de Gemini está lista. Esperaremos la configuración que valga la pena.'
-  },
-  commander: {
-    en: 'I am the Commander. Gemini Voice is ready. We will turn your market read into a clear plan.',
-    fa: 'من فرمانده‌ام. صدای جمینای آماده است. برداشت بازار تو را به نقشه‌ای روشن تبدیل می‌کنیم.',
-    ar: 'أنا القائد. صوت جيميني جاهز. سنحوّل قراءتك للسوق إلى خطة واضحة.',
-    es: 'Soy el Comandante. La voz de Gemini está lista. Convertiremos tu lectura del mercado en un plan claro.'
-  },
-  engineer: {
-    en: 'I am the Market Engineer. Gemini Voice is ready. We will test the structure and validate the evidence.',
-    fa: 'من مهندس بازارم. صدای جمینای آماده است. ساختار را آزمایش می‌کنیم و شواهد را اعتبارسنجی می‌کنیم.',
-    ar: 'أنا مهندس السوق. صوت جيميني جاهز. سنختبر الهيكل ونتحقق من الدليل.',
-    es: 'Soy el Ingeniero de Mercado. La voz de Gemini está lista. Probamos la estructura y validamos la evidencia.'
-  },
-  sage: {
-    en: 'I am the Market Sage. Gemini Voice is ready. Every trade can teach us a wiser plan.',
-    fa: 'من حکیم بازارم. صدای جمینای آماده است. هر معامله می‌تواند نقشه‌ای پخته‌تر به ما یاد بدهد.',
-    ar: 'أنا حكيم السوق. صوت جيميني جاهز. كل صفقة يمكن أن تعلّمنا خطة أكثر حكمة.',
-    es: 'Soy el Sabio del Mercado. La voz de Gemini está lista. Cada operación puede enseñarnos un plan más sabio.'
-  }
-};
-
 // The generic provider test is intentionally text-only. Gemini Voice has different models and
 // endpoints, so this admin-only diagnostic validates the exact Live-token and TTS paths that a
 // Gemini Voice session needs. It returns only the short generated greeting as WAV so an admin can
@@ -2518,13 +2497,17 @@ const GEMINI_VOICE_TEST_GREETING = {
 async function adminTestGeminiVoice(session, body = {}) {
   if (!session || session.role !== 'admin') throw new Error('ADMIN_REQUIRED');
   const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
-  const character = GEMINI_TTS_CHARACTERS.includes(body.character) ? body.character : 'hunter';
-  const gender = GEMINI_TTS_GENDERS.includes(body.gender) ? body.gender : 'male';
-  const greeting = GEMINI_VOICE_TEST_GREETING[character][language] || GEMINI_VOICE_TEST_GREETING[character].en;
+  const character = GEMINI_VOICE_CHARACTERS.includes(body.character) ? body.character : 'hunter';
+  const gender = GEMINI_VOICE_GENDERS.includes(body.gender) ? body.gender : 'male';
+  const previewProfile = body.profile && typeof body.profile === 'object'
+    ? normalizeGeminiVoiceProfileInput({ ...body.profile, character })
+    : null;
+  const activeProfile = mergeGeminiVoiceProfile(character, previewProfile || (await adminGeminiVoiceProfiles())[character]);
+  const greeting = activeProfile.greeting[language] || activeProfile.greeting.en;
   const startedAt = Date.now();
   const live = await mintGeminiLiveToken({ language });
   const tts = await speakWithGemini({
-    language, text: greeting, character, gender
+    language, text: greeting, character, gender, _adminProfileOverride: activeProfile
   });
   const sampleRate = Number((tts.mimeType.match(/rate=(\d+)/i) || [])[1]) || 24000;
   const audioBase64 = pcm16ToWav(Buffer.from(tts.audioBase64, 'base64'), sampleRate, 1).toString('base64');
@@ -3175,7 +3158,7 @@ export {
   callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
   historyItem, dockChat, mentalHealthChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
-  __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, __resetAdminModelOverrideCacheForTests, internalWalletCallWithRetry,
+  __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, __resetAdminModelOverrideCacheForTests, __resetAdminGeminiVoiceProfileCacheForTests, internalWalletCallWithRetry,
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
   buildSessionAnalysisSystemPrompt, buildSessionAnalysisContextText,
   validateSessionAnalysisResult, sessionAnalysisOutputBudget, sessionAnalysisFormat, sessionAnalysisReasoningEffort,

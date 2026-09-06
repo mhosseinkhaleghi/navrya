@@ -96,6 +96,16 @@ test('adminModelOverrides stores one provider fallback model and rejects a blank
   await assert.rejects(repo.adminModelOverrides.upsert({ provider: 'gemini', model: ' ' }), /VALIDATION_FAILED/);
 });
 
+test('adminGeminiVoiceProfiles stores one bounded profile per character', async () => {
+  const repo = createMemoryRepo();
+  const record = await repo.adminGeminiVoiceProfiles.upsert({
+    character: 'sage', voiceMale: 'Sadaltager', voiceFemale: 'Sulafat', speechRule: 'Warm elder mentor.', interactionRule: 'Teach calmly.', updatedBy: 'admin-1'
+  });
+  assert.equal(record.character, 'sage');
+  assert.equal((await repo.adminGeminiVoiceProfiles.get('sage')).voiceMale, 'Sadaltager');
+  assert.equal((await repo.adminGeminiVoiceProfiles.list()).length, 1);
+});
+
 test('auditLog.create records every mutation and list() surfaces them all', async () => {
   const repo = createMemoryRepo();
   const user = await seedUser(repo);

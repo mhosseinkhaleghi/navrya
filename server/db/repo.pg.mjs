@@ -152,6 +152,12 @@ function mapHealthEvent(row) { return { id: row.id, provider: row.provider, ok: 
 function mapProviderPricing(row) { return { provider: row.provider, promptPricePer1k: row.prompt_price_per_1k == null ? null : Number(row.prompt_price_per_1k), completionPricePer1k: row.completion_price_per_1k == null ? null : Number(row.completion_price_per_1k), monthlyTokenBudget: row.monthly_token_budget, updatedAt: row.updated_at }; }
 function mapAdminKey(row) { return { provider: row.provider, apiKey: row.api_key, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
 function mapAdminModelOverride(row) { return { provider: row.provider, model: row.model, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
+function mapAdminGeminiVoiceProfile(row) {
+  return {
+    character: row.character, voiceMale: row.voice_male, voiceFemale: row.voice_female,
+    speechRule: row.speech_rule, interactionRule: row.interaction_rule, updatedBy: row.updated_by, updatedAt: row.updated_at
+  };
+}
 function mapAuditLog(row) { return { id: row.id, adminUserId: row.admin_user_id, action: row.action, targetType: row.target_type, targetId: row.target_id, details: row.details, createdAt: row.created_at }; }
 // `includeDecrypted` is ONLY ever passed true by the one internal-service bridge route that
 // hands a runtime config to the DB-free pattern-ai gateway (server/community/routes.internal.mjs)
@@ -1265,6 +1271,27 @@ export function createPgRepo(pool) {
     async list() {
       const { rows } = await pool.query('SELECT * FROM admin_ai_model_overrides');
       return rows.map(mapAdminModelOverride);
+    }
+  };
+
+  const adminGeminiVoiceProfiles = {
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM admin_gemini_voice_profiles ORDER BY character ASC');
+      return rows.map(mapAdminGeminiVoiceProfile);
+    },
+    async get(character) {
+      const { rows } = await pool.query('SELECT * FROM admin_gemini_voice_profiles WHERE character=$1', [character]);
+      return rows[0] ? mapAdminGeminiVoiceProfile(rows[0]) : null;
+    },
+    async upsert({ character, voiceMale, voiceFemale, speechRule, interactionRule, updatedBy }) {
+      const { rows } = await pool.query(
+        `INSERT INTO admin_gemini_voice_profiles (character, voice_male, voice_female, speech_rule, interaction_rule, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,now())
+         ON CONFLICT (character) DO UPDATE SET voice_male=$2, voice_female=$3, speech_rule=$4, interaction_rule=$5, updated_by=$6, updated_at=now()
+         RETURNING *`,
+        [character, voiceMale, voiceFemale, speechRule, interactionRule, updatedBy || null]
+      );
+      return mapAdminGeminiVoiceProfile(rows[0]);
     }
   };
 
@@ -4156,7 +4183,7 @@ export function createPgRepo(pool) {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, adminModelOverrides, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
+    providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,

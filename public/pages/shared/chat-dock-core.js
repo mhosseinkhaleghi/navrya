@@ -645,6 +645,7 @@
     if (source === 'voice') {
       requestBody.source = 'voice';
       if (typeof options.character === 'string') requestBody.character = options.character;
+      if (options.voiceTransport === 'gemini') requestBody.voiceTransport = 'gemini';
     }
     if (companionIntent) requestBody.companionIntent = companionIntent;
     var tContextDone = now();

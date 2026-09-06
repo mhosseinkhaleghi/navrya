@@ -60,6 +60,13 @@ export function router(repo) {
     res.json(result);
   }));
 
+  // Gemini Voice profile prompts are non-secret operational settings. The AI gateway receives
+  // only reviewed role fields through this bridge, never a credential or general chat setting.
+  app.get('/admin-gemini-voice-profiles', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    res.json(await repo.adminGeminiVoiceProfiles.list());
+  }));
+
   // The AI-gateway session-introspection bridge (ADR-0001 section 6). Takes the RAW session id
   // the gateway parsed off its own incoming request's Cookie header (never a whole cookie header
   // string, and never logged) and returns only the minimal shape the gateway needs to enforce
