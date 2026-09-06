@@ -50,7 +50,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-pro}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-pro-preview}
       GEMINI_LIVE_MODEL: ${GEMINI_LIVE_MODEL:-gemini-3.5-transcribe-live}
       GEMINI_TTS_MODEL: ${GEMINI_TTS_MODEL:-gemini-3.1-flash-tts-preview}
       KIMI_API_KEY: ${KIMI_API_KEY:-}
