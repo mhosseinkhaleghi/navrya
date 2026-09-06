@@ -221,6 +221,25 @@ function CharacterSection({ t, lang, character }) {
   const [prefs, setPrefs] = React.useState(() => (appSettings ? appSettings.settings() : { quickSwitcher: CHARS.map((c) => c.id) }));
   const nameKey = { hunter: 'hunterName', commander: 'commanderName', engineer: 'engineerName', sage: 'sageName' };
   const traitKey = { hunter: 'hunterTrait', commander: 'commanderTrait', engineer: 'engineerTrait', sage: 'sageTrait' };
+  // Slice U1-d (execution brief section 9 item 10, "character/quick-switcher"): the exact same
+  // real switch the button below already performs, reachable by voice/chat now too - a no-op
+  // when the requested character is already the active one (mirrors the button's own `disabled`
+  // guard, never a redundant self-switch).
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-character', {
+      allowlist: ['character'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path !== 'character') return;
+        if (CHARS.some((c) => c.id === value) && value !== character) window.parent.postMessage({ type: 'tradejournal:character-selected', character: value }, '*');
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, [character]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <SectionShell icon="psychology" title={t('characterTitle')} right={<span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('characterHint')}</span>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -300,6 +319,31 @@ function VoiceGenderSection({ t }) {
     setPrefs(next);
     if (store) store.setPref('voiceGenderPreference', next);
   }
+  // Slice U1-d (execution brief section 9 item 10, "voice gender"): one field per character
+  // (voiceGender.hunter/.commander/.engineer/.sage), matching RegionLanguageSection's own dot-path
+  // convention - avoids needing two interdependent fields (character+gender) resolved together.
+  // change() closes over the CURRENT `prefs` (a real staleness risk if captured once at mount -
+  // setting Hunter's gender then Engineer's in two separate turns would each start from a stale
+  // base object, silently reverting the first change) - changeRef is read fresh on every call,
+  // same fix pattern as this codebase's own submitRef convention elsewhere.
+  const changeRef = React.useRef(change);
+  changeRef.current = change;
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-voice-gender', {
+      allowlist: CHARS.map((c) => 'voiceGender.' + c.id),
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path.indexOf('voiceGender.') !== 0) return;
+        const characterId = path.slice('voiceGender.'.length);
+        if ((value === 'male' || value === 'female') && CHARS.some((c) => c.id === characterId)) changeRef.current(characterId, value);
+      }
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <SectionShell icon="assistant" title={t('voiceGenderTitle')} right={<span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('voiceGenderHint')}</span>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

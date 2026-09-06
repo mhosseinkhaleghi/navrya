@@ -2769,6 +2769,64 @@ export function mountCharacterApp(character) {
         resultContext: () => {}
       });
 
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Slice U1-d (execution brief section 9 item 10, "character/quick-switcher"): the exact
+        // same real switch (window.parent.postMessage) the Settings page's own character cards
+        // already perform - never a fabricated second navigation mechanism. A no-op if the named
+        // character is already the active one (settingsView.jsx's own registration checks this).
+        id: 'settings.character.switch', domain: 'settings', riskLevel: 'low',
+        description: 'Switch NAVRYA\'s active character/persona right now - Hunter, Commander, Engineer, or Sage. A real, immediate switch, never a preview. character must ONLY be set from an explicit request to switch/change the active character - never inferred merely from which character happens to already be speaking, and only a real, currently offered character ever applies.',
+        aliases: ['switch to commander', 'switch character to hunter', 'change to the engineer', 'use sage now', 'switch persona to commander'],
+        requiredFields: ['character'], optionalFields: [],
+        normalizeField: function (path, value) {
+          if (path !== 'character') return value;
+          var text = String(value || '').trim().toLowerCase();
+          return ['hunter', 'commander', 'engineer', 'sage'].indexOf(text) !== -1 ? text : null;
+        },
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'settings') store.setActiveId('settings');
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('settings-character').open,
+            () => resolve({ processId: 'settings-character' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Slice U1-d (execution brief section 9 item 10, "voice gender"): one field per character
+        // (voiceGender.hunter/.commander/.engineer/.sage) - a personalization pick only; which
+        // admin-configured voice actually gets used is still decided server-side, and a character
+        // with no voice configured for the chosen gender simply falls back to the existing OpenAI
+        // voice (see VoiceGenderSection's own comment). entityAlreadyPersisted: true - every field
+        // applies and persists immediately, no separate Save step.
+        id: 'settings.voiceGender.update', domain: 'settings', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Change which voice gender (male or female) a specific character speaks with in Voice Mode - Hunter, Commander, Engineer, or Sage, independently. Only from an explicit request naming both the character and the gender (e.g. "make Sage\'s voice female") - never guessed for a character the user did not name.',
+        aliases: ['make hunter\'s voice female', 'set commander to a male voice', 'change engineer\'s voice gender', 'use a female voice for sage'],
+        requiredFields: [], optionalFields: ['voiceGender.hunter', 'voiceGender.commander', 'voiceGender.engineer', 'voiceGender.sage'],
+        normalizeField: function (path, value) {
+          if (path.indexOf('voiceGender.') !== 0) return value;
+          var text = String(value || '').trim().toLowerCase();
+          return (text === 'male' || text === 'female') ? text : null;
+        },
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'settings') store.setActiveId('settings');
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('settings-voice-gender').open,
+            () => resolve({ processId: 'settings-voice-gender' }),
+            () => resolve(null)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
       // F37: destructive actions. MODEL interprets intent -> NAVRYA resolves the exact target ->
       // the real entity is shown in its real editor/detail view -> a deterministic `confirm`
       // gate (never inferred from the delete request alone; rejections are resolved client-side

@@ -436,7 +436,11 @@
     // (available: () => true, open() only navigates+polls, entityAlreadyPersisted: true so their
     // own workflow never completes on its own) - excluded unconditionally for the identical
     // reason, not merely added to the conditional passiveWorkflowMatch check further below.
-    if (activeProcess && (activeProcess.id === 'settings-trading-defaults' || activeProcess.id === 'settings-region-language' || activeProcess.id === 'ai-assistant-engine' || activeProcess.id === 'settings-alerts' || activeProcess.id === 'settings-companion' || activeProcess.id === 'session-delete-confirm')) activeProcess = null;
+    // Slice U1-d: settings-voice-gender is the same entityAlreadyPersisted shape as the two U1-c
+    // additions above it - same fix, same reason. settings-character is deliberately NOT here -
+    // its one required field (character) is never entityAlreadyPersisted, so its own workflow
+    // already self-completes normally (matches account.open's own precedent).
+    if (activeProcess && (activeProcess.id === 'settings-trading-defaults' || activeProcess.id === 'settings-region-language' || activeProcess.id === 'ai-assistant-engine' || activeProcess.id === 'settings-alerts' || activeProcess.id === 'settings-companion' || activeProcess.id === 'settings-voice-gender' || activeProcess.id === 'session-delete-confirm')) activeProcess = null;
     // Production repair pass, section 11: a registration with a deliberately EMPTY allowlist
     // (tradeDetailsModal.jsx's own 'trade-details-{id}', registered purely so ai-context-builder.js
     // can resolve "this trade" - it has no fillable field of its own at all) is, by construction,
@@ -546,7 +550,7 @@
     // Slice U1-c: settings-alerts/settings-companion added alongside the three above - same
     // entityAlreadyPersisted shape, same never-self-completing workflow, same fix.
     var workflowProcessId = currentWorkflow ? String(currentWorkflow.processId || '') : '';
-    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0 || workflowProcessId === 'settings-trading-defaults' || workflowProcessId === 'settings-region-language' || workflowProcessId === 'ai-assistant-engine' || workflowProcessId === 'settings-alerts' || workflowProcessId === 'settings-companion' || workflowProcessId === 'session-delete-confirm';
+    var workflowProcessExcluded = workflowProcessId.indexOf('live-session-entry-') === 0 || workflowProcessId.indexOf('live-session-scenario-') === 0 || workflowProcessId.indexOf('trade-details-') === 0 || workflowProcessId === 'settings-trading-defaults' || workflowProcessId === 'settings-region-language' || workflowProcessId === 'ai-assistant-engine' || workflowProcessId === 'settings-alerts' || workflowProcessId === 'settings-companion' || workflowProcessId === 'settings-voice-gender' || workflowProcessId === 'session-delete-confirm';
     var workflowBlocksDiscovery = currentWorkflow && !workflowProcessExcluded;
     var availableActions = null;
     if (workflowEngine && actionRegistry && !activeProcess && !workflowBlocksDiscovery) {

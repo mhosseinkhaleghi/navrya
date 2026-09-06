@@ -171,9 +171,48 @@ test('chat-dock-core.js excludes settings-ai-panel-builder/account-profile-ident
 // ai-assistant-engine - missing this exclusion would reproduce the identical F33-F36 bug class
 // (once started, EVERY later message, even something entirely unrelated, would silently return
 // action:null for the rest of the page visit).
-test('settings-alerts and settings-companion are added to BOTH the unconditional activeProcess exclusion and the workflowProcessExcluded check - the same F33-F36 fix, not just one half of it', () => {
-  assert.match(chatDockCoreSrc, /activeProcess\.id === 'ai-assistant-engine' \|\| activeProcess\.id === 'settings-alerts' \|\| activeProcess\.id === 'settings-companion' \|\| activeProcess\.id === 'session-delete-confirm'/);
-  assert.match(chatDockCoreSrc, /workflowProcessId === 'ai-assistant-engine' \|\| workflowProcessId === 'settings-alerts' \|\| workflowProcessId === 'settings-companion' \|\| workflowProcessId === 'session-delete-confirm'/);
+test('settings-alerts, settings-companion, and settings-voice-gender are added to BOTH the unconditional activeProcess exclusion and the workflowProcessExcluded check - the same F33-F36 fix, not just one half of it', () => {
+  assert.match(chatDockCoreSrc, /activeProcess\.id === 'ai-assistant-engine' \|\| activeProcess\.id === 'settings-alerts' \|\| activeProcess\.id === 'settings-companion' \|\| activeProcess\.id === 'settings-voice-gender' \|\| activeProcess\.id === 'session-delete-confirm'/);
+  assert.match(chatDockCoreSrc, /workflowProcessId === 'ai-assistant-engine' \|\| workflowProcessId === 'settings-alerts' \|\| workflowProcessId === 'settings-companion' \|\| workflowProcessId === 'settings-voice-gender' \|\| workflowProcessId === 'session-delete-confirm'/);
+});
+
+// Slice U1-d: settings-character is deliberately NOT in either exclusion list - it is never
+// entityAlreadyPersisted (its one required field, character, self-completes the workflow
+// normally once resolved), so it needs no such fix, unlike every entityAlreadyPersisted settings
+// action above it.
+test('settings-character is never entityAlreadyPersisted and never appears in either settings exclusion list - its own workflow already self-completes normally once character resolves', () => {
+  const block = actionBlock('settings.character.switch');
+  assert.doesNotMatch(block, /entityAlreadyPersisted/);
+  assert.doesNotMatch(chatDockCoreSrc, /activeProcess\.id === 'settings-character'/);
+  assert.doesNotMatch(chatDockCoreSrc, /workflowProcessId === 'settings-character'/);
+});
+
+// Slice U1-d (execution brief section 9 item 10, "character/quick-switcher" + "voice gender").
+test('settings.character.switch requires character and validates it against the exact four real characters - never guessed', () => {
+  const block = actionBlock('settings.character.switch');
+  assert.match(block, /requiredFields: \['character'\], optionalFields: \[\]/);
+  assert.match(block, /\['hunter', 'commander', 'engineer', 'sage'\]\.indexOf\(text\) !== -1 \? text : null;/);
+});
+
+test('the real settings-character registration performs the exact same postMessage the Settings character cards already use, and is a no-op when the requested character is already active', () => {
+  const registration = /registry\.register\('settings-character', \{[\s\S]*?\n {4}\}\);/.exec(settingsViewSrc);
+  assert.ok(registration);
+  assert.match(registration[0], /allowlist: \['character'\]/);
+  assert.match(registration[0], /if \(CHARS\.some\(\(c\) => c\.id === value\) && value !== character\) window\.parent\.postMessage\(\{ type: 'tradejournal:character-selected', character: value \}, '\*'\);/);
+});
+
+test('settings.voiceGender.update declares one field per character (voiceGender.hunter/.commander/.engineer/.sage), validated as male/female only', () => {
+  const block = actionBlock('settings.voiceGender.update');
+  assert.match(block, /optionalFields: \['voiceGender\.hunter', 'voiceGender\.commander', 'voiceGender\.engineer', 'voiceGender\.sage'\]/);
+  assert.match(block, /return \(text === 'male' \|\| text === 'female'\) \? text : null;/);
+});
+
+test('the real settings-voice-gender registration reads its change() handler fresh on every call via a ref - never a stale closure over an earlier render\'s prefs object', () => {
+  const registration = /registry\.register\('settings-voice-gender', \{[\s\S]*?\n {4}\}\);/.exec(settingsViewSrc);
+  assert.ok(registration);
+  assert.match(registration[0], /allowlist: CHARS\.map\(\(c\) => 'voiceGender\.' \+ c\.id\)/);
+  assert.match(registration[0], /changeRef\.current\(characterId, value\)/);
+  assert.match(settingsViewSrc, /const changeRef = React\.useRef\(change\);\s*\n\s*changeRef\.current = change;/);
 });
 
 test('the unconditional settings exclusion runs BEFORE currentWorkflow is even read, so it can never depend on / race with workflow state - mirrors live-session-entry-/live-session-scenario- above it', () => {
