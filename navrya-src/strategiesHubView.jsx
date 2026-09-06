@@ -2047,6 +2047,14 @@ function StrategiesHub({ character }) {
   const patterns = window.TradeJournalPatternStore ? window.TradeJournalPatternStore.listSync() : [];
   const strategies = window.TradeJournalStrategyEducationStore ? window.TradeJournalStrategyEducationStore.listSync() : [];
   const item = openId ? (openKind === 'pattern' ? patterns.find((p) => p.id === openId) : strategies.find((s) => s.id === openId)) : null;
+  // Slice U2-c (execution brief section 9 item 4, "actual search/sort/tab ... navigation"): kept
+  // current every render (never captured once at mount) so the 'strategies-index' registration's
+  // own isOpen() below reflects the REAL current tab/openId instead of a stale mount-time snapshot -
+  // the same anti-stale-closure convention this file already uses for onUpdateRef/scenarioRef.
+  const tabRef = React.useRef(tab);
+  tabRef.current = tab;
+  const openIdRef = React.useRef(openId);
+  openIdRef.current = openId;
 
   React.useEffect(() => { if (openId && !item) { setOpenId(null); setOpenKind(null); } }, [openId, item]);
 
@@ -2149,6 +2157,36 @@ function StrategiesHub({ character }) {
     window.TradeJournalNavryaStrategyHub = { createNew: createNewStrategy, openExisting: openExistingStrategy };
     window.TradeJournalNavryaAnalysisProfilesShellHub = { open: openAnalysisProfiles };
     return () => { delete window.TradeJournalNavryaPatternHub; delete window.TradeJournalNavryaStrategyHub; delete window.TradeJournalNavryaAnalysisProfilesShellHub; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Slice U2-c (execution brief section 9 item 4, "actual search/sort/tab ... navigation"): the
+  // real IndexView query/sort/tab controls, exposed the same way marketplace-storefront already
+  // exposes its own query/sort (marketplaceView.jsx) - a permanent registration whose isOpen()
+  // reflects whether IndexView (not Positions/Analysis Profiles/a specific open item) is actually
+  // showing right now, gated on both this component's own mount lifecycle AND the live tab/openId
+  // refs above. `sort`'s real state here is the CURRENTLY-DISPLAYED, localized label string itself
+  // (IndexView compares `sort === sortLabels[i]` directly) rather than a stable key the way
+  // marketplace's own sort is - a genuine, pre-existing difference between the two screens this
+  // slice does not refactor away (out of scope, and riskier than translating at the boundary);
+  // applyValue instead translates the AI's own stable value into the CURRENT UI language's label
+  // via the same tr() helper IndexView's own sort buttons already render through.
+  const strategiesIndexMountedRef = React.useRef(true);
+  React.useEffect(() => {
+    strategiesIndexMountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('strategies-index', {
+      allowlist: ['listKind', 'query', 'sort'],
+      isOpen: () => strategiesIndexMountedRef.current && !openIdRef.current && (tabRef.current === 'patterns' || tabRef.current === 'strategies'),
+      applyValue: (path, value) => {
+        if (path === 'listKind') { if (value === 'patterns' || value === 'strategies') setTab(value); return; }
+        if (path === 'query') { setQuery(String(value == null ? '' : value)); return; }
+        if (path === 'sort') {
+          var sortKey = value === 'realization' ? 'sortRealization' : value === 'usage' ? 'sortUsage' : value === 'recent' ? 'sortRecent' : null;
+          if (sortKey) setSort(tr(lang, sortKey));
+        }
+      }
+    });
+    return () => { strategiesIndexMountedRef.current = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   function removeItem(kind, id) {
     if (!window.confirm(tr(lang, 'deleteConfirm'))) return;

@@ -1122,6 +1122,41 @@ export function mountCharacterApp(character) {
         submit: () => undefined,
         resultContext: () => {}
       });
+
+      // Slice U2-c (execution brief section 9 item 4, "actual search/sort/tab ... navigation"):
+      // the same shape as marketplace.search (Slice U1-e) - a real, already-existing list toolbar
+      // (IndexView's own query/sort state + top-level Patterns/Strategies tab), never a specific
+      // Pattern/Strategy's own detail view. entityAlreadyPersisted (the list stays showing,
+      // refinable across turns, mirroring marketplace.search's own precedent exactly).
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'strategies.search', domain: 'strategies', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Search and/or sort the real Pattern/Strategy list itself - never a specific Pattern or Strategy\'s own detail view (use pattern.edit/strategy.edit for that). listKind switches which list is showing: patterns or strategies. sort changes the real sort order: recent (most recently updated first), realization (highest realization/confirmation rate first), or usage (most used first). Only select this while the user is browsing/filtering the list, not asking to open one specific item.',
+        aliases: ['search my patterns for', 'search my strategies for', 'sort patterns by realization', 'sort strategies by usage', 'show my most used patterns', 'find a pattern named'],
+        requiredFields: [], optionalFields: ['listKind', 'query', 'sort'],
+        normalizeField: (path, value) => {
+          if (path === 'listKind') {
+            var wantedKind = String(value || '').trim().toLowerCase();
+            return wantedKind === 'patterns' || wantedKind === 'strategies' ? wantedKind : null;
+          }
+          if (path === 'sort') {
+            var wantedSort = String(value || '').trim().toLowerCase();
+            return ['recent', 'realization', 'usage'].indexOf(wantedSort) !== -1 ? wantedSort : null;
+          }
+          return value;
+        },
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => registry && registry.query('strategies-index').open,
+            () => resolve({ processId: 'strategies-index' }),
+            () => resolve(null) // a specific Pattern/Strategy is open instead, or the Hub never mounted
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
     }
 
     // Journey F, F15: Strategy creation/editing, the same shape as pattern.create/pattern.edit
