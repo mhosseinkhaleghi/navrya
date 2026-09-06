@@ -64,6 +64,15 @@ test('no duplicate opening: openingDeliveredForConnectionRef guards a second cal
   assert.match(effect, /voiceState === VOICE_STATES\.IDLE \|\| voiceState === VOICE_STATES\.ERROR\) openingDeliveredForConnectionRef\.current = false/);
 });
 
+test('GPT core never gets a spoken Companion opening (critical-bug fix): the original OpenAI voice pipeline never had one, and gained one by accident once Gemini Voice shared this same function unconditionally. Only a live Gemini Voice session speaks it', () => {
+  const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
+  assert.match(fn, /if \(providerId !== 'gemini'\) return;/);
+  // Must be the very first check - GPT must never even touch/arm openingDeliveredForConnectionRef.
+  const providerGateIndex = fn.indexOf("if (providerId !== 'gemini') return;");
+  const alreadyDeliveredGateIndex = fn.indexOf('if (openingDeliveredForConnectionRef.current) return;');
+  assert.ok(providerGateIndex > -1 && alreadyDeliveredGateIndex > -1 && providerGateIndex < alreadyDeliveredGateIndex);
+});
+
 // --- Item 6: consent boundary - Voice must be explicitly started before ANY spoken opening ---
 
 test('deliverCompanionOpening is only ever reachable through connect(), which is only ever called from the user\'s own explicit toggleVoice() press - never from a mount effect, never unconditionally', () => {

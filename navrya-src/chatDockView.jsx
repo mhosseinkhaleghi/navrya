@@ -726,8 +726,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // (docs/ai/companion-orchestration.md). Called only once per real connection, only from the
   // voiceState effect below, itself only ever reachable after the user's own explicit Voice press
   // (item 6's consent boundary) - never from page load/refresh/navigation/login.
+  //
+  // Critical-bug fix: GPT core is the original OpenAI voice pipeline exactly as it shipped before
+  // Gemini Voice existed - it never had a spoken opening line, and must not gain one now. Only a
+  // live Gemini Voice session gets the Companion greeting. providerId is read live here (this
+  // function is redefined every render, unlike the mount-once transport effect above) and the
+  // effect that calls this one (below) re-runs on every voiceState change, so this always sees the
+  // provider actually backing the CURRENT connection, never a stale one.
   const openingDeliveredForConnectionRef = React.useRef(false);
   function deliverCompanionOpening() {
+    if (providerId !== 'gemini') return;
     if (openingDeliveredForConnectionRef.current) return;
     openingDeliveredForConnectionRef.current = true;
     // Item 16: Therapist Mode suppresses a proactive Journey opening - this is transient UI state
@@ -777,6 +785,10 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // Voice follows the saved provider choice for this account: Gemini selects Gemini Live;
     // every other provider retains the established OpenAI Realtime transport. The approved
     // voice turn still goes through submit(), which pins its chat response to OpenAI.
+    // Depends on providerId (see this effect's own deps below) so switching the core provider
+    // while idle tears down and rebuilds this transport/turn-coordinator pair for the NEW
+    // provider - the ModelSwitcher only ever renders while voiceState is 'idle' (ChatDock.jsx),
+    // so this never fires mid-call.
     const useGeminiLive = providerId === 'gemini';
     const createTransport = useGeminiLive ? createGeminiLiveSession : createVoiceSession;
     voiceRef.current = createTransport({
@@ -816,10 +828,10 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // bypassing call with the controller-owned path (Part B).
       onBargeIn: () => { if (playbackControllerRef.current) playbackControllerRef.current.interrupt(); }
     });
-    // Slice R2 (transport repair), audit finding T12: read once, right after this mount-once
-    // effect constructs the transport - which adapter is active never changes for this mount's
-    // lifetime (this effect's own never-re-run [] deps), so there is no later moment this needs
-    // re-checking. Defensive `&&` covers a legacy/test double missing the accessor entirely.
+    // Slice R2 (transport repair), audit finding T12, revised: the adapter CAN change now - a
+    // provider switch re-runs this effect (see the providerId dep below) and rebuilds the
+    // transport - so this is recomputed every time this effect (re-)runs, never read once and
+    // frozen. Defensive `&&` covers a legacy/test double missing the accessor entirely.
     setVoiceSupportsManualFinish(!voiceRef.current.supportsManualFinish || voiceRef.current.supportsManualFinish());
     // Voice Mode performance pass: PlaybackController owns only speech - speak()/interrupt() are
     // read fresh from voiceRef.current on every call (never captured once), so they stay correct
@@ -921,10 +933,18 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // Slice R1: unmount (a character switch tearing down this whole React root) is the same "the
     // user has moved on" moment as New Chat, for every kind of request this dock ever started, not
     // just voice-owned ones - the dock itself is going away, so nothing it started should keep
-    // running for a reply nothing will ever render.
+    // running for a reply nothing will ever render. Also runs (then this effect body immediately
+    // re-fires) on a providerId change, for the same reason: the OLD transport must be torn down
+    // before the NEW one is constructed, never left running alongside it.
     return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); abortActiveRequests(); };
+    // Deliberately not fully exhaustive: fetchRealtimeSession/fetchGeminiLiveSession/fetchGeminiSpeak/
+    // fetchVoiceProviderSpeak/onVoiceTranscript etc. are plain functions re-created every render and
+    // are read fresh via ref (submitRef) or don't need re-triggering on every render - only
+    // providerId genuinely needs this transport rebuilt when it changes (critical-bug fix:
+    // previously `[]`, so a provider switch never took effect for Voice - neither the transport
+    // nor the voiceTransport tag sent to the server, above - until a full page reload).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [providerId]);
 
   // Journey G UX correction, item 7: the real trigger point for the Voice Companion opening -
   // aiVoiceRealtime.js's own connect() (a pure transport, untouched - see that file's header

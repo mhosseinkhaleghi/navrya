@@ -256,10 +256,13 @@ test('the voice-transport mount effect uses OpenAI Realtime except when the save
   assert.match(effectBody, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
 });
 
-test('the provider-selected voice transport does not interrupt a live session on a later provider switch', () => {
+test('the voice-transport effect rebuilds when the saved provider changes (critical-bug fix: Voice used to stay pinned to whichever provider was active at page load, ignoring any later switch until a full reload)', () => {
   const effectStart = dockViewSource.indexOf('const useGeminiLive = providerId');
-  const effectEnd = dockViewSource.indexOf('}, []);', effectStart);
-  assert.ok(effectStart > -1 && effectEnd > -1, 'could not find the voice-transport mount effect and its own closing []-deps');
+  const effectEnd = dockViewSource.indexOf('}, [providerId]);', effectStart);
+  assert.ok(effectStart > -1 && effectEnd > -1, 'the voice-transport effect must depend on providerId so a provider switch actually rebuilds Voice (transport + voiceTransport tag), not just the visible ModelSwitcher selection');
+  // Safe specifically because the ModelSwitcher (this effect's only trigger for a providerId
+  // change) is rendered only while voiceState is 'idle' (ChatDock.jsx) - there is never a live
+  // call for this rebuild to interrupt.
 });
 
 test('the mounted voice path calls Gemini Live session and TTS endpoints', () => {
