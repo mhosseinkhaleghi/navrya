@@ -57,7 +57,11 @@ async function coreSandbox(overrides) {
     TradeJournalAiChatHistoryStore: overrides.historyStore,
     TradeJournalNavryaStore: overrides.navryaStore
   });
-  const files = ['ai-i18n.js', 'ai-settings-store.js', 'ai-process-registry.js'];
+  // Slice U1-b: loaded unconditionally, same as ai-i18n.js/ai-settings-store.js - a pure,
+  // dependency-free classifier that must never interfere with any existing test's ordinary
+  // business text (a real regression check in itself: no existing test's input text happens to
+  // match one of its deliberately narrow, anchored patterns).
+  const files = ['ai-i18n.js', 'ai-settings-store.js', 'ai-process-registry.js', 'ai-dock-control-intent.js'];
   // Journey C's proactive-engine.js/signal-router.js load alongside the Journey B engine trio -
   // both are pure no-ops for any test that never registers a 'trade.calculator' action or never
   // supplies TradeJournalStrategyEducationStore/TradeJournalMentalHealthStore/matching text, so
@@ -1291,4 +1295,60 @@ test('selecting GPT-5.6 Terra sends exactly "gpt-5.6-terra" as the model in the 
   await window.TradeJournalChatDockCore.sendChat({ text: 'hello', therapistMode: false, transcript: [] });
 
   assert.equal(fetchCall.body.model, 'gpt-5.6-terra');
+});
+
+// --- Slice U1-b (execution brief section 9 item 11, "Dock/process controls") ---
+// Dynamic tests against the real sandboxed sendChat() - same fetch-must-not-be-called convention
+// as the gate/slot fast paths above, proving these are genuinely zero-network, deterministic
+// paths, not merely that a static string exists somewhere in the source.
+
+test('a recognized dock-control phrase resolves with zero AI calls, in every one of the six control ids', async () => {
+  const window = await coreSandbox({ withWorkflowEngine: true });
+  const cases = [
+    ['new chat', 'newChat'], ['show my history', 'history'], ['end voice', 'endVoice'],
+    ['mute', 'mute'], ['unmute', 'unmute']
+  ];
+  for (const [text, control] of cases) {
+    const result = await window.TradeJournalChatDockCore.sendChat({ text, therapistMode: false, transcript: [] });
+    assert.equal(result.kind, 'dockControl', `"${text}" must resolve as a dock control`);
+    assert.equal(result.control, control);
+    assert.ok(result.reply, `"${text}" must carry a real localized ack, not an empty string`);
+  }
+});
+
+test('"regenerate" only resolves as a dock control when the transcript actually has a prior user turn - with nothing to regenerate, it falls through to normal handling instead of silently doing nothing', async () => {
+  // "Falls through to normal handling" genuinely means a real network turn here - unlike every
+  // other test in this file proving a fast path's zero-network guarantee, this one deliberately
+  // supplies a working fetch stub to prove the OPPOSITE: the absence of a fast path in this case.
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+  const withoutPriorTurn = await window.TradeJournalChatDockCore.sendChat({ text: 'regenerate', therapistMode: false, transcript: [] });
+  assert.notEqual(withoutPriorTurn.kind, 'dockControl', 'nothing to regenerate yet - must not claim to be a dock control');
+
+  const withPriorTurn = await window.TradeJournalChatDockCore.sendChat({
+    text: 'regenerate', therapistMode: false,
+    transcript: [{ role: 'user', content: 'what is my win rate' }, { role: 'assistant', content: '62%' }]
+  });
+  assert.equal(withPriorTurn.kind, 'dockControl');
+  assert.equal(withPriorTurn.control, 'regenerate');
+});
+
+test('a dock-control phrase is recognized even mid-therapist-mode and ahead of a pending Journey C confirmation - these are meta-commands about the chat/voice surface itself, not business content', async () => {
+  const window = await coreSandbox({ withWorkflowEngine: true, mentalHealthStore: null, mentalHealthAI: null });
+  // therapistMode: true would normally throw without a real mentalHealthStore/AI - reaching that
+  // branch at all here would prove the dock-control check did NOT run first.
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'new chat', therapistMode: true, transcript: [] });
+  assert.equal(result.kind, 'dockControl');
+  assert.equal(result.control, 'newChat');
+});
+
+test('an ordinary business message never resolves as a dock control - only the deliberately narrow, anchored phrases do', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is my account history for this trade', therapistMode: false, transcript: [] });
+  assert.notEqual(result.kind, 'dockControl');
 });

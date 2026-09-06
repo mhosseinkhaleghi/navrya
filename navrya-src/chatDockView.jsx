@@ -458,6 +458,45 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       const renderStampAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
       if (!result) return null;
       if (result.kind === 'discarded') return result;
+      // Slice U1-b (execution brief section 9 item 11, "Dock/process controls"): chat-dock-core.js
+      // only ever recognizes the intent and picks a localized ack (it has no access to these
+      // React-closure functions) - this is where the real, already-existing control functions
+      // (the exact same ones the real UI buttons already call) actually run.
+      if (result.kind === 'dockControl') {
+        if (result.control === 'newChat') {
+          // The reset itself (empty transcript, closed popover) IS the visible confirmation - an
+          // additional lingering ack message would immediately be wiped by this same call anyway.
+          startNewChat();
+          return { kind: 'dockControl', reply: '', voiceReply: '' };
+        }
+        if (result.control === 'endVoice') {
+          // Voice is ending/torn down by this same call - never try to speak the ack through it.
+          endVoice();
+          return { kind: 'dockControl', reply: result.reply || '', voiceReply: null };
+        }
+        if (result.control === 'regenerate') {
+          // Fire-and-forget, matching the existing "Regenerate" button exactly
+          // (regenerateLastReply() -> submit() again as a brand-new turn) - the real new answer
+          // arrives through THAT call's own full transcript/popover write, never this one's.
+          let lastUserText = null;
+          for (let ri = transcriptRef.current.length - 1; ri >= 0; ri--) {
+            if (transcriptRef.current[ri] && transcriptRef.current[ri].role === 'user') { lastUserText = transcriptRef.current[ri].content; break; }
+          }
+          if (lastUserText) regenerateLastReply(lastUserText);
+          return { kind: 'discarded', reply: '', voiceReply: '' };
+        }
+        if (result.control === 'history') { if (!historyOpen) toggleHistory(); }
+        else if (result.control === 'mute') { if (voiceRef.current) voiceRef.current.mute(true); }
+        else if (result.control === 'unmute') { if (voiceRef.current) voiceRef.current.mute(false); }
+        const controlTranscript = transcriptRef.current.concat([
+          { role: 'user', content: value, at: sentAt },
+          { role: 'assistant', content: result.reply || '', at: Date.now(), latencyMs: Date.now() - sentAt }
+        ]).slice(-24);
+        replaceTranscript(controlTranscript);
+        setPopover({ open: true, state: 'answer', messages: controlTranscript, suggestions: [], activeProcessId: null, meta: [] });
+        markRenderTiming(renderStampAt);
+        return { kind: 'dockControl', reply: result.reply || '', voiceReply: result.voiceReply || result.reply || '' };
+      }
       if (result.kind === 'safety') {
         // Mirrors the retired global-ai-dock.js exactly: the user turn is still recorded, but
         // no assistant turn exists to append when the safety gate stops the reply.

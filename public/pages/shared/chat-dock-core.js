@@ -124,6 +124,43 @@
       if (preflightCheck && preflightCheck.flagged) return { kind: 'safety' };
     }
 
+    // Slice U1-b (execution brief section 9 item 11, "Dock/process controls"): deterministic,
+    // zero-network recognition for the handful of real ChatDock/Voice controls that previously
+    // existed ONLY as UI buttons (chatDockView.jsx's own startNewChat()/toggleHistory()/
+    // endVoice()/mute()/regenerateLastReply()) - same posture as the safety preflight above and
+    // Journey C's own confirm/reject fast path below: a real UI action, never left to the model's
+    // own free-form JSON extraction, and must never depend on provider uptime. Runs before
+    // therapistMode routing and before any workflow/gate handling - these are meta-commands about
+    // the chat/voice surface itself, not business content, so they take priority regardless of
+    // what else might be pending. The caller (chatDockView.jsx) is the one that actually invokes
+    // the real local function this `control` id names - this module has no access to those
+    // React-closure functions itself.
+    var dockControlIntent = window.TradeJournalAIDockControlIntent;
+    if (dockControlIntent && typeof dockControlIntent.interpretDockControlText === 'function') {
+      var dockControl = dockControlIntent.interpretDockControlText(text);
+      if (dockControl === 'regenerate') {
+        // Only a real, resolvable target counts - "regenerate" with nothing yet in the transcript
+        // to regenerate falls through to normal handling instead of silently doing nothing.
+        var hasPriorUserTurn = false;
+        for (var ri = transcript.length - 1; ri >= 0; ri--) {
+          if (transcript[ri] && transcript[ri].role === 'user' && transcript[ri].content) { hasPriorUserTurn = true; break; }
+        }
+        if (!hasPriorUserTurn) dockControl = null;
+      }
+      if (dockControl) {
+        setLastTurnDebug({ path: 'dock-control', control: dockControl });
+        recordZeroNetworkLatency('DOCK_CONTROL', t0, { graceMs: 0 });
+        var dockControlReplyKeys = {
+          newChat: 'aiDockControlNewChat', history: 'aiDockControlHistory', endVoice: 'aiDockControlEndVoice',
+          mute: 'aiDockControlMute', unmute: 'aiDockControlUnmute', regenerate: 'aiDockControlRegenerate'
+        };
+        return {
+          kind: 'dockControl', control: dockControl, reply: i18n.t(dockControlReplyKeys[dockControl]), voiceReply: null,
+          activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+        };
+      }
+    }
+
     if (therapistMode) {
       setLastTurnDebug({ path: 'therapist' });
       var mhStore = window.TradeJournalMentalHealthStore, mhAi = window.TradeJournalMentalHealthAI;
