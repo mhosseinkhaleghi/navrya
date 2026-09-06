@@ -18,7 +18,9 @@ const busSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'ai-f
 test('useAiFieldFill subscribes to TradeJournalAIFieldFillBus for exactly the (processId, path) pair passed in, and unsubscribes on unmount/dep change', () => {
   assert.match(hookSrc, /window\.TradeJournalAIFieldFillBus/);
   assert.match(hookSrc, /bus\.on\(processId, path,/);
-  assert.match(hookSrc, /return \(\) => \{ off\(\); if \(timer\) clearTimeout\(timer\); \};/);
+  // Slice V1 (visual step/AiMagicFill): cleanup now also clears the retrigger timer added for
+  // the rapid-repeated-fill fix below.
+  assert.match(hookSrc, /return \(\) => \{ off\(\); if \(timer\) clearTimeout\(timer\); if \(retrigger\) clearTimeout\(retrigger\); \};/);
   assert.match(hookSrc, /\}, \[processId, path\]\);/);
 });
 
@@ -26,6 +28,34 @@ test('useAiFieldFill never reads or writes the field value itself - purely a boo
   assert.doesNotMatch(hookSrc, /\.value\b/);
   assert.match(hookSrc, /const \[justFilled, setJustFilled\] = React\.useState\(false\)/);
   assert.match(hookSrc, /return justFilled;/);
+});
+
+// Slice V1 (visual step/AiMagicFill), audit item 5: "use an event identity for rapid repeated
+// fills, while preserving boolean-hook compatibility" - a genuinely new fill arriving while a
+// previous pulse's animation window is still active must still restart the visible reveal, but
+// the hook's own return type/contract must stay exactly the plain boolean it always was.
+test('ai-field-fill-bus.js emits a real, monotonically-unique eventId per emit() call - not merely a timestamp two genuinely distinct rapid fills could share', () => {
+  assert.match(busSrc, /var nextEventId = 1;/);
+  assert.match(busSrc, /var eventId = nextEventId\+\+;/);
+  assert.match(busSrc, /eventId: eventId/);
+});
+
+test('useAiFieldFill still returns a plain boolean (the exact prior contract) - the retrigger mechanism is a purely internal implementation detail, never a second return value', () => {
+  assert.doesNotMatch(hookSrc, /return \[justFilled/, 'must never become a tuple/array return - every existing single-boolean caller must keep working unmodified');
+  assert.match(hookSrc, /return justFilled;/);
+});
+
+test('a fill arriving while a previous pulse is still active forces a real false->true transition (drop then re-raise) instead of a no-op re-affirm of an already-true boolean', () => {
+  const fn = hookSrc.slice(hookSrc.indexOf('const off = bus.on(processId, path,'), hookSrc.indexOf('return () => { off();'));
+  assert.match(fn, /if \(justFilledRef\.current\) \{/);
+  assert.match(fn, /setJustFilled\(false\);/);
+  assert.match(fn, /retrigger = setTimeout\(\(\) => setJustFilled\(true\), 0\);/);
+  assert.match(fn, /\} else \{\s*\n\s*setJustFilled\(true\);\s*\n\s*\}/);
+});
+
+test('justFilledRef always reflects the truly-current justFilled value - the bus subscription closure itself is only ever created once per (processId, path), so it would otherwise see a stale value forever', () => {
+  assert.match(hookSrc, /const justFilledRef = React\.useRef\(false\);/);
+  assert.match(hookSrc, /React\.useEffect\(\(\) => \{ justFilledRef\.current = justFilled; \}, \[justFilled\]\);/);
 });
 
 test('useAiFieldFill is a no-op (never subscribes, never throws) when the bus, processId, or path is absent', () => {

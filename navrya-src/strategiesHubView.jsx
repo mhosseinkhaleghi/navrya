@@ -608,21 +608,38 @@ function patternGroupLabelFor(field) {
 const inputStyle = { boxSizing: 'border-box', height: 44, padding: '0 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'inherit', fontSize: 13.5, outline: 'none', width: '100%' };
 const textareaStyle = { boxSizing: 'border-box', padding: '11px 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'inherit', fontSize: 13, lineHeight: 1.9, resize: 'vertical', outline: 'none', width: '100%' };
 
+// Slice V1 (visual step/AiMagicFill), audit item 5 ("Strategy defaultValue controls that can
+// diverge after manual/AI changes"): these two used a plain uncontrolled <input>/<textarea> with
+// defaultValue, which React only ever reads once, at mount - a later external change to `value`
+// (an AI voice fill via ai-process-registry.js's applyValue(), which correctly updates the real
+// React state these two are called with, e.g. pattern.name/title at their own call sites) never
+// reached the actual DOM element. AiMagicFill's own typewriter overlay still played correctly
+// (it renders a separate span, independent of this input), but once that overlay faded, the real
+// editable field underneath silently showed its STALE mount-time text again - not what the AI
+// just set, and not what the field's own onBlur commit had been tracking either. `draft` is a
+// local buffer that both mirrors external `value` changes and lets a human keep typing freely
+// between keystrokes; commit-on-blur (never on every keystroke) is completely unchanged.
 function TextField_({ label, value, onCommit, placeholder }) {
+  const [draft, setDraft] = React.useState(value || '');
+  React.useEffect(() => { setDraft(value || ''); }, [value]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
       <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</label>
-      <input type="text" defaultValue={value || ''} placeholder={placeholder} dir="auto" style={inputStyle}
-        onBlur={(e) => { if (e.target.value !== (value || '')) onCommit(e.target.value); }} />
+      <input type="text" value={draft} placeholder={placeholder} dir="auto" style={inputStyle}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft !== (value || '')) onCommit(draft); }} />
     </div>
   );
 }
 function TextAreaField_({ label, value, onCommit, placeholder, rows, help }) {
+  const [draft, setDraft] = React.useState(value || '');
+  React.useEffect(() => { setDraft(value || ''); }, [value]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
       <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</label>
-      <textarea defaultValue={value || ''} placeholder={placeholder} rows={rows || 3} dir="auto" style={textareaStyle}
-        onBlur={(e) => { if (e.target.value !== (value || '')) onCommit(e.target.value); }} />
+      <textarea value={draft} placeholder={placeholder} rows={rows || 3} dir="auto" style={textareaStyle}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft !== (value || '')) onCommit(draft); }} />
       {help && <span style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.8 }}>{help}</span>}
     </div>
   );

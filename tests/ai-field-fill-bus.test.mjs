@@ -81,3 +81,20 @@ test('a handler that unsubscribes itself mid-dispatch does not skip a still-pend
   bus.emit('trade-wizard', 'entryPrice', { value: '1950' });
   assert.deepEqual(received.sort(), ['a', 'b']);
 });
+
+// Slice V1 (visual step/AiMagicFill), audit item 5: two genuinely distinct, rapid emits (e.g. a
+// voice correction landing within the same millisecond as the value it corrects) must never be
+// mistaken for the same event - a plain timestamp could theoretically collide; this eventId never
+// does, by construction (a monotonic counter, not derived from time or value at all).
+test('every emit() carries a real, monotonically-increasing eventId - two rapid emits for the same (processId, path) never share one, even with identical value/mode/timestamp', async () => {
+  const bus = await busSandbox();
+  const received = [];
+  bus.on('trade-wizard', 'entryPrice', (evt) => received.push(evt));
+  bus.emit('trade-wizard', 'entryPrice', { value: '1950' });
+  bus.emit('trade-wizard', 'entryPrice', { value: '1950' }); // identical value, deliberately
+  assert.equal(received.length, 2);
+  assert.equal(typeof received[0].eventId, 'number');
+  assert.equal(typeof received[1].eventId, 'number');
+  assert.notEqual(received[0].eventId, received[1].eventId);
+  assert.ok(received[1].eventId > received[0].eventId, 'eventId must be monotonically increasing');
+});

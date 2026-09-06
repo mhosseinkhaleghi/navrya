@@ -136,3 +136,29 @@ test('strategy.create/strategy.edit never touch API keys, auth tokens, or admin 
     assert.doesNotMatch(block, /apiKey|authToken|credential|admin/i);
   }
 });
+
+// Slice V1 (visual step/AiMagicFill), audit item 5 ("Strategy defaultValue controls that can
+// diverge after manual/AI changes"): TextField_/TextAreaField_ used a plain uncontrolled
+// defaultValue, which React only ever reads once at mount - a later AI voice fill correctly
+// updated the real React state (name/description/title, all wrapped in AiMagicFill at their own
+// call sites) but the DOM element itself never re-synced. AiMagicFill's own typewriter overlay
+// still played (a separate span, independent of this input), but once it faded, the real editable
+// field underneath silently reverted to its stale mount-time text - not what the AI just set.
+test('TextField_/TextAreaField_ are properly controlled (value, not defaultValue) with a local draft buffer that re-syncs whenever the external value prop changes - an AI fill must reach the real, visible input, not only the field\'s own React state', () => {
+  const fieldsBlock = hubSrc.slice(hubSrc.indexOf('function TextField_('), hubSrc.indexOf('// Index view'));
+  assert.doesNotMatch(fieldsBlock, /defaultValue/, 'no uncontrolled defaultValue anywhere in either component - the exact bug being fixed');
+  assert.match(fieldsBlock, /const \[draft, setDraft\] = React\.useState\(value \|\| ''\);/);
+  assert.match(fieldsBlock, /React\.useEffect\(\(\) => \{ setDraft\(value \|\| ''\); \}, \[value\]\);/);
+  assert.match(fieldsBlock, /<input type="text" value=\{draft\}/);
+  assert.match(fieldsBlock, /<textarea value=\{draft\}/);
+  // Commit-on-blur (never on every keystroke) must stay exactly the existing human-facing
+  // behavior - only re-expressed against the local draft instead of the DOM's own raw value.
+  assert.match(fieldsBlock, /onBlur=\{\(\) => \{ if \(draft !== \(value \|\| ''\)\) onCommit\(draft\); \}\}/g);
+});
+
+test('the AI-fillable call sites (pattern name/description, Marketplace listing title/description) all wrap TextField_/TextAreaField_ with AiMagicFill, passing the same value prop the fixed controlled input now correctly re-syncs from', () => {
+  assert.match(hubSrc, /<AiMagicFill active=\{nameFilled\} value=\{pattern\.name\}><TextField_ label=\{tr\(lang, 'nameLabel'\)\} value=\{pattern\.name\}/);
+  assert.match(hubSrc, /<AiMagicFill active=\{descriptionFilled\} value=\{pattern\.description\}><TextAreaField_ label=\{tr\(lang, 'descLabel'\)\} value=\{pattern\.description\}/);
+  assert.match(hubSrc, /<TextField_ label=\{tr\(lang, 'listingTitleLabel'\)\} value=\{title\}/);
+  assert.match(hubSrc, /<TextAreaField_ label=\{tr\(lang, 'listingDescLabel'\)\} value=\{description\}/);
+});
