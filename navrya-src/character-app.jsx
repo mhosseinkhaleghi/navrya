@@ -243,7 +243,15 @@ function HeaderApp({ navryaCharacter, quotes, store }) {
   const xpMax = s.profile && rules ? (rules.xpForNextLevel(s.profile.xpTotal) ?? s.profile.xpTotal) : undefined;
   const marketLabels = { london: t.marketLondon, 'new-york': t.marketNewYork, tokyo: t.marketTokyo, sydney: t.marketSydney };
   const nextSession = marketAdapter.nextSessionCountdown(now);
-  const markets = marketAdapter.marketStates(now).map((m) => ({ ...m, cityLabel: marketLabels[m.market] }));
+  // Production bug fix: Settings' Region & Language "12-hour/24-hour" toggle (region.clock24,
+  // window.TradeJournalAppSettingsStore) was persisted correctly but never actually read by
+  // anything - the header's market clocks always rendered 24-hour regardless of the selection.
+  // Read fresh on every render (this component already re-renders every second via useClock()
+  // below, so a change takes effect on the very next tick with no extra event wiring needed) -
+  // matches settingsView.jsx's own settings()-is-a-live-localStorage-read convention.
+  const appSettings = window.TradeJournalAppSettingsStore;
+  const clock24 = appSettings ? appSettings.settings().region.clock24 !== false : true;
+  const markets = marketAdapter.marketStates(now, !clock24).map((m) => ({ ...m, cityLabel: marketLabels[m.market] }));
   const nextCityLabel = marketLabels[nextSession.city.toLowerCase().replace(' ', '-')] || nextSession.city;
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>

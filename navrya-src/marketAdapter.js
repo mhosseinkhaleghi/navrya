@@ -21,22 +21,48 @@ export function currentOpenMarket(now) {
   return hit ? hit.market : 'sydney';
 }
 
-// Real live local clock per city (fixed standard-time UTC offsets, matching this app's existing
-// "DST is not applied" convention - ARCHITECTURE.md's session-detection table already accepts
-// this simplification). Replaces the static "07:00-16:00" session-window text on each market
-// card with each city's actual current time, ticking every second - the market card's own
-// `countdown` prop is exactly the override slot the design system built for this.
-const UTC_OFFSET = { london: 0, 'new-york': -5, tokyo: 9, sydney: 10 };
+// Real live local clock per city. FIXED (production bug): this used to be a hardcoded,
+// standard-time-only UTC offset table (london: 0, new-york: -5, tokyo: 9, sydney: 10) that never
+// accounted for Daylight Saving Time - London/New York both observe DST (BST/EDT), so for roughly
+// half the year (whenever either is actually in DST) this showed both cities' clocks a full hour
+// behind their real local time. Tokyo has no DST at all and Sydney's DST season didn't overlap
+// the specific date this was found on, which is exactly why the bug looked like it only affected
+// "some" cities rather than all four - it affects whichever of the four are currently observing
+// DST at any given moment, which changes across the year. Real IANA timezone data (via
+// Intl.DateTimeFormat) tracks every zone's actual DST transitions automatically, forever - no
+// hardcoded offset table can ever do this correctly for more than part of the year.
+const MARKET_TIMEZONE = { london: 'Europe/London', 'new-york': 'America/New_York', tokyo: 'Asia/Tokyo', sydney: 'Australia/Sydney' };
 
-export function cityClock(now, market) {
-  const offsetMs = (UTC_OFFSET[market] || 0) * 3600000;
-  const local = new Date(now.getTime() + offsetMs);
-  return pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes()) + ':' + pad(local.getUTCSeconds());
+// One Intl.DateTimeFormat instance per (market, hour12) pair, reused across every tick - this
+// runs once a second per mounted header, and constructing a new Intl.DateTimeFormat is real,
+// measurable overhead compared to calling .format() on an already-built one.
+const cityClockFormatters = {};
+function cityClockFormatter(market, hour12) {
+  const cacheKey = market + '|' + hour12;
+  if (!cityClockFormatters[cacheKey]) {
+    cityClockFormatters[cacheKey] = new Intl.DateTimeFormat('en-GB', {
+      timeZone: MARKET_TIMEZONE[market] || 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12
+    });
+  }
+  return cityClockFormatters[cacheKey];
 }
 
-export function marketStates(now) {
+// Replaces the static "07:00-16:00" session-window text on each market card with each city's
+// actual current local time, ticking every second - the market card's own `countdown` prop is
+// exactly the override slot the design system built for this. `hour12` is the second production
+// bug this fixes: Settings' Region & Language "12-hour/24-hour" toggle (region.clock24) was
+// stored but never actually read anywhere - toggling it visibly changed nothing. Defaults to
+// false (24-hour) so any caller that doesn't pass it keeps the exact prior display shape.
+export function cityClock(now, market, hour12 = false) {
+  const formatted = cityClockFormatter(market, hour12).format(now);
+  // Intl's own 12-hour output is lowercase ('4:49:02 pm') - uppercased to match this header's
+  // existing all-caps label convention (city names, "OPEN", etc.), nothing else changed.
+  return hour12 ? formatted.toUpperCase() : formatted;
+}
+
+export function marketStates(now, hour12 = false) {
   const open = currentOpenMarket(now);
-  return ['london', 'new-york', 'tokyo', 'sydney'].map((market) => ({ market, state: market === open ? 'open' : 'default', countdown: cityClock(now, market) }));
+  return ['london', 'new-york', 'tokyo', 'sydney'].map((market) => ({ market, state: market === open ? 'open' : 'default', countdown: cityClock(now, market, hour12) }));
 }
 
 // Seconds until the next window boundary (any of the three explicit start hours, wrapping to
