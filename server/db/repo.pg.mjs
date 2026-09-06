@@ -151,6 +151,7 @@ function mapUsageEvent(row) {
 function mapHealthEvent(row) { return { id: row.id, provider: row.provider, ok: row.ok, errorCode: row.error_code, latencyMs: row.latency_ms, source: row.source, createdAt: row.created_at }; }
 function mapProviderPricing(row) { return { provider: row.provider, promptPricePer1k: row.prompt_price_per_1k == null ? null : Number(row.prompt_price_per_1k), completionPricePer1k: row.completion_price_per_1k == null ? null : Number(row.completion_price_per_1k), monthlyTokenBudget: row.monthly_token_budget, updatedAt: row.updated_at }; }
 function mapAdminKey(row) { return { provider: row.provider, apiKey: row.api_key, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
+function mapAdminModelOverride(row) { return { provider: row.provider, model: row.model, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
 function mapAuditLog(row) { return { id: row.id, adminUserId: row.admin_user_id, action: row.action, targetType: row.target_type, targetId: row.target_id, details: row.details, createdAt: row.created_at }; }
 // `includeDecrypted` is ONLY ever passed true by the one internal-service bridge route that
 // hands a runtime config to the DB-free pattern-ai gateway (server/community/routes.internal.mjs)
@@ -1239,6 +1240,31 @@ export function createPgRepo(pool) {
     async get(provider) {
       const { rows } = await pool.query('SELECT * FROM admin_ai_keys WHERE provider=$1', [provider]);
       return rows[0] ? mapAdminKey(rows[0]) : null;
+    }
+  };
+
+  // Runtime model selection belongs beside (but never inside) the encrypted/plain provider-key
+  // domain. An override is intentionally tiny and provider-scoped: it is the server fallback
+  // when a browser has not explicitly selected a model for its own request.
+  const adminModelOverrides = {
+    async upsert({ provider, model, updatedBy }) {
+      const trimmed = String(model || '').trim();
+      if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows } = await pool.query(
+        `INSERT INTO admin_ai_model_overrides (provider, model, updated_by, updated_at) VALUES ($1,$2,$3,now())
+         ON CONFLICT (provider) DO UPDATE SET model=$2, updated_by=$3, updated_at=now()
+         RETURNING *`,
+        [provider, trimmed, updatedBy || null]
+      );
+      return mapAdminModelOverride(rows[0]);
+    },
+    async get(provider) {
+      const { rows } = await pool.query('SELECT * FROM admin_ai_model_overrides WHERE provider=$1', [provider]);
+      return rows[0] ? mapAdminModelOverride(rows[0]) : null;
+    },
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM admin_ai_model_overrides');
+      return rows.map(mapAdminModelOverride);
     }
   };
 
@@ -4130,7 +4156,7 @@ export function createPgRepo(pool) {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
+    providerHealth, providerPricing, adminKeys, adminModelOverrides, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,

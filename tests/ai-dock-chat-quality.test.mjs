@@ -200,6 +200,16 @@ test('a voice-sourced turn (source: "voice") requires voiceReply in the schema, 
   assert.equal(result.voiceReply, 'a short spoken version');
 });
 
+test('a voice-sourced turn applies only an allowlisted character delivery frame, preserving the one approved chat decision path', async () => {
+  const getBody = captureOpenAIRequest({ reply: 'A plan.', voiceReply: 'A plan.' });
+  const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () => dockChat({ language: 'en', message: 'Help me plan this', source: 'voice', character: 'sage', chatHistory: [], provider: 'openai' }));
+  assert.equal(result.provider, 'openai');
+  const body = getBody();
+  const systemText = body.input[0].content[0].text;
+  assert.match(systemText, /You are speaking as the Market Sage/);
+  assert.match(systemText, /preserve every fact, number, safety warning, and required confirmation/);
+});
+
 // Persian Voice Quality gate, section 9-11: voiceReply was previously only ever told to be
 // "shorter" - never told written and spoken Persian are different registers. This addendum is
 // deliberately scoped to language 'fa' only (section 32/33: EN/AR/ES must be byte-for-byte

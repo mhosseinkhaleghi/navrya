@@ -13,6 +13,15 @@ import { router as commercialRouter } from './routes.commercial.mjs';
 import { router as conversationScenariosRouter } from './routes.conversation-scenarios.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
+// Admin's server fallback catalog. This is intentionally not the trader-facing model picker:
+// a user's explicit in-app model choice still wins for that request. The Gemini choices mirror
+// public/pages/shared/ai-settings-store.js, so the generic Admin test cannot accidentally keep
+// calling the retired gemini-2.5-pro model shown in the production error report.
+const PROVIDER_MODEL_OPTIONS = {
+  gemini: ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
+};
+const PROVIDER_DEFAULT_MODELS = { gemini: 'gemini-3.1-pro-preview' };
+const PROVIDER_MODEL_ENV = { gemini: 'GEMINI_MODEL' };
 const SORTABLE_COLUMNS = ['displayName', 'createdAt', 'lastLoginAt', 'isOnline', 'hoursOnline', 'purchaseCount', 'totalMockSpent', 'totalTokensUsed'];
 // 3x the 45s client heartbeat interval (admin-heartbeat.js) - a missed beat or two shouldn't
 // flip a still-open tab to "offline"; matches repo.pg.mjs's ONLINE_THRESHOLD_SECONDS.
@@ -290,6 +299,41 @@ export function router(repo, uploadsDir) {
     await audit(req, 'ai.keys.set', 'adminKey', provider, {});
     const row = await repo.adminKeys.get(provider);
     res.status(201).json({ provider, isSet: Boolean(row), updatedAt: row ? row.updatedAt : null });
+  }));
+
+  // The effective model is exposed separately from key status so model operations never risk
+  // returning credential material. An admin override is live runtime configuration; without one,
+  // the deployed environment value remains the fallback, then the reviewed code default.
+  app.get('/ai/models', asyncHandler(async (_req, res) => {
+    const rows = await repo.adminModelOverrides.list();
+    const byProvider = {};
+    rows.forEach((row) => { byProvider[row.provider] = row; });
+    res.json(KNOWN_PROVIDERS.map((provider) => {
+      const override = byProvider[provider] || null;
+      const environmentModel = PROVIDER_MODEL_ENV[provider] ? (process.env[PROVIDER_MODEL_ENV[provider]] || null) : null;
+      const defaultModel = PROVIDER_DEFAULT_MODELS[provider] || null;
+      const effectiveModel = override ? override.model : (environmentModel || defaultModel);
+      return {
+        provider,
+        effectiveModel,
+        source: override ? 'admin' : (environmentModel ? 'environment' : 'default'),
+        overrideModel: override ? override.model : null,
+        updatedAt: override ? override.updatedAt : null,
+        options: PROVIDER_MODEL_OPTIONS[provider] || []
+      };
+    }));
+  }));
+
+  // At present Gemini is the only independently verified provider model catalog in Admin. Keep
+  // the validation allowlisted; accepting arbitrary model strings here would let an operator
+  // silently route all live traffic to a typo, retired model, or unintended paid preview.
+  app.post('/ai/models', requireRecentReauth(), asyncHandler(async (req, res) => {
+    const provider = req.body && req.body.provider;
+    const model = req.body && req.body.model;
+    if (!PROVIDER_MODEL_OPTIONS[provider] || !PROVIDER_MODEL_OPTIONS[provider].includes(model)) throw new ApiError(400, 'MODEL_NOT_ALLOWED');
+    const record = await repo.adminModelOverrides.upsert({ provider, model, updatedBy: req.currentUser.id });
+    await audit(req, 'ai.model.set', 'adminModelOverride', provider, { model: record.model });
+    res.status(201).json(record);
   }));
 
   app.get('/ai/usage', asyncHandler(async (req, res) => {

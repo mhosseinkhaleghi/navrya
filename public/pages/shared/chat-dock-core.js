@@ -642,7 +642,10 @@
       activeProcess: activeProcess ? { id: activeProcess.id, allowlist: modelFacingAllowlist(activeProcess.allowlist) } : null
     };
     if (availableActions) requestBody.availableActions = availableActions;
-    if (source === 'voice') requestBody.source = 'voice';
+    if (source === 'voice') {
+      requestBody.source = 'voice';
+      if (typeof options.character === 'string') requestBody.character = options.character;
+    }
     if (companionIntent) requestBody.companionIntent = companionIntent;
     var tContextDone = now();
     // Journey D: the smallest-sufficient-context package for THIS turn (LAYER A product

@@ -49,6 +49,17 @@ export function router(repo) {
     res.json(result);
   }));
 
+  // Non-secret runtime model overrides travel over their own bridge instead of being mixed into
+  // /admin-ai-keys. The pattern-ai gateway keeps its explicit model > admin override > env >
+  // code-default precedence and can refresh this small response without touching Postgres.
+  app.get('/admin-ai-model-overrides', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const rows = await repo.adminModelOverrides.list();
+    const result = {};
+    rows.forEach((row) => { result[row.provider] = row.model; });
+    res.json(result);
+  }));
+
   // The AI-gateway session-introspection bridge (ADR-0001 section 6). Takes the RAW session id
   // the gateway parsed off its own incoming request's Cookie header (never a whole cookie header
   // string, and never logged) and returns only the minimal shape the gateway needs to enforce

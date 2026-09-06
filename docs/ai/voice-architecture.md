@@ -92,6 +92,23 @@ The server controls `GEMINI_LIVE_MODEL` (default `gemini-3.5-transcribe-live`) a
 service only. The Gemini integration is implemented and regression-tested, but it is not marked
 browser-verified or release-ready until a signed-in user completes a real Gemini key/billing test.
 
+### Character delivery and the Admin Gemini fallback
+
+Voice remains one approved decision path, but delivery is now role-specific. The selected
+Hunter, Commander, Market Engineer, or Market Sage is sent with a voice turn; `dockChat()` adds
+the corresponding communication frame to the approved reply, OpenAI Realtime mints a role-specific
+built-in voice and delivery instruction, and Gemini TTS selects its role/gender profile with the
+same constraint that it must read the approved text exactly. The deterministic Voice Companion
+opening introduces that selected role in the current interface language before the factual
+Journey opening.
+
+Admin → AI exposes the effective Gemini fallback model, its source (Admin override, environment,
+or reviewed code default), and a strict allowlisted selector. Saving it is audited and reaches the
+DB-free gateway through the internal model-config bridge within its short cache window. A trader's
+explicit model selection still wins for that one request; the Admin setting governs model-less
+calls such as the server-side connection test and default runtime fallback. The Gemini Voice test
+also lets an admin preview each role/gender greeting rather than always testing Hunter.
+
 ## E2/E4/E5 needed zero action- or feature-specific voice code
 
 This is the architecture's central claim, and E2/E4/E5 are the proof of it, not just gates that

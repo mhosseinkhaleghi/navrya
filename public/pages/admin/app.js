@@ -37,7 +37,7 @@ const translations = {
     pageOf: 'Page {page} of {total}', prev: 'Previous', next: 'Next',
     close: 'Close', save: 'Save', cancel: 'Cancel', saved: 'Saved.',
     roleUser: 'User', roleModerator: 'Moderator', roleAdmin: 'Admin', suspend: 'Suspend', unsuspend: 'Unsuspend', suspended: 'Suspended',
-    aiKeyStatusSet: 'Key set', aiKeyStatusNotSet: 'No key set', aiKeyInputPlaceholder: 'New API key', saveKey: 'Save key', aiKeyUpdatedAt: 'Updated {date}',
+    aiKeyStatusSet: 'Key set', aiKeyStatusNotSet: 'No key set', aiKeyInputPlaceholder: 'New API key', saveKey: 'Save key', aiKeyUpdatedAt: 'Updated {date}', aiRuntimeModel: 'Runtime model: {model}', aiRuntimeModelSource: 'Source: {source}', aiSaveModel: 'Save model', aiGeminiVoiceCharacter: 'Voice character', aiGeminiVoiceGender: 'Voice gender',
     pricingPromptLabel: 'Prompt price / 1K tokens', pricingCompletionLabel: 'Completion price / 1K tokens', budgetLabel: 'Monthly token budget', savePricing: 'Save pricing',
     usageChartTitle: 'Token usage by provider', usageChartEmpty: 'No usage recorded yet.',
     dbConnectivity: 'Database connectivity', dbOk: 'Connected', dbFail: 'Unreachable', migrationsApplied: 'Migrations applied', migrationsNone: 'None recorded (in-memory backend)', communityApiHealth: 'Community API', aiGatewayHealth: 'AI gateway', errorTrackingLabel: 'Error tracking', errorTrackingValue: 'Not implemented yet',
@@ -1196,7 +1196,8 @@ function aiTab() {
   // migration for ai_provider_health_events not having run yet on this environment - without
   // taking down key/pricing management, which an operator may urgently need regardless.
   return Promise.all([
-    api('/ai/keys'), api('/ai/pricing'),
+    api('/ai/keys'), api('/ai/pricing'), api('/ai/models').catch(() => []),
+    fetch('/api/ai/runtime-models').then((response) => response.ok ? response.json() : {}).catch(() => ({})),
     api('/ai/usage?days=14').catch(() => ({ byProviderAndDay: [], byUser: {}, days: 14 })),
     api('/ai/health').catch(() => ({ providers: [], recent: [] })),
     api('/finance/overview').catch(() => ({ mockRevenue: { total: 0, mock: true }, aiCostByProvider: [], remainingBudgetByProvider: [] })),
@@ -1210,11 +1211,15 @@ function aiTab() {
     api('/voice-providers/credentials').catch(() => []),
     api('/voice-providers/characters').catch(() => []),
     api('/voice-providers/health').catch(() => ({ characters: [] }))
-  ]).then(([keys, pricing, usage, health, finance, topUsers, usageByModel, vpCredentials, vpCharacters, vpHealth]) => {
+  ]).then(([keys, pricing, models, runtimeModels, usage, health, finance, topUsers, usageByModel, vpCredentials, vpCharacters, vpHealth]) => {
     const wrap = el('div');
     wrap.append(pageHeader('brain-circuit', 'tabAI', 'aiPageSubtitle'));
     const grid = el('div', 'admin-grid');
     const keyByProvider = {}; keys.forEach((k) => { keyByProvider[k.provider] = k; });
+    const modelByProvider = {}; (Array.isArray(models) ? models : []).forEach((m) => { modelByProvider[m.provider] = m; });
+    if (runtimeModels && runtimeModels.gemini && modelByProvider.gemini) {
+      modelByProvider.gemini = Object.assign({}, modelByProvider.gemini, runtimeModels.gemini);
+    }
     const pricingByProvider = {}; pricing.forEach((p) => { pricingByProvider[p.provider] = p; });
     const healthByProvider = {}; (health.providers || []).forEach((p) => { healthByProvider[p.provider] = p; });
     const costByProvider = {}; (finance.aiCostByProvider || []).forEach((p) => { costByProvider[p.provider] = p; });
@@ -1261,6 +1266,39 @@ function aiTab() {
       card.append(testBtn);
 
       if (provider === 'gemini') {
+        const modelInfo = modelByProvider[provider] || {};
+        const modelField = el('label', 'field');
+        modelField.append(el('span', 'field-label', t('aiRuntimeModel', { model: modelInfo.effectiveModel || '—' })));
+        const modelSelect = document.createElement('select');
+        (modelInfo.options || []).forEach((model) => modelSelect.append(new Option(model, model, false, model === modelInfo.effectiveModel)));
+        modelField.append(modelSelect);
+        const modelSource = el('p', 'hint', t('aiRuntimeModelSource', { source: modelInfo.source || 'default' }));
+        const saveModelBtn = el('button', 'btn btn-secondary btn-sm', t('aiSaveModel'));
+        saveModelBtn.type = 'button';
+        saveModelBtn.disabled = !(modelInfo.options || []).length;
+        saveModelBtn.onclick = () => {
+          saveModelBtn.disabled = true;
+          api('/ai/models', { method: 'POST', body: JSON.stringify({ provider, model: modelSelect.value }) })
+            .then(() => { showToast(t('saved')); renderTab(); })
+            .catch((error) => showToast(error.message, 'danger'))
+            .finally(() => { saveModelBtn.disabled = false; });
+        };
+        card.append(modelField, modelSource, saveModelBtn);
+
+        const voicePreviewRow = el('div', 'admin-pricing-row');
+        const characterField = el('label', 'field');
+        characterField.append(el('span', 'field-label', t('aiGeminiVoiceCharacter')));
+        const characterSelect = document.createElement('select');
+        [['hunter', 'The Hunter'], ['commander', 'The Commander'], ['engineer', 'Market Engineer'], ['sage', 'Market Sage']]
+          .forEach(([value, label]) => characterSelect.append(new Option(label, value)));
+        characterField.append(characterSelect);
+        const genderField = el('label', 'field');
+        genderField.append(el('span', 'field-label', t('aiGeminiVoiceGender')));
+        const genderSelect = document.createElement('select');
+        genderSelect.append(new Option('Male', 'male'), new Option('Female', 'female'));
+        genderField.append(genderSelect);
+        voicePreviewRow.append(characterField, genderField);
+        card.append(voicePreviewRow);
         const voiceTestBtn = el('button', 'btn btn-secondary btn-sm', t('aiTestGeminiVoice'));
         voiceTestBtn.type = 'button';
         const voiceTestAudio = document.createElement('audio');
@@ -1269,7 +1307,7 @@ function aiTab() {
         voiceTestAudio.hidden = true;
         voiceTestBtn.onclick = () => {
           voiceTestBtn.disabled = true; voiceTestBtn.textContent = t('aiTestingGeminiVoice');
-          fetch('/api/ai/gemini-live/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: activeLanguage }) })
+          fetch('/api/ai/gemini-live/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: activeLanguage, character: characterSelect.value, gender: genderSelect.value }) })
             .then((response) => response.json().catch(() => ({})).then((body) => { if (!response.ok || !body.ok) throw new Error(body.error || 'FAILED'); return body; }))
             .then((body) => {
               voiceTestAudio.src = 'data:' + (body.mimeType || 'audio/wav') + ';base64,' + body.audioBase64;

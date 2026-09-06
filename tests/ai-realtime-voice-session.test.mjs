@@ -6,7 +6,7 @@ import test, { after, afterEach } from 'node:test';
 // exported mintRealtimeClientSecret() against a stubbed OpenAI /v1/realtime/client_secrets
 // response, never a reimplementation of its logic.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests } = serverModule;
+const { callProvider, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, __resetAdminModelOverrideCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -224,7 +224,7 @@ test('passes the requested language into the input transcription config, default
 
 // ---- Persian Voice Quality gate ----
 
-test('the Realtime session instructions gain a Persian-only audio-delivery addendum - AUDIO STYLE guidance, never a business-logic change - while English/Arabic/Spanish keep the exact original instructions unchanged', async () => {
+test('the Realtime session preserves the transport-only safety boundary while adding both character delivery and Persian-only native delivery guidance', async () => {
   const getRequestFa = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
   await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language: 'fa' }));
   const bodyFa = JSON.parse(getRequestFa().options.body);
@@ -238,11 +238,9 @@ test('the Realtime session instructions gain a Persian-only audio-delivery adden
     const getRequest = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
     await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language }));
     const body = JSON.parse(getRequest().options.body);
-    assert.equal(
-      body.session.instructions,
-      'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says. When a separate system message asks you to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, and nothing else.',
-      `${language} instructions must be byte-for-byte the original string, unchanged by this gate`
-    );
+    assert.match(body.session.instructions, /Never answer questions, never decide anything, never take an action yourself\./);
+    assert.match(body.session.instructions, /Deliver this exact text as The Hunter/);
+    assert.doesNotMatch(body.session.instructions, /fluent, contemporary Iranian Persian speech/);
   }
 });
 
@@ -254,6 +252,20 @@ test('the per-language voice map resolves Persian to marin (the real, human-list
     const body = JSON.parse(getRequest().options.body);
     assert.equal(body.session.audio.output.voice, expected[language], `${language} output voice`);
     assert.equal(result.voice, expected[language], `${language} returned voice field`);
+  }
+});
+
+test('OpenAI Realtime selects a distinct valid voice and delivery direction for each role', async () => {
+  const expected = {
+    hunter: 'cedar', commander: 'ash', engineer: 'verse', sage: 'sage'
+  };
+  for (const [character, voice] of Object.entries(expected)) {
+    const getRequest = captureRealtimeRequest({ value: 'ek_test', expires_at: 1, session: {} });
+    const result = await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintRealtimeClientSecret({ language: 'en', character, gender: 'male' }));
+    const body = JSON.parse(getRequest().options.body);
+    assert.equal(body.session.audio.output.voice, voice, character + ' voice');
+    assert.equal(result.voice, voice, character + ' returned voice');
+    assert.match(body.session.instructions, new RegExp('Deliver this exact text as ' + (character === 'engineer' ? 'the Market Engineer' : character === 'sage' ? 'the Market Sage' : 'The ' + character[0].toUpperCase() + character.slice(1))));
   }
 });
 
@@ -310,6 +322,27 @@ test('Gemini Live resolves the admin-managed Gemini key before the environment f
   __resetAdminKeyCacheForTests();
 });
 
+test('an Admin Gemini model override is the live fallback for model-less calls, but an explicit user model still wins', async () => {
+  __resetAdminModelOverrideCacheForTests();
+  const models = [];
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes('/internal/admin-ai-model-overrides')) return { ok: true, json: async () => ({ gemini: 'gemini-2.5-flash' }) };
+    if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    models.push(target);
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: '{}' }] } }] }) };
+  };
+  const payload = { input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }], text: { format: { schema: { required: [] } } } };
+  await callProvider('gemini', 'gemini-test-key', '', payload, 'test.admin-model');
+  assert.match(models[0], /models\/gemini-2\.5-flash:generateContent/);
+
+  __resetAdminModelOverrideCacheForTests();
+  models.length = 0;
+  await callProvider('gemini', 'gemini-test-key', 'gemini-3.1-pro-preview', payload, 'test.explicit-model');
+  assert.match(models[0], /models\/gemini-3\.1-pro-preview:generateContent/);
+  __resetAdminModelOverrideCacheForTests();
+});
+
 test('the admin Gemini Voice diagnostic validates Live and TTS, and returns only a short playable greeting to admins', async () => {
   __resetAdminKeyCacheForTests();
   const requests = [];
@@ -326,7 +359,7 @@ test('the admin Gemini Voice diagnostic validates Live and TTS, and returns only
   assert.equal(result.ok, true);
   assert.equal(result.liveModel, 'gemini-3.5-transcribe-live');
   assert.equal(result.ttsModel, 'gemini-3.1-flash-tts-preview');
-  assert.equal(result.greeting, 'Welcome to NAVRYA. Gemini Voice is ready.');
+  assert.equal(result.greeting, 'I am the Hunter. Gemini Voice is ready. We will wait for the setup worth taking.');
   assert.equal(result.mimeType, 'audio/wav');
   assert.match(Buffer.from(result.audioBase64, 'base64').subarray(0, 12).toString('ascii'), /^RIFF.{4}WAVE$/s);
   assert.doesNotMatch(JSON.stringify(result), /admin-gemini-secret|auth_tokens\/admin-test/);
@@ -346,7 +379,7 @@ test('Gemini TTS reads the approved text server-side and returns only provider a
   const body = JSON.parse(request.options.body);
   assert.deepEqual(body.generationConfig.responseModalities, ['AUDIO']);
   assert.match(body.contents[0].parts[0].text, /Approved NAVRYA reply\./);
-  assert.match(body.contents[0].parts[0].text, /The Market Sage: a seasoned market mentor/i);
+  assert.match(body.contents[0].parts[0].text, /The Market Sage: an elder, seasoned market mentor/i);
   assert.match(body.contents[0].parts[0].text, /interface language for this reply is English/i);
   assert.match(body.contents[0].parts[0].text, /never the transcript's language, meaning, numbers, or safety content/i);
   assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Sulafat');

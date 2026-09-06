@@ -87,6 +87,15 @@ test('adminKeys.upsert stores a key and rejects an empty one', async () => {
   await assert.rejects(repo.adminKeys.upsert({ provider: 'openai', apiKey: '  ' }), /VALIDATION_FAILED/);
 });
 
+test('adminModelOverrides stores one provider fallback model and rejects a blank value', async () => {
+  const repo = createMemoryRepo();
+  await repo.adminModelOverrides.upsert({ provider: 'gemini', model: 'gemini-3.1-pro-preview' });
+  const replaced = await repo.adminModelOverrides.upsert({ provider: 'gemini', model: 'gemini-2.5-flash' });
+  assert.equal(replaced.model, 'gemini-2.5-flash');
+  assert.equal((await repo.adminModelOverrides.list()).length, 1);
+  await assert.rejects(repo.adminModelOverrides.upsert({ provider: 'gemini', model: ' ' }), /VALIDATION_FAILED/);
+});
+
 test('auditLog.create records every mutation and list() surfaces them all', async () => {
   const repo = createMemoryRepo();
   const user = await seedUser(repo);

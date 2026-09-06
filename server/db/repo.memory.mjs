@@ -18,7 +18,7 @@ export function createMemoryRepo() {
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(), clientErrors: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
-    adminKeys: new Map(), auditLog: new Map(),
+    adminKeys: new Map(), adminModelOverrides: new Map(), auditLog: new Map(),
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), trades: new Map(), accounts: new Map(),
@@ -711,6 +711,18 @@ export function createMemoryRepo() {
     },
     async list() { return Array.from(state.adminKeys.values()).map(clone); },
     async get(provider) { const record = state.adminKeys.get(provider); return record ? clone(record) : null; }
+  };
+
+  const adminModelOverrides = {
+    async upsert({ provider, model, updatedBy }) {
+      const trimmed = String(model || '').trim();
+      if (!trimmed) throw new ApiError(400, 'VALIDATION_FAILED');
+      const record = { provider, model: trimmed, updatedBy: updatedBy || null, updatedAt: now() };
+      state.adminModelOverrides.set(provider, record);
+      return clone(record);
+    },
+    async get(provider) { const record = state.adminModelOverrides.get(provider); return record ? clone(record) : null; },
+    async list() { return Array.from(state.adminModelOverrides.values()).map(clone); }
   };
 
   const auditLog = {
@@ -2787,7 +2799,7 @@ export function createMemoryRepo() {
 
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
-    providerHealth, providerPricing, adminKeys, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
+    providerHealth, providerPricing, adminKeys, adminModelOverrides, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,

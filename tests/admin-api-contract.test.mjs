@@ -90,6 +90,29 @@ test('POST /api/admin/ai/keys sets a key (masked response only) and writes exact
   assert.doesNotMatch(JSON.stringify(after[0].details), /kimi-secret-abc/, 'the audit trail must never contain the key material itself');
 });
 
+test('Admin can view and allowlist-change the live Gemini fallback model without exposing any key material', async () => {
+  const admin = await createAdmin('Admin model operator');
+  const before = await api('GET', '/api/admin/ai/models', { userId: admin.id });
+  assert.equal(before.status, 200);
+  const geminiBefore = before.body.find((row) => row.provider === 'gemini');
+  assert.equal(geminiBefore.effectiveModel, 'gemini-3.1-pro-preview');
+  assert.ok(geminiBefore.options.includes('gemini-3.1-pro-preview'));
+
+  const saved = await api('POST', '/api/admin/ai/models', { userId: admin.id, body: { provider: 'gemini', model: 'gemini-2.5-flash' } });
+  assert.equal(saved.status, 201);
+  assert.equal(saved.body.model, 'gemini-2.5-flash');
+
+  const after = await api('GET', '/api/admin/ai/models', { userId: admin.id });
+  const geminiAfter = after.body.find((row) => row.provider === 'gemini');
+  assert.equal(geminiAfter.effectiveModel, 'gemini-2.5-flash');
+  assert.equal(geminiAfter.source, 'admin');
+  const invalid = await api('POST', '/api/admin/ai/models', { userId: admin.id, body: { provider: 'gemini', model: 'gemini-2.5-pro' } });
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.error, 'MODEL_NOT_ALLOWED');
+  const audit = await repo.auditLog.list({ limit: 100 });
+  assert.ok(audit.some((entry) => entry.action === 'ai.model.set' && entry.details.model === 'gemini-2.5-flash'));
+});
+
 test('PATCH /api/admin/users/:id changes role/suspendedAt and writes one audit log row', async () => {
   const admin = await createAdmin('Admin3');
   const target = await createUser('Target User');

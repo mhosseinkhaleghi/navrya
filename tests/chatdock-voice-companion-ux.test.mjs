@@ -101,7 +101,8 @@ test('for the fresh-welcome opening specifically, the visual card is captured BE
 // initiated it.
 test('the Voice Companion opening is delivered via the exact same PlaybackController every real turn\'s reply already speaks through, so it is interruptible by the SAME existing barge-in handling - no new interruption code was added anywhere', () => {
   const fn = dockViewSource.slice(companionOpeningStart, companionOpeningEnd);
-  assert.match(fn, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ kind: 'companion-opening', caption: opening\.text \}\)/);
+  assert.match(fn, /roleIntroduction = characterProfile && characterProfile\.voiceOpening/);
+  assert.match(fn, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ kind: 'companion-opening', caption: openingText \}\)/);
   assert.doesNotMatch(fn, /voiceRef\.current\.speak\(/, 'deliverCompanionOpening() must never call speak() directly - only through PlaybackController, like every other reply');
   // fix/voice-mode-turn-ux (Part B): aiVoiceRealtime.js's own barge-in handling now notifies the
   // caller via onBargeIn() (routed to PlaybackController.interrupt() - the controller-owned path)
@@ -143,7 +144,7 @@ test('Therapist Mode suppresses the proactive Voice Companion opening entirely -
 
 // --- Item 15: Persian voice configuration is untouched ---
 
-test('this pass never touched voice/model selection - the current validated per-language voice map in the server gateway is unchanged', async () => {
+test('role identity is carried into the one approved voice path while the Persian Hunter default remains intact', async () => {
   const serverSource = await readFile(path.join(root, 'server', 'pattern-ai-server.mjs'), 'utf8');
   assert.match(serverSource, /fa:\s*'marin'/, 'Persian still resolves to the validated marin voice (Persian Voice Quality gate) - untouched by this UX pass');
 });
