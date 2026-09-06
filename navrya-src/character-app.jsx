@@ -658,6 +658,54 @@ export function mountCharacterApp(character) {
         submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('session-create'),
         resultContext: (session) => { if (session && session.id) openLiveSession(session.id); }
       });
+
+      // Slice U2-f (execution brief section 9 item 5, "exact session ... selection"): a real,
+      // pure navigation (openLiveSession() - the exact same real entry point every session card's
+      // own "Open" button already calls) - never a mutation, never the reopen() status flip a
+      // closed Session's own "Reopen" button performs (a genuinely different, deliberately
+      // out-of-scope operation for this slice). No fields given resolves the trader's single
+      // currently OPEN Session (status !== 'closed') - the same real invariant
+      // ai-journey-steps.js's own scenario_plan executor already assumes (ctx.sessions.find(s =>
+      // s.status === 'open')); zero or more than one open Session refuses rather than guessing.
+      // city/date instead resolve a SPECIFIC Session (open or closed) by its own real, exact
+      // identifying fields - the same ones each session card's own title already shows
+      // (sessionsAdapter.toCardProps: market + date) - never a fabricated session name, since
+      // Sessions have no other short, spoken-friendly identifier. view optionally jumps straight
+      // to the report view, mirroring the session card's own existing onReport shortcut.
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'session.open', domain: 'sessions', riskLevel: 'low',
+        description: 'Open an EXISTING trading Session - either the one currently active (leave city and date both unset; only resolves if exactly one Session is currently open), or a specific Session identified by its real market/city (Sydney, Tokyo, London, NewYork) and/or date. view optionally jumps straight to the report view instead of the live workspace. Resolves to EXACTLY one real Session - if city/date narrow to zero or more than one match, or none is currently open and neither was given, ask which Session instead of guessing. This never reopens a closed Session (that is a separate, explicit human action) - it only views it.',
+        aliases: ['open my session', 'resume my session', 'continue my session', 'reopen my session', 'open my session report', 'go back to my session'],
+        requiredFields: [], optionalFields: ['city', 'date', 'view'],
+        normalizeField: (path, value) => {
+          if (path === 'city') return normalizeSessionCity(value);
+          if (path === 'view') return String(value || '').trim().toLowerCase() === 'report' ? 'report' : null;
+          return value;
+        },
+        available: () => true,
+        open: (context, initialFields) => {
+          var cityField = (initialFields || []).filter((f) => f && f.path === 'city')[0];
+          var dateField = (initialFields || []).filter((f) => f && f.path === 'date')[0];
+          var viewField = (initialFields || []).filter((f) => f && f.path === 'view')[0];
+          var wantedCity = cityField ? cityField.value : null;
+          var wantedDate = dateField ? String(dateField.value == null ? '' : dateField.value).trim() : '';
+          var sessions = window.TradeJournalWorkspace ? window.TradeJournalWorkspace.list() : [];
+          var target;
+          if (!wantedCity && !wantedDate) {
+            var openOnes = sessions.filter((s) => s.status !== 'closed');
+            if (openOnes.length !== 1) return null; // none or ambiguous - never guess (F53)
+            target = openOnes[0];
+          } else {
+            var matches = sessions.filter((s) => (!wantedCity || s.market === wantedCity) && (!wantedDate || s.date === wantedDate || s.gregorianDate === wantedDate));
+            if (matches.length !== 1) return null; // zero or ambiguous - never guess (F53)
+            target = matches[0];
+          }
+          openLiveSession(target.id, viewField && viewField.value === 'report' ? 'report' : undefined);
+          return {};
+        },
+        submit: () => undefined,
+        resultContext: () => {}
+      });
     }
 
     // AI Action Registry (Journey B vertical slice): "I want to take BTC long" and similar
