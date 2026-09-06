@@ -4,7 +4,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-- feat/gemini-voice-profiles (Codex): separate Gemini Voice profile editor, non-blocking GPT-safe refresh, and release-gate fixture/login/config compatibility repairs | validation: 149 focused tests passed | next: guarded dev/production promotion on request
+- feat/gemini-voice-profiles (Codex): separate Gemini Voice profile editor, non-blocking GPT-safe refresh, and release-gate fixture/login/config/voice-contract compatibility repairs | validation: 217 focused tests passed | next: guarded dev/production promotion on request
 - fix/gemini-voice-admin-key (Codex): provider-selected OpenAI/Gemini Voice transport, separate Gemini text and Voice diagnostics, and account-synced selection are covered | validation: 160 focused tests passed | next: promote to dev on request
 
 ## Known pending

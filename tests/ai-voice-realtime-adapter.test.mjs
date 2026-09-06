@@ -234,7 +234,7 @@ const dockViewSource = await readFile(path.join(process.cwd(), 'navrya-src', 'ch
 test('a voice-originated turn goes through the exact same submit()/core.sendChat() path a typed message uses - no parallel voice-only conversation logic', () => {
   assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}turnCoordinatorRef\.current\.handleFinalTranscript\(transcriptText, \{/);
   assert.match(dockViewSource, /onFinalTranscript:\s*onVoiceTranscript/);
-  assert.match(dockViewSource, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/);
+  assert.match(dockViewSource, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', character: voiceCharacter\(\), voiceTransport: providerId === 'gemini' \? 'gemini' : 'openai', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/);
 });
 
 // Found via real E1 multi-turn browser testing: two finalized transcripts arriving close
@@ -565,7 +565,7 @@ test('a typed (text-source) submit() never reaches the voice onResult/PlaybackCo
   // TurnCoordinator drives via handleFinalTranscript(), which is only ever called from
   // onVoiceTranscript (a Realtime transcript callback), never from the text-input send handler.
   const turnCoordinatorBody = dockViewSource.slice(dockViewSource.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('), dockViewSource.indexOf('return () => { if (voiceRef.current)'));
-  assert.match(turnCoordinatorBody, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/, 'the ONLY submit() call inside this voice-only object always reports source:\'voice\' - never source-agnostic');
+  assert.match(turnCoordinatorBody, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', character: voiceCharacter\(\), voiceTransport: providerId === 'gemini' \? 'gemini' : 'openai', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/, 'the ONLY submit() call inside this voice-only object always reports source:\'voice\' and its selected transport - never source-agnostic');
 });
 
 test('fetchRealtimeSession (chatDockView.jsx) preserves the real server error code/status on a failed mint instead of collapsing every failure into one opaque VOICE_SESSION_REQUEST_FAILED string - the exact production bug this fix addresses', () => {
