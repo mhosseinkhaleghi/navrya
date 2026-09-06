@@ -1263,15 +1263,26 @@ function aiTab() {
       if (provider === 'gemini') {
         const voiceTestBtn = el('button', 'btn btn-secondary btn-sm', t('aiTestGeminiVoice'));
         voiceTestBtn.type = 'button';
+        const voiceTestAudio = document.createElement('audio');
+        voiceTestAudio.controls = true;
+        voiceTestAudio.className = 'admin-voice-test-audio';
+        voiceTestAudio.hidden = true;
         voiceTestBtn.onclick = () => {
           voiceTestBtn.disabled = true; voiceTestBtn.textContent = t('aiTestingGeminiVoice');
-          fetch('/api/ai/gemini-live/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-            .then((response) => response.json().catch(() => ({})).then((body) => { if (!response.ok || !body.ok) throw new Error(body.error || 'FAILED'); }))
-            .then(() => showToast(t('aiGeminiVoiceTestOk')))
+          fetch('/api/ai/gemini-live/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: activeLanguage }) })
+            .then((response) => response.json().catch(() => ({})).then((body) => { if (!response.ok || !body.ok) throw new Error(body.error || 'FAILED'); return body; }))
+            .then((body) => {
+              voiceTestAudio.src = 'data:' + (body.mimeType || 'audio/wav') + ';base64,' + body.audioBase64;
+              voiceTestAudio.hidden = false;
+              if (typeof voiceTestAudio.play === 'function') voiceTestAudio.play().catch(() => {});
+              showToast(t('aiGeminiVoiceTestOk'));
+            })
             .catch((error) => showToast(error.message === 'GEMINI_TTS_LOCATION_UNSUPPORTED' || error.message === 'GEMINI_LIVE_TOKEN_LOCATION_UNSUPPORTED' ? t('aiGeminiVoiceLocationUnsupported') : error.message, 'danger'))
-            .finally(() => renderTab());
+            // Keep the generated greeting mounted long enough to play. Re-rendering this card
+            // immediately would detach its audio element and stop playback in most browsers.
+            .finally(() => { voiceTestBtn.disabled = false; voiceTestBtn.textContent = t('aiTestGeminiVoice'); });
         };
-        card.append(voiceTestBtn);
+        card.append(voiceTestBtn, voiceTestAudio);
       }
 
       const keyInfo = keyByProvider[provider];

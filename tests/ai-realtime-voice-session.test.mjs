@@ -310,7 +310,7 @@ test('Gemini Live resolves the admin-managed Gemini key before the environment f
   __resetAdminKeyCacheForTests();
 });
 
-test('the admin Gemini Voice diagnostic validates both Live and TTS without exposing a token, audio, or key', async () => {
+test('the admin Gemini Voice diagnostic validates Live and TTS, and returns only a short playable greeting to admins', async () => {
   __resetAdminKeyCacheForTests();
   const requests = [];
   globalThis.fetch = async (url, options) => {
@@ -326,7 +326,10 @@ test('the admin Gemini Voice diagnostic validates both Live and TTS without expo
   assert.equal(result.ok, true);
   assert.equal(result.liveModel, 'gemini-3.5-transcribe-live');
   assert.equal(result.ttsModel, 'gemini-3.1-flash-tts-preview');
-  assert.doesNotMatch(JSON.stringify(result), /admin-gemini-secret|auth_tokens\/admin-test|pcm-base64/);
+  assert.equal(result.greeting, 'Welcome to NAVRYA. Gemini Voice is ready.');
+  assert.equal(result.mimeType, 'audio/wav');
+  assert.match(Buffer.from(result.audioBase64, 'base64').subarray(0, 12).toString('ascii'), /^RIFF.{4}WAVE$/s);
+  assert.doesNotMatch(JSON.stringify(result), /admin-gemini-secret|auth_tokens\/admin-test/);
   await assert.rejects(() => adminTestGeminiVoice({ role: 'user' }), /ADMIN_REQUIRED/);
   __resetAdminKeyCacheForTests();
 });

@@ -2402,22 +2402,36 @@ async function speakWithGemini(body) {
   }
 }
 
+const GEMINI_VOICE_TEST_GREETING = {
+  en: 'Welcome to NAVRYA. Gemini Voice is ready.',
+  fa: 'به نووریا خوش آمدید. صدای جمینای آماده است.',
+  ar: 'مرحباً بك في نافريا. صوت جيميني جاهز.',
+  es: 'Bienvenido a NAVRYA. La voz de Gemini está lista.'
+};
+
 // The generic provider test is intentionally text-only. Gemini Voice has different models and
 // endpoints, so this admin-only diagnostic validates the exact Live-token and TTS paths that a
-// Gemini Voice session needs, without returning its one-use token, generated audio, or API key.
-async function adminTestGeminiVoice(session) {
+// Gemini Voice session needs. It returns only the short generated greeting as WAV so an admin can
+// hear a successful test, never the one-use token or permanent API key.
+async function adminTestGeminiVoice(session, body = {}) {
   if (!session || session.role !== 'admin') throw new Error('ADMIN_REQUIRED');
+  const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
   const startedAt = Date.now();
-  const live = await mintGeminiLiveToken({ language: 'en' });
+  const live = await mintGeminiLiveToken({ language });
   const tts = await speakWithGemini({
-    language: 'en', text: 'NAVRYA Gemini voice check.', character: 'hunter', gender: 'male'
+    language, text: GEMINI_VOICE_TEST_GREETING[language], character: 'hunter', gender: 'male'
   });
+  const sampleRate = Number((tts.mimeType.match(/rate=(\d+)/i) || [])[1]) || 24000;
+  const audioBase64 = pcm16ToWav(Buffer.from(tts.audioBase64, 'base64'), sampleRate, 1).toString('base64');
   return {
     ok: true,
     provider: 'gemini',
     liveModel: live.model,
     ttsModel: tts.model,
     ttsVoice: tts.voice,
+    greeting: GEMINI_VOICE_TEST_GREETING[language],
+    audioBase64,
+    mimeType: 'audio/wav',
     latencyMs: Date.now() - startedAt
   };
 }
@@ -2946,7 +2960,7 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/ai/realtime/session') result = await mintRealtimeClientSecret(body, session.userId);
     else if (request.url === '/api/ai/gemini-live/session') result = await mintGeminiLiveToken(body);
     else if (request.url === '/api/ai/gemini-live/speak') result = await speakWithGemini(body);
-    else if (request.url === '/api/ai/gemini-live/test') result = await adminTestGeminiVoice(session);
+    else if (request.url === '/api/ai/gemini-live/test') result = await adminTestGeminiVoice(session, body);
     // Admin-only hardened replacement for the old isolated /api/ai/voice/test-tts-fa (see
     // adminTestVoiceProviderTts()'s own header comment for what changed and why).
     else if (request.url === '/api/ai/voice/test-tts') result = await adminTestVoiceProviderTts(body, session);
