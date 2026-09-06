@@ -727,15 +727,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // voiceState effect below, itself only ever reachable after the user's own explicit Voice press
   // (item 6's consent boundary) - never from page load/refresh/navigation/login.
   //
-  // Critical-bug fix: GPT core is the original OpenAI voice pipeline exactly as it shipped before
-  // Gemini Voice existed - it never had a spoken opening line, and must not gain one now. Only a
-  // live Gemini Voice session gets the Companion greeting. providerId is read live here (this
-  // function is redefined every render, unlike the mount-once transport effect above) and the
-  // effect that calls this one (below) re-runs on every voiceState change, so this always sees the
-  // provider actually backing the CURRENT connection, never a stale one.
+  // Reverted a provider gate here (git history: Journey G - this Companion opening - shipped
+  // before Gemini Voice existed at all, i.e. it IS the original OpenAI pipeline's own opening, not
+  // something Gemini leaked into it). Gating it to Gemini-only silenced GPT's real original
+  // behavior instead of preserving it. Both providers speak this same opening; only the ongoing
+  // reply TUNE differs by provider (voiceCharacterReplyStyle() on the server, gated correctly on
+  // body.voiceTransport - untouched by this revert).
   const openingDeliveredForConnectionRef = React.useRef(false);
   function deliverCompanionOpening() {
-    if (providerId !== 'gemini') return;
     if (openingDeliveredForConnectionRef.current) return;
     openingDeliveredForConnectionRef.current = true;
     // Item 16: Therapist Mode suppresses a proactive Journey opening - this is transient UI state
