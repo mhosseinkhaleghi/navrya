@@ -11,9 +11,9 @@ import { MetricRow } from '../public/pages/shared/navrya/components/metrics/Metr
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
 import { RoutineTab } from './routineTab.jsx';
-import { MoodTab, CalmRoom, BreathPreview } from './moodTab.jsx';
+import { MoodTab, CalmRoom, BreathPreview, MOODS, BY_ID as MOOD_BY_ID } from './moodTab.jsx';
 import { TherapistTab } from './therapistTab.jsx';
-import { EmotionMap, DisciplineTrend, TradeArc, TiltMeter, RatingGauge } from './psychologyCharts.jsx';
+import { EmotionMap, DisciplineTrend, TradeArc, TiltMeter, RatingGauge, ReadinessDial, emotionMirrorVerdict } from './psychologyCharts.jsx';
 
 // ============================================================================
 // Small shared building blocks
@@ -71,6 +71,28 @@ function journeyReading(i18n, log) {
 const SCENARIO_CONSTRUCTS = { A_stop_loss: 'loss_aversion_discipline', B_revenge: 'revenge_trading', C_fomo: 'fomo', D_patience: 'overtrading_patience', E_identity: 'identity_outcome_fusion' };
 const TRIGGER_TYPE_OPTIONS = ['custom', 'revenge', 'fomo', 'fatigue', 'overconfidence'];
 const GROWTH_HOLD_TARGET = 10;
+
+// Shared by InsightsTab's routine-completion correlation and OverviewTab's routine notice - a
+// plain {dayKey:{total,complete}} map built from routine-store.js, kept out of psychology-store.js
+// so that file stays a pure trades-in reducer with zero dependency on routine-store.js (its own
+// sandboxed test harness never needs to load it).
+function buildRoutineDaysMap() {
+  const routineStore = window.TradeJournalRoutineStore;
+  if (!routineStore) return {};
+  const state = routineStore.load();
+  const routine = routineStore.active(state);
+  if (!routine) return {};
+  const map = {};
+  Object.keys(state.completions || {}).forEach((key) => {
+    // routineStore's own dayProgress() re-derives its cache key from the Date it is given
+    // (getFullYear/getMonth/getDate, non-padded) - parse the stored key back into that exact
+    // local Date rather than trusting `new Date(nonStandardString)` across engines.
+    const [y, m, d] = key.split('-').map(Number);
+    const progress = routineStore.dayProgress(state, new Date(y, m - 1, d), routine);
+    if (progress.total > 0) map[key] = { total: progress.total, complete: progress.complete };
+  });
+  return map;
+}
 
 // ============================================================================
 // The always-available file rail (right, every tab)
@@ -144,7 +166,282 @@ function FileRail({ i18n, mi, profile, closed, goFile, activeSection, onRunCheck
 // ============================================================================
 // Tab 1 - Overview
 // ============================================================================
-function OverviewTab({ i18n, psych, trades, closed, profile }) {
+
+// --- Readiness panel: psych.readinessScore()'s composite read of the day ---
+function ReadinessPanel({ i18n, readiness, onStartSession, onOpenCalmRoom, onWatchDay }) {
+  return (
+    <Panel variant={readiness.hasData && !readiness.ready ? 'active' : 'base'} ornament padding="18px 20px 20px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <SectionLabel>{i18n.t('psyReadinessTitle')}</SectionLabel>
+          {readiness.suggestion && <Chip tone="accent">{i18n.t('psyReadinessSuggestion_' + readiness.suggestion)}</Chip>}
+          <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyReadinessSource')}</Caption>
+        </div>
+        {readiness.hasData ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
+            <ReadinessDial i18n={i18n} score={readiness.score} ready={readiness.ready} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '1 1 260px', minWidth: 0 }}>
+              <span style={{ font: 'var(--type-display-md)', color: 'var(--text-primary)', textWrap: 'pretty' }}>
+                {i18n.t(readiness.ready ? 'psyReadinessHeadlineReady' : 'psyReadinessHeadlineCaution')}
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {readiness.factors.map((f) => (
+                  <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: 999, flex: 'none', background: f.tone === 'danger' ? 'var(--danger)' : f.tone === 'warning' ? 'var(--warning)' : 'var(--success)' }}></span>
+                    <Caption style={{ fontSize: 12 }}>{i18n.t('psyReadinessFactor_' + f.key, { value: i18n.number(f.value) })}</Caption>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9, flex: 'none', width: 190 }}>
+              <Button variant="primary" icon="check" fullWidth onClick={onStartSession}>{i18n.t('psyReadinessStartSession')}</Button>
+              <Button variant="secondary" icon="honour" fullWidth onClick={onOpenCalmRoom}>{i18n.t('psyOpenCalmRoom')}</Button>
+              <Button variant="ghost" fullWidth onClick={onWatchDay}>{i18n.t('psyReadinessNoTrade')}</Button>
+            </div>
+          </div>
+        ) : <Caption>{i18n.t('psyReadinessEmpty')}</Caption>}
+      </div>
+    </Panel>
+  );
+}
+
+// --- Mood-of-the-day: a compact, real PreSessionCheckIn logging surface on the dashboard ---
+const OVERVIEW_MOOD_PICK = ['calm', 'focused', 'tense', 'angry', 'flat'];
+function MoodOfDayPanel({ i18n, psych, mhStore, trades, checkins, onLogged, onOpenCalmRoom }) {
+  const todayKey = new Date().toDateString();
+  const todays = (checkins || []).filter((c) => new Date(c.createdAt).toDateString() === todayKey);
+  const latest = todays[todays.length - 1] || null;
+  const activeId = latest ? latest.mood : null;
+  const active = activeId ? MOOD_BY_ID[activeId] : null;
+  const insight = activeId ? psych.moodInsight(trades, checkins, activeId, 5) : null;
+
+  function pick(moodId) {
+    const m = MOOD_BY_ID[moodId];
+    mhStore.addPreSessionCheckIn(mhStore.load(), null, { mood: moodId, currentStressLevel: m.stress });
+    if (onLogged) onLogged();
+    // The two moods that mean "do not trade right now" open the calm room themselves - same
+    // convention MoodTab's own log() already uses.
+    if (moodId === 'angry' || moodId === 'tense') onOpenCalmRoom();
+  }
+
+  return (
+    <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 620px', borderColor: active ? active.tone : undefined }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <SectionLabel>{i18n.t('psyMoodOfDayTitle')}</SectionLabel>
+          {active && <Chip style={{ color: active.tone, borderColor: active.tone, background: 'rgba(3,8,7,.5)' }}>{i18n.t(activeId)}</Chip>}
+          <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyMoodLoggedToday', { count: i18n.number(todays.length) })}</Caption>
+        </div>
+        {active ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', width: 98, height: 98, flex: 'none' }}>
+              <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: 999, display: 'block', background: 'radial-gradient(circle,rgba(' + active.rgb + ',.32),transparent 68%)' }}></span>
+              <span style={{ position: 'absolute', inset: 12, borderRadius: 999, border: '1px solid ' + active.tone, background: 'rgba(3,8,7,.7)', display: 'grid', placeItems: 'center' }}>
+                <span className="navrya-tabular" style={{ font: '600 30px/1 var(--font-display)', color: active.tone }}>{i18n.number(active.stress)}</span>
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, flex: '1 1 260px', minWidth: 0 }}>
+              <span style={{ font: 'var(--type-body)', fontSize: 15, lineHeight: '22px', color: 'var(--text-primary)' }}>{i18n.t('psyMoodHeadline_' + activeId)}</span>
+              <Caption style={{ fontSize: 12, lineHeight: '18px' }}>{i18n.t('psyMoodBody_' + activeId)}</Caption>
+            </div>
+          </div>
+        ) : <Caption>{i18n.t('psyMoodNotLoggedToday')}</Caption>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {OVERVIEW_MOOD_PICK.map((id) => {
+            const m = MOOD_BY_ID[id], on = id === activeId;
+            return (
+              <button
+                key={id} type="button" onClick={() => pick(id)}
+                style={{
+                  flex: '1 1 70px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '11px 4px 10px',
+                  borderRadius: 8, border: '1px solid ' + (on ? m.tone : 'var(--border-hairline)'), background: on ? 'rgba(3,8,7,.7)' : 'rgba(11,16,22,.4)',
+                  cursor: 'pointer', boxSizing: 'border-box'
+                }}
+              >
+                <span style={{ width: 26, height: 26, borderRadius: 999, display: 'block', background: on ? m.tone : 'rgba(244,234,215,.14)' }}></span>
+                <span style={{ font: 'var(--type-body)', fontSize: 11, color: on ? 'var(--text-primary)' : 'var(--text-dim)' }}>{i18n.t(id)}</span>
+              </button>
+            );
+          })}
+        </div>
+        {activeId && (
+          <Notice tone={active.tone === 'var(--danger)' || active.tone === 'var(--warning)' ? 'warning' : 'accent'}>
+            {insight ? i18n.t('psyMoodInsight', { winRate: i18n.number(Math.round(insight.winRate)), count: i18n.number(insight.sampleSize) }) : i18n.t('psyMoodInsightEmpty')}
+            {(activeId === 'angry' || activeId === 'tense') ? (
+              <Button variant="primary" size="sm" style={{ flex: 'none', background: active.tone, borderColor: active.tone }} onClick={onOpenCalmRoom}>{i18n.t('psyOpenCalmRoom')}</Button>
+            ) : null}
+          </Notice>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+// --- One self-rating gauge card: real value + a real trend delta vs the prior window ---
+function GaugeCard({ i18n, label, value, tone, delta, deltaGoodWhen, note }) {
+  const deltaGood = delta == null ? null : (deltaGoodWhen === 'down' ? delta <= 0 : delta >= 0);
+  const deltaText = delta == null ? '—' : (delta > 0 ? '+' : '') + i18n.number(delta);
+  return (
+    <Panel variant="raised" padding="16px 20px 17px" style={{ flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <RatingGauge i18n={i18n} value={value} tone={tone} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
+          <SectionLabel>{label}</SectionLabel>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+            <span className="navrya-tabular" style={{ font: 'var(--type-metric-value)', fontSize: 22, color: tone }}>{value == null ? '—' : i18n.number(value)}</span>
+            <Caption>/ 10</Caption>
+            {delta != null && <Chip tone={deltaGood ? 'success' : 'danger'} style={{ height: 20, fontSize: 10, marginInlineStart: 'auto' }}>{deltaText}</Chip>}
+          </div>
+          <Caption style={{ lineHeight: '16px' }}>{note}</Caption>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+// --- Today's routine: routine-store.js, live - the same store RoutineTab itself reads/writes ---
+function RoutineTodayPanel({ i18n, trades, onEdit }) {
+  const store = window.TradeJournalRoutineStore;
+  const [, forceRerender] = React.useReducer((x) => x + 1, 0);
+  if (!store) return null;
+  const state = store.load();
+  const routine = store.active(state);
+  if (!routine) {
+    return (
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <SectionLabel>{i18n.t('psyRoutineTodayTitle')}</SectionLabel>
+          <Caption>{i18n.t('psyRoutineNoneYet')}</Caption>
+          <Button variant="secondary" icon="plus" onClick={onEdit} style={{ alignSelf: 'flex-start' }}>{i18n.t('psyRoutineBuildOne')}</Button>
+        </div>
+      </Panel>
+    );
+  }
+  const progress = store.dayProgress(state, new Date(), routine);
+  const doneToday = state.completions[store.dayKey()] || {};
+  const rate14 = store.adherenceRate(14, new Date(), state);
+
+  function toggle(stepId) { store.toggleStep(stepId); forceRerender(); }
+
+  return (
+    <Panel variant="base" ornament padding="18px 20px 20px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <SectionLabel>{i18n.t('psyRoutineTodayTitle')}</SectionLabel>
+          <Chip tone="gold">{routine.name}</Chip>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginInlineStart: 'auto' }}>
+            <Caption className="navrya-tabular">{i18n.t('routineOfTotal', { done: i18n.number(progress.done), total: i18n.number(progress.total) })}</Caption>
+            <div style={{ width: 120, height: 8, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden', flex: 'none' }}>
+              <div style={{ height: '100%', width: progress.pct + '%', borderRadius: 999, background: 'linear-gradient(90deg,rgba(102,201,78,.45),var(--char-accent))' }}></div>
+            </div>
+            <Button variant="secondary" size="sm" onClick={onEdit}>{i18n.t('psyRoutineEdit')}</Button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '8px 16px' }}>
+          {routine.steps.map((s) => {
+            const done = !!doneToday[s.id];
+            return (
+              <button
+                key={s.id} type="button" onClick={() => toggle(s.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', width: '100%', boxSizing: 'border-box',
+                  borderRadius: 8, cursor: 'pointer', textAlign: 'start', font: 'inherit',
+                  border: '1px solid ' + (done ? 'rgba(102,201,78,.42)' : 'var(--border-hairline)'),
+                  background: done ? 'rgba(18,51,27,.5)' : 'rgba(11,16,22,.4)'
+                }}
+              >
+                <span style={{ width: 22, height: 22, flex: 'none', borderRadius: 6, display: 'grid', placeItems: 'center', border: '1px solid ' + (done ? 'var(--char-accent)' : 'rgba(244,234,215,.18)'), background: done ? 'var(--char-accent)' : 'transparent', color: 'var(--ink-950)' }}>
+                  {done && <Icon name="check" size={14} />}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, font: 'var(--type-body)', fontSize: 13, color: done ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: done ? 'line-through' : 'none' }}>{s.label}</span>
+                {s.time && <Caption className="navrya-tabular" style={{ flex: 'none' }}>{s.time}</Caption>}
+              </button>
+            );
+          })}
+        </div>
+        {rate14 != null && (
+          <Notice tone="accent" icon="check">
+            {i18n.t('psyRoutineAdherenceNote', { rate: i18n.number(rate14) })}
+          </Notice>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+// --- One journey preview card: real TradeArc, real symbol/pnl, real reading ---
+function JourneyPreviewCard({ i18n, trade }) {
+  const log = trade.emotionLog || [];
+  const stages = log.map((e) => ({ label: stageLabel(i18n, e.stage), value: Number(e.stressLevel || 0) }));
+  const pnlTone = trade.pnl > 0 ? 'var(--success)' : trade.pnl < 0 ? 'var(--danger)' : 'var(--text-muted)';
+  return (
+    <Panel variant="base" padding="15px" style={{ flex: '1 1 240px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 999, background: pnlTone, flex: 'none' }}></span>
+          <span style={{ flex: 1, minWidth: 0, font: 'var(--type-username)', color: 'var(--text-primary)' }}>{trade.instrument || i18n.t(trade.direction)}</span>
+          <span className="navrya-tabular" style={{ font: 'var(--type-body)', fontSize: 13, color: pnlTone }}>{trade.pnl == null ? '—' : (trade.pnl >= 0 ? '+' : '') + i18n.money(trade.pnl)}</span>
+        </div>
+        <TradeArc i18n={i18n} stages={stages} width={240} height={108} />
+        <Caption style={{ lineHeight: '16px' }}>{journeyReading(i18n, log)}</Caption>
+      </div>
+    </Panel>
+  );
+}
+
+// --- Quick access: one click from the dashboard to the tab/modal that already exists ---
+function QuickAccessGrid({ i18n, onNavigate }) {
+  const items = [
+    { id: 'calm', icon: 'honour', tone: '#2ECC71', soon: false },
+    { id: 'therapist', icon: 'sparkle', tone: '#A965D8', soon: false },
+    { id: 'routine', icon: 'edit', tone: '#D6AF6B', soon: false },
+    { id: 'journal', icon: 'file-text', tone: '#4DA3FF', soon: false },
+    { id: 'weekly', icon: 'history', tone: '#66C94E', soon: false },
+    { id: 'bias', icon: 'star', tone: '#D6AF6B', soon: false },
+    { id: 'rules', icon: 'flag', tone: '#FFB020', soon: true },
+    { id: 'month', icon: 'moon', tone: '#A965D8', soon: true }
+  ];
+  return (
+    <Panel variant="base" ornament padding="18px 20px 20px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <SectionLabel>{i18n.t('psyQuickAccessTitle')}</SectionLabel>
+          <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyQuickAccessHint')}</Caption>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+          {items.map((q) => (
+            <button
+              key={q.id} type="button" disabled={q.soon} onClick={() => onNavigate(q.id)}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 12, padding: 14, width: '100%', boxSizing: 'border-box', textAlign: 'start', font: 'inherit',
+                borderRadius: 8, cursor: q.soon ? 'default' : 'pointer',
+                border: '1px solid ' + (q.soon ? 'rgba(214,175,107,.35)' : 'var(--border-hairline)'),
+                background: q.soon ? 'rgba(183,138,74,.06)' : 'rgba(11,16,22,.4)'
+              }}
+            >
+              <span style={{ width: 32, height: 32, flex: 'none', borderRadius: 8, border: '1px solid ' + (q.soon ? 'rgba(214,175,107,.35)' : 'var(--border-hairline)'), background: 'rgba(3,8,7,.5)', display: 'grid', placeItems: 'center', color: q.tone }}>
+                <Icon name={q.icon} size={17} />
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ font: 'var(--type-body)', fontSize: 13, color: 'var(--text-primary)' }}>{i18n.t('psyQuick_' + q.id + '_title')}</span>
+                  {q.soon && <Chip tone="gold" style={{ height: 18, fontSize: 9 }}>{i18n.t('psyComingSoon')}</Chip>}
+                </span>
+                <Caption style={{ lineHeight: '16px' }}>{i18n.t('psyQuick_' + q.id + '_body')}</Caption>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function OverviewTab({ i18n, psych, mhStore, profile, trades, closed, checkins, setPsyTab, goFile, runCheckIn }) {
+  const now = new Date();
+  const [calmOpen, setCalmOpen] = React.useState(false);
+  const [, forceRerender] = React.useReducer((x) => x + 1, 0);
+
   const streak = psych.disciplineStreak(trades);
   const totalLogs = closed.reduce((sum, t) => sum + (t.emotionLog || []).length, 0);
   // The map needs both halves: how often an emotion shows up (emotionFrequency) and what it cost
@@ -161,12 +458,16 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
   }).filter(Boolean).slice(0, 6);
   // Everything the map cannot honestly place is named underneath it rather than dropped silently.
   const thinRows = frequency.filter((f) => !mapRows.some((m) => m.emotion === f.emotion)).slice(0, 6);
+  const mirrorVerdict = emotionMirrorVerdict(mapRows);
+
   const weekly = psych.disciplineWeekly(trades, 12);
   const scored = weekly.filter((w) => w.score != null);
   const recent4 = scored.slice(-4), prior4 = scored.slice(-8, -4);
   const recentAvg = recent4.length ? recent4.reduce((s, w) => s + w.score, 0) / recent4.length : null;
   const priorAvg = prior4.length ? prior4.reduce((s, w) => s + w.score, 0) / prior4.length : null;
   const delta = recentAvg != null && priorAvg != null ? Math.round(recentAvg - priorAvg) : null;
+  const healthyStreak = psych.disciplineHealthyStreak(weekly, 70, 90);
+
   const avgStressToday = (() => {
     const since = Date.now() - 30 * 86400000;
     const values = [];
@@ -174,13 +475,25 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
     return values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
   })();
   const planAdherencePct = closed.length ? Math.max(0, Math.round(100 - profile.behavioralPatterns.planDeviationRate)) : null;
-  const tilt = psych.tiltReading(trades);
+  const tilt = psych.tiltReading(trades, now);
   const ratings = psych.selfRatings(trades, 30);
+  const deltas = psych.ratingDeltas(trades, 30, now);
   const gauges = [
-    { key: 'stress', value: ratings.stress, tone: ratings.stress == null ? 'var(--text-disabled)' : ratings.stress >= 7 ? 'var(--danger)' : ratings.stress >= 5 ? 'var(--warning)' : 'var(--success)' },
-    { key: 'focus', value: ratings.focus, tone: ratings.focus == null ? 'var(--text-disabled)' : ratings.focus >= 7 ? 'var(--success)' : ratings.focus >= 5 ? 'var(--warning)' : 'var(--danger)' },
-    { key: 'plan', value: ratings.planCommitment, tone: ratings.planCommitment == null ? 'var(--text-disabled)' : ratings.planCommitment >= 7 ? 'var(--success)' : ratings.planCommitment >= 5 ? 'var(--warning)' : 'var(--danger)' }
+    { key: 'stress', label: i18n.t('psyRating_stress'), value: ratings.stress, delta: deltas.stress.delta, goodWhen: 'down', tone: ratings.stress == null ? 'var(--text-disabled)' : ratings.stress >= 7 ? 'var(--danger)' : ratings.stress >= 5 ? 'var(--warning)' : 'var(--success)' },
+    { key: 'focus', label: i18n.t('psyRating_focus'), value: ratings.focus, delta: deltas.focus.delta, goodWhen: 'up', tone: ratings.focus == null ? 'var(--text-disabled)' : ratings.focus >= 7 ? 'var(--success)' : ratings.focus >= 5 ? 'var(--warning)' : 'var(--danger)' },
+    { key: 'plan', label: i18n.t('psyRating_plan'), value: ratings.planCommitment, delta: deltas.planCommitment.delta, goodWhen: 'up', tone: ratings.planCommitment == null ? 'var(--text-disabled)' : ratings.planCommitment >= 7 ? 'var(--success)' : ratings.planCommitment >= 5 ? 'var(--warning)' : 'var(--danger)' }
   ];
+
+  const readiness = psych.readinessScore(trades, checkins, now);
+
+  const journeys = trades.filter((t) => (t.emotionLog || []).length > 1).slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const journeyPreview = journeys.slice(0, 4);
+  const arcShapes = psych.journeyArcShapes(closed, 3);
+  const arcByShape = {};
+  arcShapes.forEach((s) => { arcByShape[s.shape] = s; });
+  const totalArcSamples = arcShapes.reduce((sum, s) => sum + s.sampleSize, 0);
+  const risingShare = totalArcSamples && arcByShape.rising ? Math.round(arcByShape.rising.sampleSize / totalArcSamples * 100) : null;
+  const fallingShare = totalArcSamples && arcByShape.falling ? Math.round(arcByShape.falling.sampleSize / totalArcSamples * 100) : null;
 
   const metrics = [
     { icon: 'streak', label: i18n.t('psyDisciplineStreakTitle'), value: i18n.t('psyDisciplineStreakDays', { count: streak }) },
@@ -189,34 +502,29 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
     { icon: 'execution', label: i18n.t('psyMetricPlanAdherence'), value: planAdherencePct != null ? planAdherencePct + '%' : '—' }
   ];
 
+  function onQuickNavigate(id) {
+    if (id === 'calm') { setCalmOpen(true); return; }
+    if (id === 'therapist') { setPsyTab('therapist'); return; }
+    if (id === 'routine') { setPsyTab('routine'); return; }
+    if (id === 'journal') { location.hash = '#strategies/trades'; return; }
+    if (id === 'weekly') { runCheckIn(); return; }
+    if (id === 'bias') { goFile('psych'); return; }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <MetricRow metrics={metrics} />
 
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 16, flexWrap: 'wrap' }}>
-        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 420px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <SectionLabel>{i18n.t('psyRatingsTitle')}</SectionLabel>
-              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyRatingsNote', { count: i18n.number(ratings.sampleSize) })}</Caption>
-            </div>
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              {gauges.map((g) => (
-                <div key={g.key} style={{ flex: '1 1 150px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <RatingGauge i18n={i18n} value={g.value} tone={g.tone} />
-                  <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                    <SectionLabel>{i18n.t('psyRating_' + g.key)}</SectionLabel>
-                    <span className="navrya-tabular" style={{ font: 'var(--type-metric-value)', color: g.tone }}>
-                      {g.value == null ? '—' : i18n.number(g.value) + ' / 10'}
-                    </span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Panel>
+      <ReadinessPanel
+        i18n={i18n} readiness={readiness}
+        onStartSession={() => setPsyTab('mood')} onOpenCalmRoom={() => setCalmOpen(true)}
+        onWatchDay={() => { const s = window.TradeJournalRoutineStore; if (s) s.setWatchDay(true); forceRerender(); }}
+      />
 
-        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 260px' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 16, flexWrap: 'wrap' }}>
+        <MoodOfDayPanel i18n={i18n} psych={psych} mhStore={mhStore} trades={trades} checkins={checkins} onLogged={forceRerender} onOpenCalmRoom={() => setCalmOpen(true)} />
+
+        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 300px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <SectionLabel>{i18n.t('psyTiltTitle')}</SectionLabel>
             <TiltMeter i18n={i18n} reading={tilt} />
@@ -236,41 +544,86 @@ function OverviewTab({ i18n, psych, trades, closed, profile }) {
           </div>
         </Panel>
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <SectionLabel>{i18n.t('psyEmotionalMirrorTitle')}</SectionLabel>
-              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyMirrorNote', { days: 30, count: totalLogs })}</Caption>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <GaugeCard i18n={i18n} label={gauges[0].label} value={gauges[0].value} tone={gauges[0].tone} delta={gauges[0].delta} deltaGoodWhen={gauges[0].goodWhen} note={i18n.t('psyGaugeNote', { count: i18n.number(ratings.sampleSize) })} />
+        <GaugeCard i18n={i18n} label={gauges[1].label} value={gauges[1].value} tone={gauges[1].tone} delta={gauges[1].delta} deltaGoodWhen={gauges[1].goodWhen} note={i18n.t('psyGaugeNote', { count: i18n.number(ratings.sampleSize) })} />
+        <GaugeCard i18n={i18n} label={gauges[2].label} value={gauges[2].value} tone={gauges[2].tone} delta={gauges[2].delta} deltaGoodWhen={gauges[2].goodWhen} note={i18n.t('psyGaugeNote', { count: i18n.number(ratings.sampleSize) })} />
+      </div>
+
+      <RoutineTodayPanel i18n={i18n} trades={trades} onEdit={() => setPsyTab('routine')} />
+
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <SectionLabel>{i18n.t('psyEmotionalMirrorTitle')}</SectionLabel>
+            <Caption>{i18n.t('psyMirrorLegendHint')}</Caption>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginInlineStart: 'auto' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: 'var(--success)', display: 'block' }}></span><Caption>{i18n.t('psyMapLegendGood')}</Caption></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, border: '2px solid var(--warning)', boxSizing: 'border-box', display: 'block' }}></span><Caption>{i18n.t('psyMapLegendNeutral')}</Caption></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, background: 'var(--danger)', display: 'block', transform: 'rotate(45deg)' }}></span><Caption>{i18n.t('psyMapLegendBad')}</Caption></span>
             </div>
-            {mapRows.length ? (
-              <EmotionMap i18n={i18n} rows={mapRows} />
-            ) : <Caption>{i18n.t('psyMirrorEmpty')}</Caption>}
-            {thinRows.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                <Caption>{i18n.t('psyMapThinTitle')}</Caption>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-                  {thinRows.map((row) => (
-                    <Chip key={row.emotion} tone="neutral">{i18n.t(row.emotion)} · {i18n.number(row.pct)}%</Chip>
-                  ))}
-                </div>
+          </div>
+          {mapRows.length ? (
+            <EmotionMap i18n={i18n} rows={mapRows} />
+          ) : <Caption>{i18n.t('psyMirrorEmpty')}</Caption>}
+          {thinRows.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <Caption>{i18n.t('psyMapThinTitle')}</Caption>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                {thinRows.map((row) => (
+                  <Chip key={row.emotion} tone="neutral">{i18n.t(row.emotion)} · {i18n.number(row.pct)}%</Chip>
+                ))}
               </div>
+            </div>
+          )}
+          {mirrorVerdict && (
+            <Notice tone="danger">
+              {i18n.t('psyMirrorVerdict', { costly: i18n.t(mirrorVerdict.costly.emotion), cost: i18n.money(Math.abs(mirrorVerdict.costly.pnl)), best: i18n.t(mirrorVerdict.best.emotion) })}
+            </Notice>
+          )}
+        </div>
+      </Panel>
+
+      <Panel variant="base" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SectionLabel>{i18n.t('psyDisciplineScoreTitle')}</SectionLabel>
+            {delta != null && <Chip tone={delta >= 0 ? 'success' : 'danger'}>{i18n.t(delta > 0 ? 'psyDisciplineTrendUp' : delta < 0 ? 'psyDisciplineTrendDown' : 'psyDisciplineTrendFlat', { value: delta })}</Chip>}
+            <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyLast12Weeks')}</Caption>
+          </div>
+          {scored.length ? (
+            <DisciplineTrend i18n={i18n} weeks={weekly} />
+          ) : <Caption>{i18n.t('psyDisciplineEmpty')}</Caption>}
+          <Notice tone="accent" icon="check">
+            {i18n.t(healthyStreak.streak > 0 ? (healthyStreak.isRecord ? 'psyDisciplineGapNoteRecord' : 'psyDisciplineGapNote') : 'psyDisciplineGapNoteNone', { count: i18n.number(healthyStreak.streak) })}
+          </Notice>
+        </div>
+      </Panel>
+
+      {journeyPreview.length > 0 && (
+        <Panel variant="base" ornament padding="18px 20px 20px">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <SectionLabel>{i18n.t('psyJourneyPreviewTitle')}</SectionLabel>
+              <Caption>{i18n.t('psyJourneyPreviewHint')}</Caption>
+              <Button variant="secondary" size="sm" style={{ marginInlineStart: 'auto' }} onClick={() => setPsyTab('journeys')}>{i18n.t('psyJourneyPreviewAll', { count: i18n.number(journeys.length) })}</Button>
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {journeyPreview.map((t) => <JourneyPreviewCard key={t.id} i18n={i18n} trade={t} />)}
+            </div>
+            {risingShare != null && fallingShare != null && !arcByShape.rising.insufficient && (
+              <Notice tone="warning">
+                {i18n.t('psyJourneyPreviewVerdict', { risingShare: i18n.number(risingShare), risingRate: i18n.number(Math.round(arcByShape.rising.winRate)), fallingShare: i18n.number(fallingShare) })}
+              </Notice>
             )}
           </div>
         </Panel>
-        <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 380px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <SectionLabel>{i18n.t('psyDisciplineScoreTitle')}</SectionLabel>
-              {delta != null && <Chip tone={delta >= 0 ? 'success' : 'danger'}>{i18n.t(delta > 0 ? 'psyDisciplineTrendUp' : delta < 0 ? 'psyDisciplineTrendDown' : 'psyDisciplineTrendFlat', { value: delta })}</Chip>}
-              <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('psyLast12Weeks')}</Caption>
-            </div>
-            {scored.length ? (
-              <DisciplineTrend i18n={i18n} weeks={weekly} />
-            ) : <Caption>{i18n.t('psyDisciplineEmpty')}</Caption>}
-          </div>
-        </Panel>
-      </div>
+      )}
+
+      <QuickAccessGrid i18n={i18n} onNavigate={onQuickNavigate} />
+
+      {calmOpen && <CalmRoom i18n={i18n} psych={psych} profile={profile} trades={trades} reason={i18n.t('psyCalmRoomManualReason')} onClose={() => setCalmOpen(false)} />}
     </div>
   );
 }
@@ -1670,23 +2023,7 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
   // routineDays stays a plain {dayKey:{total,complete}} map built here (not inside
   // psychology-store.js) so that file keeps zero dependency on routine-store.js and its own
   // sandboxed test harness never needs to load it.
-  const routineDays = React.useMemo(() => {
-    const routineStore = window.TradeJournalRoutineStore;
-    if (!routineStore) return {};
-    const state = routineStore.load();
-    const routine = routineStore.active(state);
-    if (!routine) return {};
-    const map = {};
-    Object.keys(state.completions || {}).forEach((key) => {
-      // routineStore's own dayProgress() re-derives its cache key from the Date it is given
-      // (getFullYear/getMonth/getDate, non-padded) - parse the stored key back into that exact
-      // local Date rather than trusting `new Date(nonStandardString)` across engines.
-      const [y, m, d] = key.split('-').map(Number);
-      const progress = routineStore.dayProgress(state, new Date(y, m - 1, d), routine);
-      if (progress.total > 0) map[key] = { total: progress.total, complete: progress.complete };
-    });
-    return map;
-  }, [psyTab]);
+  const routineDays = React.useMemo(() => buildRoutineDaysMap(), [psyTab]);
 
   function setPsyTab(next) { setPsyTabState(next); if (onTabChange) onTabChange(next); }
   function goFile(section) {
@@ -1771,7 +2108,12 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 700px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {psyTab === 'overview' && <OverviewTab i18n={i18n} psych={psych} trades={trades} closed={closed} profile={profile} />}
+          {psyTab === 'overview' && (
+            <OverviewTab
+              i18n={i18n} psych={psych} mhStore={mhStore} profile={profile} trades={trades} closed={closed} checkins={checkins}
+              setPsyTab={setPsyTab} goFile={goFile} runCheckIn={runCheckIn}
+            />
+          )}
           {psyTab === 'routine' && <RoutineTab i18n={i18n} />}
           {psyTab === 'mood' && <MoodTab i18n={i18n} psych={psych} mhStore={mhStore} profile={profile} trades={trades} onLogged={forceRerender} />}
           {psyTab === 'therapist' && <TherapistTab i18n={i18n} mhStore={mhStore} profile={profile} onChanged={forceRerender} />}

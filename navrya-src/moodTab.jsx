@@ -17,7 +17,7 @@ import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.j
 // collector) already understands, and `mood` only carries the shade the number cannot - "flat"
 // and "angry" are different days at the same 5.
 
-const MOODS = [
+export const MOODS = [
   { id: 'calm', stress: 3, tone: 'var(--success)', rgb: '46,204,113' },
   { id: 'focused', stress: 4, tone: 'var(--char-accent)', rgb: '102,201,78' },
   { id: 'hopeful', stress: 4, tone: 'var(--gold-warm)', rgb: '214,175,107' },
@@ -25,7 +25,7 @@ const MOODS = [
   { id: 'flat', stress: 5, tone: 'var(--info)', rgb: '77,163,255' },
   { id: 'angry', stress: 9, tone: 'var(--danger)', rgb: '255,56,48' }
 ];
-const BY_ID = MOODS.reduce((acc, m) => { acc[m.id] = m; return acc; }, {});
+export const BY_ID = MOODS.reduce((acc, m) => { acc[m.id] = m; return acc; }, {});
 
 function SectionLabel({ children, style }) {
   return <span style={{ font: 'var(--type-section-label)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase', ...style }}>{children}</span>;

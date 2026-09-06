@@ -240,6 +240,51 @@ export function TiltMeter({ i18n, reading, width = 200, height = 122 }) {
 }
 
 // ============================================================================
+// READINESS DIAL - psych.readinessScore()'s 0-100 read as a full ring, OverviewTab only
+// ============================================================================
+const READINESS_KEYFRAMES = '@keyframes navrya-readiness-aura{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.92;transform:scale(1.07)}}'
+  + '@media (prefers-reduced-motion: reduce){.navrya-readiness-aura{animation:none!important}}';
+
+export function ReadinessDial({ i18n, score, ready, size = 132 }) {
+  const cx = size / 2, cy = size / 2, r = size * 0.417, circumference = 2 * Math.PI * r;
+  const tone = score == null ? 'var(--text-disabled)' : ready ? 'var(--char-accent)' : score >= 40 ? 'var(--warning)' : 'var(--danger)';
+  const filled = score == null ? 0 : Math.max(0, Math.min(1, score / 100)) * circumference;
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flex: 'none' }}>
+      <style>{READINESS_KEYFRAMES}</style>
+      {score != null && (
+        <span aria-hidden="true" style={{ position: 'absolute', inset: size * 0.06, borderRadius: 999, display: 'block', background: 'radial-gradient(circle,color-mix(in srgb, ' + tone + ' 34%, transparent),transparent 68%)', animation: 'navrya-readiness-aura 4.6s ease-in-out infinite' }} className="navrya-readiness-aura"></span>
+      )}
+      <svg width={size} height={size} viewBox={'0 0 ' + size + ' ' + size} style={{ position: 'relative', display: 'block' }} role="img" aria-label={i18n.t(score == null ? 'psyReadinessUnknown' : ready ? 'psyReadinessReady' : 'psyReadinessCaution')}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(244,234,215,.08)" strokeWidth={size * 0.076}></circle>
+        {score != null && (
+          <circle
+            cx={cx} cy={cy} r={r} fill="none" stroke={tone} strokeWidth={size * 0.076} strokeLinecap="round"
+            strokeDasharray={circumference} strokeDashoffset={circumference - filled} transform={'rotate(-90 ' + cx + ' ' + cy + ')'}
+          ></circle>
+        )}
+        <text x={cx} y={cy - size * 0.015} textAnchor="middle" fill="var(--parchment)" style={{ font: '600 ' + Math.round(size * 0.27) + 'px var(--font-display)' }}>{score == null ? '—' : i18n.number(score)}</text>
+        <text x={cx} y={cy + size * 0.15} textAnchor="middle" fill="var(--text-muted)" style={{ font: '500 ' + Math.round(size * 0.076) + 'px var(--font-display)', letterSpacing: '.14em' }}>
+          {i18n.t(score == null ? 'psyReadinessUnknownShort' : ready ? 'psyReadinessReadyShort' : 'psyReadinessCautionShort')}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+// ============================================================================
+// EMOTIONAL MIRROR NOTICE - the single strongest paired reading (a real, computed
+// best-frequency+profit vs worst-cost emotion), read off the same rows EmotionMap draws
+// ============================================================================
+export function emotionMirrorVerdict(rows) {
+  if (rows.length < 2) return null;
+  const mostCostly = rows.slice().sort((a, b) => a.pnl - b.pnl)[0];
+  const best = rows.slice().sort((a, b) => (b.freq * Math.max(b.pnl, 0)) - (a.freq * Math.max(a.pnl, 0)))[0];
+  if (mostCostly.pnl >= 0 || mostCostly.emotion === best.emotion) return null;
+  return { costly: mostCostly, best };
+}
+
+// ============================================================================
 // SELF-RATING GAUGE - one of the three numbers a trader logs on every entry
 // ============================================================================
 export function RatingGauge({ i18n, value, tone, width = 84, height = 54 }) {

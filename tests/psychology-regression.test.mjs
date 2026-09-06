@@ -578,3 +578,86 @@ test('cooldownHistorySummary reports real held/broke counts, never a fabricated 
   // Spread out of the vm sandbox's realm before comparing - see the file's other cross-realm notes.
   assert.deepEqual({ ...summary }, { total: 3, held: 2, broke: 1 });
 });
+
+// ---------------------------------------------------------------------------
+// Overview tab additions: moodInsight, ratingDeltas, readinessScore, disciplineHealthyStreak
+// ---------------------------------------------------------------------------
+function checkin(overrides) {
+  return Object.assign({ mood: null, sleepQuality: 5, currentStressLevel: 5, somethingToProveToday: false, significantPersonalEvent: null }, overrides || {});
+}
+
+test('moodInsight reads a real win rate only from days that logged the given mood, gated by sample size', async () => {
+  const psych = await psychologyStore();
+  const day1 = new Date(2026, 0, 5), day2 = new Date(2026, 0, 6);
+  const checkins = [checkin({ mood: 'calm', createdAt: day1.toISOString() }), checkin({ mood: 'angry', createdAt: day2.toISOString() })];
+  const trades = [
+    ...many(6, () => closedTrade({ outcome: 'win', closedAt: day1.toISOString() })),
+    ...many(6, () => closedTrade({ outcome: 'loss', closedAt: day2.toISOString() }))
+  ];
+  const calm = psych.moodInsight(trades, checkins, 'calm', 5);
+  const angry = psych.moodInsight(trades, checkins, 'angry', 5);
+  assert.ok(calm);
+  assert.equal(calm.winRate, 100);
+  assert.ok(angry);
+  assert.equal(angry.winRate, 0);
+});
+
+test('moodInsight returns null when a mood has been logged but not enough trades back it', async () => {
+  const psych = await psychologyStore();
+  const day = new Date(2026, 0, 5);
+  const checkins = [checkin({ mood: 'calm', createdAt: day.toISOString() })];
+  const trades = [closedTrade({ outcome: 'win', closedAt: day.toISOString() })];
+  assert.equal(psych.moodInsight(trades, checkins, 'calm', 5), null);
+});
+
+test('ratingDeltas compares two adjacent, non-overlapping windows - never double-counting the recent window into the prior one', async () => {
+  const psych = await psychologyStore();
+  const now = new Date(2026, 2, 1);
+  const recentDay = new Date(2026, 1, 15), priorDay = new Date(2026, 0, 15); // ~15 days ago, ~45 days ago
+  const trades = [
+    closedTrade({ emotionLog: [logEntry(8, 'anxious', { timestamp: recentDay.toISOString() })] }),
+    closedTrade({ emotionLog: [logEntry(4, 'calm', { timestamp: priorDay.toISOString() })] })
+  ];
+  const deltas = psych.ratingDeltas(trades, 30, now);
+  assert.equal(deltas.stress.value, 8);
+  assert.equal(deltas.stress.delta, 4);
+});
+
+test('readinessScore reports hasData:false and a null score when none of the three real factors have anything logged', async () => {
+  const psych = await psychologyStore();
+  const result = psych.readinessScore([], [], new Date(2026, 0, 10));
+  assert.equal(result.hasData, false);
+  assert.equal(result.score, null);
+  assert.equal(result.ready, null);
+});
+
+test('readinessScore deducts for poor sleep logged today and a real loss streak, never inventing a factor with no data', async () => {
+  const psych = await psychologyStore();
+  const now = new Date(2026, 0, 10, 9, 0);
+  const checkins = [checkin({ sleepQuality: 3, createdAt: now.toISOString() })];
+  const trades = [
+    closedTrade({ outcome: 'loss', closedAt: new Date(2026, 0, 10, 8, 0).toISOString() }),
+    closedTrade({ outcome: 'loss', closedAt: new Date(2026, 0, 10, 8, 20).toISOString() })
+  ];
+  const result = psych.readinessScore(trades, checkins, now);
+  assert.equal(result.hasData, true);
+  assert.ok(result.score < 100);
+  assert.ok(result.factors.some((f) => f.key === 'sleep' && f.tone === 'warning'));
+  assert.ok(result.factors.some((f) => f.key === 'lossStreak' && f.tone === 'danger'));
+});
+
+test('disciplineHealthyStreak counts only the trailing run inside the healthy band, and flags it a record only when it is the longest run in the window', async () => {
+  const psych = await psychologyStore();
+  const weeks = [{ score: 40 }, { score: 95 }, { score: 75 }, { score: 80 }, { score: 85 }];
+  const result = psych.disciplineHealthyStreak(weeks, 70, 90);
+  assert.equal(result.streak, 3);
+  assert.equal(result.isRecord, true);
+});
+
+test('disciplineHealthyStreak is not a record when an earlier run in the window was longer', async () => {
+  const psych = await psychologyStore();
+  const weeks = [{ score: 75 }, { score: 80 }, { score: 85 }, { score: 90 }, { score: 40 }, { score: 75 }];
+  const result = psych.disciplineHealthyStreak(weeks, 70, 90);
+  assert.equal(result.streak, 1);
+  assert.equal(result.isRecord, false);
+});

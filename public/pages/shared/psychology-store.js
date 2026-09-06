@@ -432,6 +432,10 @@
       restAvgStress:restAvgStress,restSampleSize:rest.length
     };
   }
+  // Data-quality caveat (also noted on readinessScore below, which uses the same <=4/>=7 split):
+  // PreSessionCheckIn.sleepQuality is written on two different scales by two different real UI
+  // paths - 1-10 via preSessionCheckInModal.jsx's RatingRow, 1-5 via moodTab.jsx's compact
+  // check-in - a pre-existing inconsistency this reducer cannot resolve on its own.
   function sleepNextDayCorrelation(trades,checkins,minSamples){
     var byDay=tradesByDayClosed(trades),bucketOf={};
     (checkins||[]).forEach(function(c){
@@ -570,6 +574,118 @@
     return{total:total,held:held,broke:total-held};
   }
 
+  // ---------------------------------------------------------------------
+  // Overview tab additions: mood-of-the-day insight, self-rating deltas, a readiness score,
+  // and a "healthy band streak" reading for the discipline chart's callout.
+  // ---------------------------------------------------------------------
+
+  // Real win rate on days a specific mood (PreSessionCheckIn.mood, populated by MoodTab's own
+  // log()) was logged - joined by calendar day, same convention as aiInsightCards' correlations.
+  function moodInsight(trades,checkins,mood,minSamples){
+    minSamples=minSamples||5;
+    var byDay=tradesByDayClosed(trades),days={};
+    (checkins||[]).forEach(function(c){
+      if(c.mood!==mood)return;
+      var key=keyOfIso(c.createdAt);
+      if(key)days[key]=true;
+    });
+    var rows=[];
+    Object.keys(days).forEach(function(key){rows=rows.concat(byDay[key]||[]);});
+    if(rows.length<minSamples)return null;
+    return{winRate:winRateOf(rows),sampleSize:rows.length,daysLogged:Object.keys(days).length};
+  }
+
+  // Same three self-ratings selfRatings() already averages, but over two adjacent, non-
+  // overlapping windows so the gauges can show a real trend delta instead of just a snapshot.
+  // selfRatings() itself has no upper bound (deliberately, for its own callers), so this needs
+  // its own bounded reducer rather than calling selfRatings() twice.
+  function ratingsInWindow(trades,sinceMs,untilMs){
+    var stress=[],focus=[],plan=[];
+    (trades||[]).forEach(function(trade){
+      (trade.emotionLog||[]).forEach(function(entry){
+        var t=new Date(entry.timestamp).getTime();
+        if(t<sinceMs||t>=untilMs)return;
+        if(Number.isFinite(Number(entry.stressLevel)))stress.push(Number(entry.stressLevel));
+        if(Number.isFinite(Number(entry.focusQuality)))focus.push(Number(entry.focusQuality));
+        if(Number.isFinite(Number(entry.planCommitment)))plan.push(Number(entry.planCommitment));
+      });
+    });
+    function mean(list){return list.length?Math.round(list.reduce(function(s,v){return s+v;},0)/list.length*10)/10:null;}
+    return{stress:mean(stress),focus:mean(focus),planCommitment:mean(plan),sampleSize:stress.length};
+  }
+  function ratingDeltas(trades,days,now){
+    days=days||30;now=now||new Date();
+    var recentSince=now.getTime()-days*86400000;
+    var recent=ratingsInWindow(trades,recentSince,now.getTime());
+    var prior=ratingsInWindow(trades,recentSince-days*86400000,recentSince);
+    function withDelta(key){
+      var a=recent[key],b=prior[key];
+      return{value:a,delta:(a!=null&&b!=null)?Math.round((a-b)*10)/10:null};
+    }
+    return{stress:withDelta('stress'),focus:withDelta('focus'),planCommitment:withDelta('planCommitment'),sampleSize:recent.sampleSize};
+  }
+
+  // A simple, transparent deduction from three real, already-tracked risk factors - never a
+  // predictive model. Each factor only counts when real data backs it (today's check-in for
+  // sleep, yesterday's logged stress, the real loss streak from tiltReading); hasData is false
+  // (and score null) when none of the three has anything to go on, so the UI can show an honest
+  // "not enough data yet" state instead of a default 100.
+  function readinessScore(trades,checkins,now){
+    now=now||new Date();
+    var tilt=tiltReading(trades,now);
+    var todayKey=dayKey(now);
+    var todaysCheckins=(checkins||[]).filter(function(c){return keyOfIso(c.createdAt)===todayKey;});
+    var latest=todaysCheckins[todaysCheckins.length-1]||null;
+    var yesterdayKey=dayKey(new Date(now.getTime()-86400000));
+    var yesterdayRows=tradesByDayClosed(trades)[yesterdayKey]||[];
+    var yStress=avgOf(yesterdayRows,lastStressOf);
+
+    var score=100,factors=[],hasData=false;
+    // Known data-quality caveat, not something this function can fix: PreSessionCheckIn.sleepQuality
+    // is written on a 1-10 scale by preSessionCheckInModal.jsx's RatingRow (the fuller, "start
+    // session" check-in) but on a 1-5 scale by moodTab.jsx's compact mood-card check-in. The <=4
+    // threshold here matches sleepNextDayCorrelation's "low sleep" bucket in aiInsightCards for
+    // internal consistency; a 1-5 entry will read as low sleep unless it was logged as a 5.
+    var sleepQuality=latest?Number(latest.sleepQuality):NaN;
+    if(Number.isFinite(sleepQuality)){
+      hasData=true;
+      if(sleepQuality<=4){score-=15;factors.push({tone:'warning',key:'sleep',value:sleepQuality});}
+      else factors.push({tone:'success',key:'sleep',value:sleepQuality});
+    }
+    if(yStress!=null){
+      hasData=true;
+      if(yStress>=7){score-=15;factors.push({tone:'warning',key:'stressYesterday',value:yStress});}
+      else factors.push({tone:'success',key:'stressYesterday',value:yStress});
+    }
+    if(tilt.lossStreak>0||tilt.openCount>0||tilt.minutesSinceLoss!=null){
+      hasData=true;
+      factors.push({tone:tilt.lossStreak>=2?'danger':'success',key:'lossStreak',value:tilt.lossStreak});
+      if(tilt.lossStreak>=2)score-=20;
+    }
+    if(tilt.level==='high')score-=15;
+    score=Math.max(0,Math.min(100,score));
+    var suggestion=null;
+    if(hasData){
+      if(score<60)suggestion='halveRisk';
+      else if(score<80)suggestion='caution';
+    }
+    return{score:hasData?score:null,ready:hasData?score>=60:null,suggestion:suggestion,factors:factors,hasData:hasData};
+  }
+
+  // How many trailing weeks (from disciplineWeekly(), oldest-first) sit inside the same healthy
+  // band (70-90) the discipline chart already draws, and whether that trailing run is the
+  // longest such run anywhere in the window passed in - "for the first time in the last N
+  // weeks", scoped honestly to the window actually analysed, never lifetime history not shown.
+  function disciplineHealthyStreak(weeks,low,high){
+    low=low==null?70:low;high=high==null?90:high;
+    function inBand(s){return s!=null&&s>=low&&s<=high;}
+    var trailing=0;
+    for(var i=weeks.length-1;i>=0;i--){if(inBand(weeks[i].score))trailing++;else break;}
+    var best=0,cur=0;
+    weeks.forEach(function(w){if(inBand(w.score)){cur++;best=Math.max(best,cur);}else cur=0;});
+    return{streak:trailing,isRecord:trailing>0&&trailing===best};
+  }
+
   window.TradeJournalPsychologyStore={
     settings:settings,
     saveSettings:saveSettings,
@@ -589,6 +705,10 @@
     openPositionMoods:openPositionMoods,
     aiInsightCards:aiInsightCards,
     cooldownHistory:cooldownHistory,
-    cooldownHistorySummary:cooldownHistorySummary
+    cooldownHistorySummary:cooldownHistorySummary,
+    moodInsight:moodInsight,
+    ratingDeltas:ratingDeltas,
+    readinessScore:readinessScore,
+    disciplineHealthyStreak:disciplineHealthyStreak
   };
 }());
