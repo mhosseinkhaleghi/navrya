@@ -4,7 +4,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-- fix/gemini-voice-admin-key (Codex): Gemini Live is the sole Voice transport, Voice turns use OpenAI chat, and the admin-managed Gemini key path is regression-covered | validation: 111 focused tests passed | next: promote to dev on request
+- fix/gemini-voice-admin-key (Codex): provider-selected OpenAI/Gemini Voice transport, separate Gemini text and Voice diagnostics, and account-synced selection are covered | validation: 160 focused tests passed | next: promote to dev on request
 
 ## Known pending
 

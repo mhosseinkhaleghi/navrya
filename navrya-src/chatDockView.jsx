@@ -609,13 +609,15 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   React.useEffect(() => {
-    // Voice is one product channel: Gemini Live handles microphone transcription and TTS while
-    // submit() pins the approved response to the OpenAI chat provider. A text-provider setting
-    // must never replace a live voice transport or silently select a different voice engine.
-    voiceRef.current = createGeminiLiveSession({
+    // Voice follows the saved provider choice for this account: Gemini selects Gemini Live;
+    // every other provider retains the established OpenAI Realtime transport. The approved
+    // voice turn still goes through submit(), which pins its chat response to OpenAI.
+    const useGeminiLive = providerId === 'gemini';
+    const createTransport = useGeminiLive ? createGeminiLiveSession : createVoiceSession;
+    voiceRef.current = createTransport({
       language: i18n.language(),
-      fetchSession: fetchGeminiLiveSession,
-      fetchSpeakAudio: fetchGeminiSpeak,
+      fetchSession: useGeminiLive ? fetchGeminiLiveSession : fetchRealtimeSession,
+      fetchSpeakAudio: useGeminiLive ? fetchGeminiSpeak : fetchVoiceProviderSpeak,
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,

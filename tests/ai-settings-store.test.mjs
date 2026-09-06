@@ -93,16 +93,25 @@ test('the provider catalog is the single source of truth for voice support - Ope
   assert.equal(byId.deepseek.supportsVoice, false);
 });
 
-test('Gemini is a visible, multimodal structured-output provider while Kimi remains in the full catalog but is paused in ordinary selectors', async () => {
+test('Gemini is a visible, multimodal structured-output provider with the available default while Kimi remains paused in ordinary selectors', async () => {
   const store = await settingsSandbox();
   const gemini = store.providerCatalog().find((entry) => entry.id === 'gemini');
-  assert.deepEqual(Array.from(gemini.models), ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']);
+  assert.deepEqual(Array.from(gemini.models), ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']);
   assert.equal(gemini.supportsVision, true);
   assert.equal(gemini.supportsStructuredOutput, true);
   assert.equal(gemini.supportsReasoning, true);
   assert.equal(store.visibleProviderCatalog().some((entry) => entry.id === 'gemini'), true);
   assert.equal(store.visibleProviderCatalog().some((entry) => entry.id === 'kimi'), false);
   assert.equal(store.visibleProviderCatalog('kimi').some((entry) => entry.id === 'kimi'), true, 'a legacy Kimi selection must never be rendered as a different provider');
+});
+
+test('a saved Gemini 2.5 Pro choice migrates to the available 3.1 preview model on reload', async () => {
+  const prefsStore = { aiSettings: { provider: 'gemini', modelByProvider: { gemini: 'gemini-2.5-pro' } } };
+  const store = await settingsSandbox(memoryStorage(), async (_url, options) => {
+    if (options && options.method === 'GET') return { ok: true, json: async () => ({ preferences: [{ id: 'aiSettings', value: prefsStore.aiSettings }] }) };
+    return { ok: true, json: async () => ({}) };
+  });
+  assert.equal(store.settings().modelByProvider.gemini, 'gemini-3.1-pro-preview');
 });
 
 test('saveSettings merges modelByProvider instead of replacing the whole map', async () => {

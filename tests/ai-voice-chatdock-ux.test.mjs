@@ -171,12 +171,14 @@ test('no browser SpeechSynthesis is ever used as a second, competing voice engin
   assert.doesNotMatch(dockViewSrc, /speechSynthesis|SpeechSynthesisUtterance/i);
 });
 
-test('Gemini Live is the only mounted Voice transport, while Voice chat stays pinned to OpenAI and is never replaced by a later text-provider switch', () => {
-  const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('// Voice is one product channel'), dockViewSrc.indexOf('// Voice Mode performance pass: PlaybackController owns only speech'));
+test('the saved provider selects Gemini Live only for Gemini, while Voice chat stays pinned to OpenAI', () => {
+  const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('const useGeminiLive = providerId'), dockViewSrc.indexOf('// Voice Mode performance pass: PlaybackController owns only speech'));
   assert.match(dockViewSrc, /provider: source === 'voice' \? 'openai' : undefined/);
-  assert.match(effectBlock, /voiceRef\.current = createGeminiLiveSession\(\{/);
-  assert.match(effectBlock, /fetchSession: fetchGeminiLiveSession,/);
-  assert.match(effectBlock, /fetchSpeakAudio: fetchGeminiSpeak,/);
+  assert.match(effectBlock, /const useGeminiLive = providerId === 'gemini';/);
+  assert.match(effectBlock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  assert.match(effectBlock, /voiceRef\.current = createTransport\(\{/);
+  assert.match(effectBlock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
+  assert.match(effectBlock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
   assert.match(dockViewSrc, /playbackControllerRef\.current = window\.TradeJournalAIVoicePlaybackController\.create\(/);
   assert.match(dockViewSrc, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
   assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); \};/);

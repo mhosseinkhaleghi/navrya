@@ -6,7 +6,7 @@ import test, { after, afterEach } from 'node:test';
 // exported mintRealtimeClientSecret() against a stubbed OpenAI /v1/realtime/client_secrets
 // response, never a reimplementation of its logic.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests } = serverModule;
+const { mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -310,6 +310,27 @@ test('Gemini Live resolves the admin-managed Gemini key before the environment f
   __resetAdminKeyCacheForTests();
 });
 
+test('the admin Gemini Voice diagnostic validates both Live and TTS without exposing a token, audio, or key', async () => {
+  __resetAdminKeyCacheForTests();
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    const target = String(url);
+    if (target.includes('/internal/admin-ai-keys')) return { ok: true, json: async () => ({ gemini: 'admin-gemini-secret' }) };
+    if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    requests.push({ target, options });
+    if (target.includes('/auth_tokens')) return { ok: true, json: async () => ({ name: 'auth_tokens/admin-test', expireTime: '2026-09-06T00:30:00Z' }) };
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: 'pcm-base64', mimeType: 'audio/L16;rate=24000' } }] } }] }) };
+  };
+  const result = await withEnv({ GEMINI_API_KEY: '' }, () => adminTestGeminiVoice({ role: 'admin' }));
+  assert.deepEqual(requests.map((request) => request.target.includes('/auth_tokens') ? 'live' : 'tts'), ['live', 'tts']);
+  assert.equal(result.ok, true);
+  assert.equal(result.liveModel, 'gemini-3.5-transcribe-live');
+  assert.equal(result.ttsModel, 'gemini-3.1-flash-tts-preview');
+  assert.doesNotMatch(JSON.stringify(result), /admin-gemini-secret|auth_tokens\/admin-test|pcm-base64/);
+  await assert.rejects(() => adminTestGeminiVoice({ role: 'user' }), /ADMIN_REQUIRED/);
+  __resetAdminKeyCacheForTests();
+});
+
 test('Gemini TTS reads the approved text server-side and returns only provider audio, never its API key', async () => {
   let request = null;
   globalThis.fetch = async (url, options) => {
@@ -330,4 +351,15 @@ test('Gemini TTS reads the approved text server-side and returns only provider a
   assert.equal(result.voice, 'Sulafat');
   assert.equal(result.audioBase64, 'pcm-base64');
   assert.doesNotMatch(JSON.stringify(result), /gemini-permanent-secret/);
+});
+
+test('Gemini Voice reports Google’s unsupported-location response as a distinct safe error code', async () => {
+  globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    return { ok: false, status: 400, json: async () => ({ error: { message: 'User location is not supported for the API use.' } }) };
+  };
+  await assert.rejects(
+    () => speakWithGemini({ language: 'en', text: 'NAVRYA check.', apiKey: 'gemini-permanent-secret' }),
+    /GEMINI_TTS_LOCATION_UNSUPPORTED/
+  );
 });

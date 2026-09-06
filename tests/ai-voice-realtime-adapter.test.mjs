@@ -219,15 +219,17 @@ test('voice turns are serialized through TurnCoordinator - never processed concu
   assert.match(dockViewSource, /return turnCoordinatorRef\.current\.handleFinalTranscript\(/);
 });
 
-test('the voice-transport mount effect always creates Gemini Live and never couples Voice to the selected text provider', () => {
-  const effectBody = dockViewSource.slice(dockViewSource.indexOf('// Voice is one product channel'), dockViewSource.indexOf('// Voice Mode performance pass: PlaybackController owns only speech'));
-  assert.match(effectBody, /voiceRef\.current = createGeminiLiveSession\(\{/);
-  assert.match(effectBody, /fetchSession: fetchGeminiLiveSession,/);
-  assert.match(effectBody, /fetchSpeakAudio: fetchGeminiSpeak,/);
+test('the voice-transport mount effect uses OpenAI Realtime except when the saved provider is Gemini', () => {
+  const effectBody = dockViewSource.slice(dockViewSource.indexOf('const useGeminiLive = providerId'), dockViewSource.indexOf('// Voice Mode performance pass: PlaybackController owns only speech'));
+  assert.match(effectBody, /const useGeminiLive = providerId === 'gemini';/);
+  assert.match(effectBody, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  assert.match(effectBody, /voiceRef\.current = createTransport\(\{/);
+  assert.match(effectBody, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
+  assert.match(effectBody, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
 });
 
-test('the Gemini voice-transport mount effect never re-runs on a later text-provider switch', () => {
-  const effectStart = dockViewSource.indexOf('// Voice is one product channel');
+test('the provider-selected voice transport does not interrupt a live session on a later provider switch', () => {
+  const effectStart = dockViewSource.indexOf('const useGeminiLive = providerId');
   const effectEnd = dockViewSource.indexOf('}, []);', effectStart);
   assert.ok(effectStart > -1 && effectEnd > -1, 'could not find the voice-transport mount effect and its own closing []-deps');
 });

@@ -54,7 +54,7 @@ const languageNames = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 
 // as before. Only the new dock/gateway routes let the client pick a different provider.
 const providerEnvKey = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY', kimi: 'KIMI_API_KEY', deepseek: 'DEEPSEEK_API_KEY' };
 const providerEnvModel = { openai: 'OPENAI_MODEL', anthropic: 'ANTHROPIC_MODEL', gemini: 'GEMINI_MODEL', kimi: 'KIMI_MODEL', deepseek: 'DEEPSEEK_MODEL' };
-const providerDefaultModel = { openai: 'gpt-5.6', anthropic: 'claude-sonnet-4-5', gemini: 'gemini-2.5-pro', kimi: 'moonshot-v1-8k', deepseek: 'deepseek-chat' };
+const providerDefaultModel = { openai: 'gpt-5.6', anthropic: 'claude-sonnet-4-5', gemini: 'gemini-3.1-pro-preview', kimi: 'moonshot-v1-8k', deepseek: 'deepseek-chat' };
 // Scenario Map/Analysis Map's one image-generation model (callOpenAIImageEdit(), the OpenAI-only
 // images/edits endpoint) - named once so the actual API call, the provider/model these routes
 // report back for billing, and the wallet-reservation pinning (IMAGE_GENERATION_ROUTES below) can
@@ -2296,6 +2296,11 @@ const GEMINI_TTS_CHARACTERS = Object.keys(GEMINI_TTS_CHARACTER_STYLE);
 const GEMINI_TTS_GENDERS = ['male', 'female'];
 
 function geminiVoiceForLanguage(language) { return GEMINI_TTS_VOICE_BY_LANGUAGE[language] || GEMINI_TTS_VOICE_BY_LANGUAGE.en; }
+async function geminiVoiceFailureCode(response, prefix) {
+  const detail = await response.json().catch(() => null);
+  const message = detail && detail.error && typeof detail.error.message === 'string' ? detail.error.message : '';
+  return /location is not supported/i.test(message) ? `${prefix}_LOCATION_UNSUPPORTED` : `${prefix}_FAILED_${response.status}`;
+}
 function geminiVoiceProfile(body, language) {
   const character = GEMINI_TTS_CHARACTERS.includes(body.character) ? body.character : 'hunter';
   const gender = GEMINI_TTS_GENDERS.includes(body.gender) ? body.gender : 'male';
@@ -2350,7 +2355,7 @@ async function mintGeminiLiveToken(body) {
       }),
       signal: AbortSignal.timeout(15000)
     });
-    if (!response.ok) throw new Error('GEMINI_LIVE_TOKEN_FAILED_' + response.status);
+    if (!response.ok) throw new Error(await geminiVoiceFailureCode(response, 'GEMINI_LIVE_TOKEN'));
     const data = await response.json();
     if (!data || typeof data.name !== 'string' || !data.name) throw new Error('GEMINI_LIVE_TOKEN_INVALID');
     reportProviderHealth({ provider: 'gemini', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.live-session' });
@@ -2384,7 +2389,7 @@ async function speakWithGemini(body) {
       }),
       signal: AbortSignal.timeout(30000)
     });
-    if (!response.ok) throw new Error('GEMINI_TTS_FAILED_' + response.status);
+    if (!response.ok) throw new Error(await geminiVoiceFailureCode(response, 'GEMINI_TTS'));
     const data = await response.json();
     const parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
     const audio = Array.isArray(parts) && parts.find((part) => part && part.inlineData && part.inlineData.data);
@@ -2395,6 +2400,26 @@ async function speakWithGemini(body) {
     reportProviderHealth({ provider: 'gemini', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.tts' });
     throw error;
   }
+}
+
+// The generic provider test is intentionally text-only. Gemini Voice has different models and
+// endpoints, so this admin-only diagnostic validates the exact Live-token and TTS paths that a
+// Gemini Voice session needs, without returning its one-use token, generated audio, or API key.
+async function adminTestGeminiVoice(session) {
+  if (!session || session.role !== 'admin') throw new Error('ADMIN_REQUIRED');
+  const startedAt = Date.now();
+  const live = await mintGeminiLiveToken({ language: 'en' });
+  const tts = await speakWithGemini({
+    language: 'en', text: 'NAVRYA Gemini voice check.', character: 'hunter', gender: 'male'
+  });
+  return {
+    ok: true,
+    provider: 'gemini',
+    liveModel: live.model,
+    ttsModel: tts.model,
+    ttsVoice: tts.voice,
+    latencyMs: Date.now() - startedAt
+  };
 }
 
 // Dynamic VAD (Voice Mode performance pass): the initial eagerness a fresh connect() mints with -
@@ -2921,6 +2946,7 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/ai/realtime/session') result = await mintRealtimeClientSecret(body, session.userId);
     else if (request.url === '/api/ai/gemini-live/session') result = await mintGeminiLiveToken(body);
     else if (request.url === '/api/ai/gemini-live/speak') result = await speakWithGemini(body);
+    else if (request.url === '/api/ai/gemini-live/test') result = await adminTestGeminiVoice(session);
     // Admin-only hardened replacement for the old isolated /api/ai/voice/test-tts-fa (see
     // adminTestVoiceProviderTts()'s own header comment for what changed and why).
     else if (request.url === '/api/ai/voice/test-tts') result = await adminTestVoiceProviderTts(body, session);
@@ -2987,7 +3013,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 export default server;
 export {
   callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
-  historyItem, dockChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
+  historyItem, dockChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, internalWalletCallWithRetry,
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,

@@ -359,6 +359,8 @@ test('the AI tab renders per-provider health badges, a Test now action, a recent
   assert.match(texts, /4,200|4200/, 'the top-users table must render the real token total');
   const testButtons = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test now');
   assert.equal(testButtons.length, 5, 'every configured provider must have its own Test now action');
+  const geminiVoiceTests = findAll(node, (n) => n.tagName === 'button' && n.textContent === 'Test Gemini Voice');
+  assert.equal(geminiVoiceTests.length, 1, 'Gemini must expose a separate Voice diagnostic, not present its text check as Voice health');
 });
 
 // ElevenLabs voice-provider follow-up (character/gender redesign): the two tests above only ever

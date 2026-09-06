@@ -85,7 +85,7 @@
       supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
     },
     {
-      id: 'gemini', label: 'Gemini', endpoint: 'generativelanguage.googleapis.com', models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'], supportsVoice: true, trait: 'spin', knockout: false,
+      id: 'gemini', label: 'Gemini', endpoint: 'generativelanguage.googleapis.com', models: ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'], supportsVoice: true, trait: 'spin', knockout: false,
       supportsVision: true, supportsStructuredOutput: true, supportsReasoning: true, supportsImageGeneration: false, recommendedForChartAnalysis: true
     },
     {
@@ -118,8 +118,12 @@
     var base = defaults();
     var prefs = window.TradeJournalUserPreferences;
     var stored = (prefs ? prefs.getPref(PREF_KEY, null) : null) || {};
+    var modelByProvider = Object.assign({}, base.modelByProvider, stored.modelByProvider || {});
+    // Gemini retired this model for new API users. Preserve every other stored selection, but
+    // never keep reopening a known-unavailable model after a refresh.
+    if (modelByProvider.gemini === 'gemini-2.5-pro') modelByProvider.gemini = 'gemini-3.1-pro-preview';
     return Object.assign({}, base, stored, {
-      modelByProvider: Object.assign({}, base.modelByProvider, stored.modelByProvider || {}),
+      modelByProvider: modelByProvider,
       voiceByProvider: Object.assign({}, base.voiceByProvider, stored.voiceByProvider || {}),
       budgetByProvider: Object.assign({}, base.budgetByProvider, stored.budgetByProvider || {})
     });

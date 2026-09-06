@@ -139,6 +139,21 @@ test('Gemini uses its native structured-output API, preserves multimodal convers
   assert.equal(result.model, 'gemini-2.5-pro');
 });
 
+test('Gemini text calls without an explicit model use the supported default instead of the retired gemini-2.5-pro', async () => {
+  let calledUrl = null;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    calledUrl = String(url);
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ ok: true }) }] } }], usageMetadata: {} }) };
+  };
+  const result = await callProvider('gemini', 'gemini-key', undefined, {
+    input: [{ role: 'user', content: [{ type: 'input_text', text: 'ping' }] }],
+    text: { format: { schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] } } }
+  });
+  assert.match(calledUrl, /models\/gemini-3\.1-pro-preview:generateContent$/);
+  assert.equal(result.model, 'gemini-3.1-pro-preview');
+});
+
 test('a Kimi/DeepSeek response missing a required schema key throws SCHEMA_VALIDATION_FAILED, not a fabricated field', async () => {
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ notTheRightKey: 1 }) } }], usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } }) });
   await assert.rejects(

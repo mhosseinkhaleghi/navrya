@@ -74,7 +74,7 @@ const translations = {
     levelXpLabel: 'Level {level} · {xp} XP', achievementsLabel: 'Achievements', noAchievements: 'No achievements unlocked yet.',
     subscriptionsLabel: 'Subscriptions', noSubscriptions: 'No subscriptions.', mockBadge: 'mock', purchasedOnLabel: 'Purchased {date}',
     aiHealthLabel: 'Health', statusHealthy: 'Healthy', statusDegraded: 'Degraded', statusIdle: 'Idle', statusDisconnected: 'Disconnected', statusUnconfigured: 'Not configured', statusUnknown: 'Not tested yet',
-    aiTestNow: 'Test now', aiTestingNow: 'Testing…', aiTestOk: 'Connection OK.', aiLastChecked: 'Last checked {date}', aiLastErrorLabel: 'Last error: {error}',
+    aiTestNow: 'Test now', aiTestingNow: 'Testing…', aiTestOk: 'Connection OK.', aiTestGeminiVoice: 'Test Gemini Voice', aiTestingGeminiVoice: 'Testing Voice…', aiGeminiVoiceTestOk: 'Gemini Live and TTS are ready.', aiGeminiVoiceLocationUnsupported: 'Gemini Voice is unavailable from this server location.', aiLastChecked: 'Last checked {date}', aiLastErrorLabel: 'Last error: {error}',
     // AI & Voice tab page header + section head (Chunk 3 restyle).
     aiPageSubtitle: 'Provider keys, pricing, live health, ElevenLabs voice routing, and platform-wide usage.',
     aiProviderKeysTitle: 'Provider keys & pricing', statHealthyProviders: 'Healthy providers',
@@ -266,7 +266,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     levelXpLabel: 'سطح {level} · {xp} امتیاز', achievementsLabel: 'دستاوردها', noAchievements: 'هنوز دستاوردی باز نشده است.',
     subscriptionsLabel: 'اشتراک‌ها', noSubscriptions: 'اشتراکی وجود ندارد.', mockBadge: 'آزمایشی', purchasedOnLabel: 'خریداری‌شده در {date}',
     aiHealthLabel: 'سلامت', statusHealthy: 'سالم', statusDegraded: 'ناپایدار', statusIdle: 'بی‌فعالیت', statusDisconnected: 'قطع شده', statusUnconfigured: 'پیکربندی نشده', statusUnknown: 'هنوز تست نشده',
-    aiTestNow: 'تست همین حالا', aiTestingNow: 'در حال تست…', aiTestOk: 'اتصال برقرار است.', aiLastChecked: 'آخرین بررسی {date}', aiLastErrorLabel: 'آخرین خطا: {error}',
+    aiTestNow: 'تست همین حالا', aiTestingNow: 'در حال تست…', aiTestOk: 'اتصال برقرار است.', aiTestGeminiVoice: 'تست صدای Gemini', aiTestingGeminiVoice: 'در حال تست صدا…', aiGeminiVoiceTestOk: 'Gemini Live و TTS آماده‌اند.', aiGeminiVoiceLocationUnsupported: 'صدای Gemini از موقعیت این سرور در دسترس نیست.', aiLastChecked: 'آخرین بررسی {date}', aiLastErrorLabel: 'آخرین خطا: {error}',
     aiPageSubtitle: 'کلیدهای سرویس‌دهنده، قیمت‌گذاری، سلامت زنده، مسیردهی صدای ElevenLabs و مصرف کل پلتفرم.',
     aiProviderKeysTitle: 'کلیدهای سرویس‌دهنده و قیمت‌گذاری', statHealthyProviders: 'سرویس‌دهنده‌های سالم',
     voiceProvidersTitle: 'ارائه‌دهنده‌های صدا (ElevenLabs)', voiceProvidersHint: 'کلیدهای ElevenLabs و مسیردهی صدا به‌ازای هر زبان، مدیریت‌شده توسط ادمین - برای حالت صوتی زنده. تغییرات بلافاصله اعمال می‌شوند، بدون نیاز به دیپلوی دوباره.',
@@ -453,7 +453,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     levelXpLabel: 'المستوى {level} · {xp} نقطة', achievementsLabel: 'الإنجازات', noAchievements: 'لا توجد إنجازات مفتوحة بعد.',
     subscriptionsLabel: 'الاشتراكات', noSubscriptions: 'لا توجد اشتراكات.', mockBadge: 'تجريبي', purchasedOnLabel: 'تم الشراء في {date}',
     aiHealthLabel: 'الحالة', statusHealthy: 'سليم', statusDegraded: 'غير مستقر', statusIdle: 'خامل', statusDisconnected: 'منقطع', statusUnconfigured: 'غير مهيّأ', statusUnknown: 'لم يُختبر بعد',
-    aiTestNow: 'اختبار الآن', aiTestingNow: 'جارٍ الاختبار…', aiTestOk: 'الاتصال يعمل.', aiLastChecked: 'آخر فحص {date}', aiLastErrorLabel: 'آخر خطأ: {error}',
+    aiTestNow: 'اختبار الآن', aiTestingNow: 'جارٍ الاختبار…', aiTestOk: 'الاتصال يعمل.', aiTestGeminiVoice: 'اختبار صوت Gemini', aiTestingGeminiVoice: 'جارٍ اختبار الصوت…', aiGeminiVoiceTestOk: 'Gemini Live وTTS جاهزان.', aiGeminiVoiceLocationUnsupported: 'صوت Gemini غير متاح من موقع هذا الخادم.', aiLastChecked: 'آخر فحص {date}', aiLastErrorLabel: 'آخر خطأ: {error}',
     aiPageSubtitle: 'مفاتيح المزوّدين، التسعير، الحالة الحية، توجيه صوت ElevenLabs، والاستخدام على مستوى المنصة.',
     aiProviderKeysTitle: 'مفاتيح المزوّدين والتسعير', statHealthyProviders: 'مزوّدون سليمون',
     voiceProvidersTitle: 'مزوّدو الصوت (ElevenLabs)', voiceProvidersHint: 'مفاتيح ElevenLabs وتوجيه الصوت لكل لغة، تديرها الإدارة - لوضع الصوت المباشر. تُطبَّق التغييرات فورًا دون الحاجة لإعادة النشر.',
@@ -640,7 +640,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     levelXpLabel: 'Nivel {level} · {xp} XP', achievementsLabel: 'Logros', noAchievements: 'Aún no hay logros desbloqueados.',
     subscriptionsLabel: 'Suscripciones', noSubscriptions: 'Sin suscripciones.', mockBadge: 'simulado', purchasedOnLabel: 'Comprado el {date}',
     aiHealthLabel: 'Estado', statusHealthy: 'Saludable', statusDegraded: 'Inestable', statusIdle: 'Inactivo', statusDisconnected: 'Desconectado', statusUnconfigured: 'No configurado', statusUnknown: 'Aún no probado',
-    aiTestNow: 'Probar ahora', aiTestingNow: 'Probando…', aiTestOk: 'Conexión correcta.', aiLastChecked: 'Última verificación {date}', aiLastErrorLabel: 'Último error: {error}',
+    aiTestNow: 'Probar ahora', aiTestingNow: 'Probando…', aiTestOk: 'Conexión correcta.', aiTestGeminiVoice: 'Probar voz de Gemini', aiTestingGeminiVoice: 'Probando voz…', aiGeminiVoiceTestOk: 'Gemini Live y TTS están listos.', aiGeminiVoiceLocationUnsupported: 'La voz de Gemini no está disponible desde la ubicación de este servidor.', aiLastChecked: 'Última verificación {date}', aiLastErrorLabel: 'Último error: {error}',
     aiPageSubtitle: 'Claves de proveedores, precios, estado en vivo, enrutamiento de voz ElevenLabs y uso de toda la plataforma.',
     aiProviderKeysTitle: 'Claves de proveedores y precios', statHealthyProviders: 'Proveedores saludables',
     voiceProvidersTitle: 'Proveedores de voz (ElevenLabs)', voiceProvidersHint: 'Credenciales de ElevenLabs y enrutamiento de voz por idioma, gestionados por el administrador, para el Modo de Voz en vivo. Los cambios se aplican de inmediato, sin necesidad de reimplementar.',
@@ -1259,6 +1259,20 @@ function aiTab() {
           .finally(() => renderTab());
       };
       card.append(testBtn);
+
+      if (provider === 'gemini') {
+        const voiceTestBtn = el('button', 'btn btn-secondary btn-sm', t('aiTestGeminiVoice'));
+        voiceTestBtn.type = 'button';
+        voiceTestBtn.onclick = () => {
+          voiceTestBtn.disabled = true; voiceTestBtn.textContent = t('aiTestingGeminiVoice');
+          fetch('/api/ai/gemini-live/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+            .then((response) => response.json().catch(() => ({})).then((body) => { if (!response.ok || !body.ok) throw new Error(body.error || 'FAILED'); }))
+            .then(() => showToast(t('aiGeminiVoiceTestOk')))
+            .catch((error) => showToast(error.message === 'GEMINI_TTS_LOCATION_UNSUPPORTED' || error.message === 'GEMINI_LIVE_TOKEN_LOCATION_UNSUPPORTED' ? t('aiGeminiVoiceLocationUnsupported') : error.message, 'danger'))
+            .finally(() => renderTab());
+        };
+        card.append(voiceTestBtn);
+      }
 
       const keyInfo = keyByProvider[provider];
       card.append(el('p', 'hint', keyInfo && keyInfo.isSet ? t('aiKeyStatusSet') + (keyInfo.updatedAt ? ' · ' + t('aiKeyUpdatedAt', { date: fmtDate(keyInfo.updatedAt) }) : '') : t('aiKeyStatusNotSet')));
