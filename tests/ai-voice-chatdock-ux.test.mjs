@@ -181,7 +181,10 @@ test('the saved provider selects Gemini Live only for Gemini, while Voice chat s
   assert.match(effectBlock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
   assert.match(dockViewSrc, /playbackControllerRef\.current = window\.TradeJournalAIVoicePlaybackController\.create\(/);
   assert.match(dockViewSrc, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
-  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); \};/);
+  // Slice R1 (request ownership/cancellation): unmount also aborts every still-in-flight request
+  // (typed or voice) this dock ever started - see abortActiveRequests()'s own comment - alongside
+  // the pre-existing transport disconnect/playback invalidation this test already pinned.
+  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); \};/);
   assert.match(dockViewSrc, /\}, \[\]\);/);
 });
 

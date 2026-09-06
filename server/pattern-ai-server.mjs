@@ -550,6 +550,18 @@ function strategyAttachmentContent(attachments) {
 // schema-conformant parsed object and `usage` is { promptTokens, completionTokens, totalTokens }
 // (fields left null when a provider doesn't report them - never estimated/fabricated). ---
 
+// Slice R1 (request ownership/cancellation): each caller below already owns a real AbortController
+// for its own ~90s upstream timeout - that ceiling is never removed or shortened. `externalSignal`
+// (optional, currently only ever the dispatcher's own "the browser genuinely disconnected" signal -
+// see the server's request handler below) is composed alongside it via the platform's own
+// AbortSignal.any() (Node >=20.3; this deploy targets Node 22 - see Dockerfile/CI workflows) so
+// EITHER source can end the same underlying fetch, whichever fires first. A caller that never
+// passes one (every other route on this gateway, unchanged this pass) gets back the timeout
+// controller's own signal untouched - byte-identical behavior to before this function existed.
+function composedSignal(controllerSignal, externalSignal) {
+  return externalSignal ? AbortSignal.any([controllerSignal, externalSignal]) : controllerSignal;
+}
+
 // Production repair pass: callers may set payload.reasoning ({effort}) and payload.text.verbosity
 // (alongside the existing payload.text.format) to intentionally tune a GPT-5.6/Responses-API
 // call's depth and answer length (see dockChat()'s own per-turn-type policy below) - both are
@@ -558,7 +570,7 @@ function strategyAttachmentContent(attachments) {
 // has to be remembered: callAnthropic()/callOpenAICompatible() below each build their OWN request
 // body from payload.input/payload.text.format only - they never spread `payload` itself, so an
 // extra payload.reasoning/payload.text.verbosity a caller sets is simply never read by either.
-async function callOpenAI(payload, apiKey, model) {
+async function callOpenAI(payload, apiKey, model, externalSignal) {
   const controller = new AbortController();
   // Session Analysis output-budget policy (brief §4) once again: same additive, opt-in
   // payload.timeoutMs as payload.max_output_tokens above - a frontier-tier reasoning model doing a
@@ -576,7 +588,7 @@ async function callOpenAI(payload, apiKey, model) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(Object.assign({}, providerPayload, { model })),
-      signal: controller.signal
+      signal: composedSignal(controller.signal, externalSignal)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `OPENAI_${response.status}`);
@@ -625,7 +637,7 @@ async function callOpenAI(payload, apiKey, model) {
 // output is obtained via forced tool-use: one tool built from the same schema, tool_choice
 // pinned to it. The tool_use block's `input` is already parsed JSON. Required-key validation
 // is still run as a safety net since tool-use is reliable but not byte-identical-strict.
-async function callAnthropic(payload, apiKey, model) {
+async function callAnthropic(payload, apiKey, model, externalSignal) {
   const controller = new AbortController();
   // Same additive, opt-in payload.timeoutMs as callOpenAI's own comment above.
   const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
@@ -661,7 +673,7 @@ async function callAnthropic(payload, apiKey, model) {
         tools: [{ name: toolName, description: 'Return the structured result.', input_schema: schema }],
         tool_choice: { type: 'tool', name: toolName }
       }),
-      signal: controller.signal
+      signal: composedSignal(controller.signal, externalSignal)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `ANTHROPIC_${response.status}`);
@@ -723,7 +735,7 @@ function geminiResponseSchema(value) {
 // Gemini uses its native GenerateContent API, not the OpenAI compatibility layer. NAVRYA owns
 // conversation state and action safety, so requests remain stateless and never enable provider
 // tools. The existing schema is forwarded as Gemini structured output and validated again below.
-async function callGemini(payload, apiKey, model) {
+async function callGemini(payload, apiKey, model, externalSignal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
   try {
@@ -756,7 +768,7 @@ async function callGemini(payload, apiKey, model) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal: composedSignal(controller.signal, externalSignal)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `GEMINI_${response.status}`);
@@ -795,7 +807,7 @@ const compatibleBaseUrl = { kimi: 'https://api.moonshot.cn/v1/chat/completions',
 // validating after parse. Kimi's vision-capable models accept image_url parts; DeepSeek's
 // chat model has no vision support, so images are dropped with an honest in-text note rather
 // than silently ignored.
-async function callOpenAICompatible(provider, payload, apiKey, model) {
+async function callOpenAICompatible(provider, payload, apiKey, model, externalSignal) {
   const controller = new AbortController();
   // Same additive, opt-in payload.timeoutMs as callOpenAI's own comment above.
   const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
@@ -829,7 +841,7 @@ async function callOpenAICompatible(provider, payload, apiKey, model) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal: composedSignal(controller.signal, externalSignal)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || `${provider.toUpperCase()}_${response.status}`);
@@ -899,7 +911,7 @@ function reportVoiceTtsUsage(event) {
 // function already computed for the pre-existing provider-health event feed (section 37: "do not
 // build another provider-health database"), just also surfaces it back to the caller so
 // chat-dock-core.js's debugLastLatency() can report it without a second measurement.
-async function callProvider(providerInput, apiKeyOverride, modelOverride, payload, source) {
+async function callProvider(providerInput, apiKeyOverride, modelOverride, payload, source, externalSignal) {
   const provider = resolveProviderName(providerInput);
   const startedAt = Date.now();
   const keyResolveStartedAt = Date.now();
@@ -917,10 +929,10 @@ async function callProvider(providerInput, apiKeyOverride, modelOverride, payloa
       ? modelOverride.trim()
       : (process.env[providerEnvModel[provider]] || providerDefaultModel[provider]);
     const providerCallStartedAt = Date.now();
-    const outcome = provider === 'openai' ? await callOpenAI(payload, key, model)
-      : provider === 'anthropic' ? await callAnthropic(payload, key, model)
-      : provider === 'gemini' ? await callGemini(payload, key, model)
-      : await callOpenAICompatible(provider, payload, key, model);
+    const outcome = provider === 'openai' ? await callOpenAI(payload, key, model, externalSignal)
+      : provider === 'anthropic' ? await callAnthropic(payload, key, model, externalSignal)
+      : provider === 'gemini' ? await callGemini(payload, key, model, externalSignal)
+      : await callOpenAICompatible(provider, payload, key, model, externalSignal);
     const latencyMs = Date.now() - startedAt;
     reportProviderHealth({ provider, ok: true, errorCode: null, latencyMs, source });
     return { data: outcome.data, usage: outcome.usage, provider, model, latencyMs, keyLookupMs, providerCallMs: Date.now() - providerCallStartedAt };
@@ -1816,7 +1828,7 @@ function mentalHealthContext(body) {
   });
 }
 
-async function mentalHealthChat(body) {
+async function mentalHealthChat(body, externalSignal) {
   const language = languageNames[body.language] || languageNames.en;
   const history = (Array.isArray(body.chatHistory) ? body.chatHistory : []).slice(-24).map(historyItem);
   const { data: result, usage, provider, model } = await callProvider(body.provider, body.apiKey, body.model, {
@@ -1829,7 +1841,7 @@ async function mentalHealthChat(body) {
       { role: 'user', content: [{ type: 'input_text', text: `${String(body.message || '').trim()}\n\nKnown field paths you may target: ${JSON.stringify(mentalHealthPaths)}\n\nCurrent context:\n${mentalHealthContext(body)}` }] }
     ],
     text: { format: mentalHealthChatFormat }
-  }, 'mentalHealth.chat');
+  }, 'mentalHealth.chat', externalSignal);
   return { reply: result.reply || '', distressFlag: !!result.distressFlag, suggestions: result.suggestions || [], provider, model, usage };
 }
 
@@ -2108,7 +2120,7 @@ async function visualizeAnalysis(body) {
 // anything at all. Both fixes are stated plainly, not left implicit.
 const DOCK_STYLE_INSTRUCTION = 'NAVRYA is a local trading JOURNAL and PLANNING tool - it has its own real Session/Trade/Strategy/Pattern features, but it is never connected to a live broker or exchange and never executes a real order. When a message reads as wanting to plan, size, or log a trade or session, that maps to using NAVRYA\'s own real feature (a registered action, if one is offered - see below) - never reply as a generic crypto/trading assistant describing how the user would do this on their own exchange; that is a different question than the one being asked here. For genuine questions, give a polished, useful answer rather than a terse one-liner: state the conclusion clearly, explain the relevant NAVRYA context or reasoning, mention material caveats, and suggest a useful next step when appropriate. Stay concise for simple confirmations or when the user\'s own question is simple - match your depth to theirs, don\'t pad. Write in plain text only - never markdown syntax (no "**bold**", no "# headers", no "*" bullets); use real paragraph breaks, and for a genuine list, one short "- item" per line, since that is exactly what actually renders cleanly here. Avoid generic filler ("Sure!", "Great question!") and avoid robotic one-line replies. Never claim a NAVRYA action occurred until the application actually confirms it - but this caution applies ONLY to the action you are selecting on THIS turn. Once you selected a NAVRYA action in an earlier turn of this same conversation and the user has since sent a new message, treat that earlier action as having completed successfully; never describe it as still pending, not yet saved, or unconfirmed, and never let it block, delay, or add a confirmation step in front of a new, unrelated action - the passage of even a few seconds of real time is enough for NAVRYA\'s own save to finish. Only the user\'s own words (e.g. them saying it failed or asking you to redo it) should ever suggest otherwise. Do not give personalized financial advice.';
 
-async function dockChat(body) {
+async function dockChat(body, externalSignal) {
   const gatewayReceivedAt = Date.now();
   const language = languageNames[body.language] || languageNames.en;
   const history = (Array.isArray(body.chatHistory) ? body.chatHistory : []).slice(-24).map(historyItem);
@@ -2213,7 +2225,7 @@ async function dockChat(body) {
     ],
     reasoning: { effort: turnTuning.reasoningEffort },
     text: { format: requestFormat, verbosity: turnTuning.verbosity }
-  }, 'ai.chat');
+  }, 'ai.chat', externalSignal);
   // Latency pass, section 1/36: duration-only diagnostics threaded back to the client so
   // chat-dock-core.js's debugLastLatency() can report a real server-side breakdown instead of
   // treating the whole round trip as one opaque "network" number. Never a timestamp (client/server
@@ -2910,6 +2922,21 @@ const server = http.createServer(async (request, response) => {
     return json(response, 429, { error: quota.reason });
   }
 
+  // Slice R1 (request ownership/cancellation): if the browser genuinely disconnects mid-request -
+  // New Chat, a conversation switch, a closed tab, a dropped connection - before this response is
+  // sent, abort the in-flight provider call instead of letting it run to its own ~90s timeout for
+  // nothing (audit findings C2/C3, "the abandoned-cost" section: today an abandoned request still
+  // consumes quota/wallet and completes fully, with no way for the client to actually stop it).
+  // Node's `request` 'close' event fires on BOTH normal completion and abnormal disconnection - the
+  // `responded` flag (set once, in the `finally` below, covering every real exit path of the
+  // try/catch that follows) distinguishes the two, so a normal, already-answered request never
+  // fires a pointless late abort. Only ever wired into dockChat()/mentalHealthChat() below (the two
+  // routes this slice covers) - every other route on this gateway is completely unaffected, still
+  // gated only by its own existing timeout.
+  let responded = false;
+  const clientDisconnectController = new AbortController();
+  request.on('close', () => { if (!responded) clientDisconnectController.abort(); });
+
   let walletReservationId = null;
   try {
     const body = await readBody(request);
@@ -2950,9 +2977,9 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/trades/analyze') result = await analyzeTrade(body);
     else if (request.url === '/api/trades/psychology-analysis') result = await psychologyAnalysis(body);
     else if (request.url === '/api/trades/extract-fields') result = await extractTradeFields(body);
-    else if (request.url === '/api/mental-health/chat') result = await mentalHealthChat(body);
+    else if (request.url === '/api/mental-health/chat') result = await mentalHealthChat(body, clientDisconnectController.signal);
     else if (request.url === '/api/mental-health/education-card') result = await mentalHealthEducationCard(body);
-    else if (request.url === '/api/ai/chat') result = await dockChat(body);
+    else if (request.url === '/api/ai/chat') result = await dockChat(body, clientDisconnectController.signal);
     else if (request.url === '/api/sessions/analyze') result = await analyzeSession(body);
     else if (request.url === '/api/sessions/visualize-scenario') result = await visualizeScenario(body);
     else if (request.url === '/api/sessions/visualize-analysis') result = await visualizeAnalysis(body);
@@ -3003,6 +3030,12 @@ const server = http.createServer(async (request, response) => {
     // not a stable code a client can key a translated message off of - normalized to one here.
     const errorCode = error.name === 'AbortError' ? 'PROVIDER_TIMEOUT' : (error.message || 'PATTERN_AI_FAILED');
     return json(response, status, { error: errorCode });
+  } finally {
+    // Flips exactly once, covering every real exit path above (the success return and every
+    // handled-error return) - the request-level 'close' listener registered above reads this to
+    // tell "this request finished normally, a late close event means nothing" apart from "the
+    // browser genuinely disconnected while this was still in flight."
+    responded = true;
   }
 });
 
@@ -3027,7 +3060,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 export default server;
 export {
   callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
-  historyItem, dockChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
+  historyItem, dockChat, mentalHealthChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, internalWalletCallWithRetry,
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,

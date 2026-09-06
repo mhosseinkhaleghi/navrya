@@ -104,11 +104,22 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // navigations (A6: the mode must always be visibly true to what's on screen).
   const [therapistMode, setTherapistMode] = React.useState(() => !!settingsStore.settings().therapistModeDefault);
   const [transcript, setTranscript] = React.useState([]);
+  // Slice R1 (request ownership/cancellation), audit finding C4: `submit()` used to read
+  // `transcript`/`activeConversationId` straight from React state, closed over at whichever render
+  // created that particular `submit` invocation. Two turns landing close together (a fast typed
+  // follow-up, or a voice turn racing a typed one) could each still be running against the render
+  // that was current when THEY started, not the latest one - a real risk of losing a message or
+  // attaching a reply to the wrong conversation id. These refs are the synchronous, always-current
+  // snapshot `submit()` now reads instead; React state stays their rendered view, updated in the
+  // same tick via replaceTranscript()/replaceConversationId() below - never a second source of
+  // truth, just a synchronous mirror of the same value.
+  const transcriptRef = React.useRef([]);
   const [popover, setPopover] = React.useState(null);
   // Which server-side conversation (ai-chat-history-store.js) the current thread is saved as -
   // null until the first successful reply of a fresh session creates one. A real, growing,
   // resumable conversation now, not "every question is its own disconnected history card".
   const [activeConversationId, setActiveConversationId] = React.useState(null);
+  const activeConversationIdRef = React.useRef(null);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyList, setHistoryList] = React.useState([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
@@ -177,6 +188,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   const conversationEpochRef = React.useRef(0);
   const turnCoordinatorRef = React.useRef(null);
   const playbackControllerRef = React.useRef(null);
+  // Slice R1 (request ownership/cancellation), audit findings C2/C6: every currently in-flight
+  // submit() (typed OR voice - both now go through the exact same mechanism) registers its own
+  // AbortController here, tagged with its own source, for the duration of its own core.sendChat()
+  // call, and removes itself once settled. abortActiveRequests() aborts and clears matching
+  // entries - the real fetch a stale/abandoned request was still waiting on is actually cancelled,
+  // not just its eventual result discarded after the fact. Kept as a controller->source Map (not a
+  // plain Set) specifically so End Voice can abort only voice-owned work (the cancellation policy's
+  // own "preserve already accepted draft values"/don't touch an unrelated typed turn requirement) -
+  // New Chat/resume/unmount still abort everything regardless of source.
+  const activeRequestControllersRef = React.useRef(new Map());
   const fileInputRef = React.useRef(null);
   const rtl = i18n.direction() === 'rtl';
   const historyStore = window.TradeJournalAiChatHistoryStore;
@@ -222,6 +243,40 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
 
   function closePopover() { setPopover((p) => (p ? { ...p, open: false } : p)); }
 
+  // Slice R1: the one place transcript state ever changes - keeps transcriptRef (submit()'s own
+  // synchronous read) and the rendered React state in permanent agreement. Never a second source
+  // of truth - `next` is always the caller's own already-computed full array, exactly like every
+  // existing setTranscript(nextTranscript) call already passed.
+  function replaceTranscript(next) {
+    transcriptRef.current = next;
+    setTranscript(next);
+  }
+  function replaceConversationId(next) {
+    activeConversationIdRef.current = next;
+    setActiveConversationId(next);
+  }
+
+  // Slice R1 (request ownership/cancellation), audit findings C2/C6: aborts every currently
+  // tracked in-flight submit() matching `onlySource` (typed or voice - both register here), or
+  // every one of them when called with no argument. Unlike PlaybackController.invalidate()/
+  // interrupt() (speech only) or ai-workflow-engine.js's own cancel() (a real, driven workflow
+  // only), this is the one place that actually reaches the real network request(s) a stale/
+  // abandoned turn was still waiting on - the abort itself is what lets core.sendChat()'s own
+  // fetch() reject immediately (server/pattern-ai-server.mjs's own client-disconnect listener then
+  // cancels the upstream provider call too, instead of it running to its ~90s timeout for
+  // nothing). A controller already settled by the time this runs is a harmless, idempotent no-op
+  // abort() call. Collected into a plain array before aborting/deleting, rather than mutating the
+  // Map mid-forEach, purely so this stays obviously correct regardless of Map iteration semantics.
+  function abortActiveRequests(onlySource) {
+    const map = activeRequestControllersRef.current;
+    const toAbort = [];
+    map.forEach((source, controller) => { if (!onlySource || source === onlySource) toAbort.push(controller); });
+    toAbort.forEach((controller) => {
+      try { controller.abort(); } catch (_) { /* no-op */ }
+      map.delete(controller);
+    });
+  }
+
   // New Chat: clears the visible thread and the server-conversation link - the next message
   // starts a brand-new conversation rather than appending to whatever was open before. Also
   // releases any workflow/confirmation still in flight from the conversation just left behind
@@ -233,13 +288,19 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // again once it resolves - see ai-voice-turn-coordinator.js) or a reply already queued to be
   // spoken (PlaybackController.invalidate() drops it and interrupts anything playing right now -
   // see ai-voice-playback-controller.js) must never reach the new conversation.
+  //
+  // Slice R1: also aborts every currently in-flight request (typed or voice) - previously only
+  // playback/workflow ownership was released; the real network call(s) a still-running turn was
+  // waiting on kept running regardless, consuming quota/wallet for a reply nothing would ever use
+  // (audit's "abandoned-cost" finding).
   function startNewChat() {
-    setTranscript([]);
-    setActiveConversationId(null);
+    replaceTranscript([]);
+    replaceConversationId(null);
     setPopover(null);
     setHistoryOpen(false);
     if (core && typeof core.resetConversationState === 'function') core.resetConversationState();
     conversationEpochRef.current += 1;
+    abortActiveRequests();
     if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
     // fix/voice-mode-turn-ux: New Chat is a "the user has moved on" moment for the voice-specific
     // caption (Part C req 7) and any manual "End message" commit still awaiting its server ack
@@ -267,19 +328,32 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // performance pass: switching to a different conversation is the same kind of "moved on" event
   // startNewChat() guards against - bumps the epoch and invalidates queued/in-flight voice work
   // the same way.
+  //
+  // Slice R1, audit finding C5: the epoch bump/abort/invalidate used to happen only AFTER
+  // `historyStore.get(id)` resolved - so a still-in-flight submit() from the conversation being
+  // LEFT could keep running (and its eventual result could still land) for the whole duration of
+  // that GET, and two resume() calls fired close together (an impatient double-click) could finish
+  // out of order, the second GET's own record silently overwritten by the first one's later
+  // resolution. Moved to the top, synchronously, exactly like startNewChat() already does - "the
+  // user has moved on" is true the instant resumeConversation() is called, not once its own network
+  // call happens to finish. epochAtStart is then compared again once the GET resolves, so an
+  // overtaken resume() (a newer resumeConversation()/startNewChat() call arriving before this one's
+  // own GET finishes) discards its own now-stale record instead of applying it over the newer state.
   async function resumeConversation(id) {
     setHistoryOpen(false);
     if (!historyStore) return;
+    conversationEpochRef.current += 1;
+    const epochAtStart = conversationEpochRef.current;
+    abortActiveRequests();
+    if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
+    setVoiceReplyCaption('');
+    if (voiceRef.current) voiceRef.current.cancelManualFinish();
     try {
       const record = await historyStore.get(id);
-      if (!record) return;
+      if (!record || conversationEpochRef.current !== epochAtStart) return;
       const messages = record.messages || [];
-      conversationEpochRef.current += 1;
-      if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
-      setVoiceReplyCaption('');
-      if (voiceRef.current) voiceRef.current.cancelManualFinish();
-      setTranscript(messages.slice(-24));
-      setActiveConversationId(record.id);
+      replaceTranscript(messages.slice(-24));
+      replaceConversationId(record.id);
       setPopover({ open: true, state: 'answer', messages, suggestions: [], activeProcessId: null });
     } catch (_err) { /* no-op - resuming is best-effort */ }
   }
@@ -313,14 +387,34 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     });
   }
 
+  // Slice R1: typed and voice submissions can now genuinely overlap in flight (they no longer
+  // share one strict queue - see the header comment on turnCoordinatorRef for what IS shared: the
+  // epoch/abort-set staleness mechanism below, not literal serialization). A plain boolean `busy`
+  // would let the FIRST of two overlapping calls to finish wrongly clear it while the second is
+  // still running - this counter-ref makes "busy" mean "at least one submit is in flight",
+  // correctly, regardless of ordering.
+  const pendingSubmitCountRef = React.useRef(0);
+
   async function submit(value, options) {
     const source = (options && options.source) === 'voice' ? 'voice' : 'text';
+    // Slice R1 (request ownership/cancellation), audit findings C1-C6: this turn's own immutable
+    // identity - captured once, here, before anything async happens. `epochAtStart` is compared
+    // against conversationEpochRef.current (bumped by startNewChat()/resumeConversation()) at every
+    // checkpoint below; `controller` is this turn's own AbortController, registered in the shared
+    // set abortActiveRequests() (New Chat, resume, End Voice, unmount) drains - either mechanism
+    // firing means this turn's own eventual result must never touch React state or the real form
+    // pipeline, and its own real network request should actually stop, not just be ignored.
+    const epochAtStart = conversationEpochRef.current;
+    const controller = new AbortController();
+    activeRequestControllersRef.current.set(controller, source);
+    const isStale = () => conversationEpochRef.current !== epochAtStart;
     // Sending any message is unambiguously an explicit engagement with the dock (item 1/14) -
     // harmless to set unconditionally here even for a Voice-sourced turn, which already set it
     // itself the moment Voice was pressed (toggleVoice()).
     setDockExplicitlyOpened(true);
     setText('');
     setPopover((p) => ({ open: true, state: 'thinking', prompt: value, messages: p && p.messages }));
+    pendingSubmitCountRef.current += 1;
     setBusy(true);
     // NAVRYA chat dock redesign: real per-turn timestamp/latency for the message-grid's timestamp
     // row (never fabricated - a conversation resumed from server history simply has no `at` on
@@ -334,8 +428,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // companionContext - the question text itself (value) is a real, per-step localized prompt
       // (CompanionCard's own explainPrompt), never a synthetic "continue" message. explainStepId
       // is passed through only as debug metadata (chat-dock-core.js's debugLastTurn()).
+      //
+      // Slice R1: transcript/conversationId now come from the synchronous refs (audit finding C4),
+      // never the render-time closure values - always this turn's own most current snapshot,
+      // regardless of another turn having started and finished between when THIS render happened
+      // and when this specific submit() call actually runs. `signal`/`isCurrent` let
+      // chat-dock-core.js itself cancel the real fetch and refuse to act on a stale result before
+      // ever returning here (see that file's own comment) - the checks below are what stop this
+      // function from touching React state on top of that.
       const result = await core.sendChat({
-        text: value, therapistMode, transcript, conversationId: activeConversationId, source,
+        text: value, therapistMode, transcript: transcriptRef.current, conversationId: activeConversationIdRef.current, source,
         // Gemini Voice owns only transcription/TTS. Voice-originated text uses the already
         // configured OpenAI conversation provider, so Gemini chat quota cannot break Voice.
         provider: source === 'voice' ? 'openai' : undefined,
@@ -343,26 +445,29 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         // Journey G UX correction, item 10: set for exactly the one voice turn that immediately
         // follows a spoken Companion opening (see onVoiceTranscript below) - chat-dock-core.js's
         // own deterministic Start/Later/Explain classifier only ever runs when this is true.
-        awaitingCompanionOpeningReply: options && options.awaitingCompanionOpeningReply
+        awaitingCompanionOpeningReply: options && options.awaitingCompanionOpeningReply,
+        signal: controller.signal, isCurrent: () => !isStale()
       });
+      if (isStale()) return { kind: 'discarded', reply: '', voiceReply: '' };
       const renderStampAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-      if (!result) { setBusy(false); return null; }
+      if (!result) return null;
+      if (result.kind === 'discarded') return result;
       if (result.kind === 'safety') {
         // Mirrors the retired global-ai-dock.js exactly: the user turn is still recorded, but
         // no assistant turn exists to append when the safety gate stops the reply.
-        setTranscript((t) => t.concat([{ role: 'user', content: value, at: sentAt }]).slice(-24));
+        replaceTranscript(transcriptRef.current.concat([{ role: 'user', content: value, at: sentAt }]).slice(-24));
         const safetyNode = window.TradeJournalMentalHealthSafety
           ? window.TradeJournalMentalHealthSafety.renderSafetyCard(closePopover)
           : null;
         setPopover({ open: true, state: 'safety', prompt: value, safetyNode });
         return { kind: 'safety', reply: '' };
       } else {
-        const nextTranscript = transcript.concat([
+        const nextTranscript = transcriptRef.current.concat([
           { role: 'user', content: value, at: sentAt },
           { role: 'assistant', content: result.reply || '', at: Date.now(), latencyMs: Date.now() - sentAt }
         ]).slice(-24);
-        setTranscript(nextTranscript);
-        if (result.conversationId) setActiveConversationId(result.conversationId);
+        replaceTranscript(nextTranscript);
+        if (result.conversationId) replaceConversationId(result.conversationId);
         setPopover({
           open: true, state: 'answer', messages: nextTranscript,
           suggestions: (result.suggestions || []).map((s, i) => ({ id: s.id || 'sugg-' + i, ...s })),
@@ -396,12 +501,18 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         };
       }
     } catch (_err) {
-      const nextTranscript = transcript.concat([{ role: 'user', content: value, at: sentAt }, { role: 'assistant', content: i18n.t('aiDockError'), at: Date.now() }]).slice(-24);
-      setTranscript(nextTranscript);
+      // Slice R1: an aborted fetch (abortActiveRequests()) or a turn the user has otherwise moved
+      // on from must never append a generic error to a transcript it no longer belongs to - a
+      // discarded outcome is not a failure worth showing.
+      if (isStale() || controller.signal.aborted) return { kind: 'discarded', reply: '', voiceReply: '' };
+      const nextTranscript = transcriptRef.current.concat([{ role: 'user', content: value, at: sentAt }, { role: 'assistant', content: i18n.t('aiDockError'), at: Date.now() }]).slice(-24);
+      replaceTranscript(nextTranscript);
       setPopover({ open: true, state: 'answer', messages: nextTranscript });
       return { kind: 'error', reply: i18n.t('aiDockError') };
     } finally {
-      setBusy(false);
+      activeRequestControllersRef.current.delete(controller);
+      pendingSubmitCountRef.current = Math.max(0, pendingSubmitCountRef.current - 1);
+      setBusy(pendingSubmitCountRef.current > 0);
     }
   }
 
@@ -748,7 +859,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         }
       }
     });
-    return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); };
+    // Slice R1: unmount (a character switch tearing down this whole React root) is the same "the
+    // user has moved on" moment as New Chat, for every kind of request this dock ever started, not
+    // just voice-owned ones - the dock itself is going away, so nothing it started should keep
+    // running for a reply nothing will ever render.
+    return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); abortActiveRequests(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -823,14 +938,25 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       voiceRef.current.setLanguage(i18n.language());
       voiceRef.current.connect().catch(() => {});
     } else {
+      // Slice R1: the mic-button toggle's own disconnect path - functionally the same "the user is
+      // done with Voice" moment as endVoice() above, so it gets the same voice-owned-only abort.
       voiceRef.current.disconnect();
+      abortActiveRequests('voice');
     }
   }
 
   // ERROR is retryable through toggleVoice(), so ending Voice needs a separate path.
+  //
+  // Slice R1, audit finding C6: previously only disconnected the transport - a voice turn's own
+  // submit() still in flight (waiting on the network) kept running regardless, and its eventual
+  // result could still reach the (now-gone) playback queue via a late TurnCoordinator callback.
+  // Only voice-owned requests are aborted here (an unrelated typed message the user sent moments
+  // earlier must not be cut off just because Voice ended) - see abortActiveRequests()'s own
+  // comment.
   function endVoice() {
     if (!voiceRef.current) return;
     voiceRef.current.disconnect();
+    abortActiveRequests('voice');
     setVoiceErrorStage(null);
   }
 

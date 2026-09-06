@@ -129,7 +129,13 @@
       var mhStore = window.TradeJournalMentalHealthStore, mhAi = window.TradeJournalMentalHealthAI;
       if (!mhStore || !mhAi) throw new Error('AI_REQUEST_FAILED');
       var profile = mhStore.addMessage(mhStore.load(), 'user', text);
-      var mhResult = await mhAi.chat(profile, text);
+      var mhResult = await mhAi.chat(profile, text, options && options.signal);
+      // Slice R1 (request ownership/cancellation), audit finding C9: Therapist Mode had its own
+      // real 60s timeout controller but no way for the caller to know the conversation had already
+      // moved on (New Chat, a switch) while this await was in flight - this turn's own reply could
+      // still land in the profile's persisted chat history and the (already-abandoned) transcript.
+      // isCurrent() is the same owner-supplied check the main network path below uses.
+      if (options && typeof options.isCurrent === 'function' && !options.isCurrent()) return { kind: 'discarded', reply: '', voiceReply: '' };
       if (mhResult.flagged) return { kind: 'safety' };
       mhStore.addMessage(profile, 'assistant', mhResult.reply, mhResult.suggestions);
       return { kind: 'assistant', reply: mhResult.reply, suggestions: [], activeProcess: null };
@@ -626,10 +632,26 @@
     var tFetchStart = now();
     var response = await fetch('/api/ai/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      // Slice R1 (request ownership/cancellation): the owner (chatDockView.jsx) supplies its own
+      // per-turn AbortController's signal - New Chat, a conversation switch, End Voice, or unmount
+      // can now actually cancel this exact in-flight fetch instead of it running to completion
+      // (and the server's own ~90s provider timeout) for a turn nobody is waiting on any more. A
+      // caller that never supplies one (any legacy/direct call to sendChat()) gets byte-identical
+      // prior behavior - `signal: undefined` is a plain no-op for fetch().
+      signal: options && options.signal
     });
     var payload = await response.json();
     var tResponseParsed = now();
+    // Slice R1, audit finding C3: "stale coordinator discard happens too late to protect React" -
+    // checked here, immediately after the one real network round trip this function makes and
+    // BEFORE any of the real side effects below (workflow field-application, history persistence,
+    // wallet-changed event) - not just at the top-level return chatDockView.jsx's own submit()
+    // already checks. isCurrent() is the owner's own synchronous "has the conversation moved on"
+    // check (chatDockView.jsx compares its own conversationEpochRef against the value captured
+    // when this turn started) - optional, so a caller that never supplies one keeps exactly the
+    // prior behavior.
+    if (options && typeof options.isCurrent === 'function' && !options.isCurrent()) return { kind: 'discarded', reply: '', voiceReply: '' };
     if (!response.ok) throw new Error(payload.error || 'AI_REQUEST_FAILED');
     if (window.TradeJournalAIUsage) window.TradeJournalAIUsage.record({ provider: payload.provider, usage: payload.usage, source: 'chatDock.chat' });
     // AI billing operational fix (requirement 3) - a billed chat turn debits the wallet

@@ -5,14 +5,27 @@
   var safety = window.TradeJournalMentalHealthSafety;
   if (!i18n || !store) return;
 
-  function request(path, payload) {
+  // Slice R1 (request ownership/cancellation), audit finding C9: this real 60s timeout controller
+  // had no way for a caller to compose in its own "the conversation moved on" signal - an
+  // externalSignal (optional; every existing caller before this pass never passed one, and keeps
+  // this function's exact prior behavior) is composed alongside it via a plain listener, not
+  // AbortSignal.any() - this file runs as a classic browser <script>, and a manual listener needs
+  // no baseline beyond AbortController itself, already required for the pre-existing 60s timeout.
+  // Either source can end the same real fetch, whichever fires first; the 60s ceiling is never
+  // shortened or removed.
+  function request(path, payload, externalSignal) {
     var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 60000);
+    var onExternalAbort = function () { controller.abort(); };
+    if (externalSignal) externalSignal.addEventListener('abort', onExternalAbort);
     return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal })
       .then(function (response) {
         if (!response.ok) return response.json().catch(function () { return {}; }).then(function (body) { throw new Error(body.error || 'AI_REQUEST_FAILED'); });
         return response.json();
       })
-      .finally(function () { clearTimeout(timer); });
+      .finally(function () {
+        clearTimeout(timer);
+        if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+      });
   }
 
   function suggestion(path, value, section, mode) { return { id: store.uid('mh-proposal'), path: path, section: section, value: value, mode: mode || 'append', status: 'pending', createdAt: new Date().toISOString() }; }
@@ -41,14 +54,14 @@
   // feature, so when the AI is unreachable the chat still replies, just without proposing any changes.
   function localSuggestions() { return []; }
 
-  async function chat(profile, message) {
+  async function chat(profile, message, externalSignal) {
     if (safety) {
       var check = safety.checkText(message);
       if (check.flagged) return { flagged: true, reply: '', suggestions: [], provider: 'safety-gate', local: false };
     }
     var payload = { language: i18n.language(), message: message, chatHistory: (profile.chatHistory || []).slice(-24).map(function (m) { return { role: m.role, content: m.content }; }), context: context(profile) };
     try {
-      var result = await request('/api/mental-health/chat', payload);
+      var result = await request('/api/mental-health/chat', payload, externalSignal);
       return {
         flagged: !!result.distressFlag, reply: String(result.reply || ''),
         suggestions: (result.suggestions || []).map(function (s) { return suggestion(s.path, s.value, s.section, s.mode); }),
