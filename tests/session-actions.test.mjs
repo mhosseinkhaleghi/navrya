@@ -27,7 +27,7 @@ test('session.chartEntry.create requires an active Session, declares entityAlrea
   const block = actionBlock('session.chartEntry.create');
   assert.match(block, /domain: 'sessions'/);
   assert.match(block, /entityAlreadyPersisted: true/);
-  assert.match(block, /requiredFields: \[\], optionalFields: \['timeframe', 'market', 'date', 'note'\]/);
+  assert.match(block, /requiredFields: \[\], optionalFields: \['timeframe', 'market', 'date', 'note', 'relatedScenarios'\]/);
   assert.match(block, /available: \(context\) => !!\(context && context\.activeEntities && context\.activeEntities\.sessionId\)/);
   assert.match(block, /can never auto-complete or fabricate an image/);
 });
@@ -102,7 +102,7 @@ test('session.scenario.edit resolves an EXISTING, named scenario by exact, case-
 // the currently-open scenario via context.activeEntities.scenarioId.
 test('session.scenario.edit has no required fields - scenarioTitle is optional, resolving the CURRENTLY-OPEN scenario (context.activeEntities.scenarioId) when omitted, so a follow-up turn can keep filling a just-created scenario that has no distinguishing name yet', () => {
   const block = actionBlock('session.scenario.edit');
-  assert.match(block, /requiredFields: \[\], optionalFields: \['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName', 'probability', 'invalidationNote', 'invalidationTags'\]/);
+  assert.match(block, /requiredFields: \[\], optionalFields: \['scenarioTitle', 'title', 'description', 'evidence', 'problem', 'trigger', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'completedStage', 'incompleteStage'\]/);
   assert.match(block, /var activeScenarioId = context && context\.activeEntities && context\.activeEntities\.scenarioId;/);
   assert.match(block, /if \(!activeScenarioId\) \{ resolve\(null\); return; \}/, 'no name given AND nothing currently open must still never guess');
   assert.match(block, /target = flat\.find\(\(sc\) => sc\.id === activeScenarioId\);/);
@@ -240,7 +240,7 @@ test('every free-text AiMagicFill site in liveSessionView.jsx also passes a real
 // shape the manual controls already use (probabilityHistory append, invalidationTagIds
 // append-dedup, invalidationNote replace).
 test('the live-session-scenario-{id} registration allowlist includes probability/invalidationNote/invalidationTags, and applyValue() writes each through the SAME real mechanism the manual controls use', () => {
-  assert.match(liveSessionSrc, /allowlist: \['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'confirmDelete'\]/);
+  assert.match(liveSessionSrc, /allowlist: \['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'completedStage', 'incompleteStage', 'confirmDelete'\]/);
   // probability: clamped 0-100, appended as a new probabilityHistory entry - never a bare
   // current-value overwrite (probabilityOf() itself reads the LATEST entry of a real log).
   assert.match(liveSessionSrc, /const clamped = Math\.max\(0, Math\.min\(100, n\)\);/);

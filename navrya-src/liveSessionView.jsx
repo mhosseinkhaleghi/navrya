@@ -582,6 +582,12 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
   const [error, setError] = React.useState('');
   const fileRef = React.useRef(null);
   const scenarios = flatScenarios(session);
+  // Slice U2-e: kept current every render so the mount-once registration effect's own applyValue()
+  // below can re-derive the real, CURRENT scenario list fresh each call, instead of the one
+  // captured at mount - the same anti-stale-closure convention this file already uses everywhere
+  // else (onUpdateRef, scenarioRef, ...).
+  const sessionRef = React.useRef(session);
+  sessionRef.current = session;
 
   function handleFile(f) {
     if (!f || !f.type.startsWith('image/')) return;
@@ -607,13 +613,30 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('live-session-chart-entry', {
-      allowlist: ['note', 'timeframe', 'market', 'date'],
+      allowlist: ['note', 'timeframe', 'market', 'date', 'relatedScenarios'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
         if (path === 'note') setNote(String(value ?? ''));
         else if (path === 'timeframe' && TIMEFRAMES.indexOf(value) > -1) setTimeframe(value);
         else if (path === 'market' && MARKET_NAMES.indexOf(value) > -1) setMarket(value);
         else if (path === 'date') setDate(String(value ?? ''));
+        // Slice U2-e (execution brief section 9 item 5, "chart related-scenario link"): the exact
+        // same real relatedScenarioIds this form's own manual chip picker already writes (see
+        // toggleRelated()/submit() above) - resolved by exact, case-insensitive TITLE match
+        // against `scenarios` (this modal's own real flatScenarios(session) list, the identical
+        // set the manual chips render from), never guessed (F53). Replaces the full selection each
+        // time, matching pattern.edit's own instruments field convention - the model is expected
+        // to restate the full intended set, not accumulate silently across turns.
+        else if (path === 'relatedScenarios') {
+          const wanted = (Array.isArray(value) ? value : String(value ?? '').split(',')).map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+          if (!wanted.length) return;
+          const freshScenarios = flatScenarios(sessionRef.current);
+          const ids = wanted.map((title) => {
+            const matches = freshScenarios.filter(({ scenario: sc }) => String(sc.title || '').trim().toLowerCase() === title);
+            return matches.length === 1 ? matches[0].scenario.id : null;
+          }).filter(Boolean);
+          if (ids.length) setRelated(ids);
+        }
       }
     });
     return () => { mountedRef.current = false; };
@@ -962,6 +985,10 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
   // mount-time closure.
   const onDeleteRef = React.useRef(onDelete);
   onDeleteRef.current = onDelete;
+  // Slice U2-e: same ref pattern again - onToggleStage is read from inside the registration
+  // effect's own applyValue() below, which must never be a stale mount-time closure either.
+  const onToggleStageRef = React.useRef(onToggleStage);
+  onToggleStageRef.current = onToggleStage;
 
   // Journey H1 closure: magic-fill animation for this Scenario's own AI-fillable fields - the
   // real, existing controlled state (onUpdate/onSetSide) stays fully authoritative; this only
@@ -1035,7 +1062,7 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       // 2026-08-28 bug report: probability/invalidationNote/invalidationTags were never
       // AI-fillable at all - not a write bug, simply never added to the allowlist the model is
       // even told exists. Added now, same shape as every other real field here.
-      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'confirmDelete'],
+      allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'completedStage', 'incompleteStage', 'confirmDelete'],
       isOpen: () => mountedRef.current && open,
       submit: () => onDeleteRef.current(),
       applyValue: (path, value) => {
@@ -1077,6 +1104,23 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
           const additions = String(value ?? '').split(',').map((part) => part.trim()).filter((part) => part && existing.indexOf(part) === -1);
           if (!additions.length) return;
           onUpdateRef.current({ invalidationTagIds: existing.concat(additions) });
+        }
+        // Slice U2-e (execution brief section 9 item 5, "actual pattern-stage completion"): the
+        // target stage is resolved by its own exact, case-insensitive TEXT against this scenario's
+        // real, linked pattern.stages (a stage's id is synthetic and never spoken) - zero or
+        // ambiguous matches never guessed (F53). Idempotent by design: onToggleStage() is the real
+        // manual checkbox's own handler, a pure toggle, so it is only actually invoked when the
+        // stage's CURRENT completion state differs from what was asked for - saying "mark it
+        // complete" twice must never silently flip it back to incomplete.
+        if (path === 'completedStage' || path === 'incompleteStage') {
+          const wantComplete = path === 'completedStage';
+          const wantedText = String(value ?? '').trim().toLowerCase();
+          if (!wantedText) return;
+          const stages = (scenarioRef.current.pattern && scenarioRef.current.pattern.stages) || [];
+          const matches = stages.filter((s) => String(s.text || '').trim().toLowerCase() === wantedText);
+          if (matches.length !== 1) return; // zero or ambiguous - never guess (F53)
+          const isComplete = (scenarioRef.current.pattern.completedStageIds || []).indexOf(matches[0].id) > -1;
+          if (isComplete !== wantComplete) onToggleStageRef.current(matches[0]);
         }
       }
     });
@@ -2778,6 +2822,22 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       const ids = (target.pattern.completedStageIds || []).slice();
       const at = ids.indexOf(stage.id);
       if (at > -1) ids.splice(at, 1); else ids.push(stage.id);
+      target.pattern.completedStageIds = ids;
+    }, 'pattern_stage_toggled', stage.label, scenario.id, true);
+  }
+  // Slice U2-e (execution brief section 9 item 5, "actual pattern-stage completion"): the exact
+  // same real completedStageIds mutation toggleStage() above already makes, called with an
+  // explicit desired state rather than a toggle - voice needs "mark this stage complete" to be
+  // idempotent (saying it twice must never silently undo it the way a raw toggle would).
+  function setStageCompletion(entry, scenario, stage, completed) {
+    persist((s) => {
+      const targetEntry = (s.entries || []).find((e) => e.id === entry.id);
+      const target = targetEntry && (targetEntry.scenarios || []).find((sc) => sc.id === scenario.id);
+      if (!target || !target.pattern) return;
+      const ids = (target.pattern.completedStageIds || []).slice();
+      const at = ids.indexOf(stage.id);
+      if (completed && at === -1) ids.push(stage.id);
+      else if (!completed && at > -1) ids.splice(at, 1);
       target.pattern.completedStageIds = ids;
     }, 'pattern_stage_toggled', stage.label, scenario.id, true);
   }
