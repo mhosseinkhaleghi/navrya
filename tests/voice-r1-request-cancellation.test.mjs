@@ -24,6 +24,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 const HEALTH_EVENT_URL = '/internal/ai-health-event';
+const ADMIN_MODEL_OVERRIDES_URL = '/internal/admin-ai-model-overrides';
 const neutralHealthEventResponse = { ok: true, json: async () => ({}) };
 
 // A fetch stub that never resolves on its own and records the real `signal` it was given - the
@@ -35,6 +36,9 @@ const neutralHealthEventResponse = { ok: true, json: async () => ({}) };
 function neverResolvingFetchCapturingSignal(captured) {
   return function (url, options) {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    // callProvider() resolves its non-secret Admin model fallback before the real provider call.
+    // Keep this fixture focused on the provider fetch that must observe the external abort.
+    if (String(url).includes(ADMIN_MODEL_OVERRIDES_URL)) return { ok: true, json: async () => ({}) };
     captured.signal = options && options.signal;
     return new Promise((_resolve, reject) => {
       if (captured.signal) {
