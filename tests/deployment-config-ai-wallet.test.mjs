@@ -36,12 +36,12 @@ test('production forwards Gemini credentials only to the AI gateway and document
   const patternAiBlock = serviceBlock(compose, 'pattern-ai');
   const communityApiBlock = serviceBlock(compose, 'community-api');
   assert.match(patternAiBlock, /GEMINI_API_KEY:\s*\$\{GEMINI_API_KEY:-\}/);
-  assert.match(patternAiBlock, /GEMINI_MODEL:\s*\$\{GEMINI_MODEL:-gemini-2\.5-pro\}/);
+  assert.match(patternAiBlock, /GEMINI_MODEL:\s*\$\{GEMINI_MODEL:-gemini-3\.1-pro-preview\}/);
   assert.match(patternAiBlock, /GEMINI_LIVE_MODEL:\s*\$\{GEMINI_LIVE_MODEL:-gemini-3\.5-transcribe-live\}/);
   assert.match(patternAiBlock, /GEMINI_TTS_MODEL:\s*\$\{GEMINI_TTS_MODEL:-gemini-3\.1-flash-tts-preview\}/);
   assert.doesNotMatch(communityApiBlock, /GEMINI_API_KEY/);
   assert.match(productionEnv, /^GEMINI_API_KEY=$/m);
-  assert.match(productionEnv, /^GEMINI_MODEL=gemini-2\.5-pro$/m);
+  assert.match(productionEnv, /^GEMINI_MODEL=gemini-3\.1-pro-preview$/m);
   assert.match(productionEnv, /^GEMINI_LIVE_MODEL=gemini-3\.5-transcribe-live$/m);
   assert.match(productionEnv, /^GEMINI_TTS_MODEL=gemini-3\.1-flash-tts-preview$/m);
 });
