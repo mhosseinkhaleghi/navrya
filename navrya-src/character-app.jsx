@@ -998,11 +998,21 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'pattern.edit', domain: 'patterns', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Open an EXISTING market Pattern by name so its name, description, completion threshold percentage (0-100), or instrument list can be edited. patternName identifies which existing Pattern to open - it is never a rename. instruments, if the user asks to change which instruments this pattern applies to, must be real, exact codes from the user\'s own Instrument Catalog - never guessed. Only select this action once the user has actually named which existing Pattern they mean; if they have not, ask them which Pattern first instead of guessing.',
+        description: 'Open an EXISTING market Pattern by name so its name, description, completion threshold percentage (0-100), or instrument list can be edited. patternName identifies which existing Pattern to open - it is never a rename. instruments, if the user asks to change which instruments this pattern applies to, must be real, exact codes from the user\'s own Instrument Catalog - never guessed. tab optionally jumps straight to one exact tab - details, chat, report, or share - only when the user actually asked for that specific tab; defaults to details otherwise. Only select this action once the user has actually named which existing Pattern they mean; if they have not, ask them which Pattern first instead of guessing.',
         aliases: ['edit a pattern', 'edit the pattern', 'update a pattern', 'change the pattern', 'open the pattern'],
-        requiredFields: ['patternName'], optionalFields: ['name', 'description', 'completionThreshold', 'instruments'],
+        requiredFields: ['patternName'], optionalFields: ['name', 'description', 'completionThreshold', 'instruments', 'tab'],
         available: () => true,
+        // Slice U2-b (execution brief section 9 item 4, "actual ... report navigation"): 'tab'
+        // mirrors account.open's own convention exactly - a resolution-only field that only picks
+        // WHICH real, already-existing DetailView tab to show (never a mutation), validated
+        // against the exact real tab ids DetailView's own tab bar accepts (strategiesHubView.jsx)
+        // rather than trusting an invented value through to the real setter.
         normalizeField: (path, value) => {
+          if (path === 'tab') {
+            var validTab = ['details', 'chat', 'report', 'share'];
+            var requestedTab = String(value == null ? '' : value).trim();
+            return validTab.indexOf(requestedTab) !== -1 ? requestedTab : null;
+          }
           if (path !== 'instruments') return value;
           var helpers = window.TradeJournalAITradeActions;
           var catalogStore = window.TradeJournalInstrumentCatalogStore;
@@ -1018,11 +1028,15 @@ export function mountCharacterApp(character) {
           var matches = patterns.filter((p) => String(p.name || '').trim().toLowerCase() === patternName.toLowerCase());
           if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
           var target = matches[0];
+          var tabField = (initialFields || []).filter((f) => f && f.path === 'tab')[0];
+          var VALID_PATTERN_TABS = ['details', 'chat', 'report', 'share'];
+          var requestedTab = tabField ? String(tabField.value == null ? '' : tabField.value).trim() : '';
+          var initialTab = VALID_PATTERN_TABS.indexOf(requestedTab) !== -1 ? requestedTab : undefined;
           if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
           pollFor(
             () => window.TradeJournalNavryaPatternHub,
             (hub) => {
-              hub.openExisting(target.id);
+              hub.openExisting(target.id, initialTab);
               var processId = 'pattern-editor-' + target.id;
               var registry = window.TradeJournalAIProcessRegistry;
               pollFor(
@@ -1152,10 +1166,20 @@ export function mountCharacterApp(character) {
       // (F53) - zero or ambiguous matches resolve nothing rather than picking one.
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'strategy.edit', domain: 'strategies', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Open an EXISTING Strategy by name so its rules can be edited: entry/stop/exit/sizing rules, risk management limits (max risk per trade percent, max concurrent trades, drawdown limits, max profit cap), or overall framework description. strategyName identifies which existing Strategy to open - it is never a rename (use "name" for that). Only select this action once the user has actually named which existing Strategy they mean; if they have not, ask them which Strategy first instead of guessing. Editing a Strategy\'s own maxRiskPerTradePercent is not the same as a Trade\'s own risk override - never confuse the two.',
+        description: 'Open an EXISTING Strategy by name so its rules can be edited: entry/stop/exit/sizing rules, risk management limits (max risk per trade percent, max concurrent trades, drawdown limits, max profit cap), or overall framework description. strategyName identifies which existing Strategy to open - it is never a rename (use "name" for that). tab optionally jumps straight to one exact tab - details, chat, report, or share - only when the user actually asked for that specific tab; defaults to details otherwise. Only select this action once the user has actually named which existing Strategy they mean; if they have not, ask them which Strategy first instead of guessing. Editing a Strategy\'s own maxRiskPerTradePercent is not the same as a Trade\'s own risk override - never confuse the two.',
         aliases: ['edit a strategy', 'edit the strategy', 'update a strategy', 'change the strategy', 'open the strategy'],
-        requiredFields: ['strategyName'], optionalFields: ['name'].concat(STRATEGY_FIELDS),
+        requiredFields: ['strategyName'], optionalFields: ['name'].concat(STRATEGY_FIELDS, ['tab']),
         available: () => true,
+        // Slice U2-b (execution brief section 9 item 4, "actual ... report navigation"): same
+        // resolution-only 'tab' convention as pattern.edit's own copy just above (mirrors
+        // account.open exactly) - never a mutation, validated against the exact real DetailView
+        // tab ids strategiesHubView.jsx's own tab bar accepts.
+        normalizeField: (path, value) => {
+          if (path !== 'tab') return value;
+          var validTab = ['details', 'chat', 'report', 'share'];
+          var requestedTab = String(value == null ? '' : value).trim();
+          return validTab.indexOf(requestedTab) !== -1 ? requestedTab : null;
+        },
         open: (context, initialFields) => new Promise((resolve) => {
           var nameField = (initialFields || []).filter((f) => f && f.path === 'strategyName')[0];
           var strategyName = nameField ? String(nameField.value == null ? '' : nameField.value).trim() : '';
@@ -1165,11 +1189,15 @@ export function mountCharacterApp(character) {
           var matches = strategies.filter((s) => String(s.name || '').trim().toLowerCase() === strategyName.toLowerCase());
           if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
           var target = matches[0];
+          var tabField = (initialFields || []).filter((f) => f && f.path === 'tab')[0];
+          var VALID_STRATEGY_TABS = ['details', 'chat', 'report', 'share'];
+          var requestedTab = tabField ? String(tabField.value == null ? '' : tabField.value).trim() : '';
+          var initialTab = VALID_STRATEGY_TABS.indexOf(requestedTab) !== -1 ? requestedTab : undefined;
           if (store.getState().activeId !== 'strategies') store.setActiveId('strategies');
           pollFor(
             () => window.TradeJournalNavryaStrategyHub,
             (hub) => {
-              hub.openExisting(target.id);
+              hub.openExisting(target.id, initialTab);
               var processId = 'strategy-editor-' + target.id;
               var registry = window.TradeJournalAIProcessRegistry;
               pollFor(

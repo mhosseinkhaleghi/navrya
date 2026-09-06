@@ -67,7 +67,7 @@ test('strategy.edit is registered with strategyName as the sole required (resolu
   const block = strategyEditBlock();
   assert.match(block, /domain: 'strategies'/);
   assert.match(block, /requiredFields: \['strategyName'\]/);
-  assert.match(block, /optionalFields: \['name'\]\.concat\(STRATEGY_FIELDS\)/);
+  assert.match(block, /optionalFields: \['name'\]\.concat\(STRATEGY_FIELDS, \['tab'\]\)/);
 });
 
 test('strategy.edit\'s description explicitly distinguishes editing a Strategy\'s own risk limit from a Trade\'s risk override, and tells the model to ask rather than guess when the Strategy is not yet named - F53', () => {
@@ -90,7 +90,7 @@ test('strategy.edit resolves an existing Strategy by an exact, case-insensitive 
 
 test('strategy.edit\'s open() drives the same real hub (hub.openExisting), waiting for the real process to register before resolving', () => {
   const block = strategyEditBlock();
-  assert.match(block, /hub\.openExisting\(target\.id\)/);
+  assert.match(block, /hub\.openExisting\(target\.id, initialTab\)/);
   assert.match(block, /var processId = 'strategy-editor-' \+ target\.id/);
 });
 

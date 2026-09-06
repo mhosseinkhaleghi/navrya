@@ -23,7 +23,7 @@ test('pattern.edit is registered with the right domain, required/optional fields
   assert.match(block, /entityAlreadyPersisted: true/, 'submit() is already a no-op - the real Pattern already exists the instant open() resolves it; see ai-workflow-engine.js\'s own comment on why this must never schedule a submit');
   assert.match(block, /domain: 'patterns'/);
   assert.match(block, /requiredFields: \['patternName'\]/);
-  assert.match(block, /optionalFields: \['name', 'description', 'completionThreshold', 'instruments'\]/);
+  assert.match(block, /optionalFields: \['name', 'description', 'completionThreshold', 'instruments', 'tab'\]/);
   assert.match(block, /'edit a pattern'/);
   assert.match(block, /'open the pattern'/);
 });
@@ -47,7 +47,7 @@ test('pattern.edit\'s open() resolves an existing Pattern by an exact, case-inse
 
 test('pattern.edit\'s open() drives the same real StrategiesHub hub pattern.create already uses (hub.openExisting), and waits for the real pattern-editor-{id} process to actually register before resolving - same two-stage race fix as pattern.create', () => {
   const block = patternEditBlock();
-  assert.match(block, /hub\.openExisting\(target\.id\)/);
+  assert.match(block, /hub\.openExisting\(target\.id, initialTab\)/);
   assert.match(block, /var processId = 'pattern-editor-' \+ target\.id/);
   assert.match(block, /registry\.query\(processId\)\.open/);
 });
