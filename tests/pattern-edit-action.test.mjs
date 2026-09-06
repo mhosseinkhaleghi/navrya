@@ -63,7 +63,7 @@ test('StrategiesHub exposes openExisting(id) on the same real window hook patter
   // Journey H1: gained an optional tabId (defaults to 'details', unchanged for every caller here)
   // so marketplace.publish can open straight into the real Share tab - see that action's own fix.
   assert.match(hubSrc, /function openExistingPattern\(id, tabId\) \{ setTab\('patterns'\); openItem\('pattern', id, tabId \|\| 'details'\); \}/);
-  assert.match(hubSrc, /window\.TradeJournalNavryaPatternHub = \{ createNew: createNewPattern, openExisting: openExistingPattern \}/);
+  assert.match(hubSrc, /window\.TradeJournalNavryaPatternHub = \{ createNew: createNewPattern, openExisting: openExistingPattern, addStage: addPatternStage, renameStage: renamePatternStage, removeStage: removePatternStage \}/);
 });
 
 // Pure-logic proof of the actual resolution behavior, re-derived from the file's own real source

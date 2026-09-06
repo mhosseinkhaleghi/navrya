@@ -2103,13 +2103,49 @@ function StrategiesHub({ character }) {
   function createNewStrategy() { const s = window.TradeJournalStrategyEducationStore.create(); setTab('strategies'); openItem('strategy', s.id, 'details'); return s; }
   function openExistingStrategy(id, tabId) { setTab('strategies'); openItem('strategy', id, tabId || 'details'); }
   function openAnalysisProfiles() { setOpenKind(null); setOpenId(null); setTab('analysis-profiles'); }
+  // Slice U2-a (execution brief section 9 item 4, "real stage add/edit/remove with stable IDs and
+  // deletion consent"): the exact same real store mutation PatternDetailsTab's own addStage()/
+  // patchStage()/deleteStage() already use (window.TradeJournalPatternStore.save() - normalize()'s
+  // own stage mapping re-derives `order` from array position while preserving each stage's real,
+  // stable `id`) - never a second, parallel stage-mutation path. Exposed on the hub (not routed
+  // through PatternDetailsTab's own closure) so character-app.jsx's stage actions work regardless
+  // of whether that sub-panel happens to be scrolled into view, mirroring createNewPattern/
+  // openExistingPattern's own reasoning above for why hub methods don't live inside the tab
+  // component itself.
+  function addPatternStage(patternId, text) {
+    var store2 = window.TradeJournalPatternStore;
+    var pattern = store2 ? store2.find(patternId) : null;
+    if (!pattern) return null;
+    var newStage = store2.createStage(text, pattern.stages.length + 1);
+    var saved = store2.save(Object.assign({}, pattern, { stages: pattern.stages.concat([newStage]) }));
+    rerender();
+    return saved;
+  }
+  function renamePatternStage(patternId, stageId, text) {
+    var store2 = window.TradeJournalPatternStore;
+    var pattern = store2 ? store2.find(patternId) : null;
+    if (!pattern) return null;
+    var stages = pattern.stages.map((s) => (s.id === stageId ? Object.assign({}, s, { text: text }) : s));
+    var saved = store2.save(Object.assign({}, pattern, { stages: stages }));
+    rerender();
+    return saved;
+  }
+  function removePatternStage(patternId, stageId) {
+    var store2 = window.TradeJournalPatternStore;
+    var pattern = store2 ? store2.find(patternId) : null;
+    if (!pattern) return null;
+    var stages = pattern.stages.filter((s) => s.id !== stageId);
+    var saved = store2.save(Object.assign({}, pattern, { stages: stages }));
+    rerender();
+    return saved;
+  }
   // Same window-hook handoff convention every other NAVRYA modal/view already exposes
   // (TradeJournalNavryaTradeCalculator, TradeJournalNavryaLiveSession, ...) - this one is scoped
   // to this component's own mount/unmount lifecycle (StrategiesHub is a per-view React root,
   // torn down when navigating away - see canvasApp.jsx), so an action's open() must be prepared
   // for this hook not existing yet and wait for it (see character-app.jsx's pattern.create).
   React.useEffect(() => {
-    window.TradeJournalNavryaPatternHub = { createNew: createNewPattern, openExisting: openExistingPattern };
+    window.TradeJournalNavryaPatternHub = { createNew: createNewPattern, openExisting: openExistingPattern, addStage: addPatternStage, renameStage: renamePatternStage, removeStage: removePatternStage };
     window.TradeJournalNavryaStrategyHub = { createNew: createNewStrategy, openExisting: openExistingStrategy };
     window.TradeJournalNavryaAnalysisProfilesShellHub = { open: openAnalysisProfiles };
     return () => { delete window.TradeJournalNavryaPatternHub; delete window.TradeJournalNavryaStrategyHub; delete window.TradeJournalNavryaAnalysisProfilesShellHub; };

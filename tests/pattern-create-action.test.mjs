@@ -60,7 +60,7 @@ test('pattern.create\'s open() waits for the real "pattern-editor-{id}" registra
 test('StrategiesHub exposes a real window hook (TradeJournalNavryaPatternHub) that creates a Pattern through the same real PatternStore.create() the "New pattern" button already uses - not a second creation path', () => {
   assert.match(hubSrc, /function createNewPattern\(instruments\) \{/);
   assert.match(hubSrc, /const p = window\.TradeJournalPatternStore\.create\(instruments\);/);
-  assert.match(hubSrc, /window\.TradeJournalNavryaPatternHub = \{ createNew: createNewPattern, openExisting: openExistingPattern \}/);
+  assert.match(hubSrc, /window\.TradeJournalNavryaPatternHub = \{ createNew: createNewPattern, openExisting: openExistingPattern, addStage: addPatternStage, renameStage: renamePatternStage, removeStage: removePatternStage \}/);
   // Must be torn down on unmount (StrategiesHub is a per-view root - see canvasApp.jsx) so a
   // stale hook from a previous mount is never called after the real view has gone away.
   assert.match(hubSrc, /delete window\.TradeJournalNavryaPatternHub/);

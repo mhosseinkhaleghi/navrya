@@ -1039,6 +1039,77 @@ export function mountCharacterApp(character) {
       });
     }
 
+    // Slice U2-a (execution brief section 9 item 4, "real stage add/edit ... with stable IDs"):
+    // both target the currently-open Pattern (context.activeEntities.patternId - the same
+    // "which Pattern is currently open" signal ai-context-engine.js's own activePatternId()
+    // already resolves from pattern-editor-{id}'s registration), never a spoken patternName -
+    // there is no manual UI for editing a Pattern's stages without that Pattern's own editor
+    // already open, so requiring the trader to also re-name the Pattern on every stage edit would
+    // be needless friction pattern.edit's own name-resolution doesn't actually need here. A
+    // stage's real `id` is synthetic and never spoken, so the target stage is resolved by its own
+    // exact, case-insensitive TEXT match against the open Pattern's own stages only - zero or
+    // ambiguous matches resolve null, never guessed (F53). Both complete immediately inside
+    // open() (the same real store mutation the manual Add/rename controls already use) with no
+    // separate submit step, mirroring session.movementEntry.create's shape - deliberately NOT
+    // entityAlreadyPersisted, so neither needs a chat-dock-core.js exclusion-list entry.
+    if (window.TradeJournalAIActionRegistry) {
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'pattern.stage.add', domain: 'patterns', riskLevel: 'low',
+        description: 'Add a new detection stage to the currently open Pattern - the real per-pattern stage list its own editor already manages, same as pressing "Add stage" there. stageText is the exact new stage text. Only available while a real Pattern is already open; never invents a stage the user has not actually stated.',
+        aliases: ['add a stage', 'add a pattern stage', 'new pattern stage', 'add a detection stage'],
+        requiredFields: ['stageText'], optionalFields: [],
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.patternId),
+        open: (context, initialFields) => new Promise((resolve) => {
+          var patternId = context && context.activeEntities && context.activeEntities.patternId;
+          if (!patternId) { resolve(null); return; }
+          var textField = (initialFields || []).filter((f) => f && f.path === 'stageText')[0];
+          var text = textField ? String(textField.value == null ? '' : textField.value).trim() : '';
+          if (!text) { resolve(null); return; }
+          pollFor(
+            () => window.TradeJournalNavryaPatternHub,
+            (hub) => {
+              var updated = hub.addStage(patternId, text);
+              resolve(updated ? { processId: 'pattern-editor-' + patternId } : null);
+            },
+            () => resolve(null) // the Strategies Hub never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'pattern.stage.edit', domain: 'patterns', riskLevel: 'low',
+        description: 'Rename an EXISTING detection stage of the currently open Pattern by its own exact current text - it is never a new stage. stageText identifies which existing stage to rename; newText is the replacement text. Only available while a real Pattern is already open; if the user has not said which existing stage they mean, ask instead of guessing.',
+        aliases: ['rename a stage', 'rename this stage', 'change stage text', 'edit a pattern stage'],
+        requiredFields: ['stageText', 'newText'], optionalFields: [],
+        available: (context) => !!(context && context.activeEntities && context.activeEntities.patternId),
+        open: (context, initialFields) => new Promise((resolve) => {
+          var patternId = context && context.activeEntities && context.activeEntities.patternId;
+          if (!patternId) { resolve(null); return; }
+          var stageField = (initialFields || []).filter((f) => f && f.path === 'stageText')[0];
+          var newField = (initialFields || []).filter((f) => f && f.path === 'newText')[0];
+          var wanted = stageField ? String(stageField.value == null ? '' : stageField.value).trim() : '';
+          var replacement = newField ? String(newField.value == null ? '' : newField.value).trim() : '';
+          if (!wanted || !replacement) { resolve(null); return; }
+          var store2 = window.TradeJournalPatternStore;
+          var pattern = store2 ? store2.find(patternId) : null;
+          var matches = pattern ? (pattern.stages || []).filter((s) => String(s.text || '').trim().toLowerCase() === wanted.toLowerCase()) : [];
+          if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
+          pollFor(
+            () => window.TradeJournalNavryaPatternHub,
+            (hub) => {
+              var updated = hub.renameStage(patternId, matches[0].id, replacement);
+              resolve(updated ? { processId: 'pattern-editor-' + patternId } : null);
+            },
+            () => resolve(null) // the Strategies Hub never mounted (unexpected)
+          );
+        }),
+        submit: () => undefined,
+        resultContext: () => {}
+      });
+    }
+
     // Journey F, F15: Strategy creation/editing, the same shape as pattern.create/pattern.edit
     // above (real fields, real allowlist - see strategy-education.types.js's own textPaths/
     // numericPaths, extended with 'name' by strategiesHubView.jsx's own registration effect).
@@ -2999,6 +3070,53 @@ export function mountCharacterApp(character) {
           var currentActive = resolveActivePatternId(context);
           if (currentActive && currentActive !== id) return undefined;
           return window.TradeJournalPatternStore.remove(id);
+        },
+        resultContext: () => {}
+      });
+
+      // Slice U2-a (execution brief section 9 item 4, "... remove with stable IDs and deletion
+      // consent"): same two-phase F37 shape as pattern.delete just above (open() resolves+shows
+      // the target and remembers it in a module-level pending var, submit() re-verifies the
+      // ACTIVE Pattern still matches before actually mutating) - the only real difference is the
+      // target is one STAGE within the open Pattern, not the Pattern itself, so stageText (the
+      // stage's own exact text - its real `id` is synthetic and never spoken) is a REQUIRED
+      // resolution field rather than pattern.delete's optional "falls back to whichever Pattern
+      // is open" convention: there is no ambient "currently selected stage" signal to fall back
+      // to (stages have no per-instance isOpen() registration the way Scenarios/Entries do).
+      var pendingStageRemoveTarget = null;
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'pattern.stage.remove', domain: 'patterns', riskLevel: 'high',
+        description: 'Permanently remove an EXISTING detection stage from the currently open Pattern - this cannot be undone. stageText identifies which existing stage to remove by its exact current text; if several stages match or none do, ask which one instead of guessing. confirm must ONLY be set to true once the user has explicitly confirmed removing this specific stage after being told which one and asked - never inferred from the original delete request alone.',
+        aliases: ['remove a stage', 'delete a stage', 'delete this pattern stage', 'remove this pattern stage'],
+        requiredFields: ['stageText', 'confirm'], optionalFields: [],
+        normalizeField: normalizeGateField('confirm'),
+        // Slice W1 (field/gate contracts): same declarative purpose as pattern.delete's own copy
+        // just above - lets chat-dock-core.js's gate fast-path apply confirm to this still-open
+        // workflow directly.
+        gateField: 'confirm',
+        available: (context) => !!resolveActivePatternId(context),
+        open: (context, initialFields) => new Promise((resolve) => {
+          var patternId = resolveActivePatternId(context);
+          if (!patternId) { resolve(null); return; }
+          var stageField = (initialFields || []).filter((f) => f && f.path === 'stageText')[0];
+          var wanted = stageField ? String(stageField.value == null ? '' : stageField.value).trim() : '';
+          if (!wanted) { resolve(null); return; }
+          var pattern = window.TradeJournalPatternStore ? window.TradeJournalPatternStore.find(patternId) : null;
+          var matches = pattern ? (pattern.stages || []).filter((s) => String(s.text || '').trim().toLowerCase() === wanted.toLowerCase()) : [];
+          if (matches.length !== 1) { resolve(null); return; } // zero or ambiguous - never guess (F53)
+          pendingStageRemoveTarget = { patternId: patternId, stageId: matches[0].id };
+          resolve({ processId: 'pattern-editor-' + patternId });
+        }),
+        submit: (known, context) => {
+          if (known.confirm !== true && known.confirm !== 'true') return undefined;
+          var target = pendingStageRemoveTarget;
+          pendingStageRemoveTarget = null;
+          if (!target) return undefined;
+          // F37 section 6: same re-verify-before-mutating fix as pattern.delete's own submit().
+          var currentActive = resolveActivePatternId(context);
+          if (currentActive && currentActive !== target.patternId) return undefined;
+          var hub = window.TradeJournalNavryaPatternHub;
+          return hub ? hub.removeStage(target.patternId, target.stageId) : undefined;
         },
         resultContext: () => {}
       });
