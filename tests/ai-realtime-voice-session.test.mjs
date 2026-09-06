@@ -6,7 +6,7 @@ import test, { after, afterEach } from 'node:test';
 // exported mintRealtimeClientSecret() against a stubbed OpenAI /v1/realtime/client_secrets
 // response, never a reimplementation of its logic.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, __resetVoiceConfigCacheForTests } = serverModule;
+const { mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -291,6 +291,23 @@ test('mints one-use constrained Gemini Live credentials and never returns the pe
   assert.equal(result.provider, 'gemini-live');
   assert.equal(result.token, 'auth_tokens/live-test');
   assert.doesNotMatch(JSON.stringify(result), /gemini-permanent-secret/);
+});
+
+test('Gemini Live resolves the admin-managed Gemini key before the environment fallback and never returns it to the browser', async () => {
+  __resetAdminKeyCacheForTests();
+  let request = null;
+  globalThis.fetch = async (url, options) => {
+    const target = String(url);
+    if (target.includes('/internal/admin-ai-keys')) return { ok: true, json: async () => ({ gemini: 'admin-gemini-secret' }) };
+    if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    request = { url: target, options };
+    return { ok: true, json: async () => ({ name: 'auth_tokens/admin-key', expireTime: '2026-09-03T00:30:00Z' }) };
+  };
+  const result = await withEnv({ GEMINI_API_KEY: '' }, () => mintGeminiLiveToken({ language: 'en' }));
+  assert.equal(request.url, 'https://generativelanguage.googleapis.com/v1beta/auth_tokens');
+  assert.equal(request.options.headers['x-goog-api-key'], 'admin-gemini-secret');
+  assert.doesNotMatch(JSON.stringify(result), /admin-gemini-secret/);
+  __resetAdminKeyCacheForTests();
 });
 
 test('Gemini TTS reads the approved text server-side and returns only provider audio, never its API key', async () => {

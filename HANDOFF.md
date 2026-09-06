@@ -4,7 +4,7 @@ Format: one compact line per entry, no embedded commit hashes / run IDs / byte s
 
 ## Active
 
-- fix/restore-desktop-header (Codex): restored the classic wide desktop header while retaining the shared left-side icon-only collapse control and prior responsive/mobile work | validation: 8 focused tests passed | next: promote to dev, then production
+- fix/gemini-voice-admin-key (Codex): Gemini Live is the sole Voice transport, Voice turns use OpenAI chat, and the admin-managed Gemini key path is regression-covered | validation: 111 focused tests passed | next: promote to dev on request
 
 ## Known pending
 

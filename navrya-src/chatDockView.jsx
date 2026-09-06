@@ -609,24 +609,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   React.useEffect(() => {
-    // Text-provider selection must never disconnect or replace an active Voice transport - the
-    // empty deps array below is deliberate (a mount-once effect, not re-run on a later provider
-    // switch). But WHICH transport gets constructed at that one mount still has to depend on the
-    // provider the user actually has selected: only 'gemini' gets the Gemini Live transport
-    // (server-tokenized STT/TTS, navrya-src/geminiLiveVoice.js); every other provider - including
-    // the real OpenAI Realtime path (aiVoiceRealtime.js, WebRTC) this app has always called
-    // "ChatGPT voice" - keeps using createVoiceSession, exactly as it did before Gemini Voice was
-    // added. A prior pass hardcoded this to Gemini unconditionally while fixing the real,
-    // legitimate "don't tear down an active session on provider switch" concern - that took away
-    // OpenAI voice access for every non-Gemini user, live in production, since Gemini itself was
-    // never confirmed working end-to-end with real credentials/billing (see HANDOFF.md's own
-    // still-open "Known pending" note). Restored here, keeping the same never-re-run [] deps.
-    const useGeminiLive = providerId === 'gemini';
-    const createTransport = useGeminiLive ? createGeminiLiveSession : createVoiceSession;
-    voiceRef.current = createTransport({
+    // Voice is one product channel: Gemini Live handles microphone transcription and TTS while
+    // submit() pins the approved response to the OpenAI chat provider. A text-provider setting
+    // must never replace a live voice transport or silently select a different voice engine.
+    voiceRef.current = createGeminiLiveSession({
       language: i18n.language(),
-      fetchSession: useGeminiLive ? fetchGeminiLiveSession : fetchRealtimeSession,
-      fetchSpeakAudio: useGeminiLive ? fetchGeminiSpeak : fetchVoiceProviderSpeak,
+      fetchSession: fetchGeminiLiveSession,
+      fetchSpeakAudio: fetchGeminiSpeak,
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,

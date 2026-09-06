@@ -91,6 +91,10 @@ async function adminKeys() {
   return adminKeyCache.data || {};
 }
 
+function __resetAdminKeyCacheForTests() {
+  adminKeyCache = { data: null, fetchedAt: 0 };
+}
+
 // Same bridge shape as adminKeys() above, but Redis-version-aware: the internal route
 // (/internal/voice-provider-config) returns a monotonically-increasing `version` (bumped by
 // server/admin/routes.voice-providers.mjs on every credential/language-config write, shared
@@ -2985,7 +2989,7 @@ export {
   callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
   historyItem, dockChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
-  __resetVoiceConfigCacheForTests, internalWalletCallWithRetry,
+  __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, internalWalletCallWithRetry,
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
   buildSessionAnalysisSystemPrompt, buildSessionAnalysisContextText,
   validateSessionAnalysisResult, sessionAnalysisOutputBudget, sessionAnalysisFormat, sessionAnalysisReasoningEffort,
