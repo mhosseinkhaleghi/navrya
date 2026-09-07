@@ -322,6 +322,37 @@
     current = null;
   }
 
+  // Context-aware conversational operation layer, section 9 (workflow switching): a deterministic,
+  // zero-network "abandon whatever is currently being filled in" classifier - the same posture as
+  // ai-proactive-engine.js's own interpretConfirmationText() and ai-dock-control-intent.js's
+  // interpretDockControlText() (a real UI/workflow transition this mechanical must never depend on
+  // provider uptime or a model's own free-form judgment). Deliberately a DIFFERENT, narrower
+  // vocabulary than the plain yes/no REJECT_PATTERN chat-dock-core.js's own F37 gate-rejection fast
+  // path already uses - a bare "no"/"don't" is already excluded from cancelling a non-gate
+  // workflow (an ordinary same-breath field correction, "no, make that 5 minutes", must never be
+  // mistaken for abandonment - see that fast path's own comment); only an unambiguous "never mind"/
+  // "cancel that"/"forget it"-shaped phrase resolves here. Also deliberately excludes "scratch
+  // that" (used verbatim as a real, in-place text-editing verb by session.movementEntry.create's
+  // own removeLastSentence field - a genuinely different speech act this must never shadow).
+  // Anchored to the WHOLE trimmed utterance, never a substring match, so an ordinary longer
+  // sentence that happens to mention "forget" in passing is never mistaken for this. Best-effort
+  // phrase coverage across en/fa/ar/es, documented as such rather than overclaiming exhaustive NLU.
+  var CANCEL_PATTERNS = [
+    /^never\s*mind$/i, /^forget\s+it$/i, /^cancel\s+(that|this)$/i, /^cancel\s+the\s+(form|workflow|process)$/i, /^stop,?\s*forget\s+it$/i,
+    /^بی[\s‌]*خیال(ش)?$/, /^ولش\s*کن$/, /^فراموشش\s*کن$/, /^لغوش\s*کن$/, /^کنسلش\s*کن$/, /^کنسل\s*کن$/,
+    /^انسَ\s*الأمر$/, /^انس\s*الأمر$/, /^إلغاء\s*ذلك$/, /^ألغِ\s*ذلك$/, /^اتركه$/,
+    /^olv[ií]dalo$/i, /^d[eé]jalo$/i, /^cancela\s+eso$/i, /^cancelar\s+eso$/i
+  ];
+  function interpretCancelText(text) {
+    // A single trailing ./!/؟/? is stripped before matching - real typed input very commonly ends
+    // a short command with one, and stripping it adds no ambiguity risk (every pattern below stays
+    // fully anchored to the rest of the utterance either way, so a longer, ordinary sentence still
+    // never matches).
+    var t = String(text || '').trim().replace(/[.!؟?]\s*$/, '');
+    if (!t) return false;
+    return CANCEL_PATTERNS.some(function (re) { return re.test(t); });
+  }
+
   // 2026-08-28 bug report: a small number of REAL, app-owned popups (currently only the
   // Pre-Session Check-In - preSessionCheckInModal.jsx) show themselves as a genuine precondition
   // BEFORE another action's own target UI ever opens (session.movementEntry.create's/
@@ -376,6 +407,7 @@
     current: currentWorkflow,
     pruneIfAbandoned: pruneIfAbandoned,
     cancel: cancel,
+    interpretCancelText: interpretCancelText,
     // Exposed for tests (and any future caller with a reason to tune it) rather than a
     // hardcoded, unreachable constant - see SUBMIT_GRACE_MS's own comment above. Latency pass,
     // section 15: chat-dock-core.js's own gate-field confirm fast path temporarily zeroes this for

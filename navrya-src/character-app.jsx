@@ -1513,27 +1513,43 @@ export function mountCharacterApp(character) {
         // use) is the correct shape here: a few seconds' room for a quick correction, then the
         // workflow releases control for the next, likely unrelated, turn.
         id: 'session.movementEntry.create', domain: 'sessions', riskLevel: 'low',
-        description: 'Add a movement note entry to the current active trading Session. Opens the real entry immediately and fills its note field. Only available while a Session is actively open.',
-        aliases: ['add a movement note', 'add a movement entry', 'log a movement', 'add a note'],
-        requiredFields: [], optionalFields: ['note'],
+        description: 'Add or continue dictating a movement note entry for the current active trading Session. note sets the WHOLE note text - use it for the very first dictation into a fresh entry, or an explicit full replace ("change the note to just say X"). appendNote adds more text onto whatever the currently open note already says, WITHOUT erasing it - use it whenever the user is continuing the same thought ("also...", "and...", "add that too"). replaceLastSentence replaces only the most recently dictated sentence, leaving everything before it untouched ("actually, replace that with X" / "no, say Y instead"). removeLastSentence (true) deletes just the most recently dictated sentence, leaving the rest of the note intact ("remove that last part" / "scratch that"). newEntry (true) forces a brand-new, SEPARATE movement note instead of continuing the one currently open - only from an explicit request to start another/an additional note; otherwise dictation always continues the entry already open. discardEntry (true) deletes this movement entry entirely (never a partial undo - use removeLastSentence for that) - only from an explicit "delete/discard this note" request. Preserve the user\'s own dictated wording exactly for note/appendNote/replaceLastSentence - never summarize, paraphrase, or clean it up. Only available while a Session is actively open.',
+        aliases: ['add a movement note', 'add a movement entry', 'log a movement', 'add a note', 'also add that', 'remove that last sentence', 'start a new movement note'],
+        requiredFields: [], optionalFields: ['note', 'appendNote', 'replaceLastSentence', 'removeLastSentence', 'newEntry', 'discardEntry'],
+        normalizeField: function (path, value) {
+          // F37: an explicit false on any of these boolean-only gates must stay genuinely missing
+          // (never a completed-but-false field), the same normalizeGateField() reasoning applied
+          // everywhere else in this file - a stray {removeLastSentence:false} extraction must
+          // never silently count as "this field is now known" and complete the workflow.
+          if (path === 'newEntry' || path === 'removeLastSentence' || path === 'discardEntry') {
+            return (value === true || value === 'true') ? true : null;
+          }
+          return value; // note/appendNote/replaceLastSentence: verbatim free text, no reshaping
+        },
         available: (context) => !!(context && context.activeEntities && context.activeEntities.sessionId),
-        open: (context) => new Promise((resolve) => {
+        open: (context, initialFields) => new Promise((resolve) => {
           if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
-          // Journey F, F21: reuse the currently-selected Entry if it is already a still-empty
-          // Movement Entry, instead of unconditionally creating a new one. Found via real browser
-          // testing of the exact two-turn pattern the spec requires ("Add a movement entry." then,
-          // separately, "Price swept the previous high and rejected."): requiredFields is
-          // deliberately empty (see this action's own comment above), so the workflow reaches
-          // pending-submit and clears within a few seconds whether or not a note was ever
-          // supplied - a delayed follow-up re-triggers fresh discovery of this same action (there
-          // is no movementEntry.edit, unlike Scenario's title-resolved edit), and without this
-          // check it silently created a SECOND, redundant entry instead of filling the first
-          // one's note.
+          // Section 7 (context-aware conversational operation layer): the same internal-only-field
+          // pattern as trade.emotion.log's own pinnedTradeId (see that action's own comment) -
+          // newEntry is a genuine, model-suppliable field (not internal-only), but reading it here
+          // via initialFields, before the reuse decision below, is what actually lets an explicit
+          // "start a new movement note" force a fresh entry on the SAME turn it's requested.
+          var newEntryField = (initialFields || []).filter(function (f) { return f && f.path === 'newEntry'; })[0];
+          var forceNew = !!(newEntryField && (newEntryField.value === true || newEntryField.value === 'true'));
+          // Journey F, F21 (relaxed for Section 7): reuse the currently-selected Movement Entry
+          // whenever one is open, not only while it is still empty - continuing dictation
+          // (appendNote/replaceLastSentence/removeLastSentence) must keep landing on the SAME real
+          // entry across turns, even well after it already has real text and even after this
+          // workflow's own earlier grace-window auto-completion already cleared (a LATER, separate
+          // "session.movementEntry.create" re-discovery is exactly how a continuation reaches this
+          // open() again - see the class comment above on why the workflow doesn't stay open).
+          // newEntry:true is the only thing that still forces hub.addMovementEntry() below, exactly
+          // matching the pre-existing behavior for a genuinely new, unrelated note.
           var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
           var entryId = context && context.activeEntities && context.activeEntities.entryId;
           var session = sessionId && window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
           var existing = entryId && session ? (session.entries || []).find((e) => e.id === entryId) : null;
-          var reuse = existing && existing.type === 'movement' && !existing.movementNote;
+          var reuse = !forceNew && existing && existing.type === 'movement';
           pollFor(
             () => window.TradeJournalNavryaLiveSessionHub,
             (hub) => {
@@ -1550,7 +1566,21 @@ export function mountCharacterApp(character) {
             () => resolve(null) // the Live Session workspace never mounted (unexpected)
           );
         }),
-        submit: () => undefined,
+        // discardEntry is the one field here that mutates something already-persisted (deleting
+        // the entry outright), so - unlike note/appendNote/replaceLastSentence/removeLastSentence,
+        // which apply live through the real registration's own applyValue() the instant they're
+        // known - it only ever fires from submit(), gated on being explicitly true (F37), exactly
+        // like community-comment-{postId}'s own `send` gate wrapping an otherwise-unconditional
+        // real registration submit(). Re-resolves entryId fresh from context rather than a closed-
+        // over open()-time value, the same resolveActive*() convention every other gated action
+        // in this file already uses.
+        submit: (known, context) => {
+          if (known.discardEntry !== true && known.discardEntry !== 'true') return undefined;
+          var entryId = context && context.activeEntities && context.activeEntities.entryId;
+          if (!entryId) return undefined;
+          var registry = window.TradeJournalAIProcessRegistry;
+          return registry && registry.submit('live-session-entry-' + entryId);
+        },
         resultContext: () => {}
       });
 
@@ -1935,12 +1965,46 @@ export function mountCharacterApp(character) {
         // from activeProcess, and requiredFields: [] means this reaches pending-submit
         // immediately, the same normal shape session.movementEntry.create already established.
         id: 'trade.emotion.log', domain: 'trades', riskLevel: 'low',
-        description: 'Open the real emotion-log form for the active Trade. note is the only field the real form allows filling from chat - stress level, dominant emotions, and every other score are real slider/picker controls only the user can set by hand; never invent or infer a numeric value for any of them.',
+        description: 'Open the real emotion-log form for the active Trade and optionally fill note, stressLevel (1-10), dominantEmotions (up to 3 real emotion ids: excited, anxious, calm, revenge, angry, afraid, confident, fatigued, restless, overconfident), and per-emotion detail via emotionIntensity.<id> (1-10) / emotionTags.<id> (comma-separated real reasons, e.g. "hitting my stop"). Every numeric value must be the exact number the user explicitly stated - never inferred from wording like "very stressed", never a default. focusQuality/planCommitment/wouldTakeIfNotForced have no real form control at all - never fill them. pinnedTradeId is internal-only (never asked of the user) - set only by NAVRYA itself once a trade-emotion clarification has already resolved which Trade this is about.',
         aliases: ['log an emotion for this trade', 'log my emotion', 'log how i feel about this trade'],
-        requiredFields: [], optionalFields: ['note'],
+        requiredFields: [], optionalFields: ['note', 'stressLevel', 'dominantEmotions', 'pinnedTradeId'].concat(
+          (window.TradeJournalTradeTypes && window.TradeJournalTradeTypes.emotions || []).reduce(function (acc, emoId) { return acc.concat(['emotionIntensity.' + emoId, 'emotionTags.' + emoId]); }, [])
+        ),
+        // Section 6: reject out of range / non-canonical values outright (F50) rather than
+        // clamping - a rejected value leaves the field genuinely missing, so the workflow asks
+        // again instead of silently live-syncing something the real form would never have shown.
+        // Mirrors, never replaces, logEmotionModal.jsx's own applyValue() validation (defense in
+        // depth: this is what keeps ai-workflow-engine.js's own "known" bookkeeping honest).
+        normalizeField: (path, value) => {
+          if (path === 'stressLevel') {
+            var stressN = Number(value);
+            return (Number.isFinite(stressN) && stressN >= 1 && stressN <= 10) ? Math.round(stressN) : null;
+          }
+          var emotions = (window.TradeJournalTradeTypes && window.TradeJournalTradeTypes.emotions) || [];
+          if (path === 'dominantEmotions') {
+            var wanted = (Array.isArray(value) ? value : String(value || '').split(',')).map(function (v) { return String(v).trim().toLowerCase(); }).filter(Boolean);
+            var valid = wanted.filter(function (v) { return emotions.indexOf(v) > -1; }).slice(0, 3);
+            return valid.length ? valid : null;
+          }
+          var intensityMatch = /^emotionIntensity\.(.+)$/.exec(path);
+          if (intensityMatch) {
+            if (emotions.indexOf(intensityMatch[1]) === -1) return null;
+            var intensityN = Number(value);
+            return (Number.isFinite(intensityN) && intensityN >= 1 && intensityN <= 10) ? Math.round(intensityN) : null;
+          }
+          var tagsMatch = /^emotionTags\.(.+)$/.exec(path);
+          if (tagsMatch) return emotions.indexOf(tagsMatch[1]) > -1 ? value : null;
+          return value;
+        },
         available: (context) => !!resolveActiveTrade(context),
-        open: (context) => new Promise((resolve) => {
-          var trade = resolveActiveTrade(context);
+        open: (context, initialFields) => new Promise((resolve) => {
+          // pinnedTradeId (internal-only - see AI_INTERNAL_ONLY_FIELDS in chat-dock-core.js) lets
+          // the section 5 trade-emotion-clarification flow target a real open Trade that has no
+          // visible Trade Details form at all - resolveActiveTrade(context) alone only ever sees
+          // ONE that is currently on screen. Falls back to the pre-existing behavior unchanged
+          // when nothing pinned this turn.
+          var pinnedField = (initialFields || []).filter(function (f) { return f && f.path === 'pinnedTradeId'; })[0];
+          var trade = (pinnedField && pinnedField.value && window.TradeJournalTradeStore) ? window.TradeJournalTradeStore.find(pinnedField.value) : resolveActiveTrade(context);
           if (!trade) { resolve(null); return; }
           var stage = trade.status === 'closed' ? 'exit' : trade.status === 'open' ? 'mid_trade' : 'entry';
           pollFor(
@@ -3111,6 +3175,88 @@ export function mountCharacterApp(character) {
           );
         }),
         submit: () => undefined,
+        resultContext: () => {}
+      });
+
+      window.TradeJournalAIActionRegistry.registerAction({
+        // Context-aware conversational operation layer, section 8: the real Persona tab
+        // (aiAssistantView.jsx's PersonaTab) - presets, the five tone-dimension rails plus
+        // initiative, and the free-text custom-instructions box. Reuses
+        // TradeJournalAICompanionProfile and PersonaTab's own existing save() exactly as every
+        // other real form in this app is operated - no second persistence store, no bespoke
+        // merge/diff engine for free text either (see the description's own explicit "compose the
+        // full resulting text yourself" contract; the visible, still-unsaved textarea is the real
+        // safety net against silently dropping unrelated existing wording, exactly like every
+        // other gated multi-field form here - the human sees the result before `save` ever fires).
+        //
+        // Same CONSEQUENTIAL gate-field shape as account.create/community.post.create (F37): every
+        // field here only ever fills the real, still-open, still-unsaved PersonaTab draft - `save`
+        // is a real required field, never entityAlreadyPersisted, so nothing here can silently
+        // commit a still-in-progress fill.
+        //
+        // Deliberately does NOT attempt a separate "temporary/this-conversation-only" persistence
+        // path - see the description's own guidance below. Building a genuine ephemeral,
+        // non-persisted style override would mean a second styling channel threaded through
+        // chat-dock-core.js's request assembly alongside personaStylePackage() - exactly the kind
+        // of second parallel pipeline this brief explicitly forbids. A one-off "be warmer just for
+        // this message" is instead handled by NAVRYA simply complying in its own next reply,
+        // without calling this or any action at all; this action exists ONLY for a genuine,
+        // persistent preference change.
+        id: 'settings.persona.update', domain: 'settings', riskLevel: 'low',
+        description: 'Open the real Persona tab (AI Assistant > Persona) and change NAVRYA\'s PERSISTENT tone/persona preferences: preset (one of coach, analyst, calm, prof - a named starting point, applied then still adjustable), explicitness/detail/warmth/humor/jargon (each 0-100, how directly, thoroughly, warmly, playfully, or technically NAVRYA speaks), initiative (low, normal, or high - the Companion\'s own proactivity, same real preference settings.companion.update also writes), and customInstructions (free-text persona guidance, max 600 characters - e.g. a preferred form of address, or "always give me the number first"). customInstructions REPLACES the whole saved text, so if the user asked to add something rather than replace everything, first read the current text already visible in the open Persona tab / prior conversation and pass back the complete combined text yourself - never a fragment that would silently drop unrelated existing wording. Send the literal value "none" to clear it. A request like "be more ruthless/blunt/no-nonsense" maps ONLY to higher explicitness/directness here - NEVER to unsafe, reckless, or harmful trading advice, which NAVRYA\'s actual guidance never changes regardless of tone. This action is for a PERSISTENT change only - a one-off request that applies just to this single reply or this one conversation (e.g. "use a warmer tone only for this conversation") should NOT call this action at all; simply comply directly in your own next reply instead. Never touches the user\'s own public profile display name - that is a completely separate account setting, not persona tone. save must ONLY be set to true once the user has explicitly and separately asked to actually save the persona changes now - never merely because every field happens to be filled.',
+        aliases: ['make navrya more direct', 'set my persona to the coach preset', 'be warmer in general', 'add to my custom instructions', 'call me by my first name from now on', 'set companion initiative to high in my persona'],
+        requiredFields: ['save'],
+        optionalFields: ['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'initiative', 'customInstructions'],
+        gateField: 'save',
+        normalizeField: function (path, value) {
+          if (path === 'save') return normalizeGateField('save')(path, value);
+          if (path === 'preset') {
+            var presetText = String(value || '').trim().toLowerCase();
+            // Must match PERSONA_PRESETS' own ids in aiAssistantView.jsx exactly - same
+            // "duplicate the small literal enum" convention as settings.character.switch's own
+            // character list and settings.companion.update's own goal/initiative lists.
+            return ['coach', 'analyst', 'calm', 'prof'].indexOf(presetText) !== -1 ? presetText : null;
+          }
+          if (['explicitness', 'detail', 'warmth', 'humor', 'jargon'].indexOf(path) !== -1) {
+            // F50: reject a non-numeric or out-of-range value outright - never clamp it into range.
+            var n = Number(value);
+            return (Number.isFinite(n) && n >= 0 && n <= 100) ? Math.round(n) : null;
+          }
+          if (path === 'initiative') {
+            var initText = String(value || '').trim().toLowerCase();
+            return ['low', 'normal', 'high'].indexOf(initText) !== -1 ? initText : null;
+          }
+          if (path === 'customInstructions') {
+            var raw = String(value == null ? '' : value);
+            var lowered = raw.trim().toLowerCase();
+            if (lowered === 'none' || lowered === 'clear') return 'none'; // explicit-clear sentinel - see PersonaTab's own applyValue
+            if (!raw.trim()) return null; // empty/whitespace-only is not a real instruction
+            if (raw.length > 600) return null; // F50: reject outright, never silently truncate past the real 600-char limit
+            return raw; // preserved verbatim (including internal whitespace/newlines) - never trimmed
+          }
+          return value;
+        },
+        available: () => true,
+        open: () => new Promise((resolve) => {
+          location.hash = '#ai-settings';
+          var registry = window.TradeJournalAIProcessRegistry;
+          pollFor(
+            () => window.TradeJournalNavryaAiAssistantHub,
+            (hub) => {
+              hub.goToTab('persona');
+              pollFor(
+                () => registry && registry.query('settings-persona').open,
+                () => resolve({ processId: 'settings-persona' }),
+                () => resolve(null)
+              );
+            },
+            () => resolve(null)
+          );
+        }),
+        submit: (known) => {
+          if (known.save !== true && known.save !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('settings-persona');
+        },
         resultContext: () => {}
       });
 

@@ -13,6 +13,7 @@ const characterAppSrc = await readFile(path.join(root, 'navrya-src', 'character-
 const closePositionSrc = await readFile(path.join(root, 'navrya-src', 'closePositionModal.jsx'), 'utf8');
 const logEmotionSrc = await readFile(path.join(root, 'navrya-src', 'logEmotionModal.jsx'), 'utf8');
 const contextEngineSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'ai-context-engine.js'), 'utf8');
+const chatDockCoreSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'chat-dock-core.js'), 'utf8');
 
 function actionBlock(id) {
   const re = new RegExp(`id: '${id.replace(/\./g, '\\.')}'[\\s\\S]*?resultContext: [\\s\\S]*?\\}\\);`);
@@ -76,12 +77,83 @@ test('trade.close requires only exitPrice, is deliberately NOT entityAlreadyPers
   assert.match(block, /NAVRYA itself computes P&L.*never the model/);
 });
 
-test('trade.emotion.log\'s only AI-fillable field is note, matching the real form\'s own allowlist exactly - never invents stress/focus/commitment scores', () => {
+// Context-aware conversational operation layer, section 6: intentionally updated from the old
+// note-only assertion - note, stressLevel, dominantEmotions, and per-emotion emotionIntensity.*/
+// emotionTags.* are now real, AI-fillable fields, matching the real form's own controls exactly.
+// The "never invent a score" safety guarantee is retained, narrowed to the three fields that still
+// have NO real form control at all (focusQuality/planCommitment/wouldTakeIfNotForced - submit()
+// itself still sends the same fixed 5/5/null it always did).
+test('trade.emotion.log exposes note, stressLevel, dominantEmotions, and per-emotion emotionIntensity.*/emotionTags.* as real, AI-fillable fields, but never focusQuality/planCommitment/wouldTakeIfNotForced - those have no real form control at all', () => {
   const block = actionBlock('trade.emotion.log');
-  assert.match(block, /requiredFields: \[\], optionalFields: \['note'\]/);
+  assert.match(block, /optionalFields: \['note', 'stressLevel', 'dominantEmotions', 'pinnedTradeId'\]\.concat\(/);
   assert.doesNotMatch(block, /entityAlreadyPersisted/);
-  assert.match(block, /never invent or infer a numeric value/);
+  assert.doesNotMatch(block, /'focusQuality'|'planCommitment'|'wouldTakeIfNotForced'/);
   assert.match(block, /registry\.query\('trade-emotion-log'\)\.open/);
+});
+
+test('trade.emotion.log\'s normalizeField rejects an out-of-range stressLevel/emotionIntensity or a non-canonical emotion id outright (F50) - never clamps, never guesses', () => {
+  const block = actionBlock('trade.emotion.log');
+  assert.match(block, /return \(Number\.isFinite\(stressN\) && stressN >= 1 && stressN <= 10\) \? Math\.round\(stressN\) : null;/);
+  assert.match(block, /var valid = wanted\.filter\(function \(v\) \{ return emotions\.indexOf\(v\) > -1; \}\)\.slice\(0, 3\);/);
+});
+
+test('trade.emotion.log\'s pinnedTradeId is internal-only - never asked of the user, filtered out of the model-facing schema in chat-dock-core.js\'s own AI_INTERNAL_ONLY_FIELDS', () => {
+  const block = actionBlock('trade.emotion.log');
+  assert.match(block, /pinnedTradeId is internal-only \(never asked of the user\)/);
+  assert.match(chatDockCoreSrc, /pinnedTradeId: true/);
+});
+
+test('trade.emotion.log\'s open() prefers an internal pinnedTradeId over resolveActiveTrade(context) - lets the section 5 clarification flow target a real open Trade with no visible Trade Details form', () => {
+  const block = actionBlock('trade.emotion.log');
+  assert.match(block, /var pinnedField = \(initialFields \|\| \[\]\)\.filter\(function \(f\) \{ return f && f\.path === 'pinnedTradeId'; \}\)\[0\];/);
+  assert.match(block, /var trade = \(pinnedField && pinnedField\.value && window\.TradeJournalTradeStore\) \? window\.TradeJournalTradeStore\.find\(pinnedField\.value\) : resolveActiveTrade\(context\);/);
+});
+
+test('chat-dock-core.js filters internal-only fields (pinnedTradeId included) out of BOTH activeProcess.allowlist and every discovered action\'s own requiredFields/optionalFields before either ever reaches the model - not just the activeProcess half', () => {
+  assert.match(chatDockCoreSrc, /availableActions = catalog\.map\(function \(action\) \{/);
+  assert.match(chatDockCoreSrc, /requiredFields: modelFacingAllowlist\(action\.requiredFields\), optionalFields: modelFacingAllowlist\(action\.optionalFields\)/);
+});
+
+// --- logEmotionModal.jsx: the real form-side registration ---
+
+test('the real trade-emotion-log registration allowlist includes note/stressLevel/dominantEmotions plus one emotionIntensity.<id>/emotionTags.<id> pair per real canonical emotion id - built from the SAME emotionList the manual UI itself renders, never a hand-typed, driftable copy', () => {
+  assert.match(logEmotionSrc, /allowlist: \['note', 'stressLevel', 'dominantEmotions'\]\.concat\(EMOTION_FIELD_PATHS\)/);
+  assert.match(logEmotionSrc, /const EMOTION_FIELD_PATHS = emotionList\.reduce\(function \(acc, emoId\) \{ return acc\.concat\(\['emotionIntensity\.' \+ emoId, 'emotionTags\.' \+ emoId\]\); \}, \[\]\);/);
+});
+
+test('the real registration\'s applyValue() rejects an out-of-range stressLevel (never clamps) and treats the form\'s own default of 5 as ONLY ever set by a genuine applyValue() call - the mount-time useState(5) itself is never treated as a user-supplied answer', () => {
+  assert.match(logEmotionSrc, /if \(Number\.isFinite\(stressN\) && stressN >= 1 && stressN <= 10\) setStress\(Math\.round\(stressN\)\);/);
+  assert.match(logEmotionSrc, /const \[stress, setStress\] = React\.useState\(\(seed && seed\.stressLevel\) \|\| 5\);/);
+});
+
+test('dominantEmotions and emotionIntensity.<id> never copy the overall stress value into a per-emotion intensity - each keeps its own independent real default (5) until its OWN applyValue() call sets it', () => {
+  const dominantBlock = /if \(path === 'dominantEmotions'\) \{([\s\S]*?)\n {8}\}/.exec(logEmotionSrc);
+  assert.ok(dominantBlock, 'could not find dominantEmotions applyValue branch');
+  assert.doesNotMatch(dominantBlock[1], /stress\b/, 'dominantEmotions must never read the stress slider\'s own value');
+  assert.match(dominantBlock[1], /\{ emotion: emoId, intensity: 5, tags: \[\], draft: '' \}/, 'a newly AI-selected emotion gets the same real default entry the manual toggle() already creates, never the current stress level');
+});
+
+test('emotionTags.<id> appends and de-duplicates, mirroring InvalidationTags\' own real semantics, never a bare replace of reasons already recorded', () => {
+  const tagsBlock = /var tagsMatch = \/\^emotionTags\\\.\(\.\+\)\$\/\.exec\(path\);\s*\n\s*if \(tagsMatch\) \{([\s\S]*?)\n {8}\}/.exec(logEmotionSrc);
+  assert.ok(tagsBlock, 'could not find emotionTags applyValue branch');
+  assert.match(tagsBlock[1], /var newTags = currentTags\.concat\(additions\.filter\(function \(a\) \{ return currentTags\.indexOf\(a\) === -1; \}\)\);/);
+});
+
+test('logEmotionModal.jsx imports the shared AiMagicFill/useAiFieldFill architecture and wires it onto every new Voice-fillable control (stressLevel, dominantEmotions, and per-emotion intensity/tags) - not a second, parallel animation mechanism', () => {
+  assert.match(logEmotionSrc, /import \{ AiMagicFill \} from '\.\.\/public\/pages\/shared\/navrya\/components\/feedback\/AiMagicFill\.jsx';/);
+  assert.match(logEmotionSrc, /import \{ useAiFieldFill \} from '\.\.\/public\/pages\/shared\/navrya\/hooks\/useAiFieldFill\.js';/);
+  assert.match(logEmotionSrc, /const stressFilled = useAiFieldFill\('trade-emotion-log', 'stressLevel'\);/);
+  assert.match(logEmotionSrc, /const emotionsFilled = useAiFieldFill\('trade-emotion-log', 'dominantEmotions'\);/);
+  assert.match(logEmotionSrc, /const intensityFilled = useAiFieldFill\('trade-emotion-log', 'emotionIntensity\.' \+ id\);/);
+  assert.match(logEmotionSrc, /const tagsFilled = useAiFieldFill\('trade-emotion-log', 'emotionTags\.' \+ id\);/);
+  assert.match(logEmotionSrc, /<AiMagicFill active=\{stressFilled\}>/);
+  assert.match(logEmotionSrc, /<AiMagicFill active=\{emotionsFilled\}>/);
+  assert.match(logEmotionSrc, /<AiMagicFill active=\{intensityFilled\}>/);
+  assert.match(logEmotionSrc, /<AiMagicFill active=\{tagsFilled\}>/);
+});
+
+test('submit() is completely unchanged by this slice - focusQuality/planCommitment/wouldTakeIfNotForced still send the exact same fixed 5/5/null they always did, never fabricated from anything the AI applied', () => {
+  assert.match(logEmotionSrc, /focusQuality: 5, planCommitment: 5,\s*\n\s*wouldTakeIfNotForced: null/);
 });
 
 test('trade.open/trade.cancel/trade.close/trade.emotion.log all resolve the active Trade the same way - only context.activeEntities.tradeId, never a guess among multiple visible Trades', () => {

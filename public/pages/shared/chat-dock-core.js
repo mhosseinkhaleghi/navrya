@@ -26,7 +26,10 @@
   // Filtering these names out of what the server ever sees is the narrowest fix - it changes
   // nothing about TradeJournalAIProcessRegistry's own contract, only what chat-dock-core.js
   // itself chooses to expose in its own request body.
-  var AI_INTERNAL_ONLY_FIELDS = { sourceSessionId: true, sourceScenarioId: true, pendingEmotionSignal: true, riskOverride: true };
+  // pinnedTradeId (context-aware conversational operation layer, section 5): set ONLY by this
+  // file's own trade-emotion clarification flow once it has already resolved which real open
+  // Trade a stress/anger statement is about - never asked of the user, never sent to the model.
+  var AI_INTERNAL_ONLY_FIELDS = { sourceSessionId: true, sourceScenarioId: true, pendingEmotionSignal: true, riskOverride: true, pinnedTradeId: true };
   function modelFacingAllowlist(allowlist) {
     return (allowlist || []).filter(function (path) { return !AI_INTERNAL_ONLY_FIELDS[path]; });
   }
@@ -161,6 +164,23 @@
       }
     }
 
+    // Context-aware conversational operation layer, section 4/5: resolve a pending trade-emotion
+    // clarification deterministically, client-side, before anything else - the same "a real UI
+    // control, never left to the model's own free-form JSON extraction" posture as the dock-
+    // control check just above and Journey C's own pending-confirmation check below. A bare "yes"/
+    // "no"/"the gold trade" reply answers THIS clarification; it must never reach action discovery
+    // or an unrelated fast path first.
+    var clarificationResult = resolveTradeEmotionClarification(text, conversationId, t0);
+    if (clarificationResult) return clarificationResult;
+
+    // Section 5: no clarification was already pending - check whether THIS message itself should
+    // start one (a real, permitted open Trade exists even though nothing else ties the message to
+    // trading yet). Runs deterministically, before the network call, exactly like the resolution
+    // path above - staging a clarification (or resolving an unambiguous one outright) must never
+    // cost a wasted provider round trip.
+    var freshClarification = stageTradeEmotionClarificationIfNeeded(text, conversationId, t0);
+    if (freshClarification) return freshClarification;
+
     if (therapistMode) {
       setLastTurnDebug({ path: 'therapist' });
       var mhStore = window.TradeJournalMentalHealthStore, mhAi = window.TradeJournalMentalHealthAI;
@@ -256,6 +276,32 @@
         };
       }
       if (openingChoice === 'explain') companionIntent = 'explain'; // TEACHER stance below, using the user's own real spoken question
+    }
+
+    // Context-aware conversational operation layer, section 9 (workflow switching): an
+    // unambiguous "never mind"/"cancel that"/"forget it"-shaped utterance abandons WHATEVER
+    // workflow is currently in flight, deterministically and client-side, before anything else
+    // below even looks at it - the same "must not depend on provider uptime or a model's own
+    // free-form judgment" posture as Journey C's own pending-confirmation check above and the F37
+    // gate-rejection fast path just below. Deliberately broader than that gate-rejection path (any
+    // in-progress workflow, not only a gate-shaped one with exactly one field left) but a
+    // DIFFERENT, narrower vocabulary than its own plain yes/no REJECT_PATTERN - seeing
+    // ai-workflow-engine.js's own interpretCancelText() own comment for why "no"/"don't" alone is
+    // deliberately excluded (an ordinary same-breath field correction must never be mistaken for
+    // abandonment) and why "scratch that" is too, to avoid shadowing
+    // session.movementEntry.create's own removeLastSentence field. A no-op (returns false) when
+    // nothing is in flight, so this never fires mid-ordinary-conversation.
+    var cancelWorkflow = workflowEngine ? workflowEngine.current() : null;
+    if (cancelWorkflow && typeof workflowEngine.interpretCancelText === 'function' && workflowEngine.interpretCancelText(text)) {
+      workflowEngine.cancel();
+      setLastTurnDebug({ path: 'workflow-cancelled', actionId: cancelWorkflow.actionId });
+      recordZeroNetworkLatency('WORKFLOW_CANCEL', t0, { graceMs: 0 });
+      return {
+        kind: 'workflow', reply: i18n.t('aiWorkflowCancelled'),
+        voiceReply: (window.TradeJournalAIVoiceText && window.TradeJournalAIVoiceText.spokenConfirmation('cancelled', i18n.language())) || null,
+        workflow: null,
+        activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+      };
     }
 
     // Journey F, F37: a workflow genuinely waiting on ONLY a yes/no gate field (confirm/
@@ -561,7 +607,13 @@
     if (workflowEngine && actionRegistry && !activeProcess && !workflowBlocksDiscovery) {
       var discoveryContext = contextEngine ? contextEngine.snapshot() : {};
       var catalog = actionRegistry.catalogFor(discoveryContext);
-      if (catalog.length) availableActions = catalog;
+      // Section 5: an internal-only field (pinnedTradeId) on an action's own optionalFields must
+      // never reach the model's own discovery schema either - the exact same filter
+      // activeProcess.allowlist already gets a few lines below, applied here too so NAVRYA's own
+      // orchestration-only fields never leak into what the model is told it may extract.
+      if (catalog.length) availableActions = catalog.map(function (action) {
+        return Object.assign({}, action, { requiredFields: modelFacingAllowlist(action.requiredFields), optionalFields: modelFacingAllowlist(action.optionalFields) });
+      });
     }
 
     // Item 1 fix: an explicit Companion Explain turn must never be hijacked by an unrelated
@@ -981,6 +1033,109 @@
     var lines = blocking.map(function (f) { return f.message; }).concat(rest.map(function (f) { return f.message; }));
     if (blocking.length) lines.push('Do you want to keep the current value, or deliberately override it?');
     return lines.join(' ');
+  }
+
+  // Context-aware conversational operation layer, section 5: safe, minimal label for a real
+  // Trade - never the raw store record, matching candidateEntities' own "safe labels only"
+  // contract (section 4). Deliberately simple (direction + instrument) - just enough for the
+  // user to recognize which trade is meant.
+  function tradeLabelFor(trade) {
+    var direction = trade && trade.direction ? String(trade.direction) : '';
+    var instrument = trade && trade.instrument ? String(trade.instrument) : (trade && trade.id) || '';
+    return (direction ? direction + ' ' : '') + instrument;
+  }
+
+  // Resolves a pending trade-emotion clarification (section 4's contract) against this turn's
+  // text. Returns a real sendChat() result (short-circuiting the caller) when the clarification
+  // was answered - confirm/select starts the real trade.emotion.log workflow with the resolved
+  // Trade pinned; reject clears it with no side effect. Returns null (fall through to normal
+  // handling) when nothing is pending, the pending one belongs to a different conversation, or the
+  // reply is genuinely ambiguous (Journey C's own "leave pending state untouched" precedent for an
+  // unclear yes/no). The P0 safety preflight at the very top of sendChat() has already run against
+  // this exact text before this function is ever reached - no separate safety check needed here.
+  function resolveTradeEmotionClarification(text, conversationId, t0) {
+    var clarificationState = window.TradeJournalAIClarificationState;
+    var workflowEngine = window.TradeJournalAIWorkflowEngine;
+    if (!clarificationState || !workflowEngine) return null;
+    clarificationState.invalidateIfStale({ conversationId: conversationId, processRegistry: registry });
+    var pending = clarificationState.getValid();
+    if (!pending || pending.kind.indexOf('trade-emotion') !== 0) return null;
+    if (pending.conversationId !== conversationId) return null;
+    var decision = clarificationState.interpretReply(text, pending);
+    if (!decision) return null; // ambiguous - leave it pending, fall through to normal handling
+    clarificationState.clear();
+    setLastTurnDebug({ path: 'trade-emotion-clarification-resolved', kind: pending.kind, decision: decision.decision });
+    recordZeroNetworkLatency('TRADE_EMOTION_CLARIFICATION', t0, {});
+    if (decision.decision === 'reject') {
+      var declinedReply = i18n.t('aiTradeEmotionDeclined');
+      return { kind: 'assistant', reply: declinedReply, voiceReply: declinedReply, suggestions: [], activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId };
+    }
+    // A plain "yes" (decision.entity undefined) resolves to the clarification's own sole
+    // candidate for a single-candidate consent question; a bare "yes" to a MULTI-candidate
+    // clarification is itself still ambiguous and never guessed (F53) - interpretReply() only
+    // ever returns 'confirm' at all when candidates.length <= 1, so this fallback is safe.
+    var resolvedEntity = decision.entity || (pending.candidateEntities.length === 1 ? pending.candidateEntities[0] : null);
+    if (!resolvedEntity) return null;
+    var contextEngine = window.TradeJournalAIContextEngine;
+    workflowEngine.start('trade.emotion.log', contextEngine ? contextEngine.snapshot() : {}, [{ path: 'pinnedTradeId', value: resolvedEntity.id }]);
+    var openedReply = i18n.t('aiTradeEmotionOpened', { label: resolvedEntity.label });
+    return {
+      kind: 'workflow', reply: openedReply, voiceReply: openedReply,
+      workflow: workflowEngine.current(), activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+    };
+  }
+
+  // Stages a NEW trade-emotion clarification when this message itself is a bare/ambiguous
+  // emotional statement with a real, permitted open Trade to ask about (ai-signal-router.js's own
+  // TRADE_EMOTION_CANDIDATE destination) - or, when the message already named the exact trade
+  // unambiguously, starts the real workflow directly with no clarification question at all
+  // (section 5's own "skip redundant questions when ... unambiguous"; stressLevel/dominantEmotions
+  // extraction itself still happens on the very next turn, through the normal suggestion-
+  // application path, now that trade-emotion-log genuinely is the active process - no network call
+  // happened THIS turn to extract them from, so nothing here ever fabricates them). Returns null
+  // (fall through to the ordinary network path) for every other destination - TRADE_LOG/
+  // SESSION_CONTEXT/CHAT_ONLY are all unaffected, still handled by the existing post-network
+  // runSignalRouting() exactly as before.
+  function stageTradeEmotionClarificationIfNeeded(text, conversationId, t0) {
+    var router = window.TradeJournalAISignalRouter;
+    var clarificationState = window.TradeJournalAIClarificationState;
+    var workflowEngine = window.TradeJournalAIWorkflowEngine;
+    var contextEngine = window.TradeJournalAIContextEngine;
+    if (!router || !clarificationState || !workflowEngine) return null;
+    var currentWorkflowState = workflowEngine.pruneIfAbandoned();
+    var snapshot = contextEngine ? contextEngine.snapshot() : {};
+    var hasActiveTradeWorkflow = !!(currentWorkflowState && currentWorkflowState.actionId === 'trade.calculator');
+    var activeSessionId = (snapshot.activeEntities && snapshot.activeEntities.sessionId) || null;
+    var classified = router.classify({ text: text, context: { hasActiveTradeWorkflow: hasActiveTradeWorkflow, activeSessionId: activeSessionId } });
+    if (classified.destination !== router.DESTINATION.TRADE_EMOTION_CANDIDATE) return null;
+    var candidates = (classified.openTradeCandidates || []).map(function (t) { return { id: t.id, label: tradeLabelFor(t) }; });
+    if (!candidates.length) return null;
+
+    if (classified.resolvedTradeId) {
+      var resolved = candidates.filter(function (c) { return c.id === classified.resolvedTradeId; })[0];
+      if (resolved) {
+        workflowEngine.start('trade.emotion.log', snapshot, [{ path: 'pinnedTradeId', value: resolved.id }]);
+        setLastTurnDebug({ path: 'trade-emotion-resolved', tradeId: resolved.id });
+        recordZeroNetworkLatency('TRADE_EMOTION_RESOLVED', t0, {});
+        var resolvedReply = i18n.t('aiTradeEmotionOpened', { label: resolved.label });
+        return {
+          kind: 'workflow', reply: resolvedReply, voiceReply: resolvedReply,
+          workflow: workflowEngine.current(), activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+        };
+      }
+    }
+
+    var kind = candidates.length === 1 ? 'trade-emotion-consent' : 'trade-emotion-select';
+    clarificationState.stage({
+      conversationId: conversationId, originalUtterance: text, candidateActionIds: ['trade.emotion.log'],
+      candidateEntities: candidates, kind: kind
+    });
+    setLastTurnDebug({ path: 'trade-emotion-clarification-staged', kind: kind, candidateCount: candidates.length });
+    recordZeroNetworkLatency('TRADE_EMOTION_CLARIFY', t0, {});
+    var askReply = candidates.length === 1
+      ? i18n.t('aiTradeEmotionAskSingle', { label: candidates[0].label })
+      : i18n.t('aiTradeEmotionAskWhich', { labels: candidates.map(function (c) { return c.label; }).join(', ') });
+    return { kind: 'assistant', reply: askReply, voiceReply: askReply, suggestions: [], activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId };
   }
 
   // Journey C: classifies this message for a trading-relevant behavioral/emotional signal

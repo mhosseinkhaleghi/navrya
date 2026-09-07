@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 
 // Redesign of trade-ui.js's openEmotion()/emotionEditor() modal against the design handoff
 // code-codex/dashboard/LogEmotion.dc.html. Same real save path (TradeJournalTradeStore.addEmotion),
@@ -84,6 +86,12 @@ function MoodDetailCard({ ti, id, entry, onLevel, onToggleReason, onDraftChange,
   const presets = (TAG_PRESETS[id] || []).map((key) => ti.t(key));
   const custom = (entry.tags || []).filter((tag) => presets.indexOf(tag) === -1);
   const allChips = presets.concat(custom);
+  // Context-aware conversational operation layer, section 6: real per-emotion stable field paths
+  // (emotionIntensity.<id>/emotionTags.<id>, keyed by this same real canonical EMOTION_ICONS id -
+  // see the trade-emotion-log registration below) - one subscription per mounted card, matching
+  // this hook's own one-(processId,path)-pair-per-call contract.
+  const intensityFilled = useAiFieldFill('trade-emotion-log', 'emotionIntensity.' + id);
+  const tagsFilled = useAiFieldFill('trade-emotion-log', 'emotionTags.' + id);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid var(--char-accent)', borderRadius: 10, background: 'rgba(3,8,7,.6)', padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -94,19 +102,23 @@ function MoodDetailCard({ ti, id, entry, onLevel, onToggleReason, onDraftChange,
         <span className="navrya-tabular" dir="ltr" style={{ font: '600 22px/24px var(--font-num)', color: 'var(--char-accent)' }}>{entry.intensity}</span>
         <button type="button" onClick={onRemove} aria-label={ti.t('logRemoveFeeling')} style={{ width: 30, height: 30, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid transparent', background: 'transparent', color: 'var(--text-muted)' }}><Icon name="close" size={14} /></button>
       </div>
-      <IntensityBars value={entry.intensity} onChange={onLevel} />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-        <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{ti.t('logBecause')}</span>
-        {allChips.map((label) => {
-          const sel = (entry.tags || []).indexOf(label) > -1;
-          return (
-            <button
-              key={label} type="button" onClick={() => onToggleReason(label)}
-              style={{ height: 32, padding: '0 11px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (sel ? 'var(--char-accent)' : 'var(--divider-gold)'), background: sel ? 'var(--char-active-surface)' : 'rgba(11,20,21,.5)', color: sel ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-caption)' }}
-            >{label}</button>
-          );
-        })}
-      </div>
+      <AiMagicFill active={intensityFilled}>
+        <IntensityBars value={entry.intensity} onChange={onLevel} />
+      </AiMagicFill>
+      <AiMagicFill active={tagsFilled}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{ti.t('logBecause')}</span>
+          {allChips.map((label) => {
+            const sel = (entry.tags || []).indexOf(label) > -1;
+            return (
+              <button
+                key={label} type="button" onClick={() => onToggleReason(label)}
+                style={{ height: 32, padding: '0 11px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (sel ? 'var(--char-accent)' : 'var(--divider-gold)'), background: sel ? 'var(--char-active-surface)' : 'rgba(11,20,21,.5)', color: sel ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-caption)' }}
+              >{label}</button>
+            );
+          })}
+        </div>
+      </AiMagicFill>
       <input
         dir="auto" value={entry.draft || ''} onChange={(e) => onDraftChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onDraftCommit(); } }}
@@ -255,19 +267,95 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
   // and closePositionModal.jsx: submit() closes over `note`/`selected`/`stress` state, all of
   // which can change after this effect (deps [stage]) first registers.
   const submitRef = React.useRef(null);
+  // Context-aware conversational operation layer, section 6: real per-emotion stable field paths,
+  // built from the same real canonical id list the manual UI itself offers (EMOTION_ICONS/
+  // emotionList) - never a hand-typed, driftable copy.
+  const EMOTION_FIELD_PATHS = emotionList.reduce(function (acc, emoId) { return acc.concat(['emotionIntensity.' + emoId, 'emotionTags.' + emoId]); }, []);
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('trade-emotion-log', {
-      allowlist: ['note'],
+      // note stays first (unchanged real precedent); stressLevel/dominantEmotions and the
+      // per-emotion paths are the real form's own remaining controls - the SAME real
+      // stress/dominantEmotions/emotionDetails state the manual UI above already writes, never a
+      // second, parallel representation. focusQuality/planCommitment/wouldTakeIfNotForced are
+      // deliberately NOT here - the real form has no control for them at all (submit() itself
+      // still sends the same fixed 5/5/null it always did), so exposing them would let the model
+      // invent a value with no real UI backing it.
+      allowlist: ['note', 'stressLevel', 'dominantEmotions'].concat(EMOTION_FIELD_PATHS),
       isOpen: () => mountedRef.current,
       activeStep: () => stage || 'mid_trade',
-      applyValue: (path, value) => { if (path === 'note') setNote(String(value || '')); },
+      applyValue: (path, value) => {
+        if (path === 'note') { setNote(String(value || '')); return; }
+        // stressLevel: the same real 1-10 range the manual button row enforces - an out-of-range
+        // value is rejected outright (F50), never clamped to the nearest boundary. The form's own
+        // useState(5) default is never itself a "known" answer - only an explicit applyValue call
+        // (a real extracted value from something the user actually said) ever reaches here at all.
+        if (path === 'stressLevel') {
+          var stressN = Number(value);
+          if (Number.isFinite(stressN) && stressN >= 1 && stressN <= 10) setStress(Math.round(stressN));
+          return;
+        }
+        // dominantEmotions: exact canonical ids only (never a guessed/aliased label), capped at 3
+        // - the same real limit toggle()'s own maxThree toast already enforces. Replaces the full
+        // selection each turn (mirrors pattern.edit's own instruments field convention) - the
+        // model is expected to restate the full intended set, not accumulate silently. A newly
+        // selected id that has no detail entry yet gets a real default entry (intensity 5, no
+        // tags) - the exact same shape toggle()'s own manual click already creates; one already
+        // selected keeps whatever intensity/tags it already has, never reset by this.
+        if (path === 'dominantEmotions') {
+          var wantedIds = (Array.isArray(value) ? value : String(value || '').split(',')).map(function (v) { return String(v).trim().toLowerCase(); }).filter(Boolean);
+          var validIds = wantedIds.filter(function (v) { return emotionList.indexOf(v) > -1; }).slice(0, 3);
+          if (!validIds.length) return;
+          setSelected(validIds);
+          setDetails(function (prev) {
+            return validIds.map(function (emoId) { return prev.find(function (d) { return d.emotion === emoId; }) || { emotion: emoId, intensity: 5, tags: [], draft: '' }; });
+          });
+          return;
+        }
+        var intensityMatch = /^emotionIntensity\.(.+)$/.exec(path);
+        if (intensityMatch) {
+          var intensityEmoId = intensityMatch[1];
+          if (emotionList.indexOf(intensityEmoId) === -1) return;
+          var intensityN = Number(value);
+          if (!(Number.isFinite(intensityN) && intensityN >= 1 && intensityN <= 10)) return;
+          // Selecting this emotion (if not already selected) is the same real gesture toggle()
+          // performs - never silently sets an intensity for an emotion the user never chose to
+          // log, and never exceeds the same real 3-emotion cap.
+          setSelected(function (list) { return list.indexOf(intensityEmoId) > -1 ? list : (list.length < 3 ? list.concat([intensityEmoId]) : list); });
+          setDetails(function (list) {
+            var exists = list.some(function (d) { return d.emotion === intensityEmoId; });
+            if (exists) return list.map(function (d) { return d.emotion === intensityEmoId ? Object.assign({}, d, { intensity: Math.round(intensityN) }) : d; });
+            return list.concat([{ emotion: intensityEmoId, intensity: Math.round(intensityN), tags: [], draft: '' }]);
+          });
+          return;
+        }
+        var tagsMatch = /^emotionTags\.(.+)$/.exec(path);
+        if (tagsMatch) {
+          var tagsEmoId = tagsMatch[1];
+          if (emotionList.indexOf(tagsEmoId) === -1) return;
+          // Append-dedup, mirroring InvalidationTags'/addTag()'s own real semantics elsewhere in
+          // this app - never a bare replace of whatever reasons are already recorded.
+          var additions = String(value || '').split(',').map(function (v) { return v.trim(); }).filter(Boolean);
+          if (!additions.length) return;
+          setSelected(function (list) { return list.indexOf(tagsEmoId) > -1 ? list : (list.length < 3 ? list.concat([tagsEmoId]) : list); });
+          setDetails(function (list) {
+            var existing = list.find(function (d) { return d.emotion === tagsEmoId; });
+            var currentTags = existing ? (existing.tags || []) : [];
+            var newTags = currentTags.concat(additions.filter(function (a) { return currentTags.indexOf(a) === -1; }));
+            if (existing) return list.map(function (d) { return d.emotion === tagsEmoId ? Object.assign({}, d, { tags: newTags }) : d; });
+            return list.concat([{ emotion: tagsEmoId, intensity: 5, tags: newTags, draft: '' }]);
+          });
+        }
+      },
       submit: () => submitRef.current()
     });
     return () => { mountedRef.current = false; };
   }, [stage]);
+
+  const stressFilled = useAiFieldFill('trade-emotion-log', 'stressLevel');
+  const emotionsFilled = useAiFieldFill('trade-emotion-log', 'dominantEmotions');
 
   function toggle(id) {
     setSelected((list) => {
@@ -367,20 +455,22 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
                 <span style={{ flex: 1 }} />
                 <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: selected.length >= 3 ? 'var(--gold-warm)' : 'var(--text-muted)' }}>{t('chosenOf3', { n: digits(lang, selected.length) })}</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 8 }}>
-                {emotionList.map((name) => {
-                  const on = selected.indexOf(name) > -1;
-                  return (
-                    <button
-                      key={name} type="button" onClick={() => toggle(name)}
-                      style={{ height: 48, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: on ? '2px solid var(--char-accent)' : '1px solid var(--divider-gold)', background: on ? 'var(--char-active-surface)' : 'rgba(11,20,21,.55)', color: on ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                    >
-                      <Icon name={EMOTION_ICONS[name] || 'circle'} size={18} />
-                      <span dir="auto" style={{ font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ti ? ti.t(name) : name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <AiMagicFill active={emotionsFilled}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 8 }}>
+                  {emotionList.map((name) => {
+                    const on = selected.indexOf(name) > -1;
+                    return (
+                      <button
+                        key={name} type="button" onClick={() => toggle(name)}
+                        style={{ height: 48, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: on ? '2px solid var(--char-accent)' : '1px solid var(--divider-gold)', background: on ? 'var(--char-active-surface)' : 'rgba(11,20,21,.55)', color: on ? 'var(--text-primary)' : 'var(--text-muted)' }}
+                      >
+                        <Icon name={EMOTION_ICONS[name] || 'circle'} size={18} />
+                        <span dir="auto" style={{ font: 'var(--type-section-label)', letterSpacing: '.08em', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ti ? ti.t(name) : name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </AiMagicFill>
             </div>
 
             {!!selected.length && (
@@ -405,17 +495,19 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
                 <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-metric-value)', color: stressTone }}>{digits(lang, stress)}</span>
                 <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{hot ? t('stressCritical') : warm ? t('stressElevated') : t('stressSteady')}</span>
               </div>
-              <div style={{ display: 'flex', gap: 6, direction: 'ltr' }}>
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
-                  const on = n <= stress;
-                  return (
-                    <button
-                      key={n} type="button" onClick={() => setStress(n)} aria-label={'Stress ' + n}
-                      style={{ flex: 1, height: 38, borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (on ? stressTone : 'var(--divider-gold)'), background: on ? (hot ? 'rgba(255,56,48,.16)' : warm ? 'rgba(255,176,32,.14)' : 'var(--char-active-surface)') : 'rgba(11,20,21,.5)', color: on ? 'var(--text-primary)' : 'var(--text-disabled)', font: 'var(--type-caption)' }}
-                    >{digits(lang, n)}</button>
-                  );
-                })}
-              </div>
+              <AiMagicFill active={stressFilled}>
+                <div style={{ display: 'flex', gap: 6, direction: 'ltr' }}>
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+                    const on = n <= stress;
+                    return (
+                      <button
+                        key={n} type="button" onClick={() => setStress(n)} aria-label={'Stress ' + n}
+                        style={{ flex: 1, height: 38, borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (on ? stressTone : 'var(--divider-gold)'), background: on ? (hot ? 'rgba(255,56,48,.16)' : warm ? 'rgba(255,176,32,.14)' : 'var(--char-active-surface)') : 'rgba(11,20,21,.5)', color: on ? 'var(--text-primary)' : 'var(--text-disabled)', font: 'var(--type-caption)' }}
+                      >{digits(lang, n)}</button>
+                    );
+                  })}
+                </div>
+              </AiMagicFill>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

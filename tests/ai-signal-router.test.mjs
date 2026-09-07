@@ -16,6 +16,25 @@ async function routerSandbox() {
   return sandbox.window.TradeJournalAISignalRouter;
 }
 
+// Context-aware conversational operation layer, section 5: a real sandbox exposing
+// window.TradeJournalAIUserMemory.getRelevantTrades() - the exact same public, privacy-scoped
+// adapter ai-signal-router.js itself calls (never window.TradeJournalTradeStore directly - "do not
+// read private store internals from the router"). `openTrades` is the full real Trade Store
+// content the fake store would return for status:'open'; `recentCount` truncation is honored so
+// the truncated-flag tests below exercise the real behavior, not a shortcut.
+async function routerSandboxWithOpenTrades(openTrades) {
+  const sandbox = { window: {} };
+  sandbox.window.TradeJournalAIUserMemory = {
+    getRelevantTrades(query, ctx) {
+      const filtered = (ctx && ctx.status) ? openTrades.filter((t) => t.status === ctx.status) : openTrades.slice();
+      return filtered.slice(0, (ctx && ctx.recentCount) || 5);
+    }
+  };
+  vm.runInNewContext(await source('ai-signal-router.js'), sandbox, { filename: 'ai-signal-router.js' });
+  return sandbox.window.TradeJournalAISignalRouter;
+}
+function trade(id, instrument) { return { id, status: 'open', direction: 'long', instrument, entryPrice: 100, stopLoss: 90, riskPercent: 1, outcome: null, linkedStrategyId: null }; }
+
 // ---- explicit trading anger (the required core scenario's own phrasing) ----
 
 test('classify() recognizes explicit trading anger with an active trade workflow and routes to TRADE_LOG', async () => {
@@ -116,6 +135,84 @@ test('classify() (Persian) recognizes "دو تا ضرر کردم و خیلی ع�
 test('classify() (Persian) treats "این پنجره اعصابمو خورد کرده." as UI frustration, not trading psychology', async () => {
   const router = await routerSandbox();
   const result = router.classify({ text: 'این پنجره اعصابمو خورد کرده.', context: { hasActiveTradeWorkflow: true } });
+  assert.equal(result.relevant, false);
+  assert.equal(result.destination, 'CHAT_ONLY');
+});
+
+// ---- Context-aware conversational operation layer, section 5: contextual trade-emotion routing ----
+
+test('classify() with ZERO open trades and no other trading evidence stays CHAT_ONLY/not relevant, exactly as before this feature - a real store existing changes nothing when it has nothing open', async () => {
+  const router = await routerSandboxWithOpenTrades([]);
+  const result = router.classify({ text: 'I feel stressed.', context: {} });
+  assert.equal(result.relevant, false);
+  assert.equal(result.destination, 'CHAT_ONLY');
+});
+
+test('classify() with exactly ONE open trade and a bare "I feel stressed" (no trading vocabulary at all) routes to TRADE_EMOTION_CANDIDATE with that one trade as the sole candidate, unresolved (a consent question, never an assumption)', async () => {
+  const router = await routerSandboxWithOpenTrades([trade('t1', 'XAUUSD')]);
+  const result = router.classify({ text: 'I feel stressed.', context: {} });
+  assert.equal(result.relevant, true);
+  assert.equal(result.destination, 'TRADE_EMOTION_CANDIDATE');
+  assert.equal(result.resolvedTradeId, null, 'the trade was not named - this must ask, never assume');
+  assert.equal(result.openTradeCandidates.length, 1);
+  assert.equal(result.openTradeCandidates[0].id, 't1');
+  assert.equal(result.openTradeCandidatesTruncated, false);
+});
+
+test('classify() with MULTIPLE open trades and no explicit mention returns every candidate for the caller to ask "which trade" - never guesses one', async () => {
+  const router = await routerSandboxWithOpenTrades([trade('t1', 'XAUUSD'), trade('t2', 'EURUSD')]);
+  const result = router.classify({ text: 'I feel stressed.', context: {} });
+  assert.equal(result.relevant, true);
+  assert.equal(result.destination, 'TRADE_EMOTION_CANDIDATE');
+  assert.equal(result.resolvedTradeId, null);
+  assert.equal(result.openTradeCandidates.length, 2);
+});
+
+test('classify() resolves the exact trade directly (resolvedTradeId set, no clarification needed) when the message explicitly names that trade\'s own real instrument - "skip redundant questions when the entity and requested operation are unambiguous"', async () => {
+  const router = await routerSandboxWithOpenTrades([trade('t1', 'XAUUSD'), trade('t2', 'EURUSD')]);
+  const result = router.classify({ text: 'Log stress seven and fear of hitting my stop for my open XAUUSD trade.', context: {} });
+  assert.equal(result.relevant, true);
+  assert.equal(result.destination, 'TRADE_EMOTION_CANDIDATE');
+  assert.equal(result.resolvedTradeId, 't1');
+});
+
+test('classify() never resolves an instrument mention shared by two open trades - ambiguous stays unresolved, never guessed (F53)', async () => {
+  const router = await routerSandboxWithOpenTrades([trade('t1', 'XAUUSD'), trade('t2', 'XAUUSD')]);
+  const result = router.classify({ text: 'Stressed about my XAUUSD trade.', context: {} });
+  assert.equal(result.resolvedTradeId, null);
+  assert.equal(result.openTradeCandidates.length, 2);
+});
+
+test('classify() flags openTradeCandidatesTruncated when the store returns exactly the request limit - a one-item truncated result is not proof only one trade exists', async () => {
+  const many = Array.from({ length: 6 }, (_, i) => trade('t' + i, 'XAUUSD'));
+  const router = await routerSandboxWithOpenTrades(many);
+  const result = router.classify({ text: 'I feel stressed.', context: {} });
+  assert.equal(result.openTradeCandidatesTruncated, true);
+});
+
+test('classify() never invents a candidate when window.TradeJournalAIUserMemory is unavailable - fails safe to the pre-existing CHAT_ONLY behavior, never throws', async () => {
+  const router = await routerSandbox(); // no TradeJournalAIUserMemory in this sandbox at all
+  const result = router.classify({ text: 'I feel stressed.', context: {} });
+  assert.equal(result.relevant, false);
+  assert.equal(result.destination, 'CHAT_ONLY');
+});
+
+test('classify() still routes an active trade workflow to TRADE_LOG even when open trades also exist - the in-flight workflow takes precedence, unchanged', async () => {
+  const router = await routerSandboxWithOpenTrades([trade('t1', 'XAUUSD')]);
+  const result = router.classify({ text: 'I feel stressed.', context: { hasActiveTradeWorkflow: true } });
+  assert.equal(result.destination, 'TRADE_LOG');
+  assert.equal(result.openTradeCandidates, undefined, 'TRADE_LOG results never carry the candidate-list shape');
+});
+
+test('classify() still routes an active Session to SESSION_CONTEXT even when open trades also exist - the active Session takes precedence, unchanged', async () => {
+  const router = await routerSandboxWithOpenTrades([trade('t1', 'XAUUSD')]);
+  const result = router.classify({ text: 'I feel stressed.', context: { activeSessionId: 'session-1' } });
+  assert.equal(result.destination, 'SESSION_CONTEXT');
+});
+
+test('classify() preserves the UI-frustration false-positive rule even with a real open trade available - "this app is stressing me out" must never become a trading emotion log', async () => {
+  const router = await routerSandboxWithOpenTrades([trade('t1', 'XAUUSD')]);
+  const result = router.classify({ text: 'This app is stressing me out.', context: {} });
   assert.equal(result.relevant, false);
   assert.equal(result.destination, 'CHAT_ONLY');
 });
