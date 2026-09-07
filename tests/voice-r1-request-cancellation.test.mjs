@@ -131,7 +131,7 @@ test('mentalHealthChat threads its own externalSignal parameter through to callP
   assert.equal(captured.signal.aborted, true);
 });
 
-// The raw HTTP dispatcher itself (the request.on('close')/`responded` wiring that turns a real
+// The raw HTTP dispatcher itself (the request/response lifecycle wiring that turns a real
 // browser disconnect into the externalSignal every test above already proves works once supplied)
 // is thin, request-lifecycle glue this suite cannot exercise as a genuine socket-level integration
 // test without also mocking session/quota/wallet verification end to end - the exported-function
@@ -140,12 +140,13 @@ test('mentalHealthChat threads its own externalSignal parameter through to callP
 // not a substitute for it - see the tests above for the actual behavior proof.
 test('the raw HTTP dispatcher wires a real per-request disconnect signal into dockChat/mentalHealthChat only - every other route on this gateway is untouched', async () => {
   const src = await readFile(path.join(process.cwd(), 'server', 'pattern-ai-server.mjs'), 'utf8');
-  assert.match(src, /let responded = false;/);
   assert.match(src, /const clientDisconnectController = new AbortController\(\);/);
-  assert.match(src, /request\.on\('close', \(\) => \{ if \(!responded\) clientDisconnectController\.abort\(\); \}\);/);
+  assert.match(src, /request\.on\('aborted', abortOnClientDisconnect\);/);
+  assert.match(src, /response\.on\('close', abortOnClientDisconnect\);/);
+  assert.match(src, /if \(!response\.writableEnded\) clientDisconnectController\.abort\(\);/);
+  assert.doesNotMatch(src, /request\.on\('close'/);
   assert.match(src, /await dockChat\(body, clientDisconnectController\.signal\)/);
   assert.match(src, /await mentalHealthChat\(body, clientDisconnectController\.signal\)/);
-  assert.match(src, /finally \{[\s\S]*?responded = true;[\s\S]*?\}/);
   // Every OTHER route dispatch in this same block must still call its handler with exactly one
   // argument (body) - confirms the signal was deliberately NOT threaded into any route beyond the
   // two this slice covers.

@@ -3048,15 +3048,17 @@ const server = http.createServer(async (request, response) => {
   // sent, abort the in-flight provider call instead of letting it run to its own ~90s timeout for
   // nothing (audit findings C2/C3, "the abandoned-cost" section: today an abandoned request still
   // consumes quota/wallet and completes fully, with no way for the client to actually stop it).
-  // Node's `request` 'close' event fires on BOTH normal completion and abnormal disconnection - the
-  // `responded` flag (set once, in the `finally` below, covering every real exit path of the
-  // try/catch that follows) distinguishes the two, so a normal, already-answered request never
-  // fires a pointless late abort. Only ever wired into dockChat()/mentalHealthChat() below (the two
-  // routes this slice covers) - every other route on this gateway is completely unaffected, still
-  // gated only by its own existing timeout.
-  let responded = false;
+  // IncomingMessage's `close` event also fires after a completely normal request body has been
+  // consumed. Treating it as a disconnect aborts the provider call immediately after readBody(),
+  // which made every hosted chat fail in a few milliseconds. `aborted` covers a broken incoming
+  // upload; the ServerResponse `close` event covers a browser that leaves while awaiting a reply.
+  // `writableEnded` keeps the normal response-close path from cancelling an already-finished call.
   const clientDisconnectController = new AbortController();
-  request.on('close', () => { if (!responded) clientDisconnectController.abort(); });
+  const abortOnClientDisconnect = () => {
+    if (!response.writableEnded) clientDisconnectController.abort();
+  };
+  request.on('aborted', abortOnClientDisconnect);
+  response.on('close', abortOnClientDisconnect);
 
   let walletReservationId = null;
   try {
@@ -3158,12 +3160,6 @@ const server = http.createServer(async (request, response) => {
     // not a stable code a client can key a translated message off of - normalized to one here.
     const errorCode = error.name === 'AbortError' ? 'PROVIDER_TIMEOUT' : (error.message || 'PATTERN_AI_FAILED');
     return json(response, status, { error: errorCode });
-  } finally {
-    // Flips exactly once, covering every real exit path above (the success return and every
-    // handled-error return) - the request-level 'close' listener registered above reads this to
-    // tell "this request finished normally, a late close event means nothing" apart from "the
-    // browser genuinely disconnected while this was still in flight."
-    responded = true;
   }
 });
 
