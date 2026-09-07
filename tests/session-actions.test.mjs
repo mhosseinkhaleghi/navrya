@@ -42,16 +42,52 @@ test('session.chartEntry.create\'s open() drives the real live session hub (hub.
 test('session.movementEntry.create deliberately does NOT declare entityAlreadyPersisted, unlike chartEntry/scenario.create siblings - a passive, ambient "currently selected entry" registration would otherwise block all later action discovery', () => {
   const block = actionBlock('session.movementEntry.create');
   assert.doesNotMatch(block, /entityAlreadyPersisted/);
-  assert.match(block, /requiredFields: \[\], optionalFields: \['note'\]/);
+  assert.match(block, /requiredFields: \[\], optionalFields: \['note', 'appendNote', 'replaceLastSentence', 'removeLastSentence', 'newEntry', 'discardEntry'\]/);
   assert.match(block, /hub\.addMovementEntry\(\)/);
   assert.match(block, /var processId = 'live-session-entry-' \+ created\.id/);
 });
 
-test('session.movementEntry.create\'s open() reuses the currently-selected Entry when it is already a still-empty Movement Entry, instead of unconditionally creating a new one - found via real F21 browser testing of the two-turn "open, then separately supply the note" pattern, which otherwise created a second, redundant entry and left the first one\'s note empty', () => {
+// Context-aware conversational operation layer, section 7 (session note intent handling): the
+// F21 reuse rule is relaxed - the currently-selected Movement Entry is now reused across turns
+// even once it already has real text (continuing dictation - appendNote/replaceLastSentence/
+// removeLastSentence - must keep landing on the SAME entry, not a fresh one every follow-up), and
+// an explicit newEntry:true (read from initialFields, before the reuse decision) still forces a
+// brand-new one for a genuinely separate note.
+test('session.movementEntry.create\'s open() reuses the currently-selected Movement Entry regardless of whether it already has text, unless newEntry is explicitly true this turn - never guessing which is wanted from the note text alone', () => {
   const block = actionBlock('session.movementEntry.create');
+  assert.match(block, /var newEntryField = \(initialFields \|\| \[\]\)\.filter\(function \(f\) \{ return f && f\.path === 'newEntry'; \}\)\[0\];/);
+  assert.match(block, /var forceNew = !!\(newEntryField && \(newEntryField\.value === true \|\| newEntryField\.value === 'true'\)\);/);
   assert.match(block, /var existing = entryId && session \? \(session\.entries \|\| \[\]\)\.find\(\(e\) => e\.id === entryId\) : null;/);
-  assert.match(block, /var reuse = existing && existing\.type === 'movement' && !existing\.movementNote;/);
+  assert.match(block, /var reuse = !forceNew && existing && existing\.type === 'movement';/);
   assert.match(block, /var created = reuse \? existing : hub\.addMovementEntry\(\);/);
+});
+
+test('session.movementEntry.create validates newEntry/removeLastSentence/discardEntry as real boolean-only gates (F37: an explicit false stays genuinely missing, never a completed-but-false field), while note/appendNote/replaceLastSentence pass through verbatim, unreshaped', () => {
+  const block = actionBlock('session.movementEntry.create');
+  assert.match(block, /if \(path === 'newEntry' \|\| path === 'removeLastSentence' \|\| path === 'discardEntry'\) \{/);
+  assert.match(block, /return \(value === true \|\| value === 'true'\) \? true : null;/);
+  assert.match(block, /return value; \/\/ note\/appendNote\/replaceLastSentence: verbatim free text, no reshaping/);
+});
+
+test('session.movementEntry.create\'s discardEntry only ever fires from submit(), gated on being explicitly true (F37), re-resolving entryId fresh from context and delegating to the real live-session-entry-{id} registration\'s own already-existing delete submit() - never a second deletion path', () => {
+  const block = actionBlock('session.movementEntry.create');
+  assert.match(block, /if \(known\.discardEntry !== true && known\.discardEntry !== 'true'\) return undefined;/);
+  assert.match(block, /registry\.submit\('live-session-entry-' \+ entryId\)/);
+});
+
+test('the real live-session-entry-{id} registration (liveSessionView.jsx) exposes appendNote/replaceLastSentence/removeLastSentence alongside the pre-existing note/confirmDelete, each reading the note\'s CURRENT persisted text fresh from the live workspace store rather than a possibly-stale React prop', () => {
+  assert.match(liveSessionSrc, /allowlist: \['note', 'appendNote', 'replaceLastSentence', 'removeLastSentence', 'confirmDelete'\],/);
+  assert.match(liveSessionSrc, /function currentNote\(\) \{/);
+  assert.match(liveSessionSrc, /if \(path === 'appendNote'\) \{ onNote\(entry, appendToNote\(currentNote\(\), value\)\); return; \}/);
+  assert.match(liveSessionSrc, /if \(path === 'replaceLastSentence'\) \{ onNote\(entry, replaceLastSentenceIn\(currentNote\(\), value\)\); return; \}/);
+  assert.match(liveSessionSrc, /if \(path === 'removeLastSentence'\) \{ onNote\(entry, removeLastSentenceFrom\(currentNote\(\)\)\); return; \}/);
+});
+
+test('sentenceSegments/removeLastSentenceFrom/replaceLastSentenceIn/appendToNote are real, deterministic string helpers - never a model-driven merge - and removeLastSentenceFrom emptying the sole remaining sentence is a deliberate clear, not an error', () => {
+  assert.match(liveSessionSrc, /var SENTENCE_SPLIT_RE = \/\[\^\.!\?؟\]\*\[\.!\?؟\]\+\\s\*\|\[\^\.!\?؟\]\+\$\/g;/);
+  assert.match(liveSessionSrc, /function removeLastSentenceFrom\(text\) \{/);
+  assert.match(liveSessionSrc, /function replaceLastSentenceIn\(text, replacement\) \{/);
+  assert.match(liveSessionSrc, /function appendToNote\(text, addition\) \{/);
 });
 
 test('session.scenario.create\'s description carries no hedging/self-doubting clause about its own precondition - found via real F20 browser testing: a hedging clause like "only available if X, otherwise guide them" made the model decline to select the action even when available() had already gated it into the catalog correctly, with the real precondition already satisfied', () => {

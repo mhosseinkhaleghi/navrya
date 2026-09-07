@@ -581,6 +581,52 @@ function PersonaTab({ i18n, onGoTab }) {
     }
   }
 
+  // Section 8 (context-aware conversational operation layer): settings.persona.update's own real
+  // registration - mirrors accountsView.jsx's account-manual-form registration exactly. Every
+  // field lands on this SAME local draft state (presetId/tone/customText) that the real
+  // presets/sliders/textarea below already read - visible immediately, exactly like a human
+  // dragging a slider - but nothing actually persists to ai-companion-profile.js's document until
+  // the real save() above runs. character-app.jsx's own action only ever calls submit() once its
+  // required `save` gate field is explicitly true, so nothing here can autosave a still-in-
+  // progress fill. applyPreset/updateDim close over nothing but stable setState setters (no
+  // per-render state of their own), so - unlike save() below - they need no ref indirection to
+  // stay fresh from this one-time [] effect.
+  const mountedRef = React.useRef(true);
+  // save() itself DOES close over presetId/tone/customText/store, all of which change on every
+  // fill/keystroke after this effect's own one-time run - the same stale-closure fix already
+  // established in accountsView.jsx (submitRef) and messagesView.jsx: read fresh on every render.
+  const submitRef = React.useRef(save);
+  submitRef.current = save;
+  React.useEffect(() => {
+    mountedRef.current = true;
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('settings-persona', {
+      allowlist: ['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'initiative', 'customInstructions'],
+      isOpen: () => mountedRef.current,
+      applyValue: (path, value) => {
+        if (path === 'preset') {
+          const preset = PERSONA_PRESETS.find((p) => p.id === value);
+          if (preset) applyPreset(preset);
+          return;
+        }
+        if (path === 'initiative') { setPresetId(null); setTone((prev) => Object.assign({}, prev, { initiative: initiativeFromBucket(value) })); return; }
+        if (PERSONA_DIMENSIONS.some((d) => d.key === path && d.key !== 'initiative')) { updateDim(path, value); return; }
+        if (path === 'customInstructions') {
+          // character-app.jsx's own normalizeField sends the literal string 'none' for an
+          // explicit clear request - never '' itself, the same convention settings.companion.
+          // update's own 'goal' field already established (ai-workflow-engine.js's own
+          // applyKnownFields() would otherwise silently treat an empty-string value as absent
+          // extraction, a no-op, rather than a genuine clear).
+          setPresetId(null);
+          setCustomText(value === 'none' ? '' : String(value == null ? '' : value));
+        }
+      },
+      submit: () => submitRef.current()
+    });
+    return () => { mountedRef.current = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const activePreset = PERSONA_PRESETS.find((p) => p.id === presetId);
   const untouched = store && !store.personaStylePackage() && !customText.trim();
 
@@ -1399,6 +1445,17 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   // from `aiTab` below, which is the Engines tab's OWN internal engine/keys sub-tab and is
   // completely unaffected by this addition.
   const [topTab, setTopTab] = React.useState('dashboard');
+  // Section 8: the only way to reach a specific top-level tab here (Persona, in particular) from
+  // outside this component tree - unlike '#ai-settings' + 'ai-assistant-engine' (registered by an
+  // always-mounted effect further below, independent of topTab), nothing today routes a hash or
+  // query straight to one of these tabs. Mirrors communityView.jsx's own
+  // TradeJournalNavryaCommunityShell hub exactly: exposes only the same setTopTab this screen's
+  // own tab strip already calls, nothing new invented. `goToTab`'s identity never changes
+  // (setTopTab is a stable React state setter), so re-registering only on mount ([] deps) is safe.
+  React.useEffect(() => {
+    window.TradeJournalNavryaAiAssistantHub = { goToTab: setTopTab };
+    return () => { delete window.TradeJournalNavryaAiAssistantHub; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [aiTab, setAiTab] = React.useState('engine');
   const [openChatId, setOpenChatId] = React.useState(null);
   const [openChatDetail, setOpenChatDetail] = React.useState(null);

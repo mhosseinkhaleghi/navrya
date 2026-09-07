@@ -87,7 +87,10 @@ test('trade.delete is explicitly distinguished from trade.cancel (status change)
 test('scenario.delete and entry.delete extend the real, previously-unconfirmed deleteScenario()/deleteEntry() with a submit() gated on confirmDelete - the real delete icon had no window.confirm() of its own (found via repository audit)', () => {
   assert.match(liveSessionSrc, /allowlist: \['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'completedStage', 'incompleteStage', 'confirmDelete'\]/);
   assert.match(liveSessionSrc, /submit: \(\) => onDeleteRef\.current\(\)/);
-  assert.match(liveSessionSrc, /allowlist: \['note', 'confirmDelete'\]/);
+  // Context-aware conversational operation layer, section 7 extended this allowlist with
+  // appendNote/replaceLastSentence/removeLastSentence (session note dictation intents) - confirmDelete
+  // and the delete-gated submit() below are otherwise completely unchanged.
+  assert.match(liveSessionSrc, /allowlist: \['note', 'appendNote', 'replaceLastSentence', 'removeLastSentence', 'confirmDelete'\]/);
   assert.match(liveSessionSrc, /submit: \(\) => onDeleteEntryRef\.current\(entry\)/);
 });
 

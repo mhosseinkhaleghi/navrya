@@ -1385,6 +1385,43 @@ function EntryImageViewer({ entry, imageUrl, lang, onOpenSessionAnalysis, sessio
   );
 }
 
+// Section 7 (context-aware conversational operation layer): deterministic, NAVRYA-side sentence-
+// boundary helpers for a dictated movement note's own append/replace-last/remove-last verbs -
+// never left to the model's own free-form judgment (the model does not reliably see the note's
+// current persisted text at all - only NAVRYA, reading the real store fresh at call time, does).
+// Splits on ./!/?/؟ (the exact terminators this app's own i18n text already uses across fa/ar/en/
+// es), keeping each sentence's own trailing punctuation and whitespace so rejoining a prefix slice
+// reproduces the original text exactly - required for "preserve dictated text verbatim".
+var SENTENCE_SPLIT_RE = /[^.!?؟]*[.!?؟]+\s*|[^.!?؟]+$/g;
+function sentenceSegments(text) {
+  var t = String(text || '');
+  if (!t) return [];
+  var out = t.match(SENTENCE_SPLIT_RE);
+  return out && out.length ? out : [t];
+}
+// Removing the sole remaining sentence empties the note - a deliberate, explicit "remove that"
+// with nothing left before it is a genuine clear, not an error.
+function removeLastSentenceFrom(text) {
+  var segs = sentenceSegments(text);
+  return segs.slice(0, -1).join('').replace(/\s+$/, '');
+}
+// Replacing the last (or only) sentence with a genuinely empty replacement is never allowed here -
+// character-app.jsx's own normalizeField never sends an empty replaceLastSentence through in the
+// first place (empty free text there stays a plain pass-through, but an empty string would mean
+// "replace the last sentence with nothing", indistinguishable from removeLastSentence and better
+// expressed as that field instead).
+function replaceLastSentenceIn(text, replacement) {
+  var segs = sentenceSegments(text);
+  var rep = String(replacement || '').trim();
+  return segs.slice(0, -1).join('') + rep;
+}
+function appendToNote(text, addition) {
+  var base = String(text || '').replace(/\s+$/, '');
+  var add = String(addition || '').trim();
+  if (!add) return base;
+  return base ? base + ' ' + add : add;
+}
+
 function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, onAddAiScenario, onVisualizeAiScenario, onVisualizeAiAnalysis, scenarioTitleFor, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const fileRef = React.useRef(null);
@@ -1406,11 +1443,28 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
+    // Section 7: appendNote/replaceLastSentence/removeLastSentence all need the note's CURRENT
+    // persisted text before computing the new value - read fresh from the real, live workspace
+    // store at call time (never a captured `entry` prop, which this effect's own [entry.id]
+    // dependency array can leave stale across an unrelated parent re-render, and never something
+    // the model itself is expected to already know or recompute).
+    function currentNote() {
+      const ws = window.TradeJournalWorkspace;
+      const fresh = ws && session && session.id ? (ws.find(session.id) || {}) : null;
+      const target = fresh ? (fresh.entries || []).find((e) => e.id === entry.id) : null;
+      const source = target || entry;
+      return (source.type === 'movement' ? source.movementNote : source.note) || '';
+    }
     registry.register('live-session-entry-' + entry.id, {
-      allowlist: ['note', 'confirmDelete'],
+      allowlist: ['note', 'appendNote', 'replaceLastSentence', 'removeLastSentence', 'confirmDelete'],
       isOpen: () => mountedRef.current,
       submit: () => onDeleteEntryRef.current(entry),
-      applyValue: (path, value) => { if (path === 'note') onNote(entry, String(value ?? '')); }
+      applyValue: (path, value) => {
+        if (path === 'note') { onNote(entry, String(value ?? '')); return; }
+        if (path === 'appendNote') { onNote(entry, appendToNote(currentNote(), value)); return; }
+        if (path === 'replaceLastSentence') { onNote(entry, replaceLastSentenceIn(currentNote(), value)); return; }
+        if (path === 'removeLastSentence') { onNote(entry, removeLastSentenceFrom(currentNote())); return; }
+      }
     });
     return () => { mountedRef.current = false; };
   }, [entry.id]); // eslint-disable-line react-hooks/exhaustive-deps
