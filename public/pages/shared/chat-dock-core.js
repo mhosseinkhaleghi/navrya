@@ -826,13 +826,15 @@
       workflowEngine.start(payload.action.id, contextEngine ? contextEngine.snapshot() : {}, fields1);
       var check1 = runProactiveCheck(fields1, payload.action.id, workflowEngine.current());
       proactiveFindings = check1.findings;
-      workflowResult = await workflowEngine.applyKnownFields(check1.fieldsToApply, contextEngine ? contextEngine.snapshot() : {});
+      var fieldsToApply1 = sanitizeUnverifiedGateConfirmation(check1.fieldsToApply, payload.action.id, text);
+      workflowResult = await workflowEngine.applyKnownFields(fieldsToApply1, contextEngine ? contextEngine.snapshot() : {});
     } else if (workflowEngine && currentWorkflow && activeProcess && activeProcess.id === currentWorkflow.processId) {
       tookWorkflowPath = true;
       var fields2 = mergedFields(payload.suggestions || [], text, currentWorkflow.actionId);
       var check2 = runProactiveCheck(fields2, currentWorkflow.actionId, currentWorkflow);
       proactiveFindings = check2.findings;
-      workflowResult = await workflowEngine.applyKnownFields(check2.fieldsToApply, contextEngine ? contextEngine.snapshot() : {});
+      var fieldsToApply2 = sanitizeUnverifiedGateConfirmation(check2.fieldsToApply, currentWorkflow.actionId, text);
+      workflowResult = await workflowEngine.applyKnownFields(fieldsToApply2, contextEngine ? contextEngine.snapshot() : {});
     }
 
     // Journey C signal routing - independent of which workflow branch (if any) ran above; a
@@ -979,6 +981,40 @@
   // about Journey B's own low-risk field application unless a rule actually triggers.
   // Scoped to trade.calculator only in this vertical slice (section 21 - other actions have no
   // comparable rule set yet).
+  // Confirmation Policy addendum: "The system must distinguish USER confirmation from MODEL-
+  // SUPPLIED confirm=true. A model-generated confirmation field must never be treated as proof of
+  // user consent." Every gate action's own description already tells the model "only set true from
+  // an explicit confirmation" - a purely prompt-level instruction the model could still get wrong
+  // (or a compromised/buggy provider response could simply fabricate). This is the deterministic
+  // backstop: before a model-extracted gate:true value ever reaches applyKnownFields(), the SAME
+  // real user utterance it was extracted from is cross-checked with the existing
+  // interpretConfirmationText() classifier (the identical one the F37 gate-rejection fast path
+  // already trusts for a continuation turn) - if the raw text itself does not actually contain a
+  // recognizable confirm-shaped phrase, the model's claimed true is treated as untrusted and
+  // dropped (left genuinely missing, not applied), forcing NAVRYA to actually ask the confirmation
+  // question instead of silently trusting an unverifiable model claim.
+  //
+  // Deliberately permissive by design, not restrictive: a genuine single-utterance "Delete the
+  // 14:32 BTC trade, yes, do it." still confirms on the very same turn - interpretConfirmationText
+  // recognizes the real "yes"/"do it" the USER actually said, so this only ever rejects a true that
+  // is NOT backed by any such phrase in what the user actually typed/said.
+  function sanitizeUnverifiedGateConfirmation(fields, actionId, text) {
+    if (!Array.isArray(fields) || !fields.length) return fields;
+    var actionRegistry = window.TradeJournalAIActionRegistry;
+    var action = actionRegistry && actionRegistry.get(actionId);
+    var gateField = action && action.gateField;
+    if (!gateField) return fields; // this action has no gate field at all - nothing to verify
+    var proactiveEngine = window.TradeJournalAIProactiveEngine;
+    if (!proactiveEngine || typeof proactiveEngine.interpretConfirmationText !== 'function') return fields;
+    return fields.map(function (field) {
+      if (!field || field.path !== gateField) return field;
+      if (field.value !== true && field.value !== 'true') return field; // only a claimed TRUE needs verifying - false/absent are already handled by normalizeGateField()
+      var decision = proactiveEngine.interpretConfirmationText(text);
+      if (decision === 'confirm') return field; // the user's own words genuinely say so - trust it
+      return Object.assign({}, field, { value: null }); // untrusted - applyKnownFields() treats null as "not extracted", leaving it genuinely missing
+    });
+  }
+
   function runProactiveCheck(fields, actionId, currentWorkflowState) {
     var proactiveEngine = window.TradeJournalAIProactiveEngine;
     if (!proactiveEngine || actionId !== 'trade.calculator') return { fieldsToApply: fields, findings: [] };
@@ -1188,11 +1224,23 @@
   // just calls both, unconditionally, so a genuinely new conversation always starts from a clean
   // slate. Real, currently-open UI (a modal the user still has open by hand) is untouched - only
   // the AI's own claim on driving it is released.
+  // Voice Mode hardening, section 13: New Chat/conversation-resume must invalidate a pending
+  // trade-emotion clarification too - a stale "which trade?"/"yes, log it?" question from the
+  // conversation the user just left must never be answered by a reply typed/spoken into the new
+  // one (ai-clarification-state.js's own conversationId check would already reject a genuinely
+  // DIFFERENT conversationId, but resetConversationState() runs before a fresh conversationId
+  // even exists for the new chat - clearing here removes the ambiguity window entirely rather
+  // than relying on that check alone).
+  function clearPendingClarification() {
+    var clarificationState = window.TradeJournalAIClarificationState;
+    if (clarificationState && typeof clarificationState.clear === 'function') clarificationState.clear();
+  }
   function resetConversationState() {
     var workflowEngine = window.TradeJournalAIWorkflowEngine;
     var proactiveEngine = window.TradeJournalAIProactiveEngine;
     if (workflowEngine && typeof workflowEngine.cancel === 'function') workflowEngine.cancel();
     if (proactiveEngine && typeof proactiveEngine.clearConfirmation === 'function') proactiveEngine.clearConfirmation();
+    clearPendingClarification();
   }
 
   // A7: explicit, click-initiated action - never auto-detected - consistent with every other
@@ -1248,6 +1296,7 @@
     sendChat: sendChat,
     applySuggestion: applySuggestion,
     resetConversationState: resetConversationState,
+    clearPendingClarification: clearPendingClarification,
     analyzeScreenshot: analyzeScreenshot,
     applyExtractionToWizard: applyExtractionToWizard,
     debugLastTurn: debugLastTurn,

@@ -27,12 +27,29 @@ const VOICE_ERROR_STAGE_I18N_KEY = {
   sdp_relay_timeout: 'voiceDockErrorSdpTimeout',
   ice_connection: 'voiceDockErrorIceConnection',
   data_channel: 'voiceDockErrorDataChannel',
-  session_ack: 'voiceDockErrorSessionAck'
+  session_ack: 'voiceDockErrorSessionAck',
+  // Provider Ownership addendum, section 1: the active reasoning provider has no real Voice
+  // transport at all (see VOICE_TRANSPORT_SUPPORTED_PROVIDERS below) - a capability mismatch
+  // detected client-side, before any connect attempt, network call, or quota/billing work.
+  provider_voice_unsupported: 'voiceDockErrorProviderUnsupported'
 };
 function voiceErrorMessageForStage(i18nApi, stage) {
   const key = VOICE_ERROR_STAGE_I18N_KEY[stage] || 'voiceDockError';
   return i18nApi.t(key);
 }
+
+// Provider Ownership addendum, section 1: the only two providers with a real Voice transport
+// implementation in this codebase (aiVoiceRealtime.js's OpenAI Realtime, geminiLiveVoice.js's
+// Gemini Live) - Anthropic/Kimi/DeepSeek have none. Previously, pressing Voice while one of those
+// was the active provider silently fell back to the OpenAI transport (`useGeminiLive = providerId
+// === 'gemini'` below defaults everything else to it) - exactly the forbidden silent-substitution
+// this addendum bans. toggleVoice() now checks this FIRST and fails closed with a clear,
+// localized message instead, before ever calling connect() (so no permission prompt, network
+// call, or quota/billing work of any kind happens for a capability the provider genuinely lacks).
+// The user's own remaining choices - switch provider (Settings, already reachable), continue in
+// text (Voice simply never opens), or leave Voice off - are all already-existing paths; this adds
+// no new UI surface, only the honest refusal instead of a silent wrong-provider substitution.
+const VOICE_TRANSPORT_SUPPORTED_PROVIDERS = { openai: true, gemini: true };
 
 function fileDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -445,9 +462,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // function from touching React state on top of that.
       const result = await core.sendChat({
         text: value, therapistMode, transcript: transcriptRef.current, conversationId: activeConversationIdRef.current, source,
-        // Gemini Voice owns only transcription/TTS. Voice-originated text uses the already
-        // configured OpenAI conversation provider, so Gemini chat quota cannot break Voice.
-        provider: source === 'voice' ? 'openai' : undefined,
+        // Provider Ownership addendum: a voice-originated turn's REASONING now follows the same
+        // active reasoning provider a typed turn already uses - no override here at all, so
+        // chat-dock-core.js's own sendChat() falls through to its existing `active.provider`
+        // resolution uniformly for both channels. Previously hardcoded to 'openai' regardless of
+        // the user's configured provider (a real, confirmed silent-provider-mismatch bug: a user
+        // who selected Gemini/Anthropic/Kimi/DeepSeek as their reasoning provider still had every
+        // Voice turn's reasoning silently billed/routed to OpenAI). `voiceTransport` below (the
+        // real listening/speaking transport - only ever 'openai' or 'gemini', gated by
+        // VOICE_TRANSPORT_SUPPORTED_PROVIDERS's own capability check before Voice ever connects at
+        // all) is a SEPARATE concern from reasoning and never implies a reasoning override either.
         character: options && options.character,
         voiceTransport: options && options.voiceTransport,
         companionIntent: options && options.companionIntent, explainStepId: options && options.explainStepId,
@@ -631,10 +655,15 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return response.json();
   }
 
-  async function fetchGeminiLiveSession(language) {
+  async function fetchGeminiLiveSession(language, options) {
     const response = await fetch('/api/ai/gemini-live/session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language })
+      body: JSON.stringify({ language }),
+      // Voice Mode hardening, section 6: same {signal} convention as fetchRealtimeSession's own
+      // OpenAI mint above - geminiLiveVoice.js's own connect() supplies a real AbortController so
+      // disconnect() can truly cancel a pending token mint, not merely discard its result once it
+      // resolves. Optional so a caller that doesn't pass one is unaffected.
+      signal: options && options.signal
     });
     if (!response.ok) {
       let code = 'GEMINI_LIVE_SESSION_FAILED';
@@ -644,10 +673,15 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return response.json();
   }
 
-  async function fetchGeminiSpeak(language, text) {
+  async function fetchGeminiSpeak(language, text, options) {
     const response = await fetch('/api/ai/gemini-live/speak', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() })
+      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() }),
+      // Voice Mode hardening, section 6: same {signal} convention as fetchVoiceProviderSpeak's own
+      // ElevenLabs TTS fetch - geminiLiveVoice.js's own speak() supplies a real AbortController so
+      // interrupt()/disconnect() can truly cancel a pending TTS fetch, not merely discard its
+      // result once it resolves.
+      signal: options && options.signal
     });
     if (!response.ok) {
       let code = 'GEMINI_TTS_FAILED';
@@ -667,11 +701,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // upstream failure, ...); only a genuine transport failure (network error, non-2xx, malformed
   // body) rejects here, and aiVoiceRealtime.js's own speakViaElevenLabs() treats that exactly the
   // same as an explicit fallback - same text, once, through the existing OpenAI voice path.
-  async function fetchVoiceProviderSpeak(language, text) {
+  async function fetchVoiceProviderSpeak(language, text, options) {
     const response = await fetch('/api/ai/voice/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() })
+      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() }),
+      // Voice Mode hardening, section 6: same {signal} convention as fetchRealtimeSession above -
+      // aiVoiceRealtime.js's own speakViaElevenLabs() supplies a real AbortController so
+      // interrupt()/disconnect() can truly cancel a pending TTS fetch, not merely discard its
+      // result once it resolves. Optional so a caller that doesn't pass one is unaffected.
+      signal: options && options.signal
     });
     if (!response.ok) throw new Error('VOICE_SPEAK_REQUEST_FAILED');
     return response.json();
@@ -950,7 +989,10 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // running for a reply nothing will ever render. Also runs (then this effect body immediately
     // re-fires) on a providerId change, for the same reason: the OLD transport must be torn down
     // before the NEW one is constructed, never left running alongside it.
-    return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); abortActiveRequests(); };
+    // Voice Mode hardening, section 13: same reasoning as endVoice()'s own comment - unmount and a
+    // provider switch are both real "the user has moved on" moments a pending trade-emotion
+    // clarification must not survive either.
+    return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); abortActiveRequests(); if (core && typeof core.clearPendingClarification === 'function') core.clearPendingClarification(); };
     // Deliberately not fully exhaustive: fetchRealtimeSession/fetchGeminiLiveSession/fetchGeminiSpeak/
     // fetchVoiceProviderSpeak/onVoiceTranscript etc. are plain functions re-created every render and
     // are read fresh via ref (submitRef) or don't need re-triggering on every render - only
@@ -1022,6 +1064,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // Pressing Voice is itself an explicit "open the dock" gesture (item 1/6) - the consent
       // boundary for everything that follows, spoken opening included.
       setDockExplicitlyOpened(true);
+      // Provider Ownership addendum, section 1: capability mismatch check FIRST, before anything
+      // else below - no permission prompt, no connect(), no network call, no quota/billing work
+      // for a provider that has no real Voice transport at all.
+      if (!VOICE_TRANSPORT_SUPPORTED_PROVIDERS[providerId]) {
+        setVoiceErrorStage('provider_voice_unsupported');
+        setVoiceState(VOICE_STATES.ERROR);
+        return;
+      }
       setVoiceErrorStage(null);
       // i18n.language() reads document.documentElement.lang live (see ai-i18n.js) - it has no
       // change event, so the adapter's own language is re-synced right here, immediately before
@@ -1051,6 +1101,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     voiceRef.current.disconnect();
     abortActiveRequests('voice');
     setVoiceErrorStage(null);
+    // Voice Mode hardening, section 13: a pending trade-emotion clarification ("which trade?"/
+    // "yes, log it?") staged while Voice was active must never be answered by a later TYPED
+    // reply once Voice has ended - core.resetConversationState() is deliberately NOT called here
+    // (it also cancels the current form workflow/proactive confirmation, a broader reset this
+    // action never asked for), just the narrower clarification-only clear.
+    if (core && typeof core.clearPendingClarification === 'function') core.clearPendingClarification();
   }
 
   function toggleVoiceMute() {

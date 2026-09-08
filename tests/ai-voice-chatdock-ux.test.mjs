@@ -108,6 +108,15 @@ test('every new stage-specific Voice error message exists in all four supported 
   }
 });
 
+// Provider Ownership addendum, section 1: the thirteenth stage, distinct from every connection-
+// diagnostic one above - detected client-side before any connect attempt at all, never something
+// aiVoiceRealtime.js/geminiLiveVoice.js themselves report through onError().
+test('provider_voice_unsupported resolves to its own distinct i18n key, declared exactly once in each of the four languages', () => {
+  assert.match(dockViewSrc, /provider_voice_unsupported: 'voiceDockErrorProviderUnsupported'/);
+  const occurrences = (i18nSrc.match(/voiceDockErrorProviderUnsupported:/g) || []).length;
+  assert.equal(occurrences, 4, `voiceDockErrorProviderUnsupported must be declared exactly once in each of the four language blocks (fa/ar/en/es), found ${occurrences}`);
+});
+
 test('mute state is tracked via the adapter\'s own onMuteChange callback (React state stays a mirror of the real adapter, never a second independent source of truth)', () => {
   assert.match(dockViewSrc, /onMuteChange: setVoiceMuted/);
   assert.match(voiceSrc, /onMuteChange\(isMuted\)/);
@@ -171,9 +180,30 @@ test('no browser SpeechSynthesis is ever used as a second, competing voice engin
   assert.doesNotMatch(dockViewSrc, /speechSynthesis|SpeechSynthesisUtterance/i);
 });
 
-test('the saved provider selects Gemini Live only for Gemini, while Voice chat stays pinned to OpenAI', () => {
+// Provider Ownership addendum, section 1: replaces the old "Voice chat stays pinned to OpenAI"
+// behavior - a real, confirmed silent-provider-mismatch bug where a user's own configured
+// Anthropic/Gemini/Kimi/DeepSeek reasoning provider was silently overridden to OpenAI for every
+// Voice-originated turn. Voice reasoning now follows the same active provider a typed turn already
+// uses - chatDockView.jsx's own submit() no longer passes a provider override to core.sendChat()
+// at all, so chat-dock-core.js's existing `active.provider` resolution applies uniformly.
+test('a voice-originated turn\'s reasoning is never overridden to a hardcoded provider - core.sendChat() receives no provider override at all, so it falls through to the active reasoning provider exactly like a typed turn', () => {
+  const submitBlock = dockViewSrc.slice(dockViewSrc.indexOf('async function submit(value, options)'), dockViewSrc.indexOf('const submitRef'));
+  assert.doesNotMatch(submitBlock, /provider: source === 'voice'/, 'must never override the reasoning provider based on source');
+  assert.doesNotMatch(submitBlock, /provider: ['"]openai['"]/, 'must never hardcode openai for voice turns either');
+});
+
+test('the saved provider selects Gemini Live only for Gemini, while every other provider (including Anthropic/Kimi/DeepSeek, which have no real Voice transport) is refused with a clear message rather than silently substituted with the OpenAI transport', () => {
   const effectBlock = dockViewSrc.slice(dockViewSrc.indexOf('const useGeminiLive = providerId'), dockViewSrc.indexOf('// Voice Mode performance pass: PlaybackController owns only speech'));
-  assert.match(dockViewSrc, /provider: source === 'voice' \? 'openai' : undefined/);
+  assert.match(dockViewSrc, /const VOICE_TRANSPORT_SUPPORTED_PROVIDERS = \{ openai: true, gemini: true \};/);
+  const toggleVoiceFn = dockViewSrc.slice(dockViewSrc.indexOf('function toggleVoice() {'), dockViewSrc.indexOf('function toggleVoiceMute()'));
+  assert.match(toggleVoiceFn, /if \(!VOICE_TRANSPORT_SUPPORTED_PROVIDERS\[providerId\]\) \{/);
+  assert.match(toggleVoiceFn, /setVoiceErrorStage\('provider_voice_unsupported'\);/);
+  assert.match(toggleVoiceFn, /setVoiceState\(VOICE_STATES\.ERROR\);/);
+  // The capability check must come BEFORE connect() is ever called - no permission prompt,
+  // network call, or quota/billing work for a provider that has no real transport at all.
+  const checkIdx = toggleVoiceFn.indexOf('VOICE_TRANSPORT_SUPPORTED_PROVIDERS[providerId]');
+  const connectIdx = toggleVoiceFn.indexOf('voiceRef.current.connect()');
+  assert.ok(checkIdx > -1 && connectIdx > -1 && checkIdx < connectIdx);
   assert.match(effectBlock, /const useGeminiLive = providerId === 'gemini';/);
   assert.match(effectBlock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
   assert.match(effectBlock, /voiceRef\.current = createTransport\(\{/);
@@ -184,7 +214,7 @@ test('the saved provider selects Gemini Live only for Gemini, while Voice chat s
   // Slice R1 (request ownership/cancellation): unmount also aborts every still-in-flight request
   // (typed or voice) this dock ever started - see abortActiveRequests()'s own comment - alongside
   // the pre-existing transport disconnect/playback invalidation this test already pinned.
-  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); \};/);
+  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); if \(core && typeof core\.clearPendingClarification === 'function'\) core\.clearPendingClarification\(\); \};/);
   assert.match(dockViewSrc, /\}, \[\]\);/);
 });
 

@@ -85,6 +85,7 @@ test('sendChat() proceeds completely unaffected when isCurrent() is never suppli
 // a generic string-presence check - see each test's own comment for what real bug it guards.
 
 const dockViewSrc = await readFile(path.join(root, 'navrya-src', 'chatDockView.jsx'), 'utf8');
+const coreSrc = await source('chat-dock-core.js');
 
 test('transcript/activeConversationId are mirrored into synchronous refs (audit finding C4), and submit() reads the refs - never the render-time closure values - when calling core.sendChat()', () => {
   assert.match(dockViewSrc, /const transcriptRef = React\.useRef\(\[\]\);/);
@@ -150,7 +151,31 @@ test('endVoice() and the mic-toggle\'s own disconnect branch abort only voice-ow
 });
 
 test('unmount aborts every in-flight request regardless of source - the dock itself is going away, so nothing it started should keep running for a reply nothing will ever render', () => {
-  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); \};/);
+  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); if \(core && typeof core\.clearPendingClarification === 'function'\) core\.clearPendingClarification\(\); \};/);
+});
+
+// Voice Mode hardening, section 13: a pending trade-emotion clarification ("which trade?"/"yes,
+// log it?") staged while Voice was active must never survive New Chat, End Voice, a provider
+// switch, or unmount - answering a stale question with a later reply from any of those moments
+// would silently misattribute it. ai-clarification-state.js's own conversationId check already
+// rejects a genuinely different conversation, but these are the "the user has moved on WITHOUT
+// necessarily starting a new conversation" cases that check alone cannot cover.
+test('chat-dock-core.js exposes clearPendingClarification(), and resetConversationState() (New Chat/resume) calls it alongside the pre-existing workflow/proactive-confirmation clearing', () => {
+  assert.match(coreSrc, /function clearPendingClarification\(\) \{/);
+  assert.match(coreSrc, /clarificationState\.clear\(\)/);
+  const resetFn = coreSrc.slice(coreSrc.indexOf('function resetConversationState()'), coreSrc.indexOf('function resetConversationState()') + 500);
+  assert.match(resetFn, /clearPendingClarification\(\);\s*\n\s*\}/);
+  assert.match(coreSrc, /clearPendingClarification: clearPendingClarification,/);
+});
+
+test('endVoice() clears the pending clarification directly (not the broader resetConversationState(), which would also cancel an unrelated in-progress form workflow) - a stale Voice-staged question must never be answered by a later typed reply once Voice has ended', () => {
+  const fnBlock = dockViewSrc.slice(dockViewSrc.indexOf('function endVoice() {'), dockViewSrc.indexOf('function toggleVoiceMute()'));
+  assert.match(fnBlock, /if \(core && typeof core\.clearPendingClarification === 'function'\) core\.clearPendingClarification\(\);/);
+  // Must never actually CALL the broader reset (which would also cancel an unrelated in-progress
+  // form workflow) - checked against the real statements only, stripped of this function's own
+  // explanatory comment (which legitimately mentions the name descriptively).
+  const withoutComments = fnBlock.replace(/\/\/.*$/gm, '');
+  assert.doesNotMatch(withoutComments, /core\.resetConversationState\(\)/);
 });
 
 test('Therapist Mode (audit finding C9): mhAi.chat() receives the owner\'s signal, and a stale isCurrent() stops the reply from ever reaching mhStore.addMessage()', async () => {

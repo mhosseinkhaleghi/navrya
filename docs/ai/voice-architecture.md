@@ -438,6 +438,289 @@ Real OpenAI Realtime API / WebRTC measurements were **not run** in this pass (no
 credential available in this sandboxed session) - clearly labeled as such rather than fabricated,
 per this task's own instruction.
 
+## Voice Mode hardening pass (feat/voice-mode-hardening)
+
+A later pass re-verified `docs/ai/voice-agentification-audit.md`'s T1-T14/C1-C11/F1-F11 findings
+against current source and found most of the transport-level findings (T1-T3, T5-T9, T12-T14,
+C1-C6/C9) already fixed by an earlier, undocumented "Slice R1"/"Slice R2" pass on this same
+codebase (request ownership/cancellation and transport repair respectively - see the inline
+`Slice R1`/`Slice R2, audit finding TN` comments throughout `aiVoiceRealtime.js`,
+`geminiLiveVoice.js`, `chat-dock-core.js`, and `server/pattern-ai-server.mjs`). This pass closed
+the specific gaps that re-verification found were still genuinely open:
+
+- **Stale queued voice turns** (`ai-voice-turn-coordinator.js`): `epochAtEnqueue` was recorded but
+  only re-checked AFTER `submitFn()` resolved, not before invoking it at the front of the queue - a
+  turn queued behind a slow prior turn could still call `submitFn()` (starting a workflow, mutating
+  a form) against a conversation the epoch had already moved on from. Fixed with a check
+  immediately before `submitFn()` is called; `submitFn()` is never invoked at all for a turn whose
+  epoch is already stale by the time it reaches the front.
+- **T4 (OpenAI mute-across-reconnect)**: a brand-new `RealtimeSession` created during
+  connect()/reconnect never reapplied the user's current mute preference on its own. Fixed by
+  calling `session.mute(isMuted)` right after connect succeeds, before the connection is ever
+  exposed as `LISTENING`.
+- **T11 (Gemini published-audio ownership)**: `playAudioUrl()` created a completely unowned local
+  `Audio` element - never registered in the `playbackStop` slot `interrupt()`/`teardown()` already
+  know how to stop, never setting `ASSISTANT_SPEAKING`, never emitting `output_audio_buffer.*`
+  events. Rewritten to give published audio the exact same ownership contract `playPcm()` already
+  has, plus a two-stage first-audio/stall watchdog mirroring `aiVoiceRealtime.js`'s own
+  `armPlaybackWatchdog` (Gemini has no equivalent helper of its own, so an inline pair of constants/
+  timers was added rather than extracting a premature shared utility across the two files).
+- **Remaining request cancellation** (section 6 of the task brief): business-chat fetch
+  cancellation (R1) never covered the Voice-transport-specific network calls. Both adapters now
+  mint a real, per-operation `AbortController` for the Realtime session mint (`connectAbortController`)
+  and the TTS fetch (`speakAbortController` - ElevenLabs on the OpenAI adapter, Gemini's own
+  `fetchSpeakAudio` on the Gemini adapter), aborted from `disconnect()`/`interrupt()` respectively.
+  `fetchGeminiLiveSession`/`fetchGeminiSpeak`/`fetchVoiceProviderSpeak` (`chatDockView.jsx`) all
+  gained the same optional `{signal}` parameter `fetchRealtimeSession` already had.
+- **F8 (trade.cancel switched-target safety)**: `trade.cancel`'s own `submit()` re-resolved the
+  active Trade fresh from context with no comparison against which Trade the confirmation was
+  actually for - unlike `trade.delete`'s own `pendingTradeDeleteId`. Fixed with the identical
+  pin-at-open/compare-at-submit pattern (`pendingTradeCancelId`, scoped locally to the
+  trade-lifecycle block).
+- **Pending clarification invalidation** (`ai-clarification-state.js`, section 13): End Voice,
+  unmount, and a provider switch never invalidated a pending trade-emotion clarification staged
+  while Voice was active - only a genuinely different `conversationId` did (via the module's own
+  check). `chat-dock-core.js` now exposes `clearPendingClarification()`; `resetConversationState()`
+  (New Chat/resume) calls it alongside its pre-existing workflow/proactive-confirmation clearing,
+  and `chatDockView.jsx`'s `endVoice()`/unmount call it directly (not the broader
+  `resetConversationState()`, which would also cancel an unrelated in-progress form workflow).
+
+**Confirmed still-open, deliberately not fixed in this pass** (see the pass's own delivery report
+for full reasoning): AudioWorklet migration for Gemini's local barge-in detection (still
+`ScriptProcessorNode`); Gemini TTS time-to-first-audio (still waits for the full response before
+playback - the actual streaming capability of the specific endpoint in use could not be verified
+from source alone); explicit provider-ownership policy (Voice reasoning still forced to OpenAI
+regardless of the configured reasoning provider - a real product-policy decision with billing
+implications, not implemented pending explicit confirmation); the general "initial model-supplied
+`confirm:true` on the same turn as the original request" structural gap (F9) - confirmed still
+real (purely a prompt-level mitigation today, no engine-level enforcement), but deliberately not
+force-fixed given the real risk of breaking a legitimate single-utterance "do X and confirm it"
+pattern this app's own tests already rely on elsewhere, without an explicit product-policy answer
+to "should that ever be allowed."
+
+## Provider Ownership, Natural Listening, Streaming TTS & Low-Friction Confirmation addendum
+
+A follow-on addendum to the pass above, explicitly building on it rather than redesigning Voice -
+the same "one brain, multiple channels" architecture throughout. This section covers what the
+addendum has completed so far; see the addendum's own final report for the complete status,
+including what remains open at hand-off (natural-listening/AudioWorklet, the wider latency
+instrumentation, and a full Section 5 playback-ownership re-audit were still in progress when this
+section was last updated).
+
+### Section 1: explicit provider ownership (implemented)
+
+**The confirmed bug**: `chatDockView.jsx`'s `submit()` unconditionally overrode a Voice-originated
+turn's provider to `'openai'` (`provider: source === 'voice' ? 'openai' : undefined`), regardless
+of the user's actually-configured reasoning provider. A user with Gemini (or Anthropic/Kimi/
+DeepSeek) configured as their primary provider had every Voice turn silently reasoned by OpenAI
+instead - a real silent-provider-mismatch bug the addendum's Section 1 explicitly forbids
+("Gemini reasoning/STT with silent OpenAI TTS is explicitly forbidden"; the mirror case, Gemini
+Live transport with silently-OpenAI-reasoned turns, is the same failure mode). Fixed by removing
+the override entirely - `chat-dock-core.js`'s own pre-existing `requestedProvider` resolution
+(`options.provider === 'openai' ? 'openai' : active.provider`) now applies uniformly to voice and
+typed turns, and billing/usage recording (`TradeJournalAIUsage.record({provider: payload.provider,
+...})`) already keyed off that same resolved value, so it self-corrects with no separate change.
+
+**Capability gate (fail closed, never silently substitute)**: `chatDockView.jsx` gained
+`VOICE_TRANSPORT_SUPPORTED_PROVIDERS = { openai: true, gemini: true }` - the only two providers
+with a real Voice transport in this app. `toggleVoice()` checks this BEFORE `connect()`; on a
+mismatch (e.g. the active provider is Anthropic/Kimi/DeepSeek) it fails closed
+(`voiceErrorStage: 'provider_voice_unsupported'`, `VOICE_STATES.ERROR`) with no permission prompt,
+network call, or quota spend against any provider - never a silent fallback to OpenAI's transport
+(the pre-existing behavior: `useGeminiLive = providerId === 'gemini'` defaulted every other
+provider id straight to the OpenAI transport). A dedicated i18n key
+(`voiceDockErrorProviderUnsupported`) covers all four supported UI languages.
+
+**Single source of truth, by construction**: because Voice now refuses to connect at all unless
+`providerId` is Voice-capable, and reasoning follows that same `providerId` with no override,
+listening/reasoning/speaking are structurally guaranteed to be the same provider for the entire
+lifetime of any connected Voice session - satisfying the "one single source of truth" requirement
+without a new dedicated configuration module. Minimal debug-state transparency was added for this:
+`aiVoiceRealtime.js`'s `refreshDebugState()` now reports `provider: 'openai'`, and
+`geminiLiveVoice.js`'s returned session API now exposes `provider: () => 'gemini'`. A full
+three-field Listening/Reasoning/Speaking status display in the Voice UI itself was judged
+lower-priority given the structural guarantee above and was not built this pass.
+
+### Section 4: Gemini TTS streaming investigation (verified: NOT genuinely streaming)
+
+**Investigated, not assumed**, per the addendum's own explicit instruction. `speakWithGemini()`
+(`server/pattern-ai-server.mjs`) calls Gemini's REST `:generateContent` endpoint (audio-output/
+native-TTS preview model, `responseModalities: ['AUDIO']`) and does `const data = await
+response.json()` - a single, fully-buffered response containing one `inlineData` part with the
+complete synthesized audio as one base64 blob. There is no chunked or incremental response
+handling anywhere in this path, client or server.
+
+A live (unauthenticated) probe of `https://generativelanguage.googleapis.com/v1beta/models/
+<model>:streamGenerateContent?alt=sse` confirms the generic streaming route exists at the API
+surface level (a `403 PERMISSION_DENIED`, not a `404`) - this is Google's ordinary
+`streamGenerateContent` capability, available generically across `generateContent`-family calls
+for any model. That is not the same claim as "this specific TTS-preview model incrementally
+produces multiple playable audio segments across that stream." No real `GEMINI_API_KEY` was
+available in this sandboxed session to make an authenticated call and observe the actual chunking
+behavior first-hand; the finding below is the verified structural fact (single-request/single-
+response REST call, confirmed above) plus the well-established behavior of this exact model
+family (Gemini's single-turn native-TTS preview models synthesize a full utterance in one pass -
+this is a fundamentally different capability from the separate, genuinely-bidirectional-streaming
+**Gemini Live API** this app already uses for the Listening/Reasoning half of a Gemini Voice
+session; migrating utterance playback itself onto that live-session transport, instead of a
+one-shot "read this exact already-approved reply verbatim" REST call, would be a materially larger
+architecture change than "add streaming to the existing endpoint," and is explicitly out of scope
+here).
+
+**Conclusion: no genuine incremental audio streaming exists on the endpoint NAVRYA's Gemini TTS
+path actually uses.** Per the addendum's own explicit fallback instruction, this pass did **not**
+fake streaming (e.g. artificially chunking an already-fully-received buffer to look incremental).
+Instead:
+
+- **Latency instrumentation** (`geminiLiveVoice.js`'s `speak()`): each call now records a
+  sanitized `{ textLength, fetchMs, interrupted, error? }` breakdown (`nowMs()`, a monotonic
+  `performance.now()`-based helper matching `chat-dock-core.js`'s own `now()` convention), exposed
+  via the session API's `lastSpeakLatency()` getter. Since nothing plays before the fetch resolves
+  on this confirmed non-streaming path, `fetchMs` (network + full server-side synthesis time) IS
+  effectively "time to first audible sound" here - the one latency figure actually worth
+  surfacing. Never logs the transcript itself, matching this file's existing privacy posture.
+- **Cancellation/generation-fencing/centralized playback ownership**: already real (Phase C's
+  `speakAbortController` + `activeSpeakToken` + the T11 playback-ownership rewrite covered above) -
+  no change needed for this finding specifically.
+- **Bounded reply length**: `speakWithGemini()` already rejects text over `ELEVENLABS_SPEAK_TEXT_MAX`
+  (2000 chars, shared across every TTS provider this server supports). Whether NAVRYA should
+  additionally cap **voice-reply length more tightly than that shared, cross-provider constant**
+  specifically to reduce Gemini's one-shot time-to-first-audio is a genuine product-policy
+  trade-off (shorter voice replies vs. this specific provider's higher latency for a long reply) -
+  flagged here rather than silently decided, per the addendum's own "STOP and report the exact
+  decision" instruction.
+- **Reduced buffering**: no additional client-side buffering exists in this path beyond the decode
+  step already required to turn the received base64 PCM into a playable `AudioBuffer`
+  (`playPcm()`) - there was nothing further to remove.
+
+### Sections 2/3: natural listening (detection algorithm implemented; AudioWorklet migration NOT done this pass)
+
+**The confirmed gap**: `geminiLiveVoice.js`'s local microphone-energy analysis (used only for
+UI/barge-in state - Gemini Live's own server-side VAD and finalized transcript remain the sole
+authority on turn boundaries and content, per that file's own docstring) used one fixed energy
+threshold (`0.025`) with **no minimum-duration requirement at all**. A single loud frame (a cough,
+a keyboard click, a door) while the assistant was speaking immediately flipped state to
+`USER_SPEAKING` and called `onBargeIn()` - and kept calling it on every subsequent frame for as
+long as the overlap lasted, with no cooldown against a burst of choppy noise re-triggering several
+interrupts of the same reply in quick succession. `aiVoiceRealtime.js` (OpenAI) has no equivalent
+local energy analysis at all - it relies entirely on the Realtime API's own modern, server-side
+turn detection, per the addendum's own "don't duplicate provider-side turn detection if a modern
+one exists" guidance; Gemini's local analysis exists only because interrupting LOCAL audio playback
+is inherently a client-side action that cannot wait on a server round-trip.
+
+**Fixed**: a new, dependency-free, purely-algorithmic module,
+`navrya-src/geminiSpeechActivityDetector.js` (`createSpeechActivityDetector()`), replaces the
+inline fixed-threshold comparison in `wireMicrophone()`. It adds every protection the addendum
+asks for: a calibrated, ADAPTIVE noise floor (a slow-moving average of recent quiet-frame energy,
+frozen while actively speaking so a sustained loud voice can never drag it upward and desensitize
+the detector mid-utterance); HYSTERESIS (the "become speaking" threshold sits meaningfully above
+the floor, `FLOOR_MARGIN_RATIO`; "become quiet" is the floor itself); a MINIMUM SPEECH DURATION
+(`MIN_SPEECH_MS`, time-based rather than a frame count so it stays correct regardless of a given
+browser/device's actual buffer size and sample rate) before a run of loud frames is ever confirmed
+as real speech or fires a barge-in at all - a single transient spike can no longer flip state or
+interrupt playback; a MINIMUM SILENCE DURATION (`MIN_SILENCE_MS`) before a confirmed speaking
+episode is considered over, so a short pause/hesitation/breath is never mistaken for the end of a
+turn; and a `BARGE_IN_COOLDOWN_MS` after a genuine barge-in fires, before another can fire, so a
+burst of choppy noise can no longer re-interrupt the same reply repeatedly. A fresh detector
+instance is created per real connection (`wireMicrophone()` only ever runs once per successful
+`connect()`), so a reconnect never inherits a stale "already speaking"/"recently barged-in" state.
+
+`MIN_SILENCE_MS` deliberately keeps the exact pre-existing value (850ms) rather than being
+re-tuned, since the addendum's own priority order places "no accidental interruption" above "low
+latency," and changing an already-informally-accepted production number with no real device
+available to validate against in this sandboxed session would be a guess in either direction. Every
+other constant (`MIN_SPEECH_MS`, `FLOOR_MARGIN_RATIO`, `FLOOR_ADAPT_RATE`, `MIN_FLOOR`,
+`BARGE_IN_COOLDOWN_MS`) is a genuinely new protection with no prior production value to preserve -
+these are principled defaults, **not validated against a real microphone/speaker/room** (no real
+device was available in this session either) - real-device tuning of these specific numbers remains
+an honest, open item.
+
+**NOT done this pass: the actual AudioWorklet migration.** `wireMicrophone()` still uses
+`audioContext.createScriptProcessor()` (deprecated in the Web Audio API spec, though still broadly
+implemented) - the detection ALGORITHM above is deliberately independent of which audio-capture
+primitive delivers it a raw per-frame energy value, so it is equally usable from either
+`ScriptProcessorNode` or a future `AudioWorkletNode`, but the actual `AudioWorkletProcessor`
+module, its `audioWorklet.addModule()` loading, and a deterministic feature-detected fallback to
+`ScriptProcessorNode` where `audioContext.audioWorklet` is unavailable were not built this pass.
+This is the one concrete Section 2/3 deliverable still outstanding.
+
+**Tests**: `tests/gemini-speech-activity-detector.test.mjs` unit tests the detector module directly
+with synthetic energy/timestamp sequences (no DOM/AudioContext/microphone needed at all) -
+single-frame noise never flipping to speaking, sustained speech committing after `MIN_SPEECH_MS`,
+a broken run never accumulating across a gap, a short pause never ending a confirmed turn, a long
+enough pause ending it exactly once, the floor adapting only while quiet, the floor's implied
+threshold never dropping to near-zero even in a very quiet room, the cooldown suppressing a
+same-window repeated barge-in while still correctly tracking speaking state, a later genuine
+barge-in firing once the cooldown has actually elapsed, and `reset()`'s own contract (clears
+speaking/timing state always; clears the learned floor only when explicitly asked). A
+static-source test in `tests/gemini-live-voice-adapter.test.mjs` proves the wiring itself: the old
+inline threshold is fully gone, a fresh detector is created per connection, its
+`becameSpeaking`/`becameQuiet`/`bargeIn` outputs (not a bare energy comparison) drive the state
+machine, and the `realtimeInput` send to Gemini remains unconditional on every path (local
+detection must never gate what audio actually reaches the server).
+
+### Sections 7/8: low-friction confirmation policy (implemented)
+
+**The core requirement**: the system must distinguish real USER confirmation from a
+MODEL-SUPPLIED `confirm:true` - the model's own JSON claim must never itself count as proof of
+consent. `chat-dock-core.js` gained `sanitizeUnverifiedGateConfirmation(fields, actionId, text)`,
+called on both the fresh-discovery and continuation branches of `sendChat()` immediately before
+`workflowEngine.applyKnownFields(...)`: for the action's own declared `gateField`, if the model's
+returned value is `true`/`'true'`, the RAW user `text` for that turn is independently cross-checked
+via `ai-proactive-engine.js`'s `interpretConfirmationText(text)`; anything other than a genuine
+`'confirm'` verdict replaces the field's value with `null` (not `false` - `false` would be treated
+as a known-and-rejected answer; `null` correctly leaves it genuinely missing, so the workflow
+re-asks exactly as if the model had never returned that field at all). This runs whether the
+model hallucinated `confirm:true` on the very first discovery turn, or on a later continuation turn
+whose real text was unrelated to confirming anything.
+
+**Extending the classifier itself**: `interpretConfirmationText()` previously covered English and
+a narrow set of Persian override-style phrases only (it did not even recognize a plain "بله"/
+"آره" alone). Extended with real Arabic and Spanish patterns, plain Persian yes/no, and - critically
+- a `LEADING_CONFIRM` pattern checked first: an unambiguous leading affirmation ("Yes"/"بله"/
+"آره"/"نعم"/"sí") wins outright even when a later, purely incidental word in the same sentence also
+matches the reject vocabulary. This was required because destructive actions are frequently named
+after their own verb (`trade.cancel`) - "Yes, cancel it." is a completely ordinary, unambiguous
+confirmation, but literally contains "cancel" (`REJECT_PATTERN`'s own vocabulary), which without
+`LEADING_CONFIRM` made the classifier return an ambiguous `null` instead of `'confirm'` and would
+have wrongly blocked a valid single-utterance confirmation. The identical ambiguity exists in
+Spanish (`"Sí, cancelar."` vs. `cancelar` in `REJECT_PATTERN_ES`) and is covered the same way.
+
+Two latent bugs were found and fixed while extending this classifier: (1) `\b` (word boundary) is
+an ASCII-only primitive in JS regex and does not reliably delimit Persian/Arabic script - patterns
+anchored like `^\s*(بله|آره)\b` silently never matched; fixed with an explicit boundary set
+(`(?:$|[\s.،!؟])`) everywhere a Perso-Arabic word needs one. (2) The same is true after an accented
+Latin letter - `\bsí\b` never matches "sí" alone or "sí." for the identical reason (`í` is not a
+`\w` character to the same ASCII-only engine), which meant a bare `"Sí."` (no trailing action word
+to anchor on) silently failed to confirm anything; fixed the same way (`sí(?:$|[\s.,!¡¿?])`).
+
+**Confirmation-fatigue audit**: every current action's `gateField` was reviewed against the
+addendum's own examples of what should NOT require confirmation. Findings: `trade.emotion.log`,
+`session.movementEntry.create`, `session.chartEntry.create`, and `session.create` have no
+`gateField` at all - they auto-submit once their (already-minimal) required fields are known,
+exactly matching the "ordinary/reversible/low-risk actions... execute WITHOUT unnecessary
+confirmation" requirement. The only non-destructive actions with a gate (`account.create`/
+`account.edit`/`settings.persona.update`, all `gateField: 'save'`) mirror a REAL "Save" button
+that already exists in each one's own human-facing tab (verified directly against
+`aiAssistantView.jsx`'s `PersonaTab`) - a genuine batch-edit-then-save UI pattern the AI path
+reuses as-is, not a manufactured "are you sure?" dialog, so this is not confirmation fatigue.
+Every other `gateField` belongs to a `riskLevel: 'high'` action (trade/pattern/strategy/session/
+scenario/entry deletion and cancellation, community/marketplace/messaging send-publish) - exactly
+where the addendum wants exactly one confirmation. No confirmation-fatigue violation was found in
+the current action set.
+
+**Tests**: `tests/ai-proactive-engine.test.mjs` covers the classifier extension directly (Persian
+plain yes/no, Arabic, Spanish including the accented-"sí"-alone and "Sí, cancelar." tie-break
+cases, and the pre-existing "si tienes tiempo..." conditional-clause false-positive guard).
+`tests/chat-dock-core.test.mjs` covers the `sanitizeUnverifiedGateConfirmation()` wiring end to
+end: a model-hallucinated `confirm:true` on the very first turn is stripped (workflow stays
+`collecting`, `submit()` never runs); the same for a hallucinated `confirm:true` on a continuation
+turn whose real text is a genuinely unrelated question; a real "Yes, cancel it." confirmation still
+satisfies the gate despite the name collision; and - proving "no confirmation chains" - once a
+destructive action is validly confirmed and executes, the very next turn's unrelated, ungated
+ordinary action executes on its own after its normal auto-submit grace window, with no repeated
+confirmation asked at all.
+
 ## How this was verified
 
 Every gate (E0-E5) was verified against the real OpenAI Realtime API in a real Chromium instance,

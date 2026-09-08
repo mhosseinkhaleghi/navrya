@@ -1,4 +1,5 @@
 import { VOICE_STATES } from './aiVoiceRealtime.js';
+import { createSpeechActivityDetector } from './geminiSpeechActivityDetector.js';
 
 const LIVE_SOCKET_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
 const INPUT_SAMPLE_RATE = 16000;
@@ -25,6 +26,13 @@ const RECONNECT_MAX_ATTEMPTS = 5;
 // does send it; otherwise, a short quiet window with no new fragment is the resilient fallback
 // boundary - see flushTranscript()'s own comment.
 const TRANSCRIPT_FRAGMENT_QUIET_MS = 700;
+// Voice Mode hardening, audit finding T11 (published-audio ownership): mirrors
+// aiVoiceRealtime.js's own FIRST_AUDIO_DEADLINE_MS/PLAYBACK_STALL_DEADLINE_MS exactly - a
+// two-stage deadline (nothing-ever-started vs a genuine mid-playback stall) for playAudioUrl()
+// below, which - unlike playPcm()'s own already-decoded buffer with a known exact duration - has
+// no a-priori duration to compute a tighter bound from.
+const FIRST_AUDIO_DEADLINE_MS = 12000;
+const PLAYBACK_STALL_DEADLINE_MS = 60000;
 
 function normalizeLanguage(value) {
   return Object.prototype.hasOwnProperty.call(LIVE_TRANSCRIPTION_LOCALES, value) ? value : 'en';
@@ -93,7 +101,6 @@ export function createGeminiLiveSession(options) {
   let activeSource = null;
   let playbackStop = null;
   let intentionalClose = false;
-  let lastSpeechAt = 0;
   // Slice R2, audit finding T7: bumped once per genuine new connect() attempt (mirrors
   // aiVoiceRealtime.js's own connectionEpoch) - a listener/timer registered against a specific
   // socket/attempt closes over the epoch active when it was registered and checks it before
@@ -109,6 +116,22 @@ export function createGeminiLiveSession(options) {
   // CURRENTLY active speak() call across its own async fetch gap, so interrupt() can cancel it
   // even before playback (and thus playbackStop) exists yet.
   let activeSpeakToken = null;
+  // Voice Mode hardening, section 6: real AbortControllers for the token mint and TTS fetches -
+  // activeSpeakToken/connectionEpoch already stop a stale RESULT from ever being adopted (see
+  // interrupt()'s and connect()'s own comments); these additionally stop the actual network
+  // request/server-side work itself for a mint/TTS call nobody will ever use, mirroring
+  // aiVoiceRealtime.js's own connectAbortController/speakAbortController.
+  let connectAbortController = null;
+  let speakAbortController = null;
+  // Provider Ownership addendum, section 6/4: this is the confirmed non-streaming TTS path (see
+  // docs/ai/voice-architecture.md's "Gemini TTS streaming investigation" - the REST
+  // :generateContent endpoint returns one complete audio buffer, never incremental chunks), so
+  // "time from fetch start to fetch resolved" IS effectively "time to first audible sound" here -
+  // nothing plays before that promise settles. Recorded per-call (overwritten every speak()),
+  // never persisted, sanitized to duration/length only - same privacy posture as every other
+  // debug* diagnostic in this file/aiVoiceRealtime.js.
+  let lastSpeakLatencyRecord = null;
+  function nowMs() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
 
   const onStateChange = options.onStateChange || function () {};
   const onFinalTranscript = options.onFinalTranscript || function () {};
@@ -174,15 +197,29 @@ export function createGeminiLiveSession(options) {
   }
   function wireMicrophone() {
     micNode = audioContext.createMediaStreamSource(mediaStream);
+    // Natural Listening addendum, Section 2/3: a fresh detector per real connection (this
+    // function only ever runs once per successful connect() - see that function's own call
+    // site) - a reconnect or a brand-new session must never inherit a stale "already speaking"
+    // or "recently barged-in" state from a torn-down prior capture. See
+    // geminiSpeechActivityDetector.js's own top-of-file comment for the full rationale (calibrated
+    // adaptive floor, hysteresis, minimum speech/silence durations, barge-in cooldown) - this
+    // replaces the old fixed energy threshold with no minimum-duration requirement at all, which
+    // could flip to USER_SPEAKING (and fire onBargeIn on every single frame of an overlap) off a
+    // single loud frame of background noise.
+    const speechDetector = createSpeechActivityDetector();
     processor = audioContext.createScriptProcessor(2048, 1, 1);
     processor.onaudioprocess = (event) => {
       if (muted || !socket || socket.readyState !== WebSocket.OPEN) return;
       const result = pcm16(event.inputBuffer.getChannelData(0), audioContext.sampleRate);
-      if (result.energy > 0.025) {
-        lastSpeechAt = Date.now();
-        if (state === VOICE_STATES.ASSISTANT_SPEAKING) onBargeIn();
+      const activity = speechDetector.process(result.energy, Date.now());
+      if (activity.becameSpeaking) {
+        // Local detection controls UI/barge-in state only - it never invents or edits the
+        // transcript; Gemini Live's own server-side VAD and finalized transcript (see
+        // flushTranscript() below) remain the sole authority on when the user's turn actually
+        // ended and what was said.
+        if (activity.bargeIn && state === VOICE_STATES.ASSISTANT_SPEAKING) onBargeIn();
         if (state === VOICE_STATES.LISTENING || state === VOICE_STATES.INTERRUPTED) setState(VOICE_STATES.USER_SPEAKING);
-      } else if (state === VOICE_STATES.USER_SPEAKING && Date.now() - lastSpeechAt > 850) {
+      } else if (activity.becameQuiet && state === VOICE_STATES.USER_SPEAKING) {
         setState(VOICE_STATES.LISTENING);
       }
       send({ realtimeInput: { audio: { data: base64FromBytes(result.bytes), mimeType: 'audio/pcm;rate=16000' } } });
@@ -361,9 +398,19 @@ export function createGeminiLiveSession(options) {
       return;
     }
     mediaStream = grantedStream;
+    // Voice Mode hardening, section 6: a real AbortController for the token mint - declared OUTSIDE
+    // the try block below (not `const` inside it) specifically so the catch block can still
+    // compare against it for cleanup; a try-scoped `const`/`let` is not visible in its own catch.
+    // disconnect() aborts connectAbortController directly (see that function's own comment),
+    // stopping the actual network request for a mint nobody will use, not merely discarding an
+    // already-completed response via the pre-existing connectionEpoch check a few lines below.
+    let mintAbortController = null;
     try {
       if (!isReconnect) setState(VOICE_STATES.CONNECTING);
-      const creds = await Promise.race([fetchSession(language), deadline]);
+      mintAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      connectAbortController = mintAbortController;
+      const creds = await Promise.race([fetchSession(language, { signal: mintAbortController && mintAbortController.signal }), deadline]);
+      if (connectAbortController === mintAbortController) connectAbortController = null;
       if (myEpoch !== connectionEpoch) return;
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       await Promise.race([audioContext.resume(), deadline]);
@@ -373,6 +420,11 @@ export function createGeminiLiveSession(options) {
       if (myEpoch !== connectionEpoch) return;
       reconnectAttempt = 0;
     } catch (error) {
+      // This attempt is over one way or another - clear only if it is still OUR OWN reference; a
+      // newer connect() that has since started (myEpoch !== connectionEpoch below) already
+      // installed its own controller here, which must never be cleared by this older attempt
+      // settling late.
+      if (connectAbortController === mintAbortController) connectAbortController = null;
       if (myEpoch !== connectionEpoch) return;
       const stage = timedOut ? 'token_mint_timeout' : failureStage(error);
       // Slice R2, audit finding T1-equivalent for Gemini: a reconnect attempt that itself fails
@@ -392,6 +444,11 @@ export function createGeminiLiveSession(options) {
     connectionEpoch += 1; // invalidate every in-flight/scheduled listener and reconnect from this connection generation
     clearReconnectTimer();
     reconnectAttempt = 0;
+    // Voice Mode hardening, section 6: actually abort a still-in-flight token mint or TTS fetch,
+    // not merely let it complete and have its result discarded by the epoch/token checks above -
+    // a no-op when nothing is currently pending.
+    if (connectAbortController) { try { connectAbortController.abort(); } catch (_) {} connectAbortController = null; }
+    if (speakAbortController) { try { speakAbortController.abort(); } catch (_) {} speakAbortController = null; }
     teardown();
     muted = false;
     onMuteChange(false);
@@ -403,6 +460,10 @@ export function createGeminiLiveSession(options) {
     // call first - a pending fetchSpeakAudio() call has nothing else to cancel it, and would
     // otherwise still start playback once it resolves.
     activeSpeakToken = null;
+    // Voice Mode hardening, section 6: also actually abort the underlying TTS fetch when one is in
+    // flight - activeSpeakToken above already stops its RESULT from ever being adopted; this
+    // additionally stops the real network request/server-side synthesis work.
+    if (speakAbortController) { try { speakAbortController.abort(); } catch (_) {} speakAbortController = null; }
     stopPlayback(false);
     if (state !== VOICE_STATES.ERROR) setState(VOICE_STATES.LISTENING);
   }
@@ -430,25 +491,89 @@ export function createGeminiLiveSession(options) {
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
     const token = {};
     activeSpeakToken = token;
-    return Promise.resolve(fetchSpeakAudio(language, text)).then((result) => {
-      if (token !== activeSpeakToken) return; // interrupted before playback began
+    // Voice Mode hardening, section 6: a real AbortController for the TTS fetch - interrupt()/
+    // disconnect() abort it directly, stopping the actual network request/server-side synthesis
+    // work for audio nobody will ever hear, on top of the pre-existing activeSpeakToken check.
+    const abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    speakAbortController = abortController;
+    const fetchStartedAt = nowMs();
+    const textLength = text.length;
+    return Promise.resolve(fetchSpeakAudio(language, text, { signal: abortController && abortController.signal })).then((result) => {
+      const fetchMs = Math.round((nowMs() - fetchStartedAt) * 100) / 100;
+      if (speakAbortController === abortController) speakAbortController = null;
+      if (token !== activeSpeakToken) {
+        lastSpeakLatencyRecord = { textLength: textLength, fetchMs: fetchMs, interrupted: true, at: new Date().toISOString() };
+        return; // interrupted before playback began
+      }
+      lastSpeakLatencyRecord = { textLength: textLength, fetchMs: fetchMs, interrupted: false, at: new Date().toISOString() };
       return playPcm(result.audioBase64);
     }).then(() => {
       if (state === VOICE_STATES.ASSISTANT_SPEAKING) setState(VOICE_STATES.LISTENING);
-    }).catch((error) => { if (token === activeSpeakToken) reportFailure(error, 'tts'); });
+    }).catch((error) => {
+      const fetchMs = Math.round((nowMs() - fetchStartedAt) * 100) / 100;
+      if (speakAbortController === abortController) speakAbortController = null;
+      lastSpeakLatencyRecord = { textLength: textLength, fetchMs: fetchMs, interrupted: true, error: errorCode(error), at: new Date().toISOString() };
+      if (token === activeSpeakToken) reportFailure(error, 'tts');
+    });
   }
+  // Voice Mode hardening, audit finding T11: this used to create a completely unowned local Audio
+  // element - not registered in `playbackStop` (the one slot interrupt()/teardown() already know
+  // how to stop), never setting ASSISTANT_SPEAKING, and never emitting the output_audio_buffer.*
+  // events PlaybackController relies on for captions/settlement. A barge-in or End Voice could
+  // therefore never actually stop a playing published clip. Rewritten to give published audio the
+  // exact same ownership contract playPcm() already has: registered in the shared `playbackStop`
+  // slot, real state/caption/interrupt/disconnect parity, and a two-stage watchdog (mirroring
+  // aiVoiceRealtime.js's own armPlaybackWatchdog) since - unlike playPcm()'s already-decoded
+  // buffer with a known exact duration - an arbitrary published URL has none to compute from.
   function playAudioUrl(url) {
     if (!url) return Promise.resolve();
+    setState(VOICE_STATES.ASSISTANT_SPEAKING);
+    const element = new Audio(url);
     return new Promise((resolve, reject) => {
-      const element = new Audio(url);
-      element.onended = () => resolve();
-      element.onerror = () => reject(new Error('published audio playback failed'));
-      element.play().catch(reject);
+      let settled = false;
+      let timer = setTimeout(() => settle(false), FIRST_AUDIO_DEADLINE_MS);
+      function onProgress() { clearTimeout(timer); timer = setTimeout(() => settle(false), PLAYBACK_STALL_DEADLINE_MS); }
+      function settle(ok) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        element.removeEventListener('ended', onEnded);
+        element.removeEventListener('error', onPlaybackError);
+        element.removeEventListener('timeupdate', onProgress);
+        element.removeEventListener('playing', onProgress);
+        if (playbackStop === stopNow) playbackStop = null;
+        onOutputAudioBufferEvent(ok ? 'output_audio_buffer.stopped' : 'output_audio_buffer.cleared', null);
+        if (ok) resolve(); else reject(new Error('published audio playback failed'));
+      }
+      function onEnded() { settle(true); }
+      function onPlaybackError() { settle(false); }
+      // Called only by stopPlayback() (interrupt()/teardown()), which always passes a fixed
+      // argument regardless of real reason - a deliberate stop always counts as "ok" here (no
+      // further fallback should ever be triggered merely because the owner chose to stop this
+      // clip), the same convention aiVoiceRealtime.js's own publishedAudioStopFn/elevenLabsStopFn
+      // already use (both ignore their call argument and hardcode a successful settle).
+      function stopNow() { try { element.pause(); element.currentTime = 0; } catch (_) {} settle(true); }
+      element.addEventListener('ended', onEnded);
+      element.addEventListener('error', onPlaybackError);
+      element.addEventListener('timeupdate', onProgress);
+      element.addEventListener('playing', onProgress);
+      playbackStop = stopNow;
+      onOutputAudioBufferEvent('output_audio_buffer.started', null);
+      element.play().catch(() => settle(false));
     });
   }
   return {
     connect, disconnect, mute, interrupt, speak, playAudioUrl, finishUserTurn, supportsManualFinish, markPlaybackEnded,
     setLanguage: (value) => { language = normalizeLanguage(value); }, setEagerness: () => false,
-    state: () => state, isMuted: () => muted, getMediaStream: () => mediaStream
+    state: () => state, isMuted: () => muted, getMediaStream: () => mediaStream,
+    // Provider Ownership addendum, section 1: this transport IS Gemini Live - listening/speaking
+    // are always 'gemini' whenever it is genuinely connected, and reasoning follows the same
+    // active provider (chatDockView.jsx no longer overrides it to 'openai'), so all three are
+    // structurally the same value for the whole lifetime of a connected session.
+    provider: () => 'gemini',
+    // Provider Ownership addendum, section 6: the most recent speak() call's own latency
+    // breakdown (fetchMs - see speak()'s own comment on why that is effectively "time to first
+    // audio" on this confirmed non-streaming path). null until the first speak() call resolves.
+    lastSpeakLatency: () => lastSpeakLatencyRecord
   };
 }

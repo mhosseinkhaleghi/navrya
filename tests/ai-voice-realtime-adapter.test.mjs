@@ -87,6 +87,37 @@ test('speak(), interrupt(), and mute() are all guarded against a dropped connect
   assert.match(muteBody, /try \{ session\.mute/);
 });
 
+// Voice Mode hardening, audit finding T4: isMuted survives an unexpected reconnect (only
+// disconnect() resets it), but a brand-new RealtimeSession created during connect()/reconnect
+// never re-communicated that preference to the SDK on its own - a reconnect could silently start
+// transmitting live microphone audio for a turn or two while the UI still showed Muted.
+test('connect() reapplies the current isMuted preference to the newly-created session BEFORE exposing LISTENING, on every connect and reconnect alike - never only at explicit mute() call time', () => {
+  const connectFn = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  const sessionConnectIdx = connectFn.indexOf('await Promise.race([session.connect({ apiKey: creds.value }), deadline]);');
+  const muteReapplyIdx = connectFn.indexOf('try { session.mute(isMuted); }');
+  const listeningIdx = connectFn.indexOf('setState(VOICE_STATES.LISTENING);');
+  assert.ok(sessionConnectIdx > -1 && muteReapplyIdx > -1 && listeningIdx > -1, 'all three real statements must be present');
+  assert.ok(sessionConnectIdx < muteReapplyIdx && muteReapplyIdx < listeningIdx, 'mute must be reapplied after the new session actually connects, but strictly before LISTENING is ever exposed - the earliest safe point that is also guaranteed to be before any real listening state');
+  // Unconditional - always re-asserts the current preference (true or false) rather than only
+  // guarding the muted case, so a fresh session's own default is never silently assumed correct.
+  assert.doesNotMatch(connectFn.slice(muteReapplyIdx - 5, muteReapplyIdx + 30), /if \(isMuted\)/);
+});
+
+test('isMuted itself is untouched by connect()/reconnect - only disconnect() (an explicit End Voice) resets it to false, so a reconnect always reapplies whatever the user\'s real current preference actually is', () => {
+  const connectFn = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.doesNotMatch(connectFn, /isMuted = /, 'connect() must never assign isMuted itself, only read it');
+  const disconnectFn = source.slice(source.indexOf('function disconnect()'), source.indexOf('function mute(muted)'));
+  assert.match(disconnectFn, /isMuted = false;/);
+  assert.match(disconnectFn, /onMuteChange\(isMuted\);/);
+});
+
+test('the manual-finish mic hold stays distinct from the reconnect mute fix - a hold in progress is always cleared (via teardownTransport()\'s own clearPendingManualFinish()) before any reconnect\'s fresh media stream is granted, never left straddling across two different MediaStreams', () => {
+  const teardownFn = source.slice(source.indexOf('function teardownTransport()'), source.indexOf('function scheduleReconnect'));
+  const clearIdx = teardownFn.indexOf('clearPendingManualFinish();');
+  const stopTracksIdx = teardownFn.indexOf("mediaStream.getTracks().forEach(function (track) { track.stop(); });");
+  assert.ok(clearIdx > -1 && stopTracksIdx > -1 && clearIdx < stopTracksIdx, 'the manual-finish hold must be released before the old stream\'s tracks are stopped, on every teardown path (a real disconnect and a reconnect about to retry both call this)');
+});
+
 test('the barge-in handler never calls session.interrupt() or this module\'s own interrupt() directly - it only ever notifies the caller via onBargeIn(), which the caller routes through PlaybackController (which itself calls the guarded interrupt() exactly once)', () => {
   const handlerBody = source.slice(source.indexOf('function onTransportEvent'), source.indexOf('function clearReconnectTimer'));
   assert.doesNotMatch(handlerBody, /session\.interrupt\(\)/, 'must not call session.interrupt() directly');
@@ -136,6 +167,33 @@ test('interrupt() clears activeSpeakToken first, unconditionally, before stoppin
   const tokenIdx = interruptBody.indexOf('activeSpeakToken = null;');
   const elIdx = interruptBody.indexOf('if (elevenLabsStopFn)');
   assert.ok(tokenIdx > -1 && elIdx > -1 && tokenIdx < elIdx);
+});
+
+// Voice Mode hardening, section 6: activeSpeakToken already stopped a stale ElevenLabs fetch's
+// RESULT from ever being adopted, but the real underlying network request/server-side synthesis
+// work kept running to completion regardless - wasted cost for audio nobody would ever hear.
+// speakAbortController gives interrupt()/disconnect() something real to actually cancel.
+test('speakViaElevenLabs mints a real AbortController per call, assigns it to the module-level speakAbortController, and threads its signal into fetchSpeakAudio', () => {
+  const body = source.slice(source.indexOf('function speakViaElevenLabs(text, token)'), source.indexOf('function speak(text)'));
+  assert.match(body, /var abortController = \(typeof AbortController !== 'undefined'\) \? new AbortController\(\) : null;/);
+  assert.match(body, /speakAbortController = abortController;/);
+  assert.match(body, /fetchSpeakAudio\(language, text, \{ signal: abortController && abortController\.signal \}\)/);
+  assert.match(body, /if \(speakAbortController === abortController\) speakAbortController = null;/);
+});
+
+test('interrupt() and disconnect() both actually abort a still-in-flight ElevenLabs TTS fetch via speakAbortController, not merely rely on the pre-existing activeSpeakToken result-discard check', () => {
+  const interruptBody = source.slice(source.indexOf('function interrupt()'), source.indexOf('// Called only by the caller'));
+  assert.match(interruptBody, /if \(speakAbortController\) \{ try \{ speakAbortController\.abort\(\); \} catch \(_e\) \{\} speakAbortController = null; \}/);
+  const disconnectBody = source.slice(source.indexOf('function disconnect()'), source.indexOf('function mute(muted)'));
+  assert.match(disconnectBody, /if \(speakAbortController\) \{ try \{ speakAbortController\.abort\(\); \} catch \(_e\) \{\} speakAbortController = null; \}/);
+});
+
+test('disconnect() also actually aborts a still-in-flight Realtime session mint via connectAbortController - a mint whose result is no longer wanted is now truly cancelled, not merely discarded once it resolves', () => {
+  const disconnectBody = source.slice(source.indexOf('function disconnect()'), source.indexOf('function mute(muted)'));
+  assert.match(disconnectBody, /if \(connectAbortController\) \{ try \{ connectAbortController\.abort\(\); \} catch \(_e\) \{\} connectAbortController = null; \}/);
+  const connectFn = source.slice(source.indexOf('async function connect(connectOptions)'), source.indexOf('function disconnect()'));
+  assert.match(connectFn, /connectAbortController = abortController;/);
+  assert.match(connectFn, /if \(connectAbortController === abortController\) connectAbortController = null;/);
 });
 
 test('speak() mints a fresh token per call and assigns it to activeSpeakToken before dispatching to either engine', () => {

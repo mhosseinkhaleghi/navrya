@@ -64,7 +64,32 @@ test('trade.cancel is CONSEQUENTIAL: requiredFields includes a confirm field, an
   assert.ok(openFn, 'could not find trade.cancel\'s open()');
   assert.doesNotMatch(openFn[1], /updateStatus/, 'open() must never mutate - only submit(), gated on confirm, may');
   assert.match(block, /if \(known\.confirm !== true && known\.confirm !== 'true'\) return undefined;/);
-  assert.match(block, /window\.TradeJournalTradeStore\.updateStatus\(trade\.id, 'cancelled'\)/);
+  assert.match(block, /window\.TradeJournalTradeStore\.updateStatus\(id, 'cancelled'\)/);
+});
+
+// Voice Mode hardening, section 19 (audit finding F8): trade.cancel used to re-resolve
+// resolveActiveTrade(context) fresh at submit() time with no comparison against which Trade the
+// confirmation was actually FOR - unlike trade.delete's own pendingTradeDeleteId (F37 section 6).
+// Switched-target scenario: open Trade A, "cancel this trade" -> "are you sure?" -> navigate to
+// Trade B before answering -> "yes" must never cancel B for a confirmation only ever given for A.
+test('trade.cancel now pins the exact target Trade at open() time (pendingTradeCancelId) and refuses at submit() if the currently-active Trade has since changed - the same switched-target protection trade.delete already has', () => {
+  const block = actionBlock('trade.cancel');
+  assert.match(block, /pendingTradeCancelId = trade\.id;/, 'open() must pin the exact Trade id being confirmed');
+  const submitFn = /submit: \(known, context\) => \{([\s\S]*?)\},\s*resultContext:/.exec(block);
+  assert.ok(submitFn, 'could not find trade.cancel\'s submit()');
+  const body = submitFn[1];
+  assert.match(body, /var id = pendingTradeCancelId;/);
+  assert.match(body, /pendingTradeCancelId = null;/);
+  assert.match(body, /if \(!id\) return undefined;/);
+  assert.match(body, /var currentActive = resolveActiveTrade\(context\);/);
+  assert.match(body, /if \(currentActive && currentActive\.id !== id\) return undefined;/, 'must refuse when the active Trade has changed since this confirmation was staged, never blindly act on whatever is active now');
+});
+
+test('pendingTradeCancelId is declared locally to the trade-lifecycle block (its own `var`, matching pendingTradeDeleteId\'s own per-block redeclaration convention in the F37 destructive-actions block) - not a cross-block reference into a variable declared ~1700 lines later', () => {
+  const src = characterAppSrc; // full source, not just the trade.cancel action block
+  const declIdx = src.indexOf('var pendingTradeCancelId = null;');
+  const cancelActionIdx = src.indexOf("id: 'trade.cancel'");
+  assert.ok(declIdx > -1 && cancelActionIdx > -1 && declIdx < cancelActionIdx, 'the declaration must appear before trade.cancel\'s own registration, in the same block');
 });
 
 test('trade.close requires only exitPrice, is deliberately NOT entityAlreadyPersisted (auto-completes once known, unlike Pattern/Strategy), and its submit() drives the real trade-close-position registration', () => {

@@ -123,6 +123,76 @@ test('a submit() rejection (network failure, thrown error) is reported via onRes
   assert.deepEqual(results[1].result, { reply: 'fine' }, 'a later turn must still run normally after an earlier one failed');
 });
 
+// Voice Mode hardening, section 5: the actual confirmed bug. epochAtEnqueue was recorded but never
+// re-checked before invoking submitFn() at the front of the queue - only AFTER submitFn() resolved
+// (the pre-existing "in flight" tests above). A turn queued behind a still-in-flight PREVIOUS turn
+// reaches the front of the queue well after New Chat/a conversation switch/End Voice/unmount/a
+// provider switch bumped the epoch, and the old code still called submitFn() with the new epoch
+// already current - starting a workflow, mutating a form, or otherwise treating this stale queued
+// turn's text as genuine new-conversation input. These tests assert submitFn() is never CALLED at
+// all for such a turn, not merely that its result is discarded after the fact.
+test('New Chat while a first turn is active and a second is queued: the second turn\'s submitFn is never called once it reaches the front - only reported once, discarded, via onResult', async () => {
+  const module = await sandbox();
+  let epoch = 0;
+  const submitCalls = [];
+  const results = [];
+  const gate = deferred();
+  const coordinator = module.create({
+    submit: async (text) => { submitCalls.push(text); await gate.promise; return { reply: text }; },
+    getEpoch: () => epoch,
+    onResult: (result, meta) => results.push({ result, discarded: meta.discarded })
+  });
+  const p1 = coordinator.handleFinalTranscript('first (this epoch)', {});
+  const p2 = coordinator.handleFinalTranscript('second (queued, then stale)', {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(submitCalls, ['first (this epoch)'], 'only the first turn has started - the second is still queued behind it');
+  epoch = 1; // New Chat (or conversation resume, End Voice, unmount, provider switch - any real epoch bump) fires while turn 1 is still in flight and turn 2 is still queued
+  gate.resolve();
+  await p1;
+  await p2;
+  assert.deepEqual(submitCalls, ['first (this epoch)'], 'submitFn() must NEVER be called for the second turn once its epoch is stale - not called-then-discarded, simply never called');
+  assert.equal(results.length, 2);
+  // Turn 1 itself STARTED inside epoch 0 (submitFn was genuinely called) but only RESOLVED after
+  // the epoch changed - this is the pre-existing, unchanged "in flight" discard behavior a few
+  // tests above (an in-flight request finishing after the user has moved on is still stale). The
+  // real point of THIS test is submitCalls above: turn 2's submitFn is never invoked at all.
+  assert.equal(results[0].discarded, true);
+  assert.equal(results[0].result, null);
+  assert.equal(results[1].discarded, true, 'the second turn is reported exactly once, as discarded, with a null result');
+  assert.equal(results[1].result, null);
+});
+
+test('three queued turns with an epoch change in the middle: only the turn already committed to running when the epoch changed ever calls submitFn() - the other two never do', async () => {
+  const module = await sandbox();
+  let epoch = 0;
+  const submitCalls = [];
+  const results = [];
+  const gate = deferred();
+  const coordinator = module.create({
+    submit: async (text) => { submitCalls.push(text); await gate.promise; return { reply: text }; },
+    getEpoch: () => epoch,
+    onResult: (result, meta) => results.push({ result, discarded: meta.discarded })
+  });
+  const p1 = coordinator.handleFinalTranscript('turn A', {});
+  const p2 = coordinator.handleFinalTranscript('turn B', {});
+  const p3 = coordinator.handleFinalTranscript('turn C', {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(submitCalls, ['turn A'], 'turn A has started (blocked on the gate); B and C are still queued behind it');
+  epoch = 1; // the conversation moves on while B and C sit queued and A is still mid-flight
+  gate.resolve();
+  await p1;
+  await p2;
+  await p3;
+  assert.deepEqual(submitCalls, ['turn A'], 'turns B and C must never call submitFn() at all once their epoch is stale by the time they reach the front');
+  assert.equal(results.length, 3);
+  assert.equal(results[0].discarded, true, 'turn A resolved after the epoch changed, so its result is correctly stale too - unchanged pre-existing behavior');
+  assert.equal(results[0].result, null);
+  assert.equal(results[1].discarded, true);
+  assert.equal(results[1].result, null);
+  assert.equal(results[2].discarded, true);
+  assert.equal(results[2].result, null);
+});
+
 test('extraMeta passed to handleFinalTranscript is threaded through to both submit() and onResult()', async () => {
   const module = await sandbox();
   const submitMeta = [];

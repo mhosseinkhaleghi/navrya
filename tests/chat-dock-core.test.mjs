@@ -548,6 +548,133 @@ test('a workflow still "collecting" (not pending-submit) whose process is exclud
   assert.equal(cancelled, true, 'the second turn\'s confirm:true must actually reach submit() once the grace window elapses');
 });
 
+// Confirmation Policy addendum, Section 7: "The system must distinguish USER confirmation from
+// MODEL-SUPPLIED confirm=true. A model-generated confirmation field must never be treated as proof
+// of user consent." sanitizeUnverifiedGateConfirmation() (chat-dock-core.js) is the mechanism -
+// these tests exercise it directly through sendChat(), not just the classifier it calls
+// (ai-proactive-engine.test.mjs already covers interpretConfirmationText() in isolation).
+test('a model-hallucinated confirm:true on the VERY FIRST turn (fresh discovery), with no real user confirmation language at all, is stripped back to missing - the workflow never reaches pending-submit and never calls submit()', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    // The user only ever asked to cancel - never said yes/confirmed anything - but the model's
+    // own JSON response claims confirm:true regardless. This is exactly the failure mode Section
+    // 7 warns about: a model fabricating its own proof of consent.
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'Cancelling now.', action: { id: 'trade.cancel', fields: [{ path: 'confirm', value: true }] }, provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+  window.TradeJournalAIProcessRegistry.register('trade-details-fake1', { allowlist: [], isOpen: () => true });
+  let submitted = false;
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'trade.cancel', requiredFields: ['confirm'], optionalFields: [], gateField: 'confirm',
+    open: () => ({ processId: 'trade-details-fake1' }),
+    submit: async (known) => { if (known.confirm !== true) return undefined; submitted = true; return { id: 'trade-1', status: 'cancelled' }; },
+    resultContext: () => {}
+  });
+  window.TradeJournalAIWorkflowEngine.setSubmitGraceMs(20);
+
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'Cancel this trade.', therapistMode: false, transcript: [] });
+
+  assert.equal(result.kind, 'workflow');
+  assert.equal(result.workflow.status, 'collecting', 'a model-supplied confirm:true unbacked by real user text must never reach pending-submit');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(submitted, false, 'submit() must never run off a model-manufactured confirmation');
+});
+
+test('a model-hallucinated confirm:true on a CONTINUATION turn whose real user text is genuinely unrelated (not a confirmation at all) is stripped back to missing, exactly like the fresh-discovery case', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (/cancel this trade/i.test(body.message)) {
+        return { ok: true, json: async () => ({ reply: 'Are you sure?', action: { id: 'trade.cancel', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      }
+      // The user asks an unrelated question - not a confirmation in any sense - yet the model
+      // still claims confirm:true on this continuation turn.
+      return { ok: true, json: async () => ({ reply: 'It shows your realized P&L.', action: { id: 'trade.cancel', fields: [{ path: 'confirm', value: true }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  window.TradeJournalAIProcessRegistry.register('trade-details-fake1', { allowlist: [], isOpen: () => true });
+  let submitted = false;
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'trade.cancel', requiredFields: ['confirm'], optionalFields: [], gateField: 'confirm',
+    open: () => ({ processId: 'trade-details-fake1' }),
+    submit: async (known) => { if (known.confirm !== true) return undefined; submitted = true; return { id: 'trade-1', status: 'cancelled' }; },
+    resultContext: () => {}
+  });
+  window.TradeJournalAIWorkflowEngine.setSubmitGraceMs(20);
+  const core = window.TradeJournalChatDockCore;
+
+  const first = await core.sendChat({ text: 'Cancel this trade.', therapistMode: false, transcript: [] });
+  assert.equal(first.workflow.status, 'collecting');
+
+  const second = await core.sendChat({ text: 'What does this field mean?', therapistMode: false, transcript: [] });
+  assert.equal(second.workflow.status, 'collecting', 'an unrelated question must never be laundered into a confirmation, even when the model itself claims confirm:true');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(submitted, false);
+});
+
+// "No confirmation chains" (Section 8): once a destructive action is validly confirmed and
+// executes, an ordinary, unrelated, low-risk action requested in the very next turn must execute
+// on its own terms - no gate, no repeated "are you sure", no leftover confirmation state bleeding
+// from the prior turn into this one.
+test('after a destructive action is genuinely confirmed and executes, the next turn\'s unrelated ordinary action (no gateField at all) runs straight through with no confirmation asked at all', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (/cancel this trade/i.test(body.message)) {
+        return { ok: true, json: async () => ({ reply: 'Are you sure?', action: { id: 'trade.cancel', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      }
+      if (/yes, cancel it/i.test(body.message)) {
+        return { ok: true, json: async () => ({ reply: 'Cancelled.', action: { id: 'trade.cancel', fields: [{ path: 'confirm', value: true }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      }
+      // A completely ordinary, non-destructive follow-up - no gateField exists on this action at
+      // all, so nothing should ever ask this turn to confirm anything.
+      return { ok: true, json: async () => ({ reply: 'Logged.', action: { id: 'trade.emotion.log', fields: [{ path: 'stressLevel', value: 6 }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  // trade-emotion-log must only report itself open once its OWN action's open() actually ran -
+  // a hardcoded isOpen:()=>true from the moment of registration would make it look like an
+  // already-open, real dialog/modal for the entire test (blocking trade.cancel's own discovery),
+  // which is not what a real process registration does.
+  let emotionLogOpen = false;
+  window.TradeJournalAIProcessRegistry.register('trade-details-fake1', { allowlist: [], isOpen: () => true });
+  window.TradeJournalAIProcessRegistry.register('trade-emotion-log', { allowlist: ['stressLevel'], isOpen: () => emotionLogOpen });
+  let cancelled = false;
+  let loggedStress = null;
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'trade.cancel', requiredFields: ['confirm'], optionalFields: [], gateField: 'confirm',
+    open: () => ({ processId: 'trade-details-fake1' }),
+    submit: async (known) => { if (known.confirm !== true) return undefined; cancelled = true; return { id: 'trade-1', status: 'cancelled' }; },
+    resultContext: () => {}
+  });
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'trade.emotion.log', requiredFields: [], optionalFields: ['stressLevel'],
+    open: () => { emotionLogOpen = true; return { processId: 'trade-emotion-log' }; },
+    submit: async (known) => { loggedStress = known.stressLevel; return { id: 'log-1' }; },
+    resultContext: () => {}
+  });
+  window.TradeJournalAIWorkflowEngine.setSubmitGraceMs(20);
+  const core = window.TradeJournalChatDockCore;
+
+  await core.sendChat({ text: 'Cancel this trade.', therapistMode: false, transcript: [] });
+  const confirmTurn = await core.sendChat({ text: 'Yes, cancel it.', therapistMode: false, transcript: [] });
+  assert.equal(confirmTurn.workflow.status, 'pending-submit', 'a genuine leading "Yes" must still satisfy the gate despite the action\'s own name ("cancel") also appearing in the sentence');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(cancelled, true);
+
+  // Note: "pending-submit" here is the ordinary auto-submit grace window every fully-known
+  // workflow passes through (gated or not - see the "confirming a gate-field-only workflow..."
+  // test above for the gated case) - it is not itself a confirmation prompt. The actual proof of
+  // "no confirmation chain" is that submit() fires on its own once the grace window elapses,
+  // with no further user turn (no repeated "are you sure?") ever requested in between.
+  const nextTurn = await core.sendChat({ text: 'Log stress level 6 for this trade.', therapistMode: false, transcript: [] });
+  assert.equal(nextTurn.workflow.actionId, 'trade.emotion.log');
+  assert.equal(nextTurn.reply, 'Logged.', 'the reply must be the plain business reply, never a re-asked "are you sure?" for an action with no gateField');
+  assert.equal(loggedStress, null, 'must not have submitted synchronously before its own grace window elapses');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(loggedStress, 6, 'the ordinary follow-up must execute on its own after the grace window, with zero additional confirmation turn required, immediately after the unrelated destructive confirmation');
+});
+
 // Production repair pass, section 11: found via the real, required 20-turn browser script -
 // completing a Trade via chat auto-opens its own real Trade Details view (character-app.jsx's
 // trade.calculator resultContext, pre-existing, unchanged), which registers itself

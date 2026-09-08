@@ -473,20 +473,65 @@
   function clearConfirmation() { pending = null; }
 
   // Deterministic keyword classification of a reply to a pending confirmation - never the model's
-  // job to decide this (section 16: "NAVRYA must know exactly what is being confirmed"). English +
-  // Persian, matching the two languages Journey C's own required test scenarios use. Ambiguous
+  // job to decide this (section 16: "NAVRYA must know exactly what is being confirmed"). Ambiguous
   // text (matches neither, or the rare text matching both) returns null - the caller must leave
   // the pending confirmation untouched rather than guess (section 7's "prefer false negatives").
+  //
+  // Confirmation Policy addendum: extended from EN/FA-only (which did not even recognize a plain
+  // Persian "بله"/"آره") to real AR/ES coverage too. This classifier is now also the deterministic
+  // backstop distinguishing a genuine USER-authored confirmation from a model-fabricated
+  // confirm:true (see ai-workflow-engine.js's own applyKnownFields()) - without real AR/ES/plain-FA
+  // coverage, a legitimate single-utterance "Delete the 14:32 BTC trade, yes, do it." would only
+  // ever have worked in English, silently forcing every other language into an extra confirmation
+  // turn the addendum's own "low friction" policy explicitly does not want.
   var CONFIRM_PATTERN = /\b(confirm|override|anyway|proceed|go ahead)\b|\byes\b.*\b(use|do|go|proceed)\b|^\s*yes\b/i;
   var REJECT_PATTERN = /\b(no|cancel|nevermind|never mind)\b|\bkeep\b|\bstay\b|don'?t\b/i;
-  var CONFIRM_PATTERN_FA = /تایید|تأیید|باشه.*بزن|هرچی باشه|بزن بره/;
-  var REJECT_PATTERN_FA = /نه[ ،.]|لغو|همون|بمونه|نگه\s*دار/;
+  // \b is an ASCII word-boundary primitive and does not reliably delimit Persian/Arabic script -
+  // "^\s*(بله|آره)\b" silently never matches at all. A manual boundary (end of string, or
+  // followed by whitespace/punctuation) is used instead, matching this file's own existing FA
+  // patterns below, none of which rely on \b either.
+  var CONFIRM_PATTERN_FA = /تایید|تأیید|باشه.*بزن|هرچی باشه|بزن بره|^\s*(بله|آره|اره)(?:$|[\s.،!؟])/;
+  var REJECT_PATTERN_FA = /نه[ ،.]|^\s*نه\s*$|لغو|همون|بمونه|نگه\s*دار/;
+  var CONFIRM_PATTERN_AR = /نعم|أكّد|أكد|تأكيد|موافق|نفّذ|نفذ|امضِ\s*قدما/;
+  var REJECT_PATTERN_AR = /^\s*لا\s*$|لا[ ،.]|إلغاء|ألغِ|تراجع/;
+  // "si" without an accent also means "if" in Spanish, and commonly opens an ordinary conditional
+  // sentence ("si tienes tiempo, revisa el reporte" - "if you have time, check the report") - far
+  // more common a sentence-starter than English "yes" ever means anything but affirmation, so
+  // EN's own exact "bare word anchored at the very start" shape (^\s*yes\b) is not safe to mirror
+  // literally for unaccented "si". The accented "sí" (a real, deliberate "yes" mark distinct from
+  // "if" even when a writer skips every OTHER accent) may stand alone at the start; unaccented
+  // "si" only counts when actually paired with a real action word elsewhere in the sentence.
+  // NOTE: "\bsí\b" would never match here - "í" is not a "\w" character to JS's ASCII-only regex
+  // engine, so "\b" immediately after it never finds a boundary (true for "sí" alone, "sí,", "sí."
+  // - anything except a following character regex treats as itself a word character). Same class of
+  // bug as the Persian "\b" issue fixed above; the sentence-start-alone branch uses an explicit
+  // boundary set instead of "\b" for that reason.
+  var CONFIRM_PATTERN_ES = /\b(confirmar|confirmo|adelante|procede|hazlo)\b|\bs[ií]\b.*\b(hazlo|adelante|procede|confirmo)\b|^\s*sí(?:$|[\s.,!¡¿?])/i;
+  var REJECT_PATTERN_ES = /\b(no|cancelar|cancela|detente|espera)\b/i;
 
+  // A leading, unambiguous affirmation wins outright, even if a later incidental reject-vocabulary
+  // word also appears in the SAME sentence. Found via the Confirmation Policy addendum's own
+  // cross-check work (ai-workflow-engine.js's gate-confirmation verification): "Yes, cancel it."
+  // (a completely natural reply confirming trade.cancel) literally contains "cancel" -
+  // REJECT_PATTERN's own vocabulary, purely because that is the business action's real name, not
+  // because the user meant to reject anything - the leading "Yes" is what they actually meant, and
+  // must not be defeated by the action's own name colliding with reject vocabulary. Scoped
+  // narrowly to a genuinely unambiguous leading token in each language, not a general override.
+  // NOTE: plain "\b" is unreliable both after a Persian/Arabic word (an ASCII-only primitive in JS
+  // regex, it does not delimit non-Latin script - the same bug already found and fixed in
+  // CONFIRM_PATTERN_FA above) AND after an accented Latin letter like the "í" in "sí" (also not a
+  // "\w" character to the same ASCII-only engine - the same bug already found and fixed in
+  // CONFIRM_PATTERN_ES's bare-"sí" branch above: "Sí, cancelar." is the real, live case this
+  // guards - a genuine Spanish confirmation whose sentence also contains REJECT_PATTERN_ES's own
+  // "cancelar" vocabulary, purely because that IS the action being confirmed). So plain "yes" keeps
+  // "\b" (safe - ASCII only) while "sí" and the Perso-Arabic words each get an explicit boundary set.
+  var LEADING_CONFIRM = /^\s*yes\b|^\s*sí(?:$|[\s.,!¡¿?])|^\s*(بله|آره|اره|نعم)(?:$|[\s.,،!؟])/i;
   function interpretConfirmationText(text) {
     var t = String(text || '').trim();
     if (!t) return null;
-    var confirms = CONFIRM_PATTERN.test(t) || CONFIRM_PATTERN_FA.test(t);
-    var rejects = REJECT_PATTERN.test(t) || REJECT_PATTERN_FA.test(t);
+    if (LEADING_CONFIRM.test(t)) return 'confirm';
+    var confirms = CONFIRM_PATTERN.test(t) || CONFIRM_PATTERN_FA.test(t) || CONFIRM_PATTERN_AR.test(t) || CONFIRM_PATTERN_ES.test(t);
+    var rejects = REJECT_PATTERN.test(t) || REJECT_PATTERN_FA.test(t) || REJECT_PATTERN_AR.test(t) || REJECT_PATTERN_ES.test(t);
     if (confirms && !rejects) return 'confirm';
     if (rejects && !confirms) return 'reject';
     return null;

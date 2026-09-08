@@ -1813,6 +1813,17 @@ export function mountCharacterApp(character) {
         if (!tradeId || !window.TradeJournalTradeStore) return null;
         return window.TradeJournalTradeStore.find(tradeId);
       }
+      // Voice Mode hardening, section 19 (audit finding F8): trade.cancel's own submit() used to
+      // re-resolve resolveActiveTrade(context) fresh with NO comparison against which Trade was
+      // actually being confirmed - unlike trade.delete's own pendingTradeDeleteId (F37 section 6),
+      // which pins the exact target at open() time and refuses if the currently-active Trade has
+      // since changed. Switched-target scenario this closes: open Trade A, "cancel this trade" ->
+      // "are you sure?" -> navigate to Trade B before answering -> "yes" must never cancel B for a
+      // confirmation that was only ever given for A. Same pin-then-compare shape as
+      // pendingTradeDeleteId, scoped locally to this block (matching this file's own established
+      // per-block redeclaration convention for shared helpers, since trade.delete's own copy lives
+      // in a separate, later `if` block with its own local `var`).
+      var pendingTradeCancelId = null;
       // Shared by trade.open/trade.cancel: opens the real Trade Details view for the resolved
       // Trade (satisfies "the user must SEE lifecycle operations occurring through the real
       // NAVRYA UI" - F22 section 1) and waits for its own real 'trade-details-{id}' registration,
@@ -1904,13 +1915,23 @@ export function mountCharacterApp(character) {
         open: (context) => new Promise((resolve) => {
           var trade = resolveActiveTrade(context);
           if (!trade || trade.status !== 'hunting') { resolve(null); return; }
+          pendingTradeCancelId = trade.id;
           openTradeDetailsProcess(trade.id, resolve);
         }),
         submit: (known, context) => {
           if (known.confirm !== true && known.confirm !== 'true') return undefined;
-          var trade = resolveActiveTrade(context);
+          var id = pendingTradeCancelId;
+          pendingTradeCancelId = null;
+          if (!id) return undefined;
+          // Voice Mode hardening, section 19 (audit finding F8): same switched-target re-
+          // verification trade.delete already has - refuse if the currently-active Trade has
+          // changed since this confirmation was staged, rather than blindly cancelling whichever
+          // Trade happens to be active NOW.
+          var currentActive = resolveActiveTrade(context);
+          if (currentActive && currentActive.id !== id) return undefined;
+          var trade = window.TradeJournalTradeStore.find(id);
           if (!trade || trade.status !== 'hunting') return undefined;
-          return window.TradeJournalTradeStore.updateStatus(trade.id, 'cancelled');
+          return window.TradeJournalTradeStore.updateStatus(id, 'cancelled');
         },
         resultContext: () => {}
       });

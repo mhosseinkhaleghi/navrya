@@ -484,6 +484,43 @@ test('interpretConfirmationText() returns null (never guesses) for ambiguous or 
   assert.equal(engine.interpretConfirmationText(null), null);
 });
 
+// Confirmation Policy addendum: extended from EN/FA-only (which did not even recognize a plain
+// Persian "بله"/"آره") to real Arabic and Spanish coverage - required so a legitimate
+// single-utterance "Delete the 14:32 BTC trade, yes, do it." works in every supported language,
+// not only English, per the addendum's own "low friction" confirmation policy.
+test('interpretConfirmationText() recognizes a plain Persian yes/no ("بله"/"آره"/"نه" alone), not only the existing override-style phrases', async () => {
+  const engine = await engineSandbox({});
+  assert.equal(engine.interpretConfirmationText('بله'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('آره'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('نه'), 'reject');
+});
+
+test('interpretConfirmationText() recognizes explicit Arabic confirm/reject language', async () => {
+  const engine = await engineSandbox({});
+  assert.equal(engine.interpretConfirmationText('نعم'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('أكد الحذف'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('موافق، نفذ'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('لا'), 'reject');
+  assert.equal(engine.interpretConfirmationText('إلغاء العملية'), 'reject');
+});
+
+test('interpretConfirmationText() recognizes explicit Spanish confirm/reject language, without false-positiving on an ordinary conditional "si" ("if") clause', async () => {
+  const engine = await engineSandbox({});
+  assert.equal(engine.interpretConfirmationText('Sí, hazlo.'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('confirmar'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('adelante'), 'confirm');
+  assert.equal(engine.interpretConfirmationText('No, cancelar.'), 'reject');
+  assert.equal(engine.interpretConfirmationText('si tienes tiempo, revisa el reporte'), null, 'a mid-sentence conditional "si" ("if"), not paired with a real confirm word, must never be mistaken for "yes"');
+  // Regression guard: plain "\b" immediately after an accented letter like "í" never finds a
+  // boundary in JS's ASCII-only regex engine, so a bare "Sí." (no trailing action word to anchor
+  // on, unlike "Sí, hazlo.") silently failed to match before this was fixed.
+  assert.equal(engine.interpretConfirmationText('Sí.'), 'confirm', 'a standalone accented "Sí." with no other action word must still resolve as a confirmation');
+  // Spanish mirror of the English "Yes, cancel it." tie-break: a genuine confirmation of
+  // trade.cancel-shaped action whose own sentence contains REJECT_PATTERN_ES's own "cancelar"
+  // vocabulary purely because that is the action's real name, not because the user meant "no".
+  assert.equal(engine.interpretConfirmationText('Sí, cancelar.'), 'confirm', 'a leading unambiguous "Sí" must not be defeated by the action\'s own name ("cancelar") colliding with reject vocabulary later in the same sentence');
+});
+
 test('resolveConfirmation() returns the resolved data and clears the pending slot exactly once', async () => {
   const engine = await engineSandbox({});
   engine.stageConfirmation({ ruleId: 'strategy-risk-limit', actionId: 'trade.calculator', processId: 'trade-calculator', field: 'riskPercent', proposedValue: 4, safeValue: 1 });

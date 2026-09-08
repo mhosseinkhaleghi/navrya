@@ -12,13 +12,18 @@ test('Gemini Voice uses a constrained short-lived Live token, never a browser-ex
   assert.match(adapter, /access_token=\$\{encodeURIComponent\(creds\.token\)\}/);
   assert.doesNotMatch(adapter, /GEMINI_API_KEY/);
   assert.match(dock, /fetch\('\/api\/ai\/gemini-live\/session', \{/);
-  assert.match(dock, /async function fetchGeminiLiveSession\(language\) \{[\s\S]*?body: JSON\.stringify\(\{ language \}\)/);
-  assert.match(dock, /async function fetchGeminiSpeak\(language, text\) \{[\s\S]*?body: JSON\.stringify\(\{ language, text, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
+  assert.match(dock, /async function fetchGeminiLiveSession\(language, options\) \{[\s\S]*?body: JSON\.stringify\(\{ language \}\)/);
+  assert.match(dock, /async function fetchGeminiSpeak\(language, text, options\) \{[\s\S]*?body: JSON\.stringify\(\{ language, text, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
   assert.doesNotMatch(dock, /apiKey: settingsStore\.getKey\('gemini'\)/);
 });
 
-test('Gemini Live is selected only for Gemini, while finalized voice turns always use OpenAI chat', () => {
-  assert.match(dock, /provider: source === 'voice' \? 'openai' : undefined/);
+// Provider Ownership addendum, section 1: "finalized voice turns always use OpenAI chat" was the
+// old, now-removed behavior - a real, confirmed silent-provider-mismatch bug (a user's own
+// configured Gemini/Anthropic/Kimi/DeepSeek reasoning provider was silently overridden to OpenAI
+// for every Voice-originated turn). Gemini Live is still selected only for Gemini as the
+// TRANSPORT, but reasoning now follows the same active provider a typed turn already uses.
+test('Gemini Live is selected only for Gemini as the transport; voice-originated reasoning follows the same active provider a typed turn already uses, never hardcoded to OpenAI', () => {
+  assert.doesNotMatch(dock, /provider: source === 'voice' \? 'openai' : undefined/);
   assert.match(dock, /const useGeminiLive = providerId === 'gemini';/);
   assert.match(dock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
   assert.match(dock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
@@ -108,7 +113,7 @@ test('connect() races the whole startup sequence (mic, token mint, AudioContext 
   const connectFn = adapter.slice(adapter.indexOf('async function connect(connectOptions)'), adapter.indexOf('function disconnect()'));
   assert.match(connectFn, /const deadline = new Promise/);
   assert.match(connectFn, /await Promise\.race\(\[micPromise, deadline\]\)/);
-  assert.match(connectFn, /await Promise\.race\(\[fetchSession\(language\), deadline\]\)/);
+  assert.match(connectFn, /await Promise\.race\(\[fetchSession\(language, \{ signal: mintAbortController && mintAbortController\.signal \}\), deadline\]\)/);
   assert.match(connectFn, /await Promise\.race\(\[audioContext\.resume\(\), deadline\]\)/);
   assert.match(connectFn, /await openSocket\(creds, myEpoch, deadline\);/);
   assert.match(adapter, /const CONNECT_TIMEOUT_MS = 15000;/);
@@ -141,6 +146,31 @@ test('a late mic grant for Gemini is stopped immediately if a newer connect()/di
   assert.match(connectFn, /if \(myEpoch !== connectionEpoch\) \{\s*\n\s*try \{ grantedStream\.getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\); \} catch \(_\) \{\}\s*\n\s*return;\s*\n\s*\}\s*\n\s*mediaStream = grantedStream;/);
 });
 
+// Natural Listening addendum, Section 2/3: wireMicrophone() previously used one fixed energy
+// threshold (0.025) with no minimum-duration requirement at all - a single loud frame of
+// background noise while the assistant was speaking immediately flipped state and fired
+// onBargeIn(), with no cooldown against repeated interrupts. Replaced with the pure, independently
+// unit-tested geminiSpeechActivityDetector.js module (see its own dedicated test file) - this test
+// proves the WIRING: a fresh detector per real connection, decisions driven by its
+// becameSpeaking/becameQuiet/bargeIn outputs (never a bare energy comparison inline any more), and
+// the unconditional realtimeInput send (local detection must never gate what reaches the server).
+test('wireMicrophone() drives USER_SPEAKING/LISTENING/onBargeIn from a fresh geminiSpeechActivityDetector() per connection, not an inline fixed-threshold comparison, and still sends every frame to the server regardless of local detector state', () => {
+  assert.match(adapter, /import \{ createSpeechActivityDetector \} from '\.\/geminiSpeechActivityDetector\.js';/);
+  const fn = adapter.slice(adapter.indexOf('function wireMicrophone'), adapter.indexOf('function flushTranscript'));
+  assert.doesNotMatch(fn, /0\.025/, 'the old fixed energy threshold must be fully removed from this file - all threshold/hysteresis logic now lives in geminiSpeechActivityDetector.js');
+  assert.match(fn, /const speechDetector = createSpeechActivityDetector\(\);/, 'a fresh detector per wireMicrophone() call (i.e. per real connection) - never a stale cross-session singleton');
+  assert.match(fn, /const activity = speechDetector\.process\(result\.energy, Date\.now\(\)\);/);
+  assert.match(fn, /if \(activity\.becameSpeaking\) \{/);
+  assert.match(fn, /if \(activity\.bargeIn && state === VOICE_STATES\.ASSISTANT_SPEAKING\) onBargeIn\(\);/);
+  assert.match(fn, /if \(state === VOICE_STATES\.LISTENING \|\| state === VOICE_STATES\.INTERRUPTED\) setState\(VOICE_STATES\.USER_SPEAKING\);/);
+  assert.match(fn, /\} else if \(activity\.becameQuiet && state === VOICE_STATES\.USER_SPEAKING\) \{/);
+  // The realtimeInput send must be unconditional - reachable on every code path through this
+  // callback, never nested inside either branch above (local detection is UI/barge-in only, and
+  // must never gate what audio actually reaches Gemini's own server-side transcription/VAD).
+  const sendIndex = fn.indexOf('send({ realtimeInput:');
+  assert.ok(sendIndex > fn.indexOf('becameQuiet'), 'the send call must be textually after both branches, not embedded inside either');
+});
+
 // Slice R2, audit finding T6 parity: Gemini's own PCM playback previously had NO watchdog
 // whatsoever - a source whose 'onended' never fires (a genuinely stuck AudioBufferSourceNode)
 // would hang the playback queue forever, unlike every playback path in aiVoiceRealtime.js.
@@ -156,7 +186,95 @@ test('playPcm has a deadline derived from the buffer\'s own known duration - a p
 test('speak() mints a fresh activeSpeakToken per call, and interrupt() clears it first so a pending fetchSpeakAudio() call never starts playback after being interrupted', () => {
   const speakFn = adapter.slice(adapter.indexOf('function speak(text)'), adapter.indexOf('function playAudioUrl'));
   assert.match(speakFn, /const token = \{\};\s*\n\s*activeSpeakToken = token;/);
-  assert.match(speakFn, /if \(token !== activeSpeakToken\) return; \/\/ interrupted before playback began/);
+  assert.match(speakFn, /if \(token !== activeSpeakToken\) \{[\s\S]*?return; \/\/ interrupted before playback began\s*\n\s*\}\s*\n\s*lastSpeakLatencyRecord = [\s\S]*?return playPcm\(result\.audioBase64\);/, 'an interrupted call must return before ever reaching playPcm()');
   const interruptFn = adapter.slice(adapter.indexOf('function interrupt()'), adapter.indexOf('function finishUserTurn()'));
   assert.match(interruptFn, /activeSpeakToken = null;/);
+});
+
+// Voice Mode hardening, audit finding T11: playAudioUrl() previously created a completely unowned
+// local Audio element - never registered in the one slot (`playbackStop`) interrupt()/teardown()
+// already know how to stop, never setting ASSISTANT_SPEAKING, and never emitting the
+// output_audio_buffer.* events PlaybackController relies on for captions/settlement. A barge-in
+// or End Voice could therefore never actually stop a playing published clip, and it never fell
+// back to TTS on a genuine decode/network failure either.
+test('playAudioUrl() gives published audio the same ownership contract as playPcm(): ASSISTANT_SPEAKING state, output_audio_buffer.* events, and a real stop function registered in the shared playbackStop slot', () => {
+  const fn = adapter.slice(adapter.indexOf('function playAudioUrl(url)'), adapter.indexOf('return {\n    connect, disconnect,'));
+  assert.match(fn, /setState\(VOICE_STATES\.ASSISTANT_SPEAKING\);/);
+  assert.match(fn, /onOutputAudioBufferEvent\('output_audio_buffer\.started', null\);/);
+  assert.match(fn, /onOutputAudioBufferEvent\(ok \? 'output_audio_buffer\.stopped' : 'output_audio_buffer\.cleared', null\);/);
+  assert.match(fn, /playbackStop = stopNow;/);
+  assert.match(fn, /function stopNow\(\) \{ try \{ element\.pause\(\); element\.currentTime = 0; \} catch \(_\) \{\} settle\(true\); \}/);
+  // A genuine decode/network failure must still reject (triggering PlaybackController's own
+  // exactly-once TTS fallback for this entry) - only a deliberate interrupt/teardown-driven stop
+  // settles as "ok" (no fallback).
+  assert.match(fn, /function onPlaybackError\(\) \{ settle\(false\); \}/);
+  assert.match(fn, /if \(ok\) resolve\(\); else reject\(new Error\('published audio playback failed'\)\);/);
+});
+
+test('playAudioUrl() has the same two-stage first-audio/stall watchdog as aiVoiceRealtime.js\'s own armPlaybackWatchdog, since an arbitrary published URL has no known duration the way playPcm()\'s already-decoded buffer does', () => {
+  assert.match(adapter, /const FIRST_AUDIO_DEADLINE_MS = 12000;/);
+  assert.match(adapter, /const PLAYBACK_STALL_DEADLINE_MS = 60000;/);
+  const fn = adapter.slice(adapter.indexOf('function playAudioUrl(url)'), adapter.indexOf('return {\n    connect, disconnect,'));
+  assert.match(fn, /let timer = setTimeout\(\(\) => settle\(false\), FIRST_AUDIO_DEADLINE_MS\);/);
+  assert.match(fn, /function onProgress\(\) \{ clearTimeout\(timer\); timer = setTimeout\(\(\) => settle\(false\), PLAYBACK_STALL_DEADLINE_MS\); \}/);
+});
+
+// Voice Mode hardening, section 6: activeSpeakToken/connectionEpoch already stopped a stale
+// mint/TTS RESULT from ever being adopted, but the real underlying network request (token mint,
+// or fetchSpeakAudio) kept running to completion regardless - wasted cost/work for a
+// connection/audio nobody would ever use. connectAbortController/speakAbortController give
+// disconnect()/interrupt() something real to actually cancel, mirroring aiVoiceRealtime.js's own
+// identical fix exactly.
+test('connect() mints a real AbortController for the token mint, assigns it to connectAbortController, and clears it (comparing identity, never unconditionally) on both the success and failure paths', () => {
+  const connectFn = adapter.slice(adapter.indexOf('async function connect(connectOptions)'), adapter.indexOf('function disconnect()'));
+  assert.match(connectFn, /let mintAbortController = null;/);
+  assert.match(connectFn, /mintAbortController = \(typeof AbortController !== 'undefined'\) \? new AbortController\(\) : null;/);
+  assert.match(connectFn, /connectAbortController = mintAbortController;/);
+  assert.match(connectFn, /fetchSession\(language, \{ signal: mintAbortController && mintAbortController\.signal \}\)/);
+  // Both the success continuation and the catch block compare identity before clearing - a newer,
+  // still in-flight connect() attempt's own controller must never be cleared by an older attempt
+  // settling late.
+  const clears = connectFn.match(/if \(connectAbortController === mintAbortController\) connectAbortController = null;/g) || [];
+  assert.equal(clears.length, 2, 'expected exactly two identity-checked clears: one on the success path, one in the catch block');
+});
+
+test('speak() mints a real AbortController for the TTS fetch, assigns it to speakAbortController, and threads its signal into fetchSpeakAudio', () => {
+  const fn = adapter.slice(adapter.indexOf('function speak(text)'), adapter.indexOf('function playAudioUrl(url)'));
+  assert.match(fn, /const abortController = \(typeof AbortController !== 'undefined'\) \? new AbortController\(\) : null;/);
+  assert.match(fn, /speakAbortController = abortController;/);
+  assert.match(fn, /fetchSpeakAudio\(language, text, \{ signal: abortController && abortController\.signal \}\)/);
+});
+
+// Provider Ownership addendum, section 4/6: docs/ai/voice-architecture.md documents that Gemini's
+// TTS REST endpoint (:generateContent, not a genuine incremental audio stream - see that doc's own
+// investigation section) returns one complete audio buffer, so "time from fetch start to fetch
+// resolved" is effectively "time to first audible sound" on this path - the one latency component
+// actually worth instrumenting here, per Section 6's "measure latency components separately."
+test('speak() records a sanitized per-call latency breakdown (textLength/fetchMs/interrupted only, never the transcript itself), exposed via the adapter\'s own lastSpeakLatency() getter', () => {
+  const fn = adapter.slice(adapter.indexOf('function speak(text)'), adapter.indexOf('function playAudioUrl(url)'));
+  assert.match(fn, /const fetchStartedAt = nowMs\(\);/);
+  assert.match(fn, /const textLength = text\.length;/);
+  assert.match(fn, /const fetchMs = Math\.round\(\(nowMs\(\) - fetchStartedAt\) \* 100\) \/ 100;/);
+  assert.match(fn, /lastSpeakLatencyRecord = \{ textLength: textLength, fetchMs: fetchMs, interrupted: true, at: new Date\(\)\.toISOString\(\) \};/, 'an interrupted-before-playback call must still record its own real fetch latency, distinctly flagged');
+  assert.match(fn, /lastSpeakLatencyRecord = \{ textLength: textLength, fetchMs: fetchMs, interrupted: false, at: new Date\(\)\.toISOString\(\) \};/);
+  assert.match(fn, /lastSpeakLatencyRecord = \{ textLength: textLength, fetchMs: fetchMs, interrupted: true, error: errorCode\(error\), at: new Date\(\)\.toISOString\(\) \};/, 'a failed fetch must also record its own real elapsed time before reporting the failure');
+  assert.doesNotMatch(fn, /lastSpeakLatencyRecord = \{[^}]*text:/, 'the record must never carry the spoken text itself - length only, same privacy posture as every other debug diagnostic');
+  assert.match(adapter, /lastSpeakLatency: \(\) => lastSpeakLatencyRecord/, 'must be exposed on the returned session API, not left as a private, unreachable variable');
+});
+
+test('interrupt() and disconnect() both actually abort a still-in-flight token mint or TTS fetch via connectAbortController/speakAbortController, not merely rely on the pre-existing activeSpeakToken/connectionEpoch result-discard checks', () => {
+  const interruptFn = adapter.slice(adapter.indexOf('function interrupt()'), adapter.indexOf('function finishUserTurn()'));
+  assert.match(interruptFn, /if \(speakAbortController\) \{ try \{ speakAbortController\.abort\(\); \} catch \(_\) \{\} speakAbortController = null; \}/);
+  const disconnectFn = adapter.slice(adapter.indexOf('function disconnect()'), adapter.indexOf('function mute(next)'));
+  assert.match(disconnectFn, /if \(connectAbortController\) \{ try \{ connectAbortController\.abort\(\); \} catch \(_\) \{\} connectAbortController = null; \}/);
+  assert.match(disconnectFn, /if \(speakAbortController\) \{ try \{ speakAbortController\.abort\(\); \} catch \(_\) \{\} speakAbortController = null; \}/);
+});
+
+test('interrupt() and teardown() (disconnect) both reach a currently-playing published clip through the same stopPlayback()/playbackStop mechanism playPcm() already uses - no second, unstoppable audio path', () => {
+  const interruptFn = adapter.slice(adapter.indexOf('function interrupt()'), adapter.indexOf('function finishUserTurn()'));
+  assert.match(interruptFn, /stopPlayback\(false\);/);
+  const teardownFn = adapter.slice(adapter.indexOf('function teardown()'), adapter.indexOf('function reportFailure'));
+  assert.match(teardownFn, /stopPlayback\(false\);/);
+  const stopPlaybackFn = adapter.slice(adapter.indexOf('function stopPlayback(natural)'), adapter.indexOf('function clearReconnectTimer'));
+  assert.match(stopPlaybackFn, /if \(stop\) stop\(!!natural\);/);
 });

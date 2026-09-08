@@ -275,6 +275,17 @@ export function createVoiceSession(options) {
   // session's own listeners somehow still fire (a defensive second layer on top of the fact that
   // a torn-down `session`/`transport` should simply stop emitting at all).
   var connectionEpoch = 0;
+  // Voice Mode hardening, section 6: hoisted out of connect()'s own local scope so disconnect()
+  // can actually reach and abort the in-flight mint request, not merely let it complete and
+  // discard the result via the epoch check (which already existed and still applies as a second,
+  // defensive layer). Cleared once the mint settles either way - a stale reference here must never
+  // be aborted by a LATER, unrelated connect() attempt's own disconnect().
+  var connectAbortController = null;
+  // Same reasoning, for the ElevenLabs TTS fetch (speakViaElevenLabs()) - a pending fetch
+  // previously had nothing to actually cancel it beyond the activeSpeakToken result-discard check
+  // (still the primary "never play stale/cancelled audio" guard; this additionally stops the real
+  // network request/server-side synthesis work for audio nobody will ever hear).
+  var speakAbortController = null;
   // True only while OUR OWN disconnect() is tearing things down - distinguishes a deliberate stop
   // from an unexpected drop the transport's own 'connection_change' reports, so only the latter
   // ever triggers a reconnect attempt.
@@ -323,7 +334,15 @@ export function createVoiceSession(options) {
     setDebugState({
       state: state, language: language, sessionActive: !!session, muted: isMuted,
       connectionEpoch: connectionEpoch, reconnectAttempt: reconnectAttempt,
-      recentEventTypes: recentEventTypes.slice(-12), audio: audioDiagnostics()
+      recentEventTypes: recentEventTypes.slice(-12), audio: audioDiagnostics(),
+      // Provider Ownership addendum, section 1: this transport IS the OpenAI Realtime adapter, so
+      // listening/speaking are always 'openai' whenever it is genuinely connected - reasoning
+      // follows the same active provider (chatDockView.jsx no longer overrides it), so all three
+      // are structurally the same value for the whole lifetime of a connected session (Voice never
+      // connects at all when the active provider lacks a real transport - see
+      // VOICE_TRANSPORT_SUPPORTED_PROVIDERS in chatDockView.jsx). No model name here - this file
+      // never knows the reasoning model, only the Realtime voice/model it minted with.
+      provider: 'openai'
     });
   }
 
@@ -536,7 +555,13 @@ export function createVoiceSession(options) {
     // session back to a slower-to-decide default right when a quick yes/no is expected.
     if (!isReconnect) { reconnectAttempt = 0; clearReconnectTimer(); currentEagerness = 'medium'; }
     var myEpoch = ++connectionEpoch;
+    // Voice Mode hardening, section 6: assigned to the module-level connectAbortController (not a
+    // function-local var) specifically so disconnect() below can reach and truly abort this exact
+    // mint request, not merely let it complete and have its result discarded by the epoch check
+    // (still present as a second, defensive layer for a signal-less environment or a browser that
+    // ignores the abort).
     var abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    connectAbortController = abortController;
     var timedOut = false;
     // ONE overall deadline for the whole attempt (mic + token mint + SDP/ICE + session ack
     // combined), not a fresh timer per phase - each Promise.race below shares this exact same
@@ -557,6 +582,15 @@ export function createVoiceSession(options) {
     // needed to build the transport, so kick both off immediately rather than sequentially.
     var micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
     var credsPromise = Promise.resolve().then(function () { return fetchSession(language, { signal: abortController && abortController.signal, eagerness: currentEagerness }); });
+    // The mint has either resolved or rejected by the time either continuation below runs - clear
+    // the shared reference so a LATER, unrelated connect() attempt's own disconnect() can never
+    // abort a mint that isn't its own (connectAbortController is reassigned to a fresh controller
+    // at the top of every connect() call, but only ever cleared here, once THIS attempt's mint is
+    // truly done one way or the other).
+    credsPromise.then(
+      function () { if (connectAbortController === abortController) connectAbortController = null; },
+      function () { if (connectAbortController === abortController) connectAbortController = null; }
+    );
     // A rejection on either promise is otherwise "unhandled" the moment we stop awaiting the
     // OTHER one below (e.g. mic denied while the token mint is still in flight) - Node/browsers
     // both warn loudly about that; this keeps the real error (thrown further down) as the one
@@ -689,6 +723,16 @@ export function createVoiceSession(options) {
       // below still tears everything down exactly like any other failed connect().
       await Promise.race([session.connect({ apiKey: creds.value }), deadline]);
       if (myEpoch !== connectionEpoch) return; // superseded while SDP/ICE was in flight
+      // Voice Mode hardening, audit finding T4: a brand-new RealtimeSession never inherited the
+      // user's own current mute preference on its own - reapply it HERE, before this connection is
+      // ever exposed as LISTENING, so a reconnect (or a fresh connect after mute was toggled
+      // before the session existed) can never transmit live microphone audio for even one turn
+      // while the UI still shows Muted. `isMuted` itself is untouched by connect()/reconnect -
+      // only disconnect() resets it (see below) - this only re-communicates the SAME already-
+      // current preference to the session the SDK actually created for THIS attempt. Always
+      // called, not only when isMuted is true, so the new session's own mute state is explicitly
+      // asserted either way rather than assumed to default to unmuted.
+      try { session.mute(isMuted); } catch (_e) { /* connection already gone - the next explicit mute()/reconnect still re-applies it */ }
       reconnectAttempt = 0;
       setState(VOICE_STATES.LISTENING);
     } catch (connectError) {
@@ -719,6 +763,15 @@ export function createVoiceSession(options) {
     connectionEpoch += 1; // invalidate every in-flight/scheduled listener and reconnect from this connection generation
     clearReconnectTimer();
     reconnectAttempt = 0;
+    // Voice Mode hardening, section 6: actually abort a still-in-flight session mint, not merely
+    // let it complete and have its result discarded by the epoch check above. A no-op when no
+    // mint is currently pending (already resolved, already cleared) or in an environment with no
+    // real AbortController.
+    if (connectAbortController) { try { connectAbortController.abort(); } catch (_e) {} connectAbortController = null; }
+    // Same reasoning for a still-in-flight ElevenLabs TTS fetch - activeSpeakToken already stops
+    // its RESULT from ever being adopted (see interrupt()'s own comment); this additionally stops
+    // the real network request/server-side synthesis work for audio nobody will ever hear.
+    if (speakAbortController) { try { speakAbortController.abort(); } catch (_e) {} speakAbortController = null; }
     teardownTransport();
     isMuted = false;
     onMuteChange(isMuted);
@@ -779,6 +832,11 @@ export function createVoiceSession(options) {
     // pending ElevenLabs fetch (no elevenLabsStopFn yet, see speakViaElevenLabs()'s own comment)
     // has nothing else to cancel it, and would otherwise still start playback once it resolves.
     activeSpeakToken = null;
+    // Voice Mode hardening, section 6: also actually abort the underlying ElevenLabs TTS fetch
+    // when one is in flight - activeSpeakToken above already stops its RESULT from ever being
+    // adopted; this additionally stops the real network request/server-side synthesis work for
+    // audio nobody will ever hear once interrupted.
+    if (speakAbortController) { try { speakAbortController.abort(); } catch (_e) {} speakAbortController = null; }
     // ElevenLabs voice-provider follow-up: stop first, unconditionally - this audio is entirely
     // outside the OpenAI session below, so session.interrupt() alone would never touch it, and a
     // barge-in must cancel whichever engine is actually speaking (mission requirement: "Barge-in
@@ -957,15 +1015,25 @@ export function createVoiceSession(options) {
   function speakViaElevenLabs(text, token) {
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
     var myEpoch = connectionEpoch;
+    // Voice Mode hardening, section 6: a real AbortController for the fetch itself, on top of the
+    // pre-existing token/epoch result-discard check - interrupt()/disconnect() abort it directly
+    // (see their own comments), stopping the actual network request/server-side synthesis work for
+    // audio nobody will ever hear, not merely discarding an already-completed response.
+    var abortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    speakAbortController = abortController;
     return Promise.resolve().then(function () {
-      return fetchSpeakAudio(language, text);
+      return fetchSpeakAudio(language, text, { signal: abortController && abortController.signal });
     }).then(function (result) {
+      if (speakAbortController === abortController) speakAbortController = null;
       if (myEpoch !== connectionEpoch || token !== activeSpeakToken) return; // superseded or interrupted mid-fetch - never play stale/cancelled audio
       if (!result || result.fallback) return speakViaOpenAI(text);
       return playElevenLabsAudio(result, myEpoch);
     }, function () {
-      // The fetch/parse itself failed (network error, non-2xx, malformed JSON) - same exactly-once
-      // fallback contract as an explicit {fallback:true} response.
+      if (speakAbortController === abortController) speakAbortController = null;
+      // The fetch/parse itself failed (network error, non-2xx, malformed JSON, or a real abort) -
+      // same exactly-once fallback contract as an explicit {fallback:true} response, EXCEPT when
+      // this was a deliberate interrupt/disconnect (token/epoch already stale by construction in
+      // that case) - never speak a fallback for audio the user has already moved on from.
       if (myEpoch !== connectionEpoch || token !== activeSpeakToken) return;
       return speakViaOpenAI(text);
     });

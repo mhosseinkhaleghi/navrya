@@ -36,6 +36,20 @@
       var epochAtEnqueue = getEpoch();
       var meta = Object.assign({}, extraMeta, { turnId: turnId, epochAtEnqueue: epochAtEnqueue });
       var turnPromise = queue.catch(function () {}).then(function () {
+        // Voice Mode hardening: re-check ownership HERE, at the queue owner, right before
+        // submitFn() is actually invoked - not only after it resolves (the pre-existing check
+        // below). A turn queued behind a slow, still-in-flight previous turn can reach the front
+        // of the queue well after New Chat/a conversation switch bumped the epoch; without this
+        // check submitFn() still ran with the new epoch already current, so it could start a
+        // workflow, mutate a form, or otherwise act on the new conversation as if it were this
+        // stale turn's own genuine input. Nothing below this point (AbortController, history,
+        // workflow, form mutation, transcript, caption, playback) is ever created for a turn that
+        // fails this check - onResult() fires exactly once, already `discarded`, and submitFn()
+        // itself is never called.
+        if (getEpoch() !== epochAtEnqueue) {
+          onResult(null, Object.assign({}, meta, { discarded: true, ok: true }));
+          return null;
+        }
         var submitResult;
         try {
           submitResult = typeof submitFn === 'function' ? submitFn(text, meta) : null;
