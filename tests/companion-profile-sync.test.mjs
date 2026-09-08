@@ -98,7 +98,66 @@ test('never persists a derivable fact - only walkthrough/dismiss/snooze/skip/goa
   // this allowlist too. roleIntroSeenForCharacter (which character's spoken role introduction was
   // last given) is the same kind of fact again - which character a real spoken sentence already
   // named cannot be re-derived from anything else, so it has to be remembered, not recomputed.
-  assert.deepEqual(Object.keys(stored).sort(), ['currentGoal', 'customInstructions', 'dataAccessPrefs', 'dismissedSteps', 'lastUpdatedAt', 'personaPreset', 'pinnedFacts', 'preferences', 'roleIntroSeenForCharacter', 'skippedOptional', 'snoozedSteps', 'toneDimensions', 'version', 'walkthroughSeenAt'].sort());
+  // Voice Command Learning Profile addendum (schema v2) added four more communication-preference
+  // fields of the exact same kind: preferredName/preferredLanguage/responseLength/coachingStyle.
+  assert.deepEqual(Object.keys(stored).sort(), ['coachingStyle', 'currentGoal', 'customInstructions', 'dataAccessPrefs', 'dismissedSteps', 'lastUpdatedAt', 'personaPreset', 'pinnedFacts', 'preferences', 'preferredLanguage', 'preferredName', 'responseLength', 'roleIntroSeenForCharacter', 'skippedOptional', 'snoozedSteps', 'toneDimensions', 'version', 'walkthroughSeenAt'].sort());
+});
+
+test('Voice Command Learning Profile addendum: a v1 document with none of the new communication-preference fields migrates without loss - existing fields keep their values, new fields default to null', async () => {
+  const localStorage = memoryStorage();
+  const v1Doc = { version: 1, lastUpdatedAt: '2026-01-01T00:00:00.000Z', currentGoal: 'strategies', customInstructions: 'Be concise.', toneDimensions: { explicitness: 70, detail: 60, warmth: 50, humor: 40, jargon: 30 } };
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async () => ({ ok: true, json: async () => ({ state: v1Doc }) }) });
+  await flush();
+  const s = store.load();
+  assert.equal(s.currentGoal, 'strategies', 'pre-existing field survives the migration');
+  assert.equal(s.customInstructions, 'Be concise.', 'pre-existing field survives the migration');
+  assert.equal(s.toneDimensions.explicitness, 70, 'pre-existing tone dimension survives');
+  assert.equal(s.toneDimensions.strictness, 50, 'the new sixth tone dimension defaults to 50 for an old document that never had it');
+  assert.equal(s.preferredName, null);
+  assert.equal(s.preferredLanguage, null);
+  assert.equal(s.responseLength, null);
+  assert.equal(s.coachingStyle, null);
+});
+
+test('setPreferredName stores a trimmed name and clears back to null on empty input', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) } });
+  await flush();
+  store.setPreferredName('  Ali  ');
+  assert.equal(store.preferredName(), 'Ali');
+  await flush();
+  store.setPreferredName('');
+  assert.equal(store.preferredName(), null);
+});
+
+test('setPreferredLanguage/setResponseLength/setCoachingStyle only accept their own known values, otherwise null', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) } });
+  await flush();
+  store.setPreferredLanguage('fa');
+  assert.equal(store.preferredLanguage(), 'fa');
+  store.setPreferredLanguage('xx-not-a-real-language');
+  assert.equal(store.preferredLanguage(), null);
+  store.setResponseLength('brief');
+  assert.equal(store.responseLength(), 'brief');
+  store.setResponseLength('extremely-long');
+  assert.equal(store.responseLength(), null);
+  store.setCoachingStyle('socratic');
+  assert.equal(store.coachingStyle(), 'socratic');
+  store.setCoachingStyle('mean');
+  assert.equal(store.coachingStyle(), null);
+});
+
+test('personaStylePackage() includes communication-preference fields only once at least one is set, and omits an untouched one from the package', async () => {
+  const localStorage = memoryStorage();
+  const { store } = await loadCompanionProfile({ localStorage, currentUserId: 'user-1', fetchImpl: async (url, options) => (options && options.method === 'POST') ? { ok: true, json: async () => ({ state: JSON.parse(options.body) }) } : { ok: true, json: async () => ({ state: null }) } });
+  await flush();
+  assert.equal(store.personaStylePackage(), null, 'a fully untouched profile still sends nothing');
+  store.setPreferredName('Ali');
+  await flush();
+  const pkg = store.personaStylePackage();
+  assert.equal(pkg.preferredName, 'Ali');
+  assert.equal('preferredLanguage' in pkg, false, 'an untouched field is omitted, not sent as null');
 });
 
 test('initiativePreference defaults to normal and is validated against the known three values', async () => {

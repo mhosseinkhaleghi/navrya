@@ -28,10 +28,24 @@
   // "initiative" - that dimension writes through the EXISTING preferences.initiativePreference
   // field instead (setPreference()), so ai-journey-engine.js's existing reader keeps working
   // unchanged rather than gaining a second, competing notion of initiative.
-  var TONE_DIMENSION_KEYS = ['explicitness', 'detail', 'warmth', 'humor', 'jargon'];
+  // Voice Command Learning Profile addendum, section 3A: `strictness` joins the existing five as
+  // a sixth 0-100 tone dimension (same slider/storage/prompt-rendering mechanism, per the design's
+  // own "these are cast from the same mold" reasoning) - a real, distinct communication axis
+  // ("how much does NAVRYA push back / hold me accountable", not the same thing as `explicitness`,
+  // which is about bluntness of DELIVERY, not about enforcement).
+  var TONE_DIMENSION_KEYS = ['explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness'];
   var CUSTOM_INSTRUCTIONS_MAX = 600;
+  var PREFERRED_NAME_MAX_LEN = 60;
   var PINNED_FACT_MAX_LEN = 140;
   var PINNED_FACTS_MAX_COUNT = 10;
+  // Fixed, small enums (never free text) - both are advisory context for the model, the same
+  // "communication only, never a new permission" posture every other Persona field already has.
+  var RESPONSE_LENGTH_VALUES = ['brief', 'normal', 'detailed'];
+  var COACHING_STYLE_VALUES = ['supportive', 'challenging', 'socratic', 'direct'];
+  // The app's four shipped UI languages (ai-i18n.js's own top-level keys) - preferredLanguage is
+  // "which language should NAVRYA prefer replying in", not a new locale system of its own, so it
+  // is validated against exactly that same closed set.
+  var PREFERRED_LANGUAGE_VALUES = ['fa', 'ar', 'en', 'es'];
 
   function defaultToneDimensions() {
     var out = {};
@@ -42,7 +56,12 @@
   function empty() {
     var stamp = now();
     return {
-      version: 1, lastUpdatedAt: stamp,
+      // Voice Command Learning Profile addendum, section 3: version 2 adds four communication-
+      // preference fields (preferredName/preferredLanguage/responseLength/coachingStyle) below.
+      // normalize()'s Object.assign({}, base, raw) already merges a v1 document's missing keys in
+      // from this same empty() default, so an existing user's stored document needs no migration
+      // script - the first load/save after this ships just fills the new fields in as null.
+      version: 2, lastUpdatedAt: stamp,
       walkthroughSeenAt: null,
       // The character the spoken role introduction ("I am the Commander.") was last given for -
       // chatDockView.jsx's deliverCompanionOpening() replays it only when the CURRENT character
@@ -61,6 +80,15 @@
       personaPreset: null, // UI convenience label only (e.g. "coach") - never read by the server
       toneDimensions: defaultToneDimensions(), // 0-100 per TONE_DIMENSION_KEYS
       customInstructions: '', // free-text style prompt, threaded into the system prompt server-side
+      // Voice Command Learning Profile addendum, section 3: communication preferences, cast from
+      // the same "advisory context for the model, never a permission" mold as everything else in
+      // this document. All four default to null (real "unset", not a fake middle value) so an
+      // untouched account costs zero extra prompt tokens, matching personaStylePackage()'s own
+      // existing "return null when nothing was touched" convention.
+      preferredName: null, // free text, short - how the user wants to be addressed
+      preferredLanguage: null, // one of PREFERRED_LANGUAGE_VALUES, or null to keep following UI locale
+      responseLength: null, // one of RESPONSE_LENGTH_VALUES
+      coachingStyle: null, // one of COACHING_STYLE_VALUES
       pinnedFacts: [], // string[], always sent to the model - see personaStylePackage()
       // Real default is "everything on" - matches every one of these domains' CURRENT always-on
       // behavior (getRelevantAccounts()/getRelevantPsychologyContext() etc. in ai-user-memory.js
@@ -90,6 +118,10 @@
     out.toneDimensions = defaultToneDimensions();
     TONE_DIMENSION_KEYS.forEach(function (k) { if (k in rawTone) out.toneDimensions[k] = clampPercent(rawTone[k], 50); });
     out.customInstructions = typeof raw.customInstructions === 'string' ? raw.customInstructions.slice(0, CUSTOM_INSTRUCTIONS_MAX) : '';
+    out.preferredName = (typeof raw.preferredName === 'string' && raw.preferredName.trim()) ? raw.preferredName.trim().slice(0, PREFERRED_NAME_MAX_LEN) : null;
+    out.preferredLanguage = PREFERRED_LANGUAGE_VALUES.indexOf(raw.preferredLanguage) > -1 ? raw.preferredLanguage : null;
+    out.responseLength = RESPONSE_LENGTH_VALUES.indexOf(raw.responseLength) > -1 ? raw.responseLength : null;
+    out.coachingStyle = COACHING_STYLE_VALUES.indexOf(raw.coachingStyle) > -1 ? raw.coachingStyle : null;
     out.pinnedFacts = Array.isArray(raw.pinnedFacts)
       ? raw.pinnedFacts.filter(function (f) { return typeof f === 'string' && f.trim(); }).map(function (f) { return f.trim().slice(0, PINNED_FACT_MAX_LEN); }).slice(0, PINNED_FACTS_MAX_COUNT)
       : [];
@@ -185,6 +217,35 @@
     return save(s);
   }
 
+  function preferredName() { return load().preferredName; }
+  function setPreferredName(text) {
+    var s = load();
+    var value = String(text || '').trim();
+    s.preferredName = value ? value.slice(0, PREFERRED_NAME_MAX_LEN) : null;
+    return save(s);
+  }
+
+  function preferredLanguage() { return load().preferredLanguage; }
+  function setPreferredLanguage(lang) {
+    var s = load();
+    s.preferredLanguage = PREFERRED_LANGUAGE_VALUES.indexOf(lang) > -1 ? lang : null;
+    return save(s);
+  }
+
+  function responseLength() { return load().responseLength; }
+  function setResponseLength(value) {
+    var s = load();
+    s.responseLength = RESPONSE_LENGTH_VALUES.indexOf(value) > -1 ? value : null;
+    return save(s);
+  }
+
+  function coachingStyle() { return load().coachingStyle; }
+  function setCoachingStyle(value) {
+    var s = load();
+    s.coachingStyle = COACHING_STYLE_VALUES.indexOf(value) > -1 ? value : null;
+    return save(s);
+  }
+
   function pinnedFacts() { return load().pinnedFacts; }
   function addPinnedFact(text) {
     var s = load();
@@ -218,13 +279,22 @@
     var touchedTone = TONE_DIMENSION_KEYS.some(function (k) { return s.toneDimensions[k] !== 50; });
     var hasText = !!s.customInstructions.trim();
     var hasPins = s.pinnedFacts.length > 0;
-    if (!touchedTone && !hasText && !hasPins) return null;
-    return {
+    var hasCommPrefs = !!(s.preferredName || s.preferredLanguage || s.responseLength || s.coachingStyle);
+    if (!touchedTone && !hasText && !hasPins && !hasCommPrefs) return null;
+    var pkg = {
       toneDimensions: Object.assign({}, s.toneDimensions),
       initiativePreference: s.preferences.initiativePreference,
       customInstructions: s.customInstructions,
       pinnedFacts: s.pinnedFacts.slice()
     };
+    // Communication-preference fields follow the same "omit rather than send a filler value"
+    // convention as everything else in this package - buildPersonaStyleText() only renders a line
+    // for a key that is actually present.
+    if (s.preferredName) pkg.preferredName = s.preferredName;
+    if (s.preferredLanguage) pkg.preferredLanguage = s.preferredLanguage;
+    if (s.responseLength) pkg.responseLength = s.responseLength;
+    if (s.coachingStyle) pkg.coachingStyle = s.coachingStyle;
+    return pkg;
   }
 
   window.TradeJournalAICompanionProfile = {
@@ -239,6 +309,10 @@
     personaPreset: personaPreset, setPersonaPreset: setPersonaPreset,
     toneDimensions: toneDimensions, setToneDimension: setToneDimension,
     customInstructions: customInstructions, setCustomInstructions: setCustomInstructions,
+    preferredName: preferredName, setPreferredName: setPreferredName,
+    preferredLanguage: preferredLanguage, setPreferredLanguage: setPreferredLanguage,
+    responseLength: responseLength, setResponseLength: setResponseLength,
+    coachingStyle: coachingStyle, setCoachingStyle: setCoachingStyle,
     pinnedFacts: pinnedFacts, addPinnedFact: addPinnedFact, removePinnedFact: removePinnedFact,
     dataAccessPrefs: dataAccessPrefs, setDataAccessPref: setDataAccessPref,
     personaStylePackage: personaStylePackage

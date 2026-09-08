@@ -1,0 +1,676 @@
+{
+  "generatedAt": "2026-09-08T18:11:42.022Z",
+  "version": 1,
+  "contentHash": "5b2e62e6dedb648d",
+  "actionCount": 61,
+  "actions": {
+    "session.create": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "accountId",
+        "city",
+        "grace",
+        "gregorian",
+        "instrument",
+        "jalali",
+        "loop",
+        "timeframe"
+      ]
+    },
+    "session.open": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "city",
+        "date",
+        "view"
+      ]
+    },
+    "trade.calculator": {
+      "domain": "trades",
+      "riskLevel": "medium",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "accountBalance",
+        "accountId",
+        "direction",
+        "entryPrice",
+        "instrument",
+        "leverage",
+        "linkedPatternIds",
+        "linkedStrategyId",
+        "marginMode",
+        "riskAmount",
+        "riskPercent",
+        "stopLoss",
+        "takeProfits"
+      ]
+    },
+    "trade.wizard": {
+      "domain": "trades",
+      "riskLevel": "medium",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "direction",
+        "instrument"
+      ]
+    },
+    "navigate.to": {
+      "domain": "navigation",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_navigation",
+      "reusableFields": [
+        "domainId"
+      ]
+    },
+    "pattern.create": {
+      "domain": "patterns",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "completionThreshold",
+        "description",
+        "instruments",
+        "name"
+      ]
+    },
+    "pattern.edit": {
+      "domain": "patterns",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "completionThreshold",
+        "description",
+        "instruments",
+        "name",
+        "patternName",
+        "tab"
+      ]
+    },
+    "pattern.stage.add": {
+      "domain": "patterns",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "stageText"
+      ]
+    },
+    "pattern.stage.edit": {
+      "domain": "patterns",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "newText",
+        "stageText"
+      ]
+    },
+    "strategies.search": {
+      "domain": "strategies",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "listKind",
+        "query",
+        "sort"
+      ]
+    },
+    "strategy.create": {
+      "domain": "strategies",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "name"
+      ]
+    },
+    "strategy.edit": {
+      "domain": "strategies",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "name",
+        "strategyName"
+      ]
+    },
+    "account.create": {
+      "domain": "accounts",
+      "riskLevel": "low",
+      "gateField": "save",
+      "learnability": "confirmation_required",
+      "reusableFields": []
+    },
+    "account.edit": {
+      "domain": "accounts",
+      "riskLevel": "low",
+      "gateField": "save",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "accountName"
+      ]
+    },
+    "account.open": {
+      "domain": "accounts",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "accountName",
+        "tab"
+      ]
+    },
+    "session.chartEntry.create": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "date",
+        "market",
+        "note",
+        "relatedScenarios",
+        "timeframe"
+      ]
+    },
+    "session.movementEntry.create": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "appendNote",
+        "discardEntry",
+        "newEntry",
+        "note",
+        "removeLastSentence",
+        "replaceLastSentence"
+      ]
+    },
+    "session.analysis.run": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": []
+    },
+    "session.fate.run": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": []
+    },
+    "session.preSessionCheckIn.fill": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "currentStressLevel",
+        "significantPersonalEvent",
+        "sleepQuality"
+      ]
+    },
+    "session.scenario.create": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "description",
+        "evidence",
+        "invalidationNote",
+        "invalidationTags",
+        "patternName",
+        "probability",
+        "problem",
+        "title",
+        "trigger"
+      ]
+    },
+    "session.scenario.edit": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "completedStage",
+        "description",
+        "evidence",
+        "incompleteStage",
+        "invalidationNote",
+        "invalidationTags",
+        "patternName",
+        "probability",
+        "problem",
+        "scenarioTitle",
+        "title",
+        "trigger"
+      ]
+    },
+    "trade.open": {
+      "domain": "trades",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": []
+    },
+    "trade.cancel": {
+      "domain": "trades",
+      "riskLevel": "high",
+      "gateField": "confirm",
+      "learnability": "confirmation_required",
+      "reusableFields": []
+    },
+    "trade.close": {
+      "domain": "trades",
+      "riskLevel": "high",
+      "gateField": null,
+      "learnability": "never_learnable",
+      "reusableFields": [
+        "exitPrice"
+      ]
+    },
+    "trade.emotion.log": {
+      "domain": "trades",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "dominantEmotions",
+        "note",
+        "pinnedTradeId",
+        "stressLevel"
+      ]
+    },
+    "community.post.create": {
+      "domain": "community",
+      "riskLevel": "high",
+      "gateField": "publish",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "text"
+      ]
+    },
+    "community.comment.create": {
+      "domain": "community",
+      "riskLevel": "high",
+      "gateField": "send",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "draft"
+      ]
+    },
+    "marketplace.search": {
+      "domain": "marketplace",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "query",
+        "sort"
+      ]
+    },
+    "marketplace.listing.open": {
+      "domain": "marketplace",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "listingTitle"
+      ]
+    },
+    "marketplace.publish": {
+      "domain": "marketplace",
+      "riskLevel": "high",
+      "gateField": "confirmPublish",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "description",
+        "previewItemCount",
+        "priceAmount",
+        "priceCurrency",
+        "title"
+      ]
+    },
+    "marketplace.rate": {
+      "domain": "marketplace",
+      "riskLevel": "medium",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "ratingValue",
+        "reviewText"
+      ]
+    },
+    "marketplace.messageSeller": {
+      "domain": "marketplace",
+      "riskLevel": "high",
+      "gateField": "send",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "draft"
+      ]
+    },
+    "message.compose": {
+      "domain": "messaging",
+      "riskLevel": "high",
+      "gateField": "send",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "recipientName",
+        "text"
+      ]
+    },
+    "message.reply": {
+      "domain": "messaging",
+      "riskLevel": "high",
+      "gateField": "send",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "draft"
+      ]
+    },
+    "profile.edit": {
+      "domain": "account",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "displayName",
+        "email",
+        "phone"
+      ]
+    },
+    "profile.role.update": {
+      "domain": "account",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "role"
+      ]
+    },
+    "psychology.weeklyCheckIn.fill": {
+      "domain": "psychology",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "biggestLesson",
+        "biggestWin",
+        "disciplineRating"
+      ]
+    },
+    "psychology.postTradeReflection.fill": {
+      "domain": "psychology",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "deviationReason",
+        "emotionManagementRating",
+        "planAdherenceRating",
+        "sentenceOfTheDay",
+        "setupQualityRating",
+        "tradeReference"
+      ]
+    },
+    "psychology.mood.log": {
+      "domain": "psychology",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "mood",
+        "significantPersonalEvent",
+        "sleepQuality",
+        "somethingToProveToday"
+      ]
+    },
+    "psychology.routine.create": {
+      "domain": "psychology",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "days",
+        "name",
+        "rules.carry",
+        "rules.partial",
+        "rules.remind",
+        "rules.streak",
+        "rules.warn",
+        "rules.watch",
+        "template"
+      ]
+    },
+    "psychology.routine.edit": {
+      "domain": "psychology",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "days",
+        "name",
+        "rules.carry",
+        "rules.partial",
+        "rules.remind",
+        "rules.streak",
+        "rules.warn",
+        "rules.watch",
+        "template"
+      ]
+    },
+    "psychology.therapist.review": {
+      "domain": "psychology",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "queueView"
+      ]
+    },
+    "profile.analysis.create": {
+      "domain": "strategies",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "customMethodNotes",
+        "focusIds",
+        "name",
+        "primaryStyleId",
+        "secondaryStyleIds"
+      ]
+    },
+    "profile.analysis.edit": {
+      "domain": "strategies",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "customMethodNotes",
+        "focusIds",
+        "name",
+        "primaryStyleId",
+        "profileName",
+        "secondaryStyleIds"
+      ]
+    },
+    "psychology.intake.start": {
+      "domain": "psychology",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": []
+    },
+    "settings.trading.update": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_safe_update",
+      "reusableFields": [
+        "defaultRiskPercent",
+        "leverageCap",
+        "maxTradesPerSession"
+      ]
+    },
+    "settings.language.update": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_safe_update",
+      "reusableFields": [
+        "language",
+        "region.clock24",
+        "region.country",
+        "region.currency",
+        "region.timezone",
+        "region.weekStart"
+      ]
+    },
+    "settings.alerts.update": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_safe_update",
+      "reusableFields": [
+        "community",
+        "cooldown",
+        "emotionCheckIns",
+        "position",
+        "sessionOpen",
+        "sound"
+      ]
+    },
+    "settings.ai.update": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_safe_update",
+      "reusableFields": [
+        "model",
+        "provider",
+        "voice"
+      ]
+    },
+    "settings.companion.update": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_safe_update",
+      "reusableFields": [
+        "goal",
+        "initiative"
+      ]
+    },
+    "settings.character.switch": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_safe_update",
+      "reusableFields": [
+        "character"
+      ]
+    },
+    "settings.voiceGender.update": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_safe_update",
+      "reusableFields": [
+        "voiceGender.commander",
+        "voiceGender.engineer",
+        "voiceGender.hunter",
+        "voiceGender.sage"
+      ]
+    },
+    "settings.persona.update": {
+      "domain": "settings",
+      "riskLevel": "low",
+      "gateField": "save",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "customInstructionOp",
+        "customInstructions",
+        "detail",
+        "explicitness",
+        "humor",
+        "initiative",
+        "jargon",
+        "preset",
+        "strictness",
+        "warmth"
+      ]
+    },
+    "pattern.delete": {
+      "domain": "patterns",
+      "riskLevel": "high",
+      "gateField": "confirm",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "patternName"
+      ]
+    },
+    "pattern.stage.remove": {
+      "domain": "patterns",
+      "riskLevel": "high",
+      "gateField": "confirm",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "stageText"
+      ]
+    },
+    "strategy.delete": {
+      "domain": "strategies",
+      "riskLevel": "high",
+      "gateField": "confirm",
+      "learnability": "confirmation_required",
+      "reusableFields": [
+        "strategyName"
+      ]
+    },
+    "session.delete": {
+      "domain": "sessions",
+      "riskLevel": "high",
+      "gateField": "confirm",
+      "learnability": "confirmation_required",
+      "reusableFields": []
+    },
+    "scenario.delete": {
+      "domain": "sessions",
+      "riskLevel": "high",
+      "gateField": "confirmDelete",
+      "learnability": "confirmation_required",
+      "reusableFields": []
+    },
+    "entry.delete": {
+      "domain": "sessions",
+      "riskLevel": "high",
+      "gateField": "confirmDelete",
+      "learnability": "confirmation_required",
+      "reusableFields": []
+    },
+    "trade.delete": {
+      "domain": "trades",
+      "riskLevel": "high",
+      "gateField": "confirm",
+      "learnability": "confirmation_required",
+      "reusableFields": []
+    }
+  }
+}

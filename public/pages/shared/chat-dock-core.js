@@ -5,6 +5,23 @@
   var registry = window.TradeJournalAIProcessRegistry;
   if (!i18n || !settingsStore) return;
 
+  // Voice Command Learning Profile addendum, section 9: a plain localStorage flag (never the
+  // learned commands themselves - those stay server-authoritative, never cached/trusted client-
+  // side) that gates the one-per-turn learned-command resolution lookup below. An account that has
+  // never taught NAVRYA anything (the overwhelming default case, and every existing test's own
+  // setup) must cost exactly zero extra network calls per turn - the same "untouched account costs
+  // nothing" convention ai-companion-profile.js's own personaStylePackage() already established.
+  // Set once, the first time a mapping is ever successfully taught; deliberately never unset again
+  // (even if every taught mapping is later forgotten) - a harmless, rare extra always-empty lookup
+  // for that edge case beats the complexity of tracking a live count just to clear it.
+  var HAS_LEARNED_COMMANDS_KEY = 'tradejournal:hasLearnedCommands';
+  function hasAnyLearnedCommands() {
+    try { return window.localStorage && window.localStorage.getItem(HAS_LEARNED_COMMANDS_KEY) === 'true'; } catch (_) { return false; }
+  }
+  function markHasLearnedCommands() {
+    try { if (window.localStorage) window.localStorage.setItem(HAS_LEARNED_COMMANDS_KEY, 'true'); } catch (_) { /* best-effort */ }
+  }
+
   // Pure(ish) request/orchestration layer for the global assistant, shared by the NAVRYA
   // ChatDock (navrya-src/chatDockView.jsx) and anything else that needs to talk to the
   // gateway. Deliberately has no DOM-building of its own - every function here returns data
@@ -329,6 +346,117 @@
           kind: 'workflow', reply: finishReply, voiceReply: finishReply,
           workflow: null, activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
         };
+      }
+    }
+
+    // Voice Command Learning Profile addendum, sections 6/8: feedback about the immediately
+    // preceding action - an explicit approval to learn a new phrase->action mapping ("remember
+    // this"/"do that automatically"), reinforcement ("that's right"), or a correction (six
+    // deterministic reasons - ai-command-feedback.js's own interpretCorrectionText()) - resolved
+    // deterministically and client-side, before anything else, the same posture as every other
+    // fast path above. Requires a real eligible receipt (ai-action-receipts.js's own
+    // lastEligibleReceipt() - succeeded, low enough risk, not gated, recent) to have anything to
+    // act on; with none, every one of these phrases is a complete no-op and falls straight through
+    // to ordinary handling (a bare "remember this" with nothing recent to remember is not a
+    // recognizable request at all - never inferred, per section 6's own hard rule).
+    var commandFeedback = window.TradeJournalAICommandFeedback;
+    var actionReceipts = window.TradeJournalAIActionReceipts;
+    if (commandFeedback && actionReceipts) {
+      var feedbackReceipt = actionReceipts.lastEligibleReceipt();
+      if (feedbackReceipt) {
+        // Section 6 (safe "do that again"): the 9-step safe-repeat procedure, scoped to exactly
+        // what lastEligibleReceipt() already guarantees - succeeded, riskLevel !== 'high', no
+        // gateField, recent. Re-verifies the action still exists/is available/is still non-
+        // destructive RIGHT NOW (never trusts the receipt's own stale snapshot of those facts),
+        // then reuses the receipt's own known field values through the exact same "does this cover
+        // every required field" gate Phase G's learned-command auto-fire already uses - a partial
+        // cover still starts the real workflow with what IS known (routes into the normal form,
+        // "collect fresh values for the rest" is simply the ordinary next-turn continuation this
+        // engine already supports), a full cover completes it outright. A gated or high-risk
+        // action can never reach here at all (excluded from eligibility before this file ever sees
+        // it), satisfying "never auto-repeat destructive/payment/subscription/credential
+        // operations" structurally, not by a special-cased id list.
+        if (workflowEngine && actionRegistry && commandFeedback.interpretRepeatText(text)) {
+          var repeatAction = actionRegistry.get(feedbackReceipt.actionId);
+          if (repeatAction && typeof repeatAction.available === 'function' && repeatAction.available() && !repeatAction.gateField && repeatAction.riskLevel !== 'high') {
+            var repeatMappings = Object.assign({}, feedbackReceipt.known || {});
+            var repeatCoversRequired = (repeatAction.requiredFields || []).every(function (f) { return Object.prototype.hasOwnProperty.call(repeatMappings, f); });
+            var repeatFields = Object.keys(repeatMappings).map(function (path) { return { path: path, value: repeatMappings[path] }; });
+            if (proactiveEngine && typeof proactiveEngine.clearConfirmation === 'function') proactiveEngine.clearConfirmation();
+            workflowEngine.start(feedbackReceipt.actionId, contextEngine ? contextEngine.snapshot() : {}, repeatFields);
+            var repeatWorkflow = workflowEngine.current();
+            if (repeatWorkflow) { repeatWorkflow.triggerText = feedbackReceipt.triggerText || null; repeatWorkflow.learnedCommandId = feedbackReceipt.learnedCommandId || null; }
+            var repeatResult = await workflowEngine.applyKnownFields(repeatFields, contextEngine ? contextEngine.snapshot() : {});
+            setLastTurnDebug({ path: 'repeat-last-action', actionId: feedbackReceipt.actionId, coversRequired: repeatCoversRequired });
+            recordZeroNetworkLatency('REPEAT_LAST_ACTION', t0, {});
+            var repeatReply = i18n.t(repeatCoversRequired ? 'aiRepeatActionApplied' : 'aiRepeatActionStarted');
+            return {
+              kind: 'workflow', reply: repeatReply, voiceReply: null,
+              workflow: repeatResult, activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+            };
+          }
+        }
+        // "Remember this" - the ONLY way a new mapping is ever created (never a model guess, never
+        // inferred from the absence of complaint). The phrase being taught is triggerText - the
+        // utterance that actually STARTED the receipt's own action - never this current "remember
+        // this" utterance, which is a request about teaching, not a fresh trigger phrase.
+        if (commandFeedback.interpretLearningApprovalText(text) && feedbackReceipt.triggerText) {
+          try {
+            var teachId = 'lc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+            var teachBody = { id: teachId, normalizedPhrase: feedbackReceipt.triggerText, language: i18n.language(), actionId: feedbackReceipt.actionId, fieldMappings: feedbackReceipt.known || {} };
+            var teachResponse = await fetch('/api/sync/learned-commands', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(teachBody) });
+            if (teachResponse.status === 409) {
+              // Already mapped (from an earlier teaching) - re-teach it under its EXISTING id
+              // rather than fail, so this is a redefinition (Phase B's own upsert-resets-trust
+              // rule), never a silently-rejected duplicate.
+              var existingMatchResponse = await fetch('/api/sync/learned-commands/match?phrase=' + encodeURIComponent(feedbackReceipt.triggerText) + '&language=' + encodeURIComponent(i18n.language()));
+              var existingMatchPayload = existingMatchResponse.ok ? await existingMatchResponse.json() : null;
+              var existingId = existingMatchPayload && existingMatchPayload.match && existingMatchPayload.match.id;
+              if (existingId) teachResponse = await fetch('/api/sync/learned-commands', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, teachBody, { id: existingId })) });
+            }
+            if (teachResponse.ok) {
+              var taughtRecord = await teachResponse.json();
+              markHasLearnedCommands();
+              actionReceipts.tagLearnedCommandId(feedbackReceipt.receiptId, taughtRecord.id);
+              setLastTurnDebug({ path: 'learned-command-taught', actionId: feedbackReceipt.actionId, learnedCommandId: taughtRecord.id });
+              recordZeroNetworkLatency('LEARNED_COMMAND_TAUGHT', t0, {});
+              var taughtReply = i18n.t('aiLearnedCommandTaught');
+              return { kind: 'workflow', reply: taughtReply, voiceReply: null, workflow: workflowEngine ? workflowEngine.current() : null, activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId };
+            }
+          } catch (_) { /* best-effort - a failed teach attempt simply falls through to ordinary handling below */ }
+        } else if (commandFeedback.interpretPositiveFeedbackText(text) && feedbackReceipt.learnedCommandId) {
+          try {
+            await fetch('/api/sync/learned-commands/' + encodeURIComponent(feedbackReceipt.learnedCommandId) + '/outcome', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome: 'success' }) });
+            setLastTurnDebug({ path: 'learned-command-reinforced', learnedCommandId: feedbackReceipt.learnedCommandId });
+            recordZeroNetworkLatency('LEARNED_COMMAND_REINFORCED', t0, {});
+            var reinforcedReply = i18n.t('aiLearnedCommandReinforced');
+            return { kind: 'workflow', reply: reinforcedReply, voiceReply: null, workflow: workflowEngine ? workflowEngine.current() : null, activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId };
+          } catch (_) { /* best-effort */ }
+        } else {
+          var correction = commandFeedback.interpretCorrectionText(text);
+          if (correction && feedbackReceipt.learnedCommandId) {
+            try {
+              var correctionId = encodeURIComponent(feedbackReceipt.learnedCommandId);
+              var correctionReplyKey = 'aiLearnedCommandCorrectionNoted';
+              if (correction.reason === 'forget_preference') {
+                await fetch('/api/sync/learned-commands/' + correctionId, { method: 'DELETE' });
+                correctionReplyKey = 'aiLearnedCommandForgotten';
+              } else if (correction.reason === 'never_automatic' || correction.reason === 'ask_next_time') {
+                await fetch('/api/sync/learned-commands/' + correctionId + '/enabled', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) });
+                correctionReplyKey = 'aiLearnedCommandDisabled';
+              } else {
+                // wrong_action / wrong_target / wrong_value - a confidence-penalty correction;
+                // learned-command-normalize.mjs's own deterministic policy auto-disables it once
+                // enough corrections accumulate (server-side, never a client-side guess).
+                await fetch('/api/sync/learned-commands/' + correctionId + '/outcome', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome: 'correction' }) });
+              }
+              setLastTurnDebug({ path: 'learned-command-corrected', learnedCommandId: feedbackReceipt.learnedCommandId, reason: correction.reason });
+              recordZeroNetworkLatency('LEARNED_COMMAND_CORRECTED', t0, {});
+              var correctionReply = i18n.t(correctionReplyKey);
+              return { kind: 'workflow', reply: correctionReply, voiceReply: null, workflow: workflowEngine ? workflowEngine.current() : null, activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId };
+            } catch (_) { /* best-effort */ }
+          }
+        }
       }
     }
 
@@ -712,6 +840,53 @@
           audioUrl: routed.audioUrl || null, audioMimeType: routed.audioMimeType || null,
           suggestions: [], activeProcess: null, conversationId: conversationId
         };
+      }
+    }
+
+    // Voice Command Learning Profile addendum, section 9 (action-resolution integration): before
+    // ever asking the model to choose an action, check whether this user has already taught NAVRYA
+    // an enabled mapping for (almost) exactly this phrase. Same admission rule ordinary action
+    // discovery already uses just above (availableActions is only non-null when nothing is open
+    // and no workflow is blocking) - this never fires mid-workflow, mid-form, or while an
+    // activeProcess already owns the turn. findByPhrase() (server-side) normalizes this raw text
+    // through the identical normalizeLearnedPhrase() gate a stored phrase already passed, so only
+    // a genuine repeat of a previously-taught phrase can ever match - never a superficially similar
+    // but different utterance (the same property that makes "never override explicit current
+    // wording" hold: there is no "extra" wording to override, by construction). A miss (no match,
+    // a stale/unregistered actionId, an action reporting itself unavailable right now, or a mapping
+    // that does not cover every one of the action's own required fields) is a complete no-op -
+    // falls straight through to the ordinary model turn below, unaffected. The action's own
+    // gateField (if any) is deliberately never sourced from the stored mapping - "never bypass a
+    // destructive confirmation" - so a gated action can, at most, have its OTHER fields pre-filled
+    // here; it can never auto-complete through this path (the gate field is always still missing).
+    if (availableActions && workflowEngine && actionRegistry && hasAnyLearnedCommands()) {
+      var learnedMatch = null;
+      try {
+        var matchUrl = '/api/sync/learned-commands/match?phrase=' + encodeURIComponent(text) + '&language=' + encodeURIComponent(i18n.language());
+        var matchResponse = await fetch(matchUrl, { signal: options && options.signal });
+        if (matchResponse.ok) { var matchPayload = await matchResponse.json(); learnedMatch = matchPayload && matchPayload.match; }
+      } catch (_) { learnedMatch = null; }
+      var learnedAction = learnedMatch ? actionRegistry.get(learnedMatch.actionId) : null;
+      var learnedActionStillOffered = learnedAction && availableActions.some(function (a) { return a.id === learnedMatch.actionId; });
+      if (learnedMatch && learnedAction && learnedActionStillOffered && learnedAction.available()) {
+        var effectiveMappings = Object.assign({}, learnedMatch.fieldMappings || {});
+        if (learnedAction.gateField) delete effectiveMappings[learnedAction.gateField];
+        var learnedCoversRequired = (learnedAction.requiredFields || []).every(function (f) { return Object.prototype.hasOwnProperty.call(effectiveMappings, f); });
+        if (learnedCoversRequired) {
+          var learnedFields = Object.keys(effectiveMappings).map(function (path) { return { path: path, value: effectiveMappings[path] }; });
+          if (proactiveEngine && typeof proactiveEngine.clearConfirmation === 'function') proactiveEngine.clearConfirmation();
+          workflowEngine.start(learnedMatch.actionId, contextEngine ? contextEngine.snapshot() : {}, learnedFields);
+          var learnedWorkflow = workflowEngine.current();
+          if (learnedWorkflow) { learnedWorkflow.triggerText = text; learnedWorkflow.learnedCommandId = learnedMatch.id; }
+          var learnedResult = await workflowEngine.applyKnownFields(learnedFields, contextEngine ? contextEngine.snapshot() : {});
+          setLastTurnDebug({ path: 'learned-command-match', actionId: learnedMatch.actionId, learnedCommandId: learnedMatch.id });
+          recordZeroNetworkLatency('LEARNED_COMMAND_MATCH', t0, {});
+          var learnedReply = i18n.t('aiLearnedCommandApplied');
+          return {
+            kind: 'workflow', reply: learnedReply, voiceReply: null,
+            workflow: learnedResult, activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+          };
+        }
       }
     }
 

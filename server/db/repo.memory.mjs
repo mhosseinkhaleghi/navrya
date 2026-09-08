@@ -3,6 +3,8 @@ import { ApiError } from '../community/errors.mjs';
 import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
+import { normalizeLearnedPhrase, applyLearnedCommandOutcome, validateFieldMappingsStrict, validateTargetStrategy, FieldMappingValidationError } from './learned-command-normalize.mjs';
+import { isLearnableAction, reusableFieldsFor } from './action-learnability.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
@@ -22,7 +24,7 @@ export function createMemoryRepo() {
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), trades: new Map(), accounts: new Map(),
-    instrumentCatalog: new Map(),
+    instrumentCatalog: new Map(), learnedCommands: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
     authSessions: new Map(), externalIdentities: new Map(), securityEvents: new Map(), authTransactions: new Map(),
@@ -1584,6 +1586,88 @@ export function createMemoryRepo() {
     }
   };
 
+  // Learned Command Record domain (055_learned_commands.sql) - see repo.pg.mjs's identical
+  // learnedCommands for the full reasoning. Same method surface, same business rules
+  // (unique per user+phrase+language; upsert redefining WHAT a mapping does resets its trust
+  // counters; recordOutcome is the only path that ever moves them).
+  const learnedCommands = {
+    async upsert(userId, record) {
+      requireUser(userId);
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { normalizedPhrase } = normalizeLearnedPhrase(record.normalizedPhrase || record.phrase);
+      if (!normalizedPhrase) throw new ApiError(400, 'VALIDATION_FAILED');
+      const actionId = String(record.actionId || '').trim();
+      if (!actionId) throw new ApiError(400, 'VALIDATION_FAILED');
+      // Section 2/3's server-side learnability policy - see repo.pg.mjs's identical check for the
+      // full reasoning. Both backends validate against the SAME generated manifest, so they can
+      // never silently disagree on which actions are learnable.
+      if (!isLearnableAction(actionId)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const language = typeof record.language === 'string' && record.language.trim() ? record.language.trim() : null;
+      let targetStrategy, fieldMappings;
+      try {
+        targetStrategy = validateTargetStrategy(record.targetStrategy);
+        fieldMappings = validateFieldMappingsStrict(record.fieldMappings, reusableFieldsFor(actionId));
+      } catch (error) {
+        if (error instanceof FieldMappingValidationError) throw new ApiError(400, 'VALIDATION_FAILED');
+        throw error;
+      }
+      const existing = state.learnedCommands.get(record.id);
+      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      const duplicate = Array.from(state.learnedCommands.values()).some((item) => item.userId === userId && item.id !== record.id && item.normalizedPhrase === normalizedPhrase && (item.language || '') === (language || ''));
+      if (duplicate) throw new ApiError(409, 'LEARNED_COMMAND_PHRASE_ALREADY_MAPPED');
+      const stamp = now();
+      const stored = {
+        id: record.id, userId, normalizedPhrase, language, actionId, fieldMappings, targetStrategy,
+        source: 'explicit_approval', confidence: 60, successCount: 0, correctionCount: 0,
+        lastUsedAt: existing ? existing.lastUsedAt : null, enabled: true, schemaVersion: 1,
+        createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
+      };
+      state.learnedCommands.set(record.id, stored);
+      return clone(stored);
+    },
+    async get(userId, id) {
+      const record = state.learnedCommands.get(id);
+      if (!record || record.userId !== userId) return null;
+      return clone(record);
+    },
+    async listByUser(userId) {
+      return Array.from(state.learnedCommands.values()).filter((item) => item.userId === userId).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)).map(clone);
+    },
+    async remove(userId, id) {
+      const record = state.learnedCommands.get(id);
+      if (!record) return;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      state.learnedCommands.delete(id);
+    },
+    async findByPhrase(userId, rawPhrase, language) {
+      const { normalizedPhrase } = normalizeLearnedPhrase(rawPhrase);
+      if (!normalizedPhrase) return null;
+      const match = Array.from(state.learnedCommands.values()).find((item) => item.userId === userId && item.normalizedPhrase === normalizedPhrase && (item.language || '') === (language || '') && item.enabled);
+      return match ? clone(match) : null;
+    },
+    async recordOutcome(userId, id, outcome) {
+      const record = state.learnedCommands.get(id);
+      if (!record) return null;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      const next = applyLearnedCommandOutcome(record, outcome);
+      Object.assign(record, next, { lastUsedAt: now(), updatedAt: now() });
+      return clone(record);
+    },
+    async setEnabled(userId, id, enabled) {
+      const record = state.learnedCommands.get(id);
+      if (!record) return null;
+      if (record.userId !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      record.enabled = !!enabled;
+      record.updatedAt = now();
+      return clone(record);
+    },
+    async removeAllForUser(userId) {
+      const ids = Array.from(state.learnedCommands.values()).filter((item) => item.userId === userId).map((item) => item.id);
+      ids.forEach((id) => state.learnedCommands.delete(id));
+      return ids.length;
+    }
+  };
+
   // ---------------------------------------------------------------------------------------------
   // Commercial System Slice 1 - mirrors repo.pg.mjs's identical-named domains exactly (same
   // method surface, same business rules), re-implemented over plain Maps.
@@ -2815,7 +2899,7 @@ export function createMemoryRepo() {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

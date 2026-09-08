@@ -3,6 +3,8 @@ import { ApiError } from '../community/errors.mjs';
 import { encryptSecret, decryptSecret } from '../community/security/crypto-util.mjs';
 import { encryptionKeyHex } from '../community/security/secrets.mjs';
 import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-normalize.mjs';
+import { normalizeLearnedPhrase, applyLearnedCommandOutcome, validateFieldMappingsStrict, validateTargetStrategy, FieldMappingValidationError } from './learned-command-normalize.mjs';
+import { isLearnableAction, reusableFieldsFor } from './action-learnability.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
@@ -446,6 +448,16 @@ function mapAccount(row) {
 
 function mapInstrumentCatalog(row) {
   return { id: row.id, userId: row.user_id, code: row.code, displayName: row.display_name, createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+function mapLearnedCommand(row) {
+  return {
+    id: row.id, userId: row.user_id, normalizedPhrase: row.normalized_phrase, language: row.language,
+    actionId: row.action_id, fieldMappings: row.field_mappings || {}, targetStrategy: row.target_strategy,
+    source: row.source, confidence: row.confidence, successCount: row.success_count, correctionCount: row.correction_count,
+    lastUsedAt: row.last_used_at, enabled: row.enabled, schemaVersion: row.schema_version,
+    createdAt: row.created_at, updatedAt: row.updated_at
+  };
 }
 
 // "Online" threshold for sessions.aggregateByUser(): 3x the client heartbeat interval
@@ -2427,6 +2439,116 @@ export function createPgRepo(pool) {
     }
   };
 
+  // Learned Command Record domain (055_learned_commands.sql) - Voice Command Learning Profile
+  // addendum. Unique per (user, normalizedPhrase, language) - the same "unique per user after
+  // normalization" shape instrument_catalog already established, so a genuine correction (the
+  // same phrase now taught to mean something different) updates the existing row via upsert()
+  // rather than ever creating a second, competing mapping for the same phrase. Redefining WHAT a
+  // mapping does (via upsert) always resets its trust counters to fresh defaults - the old
+  // approval history does not carry over to genuinely different content. recordOutcome() is the
+  // separate, narrower path that only ever moves confidence/successCount/correctionCount/enabled,
+  // never touches WHAT the mapping does.
+  const learnedCommands = {
+    async upsert(userId, record) {
+      if (!record || !record.id) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { normalizedPhrase } = normalizeLearnedPhrase(record.normalizedPhrase || record.phrase);
+      if (!normalizedPhrase) throw new ApiError(400, 'VALIDATION_FAILED');
+      const actionId = String(record.actionId || '').trim();
+      if (!actionId) throw new ApiError(400, 'VALIDATION_FAILED');
+      // Section 2/3's server-side learnability policy: actionId must be a REAL, currently
+      // registered action (action-learnability.generated.json, mechanically derived from
+      // character-app.jsx - never a second, hand-typed allowlist) that is explicitly eligible for
+      // command learning. A gated or high-risk action (confirmation_required/never_learnable) is
+      // rejected here too - "route into the workflow, never auto-complete" is not a mode this
+      // domain's auto-apply path implements, so such an action is simply not a valid target.
+      if (!isLearnableAction(actionId)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const language = typeof record.language === 'string' && record.language.trim() ? record.language.trim() : null;
+      let targetStrategy, fieldMappings;
+      try {
+        targetStrategy = validateTargetStrategy(record.targetStrategy);
+        fieldMappings = validateFieldMappingsStrict(record.fieldMappings, reusableFieldsFor(actionId));
+      } catch (error) {
+        if (error instanceof FieldMappingValidationError) throw new ApiError(400, 'VALIDATION_FAILED');
+        throw error;
+      }
+      const { rows: ownerRows } = await pool.query('SELECT user_id FROM learned_commands WHERE id=$1', [record.id]);
+      if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO learned_commands (id, user_id, normalized_phrase, language, action_id, field_mappings, target_strategy, source, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'explicit_approval',now())
+           ON CONFLICT (id) DO UPDATE SET
+             normalized_phrase=$3, language=$4, action_id=$5, field_mappings=$6, target_strategy=$7,
+             confidence=60, success_count=0, correction_count=0, enabled=true, updated_at=now()
+           RETURNING *`,
+          [record.id, userId, normalizedPhrase, language, actionId, JSON.stringify(fieldMappings), targetStrategy]
+        );
+        return mapLearnedCommand(rows[0]);
+      } catch (error) {
+        // "One mapping per (user, phrase, language)" - a duplicate phrase (new id, same phrase
+        // already mapped) is a real 409, never a silent second/competing mapping. The caller
+        // (chat-dock-core.js's learning-creation path) is expected to findByPhrase() first and
+        // update that existing id instead of minting a new one.
+        if (error && error.code === '23505') throw new ApiError(409, 'LEARNED_COMMAND_PHRASE_ALREADY_MAPPED');
+        throw error;
+      }
+    },
+    async get(userId, id) {
+      const { rows } = await pool.query('SELECT * FROM learned_commands WHERE id=$1 AND user_id=$2', [id, userId]);
+      return rows[0] ? mapLearnedCommand(rows[0]) : null;
+    },
+    async listByUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM learned_commands WHERE user_id=$1 ORDER BY updated_at DESC', [userId]);
+      return rows.map(mapLearnedCommand);
+    },
+    async remove(userId, id) {
+      const { rows } = await pool.query('SELECT user_id FROM learned_commands WHERE id=$1', [id]);
+      if (!rows[0]) return;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      await pool.query('DELETE FROM learned_commands WHERE id=$1', [id]);
+    },
+    // The real resolution-time lookup ("does this user have an enabled mapping for what they just
+    // said") - normalizes the raw candidate text through the exact same gate a stored phrase
+    // already passed through, so "log this trade" and "Log This Trade." resolve to the same row.
+    async findByPhrase(userId, rawPhrase, language) {
+      const { normalizedPhrase } = normalizeLearnedPhrase(rawPhrase);
+      if (!normalizedPhrase) return null;
+      const { rows } = await pool.query(
+        `SELECT * FROM learned_commands WHERE user_id=$1 AND normalized_phrase=$2 AND COALESCE(language,'')=COALESCE($3,'') AND enabled=true`,
+        [userId, normalizedPhrase, language || null]
+      );
+      return rows[0] ? mapLearnedCommand(rows[0]) : null;
+    },
+    // The one path allowed to move confidence/successCount/correctionCount/enabled - see
+    // learned-command-normalize.mjs's applyLearnedCommandOutcome() for the deterministic policy.
+    async recordOutcome(userId, id, outcome) {
+      const { rows } = await pool.query('SELECT * FROM learned_commands WHERE id=$1', [id]);
+      if (!rows[0]) return null;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      const next = applyLearnedCommandOutcome(mapLearnedCommand(rows[0]), outcome);
+      const { rows: updated } = await pool.query(
+        `UPDATE learned_commands SET confidence=$2, success_count=$3, correction_count=$4, enabled=$5, last_used_at=now(), updated_at=now()
+         WHERE id=$1 RETURNING *`,
+        [id, next.confidence, next.successCount, next.correctionCount, next.enabled]
+      );
+      return mapLearnedCommand(updated[0]);
+    },
+    async setEnabled(userId, id, enabled) {
+      const { rows } = await pool.query('SELECT user_id FROM learned_commands WHERE id=$1', [id]);
+      if (!rows[0]) return null;
+      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_LEARNED_COMMAND_OWNER');
+      const { rows: updated } = await pool.query('UPDATE learned_commands SET enabled=$2, updated_at=now() WHERE id=$1 RETURNING *', [id, !!enabled]);
+      return mapLearnedCommand(updated[0]);
+    },
+    // Section 7 (dashboard "Reset all") - scoped to WHERE user_id=$1 in the query itself, never a
+    // fetch-then-loop-delete, so there is no window where a concurrent request could see a partial
+    // reset. Returns the real deleted count for the dashboard's own confirmation toast.
+    async removeAllForUser(userId) {
+      const { rowCount } = await pool.query('DELETE FROM learned_commands WHERE user_id=$1', [userId]);
+      return rowCount;
+    }
+  };
+
   // ---------------------------------------------------------------------------------------------
   // Commercial System Slice 1 (026-029_*.sql) - see server/commercial/*.mjs for the business
   // logic (entitlement resolution, markup resolution, wallet reserve/settle/release orchestration)
@@ -4185,7 +4307,7 @@ export function createPgRepo(pool) {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
-    strategies, analysisProfiles, trades, accounts, instrumentCatalog, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

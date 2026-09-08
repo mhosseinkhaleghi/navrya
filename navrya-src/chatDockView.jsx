@@ -215,6 +215,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // against each other; chatDockView.jsx connects the two by handing a finished turn's text to
   // PlaybackController.enqueue() - a fire-and-forget call TurnCoordinator never awaits.
   const conversationEpochRef = React.useRef(0);
+  // Voice Command Learning Profile addendum, section 8: every receiptId this conversation has
+  // already given feedback on (correct/wrong-action/wrong-value/remember/dismiss) - once a
+  // receiptId is in here, the feedback row never reappears for it again. Cleared on New Chat/
+  // resume (see those functions' own new line below) - the same "conversation changed" isolation
+  // boundary every other per-conversation transient state in this file already resets on.
+  const respondedReceiptIdsRef = React.useRef(new Set());
   const turnCoordinatorRef = React.useRef(null);
   const playbackControllerRef = React.useRef(null);
   // Slice R1 (request ownership/cancellation), audit findings C2/C6: every currently in-flight
@@ -329,6 +335,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     setHistoryOpen(false);
     if (core && typeof core.resetConversationState === 'function') core.resetConversationState();
     conversationEpochRef.current += 1;
+    respondedReceiptIdsRef.current = new Set();
     abortActiveRequests();
     if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
     // fix/voice-mode-turn-ux: New Chat is a "the user has moved on" moment for the voice-specific
@@ -372,6 +379,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     setHistoryOpen(false);
     if (!historyStore) return;
     conversationEpochRef.current += 1;
+    respondedReceiptIdsRef.current = new Set();
     const epochAtStart = conversationEpochRef.current;
     abortActiveRequests();
     if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
@@ -400,6 +408,46 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return () => window.removeEventListener('tradejournal:ai-resume-conversation', onResume);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Voice Command Learning Profile addendum, section 8: the underlying submit an eligible receipt
+  // describes typically finishes seconds AFTER its own reply is already showing
+  // (scheduleSubmit()'s ~3s grace window) - ai-action-receipts.js's own record() dispatches this
+  // event the instant a receipt genuinely lands, so the feedback row can appear once it is real,
+  // never speculatively. Only ever merges `feedback` onto the CURRENTLY showing popover (never
+  // reopens a closed one, never overwrites a popover for a different, later turn that has since
+  // started) - `popover.state === 'answer'` is the same "a real reply is currently displayed"
+  // check used everywhere else in this file. A receiptId already answered (respondedReceiptIdsRef)
+  // or not itself eligible (checked fresh via lastEligibleReceipt(), never trusted from the event
+  // alone) never shows the row - "never shown after individual field fills/failed/cancelled/
+  // destructive actions/unresolved clarification" holds structurally, since lastEligibleReceipt()
+  // already excludes every one of those cases at the source.
+  React.useEffect(() => {
+    function onReceiptRecorded() {
+      const receipts = window.TradeJournalAIActionReceipts;
+      const receipt = receipts && typeof receipts.lastEligibleReceipt === 'function' ? receipts.lastEligibleReceipt() : null;
+      if (!receipt || respondedReceiptIdsRef.current.has(receipt.receiptId)) return;
+      setPopover((p) => (p && p.state === 'answer' ? { ...p, feedback: true, feedbackReceiptId: receipt.receiptId } : p));
+    }
+    window.addEventListener('tradejournal:action-receipt-recorded', onReceiptRecorded);
+    return () => window.removeEventListener('tradejournal:action-receipt-recorded', onReceiptRecorded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Every button fires the SAME canonical phrase text a spoken/typed utterance already would
+  // through the ordinary submit() path - "never a second, separate learning mechanism." Marks the
+  // receiptId answered (and hides the row) immediately, before submit() even resolves, so a rapid
+  // second click can never double-fire.
+  function giveChatFeedback(intent, receiptId) {
+    respondedReceiptIdsRef.current.add(receiptId);
+    setPopover((p) => (p ? { ...p, feedback: false } : p));
+    const commandFeedback = window.TradeJournalAICommandFeedback;
+    const phrase = commandFeedback && typeof commandFeedback.canonicalFeedbackPhrase === 'function' ? commandFeedback.canonicalFeedbackPhrase(intent, i18n.language()) : null;
+    if (phrase) submit(phrase);
+  }
+  function dismissChatFeedback(receiptId) {
+    respondedReceiptIdsRef.current.add(receiptId);
+    setPopover((p) => (p ? { ...p, feedback: false } : p));
+  }
 
   // Latency pass, section 1/19/34: how long the reply actually took to reach the screen after
   // sendChat() resolved - chat-dock-core.js has no visibility into React's own commit/paint
@@ -1322,6 +1370,17 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
             messageActionLabels={{ copy: i18n.t('aiDockCopyReply'), copied: i18n.t('aiDockCopied'), regenerate: i18n.t('aiDockRegenerate') }}
             ruleApplied={!!popover.ruleApplied} ruleAppliedLabel={i18n.t('aiDockRuleApplied')}
             onRegenerate={regenerateLastReply}
+            feedback={popover.feedback ? { receiptId: popover.feedbackReceiptId } : null}
+            feedbackLabels={{
+              prompt: i18n.t('aiChatFeedbackPrompt'), correct: i18n.t('aiChatFeedbackCorrect'),
+              wrongAction: i18n.t('aiChatFeedbackWrongAction'), wrongTarget: i18n.t('aiChatFeedbackWrongTargetValue'),
+              rememberThis: i18n.t('aiChatFeedbackRememberThis'), dismiss: i18n.t('aiChatFeedbackDismiss')
+            }}
+            onFeedbackCorrect={() => giveChatFeedback('correct', popover.feedbackReceiptId)}
+            onFeedbackWrongAction={() => giveChatFeedback('wrongAction', popover.feedbackReceiptId)}
+            onFeedbackWrongTarget={() => giveChatFeedback('wrongTargetOrValue', popover.feedbackReceiptId)}
+            onFeedbackRemember={() => giveChatFeedback('rememberThis', popover.feedbackReceiptId)}
+            onFeedbackDismiss={() => dismissChatFeedback(popover.feedbackReceiptId)}
           />
         )}
       </ChatDock>

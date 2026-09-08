@@ -3236,10 +3236,16 @@ export function mountCharacterApp(character) {
         // without calling this or any action at all; this action exists ONLY for a genuine,
         // persistent preference change.
         id: 'settings.persona.update', domain: 'settings', riskLevel: 'low',
-        description: 'Open the real Persona tab (AI Assistant > Persona) and change NAVRYA\'s PERSISTENT tone/persona preferences: preset (one of coach, analyst, calm, prof - a named starting point, applied then still adjustable), explicitness/detail/warmth/humor/jargon (each 0-100, how directly, thoroughly, warmly, playfully, or technically NAVRYA speaks), initiative (low, normal, or high - the Companion\'s own proactivity, same real preference settings.companion.update also writes), and customInstructions (free-text persona guidance, max 600 characters - e.g. a preferred form of address, or "always give me the number first"). customInstructions REPLACES the whole saved text, so if the user asked to add something rather than replace everything, first read the current text already visible in the open Persona tab / prior conversation and pass back the complete combined text yourself - never a fragment that would silently drop unrelated existing wording. Send the literal value "none" to clear it. A request like "be more ruthless/blunt/no-nonsense" maps ONLY to higher explicitness/directness here - NEVER to unsafe, reckless, or harmful trading advice, which NAVRYA\'s actual guidance never changes regardless of tone. This action is for a PERSISTENT change only - a one-off request that applies just to this single reply or this one conversation (e.g. "use a warmer tone only for this conversation") should NOT call this action at all; simply comply directly in your own next reply instead. Never touches the user\'s own public profile display name - that is a completely separate account setting, not persona tone. save must ONLY be set to true once the user has explicitly and separately asked to actually save the persona changes now - never merely because every field happens to be filled.',
-        aliases: ['make navrya more direct', 'set my persona to the coach preset', 'be warmer in general', 'add to my custom instructions', 'call me by my first name from now on', 'set companion initiative to high in my persona'],
+        description: 'Open the real Persona tab (AI Assistant > Persona) and change NAVRYA\'s PERSISTENT tone/persona preferences: preset (one of coach, analyst, calm, prof - a named starting point, applied then still adjustable), explicitness/detail/warmth/humor/jargon/strictness (each 0-100, how directly, thoroughly, warmly, playfully, technically, or strictly/accountably NAVRYA speaks - strictness is about pushing back and holding the user accountable, not the same as explicitness/directness of delivery), initiative (low, normal, or high - the Companion\'s own proactivity, same real preference settings.companion.update also writes), and customInstructions (free-text persona guidance, max 600 characters - e.g. a preferred form of address, or "always give me the number first"). Use customInstructionOp to say HOW customInstructions should be applied: \'append\' adds the given text onto whatever is already saved (use this for "add X"/"also remind me..." requests - NAVRYA combines it deterministically, never invent or resend the user\'s existing wording yourself), \'remove\' deletes the given exact phrase from the existing saved text if it is found there, \'reset\' clears all custom instructions entirely (customInstructions is not needed when resetting), and \'replace\' (also the default when customInstructionOp is omitted, preserving old behavior) overwrites the whole saved text with the given value - only use \'replace\' when the user actually means to replace everything, never merely to add to it. customInstructionOp and its matching customInstructions value must be sent together in the SAME reply - never split across separate turns. Send the literal value "none" as customInstructions (with \'replace\', or customInstructionOp omitted) to clear it the old way; \'reset\' is the clearer, preferred way to say the same thing. A request like "be more ruthless/blunt/no-nonsense" maps ONLY to higher explicitness/directness here - NEVER to unsafe, reckless, or harmful trading advice, which NAVRYA\'s actual guidance never changes regardless of tone. This action is for a PERSISTENT change only - a one-off request that applies just to this single reply or this one conversation (e.g. "use a warmer tone only for this conversation") should NOT call this action at all; simply comply directly in your own next reply instead. Never touches the user\'s own public profile display name - that is a completely separate account setting, not persona tone. save must ONLY be set to true once the user has explicitly and separately asked to actually save the persona changes now - never merely because every field happens to be filled.',
+        aliases: ['make navrya more direct', 'set my persona to the coach preset', 'be warmer in general', 'add to my custom instructions', 'call me by my first name from now on', 'set companion initiative to high in my persona', 'be stricter with me'],
         requiredFields: ['save'],
-        optionalFields: ['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'initiative', 'customInstructions'],
+        // customInstructionOp is listed before customInstructions on purpose - schema property
+        // order is a best-effort hint most providers' structured-output modes respect, so a model
+        // that fills both in one reply tends to emit the operation before the text it modifies.
+        // PersonaTab's own applyValue() below does not actually depend on this ordering (it
+        // recombines from a settled ref pair after the whole turn's fields have landed), so this
+        // is a nice-to-have, not a correctness requirement.
+        optionalFields: ['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness', 'initiative', 'customInstructionOp', 'customInstructions'],
         gateField: 'save',
         normalizeField: function (path, value) {
           if (path === 'save') return normalizeGateField('save')(path, value);
@@ -3250,7 +3256,7 @@ export function mountCharacterApp(character) {
             // character list and settings.companion.update's own goal/initiative lists.
             return ['coach', 'analyst', 'calm', 'prof'].indexOf(presetText) !== -1 ? presetText : null;
           }
-          if (['explicitness', 'detail', 'warmth', 'humor', 'jargon'].indexOf(path) !== -1) {
+          if (['explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness'].indexOf(path) !== -1) {
             // F50: reject a non-numeric or out-of-range value outright - never clamp it into range.
             var n = Number(value);
             return (Number.isFinite(n) && n >= 0 && n <= 100) ? Math.round(n) : null;
@@ -3258,6 +3264,10 @@ export function mountCharacterApp(character) {
           if (path === 'initiative') {
             var initText = String(value || '').trim().toLowerCase();
             return ['low', 'normal', 'high'].indexOf(initText) !== -1 ? initText : null;
+          }
+          if (path === 'customInstructionOp') {
+            var opText = String(value || '').trim().toLowerCase();
+            return ['append', 'replace', 'reset', 'remove'].indexOf(opText) !== -1 ? opText : null;
           }
           if (path === 'customInstructions') {
             var raw = String(value == null ? '' : value);

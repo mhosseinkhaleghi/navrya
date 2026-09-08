@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 
 // Context-aware conversational operation layer, section 8: settings.persona.update - the real
 // Persona tab (aiAssistantView.jsx's PersonaTab). Same static-source-regression convention as
@@ -25,7 +26,7 @@ test('settings.persona.update is registered with the real gate-field shape (F37)
   assert.match(block, /domain: 'settings', riskLevel: 'low',/);
   assert.doesNotMatch(block, /entityAlreadyPersisted/);
   assert.match(block, /requiredFields: \['save'\],/);
-  assert.match(block, /optionalFields: \['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'initiative', 'customInstructions'\],/);
+  assert.match(block, /optionalFields: \['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness', 'initiative', 'customInstructionOp', 'customInstructions'\],/);
   assert.match(block, /gateField: 'save',/);
   assert.match(block, /if \(path === 'save'\) return normalizeGateField\('save'\)\(path, value\);/);
 });
@@ -35,11 +36,16 @@ test('settings.persona.update validates preset against the exact four real PERSO
   assert.match(block, /\['coach', 'analyst', 'calm', 'prof'\]\.indexOf\(presetText\) !== -1 \? presetText : null;/);
 });
 
-test('settings.persona.update rejects an out-of-range or non-numeric tone dimension outright (F50) - never clamps it into 0-100', () => {
+test('settings.persona.update rejects an out-of-range or non-numeric tone dimension outright (F50) - never clamps it into 0-100 - strictness included alongside the original five', () => {
   const block = actionBlock('settings.persona.update');
-  assert.match(block, /\['explicitness', 'detail', 'warmth', 'humor', 'jargon'\]\.indexOf\(path\) !== -1/);
+  assert.match(block, /\['explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness'\]\.indexOf\(path\) !== -1/);
   assert.match(block, /Number\.isFinite\(n\) && n >= 0 && n <= 100/);
   assert.doesNotMatch(block, /Math\.min\(100, ?Math\.max\(0/, 'must reject out-of-range, never clamp');
+});
+
+test('settings.persona.update validates customInstructionOp against the exact four real operations, otherwise leaves it unextracted (defaults to replace)', () => {
+  const block = actionBlock('settings.persona.update');
+  assert.match(block, /\['append', 'replace', 'reset', 'remove'\]\.indexOf\(opText\) !== -1 \? opText : null;/);
 });
 
 test('settings.persona.update validates initiative against the exact real low/normal/high set, same values settings.companion.update already writes', () => {
@@ -63,6 +69,18 @@ test('settings.persona.update never declares displayName or any other public-pro
   assert.match(block, /Never touches/);
 });
 
+test('section 11 audit: preferredName (Voice Command Learning Profile addendum) is stored on ai-companion-profile.js\'s own document under a distinctly-named field, never anywhere near account.create/account.edit\'s real displayName field - a form of address, not the account\'s public display name', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const companionProfileSrc = await readFile(path.join(process.cwd(), 'public', 'pages', 'shared', 'ai-companion-profile.js'), 'utf8');
+  assert.match(companionProfileSrc, /preferredName: null, \/\/ free text, short - how the user wants to be addressed/);
+  // profile.edit is the one real action that writes the account's own public displayName - it
+  // never references preferredName at all, confirming the two fields never collide.
+  const profileEditBlock = actionBlock('profile.edit');
+  assert.match(profileEditBlock, /optionalFields: \['displayName', 'email', 'phone'\],/);
+  assert.doesNotMatch(profileEditBlock, /preferredName/);
+});
+
 test("settings.persona.update's description explicitly tells the model a one-off, this-conversation-only styling request must NOT call this action at all - no ephemeral/temporary persona pipeline exists, by design", () => {
   const block = actionBlock('settings.persona.update');
   assert.match(block, /PERSISTENT change only/);
@@ -75,10 +93,13 @@ test("settings.persona.update maps a 'ruthless'/blunt-style request only to expl
   assert.match(block, /NEVER to unsafe, reckless, or harmful trading advice/);
 });
 
-test('settings.persona.update composes the full replacement text itself for customInstructions rather than NAVRYA attempting its own merge/diff logic - the still-unsaved, visible textarea is the real safety net against silently dropping unrelated wording', () => {
+test("settings.persona.update's description tells the model customInstructionOp/customInstructions must be sent together in the same reply, and explains all four operations (append/remove/reset/replace) rather than asking the model to reconstruct the combined text itself", () => {
   const block = actionBlock('settings.persona.update');
-  assert.match(block, /REPLACES the whole saved text/);
-  assert.match(block, /pass back the complete combined text yourself/);
+  assert.match(block, /customInstructionOp and its matching customInstructions value must be sent together in the SAME reply/);
+  assert.match(block, /\\'append\\' adds the given text onto whatever is already saved/);
+  assert.match(block, /\\'remove\\' deletes the given exact phrase/);
+  assert.match(block, /\\'reset\\' clears all custom instructions entirely/);
+  assert.match(block, /the default when customInstructionOp is omitted, preserving old behavior\) overwrites the whole saved text/);
 });
 
 test("settings.persona.update's open() navigates to the AI Assistant screen, drives the real topTab through TradeJournalNavryaAiAssistantHub, and polls the real settings-persona registration - never mutating anything before the field-level applyValue/submit steps", () => {
@@ -104,14 +125,64 @@ test('the real settings-persona registration fills the SAME local draft state (p
   const registration = /registry\.register\('settings-persona', \{[\s\S]*?\n {4}\}\);/.exec(aiAssistantSrc);
   assert.ok(registration, 'could not find the real settings-persona registration');
   const block = registration[0];
-  assert.match(block, /allowlist: \['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'initiative', 'customInstructions'\],/);
+  assert.match(block, /allowlist: \['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness', 'initiative', 'customInstructionOp', 'customInstructions'\],/);
   assert.match(block, /isOpen: \(\) => mountedRef\.current,/);
   assert.match(block, /if \(preset\) applyPreset\(preset\);/);
   assert.match(block, /setTone\(\(prev\) => Object\.assign\(\{\}, prev, \{ initiative: initiativeFromBucket\(value\) \}\)\)/);
   assert.match(block, /updateDim\(path, value\);/);
-  assert.match(block, /setCustomText\(value === 'none' \? '' : String\(value == null \? '' : value\)\);/);
+  assert.match(block, /customInstructionOpRef\.current = value; scheduleCustomInstructionsCombine\(\); return;/);
+  assert.match(block, /customInstructionDeltaRef\.current = value;\s*\n\s*scheduleCustomInstructionsCombine\(\);/);
   assert.match(block, /submit: \(\) => submitRef\.current\(\)/);
   assert.match(aiAssistantSrc, /const submitRef = React\.useRef\(save\);\s*\n\s*submitRef\.current = save;/);
+});
+
+// combineCustomInstructions() is a pure, dependency-free helper (no JSX/React) inside
+// aiAssistantView.jsx - navrya-src has no DOM harness for the surrounding component, but this one
+// function can genuinely run: extracted by source range and evaluated in a vm sandbox, exactly the
+// way tests/*.test.mjs already vm-sandbox the shared/*.js pure-logic modules.
+function loadCombineCustomInstructions() {
+  const start = aiAssistantSrc.indexOf('function combineCustomInstructions(base, op, delta) {');
+  assert.ok(start > -1, 'could not find combineCustomInstructions() in aiAssistantView.jsx');
+  const end = aiAssistantSrc.indexOf('\n  function scheduleCustomInstructionsCombine', start);
+  assert.ok(end > start, 'could not find the end of combineCustomInstructions()');
+  const source = aiAssistantSrc.slice(start, end);
+  const sandbox = {};
+  vm.runInNewContext(source + '\nthis.combineCustomInstructions = combineCustomInstructions;', sandbox);
+  return sandbox.combineCustomInstructions;
+}
+
+test('combineCustomInstructions(): append preserves the existing text and adds the new text after it - never silently drops prior wording', () => {
+  const combine = loadCombineCustomInstructions();
+  assert.equal(combine('Always give me the number first.', 'append', 'Call me Ali.'), 'Always give me the number first.\nCall me Ali.');
+  assert.equal(combine('', 'append', 'Call me Ali.'), 'Call me Ali.');
+});
+
+test("combineCustomInstructions(): remove deletes only the given phrase, leaves the rest untouched, and is a no-op when the phrase is not found verbatim", () => {
+  const combine = loadCombineCustomInstructions();
+  assert.equal(combine('Call me Ali.\nBe concise.', 'remove', 'Call me Ali.'), 'Be concise.');
+  assert.equal(combine('Be concise.', 'remove', 'not present anywhere'), 'Be concise.');
+});
+
+test('combineCustomInstructions(): reset always clears to empty regardless of any delta text', () => {
+  const combine = loadCombineCustomInstructions();
+  assert.equal(combine('Be concise.', 'reset', null), '');
+  assert.equal(combine('Be concise.', 'reset', 'ignored'), '');
+});
+
+test("combineCustomInstructions(): replace (explicit, or the default when op is omitted) overwrites the whole text, and the 'none' sentinel still clears it - the exact pre-existing behavior, unchanged for a model that never sends customInstructionOp", () => {
+  const combine = loadCombineCustomInstructions();
+  assert.equal(combine('Old text.', 'replace', 'New text.'), 'New text.');
+  assert.equal(combine('Old text.', undefined, 'New text.'), 'New text.', 'omitted op defaults to replace, matching pre-existing behavior');
+  assert.equal(combine('Old text.', 'replace', 'none'), '');
+});
+
+test('customInstructionOp/customInstructions combine deterministically via combineCustomInstructions() - append/remove/reset/replace, order-independent within one turn via a settled-ref macrotask, never asking the model to resend existing wording', () => {
+  assert.match(aiAssistantSrc, /function combineCustomInstructions\(base, op, delta\) \{/);
+  assert.match(aiAssistantSrc, /if \(op === 'reset'\) return '';/);
+  assert.match(aiAssistantSrc, /if \(op === 'remove'\) \{/);
+  assert.match(aiAssistantSrc, /if \(op === 'append'\) \{/);
+  assert.match(aiAssistantSrc, /function scheduleCustomInstructionsCombine\(\) \{/);
+  assert.match(aiAssistantSrc, /setCustomText\(\(prevText\) => combineCustomInstructions\(prevText, op \|\| 'replace', delta\)\);/);
 });
 
 // The same shape as account.create/account-manual-form (a real, required gate field) - and

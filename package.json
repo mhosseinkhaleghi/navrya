@@ -13,6 +13,8 @@
     "build:navrya": "node navrya-src/build.mjs",
     "ai:knowledge:build": "node scripts/ai-knowledge-build.mjs build",
     "ai:knowledge:check": "node scripts/ai-knowledge-build.mjs check",
+    "action-learnability:build": "node scripts/action-learnability-build.mjs build",
+    "action-learnability:check": "node scripts/action-learnability-build.mjs check",
     "preview": "vite preview"
   },
   "dependencies": {

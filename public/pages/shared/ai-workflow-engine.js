@@ -265,9 +265,67 @@
   // The real submit-execution body, shared by scheduleSubmit()'s own grace-window timer AND
   // finishExplicitly()'s immediate path below - one canonical way this engine ever actually
   // calls an action's real submit(), never duplicated.
+  // Voice Command Learning Profile addendum, section 7 (action receipts): recorded once, right
+  // here - the one place this engine actually knows a submit genuinely ran and how it turned out.
+  // Deliberately NOT the full canonical receipt shape the brief describes (no per-action
+  // targetType/targetId/reversible/localized summary - the real submit()/resultContext() contract
+  // across all ~61 registered actions has no uniform result shape to read those from, and the
+  // "Finish NAVRYA Voice Mode" brief already declined that larger structured-result migration as
+  // its own separate, deferred piece of work). This is the deliberately smaller, honest subset
+  // Phase F/G's own learning-feedback loop actually needs: which action, what field values, and
+  // whether it succeeded - enough to reinforce/correct/repeat, never enough to claim a full
+  // canonical receipt contract exists yet.
+  // Audit finding (section 5 of the follow-up brief): a bare, unconditional "the submit Promise
+  // resolved, therefore success" is not actually safe across ~61 independently-authored submit()
+  // implementations - a resolved-but-undefined result is genuinely ambiguous (it could mean
+  // "succeeded, this store method just doesn't return anything" OR "did nothing, an internal early
+  // return"). Rather than guess (auditing all ~61 real store methods' own return shapes is not
+  // evidence this pass actually has), an undefined resolution is recorded as 'unknown_outcome',
+  // never 'success', UNLESS the action explicitly opts in via submitResolvesUndefinedOnSuccess for
+  // a specific action a human has actually verified. lastEligibleReceipt() already excludes any
+  // non-'success' result, so this is a purely conservative narrowing: some genuinely-successful
+  // undefined-returning actions will not be learning-eligible until explicitly verified and opted
+  // in, but nothing ambiguous is ever silently trusted as a confirmed success.
+  //
+  // NOTE, found while building this exact check: entityAlreadyPersisted actions (pattern.create,
+  // strategy.create, settings.character.switch, ...) never reach this function at all via any
+  // existing call site - see the entityAlreadyPersisted branch a few lines above in
+  // applyKnownFields(), which deliberately never calls scheduleSubmit() for them (their own real
+  // persistence already happened inside open(), so there is no discrete "submit succeeded" moment
+  // to record a receipt from). This is a genuine, honestly-reported gap, not silently patched
+  // around here: an entityAlreadyPersisted action can still be a valid learned-command TARGET
+  // (server/db/action-learnability.mjs's own classification is unaffected - a mapping can still be
+  // created manually from the dashboard), but the automatic "say 'remember this' right after using
+  // it" flow currently has no receipt to work from for this specific action shape.
+  function classifySubmitResult(action, rawResult) {
+    if (rawResult !== undefined) return 'success';
+    return action.submitResolvesUndefinedOnSuccess ? 'success' : 'unknown_outcome';
+  }
+
+  function recordReceipt(workflow, action, outcome, rawResult) {
+    var receipts = window.TradeJournalAIActionReceipts;
+    if (!receipts || typeof receipts.record !== 'function') return;
+    var result = outcome === 'success' ? classifySubmitResult(action, rawResult) : outcome;
+    try {
+      receipts.record({
+        actionId: workflow.actionId, processId: workflow.processId,
+        known: JSON.parse(JSON.stringify(workflow.known || {})),
+        triggerText: workflow.triggerText || null,
+        // Set directly on the workflow object by chat-dock-core.js's own learned-command
+        // resolution fast path (Phase G) when THIS run was started because an already-enabled
+        // mapping matched - see that file's own comment for why a plain property assignment on
+        // the object start() already returned is enough (no API change needed here).
+        learnedCommandId: workflow.learnedCommandId || null,
+        riskLevel: action.riskLevel || 'low', hasGate: !!action.gateField,
+        result: result, startedAt: workflow.startedAt || Date.now()
+      });
+    } catch (_) { /* best-effort - a receipt is a convenience, never load-bearing for the submit itself */ }
+  }
+
   function runSubmit(workflow, action, context) {
     workflow.pendingSubmitTimer = null;
     workflow.status = 'submitting';
+    workflow.startedAt = workflow.startedAt || Date.now();
     var submitFn = typeof action.submit === 'function' ? action.submit : function () { return undefined; };
     // Promise.resolve().then(() => submitFn(...)), not Promise.resolve(submitFn(...)): found
     // while building Journey B - tradeCalculatorModal.jsx's own submit() is a plain, synchronous
@@ -279,11 +337,13 @@
     // Deferring the call inside a .then() callback means any throw - sync or async - becomes a
     // normal promise rejection either way, so the existing failure-recovery fallback catches it.
     return Promise.resolve().then(function () { return submitFn(workflow.known, context); }).then(function (result) {
+      recordReceipt(workflow, action, 'success', result);
       if (current !== workflow) return result;
       try { action.resultContext(result); } catch (_) { /* navigation to the result is best-effort */ }
       current = null;
       return result;
     }, function (error) {
+      recordReceipt(workflow, action, 'failed');
       // A failed submit must never lose the values already applied live to the real, still-open
       // form - leave the workflow collecting so a retry (or the user finishing manually) still
       // works, matching the app-wide rule that an AI failure never rolls back applied state.
@@ -307,7 +367,7 @@
       // through; treat "no longer open" as an implicit cancel, never a reason to press on.
       var processRegistry = window.TradeJournalAIProcessRegistry;
       var stillOpen = !processRegistry || typeof processRegistry.query !== 'function' || processRegistry.query(workflow.processId).open;
-      if (!stillOpen) { if (current === workflow) current = null; return; }
+      if (!stillOpen) { recordReceipt(workflow, action, 'cancelled'); if (current === workflow) current = null; return; }
       runSubmit(workflow, action, context).catch(function () {});
     }, SUBMIT_GRACE_MS);
   }

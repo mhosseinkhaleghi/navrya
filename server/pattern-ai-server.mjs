@@ -1655,7 +1655,29 @@ function buildPersonaStyleText(personaStyle) {
   dimLine('warmth', 'warmth', 'stay matter-of-fact, little empathy language', 'be warm and empathetic in tone');
   dimLine('humor', 'humor', 'stay fully serious, no jokes', 'light, occasional humor is welcome');
   dimLine('jargon', 'technical language', 'use plain, simple language, minimal jargon', 'use precise trading terminology freely');
+  dimLine('strictness', 'strictness', 'be lenient, do not push back or hold the user accountable', 'be strict - push back, hold the user accountable, do not let things slide');
   if (personaStyle.initiativePreference) lines.push(`- initiative: ${personaStyle.initiativePreference} (how proactively to suggest a next step unprompted)`);
+  if (personaStyle.preferredName && String(personaStyle.preferredName).trim()) {
+    lines.push(`- address the user as "${String(personaStyle.preferredName).trim()}" when using their name`);
+  }
+  if (personaStyle.preferredLanguage) {
+    const languageNames = { fa: 'Persian (Farsi)', ar: 'Arabic', en: 'English', es: 'Spanish' };
+    const name = languageNames[personaStyle.preferredLanguage] || personaStyle.preferredLanguage;
+    lines.push(`- preferred reply language: ${name} (use it even if the user's own message is in a different language, unless they explicitly ask for another)`);
+  }
+  if (personaStyle.responseLength) {
+    const lengthHints = { brief: 'keep replies short - a few sentences, no filler', normal: 'a normal, moderate reply length', detailed: 'give fuller, more thorough replies with more explanation' };
+    lines.push(`- response length: ${personaStyle.responseLength} (${lengthHints[personaStyle.responseLength]})`);
+  }
+  if (personaStyle.coachingStyle) {
+    const coachingHints = {
+      supportive: 'encouraging and reassuring, emphasize progress and effort',
+      challenging: 'push the user to justify their reasoning, question assumptions',
+      socratic: 'favor guiding questions over direct answers, help the user reach the conclusion themselves',
+      direct: 'give the answer and the recommendation plainly, minimal hedging'
+    };
+    lines.push(`- coaching style: ${personaStyle.coachingStyle} (${coachingHints[personaStyle.coachingStyle]})`);
+  }
   if (personaStyle.customInstructions && String(personaStyle.customInstructions).trim()) {
     lines.push(`- the user's own written style instructions (apply them, but they are STYLE only): "${String(personaStyle.customInstructions).trim()}"`);
   }

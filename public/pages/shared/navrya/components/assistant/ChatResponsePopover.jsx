@@ -253,6 +253,15 @@ export function ChatResponsePopover({
   // unchanged with none of them supplied.
   model, locale, todayLabel = 'Today', yesterdayLabel = 'Yesterday',
   sizeLabels = {}, messageActionLabels = {}, ruleApplied = false, ruleAppliedLabel, onRegenerate,
+  // Voice Command Learning Profile addendum, section 8: a small, non-blocking, dismissible row -
+  // `feedback` is null/undefined (renders nothing, byte-for-byte the prior behavior) or a plain
+  // truthy marker (chatDockView.jsx computes it from ai-action-receipts.js's own
+  // lastEligibleReceipt(), scoped to the current conversation/tab/receipt - see that file's own
+  // comment) meaning "the turn that just landed has a real, trustworthy, not-yet-answered receipt
+  // to give feedback on." Every one of the five handlers is optional; a caller that never passes
+  // any of them (every existing one, before this addendum) sees this whole row never render.
+  feedback = null, feedbackLabels = {},
+  onFeedbackCorrect, onFeedbackWrongAction, onFeedbackWrongTarget, onFeedbackRemember, onFeedbackDismiss,
   width = 680,
   style, ...rest
 }) {
@@ -508,6 +517,26 @@ export function ChatResponsePopover({
             {messageActionLabels.copy && <CopyButton text={lastMessage.content} label={messageActionLabels.copy} copiedLabel={messageActionLabels.copied} />}
             {onRegenerate && lastUserMessage && <MiniButton kind="discard" icon="rotate-cw" onClick={() => onRegenerate(lastUserMessage.content)}>{messageActionLabels.regenerate}</MiniButton>}
           </ActionRow>
+        )}
+
+        {/* Voice Command Learning Profile addendum, section 8: lightweight post-action feedback -
+            never blocks typing/Voice (a plain inline row, no modal), always dismissible, and reuses
+            the exact same MiniButton/ActionRow this popover's own Copy/Regenerate row already uses -
+            no new design system. Every button here fires the SAME underlying command-feedback path
+            a spoken/typed phrase already does (chatDockView.jsx wires each handler to submit() with
+            the identical canonical phrase text) - this row is a convenience trigger, never a second,
+            parallel learning mechanism. */}
+        {!thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && feedback && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', flex: 'none' }}>{feedbackLabels.prompt}</span>
+            <ActionRow>
+              {onFeedbackCorrect && <MiniButton kind="apply" icon="check" onClick={onFeedbackCorrect}>{feedbackLabels.correct}</MiniButton>}
+              {onFeedbackRemember && <MiniButton kind="apply" icon="bookmark" onClick={onFeedbackRemember}>{feedbackLabels.rememberThis}</MiniButton>}
+              {onFeedbackWrongAction && <MiniButton kind="discard" icon="close" onClick={onFeedbackWrongAction}>{feedbackLabels.wrongAction}</MiniButton>}
+              {onFeedbackWrongTarget && <MiniButton kind="discard" icon="close" onClick={onFeedbackWrongTarget}>{feedbackLabels.wrongTarget}</MiniButton>}
+              {onFeedbackDismiss && <MiniButton kind="discard" icon="x" onClick={onFeedbackDismiss}>{feedbackLabels.dismiss}</MiniButton>}
+            </ActionRow>
+          </div>
         )}
 
         {!thinking && !safety && !review && suggestions.length > 0 && (

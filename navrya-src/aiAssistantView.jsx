@@ -152,6 +152,7 @@ const TOP_TABS = [
   { id: 'dashboard', icon: 'dashboard', key: 'aiTabDashboard' },
   { id: 'engines', icon: 'ai-assistant', key: 'aiTabEngines' },
   { id: 'persona', icon: 'sparkle', key: 'aiTabPersona' },
+  { id: 'learned', icon: 'mic', key: 'aiTabLearnedCommands' },
   { id: 'panelbuilder', icon: 'report', key: 'aiTabPanelBuilder' },
   { id: 'costs', icon: 'wallet', key: 'aiTabCosts' },
   { id: 'memory', icon: 'psychology', key: 'aiTabMemory' },
@@ -465,7 +466,11 @@ const PERSONA_DIMENSIONS = [
   { key: 'warmth', nameKey: 'aiPersonaDimWarmth', loKey: 'aiPersonaDimWarmthLo', hiKey: 'aiPersonaDimWarmthHi' },
   { key: 'initiative', nameKey: 'aiPersonaDimInitiative', loKey: 'aiPersonaDimInitiativeLo', hiKey: 'aiPersonaDimInitiativeHi' },
   { key: 'humor', nameKey: 'aiPersonaDimHumor', loKey: 'aiPersonaDimHumorLo', hiKey: 'aiPersonaDimHumorHi' },
-  { key: 'jargon', nameKey: 'aiPersonaDimJargon', loKey: 'aiPersonaDimJargonLo', hiKey: 'aiPersonaDimJargonHi' }
+  { key: 'jargon', nameKey: 'aiPersonaDimJargon', loKey: 'aiPersonaDimJargonLo', hiKey: 'aiPersonaDimJargonHi' },
+  // Voice Command Learning Profile addendum, section 3A/12: a real, distinct communication axis
+  // ("how much does NAVRYA push back / hold me accountable") - not the same thing as
+  // `explicitness` (bluntness of delivery). Same slider mechanism as every dimension above.
+  { key: 'strictness', nameKey: 'aiPersonaDimStrictness', loKey: 'aiPersonaDimStrictnessLo', hiKey: 'aiPersonaDimStrictnessHi' }
 ];
 function bucketInitiative(v) { return v <= 34 ? 'low' : v >= 66 ? 'high' : 'normal'; }
 function initiativeFromBucket(b) { return b === 'low' ? 20 : b === 'high' ? 80 : 50; }
@@ -539,7 +544,7 @@ function PersonaTab({ i18n, onGoTab }) {
   const configured = aiSettings ? !!aiSettings.getKey(aiSettings.activeProvider()) : false;
   const [, forceRerender] = React.useReducer((x) => x + 1, 0);
   const [tone, setTone] = React.useState(() => {
-    const base = store ? store.toneDimensions() : { explicitness: 50, detail: 50, warmth: 50, humor: 50, jargon: 50 };
+    const base = store ? store.toneDimensions() : { explicitness: 50, detail: 50, warmth: 50, humor: 50, jargon: 50, strictness: 50 };
     return Object.assign({ initiative: initiativeFromBucket(store ? store.initiativePreference() : 'normal') }, base);
   });
   const [customText, setCustomText] = React.useState(() => (store ? store.customInstructions() : ''));
@@ -597,12 +602,62 @@ function PersonaTab({ i18n, onGoTab }) {
   // established in accountsView.jsx (submitRef) and messagesView.jsx: read fresh on every render.
   const submitRef = React.useRef(save);
   submitRef.current = save;
+
+  // Voice Command Learning Profile addendum, section 12 (structured Persona instruction ops):
+  // customInstructionOp and customInstructions can arrive in either order within the same turn's
+  // field-application forEach (ai-workflow-engine.js's own applyKnownFields() - see that file's
+  // comment on why it applies fields in extraction order, not a fixed one). Both land here as two
+  // separate applyValue() calls, so each one just records its own piece into a ref and schedules
+  // one combine on a macrotask - the whole synchronous forEach for THIS turn is guaranteed to have
+  // finished (both refs settled) before that macrotask ever runs, the same "let this turn's field
+  // application settle" reasoning ai-workflow-engine.js's own post-forEach setTimeout(0) already
+  // relies on. Consumed and cleared every time, so a lone customInstructionOp with no matching
+  // customInstructions in the SAME turn (a model mistake) resolves as a harmless no-op rather than
+  // lingering to wrongly combine with a later, unrelated turn's text.
+  const customInstructionOpRef = React.useRef(null);
+  const customInstructionDeltaRef = React.useRef(null);
+  const combineScheduledRef = React.useRef(false);
+  function combineCustomInstructions(base, op, delta) {
+    const baseText = String(base || '');
+    const deltaText = delta == null ? '' : String(delta);
+    if (op === 'reset') return '';
+    if (op === 'remove') {
+      const needle = deltaText.trim();
+      if (!needle) return baseText;
+      let idx = baseText.indexOf(needle);
+      if (idx === -1) idx = baseText.toLowerCase().indexOf(needle.toLowerCase());
+      if (idx === -1) return baseText; // not found verbatim - leave untouched rather than guess
+      return (baseText.slice(0, idx) + baseText.slice(idx + needle.length)).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
+    if (op === 'append') {
+      if (!deltaText.trim() || deltaText === 'none') return baseText;
+      return (baseText.trim() ? baseText.trim() + '\n' + deltaText.trim() : deltaText.trim()).slice(0, 600);
+    }
+    // 'replace' (explicit, or the default when customInstructionOp was never sent) - old behavior,
+    // including the 'none' clear sentinel character-app.jsx's normalizeField already produces.
+    return deltaText === 'none' ? '' : deltaText;
+  }
+  function scheduleCustomInstructionsCombine() {
+    if (combineScheduledRef.current) return;
+    combineScheduledRef.current = true;
+    setTimeout(() => {
+      combineScheduledRef.current = false;
+      const op = customInstructionOpRef.current;
+      const delta = customInstructionDeltaRef.current;
+      customInstructionOpRef.current = null;
+      customInstructionDeltaRef.current = null;
+      if (op == null && delta == null) return;
+      setPresetId(null);
+      setCustomText((prevText) => combineCustomInstructions(prevText, op || 'replace', delta));
+    }, 0);
+  }
+
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     registry.register('settings-persona', {
-      allowlist: ['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'initiative', 'customInstructions'],
+      allowlist: ['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness', 'initiative', 'customInstructionOp', 'customInstructions'],
       isOpen: () => mountedRef.current,
       applyValue: (path, value) => {
         if (path === 'preset') {
@@ -612,14 +667,15 @@ function PersonaTab({ i18n, onGoTab }) {
         }
         if (path === 'initiative') { setPresetId(null); setTone((prev) => Object.assign({}, prev, { initiative: initiativeFromBucket(value) })); return; }
         if (PERSONA_DIMENSIONS.some((d) => d.key === path && d.key !== 'initiative')) { updateDim(path, value); return; }
+        if (path === 'customInstructionOp') { customInstructionOpRef.current = value; scheduleCustomInstructionsCombine(); return; }
         if (path === 'customInstructions') {
           // character-app.jsx's own normalizeField sends the literal string 'none' for an
           // explicit clear request - never '' itself, the same convention settings.companion.
           // update's own 'goal' field already established (ai-workflow-engine.js's own
           // applyKnownFields() would otherwise silently treat an empty-string value as absent
           // extraction, a no-op, rather than a genuine clear).
-          setPresetId(null);
-          setCustomText(value === 'none' ? '' : String(value == null ? '' : value));
+          customInstructionDeltaRef.current = value;
+          scheduleCustomInstructionsCombine();
         }
       },
       submit: () => submitRef.current()
@@ -871,6 +927,141 @@ function draftBarHeights(id) {
   let seed = 0;
   for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) % 97;
   return [0, 1, 2, 3, 4, 5].map((i) => 28 + ((seed * (i + 3)) % 60));
+}
+
+// Voice Command Learning Profile addendum, section 10. Kept as its OWN top-level tab, visually
+// separate from PersonaTab (communication/tone preferences) - a learned command is a command/
+// workflow preference, a genuinely different kind of thing from "how NAVRYA talks", per the
+// design's own explicit separation requirement. Reads/writes through learned-commands-store.js
+// (the same generic list-domain wiring instrument-catalog-store.js already established) - no new
+// design system, only Panel/Chip/Toggle/Button/Notice, the exact same components every other tab
+// in this file already uses.
+const TARGET_STRATEGY_LABEL_KEYS = {
+  active_open_trade: 'aiLearnedCommandsStrategyActiveTrade', currently_open_session: 'aiLearnedCommandsStrategyCurrentSession',
+  most_recent_matching_entity: 'aiLearnedCommandsStrategyMostRecent', ask_when_multiple: 'aiLearnedCommandsStrategyAskWhenMultiple'
+};
+
+// One row's own edit form - phrase/action/targetStrategy, the exact three fields section 7 asks
+// for (field-mapping editing is explicitly out of this pass's scope, see the final report).
+function LearnedCommandEditRow({ i18n, cmd, learnableActions, targetStrategies, onSave, onCancel, saving }) {
+  const [phrase, setPhrase] = React.useState(cmd.normalizedPhrase);
+  const [actionId, setActionId] = React.useState(cmd.actionId);
+  const [targetStrategy, setTargetStrategy] = React.useState(cmd.targetStrategy || '');
+  const actionOptions = learnableActions.map((a) => ({ value: a.id, label: window.TradeJournalLearnedCommandsStore.friendlyActionName(a.id) }));
+  const strategyOptions = [{ value: '', label: i18n.t('aiLearnedCommandsStrategyNone') }].concat(
+    (targetStrategies || []).map((s) => ({ value: s, label: i18n.t(TARGET_STRATEGY_LABEL_KEYS[s] || s) }))
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <TextField value={phrase} onChange={setPhrase} placeholder={i18n.t('aiLearnedCommandsPhrasePlaceholder')} />
+      <Select value={actionId} options={actionOptions} onChange={setActionId} placeholder={i18n.t('aiLearnedCommandsActionPlaceholder')} />
+      <Select value={targetStrategy} options={strategyOptions} onChange={setTargetStrategy} placeholder={i18n.t('aiLearnedCommandsStrategyNone')} />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>{i18n.t('aiLearnedCommandsCancel')}</Button>
+        <Button variant="primary" size="sm" onClick={() => onSave({ normalizedPhrase: phrase, actionId: actionId, targetStrategy: targetStrategy || null })} disabled={saving || !phrase.trim() || !actionId}>{i18n.t('aiLearnedCommandsSave')}</Button>
+      </div>
+    </div>
+  );
+}
+
+function LearnedCommandsTab({ i18n }) {
+  const store = window.TradeJournalLearnedCommandsStore;
+  const [, forceRerender] = React.useReducer((x) => x + 1, 0);
+  const [busyId, setBusyId] = React.useState(null);
+  const [editingId, setEditingId] = React.useState(null);
+  const [learnableActions, setLearnableActions] = React.useState([]);
+  const [targetStrategies, setTargetStrategies] = React.useState([]);
+  const [resetting, setResetting] = React.useState(false);
+  React.useEffect(() => {
+    function onChanged() { forceRerender(); }
+    window.addEventListener('tradejournal:replica-learned-commands-changed', onChanged);
+    return () => window.removeEventListener('tradejournal:replica-learned-commands-changed', onChanged);
+  }, []);
+  React.useEffect(() => {
+    let cancelled = false;
+    if (store && typeof store.fetchLearnableActions === 'function') {
+      store.fetchLearnableActions().then((body) => {
+        if (cancelled) return;
+        setLearnableActions((body && body.actions) || []);
+        setTargetStrategies((body && body.targetStrategies) || []);
+      }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [store]);
+  const commands = store ? store.listSync() : [];
+  const hydrated = store ? store.isHydrated() : true;
+
+  async function toggle(id, next) {
+    if (!store || busyId) return;
+    setBusyId(id);
+    try { await store.setEnabled(id, next); } catch (_) { /* the store's own toastSaveFailed() already fired */ } finally { setBusyId(null); }
+  }
+  async function removeOne(id) {
+    if (!store || busyId) return;
+    setBusyId(id);
+    try { await store.remove(id); } catch (_) { /* the store's own toastSaveFailed() already fired */ } finally { setBusyId(null); }
+  }
+  async function saveEdit(id, patch) {
+    if (!store) return;
+    setBusyId(id);
+    try { await store.update(id, patch); setEditingId(null); } catch (_) { /* the store's own toastSaveFailed() already fired */ } finally { setBusyId(null); }
+  }
+  async function resetAll() {
+    if (!store || resetting) return;
+    if (!window.confirm(i18n.t('aiLearnedCommandsResetAllConfirm'))) return;
+    setResetting(true);
+    try { await store.resetAll(); } catch (_) { /* the store's own toastSaveFailed() already fired */ } finally { setResetting(false); }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Panel variant="prestige" ornament padding="18px 20px 20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Icon name="mic" size={18} style={{ color: 'var(--char-accent)' }} />
+            <span style={{ font: 'var(--type-section-label)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase', flex: 1 }}>{i18n.t('aiLearnedCommandsTitle')}</span>
+            {commands.length > 0 && (
+              <Button variant="ghost" size="sm" icon="trash" onClick={resetAll} disabled={resetting}>{i18n.t('aiLearnedCommandsResetAll')}</Button>
+            )}
+          </div>
+          <p style={{ margin: 0, font: 'var(--type-caption)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t('aiLearnedCommandsPrivacyNote')}</p>
+        </div>
+      </Panel>
+      {!hydrated ? (
+        <Notice tone="neutral">{i18n.t('aiLearnedCommandsLoading')}</Notice>
+      ) : commands.length === 0 ? (
+        <Notice tone="neutral" icon="sparkle">{i18n.t('aiLearnedCommandsEmpty')}</Notice>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {commands.map((cmd) => (
+            <Panel key={cmd.id} variant="base" padding="14px 16px">
+              {editingId === cmd.id ? (
+                <LearnedCommandEditRow i18n={i18n} cmd={cmd} learnableActions={learnableActions} targetStrategies={targetStrategies} saving={busyId === cmd.id}
+                  onCancel={() => setEditingId(null)} onSave={(patch) => saveEdit(cmd.id, patch)} />
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Toggle checked={!!cmd.enabled} onChange={() => toggle(cmd.id, !cmd.enabled)} aria-label={i18n.t('aiLearnedCommandsToggleAria')} />
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span dir="auto" style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>&#8220;{cmd.normalizedPhrase}&#8221;</span>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{store.friendlyActionName(cmd.actionId)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <Chip tone={cmd.enabled ? 'success' : 'neutral'}>{i18n.t(cmd.enabled ? 'aiLearnedCommandsEnabled' : 'aiLearnedCommandsDisabled')}</Chip>
+                      <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiLearnedCommandsConfidence', { n: i18n.number(cmd.confidence) })}</span>
+                      <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiLearnedCommandsSuccessCount', { n: i18n.number(cmd.successCount || 0) })}</span>
+                      {cmd.correctionCount > 0 && <span style={{ font: 'var(--type-caption)', color: 'var(--warning)' }}>{i18n.t('aiLearnedCommandsCorrections', { n: i18n.number(cmd.correctionCount) })}</span>}
+                      {cmd.lastUsedAt && <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiLearnedCommandsLastUsed', { date: i18n.date ? i18n.date(cmd.lastUsedAt) : new Date(cmd.lastUsedAt).toLocaleDateString() })}</span>}
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" icon="edit" onClick={() => setEditingId(cmd.id)} disabled={busyId === cmd.id} aria-label={i18n.t('aiLearnedCommandsEditAria')}></Button>
+                  <Button variant="ghost" size="sm" icon="trash" onClick={() => removeOne(cmd.id)} disabled={busyId === cmd.id} aria-label={i18n.t('aiLearnedCommandsDelete')}></Button>
+                </div>
+              )}
+            </Panel>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PanelBuilderTab({ i18n, character }) {
@@ -1998,6 +2189,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
       )}
 
       {topTab === 'persona' && <PersonaTab i18n={i18n} onGoTab={setTopTab} />}
+      {topTab === 'learned' && <LearnedCommandsTab i18n={i18n} />}
       {topTab === 'panelbuilder' && <PanelBuilderTab i18n={i18n} character={character} />}
       {topTab === 'costs' && <CostsTab i18n={i18n} catalog={catalog} usageStore={usageStore} settingsStore={settingsStore} realCostByModel={realCostByModel} />}
       {topTab === 'memory' && <MemoryTab i18n={i18n} memory={memory} memoryRows={memoryRows} onClearBucket={clearMemoryBucket} onExport={exportMemory} />}
