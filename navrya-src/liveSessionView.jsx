@@ -8,6 +8,10 @@ import { Select } from '../public/pages/shared/navrya/components/forms/Select.js
 import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import * as sessionsAdapter from './sessionsAdapter.js';
+import * as workspaceBoard from './analysisWorkspaceBoard.js';
+import * as panelStore from './analysisWorkspacePanelStore.js';
+import { SandboxedPanel, buildSnapshot } from './analysisWorkspacePanelRuntime.jsx';
+import { buildGenerationPrompt, parseGeneration, titleFromPrompt } from './analysisWorkspacePanelBuilder.js';
 import { openLogWizard } from './tradeLogModal.jsx';
 import { SessionAiAnalysisModal } from './sessionAiAnalysisModal.jsx';
 import { SessionAnalysisCard, ImageLightbox } from './sessionAnalysisCard.jsx';
@@ -86,7 +90,21 @@ const SPAN_MIN = 180; // decorative pacing window shared by both pulse rings and
 const copy = {
   fa: {
     back: 'بازگشت', settingsTitle: 'تنظیمات سشن', sessionOpen: 'باز', sessionClosed: 'بسته', instrumentUnassigned: 'نماد مشخص نشده', instrumentUnassignedHint: 'برای مشخص کردن نماد این سشن کلیک کنید',
-    viewTimeline: 'تایم‌لاین', viewChart: 'چارت بازار', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
+    viewTimeline: 'میز تحلیل', viewChart: 'چارت بازار', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
+    wsPanelsCount: '{n} پنل روی میز · {m} در کتابخانه', wsArrange: 'چیدمان میز', wsDone: 'پایان چیدمان', wsAddPanel: 'افزودن پنل', wsReset: 'چیدمان پیش‌فرض',
+    wsLibrary: 'کتابخانه پنل‌ها', wsCloseLibrary: 'بستن کتابخانه', wsLibraryEmpty: 'همهٔ پنل‌ها روی میز هستند.', wsEmptyBoard: 'میز تحلیل خالی است — با «افزودن پنل» شروع کنید.',
+    wsRemove: 'برداشتن از میز', wsUp: 'بالاتر', wsDown: 'پایین‌تر', wsToRail: 'انتقال به ستون باریک', wsToMain: 'انتقال به ستون پهن',
+    wsCatEntryTitle: 'ورودی انتخاب‌شده', wsCatCockpitDesc: 'فیلترها، نوار ورودی‌ها و خط‌کش زمانی سشن.', wsCatEntryDesc: 'چارت، یادداشت و سناریوهای ورودی انتخاب‌شده.',
+    wsCatDashboardDesc: 'الگوها، سناریوها، پوزیشن‌ها و لاگ این سشن.', wsCatPrevDesc: 'خلاصهٔ سشن قبلیِ همین نماد.', wsCatSimilarDesc: 'سشن‌های گذشته با امضای مشابه.',
+    wsBuildWithAi: 'ساخت پنل با پرامپت', wsEditPanel: 'ویرایش این پنل با پرامپت', wsPanelSourceMissing: 'کد این پنل پیدا نشد. با ویرایش، دوباره بسازیدش.',
+    wsBuilderTitle: 'ساخت پنل با پرامپت', wsBuilderEditTitle: 'ویرایش پنل', wsBuilderEyebrow: 'میز تحلیل',
+    wsBuilderIntro: 'بنویسید چه پنلی می‌خواهید. هوش مصنوعی کد آن را می‌نویسد و پنل داخل یک محیط ایزوله روی میز شما اجرا می‌شود.',
+    wsBuilderLimits: 'پنل فقط به داده‌های همین سشن دسترسی دارد: نماد و تایم‌فریم، ورودی‌ها، سناریوها و پوزیشن‌های باز — و فقط برای خواندن. به اینترنت، قیمت زنده، کندل خام و خبر دسترسی ندارد؛ اگر چیزی بخواهید که این داده‌ها را لازم دارد، به‌جای ساختن نسخهٔ قلابی به شما می‌گوید در دسترس نیست.',
+    wsBuilderPlaceholder: 'مثلاً: جدولی از سناریوهای این سشن با درصد احتمال و وضعیت تکمیل الگو، مرتب‌شده از بیشترین احتمال.',
+    wsBuilderGenerate: 'بساز', wsBuilderBusy: 'در حال ساخت…', wsBuilderCancel: 'انصراف',
+    wsBuilderNoAi: 'دستیار هوش مصنوعی در دسترس نیست.', wsBuilderEmpty: 'خروجی قابل‌استفاده‌ای برنگشت. پرامپت را دقیق‌تر بنویسید.',
+    wsBuilderFailed: 'ساخت پنل ناموفق بود. دوباره تلاش کنید.', wsBuilderUnavailable: 'این پنل با داده‌های موجود ساختنی نیست.',
+    wsBuilderTooLarge: 'کد تولیدشده {kb} کیلوبایت است و از سقف {limit} کیلوبایت عبور می‌کند. پنل ساده‌تری بخواهید.',
     pulseEntries: 'ورودی‌ها', pulseEntriesUnit: 'چارت و حرکت', pulseScenarios: 'سناریوها', pulseScenariosUnit: 'ثبت‌شده',
     pulsePatterns: 'الگوها', pulsePatternsUnit: 'تگ‌شده', pulsePositions: 'پوزیشن‌ها', pulsePositionsUnit: 'باز',
     fateButton: 'سرنوشت سشن', focusHigh: 'تمرکز بالا', focusMedium: 'تمرکز متوسط', focusLow: 'تمرکز پایین',
@@ -156,7 +174,21 @@ const copy = {
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
-    viewTimeline: 'الخط الزمني', viewChart: 'مخطط السوق', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
+    viewTimeline: 'مساحة التحليل', viewChart: 'مخطط السوق', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
+    wsPanelsCount: '{n} لوحات على الطاولة · {m} في المكتبة', wsArrange: 'ترتيب الطاولة', wsDone: 'إنهاء الترتيب', wsAddPanel: 'إضافة لوحة', wsReset: 'التخطيط الافتراضي',
+    wsLibrary: 'مكتبة اللوحات', wsCloseLibrary: 'إغلاق المكتبة', wsLibraryEmpty: 'كل اللوحات موجودة على الطاولة.', wsEmptyBoard: 'مساحة التحليل فارغة — ابدأ بـ«إضافة لوحة».',
+    wsRemove: 'إزالة من الطاولة', wsUp: 'لأعلى', wsDown: 'لأسفل', wsToRail: 'نقل إلى العمود الضيق', wsToMain: 'نقل إلى العمود العريض',
+    wsCatEntryTitle: 'الإدخال المحدد', wsCatCockpitDesc: 'عوامل التصفية وشريط الإدخالات ومسطرة زمن الجلسة.', wsCatEntryDesc: 'مخطط الإدخال المحدد وملاحظته وسيناريوهاته.',
+    wsCatDashboardDesc: 'أنماط هذه الجلسة وسيناريوهاتها وصفقاتها وسجلها.', wsCatPrevDesc: 'ملخص الجلسة السابقة لنفس الأداة.', wsCatSimilarDesc: 'جلسات سابقة ببصمة مشابهة.',
+    wsBuildWithAi: 'إنشاء لوحة بالوصف', wsEditPanel: 'تعديل هذه اللوحة بالوصف', wsPanelSourceMissing: 'لم يُعثر على كود هذه اللوحة. أعد إنشاءها من التعديل.',
+    wsBuilderTitle: 'إنشاء لوحة بالوصف', wsBuilderEditTitle: 'تعديل اللوحة', wsBuilderEyebrow: 'مساحة التحليل',
+    wsBuilderIntro: 'اكتب اللوحة التي تريدها. سيكتب الذكاء الاصطناعي كودها وتُشغَّل داخل بيئة معزولة على طاولتك.',
+    wsBuilderLimits: 'تصل اللوحة إلى بيانات هذه الجلسة فقط: الأداة والإطار الزمني والإدخالات والسيناريوهات والصفقات المفتوحة — للقراءة فقط. لا إنترنت ولا أسعار مباشرة ولا شموع خام ولا أخبار؛ وإذا طلبت شيئاً يحتاجها فسيخبرك أنه غير متاح بدل تزييفه.',
+    wsBuilderPlaceholder: 'مثال: جدول بسيناريوهات هذه الجلسة مع نسبة الاحتمال وحالة اكتمال النمط، مرتباً تنازلياً.',
+    wsBuilderGenerate: 'إنشاء', wsBuilderBusy: 'جارٍ الإنشاء…', wsBuilderCancel: 'إلغاء',
+    wsBuilderNoAi: 'مساعد الذكاء الاصطناعي غير متاح.', wsBuilderEmpty: 'لم تعد نتيجة قابلة للاستخدام. اكتب الطلب بتفصيل أدق.',
+    wsBuilderFailed: 'فشل إنشاء اللوحة. حاول مرة أخرى.', wsBuilderUnavailable: 'لا يمكن بناء هذه اللوحة بالبيانات المتاحة.',
+    wsBuilderTooLarge: 'الكود الناتج {kb} كيلوبايت ويتجاوز الحد {limit} كيلوبايت. اطلب لوحة أبسط.',
     pulseEntries: 'الإدخالات', pulseEntriesUnit: 'رسم وحركة', pulseScenarios: 'السيناريوهات', pulseScenariosUnit: 'مسجّلة',
     pulsePatterns: 'الأنماط', pulsePatternsUnit: 'موسومة', pulsePositions: 'الصفقات', pulsePositionsUnit: 'مفتوحة',
     fateButton: 'مصير الجلسة', focusHigh: 'تركيز عالٍ', focusMedium: 'تركيز متوسط', focusLow: 'تركيز منخفض',
@@ -226,7 +258,21 @@ const copy = {
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
-    viewTimeline: 'Timeline', viewChart: 'Market chart', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
+    viewTimeline: 'Analysis workspace', viewChart: 'Market chart', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
+    wsPanelsCount: '{n} panels on the desk · {m} in the library', wsArrange: 'Arrange desk', wsDone: 'Done arranging', wsAddPanel: 'Add panel', wsReset: 'Default layout',
+    wsLibrary: 'Panel library', wsCloseLibrary: 'Close library', wsLibraryEmpty: 'Every panel is already on the desk.', wsEmptyBoard: 'The analysis workspace is empty — start with “Add panel”.',
+    wsRemove: 'Take off the desk', wsUp: 'Move up', wsDown: 'Move down', wsToRail: 'Move to the narrow column', wsToMain: 'Move to the wide column',
+    wsCatEntryTitle: 'Selected entry', wsCatCockpitDesc: 'Filters, the entry rail and the session time ruler.', wsCatEntryDesc: 'Chart, note and scenarios for the selected entry.',
+    wsCatDashboardDesc: 'Patterns, scenarios, positions and log for this session.', wsCatPrevDesc: 'Summary of the previous session on this instrument.', wsCatSimilarDesc: 'Past sessions with a similar signature.',
+    wsBuildWithAi: 'Build a panel from a prompt', wsEditPanel: 'Revise this panel with a prompt', wsPanelSourceMissing: 'This panel’s code was not found. Revise it to rebuild it.',
+    wsBuilderTitle: 'Build a panel from a prompt', wsBuilderEditTitle: 'Revise panel', wsBuilderEyebrow: 'Analysis workspace',
+    wsBuilderIntro: 'Describe the panel you want. The AI writes its code and the panel runs inside an isolated sandbox on your desk.',
+    wsBuilderLimits: 'A panel can only read this session: instrument and timeframe, entries, scenarios and open positions — read-only. It has no internet, no live prices, no raw candles and no news; if you ask for something that needs those, it tells you they are unavailable instead of faking them.',
+    wsBuilderPlaceholder: 'e.g. a table of this session’s scenarios with probability and pattern completion, sorted by highest probability.',
+    wsBuilderGenerate: 'Build', wsBuilderBusy: 'Building…', wsBuilderCancel: 'Cancel',
+    wsBuilderNoAi: 'The AI assistant is not available.', wsBuilderEmpty: 'Nothing usable came back. Try a more specific prompt.',
+    wsBuilderFailed: 'Building the panel failed. Try again.', wsBuilderUnavailable: 'This panel cannot be built from the available data.',
+    wsBuilderTooLarge: 'The generated code is {kb} KB, over the {limit} KB limit. Ask for a simpler panel.',
     pulseEntries: 'Entries', pulseEntriesUnit: 'chart & move', pulseScenarios: 'Scenarios', pulseScenariosUnit: 'logged',
     pulsePatterns: 'Patterns', pulsePatternsUnit: 'tagged', pulsePositions: 'Positions', pulsePositionsUnit: 'open',
     fateButton: 'Session fate', focusHigh: 'High focus', focusMedium: 'Medium focus', focusLow: 'Low focus',
@@ -296,7 +342,21 @@ const copy = {
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
-    viewTimeline: 'Línea temporal', viewChart: 'Gráfico de mercado', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
+    viewTimeline: 'Espacio de análisis', viewChart: 'Gráfico de mercado', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
+    wsPanelsCount: '{n} paneles en la mesa · {m} en la biblioteca', wsArrange: 'Organizar mesa', wsDone: 'Terminar de organizar', wsAddPanel: 'Añadir panel', wsReset: 'Diseño por defecto',
+    wsLibrary: 'Biblioteca de paneles', wsCloseLibrary: 'Cerrar biblioteca', wsLibraryEmpty: 'Todos los paneles ya están en la mesa.', wsEmptyBoard: 'El espacio de análisis está vacío: empieza con «Añadir panel».',
+    wsRemove: 'Quitar de la mesa', wsUp: 'Subir', wsDown: 'Bajar', wsToRail: 'Mover a la columna estrecha', wsToMain: 'Mover a la columna ancha',
+    wsCatEntryTitle: 'Entrada seleccionada', wsCatCockpitDesc: 'Filtros, la fila de entradas y la regla de tiempo.', wsCatEntryDesc: 'Gráfico, nota y escenarios de la entrada seleccionada.',
+    wsCatDashboardDesc: 'Patrones, escenarios, posiciones y registro de la sesión.', wsCatPrevDesc: 'Resumen de la sesión anterior con el mismo instrumento.', wsCatSimilarDesc: 'Sesiones pasadas con firma similar.',
+    wsBuildWithAi: 'Crear un panel con una instrucción', wsEditPanel: 'Revisar este panel con una instrucción', wsPanelSourceMissing: 'No se encontró el código de este panel. Revísalo para reconstruirlo.',
+    wsBuilderTitle: 'Crear un panel con una instrucción', wsBuilderEditTitle: 'Revisar panel', wsBuilderEyebrow: 'Espacio de análisis',
+    wsBuilderIntro: 'Describe el panel que quieres. La IA escribe su código y el panel se ejecuta en un entorno aislado en tu mesa.',
+    wsBuilderLimits: 'Un panel solo puede leer esta sesión: instrumento y temporalidad, entradas, escenarios y posiciones abiertas — solo lectura. No tiene internet, ni precios en vivo, ni velas en bruto, ni noticias; si pides algo que los necesita, te dirá que no están disponibles en vez de falsearlos.',
+    wsBuilderPlaceholder: 'p. ej. una tabla de los escenarios de esta sesión con probabilidad y avance del patrón, ordenada de mayor a menor.',
+    wsBuilderGenerate: 'Crear', wsBuilderBusy: 'Creando…', wsBuilderCancel: 'Cancelar',
+    wsBuilderNoAi: 'El asistente de IA no está disponible.', wsBuilderEmpty: 'No volvió nada utilizable. Prueba con una instrucción más concreta.',
+    wsBuilderFailed: 'No se pudo crear el panel. Inténtalo de nuevo.', wsBuilderUnavailable: 'Este panel no se puede crear con los datos disponibles.',
+    wsBuilderTooLarge: 'El código generado ocupa {kb} KB y supera el límite de {limit} KB. Pide un panel más simple.',
     pulseEntries: 'Entradas', pulseEntriesUnit: 'gráfico y movimiento', pulseScenarios: 'Escenarios', pulseScenariosUnit: 'registrados',
     pulsePatterns: 'Patrones', pulsePatternsUnit: 'etiquetados', pulsePositions: 'Posiciones', pulsePositionsUnit: 'abiertas',
     fateButton: 'Destino de la sesión', focusHigh: 'Enfoque alto', focusMedium: 'Enfoque medio', focusLow: 'Enfoque bajo',
@@ -2487,6 +2547,495 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
   );
 }
 
+// ============================================================================
+// Analysis Workspace (the view formerly labelled "Timeline") - a customizable board over the
+// exact same panels this screen has always rendered, following dashboardView.jsx's own board
+// pattern via the sibling analysisWorkspaceBoard.js (see that file's header for the one
+// deliberate difference: region instead of span, because this surface is a sticky two-column
+// cockpit, not a flow grid).
+//
+// The panels below are NOT new components with new behaviour - EntryDetailPanel/DashboardPanel/
+// PrevSummaryPanel/SimilarSessionsPanel are the pre-existing ones, untouched, and CockpitPanel is
+// the register markup lifted verbatim out of LiveSessionView's own render. What changed is where
+// their props come from: one shared workspace context (the single source of truth for the live
+// session state - selected entry, filters, open scenarios, every mutator) instead of prop-drilling
+// through a hardcoded two-column layout. Each slot below reads that context and hands the real
+// component the exact props it already expected, so no panel can drift from the session state.
+// ============================================================================
+const AnalysisWorkspaceContext = React.createContext(null);
+function useWorkspace() { return React.useContext(AnalysisWorkspaceContext); }
+
+// Panel catalog: title/icon/description for the library and the arrange-mode chrome. Titles reuse
+// the panels' own existing header keys (cockpitTitle/dashboardTitle/prevSummaryTitle/similarTitle)
+// so the library never invents a second name for a panel the trader already knows.
+function workspaceCatalog(lang) {
+  return {
+    cockpit: { title: tr(lang, 'cockpitTitle'), icon: 'Film', desc: tr(lang, 'wsCatCockpitDesc') },
+    entry: { title: tr(lang, 'wsCatEntryTitle'), icon: 'CandlestickChart', desc: tr(lang, 'wsCatEntryDesc') },
+    dashboard: { title: tr(lang, 'dashboardTitle'), icon: 'LayoutGrid', desc: tr(lang, 'wsCatDashboardDesc') },
+    prevSummary: { title: tr(lang, 'prevSummaryTitle'), icon: 'Flag', desc: tr(lang, 'wsCatPrevDesc') },
+    similar: { title: tr(lang, 'similarTitle'), icon: 'Copy', desc: tr(lang, 'wsCatSimilarDesc') }
+  };
+}
+
+// The chart/timeline register - filters, search, timeframe filter, the entry rail and the session
+// time ruler. Lifted out of LiveSessionView's render unchanged; every value it uses now comes from
+// the workspace context rather than the enclosing closure.
+function CockpitPanel() {
+  const {
+    session, lang, rtl, entries, list, indexById, selId, imageUrls,
+    filter, setFilter, q, setQ, tfFilter, setTfFilter, presentTimeframes,
+    selectEntry, stepEntry, railRef, withPreSessionCheckIn, addEntry, setChartModalOpen
+  } = useWorkspace();
+  return (
+    <div style={{ position: 'sticky', top: 64, zIndex: 30, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(6,12,12,.96)', backdropFilter: 'blur(8px)', boxShadow: 'var(--shadow-panel)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border-hairline)' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--char-accent)', flex: 'none' }}><Icon name="Film" size={18} /><span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '.02em' }}>{tr(lang, 'cockpitTitle')}</span></span>
+        <span style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', flex: 'none' }}>
+          {[['all', tr(lang, 'filterAll'), entries.length], ['chart', tr(lang, 'filterChart'), entries.filter((e) => e.type === 'chart').length], ['move', tr(lang, 'filterMove'), entries.filter((e) => e.type === 'movement').length]].map(([id, label, n]) => (
+            <button key={id} type="button" onClick={() => setFilter(id)} style={{ height: 28, padding: '0 11px', borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 11, border: '1px solid ' + (filter === id ? 'var(--char-accent)' : 'transparent'), background: filter === id ? 'var(--char-active-surface)' : 'transparent', color: filter === id ? 'var(--char-accent)' : 'var(--text-dim)' }}>{label} {n}</button>
+          ))}
+        </span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-dim)', flex: 'none', width: 190 }}>
+          <Icon name="search" size={14} />
+          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr(lang, 'searchPlaceholder')} style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'transparent', color: 'var(--text-primary)', font: 'inherit', fontSize: 11 }} />
+        </label>
+        {!!presentTimeframes.length && (
+          <select value={tfFilter} onChange={(e) => setTfFilter(e.target.value)} title={tr(lang, 'timeframeFilterLabel')} style={{ height: 30, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: tfFilter === 'all' ? 'var(--text-dim)' : 'var(--char-accent)', font: 'var(--type-body)', fontSize: 11, flex: 'none' }}>
+            <option value="all">{tr(lang, 'allTimeframesLabel')}</option>
+            {presentTimeframes.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        )}
+        <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+          <Button variant="secondary" size="sm" icon="Activity" onClick={() => withPreSessionCheckIn(() => addEntry('movement'))}>{tr(lang, 'addMove')}</Button>
+          <Button variant="primary" size="sm" icon="ImagePlus" onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))}>{tr(lang, 'addChart')}</Button>
+        </span>
+      </div>
+
+      <div dir="ltr" style={{ display: 'flex', alignItems: 'stretch', gap: 8, padding: '10px 10px 4px' }}>
+        <button type="button" onClick={() => stepEntry(-1)} title={tr(lang, 'prevEntry')} style={{ display: 'grid', placeItems: 'center', width: 34, flex: 'none', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-muted)' }}><Icon name="ChevronLeft" size={18} /></button>
+        <div ref={railRef} className="navrya-scroll" style={{ flex: 1, minWidth: 0, display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '3px 2px 8px', scrollBehavior: 'smooth' }}>
+          {list.map((e) => (
+            <EntryCard key={e.id} entry={e} index={indexById[e.id]} selected={e.id === selId} kindMeta={kindInfo(lang)[e.type] || kindInfo(lang).chart} lang={lang} imageUrl={imageUrls[e.id]} onClick={() => selectEntry(e.id)} />
+          ))}
+          <button type="button" onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))} style={{ flex: 'none', width: 112, borderRadius: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'transparent', color: 'var(--text-dim)', font: 'var(--type-body)', fontSize: 11, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Icon name="plus" size={18} />{tr(lang, 'newEntryTile')}
+          </button>
+        </div>
+        <button type="button" onClick={() => stepEntry(1)} title={tr(lang, 'nextEntry')} style={{ display: 'grid', placeItems: 'center', width: 34, flex: 'none', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-muted)' }}><Icon name="ChevronRight" size={18} /></button>
+      </div>
+
+      <div dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 12px 10px' }}>
+        <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 'none', width: 64 }}>{tr(lang, 'startShort')} {session.startedAt ? entryTimeLabel({ createdAt: session.startedAt }, lang) : ''}</span>
+        <span style={{ position: 'relative', flex: 1, minWidth: 0, height: 26, display: 'block' }}>
+          <span style={{ position: 'absolute', left: 0, right: 0, top: 12, height: 2, borderRadius: 2, background: 'rgba(244,234,215,.1)' }}></span>
+          <span style={{ position: 'absolute', left: 0, top: 12, height: 2, background: 'var(--char-accent)', width: Math.min(100, (minutesFromStart(session, Date.now()) / SPAN_MIN) * 100) + '%' }}></span>
+          {entries.map((e) => {
+            const pos = Math.min(100, (minutesFromStart(session, new Date(e.createdAt).getTime()) / SPAN_MIN) * 100);
+            const kindMeta = kindInfo(lang)[e.type] || kindInfo(lang).chart;
+            const isSel = e.id === selId;
+            return isSel ? (
+              <button key={e.id} type="button" onClick={() => selectEntry(e.id)} title={kindMeta.label + ' · ' + entryTimeLabel(e, lang)} style={{ position: 'absolute', top: 2, width: 22, height: 22, marginLeft: -11, borderRadius: '50%', cursor: 'pointer', border: '2px solid var(--char-accent)', background: 'var(--ink-950)', boxShadow: 'var(--glow-active)', display: 'grid', placeItems: 'center', left: pos + '%' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--char-accent)', display: 'block' }}></span>
+              </button>
+            ) : (
+              <button key={e.id} type="button" onClick={() => selectEntry(e.id)} title={kindMeta.label + ' · ' + entryTimeLabel(e, lang)} style={{ position: 'absolute', top: 7, width: 12, height: 12, marginLeft: -6, borderRadius: '50%', cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'var(--ink-900)', padding: 0, left: pos + '%' }}></button>
+            );
+          })}
+        </span>
+        <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 'none', width: 56, textAlign: 'right' }}>{tr(lang, 'endShort')} {session.startedAt ? entryTimeLabel({ createdAt: Number(session.startedAt) + SPAN_MIN * 60000 }, lang) : ''}</span>
+        <span style={{ width: 1, height: 18, background: 'var(--border-hairline)', flex: 'none' }}></span>
+        <span dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+          <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--text-primary)' }}>
+            {list.length ? tr(lang, 'counterEntryWord') + ' ' + (list.findIndex((e) => e.id === selId) < 0 ? 1 : list.findIndex((e) => e.id === selId) + 1) + ' ' + tr(lang, 'counterOf') + ' ' + list.length : tr(lang, 'counterNone')}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'keyboardHint')}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// The selected entry's own detail panel, or the same "nothing matches this filter" empty state
+// this screen has always shown in its place.
+function EntryPanelSlot() {
+  const {
+    session, lang, selEntry, indexById, imageUrls, openScenarios, character,
+    updateNote, deleteEntry, attachImage, setSessionAnalysisEntry, setOpenScenarios,
+    updateScenario, deleteScenario, toggleStage, setScenarioSide, addScenario,
+    setEvaluatingScenario, addAiScenario, runVisualizeAiScenario, runVisualizeAiAnalysis,
+    setFilter, setQ
+  } = useWorkspace();
+  if (!selEntry) {
+    return (
+      <Panel variant="base" ornament padding="48px">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <span style={{ color: 'rgba(244,234,215,.18)' }}><Icon name="Film" size={30} /></span>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{tr(lang, 'filteredEmptyText')}</span>
+          <Button variant="secondary" size="sm" onClick={() => { setFilter('all'); setQ(''); }}>{tr(lang, 'clearFilter')}</Button>
+        </div>
+      </Panel>
+    );
+  }
+  return (
+    <EntryDetailPanel
+      key={selEntry.id}
+      session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
+      openScenarios={openScenarios}
+      onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage}
+      onOpenSessionAnalysis={() => setSessionAnalysisEntry(selEntry)}
+      onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
+      onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
+      onAddScenario={addScenario} onScenarioEvaluate={(entry, scenario) => setEvaluatingScenario({ entry, scenario })} character={character}
+      onAddAiScenario={addAiScenario} onVisualizeAiScenario={runVisualizeAiScenario} onVisualizeAiAnalysis={runVisualizeAiAnalysis}
+      scenarioTitleFor={(scenarioId) => { const found = flatScenarios(session).find((x) => x.scenario.id === scenarioId); return found ? found.scenario.title : ''; }}
+    />
+  );
+}
+
+function SessionDashboardSlot() {
+  const { session, lang, character, dash, setDash, indexById, selectEntry, toggleStage, updateScenario, openPositions, rerender } = useWorkspace();
+  return (
+    <DashboardPanel
+      session={session} lang={lang} dash={dash} onSetDash={setDash} indexById={indexById} onSelectEntry={selectEntry}
+      onToggleStage={toggleStage} onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')}
+      openPositions={openPositions} onLogTrade={() => openLogWizard({ accountId: session.accountId || null, instrument: session.instrument || null, source: { character, sessionId: session.id } }, { onSave: rerender })}
+    />
+  );
+}
+
+function PrevSummarySlot() {
+  const { session, lang } = useWorkspace();
+  return <PrevSummaryPanel session={session} lang={lang} />;
+}
+
+function SimilarSessionsSlot() {
+  const { session, character, lang } = useWorkspace();
+  return <SimilarSessionsPanel session={session} character={character} lang={lang} />;
+}
+
+// One AI-authored panel on the desk. The stored source is read once per panel/version and handed
+// to the sandbox; the live session data reaches it only through the read-only postMessage bridge
+// (see analysisWorkspacePanelRuntime.jsx for the full sandbox model). `pulse` changes only when
+// something the panel could actually care about changed, so the bridge pushes an update then
+// rather than once per second.
+function CustomPanelSlot({ id, meta, character, snapshotRef }) {
+  const { lang, entries, selId } = useWorkspace();
+  const [record, setRecord] = React.useState(() => panelStore.loadPanel(character, id));
+  React.useEffect(() => { setRecord(panelStore.loadPanel(character, id)); }, [character, id, meta && meta.version]);
+  const pulse = String(entries.length) + ':' + String(selId) + ':' + String((snapshotRef.current && snapshotRef.current.scenarios || []).length);
+  if (!record) {
+    return (
+      <Panel variant="base" padding="18px">
+        <span dir="auto" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tr(lang, 'wsPanelSourceMissing')}</span>
+      </Panel>
+    );
+  }
+  return <SandboxedPanel source={record.source} snapshotRef={snapshotRef} title={record.title || (meta && meta.title) || ''} lang={lang} pulse={pulse} />;
+}
+
+function workspacePanelBody(id) {
+  switch (id) {
+    case 'cockpit': return <CockpitPanel />;
+    case 'entry': return <EntryPanelSlot />;
+    case 'dashboard': return <SessionDashboardSlot />;
+    case 'prevSummary': return <PrevSummarySlot />;
+    case 'similar': return <SimilarSessionsSlot />;
+    default: return null;
+  }
+}
+
+// Prompt -> real, sandboxed widget source. Deliberately NOT the Dashboard panel-builder's
+// "draft a sentence, install a note card" shape: on this surface a panel that looks functional but
+// holds no real data would be actively misleading mid-session, so either a real panel is installed
+// or the trader is told plainly why it cannot be built (parseGeneration's 'unavailable' branch).
+function PanelBuilderModal({ lang, character, existing, onClose, onInstalled }) {
+  const [prompt, setPrompt] = React.useState(existing ? existing.prompt || '' : '');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [unavailable, setUnavailable] = React.useState('');
+
+  async function generate() {
+    const text = prompt.trim();
+    if (!text || busy) return;
+    setError(''); setUnavailable(''); setBusy(true);
+    try {
+      const core = window.TradeJournalChatDockCore;
+      if (!core) { setError(tr(lang, 'wsBuilderNoAi')); return; }
+      const result = await core.sendChat({
+        text: buildGenerationPrompt({ prompt: text, lang, previousSource: existing ? existing.source : null })
+      });
+      const parsed = parseGeneration(result && result.reply);
+      if (!parsed.ok) {
+        if (parsed.reason === 'unavailable') setUnavailable(parsed.message || tr(lang, 'wsBuilderUnavailable'));
+        else setError(tr(lang, 'wsBuilderEmpty'));
+        return;
+      }
+      const id = existing ? existing.id : panelStore.newPanelId();
+      const saved = panelStore.savePanel(character, {
+        id, title: existing ? existing.title : titleFromPrompt(text), prompt: text, source: parsed.source,
+        version: existing ? (existing.version || 1) + 1 : 1, createdAt: existing ? existing.createdAt : null
+      });
+      if (!saved.ok) {
+        setError(tr(lang, 'wsBuilderTooLarge', { kb: Math.ceil(saved.bytes / 1024), limit: Math.floor(saved.limit / 1024) }));
+        return;
+      }
+      onInstalled(saved.record);
+    } catch (_) {
+      setError(tr(lang, 'wsBuilderFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <SessionModalShell
+      title={tr(lang, existing ? 'wsBuilderEditTitle' : 'wsBuilderTitle')} icon="sparkle" eyebrow={tr(lang, 'wsBuilderEyebrow')}
+      onClose={onClose} width={620}
+      footer={(
+        <React.Fragment>
+          <Button variant="ghost" onClick={onClose}>{tr(lang, 'wsBuilderCancel')}</Button>
+          <Button variant="primary" icon={busy ? 'LoaderCircle' : 'sparkle'} disabled={!prompt.trim() || busy} onClick={generate}>
+            {tr(lang, busy ? 'wsBuilderBusy' : 'wsBuilderGenerate')}
+          </Button>
+        </React.Fragment>
+      )}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p dir="auto" style={{ margin: 0, fontSize: 11, lineHeight: 1.8, color: 'var(--text-muted)' }}>{tr(lang, 'wsBuilderIntro')}</p>
+        <div dir="auto" style={{ display: 'flex', gap: 8, padding: '9px 11px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.5)' }}>
+          <span style={{ color: 'var(--gold-warm)', flex: 'none' }}><Icon name="Info" size={14} /></span>
+          <span style={{ fontSize: 10.5, lineHeight: 1.75, color: 'var(--text-dim)' }}>{tr(lang, 'wsBuilderLimits')}</span>
+        </div>
+        <textarea
+          rows={5} dir="auto" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={tr(lang, 'wsBuilderPlaceholder')}
+          style={{ boxSizing: 'border-box', width: '100%', resize: 'vertical', padding: 12, borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', fontSize: 12, lineHeight: 1.8, outline: 'none' }}
+        />
+        {!!unavailable && (
+          <div dir="auto" style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(212,175,55,.08)' }}>
+            <span style={{ color: 'var(--gold-warm)', flex: 'none' }}><Icon name="TriangleAlert" size={15} /></span>
+            <span style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--text-primary)' }}>{unavailable}</span>
+          </div>
+        )}
+        {!!error && <span dir="auto" style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</span>}
+      </div>
+    </SessionModalShell>
+  );
+}
+
+// Arrange-mode chrome around one panel: move within its column, move to the other column, take it
+// off the desk. Only rendered while arranging, so a normal session sees the exact same panels,
+// with the exact same spacing, it always has.
+function WorkspacePanelFrame({ id, meta, lang, region, index, count, onMove, onRegion, onRemove, onEdit, children }) {
+  const cat = meta || workspaceCatalog(lang)[id];
+  const btn = { width: 28, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' };
+  return (
+    <div style={{ position: 'relative', borderRadius: 12, outline: '1px dashed var(--char-accent)', outlineOffset: 3 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: '10px 10px 0 0', background: 'var(--char-active-surface)', borderBottom: '1px solid var(--border-hairline)' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--char-accent)', flex: 1, minWidth: 0 }}>
+          <Icon name={cat ? cat.icon : 'LayoutGrid'} size={14} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat ? cat.title : id}</span>
+        </span>
+        <button type="button" onClick={() => onMove(id, -1)} disabled={index === 0} title={tr(lang, 'wsUp')} aria-label={tr(lang, 'wsUp')} style={{ ...btn, opacity: index === 0 ? .4 : 1 }}><Icon name="ChevronUp" size={14} /></button>
+        <button type="button" onClick={() => onMove(id, 1)} disabled={index >= count - 1} title={tr(lang, 'wsDown')} aria-label={tr(lang, 'wsDown')} style={{ ...btn, opacity: index >= count - 1 ? .4 : 1 }}><Icon name="ChevronDown" size={14} /></button>
+        <button type="button" onClick={() => onRegion(id)} title={tr(lang, region === 'rail' ? 'wsToMain' : 'wsToRail')} aria-label={tr(lang, region === 'rail' ? 'wsToMain' : 'wsToRail')} style={btn}><Icon name="ArrowLeftRight" size={14} /></button>
+        {onEdit && <button type="button" onClick={onEdit} title={tr(lang, 'wsEditPanel')} aria-label={tr(lang, 'wsEditPanel')} style={btn}><Icon name="edit" size={14} /></button>}
+        <button type="button" onClick={() => onRemove(id)} title={tr(lang, 'wsRemove')} aria-label={tr(lang, 'wsRemove')} style={btn}><Icon name="trash" size={14} /></button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// The board itself. Reads/writes through analysisWorkspaceBoard.js (the Dashboard's own
+// persistence contract), renders the two real columns, and keeps the rail out of the layout
+// entirely when nothing is in it - so a trader who moves everything into the wide column gets a
+// genuinely full-width desk, not a 326px hole.
+function AnalysisWorkspaceBoard({ character, lang, rtl }) {
+  const ws = useWorkspace();
+  const [state, setState] = React.useState(() => workspaceBoard.loadBoard(character));
+  const [editing, setEditing] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [building, setBuilding] = React.useState(null); // null | {} (new) | stored record (revision)
+  React.useEffect(() => { workspaceBoard.saveBoard(character, state); }, [character, state]);
+
+  // The read-only snapshot the sandbox bridge answers from. A ref, not state, so the session's own
+  // 1s re-render never reloads a panel's iframe (which would throw away whatever it had drawn) -
+  // the panels always read the CURRENT session anyway, because the ref is refreshed after every
+  // render of this component.
+  const snapshotRef = React.useRef(buildSnapshot(ws));
+  React.useEffect(() => { snapshotRef.current = buildSnapshot(ws); });
+
+  // Real-money subscription rollout: the AI panel builder is a paid-plan feature. Same two
+  // endpoints (and the same fail-CLOSED default) aiAssistantView.jsx already uses for its own
+  // gates - never a third, parallel entitlements fetch.
+  const [canBuild, setCanBuild] = React.useState(false);
+  React.useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch('/api/sync/subscriptions').then((r) => r.json()),
+      fetch('/api/sync/subscriptions/catalog').then((r) => r.json())
+    ]).then(([sub, cat]) => {
+      const plan = cat.plans && cat.plans[sub.plan];
+      if (!cancelled && plan && plan.features) setCanBuild(!!plan.features.aiPanelBuilder);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const CAT = workspaceCatalog(lang);
+  // A custom (AI-authored) panel resolves from the board's own `custom` map - the same field
+  // dashboardView.jsx uses, and the reason analysisWorkspaceBoard.js has carried it since Phase 1.
+  // Only its small {title, prompt, version} metadata lives there; the widget source is its own
+  // preference row (analysisWorkspacePanelStore.js), because the server caps a preference value at
+  // 16KB and a board that inlined several panels' source would blow straight past it.
+  function entryOf(id) {
+    if (CAT[id]) return CAT[id];
+    const custom = state.custom && state.custom[id];
+    return custom ? { title: custom.title || id, icon: 'sparkle', desc: custom.prompt || '', custom: true, version: custom.version } : null;
+  }
+  const visible = state.board.filter((id) => !state.hidden[id] && entryOf(id));
+  const tray = Object.keys(CAT).concat(Object.keys(state.custom || {})).filter((id) => state.board.indexOf(id) < 0);
+  const columns = { main: [], rail: [] };
+  visible.forEach((id) => { columns[workspaceBoard.regionOf(state, id)].push(id); });
+
+  // A generated panel is installed on the desk immediately (a revision just bumps its version so
+  // CustomPanelSlot re-reads the stored source); it is never left as an inert "draft" card.
+  function installPanel(record) {
+    setState((s) => ({
+      ...s,
+      board: s.board.indexOf(record.id) > -1 ? s.board : s.board.concat([record.id]),
+      regions: { ...s.regions, [record.id]: s.regions[record.id] || 'main' },
+      custom: { ...s.custom, [record.id]: { title: record.title, prompt: record.prompt, version: record.version } }
+    }));
+    setBuilding(null);
+  }
+
+  // Moves a panel within its own column: the board array is one flat ordering (exactly like the
+  // Dashboard's), so a move swaps this panel with its neighbour *in the same region*, leaving
+  // panels in the other column where they are.
+  function move(id, dir) {
+    setState((s) => {
+      const region = workspaceBoard.regionOf(s, id);
+      const siblings = s.board.filter((x) => !s.hidden[x] && workspaceBoard.regionOf(s, x) === region);
+      const at = siblings.indexOf(id);
+      const swapWith = siblings[at + dir];
+      if (!swapWith) return s;
+      const board = s.board.slice();
+      const a = board.indexOf(id);
+      const b = board.indexOf(swapWith);
+      board[a] = swapWith; board[b] = id;
+      return { ...s, board };
+    });
+  }
+  function toggleRegion(id) {
+    setState((s) => ({ ...s, regions: { ...s.regions, [id]: workspaceBoard.regionOf(s, id) === 'rail' ? 'main' : 'rail' } }));
+  }
+  function remove(id) { setState((s) => ({ ...s, board: s.board.filter((x) => x !== id) })); }
+  function add(id) { setState((s) => ({ ...s, board: s.board.concat([id]) })); setAdding(false); }
+  function reset() { setState(workspaceBoard.defaultState()); setAdding(false); }
+
+  function renderColumn(ids, region) {
+    return ids.map((id, i) => {
+      const meta = entryOf(id);
+      const body = meta && meta.custom
+        ? <CustomPanelSlot id={id} meta={meta} character={character} snapshotRef={snapshotRef} />
+        : workspacePanelBody(id);
+      if (!body) return null;
+      if (!editing) return <React.Fragment key={id}>{body}</React.Fragment>;
+      return (
+        <WorkspacePanelFrame
+          key={id} id={id} meta={meta} lang={lang} region={region} index={i} count={ids.length}
+          onMove={move} onRegion={toggleRegion} onRemove={remove}
+          onEdit={meta.custom ? () => setBuilding(panelStore.loadPanel(character, id) || { id: id, prompt: meta.desc, title: meta.title }) : null}
+        >
+          {body}
+        </WorkspacePanelFrame>
+      );
+    });
+  }
+
+  const toolbarBtn = { height: 32, display: 'flex', alignItems: 'center', gap: 7, padding: '0 11px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-body)', fontSize: 11 };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', flexWrap: 'wrap' }}>
+        <span style={{ color: 'var(--gold-warm)', display: 'flex' }}><Icon name="LayoutTemplate" size={15} /></span>
+        <span style={{ font: 'var(--type-caption)', fontSize: 11, color: 'var(--text-muted)' }}>
+          {tr(lang, 'wsPanelsCount', { n: visible.length.toLocaleString(localeCode(lang)), m: tray.length.toLocaleString(localeCode(lang)) })}
+        </span>
+        <span style={{ flex: 1 }} />
+        {editing && <button type="button" onClick={reset} style={toolbarBtn}><Icon name="RotateCcw" size={14} />{tr(lang, 'wsReset')}</button>}
+        {canBuild && (
+          <button type="button" onClick={() => setBuilding({})} style={{ ...toolbarBtn, border: '1px solid color-mix(in srgb, var(--char-accent) 55%, transparent)', color: 'var(--char-accent)' }}>
+            <Icon name="sparkle" size={14} />{tr(lang, 'wsBuildWithAi')}
+          </button>
+        )}
+        <button type="button" onClick={() => setAdding((v) => !v)} disabled={!tray.length} style={{ ...toolbarBtn, opacity: tray.length ? 1 : .4, cursor: tray.length ? 'pointer' : 'default' }}><Icon name="plus" size={14} />{tr(lang, 'wsAddPanel')}</button>
+        <button
+          type="button" onClick={() => { setEditing((v) => !v); setAdding(false); }} aria-pressed={editing}
+          style={{ ...toolbarBtn, border: editing ? '1px solid var(--char-accent)' : toolbarBtn.border, background: editing ? 'var(--char-active-surface)' : 'transparent', color: editing ? 'var(--char-accent)' : 'var(--text-muted)' }}
+        >
+          <Icon name={editing ? 'check' : 'settings'} size={14} />{tr(lang, editing ? 'wsDone' : 'wsArrange')}
+        </button>
+      </div>
+
+      {adding && (
+        <Panel variant="base" padding={0}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border-hairline)' }}>
+            <span style={{ font: 'var(--type-caption)', fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{tr(lang, 'wsLibrary')}</span>
+            <span style={{ flex: 1 }} />
+            <button type="button" onClick={() => setAdding(false)} aria-label={tr(lang, 'wsCloseLibrary')} style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}><Icon name="close" size={14} /></button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10, padding: 12 }}>
+            {!tray.length ? (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tr(lang, 'wsLibraryEmpty')}</span>
+            ) : tray.map((id) => {
+              const meta = entryOf(id);
+              if (!meta) return null;
+              return (
+                <button key={id} type="button" onClick={() => add(id)} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 8, cursor: 'pointer', border: '1px dashed var(--divider-gold)', background: 'rgba(11,20,21,.5)' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--char-accent)' }}>
+                    <Icon name={meta.icon} size={16} />
+                    <span dir="auto" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{meta.title}</span>
+                  </span>
+                  <span dir="auto" style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--text-muted)' }}>{meta.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {!visible.length ? (
+        <Panel variant="base" ornament padding="48px">
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <span style={{ color: 'rgba(244,234,215,.18)' }}><Icon name="LayoutTemplate" size={30} /></span>
+            <span dir="auto" style={{ fontSize: 13, color: 'var(--text-muted)' }}>{tr(lang, 'wsEmptyBoard')}</span>
+            <Button variant="secondary" size="sm" onClick={reset}>{tr(lang, 'wsReset')}</Button>
+          </div>
+        </Panel>
+      ) : (
+        <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          {!!columns.main.length && (
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>{renderColumn(columns.main, 'main')}</div>
+          )}
+          {!!columns.rail.length && (
+            <div style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12, marginInlineStart: columns.main.length ? 0 : 'auto' }}>{renderColumn(columns.rail, 'rail')}</div>
+          )}
+        </div>
+      )}
+
+      {building && (
+        <PanelBuilderModal
+          lang={lang} character={character}
+          existing={building && building.id ? building : null}
+          onClose={() => setBuilding(null)} onInstalled={installPanel}
+        />
+      )}
+    </div>
+  );
+}
+
 export function LiveSessionView({ character, sessionId, navActiveId, language, initialView, onBack }) {
   const lang = language || 'fa';
   const rtl = lang === 'fa' || lang === 'ar';
@@ -2974,6 +3523,22 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   const openPositions = allTrades.filter((t) => (t.status === 'open' || t.status === 'hunting') && t.source && t.source.character === character);
   const positionsOpen = openPositions.filter((t) => t.status === 'open').length;
 
+  // The one shared source of truth every Analysis Workspace panel reads from (see
+  // AnalysisWorkspaceContext above). Deliberately assembled from the state/mutators that already
+  // existed in this component rather than a second copy of any of them - a panel can be moved,
+  // hidden or re-added without ever seeing a different session, selection or filter than the rest
+  // of the desk. Rebuilt every render, exactly like the props it replaced (this component already
+  // re-renders on a 1s tick and on every store change), so no panel can hold a stale mutator.
+  const workspace = {
+    session, lang, rtl, character, entries, list, indexById, selId, selEntry, imageUrls,
+    filter, setFilter, q, setQ, tfFilter, setTfFilter, presentTimeframes,
+    selectEntry, stepEntry, railRef, withPreSessionCheckIn, addEntry, setChartModalOpen,
+    openScenarios, setOpenScenarios, updateNote, deleteEntry, attachImage, setSessionAnalysisEntry,
+    updateScenario, deleteScenario, toggleStage, setScenarioSide, addScenario, setEvaluatingScenario,
+    addAiScenario, runVisualizeAiScenario, runVisualizeAiAnalysis,
+    dash, setDash, openPositions, rerender
+  };
+
   // Was hardcoded dir="rtl" regardless of the actual selected language - in English/Spanish
   // (LTR) this flipped every marginInlineStart:'auto'/flex-order in the toolbar below, which is
   // exactly why "Add chart"/"Log movement" rendered pushed to the wrong (left) edge, overlapping
@@ -2987,106 +3552,9 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       <PulseBand session={session} lang={lang} positionsOpen={positionsOpen} onFate={() => withPreSessionCheckIn(() => setFateStep('entry'))} />
 
       {view === 'timeline' ? (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ position: 'sticky', top: 64, zIndex: 30, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(6,12,12,.96)', backdropFilter: 'blur(8px)', boxShadow: 'var(--shadow-panel)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border-hairline)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--char-accent)', flex: 'none' }}><Icon name="Film" size={18} /><span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '.02em' }}>{tr(lang, 'cockpitTitle')}</span></span>
-                <span style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', flex: 'none' }}>
-                  {[['all', tr(lang, 'filterAll'), entries.length], ['chart', tr(lang, 'filterChart'), entries.filter((e) => e.type === 'chart').length], ['move', tr(lang, 'filterMove'), entries.filter((e) => e.type === 'movement').length]].map(([id, label, n]) => (
-                    <button key={id} type="button" onClick={() => setFilter(id)} style={{ height: 28, padding: '0 11px', borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 11, border: '1px solid ' + (filter === id ? 'var(--char-accent)' : 'transparent'), background: filter === id ? 'var(--char-active-surface)' : 'transparent', color: filter === id ? 'var(--char-accent)' : 'var(--text-dim)' }}>{label} {n}</button>
-                  ))}
-                </span>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 7, height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-dim)', flex: 'none', width: 190 }}>
-                  <Icon name="search" size={14} />
-                  <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr(lang, 'searchPlaceholder')} style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'transparent', color: 'var(--text-primary)', font: 'inherit', fontSize: 11 }} />
-                </label>
-                {!!presentTimeframes.length && (
-                  <select value={tfFilter} onChange={(e) => setTfFilter(e.target.value)} title={tr(lang, 'timeframeFilterLabel')} style={{ height: 30, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: tfFilter === 'all' ? 'var(--text-dim)' : 'var(--char-accent)', font: 'var(--type-body)', fontSize: 11, flex: 'none' }}>
-                    <option value="all">{tr(lang, 'allTimeframesLabel')}</option>
-                    {presentTimeframes.map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                )}
-                <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
-                  <Button variant="secondary" size="sm" icon="Activity" onClick={() => withPreSessionCheckIn(() => addEntry('movement'))}>{tr(lang, 'addMove')}</Button>
-                  <Button variant="primary" size="sm" icon="ImagePlus" onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))}>{tr(lang, 'addChart')}</Button>
-                </span>
-              </div>
-
-              <div dir="ltr" style={{ display: 'flex', alignItems: 'stretch', gap: 8, padding: '10px 10px 4px' }}>
-                <button type="button" onClick={() => stepEntry(-1)} title={tr(lang, 'prevEntry')} style={{ display: 'grid', placeItems: 'center', width: 34, flex: 'none', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-muted)' }}><Icon name="ChevronLeft" size={18} /></button>
-                <div ref={railRef} className="navrya-scroll" style={{ flex: 1, minWidth: 0, display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '3px 2px 8px', scrollBehavior: 'smooth' }}>
-                  {list.map((e) => (
-                    <EntryCard key={e.id} entry={e} index={indexById[e.id]} selected={e.id === selId} kindMeta={kindInfo(lang)[e.type] || kindInfo(lang).chart} lang={lang} imageUrl={imageUrls[e.id]} onClick={() => selectEntry(e.id)} />
-                  ))}
-                  <button type="button" onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))} style={{ flex: 'none', width: 112, borderRadius: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'transparent', color: 'var(--text-dim)', font: 'var(--type-body)', fontSize: 11, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <Icon name="plus" size={18} />{tr(lang, 'newEntryTile')}
-                  </button>
-                </div>
-                <button type="button" onClick={() => stepEntry(1)} title={tr(lang, 'nextEntry')} style={{ display: 'grid', placeItems: 'center', width: 34, flex: 'none', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.55)', color: 'var(--text-muted)' }}><Icon name="ChevronRight" size={18} /></button>
-              </div>
-
-              <div dir="ltr" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 12px 10px' }}>
-                <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 'none', width: 64 }}>{tr(lang, 'startShort')} {session.startedAt ? entryTimeLabel({ createdAt: session.startedAt }, lang) : ''}</span>
-                <span style={{ position: 'relative', flex: 1, minWidth: 0, height: 26, display: 'block' }}>
-                  <span style={{ position: 'absolute', left: 0, right: 0, top: 12, height: 2, borderRadius: 2, background: 'rgba(244,234,215,.1)' }}></span>
-                  <span style={{ position: 'absolute', left: 0, top: 12, height: 2, background: 'var(--char-accent)', width: Math.min(100, (minutesFromStart(session, Date.now()) / SPAN_MIN) * 100) + '%' }}></span>
-                  {entries.map((e) => {
-                    const pos = Math.min(100, (minutesFromStart(session, new Date(e.createdAt).getTime()) / SPAN_MIN) * 100);
-                    const kindMeta = kindInfo(lang)[e.type] || kindInfo(lang).chart;
-                    const isSel = e.id === selId;
-                    return isSel ? (
-                      <button key={e.id} type="button" onClick={() => selectEntry(e.id)} title={kindMeta.label + ' · ' + entryTimeLabel(e, lang)} style={{ position: 'absolute', top: 2, width: 22, height: 22, marginLeft: -11, borderRadius: '50%', cursor: 'pointer', border: '2px solid var(--char-accent)', background: 'var(--ink-950)', boxShadow: 'var(--glow-active)', display: 'grid', placeItems: 'center', left: pos + '%' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--char-accent)', display: 'block' }}></span>
-                      </button>
-                    ) : (
-                      <button key={e.id} type="button" onClick={() => selectEntry(e.id)} title={kindMeta.label + ' · ' + entryTimeLabel(e, lang)} style={{ position: 'absolute', top: 7, width: 12, height: 12, marginLeft: -6, borderRadius: '50%', cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'var(--ink-900)', padding: 0, left: pos + '%' }}></button>
-                    );
-                  })}
-                </span>
-                <span className="navrya-tabular" style={{ fontSize: 10, color: 'var(--text-dim)', flex: 'none', width: 56, textAlign: 'right' }}>{tr(lang, 'endShort')} {session.startedAt ? entryTimeLabel({ createdAt: Number(session.startedAt) + SPAN_MIN * 60000 }, lang) : ''}</span>
-                <span style={{ width: 1, height: 18, background: 'var(--border-hairline)', flex: 'none' }}></span>
-                <span dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
-                  <span className="navrya-tabular" style={{ fontSize: 11, color: 'var(--text-primary)' }}>
-                    {list.length ? tr(lang, 'counterEntryWord') + ' ' + (list.findIndex((e) => e.id === selId) < 0 ? 1 : list.findIndex((e) => e.id === selId) + 1) + ' ' + tr(lang, 'counterOf') + ' ' + list.length : tr(lang, 'counterNone')}
-                  </span>
-                  <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'keyboardHint')}</span>
-                </span>
-              </div>
-            </div>
-
-            {selEntry ? (
-              <EntryDetailPanel
-                key={selEntry.id}
-                session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
-                openScenarios={openScenarios}
-                onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage}
-                onOpenSessionAnalysis={() => setSessionAnalysisEntry(selEntry)}
-                onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
-                onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
-                onAddScenario={addScenario} onScenarioEvaluate={(entry, scenario) => setEvaluatingScenario({ entry, scenario })} character={character}
-                onAddAiScenario={addAiScenario} onVisualizeAiScenario={runVisualizeAiScenario} onVisualizeAiAnalysis={runVisualizeAiAnalysis}
-                scenarioTitleFor={(scenarioId) => { const found = flatScenarios(session).find((x) => x.scenario.id === scenarioId); return found ? found.scenario.title : ''; }}
-              />
-            ) : (
-              <Panel variant="base" ornament padding="48px">
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                  <span style={{ color: 'rgba(244,234,215,.18)' }}><Icon name="Film" size={30} /></span>
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{tr(lang, 'filteredEmptyText')}</span>
-                  <Button variant="secondary" size="sm" onClick={() => { setFilter('all'); setQ(''); }}>{tr(lang, 'clearFilter')}</Button>
-                </div>
-              </Panel>
-            )}
-          </div>
-
-          <div style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <DashboardPanel session={session} lang={lang} dash={dash} onSetDash={setDash} indexById={indexById} onSelectEntry={selectEntry}
-              onToggleStage={toggleStage} onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')}
-              openPositions={openPositions} onLogTrade={() => openLogWizard({ accountId: session.accountId || null, instrument: session.instrument || null, source: { character, sessionId: session.id } }, { onSave: rerender })} />
-            <PrevSummaryPanel session={session} lang={lang} />
-            <SimilarSessionsPanel session={session} character={character} lang={lang} />
-          </div>
-        </div>
+        <AnalysisWorkspaceContext.Provider value={workspace}>
+          <AnalysisWorkspaceBoard character={character} lang={lang} rtl={rtl} />
+        </AnalysisWorkspaceContext.Provider>
       ) : view === 'chart' ? null : (
         <ReportView session={session} lang={lang} indexById={indexById} />
       )}
