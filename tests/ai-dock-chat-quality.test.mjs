@@ -159,8 +159,8 @@ test('reasoning/verbosity never appear in the actual outgoing request body for A
       if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
       seenUrl = String(url);
       seenBody = JSON.parse(options.body);
-      if (provider === 'anthropic') return { ok: true, json: async () => ({ content: [{ type: 'tool_use', input: { reply: 'ok', action: null } }], usage: { input_tokens: 1, output_tokens: 1 } }) };
-      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: 'ok', action: null }) } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }) };
+      if (provider === 'anthropic') return { ok: true, json: async () => ({ content: [{ type: 'tool_use', input: { reply: 'ok', action: null, nextFieldPath: null } }], usage: { input_tokens: 1, output_tokens: 1 } }) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: 'ok', action: null, nextFieldPath: null }) } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }) };
     };
     await withEnv({ [envKey]: 'test-key' }, async () => {
       await dockChat({ provider, message: 'hi', language: 'en', availableActions: [{ id: 'session.create', requiredFields: [], optionalFields: [] }] });

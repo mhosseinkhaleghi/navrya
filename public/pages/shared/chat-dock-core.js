@@ -865,6 +865,20 @@
       workflowResult = await workflowEngine.applyKnownFields(fieldsToApply2, contextEngine ? contextEngine.snapshot() : {});
     }
 
+    // Voice step-lookahead (previously deferred forward-looking step synchronization): if the
+    // model's own reply is asking about one specific, not-yet-answered field (payload.
+    // nextFieldPath), move the real multi-step form to that field's own step BEFORE this turn's
+    // reply is ever shown or spoken - the reverse of applyKnownFields()'s own reactive step-
+    // follow above, which only ever moves the step for a field actually extracted THIS turn, not
+    // one merely being asked about next. Awaited here (before this function returns, hence
+    // before chatDockView.jsx can display/speak the reply) so a listening/watching user never
+    // hears a question about a field their screen has not moved to yet. Best-effort: a failed or
+    // timed-out prepare must never break the actual reply - the question is still asked, just
+    // without the guaranteed visual lead time this normally provides.
+    if (tookWorkflowPath && workflowResult && payload.nextFieldPath && registry && typeof registry.prepareForPath === 'function') {
+      try { await registry.prepareForPath(workflowResult.processId, payload.nextFieldPath, workflowResult.uiSnapshot); } catch (_) { /* best-effort */ }
+    }
+
     // Journey C signal routing - independent of which workflow branch (if any) ran above; a
     // behavioral/emotional signal can accompany a message whether or not it also happened to
     // extract a trade field this turn. Runs after the workflow branches so

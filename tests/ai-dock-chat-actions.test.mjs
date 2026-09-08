@@ -19,7 +19,7 @@ test('with neither activeProcess nor availableActions, the schema is exactly tod
 
 test('an activeProcess (an already-open form) still produces the existing suggestions[] shape, unchanged', () => {
   const format = dockChatFormatFor({ id: 'trade-wizard', allowlist: ['entryPrice', 'stopLoss'] }, null);
-  assert.deepEqual(Object.keys(format.schema.properties).sort(), ['reply', 'suggestions']);
+  assert.deepEqual(Object.keys(format.schema.properties).sort(), ['nextFieldPath', 'reply', 'suggestions']);
   assert.deepEqual(format.schema.properties.suggestions.items.properties.path.enum, ['entryPrice', 'stopLoss']);
   assert.equal(format.schema.properties.action, undefined, 'no action property leaks into the activeProcess shape');
 });
@@ -28,7 +28,7 @@ test('availableActions (nothing currently open) adds an action property enum\'d 
   const format = dockChatFormatFor(null, [
     { id: 'session.create', requiredFields: ['city', 'timeframe'], optionalFields: ['loop'] }
   ]);
-  assert.deepEqual(Object.keys(format.schema.properties).sort(), ['action', 'reply']);
+  assert.deepEqual(Object.keys(format.schema.properties).sort(), ['action', 'nextFieldPath', 'reply']);
   assert.deepEqual(format.schema.properties.action.properties.id.enum, ['session.create']);
   assert.deepEqual(format.schema.properties.action.properties.fields.items.properties.path.enum.sort(), ['city', 'loop', 'timeframe']);
   assert.ok(format.schema.required.includes('action'));
@@ -39,8 +39,28 @@ test('availableActions is ignored (activeProcess wins) when both are somehow sup
     { id: 'trade-wizard', allowlist: ['entryPrice'] },
     [{ id: 'session.create', requiredFields: ['city'], optionalFields: [] }]
   );
-  assert.deepEqual(Object.keys(format.schema.properties).sort(), ['reply', 'suggestions']);
+  assert.deepEqual(Object.keys(format.schema.properties).sort(), ['nextFieldPath', 'reply', 'suggestions']);
   assert.equal(format.schema.properties.action, undefined);
+});
+
+// Voice step-lookahead (previously deferred forward-looking step synchronization): which field,
+// if any, the reply's own question is actually about - lets the caller (ai-process-registry.js's
+// prepareForPath()) move a real multi-step form to that field's step before the question is
+// asked, instead of only ever reactively catching up once the answer arrives on a later turn.
+test('nextFieldPath is a nullable enum scoped to exactly the real field paths available in each branch - never a path outside what the model was actually offered', () => {
+  const activeProcessFormat = dockChatFormatFor({ id: 'trade-wizard', allowlist: ['entryPrice', 'stopLoss'] }, null);
+  assert.deepEqual(activeProcessFormat.schema.properties.nextFieldPath.enum, ['entryPrice', 'stopLoss', null]);
+  assert.deepEqual(activeProcessFormat.schema.properties.nextFieldPath.type, ['string', 'null']);
+  assert.ok(activeProcessFormat.schema.required.includes('nextFieldPath'));
+
+  const availableActionsFormat = dockChatFormatFor(null, [
+    { id: 'trade.wizard', requiredFields: ['direction', 'instrument'], optionalFields: ['primaryTimeframe'] }
+  ]);
+  assert.deepEqual(availableActionsFormat.schema.properties.nextFieldPath.enum.sort(), ['direction', 'instrument', 'primaryTimeframe', null].sort());
+  assert.ok(availableActionsFormat.schema.required.includes('nextFieldPath'));
+
+  const plainFormat = dockChatFormatFor(null, null);
+  assert.equal(plainFormat.schema.properties.nextFieldPath, undefined, 'no nextFieldPath property leaks into the plain reply-only shape - there is no form to prepare at all');
 });
 
 test('an empty availableActions array behaves exactly like no availableActions at all', () => {

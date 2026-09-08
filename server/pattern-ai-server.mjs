@@ -1722,6 +1722,14 @@ function dockChatFormatFor(activeProcess, availableActions, voiceSource) {
       }
     };
     required.push('suggestions');
+    // Voice step-lookahead (previously deferred forward-looking step synchronization): which
+    // field, if any, THIS reply's own question is actually about - lets the caller move the real
+    // multi-step form to that field's own step BEFORE the question is spoken/written, instead of
+    // only ever reactively catching up once the answer arrives on a LATER turn (see
+    // ai-process-registry.js's prepareForPath()). null whenever the reply is not asking about one
+    // specific field (answering a question, acknowledging something, or nothing left to ask).
+    properties.nextFieldPath = { type: ['string', 'null'], enum: [...activeProcess.allowlist, null] };
+    required.push('nextFieldPath');
   } else if (Array.isArray(availableActions) && availableActions.length) {
     const allFields = Array.from(new Set(availableActions.flatMap((action) => [...(action.requiredFields || []), ...(action.optionalFields || [])])));
     properties.action = {
@@ -1740,6 +1748,11 @@ function dockChatFormatFor(activeProcess, availableActions, voiceSource) {
       required: ['id', 'fields']
     };
     required.push('action');
+    // Same reasoning as the activeProcess branch above - a turn that both starts a multi-step
+    // action AND already asks its next question (e.g. "log a trade, long XAUUSD" starting
+    // trade.wizard while also asking about timeframe) needs the same lookahead.
+    properties.nextFieldPath = { type: ['string', 'null'], enum: [...allFields, null] };
+    required.push('nextFieldPath');
   }
   return { type: 'json_schema', name: 'global_dock_chat', strict: true, schema: { type: 'object', additionalProperties: false, properties, required } };
 }
@@ -2279,10 +2292,14 @@ async function dockChat(body, externalSignal) {
   // independent parts of the same JSON output. A silently-wrong applied value is worse than a
   // wrong reply, since the reply is the only thing a listening user can catch and re-correct.
   const selfCorrectionInstruction = ' If the message corrects itself (says one value, then replaces it with another - e.g. "15 minutes, no, 5 minutes" or "actually, make that..."), use ONLY the final, corrected value - never the superseded one - and make sure any value you extract into a field/suggestion is the exact same value you reference in your own reply text; the two must never disagree.';
+  // Voice step-lookahead: tells the model when/how to set nextFieldPath - kept separate from
+  // fieldValueInstruction/selfCorrectionInstruction since it is about the REPLY's own question,
+  // not about extracting a value the user already supplied.
+  const nextFieldPathInstruction = ' Also set nextFieldPath: if your reply\'s own question is specifically asking about ONE particular field (e.g. asking "What timeframe did you trade?" is about the timeframe field), set nextFieldPath to that exact field path so NAVRYA can show that field before asking about it out loud. Set it to null whenever your reply is not asking about one specific field - answering a question, acknowledging something, asking something general, or nothing is left to ask.';
   const systemText = (activeProcess
-    ? `You are NAVRYA's intelligent trading-journal copilot. Respond only in ${language}. ${DOCK_STYLE_INSTRUCTION} The user currently has an open form ("${activeProcess.id}") you can help fill in conversationally. You may propose field suggestions, but only for the exact known field paths supplied; never invent a path, and never claim a suggestion has already been saved - the user must approve it before it applies.${fieldValueInstruction}${selfCorrectionInstruction} Keep these workflow questions short and clear (e.g. "The form is open - what's your entry price?"), not long essays - save the fuller, richer style above for genuine questions unrelated to the form. If the message is unrelated to that form, reply normally with an empty suggestions array.`
+    ? `You are NAVRYA's intelligent trading-journal copilot. Respond only in ${language}. ${DOCK_STYLE_INSTRUCTION} The user currently has an open form ("${activeProcess.id}") you can help fill in conversationally. You may propose field suggestions, but only for the exact known field paths supplied; never invent a path, and never claim a suggestion has already been saved - the user must approve it before it applies.${fieldValueInstruction}${selfCorrectionInstruction}${nextFieldPathInstruction} Keep these workflow questions short and clear (e.g. "The form is open - what's your entry price?"), not long essays - save the fuller, richer style above for genuine questions unrelated to the form. If the message is unrelated to that form, reply normally with an empty suggestions array.`
     : availableActions
-      ? `You are NAVRYA's intelligent trading-journal copilot. Respond only in ${language}. ${DOCK_STYLE_INSTRUCTION} Nothing is currently open right now. Pick action.id from the CURRENT user message alone, matching it against each action's own id/description/aliases - do not default to whichever action recent turns happened to be about just because the conversation was recently on that topic; a new message naming a clearly different action (e.g. "Strategy" when the last few turns were about a Scenario) always means that different action, in that different domain, not a continuation of the old one. Distinguish three kinds of intent: ASK (the user wants information/explanation only, e.g. "what is a Session?") - just answer, set action.id to null. DO (the user wants NAVRYA to actually perform one of the actions below right now, e.g. "create a session for me", "open a trade", "start a New York session") - set action.id to that action and extract every field value the message already supplies (never invent a value, never invent a field path).${fieldValueInstruction}${selfCorrectionInstruction} Starting the action with ZERO known fields is completely valid and expected when intent is clear but no details were given yet - never withhold action.id just because there is nothing to extract yet, and never merely describe how the user could do it themselves in plain text instead of actually returning the action. GUIDE (the user is asking HOW to do something in general, not asking you to do it right now) - answer helpfully, set action.id to null. When you do return an action, acknowledge you're opening it and ask for the next thing naturally (e.g. "I'll open a new Session for you - which market do you want to trade?"), not a bare one-word question. Available actions:\n${actionsDescription}`
+      ? `You are NAVRYA's intelligent trading-journal copilot. Respond only in ${language}. ${DOCK_STYLE_INSTRUCTION} Nothing is currently open right now. Pick action.id from the CURRENT user message alone, matching it against each action's own id/description/aliases - do not default to whichever action recent turns happened to be about just because the conversation was recently on that topic; a new message naming a clearly different action (e.g. "Strategy" when the last few turns were about a Scenario) always means that different action, in that different domain, not a continuation of the old one. Distinguish three kinds of intent: ASK (the user wants information/explanation only, e.g. "what is a Session?") - just answer, set action.id to null. DO (the user wants NAVRYA to actually perform one of the actions below right now, e.g. "create a session for me", "open a trade", "start a New York session") - set action.id to that action and extract every field value the message already supplies (never invent a value, never invent a field path).${fieldValueInstruction}${selfCorrectionInstruction}${nextFieldPathInstruction} Starting the action with ZERO known fields is completely valid and expected when intent is clear but no details were given yet - never withhold action.id just because there is nothing to extract yet, and never merely describe how the user could do it themselves in plain text instead of actually returning the action. GUIDE (the user is asking HOW to do something in general, not asking you to do it right now) - answer helpfully, set action.id to null. When you do return an action, acknowledge you're opening it and ask for the next thing naturally (e.g. "I'll open a new Session for you - which market do you want to trade?"), not a bare one-word question. Available actions:\n${actionsDescription}`
       : `You are NAVRYA's intelligent trading-journal copilot. Respond only in ${language}. ${DOCK_STYLE_INSTRUCTION}`)
     + voiceInstruction
     + voiceCharacterStyle
@@ -2333,7 +2350,7 @@ async function dockChat(body, externalSignal) {
     historyMessages: history.length,
     availableActionCount: availableActions ? availableActions.length : 0
   };
-  return { reply: result.reply || '', voiceReply: voiceSource ? (result.voiceReply || '') : null, suggestions: result.suggestions || [], action: result.action || null, provider, model, usage, serverTiming };
+  return { reply: result.reply || '', voiceReply: voiceSource ? (result.voiceReply || '') : null, suggestions: result.suggestions || [], action: result.action || null, nextFieldPath: result.nextFieldPath || null, provider, model, usage, serverTiming };
 }
 
 // Journey E (Realtime Voice): mints a short-lived OpenAI client secret so the browser can open

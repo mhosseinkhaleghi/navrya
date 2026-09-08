@@ -141,5 +141,72 @@
     return entry.submit();
   }
 
-  window.TradeJournalAIProcessRegistry = { register: register, query: query, snapshot: snapshot, activeOpenProcess: activeOpenProcess, openIdsWithPrefix: openIdsWithPrefix, applyValue: applyValue, submit: submit };
+  // Voice step-lookahead (previously deferred forward-looking step synchronization): moves the
+  // real, already-open multi-step form to the step that owns `path` BEFORE the caller ever shows
+  // or speaks a question about it - the reverse of applyValue()'s own reactive step-follow above
+  // (that one only ever moves the step once path's VALUE has already been extracted and applied;
+  // this moves it ahead of asking, when there is nothing to apply yet - the model's own reply text
+  // and the structured field extraction are decided together in one turn, but only a field that
+  // was actually extracted this turn ever drives goToStep() through applyValue(), so a reply that
+  // ASKS about a not-yet-answered field previously left the real form exactly where it already
+  // was, one whole turn behind the conversation). Never applies a value, never submits - purely a
+  // "make sure the right screen is showing" operation, reusing the registration's own existing
+  // stepForPath/goToStep (never a second, duplicate step map). A registration with no
+  // stepForPath/goToStep (every non-multi-step form), or a path that field has no step opinion
+  // about (stepForPath returns null/undefined), resolves immediately - nothing to prepare.
+  //
+  // identity (optional): a snapshot from TradeJournalAIUiRevisionGuard.capture(processId), taken
+  // by the caller before deciding to prepare this path (chat-dock-core.js reuses the current
+  // workflow's own already-captured uiSnapshot when the target process matches it). If the real
+  // UI has since closed, or a different surface is now topmost, by the time the wait below
+  // settles, this resolves { ready: false, reason: 'diverged' } instead of moving/reporting on a
+  // form that is no longer the one genuinely showing. A 'step' divergence (the SAME wizard moved
+  // under the user's own hand while this was pending) is not treated as a reason to abort -
+  // goToStep() below is itself authoritative for where this call wants to land regardless.
+  //
+  // Bounded: a real render that never commits (a broken/removed step, a component that stops
+  // re-rendering) produces an honest, recoverable { ready: false, reason: 'timeout' } rather than
+  // waiting forever or letting the caller speak about a field the user still cannot see. Exposed/
+  // mutable (not hardcoded constants) for the same reason ai-workflow-engine.js's own
+  // SUBMIT_GRACE_MS is - so a test can shrink the real bound instead of sleeping ~500ms per
+  // assertion; production always uses the defaults below.
+  var PREPARE_POLL_INTERVAL_MS = 25;
+  var PREPARE_MAX_ATTEMPTS = 20; // 20 * 25ms = 500ms - generous for a real React commit
+  function prepareForPath(processId, path, identity) {
+    var entry = registrations[processId];
+    if (!entry || typeof entry.stepForPath !== 'function' || typeof entry.goToStep !== 'function') {
+      return Promise.resolve({ ready: true, moved: false });
+    }
+    var targetStep = entry.stepForPath(path);
+    if (targetStep === null || targetStep === undefined) return Promise.resolve({ ready: true, moved: false });
+    var guard = window.TradeJournalAIUiRevisionGuard;
+    var baseline = identity || (guard && typeof guard.capture === 'function' ? guard.capture(processId) : null);
+    function diverged() {
+      if (!guard || typeof guard.hasDiverged !== 'function' || !baseline) return false;
+      var result = guard.hasDiverged(baseline);
+      return result === 'closed' || result === 'surface';
+    }
+    if (diverged()) return Promise.resolve({ ready: false, reason: 'diverged' });
+    if (entry.activeStep() === targetStep) return Promise.resolve({ ready: true, moved: false });
+    entry.goToStep(targetStep);
+    return new Promise(function (resolve) {
+      var settled = false;
+      var attempts = 0;
+      function check() {
+        if (settled) return;
+        if (diverged()) { settled = true; resolve({ ready: false, reason: 'diverged' }); return; }
+        if (entry.activeStep() === targetStep) { settled = true; resolve({ ready: true, moved: true }); return; }
+        attempts += 1;
+        if (attempts >= PREPARE_MAX_ATTEMPTS) { settled = true; resolve({ ready: false, reason: 'timeout' }); return; }
+        setTimeout(check, PREPARE_POLL_INTERVAL_MS);
+      }
+      setTimeout(check, 0);
+    });
+  }
+
+  window.TradeJournalAIProcessRegistry = {
+    register: register, query: query, snapshot: snapshot, activeOpenProcess: activeOpenProcess,
+    openIdsWithPrefix: openIdsWithPrefix, applyValue: applyValue, submit: submit, prepareForPath: prepareForPath,
+    setPrepareForPathTiming: function (pollIntervalMs, maxAttempts) { PREPARE_POLL_INTERVAL_MS = pollIntervalMs; PREPARE_MAX_ATTEMPTS = maxAttempts; }
+  };
 }());

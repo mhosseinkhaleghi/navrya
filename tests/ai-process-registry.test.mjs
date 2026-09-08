@@ -14,8 +14,13 @@ const source = file => readFile(shared(file), 'utf8');
 // neighbors (chat-dock-core.test.mjs, ai-context-builder.test.mjs) already document.
 const clone = value => JSON.parse(JSON.stringify(value));
 
-async function registrySandbox() {
-  const sandbox = { window: {} };
+async function registrySandbox(overrides) {
+  // Promise/setTimeout/clearTimeout: prepareForPath() (voice step-lookahead) is the first thing in
+  // this file to actually construct a Promise/schedule a timer INSIDE the sandboxed code itself,
+  // rather than just passing through a Promise a caller-supplied function already returned - every
+  // pre-existing test above ran fine without these because none of them needed that.
+  const sandbox = { window: {}, Promise, setTimeout, clearTimeout };
+  sandbox.window.TradeJournalAIUiRevisionGuard = overrides && overrides.uiRevisionGuard;
   vm.runInNewContext(await source('ai-process-registry.js'), sandbox, { filename: 'ai-process-registry.js' });
   return sandbox.window.TradeJournalAIProcessRegistry;
 }
@@ -305,4 +310,167 @@ test('applyValue() never throws when TradeJournalAIFieldFillBus.emit itself thro
   registry.register('session-create', { allowlist: ['city'], applyValue: (path, value) => { applied = [path, value]; } });
   assert.equal(registry.applyValue('session-create', 'city', 'newYork', 'replace'), true);
   assert.deepEqual(applied, ['city', 'newYork']);
+});
+
+// --- Voice step-lookahead (previously deferred forward-looking step synchronization) ---
+// prepareForPath() moves the real, already-open multi-step form to the step that owns a field
+// BEFORE the caller ever shows/speaks a question about it - the reverse of applyValue()'s own
+// reactive step-follow above, which only ever moves the step once a value has already been
+// applied. Never applies a value, never submits.
+
+function fakeGuard(divergedValue) {
+  const captureCalls = [];
+  return {
+    capture: (processId) => { captureCalls.push(processId); return { processId, layer: 'foreground', step: 1 }; },
+    hasDiverged: () => divergedValue.value,
+    captureCalls
+  };
+}
+
+test('prepareForPath() resolves immediately, without calling goToStep, for a registration with no stepForPath/goToStep at all - every non-multi-step form', async () => {
+  const registry = await registrySandbox();
+  let goToStepCalls = 0;
+  registry.register('session-create', { allowlist: ['city'], activeStep: () => null, goToStep: () => { goToStepCalls += 1; } });
+  const result = await registry.prepareForPath('session-create', 'city');
+  assert.deepEqual(clone(result), { ready: true, moved: false });
+  assert.equal(goToStepCalls, 0);
+});
+
+test('prepareForPath() resolves immediately when stepForPath has no opinion about this field (returns null) - the field is not step-scoped', async () => {
+  const registry = await registrySandbox();
+  let goToStepCalls = 0;
+  registry.register('trade-wizard', {
+    allowlist: ['accountId'], activeStep: () => 1,
+    stepForPath: () => null, goToStep: () => { goToStepCalls += 1; }
+  });
+  const result = await registry.prepareForPath('trade-wizard', 'accountId');
+  assert.deepEqual(clone(result), { ready: true, moved: false });
+  assert.equal(goToStepCalls, 0);
+});
+
+test('prepareForPath() resolves immediately when already on the target step - nothing to move', async () => {
+  const registry = await registrySandbox();
+  let goToStepCalls = 0;
+  registry.register('trade-wizard', {
+    allowlist: ['primaryTimeframe'], activeStep: () => 2,
+    stepForPath: (path) => (path === 'primaryTimeframe' ? 2 : null), goToStep: () => { goToStepCalls += 1; }
+  });
+  const result = await registry.prepareForPath('trade-wizard', 'primaryTimeframe');
+  assert.deepEqual(clone(result), { ready: true, moved: false });
+  assert.equal(goToStepCalls, 0);
+});
+
+test('prepareForPath() resolves immediately for an unregistered processId - nothing to prepare', async () => {
+  const registry = await registrySandbox();
+  const result = await registry.prepareForPath('nothing-registered', 'someField');
+  assert.deepEqual(clone(result), { ready: true, moved: false });
+});
+
+test('prepareForPath() calls goToStep() then waits for activeStep() to actually catch up before resolving { ready: true, moved: true } - a real, not-yet-committed React state change', async () => {
+  const registry = await registrySandbox();
+  registry.setPrepareForPathTiming(2, 10); // fast polling for the test - production keeps its own real defaults
+  let step = 1;
+  const goToStepCalls = [];
+  registry.register('trade-wizard', {
+    allowlist: ['primaryTimeframe'], activeStep: () => step,
+    stepForPath: (path) => (path === 'primaryTimeframe' ? 2 : null),
+    goToStep: (n) => { goToStepCalls.push(n); setTimeout(() => { step = n; }, 4); } // simulates React's own async commit
+  });
+  const result = await registry.prepareForPath('trade-wizard', 'primaryTimeframe');
+  assert.deepEqual(goToStepCalls, [2], 'goToStep must be called exactly once, with the real target step - never a guessed/fake step number');
+  assert.deepEqual(clone(result), { ready: true, moved: true });
+});
+
+test('prepareForPath() never applies a value and never submits - purely a step-visibility operation', async () => {
+  const registry = await registrySandbox();
+  registry.setPrepareForPathTiming(2, 10);
+  let step = 1;
+  let applyValueCalls = 0;
+  let submitCalls = 0;
+  registry.register('trade-wizard', {
+    allowlist: ['primaryTimeframe'], activeStep: () => step,
+    stepForPath: () => 2, goToStep: (n) => { step = n; },
+    applyValue: () => { applyValueCalls += 1; }, submit: () => { submitCalls += 1; }
+  });
+  await registry.prepareForPath('trade-wizard', 'primaryTimeframe');
+  assert.equal(applyValueCalls, 0);
+  assert.equal(submitCalls, 0);
+});
+
+test('prepareForPath() produces an honest { ready: false, reason: "timeout" } when activeStep() never actually catches up - never waits forever, never fakes success', async () => {
+  const registry = await registrySandbox();
+  registry.setPrepareForPathTiming(2, 3); // 3 * 2ms - fast bound for the test
+  registry.register('trade-wizard', {
+    allowlist: ['primaryTimeframe'], activeStep: () => 1, // never actually moves, no matter how many times this is polled
+    stepForPath: () => 2, goToStep: () => {}
+  });
+  const result = await registry.prepareForPath('trade-wizard', 'primaryTimeframe');
+  assert.deepEqual(clone(result), { ready: false, reason: 'timeout' });
+});
+
+test('prepareForPath() refuses outright (never calls goToStep) when the guard already reports "closed"/"surface" divergence before starting - the real UI this was about to prepare is genuinely gone', async () => {
+  const registry = await registrySandbox({ uiRevisionGuard: fakeGuard({ value: 'closed' }) });
+  let goToStepCalls = 0;
+  registry.register('trade-wizard', {
+    allowlist: ['primaryTimeframe'], activeStep: () => 1,
+    stepForPath: () => 2, goToStep: () => { goToStepCalls += 1; }
+  });
+  const result = await registry.prepareForPath('trade-wizard', 'primaryTimeframe', { processId: 'trade-wizard', layer: 'foreground', step: 1 });
+  assert.deepEqual(clone(result), { ready: false, reason: 'diverged' });
+  assert.equal(goToStepCalls, 0);
+});
+
+test('prepareForPath() resolves { ready: false, reason: "diverged" } if the guard reports divergence WHILE the wait is still pending, even though goToStep() already ran', async () => {
+  const diverged = { value: false };
+  const registry = await registrySandbox({ uiRevisionGuard: fakeGuard(diverged) });
+  registry.setPrepareForPathTiming(2, 50);
+  registry.register('trade-wizard', {
+    allowlist: ['primaryTimeframe'], activeStep: () => 1, // never catches up on its own
+    stepForPath: () => 2, goToStep: () => {}
+  });
+  setTimeout(() => { diverged.value = 'closed'; }, 6); // the real form closes shortly after goToStep() runs
+  const result = await registry.prepareForPath('trade-wizard', 'primaryTimeframe', { processId: 'trade-wizard', layer: 'foreground', step: 1 });
+  assert.deepEqual(clone(result), { ready: false, reason: 'diverged' });
+});
+
+test('prepareForPath() does NOT abort on a "step" divergence report - goToStep() is itself authoritative for where this call wants to land, regardless of a concurrent manual step change', async () => {
+  const registry = await registrySandbox({ uiRevisionGuard: fakeGuard({ value: 'step' }) });
+  registry.setPrepareForPathTiming(2, 10);
+  let step = 1;
+  const goToStepCalls = [];
+  registry.register('trade-wizard', {
+    allowlist: ['primaryTimeframe'], activeStep: () => step,
+    stepForPath: () => 2, goToStep: (n) => { goToStepCalls.push(n); step = n; }
+  });
+  const result = await registry.prepareForPath('trade-wizard', 'primaryTimeframe', { processId: 'trade-wizard', layer: 'foreground', step: 1 });
+  assert.deepEqual(goToStepCalls, [2], 'a mere "step" divergence must never suppress this call\'s own goToStep()');
+  assert.deepEqual(clone(result), { ready: true, moved: true });
+});
+
+test('prepareForPath() uses the caller-supplied identity snapshot directly, rather than capturing a fresh one itself, when one is provided', async () => {
+  const captureCalls = [];
+  const guard = { capture: (id) => { captureCalls.push(id); return { processId: id, layer: 'foreground', step: 1 }; }, hasDiverged: () => false };
+  const registry = await registrySandbox({ uiRevisionGuard: guard });
+  registry.register('trade-wizard', { allowlist: ['primaryTimeframe'], activeStep: () => 2, stepForPath: () => 2, goToStep: () => {} });
+  await registry.prepareForPath('trade-wizard', 'primaryTimeframe', { processId: 'trade-wizard', layer: 'foreground', step: 1 });
+  assert.equal(captureCalls.length, 0, 'a caller-supplied identity must be used as-is - capture() must never be called when one was already provided');
+});
+
+test('prepareForPath() captures its own fresh identity via the guard when the caller supplies none', async () => {
+  const captureCalls = [];
+  const guard = { capture: (id) => { captureCalls.push(id); return { processId: id, layer: 'foreground', step: 1 }; }, hasDiverged: () => false };
+  const registry = await registrySandbox({ uiRevisionGuard: guard });
+  registry.register('trade-wizard', { allowlist: ['primaryTimeframe'], activeStep: () => 1, stepForPath: () => 2, goToStep: () => { } });
+  registry.setPrepareForPathTiming(2, 10);
+  await registry.prepareForPath('trade-wizard', 'primaryTimeframe');
+  assert.deepEqual(captureCalls, ['trade-wizard']);
+});
+
+test('prepareForPath() proceeds normally (as if no guard were installed) when TradeJournalAIUiRevisionGuard is absent - feature-detected, not a hard dependency', async () => {
+  const registry = await registrySandbox();
+  registry.setPrepareForPathTiming(2, 10);
+  let step = 1;
+  registry.register('trade-wizard', { allowlist: ['primaryTimeframe'], activeStep: () => step, stepForPath: () => 2, goToStep: (n) => { step = n; } });
+  const result = await registry.prepareForPath('trade-wizard', 'primaryTimeframe');
+  assert.deepEqual(clone(result), { ready: true, moved: true });
 });

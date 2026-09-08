@@ -71,6 +71,66 @@ open `trade-wizard` on step 1 visibly advances it to step 2; applying
 in sequence visibly advances a fresh `mh-intake` through steps 1→2→3→4, each field landing on its
 own now-current step.
 
+## Forward-looking step synchronization (voice step-lookahead)
+
+The lockstep above is entirely **reactive**: `stepForPath`/`goToStep` only ever run as a side
+effect of `applyValue()` actually writing a field's *value* - a field the model extracted THIS
+turn. But the model decides two things together, in the one same network call: which fields to
+extract, and what the reply text itself says next. A reply that **asks about** a field (e.g. "What
+timeframe did you trade?") is not the same event as a field being *answered* - nothing was
+extracted for `primaryTimeframe` this turn, so nothing drove `goToStep(2)`, so the real wizard
+stayed on step 1 while the reply already asked a step-2 question. Confirmed as a genuine, live gap
+(not previously fixed): a trader watching the screen while talking would hear/read a question
+about a field the form had not moved to yet - it only caught up one turn later, once they actually
+answered and that answer's own `applyValue()` call finally moved the step.
+
+Two additions close this, without inventing a second step map or a second decision path:
+
+**`nextFieldPath`** (`server/pattern-ai-server.mjs`'s `dockChatFormatFor()`): a new, nullable,
+enum-constrained response field, present in both the `activeProcess` and `availableActions`
+schema branches (scoped to exactly that branch's own real field paths, `null` when the reply is
+not asking about one specific field). The model is prompted to set it whenever its own reply
+text is specifically about one particular field - the exact same JSON turn already decides the
+reply and the extracted fields, this is simply a third, explicit thing it reports about that same
+reply.
+
+**`prepareForPath(processId, path, identity)`** (`ai-process-registry.js`): an awaitable
+counterpart to `applyValue()`'s own reactive step-follow, reusing the SAME registration-declared
+`stepForPath`/`goToStep` (never a duplicate map). Given the field `payload.nextFieldPath` names,
+it resolves the step that owns it and, if that differs from the step currently showing, calls the
+real `goToStep()` and then polls `activeStep()` (bounded, ~500ms in production, configurable via
+`setPrepareForPathTiming()` for tests) until the change has actually committed - honestly
+resolving `{ready:false, reason:'timeout'}` rather than pretending success if it never does. Two
+things it deliberately never does: apply a value, or submit. An optional `identity` (a
+`TradeJournalAIUiRevisionGuard.capture()` snapshot - the caller reuses the current workflow's own
+already-captured `uiSnapshot` when the target process matches it, or `prepareForPath` captures a
+fresh one itself) is re-checked before starting and while polling; a `'closed'`/`'surface'`
+divergence aborts with `{ready:false, reason:'diverged'}` rather than acting on a form that is no
+longer genuinely showing. A `'step'` divergence (the SAME wizard moved under the user's own hand
+while this was pending) is NOT treated as a reason to abort - `goToStep()` here is itself
+authoritative for where this call wants to land regardless.
+
+`chat-dock-core.js`'s `sendChat()` awaits `prepareForPath()` - best-effort, wrapped so a failure
+never breaks the actual reply - immediately after the existing field-application branches and
+before returning this turn's result. The required order this guarantees:
+
+```
+1. one network call decides BOTH the reply text AND nextFieldPath together
+2. this turn's own extracted fields are applied (existing reactive lockstep, unchanged)
+3. (NEW) prepareForPath() moves the real form to nextFieldPath's own step, awaited
+4. sendChat() returns - only now does chatDockView.jsx ever display/speak the reply
+5. the question is spoken/shown with the real screen already caught up to what it describes
+```
+
+Deliberately NOT done this pass: an `nextFieldPath`-equivalent for Anthropic/Kimi/DeepSeek's own
+JSON-shape reliability is trusted on the same established precedent `action`/`suggestions` already
+proved for these three providers (no native structured-output enforcement, but the system prompt's
+own JSON-shape instruction is already followed reliably in practice) - not separately re-verified
+against a real Anthropic/Kimi/DeepSeek account in this pass. A real multi-turn browser/voice
+verification against a live provider was not performed either - covered by behavioral VM-sandbox
+tests (`tests/ai-process-registry.test.mjs`, `tests/voice-step-lookahead.test.mjs`) and the schema
+tests in `tests/ai-dock-chat-actions.test.mjs` instead.
+
 ## UI → Voice (manual intervention, brief sections 26-32, 49-51)
 
 Nothing is cached. `ai-process-registry.js`'s `isOpen()`/`activeStep()` are re-invoked on every
