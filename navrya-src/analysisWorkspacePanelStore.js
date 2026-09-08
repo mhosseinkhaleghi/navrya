@@ -16,6 +16,16 @@ const KEY_PREFIX = 'analysisWorkspacePanel_';
 export const MAX_VALUE_BYTES = 16 * 1024;
 export const MAX_SOURCE_BYTES = 12 * 1024;
 
+// The prompt is stored beside the source so a revision can be pre-filled with what was originally
+// asked. It has to be BUDGETED, not just "generously capped": the ceiling that actually matters is
+// the server's 16KB per whole JSON value, and the first version of this file allowed 2000 prompt
+// characters - which in Persian or Arabic is ~4KB of UTF-8, enough that a source comfortably under
+// MAX_SOURCE_BYTES could still push the encoded record over the server's limit. The write was then
+// refused while reporting the SOURCE size against the SOURCE limit, i.e. telling the trader to
+// "ask for a simpler panel" when the prompt was the thing that overflowed. 400 characters leaves
+// 12KB of source room to survive JSON escaping with margin to spare.
+export const MAX_PROMPT_CHARS = 400;
+
 // Custom panel ids are generated here so they can never collide with a built-in catalog id
 // ('cockpit'/'entry'/'dashboard'/'prevSummary'/'similar') and always stay inside the preference
 // id charset and 64-char budget: 'analysisWorkspacePanel_' (23) + character (<=9) + '_' + this.
@@ -43,13 +53,17 @@ export function loadPanel(character, panelId) {
 // save-failed toast appear from a rolled-back optimistic write.
 export function savePanel(character, panel) {
   const record = {
-    id: panel.id, title: String(panel.title || '').slice(0, 80), prompt: String(panel.prompt || '').slice(0, 2000),
+    id: panel.id, title: String(panel.title || '').slice(0, 80), prompt: String(panel.prompt || '').slice(0, MAX_PROMPT_CHARS),
     source: String(panel.source || ''), version: Number(panel.version) || 1,
     createdAt: panel.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString()
   };
   const sourceBytes = byteLength(record.source);
   if (sourceBytes > MAX_SOURCE_BYTES) return { ok: false, reason: 'too-large', bytes: sourceBytes, limit: MAX_SOURCE_BYTES };
-  if (byteLength(JSON.stringify(record)) > MAX_VALUE_BYTES) return { ok: false, reason: 'too-large', bytes: sourceBytes, limit: MAX_SOURCE_BYTES };
+  // Belt and braces behind the prompt budget above: report the ENCODED size against the SERVER's
+  // own ceiling, so if JSON escaping ever pushes a legal-looking record over the edge the trader is
+  // told the real number that failed rather than a source size that was fine.
+  const encodedBytes = byteLength(JSON.stringify(record));
+  if (encodedBytes > MAX_VALUE_BYTES) return { ok: false, reason: 'too-large', bytes: encodedBytes, limit: MAX_VALUE_BYTES };
   const prefs = window.TradeJournalUserPreferences;
   if (prefs) prefs.setPref(panelKey(character, record.id), record);
   return { ok: true, record };

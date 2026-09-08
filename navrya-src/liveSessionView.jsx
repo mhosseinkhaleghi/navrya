@@ -94,6 +94,8 @@ const copy = {
     wsPanelsCount: '{n} پنل روی میز · {m} در کتابخانه', wsArrange: 'چیدمان میز', wsDone: 'پایان چیدمان', wsAddPanel: 'افزودن پنل', wsReset: 'چیدمان پیش‌فرض',
     wsLibrary: 'کتابخانه پنل‌ها', wsCloseLibrary: 'بستن کتابخانه', wsLibraryEmpty: 'همهٔ پنل‌ها روی میز هستند.', wsEmptyBoard: 'میز تحلیل خالی است — با «افزودن پنل» شروع کنید.',
     wsRemove: 'برداشتن از میز', wsUp: 'بالاتر', wsDown: 'پایین‌تر', wsToRail: 'انتقال به ستون باریک', wsToMain: 'انتقال به ستون پهن',
+    wsDragHint: 'برای جابه‌جایی بکشید', wsDropHere: 'یک پنل را اینجا رها کنید', wsDeletePanel: 'حذف کامل این پنل',
+    wsDeleteConfirm: 'پنل «{title}» و کد آن برای همیشه حذف شود؟',
     wsCatEntryTitle: 'ورودی انتخاب‌شده', wsCatCockpitDesc: 'فیلترها، نوار ورودی‌ها و خط‌کش زمانی سشن.', wsCatEntryDesc: 'چارت، یادداشت و سناریوهای ورودی انتخاب‌شده.',
     wsCatDashboardDesc: 'الگوها، سناریوها، پوزیشن‌ها و لاگ این سشن.', wsCatPrevDesc: 'خلاصهٔ سشن قبلیِ همین نماد.', wsCatSimilarDesc: 'سشن‌های گذشته با امضای مشابه.',
     wsBuildWithAi: 'ساخت پنل با پرامپت', wsEditPanel: 'ویرایش این پنل با پرامپت', wsPanelSourceMissing: 'کد این پنل پیدا نشد. با ویرایش، دوباره بسازیدش.',
@@ -178,6 +180,8 @@ const copy = {
     wsPanelsCount: '{n} لوحات على الطاولة · {m} في المكتبة', wsArrange: 'ترتيب الطاولة', wsDone: 'إنهاء الترتيب', wsAddPanel: 'إضافة لوحة', wsReset: 'التخطيط الافتراضي',
     wsLibrary: 'مكتبة اللوحات', wsCloseLibrary: 'إغلاق المكتبة', wsLibraryEmpty: 'كل اللوحات موجودة على الطاولة.', wsEmptyBoard: 'مساحة التحليل فارغة — ابدأ بـ«إضافة لوحة».',
     wsRemove: 'إزالة من الطاولة', wsUp: 'لأعلى', wsDown: 'لأسفل', wsToRail: 'نقل إلى العمود الضيق', wsToMain: 'نقل إلى العمود العريض',
+    wsDragHint: 'اسحب لإعادة الترتيب', wsDropHere: 'أفلِت لوحة هنا', wsDeletePanel: 'حذف هذه اللوحة نهائياً',
+    wsDeleteConfirm: 'هل تريد حذف اللوحة «{title}» وكودها نهائياً؟',
     wsCatEntryTitle: 'الإدخال المحدد', wsCatCockpitDesc: 'عوامل التصفية وشريط الإدخالات ومسطرة زمن الجلسة.', wsCatEntryDesc: 'مخطط الإدخال المحدد وملاحظته وسيناريوهاته.',
     wsCatDashboardDesc: 'أنماط هذه الجلسة وسيناريوهاتها وصفقاتها وسجلها.', wsCatPrevDesc: 'ملخص الجلسة السابقة لنفس الأداة.', wsCatSimilarDesc: 'جلسات سابقة ببصمة مشابهة.',
     wsBuildWithAi: 'إنشاء لوحة بالوصف', wsEditPanel: 'تعديل هذه اللوحة بالوصف', wsPanelSourceMissing: 'لم يُعثر على كود هذه اللوحة. أعد إنشاءها من التعديل.',
@@ -262,6 +266,8 @@ const copy = {
     wsPanelsCount: '{n} panels on the desk · {m} in the library', wsArrange: 'Arrange desk', wsDone: 'Done arranging', wsAddPanel: 'Add panel', wsReset: 'Default layout',
     wsLibrary: 'Panel library', wsCloseLibrary: 'Close library', wsLibraryEmpty: 'Every panel is already on the desk.', wsEmptyBoard: 'The analysis workspace is empty — start with “Add panel”.',
     wsRemove: 'Take off the desk', wsUp: 'Move up', wsDown: 'Move down', wsToRail: 'Move to the narrow column', wsToMain: 'Move to the wide column',
+    wsDragHint: 'Drag to rearrange', wsDropHere: 'Drop a panel here', wsDeletePanel: 'Delete this panel permanently',
+    wsDeleteConfirm: 'Delete the panel “{title}” and its code permanently?',
     wsCatEntryTitle: 'Selected entry', wsCatCockpitDesc: 'Filters, the entry rail and the session time ruler.', wsCatEntryDesc: 'Chart, note and scenarios for the selected entry.',
     wsCatDashboardDesc: 'Patterns, scenarios, positions and log for this session.', wsCatPrevDesc: 'Summary of the previous session on this instrument.', wsCatSimilarDesc: 'Past sessions with a similar signature.',
     wsBuildWithAi: 'Build a panel from a prompt', wsEditPanel: 'Revise this panel with a prompt', wsPanelSourceMissing: 'This panel’s code was not found. Revise it to rebuild it.',
@@ -346,6 +352,8 @@ const copy = {
     wsPanelsCount: '{n} paneles en la mesa · {m} en la biblioteca', wsArrange: 'Organizar mesa', wsDone: 'Terminar de organizar', wsAddPanel: 'Añadir panel', wsReset: 'Diseño por defecto',
     wsLibrary: 'Biblioteca de paneles', wsCloseLibrary: 'Cerrar biblioteca', wsLibraryEmpty: 'Todos los paneles ya están en la mesa.', wsEmptyBoard: 'El espacio de análisis está vacío: empieza con «Añadir panel».',
     wsRemove: 'Quitar de la mesa', wsUp: 'Subir', wsDown: 'Bajar', wsToRail: 'Mover a la columna estrecha', wsToMain: 'Mover a la columna ancha',
+    wsDragHint: 'Arrastra para reordenar', wsDropHere: 'Suelta un panel aquí', wsDeletePanel: 'Eliminar este panel permanentemente',
+    wsDeleteConfirm: '¿Eliminar el panel «{title}» y su código de forma permanente?',
     wsCatEntryTitle: 'Entrada seleccionada', wsCatCockpitDesc: 'Filtros, la fila de entradas y la regla de tiempo.', wsCatEntryDesc: 'Gráfico, nota y escenarios de la entrada seleccionada.',
     wsCatDashboardDesc: 'Patrones, escenarios, posiciones y registro de la sesión.', wsCatPrevDesc: 'Resumen de la sesión anterior con el mismo instrumento.', wsCatSimilarDesc: 'Sesiones pasadas con firma similar.',
     wsBuildWithAi: 'Crear un panel con una instrucción', wsEditPanel: 'Revisar este panel con una instrucción', wsPanelSourceMissing: 'No se encontró el código de este panel. Revísalo para reconstruirlo.',
@@ -2722,8 +2730,21 @@ function SimilarSessionsSlot() {
 function CustomPanelSlot({ id, meta, character, snapshotRef }) {
   const { lang, entries, selId } = useWorkspace();
   const [record, setRecord] = React.useState(() => panelStore.loadPanel(character, id));
-  React.useEffect(() => { setRecord(panelStore.loadPanel(character, id)); }, [character, id, meta && meta.version]);
-  const pulse = String(entries.length) + ':' + String(selId) + ':' + String((snapshotRef.current && snapshotRef.current.scenarios || []).length);
+  const version = meta && meta.version;
+  React.useEffect(() => { setRecord(panelStore.loadPanel(character, id)); }, [character, id, version]);
+  // The preference replica hydrates asynchronously. A panel mounted before its own row arrives
+  // read null once and then showed "source not found" permanently, even though the source was
+  // there moments later - so re-read whenever the preferences domain reports a change (its own
+  // hydrate() and every write both fire this).
+  React.useEffect(() => {
+    function onChanged() { setRecord(panelStore.loadPanel(character, id)); }
+    window.addEventListener('tradejournal:replica-preferences-changed', onChanged);
+    return () => window.removeEventListener('tradejournal:replica-preferences-changed', onChanged);
+  }, [character, id]);
+  // Derived from the workspace directly rather than by reading snapshotRef during render: that ref
+  // is refreshed in an effect, so reading it here was both a render-phase ref read and a render
+  // behind the data it was meant to describe.
+  const pulse = entries.length + ':' + String(selId) + ':' + entries.reduce((n, e) => n + ((e.scenarios || []).length), 0);
   if (!record) {
     return (
       <Panel variant="base" padding="18px">
@@ -2826,13 +2847,47 @@ function PanelBuilderModal({ lang, character, existing, onClose, onInstalled }) 
 // Arrange-mode chrome around one panel: move within its column, move to the other column, take it
 // off the desk. Only rendered while arranging, so a normal session sees the exact same panels,
 // with the exact same spacing, it always has.
-function WorkspacePanelFrame({ id, meta, lang, region, index, count, onMove, onRegion, onRemove, onEdit, children }) {
+// Placeholder for a column the trader has emptied. Without it that column collapses out of the
+// layout entirely while arranging, leaving nowhere to drop a panel back into it - the one way a
+// drag-and-drop board can strand a trader with a column they cannot refill.
+function WorkspaceDropZone({ lang }) {
+  return (
+    <div dir="auto" style={{ display: 'grid', placeItems: 'center', minHeight: 120, padding: 16, borderRadius: 12, border: '1px dashed var(--divider-gold)', background: 'rgba(11,20,21,.35)', color: 'var(--text-dim)', fontSize: 11, textAlign: 'center' }}>
+      {tr(lang, 'wsDropHere')}
+    </div>
+  );
+}
+
+function WorkspacePanelFrame({ id, meta, lang, region, index, count, onMove, onRegion, onRemove, onEdit, dragging, onDragStart, onDragEnd, onDropPanel, children }) {
   const cat = meta || workspaceCatalog(lang)[id];
   const btn = { width: 28, height: 28, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' };
+  const [over, setOver] = React.useState(false);
   return (
-    <div style={{ position: 'relative', borderRadius: 12, outline: '1px dashed var(--char-accent)', outlineOffset: 3 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: '10px 10px 0 0', background: 'var(--char-active-surface)', borderBottom: '1px solid var(--border-hairline)' }}>
+    <div
+      // The whole frame is the drop target, but only its header is the drag HANDLE - a panel body
+      // holds real inputs (the register's search box, an entry note, a scenario field), and making
+      // those draggable would fight text selection every time the trader tries to use them while
+      // arranging.
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      // stopPropagation is load-bearing, not tidiness: this frame sits INSIDE the column, whose own
+      // onDrop appends to the end of that column. Without it both handlers ran for a single drop and
+      // the column's append always won, so every drop landed at the bottom instead of where the
+      // trader aimed - the precise-position drag looked broken while the code was "correct".
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); onDropPanel(); }}
+      style={{
+        position: 'relative', borderRadius: 12, outlineOffset: 3, opacity: dragging ? .45 : 1,
+        outline: over && !dragging ? '2px solid var(--char-accent)' : '1px dashed var(--char-accent)',
+        transition: 'opacity var(--dur-hover,120ms) ease'
+      }}
+    >
+      <div
+        draggable onDragStart={onDragStart} onDragEnd={() => { setOver(false); onDragEnd(); }}
+        title={tr(lang, 'wsDragHint')}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: '10px 10px 0 0', background: 'var(--char-active-surface)', borderBottom: '1px solid var(--border-hairline)', cursor: 'grab' }}
+      >
         <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--char-accent)', flex: 1, minWidth: 0 }}>
+          <Icon name="GripVertical" size={14} />
           <Icon name={cat ? cat.icon : 'LayoutGrid'} size={14} />
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat ? cat.title : id}</span>
         </span>
@@ -2857,14 +2912,39 @@ function AnalysisWorkspaceBoard({ character, lang, rtl }) {
   const [editing, setEditing] = React.useState(false);
   const [adding, setAdding] = React.useState(false);
   const [building, setBuilding] = React.useState(null); // null | {} (new) | stored record (revision)
-  React.useEffect(() => { workspaceBoard.saveBoard(character, state); }, [character, state]);
+  const [dragId, setDragId] = React.useState(null);
+
+  // Persisting on every state change is the whole point, but `state` is only ever INITIALISED for
+  // one character. Without this guard a character change would persist the previous character's
+  // board under the new character's key - overwriting a real saved desk with someone else's
+  // layout. On a character change the board is reloaded and that render deliberately writes
+  // nothing.
+  const savedCharacterRef = React.useRef(character);
+  React.useEffect(() => {
+    if (savedCharacterRef.current !== character) {
+      savedCharacterRef.current = character;
+      setState(workspaceBoard.loadBoard(character));
+      return;
+    }
+    workspaceBoard.saveBoard(character, state);
+  }, [character, state]);
 
   // The read-only snapshot the sandbox bridge answers from. A ref, not state, so the session's own
-  // 1s re-render never reloads a panel's iframe (which would throw away whatever it had drawn) -
-  // the panels always read the CURRENT session anyway, because the ref is refreshed after every
-  // render of this component.
-  const snapshotRef = React.useRef(buildSnapshot(ws));
-  React.useEffect(() => { snapshotRef.current = buildSnapshot(ws); });
+  // 1s re-render never reloads a panel's iframe (which would throw away whatever it had drawn).
+  //
+  // Rebuilt only when something in it can actually have changed, keyed off a cheap signature:
+  // this component re-renders once a second for the session clock, and buildSnapshot() walks every
+  // entry and every scenario allocating a new object graph each time. (It also used to run TWICE
+  // per render - useRef evaluates its argument on every render even though only the first result is
+  // kept - so the lazy assignment below replaces that too.)
+  const scenarioCount = ws.entries.reduce((n, e) => n + ((e.scenarios || []).length), 0);
+  const snapshotKey = [
+    ws.session.id, ws.entries.length, scenarioCount, ws.selId,
+    ws.session.instrument, ws.session.timeframe, ws.session.status, ws.openPositions.length
+  ].join('|');
+  const snapshotRef = React.useRef(null);
+  if (snapshotRef.current === null) snapshotRef.current = buildSnapshot(ws);
+  React.useEffect(() => { snapshotRef.current = buildSnapshot(ws); }, [snapshotKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real-money subscription rollout: the AI panel builder is a paid-plan feature. Same two
   // endpoints (and the same fail-CLOSED default) aiAssistantView.jsx already uses for its own
@@ -2910,29 +2990,45 @@ function AnalysisWorkspaceBoard({ character, lang, rtl }) {
     setBuilding(null);
   }
 
-  // Moves a panel within its own column: the board array is one flat ordering (exactly like the
-  // Dashboard's), so a move swaps this panel with its neighbour *in the same region*, leaving
-  // panels in the other column where they are.
-  function move(id, dir) {
-    setState((s) => {
-      const region = workspaceBoard.regionOf(s, id);
-      const siblings = s.board.filter((x) => !s.hidden[x] && workspaceBoard.regionOf(s, x) === region);
-      const at = siblings.indexOf(id);
-      const swapWith = siblings[at + dir];
-      if (!swapWith) return s;
-      const board = s.board.slice();
-      const a = board.indexOf(id);
-      const b = board.indexOf(swapWith);
-      board[a] = swapWith; board[b] = id;
-      return { ...s, board };
-    });
-  }
+  function move(id, dir) { setState((s) => workspaceBoard.moveWithinColumn(s, id, dir)); }
   function toggleRegion(id) {
     setState((s) => ({ ...s, regions: { ...s.regions, [id]: workspaceBoard.regionOf(s, id) === 'rail' ? 'main' : 'rail' } }));
   }
   function remove(id) { setState((s) => ({ ...s, board: s.board.filter((x) => x !== id) })); }
   function add(id) { setState((s) => ({ ...s, board: s.board.concat([id]) })); setAdding(false); }
-  function reset() { setState(workspaceBoard.defaultState()); setAdding(false); }
+  // Layout only - AI-authored panels move back to the library instead of being destroyed. See
+  // analysisWorkspaceBoard.js's resetLayout().
+  function reset() { setState((s) => workspaceBoard.resetLayout(s)); setAdding(false); }
+
+  // Permanently deletes an AI-authored panel: its board metadata AND its own stored source row.
+  // Without this the only way to get a generated panel off the desk was to "remove" it, which
+  // parks it in the library forever and leaves a real preference row (up to 12KB of source) behind
+  // with nothing able to reclaim it. Only offered from the library, for a panel already off the
+  // desk, so it can never be a one-click loss of something the trader is looking at.
+  function destroyCustom(id) {
+    panelStore.deletePanel(character, id);
+    setState((s) => {
+      const custom = { ...s.custom };
+      delete custom[id];
+      const regions = { ...s.regions };
+      delete regions[id];
+      return { ...s, board: s.board.filter((x) => x !== id), regions: regions, custom: custom };
+    });
+  }
+
+  // Drag to reorder, matching the Dashboard's own board. Both drops delegate to the pure helpers in
+  // analysisWorkspaceBoard.js (moveBefore / moveToColumnEnd), which is where the cross-column
+  // semantics and their tests live.
+  function dropOnPanel(targetId) {
+    const moving = dragId;
+    setDragId(null);
+    setState((s) => workspaceBoard.moveBefore(s, moving, targetId));
+  }
+  function dropOnColumn(region) {
+    const moving = dragId;
+    setDragId(null);
+    setState((s) => workspaceBoard.moveToColumnEnd(s, moving, region));
+  }
 
   function renderColumn(ids, region) {
     return ids.map((id, i) => {
@@ -2946,6 +3042,8 @@ function AnalysisWorkspaceBoard({ character, lang, rtl }) {
         <WorkspacePanelFrame
           key={id} id={id} meta={meta} lang={lang} region={region} index={i} count={ids.length}
           onMove={move} onRegion={toggleRegion} onRemove={remove}
+          dragging={dragId === id}
+          onDragStart={() => setDragId(id)} onDragEnd={() => setDragId(null)} onDropPanel={() => dropOnPanel(id)}
           onEdit={meta.custom ? () => setBuilding(panelStore.loadPanel(character, id) || { id: id, prompt: meta.desc, title: meta.title }) : null}
         >
           {body}
@@ -2992,14 +3090,27 @@ function AnalysisWorkspaceBoard({ character, lang, rtl }) {
             ) : tray.map((id) => {
               const meta = entryOf(id);
               if (!meta) return null;
+              // A nested <button> is invalid markup, so an AI-authored panel's permanent-delete
+              // action sits beside the add card rather than inside it.
               return (
-                <button key={id} type="button" onClick={() => add(id)} style={{ textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 8, cursor: 'pointer', border: '1px dashed var(--divider-gold)', background: 'rgba(11,20,21,.5)' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--char-accent)' }}>
-                    <Icon name={meta.icon} size={16} />
-                    <span dir="auto" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{meta.title}</span>
-                  </span>
-                  <span dir="auto" style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--text-muted)' }}>{meta.desc}</span>
-                </button>
+                <div key={id} style={{ position: 'relative', display: 'flex' }}>
+                  <button type="button" onClick={() => add(id)} style={{ flex: 1, minWidth: 0, textAlign: 'start', display: 'flex', flexDirection: 'column', gap: 6, padding: 12, paddingInlineEnd: meta.custom ? 40 : 12, borderRadius: 8, cursor: 'pointer', border: '1px dashed var(--divider-gold)', background: 'rgba(11,20,21,.5)' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--char-accent)' }}>
+                      <Icon name={meta.icon} size={16} />
+                      <span dir="auto" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.title}</span>
+                    </span>
+                    <span dir="auto" style={{ fontSize: 11, lineHeight: 1.7, color: 'var(--text-muted)' }}>{meta.desc}</span>
+                  </button>
+                  {meta.custom && (
+                    <button
+                      type="button" title={tr(lang, 'wsDeletePanel')} aria-label={tr(lang, 'wsDeletePanel')}
+                      onClick={() => { if (window.confirm(tr(lang, 'wsDeleteConfirm', { title: meta.title }))) destroyCustom(id); }}
+                      style={{ position: 'absolute', insetInlineEnd: 8, top: 8, width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--divider-gold)', background: 'rgba(11,20,21,.8)', color: 'var(--text-muted)' }}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -3016,11 +3127,23 @@ function AnalysisWorkspaceBoard({ character, lang, rtl }) {
         </Panel>
       ) : (
         <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-          {!!columns.main.length && (
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>{renderColumn(columns.main, 'main')}</div>
+          {(!!columns.main.length || editing) && (
+            <div
+              onDragOver={(e) => { if (dragId) e.preventDefault(); }} onDrop={(e) => { e.preventDefault(); dropOnColumn('main'); }}
+              style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}
+            >
+              {renderColumn(columns.main, 'main')}
+              {editing && !columns.main.length && <WorkspaceDropZone lang={lang} />}
+            </div>
           )}
-          {!!columns.rail.length && (
-            <div style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12, marginInlineStart: columns.main.length ? 0 : 'auto' }}>{renderColumn(columns.rail, 'rail')}</div>
+          {(!!columns.rail.length || editing) && (
+            <div
+              onDragOver={(e) => { if (dragId) e.preventDefault(); }} onDrop={(e) => { e.preventDefault(); dropOnColumn('rail'); }}
+              style={{ width: 326, flex: 'none', position: 'sticky', top: 64, display: 'flex', flexDirection: 'column', gap: 12, marginInlineStart: columns.main.length || editing ? 0 : 'auto' }}
+            >
+              {renderColumn(columns.rail, 'rail')}
+              {editing && !columns.rail.length && <WorkspaceDropZone lang={lang} />}
+            </div>
           )}
         </div>
       )}

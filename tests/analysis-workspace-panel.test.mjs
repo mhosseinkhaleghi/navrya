@@ -3,9 +3,15 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-import { boardKey, DEFAULT_BOARD, DEFAULT_REGIONS, regionOf } from '../navrya-src/analysisWorkspaceBoard.js';
+import {
+  boardKey, DEFAULT_BOARD, DEFAULT_REGIONS, regionOf, resetLayout,
+  moveBefore, moveToColumnEnd, moveWithinColumn
+} from '../navrya-src/analysisWorkspaceBoard.js';
 import { buildGenerationPrompt, parseGeneration, titleFromPrompt, UNAVAILABLE_MARKER } from '../navrya-src/analysisWorkspacePanelBuilder.js';
-import { panelKey, newPanelId, isCustomPanelId, byteLength, savePanel, MAX_SOURCE_BYTES } from '../navrya-src/analysisWorkspacePanelStore.js';
+import {
+  panelKey, newPanelId, isCustomPanelId, byteLength, savePanel, deletePanel,
+  MAX_SOURCE_BYTES, MAX_VALUE_BYTES, MAX_PROMPT_CHARS
+} from '../navrya-src/analysisWorkspacePanelStore.js';
 
 const root = process.cwd();
 const CHARACTERS = ['hunter', 'engineer', 'commander', 'sage'];
@@ -60,6 +66,87 @@ test('regionOf honors an explicit override, falls back to the panel default, and
   assert.equal(regionOf(state, 'prevSummary'), 'rail');
   assert.equal(regionOf(state, 'cockpit'), 'main', 'an invalid stored region must not be trusted');
   assert.equal(regionOf(state, 'p123456789'), 'main');
+});
+
+// ---------------------------------------------------------------------------
+// Drag-to-rearrange. The board is one flat ordering shared by both columns, so these are the
+// semantics that make a cross-column drag work at all.
+// ---------------------------------------------------------------------------
+function boardOf(board, regions) { return { board: board, regions: regions || {}, hidden: {}, custom: {} }; }
+function columns(state) {
+  const out = { main: [], rail: [] };
+  state.board.forEach((id) => out[regionOf(state, id)].push(id));
+  return out;
+}
+
+test('dragging a panel onto another panel in the SAME column reorders it there', () => {
+  const before = boardOf(DEFAULT_BOARD.slice());
+  const after = moveBefore(before, 'similar', 'dashboard');
+  assert.deepEqual(columns(after).rail, ['similar', 'dashboard', 'prevSummary']);
+  assert.deepEqual(columns(after).main, ['cockpit', 'entry'], 'the other column must not move');
+});
+
+test('dragging a panel onto a panel in the OTHER column moves it across and places it there', () => {
+  const after = moveBefore(boardOf(DEFAULT_BOARD.slice()), 'dashboard', 'entry');
+  assert.equal(regionOf(after, 'dashboard'), 'main', 'the dragged panel adopts the target column');
+  assert.deepEqual(columns(after).main, ['cockpit', 'dashboard', 'entry']);
+  assert.deepEqual(columns(after).rail, ['prevSummary', 'similar']);
+});
+
+test('dropping on a column appends to the end of that column, and can refill a column emptied of every panel', () => {
+  let state = boardOf(DEFAULT_BOARD.slice());
+  // Empty the rail entirely, the way a trader dragging all three panels out would.
+  ['dashboard', 'prevSummary', 'similar'].forEach((id) => { state = moveToColumnEnd(state, id, 'main'); });
+  assert.deepEqual(columns(state).rail, [], 'rail is now empty');
+  state = moveToColumnEnd(state, 'similar', 'rail');
+  assert.deepEqual(columns(state).rail, ['similar'], 'a panel can be dropped back into the emptied column');
+  assert.equal(columns(state).main.indexOf('similar'), -1);
+});
+
+test('a drag that cannot mean anything is a no-op, never a corrupted board', () => {
+  const before = boardOf(DEFAULT_BOARD.slice());
+  assert.equal(moveBefore(before, null, 'entry'), before, 'no panel being dragged');
+  assert.equal(moveBefore(before, 'entry', 'entry'), before, 'dropped on itself');
+  assert.equal(moveBefore(before, 'ghost', 'entry'), before, 'panel is not on the board');
+  assert.equal(moveBefore(before, 'entry', 'ghost'), before, 'target is not on the board');
+  assert.equal(moveToColumnEnd(before, 'entry', 'nonsense'), before, 'unknown region');
+  assert.equal(moveToColumnEnd(before, 'ghost', 'rail'), before, 'panel is not on the board');
+  assert.deepEqual(before.board, DEFAULT_BOARD, 'the input state was never mutated');
+});
+
+test('the button path (move up/down) still only reorders within a column and stops at the ends', () => {
+  const before = boardOf(DEFAULT_BOARD.slice());
+  const down = moveWithinColumn(before, 'dashboard', 1);
+  assert.deepEqual(columns(down).rail, ['prevSummary', 'dashboard', 'similar']);
+  assert.deepEqual(columns(down).main, ['cockpit', 'entry']);
+  assert.equal(moveWithinColumn(before, 'dashboard', -1), before, 'already first in its column');
+  assert.equal(moveWithinColumn(before, 'similar', 1), before, 'already last in its column');
+  assert.deepEqual(moveWithinColumn(before, 'similar', -1).board.filter((x) => x !== 'cockpit' && x !== 'entry'), ['dashboard', 'similar', 'prevSummary']);
+});
+
+// ---------------------------------------------------------------------------
+// "Default layout" must reset the LAYOUT, never destroy work.
+// ---------------------------------------------------------------------------
+test('resetting the layout restores the default desk but keeps AI-authored panels, so they return to the library instead of being destroyed', () => {
+  const state = {
+    board: ['entry', 'p12345678', 'cockpit'],
+    regions: { entry: 'rail', p12345678: 'main' },
+    hidden: { similar: true },
+    custom: { p12345678: { title: 'Scenario table', prompt: 'a table', version: 2 } }
+  };
+  const after = resetLayout(state);
+  assert.deepEqual(after.board, DEFAULT_BOARD, 'the default five panels are back, in order');
+  assert.deepEqual(after.regions, {}, 'custom placements are cleared');
+  assert.deepEqual(after.hidden, {});
+  assert.deepEqual(after.custom, state.custom, 'the generated panel survives, off the desk');
+  // Off the board but still known -> it appears in the library, one click from the desk again.
+  assert.equal(after.board.indexOf('p12345678'), -1);
+  assert.ok(Object.prototype.hasOwnProperty.call(after.custom, 'p12345678'));
+});
+
+test('resetLayout tolerates a board with no custom panels at all', () => {
+  assert.deepEqual(resetLayout({ board: [], regions: {}, hidden: {}, custom: {} }).custom, {});
+  assert.deepEqual(resetLayout(undefined).custom, {});
 });
 
 // ---------------------------------------------------------------------------
@@ -171,6 +258,53 @@ test('a normal panel is written under the key the server accepts, with the sourc
 test('byteLength measures UTF-8 bytes, not characters - a Persian panel must not slip past the ceiling', () => {
   assert.equal(byteLength('abc'), 3);
   assert.equal(byteLength('میز'), 6);
+});
+
+// The bug this pair guards: the prompt is stored beside the source, and the ceiling that actually
+// matters is the SERVER's 16KB per whole encoded value. A generous prompt cap in a 2-bytes-per-
+// character language could push a perfectly legal source over that limit - and the refusal then
+// blamed the source, telling the trader to simplify the panel when the prompt was the problem.
+test('a maximum-size source plus a maximum-length Persian prompt still fits the server 16KB value limit', () => {
+  const before = global.window;
+  const written = [];
+  global.window = { TradeJournalUserPreferences: { setPref(key, value) { written.push({ key, value }); } } };
+  try {
+    const result = savePanel('commander', {
+      id: newPanelId(),
+      title: 'ت'.repeat(200),
+      prompt: 'ت'.repeat(MAX_PROMPT_CHARS * 3),
+      source: '<div>' + 'x'.repeat(MAX_SOURCE_BYTES - 11) + '</div>'
+    });
+    assert.equal(result.ok, true, 'a legal panel at both ceilings must still save');
+    assert.equal(written.length, 1);
+    assert.ok(result.record.prompt.length <= MAX_PROMPT_CHARS, 'the prompt is budgeted, not stored whole');
+    const encoded = byteLength(JSON.stringify(written[0].value));
+    assert.ok(encoded <= MAX_VALUE_BYTES, `encoded record is ${encoded} bytes, over the ${MAX_VALUE_BYTES} server limit`);
+  } finally { global.window = before; }
+});
+
+test('when the encoded record would exceed the server limit, the reported number is the one that actually failed', () => {
+  const before = global.window;
+  global.window = { TradeJournalUserPreferences: { setPref() { throw new Error('must not write an over-limit record'); } } };
+  try {
+    // Source under its own ceiling, but escaping-heavy enough to push the envelope over 16KB.
+    const result = savePanel('sage', { id: newPanelId(), title: 't', prompt: 'p', source: '"\n'.repeat(MAX_SOURCE_BYTES / 2 - 20) });
+    if (!result.ok) {
+      assert.equal(result.reason, 'too-large');
+      assert.ok(result.bytes > result.limit, 'the reported size must be the one that broke the limit');
+      assert.ok(result.limit === MAX_VALUE_BYTES || result.limit === MAX_SOURCE_BYTES);
+    }
+  } finally { global.window = before; }
+});
+
+test('deleting a generated panel removes its own preference row, so a removed panel cannot leak 12KB of source forever', () => {
+  const before = global.window;
+  const reset = [];
+  global.window = { TradeJournalUserPreferences: { resetPref(key) { reset.push(key); } } };
+  try {
+    deletePanel('hunter', 'p12345678');
+    assert.deepEqual(reset, [panelKey('hunter', 'p12345678')]);
+  } finally { global.window = before; }
 });
 
 // ---------------------------------------------------------------------------

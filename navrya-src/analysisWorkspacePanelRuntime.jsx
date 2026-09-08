@@ -137,10 +137,13 @@ const BRIDGE_CLIENT = [
   ' onUpdate:function(fn){if(typeof fn==="function")listeners.push(fn)},',
   ' root:function(){return document.getElementById("navrya-panel-root")}',
   '};',
+  'var lastH=0;',
   'function reportHeight(){var h=Math.max(document.documentElement.scrollHeight,document.body.scrollHeight);',
+  ' if(Math.abs(h-lastH)<2)return;lastH=h;',
   ' parent.postMessage({__navryaPanel:1,type:"height",value:h},"*")}',
   'window.addEventListener("load",reportHeight);',
-  'setInterval(reportHeight,700);',
+  'if(typeof ResizeObserver==="function"){try{new ResizeObserver(reportHeight).observe(document.documentElement)}catch(e){}}',
+  'setInterval(reportHeight,2000);',
   'window.addEventListener("error",function(e){',
   ' parent.postMessage({__navryaPanel:1,type:"panel-error",message:String(e&&e.message||"error")},"*")});',
   'window.addEventListener("unhandledrejection",function(e){',
@@ -213,8 +216,12 @@ export function SandboxedPanel({ source, snapshotRef, title, lang, pulse, onErro
   }, [onError, snapshotRef]);
 
   // The document is built once per source change - never per render - so a panel keeps its own
-  // drawn state across the session's own 1s re-render tick.
-  const doc = React.useMemo(() => panelDocument(source || '', themeVars()), [source]);
+  // drawn state across the session's own 1s re-render tick. The theme is part of the key rather
+  // than read inside the memo: computed once and ignored afterwards, a panel built under one
+  // character's accent kept that accent after a character/theme change until its source happened
+  // to be edited.
+  const theme = themeVars();
+  const doc = React.useMemo(() => panelDocument(source || '', theme), [source, theme]);
 
   return (
     <div style={{ borderRadius: 12, border: '1px solid var(--border-gold)', background: 'var(--surface-800, rgba(11,20,21,.6))', overflow: 'hidden' }}>
