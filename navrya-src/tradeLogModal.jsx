@@ -30,6 +30,75 @@ import { ManualAccountModal } from './accountsView.jsx';
 const STEP_KEYS = ['stepStatus', 'stepTimeframe', 'stepSeen', 'stepEmotions', 'stepScreenshot'];
 const TOTAL_STEPS = 5;
 
+// UX pass (real-user walkthrough audit): screenshots are read entirely client-side via
+// FileReader - an oversized image (a 4K-monitor screenshot can run tens of MB) with no size cap
+// at all could visibly stall the tab while it base64-encodes. 15MB mirrors the existing
+// communityView.jsx MAX_IMAGE_BYTES / strategyEducationView.jsx cap - one consistent limit across
+// every image-upload surface in this app, not a new arbitrary number.
+const MAX_SCREENSHOT_BYTES = 15 * 1024 * 1024;
+// Every accepted screenshot is also downscaled to this longest-side dimension before being held
+// in memory/sent to /api/trades/analyze - a full-resolution monitor capture has far more pixels
+// than any chart analysis needs, and re-encoding it smaller is what actually keeps large-batch
+// drops responsive (the size cap above only refuses the most extreme case).
+const SCREENSHOT_MAX_DIMENSION = 1600;
+
+// Draft autosave/recovery (only for a brand-new trade - see TradeLogModal's own existingRef
+// gate): a trader who loses the tab mid-wizard (crash, accidental refresh, a dead battery) loses
+// nothing typed in the last DRAFT_MAX_AGE_MS. Screenshots are deliberately NOT persisted (File
+// objects do not survive JSON, and re-encoding every dropped image into localStorage on every
+// keystroke would reintroduce the exact freeze this pass is fixing) - only typed/selected fields.
+const DRAFT_STORAGE_KEY = 'tradejournal:tradeLogDraft:v1';
+const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const DRAFT_SAVE_DEBOUNCE_MS = 800;
+
+function readTradeLogDraft() {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.savedAt) return null;
+    if (Date.now() - Number(parsed.savedAt) > DRAFT_MAX_AGE_MS) return null;
+    return parsed;
+  } catch (_) { return null; }
+}
+function writeTradeLogDraft(snapshot) {
+  try { window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(Object.assign({ savedAt: Date.now() }, snapshot))); } catch (_) { /* private mode / quota - never block the wizard over this */ }
+}
+function clearTradeLogDraft() {
+  try { window.localStorage.removeItem(DRAFT_STORAGE_KEY); } catch (_) {}
+}
+// A draft with every field still at its untouched default is not worth ever offering back -
+// only a genuinely started trade should trigger the recovery banner.
+function draftHasRealContent(d) {
+  if (!d || !d.trade) return false;
+  const trade = d.trade;
+  return !!(trade.entry || trade.stop || trade.tp || trade.chartNote || (trade.conceptTags && trade.conceptTags.length) ||
+    (d.emotion && (d.emotion.dominantEmotions.length || d.emotion.note)) || d.accountId || d.instrument);
+}
+
+// Re-encodes an oversized screenshot to a bounded longest-side dimension via an off-DOM canvas -
+// a standard, well-supported technique (no library needed). Resolves with the ORIGINAL dataUrl
+// unchanged if the image is already small enough, or on any decode failure (never blocks a
+// legitimate screenshot over a resize error).
+function resizeScreenshotDataUrl(dataUrl, maxDimension) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDimension / Math.max(img.naturalWidth, img.naturalHeight));
+      if (scale >= 1) { resolve(dataUrl); return; }
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      } catch (_) { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 // icon per legacy emotion id (design handoff's own icon choices, mapped onto the real
 // TradeJournalTradeTypes.emotions ids/i18n keys - never renamed, just re-skinned)
 const MOOD_ICONS = {
@@ -240,7 +309,7 @@ function computeSolved(f) {
 // ============================================================================
 // Step 1 - Status
 // ============================================================================
-function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
+function StepStatus({ t, i18n, trade, setField, solved, dirManual, accountRequired, instrumentRequired }) {
   const long = trade.dir === 'long';
   // Journey H1: magic-fill animation for this step's own AI-fillable fields (trade.types.js's
   // tradeWizardPaths). Step 1 owns direction/marginMode/entryPrice/stopLoss/riskPercent/
@@ -253,6 +322,17 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
   const riskPercentFilled = useAiFieldFill('trade-wizard', 'riskPercent');
   const leverageFilled = useAiFieldFill('trade-wizard', 'leverage');
   const bad = solved.valid && solved.r.potentialProfit !== null && solved.r.potentialProfit !== undefined && solved.r.potentialProfit < 0;
+  // UX pass: before this, every tile above just showed "—" the moment entry/stop made the
+  // calculation invalid (e.g. a stop typed equal to entry, or either left at zero) - with no
+  // indication of WHY, so the cost preview looked simply broken. Only shown once the trader has
+  // actually typed something in BOTH fields - never on the first, still-empty render.
+  const entryNum = toNum(trade.entry), stopNum = toNum(trade.stop);
+  const bothPriceFieldsTyped = trade.entry !== '' && trade.stop !== '';
+  const invalidPriceReason = (!solved.valid && bothPriceFieldsTyped)
+    ? ((entryNum !== null && entryNum <= 0) || (stopNum !== null && stopNum <= 0)
+      ? 'logPriceMustBePositive'
+      : (entryNum !== null && stopNum !== null && entryNum === stopNum ? 'logStopMustDifferFromEntry' : null))
+    : null;
   const tiles = [
     { label: t('positionSize'), value: solved.valid && solved.r.positionSize !== null && solved.r.positionSize !== undefined ? fmtMoney(i18n, solved.r.positionSize, 0) + ' USD' : '—' },
     { label: t('riskAmount'), value: solved.valid && solved.r.riskAmount !== null && solved.r.riskAmount !== undefined ? fmtMoney(i18n, solved.r.riskAmount, 0) + ' USD' : '—' },
@@ -261,8 +341,19 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
     { label: t('potentialProfit'), value: solved.valid && solved.r.potentialProfit !== null && solved.r.potentialProfit !== undefined ? (bad ? '−' : '') + fmtMoney(i18n, Math.abs(solved.r.potentialProfit), 0) + ' USD' : t('logSetATarget') },
     { label: t('calcRiskToReward'), value: solved.valid && solved.r.rr !== null && solved.r.rr !== undefined && solved.r.rr > 0 ? '1 : ' + fmtMoney(i18n, solved.r.rr, 2) : '—' }
   ];
+  // UX pass: account/instrument are picked in the persistent session bar ABOVE this step, not
+  // inside it - easy to never notice they are required at all until a blocked submit at the very
+  // end. A quiet reminder repeated right here, in the step the trader is actually looking at,
+  // costs nothing when both are already chosen (it simply does not render).
+  const needsAccountOrInstrument = accountRequired || instrumentRequired;
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {needsAccountOrInstrument && (
+        <Notice tone="warning" icon="status">
+          {accountRequired && instrumentRequired ? t('logAccountAndInstrumentReminder') : accountRequired ? t('logAccountReminder') : t('logInstrumentReminder')}
+        </Notice>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
       <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14, border: '1px solid var(--border-gold)', borderRadius: 12, background: 'rgba(3,8,7,.55)', padding: 16 }}>
         <SectionLabel>{t('logWhereStands')}</SectionLabel>
         <button
@@ -358,12 +449,14 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual }) {
               </div>
             ))}
           </div>
+          {invalidPriceReason && <Notice tone="warning" icon="status">{t(invalidPriceReason)}</Notice>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9, paddingTop: 12, borderTop: '1px solid var(--border-hairline)' }}>
             <Button variant="secondary" icon="streak" onClick={trade.onQuickLog} style={{ height: 52, border: '1px solid var(--gold-warm)', background: 'rgba(214,175,107,.1)', color: 'var(--gold-warm)' }}>{t('logQuickLog')}</Button>
             <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{trade.tradeState === 'hunting' ? t('logQuickNoteHunting') : t('logQuickNoteOpen')}</span>
           </div>
         </div>
       </Panel>
+      </div>
     </div>
   );
 }
@@ -792,6 +885,67 @@ function TradeLogModal({ seed, options, onClose }) {
   // convention). Re-assigned every render instead (below, right after finish() is (re)defined).
   const submitRef = React.useRef(null);
 
+  // UX pass, fixes 4 & 8 - unsaved-work protection and draft autosave/recovery. Both are
+  // deliberately scoped to a BRAND-NEW trade only (isNewTrade) - editing an already-persisted
+  // trade already has real saved data; layering an unrelated stale draft on top of that would be
+  // confusing and risky, not helpful.
+  const isNewTrade = !existingRef.current;
+  const initialDraftRef = React.useRef(isNewTrade ? readTradeLogDraft() : null);
+  // Only offered back if it actually has something a trader would mind losing - a draft where
+  // every field is still at its default is not worth ever surfacing.
+  const [pendingDraft, setPendingDraft] = React.useState(() => (draftHasRealContent(initialDraftRef.current) ? initialDraftRef.current : null));
+  // Fix 4: a plain "has the user touched anything" flag, not a deep value diff - simpler, and the
+  // question that actually matters for "will closing now lose real work?" is binary, not "exactly
+  // what changed." Starts false; the effect below flips it true on the SECOND render onward (the
+  // very first render is just mount, never a real edit) - see its own comment.
+  const dirtyRef = React.useRef(false);
+  const isFirstDirtyCheckRef = React.useRef(true);
+  React.useEffect(() => {
+    if (isFirstDirtyCheckRef.current) { isFirstDirtyCheckRef.current = false; return; }
+    dirtyRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trade, emotion, preTradeContext, accountId, instrument, strategyId, patternDraft, shots]);
+
+  function requestClose() {
+    // window.confirm mirrors this app's own existing convention for every other "discard/
+    // delete" moment (Session/Pattern/Strategy/Trade deletion, AI memory/chat-history clearing) -
+    // reused here rather than inventing a new in-app confirmation surface for one modal.
+    if (dirtyRef.current && !window.confirm(t('logDiscardConfirm'))) return;
+    onClose();
+  }
+
+  // Fix 8: applies a recovered draft's fields back into state, then treats the wizard as dirty
+  // from that point on (closing again without saving should still warn, per fix 4).
+  function restoreDraft() {
+    const d = pendingDraft;
+    if (!d) return;
+    if (d.trade) setTrade((prev) => ({ ...prev, ...d.trade }));
+    if (d.emotion) setEmotion(d.emotion);
+    if (d.preTradeContext) setPreTradeContext(d.preTradeContext);
+    if (d.accountId) setAccountId(d.accountId);
+    if (d.instrument) setInstrument(d.instrument);
+    if (d.strategyId) setStrategyId(d.strategyId);
+    if (d.step) setStep(d.step);
+    dirtyRef.current = true;
+    setPendingDraft(null);
+  }
+  function discardDraft() {
+    clearTradeLogDraft();
+    setPendingDraft(null);
+  }
+
+  // Debounced autosave - skipped entirely while a recovery banner is still unresolved (writing
+  // the current, still-default state right now would silently overwrite the very draft being
+  // offered back) and for an existing trade being edited (never applicable there).
+  React.useEffect(() => {
+    if (!isNewTrade || pendingDraft) return undefined;
+    const timer = setTimeout(() => {
+      writeTradeLogDraft({ trade, emotion, preTradeContext, accountId, instrument, strategyId, step });
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trade, emotion, preTradeContext, accountId, instrument, strategyId, step, isNewTrade, pendingDraft]);
+
   const solved = computeSolved({
     entry: trade.entry, stop: trade.stop, tp: trade.tp, dir: trade.dir, margin: trade.margin,
     riskPercent: trade.riskPercent, riskAmount: trade.riskAmount, leverage: trade.leverage, positionSize: trade.positionSize,
@@ -888,10 +1042,25 @@ function TradeLogModal({ seed, options, onClose }) {
 
   function pickFile() { if (fileInputRef.current) fileInputRef.current.click(); }
   function handleFiles(list) {
-    const files = Array.prototype.slice.call(list || []).filter((f) => /^image\//.test(f.type || ''));
-    files.forEach((file) => {
+    const all = Array.prototype.slice.call(list || []);
+    const images = all.filter((f) => /^image\//.test(f.type || ''));
+    const oversized = images.filter((f) => f.size > MAX_SCREENSHOT_BYTES);
+    const accepted = images.filter((f) => f.size <= MAX_SCREENSHOT_BYTES);
+    if (oversized.length) {
+      const tradeUi = window.TradeJournalTradeUI;
+      if (tradeUi) tradeUi.toast(t('logScreenshotTooLarge', { count: oversized.length }), 'danger');
+    }
+    accepted.forEach((file) => {
       const reader = new FileReader();
-      reader.onload = () => setShots((prev) => prev.concat([{ file, url: reader.result, name: file.name }]));
+      reader.onload = () => {
+        // UX pass: downscale before it ever sits in `shots` state - a batch of full-resolution
+        // monitor screenshots dropped together previously base64-encoded and held at native size,
+        // visibly stalling the tab. Resize is async/off the main render, so this never blocks the
+        // drop itself - each shot simply appears the moment its own resize resolves.
+        resizeScreenshotDataUrl(String(reader.result || ''), SCREENSHOT_MAX_DIMENSION).then((url) => {
+          setShots((prev) => prev.concat([{ file, url, name: file.name }]));
+        });
+      };
       reader.readAsDataURL(file);
     });
   }
@@ -1091,12 +1260,23 @@ function TradeLogModal({ seed, options, onClose }) {
     return tradeUi.applyCalculatedToTrade(baseTrade, calc.solve(source, manual, { feePercent: source.feePercent }), source);
   }
 
+  // UX pass: accountRequired/instrumentRequired's own error Notice sits in the fixed session bar
+  // above the scrollable step body - it never scrolls out of view, but a trader whose eyes are on
+  // the footer button they just pressed can easily miss a small banner that appeared well above
+  // it. A toast (this app's own, already-established, hard-to-miss feedback surface - reused
+  // verbatim, same tone/wording as the persistent Notice) guarantees SOMETHING visible happens at
+  // the exact moment the click is blocked, instead of the button silently doing nothing.
+  function announceBlockedSubmit(key) {
+    const tradeUi = window.TradeJournalTradeUI;
+    if (tradeUi) tradeUi.toast(t(key), 'danger');
+  }
   function quickLog() {
-    if (accountRequired) { setAccountError(true); return; }
-    if (instrumentRequired) { setInstrumentError(true); return; }
+    if (accountRequired) { setAccountError(true); announceBlockedSubmit('accountRequiredError'); return; }
+    if (instrumentRequired) { setInstrumentError(true); announceBlockedSubmit('instrumentRequiredError'); return; }
     let saved = buildTradeForSave(trade.tradeState, 'quick');
     saved.disciplineImpact = -1;
     saved = tradeStore.save(saved);
+    if (isNewTrade) clearTradeLogDraft();
     const tradeUi = window.TradeJournalTradeUI;
     if (tradeUi) tradeUi.toast(t('saved'), 'success');
     onClose();
@@ -1105,8 +1285,8 @@ function TradeLogModal({ seed, options, onClose }) {
 
   function finish() {
     if (saving) return;
-    if (accountRequired) { setAccountError(true); return; }
-    if (instrumentRequired) { setInstrumentError(true); return; }
+    if (accountRequired) { setAccountError(true); announceBlockedSubmit('accountRequiredError'); return; }
+    if (instrumentRequired) { setInstrumentError(true); announceBlockedSubmit('instrumentRequiredError'); return; }
     setSaving(true);
     let saved = buildTradeForSave(selectedStatus, 'full');
     saved = tradeStore.save(saved);
@@ -1137,6 +1317,7 @@ function TradeLogModal({ seed, options, onClose }) {
           return tradeStore.save(value);
         }).catch(() => value);
     }).then((value) => {
+      if (isNewTrade) clearTradeLogDraft();
       const tradeUi = window.TradeJournalTradeUI;
       if (tradeUi) tradeUi.toast(existingRef.current ? t('updated') : t('saved'), 'success');
       setSaving(false);
@@ -1158,7 +1339,13 @@ function TradeLogModal({ seed, options, onClose }) {
     if (step === 4) {
       const has = emotion.dominantEmotions.length || emotion.note;
       if (has && mhSafety && mhSafety.checkText(emotion.note).flagged) {
+        // UX/consistency fix: this used to show the safety card and then advance to the next
+        // step regardless - the one place in this whole app's several safety-gated flows
+        // (logEmotionModal.jsx, postTradeReflectionModal.jsx) that did NOT actually stop the
+        // user on a flagged note. Mirrors those two exactly now: show the card, then return
+        // without moving - the trader must dismiss it (or edit the note) before continuing.
         setSafetyNode(mhSafety.renderSafetyCard(() => setSafetyNode(null)));
+        return;
       }
     }
     if (step >= TOTAL_STEPS) { finish(); return; }
@@ -1186,7 +1373,7 @@ function TradeLogModal({ seed, options, onClose }) {
     <div
       dir={rtl ? 'rtl' : 'ltr'}
       style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, boxSizing: 'border-box', background: 'var(--scrim)', backdropFilter: 'blur(6px)' }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose(); }}
     >
       <style>{'@keyframes nv-log-breath{0%{transform:scale(.62);opacity:.55}21%{transform:scale(1);opacity:1}58%{transform:scale(1);opacity:1}100%{transform:scale(.62);opacity:.55}}'}</style>
       <Panel
@@ -1194,7 +1381,16 @@ function TradeLogModal({ seed, options, onClose }) {
         role="dialog" aria-modal="true" aria-label={t('logTrade')}
         style={{ width: 'min(1380px,100%)', maxHeight: 'calc(100vh - 48px)', background: 'var(--ink-900)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         onMouseDown={(e) => e.stopPropagation()}
-        onDragOver={(e) => { e.preventDefault(); if (!dragging) setDragging(true); }}
+        onDragOver={(e) => {
+          // UX pass: dragging a plain text selection (e.g. inside the chart-note textarea) also
+          // bubbles a native dragover event to this Panel - without this check, that showed the
+          // full-screen "drop a screenshot here" overlay over an ordinary in-page text drag,
+          // which is confusing and has nothing to do with files at all.
+          const types = e.dataTransfer && e.dataTransfer.types;
+          if (!types || Array.prototype.indexOf.call(types, 'Files') === -1) return;
+          e.preventDefault();
+          if (!dragging) setDragging(true);
+        }}
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }}
         onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer && e.dataTransfer.files); }}
       >
@@ -1211,8 +1407,22 @@ function TradeLogModal({ seed, options, onClose }) {
               <span className="navrya-tabular" dir="ltr" style={{ font: 'var(--type-countdown)', color: 'var(--gold-warm)' }}>{t('logStepOf', { step: step, total: TOTAL_STEPS })}</span>
               <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t(STEP_KEYS[step - 1])}</span>
             </div>
-            <button type="button" onClick={onClose} aria-label={t('close')} style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}><Icon name="close" size={18} /></button>
+            <button type="button" onClick={requestClose} aria-label={t('close')} style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}><Icon name="close" size={18} /></button>
           </div>
+          {/* Fix 8: draft recovery offer - only for a brand-new trade with a genuinely
+              content-bearing leftover draft (see draftHasRealContent), shown once at the top
+              until the trader explicitly resolves it either way. */}
+          {pendingDraft && (
+            <div style={{ padding: '0 20px 14px' }}>
+              <Notice tone="accent" icon="status">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1 }}>{t('logDraftFoundReminder')}</span>
+                  <Button variant="secondary" size="sm" icon="check" onClick={restoreDraft}>{t('logDraftRestore')}</Button>
+                  <Button variant="ghost" size="sm" icon="close" onClick={discardDraft}>{t('logDraftDiscard')}</Button>
+                </div>
+              </Notice>
+            </div>
+          )}
 
           {/* Step nav */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 20px 14px' }}>
@@ -1246,7 +1456,11 @@ function TradeLogModal({ seed, options, onClose }) {
               <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('autoDetected')}</span>
             </span>
             <span style={{ flex: 1 }} />
-            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: accountError && accountRequired ? 'var(--danger)' : 'var(--text-muted)' }}>{t('account')}{activeAccounts.length && !existingRef.current ? ' *' : ''}</span>
+            {/* UX pass: the "*" itself now stands out in warning gold the moment the field is
+                genuinely required and still empty - previously it only turned red AFTER a
+                failed submit attempt, so a trader who had not yet tried to save had no visual
+                cue at all that this small, packed bar even contained a required field. */}
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: accountError && accountRequired ? 'var(--danger)' : 'var(--text-muted)' }}>{t('account')}{activeAccounts.length && !existingRef.current ? <span style={{ color: 'var(--warning)' }}> *</span> : ''}</span>
             {activeAccounts.length ? (
               <Select value={accountId} options={accountOptions} onChange={(id) => { setAccountError(false); handleAccount(id); }} icon="wallet" width={200} placeholder={t('chooseAccount')} />
             ) : (
@@ -1254,7 +1468,7 @@ function TradeLogModal({ seed, options, onClose }) {
             )}
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('strategy')}</span>
             <Select value={strategyId} options={strategyOptions} onChange={handleStrategy} icon="strategies" width={220} />
-            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: instrumentError ? 'var(--danger)' : 'var(--text-muted)' }}>{t('instrument')} *</span>
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: instrumentError ? 'var(--danger)' : 'var(--text-muted)' }}>{t('instrument')} {instrumentRequired ? <span style={{ color: 'var(--warning)' }}>*</span> : '*'}</span>
             {/* Instrument Catalog domain: locked read-only once sourced from a Session - a Trade
                 sourced from a Session must match its instrument exactly (repo.pg.mjs's
                 TRADE_SESSION_INSTRUMENT_MISMATCH), never re-typed to something else here. */}
@@ -1276,7 +1490,7 @@ function TradeLogModal({ seed, options, onClose }) {
 
           {/* Body */}
           <div className="navrya-scroll" style={{ minHeight: 300, maxHeight: '58vh', boxSizing: 'border-box', padding: 18, background: 'var(--ink-950)', overflowY: 'auto' }}>
-            {step === 1 && <StepStatus t={t} i18n={i18n} trade={{ ...trade, onQuickLog: quickLog }} setField={setField} solved={solved} dirManual={dirManual} />}
+            {step === 1 && <StepStatus t={t} i18n={i18n} trade={{ ...trade, onQuickLog: quickLog }} setField={setField} solved={solved} dirManual={dirManual} accountRequired={accountRequired} instrumentRequired={instrumentRequired} />}
             {step === 2 && <StepTimeframes t={t} types={types} trade={trade} setField={setField} setTrend={setTrend} />}
             {step === 3 && <StepSeen t={t} types={types} trade={trade} toggleConcept={toggleConcept} patterns={patterns} togglePattern={togglePattern} patternDraft={patternDraft} setPatternDraft={setPatternDraft} onAddPattern={onAddPattern} setField={setField} />}
             {step === 4 && (
@@ -1296,11 +1510,19 @@ function TradeLogModal({ seed, options, onClose }) {
           {/* Footer */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', flexWrap: 'wrap' }}>
             {step > 1 && <Button variant="ghost" icon="collapse" onClick={goBack}>{t('previous')}</Button>}
-            {step === 1 && <Button variant="ghost" icon="close" onClick={onClose}>{t('cancel')}</Button>}
+            {step === 1 && <Button variant="ghost" icon="close" onClick={requestClose}>{t('cancel')}</Button>}
             <span style={{ flex: 1 }} />
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)', marginInlineEnd: 6 }}>{footNote}</span>
             {step < TOTAL_STEPS && <Button variant="primary" iconAfter="expand" onClick={goNext}>{t('next')}</Button>}
-            {step === TOTAL_STEPS && <Button variant="primary" icon="check" onClick={finish} disabled={saving}>{t('registerWithAnalysis')}</Button>}
+            {step === TOTAL_STEPS && (
+              // UX pass: `disabled` alone (the button just going grey with the same label) looks
+              // identical to a hung/broken button on a slow connection - especially here, where
+              // finish() genuinely waits on a real network upload + AI analysis call. `loading`
+              // is this app's own established "this is genuinely working" signal (Button.jsx's
+              // AnalyzingImageIcon scan animation), already used for other real in-flight chart-
+              // image calls - reused as-is, plus a changed label so the wording itself confirms it.
+              <Button variant="primary" icon="check" onClick={finish} disabled={saving} loading={saving}>{saving ? t('logSaving') : t('registerWithAnalysis')}</Button>
+            )}
           </div>
         </div>
 
