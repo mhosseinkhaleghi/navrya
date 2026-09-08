@@ -304,6 +304,34 @@
       };
     }
 
+    // "Finish NAVRYA Voice Mode" brief, section 7.1/7.2: an explicitSubmitOnly workflow (see that
+    // flag's own comment in ai-workflow-engine.js - trade.wizard/trade.emotion.log, so far) never
+    // auto-submits merely because nothing required is left missing; it only completes once an
+    // unambiguous finish/save phrase arrives. Deterministic and zero-model-judgment, the same
+    // posture as the cancel fast path just above - finishExplicitly() itself re-checks every real
+    // precondition (a live workflow, this exact flag, nothing genuinely still missing) and simply
+    // returns null (falling through to ordinary handling) if any of them fail, so an early "save
+    // it" said before a truly required field is answered is correctly refused, not force-submitted.
+    // Fire-and-forget, matching scheduleSubmit()'s own existing shape - the real persistence
+    // (and its own resultContext() navigation/UI feedback) completes in the background exactly
+    // like the grace-window auto-submit path already does; this turn's reply only ever
+    // acknowledges that saving has started.
+    var finishWorkflow = workflowEngine ? workflowEngine.current() : null;
+    var finishAction = finishWorkflow && actionRegistry ? actionRegistry.get(finishWorkflow.actionId) : null;
+    if (finishWorkflow && finishAction && finishAction.explicitSubmitOnly && typeof workflowEngine.interpretFinishText === 'function' && workflowEngine.interpretFinishText(text)) {
+      var finishPromise = workflowEngine.finishExplicitly(contextEngine ? contextEngine.snapshot() : {});
+      if (finishPromise) {
+        finishPromise.catch(function () {});
+        setLastTurnDebug({ path: 'workflow-finished-explicitly', actionId: finishWorkflow.actionId });
+        recordZeroNetworkLatency('WORKFLOW_FINISH_EXPLICIT', t0, { graceMs: 0 });
+        var finishReply = i18n.t('aiWorkflowFinishing');
+        return {
+          kind: 'workflow', reply: finishReply, voiceReply: finishReply,
+          workflow: null, activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+        };
+      }
+    }
+
     // Journey F, F37: a workflow genuinely waiting on ONLY a yes/no gate field (confirm/
     // confirmDelete/confirmPublish/send/publish - trade.cancel's own pattern, generalized to
     // every destructive/external-effect action built since) must resolve an explicit yes/no

@@ -243,10 +243,53 @@
     // later turn keeps landing on the same live workflow instead of racing a timer that exists
     // for a different kind of action entirely.
     if ((current.status === 'collecting' || current.status === 'pending-submit') && !current.missing.length) {
-      if (action.entityAlreadyPersisted) current.status = 'collecting';
+      // "Finish NAVRYA Voice Mode" brief, section 7.1/7.2: a real, reproduced bug - trade.wizard's
+      // only two requiredFields are direction/instrument, and trade.emotion.log declares NONE at
+      // all, so the pre-existing rule above ("nothing required is missing -> auto-submit after a
+      // short grace window") saved a brand-new Trade the instant direction+instrument were known
+      // (before timeframes/tags/emotions/screenshots were ever asked about) and saved an emotion
+      // log the very first turn that resolved which Trade it was about (before stress/emotions
+      // were ever asked). Neither is "entityAlreadyPersisted" (that flag is for an entity submit()
+      // is already a no-op for, e.g. pattern.create) - both of these have a real, not-yet-run
+      // submit() with real, still-unasked optional fields a human filling the same real form would
+      // still be offered. explicitSubmitOnly is the new, general, reusable flag for exactly this
+      // shape: never auto-arm the grace-window timer no matter how "complete" the required set
+      // looks - stay collecting (so later turns keep supplying optional fields normally) until an
+      // unambiguous finish/save signal arrives via finishExplicitly() below.
+      if (action.entityAlreadyPersisted || action.explicitSubmitOnly) current.status = 'collecting';
       else scheduleSubmit(current, action, context);
     }
     return current;
+  }
+
+  // The real submit-execution body, shared by scheduleSubmit()'s own grace-window timer AND
+  // finishExplicitly()'s immediate path below - one canonical way this engine ever actually
+  // calls an action's real submit(), never duplicated.
+  function runSubmit(workflow, action, context) {
+    workflow.pendingSubmitTimer = null;
+    workflow.status = 'submitting';
+    var submitFn = typeof action.submit === 'function' ? action.submit : function () { return undefined; };
+    // Promise.resolve().then(() => submitFn(...)), not Promise.resolve(submitFn(...)): found
+    // while building Journey B - tradeCalculatorModal.jsx's own submit() is a plain, synchronous
+    // function (tradeStore.save() needs no awaiting), unlike session.create's, which always
+    // happens to return a promise. Promise.resolve(submitFn(...)) evaluates submitFn(...) as a
+    // bare argument expression first - a SYNCHRONOUS throw there escapes before Promise.resolve()
+    // ever wraps anything, as an uncaught exception inside this setTimeout callback, leaving the
+    // workflow stuck in 'submitting' forever (the .then() rejection fallback below never runs).
+    // Deferring the call inside a .then() callback means any throw - sync or async - becomes a
+    // normal promise rejection either way, so the existing failure-recovery fallback catches it.
+    return Promise.resolve().then(function () { return submitFn(workflow.known, context); }).then(function (result) {
+      if (current !== workflow) return result;
+      try { action.resultContext(result); } catch (_) { /* navigation to the result is best-effort */ }
+      current = null;
+      return result;
+    }, function (error) {
+      // A failed submit must never lose the values already applied live to the real, still-open
+      // form - leave the workflow collecting so a retry (or the user finishing manually) still
+      // works, matching the app-wide rule that an AI failure never rolls back applied state.
+      if (current === workflow) workflow.status = 'collecting';
+      throw error;
+    });
   }
 
   function scheduleSubmit(workflow, action, context) {
@@ -265,29 +308,45 @@
       var processRegistry = window.TradeJournalAIProcessRegistry;
       var stillOpen = !processRegistry || typeof processRegistry.query !== 'function' || processRegistry.query(workflow.processId).open;
       if (!stillOpen) { if (current === workflow) current = null; return; }
-      workflow.pendingSubmitTimer = null;
-      workflow.status = 'submitting';
-      var submitFn = typeof action.submit === 'function' ? action.submit : function () { return undefined; };
-      // Promise.resolve().then(() => submitFn(...)), not Promise.resolve(submitFn(...)): found
-      // while building Journey B - tradeCalculatorModal.jsx's own submit() is a plain, synchronous
-      // function (tradeStore.save() needs no awaiting), unlike session.create's, which always
-      // happens to return a promise. Promise.resolve(submitFn(...)) evaluates submitFn(...) as a
-      // bare argument expression first - a SYNCHRONOUS throw there escapes before Promise.resolve()
-      // ever wraps anything, as an uncaught exception inside this setTimeout callback, leaving the
-      // workflow stuck in 'submitting' forever (the .then() rejection fallback below never runs).
-      // Deferring the call inside a .then() callback means any throw - sync or async - becomes a
-      // normal promise rejection either way, so the existing failure-recovery fallback catches it.
-      Promise.resolve().then(function () { return submitFn(workflow.known, context); }).then(function (result) {
-        if (current !== workflow) return;
-        try { action.resultContext(result); } catch (_) { /* navigation to the result is best-effort */ }
-        current = null;
-      }, function () {
-        // A failed submit must never lose the values already applied live to the real, still-open
-        // form - leave the workflow collecting so a retry (or the user finishing manually) still
-        // works, matching the app-wide rule that an AI failure never rolls back applied state.
-        if (current === workflow) workflow.status = 'collecting';
-      });
+      runSubmit(workflow, action, context).catch(function () {});
     }, SUBMIT_GRACE_MS);
+  }
+
+  // "Finish NAVRYA Voice Mode" brief, section 7.1/7.2: the one way an explicitSubmitOnly workflow
+  // (see the flag's own comment above) ever actually completes - called from chat-dock-core.js's
+  // own deterministic finish-phrase fast path (interpretFinishText below), never from a model's
+  // own free-form judgment. Refuses (returns null, changing nothing) unless a live workflow with
+  // this exact flag has nothing left missing - an explicit "save it" said too early (a genuinely
+  // required field still unanswered) must still be refused rather than submitting an incomplete
+  // record, and an explicit "save it" for a plain auto-submitting action is simply a no-op here
+  // (chat-dock-core.js only ever calls this for an explicitSubmitOnly action to begin with).
+  function finishExplicitly(context) {
+    if (!current || current.status !== 'collecting' || current.missing.length) return null;
+    var actionRegistry = window.TradeJournalAIActionRegistry;
+    var action = actionRegistry && actionRegistry.get(current.actionId);
+    if (!action || !action.explicitSubmitOnly) return null;
+    if (current.pendingSubmitTimer) { clearTimeout(current.pendingSubmitTimer); current.pendingSubmitTimer = null; }
+    var workflow = current;
+    return runSubmit(workflow, action, context).then(function (result) { return { workflow: workflow, result: result }; }, function () { return { workflow: workflow, result: null, failed: true }; });
+  }
+
+  // Context-aware conversational operation layer, section 9 (workflow switching)/"Finish NAVRYA
+  // Voice Mode" brief, section 7.1/7.2: a deterministic, zero-network "the user is explicitly done
+  // filling this in - save/finish it now" classifier, the same posture as interpretCancelText()
+  // just below and ai-proactive-engine.js's own interpretConfirmationText(). Deliberately narrow
+  // and anchored to the whole utterance (never a substring match) so an ordinary sentence that
+  // happens to contain "done"/"finish" in passing (e.g. "I'm done thinking about the entry price")
+  // is never mistaken for a finish command. Best-effort phrase coverage across en/fa/ar/es.
+  var FINISH_PATTERNS = [
+    /^(save|finish|done|that'?s (it|everything|all)|submit( it)?|save it|finish it|save (this|that)|complete it)$/i,
+    /^(ذخیره( کن)?|تمام( شد)?|همینه|همین بود|ثبتش کن|ثبت کن|تمومه)$/,
+    /^(احفظ(?:ه)?|انتهيت|هذا كل شيء|أرسله|أكمل(?:ه)?)$/,
+    /^(guardar(?:lo)?|gu[aá]rdalo|termin[ée]|eso es todo|env[ií]alo|complet[ao](?:lo)?)$/i
+  ];
+  function interpretFinishText(text) {
+    var t = String(text || '').trim().replace(/[.!؟?]\s*$/, '');
+    if (!t) return false;
+    return FINISH_PATTERNS.some(function (re) { return re.test(t); });
   }
 
   function currentWorkflow() { return current; }
@@ -408,6 +467,8 @@
     pruneIfAbandoned: pruneIfAbandoned,
     cancel: cancel,
     interpretCancelText: interpretCancelText,
+    finishExplicitly: finishExplicitly,
+    interpretFinishText: interpretFinishText,
     // Exposed for tests (and any future caller with a reason to tune it) rather than a
     // hardcoded, unreachable constant - see SUBMIT_GRACE_MS's own comment above. Latency pass,
     // section 15: chat-dock-core.js's own gate-field confirm fast path temporarily zeroes this for

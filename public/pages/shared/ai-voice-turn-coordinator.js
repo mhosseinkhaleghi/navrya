@@ -24,6 +24,20 @@
     var onResult = typeof opts.onResult === 'function' ? opts.onResult : function () {};
     var getEpoch = typeof opts.getEpoch === 'function' ? opts.getEpoch : function () { return 0; };
     var nextTurnId = 1;
+    // "Finish NAVRYA Voice Mode" brief, section 4.1: a SECOND, coordinator-owned epoch, distinct
+    // from the caller-supplied conversation epoch above. A conversation switch is not the only
+    // "the user has moved on from this specific Voice ownership" moment - End Voice, the mic
+    // toggle's own disconnect branch, a provider switch, and unmount are real "moved on" events
+    // too, but none of them bump conversationEpochRef (only startNewChat()/resumeConversation()
+    // do - confirmed against current chatDockView.jsx). Without this, a transcript finalized and
+    // queued right as one of those happened would still find getEpoch() unchanged when it reached
+    // the front of the queue, and submitFn() would run anyway - a real, reproduced gap, not a
+    // duplicate of the existing conversation-epoch check. invalidate() is the one explicit,
+    // public operation the caller invokes at every such teardown point; this coordinator is the
+    // sole owner of what "still the same Voice ownership generation" means, so a caller never
+    // needs to manage a parallel epoch ref of its own for this purpose.
+    var voiceEpoch = 0;
+    function invalidate() { voiceEpoch += 1; }
 
     var queue = Promise.resolve();
 
@@ -34,19 +48,22 @@
     function handleFinalTranscript(text, extraMeta) {
       var turnId = nextTurnId++;
       var epochAtEnqueue = getEpoch();
+      var voiceEpochAtEnqueue = voiceEpoch;
       var meta = Object.assign({}, extraMeta, { turnId: turnId, epochAtEnqueue: epochAtEnqueue });
       var turnPromise = queue.catch(function () {}).then(function () {
         // Voice Mode hardening: re-check ownership HERE, at the queue owner, right before
         // submitFn() is actually invoked - not only after it resolves (the pre-existing check
         // below). A turn queued behind a slow, still-in-flight previous turn can reach the front
-        // of the queue well after New Chat/a conversation switch bumped the epoch; without this
-        // check submitFn() still ran with the new epoch already current, so it could start a
-        // workflow, mutate a form, or otherwise act on the new conversation as if it were this
-        // stale turn's own genuine input. Nothing below this point (AbortController, history,
+        // of the queue well after New Chat/a conversation switch bumped the epoch, or after
+        // invalidate() was called for one of the Voice-ownership-ending events above; without
+        // this check submitFn() still ran with the new epoch already current, so it could start a
+        // workflow, mutate a form, or otherwise act on the new conversation/session as if it were
+        // this stale turn's own genuine input. Nothing below this point (AbortController, history,
         // workflow, form mutation, transcript, caption, playback) is ever created for a turn that
-        // fails this check - onResult() fires exactly once, already `discarded`, and submitFn()
-        // itself is never called.
-        if (getEpoch() !== epochAtEnqueue) {
+        // fails this check - onResult() fires exactly once, already `discarded` (never as an
+        // error - an intentional cancellation is not a failure), and submitFn() itself is never
+        // called.
+        if (getEpoch() !== epochAtEnqueue || voiceEpoch !== voiceEpochAtEnqueue) {
           onResult(null, Object.assign({}, meta, { discarded: true, ok: true }));
           return null;
         }
@@ -58,7 +75,7 @@
         }
         return Promise.resolve(submitResult).then(
           function (result) {
-            var stillCurrent = getEpoch() === epochAtEnqueue;
+            var stillCurrent = getEpoch() === epochAtEnqueue && voiceEpoch === voiceEpochAtEnqueue;
             onResult(stillCurrent ? result : null, Object.assign({}, meta, { discarded: !stillCurrent, ok: true }));
             return result;
           },
@@ -72,7 +89,7 @@
       return turnPromise;
     }
 
-    return { handleFinalTranscript: handleFinalTranscript };
+    return { handleFinalTranscript: handleFinalTranscript, invalidate: invalidate };
   }
 
   window.TradeJournalAIVoiceTurnCoordinator = { create: createTurnCoordinator };

@@ -151,6 +151,25 @@ export function createGeminiLiveSession(options) {
   }
   function clearReconnectTimer() { if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; } }
   function clearTranscriptFlushTimer() { if (transcriptFlushTimer) { clearTimeout(transcriptFlushTimer); transcriptFlushTimer = null; } }
+  // "Finish NAVRYA Voice Mode" brief, section 5.4: a genuinely dead microphone track (device
+  // unplugged, permission revoked mid-session, exclusive access taken by another app) fires a
+  // real, native 'ended' event on the MediaStreamTrack itself - distinct from every teardown path
+  // this file already handles (disconnect()/reconnect all go through teardown(), which stops
+  // tracks itself and never reaches this listener again once torn down). myEpoch guards against a
+  // track from an already-superseded connect() attempt reporting through late.
+  function wireMicTrackLifecycle(stream, myEpoch) {
+    const tracks = stream && typeof stream.getAudioTracks === 'function' ? stream.getAudioTracks() : [];
+    tracks.forEach((track) => {
+      track.addEventListener('ended', () => {
+        if (myEpoch !== connectionEpoch) return; // this connection generation is already gone - not our concern any more
+        if (state === VOICE_STATES.IDLE || state === VOICE_STATES.ERROR) return; // already ended/failed through some other path
+        teardown();
+        connectionEpoch += 1; // invalidate every in-flight/scheduled listener and reconnect from this now-dead generation, same as a real disconnect()
+        clearReconnectTimer();
+        reportFailure(Object.assign(new Error('microphone track ended'), { code: 'MICROPHONE_TRACK_ENDED' }), 'microphone_lost');
+      });
+    });
+  }
   function teardown() {
     stopPlayback(false);
     clearTranscriptFlushTimer();
@@ -398,6 +417,11 @@ export function createGeminiLiveSession(options) {
       return;
     }
     mediaStream = grantedStream;
+    // "Finish NAVRYA Voice Mode" brief, section 5.4: same reasoning as aiVoiceRealtime.js's own
+    // wireMicTrackLifecycle() - a genuinely dead mic track (device unplugged, permission revoked,
+    // exclusive access lost) mid-session had nothing listening for it before this pass, leaving
+    // the UI stuck showing whatever state it was already in with no error and no recovery path.
+    wireMicTrackLifecycle(mediaStream, myEpoch);
     // Voice Mode hardening, section 6: a real AbortController for the token mint - declared OUTSIDE
     // the try block below (not `const` inside it) specifically so the catch block can still
     // compare against it for cleanup; a try-scoped `const`/`let` is not visible in its own catch.
@@ -491,6 +515,17 @@ export function createGeminiLiveSession(options) {
     setState(VOICE_STATES.ASSISTANT_SPEAKING);
     const token = {};
     activeSpeakToken = token;
+    // "Finish NAVRYA Voice Mode" brief, section 5.2: activeSpeakToken alone only catches an
+    // explicit interrupt()/disconnect() (the only two places that ever null it) - an UNEXPECTED
+    // disconnect+automatic reconnect (scheduleReconnect()/connect()) bumps connectionEpoch but
+    // never touches activeSpeakToken at all (confirmed against connect()/teardown()/
+    // scheduleReconnect() - none of them reference it). Without this second check, a TTS fetch
+    // already in flight when the socket unexpectedly drops would still find token ===
+    // activeSpeakToken once it resolves post-reconnect, and would play the OLD utterance's audio
+    // through whatever audioContext/activeSource the NEW connection generation now owns - exactly
+    // the "played through a replacement connection" failure this section forbids. Captured once,
+    // up front, and re-checked at the same point activeSpeakToken already is.
+    const myConnectionEpoch = connectionEpoch;
     // Voice Mode hardening, section 6: a real AbortController for the TTS fetch - interrupt()/
     // disconnect() abort it directly, stopping the actual network request/server-side synthesis
     // work for audio nobody will ever hear, on top of the pre-existing activeSpeakToken check.
@@ -501,19 +536,19 @@ export function createGeminiLiveSession(options) {
     return Promise.resolve(fetchSpeakAudio(language, text, { signal: abortController && abortController.signal })).then((result) => {
       const fetchMs = Math.round((nowMs() - fetchStartedAt) * 100) / 100;
       if (speakAbortController === abortController) speakAbortController = null;
-      if (token !== activeSpeakToken) {
+      if (token !== activeSpeakToken || myConnectionEpoch !== connectionEpoch) {
         lastSpeakLatencyRecord = { textLength: textLength, fetchMs: fetchMs, interrupted: true, at: new Date().toISOString() };
-        return; // interrupted before playback began
+        return; // interrupted before playback began, or superseded by a reconnect mid-fetch
       }
       lastSpeakLatencyRecord = { textLength: textLength, fetchMs: fetchMs, interrupted: false, at: new Date().toISOString() };
       return playPcm(result.audioBase64);
     }).then(() => {
-      if (state === VOICE_STATES.ASSISTANT_SPEAKING) setState(VOICE_STATES.LISTENING);
+      if (myConnectionEpoch === connectionEpoch && state === VOICE_STATES.ASSISTANT_SPEAKING) setState(VOICE_STATES.LISTENING);
     }).catch((error) => {
       const fetchMs = Math.round((nowMs() - fetchStartedAt) * 100) / 100;
       if (speakAbortController === abortController) speakAbortController = null;
       lastSpeakLatencyRecord = { textLength: textLength, fetchMs: fetchMs, interrupted: true, error: errorCode(error), at: new Date().toISOString() };
-      if (token === activeSpeakToken) reportFailure(error, 'tts');
+      if (token === activeSpeakToken && myConnectionEpoch === connectionEpoch) reportFailure(error, 'tts');
     });
   }
   // Voice Mode hardening, audit finding T11: this used to create a completely unowned local Audio

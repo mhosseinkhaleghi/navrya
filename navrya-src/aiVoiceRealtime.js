@@ -494,6 +494,26 @@ export function createVoiceSession(options) {
   // two real callers (the public disconnect() and a reconnect about to retry) each drive `state`
   // and reconnectTimer themselves, since they mean different things (IDLE + no future retry vs.
   // RECONNECTING + a scheduled retry).
+  // "Finish NAVRYA Voice Mode" brief, section 5.4: a genuinely dead microphone track (device
+  // unplugged, permission revoked mid-session, exclusive access taken by another app) fires a
+  // real, native 'ended' event on the MediaStreamTrack itself - distinct from every teardown path
+  // this file already handles (disconnect()/reconnect all go through teardownTransport(), which
+  // stops tracks itself and never reaches this listener again once torn down). myEpoch guards
+  // against a track from an already-superseded connect() attempt reporting through late.
+  function wireMicTrackLifecycle(stream, myEpoch) {
+    var tracks = stream && typeof stream.getAudioTracks === 'function' ? stream.getAudioTracks() : [];
+    tracks.forEach(function (track) {
+      track.addEventListener('ended', function () {
+        if (myEpoch !== connectionEpoch) return; // this connection generation is already gone - not our concern any more
+        if (state === VOICE_STATES.IDLE || state === VOICE_STATES.ERROR) return; // already ended/failed through some other path
+        teardownTransport();
+        connectionEpoch += 1; // invalidate every in-flight/scheduled listener and reconnect from this now-dead generation, same as a real disconnect()
+        clearReconnectTimer();
+        setState(VOICE_STATES.ERROR);
+        onError({ code: 'MICROPHONE_TRACK_ENDED', stage: 'microphone_lost' });
+      });
+    });
+  }
   function teardownTransport() {
     // fix/voice-mode-turn-ux (Part D req #14): a manual finish awaiting its server ack can never
     // meaningfully resolve once the transport it was sent over is gone - clear it (and release any
@@ -620,6 +640,14 @@ export function createVoiceSession(options) {
       return;
     }
     mediaStream = grantedStream;
+    // "Finish NAVRYA Voice Mode" brief, section 5.4: the device could die mid-session (a USB
+    // headset unplugged, the OS revoking mic access, another app taking exclusive control) with
+    // nothing anywhere in this file listening for it before this pass - the UI stayed stuck
+    // showing LISTENING (or whatever state it was already in) indefinitely, with no error and no
+    // path back except manually ending/restarting Voice by hand. Wired once, right after the
+    // stream this session actually owns is captured; myEpoch is the same connection generation
+    // already captured above, so a track from a since-superseded attempt can never report through.
+    wireMicTrackLifecycle(mediaStream, myEpoch);
     if (!isReconnect) setState(VOICE_STATES.CONNECTING);
     // Tracks which phase of the remaining pipeline is currently in flight, purely for
     // classifyMintFailureStage()/classifySdpFailureStage() below if the shared catch block is

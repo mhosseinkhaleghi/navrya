@@ -193,6 +193,71 @@ test('three queued turns with an epoch change in the middle: only the turn alrea
   assert.equal(results[2].result, null);
 });
 
+// "Finish NAVRYA Voice Mode" brief, section 4.1: a real, reproduced gap - End Voice, the mic
+// toggle's own disconnect branch, a provider switch, and unmount are all real "the user has moved
+// on from THIS Voice ownership" moments, but none of them bump the caller's own conversation
+// epoch (only New Chat/resume do - confirmed against chatDockView.jsx). invalidate() is the
+// coordinator's own, additional, second epoch dimension for exactly those events - the caller
+// never needs a parallel epoch ref of its own.
+test('invalidate() discards a queued turn\'s submitFn() call even when the caller\'s own conversation epoch never changed - End Voice/mic-toggle-off/provider-switch/unmount all bump only this, not conversationEpoch', async () => {
+  const module = await sandbox();
+  const submitCalls = [];
+  const results = [];
+  const gate = deferred();
+  const coordinator = module.create({
+    submit: async (text) => { submitCalls.push(text); await gate.promise; return { reply: text }; },
+    getEpoch: () => 0, // never changes in this test - proves invalidate() alone is what matters
+    onResult: (result, meta) => results.push({ result, discarded: meta.discarded })
+  });
+  const p1 = coordinator.handleFinalTranscript('first (in flight)', {});
+  const p2 = coordinator.handleFinalTranscript('second (queued, then invalidated)', {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(submitCalls, ['first (in flight)'], 'only the first turn has started - the second is still queued behind it');
+  coordinator.invalidate(); // End Voice (or the equivalent) fires while turn 1 is in flight and turn 2 is queued
+  gate.resolve();
+  await p1;
+  await p2;
+  assert.deepEqual(submitCalls, ['first (in flight)'], 'submitFn() must never be called for the second turn once invalidate() has run, even with an unchanged conversation epoch');
+  assert.equal(results.length, 2);
+  assert.equal(results[1].discarded, true, 'the second turn is reported exactly once, as discarded, with a null result');
+  assert.equal(results[1].result, null);
+});
+
+test('invalidate() also discards a turn that already STARTED before it fired but resolves after - the same "in flight at the moment of the real event" rule the existing conversation-epoch check already applies', async () => {
+  const module = await sandbox();
+  const results = [];
+  const gate = deferred();
+  const coordinator = module.create({
+    submit: async (text) => { await gate.promise; return { reply: text }; },
+    getEpoch: () => 0,
+    onResult: (result, meta) => results.push({ result, discarded: meta.discarded })
+  });
+  const p1 = coordinator.handleFinalTranscript('mid-flight when invalidated', {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  coordinator.invalidate(); // fires while the turn's own submitFn() is already running
+  gate.resolve();
+  await p1;
+  assert.equal(results.length, 1);
+  assert.equal(results[0].discarded, true, 'a turn already in flight when invalidate() fires must still report its result as stale, not applied');
+  assert.equal(results[0].result, null);
+});
+
+test('invalidate() never affects a turn enqueued strictly AFTER it - a fresh Voice session started right after End Voice must work normally', async () => {
+  const module = await sandbox();
+  const submitCalls = [];
+  const results = [];
+  const coordinator = module.create({
+    submit: async (text) => { submitCalls.push(text); return { reply: text + '-done' }; },
+    getEpoch: () => 0,
+    onResult: (result, meta) => results.push({ result, discarded: meta.discarded })
+  });
+  coordinator.invalidate(); // End Voice, before anything new has been queued
+  await coordinator.handleFinalTranscript('a new turn after the session restarted', {});
+  assert.deepEqual(submitCalls, ['a new turn after the session restarted'], 'a turn enqueued after invalidate() must run normally - invalidate() marks a moment in time, not a permanent kill switch');
+  assert.equal(results[0].discarded, false);
+  assert.deepEqual(results[0].result, { reply: 'a new turn after the session restarted-done' });
+});
+
 test('extraMeta passed to handleFinalTranscript is threaded through to both submit() and onResult()', async () => {
   const module = await sandbox();
   const submitMeta = [];

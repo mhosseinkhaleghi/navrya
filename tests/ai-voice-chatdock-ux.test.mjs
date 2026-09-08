@@ -214,7 +214,7 @@ test('the saved provider selects Gemini Live only for Gemini, while every other 
   // Slice R1 (request ownership/cancellation): unmount also aborts every still-in-flight request
   // (typed or voice) this dock ever started - see abortActiveRequests()'s own comment - alongside
   // the pre-existing transport disconnect/playback invalidation this test already pinned.
-  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); if \(core && typeof core\.clearPendingClarification === 'function'\) core\.clearPendingClarification\(\); \};/);
+  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(turnCoordinatorRef\.current\) turnCoordinatorRef\.current\.invalidate\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); if \(core && typeof core\.clearPendingClarification === 'function'\) core\.clearPendingClarification\(\); \};/);
   assert.match(dockViewSrc, /\}, \[\]\);/);
 });
 

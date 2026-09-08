@@ -637,3 +637,32 @@ test('fetchRealtimeSession (chatDockView.jsx) preserves the real server error co
   assert.match(fn, /const body = await response\.json\(\);/);
   assert.match(fn, /if \(body && typeof body\.error === 'string' && body\.error\) code = body\.error;/);
 });
+
+// --- "Finish NAVRYA Voice Mode" brief, section 5.4: microphone track-lifecycle handling ---
+// A genuinely dead mic track (device unplugged, permission revoked mid-session, exclusive access
+// taken by another app) previously had nothing anywhere in this file listening for it - the UI
+// stayed stuck showing whatever state it was already in indefinitely, with no error and no
+// recovery path except manually ending/restarting Voice by hand.
+
+test('wireMicTrackLifecycle() is wired into connect() right after mediaStream is captured, with the same connection-generation guard every other async continuation in this file already uses', () => {
+  assert.match(source, /mediaStream = grantedStream;\s*\n(?:[^\n]*\n)*?\s*wireMicTrackLifecycle\(mediaStream, myEpoch\);/);
+});
+
+test('a genuine track "ended" event tears the transport down, invalidates the connection epoch, and reports a distinct ERROR stage - never left showing a stale LISTENING/CONNECTING state', () => {
+  const fn = source.slice(source.indexOf('function wireMicTrackLifecycle'), source.indexOf('function teardownTransport'));
+  assert.match(fn, /track\.addEventListener\('ended', function \(\) \{/);
+  assert.match(fn, /if \(myEpoch !== connectionEpoch\) return;/, 'a track from an already-superseded connect() attempt must never report through');
+  assert.match(fn, /if \(state === VOICE_STATES\.IDLE \|\| state === VOICE_STATES\.ERROR\) return;/, 'must not re-fire for a session that already ended/failed through some other path');
+  assert.match(fn, /teardownTransport\(\);/);
+  assert.match(fn, /connectionEpoch \+= 1;/, 'must invalidate this now-dead connection generation, same as a real disconnect()');
+  assert.match(fn, /clearReconnectTimer\(\);/, 'a dead mic must never still trigger an automatic reconnect attempt for the transport just torn down');
+  assert.match(fn, /setState\(VOICE_STATES\.ERROR\);/);
+  assert.match(fn, /onError\(\{ code: 'MICROPHONE_TRACK_ENDED', stage: 'microphone_lost' \}\);/);
+});
+
+test('the new microphone_lost stage resolves to its own distinct, localized i18n key in chatDockView.jsx, in all four supported languages', async () => {
+  assert.match(dockViewSource, /microphone_lost: 'voiceDockErrorMicrophoneLost'/);
+  const i18nSource = await readFile(path.join(process.cwd(), 'public', 'pages', 'shared', 'ai-i18n.js'), 'utf8');
+  const occurrences = (i18nSource.match(/voiceDockErrorMicrophoneLost:/g) || []).length;
+  assert.equal(occurrences, 4, 'must exist in all four languages (fa/ar/en/es), never falling back to English or a missing key');
+});

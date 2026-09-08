@@ -846,10 +846,17 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'trade.wizard', domain: 'trades', riskLevel: 'medium',
-        description: 'Open the real, full multi-step "Log a trade" wizard (status, timeframes/trends, concept tags + chart note, emotions, screenshots) and log a brand-new Trade through it - use this ONLY when the user\'s own wording explicitly asks to "log" a trade, open the trade log/wizard, or otherwise wants the fuller step-by-step flow rather than a quick calculator. For a plain "go long"/"plan a trade"/"size a trade" request with no mention of logging/the wizard, use trade.calculator instead. accountId/instrument live in a persistent header shown on every step, not one specific step.',
+        description: 'Open the real, full multi-step "Log a trade" wizard (status, timeframes/trends, concept tags + chart note, emotions, screenshots) and log a brand-new Trade through it - use this ONLY when the user\'s own wording explicitly asks to "log" a trade, open the trade log/wizard, or otherwise wants the fuller step-by-step flow rather than a quick calculator. For a plain "go long"/"plan a trade"/"size a trade" request with no mention of logging/the wizard, use trade.calculator instead. accountId/instrument live in a persistent header shown on every step, not one specific step. direction/instrument only open the real wizard - they do NOT finish it (explicitSubmitOnly): keep naturally asking about the wizard\'s other real fields (timeframes/trends, concept tags, chart note, emotions) one at a time like any other multi-step form, and only call this complete once the user explicitly says something like "save it"/"that\'s everything"/"finish" - never assume the wizard is done just because direction and instrument are both known.',
         aliases: ['log a trade', 'log this trade', 'open the trade log', 'open the log wizard', 'start the trade wizard'],
         requiredFields: ['direction', 'instrument'],
         optionalFields: (window.TradeJournalTradeTypes && window.TradeJournalTradeTypes.tradeWizardPaths ? window.TradeJournalTradeTypes.tradeWizardPaths : []).filter((f) => f !== 'direction' && f !== 'instrument'),
+        // "Finish NAVRYA Voice Mode" brief, section 7.2: direction+instrument being known is only
+        // ever "the wizard could open" - it is not "the user is finished with it". Without this,
+        // the pre-existing "nothing required is missing -> auto-submit after a grace window" rule
+        // saved a brand-new Trade the instant those two fields landed, before timeframes/tags/
+        // emotions/screenshots were ever asked about. See ai-workflow-engine.js's own comment on
+        // this flag and finishExplicitly()/interpretFinishText() for how completion now works.
+        explicitSubmitOnly: true,
         available: () => true,
         open: (context, initialFields) => new Promise((resolve) => {
           var seed = {};
@@ -1981,16 +1988,21 @@ export function mountCharacterApp(character) {
         // "never fabricate stress/focus/commitment scores" by construction rather than by prompt
         // instruction alone. stage is resolved from the real Trade's own current status, mirroring
         // trade-store.js's own addEmotion() default logic, never asked as a chat field.
-        // Deliberately NOT entityAlreadyPersisted - same reasoning as trade.close above:
-        // 'trade-emotion-log' has a real, non-empty allowlist (['note']), so it is never excluded
-        // from activeProcess, and requiredFields: [] means this reaches pending-submit
-        // immediately, the same normal shape session.movementEntry.create already established.
+        // "Finish NAVRYA Voice Mode" brief, section 7.1: requiredFields: [] used to mean this
+        // reached pending-submit and auto-submitted after a grace window the very first turn that
+        // resolved which Trade this was about - before stress/emotions/note were ever asked,
+        // unlike session.movementEntry.create's own genuinely-incremental "the note is whatever it
+        // currently says" shape (which this used to be compared to). An emotion log is a one-time
+        // structured checkpoint a human filling the real modal would still be offered several more
+        // questions on - explicitSubmitOnly (see that flag's own comment in
+        // ai-workflow-engine.js) keeps this collecting until the user explicitly says it's done.
         id: 'trade.emotion.log', domain: 'trades', riskLevel: 'low',
-        description: 'Open the real emotion-log form for the active Trade and optionally fill note, stressLevel (1-10), dominantEmotions (up to 3 real emotion ids: excited, anxious, calm, revenge, angry, afraid, confident, fatigued, restless, overconfident), and per-emotion detail via emotionIntensity.<id> (1-10) / emotionTags.<id> (comma-separated real reasons, e.g. "hitting my stop"). Every numeric value must be the exact number the user explicitly stated - never inferred from wording like "very stressed", never a default. focusQuality/planCommitment/wouldTakeIfNotForced have no real form control at all - never fill them. pinnedTradeId is internal-only (never asked of the user) - set only by NAVRYA itself once a trade-emotion clarification has already resolved which Trade this is about.',
+        description: 'Open the real emotion-log form for the active Trade and optionally fill note, stressLevel (1-10), dominantEmotions (up to 3 real emotion ids: excited, anxious, calm, revenge, angry, afraid, confident, fatigued, restless, overconfident), and per-emotion detail via emotionIntensity.<id> (1-10) / emotionTags.<id> (comma-separated real reasons, e.g. "hitting my stop"). Every numeric value must be the exact number the user explicitly stated - never inferred from wording like "very stressed", never a default. focusQuality/planCommitment/wouldTakeIfNotForced have no real form control at all - never fill them. pinnedTradeId is internal-only (never asked of the user) - set only by NAVRYA itself once a trade-emotion clarification has already resolved which Trade this is about. Nothing here is required (explicitSubmitOnly): ask naturally, one thing at a time - stress level, then up to three dominant emotions, then intensity/reasons for each, then whether there is anything else to note - and let the user explicitly skip any of them. Only finish this once the user explicitly says something like "save it"/"that\'s everything"/"done" - never assume they are finished just because a field happens to be filled.',
         aliases: ['log an emotion for this trade', 'log my emotion', 'log how i feel about this trade'],
         requiredFields: [], optionalFields: ['note', 'stressLevel', 'dominantEmotions', 'pinnedTradeId'].concat(
           (window.TradeJournalTradeTypes && window.TradeJournalTradeTypes.emotions || []).reduce(function (acc, emoId) { return acc.concat(['emotionIntensity.' + emoId, 'emotionTags.' + emoId]); }, [])
         ),
+        explicitSubmitOnly: true,
         // Section 6: reject out of range / non-canonical values outright (F50) rather than
         // clamping - a rejected value leaves the field genuinely missing, so the workflow asks
         // again instead of silently live-syncing something the real form would never have shown.

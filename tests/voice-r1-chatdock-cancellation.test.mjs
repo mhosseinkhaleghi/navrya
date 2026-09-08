@@ -150,8 +150,25 @@ test('endVoice() and the mic-toggle\'s own disconnect branch abort only voice-ow
   assert.match(toggleVoiceBlock, /abortActiveRequests\('voice'\);/);
 });
 
+// "Finish NAVRYA Voice Mode" brief, section 4.1/4.2: a real, reproduced gap found via source
+// verification - neither endVoice() nor the mic toggle's own disconnect branch bumped
+// conversationEpochRef (only New Chat/resume do), so a transcript finalized and queued right as
+// either fired would still find TurnCoordinator's own epoch check unchanged and could call
+// submit() anyway. ai-voice-turn-coordinator.js's new invalidate() is the coordinator's own,
+// additional epoch dimension for exactly this - both real "Voice ownership has ended" call sites
+// must invoke it, alongside PlaybackController's own invalidate() for the same reason (a TTS
+// fetch already in flight must not resurface through a late callback after either event).
+test('endVoice() and the mic-toggle\'s own disconnect branch both invalidate TurnCoordinator and PlaybackController - a queued transcript or in-flight TTS fetch must not survive either real "Voice ownership has ended" moment', () => {
+  const endVoiceBlock = dockViewSrc.slice(dockViewSrc.indexOf('function endVoice() {'), dockViewSrc.indexOf('function toggleVoiceMute()'));
+  assert.match(endVoiceBlock, /if \(turnCoordinatorRef\.current\) turnCoordinatorRef\.current\.invalidate\(\);/);
+  assert.match(endVoiceBlock, /if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\);/);
+  const toggleVoiceBlock = dockViewSrc.slice(dockViewSrc.indexOf('function toggleVoice() {'), dockViewSrc.indexOf('function endVoice() {'));
+  assert.match(toggleVoiceBlock, /if \(turnCoordinatorRef\.current\) turnCoordinatorRef\.current\.invalidate\(\);/);
+  assert.match(toggleVoiceBlock, /if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\);/);
+});
+
 test('unmount aborts every in-flight request regardless of source - the dock itself is going away, so nothing it started should keep running for a reply nothing will ever render', () => {
-  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); if \(core && typeof core\.clearPendingClarification === 'function'\) core\.clearPendingClarification\(\); \};/);
+  assert.match(dockViewSrc, /return \(\) => \{ if \(voiceRef\.current\) voiceRef\.current\.disconnect\(\); if \(turnCoordinatorRef\.current\) turnCoordinatorRef\.current\.invalidate\(\); if \(playbackControllerRef\.current\) playbackControllerRef\.current\.invalidate\(\); abortActiveRequests\(\); if \(core && typeof core\.clearPendingClarification === 'function'\) core\.clearPendingClarification\(\); \};/);
 });
 
 // Voice Mode hardening, section 13: a pending trade-emotion clarification ("which trade?"/"yes,

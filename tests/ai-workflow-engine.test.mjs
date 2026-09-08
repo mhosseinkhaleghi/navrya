@@ -140,6 +140,102 @@ test('a later turn on an entityAlreadyPersisted workflow still applies a genuine
   ]);
 });
 
+// "Finish NAVRYA Voice Mode" brief, section 7.1/7.2: a real, reproduced bug - trade.wizard's own
+// requiredFields (['direction', 'instrument']) and trade.emotion.log's own (empty) both let the
+// pre-existing "nothing required is missing -> auto-submit" rule save a real record before every
+// other real, still-unasked optional field a human filling the same form would still be offered.
+// explicitSubmitOnly is the general, reusable fix - similar in shape to entityAlreadyPersisted
+// (never auto-arms the grace-window timer), but for the OPPOSITE reason: this submit() is real and
+// has never run yet, not already a no-op for an entity that persisted at open() time.
+test('an action declaring explicitSubmitOnly never schedules a submit once required fields complete, even with real optional fields still unasked - it stays collecting exactly like entityAlreadyPersisted, for a different reason', async () => {
+  const submitCalls = [];
+  const action = {
+    id: 'trade.wizard', requiredFields: ['direction', 'instrument'], explicitSubmitOnly: true, optionalFields: ['primaryTimeframe'],
+    submit: async (known) => { submitCalls.push(known); return { id: 'should-not-happen-yet' }; }
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.setSubmitGraceMs(10);
+  engine.start('trade.wizard', {});
+  const workflow = await engine.applyKnownFields([{ path: 'direction', value: 'long' }, { path: 'instrument', value: 'XAUUSD' }], {});
+  assert.equal(workflow.status, 'collecting', 'never transitions to pending-submit just because direction+instrument are both known');
+  await new Promise((resolve) => setTimeout(resolve, 40)); // well past the grace window
+  assert.equal(submitCalls.length, 0, 'submit() must never fire on its own - direction+instrument only means the wizard COULD open, not that the user is finished with it');
+  assert.ok(engine.current(), 'the workflow must still be live so later turns keep supplying the wizard\'s other real fields');
+});
+
+test('interpretFinishText() recognizes explicit finish/save phrases in en/fa/ar/es, anchored to the whole utterance - never a substring of an ordinary sentence', async () => {
+  const engine = await engineSandbox({ actionRegistry: { get: () => null } });
+  ['save it', 'Save it.', 'finish', "that's everything", 'done', 'submit it'].forEach((t) => assert.equal(engine.interpretFinishText(t), true, JSON.stringify(t)));
+  ['ذخیره کن', 'تمام شد', 'ثبتش کن'].forEach((t) => assert.equal(engine.interpretFinishText(t), true, JSON.stringify(t)));
+  ['احفظه', 'انتهيت', 'هذا كل شيء'].forEach((t) => assert.equal(engine.interpretFinishText(t), true, JSON.stringify(t)));
+  ['guárdalo', 'termine', 'eso es todo'].forEach((t) => assert.equal(engine.interpretFinishText(t), true, JSON.stringify(t)));
+  assert.equal(engine.interpretFinishText("I'm done thinking about the entry price, what should stop loss be?"), false, 'an ordinary sentence merely containing "done" must never be mistaken for a finish command');
+  assert.equal(engine.interpretFinishText(''), false);
+  assert.equal(engine.interpretFinishText('   '), false);
+});
+
+test('finishExplicitly() refuses (returns null, changes nothing) when there is no live workflow at all', async () => {
+  const engine = await engineSandbox({ actionRegistry: { get: () => null } });
+  assert.equal(engine.finishExplicitly({}), null);
+});
+
+test('finishExplicitly() refuses when the live workflow\'s action does not declare explicitSubmitOnly - an ordinary auto-submitting action is unaffected', async () => {
+  const action = { id: 'session.create', requiredFields: ['city'], submit: async () => ({ id: 's1' }) };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('session.create', {});
+  await engine.applyKnownFields([{ path: 'city', value: 'Tokyo' }], {});
+  assert.equal(engine.finishExplicitly({}), null);
+});
+
+test('finishExplicitly() refuses when a genuinely required field is still missing, even for an explicitSubmitOnly action - an early "save it" cannot force-submit an incomplete record', async () => {
+  const submitCalls = [];
+  const action = {
+    id: 'trade.wizard', requiredFields: ['direction', 'instrument'], explicitSubmitOnly: true,
+    submit: async (known) => { submitCalls.push(known); return { id: 'should-not-happen' }; }
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('trade.wizard', {});
+  await engine.applyKnownFields([{ path: 'direction', value: 'long' }], {}); // instrument still missing
+  assert.equal(engine.finishExplicitly({}), null);
+  assert.equal(submitCalls.length, 0);
+  assert.ok(engine.current(), 'the workflow must remain live, still asking for the missing required field');
+});
+
+test('finishExplicitly() runs the real submit() immediately (no grace window at all) once every required field is known, and clears the workflow on success - the one way an explicitSubmitOnly workflow ever actually completes', async () => {
+  const submitCalls = [];
+  const resultContextCalls = [];
+  const action = {
+    id: 'trade.wizard', requiredFields: ['direction', 'instrument'], explicitSubmitOnly: true, optionalFields: ['primaryTimeframe'],
+    submit: async (known, context) => { submitCalls.push({ known: known, context: context }); return { id: 'trade-1' }; },
+    resultContext: (result) => resultContextCalls.push(result)
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.setSubmitGraceMs(999999); // proves finishExplicitly() bypasses the grace window entirely, not just a short one
+  engine.start('trade.wizard', {});
+  await engine.applyKnownFields([{ path: 'direction', value: 'long' }, { path: 'instrument', value: 'XAUUSD' }, { path: 'primaryTimeframe', value: '15m' }], {});
+  assert.equal(engine.current().status, 'collecting');
+  const outcome = await engine.finishExplicitly({ language: 'en' });
+  assert.deepEqual(clone(submitCalls), [{ known: { direction: 'long', instrument: 'XAUUSD', primaryTimeframe: '15m' }, context: { language: 'en' } }]);
+  assert.deepEqual(clone(resultContextCalls), [{ id: 'trade-1' }]);
+  assert.deepEqual(clone(outcome.result), { id: 'trade-1' });
+  assert.equal(engine.current(), null, 'the workflow must be cleared after a successful explicit finish, exactly like a normal auto-submit');
+});
+
+test('finishExplicitly() leaves the workflow collecting (recoverable, values preserved) if the real submit() fails, never rolling back applied state', async () => {
+  const action = {
+    id: 'trade.wizard', requiredFields: ['direction', 'instrument'], explicitSubmitOnly: true,
+    submit: async () => { throw new Error('save failed'); }
+  };
+  const engine = await engineSandbox({ actionRegistry: fakeActionRegistry(action), processRegistry: { applyValue: () => {} } });
+  engine.start('trade.wizard', {});
+  await engine.applyKnownFields([{ path: 'direction', value: 'long' }, { path: 'instrument', value: 'XAUUSD' }], {});
+  const outcome = await engine.finishExplicitly({});
+  assert.equal(outcome.failed, true);
+  assert.ok(engine.current(), 'a failed explicit finish must leave the workflow live for a retry');
+  assert.equal(engine.current().status, 'collecting');
+  assert.deepEqual(clone(engine.current().known), { direction: 'long', instrument: 'XAUUSD' }, 'the already-applied values must survive the failed submit attempt');
+});
+
 test('an action that does NOT declare entityAlreadyPersisted keeps the existing auto-submit-then-clear behavior unchanged - only an explicit opt-in changes anything', async () => {
   const submitCalls = [];
   const action = {

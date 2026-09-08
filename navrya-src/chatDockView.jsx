@@ -31,7 +31,12 @@ const VOICE_ERROR_STAGE_I18N_KEY = {
   // Provider Ownership addendum, section 1: the active reasoning provider has no real Voice
   // transport at all (see VOICE_TRANSPORT_SUPPORTED_PROVIDERS below) - a capability mismatch
   // detected client-side, before any connect attempt, network call, or quota/billing work.
-  provider_voice_unsupported: 'voiceDockErrorProviderUnsupported'
+  provider_voice_unsupported: 'voiceDockErrorProviderUnsupported',
+  // "Finish NAVRYA Voice Mode" brief, section 5.4: a genuinely dead mic track (device unplugged,
+  // permission revoked, exclusive access lost) mid-session - distinct from every other stage
+  // above, all of which are connection/session-setup failures, not a hardware loss after a
+  // successful connect. Retryable through toggleVoice() exactly like every other ERROR stage.
+  microphone_lost: 'voiceDockErrorMicrophoneLost'
 };
 function voiceErrorMessageForStage(i18nApi, stage) {
   const key = VOICE_ERROR_STAGE_I18N_KEY[stage] || 'voiceDockError';
@@ -992,7 +997,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // Voice Mode hardening, section 13: same reasoning as endVoice()'s own comment - unmount and a
     // provider switch are both real "the user has moved on" moments a pending trade-emotion
     // clarification must not survive either.
-    return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); abortActiveRequests(); if (core && typeof core.clearPendingClarification === 'function') core.clearPendingClarification(); };
+    return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (turnCoordinatorRef.current) turnCoordinatorRef.current.invalidate(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); abortActiveRequests(); if (core && typeof core.clearPendingClarification === 'function') core.clearPendingClarification(); };
     // Deliberately not fully exhaustive: fetchRealtimeSession/fetchGeminiLiveSession/fetchGeminiSpeak/
     // fetchVoiceProviderSpeak/onVoiceTranscript etc. are plain functions re-created every render and
     // are read fresh via ref (submitRef) or don't need re-triggering on every render - only
@@ -1085,6 +1090,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // done with Voice" moment as endVoice() above, so it gets the same voice-owned-only abort.
       voiceRef.current.disconnect();
       abortActiveRequests('voice');
+      // "Finish NAVRYA Voice Mode" brief, section 4.1/4.2: a transcript finalized and queued right
+      // as the mic toggle turns Voice off must never reach submit() once it reaches the front of
+      // the queue - disconnect()/abortActiveRequests() alone stop the CURRENT request and the
+      // transport, but a turn still WAITING behind it in TurnCoordinator's own queue is a separate
+      // thing neither of those touches. Same reasoning for PlaybackController.invalidate() - a TTS
+      // fetch already in flight when the toggle fires must not surface through a bumped epoch that
+      // stale late callback can no longer satisfy, even though disconnect() already stops whatever
+      // is audibly playing right now.
+      if (turnCoordinatorRef.current) turnCoordinatorRef.current.invalidate();
+      if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
     }
   }
 
@@ -1100,6 +1115,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     if (!voiceRef.current) return;
     voiceRef.current.disconnect();
     abortActiveRequests('voice');
+    // "Finish NAVRYA Voice Mode" brief, section 4.1/4.2: the same reasoning as the mic toggle's
+    // own disconnect branch above - a transcript already finalized and queued behind another turn
+    // must never call submit() after End Voice, and any TTS fetch already in flight must never
+    // resurface through a late callback once Voice has genuinely ended.
+    if (turnCoordinatorRef.current) turnCoordinatorRef.current.invalidate();
+    if (playbackControllerRef.current) playbackControllerRef.current.invalidate();
     setVoiceErrorStage(null);
     // Voice Mode hardening, section 13: a pending trade-emotion clarification ("which trade?"/
     // "yes, log it?") staged while Voice was active must never be answered by a later TYPED

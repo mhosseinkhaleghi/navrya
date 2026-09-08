@@ -186,7 +186,7 @@ test('playPcm has a deadline derived from the buffer\'s own known duration - a p
 test('speak() mints a fresh activeSpeakToken per call, and interrupt() clears it first so a pending fetchSpeakAudio() call never starts playback after being interrupted', () => {
   const speakFn = adapter.slice(adapter.indexOf('function speak(text)'), adapter.indexOf('function playAudioUrl'));
   assert.match(speakFn, /const token = \{\};\s*\n\s*activeSpeakToken = token;/);
-  assert.match(speakFn, /if \(token !== activeSpeakToken\) \{[\s\S]*?return; \/\/ interrupted before playback began\s*\n\s*\}\s*\n\s*lastSpeakLatencyRecord = [\s\S]*?return playPcm\(result\.audioBase64\);/, 'an interrupted call must return before ever reaching playPcm()');
+  assert.match(speakFn, /if \(token !== activeSpeakToken \|\| myConnectionEpoch !== connectionEpoch\) \{[\s\S]*?return; \/\/ interrupted before playback began, or superseded by a reconnect mid-fetch\s*\n\s*\}\s*\n\s*lastSpeakLatencyRecord = [\s\S]*?return playPcm\(result\.audioBase64\);/, 'an interrupted call must return before ever reaching playPcm()');
   const interruptFn = adapter.slice(adapter.indexOf('function interrupt()'), adapter.indexOf('function finishUserTurn()'));
   assert.match(interruptFn, /activeSpeakToken = null;/);
 });
@@ -277,4 +277,37 @@ test('interrupt() and teardown() (disconnect) both reach a currently-playing pub
   assert.match(teardownFn, /stopPlayback\(false\);/);
   const stopPlaybackFn = adapter.slice(adapter.indexOf('function stopPlayback(natural)'), adapter.indexOf('function clearReconnectTimer'));
   assert.match(stopPlaybackFn, /if \(stop\) stop\(!!natural\);/);
+});
+
+// "Finish NAVRYA Voice Mode" brief, section 5.2: activeSpeakToken alone only catches an explicit
+// interrupt()/disconnect() - an UNEXPECTED disconnect+automatic reconnect bumps connectionEpoch
+// but never touches activeSpeakToken (confirmed: neither connect()/teardown()/scheduleReconnect()
+// reference it), so a TTS fetch already in flight when the socket unexpectedly drops could
+// previously still play its result through the NEW connection generation once the fetch resolved.
+test('speak() also captures and re-checks connectionEpoch, not only activeSpeakToken - a TTS fetch in flight during an unexpected reconnect must never play through the replacement connection', () => {
+  const fn = adapter.slice(adapter.indexOf('function speak(text)'), adapter.indexOf('function playAudioUrl'));
+  assert.match(fn, /const myConnectionEpoch = connectionEpoch;/);
+  assert.match(fn, /if \(token !== activeSpeakToken \|\| myConnectionEpoch !== connectionEpoch\) \{/, 'the playback-gating check must require BOTH the speak-generation token AND the connection generation to still match');
+  assert.match(fn, /if \(myConnectionEpoch === connectionEpoch && state === VOICE_STATES\.ASSISTANT_SPEAKING\) setState\(VOICE_STATES\.LISTENING\);/, 'the post-playback state transition must also be gated on the connection generation, not fire for a superseded attempt');
+  assert.match(fn, /if \(token === activeSpeakToken && myConnectionEpoch === connectionEpoch\) reportFailure\(error, 'tts'\);/, 'a failure from a superseded connection generation must never surface as this session\'s own error');
+});
+
+// "Finish NAVRYA Voice Mode" brief, section 5.4: a genuinely dead microphone track (device
+// unplugged, permission revoked mid-session, exclusive access taken by another app) previously
+// had nothing anywhere in this file listening for it - the UI stayed stuck showing whatever state
+// it was already in indefinitely, with no error and no recovery path except manually ending/
+// restarting Voice by hand.
+test('wireMicTrackLifecycle() is wired into connect() right after mediaStream is captured, with the same connection-generation guard every other async continuation in this file already uses', () => {
+  assert.match(adapter, /mediaStream = grantedStream;\s*\n(?:[^\n]*\n)*?\s*wireMicTrackLifecycle\(mediaStream, myEpoch\);/);
+});
+
+test('a genuine track "ended" event tears the transport down, invalidates the connection epoch, and reports a distinct ERROR stage - never left showing a stale LISTENING/CONNECTING state', () => {
+  const fn = adapter.slice(adapter.indexOf('function wireMicTrackLifecycle'), adapter.indexOf('function teardown()'));
+  assert.match(fn, /track\.addEventListener\('ended', \(\) => \{/);
+  assert.match(fn, /if \(myEpoch !== connectionEpoch\) return;/, 'a track from an already-superseded connect() attempt must never report through');
+  assert.match(fn, /if \(state === VOICE_STATES\.IDLE \|\| state === VOICE_STATES\.ERROR\) return;/, 'must not re-fire for a session that already ended/failed through some other path');
+  assert.match(fn, /teardown\(\);/);
+  assert.match(fn, /connectionEpoch \+= 1;/, 'must invalidate this now-dead connection generation, same as a real disconnect()');
+  assert.match(fn, /clearReconnectTimer\(\);/, 'a dead mic must never still trigger an automatic reconnect attempt for the transport just torn down');
+  assert.match(fn, /reportFailure\(Object\.assign\(new Error\('microphone track ended'\), \{ code: 'MICROPHONE_TRACK_ENDED' \}\), 'microphone_lost'\);/);
 });
