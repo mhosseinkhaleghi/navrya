@@ -69,6 +69,23 @@ test('resolvePricingRate returns cachedInputPricePer1k/cacheWriteInputPricePer1k
   assert.equal(providerRate.cacheWriteInputPricePer1k, null);
 });
 
+test('resolvePricingRate bills the legacy OpenAI gpt-5.6 id through the canonical Sol price without overriding an explicit legacy row', async () => {
+  const repo = createMemoryRepo();
+  await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-5.6-sol', promptPricePer1k: 1, completionPricePer1k: 2, cachedInputPricePer1k: 0.5, enabled: true });
+
+  const aliasedRate = await resolvePricingRate(repo, { provider: 'openai', model: 'gpt-5.6' });
+  assert.deepEqual(aliasedRate, {
+    promptPricePer1k: 1, completionPricePer1k: 2,
+    cachedInputPricePer1k: 0.5, cacheWriteInputPricePer1k: null
+  });
+  assert.equal(await resolvePricingRate(repo, { provider: 'anthropic', model: 'gpt-5.6' }), null, 'the alias must stay provider-scoped');
+
+  await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-5.6', promptPricePer1k: 3, completionPricePer1k: 4, enabled: true });
+  const explicitRate = await resolvePricingRate(repo, { provider: 'openai', model: 'gpt-5.6' });
+  assert.equal(explicitRate.promptPricePer1k, 3, 'an explicitly configured legacy price must remain authoritative');
+  assert.equal(explicitRate.completionPricePer1k, 4);
+});
+
 test('a provider_model_pricing row with only prompt/completion prices set (no cache columns at all) is still fully backward compatible', async () => {
   const repo = createMemoryRepo();
   await repo.providerModelPricing.upsert({ provider: 'openai', model: 'legacy-model', promptPricePer1k: 1, completionPricePer1k: 2, enabled: true });

@@ -32,6 +32,15 @@ test('reserveForAiCall fails closed with PROVIDER_PRICING_NOT_CONFIGURED when no
   assert.equal(gate.reason, 'PROVIDER_PRICING_NOT_CONFIGURED');
 });
 
+test('reserveForAiCall accepts a retained OpenAI gpt-5.6 selection when canonical Sol pricing exists', async () => {
+  const repo = createMemoryRepo();
+  await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-5.6-sol', promptPricePer1k: 0.01, completionPricePer1k: 0.03, enabled: true });
+  const user = await repo.users.create({ displayName: 'Legacy model trader' });
+  const gate = await reserveForAiCall(repo, { userId: user.id, feature: 'aiChat', provider: 'openai', model: 'gpt-5.6', payload: { input: 'hi' } });
+  assert.equal(gate.ok, true);
+  assert.ok(gate.reservationId);
+});
+
 test('reserveForAiCall fails closed with FEATURE_NOT_ENTITLED when the plan disables ai', async () => {
   const repo = createMemoryRepo();
   await seedPricing(repo);

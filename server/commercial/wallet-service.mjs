@@ -8,6 +8,16 @@ import { resolveUserEntitlements } from './entitlement-resolver.mjs';
 
 const MICRO = 1000000;
 
+// The OpenAI API keeps accepting the original bare GPT-5.6 id and resolves it to Sol, while
+// NAVRYA's newer catalog stores the canonical tier-specific price under gpt-5.6-sol. Existing
+// accounts deliberately retain their saved legacy selection, so billing must resolve that same
+// provider alias before failing closed for genuinely unpriced models. An explicit row for the
+// requested id still wins (including an intentionally disabled row); the alias is only a fallback
+// when no exact row exists.
+const MODEL_PRICING_ALIASES = Object.freeze({
+  openai: Object.freeze({ 'gpt-5.6': 'gpt-5.6-sol' })
+});
+
 export function toMicroUsd(usd) { return Math.round(Number(usd) * MICRO); }
 
 // Provider cost rate resolution (spec section 19/20): a model-specific provider_model_pricing
@@ -26,7 +36,9 @@ export function toMicroUsd(usd) { return Math.round(Number(usd) * MICRO); }
 // conservative default - see that function's own comment), never as an error and never as free.
 export async function resolvePricingRate(repo, { provider, model }) {
   if (model) {
-    const modelRow = await repo.providerModelPricing.get(provider, model);
+    let modelRow = await repo.providerModelPricing.get(provider, model);
+    const pricingAlias = MODEL_PRICING_ALIASES[provider]?.[model];
+    if (!modelRow && pricingAlias) modelRow = await repo.providerModelPricing.get(provider, pricingAlias);
     // 046_flat_priced_ai_features.sql: a non-token, per-call rate (e.g. gpt-image-1, billed by
     // OpenAI per image/size rather than by token - and whose call always reports usage:null, so
     // there is no token count to price in the first place). Only ever comes from the model-specific
