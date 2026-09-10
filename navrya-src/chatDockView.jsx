@@ -709,9 +709,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   async function fetchGeminiLiveSession(language, options) {
+    // Bugfix (2026-09-10): this never sent the user's own Gemini BYOK key, unlike
+    // fetchRealtimeSession's own `apiKey: settingsForOpenAI` above - resolveGeminiVoiceKey() on the
+    // server therefore silently fell through to the (usually unconfigured) platform key/env var and
+    // threw GEMINI_API_KEY_MISSING, so Voice never connected even with a real key saved in Settings.
+    const settingsForGemini = settingsStore.getKey('gemini');
     const response = await fetch('/api/ai/gemini-live/session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language }),
+      body: JSON.stringify({ apiKey: settingsForGemini, language }),
       // Voice Mode hardening, section 6: same {signal} convention as fetchRealtimeSession's own
       // OpenAI mint above - geminiLiveVoice.js's own connect() supplies a real AbortController so
       // disconnect() can truly cancel a pending token mint, not merely discard its result once it
@@ -727,9 +732,12 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   async function fetchGeminiSpeak(language, text, options) {
+    // Bugfix (2026-09-10): same missing-BYOK-key gap as fetchGeminiLiveSession above, on the TTS
+    // leg - without it, a session that somehow minted (platform/env key present) would still fail
+    // to speak back once resolveGeminiVoiceKey() was reached again for this separate request.
     const response = await fetch('/api/ai/gemini-live/speak', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() }),
+      body: JSON.stringify({ apiKey: settingsStore.getKey('gemini'), language, text, character: voiceCharacter(), gender: voiceGenderPreference() }),
       // Voice Mode hardening, section 6: same {signal} convention as fetchVoiceProviderSpeak's own
       // ElevenLabs TTS fetch - geminiLiveVoice.js's own speak() supplies a real AbortController so
       // interrupt()/disconnect() can truly cancel a pending TTS fetch, not merely discard its

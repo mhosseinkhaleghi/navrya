@@ -480,6 +480,22 @@ export function createGeminiLiveSession(options) {
   }
   function mute(next) { muted = !!next; onMuteChange(muted); }
   function interrupt() {
+    // Bugfix (2026-09-10): mirror aiVoiceRealtime.js's own `if (!session) return;` guard, which
+    // this function never had. PlaybackController.invalidate() (ai-voice-playback-controller.js)
+    // always calls through to this adapter's interrupt() "for safety/idempotency" even when
+    // nothing is locally playing/queued - documented there as relying on the transport's own
+    // interrupt() to "already no-op harmlessly if there is genuinely nothing to cancel". That was
+    // true for OpenAI (session is null post-disconnect) but NOT here: with no connection guard at
+    // all, `state !== ERROR` was the only condition, and disconnect() leaves state IDLE (not
+    // ERROR) - so endVoice()/the mic-toggle-off path (both call disconnect() then
+    // playbackController.invalidate()) resurrected state straight back to LISTENING immediately
+    // after the transport had already been torn down. Confirmed live: pressing the Voice console's
+    // own X (or Esc, or the mic toggle) from a Gemini ERROR/any state silently flipped back to a
+    // phantom "Listening" display instead of actually closing Voice Mode - the exact reported bug.
+    // `socket` is nulled by teardown() (called from disconnect()/failAndCleanup()/scheduleReconnect
+    // between attempts), so this is false whenever there is genuinely no live connection to
+    // interrupt, without disturbing the real barge-in/"Stop reply" path (always socket-connected).
+    if (!socket) return;
     // Slice R2, audit finding T5 (parity with aiVoiceRealtime.js): invalidate the active speak()
     // call first - a pending fetchSpeakAudio() call has nothing else to cancel it, and would
     // otherwise still start playback once it resolves.

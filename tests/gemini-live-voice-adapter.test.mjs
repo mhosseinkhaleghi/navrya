@@ -12,9 +12,15 @@ test('Gemini Voice uses a constrained short-lived Live token, never a browser-ex
   assert.match(adapter, /access_token=\$\{encodeURIComponent\(creds\.token\)\}/);
   assert.doesNotMatch(adapter, /GEMINI_API_KEY/);
   assert.match(dock, /fetch\('\/api\/ai\/gemini-live\/session', \{/);
-  assert.match(dock, /async function fetchGeminiLiveSession\(language, options\) \{[\s\S]*?body: JSON\.stringify\(\{ language \}\)/);
-  assert.match(dock, /async function fetchGeminiSpeak\(language, text, options\) \{[\s\S]*?body: JSON\.stringify\(\{ language, text, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
-  assert.doesNotMatch(dock, /apiKey: settingsStore\.getKey\('gemini'\)/);
+  // Bugfix (2026-09-10): fetchGeminiLiveSession/fetchGeminiSpeak used to omit the user's own
+  // Gemini BYOK key entirely (unlike fetchRealtimeSession's own `apiKey: settingsForOpenAI` for
+  // OpenAI), so resolveGeminiVoiceKey() on the server fell through to the platform/env key and a
+  // real user-entered Gemini key was silently never used - Voice never connected without a
+  // separately configured platform/env key. Both requests now send it, the same BYOK pattern every
+  // other Gemini-routed request (chat, admin test) already uses via settingsStore.getKey('gemini').
+  assert.match(dock, /async function fetchGeminiLiveSession\(language, options\) \{[\s\S]*?body: JSON\.stringify\(\{ apiKey: settingsForGemini, language \}\)/);
+  assert.match(dock, /async function fetchGeminiSpeak\(language, text, options\) \{[\s\S]*?body: JSON\.stringify\(\{ apiKey: settingsStore\.getKey\('gemini'\), language, text, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
+  assert.match(dock, /const settingsForGemini = settingsStore\.getKey\('gemini'\);/);
 });
 
 // Provider Ownership addendum, section 1: "finalized voice turns always use OpenAI chat" was the
@@ -277,6 +283,27 @@ test('interrupt() and teardown() (disconnect) both reach a currently-playing pub
   assert.match(teardownFn, /stopPlayback\(false\);/);
   const stopPlaybackFn = adapter.slice(adapter.indexOf('function stopPlayback(natural)'), adapter.indexOf('function clearReconnectTimer'));
   assert.match(stopPlaybackFn, /if \(stop\) stop\(!!natural\);/);
+});
+
+// Bugfix (2026-09-10), confirmed live via a real Playwright/Chromium session: pressing the Voice
+// console's own X (or Esc, or the mic-toggle-off button) from an ERROR state - unrelated to which
+// error, this reproduced with a plain missing-key failure - never actually closed Voice Mode. Both
+// chatDockView.jsx's endVoice() and the mic-toggle's own disconnect branch call
+// voiceRef.current.disconnect() (correctly reaching IDLE) immediately followed by
+// playbackControllerRef.current.invalidate(), which (ai-voice-playback-controller.js's own
+// invalidate()/interrupt()) ALWAYS calls through to the adapter's interrupt() "for safety" even
+// with nothing locally queued - documented there as relying on the transport's own interrupt()
+// already being a harmless no-op with nothing to cancel. That was true for
+// aiVoiceRealtime.js (guarded by `if (!session) return;`), but geminiLiveVoice.js's own interrupt()
+// had no connection guard at all - only `state !== ERROR`, which is true for the just-reached IDLE
+// state - so it unconditionally set state back to LISTENING, undoing the disconnect the user just
+// asked for and leaving a phantom "Listening" console on screen instead of closing it.
+test('interrupt() is a genuine no-op once the transport is already disconnected/never connected (no live socket) - it must never resurrect LISTENING right after disconnect() has already reached IDLE', () => {
+  const interruptFn = adapter.slice(adapter.indexOf('function interrupt()'), adapter.indexOf('function finishUserTurn()'));
+  assert.match(interruptFn, /^\s*function interrupt\(\) \{\s*\n(?:[^\n]*\n)*?\s*if \(!socket\) return;/, 'must guard on the live socket, mirroring aiVoiceRealtime.js\'s own `if (!session) return;`, BEFORE touching any playback/state');
+  const guardIdx = interruptFn.indexOf('if (!socket) return;');
+  const stateChangeIdx = interruptFn.indexOf('setState(VOICE_STATES.LISTENING)');
+  assert.ok(guardIdx > -1 && stateChangeIdx > -1 && guardIdx < stateChangeIdx, 'the guard must come before the state resurrection it is preventing');
 });
 
 // "Finish NAVRYA Voice Mode" brief, section 5.2: activeSpeakToken alone only catches an explicit
