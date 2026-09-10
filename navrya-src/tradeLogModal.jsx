@@ -321,6 +321,12 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual, accountRequir
   const stopFilled = useAiFieldFill('trade-wizard', 'stopLoss');
   const riskPercentFilled = useAiFieldFill('trade-wizard', 'riskPercent');
   const leverageFilled = useAiFieldFill('trade-wizard', 'leverage');
+  // Voice/Chat form-interview workflow upgrade: the "Custom" riskAmount/positionSize overrides
+  // below were real, already-allowlisted tradeWizardPaths fields (trade.types.js) that simply
+  // never got magic-fill wiring in the earlier pass - wired now, same convention as every other
+  // field on this step.
+  const riskAmountFilled = useAiFieldFill('trade-wizard', 'riskAmount');
+  const positionSizeFilled = useAiFieldFill('trade-wizard', 'positionSize');
   const bad = solved.valid && solved.r.potentialProfit !== null && solved.r.potentialProfit !== undefined && solved.r.potentialProfit < 0;
   // UX pass: before this, every tile above just showed "—" the moment entry/stop made the
   // calculation invalid (e.g. a stop typed equal to entry, or either left at zero) - with no
@@ -421,20 +427,24 @@ function StepStatus({ t, i18n, trade, setField, solved, dirManual, accountRequir
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><MetricLabel>{t('accountBalance')}</MetricLabel><NumField value={trade.balance} onChange={(v) => setField('balance', v)} placeholder="0" unit="usd" /></div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12, paddingTop: 4, borderTop: '1px solid var(--border-hairline)' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)' }}>{t('calcCustom')} · {t('riskAmount')}</span>
-            <NumField
-              value={trade.riskAmount || (solved.valid && solved.r.riskAmount !== null && solved.r.riskAmount !== undefined ? plainNum(solved.r.riskAmount, 2) : '')}
-              onChange={(v) => setField('riskAmount', v)} placeholder="0.00" unit="usd" computed={!trade.riskAmount}
-            />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)' }}>{t('calcCustom')} · {t('positionSize')}</span>
-            <NumField
-              value={trade.positionSize || (solved.valid && solved.r.positionSize !== null && solved.r.positionSize !== undefined ? plainNum(solved.r.positionSize, 2) : '')}
-              onChange={(v) => setField('positionSize', v)} placeholder="0.00" unit="usd" computed={!trade.positionSize}
-            />
-          </div>
+          <AiMagicFill active={riskAmountFilled} value={trade.riskAmount}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)' }}>{t('calcCustom')} · {t('riskAmount')}</span>
+              <NumField
+                value={trade.riskAmount || (solved.valid && solved.r.riskAmount !== null && solved.r.riskAmount !== undefined ? plainNum(solved.r.riskAmount, 2) : '')}
+                onChange={(v) => setField('riskAmount', v)} placeholder="0.00" unit="usd" computed={!trade.riskAmount}
+              />
+            </div>
+          </AiMagicFill>
+          <AiMagicFill active={positionSizeFilled} value={trade.positionSize}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-disabled)' }}>{t('calcCustom')} · {t('positionSize')}</span>
+              <NumField
+                value={trade.positionSize || (solved.valid && solved.r.positionSize !== null && solved.r.positionSize !== undefined ? plainNum(solved.r.positionSize, 2) : '')}
+                onChange={(v) => setField('positionSize', v)} placeholder="0.00" unit="usd" computed={!trade.positionSize}
+              />
+            </div>
+          </AiMagicFill>
         </div>
       </div>
 
@@ -857,6 +867,12 @@ function TradeLogModal({ seed, options, onClose }) {
   // Object.assign-preserving normalize() - see trade-store.js. instrument follows the same path.
   const [accountId, setAccountId] = React.useState(baseTrade.accountId || '');
   const [instrument, setInstrument] = React.useState(baseTrade.instrument || '');
+  // Voice/Chat form-interview workflow upgrade: accountId/instrument are real, already-allowlisted
+  // tradeWizardPaths fields (trade.types.js) rendered in the persistent Session bar above every
+  // step, not inside a step component - magic-fill wiring never reached them in the earlier pass.
+  // Wired here, same useAiFieldFill/AiMagicFill convention as every step's own fields.
+  const accountIdFilled = useAiFieldFill('trade-wizard', 'accountId');
+  const instrumentFilled = useAiFieldFill('trade-wizard', 'instrument');
   const [accountError, setAccountError] = React.useState(false);
   const [instrumentError, setInstrumentError] = React.useState(false);
   const [showCreateAccount, setShowCreateAccount] = React.useState(false);
@@ -1002,6 +1018,40 @@ function TradeLogModal({ seed, options, onClose }) {
     3: ['conceptTags', 'chartNote']
   }) : null;
 
+  // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+  // wizard's own real display order - accountId/instrument first (the persistent Session bar
+  // rendered above every step, see this component's own JSX), then Step 1/2/3 in the SAME
+  // sequence as wizardStepMap above (order = step*100 + on-screen position), matching mh-intake's
+  // own step*100 convention. Steps 4 (emotions)/5 (screenshots) have no tradeWizardPaths fields at
+  // all (see wizardStepMap's own header comment), so no entries exist for them here either -
+  // never invented. `accountOptions`/`types` are declared elsewhere in this same component - safe
+  // to reference here since this effect callback only ever executes after the full render (and
+  // every one of those const assignments) has already completed, same established pattern as
+  // accountsView.jsx's own registration effect.
+  function buildTradeWizardInterviewFields() {
+    return [
+      {
+        path: 'accountId', order: 1, label: t('account'), type: 'choice', options: accountOptions, role: 'editable',
+        // The Session bar only ever shows the real Select once at least one active account
+        // exists - otherwise it shows a "Set up your first account" button instead (this
+        // component's own JSX), so this field is never genuinely askable until then.
+        visibleWhen: () => { var store = window.TradeJournalAccountsStore; return !!(store && store.listActive().length); }
+      },
+      { path: 'instrument', order: 2, label: t('instrument'), type: 'text', role: 'editable' },
+      { path: 'direction', order: 101, label: t('direction'), type: 'choice', options: [{ value: 'long', label: t('long') }, { value: 'short', label: t('short') }], role: 'editable' },
+      { path: 'marginMode', order: 102, label: t('marginMode'), type: 'choice', options: [{ value: 'isolated', label: t('isolated') }, { value: 'cross', label: t('cross') }], role: 'editable' },
+      { path: 'entryPrice', order: 103, label: t('entryPrice'), type: 'number', role: 'editable' },
+      { path: 'stopLoss', order: 104, label: t('stopLoss'), type: 'number', role: 'editable' },
+      { path: 'riskPercent', order: 105, label: t('riskPercent'), type: 'number', role: 'editable' },
+      { path: 'leverage', order: 106, label: t('leverage'), type: 'number', role: 'editable' },
+      { path: 'riskAmount', order: 107, label: t('calcCustom') + ' · ' + t('riskAmount'), type: 'number', role: 'editable' },
+      { path: 'positionSize', order: 108, label: t('calcCustom') + ' · ' + t('positionSize'), type: 'number', role: 'editable' },
+      { path: 'primaryTimeframe', order: 201, label: t('logTimeframeTraded'), type: 'choice', options: (types.timeframes || []).map((tf) => ({ value: tf, label: tf })), role: 'editable' },
+      { path: 'conceptTags', order: 301, label: t('conceptTags'), type: 'choice', options: (types.concepts || []).map((c) => ({ value: c, label: c })), role: 'editable' },
+      { path: 'chartNote', order: 302, label: t('logInYourWords'), help: t('logFutureSelfTrust'), type: 'text', role: 'editable' }
+    ];
+  }
+
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
@@ -1013,6 +1063,7 @@ function TradeLogModal({ seed, options, onClose }) {
       activeStep: () => stepRef.current,
       stepForPath: wizardStepMap ? wizardStepMap.stepForPath : null,
       goToStep: goTo,
+      interview: { fields: buildTradeWizardInterviewFields() },
       // Journey H1: closes the confirmed gap - this process previously had no submit at all, so
       // an AI-driven "log a trade" could fill the wizard but never complete it. Delegates through
       // submitRef (assigned fresh every render, right after finish() itself is defined below) so
@@ -1462,7 +1513,9 @@ function TradeLogModal({ seed, options, onClose }) {
                 cue at all that this small, packed bar even contained a required field. */}
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: accountError && accountRequired ? 'var(--danger)' : 'var(--text-muted)' }}>{t('account')}{activeAccounts.length && !existingRef.current ? <span style={{ color: 'var(--warning)' }}> *</span> : ''}</span>
             {activeAccounts.length ? (
-              <Select value={accountId} options={accountOptions} onChange={(id) => { setAccountError(false); handleAccount(id); }} icon="wallet" width={200} placeholder={t('chooseAccount')} />
+              <AiMagicFill active={accountIdFilled}>
+                <Select value={accountId} options={accountOptions} onChange={(id) => { setAccountError(false); handleAccount(id); }} icon="wallet" width={200} placeholder={t('chooseAccount')} />
+              </AiMagicFill>
             ) : (
               <Button variant="secondary" size="sm" icon="wallet" onClick={() => setShowCreateAccount(true)}>{t('setUpFirstAccount')}</Button>
             )}
@@ -1472,10 +1525,12 @@ function TradeLogModal({ seed, options, onClose }) {
             {/* Instrument Catalog domain: locked read-only once sourced from a Session - a Trade
                 sourced from a Session must match its instrument exactly (repo.pg.mjs's
                 TRADE_SESSION_INSTRUMENT_MISMATCH), never re-typed to something else here. */}
-            <InstrumentPicker
-              value={instrument || null} onChange={(v) => { setInstrumentError(false); setInstrument(v || ''); }}
-              disabled={!!(baseTrade.source && baseTrade.source.sessionId)} width={140}
-            />
+            <AiMagicFill active={instrumentFilled}>
+              <InstrumentPicker
+                value={instrument || null} onChange={(v) => { setInstrumentError(false); setInstrument(v || ''); }}
+                disabled={!!(baseTrade.source && baseTrade.source.sessionId)} width={140}
+              />
+            </AiMagicFill>
           </div>
           {accountError && accountRequired && (
             <div style={{ padding: '10px 20px 0' }}>

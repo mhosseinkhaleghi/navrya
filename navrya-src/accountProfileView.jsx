@@ -1243,6 +1243,17 @@ function IdentityTab({ lang, i18n, character, profile, onSaved }) {
       // is completely unaffected - it never goes through this registry at all.
       allowlist: ['displayName', 'email', 'phone'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the real display order of the Identity
+      // fields section (name, handle - not askable, read-only/disabled, email, phone). avatarDataUrl
+      // is deliberately never an interview field either, same reasoning as its allowlist exclusion
+      // above.
+      interview: {
+        fields: [
+          { path: 'displayName', order: 1, label: tr(lang, 'nameLabel'), type: 'text', role: 'editable' },
+          { path: 'email', order: 2, label: tr(lang, 'emailLabel'), type: 'text', role: 'editable' },
+          { path: 'phone', order: 3, label: tr(lang, 'phoneLabel'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'displayName') setName(String(value ?? ''));
         else if (path === 'email') setEmail(String(value ?? ''));
@@ -1381,6 +1392,18 @@ function RoleTab({ lang, profile, onSaved }) {
       // other string is silently rejected here, never a model decision to honour.
       allowlist: ['role'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the single real, user-facing role choice -
+      // options are the same REAL_ROLES table the tile grid below renders from, never a second,
+      // invented catalog (and never the excluded admin/authorization roles, same F33 section 7
+      // boundary the allowlist above already enforces).
+      interview: {
+        fields: [
+          {
+            path: 'role', order: 1, label: tr(lang, 'roleTitle'), help: tr(lang, 'roleSub'), type: 'choice',
+            options: REAL_ROLES.map((r) => ({ value: r.id, label: tr(lang, r.labelKey) })), role: 'editable'
+          }
+        ]
+      },
       applyValue: (path, value) => { if (path === 'role' && REAL_ROLES.some((r) => r.id === value)) setRole(value); },
       submit: () => submitRef.current()
     });

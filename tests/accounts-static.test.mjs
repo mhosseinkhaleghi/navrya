@@ -121,7 +121,7 @@ test('account.open validates tab against the exact real tab ids account-detail-{
   assert.match(openBlock, /optionalFields: \['tab'\]/);
   assert.match(openBlock, /var valid = \['overview', 'rules', 'pretrade', 'performance', 'behaviour'\];/);
   assert.match(openBlock, /hub\.open\(targetId, initialTab\);/);
-  const registrationBlock = view.slice(view.indexOf("registry.register('account-detail-'"), view.indexOf("registry.register('account-detail-'") + 900);
+  const registrationBlock = view.slice(view.indexOf("registry.register('account-detail-'"), view.indexOf("registry.register('account-detail-'") + 1900);
   assert.match(registrationBlock, /allowlist: \['tab'\],/);
   assert.match(registrationBlock, /if \(validTabs\.indexOf\(requested\) !== -1\) setTab\(requested\);/);
 });

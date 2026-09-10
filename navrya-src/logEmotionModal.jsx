@@ -267,10 +267,46 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
   // and closePositionModal.jsx: submit() closes over `note`/`selected`/`stress` state, all of
   // which can change after this effect (deps [stage]) first registers.
   const submitRef = React.useRef(null);
+  // Voice/Chat form-interview workflow upgrade: read fresh on every render (the same established
+  // stale-closure fix as submitRef above) so the registration effect's own interview visibleWhen
+  // closures - built once and only re-created when `stage` changes (see the effect's own [stage]
+  // deps) - always see the CURRENTLY selected emotions, not whatever they were when the effect
+  // last ran.
+  const selectedRef = React.useRef(selected);
+  selectedRef.current = selected;
   // Context-aware conversational operation layer, section 6: real per-emotion stable field paths,
   // built from the same real canonical id list the manual UI itself offers (EMOTION_ICONS/
   // emotionList) - never a hand-typed, driftable copy.
   const EMOTION_FIELD_PATHS = emotionList.reduce(function (acc, emoId) { return acc.concat(['emotionIntensity.' + emoId, 'emotionTags.' + emoId]); }, []);
+  // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the form's
+  // own real display order (dominant-emotions grid -> per-selected-emotion detail cards,
+  // intensity then reason tags, in the same canonical emotionList order the grid itself renders ->
+  // stress level -> note). Per-emotion fields are only askable while that emotion is actually
+  // selected (visibleWhen reads selectedRef.current, never a one-time snapshot - same live-ref
+  // convention accountsView.jsx's own kind-conditional rule fields use), matching MoodDetailCard's
+  // own real conditional rendering above. No gate field here - this action auto-submits once its
+  // fields are known (explicitSubmitOnly, character-app.jsx), so every allowlisted field is
+  // role: 'editable'.
+  function buildEmotionInterviewFields() {
+    const fields = [
+      { path: 'dominantEmotions', order: 1, label: t('dominantEmotions'), type: 'choice', options: emotionList.map((id) => ({ value: id, label: ti ? ti.t(id) : id })), role: 'editable' }
+    ];
+    emotionList.forEach((id, idx) => {
+      fields.push({
+        path: 'emotionIntensity.' + id, order: 10 + idx * 2, label: ti ? ti.t(id) : id, type: 'slider', role: 'editable',
+        visibleWhen: () => selectedRef.current.indexOf(id) > -1
+      });
+      fields.push({
+        path: 'emotionTags.' + id, order: 11 + idx * 2, label: (ti ? ti.t(id) : id) + ' — ' + t('logBecause'), type: 'text', role: 'editable',
+        visibleWhen: () => selectedRef.current.indexOf(id) > -1
+      });
+    });
+    fields.push(
+      { path: 'stressLevel', order: 50, label: t('stressLevel'), type: 'slider', role: 'editable' },
+      { path: 'note', order: 51, label: t('notePrompt'), help: t('notePlaceholder'), type: 'text', role: 'editable' }
+    );
+    return fields;
+  }
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -286,6 +322,7 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
       allowlist: ['note', 'stressLevel', 'dominantEmotions'].concat(EMOTION_FIELD_PATHS),
       isOpen: () => mountedRef.current,
       activeStep: () => stage || 'mid_trade',
+      interview: { fields: buildEmotionInterviewFields() },
       applyValue: (path, value) => {
         if (path === 'note') { setNote(String(value || '')); return; }
         // stressLevel: the same real 1-10 range the manual button row enforces - an out-of-range
@@ -356,6 +393,11 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
 
   const stressFilled = useAiFieldFill('trade-emotion-log', 'stressLevel');
   const emotionsFilled = useAiFieldFill('trade-emotion-log', 'dominantEmotions');
+  // Voice/Chat form-interview workflow upgrade: note was already real, allowlisted, and
+  // AI-fillable (applyValue's own 'note' branch above) but had no magic-fill wiring yet, unlike
+  // its stress/emotions/per-emotion siblings above - same useAiFieldFill/AiMagicFill convention,
+  // now applied here too.
+  const noteFilled = useAiFieldFill('trade-emotion-log', 'note');
 
   function toggle(id) {
     setSelected((list) => {
@@ -512,10 +554,12 @@ function LogEmotionModal({ trade, stage, seed, onClose }) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={{ font: 'var(--type-section-label)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{t('notePrompt')}</span>
-              <textarea
-                dir="auto" rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('notePlaceholder')}
-                style={{ resize: 'vertical', boxSizing: 'border-box', padding: 12, borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
-              />
+              <AiMagicFill active={noteFilled} value={note}>
+                <textarea
+                  dir="auto" rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('notePlaceholder')}
+                  style={{ resize: 'vertical', boxSizing: 'border-box', padding: 12, borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
+                />
+              </AiMagicFill>
               {safetyNode && <SafetyCardHost node={safetyNode} />}
             </div>
           </div>

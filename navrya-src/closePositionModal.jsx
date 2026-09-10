@@ -2,6 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
 // Redesign of trade-ui.js's closeTrade() modal against the NAVRYA dialog system (Modal.jsx),
@@ -56,6 +58,11 @@ function ClosePositionModal({ trade, onClose, onSave }) {
     registry.register('trade-close-position', {
       allowlist: ['exitPrice'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the real form's only field - exitPrice is
+      // the sole allowlisted, editable path (character-app.jsx's own trade.close action
+      // description: "exitPrice is the only field"). No gate here - this action auto-submits
+      // once exitPrice is known, same real precedent as trade-emotion-log.
+      interview: { fields: [{ path: 'exitPrice', order: 1, label: t('exitPrice'), type: 'number', role: 'editable' }] },
       applyValue: (path, value) => { if (path === 'exitPrice') setExitInput(String(value ?? '')); },
       submit: () => submitRef.current()
     });
@@ -86,6 +93,8 @@ function ClosePositionModal({ trade, onClose, onSave }) {
   }
   submitRef.current = submit;
 
+  const exitPriceFilled = useAiFieldFill('trade-close-position', 'exitPrice');
+
   return (
     <Modal
       open title={t('closeTradeTitle')} icon="execution" onClose={onClose} width={460}
@@ -103,18 +112,20 @@ function ClosePositionModal({ trade, onClose, onSave }) {
         {/* Forced dir="ltr"/physical offsets throughout - a price+unit pair reads left-to-right
             even on an RTL page, same convention every other numeric field in this app follows. */}
         <div dir="ltr" style={{ position: 'relative' }}>
-          <input
-            type="number" inputMode="decimal" autoFocus value={exitInput} dir="ltr"
-            onChange={(e) => setExitInput(e.target.value)}
-            onBlur={() => setTouched(true)}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-            style={{
-              height: 44, boxSizing: 'border-box', width: '100%',
-              paddingLeft: 14, paddingRight: 52,
-              borderRadius: 8, background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)',
-              border: '1px solid ' + (touched && !valid ? 'var(--danger)' : 'var(--border-gold)'), outline: 'none'
-            }}
-          />
+          <AiMagicFill active={exitPriceFilled} value={exitInput}>
+            <input
+              type="number" inputMode="decimal" autoFocus value={exitInput} dir="ltr"
+              onChange={(e) => setExitInput(e.target.value)}
+              onBlur={() => setTouched(true)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              style={{
+                height: 44, boxSizing: 'border-box', width: '100%',
+                paddingLeft: 14, paddingRight: 52,
+                borderRadius: 8, background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)',
+                border: '1px solid ' + (touched && !valid ? 'var(--danger)' : 'var(--border-gold)'), outline: 'none'
+              }}
+            />
+          </AiMagicFill>
           <span style={{
             position: 'absolute', right: 14, top: 0, height: 44, display: 'flex', alignItems: 'center',
             font: 'var(--type-caption)', letterSpacing: '.06em', color: 'var(--text-muted)', pointerEvents: 'none'

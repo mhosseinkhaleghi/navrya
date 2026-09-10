@@ -55,7 +55,7 @@ const copy = {
     cardNoRuleNote: 'No rules configured on this account yet.', cardInsufficientNote: 'Cannot verify against this rule right now - see Rules & compliance.',
     ledgerAccount: 'Account', ledgerStatus: 'Status', ledgerEquity: 'Equity', ledgerToday: 'Today', ledgerTotal: 'Total P/L', ledgerTarget: 'Target', ledgerRisk: 'Risk used', ledgerHealth: 'Health',
     back: 'Back to accounts', pretradeBtn: 'Pre-trade check', editAccountBtn: 'Edit account', archivedChip: 'ARCHIVED', manualChip: 'MANUAL',
-    tabOverview: 'Overview', tabRulesProp: 'Rules & compliance', tabRulesPersonal: 'Goals & limits', tabPretrade: 'Pre-trade check', tabPerformance: 'Performance', tabBehaviour: 'Behaviour',
+    tabOverview: 'Overview', tabRulesProp: 'Rules & compliance', tabRulesPersonal: 'Goals & limits', tabPretrade: 'Pre-trade check', tabPerformance: 'Performance', tabBehaviour: 'Behaviour', tabFieldLabel: 'Tab',
     metricEquity: 'Equity', metricToday: 'Today', metricTotal: 'Total P/L', metricDrawdown: 'Current drawdown', metricAge: 'Account age', metricOpenRisk: 'Open risk',
     dayN: 'Day {n}', ageUnknown: 'insufficient data',
     whatTodayAllows: 'What today allows', leftOf: 'left of {allowance}', resetsIn: 'Allowance resets in',
@@ -121,7 +121,7 @@ const copy = {
     cardNoRuleNote: 'هنوز قانونی روی این حساب تنظیم نشده.', cardInsufficientNote: 'الان نمی‌شه این قانون رو تأیید کرد - به تب قوانین و تطابق سر بزن.',
     ledgerAccount: 'حساب', ledgerStatus: 'وضعیت', ledgerEquity: 'اکوییتی', ledgerToday: 'امروز', ledgerTotal: 'سود/زیان کل', ledgerTarget: 'هدف', ledgerRisk: 'ریسک مصرف‌شده', ledgerHealth: 'سلامت',
     back: 'بازگشت به حساب‌ها', pretradeBtn: 'چک پیش از معامله', editAccountBtn: 'ویرایش حساب', archivedChip: 'بایگانی', manualChip: 'دستی',
-    tabOverview: 'نمای کلی', tabRulesProp: 'قوانین و انطباق', tabRulesPersonal: 'اهداف و محدودیت‌ها', tabPretrade: 'چک پیش از معامله', tabPerformance: 'عملکرد', tabBehaviour: 'رفتار',
+    tabOverview: 'نمای کلی', tabRulesProp: 'قوانین و انطباق', tabRulesPersonal: 'اهداف و محدودیت‌ها', tabPretrade: 'چک پیش از معامله', tabPerformance: 'عملکرد', tabBehaviour: 'رفتار', tabFieldLabel: 'تب',
     metricEquity: 'اکوییتی', metricToday: 'امروز', metricTotal: 'سود/زیان کل', metricDrawdown: 'افت فعلی', metricAge: 'سن حساب', metricOpenRisk: 'ریسک باز',
     dayN: 'روز {n}', ageUnknown: 'داده‌ی کافی نیست',
     whatTodayAllows: 'امروز چقدر جا دارم', leftOf: 'از {allowance} باقی‌مانده', resetsIn: 'ریست سهمیه تا',
@@ -187,7 +187,7 @@ const copy = {
     cardNoRuleNote: 'لا توجد قواعد مُعدّة على هذا الحساب بعد.', cardInsufficientNote: 'لا يمكن التحقق من هذه القاعدة الآن - راجع تبويب القواعد والامتثال.',
     ledgerAccount: 'الحساب', ledgerStatus: 'الحالة', ledgerEquity: 'الحقوق', ledgerToday: 'اليوم', ledgerTotal: 'إجمالي الربح/الخسارة', ledgerTarget: 'الهدف', ledgerRisk: 'المخاطرة المستخدمة', ledgerHealth: 'السلامة',
     back: 'العودة للحسابات', pretradeBtn: 'فحص ما قبل الصفقة', editAccountBtn: 'تعديل الحساب', archivedChip: 'مؤرشف', manualChip: 'يدوي',
-    tabOverview: 'نظرة عامة', tabRulesProp: 'القواعد والامتثال', tabRulesPersonal: 'الأهداف والحدود', tabPretrade: 'فحص ما قبل الصفقة', tabPerformance: 'الأداء', tabBehaviour: 'السلوك',
+    tabOverview: 'نظرة عامة', tabRulesProp: 'القواعد والامتثال', tabRulesPersonal: 'الأهداف والحدود', tabPretrade: 'فحص ما قبل الصفقة', tabPerformance: 'الأداء', tabBehaviour: 'السلوك', tabFieldLabel: 'التبويب',
     metricEquity: 'الحقوق', metricToday: 'اليوم', metricTotal: 'إجمالي الربح/الخسارة', metricDrawdown: 'التراجع الحالي', metricAge: 'عمر الحساب', metricOpenRisk: 'المخاطرة المفتوحة',
     dayN: 'اليوم {n}', ageUnknown: 'بيانات غير كافية',
     whatTodayAllows: 'ما يسمح به اليوم', leftOf: 'متبقٍ من {allowance}', resetsIn: 'إعادة تعيين المسموح خلال',
@@ -253,7 +253,7 @@ const copy = {
     cardNoRuleNote: 'Aún no hay reglas configuradas en esta cuenta.', cardInsufficientNote: 'No se puede verificar esta regla ahora - revisa Reglas y cumplimiento.',
     ledgerAccount: 'Cuenta', ledgerStatus: 'Estado', ledgerEquity: 'Patrimonio', ledgerToday: 'Hoy', ledgerTotal: 'P/L total', ledgerTarget: 'Objetivo', ledgerRisk: 'Riesgo usado', ledgerHealth: 'Salud',
     back: 'Volver a cuentas', pretradeBtn: 'Verificación previa', editAccountBtn: 'Editar cuenta', archivedChip: 'ARCHIVADA', manualChip: 'MANUAL',
-    tabOverview: 'Resumen', tabRulesProp: 'Reglas y cumplimiento', tabRulesPersonal: 'Metas y límites', tabPretrade: 'Verificación previa', tabPerformance: 'Rendimiento', tabBehaviour: 'Comportamiento',
+    tabOverview: 'Resumen', tabRulesProp: 'Reglas y cumplimiento', tabRulesPersonal: 'Metas y límites', tabPretrade: 'Verificación previa', tabPerformance: 'Rendimiento', tabBehaviour: 'Comportamiento', tabFieldLabel: 'Pestaña',
     metricEquity: 'Patrimonio', metricToday: 'Hoy', metricTotal: 'P/L total', metricDrawdown: 'Drawdown actual', metricAge: 'Antigüedad', metricOpenRisk: 'Riesgo abierto',
     dayN: 'Día {n}', ageUnknown: 'datos insuficientes',
     whatTodayAllows: 'Lo que permite hoy', leftOf: 'restante de {allowance}', resetsIn: 'El límite se reinicia en',
@@ -1259,6 +1259,23 @@ function AccountDetail({ lang, account, allTrades, tab, setTab, onBack, onEdit }
     registry.register('account-detail-' + account.id, {
       allowlist: ['tab'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the real tab pill bar, restricted to the exact
+      // same real, non-archived-aware option set applyValue below already validates against - the
+      // 'rules' option's own label mirrors this account's real Prop-vs-Personal label choice
+      // (line ~1278's own tabs array), and 'pretrade' is omitted entirely for an archived account,
+      // matching Defect #3's read-only rule.
+      interview: {
+        fields: [{
+          path: 'tab', order: 1, label: tr(lang, 'tabFieldLabel'), type: 'choice', role: 'editable',
+          options: [
+            { value: 'overview', label: tr(lang, 'tabOverview') },
+            { value: 'rules', label: tr(lang, account.kind === 'prop' ? 'tabRulesProp' : 'tabRulesPersonal') }
+          ].concat(account.status === 'archived' ? [] : [{ value: 'pretrade', label: tr(lang, 'tabPretrade') }]).concat([
+            { value: 'performance', label: tr(lang, 'tabPerformance') },
+            { value: 'behaviour', label: tr(lang, 'tabBehaviour') }
+          ])
+        }]
+      },
       applyValue: (path, value) => {
         if (path !== 'tab') return;
         const requested = String(value == null ? '' : value).trim();

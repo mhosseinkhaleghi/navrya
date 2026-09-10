@@ -430,6 +430,36 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
       layer: 'foreground',
       allowlist: ['direction', 'marginMode', 'entryPrice', 'stopLoss', 'accountBalance', 'riskPercent', 'riskAmount', 'leverage', 'feeType', 'feePercent', 'takeProfits', 'linkedStrategyId', 'linkedPatternIds', 'sourceSessionId', 'sourceScenarioId', 'pendingEmotionSignal', 'riskOverride', 'accountId', 'instrument'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (header row: account -> strategy -> pattern -> instrument;
+      // then "The Setup": direction -> entryPrice -> stopLoss -> accountBalance -> marginMode;
+      // then "Risk and leverage": riskPercent/riskAmount -> leverage -> feeType -> feePercent;
+      // then takeProfits). sourceSessionId/sourceScenarioId/pendingEmotionSignal/riskOverride are
+      // deliberately excluded entirely - they are never user-typed and never even offered to the
+      // model (chat-dock-core.js's own AI_INTERNAL_ONLY_FIELDS), so there is no real question to
+      // ask about any of them. takeProfits/linkedPatternIds resolve through their own existing
+      // strict extraction/resolution (screenshot read / real Pattern Catalog match) rather than a
+      // simple typed value, but still have a real, single visible control here, so they stay
+      // role:'editable' like every other field.
+      interview: {
+        fields: [
+          { path: 'accountId', order: 1, label: t('account'), type: 'choice', options: accountOptions, role: 'editable' },
+          { path: 'linkedStrategyId', order: 2, label: t('strategy'), type: 'choice', options: strategyOptions, role: 'editable' },
+          { path: 'linkedPatternIds', order: 3, label: t('logReviewPatternsLabel'), type: 'choice', options: patternOptions, role: 'editable' },
+          { path: 'instrument', order: 4, label: t('instrument'), type: 'text', role: 'editable' },
+          { path: 'direction', order: 5, label: t('direction'), type: 'choice', options: [{ value: 'long', label: t('long') }, { value: 'short', label: t('short') }], role: 'editable' },
+          { path: 'entryPrice', order: 6, label: t('entryPrice'), type: 'number', role: 'editable' },
+          { path: 'stopLoss', order: 7, label: t('stopLoss'), type: 'number', role: 'editable' },
+          { path: 'accountBalance', order: 8, label: t('accountBalance'), type: 'number', role: 'editable' },
+          { path: 'marginMode', order: 9, label: t('marginMode'), type: 'choice', options: [{ value: 'isolated', label: t('isolated') }, { value: 'cross', label: t('cross') }], role: 'editable' },
+          { path: 'riskPercent', order: 10, label: t('calcRiskAndLeverage'), type: 'number', role: 'editable' },
+          { path: 'riskAmount', order: 11, label: t('riskAmount'), type: 'number', role: 'editable' },
+          { path: 'leverage', order: 12, label: t('leverage'), type: 'number', role: 'editable' },
+          { path: 'feeType', order: 13, label: t('calcFees'), help: t('calcFeesHint'), type: 'choice', options: [{ value: 'maker', label: t('maker') }, { value: 'taker', label: t('taker') }], role: 'editable' },
+          { path: 'feePercent', order: 14, label: t('calcFees'), help: t('calcFeesHint'), type: 'number', role: 'editable' },
+          { path: 'takeProfits', order: 15, label: t('takeProfit'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'direction') { setDir(value === 'short' ? 'short' : 'long'); return; }
         if (path === 'marginMode') { setMargin(value === 'cross' ? 'cross' : 'isolated'); return; }
