@@ -3217,9 +3217,12 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // same per-entry modal (setSessionAnalysisEntry from the button click at EntryDetailPanel) never
   // accidentally inherits it.
   const [sessionAnalysisAutoRun, setSessionAnalysisAutoRun] = React.useState(false);
-  // Resolves runAiAnalysis()'s own returned Promise once a result actually lands (applyAnalysisResult)
-  // or the modal closes without one (onClose below) - a ref, not state, since nothing ever renders
-  // off this value; it only ever needs to be "whichever pending call is currently outstanding."
+  // Voice/Chat form-interview workflow upgrade, defect 4: previously resolved runAiAnalysis()'s
+  // own returned Promise once a result landed (applyAnalysisResult) or the modal closed without one
+  // (onClose below). That hub method is now openAiAnalysis() (open-only; the real analysis call
+  // instead runs through 'session-ai-analysis-form''s own submit(), awaited directly by
+  // ai-workflow-engine.js's runSubmit()), so nothing sets this ref any more - kept only so the two
+  // existing (harmless, now permanently no-op) checks below need no further change.
   const pendingAnalysisResolverRef = React.useRef(null);
   const railRef = React.useRef(null);
 
@@ -3613,21 +3616,25 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         liveSessionHubRef.current.setOpenScenarios((prev) => new Set(prev).add(scenarioId));
         return true;
       },
-      // AI-access follow-up: session.analysis.run's own submit() (character-app.jsx). Opens the
-      // real per-entry SessionAiAnalysisModal (the exact same one the "AI analysis" button on a
-      // chart entry opens) targeting the session's latest chart entry with an image, in autoRun
-      // mode - never a second, parallel analysis code path. Resolves once a real result lands
-      // (applyAnalysisResult, above) or the modal closes without one (the render site's own
-      // onClose, below) - never hangs the calling workflow forever either way.
-      runAiAnalysis: () => new Promise((resolve) => {
+      // Voice/Chat form-interview workflow upgrade, defect 4: session.analysis.run's own open()
+      // (character-app.jsx) - renamed from runAiAnalysis, which used to both open AND immediately
+      // auto-run the analysis (autoRun:true), silently bypassing the real request-collection form
+      // (user view/model/profile/adherence). Now opens ONLY the real per-entry
+      // SessionAiAnalysisModal (the exact same one the "AI analysis" button on a chart entry
+      // opens), in its normal, non-autoRun form - the interview then fills it, and
+      // session.analysis.run's own explicit submit() (its `setup gate) calls
+      // 'session-ai-analysis-form''s real submit() (startAnalysis()) exactly once. Returns true
+      // once a real chart image was found and the form was opened; false when there is nothing to
+      // analyze - the caller's own poll-for-registration then resolves null the same way every
+      // other action's "the real target never mounted" fallback already does.
+      openAiAnalysis: () => {
         var s = liveSessionHubRef.current.session;
         var entries = (s.entries || []).slice().reverse();
         var target = entries.find((e) => e.type === 'chart' && (e.hasImage || e.preview || e.imageBlobId));
-        if (!target) { resolve(null); return; }
-        pendingAnalysisResolverRef.current = resolve;
-        liveSessionHubRef.current.setSessionAnalysisAutoRun(true);
+        if (!target) return false;
         liveSessionHubRef.current.setSessionAnalysisEntry(target);
-      }),
+        return true;
+      },
       // Slice U1-f (execution brief section 9 item 5, "a startable Fate operation wrapping its
       // existing two-surface flow"): the exact same real trigger the PulseBand's own "Fate"
       // button already calls (withPreSessionCheckIn gate, then the real two-step FateEntryModal/
@@ -3725,7 +3732,9 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       {/* Per-entry "AI analysis" trigger (EntryDetailPanel's own top button) - same full
           persist()/addScenario()/updateScenario() plumbing as FateSummaryModal's own embedded
           instance above, just targeting the specific entry the trader had open when they clicked.
-          Also the ONE instance runAiAnalysis() (session.analysis.run) opens, in autoRun mode. */}
+          Also the ONE instance openAiAnalysis() (session.analysis.run) opens - always in its
+          normal, non-autoRun request-collection form now (defect 4); sessionAnalysisAutoRun stays
+          available as a mechanism but is never set true by this path any more. */}
       {sessionAnalysisEntry && (
         <SessionAiAnalysisModal
           session={session} character={character} lang={lang} entry={sessionAnalysisEntry}

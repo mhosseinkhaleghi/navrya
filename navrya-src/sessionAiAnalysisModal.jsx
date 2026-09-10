@@ -475,19 +475,69 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     if (onResult) onResult(outcome.result, { entry: targetEntry });
   }
 
-  // AI-access follow-up: programmatic trigger for the exact same "Analyze" flow the button below
-  // already runs - opened via the session.analysis.run Action Registry action
-  // (liveSessionView.jsx's runAiAnalysis() hub method) instead of a manual click. Deliberately
-  // calls startAnalysis(false) verbatim, never a second request-building path - a cache hit still
-  // resolves for free (session-analysis-client.js's own fingerprint check, see startAnalysis()'s
-  // own comment), so this is always safe to fire even when a saved result is already showing
-  // (phase starts at 'result' for hasSavedResult) - it just re-reports that same result upward,
-  // which is exactly what lets a voice/chat-triggered "run AI analysis" still narrate an existing
-  // answer aloud rather than silently doing nothing.
+  // Voice/Chat form-interview workflow upgrade, defect 4: `autoRun` is kept as a mechanism (still
+  // usable, e.g. by a future non-interview caller) but is no longer ever set true by
+  // session.analysis.run - see liveSessionView.jsx's runAiAnalysis() and this file's own new
+  // 'session-ai-analysis-form' registration below. A cache hit still resolves for free
+  // (session-analysis-client.js's own fingerprint check, see startAnalysis()'s own comment), so
+  // narrating an existing saved result aloud never requires a second real analysis call either way.
   const autoRunFiredRef = React.useRef(false);
   React.useEffect(() => {
     if (autoRun && !autoRunFiredRef.current) { autoRunFiredRef.current = true; startAnalysis(false); }
   }, [autoRun]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Voice/Chat form-interview workflow upgrade: real controls registered as an interviewable
+  // Process Registry process (docs/ai/form-interview-contract.md), in the form's own real display
+  // order (user view -> model -> analysis style/profile -> adherence). `setupComplete` is a final
+  // gate, never a real field write - reached only once every visible field above has an answer (or
+  // the user explicitly says to proceed), via session.analysis.run's own
+  // autoFinishWhenInterviewExhausted/explicitSubmitOnly policy (character-app.jsx), which then
+  // calls startAnalysisRef.current(false) here - the exact same real call the button/autoRun path
+  // already use, never a second analysis request path. Only registered while the request-
+  // collection form itself is genuinely showing (phase === 'form') - once a result/error/generating
+  // phase takes over, this process reports itself closed, matching every other modal's own
+  // DOM-presence isOpen() convention applied to its own meaningful "still askable" state.
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => () => { mountedRef.current = false; }, []);
+  const startAnalysisRef = React.useRef(startAnalysis);
+  startAnalysisRef.current = startAnalysis;
+  React.useLayoutEffect(() => {
+    const registry = window.TradeJournalAIProcessRegistry;
+    if (!registry) return undefined;
+    registry.register('session-ai-analysis-form', {
+      layer: 'foreground',
+      allowlist: ['userView', 'model', 'profileId', 'adherenceIndex'],
+      isOpen: () => mountedRef.current && phase === 'form',
+      interview: {
+        fields: [
+          { path: 'userView', order: 1, label: tr(activeLang, 'userViewLabel'), help: tr(activeLang, 'userViewHelper'), type: 'text', role: 'editable' },
+          { path: 'model', order: 2, label: tr(activeLang, 'modelLabel'), type: 'choice', options: modelOptions, role: 'editable' },
+          { path: 'profileId', order: 3, label: tr(activeLang, 'profileLabel'), type: 'choice', options: profileOptions, role: 'editable' },
+          { path: 'adherenceIndex', order: 4, label: tr(activeLang, 'adherenceLabel'), type: 'choice', options: ADHERENCE_LEVELS.map((level, i) => ({ value: String(i), label: tr(activeLang, 'adherenceTitle')[level] })), role: 'editable' },
+          { path: 'setupComplete', order: 99, label: tr(activeLang, 'startAnalysis'), type: 'action', role: 'gate' }
+        ]
+      },
+      applyValue: (path, value) => {
+        if (path === 'userView') { setUserView(String(value == null ? '' : value)); return; }
+        if (path === 'model') {
+          const sep = String(value == null ? '' : value).indexOf('::');
+          if (sep === -1) return;
+          setProvider(String(value).slice(0, sep)); setModel(String(value).slice(sep + 2));
+          return;
+        }
+        if (path === 'profileId') { setProfileId(String(value == null ? '' : value)); return; }
+        if (path === 'adherenceIndex') {
+          const idx = Number(value);
+          if (idx >= 0 && idx <= 2) setAdherenceIndex(idx);
+        }
+        // setupComplete is a gate - never a real field, never reaches this branch.
+      },
+      // Reached only through session.analysis.run's own gate - see this block's own header
+      // comment. Returns startAnalysis()'s own Promise so the caller (ai-workflow-engine.js's
+      // runSubmit()) genuinely awaits the real analysis call before recording a receipt.
+      submit: () => startAnalysisRef.current(false)
+    });
+  }, [activeLang, phase, modelOptions, profileOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canGoBackToForm = phase !== 'generating';
 

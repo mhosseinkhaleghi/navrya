@@ -1118,6 +1118,30 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return () => window.removeEventListener('tradejournal:ai-analysis-ready', onAnalysisReady);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Voice/Chat form-interview workflow upgrade: session.analysis.read - narrates a real, already-
+  // persisted analysis top to bottom via BOUNDED SEQUENTIAL chunks (character-app.jsx's own
+  // analysisSectionTexts()/chunkAnalysisSections()), deliberately not the normal short voiceReply
+  // limit every ordinary reply keeps. Each chunk is just another PlaybackController.enqueue() call
+  // into the exact same one-at-a-time queue every other reply already uses - barge-in/End Voice/
+  // New Chat/cancellation all already clear that whole queue (PlaybackController's own
+  // interrupt()/invalidate()), so multi-chunk narration inherits that safety for free, with no new
+  // ownership mechanism needed. Same "only while Voice is genuinely connected" gate as
+  // onAnalysisReady above - a typed-only session only ever sees the written reply.
+  React.useEffect(() => {
+    function onAnalysisNarrate(event) {
+      const chunks = event && event.detail && event.detail.chunks;
+      if (!Array.isArray(chunks) || !chunks.length || !voiceRef.current || !playbackControllerRef.current) return;
+      const currentState = voiceRef.current.state();
+      if (currentState === VOICE_STATES.IDLE || currentState === VOICE_STATES.ERROR) return;
+      chunks.forEach((chunk, i) => {
+        const spoken = voiceText ? voiceText.toSpokenText(chunk, i18n.language()) : chunk;
+        playbackControllerRef.current.enqueue(spoken, { kind: 'ai-analysis-narration', caption: chunk, chunkIndex: i, chunkCount: chunks.length });
+      });
+    }
+    window.addEventListener('tradejournal:ai-analysis-narrate', onAnalysisNarrate);
+    return () => window.removeEventListener('tradejournal:ai-analysis-narrate', onAnalysisNarrate);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   function toggleVoice() {
     if (!voiceRef.current) return;
     const current = voiceRef.current.state();

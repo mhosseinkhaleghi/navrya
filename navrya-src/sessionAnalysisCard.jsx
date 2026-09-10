@@ -94,7 +94,10 @@ const copy = {
     visualizeAnalysisErrorBalance: 'Tu saldo de billetera es insuficiente. Recarga desde Billetera o Suscripción.'
   }
 };
-function tr(lang, key, vars) {
+// Voice/Chat form-interview workflow upgrade: exported so session.analysis.read's narration
+// builder (character-app.jsx) reuses these exact real labels - never a second, invented set of
+// terms for the same concepts the visible card already names.
+export function tr(lang, key, vars) {
   var value = (copy[lang] && copy[lang][key]) || copy.en[key] || key;
   if (vars) Object.keys(vars).forEach((name) => { value = value.replace('{' + name + '}', vars[name]); });
   return value;
