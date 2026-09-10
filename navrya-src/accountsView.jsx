@@ -1379,6 +1379,12 @@ export function ManualAccountModal({ lang, editing, onClose, onSaved }) {
   const [man, setMan] = React.useState(() => (editing ? manFromAccount(editing) : defaultManState()));
   const setRule = (bucket, key) => (value) => setMan((m) => ({ ...m, [bucket]: { ...m[bucket], [key]: value } }));
   const valid = String(man.firm || '').trim().length > 0;
+  // Voice/Chat form-interview workflow upgrade: read fresh on every render (the same established
+  // stale-closure fix as submitRef below) so the registration effect's own interview
+  // visibleWhen closures - built once and never re-created (see the effect's own [] deps) - always
+  // see the CURRENT kind, not whatever it was when this effect last ran.
+  const manRef = React.useRef(man);
+  manRef.current = man;
 
   // AI can fill this visible form field-by-field (Journey/A4 process-registry contract, same
   // mechanism tradeCalculatorModal.jsx uses). Slice U1-a (execution brief section 9 item 1): this
@@ -1394,9 +1400,53 @@ export function ManualAccountModal({ lang, editing, onClose, onSaved }) {
     const registry = window.TradeJournalAIProcessRegistry;
     const types = window.TradeJournalAccountsTypes || {};
     if (!registry) return undefined;
+    // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+    // form's own real display order (kind card -> identity -> start/balance/currency -> rules,
+    // Prop or Personal -> reset config). visibleWhen closures read manRef.current (never a
+    // one-time snapshot) so a kind switch mid-interview re-scopes which rule fields are askable on
+    // the very next turn, without needing this effect itself to re-run. `identityFields`,
+    // `propRuleFields`, `personalRuleFields`, `tzOptions`, `basisOptions` are declared further
+    // down this same component - safe to reference here since this effect callback only ever
+    // executes after the full render (and all of those const assignments) has already completed.
+    const identityFieldPathMap = { firm: 'firm', program: 'program', platform: 'platform', number: 'numberMasked' };
+    function buildAccountInterviewFields() {
+      const fields = [
+        { path: 'kind', order: 1, label: tr(lang, 'manKindLabel'), type: 'choice', options: [{ value: 'prop', label: tr(lang, 'manKindProp') }, { value: 'personal', label: tr(lang, 'manKindPersonal') }], role: 'editable' }
+      ];
+      identityFields.forEach(([key, label], idx) => fields.push({ path: identityFieldPathMap[key] || key, order: 2 + idx, label, type: 'text', role: 'editable' }));
+      fields.push(
+        { path: 'startDate', order: 10, label: tr(lang, 'manStart'), type: 'date', role: 'editable' },
+        { path: 'startingBalance', order: 11, label: tr(lang, 'manBalance'), type: 'number', role: 'editable' },
+        { path: 'currency', order: 12, label: tr(lang, 'manCurrency'), type: 'choice', options: ['USD', 'EUR', 'GBP', 'AUD'].map((c) => ({ value: c, label: c })), role: 'editable' }
+      );
+      propRuleFields.forEach(([key, label, unit], idx) => fields.push({
+        path: 'rules.' + key, order: 20 + idx, label: unit ? label + ' (' + unit + ')' : label, type: 'number', role: 'editable',
+        visibleWhen: () => manRef.current.kind === 'prop'
+      }));
+      fields.push({
+        path: 'rules.drawdownType', order: 40, label: tr(lang, 'manDDType'), type: 'choice',
+        options: [{ value: 'static', label: tr(lang, 'manDDStatic') }, { value: 'trailing', label: tr(lang, 'manDDTrailing') }],
+        role: 'editable', visibleWhen: () => manRef.current.kind === 'prop'
+      });
+      personalRuleFields.forEach(([key, label, unit], idx) => fields.push({
+        path: 'rules.' + key, order: 20 + idx, label: unit ? label + ' (' + unit + ')' : label, type: 'number', role: 'editable',
+        visibleWhen: () => manRef.current.kind === 'personal'
+      }));
+      fields.push(
+        { path: 'rules.dailyResetTimezone', order: 50, label: tr(lang, 'manResetTimezone'), type: 'choice', options: tzOptions, role: 'editable' },
+        { path: 'rules.dailyResetHour', order: 51, label: tr(lang, 'manResetHour'), type: 'number', role: 'editable' },
+        { path: 'rules.dailyLossBasis', order: 52, label: tr(lang, 'manLossBasis'), type: 'choice', options: basisOptions, role: 'editable' },
+        // Voice/Chat form-interview workflow upgrade: the final action gate - reached only through
+        // account.create/account.edit's own explicit `save` gate field (character-app.jsx). Never a
+        // real form path (not in `allowlist`), consistent with every other gate descriptor.
+        { path: 'save', order: 99, label: tr(lang, editing ? 'manSaveEdit' : 'manSave'), type: 'action', role: 'gate' }
+      );
+      return fields;
+    }
     registry.register('account-manual-form', {
       allowlist: types.manualAccountPaths || [],
       isOpen: () => mountedRef.current,
+      interview: { fields: buildAccountInterviewFields() },
       applyValue: (path, value) => {
         if (path === 'kind') { setMan((m) => ({ ...m, kind: value === 'personal' ? 'personal' : 'prop' })); return; }
         if (path.indexOf('rules.') === 0) {

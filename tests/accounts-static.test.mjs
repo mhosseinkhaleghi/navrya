@@ -81,7 +81,11 @@ test('account.create/account.edit only persist through an explicit save gate - n
   const createBlock = character.slice(character.indexOf("id: 'account.create'"), character.indexOf("id: 'account.edit'"));
   const editBlock = character.slice(character.indexOf("id: 'account.edit'"), character.indexOf("id: 'account.open'"));
   for (const block of [createBlock, editBlock]) {
-    assert.match(block, /gateField: 'save', normalizeField: normalizeGateField\('save'\),/);
+    // Voice/Chat form-interview workflow upgrade, defect 5: normalizeField is now
+    // normalizeAccountField('save') - the same gate-rejection wrapped around a new deterministic
+    // `kind` aliasing step (personal/private/a Persian/Arabic/Spanish equivalent -> canonical
+    // 'personal') - see tests/account-kind-interview.test.mjs for that normalizer's own coverage.
+    assert.match(block, /gateField: 'save', normalizeField: normalizeAccountField\('save'\),/);
     assert.match(block, /submit: \(known\) => \{\s*\n\s*if \(known\.save !== true && known\.save !== 'true'\) return undefined;\s*\n\s*return window\.TradeJournalAIProcessRegistry && window\.TradeJournalAIProcessRegistry\.submit\('account-manual-form'\);/);
   }
   assert.match(createBlock, /requiredFields: \['save'\], optionalFields: ACCOUNT_FIELDS,/);
