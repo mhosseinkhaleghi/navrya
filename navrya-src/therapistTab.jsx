@@ -82,6 +82,16 @@ export function TherapistTab({ i18n, mhStore, profile, onChanged }) {
       isOpen: () => mounted,
       activeStep: () => viewRef.current,
       validateValue: (path, value) => path !== 'queueView' || ['pending', 'applied', 'rejected'].indexOf(value) !== -1,
+      // Voice/Chat form-interview workflow upgrade: the one real, allowed field this tab exposes -
+      // which queue filter tab is showing (the real "pending"/"applied"/"rejected" Chip tabs).
+      // Approve/reject/bulk-apply stay excluded by product design (see this effect's own header
+      // comment) - there is nothing else to add here.
+      interview: {
+        fields: [{
+          path: 'queueView', order: 1, label: i18n.t('therapistQueue'), type: 'choice', role: 'editable',
+          options: ['pending', 'applied', 'rejected'].map((k) => ({ value: k, label: i18n.t('therapistStatus_' + k) }))
+        }]
+      },
       applyValue: (path, value) => { if (path === 'queueView') setView(value); }
     });
     return () => { mounted = false; };

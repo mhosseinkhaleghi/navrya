@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
 // Redesign of mental-health-continuous.js's openPostTradeReflection() - the multi-step "how did
@@ -125,6 +127,15 @@ function PostTradeReflectionModal({ trade, settings, onClose }) {
   const [safetyNode, setSafetyNode] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
 
+  // Voice/Chat form-interview workflow upgrade: the same shared magic-fill animation every other
+  // migrated Journey H1 surface uses, one per real allowlisted field (see the registration effect
+  // below for the interview.fields list this mirrors).
+  const setupQualityFilled = useAiFieldFill('mh-post-trade-reflection', 'setupQualityRating');
+  const planAdherenceFilled = useAiFieldFill('mh-post-trade-reflection', 'planAdherenceRating');
+  const emotionManagementFilled = useAiFieldFill('mh-post-trade-reflection', 'emotionManagementRating');
+  const deviationReasonFilled = useAiFieldFill('mh-post-trade-reflection', 'deviationReason');
+  const sentenceOfTheDayFilled = useAiFieldFill('mh-post-trade-reflection', 'sentenceOfTheDay');
+
   React.useEffect(() => {
     const esc = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', esc);
@@ -146,6 +157,22 @@ function PostTradeReflectionModal({ trade, settings, onClose }) {
       layer: 'foreground', actionId: 'psychology.postTradeReflection.fill',
       allowlist: ['setupQualityRating', 'planAdherenceRating', 'emotionManagementRating', 'deviationReason', 'sentenceOfTheDay'],
       isOpen: () => mounted,
+      // Voice/Chat form-interview workflow upgrade: real display order follows the wizard's own
+      // real step sequence (ratings, then plan, then sentence) - the same 5 paths already in
+      // `allowlist` above, nothing more. `emotionThermometer`/`deviatedFromPlan`/`wouldTakeAgain`/
+      // the revenge-check fields are NOT allowlisted by this registration today, so per the
+      // interview contract's own security boundary (ai-process-registry.js's
+      // visibleInterviewFields()) they can never be surfaced here either - not omitted by
+      // oversight.
+      interview: {
+        fields: [
+          { path: 'setupQualityRating', order: 1, label: t('mhSetupQuality'), type: 'number', role: 'editable' },
+          { path: 'planAdherenceRating', order: 2, label: t('mhPlanAdherence'), type: 'number', role: 'editable' },
+          { path: 'emotionManagementRating', order: 3, label: t('mhEmotionManagement'), type: 'number', role: 'editable' },
+          { path: 'deviationReason', order: 4, label: t('mhDeviationReasonPlaceholder'), type: 'text', role: 'editable' },
+          { path: 'sentenceOfTheDay', order: 5, label: t('mhSentenceOfTheDay'), help: t('mhSentenceHint'), type: 'text', role: 'editable' }
+        ]
+      },
       activeStep: () => steps[stepRef.current],
       stepForPath: (path) => {
         if (path === 'setupQualityRating' || path === 'planAdherenceRating' || path === 'emotionManagementRating') return 'ratings';
@@ -272,9 +299,9 @@ function PostTradeReflectionModal({ trade, settings, onClose }) {
           {current === 'ratings' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
               <SectionLabel>{t('mhTradeJudgment')}</SectionLabel>
-              <RatingRow label={t('mhSetupQuality')} value={setupQualityRating} onChange={setSetupQualityRating} />
-              <RatingRow label={t('mhPlanAdherence')} value={planAdherenceRating} onChange={setPlanAdherenceRating} />
-              <RatingRow label={t('mhEmotionManagement')} value={emotionManagementRating} onChange={setEmotionManagementRating} />
+              <AiMagicFill active={setupQualityFilled}><RatingRow label={t('mhSetupQuality')} value={setupQualityRating} onChange={setSetupQualityRating} /></AiMagicFill>
+              <AiMagicFill active={planAdherenceFilled}><RatingRow label={t('mhPlanAdherence')} value={planAdherenceRating} onChange={setPlanAdherenceRating} /></AiMagicFill>
+              <AiMagicFill active={emotionManagementFilled}><RatingRow label={t('mhEmotionManagement')} value={emotionManagementRating} onChange={setEmotionManagementRating} /></AiMagicFill>
             </div>
           )}
           {current === 'plan' && (
@@ -283,10 +310,12 @@ function PostTradeReflectionModal({ trade, settings, onClose }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{t('mhDeviatedFromPlan')}</span>
                 <ChoicePills options={DEVIATION_LEVELS} labelPrefix="mhDeviation_" value={deviatedFromPlan} onChange={setDeviatedFromPlan} t={t} />
-                <input
-                  dir="auto" value={deviationReason} onChange={(e) => setDeviationReason(e.target.value)} placeholder={t('mhDeviationReasonPlaceholder')}
-                  style={{ height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: '500 13.5px/19px var(--font-ui)', outline: 'none' }}
-                />
+                <AiMagicFill active={deviationReasonFilled}>
+                  <input
+                    dir="auto" value={deviationReason} onChange={(e) => setDeviationReason(e.target.value)} placeholder={t('mhDeviationReasonPlaceholder')}
+                    style={{ height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: '500 13.5px/19px var(--font-ui)', outline: 'none' }}
+                  />
+                </AiMagicFill>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{t('mhWouldTakeAgainQuestion')}</span>
@@ -310,10 +339,12 @@ function PostTradeReflectionModal({ trade, settings, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <SectionLabel>{t('mhSentenceOfTheDay')}</SectionLabel>
               <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('mhSentenceHint')}</span>
-              <textarea
-                dir="auto" rows={4} value={sentenceOfTheDay} onChange={(e) => setSentenceOfTheDay(e.target.value)} placeholder={t('mhSentencePlaceholder')}
-                style={{ boxSizing: 'border-box', padding: 14, borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', lineHeight: '22px', resize: 'vertical', outline: 'none' }}
-              />
+              <AiMagicFill active={sentenceOfTheDayFilled}>
+                <textarea
+                  dir="auto" rows={4} value={sentenceOfTheDay} onChange={(e) => setSentenceOfTheDay(e.target.value)} placeholder={t('mhSentencePlaceholder')}
+                  style={{ boxSizing: 'border-box', padding: 14, borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', lineHeight: '22px', resize: 'vertical', outline: 'none' }}
+                />
+              </AiMagicFill>
               {safetyNode && <SafetyCardHost node={safetyNode} />}
             </div>
           )}

@@ -4,6 +4,8 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 
 // The real, answerable weekly reflection - psychologyView.jsx's "Run check-in now"/"Run weekly
 // check-in" buttons used to call mental-health-collector.js's captureWeeklySnapshot() directly,
@@ -82,6 +84,13 @@ function WeeklyCheckInModal({ onDone }) {
   const [saving, setSaving] = React.useState(false);
   const saveRef = React.useRef(null);
 
+  // Voice/Chat form-interview workflow upgrade: the same shared magic-fill animation every other
+  // Journey H1 surface uses. moodNextWeek has no hook here - it is rendered by MoodGrid but is not
+  // one of this registration's own real allowlist/applyValue fields, so it is never AI-writable.
+  const disciplineFilled = useAiFieldFill('mh-weekly-checkin', 'disciplineRating');
+  const biggestWinFilled = useAiFieldFill('mh-weekly-checkin', 'biggestWin');
+  const biggestLessonFilled = useAiFieldFill('mh-weekly-checkin', 'biggestLesson');
+
   function close() { if (onDone) onDone(); }
 
   React.useEffect(() => {
@@ -114,6 +123,18 @@ function WeeklyCheckInModal({ onDone }) {
       allowlist: ['disciplineRating', 'biggestWin', 'biggestLesson'],
       isOpen: () => mounted,
       activeStep: () => 'checkin',
+      // Voice/Chat form-interview workflow upgrade: the form's own real display order (discipline
+      // rating -> biggest win -> biggest lesson). moodNextWeek is rendered by MoodGrid below but is
+      // deliberately NOT here - it isn't in this registration's own real allowlist/applyValue, so
+      // it is never AI-writable today; adding it here would silently widen scope beyond what this
+      // form actually supports.
+      interview: {
+        fields: [
+          { path: 'disciplineRating', order: 1, label: t('mhDisciplineRating'), type: 'number', role: 'editable' },
+          { path: 'biggestWin', order: 2, label: t('mhBiggestWinLabel'), type: 'text', role: 'editable' },
+          { path: 'biggestLesson', order: 3, label: t('mhBiggestLessonLabel'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'disciplineRating') setDisciplineRating(Number(value));
         else if (path === 'biggestWin') setBiggestWin(String(value || ''));
@@ -151,7 +172,10 @@ function WeeklyCheckInModal({ onDone }) {
         {/* Body */}
         <div className="navrya-scroll" style={{ minHeight: 260, maxHeight: '60vh', boxSizing: 'border-box', padding: '4px 20px 20px', overflowY: 'auto', background: 'var(--ink-950)', display: 'flex', flexDirection: 'column', gap: 22 }}>
           <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('mhWeeklyCheckInHint')}</span>
+          <AiMagicFill active={disciplineFilled}>
           <RatingRow label={t('mhDisciplineRating')} value={disciplineRating} onChange={setDisciplineRating} />
+          </AiMagicFill>
+          <AiMagicFill active={biggestWinFilled} value={biggestWin}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <SectionLabel>{t('mhBiggestWinLabel')}</SectionLabel>
             <input
@@ -159,6 +183,8 @@ function WeeklyCheckInModal({ onDone }) {
               style={{ height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: '500 13.5px/19px var(--font-ui)', outline: 'none' }}
             />
           </div>
+          </AiMagicFill>
+          <AiMagicFill active={biggestLessonFilled} value={biggestLesson}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <SectionLabel>{t('mhBiggestLessonLabel')}</SectionLabel>
             <input
@@ -166,6 +192,7 @@ function WeeklyCheckInModal({ onDone }) {
               style={{ height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: '500 13.5px/19px var(--font-ui)', outline: 'none' }}
             />
           </div>
+          </AiMagicFill>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <SectionLabel>{t('mhMoodNextWeekLabel')}</SectionLabel>
             <MoodGrid value={moodNextWeek} onChange={setMoodNextWeek} t={t} />

@@ -6,6 +6,8 @@ import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 import { MetricRow } from '../public/pages/shared/navrya/components/metrics/MetricRow.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 
 // The ROUTINE tab (RoutineNew.dc.html / Routine.dc.html on the approved canvas). Everything it
 // stores goes through routine-store.js, which persists on the same server-authoritative
@@ -217,6 +219,20 @@ function BuildView({ i18n, store, draft, setDraft, editingId, onSave, onCancel }
   stepRef.current = step;
   onSaveRef.current = onSave;
 
+  // Voice/Chat form-interview workflow upgrade: the same shared magic-fill animation every other
+  // migrated Journey H1 surface uses, one per real allowlisted field (see the registration effect
+  // below for the interview.fields list this mirrors).
+  const templateFilled = useAiFieldFill('psychology-routine-editor', 'template');
+  const nameFilled = useAiFieldFill('psychology-routine-editor', 'name');
+  const daysFilled = useAiFieldFill('psychology-routine-editor', 'days');
+  const warnFilled = useAiFieldFill('psychology-routine-editor', 'rules.warn');
+  const streakFilled = useAiFieldFill('psychology-routine-editor', 'rules.streak');
+  const remindFilled = useAiFieldFill('psychology-routine-editor', 'rules.remind');
+  const watchRuleFilled = useAiFieldFill('psychology-routine-editor', 'rules.watch');
+  const partialFilled = useAiFieldFill('psychology-routine-editor', 'rules.partial');
+  const carryFilled = useAiFieldFill('psychology-routine-editor', 'rules.carry');
+  const ruleFilledByKey = { warn: warnFilled, streak: streakFilled, remind: remindFilled, watch: watchRuleFilled, partial: partialFilled, carry: carryFilled };
+
   const STEPS = [
     { n: 1, title: i18n.t('routineWizard1'), note: i18n.t('routineWizard1Note') },
     { n: 2, title: i18n.t('routineWizard2'), note: i18n.t('routineWizard2Note') },
@@ -257,6 +273,25 @@ function BuildView({ i18n, store, draft, setDraft, editingId, onSave, onCancel }
       actionId: 'psychology.routine.create',
       allowlist: ['template', 'name', 'days', 'rules.warn', 'rules.streak', 'rules.remind', 'rules.watch', 'rules.partial', 'rules.carry'],
       isOpen: () => mounted,
+      // Voice/Chat form-interview workflow upgrade: real display order follows the wizard's own
+      // real step sequence - step 1 (template, name, days, in that on-screen order) then step 3
+      // (the six rules, in the same order RULES itself renders them). Step 2 (the step library/
+      // step list builder) and step 4 (preview) have no allowlisted paths, so they contribute no
+      // interview fields - not an oversight, just nothing there is voice-fillable today. Template
+      // options are read from the same store.templates() this view already renders tiles from.
+      interview: {
+        fields: [
+          { path: 'template', order: 101, label: i18n.t('routineWizard1'), help: i18n.t('routineTemplateHint'), type: 'choice', options: Object.keys(templates).map((key) => ({ value: key, label: templates[key].name })), role: 'editable' },
+          { path: 'name', order: 102, label: i18n.t('routineName'), type: 'text', role: 'editable' },
+          { path: 'days', order: 103, label: i18n.t('routineDays'), type: 'text', role: 'editable' },
+          { path: 'rules.warn', order: 301, label: i18n.t('routineRuleWarn'), help: i18n.t('routineRuleWarnBody'), type: 'boolean', role: 'editable' },
+          { path: 'rules.streak', order: 302, label: i18n.t('routineRuleStreak'), help: i18n.t('routineRuleStreakBody'), type: 'boolean', role: 'editable' },
+          { path: 'rules.remind', order: 303, label: i18n.t('routineRuleRemind'), help: i18n.t('routineRuleRemindBody'), type: 'boolean', role: 'editable' },
+          { path: 'rules.watch', order: 304, label: i18n.t('routineRuleWatch'), help: i18n.t('routineRuleWatchBody'), type: 'boolean', role: 'editable' },
+          { path: 'rules.partial', order: 305, label: i18n.t('routineRulePartial'), help: i18n.t('routineRulePartialBody'), type: 'boolean', role: 'editable' },
+          { path: 'rules.carry', order: 306, label: i18n.t('routineRuleCarry'), help: i18n.t('routineRuleCarryBody'), type: 'boolean', role: 'editable' }
+        ]
+      },
       activeStep: () => stepRef.current,
       stepForPath: (path) => {
         if (path === 'template' || path === 'name' || path === 'days') return 1;
@@ -334,35 +369,42 @@ function BuildView({ i18n, store, draft, setDraft, editingId, onSave, onCancel }
               <SectionLabel>{i18n.t('routineWizard1')}</SectionLabel>
               <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('routineTemplateHint')}</Caption>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12 }}>
-              {Object.keys(templates).map((key) => {
-                const t = templates[key], on = draft.template === key;
-                return (
-                  <button
-                    key={key} type="button" onClick={() => pickTemplate(key)}
-                    style={{
-                      display: 'flex', flexDirection: 'column', gap: 10, padding: 16, boxSizing: 'border-box',
-                      borderRadius: 8, cursor: 'pointer', textAlign: 'start', font: 'inherit',
-                      border: '1px solid ' + (on ? 'color-mix(in srgb, var(--char-accent) 55%, transparent)' : 'var(--border-hairline)'),
-                      background: on ? 'color-mix(in srgb, var(--char-active-surface) 70%, transparent)' : 'rgba(11,16,22,.4)'
-                    }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 999, background: on ? 'var(--char-accent)' : 'var(--text-disabled)', flex: 'none' }}></span>
-                      <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{t.name}</span>
-                    </span>
-                    <Caption className="navrya-tabular">{i18n.t('routineStepCount', { count: i18n.number(t.steps.length) })}</Caption>
-                  </button>
-                );
-              })}
-            </div>
+            <AiMagicFill active={templateFilled}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12 }}>
+                {Object.keys(templates).map((key) => {
+                  const t = templates[key], on = draft.template === key;
+                  return (
+                    <button
+                      key={key} type="button" onClick={() => pickTemplate(key)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: 10, padding: 16, boxSizing: 'border-box',
+                        borderRadius: 8, cursor: 'pointer', textAlign: 'start', font: 'inherit',
+                        border: '1px solid ' + (on ? 'color-mix(in srgb, var(--char-accent) 55%, transparent)' : 'var(--border-hairline)'),
+                        background: on ? 'color-mix(in srgb, var(--char-active-surface) 70%, transparent)' : 'rgba(11,16,22,.4)'
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 999, background: on ? 'var(--char-accent)' : 'var(--text-disabled)', flex: 'none' }}></span>
+                        <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{t.name}</span>
+                      </span>
+                      <Caption className="navrya-tabular">{i18n.t('routineStepCount', { count: i18n.number(t.steps.length) })}</Caption>
+                    </button>
+                  );
+                })}
+              </div>
+            </AiMagicFill>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
-              <TextField
-                label={i18n.t('routineName')} value={draft.name} style={{ flex: '1 1 300px' }}
-                onChange={(v) => setDraft((d) => ({ ...d, name: v, nameTouched: true }))}
-              />
+              <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+                <AiMagicFill active={nameFilled} value={draft.name}>
+                  <TextField
+                    label={i18n.t('routineName')} value={draft.name}
+                    onChange={(v) => setDraft((d) => ({ ...d, name: v, nameTouched: true }))}
+                  />
+                </AiMagicFill>
+              </div>
               <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('routineDays')}</span>
+                <AiMagicFill active={daysFilled}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {DAY_LABELS.map(([key, label]) => {
                     const on = draft.days.indexOf(key) > -1;
@@ -379,6 +421,7 @@ function BuildView({ i18n, store, draft, setDraft, editingId, onSave, onCancel }
                     );
                   })}
                 </div>
+                </AiMagicFill>
               </div>
             </div>
           </div>
@@ -441,17 +484,19 @@ function BuildView({ i18n, store, draft, setDraft, editingId, onSave, onCancel }
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '11px 16px' }}>
               {RULES.map(([key, title, body]) => (
-                <div key={key} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 15px', borderRadius: 8,
-                  border: '1px solid ' + (draft.rules[key] ? 'color-mix(in srgb, var(--char-accent) 35%, transparent)' : 'var(--border-hairline)'),
-                  background: draft.rules[key] ? 'color-mix(in srgb, var(--char-active-surface) 45%, transparent)' : 'rgba(11,16,22,.4)'
-                }}>
-                  <Toggle small checked={draft.rules[key]} onChange={() => toggleRule(key)} />
-                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{title}</span>
-                    <Caption>{body}</Caption>
-                  </span>
-                </div>
+                <AiMagicFill key={key} active={ruleFilledByKey[key]}>
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 15px', borderRadius: 8,
+                    border: '1px solid ' + (draft.rules[key] ? 'color-mix(in srgb, var(--char-accent) 35%, transparent)' : 'var(--border-hairline)'),
+                    background: draft.rules[key] ? 'color-mix(in srgb, var(--char-active-surface) 45%, transparent)' : 'rgba(11,16,22,.4)'
+                  }}>
+                    <Toggle small checked={draft.rules[key]} onChange={() => toggleRule(key)} />
+                    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{title}</span>
+                      <Caption>{body}</Caption>
+                    </span>
+                  </div>
+                </AiMagicFill>
               ))}
             </div>
             <Notice tone="warning" icon="honour">{i18n.t('routineNeverLocks')}</Notice>

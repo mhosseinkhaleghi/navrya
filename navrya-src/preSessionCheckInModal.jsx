@@ -118,6 +118,17 @@ function PreSessionCheckInModal({ session, onDone }) {
       allowlist: ['sleepQuality', 'currentStressLevel', 'significantPersonalEvent'],
       isOpen: () => mounted,
       activeStep: () => 'checkin',
+      // Voice/Chat form-interview workflow upgrade: the form's own real display order - sleep
+      // quality, then current stress level, then the significant-event note, exactly as rendered
+      // below (somethingToProveToday sits between them but is not in this registration's own real
+      // allowlist/applyValue, so it is never AI-writable and is deliberately not listed here).
+      interview: {
+        fields: [
+          { path: 'sleepQuality', order: 1, label: t('mhSleepQuality'), type: 'number', role: 'editable' },
+          { path: 'currentStressLevel', order: 2, label: t('mhCurrentStress'), type: 'number', role: 'editable' },
+          { path: 'significantPersonalEvent', order: 3, label: t('mhSignificantEventPlaceholder'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'sleepQuality') setSleepQuality(Number(value));
         else if (path === 'currentStressLevel') setCurrentStressLevel(Number(value));

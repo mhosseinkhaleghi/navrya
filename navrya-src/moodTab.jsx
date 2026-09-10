@@ -6,6 +6,8 @@ import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 
 // The MOOD tab (Mood.dc.html on the approved canvas) and the calm room it can open
 // (CalmRoom.dc.html). Nothing here needs a new store: a day's mood IS a PreSessionCheckIn, which
@@ -234,6 +236,13 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
   const logRef = React.useRef(null);
   pickedRef.current = picked;
 
+  // Voice/Chat form-interview workflow upgrade: the same shared magic-fill animation every other
+  // Journey H1 surface uses, now that this tab's own fields carry canonical interview metadata.
+  const moodFilled = useAiFieldFill('psychology-mood-log', 'mood');
+  const sleepFilled = useAiFieldFill('psychology-mood-log', 'sleepQuality');
+  const proveFilled = useAiFieldFill('psychology-mood-log', 'somethingToProveToday');
+  const eventFilled = useAiFieldFill('psychology-mood-log', 'significantPersonalEvent');
+
   const checkIns = (profile.continuousTracking && profile.continuousTracking.preSessionCheckIns) || [];
   const todayKey = new Date().toDateString();
   const todays = checkIns.filter((c) => new Date(c.createdAt).toDateString() === todayKey);
@@ -287,6 +296,18 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
       allowlist: ['mood', 'sleepQuality', 'somethingToProveToday', 'significantPersonalEvent'],
       isOpen: () => mounted,
       activeStep: () => 'mood',
+      // Voice/Chat form-interview workflow upgrade: the form's own real display order - the mood
+      // picker card first, then the optional context card (sleep -> something to prove -> event),
+      // exactly as MoodTab itself renders them below. Options are the same real MOODS table the
+      // picker buttons render from - never a second, hand-typed mood list.
+      interview: {
+        fields: [
+          { path: 'mood', order: 1, label: i18n.t('moodPickTitle'), type: 'choice', options: MOODS.map((m) => ({ value: m.id, label: i18n.t('moodName_' + m.id) })), role: 'editable' },
+          { path: 'sleepQuality', order: 2, label: i18n.t('moodSleep'), type: 'number', role: 'editable' },
+          { path: 'somethingToProveToday', order: 3, label: i18n.t('moodSomethingToProve'), type: 'boolean', role: 'editable' },
+          { path: 'significantPersonalEvent', order: 4, label: i18n.t('moodEvent'), type: 'text', role: 'editable' }
+        ]
+      },
       validateValue: (path, value) => {
         if (path === 'mood') return !!BY_ID[String(value || '').toLowerCase()];
         if (path === 'sleepQuality') return Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 5;
@@ -363,6 +384,7 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
               <SectionLabel>{i18n.t('moodPickTitle')}</SectionLabel>
               <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('moodPickHint')}</Caption>
             </div>
+            <AiMagicFill active={moodFilled}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 11 }}>
               {MOODS.map((m) => {
                 const on = activeId === m.id;
@@ -386,6 +408,7 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
                 );
               })}
             </div>
+            </AiMagicFill>
             <Caption style={{ lineHeight: '17px' }}>{i18n.t('moodWritesNote')}</Caption>
           </div>
         </Panel>
@@ -397,6 +420,7 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
               <Caption style={{ marginInlineStart: 'auto' }}>{i18n.t('moodOptional')}</Caption>
             </div>
 
+            <AiMagicFill active={sleepFilled}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('moodSleep')}</span>
               <div style={{ display: 'flex', gap: 7 }}>
@@ -413,7 +437,9 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
                 ))}
               </div>
             </div>
+            </AiMagicFill>
 
+            <AiMagicFill active={proveFilled}>
             <button
               type="button" onClick={() => setProve((v) => !v)}
               style={{
@@ -430,8 +456,11 @@ export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {
               }}>{prove && <Icon name="check" size={13} />}</span>
               <span style={{ flex: 1, font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('moodSomethingToProve')}</span>
             </button>
+            </AiMagicFill>
 
+            <AiMagicFill active={eventFilled} value={event}>
             <TextField label={i18n.t('moodEvent')} value={event} onChange={setEvent} placeholder={i18n.t('moodEventPlaceholder')} />
+            </AiMagicFill>
             <Caption style={{ lineHeight: '17px' }}>{i18n.t('moodContextNote')}</Caption>
           </div>
         </Panel>
