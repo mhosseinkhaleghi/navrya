@@ -185,6 +185,14 @@
     if (memory) {
       if (domainIdSet.sessions && liveContext.sessionId) {
         memory.getRelevantSessions(message, { activeSessionId: liveContext.sessionId }).forEach(function (s) { userMemory.push({ type: 'session', data: s }); });
+        // Natural-interaction pass: real grounding for a follow-up question about an existing,
+        // already-narrated/shown analysis (session.analysis.read/session.analysis.run) - the one
+        // real fix behind "Q&A about an in-context analysis result must use the real result,
+        // uncertainty preserved, never invented" - see getRelevantSessionAnalysis()'s own comment
+        // for the confirmed gap this closes.
+        if (memory.getRelevantSessionAnalysis) {
+          memory.getRelevantSessionAnalysis({ activeSessionId: liveContext.sessionId }).forEach(function (a) { userMemory.push({ type: 'sessionAnalysis', data: a }); });
+        }
       }
       if (domainIdSet.strategies && resolvedStrategyId) {
         memory.getRelevantStrategies(message, { activeStrategyId: resolvedStrategyId }).forEach(function (s) { userMemory.push({ type: 'strategy', data: s }); });

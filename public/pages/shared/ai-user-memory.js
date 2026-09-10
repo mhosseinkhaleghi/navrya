@@ -165,10 +165,45 @@
     return [{ currentStress: latest.currentStressLevel, source: 'pre_session_checkin', recordedAt: latest.createdAt }];
   }
 
+  // Voice/Chat form-interview workflow upgrade, natural-interaction pass: the confirmed missing
+  // piece behind "Q&A uses real analysis context" - session.analysis.read's own narration is
+  // spoken through Voice only (never written to the chat transcript, deliberately, to avoid a huge
+  // wall of text), so a follow-up question about it ("what does that resistance zone mean") had
+  // NOTHING real to ground on before this - not in transcript, not in productContext, nowhere.
+  // Returns a minimized-but-real summary of the most recently analyzed chart entry's own persisted
+  // result (never the full raw result - stays consistent with every other getRelevant*() here's own
+  // "structured, minimized retrieval" convention), so an ordinary follow-up question can be answered
+  // from the real result with uncertainty preserved, never invented from nothing.
+  function getRelevantSessionAnalysis(context) {
+    if (!domainAllowed('tradesSessions')) return [];
+    var workspace = window.TradeJournalWorkspace;
+    var ctx = context || {};
+    if (!ctx.activeSessionId || !workspace || typeof workspace.find !== 'function') return [];
+    var session = workspace.find(ctx.activeSessionId);
+    if (!session) return [];
+    var entries = (session.entries || []).slice().reverse();
+    var target = entries.find(function (e) { return e.type === 'chart' && e.aiAnalysisResult; });
+    if (!target) return [];
+    var result = target.aiAnalysisResult;
+    return [{
+      entryId: target.id,
+      thesisHeadline: (result.thesis && result.thesis.headline) || null,
+      thesisSummary: (result.thesis && result.thesis.summary) || null,
+      stateMetrics: (result.stateMetrics || []).map(function (m) { return { label: m.label, value: m.value }; }),
+      scenarios: (result.scenarios || []).map(function (s) {
+        return { role: s.role, title: s.title, probability: s.probability, summary: s.summary, trigger: s.trigger || null, invalidation: s.invalidation || null };
+      }),
+      watchItems: result.watchItems || [],
+      unknowns: result.unknowns || [],
+      confidence: result.confidence ? { level: result.confidence.level, reasons: result.confidence.reasons || [] } : null
+    }];
+  }
+
   window.TradeJournalAIUserMemory = {
     getRelevantStrategies: getRelevantStrategies,
     getRelevantPatterns: getRelevantPatterns,
     getRelevantSessions: getRelevantSessions,
+    getRelevantSessionAnalysis: getRelevantSessionAnalysis,
     getRelevantTrades: getRelevantTrades,
     getRelevantAccounts: getRelevantAccounts,
     getRelevantPsychologyContext: getRelevantPsychologyContext

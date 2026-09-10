@@ -129,6 +129,30 @@ test('a Session question loads the real active session', async () => {
   assert.ok(pkg.productKnowledge.some((d) => d.id === 'sessions'));
 });
 
+// Voice/Chat form-interview workflow upgrade, natural-interaction pass: the missing grounding for
+// a follow-up question about an already-narrated/shown analysis - see ai-user-memory.js's own
+// getRelevantSessionAnalysis() comment for the confirmed gap this closes.
+test('a Session question also includes the real, already-persisted analysis for the current session\'s most recently analyzed chart entry, when one exists', async () => {
+  const session = {
+    id: 'sess1', name: 'NY Session', market: 'NewYork', status: 'open',
+    entries: [{ id: 'entry1', type: 'chart', aiAnalysisResult: { thesis: { headline: 'Coiling under resistance.' }, stateMetrics: [], scenarios: [], watchItems: [], unknowns: [], confidence: null } }]
+  };
+  const workspace = { list: () => [session], find: () => session };
+  const builder = await builderSandbox({ workspace });
+  const pkg = builder.build({ message: 'What can I do from this session?', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: { sessionId: 'sess1' } } });
+  const analysisMemory = pkg.userMemory.filter((m) => m.type === 'sessionAnalysis');
+  assert.equal(analysisMemory.length, 1);
+  assert.equal(analysisMemory[0].data.thesisHeadline, 'Coiling under resistance.');
+});
+
+test('a Session question includes no sessionAnalysis entry when the session has no real persisted analysis yet - never a fabricated placeholder', async () => {
+  const session = { id: 'sess1', name: 'NY Session', market: 'NewYork', status: 'open', entries: [] };
+  const workspace = { list: () => [session], find: () => session };
+  const builder = await builderSandbox({ workspace });
+  const pkg = builder.build({ message: 'What can I do from this session?', currentContext: { navigation: { activeId: 'sessions' }, activeEntities: { sessionId: 'sess1' } } });
+  assert.deepEqual(clone(pkg.userMemory.filter((m) => m.type === 'sessionAnalysis')), []);
+});
+
 // ---- Generic product question: uses product knowledge, no unnecessary user data ----
 
 test('a generic product question ("what is a Scenario") pulls only product knowledge, no user memory at all', async () => {

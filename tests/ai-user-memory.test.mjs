@@ -20,7 +20,8 @@ async function memorySandbox(overrides) {
     TradeJournalMentalHealthStore: (overrides || {}).mentalHealthStore,
     TradeJournalAIProactiveEngine: (overrides || {}).proactiveEngine,
     TradeJournalAccountsStore: (overrides || {}).accountsStore,
-    TradeJournalAccountsEngine: (overrides || {}).accountsEngine
+    TradeJournalAccountsEngine: (overrides || {}).accountsEngine,
+    TradeJournalAICompanionProfile: (overrides || {}).companionProfile
   });
   vm.runInNewContext(await source('ai-user-memory.js'), sandbox, { filename: 'ai-user-memory.js' });
   return sandbox.window.TradeJournalAIUserMemory;
@@ -170,4 +171,67 @@ test('getRelevantPsychologyContext() never exposes the full profile - only the m
 test('getRelevantPsychologyContext() returns [] when there is no real, validated data, never a guessed default', async () => {
   const memory = await memorySandbox({ mentalHealthStore: { load: () => ({ continuousTracking: { preSessionCheckIns: [] } }) } });
   assert.deepEqual(clone(memory.getRelevantPsychologyContext()), []);
+});
+
+// ---- Session analysis memory (Voice/Chat form-interview workflow upgrade, natural-interaction
+// pass): the confirmed missing grounding for a follow-up question about an analysis that was
+// spoken/shown once and never repeated verbatim into the transcript ----
+
+function sessionWithAnalysis(overrides) {
+  const result = Object.assign({
+    thesis: { headline: 'Price is coiling under resistance.', summary: 'Liquidity above needs to be swept first.' },
+    stateMetrics: [{ label: 'Trend', value: 'Bullish', importance: 'high' }],
+    scenarios: [{ role: 'primary', title: 'Breakout continuation', probability: 65, summary: 'Price breaks and retests.', trigger: 'Close above 4230', invalidation: 'Close below 4180' }],
+    watchItems: ['4200 resistance'],
+    unknowns: ['Unclear whether the news release already priced in.'],
+    confidence: { level: 'medium', reasons: ['Mixed higher-timeframe signal.'] }
+  }, overrides || {});
+  return {
+    id: 'session-1',
+    entries: [
+      { id: 'entry-old', type: 'chart', aiAnalysisResult: { thesis: { headline: 'stale, must never be preferred over the newer one' } } },
+      { id: 'entry-new', type: 'chart', aiAnalysisResult: result }
+    ]
+  };
+}
+
+test('getRelevantSessionAnalysis() returns a minimized real summary of the SESSION\'S most recently analyzed chart entry - never the stale earlier one', async () => {
+  const session = sessionWithAnalysis();
+  const workspace = { find: (id) => (id === 'session-1' ? session : null) };
+  const memory = await memorySandbox({ workspace });
+  const result = memory.getRelevantSessionAnalysis({ activeSessionId: 'session-1' });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].entryId, 'entry-new');
+  assert.equal(result[0].thesisHeadline, 'Price is coiling under resistance.');
+  assert.equal(result[0].thesisSummary, 'Liquidity above needs to be swept first.');
+  assert.deepEqual(clone(result[0].stateMetrics), [{ label: 'Trend', value: 'Bullish' }]);
+  assert.equal(result[0].scenarios[0].title, 'Breakout continuation');
+  assert.equal(result[0].scenarios[0].probability, 65);
+  assert.deepEqual(clone(result[0].watchItems), ['4200 resistance']);
+  assert.deepEqual(clone(result[0].unknowns), ['Unclear whether the news release already priced in.']);
+  assert.deepEqual(clone(result[0].confidence), { level: 'medium', reasons: ['Mixed higher-timeframe signal.'] });
+});
+
+test('getRelevantSessionAnalysis() returns [] when no activeSessionId is given - never guesses which session', async () => {
+  const memory = await memorySandbox({ workspace: { find: () => sessionWithAnalysis() } });
+  assert.deepEqual(clone(memory.getRelevantSessionAnalysis({})), []);
+  assert.deepEqual(clone(memory.getRelevantSessionAnalysis()), []);
+});
+
+test('getRelevantSessionAnalysis() returns [] when the real session has no chart entry with a persisted analysis yet - never fabricates one', async () => {
+  const workspace = { find: () => ({ id: 'session-2', entries: [{ id: 'e1', type: 'chart' }, { id: 'e2', type: 'movement' }] }) };
+  const memory = await memorySandbox({ workspace });
+  assert.deepEqual(clone(memory.getRelevantSessionAnalysis({ activeSessionId: 'session-2' })), []);
+});
+
+test('getRelevantSessionAnalysis() returns [] when the session itself does not resolve', async () => {
+  const memory = await memorySandbox({ workspace: { find: () => null } });
+  assert.deepEqual(clone(memory.getRelevantSessionAnalysis({ activeSessionId: 'missing' })), []);
+});
+
+test('getRelevantSessionAnalysis() respects the same tradesSessions data-access privacy toggle every other session/trade memory function already respects', async () => {
+  const workspace = { find: () => sessionWithAnalysis() };
+  const companionProfile = { dataAccessPrefs: () => ({ tradesSessions: false }) };
+  const memory = await memorySandbox({ workspace, companionProfile });
+  assert.deepEqual(clone(memory.getRelevantSessionAnalysis({ activeSessionId: 'session-1' })), []);
 });
