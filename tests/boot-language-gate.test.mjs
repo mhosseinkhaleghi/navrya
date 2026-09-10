@@ -176,7 +176,9 @@ test('boot-language-gate.js is the very first script on all four character pages
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
     const styleIndex = html.indexOf('<style>html{visibility:hidden}</style>');
     const gateIndex = html.indexOf('<script src="../shared/boot-language-gate.js">');
-    const appIndex = html.indexOf('<script src="app.js">');
+    // app.js (and everything after it) now loads with `defer` for performance - only its tag
+    // text changed, execution order is identical (deferred scripts still run in document order).
+    const appIndex = html.indexOf('<script defer src="app.js">');
     assert.ok(styleIndex > -1, character + ': hiding style present');
     assert.ok(gateIndex > -1, character + ': boot-language-gate.js present');
     assert.ok(appIndex > -1, character + ': app.js present');

@@ -184,8 +184,8 @@ test('no localStorage key is ever written for AI usage any more - Phase 8c remov
 test('all four character pages load server-replica.js before ai-usage-store.js', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
-    const storeIndex = html.indexOf('<script src="../shared/ai-usage-store.js">');
+    const replicaIndex = html.indexOf('<script defer src="../shared/server-replica.js">');
+    const storeIndex = html.indexOf('<script defer src="../shared/ai-usage-store.js">');
     assert.ok(replicaIndex > -1 && storeIndex > -1, character + ': both scripts present');
     assert.ok(replicaIndex < storeIndex, character + ': server-replica.js loads before ai-usage-store.js');
   }

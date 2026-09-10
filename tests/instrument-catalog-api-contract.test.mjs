@@ -130,9 +130,9 @@ test('all four character pages load instrument-catalog.types.js then instrument-
   const { readFile } = await import('node:fs/promises');
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(process.cwd(), 'public', 'pages', character, 'index.html'), 'utf8');
-    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
-    const typesIndex = html.indexOf('<script src="../shared/instrument-catalog.types.js">');
-    const storeIndex = html.indexOf('<script src="../shared/instrument-catalog-store.js">');
+    const replicaIndex = html.indexOf('<script defer src="../shared/server-replica.js">');
+    const typesIndex = html.indexOf('<script defer src="../shared/instrument-catalog.types.js">');
+    const storeIndex = html.indexOf('<script defer src="../shared/instrument-catalog-store.js">');
     assert.ok(replicaIndex > -1 && typesIndex > -1 && storeIndex > -1, character + ': all three scripts present');
     assert.ok(replicaIndex < typesIndex && typesIndex < storeIndex, character + ': loaded in dependency order');
   }

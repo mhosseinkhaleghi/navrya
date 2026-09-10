@@ -167,13 +167,18 @@ test('user-scope-guard.js is the first shared script on all four character pages
   ];
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const appIndex = html.indexOf('<script src="app.js">');
-    const guardIndex = html.indexOf('<script src="../shared/user-scope-guard.js">');
+    // Performance fix: everything from app.js onward is now loaded with `defer` (see each
+    // character index.html's own comment) - the exact same execution ORDER these assertions
+    // check is unchanged (deferred scripts still run in document order), only the literal tag
+    // text gained a `defer` attribute. boot-language-gate.js/csrf-fetch-patch.js (checked in the
+    // next test below) deliberately stay non-deferred, in <head>.
+    const appIndex = html.indexOf('<script defer src="app.js">');
+    const guardIndex = html.indexOf('<script defer src="../shared/user-scope-guard.js">');
     assert.ok(appIndex > -1 && guardIndex > appIndex, character + ': guard loads after app.js');
-    const nextScriptAfterApp = html.indexOf('<script src=', appIndex + 1);
+    const nextScriptAfterApp = html.indexOf('<script defer src=', appIndex + 1);
     assert.equal(nextScriptAfterApp, guardIndex, character + ': the guard is the immediate next script after app.js, nothing else in between');
     laterModules.forEach((file) => {
-      const idx = html.indexOf('<script src="../shared/' + file + '">');
+      const idx = html.indexOf('<script defer src="../shared/' + file + '">');
       assert.ok(idx > guardIndex, character + ': ' + file + ' must load after user-scope-guard.js');
     });
   }
@@ -182,9 +187,11 @@ test('user-scope-guard.js is the first shared script on all four character pages
 test('boot-language-gate.js and csrf-fetch-patch.js load in <head>, before app.js - the two scripts genuinely allowed to run earlier than the guard', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
+    // Both of these deliberately stay non-deferred (their own tag text is unchanged) - only
+    // app.js (and everything after it) gained `defer`. See the performance-fix comment above.
     const bootIndex = html.indexOf('<script src="../shared/boot-language-gate.js">');
     const csrfIndex = html.indexOf('<script src="../shared/csrf-fetch-patch.js">');
-    const appIndex = html.indexOf('<script src="app.js">');
+    const appIndex = html.indexOf('<script defer src="app.js">');
     assert.ok(bootIndex > -1 && bootIndex < appIndex, character + ': boot-language-gate.js must load before app.js');
     assert.ok(csrfIndex > -1 && csrfIndex < appIndex, character + ': csrf-fetch-patch.js must load before app.js');
     assert.ok(csrfIndex > bootIndex, character + ': csrf-fetch-patch.js loads right after boot-language-gate.js');

@@ -160,8 +160,8 @@ test('a v1 profile shape returned by the server (src.baseline without src.intake
 test('server-replica.js loads before mental-health-store.js on all four character pages', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
-    const storeIndex = html.indexOf('<script src="../shared/mental-health-store.js">');
+    const replicaIndex = html.indexOf('<script defer src="../shared/server-replica.js">');
+    const storeIndex = html.indexOf('<script defer src="../shared/mental-health-store.js">');
     assert.ok(replicaIndex > -1 && replicaIndex < storeIndex, character + ': server-replica.js loads before mental-health-store.js');
   }
 });

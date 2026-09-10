@@ -122,7 +122,7 @@ test('all character pages load session signature modules in dependency order', a
     // its workspace dependency, same as session-library.js used to.
     // Matched as a real <script src> tag, not the doc-comment prose above it that also
     // mentions this bundle's filename by name.
-    const sessionsApp = html.indexOf('<script src="../shared/navrya-' + character + '-sessions-app.js">');
+    const sessionsApp = html.indexOf('<script defer src="../shared/navrya-' + character + '-sessions-app.js">');
     assert.ok(types > -1 && types < store && store < engine && engine < ui && ui < workspace, character + ' signature script order');
     assert.ok(sessionsApp > workspace, character + ' navrya sessions app script order');
   }
@@ -421,7 +421,7 @@ test('all four character pages load one shared NAVRYA sessions app after the ent
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
     // Matched as a real <script src> tag, not the doc-comment prose above it that also
     // mentions this bundle's filename by name.
-    const tag = '<script src="../shared/navrya-' + character + '-sessions-app.js">';
+    const tag = '<script defer src="../shared/navrya-' + character + '-sessions-app.js">';
     assert.equal((html.match(new RegExp(tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1, character + ':js');
     assert.ok(html.indexOf('session-entry-flow.js') < html.indexOf(tag), character + ':order');
   }

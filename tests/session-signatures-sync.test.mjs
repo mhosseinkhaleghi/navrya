@@ -146,8 +146,8 @@ test('no localStorage key is ever written for session signatures any more - only
 test('server-replica.js loads before session-signature-store.js on all four character pages', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
-    const storeIndex = html.indexOf('<script src="../shared/session-signature-store.js">');
+    const replicaIndex = html.indexOf('<script defer src="../shared/server-replica.js">');
+    const storeIndex = html.indexOf('<script defer src="../shared/session-signature-store.js">');
     assert.ok(replicaIndex > -1, character + ': server-replica.js present');
     assert.ok(storeIndex > -1, character + ': session-signature-store.js present');
     assert.ok(replicaIndex < storeIndex, character + ': server-replica.js loads before session-signature-store.js');

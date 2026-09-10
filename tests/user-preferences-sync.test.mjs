@@ -160,8 +160,8 @@ test('no localStorage key is ever written for preferences - this module never to
 test('server-replica.js loads before user-preferences.js on all four character pages', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
-    const prefsIndex = html.indexOf('<script src="../shared/user-preferences.js">');
+    const replicaIndex = html.indexOf('<script defer src="../shared/server-replica.js">');
+    const prefsIndex = html.indexOf('<script defer src="../shared/user-preferences.js">');
     assert.ok(replicaIndex > -1, character + ': server-replica.js present');
     assert.ok(prefsIndex > -1, character + ': user-preferences.js present');
     assert.ok(replicaIndex < prefsIndex, character + ': server-replica.js loads before user-preferences.js');

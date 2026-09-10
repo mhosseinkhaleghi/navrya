@@ -76,8 +76,8 @@ test('LearnedCommandEditRow lets the user change the phrase, the action (from th
 test('all four character pages load learned-commands-store.js after server-replica.js', async () => {
   for (const character of ['hunter', 'engineer', 'commander', 'sage']) {
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
-    const replicaIndex = html.indexOf('<script src="../shared/server-replica.js">');
-    const storeIndex = html.indexOf('<script src="../shared/learned-commands-store.js">');
+    const replicaIndex = html.indexOf('<script defer src="../shared/server-replica.js">');
+    const storeIndex = html.indexOf('<script defer src="../shared/learned-commands-store.js">');
     assert.ok(replicaIndex > -1 && storeIndex > -1 && replicaIndex < storeIndex, character + ': server-replica.js loads before learned-commands-store.js');
   }
 });
