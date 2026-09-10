@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 
 // React rewrite of session-card-updates.js's TimelineEntryCard + ScenarioCard rendering (the
@@ -467,6 +469,29 @@ function ScenarioCard({ api, session, entry, scenario }) {
     registry.register('session-scenario-' + scenario.id, {
       allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'invalidationNote', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit'],
       isOpen: () => mountedRef.current && open,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // card's own real display order (title -> description -> evidence -> invalidation note ->
+      // problem -> trigger -> position type -> entry prices -> stop loss -> take profit). Every
+      // field here is always rendered once the card is open (no conditional sections among them),
+      // so no visibleWhen is needed. `invalidationNote`'s own Field has no visible label text of
+      // its own (grouped under the "Scenario invalidation" section header above the separate
+      // invalidationTagIds field, which isn't allowlisted) - its real, rendered text is the
+      // placeholder tr('invalidationNote'), reused here as the label since that is the only real
+      // text this specific control shows.
+      interview: {
+        fields: [
+          { path: 'title', order: 1, label: tr('title'), type: 'text', role: 'editable' },
+          { path: 'description', order: 2, label: tr('description'), type: 'text', role: 'editable' },
+          { path: 'evidence', order: 3, label: tr('evidence'), type: 'text', role: 'editable' },
+          { path: 'invalidationNote', order: 4, label: tr('invalidationNote'), type: 'text', role: 'editable' },
+          { path: 'problem', order: 5, label: tr('problem'), type: 'text', role: 'editable' },
+          { path: 'trigger', order: 6, label: tr('trigger'), type: 'text', role: 'editable' },
+          { path: 'positionType', order: 7, label: tr('positionType'), type: 'choice', options: [{ value: 'Long', label: tr('long') }, { value: 'Short', label: tr('short') }], role: 'editable' },
+          { path: 'entryPrices', order: 8, label: tr('entries'), type: 'text', role: 'editable' },
+          { path: 'stopLoss', order: 9, label: tr('stop'), type: 'number', role: 'editable' },
+          { path: 'takeProfit', order: 10, label: tr('target'), type: 'number', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (['title', 'description', 'evidence', 'problem', 'trigger', 'invalidationNote'].indexOf(path) > -1) { update({ [path]: String(value ?? '') }, 'note_edited', tr(path) || path); return; }
         if (path === 'positionType') { setPositionType(String(value ?? '')); return; }
@@ -481,6 +506,20 @@ function ScenarioCard({ api, session, entry, scenario }) {
     });
     return () => { mountedRef.current = false; };
   }, [scenario.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Voice/Chat form-interview workflow upgrade: the "AI just filled this" animation for every
+  // interview.fields entry above (Journey H1's AiMagicFill mechanism, same convention already
+  // used by liveSessionView.jsx's own live-session-scenario-{id} sibling registration).
+  const titleFilled = useAiFieldFill('session-scenario-' + scenario.id, 'title');
+  const descriptionFilled = useAiFieldFill('session-scenario-' + scenario.id, 'description');
+  const evidenceFilled = useAiFieldFill('session-scenario-' + scenario.id, 'evidence');
+  const invalidationNoteFilled = useAiFieldFill('session-scenario-' + scenario.id, 'invalidationNote');
+  const problemFilled = useAiFieldFill('session-scenario-' + scenario.id, 'problem');
+  const triggerFilled = useAiFieldFill('session-scenario-' + scenario.id, 'trigger');
+  const positionTypeFilled = useAiFieldFill('session-scenario-' + scenario.id, 'positionType');
+  const entryPricesFilled = useAiFieldFill('session-scenario-' + scenario.id, 'entryPrices');
+  const stopLossFilled = useAiFieldFill('session-scenario-' + scenario.id, 'stopLoss');
+  const takeProfitFilled = useAiFieldFill('session-scenario-' + scenario.id, 'takeProfit');
 
   return (
     <Panel variant={open ? 'active' : 'base'} radius={10} style={{ overflow: 'hidden' }}>
@@ -504,9 +543,9 @@ function ScenarioCard({ api, session, entry, scenario }) {
       </header>
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10, borderTop: '1px solid var(--border-hairline)' }}>
-          <Field label={tr('title')} value={scenario.title} onCommit={(v) => update({ title: v })} readOnly={readOnly} />
-          <Field label={tr('description')} type="textarea" value={scenario.description} onCommit={(v) => update({ description: v })} readOnly={readOnly} />
-          <Field label={tr('evidence')} type="textarea" value={scenario.evidence} onCommit={(v) => update({ evidence: v })} readOnly={readOnly} />
+          <AiMagicFill active={titleFilled} value={scenario.title}><Field label={tr('title')} value={scenario.title} onCommit={(v) => update({ title: v })} readOnly={readOnly} /></AiMagicFill>
+          <AiMagicFill active={descriptionFilled} value={scenario.description}><Field label={tr('description')} type="textarea" value={scenario.description} onCommit={(v) => update({ description: v })} readOnly={readOnly} /></AiMagicFill>
+          <AiMagicFill active={evidenceFilled} value={scenario.evidence}><Field label={tr('evidence')} type="textarea" value={scenario.evidence} onCommit={(v) => update({ evidence: v })} readOnly={readOnly} /></AiMagicFill>
 
           <section style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: 10, borderRadius: 9, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.4)' }}>
             <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, font: 'var(--type-caption)', fontSize: 11, color: 'var(--text-muted)' }}><Icon name="layers-3" size={13} />{tr('patternTag')}</h4>
@@ -552,11 +591,11 @@ function ScenarioCard({ api, session, entry, scenario }) {
           <section style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: 10, borderRadius: 9, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.4)' }}>
             <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, font: 'var(--type-caption)', fontSize: 11, color: 'var(--text-muted)' }}><Icon name="triangle-alert" size={13} />{tr('invalidation')}</h4>
             <Field label={tr('invalidation')} value={(scenario.invalidationTagIds || []).join(', ')} placeholder={tr('invalidationPlaceholder')} onCommit={(v) => update({ invalidationTagIds: v.split(/[,،]/).map((item) => item.trim()).filter(Boolean) })} readOnly={readOnly} />
-            <Field label="" type="textarea" value={scenario.invalidationNote || ''} placeholder={tr('invalidationNote')} onCommit={(v) => update({ invalidationNote: v }, 'note_edited', tr('invalidationNote'))} readOnly={readOnly} />
+            <AiMagicFill active={invalidationNoteFilled} value={scenario.invalidationNote || ''}><Field label="" type="textarea" value={scenario.invalidationNote || ''} placeholder={tr('invalidationNote')} onCommit={(v) => update({ invalidationNote: v }, 'note_edited', tr('invalidationNote'))} readOnly={readOnly} /></AiMagicFill>
           </section>
 
-          <Field label={tr('problem')} type="textarea" value={scenario.problem} onCommit={(v) => update({ problem: v })} readOnly={readOnly} />
-          <Field label={tr('trigger')} type="textarea" value={scenario.trigger} onCommit={(v) => update({ trigger: v })} readOnly={readOnly} />
+          <AiMagicFill active={problemFilled} value={scenario.problem}><Field label={tr('problem')} type="textarea" value={scenario.problem} onCommit={(v) => update({ problem: v })} readOnly={readOnly} /></AiMagicFill>
+          <AiMagicFill active={triggerFilled} value={scenario.trigger}><Field label={tr('trigger')} type="textarea" value={scenario.trigger} onCommit={(v) => update({ trigger: v })} readOnly={readOnly} /></AiMagicFill>
 
           <section style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: 10, borderRadius: 9, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.4)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -589,23 +628,25 @@ function ScenarioCard({ api, session, entry, scenario }) {
             <Field label={tr('actionPlan')} type="textarea" value={plan.actionPlan || ''} placeholder={tr('actionPlaceholder')} onCommit={(v) => { plan.actionPlan = v; saveAndOpen(api, session, null); }} readOnly={readOnly} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ font: 'var(--type-caption)', fontSize: 11, color: 'var(--text-muted)' }}>{tr('positionType')}</span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {['Long', 'Short'].map((value) => {
-                  const active = plan.positionType === value;
-                  const tone = value === 'Long' ? 'var(--success)' : 'var(--danger)';
-                  return (
-                    <button
-                      key={value} type="button" disabled={readOnly} onClick={() => setPositionType(value)}
-                      style={{ flex: 1, minHeight: 36, borderRadius: 7, border: '1px solid ' + (active ? tone : 'var(--border-gold)'), background: active ? 'color-mix(in srgb, ' + tone + ' 14%, transparent)' : 'rgba(11,20,21,.72)', color: active ? tone : 'var(--text-muted)', font: 'var(--type-caption)', fontWeight: 700, fontSize: 11, cursor: readOnly ? 'not-allowed' : 'pointer' }}
-                    >{value === 'Long' ? tr('long') : tr('short')}</button>
-                  );
-                })}
-              </div>
+              <AiMagicFill active={positionTypeFilled}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['Long', 'Short'].map((value) => {
+                    const active = plan.positionType === value;
+                    const tone = value === 'Long' ? 'var(--success)' : 'var(--danger)';
+                    return (
+                      <button
+                        key={value} type="button" disabled={readOnly} onClick={() => setPositionType(value)}
+                        style={{ flex: 1, minHeight: 36, borderRadius: 7, border: '1px solid ' + (active ? tone : 'var(--border-gold)'), background: active ? 'color-mix(in srgb, ' + tone + ' 14%, transparent)' : 'rgba(11,20,21,.72)', color: active ? tone : 'var(--text-muted)', font: 'var(--type-caption)', fontWeight: 700, fontSize: 11, cursor: readOnly ? 'not-allowed' : 'pointer' }}
+                      >{value === 'Long' ? tr('long') : tr('short')}</button>
+                    );
+                  })}
+                </div>
+              </AiMagicFill>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 7 }}>
-              <Field label={tr('entries')} value={(plan.entryPrices || []).join(', ')} onCommit={(v) => { plan.entryPrices = v.split(',').map((item) => Number(item.trim())).filter((n) => !Number.isNaN(n)); saveAndOpen(api, session, 'position_edited', tr('entries'), scenario.id, true); }} readOnly={readOnly} />
-              <Field label={tr('stop')} type="number" value={plan.stopLoss} placeholder={tr('optional')} onCommit={(v) => { plan.stopLoss = v ? Number(v) : null; saveAndOpen(api, session, 'position_edited', tr('stop'), scenario.id, true); }} readOnly={readOnly} />
-              <Field label={tr('target')} type="number" value={plan.takeProfit} placeholder={tr('optional')} onCommit={(v) => { plan.takeProfit = v ? Number(v) : null; saveAndOpen(api, session, 'position_edited', tr('target'), scenario.id, true); }} readOnly={readOnly} />
+              <AiMagicFill active={entryPricesFilled} value={(plan.entryPrices || []).join(', ')}><Field label={tr('entries')} value={(plan.entryPrices || []).join(', ')} onCommit={(v) => { plan.entryPrices = v.split(',').map((item) => Number(item.trim())).filter((n) => !Number.isNaN(n)); saveAndOpen(api, session, 'position_edited', tr('entries'), scenario.id, true); }} readOnly={readOnly} /></AiMagicFill>
+              <AiMagicFill active={stopLossFilled} value={plan.stopLoss ?? ''}><Field label={tr('stop')} type="number" value={plan.stopLoss} placeholder={tr('optional')} onCommit={(v) => { plan.stopLoss = v ? Number(v) : null; saveAndOpen(api, session, 'position_edited', tr('stop'), scenario.id, true); }} readOnly={readOnly} /></AiMagicFill>
+              <AiMagicFill active={takeProfitFilled} value={plan.takeProfit ?? ''}><Field label={tr('target')} type="number" value={plan.takeProfit} placeholder={tr('optional')} onCommit={(v) => { plan.takeProfit = v ? Number(v) : null; saveAndOpen(api, session, 'position_edited', tr('target'), scenario.id, true); }} readOnly={readOnly} /></AiMagicFill>
             </div>
           </section>
 
@@ -713,6 +754,13 @@ function TimelineEntryCard({ session: rawSession, entry, api }) {
   // AI process registry (A4) - per-entry id, same multi-instance/mountedRef reasoning as
   // ScenarioCard above (several timeline entry cards can be visible on screen at once).
   const mountedRef = React.useRef(true);
+  // Voice/Chat form-interview workflow upgrade: read fresh on every render (same stale-closure
+  // fix as accountsView.jsx's manRef) so the interview.fields visibleWhen closures below - built
+  // once inside the registration effect ([entry.id] deps, never re-created on every render) -
+  // always see the CURRENT src/entry.type, not whatever it was when this effect last ran (e.g.
+  // the async chart-image load flipping `src` from null to a real url).
+  const liveEntryStateRef = React.useRef({ src, entryType: entry.type });
+  liveEntryStateRef.current = { src, entryType: entry.type };
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -720,6 +768,19 @@ function TimelineEntryCard({ session: rawSession, entry, api }) {
     registry.register('session-entry-' + entry.id, {
       allowlist: ['note', 'movementNote'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the card's own real display order. `note`
+      // shows only for a chart entry (or any entry that resolved a real image); `movementNote`
+      // shows only for a movement entry with no image - the same two mutually-exclusive real JSX
+      // conditions below, so both descriptors carry a visibleWhen mirroring them exactly.
+      // `movementNote`'s own textarea renders with no label/placeholder text of its own (found via
+      // JSX audit) - its real, rendered identifying text is the card header's own type badge,
+      // tr('movement'), the only text a user reading this card would associate with it.
+      interview: {
+        fields: [
+          { path: 'movementNote', order: 1, label: tr('movement'), type: 'text', role: 'editable', visibleWhen: () => liveEntryStateRef.current.entryType === 'movement' && !liveEntryStateRef.current.src },
+          { path: 'note', order: 2, label: tr('note'), type: 'text', role: 'editable', visibleWhen: () => liveEntryStateRef.current.entryType === 'chart' || !!liveEntryStateRef.current.src }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'note') commitNote(String(value ?? ''));
         else if (path === 'movementNote') commitMovement(String(value ?? ''));
@@ -727,6 +788,8 @@ function TimelineEntryCard({ session: rawSession, entry, api }) {
     });
     return () => { mountedRef.current = false; };
   }, [entry.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const noteFilled = useAiFieldFill('session-entry-' + entry.id, 'note');
+  const movementNoteFilled = useAiFieldFill('session-entry-' + entry.id, 'movementNote');
   function setAnnotated(value) { state.showAnnotated = value; tick(); }
 
   return (
@@ -762,11 +825,13 @@ function TimelineEntryCard({ session: rawSession, entry, api }) {
         </div>
       ) : entry.type === 'movement' ? (
         <div style={{ padding: 12 }}>
-          <textarea
-            defaultValue={entry.movementNote || entry.note || ''} disabled={readOnly} dir="auto"
-            onBlur={(e) => { if (!readOnly) commitMovement(e.target.value); }}
-            style={{ boxSizing: 'border-box', width: '100%', minHeight: 60, padding: 0, border: 0, outline: 'none', background: 'transparent', color: 'var(--text-primary)', resize: 'vertical', font: 'var(--type-body)', fontSize: 12, lineHeight: 1.8 }}
-          />
+          <AiMagicFill active={movementNoteFilled} value={entry.movementNote || entry.note || ''}>
+            <textarea
+              defaultValue={entry.movementNote || entry.note || ''} disabled={readOnly} dir="auto"
+              onBlur={(e) => { if (!readOnly) commitMovement(e.target.value); }}
+              style={{ boxSizing: 'border-box', width: '100%', minHeight: 60, padding: 0, border: 0, outline: 'none', background: 'transparent', color: 'var(--text-primary)', resize: 'vertical', font: 'var(--type-body)', fontSize: 12, lineHeight: 1.8 }}
+            />
+          </AiMagicFill>
         </div>
       ) : (
         <div style={{ minHeight: 92, display: 'grid', placeItems: 'center', color: 'var(--text-muted)', background: 'var(--ink-950)', font: 'var(--type-caption)', fontSize: 11 }}>{tr('noImage')}</div>
@@ -775,11 +840,13 @@ function TimelineEntryCard({ session: rawSession, entry, api }) {
       {(entry.type === 'chart' || src) && (
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', borderBottom: '1px solid var(--border-hairline)' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 9 }}><Icon name="message-square-text" size={12} />{tr('note')}</span>
-          <textarea
-            defaultValue={entry.note || ''} placeholder={tr('notePlaceholder')} disabled={readOnly} dir="auto"
-            onBlur={(e) => { if (!readOnly) commitNote(e.target.value); }}
-            style={{ boxSizing: 'border-box', width: '100%', minHeight: 40, padding: '6px 0', border: 0, outline: 'none', background: 'transparent', color: 'var(--text-primary)', resize: 'vertical', font: 'var(--type-body)', fontSize: 11, lineHeight: 1.8 }}
-          />
+          <AiMagicFill active={noteFilled} value={entry.note || ''}>
+            <textarea
+              defaultValue={entry.note || ''} placeholder={tr('notePlaceholder')} disabled={readOnly} dir="auto"
+              onBlur={(e) => { if (!readOnly) commitNote(e.target.value); }}
+              style={{ boxSizing: 'border-box', width: '100%', minHeight: 40, padding: '6px 0', border: 0, outline: 'none', background: 'transparent', color: 'var(--text-primary)', resize: 'vertical', font: 'var(--type-body)', fontSize: 11, lineHeight: 1.8 }}
+            />
+          </AiMagicFill>
         </label>
       )}
 

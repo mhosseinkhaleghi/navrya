@@ -657,6 +657,15 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
   const sessionRef = React.useRef(session);
   sessionRef.current = session;
 
+  // Voice/Chat form-interview workflow upgrade: magic-fill animation for this form's own
+  // AI-fillable fields - same shared TradeJournalAIFieldFillBus every other Journey H1 domain in
+  // this file already uses (see ScenarioEditor/EntryDetailPanel below).
+  const timeframeFilled = useAiFieldFill('live-session-chart-entry', 'timeframe');
+  const marketFilled = useAiFieldFill('live-session-chart-entry', 'market');
+  const dateFilled = useAiFieldFill('live-session-chart-entry', 'date');
+  const noteFilled = useAiFieldFill('live-session-chart-entry', 'note');
+  const relatedScenariosFilled = useAiFieldFill('live-session-chart-entry', 'relatedScenarios');
+
   function handleFile(f) {
     if (!f || !f.type.startsWith('image/')) return;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -683,6 +692,21 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
     registry.register('live-session-chart-entry', {
       allowlist: ['note', 'timeframe', 'market', 'date', 'relatedScenarios'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (timeframe -> market -> date -> note -> related scenarios).
+      // relatedScenarios is only askable while this session actually has scenarios to link
+      // (mirrors the real `{!!scenarios.length && (...)}` conditional below), read fresh via
+      // sessionRef.current - never a one-time snapshot - the same live ref applyValue()'s own
+      // relatedScenarios branch already uses.
+      interview: {
+        fields: [
+          { path: 'timeframe', order: 1, label: tr(lang, 'timeframeLabel'), type: 'choice', options: TIMEFRAMES.map((v) => ({ value: v, label: v })), role: 'editable' },
+          { path: 'market', order: 2, label: tr(lang, 'marketLabel'), type: 'choice', options: MARKET_NAMES.map((v) => ({ value: v, label: sessionsAdapter.displayCity(v) })), role: 'editable' },
+          { path: 'date', order: 3, label: tr(lang, 'dateLabel'), type: 'date', role: 'editable' },
+          { path: 'note', order: 4, label: tr(lang, 'noteOptionalLabel'), type: 'text', role: 'editable' },
+          { path: 'relatedScenarios', order: 5, label: tr(lang, 'relatedScenariosLabel'), help: tr(lang, 'relatedScenariosHint'), type: 'text', role: 'editable', visibleWhen: () => flatScenarios(sessionRef.current).length > 0 }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'note') setNote(String(value ?? ''));
         else if (path === 'timeframe' && TIMEFRAMES.indexOf(value) > -1) setTimeframe(value);
@@ -737,39 +761,47 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')} <span style={{ color: 'var(--danger)' }}>*</span></span>
-            <select value={timeframe} onChange={(e) => { setTimeframe(e.target.value); setError(''); }} style={{ ...inputStyle, borderColor: error && !timeframe ? 'var(--danger)' : 'var(--border-hairline)' }}>
-              {TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <span style={fieldLabelStyle}>{tr(lang, 'marketLabel')}</span>
-            <select value={market} onChange={(e) => setMarket(e.target.value)} style={inputStyle}>
-              {MARKET_NAMES.map((v) => <option key={v} value={v}>{sessionsAdapter.displayCity(v)}</option>)}
-            </select>
-          </label>
+          <AiMagicFill active={timeframeFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')} <span style={{ color: 'var(--danger)' }}>*</span></span>
+              <select value={timeframe} onChange={(e) => { setTimeframe(e.target.value); setError(''); }} style={{ ...inputStyle, borderColor: error && !timeframe ? 'var(--danger)' : 'var(--border-hairline)' }}>
+                {TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </label>
+          </AiMagicFill>
+          <AiMagicFill active={marketFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={fieldLabelStyle}>{tr(lang, 'marketLabel')}</span>
+              <select value={market} onChange={(e) => setMarket(e.target.value)} style={inputStyle}>
+                {MARKET_NAMES.map((v) => <option key={v} value={v}>{sessionsAdapter.displayCity(v)}</option>)}
+              </select>
+            </label>
+          </AiMagicFill>
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={fieldLabelStyle}>{tr(lang, 'dateLabel')}</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
-        </label>
-        <TextAreaField label={tr(lang, 'noteOptionalLabel')} value={note} onCommit={setNote} />
+        <AiMagicFill active={dateFilled} value={date}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={fieldLabelStyle}>{tr(lang, 'dateLabel')}</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+          </label>
+        </AiMagicFill>
+        <AiMagicFill active={noteFilled} value={note}><TextAreaField label={tr(lang, 'noteOptionalLabel')} value={note} onCommit={setNote} /></AiMagicFill>
 
         {!!scenarios.length && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={fieldLabelStyle}>{tr(lang, 'relatedScenariosLabel')}</span>
             <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'relatedScenariosHint')}</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {scenarios.map(({ scenario }) => {
-                const on = related.indexOf(scenario.id) > -1;
-                return (
-                  <button key={scenario.id} type="button" onClick={() => toggleRelated(scenario.id)} dir="auto" style={{ height: 30, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--char-accent)' : 'var(--border-hairline)'), background: on ? 'var(--char-active-surface)' : 'transparent', color: on ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 11 }}>
-                    {scenario.title || tr(lang, 'newScenarioTitle')}
-                  </button>
-                );
-              })}
-            </div>
+            <AiMagicFill active={relatedScenariosFilled}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {scenarios.map(({ scenario }) => {
+                  const on = related.indexOf(scenario.id) > -1;
+                  return (
+                    <button key={scenario.id} type="button" onClick={() => toggleRelated(scenario.id)} dir="auto" style={{ height: 30, padding: '0 12px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--char-accent)' : 'var(--border-hairline)'), background: on ? 'var(--char-active-surface)' : 'transparent', color: on ? 'var(--char-accent)' : 'var(--text-muted)', font: 'var(--type-caption)', fontSize: 11 }}>
+                      {scenario.title || tr(lang, 'newScenarioTitle')}
+                    </button>
+                  );
+                })}
+              </div>
+            </AiMagicFill>
           </div>
         )}
 
@@ -1132,6 +1164,31 @@ function ScenarioEditor({ session, entry, scenario, lang, open, onToggle, onUpda
       // even told exists. Added now, same shape as every other real field here.
       allowlist: ['title', 'description', 'evidence', 'problem', 'trigger', 'positionType', 'entryPrices', 'stopLoss', 'takeProfit', 'patternName', 'probability', 'invalidationNote', 'invalidationTags', 'completedStage', 'incompleteStage', 'confirmDelete'],
       isOpen: () => mountedRef.current && open,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (title -> description -> evidence -> problem -> trigger ->
+      // probability -> plan side/entry/stop/target -> invalidation tags/note). Fixed per-instance
+      // shape - identical regardless of which scenario id this is, exactly like the allowlist
+      // above. `patternName` (resolution-only, see this registration's own header comment) and
+      // `confirmDelete` (scenario.delete's own destructive gate, character-app.jsx) are
+      // deliberately NOT included - neither is ever itself an interview-asked field.
+      // `completedStage`/`incompleteStage` are also left out: both resolve a target pattern stage
+      // by free text rather than write a real, single visible control of their own.
+      interview: {
+        fields: [
+          { path: 'title', order: 1, label: tr(lang, 'scenarioTitleLabel'), type: 'text', role: 'editable' },
+          { path: 'description', order: 2, label: tr(lang, 'scenarioDescLabel'), type: 'text', role: 'editable' },
+          { path: 'evidence', order: 3, label: tr(lang, 'evidenceLabel'), type: 'text', role: 'editable' },
+          { path: 'problem', order: 4, label: tr(lang, 'problemLabel'), type: 'text', role: 'editable' },
+          { path: 'trigger', order: 5, label: tr(lang, 'triggerLabel'), type: 'text', role: 'editable' },
+          { path: 'probability', order: 6, label: tr(lang, 'probabilityLabel'), type: 'slider', role: 'editable' },
+          { path: 'positionType', order: 7, label: tr(lang, 'planTitle'), type: 'choice', options: [{ value: 'Long', label: tr(lang, 'sideLong') }, { value: 'Short', label: tr(lang, 'sideShort') }], role: 'editable' },
+          { path: 'entryPrices', order: 8, label: tr(lang, 'entryPriceLabel'), type: 'text', role: 'editable' },
+          { path: 'stopLoss', order: 9, label: tr(lang, 'stopLabel'), type: 'number', role: 'editable' },
+          { path: 'takeProfit', order: 10, label: tr(lang, 'targetLabel'), type: 'number', role: 'editable' },
+          { path: 'invalidationTags', order: 11, label: tr(lang, 'invalidationLabel'), type: 'text', role: 'editable' },
+          { path: 'invalidationNote', order: 12, label: tr(lang, 'invalidationNoteLabel'), type: 'text', role: 'editable' }
+        ]
+      },
       submit: () => onDeleteRef.current(),
       applyValue: (path, value) => {
         if (['title', 'description', 'evidence', 'problem', 'trigger'].indexOf(path) > -1) { onUpdateRef.current({ [path]: String(value ?? '') }); return; }
@@ -1526,6 +1583,12 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
     registry.register('live-session-entry-' + entry.id, {
       allowlist: ['note', 'appendNote', 'replaceLastSentence', 'removeLastSentence', 'confirmDelete'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the one real, visible field on this form is
+      // `note` - `appendNote`/`replaceLastSentence`/`removeLastSentence` are synthetic, AI-only
+      // convenience edits layered on that SAME real field (see applyValue() below), never
+      // separate askable questions of their own, and `confirmDelete` is entry.delete's own
+      // destructive gate (character-app.jsx) - deliberately excluded here too.
+      interview: { fields: [{ path: 'note', order: 1, label: tr(lang, 'noteLabel'), type: 'text', role: 'editable' }] },
       submit: () => onDeleteEntryRef.current(entry),
       applyValue: (path, value) => {
         if (path === 'note') { onNote(entry, String(value ?? '')); return; }
@@ -2249,6 +2312,13 @@ function FateEntryModal({ session, lang, onClose, onSubmit }) {
   const [error, setError] = React.useState('');
   const fileRef = React.useRef(null);
 
+  // Voice/Chat form-interview workflow upgrade: magic-fill animation for this form's own
+  // AI-fillable fields - same shared TradeJournalAIFieldFillBus every other Journey H1 domain in
+  // this file already uses.
+  const timeframeFilled = useAiFieldFill('live-session-fate-entry', 'timeframe');
+  const marketFilled = useAiFieldFill('live-session-fate-entry', 'market');
+  const noteFilled = useAiFieldFill('live-session-fate-entry', 'note');
+
   function handleFile(f) {
     if (!f || !f.type.startsWith('image/')) return;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -2269,6 +2339,16 @@ function FateEntryModal({ session, lang, onClose, onSubmit }) {
     registry.register('live-session-fate-entry', {
       allowlist: ['note', 'timeframe', 'market'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (timeframe -> market -> note) - the session-fate flow's
+      // first real step (the closing chart entry).
+      interview: {
+        fields: [
+          { path: 'timeframe', order: 1, label: tr(lang, 'timeframeLabel'), type: 'choice', options: TIMEFRAMES.map((v) => ({ value: v, label: v })), role: 'editable' },
+          { path: 'market', order: 2, label: tr(lang, 'marketLabel'), type: 'choice', options: MARKET_NAMES.map((v) => ({ value: v, label: sessionsAdapter.displayCity(v) })), role: 'editable' },
+          { path: 'note', order: 3, label: tr(lang, 'noteOptionalLabel'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'note') setNote(String(value ?? ''));
         else if (path === 'timeframe' && TIMEFRAMES.indexOf(value) > -1) setTimeframe(value);
@@ -2304,16 +2384,20 @@ function FateEntryModal({ session, lang, onClose, onSubmit }) {
         )}
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')}</span>
-            <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} style={inputStyle}>{TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <span style={fieldLabelStyle}>{tr(lang, 'marketLabel')}</span>
-            <select value={market} onChange={(e) => setMarket(e.target.value)} style={inputStyle}>{MARKET_NAMES.map((v) => <option key={v} value={v}>{sessionsAdapter.displayCity(v)}</option>)}</select>
-          </label>
+          <AiMagicFill active={timeframeFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')}</span>
+              <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} style={inputStyle}>{TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}</select>
+            </label>
+          </AiMagicFill>
+          <AiMagicFill active={marketFilled}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={fieldLabelStyle}>{tr(lang, 'marketLabel')}</span>
+              <select value={market} onChange={(e) => setMarket(e.target.value)} style={inputStyle}>{MARKET_NAMES.map((v) => <option key={v} value={v}>{sessionsAdapter.displayCity(v)}</option>)}</select>
+            </label>
+          </AiMagicFill>
         </div>
-        <TextAreaField label={tr(lang, 'noteOptionalLabel')} value={note} onCommit={setNote} />
+        <AiMagicFill active={noteFilled} value={note}><TextAreaField label={tr(lang, 'noteOptionalLabel')} value={note} onCommit={setNote} /></AiMagicFill>
         {error && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</span>}
       </div>
     </SessionModalShell>
@@ -2429,6 +2513,13 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     return found ? found.scenario.title : '';
   }
 
+  // Voice/Chat form-interview workflow upgrade: magic-fill animation for this form's own
+  // AI-fillable fields - same shared TradeJournalAIFieldFillBus every other Journey H1 domain in
+  // this file already uses.
+  const moveStrengthFilled = useAiFieldFill('live-session-fate-summary', 'moveStrength');
+  const spikeFilled = useAiFieldFill('live-session-fate-summary', 'spike');
+  const noteFilled = useAiFieldFill('live-session-fate-summary', 'note');
+
   // AI process registry (A4) - mountedRef template. Only mounted while fateStep === 'summary'
   // (LiveSessionView, below).
   const mountedRef = React.useRef(true);
@@ -2439,6 +2530,16 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     registry.register('live-session-fate-summary', {
       allowlist: ['moveStrength', 'spike', 'note'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (move strength -> spike -> note) - the session-fate flow's
+      // second, final real step (the written summary).
+      interview: {
+        fields: [
+          { path: 'moveStrength', order: 1, label: tr(lang, 'moveStrengthLabel'), type: 'choice', options: [{ value: 'up', label: tr(lang, 'dirUp') }, { value: 'down', label: tr(lang, 'dirDown') }, { value: 'flat', label: tr(lang, 'dirFlat') }], role: 'editable' },
+          { path: 'spike', order: 2, label: tr(lang, 'spikeLabel'), type: 'choice', options: [{ value: 'up', label: tr(lang, 'dirUp') }, { value: 'down', label: tr(lang, 'dirDown') }, { value: 'flat', label: tr(lang, 'dirFlat') }], role: 'editable' },
+          { path: 'note', order: 3, label: tr(lang, 'lessonsNoteLabel'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'moveStrength' && ['up', 'down', 'flat'].indexOf(value) > -1) setMoveStrength(value);
         else if (path === 'spike' && ['up', 'down', 'flat'].indexOf(value) > -1) setSpike(value);
@@ -2460,10 +2561,10 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
       <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <p style={{ margin: 0, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'summaryIntro')}</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <DirectionPicker label={tr(lang, 'moveStrengthLabel')} value={moveStrength} onChange={setMoveStrength} lang={lang} />
-          <DirectionPicker label={tr(lang, 'spikeLabel')} value={spike} onChange={setSpike} lang={lang} />
+          <AiMagicFill active={moveStrengthFilled}><DirectionPicker label={tr(lang, 'moveStrengthLabel')} value={moveStrength} onChange={setMoveStrength} lang={lang} /></AiMagicFill>
+          <AiMagicFill active={spikeFilled}><DirectionPicker label={tr(lang, 'spikeLabel')} value={spike} onChange={setSpike} lang={lang} /></AiMagicFill>
         </div>
-        <TextAreaField label={tr(lang, 'lessonsNoteLabel')} value={note} placeholder={tr(lang, 'lessonsPlaceholder')} onCommit={setNote} />
+        <AiMagicFill active={noteFilled} value={note}><TextAreaField label={tr(lang, 'lessonsNoteLabel')} value={note} placeholder={tr(lang, 'lessonsPlaceholder')} onCommit={setNote} /></AiMagicFill>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.45)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
