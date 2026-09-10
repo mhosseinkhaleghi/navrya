@@ -233,6 +233,15 @@ function CharacterSection({ t, lang, character }) {
     registry.register('settings-character', {
       allowlist: ['character'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow: the character card grid's own section label
+      // (SectionShell title below) as the field label - the real UI never labels this field
+      // with anything more specific than that heading, same convention as accountsView.jsx's
+      // own 'kind' field (labeled from the same real "Account type" section heading).
+      interview: {
+        fields: [
+          { path: 'character', order: 1, label: t('characterTitle'), type: 'choice', options: CHARS.map((c) => ({ value: c.id, label: t(nameKey[c.id]) })), role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path !== 'character') return;
         if (CHARS.some((c) => c.id === value) && value !== character) window.parent.postMessage({ type: 'tradejournal:character-selected', character: value }, '*');
@@ -336,6 +345,12 @@ function VoiceGenderSection({ t }) {
     registry.register('settings-voice-gender', {
       allowlist: CHARS.map((c) => 'voiceGender.' + c.id),
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow: one field per character row, in the real render
+      // order (CHARS.map below), labeled with that row's own character name and offering the
+      // same real male/female options every row's own <Select> renders.
+      interview: {
+        fields: CHARS.map((c, idx) => ({ path: 'voiceGender.' + c.id, order: idx + 1, label: t(nameKey[c.id]), type: 'choice', options: options, role: 'editable' }))
+      },
       applyValue: (path, value) => {
         if (path.indexOf('voiceGender.') !== 0) return;
         const characterId = path.slice('voiceGender.'.length);
@@ -403,6 +418,26 @@ function RegionLanguageSection({ t, lang, store }) {
       // row here does) - added as its own explicit allowlist entry with its own boolean check.
       allowlist: ['language', 'region.clock24'].concat(rows.map((row) => 'region.' + row.key)),
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow: the real top-to-bottom order this section's own JSX
+      // renders (Language row first, then each `rows` entry, then the Clock format row last).
+      // `row.options` is either a plain string list (country/timezone/currency) or already
+      // {value,label} pairs (weekStart) - normalized the same way optionValue() above does, into
+      // the real {value,label} shape every other choice field uses.
+      interview: {
+        fields: [
+          { path: 'language', order: 1, label: t('languageLabel'), help: t('languageHint'), type: 'choice', options: languageOptions, role: 'editable' }
+        ].concat(rows.map((row, idx) => ({
+          path: 'region.' + row.key,
+          order: 2 + idx,
+          label: row.label,
+          help: row.hint,
+          type: 'choice',
+          options: row.options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o)),
+          role: 'editable'
+        }))).concat([
+          { path: 'region.clock24', order: 2 + rows.length, label: t('clockLabel'), help: t('clockHint'), type: 'boolean', role: 'editable' }
+        ])
+      },
       applyValue: (path, value) => {
         if (path === 'language') { if (languageOptions.some((o) => o.value === value)) store.setLanguage(value); return; }
         if (path === 'region.clock24') { if (value === true || value === false) patch({ clock24: value }); return; }
@@ -495,6 +530,12 @@ function AlertsSection({ t }) {
     registry.register('settings-alerts', {
       allowlist: rows.map((row) => row.key),
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow: the six real Toggle rows, in the same top-to-bottom
+      // order rows.map() below renders them, each labeled/hinted with that row's own real
+      // label/hint text already shown next to its Toggle.
+      interview: {
+        fields: rows.map((row, idx) => ({ path: row.key, order: idx + 1, label: row.label, help: row.hint, type: 'boolean', role: 'editable' }))
+      },
       applyValue: (path, value) => {
         if (value !== true && value !== false) return;
         const row = rows.find((r) => r.key === path);
@@ -551,6 +592,13 @@ function TradingDefaultsSection({ t, lang }) {
     registry.register('settings-trading-defaults', {
       allowlist: rows.map((row) => row.key),
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow: the three real stepper cards, in the same
+      // top-to-bottom (grid, left-to-right) order rows.map() below renders them. Magic-fill
+      // animation is already wired for all three (useAiFieldFill above, AiMagicFill in the JSX
+      // below, per docs/ai/voice-ui-synchronization.md's "Wired domains") - nothing to add here.
+      interview: {
+        fields: rows.map((row, idx) => ({ path: row.key, order: idx + 1, label: row.label, type: 'number', role: 'editable' }))
+      },
       applyValue: (path, value) => {
         const row = rows.find((r) => r.key === path);
         const n = Number(value);
@@ -603,8 +651,11 @@ const COMPANION_INITIATIVE_OPTIONS = ['low', 'normal', 'high'];
 // controlled component (goal/onChange as props) instead of owning its own local state - the
 // parent (CompanionSection) is what registers the single AI process covering both this field and
 // initiative below, so both need to live in the same component to share one processId/allowlist.
-function CompanionGoalSelect({ t, goal, onChange }) {
-  const options = [
+// Single source of truth for the real Companion Goal options - shared between the human-facing
+// CompanionGoalSelect below and settings-companion's own interview.fields declaration in
+// CompanionSection, so the real `{ value, label }` pairs are only ever typed once.
+function companionGoalOptions(t) {
+  return [
     { value: '', label: t('companionGoalNone') },
     { value: 'patterns', label: t('companionGoalPatterns') },
     { value: 'strategies', label: t('companionGoalStrategies') },
@@ -612,6 +663,10 @@ function CompanionGoalSelect({ t, goal, onChange }) {
     { value: 'trades', label: t('companionGoalTrades') },
     { value: 'psychology', label: t('companionGoalPsychology') }
   ];
+}
+
+function CompanionGoalSelect({ t, goal, onChange }) {
+  const options = companionGoalOptions(t);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
@@ -659,6 +714,18 @@ function CompanionSection({ t }) {
     registry.register('settings-companion', {
       allowlist: ['initiative', 'goal'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow: the two real controls, in the same top-to-bottom
+      // order the JSX below renders them (Initiative Select, then the Goal Select). `goal`'s
+      // options mirror CompanionGoalSelect's own real options array exactly (including the
+      // real '' value for "no specific goal") - applyValue()'s own 'none' string mapping just
+      // below is a chat/voice text-normalization detail (character-app.jsx's normalizeField),
+      // never the real form's own option values.
+      interview: {
+        fields: [
+          { path: 'initiative', order: 1, label: t('companionInitiativeLabel'), help: t('companionInitiativeHint'), type: 'choice', options: options, role: 'editable' },
+          { path: 'goal', order: 2, label: t('companionGoalLabel'), help: t('companionGoalHint'), type: 'choice', options: companionGoalOptions(t), role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'initiative' && COMPANION_INITIATIVE_OPTIONS.indexOf(value) !== -1) { changeInitiative(value); return; }
         if (path !== 'goal') return;

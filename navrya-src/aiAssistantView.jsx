@@ -652,6 +652,23 @@ function PersonaTab({ i18n, onGoTab }) {
     }, 0);
   }
 
+  // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the form's
+  // own real display order (presets grid -> tone sliders, PERSONA_DIMENSIONS' own real order ->
+  // free-text custom instructions). Built from the SAME PERSONA_PRESETS/PERSONA_DIMENSIONS tables
+  // the presets grid/sliders above already render from - never a second, hand-maintained catalog.
+  // `customInstructionOp` is deliberately NOT an interview field - it has no real, separately
+  // rendered control of its own (it only ever arrives paired with a `customInstructions` value,
+  // combined by scheduleCustomInstructionsCombine() above), so there is no real display-order
+  // position or label for it to occupy.
+  function buildPersonaInterviewFields() {
+    const fields = [
+      { path: 'preset', order: 1, label: i18n.t('aiPersonaPresetsTitle'), type: 'choice', options: PERSONA_PRESETS.map((p) => ({ value: p.id, label: i18n.t(p.nameKey) })), role: 'editable' }
+    ];
+    PERSONA_DIMENSIONS.forEach((dim, idx) => fields.push({ path: dim.key, order: 2 + idx, label: i18n.t(dim.nameKey), type: 'slider', role: 'editable' }));
+    fields.push({ path: 'customInstructions', order: 2 + PERSONA_DIMENSIONS.length, label: i18n.t('aiPersonaCustomTitle'), help: i18n.t('aiPersonaCustomHint'), type: 'text', role: 'editable' });
+    return fields;
+  }
+
   React.useEffect(() => {
     mountedRef.current = true;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -659,6 +676,7 @@ function PersonaTab({ i18n, onGoTab }) {
     registry.register('settings-persona', {
       allowlist: ['preset', 'explicitness', 'detail', 'warmth', 'humor', 'jargon', 'strictness', 'initiative', 'customInstructionOp', 'customInstructions'],
       isOpen: () => mountedRef.current,
+      interview: { fields: buildPersonaInterviewFields() },
       applyValue: (path, value) => {
         if (path === 'preset') {
           const preset = PERSONA_PRESETS.find((p) => p.id === value);
@@ -1733,6 +1751,33 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   // same as Trading Defaults/Region & language) - no separate Save step exists on this screen.
   const modelRef = React.useRef(model);
   modelRef.current = model;
+  // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the form's
+  // own real display order (engine tab strip -> model select -> voice mode toggle). `model`'s
+  // options replicate the exact same modelLabels/modelTiers/premiumModels suffix logic the real
+  // Select control below renders from - never a second, hand-maintained catalog. `entry` and
+  // `planFeatures` are declared further down this same component - safe to reference here since
+  // this effect callback only ever executes after the full render (and all of those const
+  // assignments) has already completed, the same convention accountsView.jsx's own
+  // buildAccountInterviewFields() comment already established.
+  function buildEngineInterviewFields() {
+    return [
+      { path: 'provider', order: 1, label: i18n.t('aiAsstEngineLabel'), type: 'choice', options: catalog.map((p) => ({ value: p.id, label: providerLabel(i18n, p.id) })), role: 'editable' },
+      {
+        path: 'model', order: 2, label: i18n.t('aiAsstModelLabel'), type: 'choice',
+        options: (entry ? entry.models : []).map((m) => {
+          const label = (entry && entry.modelLabels && entry.modelLabels[m]) || m;
+          const tier = entry && entry.modelTiers && entry.modelTiers[m];
+          const tierKey = tier && 'aiAsstModelTier' + tier.charAt(0).toUpperCase() + tier.slice(1);
+          const tierText = tierKey ? i18n.t(tierKey) : '';
+          const isPremiumLocked = entry && entry.premiumModels && entry.premiumModels.indexOf(m) > -1 && !planFeatures.premiumModels;
+          const suffix = isPremiumLocked ? i18n.t('aiAsstModelNeedsSubscription') : tierText;
+          return { value: m, label: suffix ? label + ' — ' + suffix : label };
+        }),
+        role: 'editable'
+      },
+      { path: 'voice', order: 3, label: i18n.t('aiAsstVoiceMode'), type: 'boolean', role: 'editable' }
+    ];
+  }
   const engineMountedRef = React.useRef(true);
   React.useEffect(() => {
     engineMountedRef.current = true;
@@ -1741,6 +1786,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     registry.register('ai-assistant-engine', {
       allowlist: ['provider', 'model', 'voice'],
       isOpen: () => engineMountedRef.current,
+      interview: { fields: buildEngineInterviewFields() },
       applyValue: (path, value) => {
         if (path === 'provider') {
           if (catalog.some((p) => p.id === value)) selectEngine(value);
