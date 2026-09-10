@@ -61,7 +61,7 @@ test('strategies.search never touches API keys, auth tokens, or admin credential
 test('the real strategies-index registration exists with an allowlist of exactly listKind/query/sort, isOpen() reflects whether IndexView (not Positions/Analysis Profiles/a specific open item) is genuinely showing right now via live tab/openId refs - never a stale mount-time snapshot', () => {
   const idx = strategiesHubSrc.indexOf("registry.register('strategies-index'");
   assert.ok(idx > -1, 'could not find the strategies-index registration');
-  const block = strategiesHubSrc.slice(idx, idx + 900);
+  const block = strategiesHubSrc.slice(idx, idx + 2200);
   assert.match(block, /allowlist: \['listKind', 'query', 'sort'\],/);
   assert.match(block, /isOpen: \(\) => strategiesIndexMountedRef\.current && !openIdRef\.current && \(tabRef\.current === 'patterns' \|\| tabRef\.current === 'strategies'\),/);
   assert.match(strategiesHubSrc, /const tabRef = React\.useRef\(tab\);\s*\n\s*tabRef\.current = tab;/);
@@ -70,7 +70,7 @@ test('the real strategies-index registration exists with an allowlist of exactly
 
 test('strategies-index\'s applyValue() drives the exact real setTab/setQuery/setSort state IndexView\'s own toolbar already uses - never a second, parallel list-control mechanism - and rejects an invalid listKind rather than calling setTab with it', () => {
   const idx = strategiesHubSrc.indexOf("registry.register('strategies-index'");
-  const block = strategiesHubSrc.slice(idx, idx + 900);
+  const block = strategiesHubSrc.slice(idx, idx + 2200);
   assert.match(block, /if \(path === 'listKind'\) \{ if \(value === 'patterns' \|\| value === 'strategies'\) setTab\(value\); return; \}/);
   assert.match(block, /if \(path === 'query'\) \{ setQuery\(String\(value == null \? '' : value\)\); return; \}/);
   assert.match(block, /setSort\(tr\(lang, sortKey\)\);/);
@@ -78,7 +78,7 @@ test('strategies-index\'s applyValue() drives the exact real setTab/setQuery/set
 
 test('applyValue() translates the AI\'s stable sort value into the CURRENT UI language\'s own label via tr() - never the raw English key - because IndexView\'s own sort state IS the displayed label string itself (sort === sortLabels[i]), a real, pre-existing difference from marketplace\'s own stable-key sort this slice deliberately does not refactor away', () => {
   const idx = strategiesHubSrc.indexOf("registry.register('strategies-index'");
-  const block = strategiesHubSrc.slice(idx, idx + 900);
+  const block = strategiesHubSrc.slice(idx, idx + 2200);
   assert.match(block, /var sortKey = value === 'realization' \? 'sortRealization' : value === 'usage' \? 'sortUsage' : value === 'recent' \? 'sortRecent' : null;/);
 });
 

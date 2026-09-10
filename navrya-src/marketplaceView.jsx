@@ -108,6 +108,14 @@ export function MarketplaceStorefront({ i18n }) {
     registry.register('marketplace-storefront', {
       allowlist: ['query', 'sort'],
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the real search/sort controls, in their real
+      // rendered order (search box, then sort select).
+      interview: {
+        fields: [
+          { path: 'query', order: 1, label: i18n.t('marketplaceSearchPlaceholder'), type: 'text', role: 'editable' },
+          { path: 'sort', order: 2, label: i18n.t('marketplaceSortLabel'), type: 'choice', options: SORT_OPTIONS.map((key) => ({ value: key, label: i18n.t(key) })), role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'query') { setQuery(String(value == null ? '' : value)); return; }
         if (path === 'sort' && SORT_OPTIONS.indexOf(value) !== -1) setSort(value);
@@ -265,6 +273,14 @@ function RatingsPanel({ i18n, listing, ratingsData, isSeller, unlocked, onRated 
     registry.register('marketplace-rate-' + listing.id, {
       allowlist: ['ratingValue', 'reviewText'],
       isOpen: () => !isSeller && unlocked,
+      // Voice/Chat form-interview workflow upgrade: the real star-rating Select and free-text
+      // review input, in their real rendered order (rating first, then the optional review).
+      interview: {
+        fields: [
+          { path: 'ratingValue', order: 1, label: i18n.t('cardRatingLabel'), type: 'choice', options: [5, 4, 3, 2, 1].map((n) => ({ value: String(n), label: n + ' / 5' })), role: 'editable' },
+          { path: 'reviewText', order: 2, label: i18n.t('reviewPlaceholder'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'ratingValue') { const n = Number(value); if (n >= 1 && n <= 5) setRatingValue(String(Math.round(n))); }
         else if (path === 'reviewText') setReviewText(String(value ?? ''));

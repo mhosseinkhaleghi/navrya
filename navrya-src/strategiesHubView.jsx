@@ -37,7 +37,7 @@ const copy = {
     analysisProfileFieldLabel: 'پروفایل تحلیل ترجیحی', analysisProfileNone: 'بدون پروفایل لینک‌شده',
     fromEvent: 'ساخت از یک رویداد', newPattern: 'الگوی جدید', newStrategy: 'استراتژی جدید',
     newPatternInstrumentsHint: 'دست‌کم یک ابزار معاملاتی را که این الگو برای آن معتبر است انتخاب یا اضافه کنید.', createPatternCta: 'ایجاد الگو', instrumentsLabel: 'ابزارها',
-    searchPlaceholder: 'جستجو در نام یا توضیحات…', sortRecent: 'اخیر', sortRealization: 'بیشترین تحقق', sortUsage: 'بیشترین استفاده',
+    searchPlaceholder: 'جستجو در نام یا توضیحات…', listKindFieldLabel: 'نوع فهرست', sortFieldLabel: 'مرتب‌سازی', sortRecent: 'اخیر', sortRealization: 'بیشترین تحقق', sortUsage: 'بیشترین استفاده',
     resultLine: '{n} مورد · مرتب‌سازی: {sort}', statusLive: 'فعال', statusDraft: 'پیش‌نویس', marketplaceBadge: 'بازارچه',
     statStages: 'مراحل', statDetections: 'تشخیص', statLinkedTrades: 'معاملهٔ لینک‌شده', trendLabel: 'روند تحقق · ۱۲ هفته',
     openBtn: 'باز کردن', reportBtn: 'گزارش', shareBtn: 'اشتراک‌گذاری', deleteBtn: 'حذف',
@@ -120,7 +120,7 @@ const copy = {
     analysisProfileFieldLabel: 'ملف التحليل المفضل', analysisProfileNone: 'بدون ملف مرتبط',
     fromEvent: 'إنشاء من حدث', newPattern: 'نمط جديد', newStrategy: 'استراتيجية جديدة',
     newPatternInstrumentsHint: 'اختر أو أضف أداة واحدة على الأقل ينطبق عليها هذا النمط.', createPatternCta: 'إنشاء النمط', instrumentsLabel: 'الأدوات',
-    searchPlaceholder: 'ابحث بالاسم أو الوصف…', sortRecent: 'الأحدث', sortRealization: 'الأعلى تحققاً', sortUsage: 'الأكثر استخداماً',
+    searchPlaceholder: 'ابحث بالاسم أو الوصف…', listKindFieldLabel: 'نوع القائمة', sortFieldLabel: 'الترتيب', sortRecent: 'الأحدث', sortRealization: 'الأعلى تحققاً', sortUsage: 'الأكثر استخداماً',
     resultLine: '{n} عنصر · الترتيب: {sort}', statusLive: 'نشط', statusDraft: 'مسودة', marketplaceBadge: 'السوق',
     statStages: 'المراحل', statDetections: 'الاكتشافات', statLinkedTrades: 'صفقة مرتبطة', trendLabel: 'اتجاه التحقق · ١٢ أسبوع',
     openBtn: 'فتح', reportBtn: 'تقرير', shareBtn: 'مشاركة', deleteBtn: 'حذف',
@@ -203,7 +203,7 @@ const copy = {
     analysisProfileFieldLabel: 'Preferred Analysis Profile', analysisProfileNone: 'No profile linked',
     fromEvent: 'Build from an event', newPattern: 'New pattern', newStrategy: 'New strategy',
     newPatternInstrumentsHint: 'Select or add at least one instrument this pattern applies to.', createPatternCta: 'Create pattern', instrumentsLabel: 'Instruments',
-    searchPlaceholder: 'Search by name or description…', sortRecent: 'Recent', sortRealization: 'Highest realization', sortUsage: 'Most used',
+    searchPlaceholder: 'Search by name or description…', listKindFieldLabel: 'List type', sortFieldLabel: 'Sort', sortRecent: 'Recent', sortRealization: 'Highest realization', sortUsage: 'Most used',
     resultLine: '{n} items · Sorted by: {sort}', statusLive: 'Live', statusDraft: 'Draft', marketplaceBadge: 'Marketplace',
     statStages: 'Stages', statDetections: 'Detections', statLinkedTrades: 'Linked trades', trendLabel: 'Realization trend · 12 weeks',
     openBtn: 'Open', reportBtn: 'Report', shareBtn: 'Share', deleteBtn: 'Delete',
@@ -286,7 +286,7 @@ const copy = {
     analysisProfileFieldLabel: 'Perfil de análisis preferido', analysisProfileNone: 'Sin perfil vinculado',
     fromEvent: 'Crear desde un evento', newPattern: 'Nuevo patrón', newStrategy: 'Nueva estrategia',
     newPatternInstrumentsHint: 'Selecciona o añade al menos un instrumento al que se aplica este patrón.', createPatternCta: 'Crear patrón', instrumentsLabel: 'Instrumentos',
-    searchPlaceholder: 'Buscar por nombre o descripción…', sortRecent: 'Reciente', sortRealization: 'Mayor realización', sortUsage: 'Más usados',
+    searchPlaceholder: 'Buscar por nombre o descripción…', listKindFieldLabel: 'Tipo de lista', sortFieldLabel: 'Ordenar', sortRecent: 'Reciente', sortRealization: 'Mayor realización', sortUsage: 'Más usados',
     resultLine: '{n} elementos · Orden: {sort}', statusLive: 'Activo', statusDraft: 'Borrador', marketplaceBadge: 'Mercado',
     statStages: 'Etapas', statDetections: 'Detecciones', statLinkedTrades: 'Operación vinculada', trendLabel: 'Tendencia de realización · 12 semanas',
     openBtn: 'Abrir', reportBtn: 'Informe', shareBtn: 'Compartir', deleteBtn: 'Eliminar',
@@ -1057,6 +1057,18 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
       layer: 'foreground',
       allowlist,
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (name -> description -> threshold -> instruments). 'confirm'
+      // is deliberately excluded - it is pattern.delete's own destructive-confirmation gate
+      // (character-app.jsx's gateField: 'confirm'), never an ordinary interview question.
+      interview: {
+        fields: [
+          { path: 'name', order: 1, label: tr(lang, 'nameLabel'), type: 'text', role: 'editable' },
+          { path: 'description', order: 2, label: tr(lang, 'descLabel'), help: tr(lang, 'descHelp'), type: 'text', role: 'editable' },
+          { path: 'completionThreshold', order: 3, label: tr(lang, 'thresholdTitle'), help: tr(lang, 'thresholdHelp'), type: 'slider', role: 'editable' },
+          { path: 'instruments', order: 4, label: tr(lang, 'instrumentsLabel'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'name' && allowlist.indexOf('name') > -1) patch({ name: String(value ?? '') });
         else if (path === 'description' && allowlist.indexOf('description') > -1) patch({ description: String(value ?? '') });
@@ -1239,6 +1251,28 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
       layer: 'foreground',
       allowlist,
       isOpen: () => mountedRef.current,
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (name -> Position Management group -> Risk Management group
+      // -> Overall Framework note). 'confirm' is deliberately excluded - it is strategy.delete's own
+      // destructive-confirmation gate (character-app.jsx's gateField: 'confirm'), same reasoning as
+      // pattern-editor-{id}'s own 'confirm' above, never an ordinary interview question.
+      interview: {
+        fields: [
+          { path: 'name', order: 1, label: tr(lang, 'strategyNameLabel'), type: 'text', role: 'editable' },
+          { path: 'positionManagement.entryRules', order: 2, label: tr(lang, 'entryRulesLabel'), type: 'text', role: 'editable' },
+          { path: 'positionManagement.stopLossRules', order: 3, label: tr(lang, 'stopRulesLabel'), type: 'text', role: 'editable' },
+          { path: 'positionManagement.exitTargetRules', order: 4, label: tr(lang, 'exitRulesLabel'), type: 'text', role: 'editable' },
+          { path: 'positionManagement.positionSizingRules', order: 5, label: tr(lang, 'sizingRulesLabel'), type: 'text', role: 'editable' },
+          { path: 'positionManagement.freeNotes', order: 6, label: tr(lang, 'freeNoteLabel'), help: tr(lang, 'freeNotePlaceholder'), type: 'text', role: 'editable' },
+          { path: 'riskManagement.maxRiskPerTradePercent', order: 7, label: tr(lang, 'maxRiskLabel'), type: 'number', role: 'editable' },
+          { path: 'riskManagement.dailyDrawdownLimitPercent', order: 8, label: tr(lang, 'dailyDDLabel'), type: 'number', role: 'editable' },
+          { path: 'riskManagement.totalDrawdownLimitPercent', order: 9, label: tr(lang, 'totalDDLabel'), type: 'number', role: 'editable' },
+          { path: 'riskManagement.maxConcurrentTrades', order: 10, label: tr(lang, 'maxConcurrentLabel'), type: 'number', role: 'editable' },
+          { path: 'riskManagement.maxProfitCapPerTrade', order: 11, label: tr(lang, 'profitCapLabel'), type: 'number', role: 'editable' },
+          { path: 'riskManagement.freeNotes', order: 12, label: tr(lang, 'freeNoteLabel'), help: tr(lang, 'freeNotePlaceholder'), type: 'text', role: 'editable' },
+          { path: 'overallFramework.description', order: 13, label: tr(lang, 'freeNoteLabel'), help: tr(lang, 'freeNotePlaceholder'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => { if (path !== 'confirm' && allowlist.indexOf(path) > -1) set(path, value); }
     });
     return () => { mountedRef.current = false; };
@@ -2177,6 +2211,18 @@ function StrategiesHub({ character }) {
     registry.register('strategies-index', {
       allowlist: ['listKind', 'query', 'sort'],
       isOpen: () => strategiesIndexMountedRef.current && !openIdRef.current && (tabRef.current === 'patterns' || tabRef.current === 'strategies'),
+      // Voice/Chat form-interview workflow upgrade: the real tab switch, search box and sort
+      // toggles, in their real rendered order (tab pill bar -> search -> sort). listKindFieldLabel/
+      // sortFieldLabel are new, minimal i18n additions (same convention as marketplaceSortLabel in
+      // marketplaceView.jsx) - neither control had its own dedicated field-level label text before
+      // (the tab pills and sort buttons are self-labeled by their own option text only).
+      interview: {
+        fields: [
+          { path: 'listKind', order: 1, label: tr(lang, 'listKindFieldLabel'), type: 'choice', options: [{ value: 'patterns', label: tr(lang, 'tabPatterns') }, { value: 'strategies', label: tr(lang, 'tabStrategies') }], role: 'editable' },
+          { path: 'query', order: 2, label: tr(lang, 'searchPlaceholder'), type: 'text', role: 'editable' },
+          { path: 'sort', order: 3, label: tr(lang, 'sortFieldLabel'), type: 'choice', options: [{ value: 'recent', label: tr(lang, 'sortRecent') }, { value: 'realization', label: tr(lang, 'sortRealization') }, { value: 'usage', label: tr(lang, 'sortUsage') }], role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'listKind') { if (value === 'patterns' || value === 'strategies') setTab(value); return; }
         if (path === 'query') { setQuery(String(value == null ? '' : value)); return; }

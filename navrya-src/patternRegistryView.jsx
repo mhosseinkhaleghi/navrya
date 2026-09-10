@@ -9,6 +9,8 @@ import { UploadField } from '../public/pages/shared/navrya/components/forms/Uplo
 import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { ChatThread } from '../public/pages/shared/navrya/components/feedback/ChatThread.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
+import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
+import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { Toggle } from '../public/pages/shared/navrya/components/forms/Toggle.jsx';
 import { MetricTile } from '../public/pages/shared/navrya/components/metrics/MetricTile.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
@@ -166,6 +168,14 @@ function PatternEditor({ pattern, i18n, ai, onChat }) {
   const saveSoon = useDebounce(() => { store.save(pattern); setStatus(i18n.t('autoSaved')); }, 1100);
   function touch() { forceTick(); saveSoon(); }
 
+  // Voice/Chat form-interview workflow upgrade: magic-fill animation for this legacy editor's own
+  // AI-fillable fields, same convention as strategiesHubView.jsx's own pattern-editor-{id} surface
+  // for this identical processId/allowlist.
+  const nameFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'name');
+  const descriptionFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'description');
+  const thresholdFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'completionThreshold');
+  const instrumentsFilled = useAiFieldFill('pattern-editor-' + pattern.id, 'instruments');
+
   React.useEffect(() => {
     const patternTypes = window.TradeJournalPatternTypes;
     const registry = window.TradeJournalAIProcessRegistry;
@@ -174,6 +184,16 @@ function PatternEditor({ pattern, i18n, ai, onChat }) {
       allowlist: (patternTypes.patternStagePaths || []).slice(),
       isOpen: () => true,
       activeStep: () => 'details',
+      // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+      // form's own real display order (name -> description -> threshold -> instruments).
+      interview: {
+        fields: [
+          { path: 'name', order: 1, label: i18n.t('patternName'), type: 'text', role: 'editable' },
+          { path: 'description', order: 2, label: i18n.t('description'), help: i18n.t('descriptionHelp'), type: 'text', role: 'editable' },
+          { path: 'completionThreshold', order: 3, label: i18n.t('threshold'), help: i18n.t('thresholdHelp'), type: 'number', role: 'editable' },
+          { path: 'instruments', order: 4, label: i18n.t('instruments'), type: 'text', role: 'editable' }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'name') pattern.name = value;
         else if (path === 'description') pattern.description = value;
@@ -258,24 +278,32 @@ function PatternEditor({ pattern, i18n, ai, onChat }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <TextField label={i18n.t('patternName')} value={pattern.name} placeholder={i18n.t('patternNamePlaceholder')} dir="auto" onChange={(v) => setField('name', v)} />
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('description')}</span>
-          <textarea
-            value={pattern.description} placeholder={i18n.t('descriptionPlaceholder')} dir="auto" rows={4}
-            onChange={(e) => setField('description', e.target.value)}
-            style={{ resize: 'vertical', borderRadius: 8, padding: '10px 12px', background: 'rgba(3,8,7,.55)', border: '1px solid var(--border-gold)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
+        <AiMagicFill active={nameFilled} value={pattern.name}>
+          <TextField label={i18n.t('patternName')} value={pattern.name} placeholder={i18n.t('patternNamePlaceholder')} dir="auto" onChange={(v) => setField('name', v)} />
+        </AiMagicFill>
+        <AiMagicFill active={descriptionFilled} value={pattern.description}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('description')}</span>
+            <textarea
+              value={pattern.description} placeholder={i18n.t('descriptionPlaceholder')} dir="auto" rows={4}
+              onChange={(e) => setField('description', e.target.value)}
+              style={{ resize: 'vertical', borderRadius: 8, padding: '10px 12px', background: 'rgba(3,8,7,.55)', border: '1px solid var(--border-gold)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
+            />
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('descriptionHelp')}</span>
+          </label>
+        </AiMagicFill>
+        <AiMagicFill active={thresholdFilled} value={String(pattern.completionThreshold)}>
+          <TextField
+            label={i18n.t('threshold')} type="number" value={String(pattern.completionThreshold)} hint={i18n.t('thresholdHelp')}
+            onChange={(v) => setField('completionThreshold', Math.max(0, Math.min(100, Number(v) || 0)))}
           />
-          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('descriptionHelp')}</span>
-        </label>
-        <TextField
-          label={i18n.t('threshold')} type="number" value={String(pattern.completionThreshold)} hint={i18n.t('thresholdHelp')}
-          onChange={(v) => setField('completionThreshold', Math.max(0, Math.min(100, Number(v) || 0)))}
-        />
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('instruments')} *</span>
-          <InstrumentPicker multiple value={pattern.instruments} onChange={(v) => setField('instruments', v)} width="100%" />
-        </label>
+        </AiMagicFill>
+        <AiMagicFill active={instrumentsFilled}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <span style={{ font: 'var(--type-body)', fontSize: 12, color: 'var(--text-primary)' }}>{i18n.t('instruments')} *</span>
+            <InstrumentPicker multiple value={pattern.instruments} onChange={(v) => setField('instruments', v)} width="100%" />
+          </label>
+        </AiMagicFill>
       </Panel>
 
       <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>

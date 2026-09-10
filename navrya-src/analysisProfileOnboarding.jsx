@@ -292,10 +292,42 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   function complete() { return onComplete(buildDraft()); }
   completeRef.current = complete;
 
+  // Voice/Chat form-interview workflow upgrade: read fresh on every render (the same established
+  // stale-closure fix as accountsView.jsx's manRef) so the registration effect's own interview
+  // visibleWhen closures - built once and never re-created (see the effect's own [] deps) - always
+  // see the CURRENT hybridMode/primaryStyleId, not whatever they were when this effect last ran.
+  const uiStateRef = React.useRef({ hybridMode, primaryStyleId });
+  uiStateRef.current = { hybridMode, primaryStyleId };
+
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
     let mounted = true;
+    // Voice/Chat form-interview workflow upgrade: the canonical interview field list, in the
+    // form's own real two-step order (Step 1: primary style -> secondary lenses [hybrid only] ->
+    // custom-method notes [custom method only]; Step 2: focus areas -> profile name), matching
+    // profile.analysis.create's own requiredFields (primaryStyleId/focusIds/name) plus its
+    // optionalFields (secondaryStyleIds/customMethodNotes) exactly - see character-app.jsx. `order`
+    // follows stepForPath's own step*100 scheme below so it can never contradict the real step map.
+    // primaryStyleId/secondaryStyleIds/focusIds options are read from the same real
+    // allStyles/browsableStyles/focuses catalogs the cards/chips themselves render from - never a
+    // second, invented list. There is no `gate` field here: profile.analysis.create/edit have no
+    // gateField (character-app.jsx) - the workflow engine's own submit() is reached once the
+    // required fields are known, not through a synthetic confirmation field.
+    const analysisProfileInterviewFields = [
+      { path: 'primaryStyleId', order: 101, label: tr(activeLang, 'step1Title'), type: 'choice', options: allStyles.map((st) => ({ value: st.id, label: st.name[activeLang] || st.name.en })), role: 'editable' },
+      {
+        path: 'secondaryStyleIds', order: 102, label: tr(activeLang, 'hybridSecondary'), type: 'choice',
+        options: browsableStyles.map((st) => ({ value: st.id, label: st.name[activeLang] || st.name.en })), role: 'editable',
+        visibleWhen: () => uiStateRef.current.hybridMode && !!uiStateRef.current.primaryStyleId
+      },
+      {
+        path: 'customMethodNotes', order: 103, label: tr(activeLang, 'customNotesLabel'), help: tr(activeLang, 'customNotesHint'), type: 'text', role: 'editable',
+        visibleWhen: () => uiStateRef.current.primaryStyleId === 'custom_method'
+      },
+      { path: 'focusIds', order: 201, label: tr(activeLang, 'step2Title'), type: 'choice', options: (focuses ? focuses.list() : []).map((f) => ({ value: f.id, label: f.name[activeLang] || f.name.en })), role: 'editable' },
+      { path: 'name', order: 202, label: tr(activeLang, 'nameLabel'), type: 'text', role: 'editable' }
+    ];
     registry.register('analysis-profile-editor', {
       layer: 'foreground', actionId: mode === 'edit' ? 'profile.analysis.edit' : 'profile.analysis.create',
       allowlist: ['primaryStyleId', 'secondaryStyleIds', 'customMethodNotes', 'focusIds', 'name'],
@@ -307,6 +339,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
         return null;
       },
       goToStep: (nextStep) => setStep(Number(nextStep) === 2 ? 2 : 1),
+      interview: { fields: analysisProfileInterviewFields },
       validateValue: (path, value) => {
         const hasStyle = (id) => !!(styles && styles.get && styles.get(id));
         const hasFocus = (id) => !!(focuses && focuses.get && focuses.get(id));
