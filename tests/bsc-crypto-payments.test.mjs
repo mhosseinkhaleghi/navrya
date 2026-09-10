@@ -426,6 +426,38 @@ test('a check with too few confirmations stays pending, never confirmed, and can
   assert.equal(after.paidBalanceMicroUsd, midway.paidBalanceMicroUsd + 10000000, '$10 must land exactly once, only after real confirmations accumulate');
 });
 
+test('Check Now forwards the submitted transaction hash to BSC RPC and credits a verified wallet top-up', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 }); // invoice creation verifies the configured chain before this test's check
+  const { user, headers } = await createUserAndCookie('Transaction Hash Wiring');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+  const before = await repo.wallet.getAccount(user.id);
+  const submittedTxHash = '0x' + '12'.repeat(32);
+  const receiptHashes = [];
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== RPC_URL_SENTINEL) return originalFetch(url, options);
+    const request = JSON.parse(options.body);
+    if (request.method === 'eth_chainId') return { ok: true, json: async () => ({ result: '0x38' }) };
+    if (request.method === 'eth_getTransactionReceipt') {
+      receiptHashes.push(...request.params);
+      return { ok: true, json: async () => ({ result: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) }) };
+    }
+    if (request.method === 'eth_blockNumber') return { ok: true, json: async () => ({ result: '0x69' }) };
+    throw new Error('unexpected RPC method in test: ' + request.method);
+  };
+
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: submittedTxHash }) });
+  assert.equal(checkResp.status, 200);
+  const result = await checkResp.json();
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.invoice.txHash, submittedTxHash);
+  assert.deepEqual(receiptHashes, [submittedTxHash], 'the exact hash entered by the payer must be the receipt lookup parameter');
+  const after = await repo.wallet.getAccount(user.id);
+  assert.equal(after.paidBalanceMicroUsd, before.paidBalanceMicroUsd + 10000000, 'a verified $10 transfer must credit the wallet');
+});
+
 test('a fully verified payment credits the wallet EXACTLY ONCE even if checked/replayed many times (idempotent, no double-credit)', async () => {
   await setBscConfig(repo);
   // Invoice CREATION itself cross-checks the chain id (BscCryptoBillingProvider._createInvoiceFor())
