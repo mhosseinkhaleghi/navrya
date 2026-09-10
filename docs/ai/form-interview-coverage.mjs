@@ -28,7 +28,7 @@
 //   - any entry is missing its required fields (reason for excluded/pending, sourceFile for
 //     interviewable).
 export const FORM_INTERVIEW_COVERAGE = {
-  // --- Migrated this pass (Voice/Chat form-interview workflow upgrade) ---
+  // --- Migrated pass 1 (Voice/Chat form-interview workflow upgrade) ---
   'mh-intake': {
     status: 'interviewable', sourceFile: 'navrya-src/mentalHealthIntakeModal.jsx',
     note: 'Full 13-step psychology intake: Demographics, Financial context, Trading history, Extremes, Motivation, Transparency, Scenarios A-E, and the final seal gate.'
@@ -42,6 +42,144 @@ export const FORM_INTERVIEW_COVERAGE = {
     note: 'AI Analysis request setup (user view, model, analysis style/profile, adherence) interviewed before the real analysis call ever runs.'
   },
 
+  // --- Migrated pass 2 (the 34 forms that were still `pending`) ---
+  'analysis-profile-editor': {
+    status: 'interviewable', sourceFile: 'navrya-src/analysisProfileOnboarding.jsx',
+    note: 'Style -> focus wizard: primaryStyleId, secondaryStyleIds (visibleWhen hybrid+primary chosen), customMethodNotes (visibleWhen custom style), focusIds, name.'
+  },
+  'settings-persona': {
+    status: 'interviewable', sourceFile: 'navrya-src/aiAssistantView.jsx',
+    note: 'AI Dashboard Persona tab: tone sliders, free-text persona notes, pinned facts.'
+  },
+  'ai-assistant-engine': {
+    status: 'interviewable', sourceFile: 'navrya-src/aiAssistantView.jsx',
+    note: 'AI Dashboard engine/provider preference controls.'
+  },
+  'account-detail-': {
+    status: 'interviewable', sourceFile: 'navrya-src/accountsView.jsx',
+    note: 'Single-field (`tab`) navigation control on an existing Account\'s detail view - options mirror the real Prop/Personal-aware, archived-aware tab bar exactly.'
+  },
+  'account-profile-identity': {
+    status: 'interviewable', sourceFile: 'navrya-src/accountProfileView.jsx',
+    note: 'User profile identity fields: displayName, email, phone. avatarDataUrl deliberately excluded.'
+  },
+  'account-profile-role': {
+    status: 'interviewable', sourceFile: 'navrya-src/accountProfileView.jsx',
+    note: 'User profile trader/mentor/teacher role card, labeled from the real rendered subtitle text.'
+  },
+  'trade-close-position': {
+    status: 'interviewable', sourceFile: 'navrya-src/closePositionModal.jsx',
+    note: 'Close-position exitPrice field.'
+  },
+  'trade-emotion-log': {
+    status: 'interviewable', sourceFile: 'navrya-src/logEmotionModal.jsx',
+    note: 'dominantEmotions, per-emotion intensity/tags (visibleWhen that emotion is selected), stressLevel, note.'
+  },
+  'trade-calculator': {
+    status: 'interviewable', sourceFile: 'navrya-src/tradeCalculatorModal.jsx',
+    note: 'Full 15-field calculator interview in real display order (account/strategy/patterns -> instrument/direction/prices -> risk/leverage/fees -> take-profits). sourceSessionId/sourceScenarioId/pendingEmotionSignal/riskOverride stay excluded (AI-internal-only fields).'
+  },
+  'trade-wizard': {
+    status: 'interviewable', sourceFile: 'navrya-src/tradeLogModal.jsx',
+    note: 'Log-a-Trade multi-step wizard, live-fillable and step-synced (Journey H1), now with canonical interview metadata.'
+  },
+  'live-session-chart-entry': {
+    status: 'interviewable', sourceFile: 'navrya-src/liveSessionView.jsx',
+    note: 'Live Session chart-entry fields.'
+  },
+  'live-session-scenario-': {
+    status: 'interviewable', sourceFile: 'navrya-src/liveSessionView.jsx',
+    note: 'Live Session scenario-card fields. confirmDelete excluded (destructive gate); patternName is resolution-only; completedStage/incompleteStage are free-text resolvers.'
+  },
+  'live-session-entry-': {
+    status: 'interviewable', sourceFile: 'navrya-src/liveSessionView.jsx',
+    note: 'Live Session entry-card note field.'
+  },
+  'live-session-fate-entry': {
+    status: 'interviewable', sourceFile: 'navrya-src/liveSessionView.jsx',
+    note: 'Session Fate flow, entry step.'
+  },
+  'live-session-fate-summary': {
+    status: 'interviewable', sourceFile: 'navrya-src/liveSessionView.jsx',
+    note: 'Session Fate flow, summary step.'
+  },
+  'session-scenario-': {
+    status: 'interviewable', sourceFile: 'navrya-src/sessionEntryCardsView.jsx',
+    note: 'Session workspace scenario editor fields.'
+  },
+  'session-entry-': {
+    status: 'interviewable', sourceFile: 'navrya-src/sessionEntryCardsView.jsx',
+    note: 'Session workspace entry fields.'
+  },
+  'pattern-editor-': {
+    status: 'interviewable', sourceFile: 'navrya-src/patternRegistryView.jsx',
+    note: 'Pattern editor fields (name, description, completionThreshold, instruments), registered identically from both patternRegistryView.jsx and strategiesHubView.jsx. `confirm` (pattern.delete\'s destructive gate) is deliberately excluded from both.'
+  },
+  'strategy-editor-': {
+    status: 'interviewable', sourceFile: 'navrya-src/strategiesHubView.jsx',
+    note: 'Strategy editor: name, then Position Management group, Risk Management group, Overall Framework note, in real display order. `confirm` (strategy.delete\'s destructive gate) deliberately excluded.'
+  },
+  'strategies-index': {
+    status: 'interviewable', sourceFile: 'navrya-src/strategiesHubView.jsx',
+    note: 'Strategies Hub tab/search/sort controls (listKind, query, sort).'
+  },
+  'marketplace-storefront': {
+    status: 'interviewable', sourceFile: 'navrya-src/marketplaceView.jsx',
+    note: 'Marketplace search/sort controls (query, sort).'
+  },
+  'marketplace-rate-': {
+    status: 'interviewable', sourceFile: 'navrya-src/marketplaceView.jsx',
+    note: 'Marketplace listing rating/review fields (ratingValue, reviewText).'
+  },
+  'psychology-mood-log': {
+    status: 'interviewable', sourceFile: 'navrya-src/moodTab.jsx',
+    note: 'Mood/Calm Room log fields.'
+  },
+  'mh-post-trade-reflection': {
+    status: 'interviewable', sourceFile: 'navrya-src/postTradeReflectionModal.jsx',
+    note: 'Post-trade reflection wizard, live-fillable and step-synced, now with canonical interview metadata.'
+  },
+  'mh-pre-session-checkin': {
+    status: 'interviewable', sourceFile: 'navrya-src/preSessionCheckInModal.jsx',
+    note: 'Pre-session check-in fields.'
+  },
+  'mh-weekly-checkin': {
+    status: 'interviewable', sourceFile: 'navrya-src/weeklyCheckInModal.jsx',
+    note: 'Weekly check-in fields, restricted to the real allowlist (moodNextWeek is rendered in JSX but is NOT in the real allowlist, so it is correctly excluded from the interview too).'
+  },
+  'psychology-routine-editor': {
+    status: 'interviewable', sourceFile: 'navrya-src/routineTab.jsx',
+    note: 'Routine builder step-list/trigger/rules editor, live-fillable and step-synced, now with canonical interview metadata.'
+  },
+  'psychology-therapist-review': {
+    status: 'interviewable', sourceFile: 'navrya-src/therapistTab.jsx',
+    note: 'Therapist queue filtering (queueView only - approve/reject/bulk-apply stay excluded by design).'
+  },
+  'settings-character': {
+    status: 'interviewable', sourceFile: 'navrya-src/settingsView.jsx',
+    note: 'Character/quick-switcher setting.'
+  },
+  'settings-voice-gender': {
+    status: 'interviewable', sourceFile: 'navrya-src/settingsView.jsx',
+    note: 'Voice gender preference.'
+  },
+  'settings-region-language': {
+    status: 'interviewable', sourceFile: 'navrya-src/settingsView.jsx',
+    note: 'Region/language settings.'
+  },
+  'settings-alerts': {
+    status: 'interviewable', sourceFile: 'navrya-src/settingsView.jsx',
+    note: 'Alert/cooldown settings.'
+  },
+  'settings-trading-defaults': {
+    status: 'interviewable', sourceFile: 'navrya-src/settingsView.jsx',
+    note: 'Trading defaults (risk/leverage/max trades).'
+  },
+  'settings-companion': {
+    status: 'interviewable', sourceFile: 'navrya-src/settingsView.jsx',
+    note: 'Companion goal/initiative settings.'
+  },
+
   // --- Deliberately excluded: payment/credential/admin, or a pure destructive/context marker with no field to ask about ---
   'session-delete-confirm': { status: 'excluded', reason: 'A synthetic, allowlisted no-op destructive confirmation gate (confirm only) - not a data form.' },
   'trade-details-': { status: 'excluded', reason: 'Empty allowlist - a pure "this entity is on screen" context marker, nothing to fill.' },
@@ -52,41 +190,5 @@ export const FORM_INTERVIEW_COVERAGE = {
   'community-comment-': { status: 'excluded', reason: 'Gated by an explicit `send` confirmation, same as community-new-post.' },
   'publish-flow': { status: 'excluded', reason: 'Legacy Marketplace publish flow, gated by an explicit `confirmPublish` confirmation.' },
   'strategy-hub-publish-flow': { status: 'excluded', reason: 'Marketplace publish (Strategies Hub), gated by an explicit `confirmPublish` confirmation.' },
-  'ai-assistant-panel-builder': { status: 'excluded', reason: 'AI Dashboard panel/API-key/provider configuration surface - keys and admin-level AI settings stay excluded from Voice/Chat.' },
-
-  // --- Real, safe, already-fillable forms not yet migrated to canonical interview metadata this pass (honest, acknowledged gap - not silently excluded) ---
-  'analysis-profile-editor': { status: 'pending', reason: 'Real two-step style->focus wizard, live-fillable today; canonical interview ordering/labels not yet declared.' },
-  'settings-persona': { status: 'pending', reason: 'AI Dashboard Persona tab (tone sliders/free text/pinned facts), live-fillable today; not yet migrated to interview metadata.' },
-  'ai-assistant-engine': { status: 'pending', reason: 'AI Dashboard engine/provider preference controls, live-fillable today; not yet migrated to interview metadata.' },
-  'account-detail-': { status: 'pending', reason: 'Single-field (`tab`) navigation control on an existing Account\'s detail view; not yet migrated to interview metadata.' },
-  'account-profile-identity': { status: 'pending', reason: 'User profile identity fields, live-fillable today; not yet migrated to interview metadata.' },
-  'account-profile-role': { status: 'pending', reason: 'User profile trader/mentor/teacher role cards, live-fillable today; not yet migrated to interview metadata.' },
-  'trade-close-position': { status: 'pending', reason: 'Close-position exitPrice/note fields, live-fillable today; not yet migrated to interview metadata.' },
-  'trade-emotion-log': { status: 'pending', reason: 'Trade emotion log fields, live-fillable today; not yet migrated to interview metadata.' },
-  'trade-calculator': { status: 'pending', reason: 'Trade Calculator fields, live-fillable today; not yet migrated to interview metadata.' },
-  'trade-wizard': { status: 'pending', reason: 'Log-a-Trade multi-step wizard, live-fillable and step-synced today (Journey H1); not yet migrated to canonical interview metadata.' },
-  'live-session-chart-entry': { status: 'pending', reason: 'Live Session chart-entry fields, live-fillable today; not yet migrated to interview metadata.' },
-  'live-session-scenario-': { status: 'pending', reason: 'Live Session scenario-card fields, live-fillable today; not yet migrated to interview metadata.' },
-  'live-session-entry-': { status: 'pending', reason: 'Live Session entry-card note field, live-fillable today; not yet migrated to interview metadata.' },
-  'live-session-fate-entry': { status: 'pending', reason: 'Session Fate flow, entry step; live-fillable today; not yet migrated to interview metadata.' },
-  'live-session-fate-summary': { status: 'pending', reason: 'Session Fate flow, summary step; live-fillable today; not yet migrated to interview metadata.' },
-  'session-scenario-': { status: 'pending', reason: 'Session workspace scenario editor fields, live-fillable today; not yet migrated to interview metadata.' },
-  'session-entry-': { status: 'pending', reason: 'Session workspace entry fields, live-fillable today; not yet migrated to interview metadata.' },
-  'pattern-editor-': { status: 'pending', reason: 'Pattern editor fields (registered from both patternRegistryView.jsx and strategiesHubView.jsx), live-fillable today; not yet migrated to interview metadata.' },
-  'strategy-editor-': { status: 'pending', reason: 'Strategy editor fields, live-fillable today; not yet migrated to interview metadata.' },
-  'strategies-index': { status: 'pending', reason: 'Strategies Hub search/sort/filter controls, live-fillable today; not yet migrated to interview metadata.' },
-  'marketplace-storefront': { status: 'pending', reason: 'Marketplace search/sort/filter controls, live-fillable today; not yet migrated to interview metadata.' },
-  'marketplace-rate-': { status: 'pending', reason: 'Marketplace listing rating/review fields, live-fillable today; not yet migrated to interview metadata.' },
-  'psychology-mood-log': { status: 'pending', reason: 'Mood/Calm Room log fields, live-fillable today; not yet migrated to interview metadata.' },
-  'mh-post-trade-reflection': { status: 'pending', reason: 'Post-trade reflection wizard, live-fillable and step-synced today; not yet migrated to canonical interview metadata.' },
-  'mh-pre-session-checkin': { status: 'pending', reason: 'Pre-session check-in fields, live-fillable today; not yet migrated to interview metadata.' },
-  'mh-weekly-checkin': { status: 'pending', reason: 'Weekly check-in fields, live-fillable today; not yet migrated to interview metadata.' },
-  'psychology-routine-editor': { status: 'pending', reason: 'Routine builder step-list/trigger/rules editor, live-fillable and step-synced today; not yet migrated to canonical interview metadata.' },
-  'psychology-therapist-review': { status: 'pending', reason: 'Therapist queue filtering (queueView only - approve/reject/bulk-apply stay excluded by design); not yet migrated to interview metadata.' },
-  'settings-character': { status: 'pending', reason: 'Character/quick-switcher setting, live-fillable today; not yet migrated to interview metadata.' },
-  'settings-voice-gender': { status: 'pending', reason: 'Voice gender preference, live-fillable today; not yet migrated to interview metadata.' },
-  'settings-region-language': { status: 'pending', reason: 'Region/language settings, live-fillable today; not yet migrated to interview metadata.' },
-  'settings-alerts': { status: 'pending', reason: 'Alert/cooldown settings, live-fillable today; not yet migrated to interview metadata.' },
-  'settings-trading-defaults': { status: 'pending', reason: 'Trading defaults (risk/leverage/max trades), live-fillable today; not yet migrated to interview metadata.' },
-  'settings-companion': { status: 'pending', reason: 'Companion goal/initiative settings, live-fillable today; not yet migrated to interview metadata.' }
+  'ai-assistant-panel-builder': { status: 'excluded', reason: 'AI Dashboard panel/API-key/provider configuration surface - keys and admin-level AI settings stay excluded from Voice/Chat.' }
 };
