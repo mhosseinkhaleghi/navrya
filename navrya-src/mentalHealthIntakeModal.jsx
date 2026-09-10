@@ -17,7 +17,11 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 // ============================================================================
 const AGE_MIN = 16, AGE_MAX = 80, AGE_TICK = 26;
 
-const SCENARIOS = [
+// Exported (not just module-local) so character-app.jsx's psychology.intake.start normalizeField
+// can map a spoken/localized scenario answer onto the exact same real internal choice keys
+// ScenarioStep's own TileGrid compares against - the identical convention INTAKE_ENUM_OPTIONS
+// below already established for the non-scenario steps.
+export const SCENARIOS = [
   { id: 'A_stop_loss', measuresConstruct: 'loss_aversion_discipline', choices: [['move_stop_back', 'move-horizontal'], ['wait_it_hits', 'clock'], ['quick_reanalysis', 'search'], ['pray', 'sparkle']] },
   { id: 'B_revenge', measuresConstruct: 'revenge_trading', slider: true, sliderLeft: 'mhScenarioBCalm', sliderRight: 'mhScenarioBAngry', heatQuestion: 'mhHeatQuestionB', choices: [['sleep', 'moon'], ['open_to_recover', 'rotate-ccw'], ['journal', 'edit'], ['other', 'more']], hasFreeText: true },
   { id: 'C_fomo', measuresConstruct: 'fomo', choices: [['disciplined_no_stop', 'honour'], ['was_clear_should_enter', 'zap'], ['next_time_for_sure', 'rotate-ccw'], ['no_fomo_repeat', 'shield-check']] },
@@ -762,6 +766,15 @@ function AmountField({ label, value, onChange, placeholder }) {
 
 function ExtremesStep({ draft, setDraft, t }) {
   const h = draft.tradingHistory;
+  // Voice/Chat form-interview workflow upgrade: these five fields are real numericPaths that were
+  // never in intakePaths before (mental-health.types.js), so Voice could not fill this step at all
+  // - now that they're allowlisted, wire the same magic-fill animation every other intake field
+  // already gets.
+  const winAmountFilled = useAiFieldFill('mh-intake', 'intake.tradingHistory.largestWin.amount');
+  const winPercentFilled = useAiFieldFill('mh-intake', 'intake.tradingHistory.largestWin.percent');
+  const lossAmountFilled = useAiFieldFill('mh-intake', 'intake.tradingHistory.largestLoss.amount');
+  const lossPercentFilled = useAiFieldFill('mh-intake', 'intake.tradingHistory.largestLoss.percent');
+  const marginFilled = useAiFieldFill('mh-intake', 'intake.tradingHistory.marginCallOrZeroedCount');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
@@ -770,8 +783,8 @@ function ExtremesStep({ draft, setDraft, t }) {
             <Icon name="scenarios" size={18} /><span>{t('mhLargestWinTitle')}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 }}>
-            <AmountField label={t('mhAmountLabel')} value={h.largestWin.amount} placeholder="e.g. 4,200" onChange={(amount) => set(setDraft, { tradingHistory: { ...h, largestWin: { ...h.largestWin, amount } } })} />
-            <AmountField label={t('mhPercentLabel')} value={h.largestWin.percent} placeholder="e.g. 18" onChange={(percent) => set(setDraft, { tradingHistory: { ...h, largestWin: { ...h.largestWin, percent } } })} />
+            <AiMagicFill active={winAmountFilled}><AmountField label={t('mhAmountLabel')} value={h.largestWin.amount} placeholder="e.g. 4,200" onChange={(amount) => set(setDraft, { tradingHistory: { ...h, largestWin: { ...h.largestWin, amount } } })} /></AiMagicFill>
+            <AiMagicFill active={winPercentFilled}><AmountField label={t('mhPercentLabel')} value={h.largestWin.percent} placeholder="e.g. 18" onChange={(percent) => set(setDraft, { tradingHistory: { ...h, largestWin: { ...h.largestWin, percent } } })} /></AiMagicFill>
           </div>
         </div>
         <div style={{ borderRadius: 12, border: '1px solid rgba(255,56,48,.35)', background: 'rgba(255,56,48,.05)', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -779,12 +792,12 @@ function ExtremesStep({ draft, setDraft, t }) {
             <Icon name="scenarios" size={18} /><span>{t('mhLargestLossTitle')}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 }}>
-            <AmountField label={t('mhAmountLabel')} value={h.largestLoss.amount} placeholder="e.g. 2,600" onChange={(amount) => set(setDraft, { tradingHistory: { ...h, largestLoss: { ...h.largestLoss, amount } } })} />
-            <AmountField label={t('mhPercentLabel')} value={h.largestLoss.percent} placeholder="e.g. 11" onChange={(percent) => set(setDraft, { tradingHistory: { ...h, largestLoss: { ...h.largestLoss, percent } } })} />
+            <AiMagicFill active={lossAmountFilled}><AmountField label={t('mhAmountLabel')} value={h.largestLoss.amount} placeholder="e.g. 2,600" onChange={(amount) => set(setDraft, { tradingHistory: { ...h, largestLoss: { ...h.largestLoss, amount } } })} /></AiMagicFill>
+            <AiMagicFill active={lossPercentFilled}><AmountField label={t('mhPercentLabel')} value={h.largestLoss.percent} placeholder="e.g. 11" onChange={(percent) => set(setDraft, { tradingHistory: { ...h, largestLoss: { ...h.largestLoss, percent } } })} /></AiMagicFill>
           </div>
         </div>
       </div>
-      <MarginCounter value={h.marginCallOrZeroedCount || 0} onChange={(marginCallOrZeroedCount) => set(setDraft, { tradingHistory: { ...h, marginCallOrZeroedCount } })} t={t} />
+      <AiMagicFill active={marginFilled}><MarginCounter value={h.marginCallOrZeroedCount || 0} onChange={(marginCallOrZeroedCount) => set(setDraft, { tradingHistory: { ...h, marginCallOrZeroedCount } })} t={t} /></AiMagicFill>
     </div>
   );
 }
@@ -841,27 +854,40 @@ function ScenarioStep({ scenario, draft, setDraft, t }) {
   const responses = draft.scenarioResponses;
   const r = responses[scenario.id] || { choice: '', sliderValue: scenario.slider ? 5 : null, freeText: '' };
   function patch(p) { setDraft((prev) => ({ ...prev, scenarioResponses: { ...prev.scenarioResponses, [scenario.id]: { ...r, ...p } } })); }
+  // Voice/Chat form-interview workflow upgrade: magic-fill animation for this scenario's own
+  // interview-registered fields (mh-intake's applyValue() writes through this exact same setDraft,
+  // so the fill event these hooks subscribe to always follows the real write, same as every other
+  // step's own fields).
+  const choiceFilled = useAiFieldFill('mh-intake', 'psychology.scenario.' + scenario.id + '.choice');
+  const sliderFilled = useAiFieldFill('mh-intake', 'psychology.scenario.' + scenario.id + '.sliderValue');
+  const freeTextFilled = useAiFieldFill('mh-intake', 'psychology.scenario.' + scenario.id + '.freeText');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       {/* Always English/numeric market-chart flavor text (tickers, times, R-multiples) - like a
           chart's chronology, it must never mirror or bidi-reorder under RTL. */}
       <div dir="ltr"><ScenarioVisual id={scenario.id} /></div>
-      <Field>
-        <FieldHead label={t('mhMeasures') + ': ' + t('mhConstruct_' + scenario.measuresConstruct)} />
-        <TileGrid options={scenario.choices} prefix={'mhScenarioChoice_' + scenario.id + '_'} t={t} value={r.choice} onChange={(choice) => patch({ choice })} />
-      </Field>
+      <AiMagicFill active={choiceFilled}>
+        <Field>
+          <FieldHead label={t('mhMeasures') + ': ' + t('mhConstruct_' + scenario.measuresConstruct)} />
+          <TileGrid options={scenario.choices} prefix={'mhScenarioChoice_' + scenario.id + '_'} t={t} value={r.choice} onChange={(choice) => patch({ choice })} />
+        </Field>
+      </AiMagicFill>
       {scenario.slider && (
-        <DialRow label={t(scenario.heatQuestion)} value={r.sliderValue} lowLabel={t(scenario.sliderLeft)} highLabel={t(scenario.sliderRight)} onChange={(sliderValue) => patch({ sliderValue })} t={t} />
+        <AiMagicFill active={sliderFilled}>
+          <DialRow label={t(scenario.heatQuestion)} value={r.sliderValue} lowLabel={t(scenario.sliderLeft)} highLabel={t(scenario.sliderRight)} onChange={(sliderValue) => patch({ sliderValue })} t={t} />
+        </AiMagicFill>
       )}
       {scenario.hasFreeText && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-          <SectionLabel>{t('mhScenarioFreeText')}</SectionLabel>
-          <textarea
-            dir="auto" rows={3} value={r.freeText || ''} placeholder={t('mhScenarioFreeText')}
-            onChange={(e) => patch({ freeText: e.target.value })}
-            style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: '500 13.5px/20px var(--font-ui)', outline: 'none' }}
-          />
-        </div>
+        <AiMagicFill active={freeTextFilled}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <SectionLabel>{t('mhScenarioFreeText')}</SectionLabel>
+            <textarea
+              dir="auto" rows={3} value={r.freeText || ''} placeholder={t('mhScenarioFreeText')}
+              onChange={(e) => patch({ freeText: e.target.value })}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: '500 13.5px/20px var(--font-ui)', outline: 'none' }}
+            />
+          </div>
+        </AiMagicFill>
       )}
     </div>
   );
@@ -1055,35 +1081,127 @@ function MentalHealthIntakeModal({ container, onClose, onFinish }) {
   // AND firstBigLossReaction are BOTH rendered together inside MotivationStep (step 6) - despite
   // the name, "first big loss reaction" is the emotional-reaction question paired with motivation,
   // not one of ExtremesStep's own objective win/loss amount fields (step 5).
-  const intakeStepMap = window.TradeJournalAIWizardStepMap ? window.TradeJournalAIWizardStepMap.forGroups({
+  // Voice/Chat form-interview workflow upgrade: scenario step groups (8-12) are generated from
+  // the SAME real SCENARIOS table the step->component map already uses (`SCENARIOS[step-8]`,
+  // above) - never a second, hand-typed scenario-id-to-step list that could drift from it.
+  const scenarioStepGroups = {};
+  SCENARIOS.forEach((s, idx) => { scenarioStepGroups[8 + idx] = ['psychology.scenario.' + s.id + '.']; });
+  const intakeStepMap = window.TradeJournalAIWizardStepMap ? window.TradeJournalAIWizardStepMap.forGroups(Object.assign({
     2: ['intake.demographics.'],
     3: ['intake.financialContext.'],
     4: ['intake.tradingHistory.'],
+    // Extremes (step 5): a MORE SPECIFIC (longer) prefix than step 4's whole-section
+    // 'intake.tradingHistory.' above, so forGroups()'s own "longest matching prefix wins" rule
+    // correctly routes these three fields to step 5 instead of step 4.
+    5: ['intake.tradingHistory.largestWin.', 'intake.tradingHistory.largestLoss.', 'intake.tradingHistory.marginCallOrZeroedCount'],
     6: ['intake.motivationForTrading', 'intake.firstBigLossReaction'],
-    7: ['intake.transparencyMatrix.']
-  }) : null;
+    7: ['intake.transparencyMatrix.'],
+    // Step 13 (Summary/Sealed): the 'seal' gate field is never a real form path (never reaches
+    // applyValue()'s own allowlist check), but still needs a step opinion so prepareForPath() can
+    // move the real wizard to the Summary step before the model ever asks to seal it.
+    13: ['seal']
+  }, scenarioStepGroups)) : null;
+
+  // Voice/Chat form-interview workflow upgrade: the canonical interview field list - built from
+  // the SAME option tables/scenario definitions DemographicsStep/FinancialStep/.../ScenarioStep
+  // already render from (GENDERS, MARITAL_STATUSES, OCCUPATION_TYPES, CAPITAL_TYPES, MOTIVATIONS,
+  // LOSS_REACTIONS, SCENARIOS), never a second, hand-maintained catalog. `order` matches the real
+  // step sequence (step*100 + position within step) so display order is exactly what a human
+  // stepping through Next/Next/Next would see. Every field is optional (mirrors the real form's
+  // own "Skip" affordance at every step - nothing here is ever required to progress).
+  const intakeInterviewFields = React.useMemo(() => {
+    const fields = [
+      { path: 'intake.demographics.age', order: 201, label: t('mhAge'), type: 'number', role: 'editable' },
+      { path: 'intake.demographics.gender', order: 202, label: t('mhGender'), type: 'choice', options: GENDERS.map(([k]) => ({ value: k, label: t('mhGender_' + k) })), role: 'editable' },
+      { path: 'intake.demographics.maritalStatus', order: 203, label: t('mhMaritalStatus'), type: 'choice', options: MARITAL_STATUSES.map(([k]) => ({ value: k, label: t('mhMaritalStatus_' + k) })), role: 'editable' },
+      { path: 'intake.demographics.primaryOccupation', order: 204, label: t('mhOccupation'), type: 'choice', options: OCCUPATION_TYPES.map(([k]) => ({ value: k, label: t('mhOccupationType_' + k) })), role: 'editable' },
+      { path: 'intake.demographics.isFullTimeTrader', order: 205, label: t('mhFullTimeTrader'), type: 'boolean', role: 'editable' },
+      { path: 'intake.financialContext.capitalType', order: 301, label: t('mhCapitalType'), type: 'choice', options: CAPITAL_TYPES.map(([k]) => ({ value: k, label: t('mhCapitalType_' + k) })), role: 'editable' },
+      { path: 'intake.financialContext.capitalAllocationPercent', order: 302, label: t('mhCapitalAllocation'), type: 'number', role: 'editable' },
+      { path: 'intake.financialContext.borrowedMoneyForTrading', order: 303, label: t('mhBorrowedMoney'), type: 'boolean', role: 'editable' },
+      { path: 'intake.tradingHistory.yearsTrading', order: 401, label: t('mhYearsTrading'), type: 'number', role: 'editable' },
+      { path: 'intake.tradingHistory.marketsTraded', order: 402, label: t('mhMarketsTraded'), type: 'text', role: 'editable' },
+      { path: 'intake.tradingHistory.largestWin.amount', order: 501, label: t('mhLargestWinTitle') + ' — ' + t('mhAmountLabel'), type: 'number', role: 'editable' },
+      { path: 'intake.tradingHistory.largestWin.percent', order: 502, label: t('mhLargestWinTitle') + ' — ' + t('mhPercentLabel'), type: 'number', role: 'editable' },
+      { path: 'intake.tradingHistory.largestLoss.amount', order: 503, label: t('mhLargestLossTitle') + ' — ' + t('mhAmountLabel'), type: 'number', role: 'editable' },
+      { path: 'intake.tradingHistory.largestLoss.percent', order: 504, label: t('mhLargestLossTitle') + ' — ' + t('mhPercentLabel'), type: 'number', role: 'editable' },
+      { path: 'intake.tradingHistory.marginCallOrZeroedCount', order: 505, label: t('mhMarginCalls'), type: 'number', role: 'editable' },
+      { path: 'intake.motivationForTrading', order: 601, label: t('mhMotivationQuestion'), type: 'choice', options: MOTIVATIONS.map(([k]) => ({ value: k, label: t('mhMotivation_' + k) })), role: 'editable' },
+      { path: 'intake.firstBigLossReaction', order: 602, label: t('mhFirstLossQuestion'), type: 'choice', options: LOSS_REACTIONS.map(([k]) => ({ value: k, label: t('mhLossReaction_' + k) })), role: 'editable' },
+      { path: 'intake.transparencyMatrix.tradingActivityKnownToFamily', order: 701, label: t('mhActivityKnown'), type: 'boolean', role: 'editable' },
+      { path: 'intake.transparencyMatrix.capitalKnownToFamily', order: 702, label: t('mhCapitalKnown'), type: 'boolean', role: 'editable' },
+      { path: 'intake.transparencyMatrix.profitKnownToFamily', order: 703, label: t('mhProfitKnown'), type: 'boolean', role: 'editable' },
+      { path: 'intake.transparencyMatrix.lossKnownToFamily', order: 704, label: t('mhLossKnown'), type: 'boolean', role: 'editable' }
+    ];
+    SCENARIOS.forEach((s, idx) => {
+      const base = 800 + idx * 100;
+      fields.push({ path: 'psychology.scenario.' + s.id + '.choice', order: base + 1, label: t('mhScenario_' + s.id + '_title'), type: 'choice', options: s.choices.map(([k]) => ({ value: k, label: t('mhScenarioChoice_' + s.id + '_' + k) })), role: 'editable' });
+      if (s.slider) fields.push({ path: 'psychology.scenario.' + s.id + '.sliderValue', order: base + 2, label: t(s.heatQuestion), type: 'slider', role: 'editable' });
+      if (s.hasFreeText) fields.push({ path: 'psychology.scenario.' + s.id + '.freeText', order: base + 3, label: t('mhScenarioFreeText'), type: 'text', role: 'editable' });
+    });
+    fields.push({ path: 'seal', order: 1300, label: t('mhSealProfile'), type: 'action', role: 'gate' });
+    return fields;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
+  // Voice/Chat form-interview workflow upgrade: the interview allowlist adds the 8 real scenario
+  // response paths (one per scenario `choice`, plus `sliderValue`/`freeText` only for the
+  // scenarios whose own real UI shows them - Scenario B and D) on top of the pre-existing
+  // intakePaths. `seal` is deliberately NOT here (it is a gate, never a real form path - see
+  // ai-process-registry.js's own interview.fields role convention).
+  const scenarioInterviewPaths = React.useMemo(() => SCENARIOS.reduce((acc, s) => {
+    acc.push('psychology.scenario.' + s.id + '.choice');
+    if (s.slider) acc.push('psychology.scenario.' + s.id + '.sliderValue');
+    if (s.hasFreeText) acc.push('psychology.scenario.' + s.id + '.freeText');
+    return acc;
+  }, []), []);
 
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     const types = window.TradeJournalMentalHealthTypes;
     if (!registry) return undefined;
+    const allowlist = (types.intakePaths || []).concat(scenarioInterviewPaths);
     registry.register('mh-intake', {
       layer: 'foreground',
-      allowlist: (types.intakePaths || []).slice(),
+      allowlist: allowlist,
       // DOM-presence check, matching every other registrant's isOpen() convention (see
       // ai-process-registry.js) - no separate close-event plumbing needed.
       isOpen: () => document.body.contains(container),
       activeStep: () => step,
       stepForPath: intakeStepMap ? intakeStepMap.stepForPath : null,
       goToStep: goTo,
+      interview: { fields: intakeInterviewFields },
       applyValue: (path, value, mode) => {
+        // Scenario A-E responses (Extremes/History/Motivation/etc. all still go through the
+        // pre-existing store.applySuggestion()/setPath() branch below, unchanged): these are
+        // in-progress DRAFT answers for whichever scenario step is currently showing, so they are
+        // written through the exact same real controlled setter (setDraft) ScenarioStep's own
+        // local patch() closure already uses - never a second psychology store, and never
+        // persisted until the existing commit()-on-navigate/finish() path already handles that
+        // (identical to a human typing the same answer by hand).
+        if (path.indexOf('psychology.scenario.') === 0) {
+          const rest = path.slice('psychology.scenario.'.length);
+          const dot = rest.indexOf('.');
+          if (dot === -1) return;
+          const scenarioId = rest.slice(0, dot);
+          const field = rest.slice(dot + 1);
+          if (['choice', 'sliderValue', 'freeText'].indexOf(field) === -1) return;
+          setDraft((prev) => ({ ...prev, scenarioResponses: { ...prev.scenarioResponses, [scenarioId]: { ...(prev.scenarioResponses[scenarioId] || {}), [field]: value } } }));
+          return;
+        }
         if ((types.intakePaths || []).indexOf(path) === -1) return;
         let profile = store.load();
         const suggestionId = store.uid('mh-dock');
         profile = store.addMessage(profile, 'assistant', '', [{ id: suggestionId, path, value, section: path.split('.')[0], mode: mode === 'append' ? 'append' : 'replace', status: 'pending', createdAt: store.now() }]);
         store.applySuggestion(profile, { id: suggestionId }, 'applied');
         setDraft(draftFromProfile(store.load()));
-      }
+      },
+      // Voice/Chat form-interview workflow upgrade: reached only through psychology.intake.start's
+      // own explicit `seal` gate field (character-app.jsx) - the exact same real Seal/finish() the
+      // footer's own "Seal profile" button already calls. Never auto-fires just because every
+      // intake field happens to be answered (finish() is intentionally reachable at ANY point,
+      // matching the real form's own always-available Seal button and its Skip affordance).
+      submit: () => finish()
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);

@@ -173,6 +173,6 @@ test('psychology.intake.start declares the real normalizeField, dispatching ever
   assert.match(block, /INTAKE_BOOLEAN_PATHS\[path\]/);
 });
 
-test('character-app.jsx imports INTAKE_ENUM_OPTIONS from mentalHealthIntakeModal.jsx directly - never a second, hand-duplicated option list', () => {
-  assert.match(characterAppSrc, /import \{ openIntake, INTAKE_ENUM_OPTIONS \} from '\.\/mentalHealthIntakeModal\.jsx'/);
+test('character-app.jsx imports INTAKE_ENUM_OPTIONS and SCENARIOS from mentalHealthIntakeModal.jsx directly - never a second, hand-duplicated option list (SCENARIOS added by the Voice/Chat form-interview workflow upgrade, for scenario-choice normalization)', () => {
+  assert.match(characterAppSrc, /import \{ openIntake, INTAKE_ENUM_OPTIONS, SCENARIOS \} from '\.\/mentalHealthIntakeModal\.jsx'/);
 });

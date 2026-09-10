@@ -68,6 +68,15 @@
       'intake.demographics.maritalStatus', 'intake.demographics.primaryOccupation', 'intake.demographics.isFullTimeTrader', 'intake.demographics.age', 'intake.demographics.gender',
       'intake.financialContext.capitalType', 'intake.financialContext.capitalAllocationPercent', 'intake.financialContext.borrowedMoneyForTrading',
       'intake.tradingHistory.yearsTrading', 'intake.tradingHistory.marketsTraded',
+      // Voice/Chat form-interview workflow upgrade: the Extremes step (5) fields - already real
+      // numericPaths, previously never included here, which is the whole reason Extremes had no
+      // AI-fillable fields at all (see mentalHealthIntakeModal.jsx's own prior comment on this
+      // exact gap). Adding them here is sufficient on its own - applyValue()'s existing
+      // store.applySuggestion()/setPath() pipeline already writes any intake.* dotted path
+      // generically, casting through numericPaths exactly like every other numeric intake field.
+      'intake.tradingHistory.largestWin.amount', 'intake.tradingHistory.largestWin.percent',
+      'intake.tradingHistory.largestLoss.amount', 'intake.tradingHistory.largestLoss.percent',
+      'intake.tradingHistory.marginCallOrZeroedCount',
       'intake.motivationForTrading', 'intake.firstBigLossReaction',
       'intake.transparencyMatrix.profitKnownToFamily', 'intake.transparencyMatrix.lossKnownToFamily', 'intake.transparencyMatrix.capitalKnownToFamily', 'intake.transparencyMatrix.tradingActivityKnownToFamily'
     ],
