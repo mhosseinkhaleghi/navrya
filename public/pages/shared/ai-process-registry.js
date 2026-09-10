@@ -36,7 +36,25 @@
       // with whichever field Voice just supplied, instead of writing a field into a step the user
       // isn't looking at.
       stepForPath: null,
-      goToStep: null
+      goToStep: null,
+      // Voice/Chat form-interview contract (docs/ai/form-interview-contract.md): an optional
+      // { fields: [{path, order, label, help, type, options, required, role, visibleWhen}] }
+      // describing this process's own fields in the SAME canonical display order a human reading
+      // the real form top-to-bottom would encounter them - derived from the same field
+      // definitions/labels the human UI itself renders, never a second, invented catalog. `role`
+      // is one of 'editable' (a real controlled field - MUST also appear in `allowlist`, the
+      // security boundary is never bypassed for these), 'resolution' (identifies a target, e.g. an
+      // existing entity's name - descriptive only, never itself interview-asked here since
+      // resolution already has its own action-level mechanism) or 'gate' (a final action
+      // confirmation/start signal, e.g. `save`/`seal` - deliberately NOT required to be in
+      // `allowlist`, since a gate is never written to a real form control, only ever consulted by
+      // the action's own submit()). `visibleWhen` is a zero-argument function (a live closure over
+      // the same render's own state the registration itself closes over, e.g. `() => kind ===
+      // 'personal'`) re-evaluated on every read - never cached - so a discriminator change (e.g.
+      // Account kind Prop/Personal) is reflected the very next turn with no separate invalidation
+      // step. A registration with no `interview` is simply not yet part of the deterministic
+      // interview system - see visibleInterviewFields()'s own comment.
+      interview: null
     }, config || {});
     registrationOrderCounter += 1;
     registrations[processId]._order = registrationOrderCounter;
@@ -204,9 +222,58 @@
     });
   }
 
+  // Voice/Chat form-interview contract: the one place "which fields, in what order, are
+  // currently askable" is decided - never a second, hand-maintained ordering guess in
+  // chat-dock-core.js or the server prompt. Returns [] for a registration with no `interview`
+  // (nothing to ask) or an unknown/closed processId; NEVER throws.
+  //
+  // Security boundary (explicit, not incidental): an 'editable' or unset-role field descriptor is
+  // included only when its OWN path also appears in this same registration's `allowlist` - the
+  // real security boundary applyValue() already enforces. A descriptor naming a path outside the
+  // allowlist can never be surfaced as an askable interview question, exactly as it could never be
+  // applied. Only a 'gate' descriptor (a final action confirmation, never itself written to a real
+  // form control) is exempt from that check.
+  function visibleInterviewFields(processId) {
+    var entry = registrations[processId];
+    if (!entry || !entry.interview || !Array.isArray(entry.interview.fields)) return [];
+    var allowlist = entry.allowlist || [];
+    return entry.interview.fields
+      .filter(function (f) { return f && f.path && (f.role === 'gate' || allowlist.indexOf(f.path) > -1); })
+      .filter(function (f) { return typeof f.visibleWhen !== 'function' || !!f.visibleWhen(); })
+      .slice()
+      .sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+  }
+
+  // Metadata for exactly one field (label/help/type/options/role/required) - used to phrase a
+  // confirmation question (ask_each) or a repair question without inventing terminology the real
+  // form doesn't use. Subject to the identical allowlist/role boundary as visibleInterviewFields()
+  // above (implemented by reusing it rather than a second check).
+  function interviewFieldMeta(processId, path) {
+    var fields = visibleInterviewFields(processId);
+    for (var i = 0; i < fields.length; i++) { if (fields[i].path === path) return fields[i]; }
+    return null;
+  }
+
+  // Plain allowlist membership check, exposed so a caller (ai-workflow-engine.js's field-write
+  // confirmation gating) can tell "is this actually a real, writable form field" apart from a
+  // resolution-only field (e.g. accountName) BEFORE deciding whether to stage a pending
+  // confirmation candidate for it - a resolution field never reaches applyValue() successfully
+  // either way, so there is nothing there for a user to confirm/decline.
+  function isFieldWritable(processId, path) {
+    var entry = registrations[processId];
+    return !!(entry && entry.allowlist && entry.allowlist.indexOf(path) > -1);
+  }
+
+  function hasInterview(processId) {
+    var entry = registrations[processId];
+    return !!(entry && entry.interview && Array.isArray(entry.interview.fields) && entry.interview.fields.length);
+  }
+
   window.TradeJournalAIProcessRegistry = {
     register: register, query: query, snapshot: snapshot, activeOpenProcess: activeOpenProcess,
     openIdsWithPrefix: openIdsWithPrefix, applyValue: applyValue, submit: submit, prepareForPath: prepareForPath,
+    visibleInterviewFields: visibleInterviewFields, interviewFieldMeta: interviewFieldMeta, hasInterview: hasInterview,
+    isFieldWritable: isFieldWritable,
     setPrepareForPathTiming: function (pollIntervalMs, maxAttempts) { PREPARE_POLL_INTERVAL_MS = pollIntervalMs; PREPARE_MAX_ATTEMPTS = maxAttempts; }
   };
 }());
