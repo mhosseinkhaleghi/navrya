@@ -268,6 +268,23 @@ test('an RPC response that is not valid JSON surfaces as a clean BSC_RPC_INVALID
   assert.equal(body.error, 'BSC_RPC_INVALID_RESPONSE');
 });
 
+test('an unreachable RPC surfaces BSC_RPC_UNAVAILABLE, never the generic COMMUNITY_API_FAILED', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 }); // invoice creation itself checks the chain before the network failure below
+  const { headers } = await createUserAndCookie('Unavailable RPC User');
+  const createResp = await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) });
+  const { invoiceId } = await createResp.json();
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url) === RPC_URL_SENTINEL) throw new TypeError('fetch failed');
+    return originalFetch(url, options);
+  };
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0x' + '9'.repeat(64) }) });
+  assert.equal(checkResp.status, 503);
+  const body = await checkResp.json();
+  assert.equal(body.error, 'BSC_RPC_UNAVAILABLE');
+});
+
 // A non-standard/malformed Transfer log (e.g. missing its 32-byte `data` field) must never crash
 // the whole request - it is simply excluded from the decoded transfers, same as a log from an
 // unrelated contract already is.
@@ -522,7 +539,7 @@ test('two invoices for the same amount, each with their own distinct real transa
   assert.equal(after.paidBalanceMicroUsd, before.paidBalanceMicroUsd + 20000000, 'both distinct payments must land - $10 + $10');
 });
 
-test('an expired invoice is marked expired and can never be confirmed afterward', async () => {
+test('an expired invoice still verifies a submitted real transaction hash and credits the wallet', async () => {
   await setBscConfig(repo);
   mockRpc({ chainId: 56 });
   const { user, headers } = await createUserAndCookie('Expiry');
@@ -540,12 +557,20 @@ test('an expired invoice is marked expired and can never be confirmed afterward'
     exchangeRateSnapshot: 1, expiresAt: new Date(Date.now() - 1000).toISOString()
   });
 
+  // The background poll may already have recorded the visible invoice as expired before the
+  // payer gets back to this screen. That must not prevent the payer's later hash from proving a
+  // real transfer.
+  const expiredResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoice.id}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+  assert.equal((await expiredResp.json()).status, 'expired');
+
   mockRpc({ chainId: 56, blockNumber: 105, receipt: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) });
-  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoice.id}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: '0xtoolate' }) });
+  const submittedTxHash = '0x' + '7'.repeat(64);
+  const checkResp = await fetch(`${baseUrl}/api/sync/wallet/invoices/${invoice.id}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash: submittedTxHash }) });
   const result = await checkResp.json();
-  assert.equal(result.status, 'expired');
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.invoice.txHash, submittedTxHash);
   const account = await repo.wallet.getAccount(user.id);
-  assert.equal(account.paidBalanceMicroUsd, 0, 'an expired invoice must never be paid, even with a genuinely valid transfer');
+  assert.equal(account.paidBalanceMicroUsd, 10000000, 'a verified transfer must be credited even when the invoice display timer elapsed');
 });
 
 test('webhook: with no BSC webhook secret configured, the endpoint refuses every call (safe manual/dev fallback, never silently accepted)', async () => {

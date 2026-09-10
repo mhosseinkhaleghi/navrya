@@ -157,7 +157,7 @@ const copy = {
     subInvoiceExpiresIn: 'انقضا تا {time}', subInvoiceExpired: 'این فاکتور منقضی شده است.',
     subInvoiceStatusPending: 'در انتظار پرداخت…', subInvoiceStatusConfirmed: 'پرداخت تأیید شد!', subInvoiceStatusExpired: 'این فاکتور منقضی شده است.',
     subInvoiceHint: 'دقیقاً همین مبلغ را روی شبکه BNB Smart Chain به آدرس بالا ارسال کن. پرداخت تو به‌صورت خودکار شناسایی می‌شود.',
-    subInvoiceClose: 'بستن', subInvoiceCheckNow: 'بررسی الان',
+    subInvoiceClose: 'بستن', subInvoiceCheckNow: 'بررسی الان', subInvoiceResumePayment: 'ادامهٔ پرداخت',
     subInvoiceTxHashLabel: 'شناسه تراکنش', subInvoiceTxHashPlaceholder: 'شناسهٔ تراکنش را اینجا وارد کن',
     subInvoiceTxHashRequired: 'برای بررسی، شناسهٔ تراکنش را وارد کن.',
     subInvoiceMismatchNote: 'اگر مبلغ واریزی شما با مبلغ فاکتور تفاوت داشته باشد — چه کمتر و چه بیشتر — این خرید انجام نمی‌شود، اما مبلغ واقعی واریزی‌تان مستقیماً به کیف پول هوش مصنوعی‌تان اضافه خواهد شد.',
@@ -292,7 +292,7 @@ const copy = {
     subInvoiceExpiresIn: 'Expires in {time}', subInvoiceExpired: 'This invoice has expired.',
     subInvoiceStatusPending: 'Waiting for payment…', subInvoiceStatusConfirmed: 'Payment confirmed!', subInvoiceStatusExpired: 'This invoice has expired.',
     subInvoiceHint: 'Send exactly this amount on BNB Smart Chain to the address above. Your payment is detected automatically.',
-    subInvoiceClose: 'Close', subInvoiceCheckNow: 'Check Now',
+    subInvoiceClose: 'Close', subInvoiceCheckNow: 'Check Now', subInvoiceResumePayment: 'Resume payment',
     subInvoiceTxHashLabel: 'Transaction hash', subInvoiceTxHashPlaceholder: 'Paste your transaction hash here',
     subInvoiceTxHashRequired: 'Enter the transaction hash to check.',
     subInvoiceMismatchNote: 'If the amount you send differs from this invoice - lower or higher - this purchase will not go through, but the real amount you sent will be credited directly to your AI wallet.',
@@ -427,7 +427,7 @@ const copy = {
     subInvoiceExpiresIn: 'تنتهي خلال {time}', subInvoiceExpired: 'انتهت صلاحية هذه الفاتورة.',
     subInvoiceStatusPending: 'في انتظار الدفع…', subInvoiceStatusConfirmed: 'تم تأكيد الدفع!', subInvoiceStatusExpired: 'انتهت صلاحية هذه الفاتورة.',
     subInvoiceHint: 'أرسل هذا المبلغ بالضبط على شبكة BNB Smart Chain إلى العنوان أعلاه. سيتم اكتشاف دفعتك تلقائيًا.',
-    subInvoiceClose: 'إغلاق', subInvoiceCheckNow: 'تحقّق الآن',
+    subInvoiceClose: 'إغلاق', subInvoiceCheckNow: 'تحقّق الآن', subInvoiceResumePayment: 'استئناف الدفع',
     subInvoiceTxHashLabel: 'رقم المعاملة', subInvoiceTxHashPlaceholder: 'الصق رقم المعاملة هنا',
     subInvoiceTxHashRequired: 'أدخل رقم المعاملة للتحقّق.',
     subInvoiceMismatchNote: 'إذا كان المبلغ المُرسَل مختلفًا عن مبلغ هذه الفاتورة - أقل أو أكثر - فلن تكتمل عملية الشراء هذه، لكن المبلغ الفعلي المُرسَل سيُضاف مباشرةً إلى محفظة الذكاء الاصطناعي الخاصة بك.',
@@ -562,7 +562,7 @@ const copy = {
     subInvoiceExpiresIn: 'Vence en {time}', subInvoiceExpired: 'Esta factura ha vencido.',
     subInvoiceStatusPending: 'Esperando el pago…', subInvoiceStatusConfirmed: '¡Pago confirmado!', subInvoiceStatusExpired: 'Esta factura ha vencido.',
     subInvoiceHint: 'Envía exactamente este monto en BNB Smart Chain a la dirección de arriba. Tu pago se detecta automáticamente.',
-    subInvoiceClose: 'Cerrar', subInvoiceCheckNow: 'Verificar ahora',
+    subInvoiceClose: 'Cerrar', subInvoiceCheckNow: 'Verificar ahora', subInvoiceResumePayment: 'Reanudar pago',
     subInvoiceTxHashLabel: 'Hash de la transacción', subInvoiceTxHashPlaceholder: 'Pega aquí el hash de tu transacción',
     subInvoiceTxHashRequired: 'Ingresa el hash de la transacción para verificar.',
     subInvoiceMismatchNote: 'Si el monto que envías difiere del de esta factura — menor o mayor —, esta compra no se completará, pero el monto real enviado se acreditará directamente en tu billetera de IA.',
@@ -1513,6 +1513,7 @@ const PLAN_ORDER = ['free', 'plus', 'pro', 'personalized'];
 // with 400 WALLET_TOPUP_BELOW_MINIMUM - the reported "$5 still errors" bug. An admin floor above
 // every preset still needs something clickable, hence the derived fallback.
 const TOPUP_PRESET_AMOUNTS = [5, 10, 25, 50, 100];
+const WALLET_CRYPTO_INVOICE_SESSION_KEY = 'navrya:wallet-crypto-invoice-id';
 function topUpChoices(minimumUsd) {
   const min = Number(minimumUsd) > 0 ? Number(minimumUsd) : 0;
   const usable = TOPUP_PRESET_AMOUNTS.filter((v) => v >= min);
@@ -1795,13 +1796,13 @@ function TopUpMinimumModal({ lang, minimumTopUpUsd, onClose }) {
 // its designed position, so wiring a real one later is a drop-in.
 const PAY_SHEET_STEPS = 3;
 
-function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed }) {
-  const [step, setStep] = React.useState(0);
+function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed, resumeInvoiceId = null, onInvoiceCreated }) {
+  const [step, setStep] = React.useState(resumeInvoiceId ? 2 : 0);
   const [method, setMethod] = React.useState(null);
   const [notAdded, setNotAdded] = React.useState(false);
   // Set once the request has actually been created server-side; moving to step 2 shows that real
   // invoice INSIDE this same sheet rather than closing and opening a second popup over the page.
-  const [invoiceId, setInvoiceId] = React.useState(null);
+  const [invoiceId, setInvoiceId] = React.useState(resumeInvoiceId);
   const [submitting, setSubmitting] = React.useState(false);
   const [failure, setFailure] = React.useState('');
   const methodPanel = React.useRef(null);
@@ -1842,7 +1843,11 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
     setFailure('');
     Promise.resolve(onProceed(method.id))
       .then((result) => {
-        if (result && result.invoiceId) { setInvoiceId(result.invoiceId); setStep(2); }
+        if (result && result.invoiceId) {
+          setInvoiceId(result.invoiceId);
+          if (onInvoiceCreated) onInvoiceCreated(result.invoiceId);
+          setStep(2);
+        }
         else onClose();
       })
       .catch((error) => setFailure(error && error.message ? error.message : String(error)))
@@ -1970,6 +1975,23 @@ function WalletCard({ lang, onNotice, onBelowMinimum }) {
   // accepts, which is only known once GET /api/sync/wallet answers with its minimumTopUpUsd.
   const [amount, setAmount] = React.useState('');
   const [showCheckout, setShowCheckout] = React.useState(false);
+  const [resumableInvoiceId, setResumableInvoiceId] = React.useState(() => window.sessionStorage.getItem(WALLET_CRYPTO_INVOICE_SESSION_KEY));
+  const [checkoutInvoiceId, setCheckoutInvoiceId] = React.useState(null);
+
+  function rememberInvoice(invoiceId) {
+    setResumableInvoiceId(invoiceId);
+    window.sessionStorage.setItem(WALLET_CRYPTO_INVOICE_SESSION_KEY, invoiceId);
+  }
+
+  function clearRememberedInvoice() {
+    setResumableInvoiceId(null);
+    window.sessionStorage.removeItem(WALLET_CRYPTO_INVOICE_SESSION_KEY);
+  }
+
+  function openCheckout(invoiceId = null) {
+    setCheckoutInvoiceId(invoiceId);
+    setShowCheckout(true);
+  }
 
   function reload() {
     fetch('/api/sync/wallet').then((r) => r.json()).then((data) => {
@@ -2091,9 +2113,12 @@ function WalletCard({ lang, onNotice, onBelowMinimum }) {
                 />
               </span>
             </label>
-            <Button variant="primary" icon="wallet" disabled={belowMinimum} onClick={() => setShowCheckout(true)} style={{ flex: 'none' }}>
+            <Button variant="primary" icon="wallet" disabled={belowMinimum} onClick={() => openCheckout()} style={{ flex: 'none' }}>
               {tr(lang, 'subWalletContinueToPay')} · <span dir="ltr" className="navrya-tabular">{fmtMicroUsd(Math.round(amountUsd * 1000000))}</span>
             </Button>
+            {resumableInvoiceId && (
+              <Button variant="secondary" onClick={() => openCheckout(resumableInvoiceId)} style={{ flex: 'none' }}>{tr(lang, 'subInvoiceResumePayment')}</Button>
+            )}
           </div>
 
           {/* Live, up-front validation against the server's own floor - the shopper learns the
@@ -2125,8 +2150,10 @@ function WalletCard({ lang, onNotice, onBelowMinimum }) {
           lineItem={tr(lang, 'subPayLineItemTopUp')}
           amountUsd={amountUsd}
           onProceed={requestTopUp}
-          onConfirmed={() => { reload(); notifyWalletChanged(); }}
-          onClose={() => setShowCheckout(false)}
+          resumeInvoiceId={checkoutInvoiceId}
+          onInvoiceCreated={rememberInvoice}
+          onConfirmed={() => { clearRememberedInvoice(); reload(); notifyWalletChanged(); }}
+          onClose={() => { setShowCheckout(false); setCheckoutInvoiceId(null); }}
         />
       )}
     </Panel>

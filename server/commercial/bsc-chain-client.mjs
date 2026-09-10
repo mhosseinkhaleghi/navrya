@@ -19,11 +19,18 @@ let rpcIdCounter = 0;
 async function rpcCall(rpcUrl, method, params) {
   if (!rpcUrl) throw new ApiError(503, 'BSC_PROVIDER_NOT_CONFIGURED', null, { missing: 'rpcUrl' });
   rpcIdCounter += 1;
-  const response = await fetch(rpcUrl, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: rpcIdCounter, method, params }),
-    signal: AbortSignal.timeout(10000)
-  });
+  let response;
+  try {
+    response = await fetch(rpcUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: rpcIdCounter, method, params }),
+      signal: AbortSignal.timeout(10000)
+    });
+  } catch {
+    // A DNS/TLS/timeout failure from the configured RPC must be a safe, actionable API answer,
+    // never the generic COMMUNITY_API_FAILED fallback shown to a payer.
+    throw new ApiError(503, 'BSC_RPC_UNAVAILABLE');
+  }
   if (!response.ok) throw new ApiError(503, 'BSC_RPC_UNAVAILABLE');
   // A real RPC endpoint - especially one sitting behind a CDN/WAF - can answer a 200 with a body
   // that is not valid JSON at all (an HTML challenge/error page) whenever it rejects the request

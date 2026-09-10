@@ -60,7 +60,6 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
   const invoice = await repo.cryptoInvoices.get(invoiceId);
   if (!invoice) throw new ApiError(404, 'CRYPTO_INVOICE_NOT_FOUND');
   if (invoice.status === 'confirmed') return { status: 'confirmed', invoice };
-  if (invoice.status === 'expired') return { status: 'expired', invoice };
   // A 'failed' invoice this function itself moved to that status (the under-payment path below)
   // already told the caller the real outcome once, at the moment it happened; report it the same
   // way on every later poll instead of the generic status a plain failure would get.
@@ -68,15 +67,18 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
     return { status: invoice.mismatchCreditedMicroUsd != null ? 'mismatched_credited' : 'failed', invoice, creditedMicroUsd: invoice.mismatchCreditedMicroUsd };
   }
 
-  if (new Date(invoice.expiresAt).getTime() <= Date.now()) {
-    const expired = await repo.cryptoInvoices.updateStatus(invoiceId, 'expired');
-    return { status: 'expired', invoice: expired };
-  }
-
   // .trim() before anything else - a hash copy-pasted from a wallet app or block explorer very
   // commonly carries a trailing newline/space, which would otherwise reach the RPC call below as
   // part of the parameter and could get a malformed-request response from the provider.
   const candidateHash = (txHash || invoice.txHash || '').trim() || null;
+  const hasExpired = invoice.status === 'expired' || new Date(invoice.expiresAt).getTime() <= Date.now();
+  // An expired invoice cannot be discovered or paid automatically. But a payer who has already
+  // sent funds can still prove that exact transfer with its hash: blocking that check would strand
+  // a genuine on-chain payment just because the wallet took longer than the invoice display timer.
+  if (hasExpired && !candidateHash) {
+    const expired = invoice.status === 'expired' ? invoice : await repo.cryptoInvoices.updateStatus(invoiceId, 'expired');
+    return { status: 'expired', invoice: expired };
+  }
   if (!candidateHash) throw new ApiError(400, 'TX_HASH_REQUIRED');
   // A real 32-byte transaction hash is always exactly `0x` + 64 hex chars. Rejecting anything
   // else HERE - before it ever reaches the network - is what actually fixes the reported bug: an

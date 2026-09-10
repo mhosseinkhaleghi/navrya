@@ -131,8 +131,8 @@ function useCryptoInvoice(invoiceId, onConfirmed) {
 export const CryptoInvoicePanel = React.forwardRef(function CryptoInvoicePanel({ lang, tr, invoiceId, onConfirmed, onStatus }, ref) {
   const { dto, txHash, setTxHash, checking, copied, copyAddress, check, outcome } = useCryptoInvoice(invoiceId, onConfirmed);
 
-  const isTerminal = !!dto && (dto.status === 'confirmed' || dto.status === 'expired' || dto.status === 'failed');
-  const canCheck = !!dto && dto.status === 'pending' && (!!dto.txHash || TX_HASH_RE.test(txHash.trim()));
+  const isTerminal = !!dto && (dto.status === 'confirmed' || dto.status === 'failed');
+  const canCheck = !!dto && (dto.status === 'pending' || dto.status === 'expired') && (!!dto.txHash || TX_HASH_RE.test(txHash.trim()));
 
   React.useImperativeHandle(ref, () => ({ checkNow: () => check(txHash) }), [check, txHash]);
   React.useEffect(() => { if (onStatus) onStatus({ checking, canCheck: canCheck && !isTerminal }); }, [checking, canCheck, isTerminal, onStatus]);
@@ -144,8 +144,7 @@ export const CryptoInvoicePanel = React.forwardRef(function CryptoInvoicePanel({
 export function CryptoInvoiceModal({ lang, tr, invoiceId, onClose, onConfirmed }) {
   const { dto, txHash, setTxHash, checking, copied, copyAddress, check, outcome } = useCryptoInvoice(invoiceId, onConfirmed);
   if (!dto) return null;
-  const isExpired = dto.status === 'expired';
-  const canCheck = dto.status === 'pending' && (!!dto.txHash || TX_HASH_RE.test(txHash.trim()));
+  const canCheck = (dto.status === 'pending' || dto.status === 'expired') && (!!dto.txHash || TX_HASH_RE.test(txHash.trim()));
 
   return (
     <Modal open title={tr(lang, 'subInvoiceTitle')} icon="wallet" onClose={onClose} width={480}
@@ -153,7 +152,7 @@ export function CryptoInvoiceModal({ lang, tr, invoiceId, onClose, onConfirmed }
         <>
           <span style={{ flex: 1 }} />
           <Button variant="secondary" onClick={onClose}>{tr(lang, 'subInvoiceClose')}</Button>
-          {dto.status === 'pending' && !isExpired && (
+          {(dto.status === 'pending' || dto.status === 'expired') && (
             <Button variant="primary" disabled={!canCheck} loading={checking} onClick={() => check(txHash)}>{tr(lang, 'subInvoiceCheckNow')}</Button>
           )}
         </>
@@ -174,6 +173,7 @@ function CryptoInvoiceBody({ lang, tr, dto, txHash, setTxHash, copied, copyAddre
 
   const countdown = dto.status === 'pending' ? fmtCountdown(dto.expiresAt, now) : null;
   const isExpired = dto.status === 'expired' || (dto.status === 'pending' && countdown === null);
+  const acceptsTxHash = dto.status === 'pending' || dto.status === 'expired';
   const isMismatchCredited = dto.status === 'failed' && dto.mismatchCreditedMicroUsd != null;
   const statusTone = dto.status === 'confirmed' ? 'accent' : isMismatchCredited ? 'accent' : isExpired || dto.status === 'failed' ? 'danger' : 'neutral';
   const statusLabel = dto.status === 'confirmed' ? tr(lang, 'subInvoiceStatusConfirmed')
@@ -213,9 +213,13 @@ function CryptoInvoiceBody({ lang, tr, dto, txHash, setTxHash, copied, copyAddre
         </div>
       )}
 
-      {dto.status === 'pending' && (
+      {dto.status === 'pending' && !isExpired && (
         <>
           <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'subInvoiceExpiresIn', { time: countdown })}</div>
+        </>
+      )}
+      {acceptsTxHash && (
+        <>
           <TextField
             label={tr(lang, 'subInvoiceTxHashLabel')} value={txHash} onChange={setTxHash}
             placeholder={tr(lang, 'subInvoiceTxHashPlaceholder')} dir="ltr"
