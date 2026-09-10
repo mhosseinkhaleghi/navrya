@@ -27,7 +27,7 @@ import { renderPatternRegistry } from './patternRegistryView.jsx';
 import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
 import { renderAccountProfile } from './accountProfileView.jsx';
-import { openIntake, INTAKE_ENUM_OPTIONS } from './mentalHealthIntakeModal.jsx';
+import { openIntake, INTAKE_ENUM_OPTIONS, SCENARIOS } from './mentalHealthIntakeModal.jsx';
 import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { openLogWizard } from './tradeLogModal.jsx';
@@ -37,6 +37,7 @@ import { openEmotion } from './logEmotionModal.jsx';
 import { openTradeDetails } from './tradeDetailsModal.jsx';
 import { openPostTradeReflection } from './postTradeReflectionModal.jsx';
 import { openPreSessionCheckIn } from './preSessionCheckInModal.jsx';
+import { tr as analysisCardTr } from './sessionAnalysisCard.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -632,6 +633,13 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'session.create', domain: 'sessions', riskLevel: 'low',
+        // Subscription-limit behavior: quotaResourceType opts this action into
+        // chat-dock-core.js's own planLimitPreflight() - checked against the real, server-
+        // authoritative entitlement/usage system (never a hardcoded 1/10 in a Voice string) before
+        // the real Session dialog ever opens. The server's own createWithQuota() remains the final
+        // authority regardless (PLAN_LIMIT_REACHED can still legitimately arrive after submit, e.g.
+        // a session created concurrently from another device) - see submit()'s own comment below.
+        quotaResourceType: 'sessions',
         description: 'Create a new trading session. instrument (required) is a real, exact instrument code from the user\'s own Instrument Catalog (e.g. XAUUSD, BTCUSDT) - never a guessed/aliased symbol. accountId (optional) links it to one of the user\'s real active accounts by name.',
         aliases: ['start session', 'new session', 'open a session', 'start a session'],
         requiredFields: ['city', 'timeframe', 'instrument'],
@@ -1324,6 +1332,24 @@ export function mountCharacterApp(character) {
     // rule is satisfied."
     if (window.TradeJournalAIActionRegistry) {
       var ACCOUNT_FIELDS = (window.TradeJournalAccountsTypes && window.TradeJournalAccountsTypes.manualAccountPaths) || [];
+      // Voice/Chat form-interview workflow upgrade, defect 5: the field's own real setter
+      // (accountsView.jsx's account-manual-form registration) already switches the visible UI the
+      // instant it receives literal 'personal'/'prop' - the confirmed gap was upstream of that,
+      // extraction not reliably normalizing "personal", "private", or a Persian/Arabic/Spanish
+      // equivalent into that exact canonical value first. Deterministic, not a prompt-only fix
+      // (fieldValueInstruction already asks the model for the plain canonical English form, but
+      // this is the real, enforced boundary - a value this function does not recognize is left
+      // missing rather than applied, matching every other normalizeField()'s own "reject, never
+      // guess" contract).
+      var ACCOUNT_KIND_PERSONAL_ALIASES = ['personal', 'private', 'شخصی', 'شخصی‌ام', 'خصوصی', 'شخصي', 'خاص', 'حساب شخصي', 'personal account', 'cuenta personal', 'privada'];
+      var ACCOUNT_KIND_PROP_ALIASES = ['prop', 'prop firm', 'funded', 'firm', 'پراپ', 'شرکتی', 'حساب پراپ', 'ممول', 'شركة تمويل', 'financiada', 'cuenta de fondeo'];
+      function normalizeAccountKind(value) {
+        var text = String(value == null ? '' : value).trim().toLowerCase();
+        if (!text) return null;
+        if (ACCOUNT_KIND_PERSONAL_ALIASES.some((alias) => text === alias || text.indexOf(alias) > -1)) return 'personal';
+        if (ACCOUNT_KIND_PROP_ALIASES.some((alias) => text === alias || text.indexOf(alias) > -1)) return 'prop';
+        return null;
+      }
       // Slice U1-a (execution brief section 9 item 1): same normalizeGateField() pattern already
       // established for every other confirm/send/publish gate (see trade.cancel's own copy) -
       // rejects an explicit false so it is never counted as "known", never applied to the real
@@ -1332,6 +1358,18 @@ export function mountCharacterApp(character) {
         return function (path, value) {
           if (path === gateFieldName && (value === false || value === 'false')) return null;
           return value;
+        };
+      }
+      // Voice/Chat form-interview workflow upgrade, defect 5: account.create/account.edit share
+      // this normalizer - the existing gate rejection above, plus deterministic `kind` aliasing so
+      // "personal"/"private"/a Persian/Arabic/Spanish equivalent reliably becomes the canonical
+      // value account-manual-form's own real setter already switches the visible Prop/Personal
+      // card on (accountsView.jsx).
+      function normalizeAccountField(gateFieldName) {
+        var gate = normalizeGateField(gateFieldName);
+        return function (path, value) {
+          if (path === 'kind') return normalizeAccountKind(value);
+          return gate(path, value);
         };
       }
       window.TradeJournalAIActionRegistry.registerAction({
@@ -1350,7 +1388,7 @@ export function mountCharacterApp(character) {
         description: 'Open the real "create account" form for a new prop-firm or personal trading Account (this is the Accounts ledger - distinct from the user\'s own profile, see navigate.to). Every account here is manual - NAVRYA has no live broker/prop-firm connection, so this only opens the visible form and fills the fields you are given; save must ONLY be set to true once the user has explicitly and separately asked to actually save/create the account now (e.g. "save it", "create the account") - never merely because every field happens to be filled, and never inferred from the original create request alone.',
         aliases: ['create an account', 'new account', 'add an account', 'create a prop account', 'add a personal account', 'set up a trading account'],
         requiredFields: ['save'], optionalFields: ACCOUNT_FIELDS,
-        gateField: 'save', normalizeField: normalizeGateField('save'),
+        gateField: 'save', normalizeField: normalizeAccountField('save'),
         available: () => true,
         open: () => new Promise((resolve) => {
           if (store.getState().activeId !== 'accounts') store.setActiveId('accounts');
@@ -1387,7 +1425,7 @@ export function mountCharacterApp(character) {
         description: 'Open an EXISTING trading Account\'s rules for editing, by its firm/label name. accountName identifies which existing Account to open - it is never a rename. Only select this once the user has actually named which existing Account they mean; if the name is missing, unmatched, or ambiguous, ask which Account first instead of guessing. save must ONLY be set to true once the user has explicitly and separately asked to actually save the changes now - never merely because every field happens to be filled.',
         aliases: ['edit an account', 'edit the account', 'update account rules', 'change the account rules', 'open the account settings'],
         requiredFields: ['accountName', 'save'], optionalFields: ACCOUNT_FIELDS,
-        gateField: 'save', normalizeField: normalizeGateField('save'),
+        gateField: 'save', normalizeField: normalizeAccountField('save'),
         available: () => true,
         open: (context, initialFields) => new Promise((resolve) => {
           var nameField = (initialFields || []).filter((f) => f && f.path === 'accountName')[0];
@@ -1591,31 +1629,136 @@ export function mountCharacterApp(character) {
         resultContext: () => {}
       });
 
-      // AI-access follow-up: the user's own AI Analysis feature (sessionAiAnalysisModal.jsx ->
-      // POST /api/sessions/analyze) had no Action Registry action at all - reachable only via 3
-      // manual button clicks inside Live Session. No required/optional fields at all (unlike
-      // chartEntry/movementEntry above) - this always targets the session's own latest chart
-      // entry with an image, the exact same default sessionAiAnalysisModal.jsx already falls back
-      // to when opened with no pinned entry. entityAlreadyPersisted:true because the result modal
-      // stays open showing the analysis until explicitly closed, same reasoning as chartEntry.create.
+      // Voice/Chat form-interview workflow upgrade, defect 4: the user's own AI Analysis feature
+      // (sessionAiAnalysisModal.jsx -> POST /api/sessions/analyze) previously bundled open+run into
+      // one immediate autoRun call, bypassing the real request-collection form entirely (user
+      // view/model/analysis style/adherence). Now mirrors account.create's own open/interview/gate
+      // shape: open() only navigates and opens the real, non-autoRun form
+      // ('session-ai-analysis-form', sessionAiAnalysisModal.jsx's own new registration); every
+      // visible field there is optional and live-applies through the interview exactly like any
+      // other process. `explicitSubmitOnly` + `autoFinishWhenInterviewExhausted` together mean the
+      // real analysis call (startAnalysis(), reached only via this action's own submit() below)
+      // fires automatically once every visible setup field has an answer (chat-dock-core.js's own
+      // interview-exhaustion check), or immediately on an explicit "run it"/"go ahead"-shaped
+      // finish phrase (ai-workflow-engine.js's interpretFinishText()) - never merely because the
+      // action was requested, and never a second analysis request path.
       window.TradeJournalAIActionRegistry.registerAction({
-        id: 'session.analysis.run', domain: 'sessions', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Run the real AI Analysis on the current active trading Session\'s most recent chart entry - the same operation the in-app "AI analysis" button performs (a market thesis, key observations, and scenario watch items). This is a real analysis call and may take several seconds. Only available while a Session is actively open with at least one chart entry that has an image attached.',
+        id: 'session.analysis.run', domain: 'sessions', riskLevel: 'low',
+        explicitSubmitOnly: true, autoFinishWhenInterviewExhausted: true,
+        description: 'Open the real AI Analysis request form for the current active trading Session\'s most recent chart entry with an image - the same "AI analysis" button already opens. Interview the user through its real fields (your own view/thesis note, AI model, analysis style/profile, adherence) in their own displayed order; every field is optional and may be explicitly skipped. This is a real analysis call once it actually runs and may take several seconds - never claim a result before it returns. Only available while a Session is actively open with at least one chart entry that already has an image attached; if none exists, explain that and offer the real chart-add workflow instead of asking the user to upload elsewhere.',
         aliases: ['run ai analysis', 'analyze the chart', 'analyze this session', 'analyze the market', 'what does the ai think'],
-        requiredFields: [], optionalFields: [],
+        requiredFields: [], optionalFields: ['userView', 'model', 'profileId', 'adherenceIndex'],
         available: (context) => {
           var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
           var session = sessionId && window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
           return !!(session && (session.entries || []).some((e) => e.type === 'chart' && (e.hasImage || e.preview || e.imageBlobId)));
         },
-        open: () => { if (store.getState().activeId !== 'sessions') store.setActiveId('sessions'); },
-        submit: () => new Promise((resolve) => {
+        open: () => new Promise((resolve) => {
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
           pollFor(
             () => window.TradeJournalNavryaLiveSessionHub,
-            (hub) => { hub.runAiAnalysis().then(resolve).catch(() => resolve(null)); },
+            (hub) => {
+              var opened = hub.openAiAnalysis();
+              if (!opened) { resolve(null); return; } // no chart image to analyze (unexpected - available() already checked)
+              var registry = window.TradeJournalAIProcessRegistry;
+              pollFor(
+                () => registry && registry.query('session-ai-analysis-form').open,
+                () => resolve({ processId: 'session-ai-analysis-form' }),
+                () => resolve(null)
+              );
+            },
             () => resolve(null) // the Live Session workspace never mounted (unexpected)
           );
         }),
+        submit: () => window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('session-ai-analysis-form'),
+        resultContext: () => {}
+      });
+
+      // Voice/Chat form-interview workflow upgrade: session.analysis.read's own narration text
+      // assembly - deterministic assembly from the REAL normalized analysis result fields only
+      // (never a model call), in the exact order SessionAnalysisCard itself renders them, reusing
+      // its own real labels (analysisCardTr, imported above) - never invented terminology, never a
+      // fabricated chart fact. Includes the card's own progressive-disclosure section (otherBlocks/
+      // unknowns/whatWouldChangeView/confidence) - visually collapsed by default, but still part of
+      // the real analysis a listening user explicitly asked to hear top to bottom.
+      function analysisBlockText(block, lang) {
+        var parts = [];
+        if (block.title) parts.push(block.title);
+        if (block.summary) parts.push(block.summary);
+        if (Array.isArray(block.items) && block.items.length) parts.push(block.items.join('. '));
+        if (block.type === 'market_tension' && block.tensionA && block.tensionB) parts.push(block.tensionA + ' ' + analysisCardTr(lang, 'tensionVs') + ' ' + block.tensionB);
+        if (block.type === 'key_zones' && Array.isArray(block.zones)) {
+          block.zones.forEach((zone) => { if (zone && zone.label) parts.push((zone.range ? zone.range + ': ' : '') + zone.label + (zone.whyItMatters ? ' - ' + zone.whyItMatters : '')); });
+        }
+        return parts.join('. ');
+      }
+      function analysisSectionTexts(result, lang) {
+        var sections = [];
+        if (result.thesis && result.thesis.headline) sections.push(analysisCardTr(lang, 'thesisTitle') + ': ' + result.thesis.headline + (result.thesis.summary ? ' ' + result.thesis.summary : ''));
+        (result.stateMetrics || []).forEach((m) => { if (m && m.label != null && m.value != null) sections.push(m.label + ': ' + m.value); });
+        var blocks = result.blocks || [];
+        var highBlocks = blocks.filter((b) => b.importance === 'high');
+        var otherBlocks = blocks.filter((b) => b.importance !== 'high');
+        highBlocks.forEach((b) => sections.push(analysisBlockText(b, lang)));
+        (result.scenarioEvaluations || []).forEach((e) => sections.push(analysisCardTr(lang, 'status_' + e.status) + (e.newProbability != null ? ' (' + e.newProbability + '%)' : '')));
+        (result.scenarios || []).forEach((s) => {
+          var roleLabel = s.role === 'alternative' ? analysisCardTr(lang, 'alternativeScenario') : s.role === 'tail_risk' ? analysisCardTr(lang, 'tailRiskScenario') : analysisCardTr(lang, 'primaryScenario');
+          sections.push(roleLabel + (s.probability != null ? ' (' + s.probability + '%)' : '') + ': ' + s.title + (s.summary ? '. ' + s.summary : ''));
+        });
+        if (result.watchItems && result.watchItems.length) sections.push(analysisCardTr(lang, 'watchingTitle') + ': ' + result.watchItems.join(', '));
+        otherBlocks.forEach((b) => sections.push(analysisBlockText(b, lang)));
+        if (result.unknowns && result.unknowns.length) sections.push(analysisCardTr(lang, 'unknownsTitle') + ': ' + result.unknowns.join('. '));
+        if (result.whatWouldChangeView) sections.push(analysisCardTr(lang, 'changeViewTitle') + ': ' + result.whatWouldChangeView);
+        if (result.confidence) sections.push(analysisCardTr(lang, 'confidenceTitle') + ': ' + result.confidence.level + (result.confidence.reasons && result.confidence.reasons.length ? ' - ' + result.confidence.reasons.join(', ') : ''));
+        return sections.filter(Boolean);
+      }
+      // Bounded sequential voice chunks (deliberately NOT the normal short voiceReply limit) -
+      // groups adjacent real sections up to a natural per-chunk bound, never splitting a section
+      // itself, so every chunk chatDockView.jsx's own PlaybackController.enqueue() plays is one
+      // complete, coherent thought.
+      var ANALYSIS_VOICE_CHUNK_MAX_CHARS = 600;
+      function chunkAnalysisSections(sections) {
+        var chunks = [], current = '';
+        sections.forEach((section) => {
+          if (current && (current.length + section.length + 1) > ANALYSIS_VOICE_CHUNK_MAX_CHARS) { chunks.push(current); current = ''; }
+          current = current ? current + ' ' + section : section;
+        });
+        if (current) chunks.push(current);
+        return chunks;
+      }
+
+      // Read-only: reads the EXISTING, already-persisted analysis - never regenerates, never
+      // charges for a new analysis, never mutates anything (entityAlreadyPersisted, zero fields).
+      // Q&A about an in-context analysis result stays the model's own normal job (the persisted
+      // result is already part of this app's real session/context data any ordinary question can
+      // reference) - this action's own job is only the explicit "read it to me" narration itself.
+      window.TradeJournalAIActionRegistry.registerAction({
+        id: 'session.analysis.read', domain: 'sessions', riskLevel: 'low', entityAlreadyPersisted: true,
+        description: 'Read the EXISTING, already-persisted AI Analysis for the current Session\'s most recently analyzed chart entry, from top to bottom - including content normally behind the card\'s own progressive-disclosure section. This NEVER regenerates or charges for a new analysis; only available when a real, already-completed analysis result exists for this Session.',
+        aliases: ['read my ai analysis', 'read the analysis', 'read me the analysis', 'what did the analysis say'],
+        requiredFields: [], optionalFields: [],
+        available: (context) => {
+          var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
+          var session = sessionId && window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
+          var entries = session ? (session.entries || []).slice().reverse() : [];
+          return entries.some((e) => e.type === 'chart' && e.aiAnalysisResult);
+        },
+        open: (context) => {
+          if (store.getState().activeId !== 'sessions') store.setActiveId('sessions');
+          var sessionId = context && context.activeEntities && context.activeEntities.sessionId;
+          var session = sessionId && window.TradeJournalWorkspace ? window.TradeJournalWorkspace.find(sessionId) : null;
+          var entries = session ? (session.entries || []).slice().reverse() : [];
+          var target = entries.find((e) => e.type === 'chart' && e.aiAnalysisResult);
+          if (!target) return;
+          var lang = (window.TradeJournalAII18n && window.TradeJournalAII18n.language()) || 'en';
+          var chunks = chunkAnalysisSections(analysisSectionTexts(target.aiAnalysisResult, lang));
+          if (chunks.length) {
+            window.dispatchEvent(new CustomEvent('tradejournal:ai-analysis-narrate', {
+              detail: { chunks: chunks, headline: target.aiAnalysisResult.thesis && target.aiAnalysisResult.thesis.headline }
+            }));
+          }
+        },
+        submit: () => undefined,
         resultContext: () => {}
       });
 
@@ -2898,19 +3041,40 @@ export function mountCharacterApp(character) {
       // still flows through the SAME, already-privacy-scoped 'mh-intake' allowlist
       // (mental-health.types.js's intakePaths) a human-opened intake already uses - no new data
       // exposure, no change to ai-user-memory.js's own minimized getRelevantPsychologyContext().
+      // Voice/Chat form-interview workflow upgrade: generic scenario-choice normalizer, mirroring
+      // normalizeIntakeChoice() above but keyed off SCENARIOS's own real per-scenario choice list
+      // (mentalHealthIntakeModal.jsx) instead of one of the flat INTAKE_ENUM_OPTIONS tables - each
+      // scenario has its own distinct option set and its own i18n prefix
+      // ('mhScenarioChoice_<id>_').
+      function normalizeScenarioChoice(scenarioId, value) {
+        var scenario = SCENARIOS.find((s) => s.id === scenarioId);
+        if (!scenario) return null;
+        return normalizeIntakeChoice(scenario.choices, 'mhScenarioChoice_' + scenarioId + '_', value);
+      }
+
       window.TradeJournalAIActionRegistry.registerAction({
-        id: 'psychology.intake.start', domain: 'psychology', riskLevel: 'low', entityAlreadyPersisted: true,
-        description: 'Open the real Psychology Intake wizard so the user can begin/resume it. This action ONLY navigates there - never fabricate, infer, or pre-fill a single answer on this turn; every intake field is filled later, only from what the user explicitly states themselves, turn by turn, exactly like typing it into the real form would be.',
+        // Voice/Chat form-interview workflow upgrade: `seal` replaces the old entityAlreadyPersisted
+        // shape (which had submit() as a permanent no-op) with a real, explicit final-action gate -
+        // the exact same normalizeGateField()/requiredFields/gateField pattern already established
+        // for account.create's `save` above. Never auto-fires: `seal` only becomes true from an
+        // explicit, separately-confirmed "seal my profile"/"finish the intake" request (F37's own
+        // deterministic gate-confirmation fast path in chat-dock-core.js), never merely because
+        // every step happens to be answered - the real Seal button's own always-available semantics
+        // are preserved (mentalHealthIntakeModal.jsx's finish() can seal at any point, matching Skip).
+        id: 'psychology.intake.start', domain: 'psychology', riskLevel: 'low',
+        description: 'Open the real Psychology Intake wizard so the user can begin/resume it, then interview through Demographics, Financial context, Trading history, Extremes, Motivation, Transparency and Scenarios A-E in the wizard\'s own real order. This action ONLY navigates there on the opening turn - never fabricate, infer, or pre-fill a single answer; every field is filled later, only from what the user explicitly states, turn by turn. seal must ONLY be set to true once the user has explicitly and separately asked to seal/finish the intake now - never merely because every step happens to be answered.',
         aliases: ['start my intake', 'start the psychology intake', 'begin my intake', 'open psychology intake', 'take the intake'],
-        requiredFields: [], optionalFields: [],
+        requiredFields: ['seal'], optionalFields: [],
+        gateField: 'seal',
         available: () => true,
         // 2026-08-28 bug report fix: maps a spoken/localized answer onto the real internal enum
         // key every intake TileGrid actually compares against - see normalizeIntakeChoice()'s own
         // comment above. A path with no case here (age/capitalAllocationPercent/yearsTrading,
-        // all numeric; the free-text-safe motivation/lossReaction choices already covered) passes
-        // through unchanged - mental-health-store.js's own setPath() already Number()-coerces the
-        // numeric ones.
+        // sliderValue, all numeric; the free-text-safe motivation/lossReaction/scenario freeText
+        // choices already covered) passes through unchanged - mental-health-store.js's own
+        // setPath() already Number()-coerces the numeric ones.
         normalizeField: (path, value) => {
+          if (path === 'seal') return normalizeGateField('seal')(path, value);
           if (path === 'intake.demographics.gender') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.GENDERS, 'mhGender_', value);
           if (path === 'intake.demographics.maritalStatus') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.MARITAL_STATUSES, 'mhMaritalStatus_', value);
           if (path === 'intake.demographics.primaryOccupation') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.OCCUPATION_TYPES, 'mhOccupationType_', value);
@@ -2919,6 +3083,14 @@ export function mountCharacterApp(character) {
           if (path === 'intake.firstBigLossReaction') return normalizeIntakeChoice(INTAKE_ENUM_OPTIONS.LOSS_REACTIONS, 'mhLossReaction_', value);
           if (path === 'intake.tradingHistory.marketsTraded') return normalizeIntakeMarket(value);
           if (INTAKE_BOOLEAN_PATHS[path]) return normalizeIntakeBoolean(value);
+          if (path.indexOf('psychology.scenario.') === 0) {
+            var scenarioRest = path.slice('psychology.scenario.'.length);
+            var scenarioDot = scenarioRest.indexOf('.');
+            if (scenarioDot === -1) return value;
+            var scenarioId = scenarioRest.slice(0, scenarioDot), scenarioField = scenarioRest.slice(scenarioDot + 1);
+            if (scenarioField === 'choice') return normalizeScenarioChoice(scenarioId, value);
+            return value; // sliderValue (numeric, setPath() coerces) / freeText (free text) pass through
+          }
           return value;
         },
         open: () => new Promise((resolve) => {
@@ -2931,7 +3103,10 @@ export function mountCharacterApp(character) {
             () => resolve(null) // the real intake modal never actually mounted/registered (unexpected)
           );
         }),
-        submit: () => undefined,
+        submit: (known) => {
+          if (known.seal !== true && known.seal !== 'true') return undefined;
+          return window.TradeJournalAIProcessRegistry && window.TradeJournalAIProcessRegistry.submit('mh-intake');
+        },
         resultContext: () => {}
       });
 

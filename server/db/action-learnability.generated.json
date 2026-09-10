@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-09-08T18:11:42.022Z",
+  "generatedAt": "2026-09-10T15:03:50.698Z",
   "version": 1,
-  "contentHash": "5b2e62e6dedb648d",
-  "actionCount": 61,
+  "contentHash": "0b4f78f0eaff0483",
+  "actionCount": 62,
   "actions": {
     "session.create": {
       "domain": "sessions",
@@ -200,6 +200,18 @@
       ]
     },
     "session.analysis.run": {
+      "domain": "sessions",
+      "riskLevel": "low",
+      "gateField": null,
+      "learnability": "learnable_workflow",
+      "reusableFields": [
+        "adherenceIndex",
+        "model",
+        "profileId",
+        "userView"
+      ]
+    },
+    "session.analysis.read": {
       "domain": "sessions",
       "riskLevel": "low",
       "gateField": null,
@@ -514,8 +526,8 @@
     "psychology.intake.start": {
       "domain": "psychology",
       "riskLevel": "low",
-      "gateField": null,
-      "learnability": "learnable_workflow",
+      "gateField": "seal",
+      "learnability": "confirmation_required",
       "reusableFields": []
     },
     "settings.trading.update": {
