@@ -20,6 +20,26 @@ const root = process.cwd();
 const shared = (...parts) => path.join(root, 'public', 'pages', 'shared', ...parts);
 const source = file => readFile(shared(file), 'utf8');
 
+// Voice/Chat form-interview workflow upgrade: a minimal in-memory stand-in for
+// window.TradeJournalServerReplica - satisfies exactly the narrow contract
+// ai-companion-profile.js's own bottom IIFE calls (registerDocumentDomain, domain(name).get/
+// set/hydrate), so its real load()/save() actually persist across calls within one test, the same
+// way the real server-replica.js would, without pulling in that module's own auth/fetch/DOM
+// plumbing this file has no other reason to stand up. tests/companion-profile-sync.test.mjs is the
+// place that tests server-replica.js itself; this only needs a working document store underneath
+// the module actually under test here.
+function fakeServerReplica() {
+  const docs = {};
+  return {
+    registerDocumentDomain: (name) => { if (!(name in docs)) docs[name] = null; },
+    domain: (name) => ({
+      get: () => docs[name],
+      set: (value) => { docs[name] = value; return Promise.resolve(value); },
+      hydrate: () => Promise.resolve()
+    })
+  };
+}
+
 // Values that transited through the vm-sandboxed ai-workflow-engine.js (workflow.known/missing,
 // the `known` object handed to a fake action's submit()) carry that realm's own Object.prototype,
 // so assert.deepEqual (node:assert/strict's deepStrictEqual, prototype-sensitive) reports "same
@@ -55,7 +75,15 @@ async function coreSandbox(overrides) {
     TradeJournalWorkspace: overrides.workspace,
     TradeJournalAIUsage: overrides.aiUsage || { record() {} },
     TradeJournalAiChatHistoryStore: overrides.historyStore,
-    TradeJournalNavryaStore: overrides.navryaStore
+    TradeJournalNavryaStore: overrides.navryaStore,
+    // Voice/Chat form-interview workflow upgrade: optional, defaults to undefined (every
+    // pre-existing test below proves the exact same "no companion profile present -> direct mode,
+    // no formWriteConfirmation surprises" fallback every other optional global here already gets).
+    TradeJournalAICompanionProfile: overrides.companionProfile,
+    // Set BEFORE the files loop below runs ai-companion-profile.js, so that module's own bottom
+    // IIFE (which checks window.TradeJournalServerReplica at load time) registers against this
+    // fake and its load()/save() actually persist, exactly like a real page.
+    TradeJournalServerReplica: overrides.withCompanionProfile ? fakeServerReplica() : undefined
   });
   // Slice U1-b: loaded unconditionally, same as ai-i18n.js/ai-settings-store.js - a pure,
   // dependency-free classifier that must never interfere with any existing test's ordinary
@@ -85,6 +113,16 @@ async function coreSandbox(overrides) {
   // real shared matching engine ai-conversation-router.js now delegates to (Gate 2) - always
   // loaded alongside it, matching the real script-tag order on every character page.
   if (overrides.withConversationRouter) files.push('ai-surface-context.js', 'ai-conversation-matcher.js', 'ai-conversation-router.js');
+  // Voice/Chat form-interview workflow upgrade: the REAL companion-profile module (its own
+  // deterministic interpretFormWriteConfirmationText() classifier included) rather than a hand
+  // stub, for a test that needs to prove the actual phrase recognition, not a fake stand-in for
+  // it. Loaded after the initial Object.assign below sets TradeJournalAICompanionProfile from
+  // overrides.companionProfile (possibly undefined) - this real module's own IIFE overwrites that
+  // with the real thing, exactly matching real page load order (a stub and the real module are
+  // mutually exclusive; withCompanionProfile always wins when both are set). Safe without
+  // TradeJournalServerReplica (feature-detected, matches every real page that loads it after
+  // server-replica.js) - load()/save() fall back to an in-memory default, never throw.
+  if (overrides.withCompanionProfile) files.push('ai-companion-profile.js');
   for (const file of files) {
     vm.runInNewContext(await source(file), sandbox, { filename: file });
   }
@@ -1478,4 +1516,263 @@ test('an ordinary business message never resolves as a dock control - only the d
   });
   const result = await window.TradeJournalChatDockCore.sendChat({ text: 'what is my account history for this trade', therapistMode: false, transcript: [] });
   assert.notEqual(result.kind, 'dockControl');
+});
+
+// ============================================================================
+// Voice/Chat form-interview workflow upgrade
+// ============================================================================
+
+function registerFakeInterviewAction(window, spies, actionOverrides) {
+  let processOpen = false;
+  window.TradeJournalAIProcessRegistry.register('session-create', {
+    allowlist: ['city', 'timeframe'],
+    isOpen: () => processOpen,
+    applyValue: (path, value) => spies.applied.push([path, value]),
+    interview: {
+      fields: [
+        { path: 'city', order: 1, label: 'City', type: 'choice', options: [{ value: 'New York', label: 'New York' }], role: 'editable' },
+        { path: 'timeframe', order: 2, label: 'Timeframe', type: 'choice', options: [{ value: '5m', label: '5m' }], role: 'editable' }
+      ]
+    }
+  });
+  window.TradeJournalAIActionRegistry.registerAction(Object.assign({
+    id: 'session.create', requiredFields: ['city', 'timeframe'], optionalFields: [],
+    open: () => { spies.opened = (spies.opened || 0) + 1; processOpen = true; },
+    submit: async (known) => { spies.submitted = known; return { id: 'session-1' }; },
+    resultContext: (result) => { spies.resultContext = result; }
+  }, actionOverrides));
+  return { open: () => { processOpen = true; }, close: () => { processOpen = false; } };
+}
+
+test('formWriteConfirmation defaults to \'direct\' on every request when no companion profile is present - existing behavior for every pre-existing page is unaffected', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => { fetchCall = { body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  await window.TradeJournalChatDockCore.sendChat({ text: 'hello', therapistMode: false, transcript: [] });
+  assert.equal(fetchCall.body.formWriteConfirmation, 'direct');
+});
+
+test('formWriteConfirmation is threaded from the real companion profile when the user has opted into ask_each', async () => {
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    companionProfile: { formWriteConfirmation: () => 'ask_each' },
+    fetch: async (url, options) => { fetchCall = { body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) }; }
+  });
+  await window.TradeJournalChatDockCore.sendChat({ text: 'hello', therapistMode: false, transcript: [] });
+  assert.equal(fetchCall.body.formWriteConfirmation, 'ask_each');
+});
+
+test('activeProcess.nextQuestion names the first unanswered VISIBLE interview field, in the real declared display order - never a second, guessed order', async () => {
+  const spies = { applied: [] };
+  let fetchCall = null;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (!body.activeProcess) return { ok: true, json: async () => ({ reply: 'Starting your session', action: { id: 'session.create', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      fetchCall = { body };
+      return { ok: true, json: async () => ({ reply: 'What city?', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  registerFakeInterviewAction(window, spies);
+  await window.TradeJournalChatDockCore.sendChat({ text: 'start a session', therapistMode: false, transcript: [] });
+  await window.TradeJournalChatDockCore.sendChat({ text: 'let\'s continue', therapistMode: false, transcript: [] });
+  assert.ok(fetchCall.body.activeProcess.nextQuestion, 'a not-yet-answered visible field must be offered as the deterministic next question');
+  assert.equal(fetchCall.body.activeProcess.nextQuestion.path, 'city', 'city is order:1, timeframe is order:2 - city must be asked first');
+  assert.equal(fetchCall.body.activeProcess.nextQuestion.label, 'City');
+});
+
+test('ask_each mode: an ordinary field arrives staged (not applied), and a later deterministic "yes" turn applies it with zero additional AI calls', async () => {
+  const spies = { applied: [] };
+  let fetchCalls = 0;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    companionProfile: { formWriteConfirmation: () => 'ask_each' },
+    fetch: async (url, options) => {
+      fetchCalls += 1;
+      return { ok: true, json: async () => ({ reply: 'Starting your session - shall I set the city to New York?', action: { id: 'session.create', fields: [{ path: 'city', value: 'New York' }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  registerFakeInterviewAction(window, spies);
+  const first = await window.TradeJournalChatDockCore.sendChat({ text: 'start a session in New York', therapistMode: false, transcript: [] });
+  assert.equal(first.kind, 'workflow');
+  assert.deepEqual(clone(first.workflow.known), {}, 'city must NOT be counted as known until explicitly confirmed');
+  assert.deepEqual(spies.applied, [], 'the real setter must never be called before confirmation');
+  const pending = window.TradeJournalAIWorkflowEngine.pendingFieldWrite();
+  assert.ok(pending);
+  assert.equal(pending.path, 'city');
+
+  const second = await window.TradeJournalChatDockCore.sendChat({ text: 'yes', therapistMode: false, transcript: [] });
+  assert.equal(fetchCalls, 1, 'confirming a pending field write must resolve deterministically, with zero additional AI calls');
+  assert.equal(second.reply, 'Okay, entered.');
+  assert.deepEqual(spies.applied, [['city', 'New York']], 'the real setter is called exactly once, only after explicit confirmation');
+  assert.equal(window.TradeJournalAIWorkflowEngine.pendingFieldWrite(), null);
+});
+
+test('ask_each mode: an unambiguous "no" discards the pending candidate - the field stays unanswered, never applied', async () => {
+  const spies = { applied: [] };
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    companionProfile: { formWriteConfirmation: () => 'ask_each' },
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'Shall I set the city to New York?', action: { id: 'session.create', fields: [{ path: 'city', value: 'New York' }] }, provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+  registerFakeInterviewAction(window, spies);
+  await window.TradeJournalChatDockCore.sendChat({ text: 'start a session in New York', therapistMode: false, transcript: [] });
+  const rejected = await window.TradeJournalChatDockCore.sendChat({ text: 'no', therapistMode: false, transcript: [] });
+  assert.equal(rejected.reply, 'Okay, I didn\'t enter it.');
+  assert.deepEqual(spies.applied, []);
+  assert.equal(window.TradeJournalAIWorkflowEngine.pendingFieldWrite(), null);
+});
+
+test('the field-write confirmation preference toggle itself is recognized deterministically (zero AI calls) and persists through the real companion profile', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true, withCompanionProfile: true,
+    fetch: async () => { throw new Error('must not call the model for a deterministic preference toggle'); }
+  });
+  assert.equal(window.TradeJournalAICompanionProfile.formWriteConfirmation(), 'direct', 'default, before the toggle');
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'from now on ask me before entering every value', therapistMode: false, transcript: [] });
+  assert.equal(window.TradeJournalAICompanionProfile.formWriteConfirmation(), 'ask_each', 'the real preference document must actually be persisted, not just echoed back in the reply');
+  assert.equal(result.reply, "Okay, I'll ask you before entering every value from now on.");
+});
+
+test('the field-write confirmation preference disable phrase is recognized in Persian too, and does not require an active workflow', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true, withCompanionProfile: true,
+    fetch: async () => { throw new Error('must not call the model for a deterministic preference toggle'); }
+  });
+  window.TradeJournalAICompanionProfile.setFormWriteConfirmation('ask_each');
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'دوباره مستقیم وارد کن', therapistMode: false, transcript: [] });
+  assert.equal(window.TradeJournalAICompanionProfile.formWriteConfirmation(), 'direct');
+  assert.equal(result.reply, "Okay, I'll enter values directly again.");
+});
+
+test('an ordinary message never mistakenly toggles the field-write confirmation preference - only the deliberately narrow, anchored phrases do', async () => {
+  const window = await coreSandbox({
+    withWorkflowEngine: true, withCompanionProfile: true,
+    fetch: async () => ({ ok: true, json: async () => ({ reply: 'ok', suggestions: [], provider: 'openai', usage: { totalTokens: 1 } }) })
+  });
+  await window.TradeJournalChatDockCore.sendChat({ text: 'please ask my broker about my entry price', therapistMode: false, transcript: [] });
+  assert.equal(window.TradeJournalAICompanionProfile.formWriteConfirmation(), 'direct', 'an ordinary sentence that happens to contain "ask" must never flip the real preference');
+});
+
+function registerQuotaGatedAction(window, spies, resourceType) {
+  let processOpen = false;
+  window.TradeJournalAIProcessRegistry.register('quota-form', { allowlist: ['name'], isOpen: () => processOpen, applyValue: () => {} });
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'quota.create', domain: 'test', riskLevel: 'low', quotaResourceType: resourceType,
+    requiredFields: ['name'], optionalFields: [], available: () => true,
+    open: () => { spies.opened = (spies.opened || 0) + 1; processOpen = true; },
+    submit: async (known) => { spies.submitted = known; return { id: 'x' }; },
+    resultContext: () => {}
+  });
+}
+
+test('subscription-limit preflight: a quota-gated action blocked at the real plan limit never opens the real UI, and states the real plan/used/limit - never a hardcoded number', async () => {
+  const spies = {};
+  const fetchCalls = [];
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    workspace: { list: () => [{ id: 's1' }, { id: 's2' }] }, // 2 real sessions already exist
+    fetch: async (url, options) => {
+      fetchCalls.push(url);
+      if (url === '/api/sync/subscriptions') return { ok: true, json: async () => ({ plan: 'free', subscription: null }) };
+      if (url === '/api/sync/subscriptions/catalog') return { ok: true, json: async () => ({ plans: { free: { limits: { sessions: 2 } } } }) };
+      if (url === '/api/ai/chat') return { ok: true, json: async () => ({ reply: 'Starting a session', action: { id: 'quota.create', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      throw new Error('unexpected fetch: ' + url);
+    }
+  });
+  registerQuotaGatedAction(window, spies, 'sessions');
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'start a new session', therapistMode: false, transcript: [] });
+  assert.equal(spies.opened, undefined, 'the real UI must never open once the plan limit is confirmed reached');
+  assert.equal(result.kind, 'assistant');
+  assert.match(result.reply, /free/);
+  assert.match(result.reply, /2/, 'must state the real used/limit counts');
+  assert.ok(fetchCalls.includes('/api/sync/subscriptions') && fetchCalls.includes('/api/sync/subscriptions/catalog'));
+});
+
+test('subscription-limit preflight: under the real limit, the action opens completely normally', async () => {
+  const spies = {};
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    workspace: { list: () => [{ id: 's1' }] }, // 1 of 2 used
+    fetch: async (url) => {
+      if (url === '/api/sync/subscriptions') return { ok: true, json: async () => ({ plan: 'free', subscription: null }) };
+      if (url === '/api/sync/subscriptions/catalog') return { ok: true, json: async () => ({ plans: { free: { limits: { sessions: 2 } } } }) };
+      return { ok: true, json: async () => ({ reply: 'Starting a session', action: { id: 'quota.create', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  registerQuotaGatedAction(window, spies, 'sessions');
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'start a new session', therapistMode: false, transcript: [] });
+  assert.equal(spies.opened, 1);
+  assert.equal(result.kind, 'workflow');
+});
+
+test('subscription-limit preflight: an unlimited plan (limit null) never blocks, regardless of real usage', async () => {
+  const spies = {};
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    workspace: { list: () => Array.from({ length: 500 }, (_, i) => ({ id: 's' + i })) },
+    fetch: async (url) => {
+      if (url === '/api/sync/subscriptions') return { ok: true, json: async () => ({ plan: 'pro', subscription: {} }) };
+      if (url === '/api/sync/subscriptions/catalog') return { ok: true, json: async () => ({ plans: { pro: { limits: { sessions: null } } } }) };
+      return { ok: true, json: async () => ({ reply: 'Starting a session', action: { id: 'quota.create', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  registerQuotaGatedAction(window, spies, 'sessions');
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'start a new session', therapistMode: false, transcript: [] });
+  assert.equal(spies.opened, 1);
+  assert.equal(result.kind, 'workflow');
+});
+
+test('subscription-limit preflight fails open (never blocks a legitimate action) when the entitlement check itself cannot complete - the server remains the final authority on the real create call either way', async () => {
+  const spies = {};
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    workspace: { list: () => [{ id: 's1' }, { id: 's2' }] },
+    fetch: async (url) => {
+      if (url === '/api/sync/subscriptions' || url === '/api/sync/subscriptions/catalog') return { ok: false, status: 500 };
+      return { ok: true, json: async () => ({ reply: 'Starting a session', action: { id: 'quota.create', fields: [] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  registerQuotaGatedAction(window, spies, 'sessions');
+  const result = await window.TradeJournalChatDockCore.sendChat({ text: 'start a new session', therapistMode: false, transcript: [] });
+  assert.equal(spies.opened, 1, 'a failed preflight check must never itself block a real, legitimate request');
+  assert.equal(result.kind, 'workflow');
+});
+
+test('subscription-limit preflight: an action with no quotaResourceType declared is never checked at all - zero extra network calls', async () => {
+  const spies = { applied: [] };
+  const fetchCalls = [];
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => { fetchCalls.push(url); return { ok: true, json: async () => ({ reply: 'Starting your New York session - what timeframe?', action: { id: 'session.create', fields: [{ path: 'city', value: 'New York' }] }, provider: 'openai', usage: { totalTokens: 5 } }) }; }
+  });
+  registerFakeSessionCreate(window, spies);
+  await window.TradeJournalChatDockCore.sendChat({ text: 'Start a New York session', therapistMode: false, transcript: [] });
+  assert.deepEqual(fetchCalls, ['/api/ai/chat']);
+});
+
+test('autoFinishWhenInterviewExhausted: an explicitSubmitOnly action with real interview metadata submits automatically once every visible optional field has an answer - never before', async () => {
+  const spies = { applied: [] };
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      if (!body.activeProcess) return { ok: true, json: async () => ({ reply: 'Starting setup', action: { id: 'session.create', fields: [{ path: 'city', value: 'New York' }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+      return { ok: true, json: async () => ({ reply: 'Got it.', suggestions: [{ path: 'timeframe', value: '5m', mode: 'replace' }], provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  registerFakeInterviewAction(window, spies, { requiredFields: [], optionalFields: ['city', 'timeframe'], explicitSubmitOnly: true, autoFinishWhenInterviewExhausted: true });
+  const first = await window.TradeJournalChatDockCore.sendChat({ text: 'start a session', therapistMode: false, transcript: [] });
+  assert.equal(spies.submitted, undefined, 'must not submit while a visible interview field (timeframe) is still unanswered');
+  assert.equal(first.workflow.status, 'collecting');
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'continue', therapistMode: false, transcript: [] });
+  // spies.submitted is the `known` object handed to submit() from inside the vm sandbox realm -
+  // clone() strips its (irrelevant) sandbox-realm prototype before comparing, the same caveat this
+  // whole file's own header comment documents.
+  assert.deepEqual(clone(spies.submitted), { city: 'New York', timeframe: '5m' }, 'once every visible interview field has an answer, the real submit() must run automatically, exactly once');
 });

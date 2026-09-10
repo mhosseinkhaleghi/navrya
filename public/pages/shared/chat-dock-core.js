@@ -51,6 +51,50 @@
     return (allowlist || []).filter(function (path) { return !AI_INTERNAL_ONLY_FIELDS[path]; });
   }
 
+  // Subscription-limit behavior: the real client-side count for a quota-gated resource, never a
+  // second, invented counter - reuses whichever store already holds the real list. Returns null
+  // (never 0) for a resource type this pass has no real client-side counter for yet
+  // (analysisSymbols has no real "active symbol" UI feature in this app at all as of this pass -
+  // see docs/ai/form-interview-contract.md's own honestly-recorded gap) - null means the preflight
+  // below fails open rather than guessing a count.
+  function resourceUsageCount(resourceType) {
+    if (resourceType === 'sessions' && window.TradeJournalWorkspace && typeof window.TradeJournalWorkspace.list === 'function') {
+      try { return window.TradeJournalWorkspace.list().length; } catch (_) { return null; }
+    }
+    return null;
+  }
+
+  // Subscription-limit behavior: before Voice attempts to start a quota-gated action (character-
+  // app.jsx opts one in via `quotaResourceType`, e.g. session.create -> 'sessions'), ask the real
+  // entitlement/usage system whether the user's current plan can actually add one more - never a
+  // hardcoded 1/10 in a Voice string. Uses the existing, real GET /api/sync/subscriptions (current
+  // plan) and GET /api/sync/subscriptions/catalog (that plan's real limits, admin-editable, never
+  // duplicated client-side) endpoints - no new server route. Returns null whenever nothing should
+  // block: under the limit, unlimited (limit null/undefined), or the check itself could not be
+  // completed (network/parse failure, or no real client-side counter for this resource type) -
+  // this is a preflight convenience only, never the final authority; createWithQuota() server-side
+  // remains the real, authoritative gate on the actual create call either way (see the
+  // PLAN_LIMIT_REACHED handling in the calling action's own submit()/resultContext()). Returns
+  // { plan, limit, used } only when the user's plan genuinely cannot add one more right now.
+  async function planLimitPreflight(resourceType, signal) {
+    var used = resourceUsageCount(resourceType);
+    if (used === null) return null;
+    try {
+      var responses = await Promise.all([
+        fetch('/api/sync/subscriptions', { signal: signal }),
+        fetch('/api/sync/subscriptions/catalog', { signal: signal })
+      ]);
+      if (!responses[0].ok || !responses[1].ok) return null;
+      var sub = await responses[0].json();
+      var catalog = await responses[1].json();
+      var planEntry = catalog && catalog.plans && catalog.plans[sub.plan];
+      var limit = planEntry && planEntry.limits ? planEntry.limits[resourceType] : undefined;
+      if (limit === undefined || limit === null) return null; // unlimited on this plan, or an unrecognized resource type
+      if (used < limit) return null;
+      return { plan: sub.plan, limit: limit, used: used };
+    } catch (_) { return null; }
+  }
+
   // Production repair pass, section 12: a development-only diagnostic of exactly what the LAST
   // sendChat() turn's own action-discovery/workflow pipeline decided - sanitized metadata only
   // (real ids and field PATHS, never field values, never a message's own text, never an API key).
@@ -457,6 +501,55 @@
             } catch (_) { /* best-effort */ }
           }
         }
+      }
+    }
+
+    // Voice/Chat form-interview workflow upgrade: a field-write awaiting explicit user consent
+    // (ask_each preference only) must resolve deterministically and client-side, the SAME posture
+    // as F37's own gate-field resolution just below and for the identical reason - a model-supplied
+    // claim can never substitute for real consent, and this preference must never depend on
+    // provider uptime or a model's own free-form judgment. Reuses ai-proactive-engine.js's
+    // interpretConfirmationText() as the one shared consent classifier. A decision that is neither
+    // a genuine 'confirm' nor an explicit 'reject' (a correction, a new topic, anything else)
+    // discards the candidate and falls through to ordinary processing of this turn's own text -
+    // never leaves the user stuck answering a stale question, and never silently applies anything.
+    if (workflowEngine && typeof workflowEngine.pendingFieldWrite === 'function') {
+      var pendingWriteCandidate = workflowEngine.pendingFieldWrite();
+      if (pendingWriteCandidate && proactiveEngine && typeof proactiveEngine.interpretConfirmationText === 'function') {
+        var writeDecision = proactiveEngine.interpretConfirmationText(text);
+        if (writeDecision === 'confirm' || writeDecision === 'reject') {
+          var writeContext = contextEngine ? contextEngine.snapshot() : {};
+          var writeResolution = await workflowEngine.resolvePendingFieldWrite(writeDecision, writeContext);
+          setLastTurnDebug({ path: 'pending-field-write-resolved', field: pendingWriteCandidate.path, decision: writeDecision });
+          recordZeroNetworkLatency('FIELD_WRITE_CONFIRMATION', t0, { graceMs: 0 });
+          return {
+            kind: 'workflow', reply: i18n.t(writeResolution.applied ? 'aiFieldWriteConfirmed' : 'aiFieldWriteDiscarded'),
+            voiceReply: null, workflow: workflowEngine.current(),
+            activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+          };
+        }
+        workflowEngine.discardPendingFieldWrite();
+      }
+    }
+
+    // Voice/Chat form-interview workflow upgrade: the field-write confirmation preference toggle
+    // itself (en/fa/ar/es) - a real, persisted per-user setting (ai-companion-profile.js), never a
+    // one-turn session flag, so it must be recognized deterministically regardless of whether a
+    // form happens to be open right now. Checked before the pending-candidate/gate/slot fast paths
+    // below only in the sense that it is its own separate, narrow, anchored-phrase match (not a
+    // bare yes/no) - it cannot collide with a pending field-write confirmation, which was already
+    // handled and returned above on this same turn if one existed.
+    var companionProfileForPrefIntent = window.TradeJournalAICompanionProfile;
+    if (companionProfileForPrefIntent && typeof companionProfileForPrefIntent.interpretFormWriteConfirmationText === 'function') {
+      var writePrefIntent = companionProfileForPrefIntent.interpretFormWriteConfirmationText(text);
+      if (writePrefIntent === 'enable' || writePrefIntent === 'disable') {
+        companionProfileForPrefIntent.setFormWriteConfirmation(writePrefIntent === 'enable' ? 'ask_each' : 'direct');
+        setLastTurnDebug({ path: 'form-write-confirmation-preference', mode: writePrefIntent });
+        recordZeroNetworkLatency('FORM_WRITE_PREFERENCE', t0, {});
+        return {
+          kind: 'assistant', reply: i18n.t(writePrefIntent === 'enable' ? 'aiFormWriteConfirmationEnabled' : 'aiFormWriteConfirmationDisabled'),
+          voiceReply: null, suggestions: [], activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+        };
       }
     }
 
@@ -896,6 +989,40 @@
       language: i18n.language(), message: text, chatHistory: transcript.slice(-24),
       activeProcess: activeProcess ? { id: activeProcess.id, allowlist: modelFacingAllowlist(activeProcess.allowlist) } : null
     };
+    // Voice/Chat form-interview workflow upgrade: sent on every turn (not conditionally omitted
+    // like personaStyle below) - it governs how the CURRENT turn's own reply must be phrased
+    // (server/pattern-ai-server.mjs's preference-aware instruction) whenever a form is open. This
+    // is phrasing guidance only; the real enforcement is the deterministic client-side gate in
+    // ai-workflow-engine.js above - a model that ignores this instruction still cannot apply a
+    // field without the real gate's own consent, so this line is never itself a security control.
+    var companionProfileForRequest = window.TradeJournalAICompanionProfile;
+    requestBody.formWriteConfirmation = (companionProfileForRequest && typeof companionProfileForRequest.formWriteConfirmation === 'function' && companionProfileForRequest.formWriteConfirmation() === 'ask_each') ? 'ask_each' : 'direct';
+    // Voice/Chat form-interview workflow upgrade: the deterministic "what to ask next" contract -
+    // computed from the SAME canonical field order/labels the real form itself renders
+    // (ai-process-registry.js's visibleInterviewFields(), never a second, hand-maintained order or
+    // an LLM guess of visual order). Only the first VISIBLE field this process's own live state
+    // does not yet have a known answer for is offered; nothing is sent once every visible field is
+    // already answered (activeProcess.nextQuestion stays undefined - the model then has nothing
+    // left to ask about this form). `known` is the current AI-driven workflow's own tracked answers
+    // when one is actively driving this exact process; a process the user opened by hand with no AI
+    // workflow yet has no known answers to exclude, matching this app's existing "manual form
+    // adoption" precedent elsewhere.
+    if (activeProcess && registry && typeof registry.visibleInterviewFields === 'function') {
+      var interviewKnown = (currentWorkflow && currentWorkflow.processId === activeProcess.id) ? (currentWorkflow.known || {}) : {};
+      var visibleFields = registry.visibleInterviewFields(activeProcess.id);
+      var nextInterviewField = null;
+      for (var ivf = 0; ivf < visibleFields.length; ivf++) {
+        var candidateField = visibleFields[ivf];
+        var knownValue = interviewKnown[candidateField.path];
+        if (knownValue === undefined || knownValue === null || knownValue === '') { nextInterviewField = candidateField; break; }
+      }
+      if (nextInterviewField) {
+        requestBody.activeProcess.nextQuestion = {
+          path: nextInterviewField.path, label: nextInterviewField.label || null, help: nextInterviewField.help || null,
+          type: nextInterviewField.type || null, options: nextInterviewField.options || null, required: !!nextInterviewField.required
+        };
+      }
+    }
     if (availableActions) requestBody.availableActions = availableActions;
     if (source === 'voice') {
       requestBody.source = 'voice';
@@ -1017,6 +1144,24 @@
     var tookWorkflowPath = false;
     var proactiveFindings = [];
     if (workflowEngine && availableActions && payload.action && payload.action.id) {
+      // Subscription-limit behavior: a quota-gated action (declares quotaResourceType) is checked
+      // against the real entitlement/usage system BEFORE the real UI ever opens - never a silent
+      // local-only record, never a duplicate, never a false "created" claim. A blocked result never
+      // starts the workflow at all; the reply states the real plan/usage/limit and invites the user
+      // to ask for the Subscription screen (the existing navigate.to action already handles that on
+      // the next turn - never initiated here, never a checkout/payment action by voice).
+      var quotaAction = actionRegistry.get(payload.action.id);
+      if (quotaAction && quotaAction.quotaResourceType) {
+        var limitInfo = await planLimitPreflight(quotaAction.quotaResourceType, options && options.signal);
+        if (limitInfo) {
+          setLastTurnDebug({ path: 'plan-limit-reached', actionId: payload.action.id, resourceType: quotaAction.quotaResourceType });
+          return {
+            kind: 'assistant',
+            reply: i18n.t('aiPlanLimitReached', { plan: limitInfo.plan, used: String(limitInfo.used), limit: String(limitInfo.limit) }),
+            voiceReply: null, suggestions: [], activeProcess: registry ? registry.activeOpenProcess() : null, conversationId: conversationId
+          };
+        }
+      }
       tookWorkflowPath = true;
       // A genuinely new workflow starting (this branch only ever runs with nothing else open -
       // see availableActions' own gating above) means the user has moved on; any confirmation
@@ -1052,6 +1197,37 @@
     // without the guaranteed visual lead time this normally provides.
     if (tookWorkflowPath && workflowResult && payload.nextFieldPath && registry && typeof registry.prepareForPath === 'function') {
       try { await registry.prepareForPath(workflowResult.processId, payload.nextFieldPath, workflowResult.uiSnapshot); } catch (_) { /* best-effort */ }
+    }
+
+    // Voice/Chat form-interview workflow upgrade: an action that opted into
+    // autoFinishWhenInterviewExhausted (e.g. session.analysis.run) proceeds automatically once
+    // every currently-visible interview field for its process has a known answer - through the
+    // SAME real, existing explicitSubmitOnly finish path a spoken "run it"/"go ahead" already uses
+    // (ai-workflow-engine.js's finishExplicitly()), never a second, parallel completion trigger.
+    // Deliberately keyed on "no unanswered VISIBLE field left" rather than requiredFields/missing
+    // (every field on an interview like this is intentionally optional) - a field the interview
+    // has not yet asked about always blocks this, so it can never fire before the real form has
+    // actually been offered to the user. Best-effort: a failure here must never break the turn's
+    // own ordinary reply.
+    if (tookWorkflowPath && workflowResult && workflowEngine && typeof workflowEngine.finishExplicitly === 'function' && registry && typeof registry.visibleInterviewFields === 'function') {
+      try {
+        var finishActionCandidate = actionRegistry && workflowResult.actionId ? actionRegistry.get(workflowResult.actionId) : null;
+        if (finishActionCandidate && finishActionCandidate.autoFinishWhenInterviewExhausted) {
+          var remainingInterviewFields = registry.visibleInterviewFields(workflowResult.processId).filter(function (f) { return f.role !== 'gate'; });
+          var knownAnswers = workflowResult.known || {};
+          var everyVisibleFieldAnswered = remainingInterviewFields.every(function (f) {
+            var v = knownAnswers[f.path];
+            return v !== undefined && v !== null && v !== '';
+          });
+          if (everyVisibleFieldAnswered) {
+            var autoFinishOutcome = await workflowEngine.finishExplicitly(contextEngine ? contextEngine.snapshot() : {});
+            if (autoFinishOutcome) {
+              setLastTurnDebug({ path: 'auto-finish-interview-exhausted', actionId: workflowResult.actionId });
+              workflowResult = autoFinishOutcome.workflow || null;
+            }
+          }
+        }
+      } catch (_) { /* best-effort - never break the ordinary reply below */ }
     }
 
     // Journey C signal routing - independent of which workflow branch (if any) ran above; a
