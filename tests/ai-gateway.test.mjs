@@ -154,6 +154,35 @@ test('Gemini text calls without an explicit model use the supported default inst
   assert.equal(result.model, 'gemini-3.1-pro-preview');
 });
 
+test('Gemini keeps small enums but compacts the oversized action enums that its real API rejects', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ reply: 'ok', action: null, nextFieldPath: null }) }] } }], usageMetadata: {} }) };
+  };
+  const actionIds = Array.from({ length: 61 }, (_, index) => `action.${index}`);
+  const fieldPaths = Array.from({ length: 50 }, (_, index) => `field${index}`);
+  await callProvider('gemini', 'gemini-key', 'gemini-3.1-pro-preview', {
+    input: [{ role: 'user', content: [{ type: 'input_text', text: 'answer' }] }],
+    compactGeminiLargeEnums: true,
+    text: { format: { schema: {
+      type: 'object',
+      properties: {
+        reply: { type: 'string' },
+        action: { type: ['object', 'null'], properties: { id: { type: 'string', enum: actionIds }, mode: { type: 'string', enum: ['append', 'replace'] } }, required: ['id', 'mode'] },
+        nextFieldPath: { type: ['string', 'null'], enum: [...fieldPaths, null] }
+      },
+      required: ['reply', 'action', 'nextFieldPath']
+    } } }
+  });
+  const schema = sentBody.generationConfig.responseSchema;
+  assert.equal(schema.properties.action.properties.id.enum, undefined, '61 action ids must not be sent as a provider-rejected enum');
+  assert.deepEqual(schema.properties.action.properties.mode.enum, ['append', 'replace'], 'small safety-relevant enums remain provider-enforced');
+  assert.equal(schema.properties.nextFieldPath.enum, undefined, 'the oversized field enum is compacted too');
+  assert.equal(schema.properties.nextFieldPath.nullable, true, 'compaction must preserve nullability');
+});
+
 test('a Kimi/DeepSeek response missing a required schema key throws SCHEMA_VALIDATION_FAILED, not a fabricated field', async () => {
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ notTheRightKey: 1 }) } }], usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } }) });
   await assert.rejects(

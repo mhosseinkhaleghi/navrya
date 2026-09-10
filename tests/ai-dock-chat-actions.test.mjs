@@ -6,7 +6,7 @@ import test, { after } from 'node:test';
 // uses for callOpenAI/callAnthropic/callOpenAICompatible. Importing the server module has the
 // same real server.listen(...) side effect noted there; closed in `after` so the process can exit.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { dockChatFormatFor, buildProductContextText, historyItem } = serverModule;
+const { dockChatFormatFor, sanitizeDockChatModelOutput, buildProductContextText, historyItem } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -66,6 +66,34 @@ test('nextFieldPath is a nullable enum scoped to exactly the real field paths av
 test('an empty availableActions array behaves exactly like no availableActions at all', () => {
   const format = dockChatFormatFor(null, []);
   assert.deepEqual(Object.keys(format.schema.properties), ['reply']);
+});
+
+test('model output can only select the exact action and fields offered for this turn', () => {
+  const offered = [
+    { id: 'session.create', requiredFields: ['city'], optionalFields: ['timeframe'] },
+    { id: 'trade.wizard', requiredFields: ['instrument'], optionalFields: ['direction'] }
+  ];
+  const unknownAction = sanitizeDockChatModelOutput({ reply: 'x', action: { id: 'admin.delete', fields: [] }, nextFieldPath: 'city' }, null, offered);
+  assert.equal(unknownAction.action, null);
+  assert.equal(unknownAction.nextFieldPath, null);
+
+  const mixedFields = sanitizeDockChatModelOutput({
+    reply: 'x',
+    action: { id: 'session.create', fields: [{ path: 'city', value: 'London' }, { path: 'instrument', value: 'BTC' }, { path: 'madeUp', value: 'x' }] },
+    nextFieldPath: 'instrument'
+  }, null, offered);
+  assert.deepEqual(mixedFields.action.fields, [{ path: 'city', value: 'London' }]);
+  assert.equal(mixedFields.nextFieldPath, null, 'a field belonging to a different offered action is still forbidden');
+});
+
+test('active-process suggestions and step lookahead are restricted to that process allowlist', () => {
+  const safe = sanitizeDockChatModelOutput({
+    reply: 'x',
+    suggestions: [{ path: 'entryPrice', value: '10', mode: 'replace' }, { path: 'adminRole', value: 'admin', mode: 'replace' }],
+    nextFieldPath: 'adminRole'
+  }, { id: 'trade-wizard', allowlist: ['entryPrice', 'stopLoss'] }, null);
+  assert.deepEqual(safe.suggestions, [{ path: 'entryPrice', value: '10', mode: 'replace' }]);
+  assert.equal(safe.nextFieldPath, null);
 });
 
 // historyItem() builds one prior-turn entry for the OpenAI Responses API's `input` array. Found

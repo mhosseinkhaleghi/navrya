@@ -780,12 +780,20 @@ function geminiInlineData(dataUrl) {
   return match ? { inlineData: { mimeType: match[1], data: match[2] } } : null;
 }
 
-function geminiResponseSchema(value) {
-  if (Array.isArray(value)) return value.map(geminiResponseSchema);
+// Gemini rejects otherwise-valid structured-output schemas once enum constraints become too
+// large/complex (confirmed against the real API with the current 61-action Chat catalog). The
+// official structured-output documentation explicitly permits rejecting very large schemas and
+// recommends reducing constraints. Keep small enums enforced by Gemini, but omit only a large
+// enum when the caller opts into this bounded compaction. NAVRYA then validates the returned
+// action/field ids against the exact offered catalog in sanitizeDockChatModelOutput() below.
+const GEMINI_MAX_ENUM_VALUES = 32;
+function geminiResponseSchema(value, options) {
+  if (Array.isArray(value)) return value.map((entry) => geminiResponseSchema(entry, options));
   if (!value || typeof value !== 'object') return value;
   const output = {};
   for (const [key, nested] of Object.entries(value)) {
     if (key === 'additionalProperties') continue;
+    if (key === 'enum' && options?.compactLargeEnums && Array.isArray(nested) && nested.length > GEMINI_MAX_ENUM_VALUES) continue;
     if (key === 'type' && Array.isArray(nested)) {
       const concreteTypes = nested.filter((type) => type !== 'null');
       output.type = concreteTypes[0] || 'string';
@@ -797,7 +805,7 @@ function geminiResponseSchema(value) {
       output.nullable = true;
       continue;
     }
-    output[key] = geminiResponseSchema(nested);
+    output[key] = geminiResponseSchema(nested, options);
   }
   return output;
 }
@@ -830,7 +838,10 @@ async function callGemini(payload, apiKey, model, externalSignal) {
         contents.push({ role: item.role === 'assistant' ? 'model' : 'user', parts });
       }
     });
-    const generationConfig = { responseMimeType: 'application/json', responseSchema: geminiResponseSchema(schema) };
+    const generationConfig = {
+      responseMimeType: 'application/json',
+      responseSchema: geminiResponseSchema(schema, { compactLargeEnums: payload.compactGeminiLargeEnums === true })
+    };
     if (Number.isFinite(payload.max_output_tokens)) generationConfig.maxOutputTokens = payload.max_output_tokens;
     const body = { contents, generationConfig };
     if (systemParts.length) body.systemInstruction = { parts: systemParts };
@@ -1779,6 +1790,32 @@ function dockChatFormatFor(activeProcess, availableActions, voiceSource) {
   return { type: 'json_schema', name: 'global_dock_chat', strict: true, schema: { type: 'object', additionalProperties: false, properties, required } };
 }
 
+// Structured output constrains shape, while this deterministic seam constrains authority. It is
+// intentionally provider-agnostic: even a schema-compliant model result cannot select an action
+// or field that was not offered for this exact turn. This also makes Gemini's large-enum
+// compaction safe instead of trusting the model to self-police ids named only in the prompt.
+function sanitizeDockChatModelOutput(value, activeProcess, availableActions) {
+  const result = value && typeof value === 'object' ? { ...value } : {};
+  if (activeProcess) {
+    const allowed = new Set(Array.isArray(activeProcess.allowlist) ? activeProcess.allowlist : []);
+    result.suggestions = (Array.isArray(result.suggestions) ? result.suggestions : []).filter((field) => field && allowed.has(field.path));
+    result.nextFieldPath = allowed.has(result.nextFieldPath) ? result.nextFieldPath : null;
+    return result;
+  }
+  if (Array.isArray(availableActions) && availableActions.length) {
+    const offered = availableActions.find((action) => action && action.id === result.action?.id);
+    if (!offered) {
+      result.action = null;
+      result.nextFieldPath = null;
+      return result;
+    }
+    const allowed = new Set([...(offered.requiredFields || []), ...(offered.optionalFields || [])]);
+    result.action = { ...result.action, fields: (Array.isArray(result.action.fields) ? result.action.fields : []).filter((field) => field && allowed.has(field.path)) };
+    result.nextFieldPath = allowed.has(result.nextFieldPath) ? result.nextFieldPath : null;
+  }
+  return result;
+}
+
 // A2: trivial round-trip used by Settings' "Test connection" button.
 const testConnectionFormat = {
   type: 'json_schema', name: 'ai_test_connection', strict: true,
@@ -2357,8 +2394,13 @@ async function dockChat(body, externalSignal) {
       { role: 'user', content: [{ type: 'input_text', text: userText }] }
     ],
     reasoning: { effort: turnTuning.reasoningEffort },
-    text: { format: requestFormat, verbosity: turnTuning.verbosity }
+    text: { format: requestFormat, verbosity: turnTuning.verbosity },
+    // With the full 61-action discovery catalog, Gemini rejects the response schema itself before
+    // generation. Other providers ignore this provider-specific hint; active-process/plain Chat
+    // schemas stay fully constrained because they do not contain oversized enums.
+    compactGeminiLargeEnums: Boolean(availableActions)
   }, 'ai.chat', externalSignal);
+  const safeResult = sanitizeDockChatModelOutput(result, activeProcess, availableActions);
   // Latency pass, section 1/36: duration-only diagnostics threaded back to the client so
   // chat-dock-core.js's debugLastLatency() can report a real server-side breakdown instead of
   // treating the whole round trip as one opaque "network" number. Never a timestamp (client/server
@@ -2372,7 +2414,7 @@ async function dockChat(body, externalSignal) {
     historyMessages: history.length,
     availableActionCount: availableActions ? availableActions.length : 0
   };
-  return { reply: result.reply || '', voiceReply: voiceSource ? (result.voiceReply || '') : null, suggestions: result.suggestions || [], action: result.action || null, nextFieldPath: result.nextFieldPath || null, provider, model, usage, serverTiming };
+  return { reply: safeResult.reply || '', voiceReply: voiceSource ? (safeResult.voiceReply || '') : null, suggestions: safeResult.suggestions || [], action: safeResult.action || null, nextFieldPath: safeResult.nextFieldPath || null, provider, model, usage, serverTiming };
 }
 
 // Journey E (Realtime Voice): mints a short-lived OpenAI client secret so the browser can open
@@ -3222,7 +3264,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default server;
 export {
-  callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, buildProductContextText, buildCompanionContextText,
+  callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, sanitizeDockChatModelOutput, buildProductContextText, buildCompanionContextText,
   historyItem, dockChat, mentalHealthChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, __resetAdminModelOverrideCacheForTests, __resetAdminGeminiVoiceProfileCacheForTests, internalWalletCallWithRetry,
