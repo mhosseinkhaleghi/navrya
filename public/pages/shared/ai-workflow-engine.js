@@ -31,6 +31,73 @@
     });
   }
 
+  // Voice/Chat form-interview workflow upgrade: field-write confirmation preference. 'direct'
+  // (default) is the existing, unchanged immediate-apply behavior below. 'ask_each' is read fresh
+  // on every call - never cached - so a mid-conversation preference change (see
+  // ai-companion-profile.js's interpretFormWriteConfirmationText()) takes effect on the very next
+  // field, not just a future session.
+  function formWriteConfirmationMode() {
+    var profile = window.TradeJournalAICompanionProfile;
+    return profile && typeof profile.formWriteConfirmation === 'function' ? profile.formWriteConfirmation() : 'direct';
+  }
+
+  // A field is gated only when ALL of: (a) the user has opted into ask_each, (b) it is not the
+  // current action's own gateField (a destructive/publish/send/save confirmation already has its
+  // own real, separate policy - this preference must never weaken or duplicate that), and (c) it
+  // would actually reach a real, writable form control (isFieldWritable() - a resolution-only
+  // field, e.g. accountName, never applies to a live control either way, so there is nothing for a
+  // user to confirm/decline about it). When interview metadata exists for the field, an explicit
+  // non-'editable' role (a 'gate' or 'resolution' descriptor) is excluded the same way.
+  function shouldGateFieldWrite(workflow, action, path) {
+    if (path === action.gateField) return false;
+    if (formWriteConfirmationMode() !== 'ask_each') return false;
+    var processRegistry = window.TradeJournalAIProcessRegistry;
+    if (!processRegistry || typeof processRegistry.isFieldWritable !== 'function' || !processRegistry.isFieldWritable(workflow.processId, path)) return false;
+    var meta = typeof processRegistry.interviewFieldMeta === 'function' ? processRegistry.interviewFieldMeta(workflow.processId, path) : null;
+    if (meta && meta.role && meta.role !== 'editable') return false;
+    return true;
+  }
+
+  // The one pending field-write candidate awaiting explicit user consent (ask_each mode only -
+  // 'direct' mode never creates one). At most one at a time by design (Requirements: "Ask one
+  // clear next question at a time") - a field that would otherwise stage a second candidate while
+  // one is already pending simply waits for a later turn instead (see applyKnownFields()'s own
+  // early-stop below).
+  var pendingWrite = null;
+  var PENDING_FIELD_WRITE_TTL_MS = 90000; // generous: long enough for a real spoken back-and-forth, short enough that a much later, out-of-context "yes" is never misapplied
+
+  function stagePendingFieldWrite(workflow, path, value, mode, context) {
+    var guard = window.TradeJournalAIUiRevisionGuard;
+    pendingWrite = {
+      workflowId: workflow.workflowId, actionId: workflow.actionId, processId: workflow.processId,
+      path: path, value: value, mode: mode, context: context,
+      uiSnapshot: guard && typeof guard.capture === 'function' ? guard.capture(workflow.processId) : null,
+      createdAt: Date.now(), expiresAt: Date.now() + PENDING_FIELD_WRITE_TTL_MS
+    };
+    return pendingWrite;
+  }
+
+  // Re-validated on every read, never trusted stale: expiry, real-UI divergence (closed/a
+  // different surface now topmost - a 'step' divergence alone is NOT disqualifying, matching
+  // prepareForPath()'s own reasoning: the same wizard moving under the user's own hand is not
+  // abandonment) and workflow identity (a brand-new action/New Chat since this was staged makes it
+  // stale even if the real UI happens to still be open) are all checked here so every caller
+  // (pendingFieldWrite() itself, resolvePendingFieldWrite()) gets the identical, current answer -
+  // never a second, looser check anywhere else.
+  function pendingFieldWrite() {
+    if (!pendingWrite) return null;
+    if (Date.now() > pendingWrite.expiresAt) { pendingWrite = null; return null; }
+    var guard = window.TradeJournalAIUiRevisionGuard;
+    if (pendingWrite.uiSnapshot && guard && typeof guard.hasDiverged === 'function') {
+      var divergence = guard.hasDiverged(pendingWrite.uiSnapshot);
+      if (divergence === 'closed' || divergence === 'surface') { pendingWrite = null; return null; }
+    }
+    if (!current || current.workflowId !== pendingWrite.workflowId) { pendingWrite = null; return null; }
+    return pendingWrite;
+  }
+
+  function discardPendingFieldWrite() { pendingWrite = null; }
+
   // Journey F: an action whose target UI has a STABLE, well-known process id (session.create ->
   // 'session-create', trade.calculator -> 'trade-calculator') needs nothing more than
   // processIdFor() below. An action that creates a brand-new entity first (pattern.create,
@@ -58,6 +125,10 @@
     var actionRegistry = window.TradeJournalAIActionRegistry;
     var action = actionRegistry && actionRegistry.get(actionId);
     if (!action) return null;
+    // A genuinely new workflow starting means any candidate staged under the PREVIOUS one is
+    // definitely stale (its own workflowId check in pendingFieldWrite() would catch this too, but
+    // clearing eagerly avoids a pointless divergence check against an abandoned process).
+    pendingWrite = null;
     current = {
       workflowId: 'wf-' + Date.now().toString(36),
       actionId: actionId,
@@ -154,7 +225,9 @@
     }
 
     var appliedAny = false;
-    (fields || []).forEach(function (field) {
+    var stagedPendingWrite = false;
+    (fields || []).some(function (field) {
+      if (stagedPendingWrite) return true; // one pending candidate at a time - stop for this turn
       // Slice W1 (field/gate contracts): explicit requested-clear semantics. An OMITTED field
       // (simply absent from this turn's extraction) must remain the no-op it always was - that
       // case is unaffected below. A field arriving with mode:'clear' is a DIFFERENT, deliberate
@@ -165,14 +238,14 @@
       // sensible "empty" state stays exactly as unclearable as before this change.
       if (field && field.path && field.mode === 'clear') {
         var clearableFields = Array.isArray(action.clearableFields) ? action.clearableFields : [];
-        if (clearableFields.indexOf(field.path) === -1) return; // not a field this action permits clearing
+        if (clearableFields.indexOf(field.path) === -1) return false; // not a field this action permits clearing
         current.known[field.path] = null;
         // Clearing a REQUIRED field must reopen missing status - missingFields() below already
         // does this correctly once `known` genuinely holds null, so no separate branch is needed.
         if (processRegistry) { processRegistry.applyValue(current.processId, field.path, null, 'clear'); appliedAny = true; }
-        return;
+        return false;
       }
-      if (!field || !field.path || field.value === undefined || field.value === null || field.value === '') return;
+      if (!field || !field.path || field.value === undefined || field.value === null || field.value === '') return false;
       // A raw extracted value is untrusted app input, exactly like a typed form value - run it
       // through the action's own normalizeField() (e.g. "15 minutes" -> "15m" for session.create,
       // matching the real dropdown's actual option values) before ever treating the field as
@@ -183,7 +256,20 @@
       if (typeof action.normalizeField === 'function') {
         try { value = action.normalizeField(field.path, value); } catch (_) { value = null; }
       }
-      if (value === undefined || value === null || value === '') return;
+      if (value === undefined || value === null || value === '') return false;
+
+      // Voice/Chat form-interview workflow upgrade: field-write confirmation preference. Staged
+      // instead of applied - current.known is deliberately left untouched, so the workflow keeps
+      // treating this exact field as unanswered until an explicit, deterministically-classified
+      // user confirmation resolves it (resolvePendingFieldWrite() below), never a model-supplied
+      // claim. Never applies to the action's own gateField or to a resolution-only field - see
+      // shouldGateFieldWrite()'s own comment.
+      if (shouldGateFieldWrite(workflow, action, field.path)) {
+        stagePendingFieldWrite(workflow, field.path, value, field.mode || 'replace', context);
+        stagedPendingWrite = true;
+        return true;
+      }
+
       // Only push into the real UI when this is a genuinely new/changed value for this path -
       // a model that re-echoes a field it already extracted on an earlier turn (e.g. repeating
       // city: 'New York' on the turn that only actually supplied timeframe) must never silently
@@ -202,7 +288,15 @@
       var isNewOrChanged = current.known[field.path] === undefined || JSON.stringify(current.known[field.path]) !== JSON.stringify(value);
       current.known[field.path] = value;
       if (processRegistry && isNewOrChanged) { processRegistry.applyValue(current.processId, field.path, value, field.mode || 'replace'); appliedAny = true; }
+      return false;
     });
+    return settleAfterApply(workflow, action, context, appliedAny);
+  }
+
+  // Shared tail, used by applyKnownFields() above AND resolvePendingFieldWrite() below - one
+  // canonical place that ever recomputes `missing`, re-baselines the UI snapshot, and decides
+  // whether to (re-)arm the submit grace window, never duplicated.
+  async function settleAfterApply(workflow, action, context, appliedAny) {
     current.missing = missingFields(action, current.known);
 
     // applyValue() above lands on the real UI's own React state setter - React does not commit
@@ -260,6 +354,34 @@
       else scheduleSubmit(current, action, context);
     }
     return current;
+  }
+
+  // The one way a staged ask_each candidate (see shouldGateFieldWrite()/stagePendingFieldWrite()
+  // above) ever actually reaches the real form - called from chat-dock-core.js's own deterministic
+  // fast path with a decision already classified from the RAW user text via
+  // ai-proactive-engine.js's interpretConfirmationText() (never a model-supplied claim; there is no
+  // per-field "confirm" channel in the extraction schema for this to spoof in the first place).
+  // decision: 'confirm' applies it through the exact same processRegistry.applyValue() real-setter/
+  // magic-fill path every ordinary direct-mode write already uses; anything else (reject,
+  // ambiguous/correction, or pendingFieldWrite() itself reporting stale/diverged/expired) discards
+  // it without writing anything - fails closed, never a partial or guessed apply.
+  async function resolvePendingFieldWrite(decision, context) {
+    var candidate = pendingFieldWrite(); // re-validates staleness/divergence/workflow identity fresh
+    if (!candidate) return { applied: false, reason: 'none' };
+    pendingWrite = null;
+    if (decision !== 'confirm') return { applied: false, reason: decision === 'reject' ? 'rejected' : 'discarded', field: { path: candidate.path } };
+    if (!current || current.workflowId !== candidate.workflowId) return { applied: false, reason: 'stale' };
+    var actionRegistry = window.TradeJournalAIActionRegistry;
+    var action = actionRegistry && actionRegistry.get(candidate.actionId);
+    if (!action) return { applied: false, reason: 'stale' };
+    var processRegistry = window.TradeJournalAIProcessRegistry;
+    var isNewOrChanged = current.known[candidate.path] === undefined || JSON.stringify(current.known[candidate.path]) !== JSON.stringify(candidate.value);
+    current.known[candidate.path] = candidate.value;
+    var appliedAny = false;
+    if (processRegistry && isNewOrChanged) { processRegistry.applyValue(candidate.processId, candidate.path, candidate.value, candidate.mode); appliedAny = true; }
+    var workflow = current;
+    await settleAfterApply(workflow, action, context || candidate.context, appliedAny);
+    return { applied: true, field: { path: candidate.path, value: candidate.value }, workflow: workflow };
   }
 
   // The real submit-execution body, shared by scheduleSubmit()'s own grace-window timer AND
@@ -398,10 +520,10 @@
   // happens to contain "done"/"finish" in passing (e.g. "I'm done thinking about the entry price")
   // is never mistaken for a finish command. Best-effort phrase coverage across en/fa/ar/es.
   var FINISH_PATTERNS = [
-    /^(save|finish|done|that'?s (it|everything|all)|submit( it)?|save it|finish it|save (this|that)|complete it)$/i,
-    /^(ذخیره( کن)?|تمام( شد)?|همینه|همین بود|ثبتش کن|ثبت کن|تمومه)$/,
-    /^(احفظ(?:ه)?|انتهيت|هذا كل شيء|أرسله|أكمل(?:ه)?)$/,
-    /^(guardar(?:lo)?|gu[aá]rdalo|termin[ée]|eso es todo|env[ií]alo|complet[ao](?:lo)?)$/i
+    /^(save|finish|done|that'?s (it|everything|all)|submit( it)?|save it|finish it|save (this|that)|complete it|run it|go ahead|start it|analyze it|analyze now)$/i,
+    /^(ذخیره( کن)?|تمام( شد)?|همینه|همین بود|ثبتش کن|ثبت کن|تمومه|شروع کن|برو|انجامش بده)$/,
+    /^(احفظ(?:ه)?|انتهيت|هذا كل شيء|أرسله|أكمل(?:ه)?|ابدأ|شغّله)$/,
+    /^(guardar(?:lo)?|gu[aá]rdalo|termin[ée]|eso es todo|env[ií]alo|complet[ao](?:lo)?|adelante|h[aá]zlo|empieza)$/i
   ];
   function interpretFinishText(text) {
     var t = String(text || '').trim().replace(/[.!؟?]\s*$/, '');
@@ -439,6 +561,7 @@
   function cancel() {
     if (current && current.pendingSubmitTimer) clearTimeout(current.pendingSubmitTimer);
     current = null;
+    pendingWrite = null;
   }
 
   // Context-aware conversational operation layer, section 9 (workflow switching): a deterministic,
@@ -529,6 +652,10 @@
     interpretCancelText: interpretCancelText,
     finishExplicitly: finishExplicitly,
     interpretFinishText: interpretFinishText,
+    pendingFieldWrite: pendingFieldWrite,
+    resolvePendingFieldWrite: resolvePendingFieldWrite,
+    discardPendingFieldWrite: discardPendingFieldWrite,
+    setPendingFieldWriteTtlMs: function (ms) { PENDING_FIELD_WRITE_TTL_MS = ms; },
     // Exposed for tests (and any future caller with a reason to tune it) rather than a
     // hardcoded, unreachable constant - see SUBMIT_GRACE_MS's own comment above. Latency pass,
     // section 15: chat-dock-core.js's own gate-field confirm fast path temporarily zeroes this for

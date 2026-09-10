@@ -100,7 +100,10 @@ test('never persists a derivable fact - only walkthrough/dismiss/snooze/skip/goa
   // named cannot be re-derived from anything else, so it has to be remembered, not recomputed.
   // Voice Command Learning Profile addendum (schema v2) added four more communication-preference
   // fields of the exact same kind: preferredName/preferredLanguage/responseLength/coachingStyle.
-  assert.deepEqual(Object.keys(stored).sort(), ['coachingStyle', 'currentGoal', 'customInstructions', 'dataAccessPrefs', 'dismissedSteps', 'lastUpdatedAt', 'personaPreset', 'pinnedFacts', 'preferences', 'preferredLanguage', 'preferredName', 'responseLength', 'roleIntroSeenForCharacter', 'skippedOptional', 'snoozedSteps', 'toneDimensions', 'version', 'walkthroughSeenAt'].sort());
+  // Voice/Chat form-interview workflow upgrade added one more field of the exact same kind:
+  // formWriteConfirmation ('direct'/'ask_each') - a genuine, explicit user preference, never a
+  // derivable fact.
+  assert.deepEqual(Object.keys(stored).sort(), ['coachingStyle', 'currentGoal', 'customInstructions', 'dataAccessPrefs', 'dismissedSteps', 'formWriteConfirmation', 'lastUpdatedAt', 'personaPreset', 'pinnedFacts', 'preferences', 'preferredLanguage', 'preferredName', 'responseLength', 'roleIntroSeenForCharacter', 'skippedOptional', 'snoozedSteps', 'toneDimensions', 'version', 'walkthroughSeenAt'].sort());
 });
 
 test('Voice Command Learning Profile addendum: a v1 document with none of the new communication-preference fields migrates without loss - existing fields keep their values, new fields default to null', async () => {

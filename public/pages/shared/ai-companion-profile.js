@@ -89,6 +89,15 @@
       preferredLanguage: null, // one of PREFERRED_LANGUAGE_VALUES, or null to keep following UI locale
       responseLength: null, // one of RESPONSE_LENGTH_VALUES
       coachingStyle: null, // one of COACHING_STYLE_VALUES
+      // Voice/Chat form-interview workflow upgrade: 'direct' (default) writes a valid supplied
+      // field value straight into the real, visible form the instant it's known - no "should I
+      // enter this?" after every value. 'ask_each' is the explicit opt-in (enabled/disabled only
+      // via interpretFormWriteConfirmationText() below, never a bare model claim) that makes the
+      // interview engine (ai-workflow-engine.js) stage every ordinary field write as a pending
+      // candidate requiring one explicit user confirmation before it reaches the real form. This
+      // is deliberately independent of, and never weakens, an action's own gateField/destructive/
+      // publish/payment confirmation - see ai-workflow-engine.js's own pendingFieldWrite() comment.
+      formWriteConfirmation: 'direct',
       pinnedFacts: [], // string[], always sent to the model - see personaStylePackage()
       // Real default is "everything on" - matches every one of these domains' CURRENT always-on
       // behavior (getRelevantAccounts()/getRelevantPsychologyContext() etc. in ai-user-memory.js
@@ -122,6 +131,7 @@
     out.preferredLanguage = PREFERRED_LANGUAGE_VALUES.indexOf(raw.preferredLanguage) > -1 ? raw.preferredLanguage : null;
     out.responseLength = RESPONSE_LENGTH_VALUES.indexOf(raw.responseLength) > -1 ? raw.responseLength : null;
     out.coachingStyle = COACHING_STYLE_VALUES.indexOf(raw.coachingStyle) > -1 ? raw.coachingStyle : null;
+    out.formWriteConfirmation = raw.formWriteConfirmation === 'ask_each' ? 'ask_each' : 'direct';
     out.pinnedFacts = Array.isArray(raw.pinnedFacts)
       ? raw.pinnedFacts.filter(function (f) { return typeof f === 'string' && f.trim(); }).map(function (f) { return f.trim().slice(0, PINNED_FACT_MAX_LEN); }).slice(0, PINNED_FACTS_MAX_COUNT)
       : [];
@@ -246,6 +256,44 @@
     return save(s);
   }
 
+  function formWriteConfirmation() { return load().formWriteConfirmation; }
+  function setFormWriteConfirmation(value) {
+    var s = load();
+    s.formWriteConfirmation = value === 'ask_each' ? 'ask_each' : 'direct';
+    return save(s);
+  }
+
+  // Deterministic, zero-network, best-effort en/fa/ar/es phrase recognition for the field-write
+  // confirmation preference toggle - the SAME posture as ai-workflow-engine.js's own
+  // interpretCancelText()/interpretFinishText() and ai-proactive-engine.js's
+  // interpretConfirmationText(): anchored to the whole trimmed utterance (never a substring match),
+  // so an ordinary longer sentence that happens to contain "ask"/"enter" in passing never
+  // mis-toggles this. Returns 'enable' | 'disable' | null (no match - not this turn's intent).
+  var ENABLE_ASK_EACH_PATTERNS = [
+    /^(from now on,? )?ask me before (entering|you enter) (every|each|any) (value|field|answer)s?\.?$/i,
+    /^(please )?ask me (first|before entering anything)\.?$/i,
+    /^(please )?confirm (every|each) (value|field|answer) (with me )?before (entering|applying) (it|them)\.?$/i,
+    /^از الان به بعد قبل از وارد کردن هر مقدار(?: ازم)? بپرس\.?$/,
+    /^قبل از (ثبت|وارد کردن) هر (مقدار|فیلد|جواب) اول ازم بپرس\.?$/,
+    /^اول ازم بپرس بعد وارد کن\.?$/,
+    /^اسألني قبل إدخال كل قيمة\.?$/, /^اسألني أولاً قبل الإدخال\.?$/, /^اسألني قبل كل إجابة\.?$/,
+    /^pregúntame antes de (ingresar|introducir) cada valor\.?$/i, /^pregúntame primero antes de (ingresar|introducir)\.?$/i
+  ];
+  var DISABLE_ASK_EACH_PATTERNS = [
+    /^enter values directly again\.?$/i, /^(please )?stop asking me (every time|before every value)\.?$/i,
+    /^(please )?go back to entering values? directly\.?$/i, /^you don'?t need to ask (me )?(anymore|any more)\.?$/i,
+    /^دیگه لازم نیست هر بار ازم بپرسی\.?$/, /^دوباره مستقیم وارد کن\.?$/, /^دیگه نیازی به پرسیدن نیست\.?$/,
+    /^أدخل القيم مباشرة مرة أخرى\.?$/, /^لا داعي للسؤال بعد الآن\.?$/, /^توقف عن سؤالي في كل مرة\.?$/,
+    /^ingresa los valores directamente de nuevo\.?$/i, /^ya no hace falta que preguntes\.?$/i, /^deja de preguntarme cada vez\.?$/i
+  ];
+  function interpretFormWriteConfirmationText(text) {
+    var t = String(text || '').trim();
+    if (!t) return null;
+    if (ENABLE_ASK_EACH_PATTERNS.some(function (re) { return re.test(t); })) return 'enable';
+    if (DISABLE_ASK_EACH_PATTERNS.some(function (re) { return re.test(t); })) return 'disable';
+    return null;
+  }
+
   function pinnedFacts() { return load().pinnedFacts; }
   function addPinnedFact(text) {
     var s = load();
@@ -313,6 +361,8 @@
     preferredLanguage: preferredLanguage, setPreferredLanguage: setPreferredLanguage,
     responseLength: responseLength, setResponseLength: setResponseLength,
     coachingStyle: coachingStyle, setCoachingStyle: setCoachingStyle,
+    formWriteConfirmation: formWriteConfirmation, setFormWriteConfirmation: setFormWriteConfirmation,
+    interpretFormWriteConfirmationText: interpretFormWriteConfirmationText,
     pinnedFacts: pinnedFacts, addPinnedFact: addPinnedFact, removePinnedFact: removePinnedFact,
     dataAccessPrefs: dataAccessPrefs, setDataAccessPref: setDataAccessPref,
     personaStylePackage: personaStylePackage
