@@ -72,6 +72,24 @@ test('maps OpenAI Responses usage into the normalized envelope', async () => {
   assert.equal(result.provider, 'openai');
 });
 
+test('OpenAI never receives Gemini-only schema compaction or NAVRYA timeout controls', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ reply: 'ok' }), usage: null }) };
+  };
+  await callOpenAI({
+    input: [],
+    compactGeminiLargeEnums: true,
+    timeoutMs: 1234,
+    text: { format: { schema: { required: [] } } }
+  }, 'openai-key', 'gpt-5.6');
+  assert.equal(sentBody.compactGeminiLargeEnums, undefined, 'Gemini-only routing metadata must not leak into the OpenAI API body');
+  assert.equal(sentBody.timeoutMs, undefined, 'NAVRYA timeout metadata must not leak into the OpenAI API body');
+  assert.equal(sentBody.model, 'gpt-5.6');
+});
+
 test('maps Anthropic tool-use output and computes totalTokens from input+output when the provider omits it', async () => {
   let calledUrl = null;
   globalThis.fetch = async (url) => {
