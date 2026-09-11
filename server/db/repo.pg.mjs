@@ -9,6 +9,7 @@ import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commerc
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
+import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, TICKET_STATUSES } from './support-ticket-normalize.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -127,6 +128,17 @@ function mapRating(row) { return { id: row.id, listingId: row.listing_id, buyerI
 function mapThread(row) { return { id: row.id, listingId: row.listing_id, buyerId: row.buyer_id, sellerId: row.seller_id, createdAt: row.created_at }; }
 function mapMessage(row) { return { id: row.id, threadId: row.thread_id, senderId: row.sender_id, content: row.content, createdAt: row.created_at, readAt: row.read_at }; }
 function mapReport(row) { return { id: row.id, targetType: row.target_type, targetId: row.target_id, reporterId: row.reporter_id, reason: row.reason, status: row.status, createdAt: row.created_at }; }
+function mapSupportTicket(row) {
+  return {
+    id: row.id, userId: row.user_id, subject: row.subject, category: row.category, status: row.status,
+    lastActivityAt: row.last_activity_at, ownerUnread: row.owner_unread,
+    createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+function mapSupportTicketMessage(row) {
+  return { id: row.id, ticketId: row.ticket_id, authorId: row.author_id, authorRole: row.author_role, content: row.content, createdAt: row.created_at };
+}
+function mapCommunityCursor(row) { return { userId: row.user_id, lastSeenAt: row.last_seen_at, updatedAt: row.updated_at }; }
 // Launch-readiness audit fix (P1-1, 052_client_errors.sql).
 function mapClientError(row) {
   return {
@@ -883,6 +895,186 @@ export function createPgRepo(pool) {
       if (!existingRows[0]) throw new ApiError(404, 'REPORT_NOT_FOUND');
       const { rows } = await pool.query('UPDATE reports SET status=$2 WHERE id=$1 RETURNING *', [id, status]);
       return mapReport(rows[0]);
+    }
+  };
+
+  // Support Tickets (058_support_tickets.sql) - see routes.support-tickets.mjs (owner-facing) and
+  // admin/routes.support-tickets.mjs (staff-facing). `unread` for a normal user is a per-ticket
+  // signal (last_staff_reply_at > owner_last_read_at); the shared admin "awaiting staff" queue
+  // count is a live COUNT(status='open') in `notifications` below, never a maintained counter, so
+  // it can never drift out of sync with real ticket rows.
+  const supportTickets = {
+    async create({ userId, subject, category, content }) {
+      const cleanSubject = normalizeTicketSubject(subject);
+      const cleanCategory = normalizeTicketCategory(category);
+      const cleanContent = normalizeTicketMessage(content);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const ticketId = newId('ticket');
+        const { rows: ticketRows } = await client.query(
+          `INSERT INTO support_tickets (id, user_id, subject, category) VALUES ($1,$2,$3,$4) RETURNING *`,
+          [ticketId, userId, cleanSubject, cleanCategory]
+        );
+        await client.query(
+          `INSERT INTO support_ticket_messages (id, ticket_id, author_id, author_role, content) VALUES ($1,$2,$3,'user',$4)`,
+          [newId('ticketmsg'), ticketId, userId, cleanContent]
+        );
+        await client.query('COMMIT');
+        return mapSupportTicket(ticketRows[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM support_tickets WHERE id=$1', [id]);
+      return rows[0] ? mapSupportTicket(rows[0]) : null;
+    },
+    async listForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM support_tickets WHERE user_id=$1 ORDER BY last_activity_at DESC', [userId]);
+      return rows.map(mapSupportTicket);
+    },
+    // Unfiltered-except-status/category - the admin route does search/pagination in JS over this
+    // list, the same "repo returns the filtered-by-simple-column set, the route does
+    // search+paginate" split GET /api/admin/users already established (repo.users.list() ->
+    // route filters/sorts/pages).
+    async listAll({ status, category } = {}) {
+      const params = [];
+      let text = 'SELECT * FROM support_tickets';
+      const clauses = [];
+      if (status) { params.push(status); clauses.push(`status=$${params.length}`); }
+      if (category) { params.push(category); clauses.push(`category=$${params.length}`); }
+      if (clauses.length) text += ' WHERE ' + clauses.join(' AND ');
+      text += ' ORDER BY last_activity_at DESC';
+      const { rows } = await pool.query(text, params);
+      return rows.map(mapSupportTicket);
+    },
+    async listMessages(ticketId) {
+      const { rows } = await pool.query('SELECT * FROM support_ticket_messages WHERE ticket_id=$1 ORDER BY created_at ASC', [ticketId]);
+      return rows.map(mapSupportTicketMessage);
+    },
+    // authorRole is resolved server-side by the caller (routes.support-tickets.mjs always passes
+    // 'user'; admin/routes.support-tickets.mjs always passes 'staff') - never accepted from the
+    // request body.
+    async reply({ ticketId, authorId, authorRole, content, nextStatus }) {
+      const ticket = await supportTickets.get(ticketId);
+      if (!ticket) throw new ApiError(404, 'TICKET_NOT_FOUND');
+      if (authorRole === 'user') {
+        if (ticket.userId !== authorId) throw new ApiError(403, 'NOT_TICKET_OWNER');
+        if (ticket.status === 'closed') throw new ApiError(409, 'TICKET_CLOSED');
+      }
+      const cleanContent = normalizeTicketMessage(content);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: messageRows } = await client.query(
+          `INSERT INTO support_ticket_messages (id, ticket_id, author_id, author_role, content) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+          [newId('ticketmsg'), ticketId, authorId, authorRole, cleanContent]
+        );
+        // Spec section E: a user reply (including reopening a resolved ticket) always lands the
+        // ticket back on 'open' (awaiting staff). A staff reply defaults to 'waiting_user' unless
+        // the admin explicitly resolves/closes it in the same action.
+        const status = authorRole === 'user' ? 'open' : (nextStatus && TICKET_STATUSES.includes(nextStatus) ? nextStatus : 'waiting_user');
+        const { rows: ticketRows } = await client.query(
+          authorRole === 'staff'
+            ? `UPDATE support_tickets SET status=$2, last_activity_at=now(), owner_unread=true, updated_at=now() WHERE id=$1 RETURNING *`
+            : `UPDATE support_tickets SET status=$2, last_activity_at=now(), updated_at=now() WHERE id=$1 RETURNING *`,
+          [ticketId, status]
+        );
+        await client.query('COMMIT');
+        return { ticket: mapSupportTicket(ticketRows[0]), message: mapSupportTicketMessage(messageRows[0]) };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // Admin-only status change with no accompanying message (e.g. resolving after a phone call,
+    // or reopening a closed ticket - the one supported way a closed ticket ever moves again).
+    async updateStatus(ticketId, status) {
+      if (!TICKET_STATUSES.includes(status)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = await supportTickets.get(ticketId);
+      if (!existing) throw new ApiError(404, 'TICKET_NOT_FOUND');
+      const { rows } = await pool.query('UPDATE support_tickets SET status=$2, last_activity_at=now(), updated_at=now() WHERE id=$1 RETURNING *', [ticketId, status]);
+      return mapSupportTicket(rows[0]);
+    },
+    async close(ticketId, userId) {
+      const ticket = await supportTickets.get(ticketId);
+      if (!ticket) throw new ApiError(404, 'TICKET_NOT_FOUND');
+      if (ticket.userId !== userId) throw new ApiError(403, 'NOT_TICKET_OWNER');
+      if (ticket.status === 'closed') throw new ApiError(409, 'ALREADY_CLOSED');
+      const { rows } = await pool.query(`UPDATE support_tickets SET status='closed', last_activity_at=now(), updated_at=now() WHERE id=$1 RETURNING *`, [ticketId]);
+      return mapSupportTicket(rows[0]);
+    },
+    // Called only from the owner's own GET /:id (routes.support-tickets.mjs) - clears this one
+    // ticket's unread-support signal for its owner. Never touched by an admin viewing the same
+    // ticket, so the two independent badges the spec requires stay separate never conflate.
+    async markRead(ticketId, userId) {
+      await pool.query('UPDATE support_tickets SET owner_unread=false WHERE id=$1 AND user_id=$2', [ticketId, userId]);
+    }
+  };
+
+  // Community unread-badge cursor (058_support_tickets.sql) - see `notifications.communityUnreadCount`
+  // below for how this is consumed; acknowledge() is the only way it ever advances (called when
+  // the Community page actually opens and its data loads - see routes.notifications.mjs).
+  const communityCursors = {
+    async getOrInit(userId) {
+      const { rows } = await pool.query('SELECT * FROM community_notification_cursors WHERE user_id=$1', [userId]);
+      if (rows[0]) return mapCommunityCursor(rows[0]);
+      const { rows: inserted } = await pool.query(
+        `INSERT INTO community_notification_cursors (user_id) VALUES ($1)
+         ON CONFLICT (user_id) DO UPDATE SET user_id=EXCLUDED.user_id RETURNING *`,
+        [userId]
+      );
+      return mapCommunityCursor(inserted[0]);
+    },
+    async acknowledge(userId) {
+      const { rows } = await pool.query(
+        `INSERT INTO community_notification_cursors (user_id, last_seen_at) VALUES ($1, now())
+         ON CONFLICT (user_id) DO UPDATE SET last_seen_at=now(), updated_at=now() RETURNING *`,
+        [userId]
+      );
+      return mapCommunityCursor(rows[0]);
+    }
+  };
+
+  // One canonical notification-summary adapter (spec section D) - the single place both the main
+  // app sidebar (GET /api/sync/notifications/summary, any authenticated user) and the Admin Panel
+  // sidebar (the exact same endpoint - an admin is an authenticated user too, so it needs no
+  // second route or client-side counting path) read their badge numbers from.
+  const notifications = {
+    async communityUnreadCount(userId) {
+      const cursor = await communityCursors.getOrInit(userId);
+      const { rows } = await pool.query(
+        `SELECT
+           (SELECT COUNT(*) FROM posts WHERE created_at > $2 AND user_id <> $1) +
+           (SELECT COUNT(*) FROM comments WHERE created_at > $2 AND user_id <> $1) AS count`,
+        [userId, cursor.lastSeenAt]
+      );
+      return Number(rows[0].count);
+    },
+    async supportUnreadCountForUser(userId) {
+      const { rows } = await pool.query(`SELECT COUNT(*) AS count FROM support_tickets WHERE user_id=$1 AND owner_unread=true`, [userId]);
+      return Number(rows[0].count);
+    },
+    async supportAwaitingStaffCount() {
+      const { rows } = await pool.query(`SELECT COUNT(*) AS count FROM support_tickets WHERE status='open'`);
+      return Number(rows[0].count);
+    },
+    async summaryFor(userId, { isAdmin } = {}) {
+      const [communityUnread, supportUnread, supportAwaitingStaffCount] = await Promise.all([
+        notifications.communityUnreadCount(userId),
+        notifications.supportUnreadCountForUser(userId),
+        isAdmin ? notifications.supportAwaitingStaffCount() : Promise.resolve(null)
+      ]);
+      return { communityUnread, supportUnread, supportAwaitingStaffCount };
+    },
+    async acknowledgeCommunity(userId) {
+      await communityCursors.acknowledge(userId);
     }
   };
 
@@ -4309,7 +4501,7 @@ export function createPgRepo(pool) {
   }
 
   return {
-    users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
+    users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,

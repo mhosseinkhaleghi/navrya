@@ -8,6 +8,8 @@ import * as routesUsers from './routes.users.mjs';
 import * as routesPosts from './routes.posts.mjs';
 import * as routesMarketplace from './routes.marketplace.mjs';
 import * as routesMessages from './routes.messages.mjs';
+import * as routesSupportTickets from './routes.support-tickets.mjs';
+import * as routesNotifications from './routes.notifications.mjs';
 import * as routesInternal from './routes.internal.mjs';
 import * as routesAdmin from '../admin/routes.mjs';
 import * as routesProfile from './routes.profile.mjs';
@@ -183,6 +185,8 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   app.use('/api/community', routesPosts.router(repo, uploadsDir));
   app.use('/api/marketplace', routesMarketplace.router(repo, uploadsDir));
   app.use('/api/messages', routesMessages.router(repo));
+  app.use('/api/sync/support-tickets', routesSupportTickets.router(repo));
+  app.use('/api/sync/notifications', routesNotifications.router(repo));
   // /api/sync/* is its own prefix (not /api/sessions, /api/patterns, etc.) because those
   // exact prefixes are already claimed end-to-end by vite.config.js's proxy rules, routed to
   // the AI-only gateway (server/pattern-ai-server.mjs, a different port/process) for its

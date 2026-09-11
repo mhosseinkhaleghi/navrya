@@ -9,6 +9,7 @@ import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commerc
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
+import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, TICKET_STATUSES } from './support-ticket-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -19,6 +20,7 @@ export function createMemoryRepo() {
     users: new Map(), credentials: new Map(), posts: new Map(), comments: new Map(), likes: new Map(),
     listings: new Map(), purchases: new Map(), ratings: new Map(),
     threads: new Map(), messages: new Map(), reports: new Map(), clientErrors: new Map(),
+    supportTickets: new Map(), supportTicketMessages: new Map(), communityNotificationCursors: new Map(),
     sessions: new Map(), usageEvents: new Map(), providerHealth: new Map(), providerPricing: new Map(),
     adminKeys: new Map(), adminModelOverrides: new Map(), adminGeminiVoiceProfiles: new Map(), auditLog: new Map(),
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
@@ -396,6 +398,128 @@ export function createMemoryRepo() {
       if (!record) throw new ApiError(404, 'REPORT_NOT_FOUND');
       record.status = status;
       return clone(record);
+    }
+  };
+
+  // Support Tickets (058_support_tickets.sql) - mirrors repo.pg.mjs's supportTickets exactly,
+  // including the same validation (support-ticket-normalize.mjs), the same status-transition
+  // rules, and the same denormalized lastStaffReplyAt the per-user unread badge reads.
+  const supportTickets = {
+    async create({ userId, subject, category, content }) {
+      requireUser(userId);
+      const cleanSubject = normalizeTicketSubject(subject);
+      const cleanCategory = normalizeTicketCategory(category);
+      const cleanContent = normalizeTicketMessage(content);
+      const stamp = now();
+      const ticket = {
+        id: newId('ticket'), userId, subject: cleanSubject, category: cleanCategory, status: 'open',
+        lastActivityAt: stamp, ownerUnread: false, createdAt: stamp, updatedAt: stamp
+      };
+      state.supportTickets.set(ticket.id, ticket);
+      const message = { id: newId('ticketmsg'), ticketId: ticket.id, authorId: userId, authorRole: 'user', content: cleanContent, createdAt: stamp };
+      state.supportTicketMessages.set(message.id, message);
+      return clone(ticket);
+    },
+    async get(id) { const record = state.supportTickets.get(id); return record ? clone(record) : null; },
+    async listForUser(userId) {
+      return Array.from(state.supportTickets.values()).filter((t) => t.userId === userId)
+        .sort((a, b) => new Date(b.lastActivityAt) - new Date(a.lastActivityAt)).map(clone);
+    },
+    async listAll({ status, category } = {}) {
+      return Array.from(state.supportTickets.values())
+        .filter((t) => (!status || t.status === status) && (!category || t.category === category))
+        .sort((a, b) => new Date(b.lastActivityAt) - new Date(a.lastActivityAt)).map(clone);
+    },
+    async listMessages(ticketId) {
+      return Array.from(state.supportTicketMessages.values()).filter((m) => m.ticketId === ticketId)
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(clone);
+    },
+    async reply({ ticketId, authorId, authorRole, content, nextStatus }) {
+      const ticket = state.supportTickets.get(ticketId);
+      if (!ticket) throw new ApiError(404, 'TICKET_NOT_FOUND');
+      if (authorRole === 'user') {
+        if (ticket.userId !== authorId) throw new ApiError(403, 'NOT_TICKET_OWNER');
+        if (ticket.status === 'closed') throw new ApiError(409, 'TICKET_CLOSED');
+      }
+      const cleanContent = normalizeTicketMessage(content);
+      const stamp = now();
+      const message = { id: newId('ticketmsg'), ticketId, authorId, authorRole, content: cleanContent, createdAt: stamp };
+      state.supportTicketMessages.set(message.id, message);
+      ticket.status = authorRole === 'user' ? 'open' : (nextStatus && TICKET_STATUSES.includes(nextStatus) ? nextStatus : 'waiting_user');
+      ticket.lastActivityAt = stamp;
+      ticket.updatedAt = stamp;
+      if (authorRole === 'staff') ticket.ownerUnread = true;
+      return { ticket: clone(ticket), message: clone(message) };
+    },
+    async updateStatus(ticketId, status) {
+      if (!TICKET_STATUSES.includes(status)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const ticket = state.supportTickets.get(ticketId);
+      if (!ticket) throw new ApiError(404, 'TICKET_NOT_FOUND');
+      const stamp = now();
+      ticket.status = status; ticket.lastActivityAt = stamp; ticket.updatedAt = stamp;
+      return clone(ticket);
+    },
+    async close(ticketId, userId) {
+      const ticket = state.supportTickets.get(ticketId);
+      if (!ticket) throw new ApiError(404, 'TICKET_NOT_FOUND');
+      if (ticket.userId !== userId) throw new ApiError(403, 'NOT_TICKET_OWNER');
+      if (ticket.status === 'closed') throw new ApiError(409, 'ALREADY_CLOSED');
+      const stamp = now();
+      ticket.status = 'closed'; ticket.lastActivityAt = stamp; ticket.updatedAt = stamp;
+      return clone(ticket);
+    },
+    async markRead(ticketId, userId) {
+      const ticket = state.supportTickets.get(ticketId);
+      if (ticket && ticket.userId === userId) ticket.ownerUnread = false;
+    }
+  };
+
+  // Community unread-badge cursor - mirrors repo.pg.mjs's communityCursors exactly.
+  const communityCursors = {
+    async getOrInit(userId) {
+      let record = state.communityNotificationCursors.get(userId);
+      if (!record) {
+        record = { userId, lastSeenAt: now(), updatedAt: now() };
+        state.communityNotificationCursors.set(userId, record);
+      }
+      return clone(record);
+    },
+    async acknowledge(userId) {
+      const stamp = now();
+      let record = state.communityNotificationCursors.get(userId);
+      if (!record) { record = { userId, lastSeenAt: stamp, updatedAt: stamp }; state.communityNotificationCursors.set(userId, record); }
+      else { record.lastSeenAt = stamp; record.updatedAt = stamp; }
+      return clone(record);
+    }
+  };
+
+  // One canonical notification-summary adapter - mirrors repo.pg.mjs's notifications exactly (see
+  // that file's own header comment for why this is the single source both the main app sidebar
+  // and the Admin Panel sidebar read from).
+  const notifications = {
+    async communityUnreadCount(userId) {
+      const cursor = await communityCursors.getOrInit(userId);
+      const cutoff = new Date(cursor.lastSeenAt);
+      const postCount = Array.from(state.posts.values()).filter((p) => p.userId !== userId && new Date(p.createdAt) > cutoff).length;
+      const commentCount = Array.from(state.comments.values()).filter((c) => c.userId !== userId && new Date(c.createdAt) > cutoff).length;
+      return postCount + commentCount;
+    },
+    async supportUnreadCountForUser(userId) {
+      return Array.from(state.supportTickets.values()).filter((t) => t.userId === userId && t.ownerUnread).length;
+    },
+    async supportAwaitingStaffCount() {
+      return Array.from(state.supportTickets.values()).filter((t) => t.status === 'open').length;
+    },
+    async summaryFor(userId, { isAdmin } = {}) {
+      const [communityUnread, supportUnread, supportAwaitingStaffCount] = await Promise.all([
+        notifications.communityUnreadCount(userId),
+        notifications.supportUnreadCountForUser(userId),
+        isAdmin ? notifications.supportAwaitingStaffCount() : Promise.resolve(null)
+      ]);
+      return { communityUnread, supportUnread, supportAwaitingStaffCount };
+    },
+    async acknowledgeCommunity(userId) {
+      await communityCursors.acknowledge(userId);
     }
   };
 
@@ -2901,7 +3025,7 @@ export function createMemoryRepo() {
   };
 
   return {
-    users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, sessions, usageEvents,
+    users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,

@@ -11,6 +11,7 @@ import { getEffectiveXpConfig, invalidateXpConfigCache, SERVER_ONLY_ACHIEVEMENT_
 import { router as voiceProvidersRouter } from './routes.voice-providers.mjs';
 import { router as commercialRouter } from './routes.commercial.mjs';
 import { router as conversationScenariosRouter } from './routes.conversation-scenarios.mjs';
+import { router as supportTicketsRouter } from './routes.support-tickets.mjs';
 import { GEMINI_TTS_VOICE_OPTIONS_MALE, GEMINI_TTS_VOICE_OPTIONS_FEMALE, GEMINI_VOICE_CHARACTERS, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from '../ai/gemini-voice-profiles.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
@@ -656,6 +657,10 @@ export function router(repo, uploadsDir) {
   // Journey H2, Gate 2: Conversation Studio - same "own file, mounted here to inherit
   // requireAdmin for free" pattern as voice-providers/commercial above.
   app.use('/conversation-scenarios', conversationScenariosRouter(repo, uploadsDir));
+
+  // Support Tickets admin queue/reply surface - same "own file, mounted here to inherit
+  // requireAdmin for free" pattern as voice-providers/commercial/conversation-scenarios above.
+  app.use('/support-tickets', supportTicketsRouter(repo));
 
   return app;
 }
