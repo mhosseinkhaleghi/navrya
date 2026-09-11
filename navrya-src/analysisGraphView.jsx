@@ -129,7 +129,9 @@ export function AnalysisGraphView({
   session, lang, rtl, onAddNode, onRemoveNode, onOpenSource,
   onMoveNode, onMoveNodes, onSetViewport, onAddEdge, onRemoveEdge,
   onChangeNodeStage, onToggleStageCollapsed, onUpdateScenario, onUpdateNoteContent, onUpdateProcessingConfig,
-  onCreateScenario, onCreateEntry, onCreateTrade, onCreatePatternRef, onCreateNote, onCreateProcessing
+  onCreateScenario, onCreateEntry, onCreateTrade, onCreatePatternRef, onCreateNote, onCreateProcessing,
+  onCreateMarketContext, marketChartComponent, resolveMarketSymbol, resolveMarketInterval,
+  onRunAiNode, onApplyAiSuggestion, onClearAiResult
 }) {
   const registry = window.TradeJournalAnalysisGraphRegistry;
   const graph = registry ? registry.normalizeAnalysisGraph(session.analysisGraph) : { nodes: [], edges: [] };
@@ -164,6 +166,9 @@ export function AnalysisGraphView({
           onUpdateScenario={onUpdateScenario} onUpdateNoteContent={onUpdateNoteContent} onUpdateProcessingConfig={onUpdateProcessingConfig}
           onCreateScenario={onCreateScenario} onCreateEntry={onCreateEntry} onCreateTrade={onCreateTrade}
           onCreatePatternRef={onCreatePatternRef} onCreateNote={onCreateNote} onCreateProcessing={onCreateProcessing}
+          onCreateMarketContext={onCreateMarketContext}
+          marketChartComponent={marketChartComponent} resolveMarketSymbol={resolveMarketSymbol} resolveMarketInterval={resolveMarketInterval}
+          onRunAiNode={onRunAiNode} onApplyAiSuggestion={onApplyAiSuggestion} onClearAiResult={onClearAiResult}
           onSwitchToList={() => setMode('list')}
         />
       )}

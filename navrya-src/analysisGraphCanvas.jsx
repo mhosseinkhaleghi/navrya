@@ -66,7 +66,25 @@ const copy = {
     pickPattern: 'الگویی را انتخاب کنید', noPatterns: 'هنوز الگویی در رجیستری الگوها ثبت نشده است.',
     chartEntry: 'ورودی چارت', movementEntry: 'ورودی حرکت', notePlaceholder: 'متن یادداشت…',
     targetStage: 'مرحله مقصد', dropToCreate: 'رها کنید تا ایجاد شود', save: 'ذخیره', processingConfig: 'تنظیمات پردازش',
-    autoLayout: 'چیدمان خودکار', searchPlaceholder: 'جست‌وجو…', bulkTitle: 'انتخاب چندگانه', bulkChangeStage: 'تغییر مرحله همه', bulkRemove: 'حذف همه از نقشه'
+    autoLayout: 'چیدمان خودکار', searchPlaceholder: 'جست‌وجو…', bulkTitle: 'انتخاب چندگانه', bulkChangeStage: 'تغییر مرحله همه', bulkRemove: 'حذف همه از نقشه',
+    marketContextTitle: 'بافت بازار', modeOff: 'خاموش', modeCompact: 'فشرده', modeSplit: 'دونیمه', modeFocus: 'تمرکز',
+    marketContextNode: 'گره بافت بازار', addMarketContext: 'افزودن بافت بازار', noInstrumentShort: 'نماد سشن تعیین نشده',
+    honestNote: 'فقط چارت زنده و نماد/تایم‌فریم واقعی در دسترس است؛ قیمت/حجم/عمق بازار استخراج نمی‌شود.',
+    following: 'دنبال‌کردن',
+    runAnalysis: 'اجرای تحلیل', running: 'در حال اجرا…', viewContext: 'مشاهده بافت هوش مصنوعی', clearResult: 'پاک‌کردن نتیجه',
+    focusInputs: 'تمرکز روی ورودی‌ها', focusOutputs: 'تمرکز روی خروجی‌ها', runConnectedAi: 'اجرای تحلیل هوش مصنوعی',
+    stateIdle: 'آماده', stateRunning: 'در حال اجرا', stateCompleted: 'کامل‌شده', stateFailed: 'ناموفق', stateStale: 'قدیمی‌شده',
+    provenanceTitle: 'منشأ', provider: 'ارائه‌دهنده', model: 'مدل', lastRun: 'آخرین اجرا',
+    suggestionsTitle: 'پیشنهادها', noSuggestions: 'پیشنهادی وجود ندارد.', apply: 'تأیید', reject: 'رد',
+    confidenceLow: 'اطمینان کم', confidenceMedium: 'اطمینان متوسط', confidenceHigh: 'اطمینان زیاد',
+    contradictionsTitle: 'تناقض‌ها', observationsTitle: 'مشاهدات', missingEvidenceTitle: 'شواهد ناقص', referencesTitle: 'ارجاع‌ها',
+    contextPreviewTitle: 'پیش‌نمایش بافت هوش مصنوعی', included: 'شامل', excluded: 'مستثنا', emotionIncludedLabel: 'داده احساسی: شامل شده',
+    emotionExcludedLabel: 'داده احساسی: به‌دلیل قانون حریم خصوصی مستثنا شده', similarNotIncluded: 'سشن‌های مشابه: شامل نشده',
+    similarIncludedLabel: 'سشن‌های مشابه: شامل شده', approxTokens: 'تخمین توکن',
+    contextTruncated: 'به‌دلیل محدودیت حجم، برخی گره‌های مرتبط از بافت حذف شدند.',
+    err_NETWORK_ERROR: 'خطای شبکه. اتصال خود را بررسی کنید.', err_ALREADY_RUNNING: 'این گره در حال اجراست.',
+    err_GRAPH_AI_ANALYSIS_FAILED: 'اجرای تحلیل ناموفق بود.', err_PROVIDER_TIMEOUT: 'زمان پاسخ ارائه‌دهنده به پایان رسید.',
+    err_API_KEY_MISSING: 'کلید هوش مصنوعی تنظیم نشده است.', retry: 'تلاش مجدد'
   },
   ar: {
     empty: 'أضف عقدة للبدء.', switchToList: 'الانتقال إلى القائمة', addNode: 'إضافة عقدة',
@@ -82,7 +100,25 @@ const copy = {
     pickPattern: 'اختر نمطًا', noPatterns: 'لا يوجد نمط مسجّل بعد في سجل الأنماط.',
     chartEntry: 'إدخال مخطط', movementEntry: 'إدخال حركة', notePlaceholder: 'نص الملاحظة…',
     targetStage: 'المرحلة الهدف', dropToCreate: 'أفلت للإنشاء', save: 'حفظ', processingConfig: 'إعدادات المعالجة',
-    autoLayout: 'تخطيط تلقائي', searchPlaceholder: 'بحث…', bulkTitle: 'تحديد متعدد', bulkChangeStage: 'تغيير مرحلة الكل', bulkRemove: 'إزالة الكل من الخريطة'
+    autoLayout: 'تخطيط تلقائي', searchPlaceholder: 'بحث…', bulkTitle: 'تحديد متعدد', bulkChangeStage: 'تغيير مرحلة الكل', bulkRemove: 'إزالة الكل من الخريطة',
+    marketContextTitle: 'سياق السوق', modeOff: 'إيقاف', modeCompact: 'مضغوط', modeSplit: 'مقسّم', modeFocus: 'تركيز',
+    marketContextNode: 'عقدة سياق السوق', addMarketContext: 'إضافة سياق السوق', noInstrumentShort: 'لم يتم تحديد رمز الجلسة',
+    honestNote: 'يتوفر فقط المخطط المباشر والرمز/الإطار الزمني الحقيقي؛ لا يتم استخراج السعر/الحجم/عمق السوق.',
+    following: 'يتبع',
+    runAnalysis: 'تشغيل التحليل', running: 'جارٍ التشغيل…', viewContext: 'عرض سياق الذكاء الاصطناعي', clearResult: 'مسح النتيجة',
+    focusInputs: 'التركيز على المدخلات', focusOutputs: 'التركيز على المخرجات', runConnectedAi: 'تشغيل تحليل الذكاء الاصطناعي',
+    stateIdle: 'جاهز', stateRunning: 'قيد التشغيل', stateCompleted: 'مكتمل', stateFailed: 'فشل', stateStale: 'قديم',
+    provenanceTitle: 'المصدر', provider: 'المزوّد', model: 'النموذج', lastRun: 'آخر تشغيل',
+    suggestionsTitle: 'الاقتراحات', noSuggestions: 'لا توجد اقتراحات.', apply: 'قبول', reject: 'رفض',
+    confidenceLow: 'ثقة منخفضة', confidenceMedium: 'ثقة متوسطة', confidenceHigh: 'ثقة عالية',
+    contradictionsTitle: 'التناقضات', observationsTitle: 'الملاحظات', missingEvidenceTitle: 'الأدلة الناقصة', referencesTitle: 'المراجع',
+    contextPreviewTitle: 'معاينة سياق الذكاء الاصطناعي', included: 'مشمول', excluded: 'مستبعد', emotionIncludedLabel: 'بيانات المشاعر: مشمولة',
+    emotionExcludedLabel: 'بيانات المشاعر: مستبعدة بموجب قاعدة الخصوصية', similarNotIncluded: 'الجلسات المشابهة: غير مشمولة',
+    similarIncludedLabel: 'الجلسات المشابهة: مشمولة', approxTokens: 'تقدير الرموز',
+    contextTruncated: 'تم استبعاد بعض العقد ذات الصلة من السياق بسبب حد الحجم.',
+    err_NETWORK_ERROR: 'خطأ في الشبكة. تحقق من اتصالك.', err_ALREADY_RUNNING: 'هذه العقدة قيد التشغيل بالفعل.',
+    err_GRAPH_AI_ANALYSIS_FAILED: 'فشل تشغيل التحليل.', err_PROVIDER_TIMEOUT: 'انتهت مهلة استجابة المزوّد.',
+    err_API_KEY_MISSING: 'لم يتم تكوين مفتاح الذكاء الاصطناعي.', retry: 'إعادة المحاولة'
   },
   en: {
     empty: 'Add a node to get started.', switchToList: 'Switch to list', addNode: 'Add node',
@@ -98,7 +134,25 @@ const copy = {
     pickPattern: 'Choose a pattern', noPatterns: 'No pattern registered in the Pattern Registry yet.',
     chartEntry: 'Chart entry', movementEntry: 'Movement entry', notePlaceholder: 'Note text…',
     targetStage: 'Target stage', dropToCreate: 'Drop to create', save: 'Save', processingConfig: 'Processing config',
-    autoLayout: 'Auto-layout', searchPlaceholder: 'Search…', bulkTitle: 'Multi-select', bulkChangeStage: 'Change stage for all', bulkRemove: 'Remove all from map'
+    autoLayout: 'Auto-layout', searchPlaceholder: 'Search…', bulkTitle: 'Multi-select', bulkChangeStage: 'Change stage for all', bulkRemove: 'Remove all from map',
+    marketContextTitle: 'Market Context', modeOff: 'Off', modeCompact: 'Compact', modeSplit: 'Split', modeFocus: 'Focus',
+    marketContextNode: 'Market Context node', addMarketContext: 'Add Market Context', noInstrumentShort: 'Session instrument not set',
+    honestNote: 'Only the live chart and the real symbol/timeframe are available - price/volume/market depth are not extracted.',
+    following: 'Following',
+    runAnalysis: 'Run Analysis', running: 'Running…', viewContext: 'View AI Context', clearResult: 'Clear Result',
+    focusInputs: 'Focus Inputs', focusOutputs: 'Focus Outputs', runConnectedAi: 'Run AI Analysis',
+    stateIdle: 'Idle', stateRunning: 'Running', stateCompleted: 'Completed', stateFailed: 'Failed', stateStale: 'Stale',
+    provenanceTitle: 'Provenance', provider: 'Provider', model: 'Model', lastRun: 'Last run',
+    suggestionsTitle: 'Suggestions', noSuggestions: 'No suggestions.', apply: 'Apply', reject: 'Reject',
+    confidenceLow: 'Low confidence', confidenceMedium: 'Medium confidence', confidenceHigh: 'High confidence',
+    contradictionsTitle: 'Contradictions', observationsTitle: 'Observations', missingEvidenceTitle: 'Missing evidence', referencesTitle: 'References',
+    contextPreviewTitle: 'AI Context Preview', included: 'Included', excluded: 'Excluded', emotionIncludedLabel: 'Emotion data: included',
+    emotionExcludedLabel: 'Emotion data: excluded by privacy rule', similarNotIncluded: 'Similar sessions: not included',
+    similarIncludedLabel: 'Similar sessions: included', approxTokens: 'Approx. tokens',
+    contextTruncated: 'Some related nodes were excluded from context due to a size limit.',
+    err_NETWORK_ERROR: 'Network error. Check your connection.', err_ALREADY_RUNNING: 'This node is already running.',
+    err_GRAPH_AI_ANALYSIS_FAILED: 'The analysis run failed.', err_PROVIDER_TIMEOUT: 'The provider timed out.',
+    err_API_KEY_MISSING: 'No AI key is configured.', retry: 'Retry'
   },
   es: {
     empty: 'Agrega un nodo para empezar.', switchToList: 'Ir a la lista', addNode: 'Agregar nodo',
@@ -114,7 +168,25 @@ const copy = {
     pickPattern: 'Elige un patrón', noPatterns: 'Todavía no hay patrones en el registro de patrones.',
     chartEntry: 'Entrada de gráfico', movementEntry: 'Entrada de movimiento', notePlaceholder: 'Texto de la nota…',
     targetStage: 'Etapa destino', dropToCreate: 'Suelta para crear', save: 'Guardar', processingConfig: 'Configuración de procesamiento',
-    autoLayout: 'Diseño automático', searchPlaceholder: 'Buscar…', bulkTitle: 'Selección múltiple', bulkChangeStage: 'Cambiar etapa de todos', bulkRemove: 'Quitar todos del mapa'
+    autoLayout: 'Diseño automático', searchPlaceholder: 'Buscar…', bulkTitle: 'Selección múltiple', bulkChangeStage: 'Cambiar etapa de todos', bulkRemove: 'Quitar todos del mapa',
+    marketContextTitle: 'Contexto de mercado', modeOff: 'Apagado', modeCompact: 'Compacto', modeSplit: 'Dividido', modeFocus: 'Enfoque',
+    marketContextNode: 'Nodo de contexto de mercado', addMarketContext: 'Agregar contexto de mercado', noInstrumentShort: 'No se definió el instrumento de la sesión',
+    honestNote: 'Solo el gráfico en vivo y el símbolo/marco temporal real están disponibles; el precio/volumen/profundidad de mercado no se extraen.',
+    following: 'Siguiendo',
+    runAnalysis: 'Ejecutar análisis', running: 'Ejecutando…', viewContext: 'Ver contexto de IA', clearResult: 'Borrar resultado',
+    focusInputs: 'Enfocar entradas', focusOutputs: 'Enfocar salidas', runConnectedAi: 'Ejecutar análisis de IA',
+    stateIdle: 'Inactivo', stateRunning: 'Ejecutando', stateCompleted: 'Completado', stateFailed: 'Fallido', stateStale: 'Desactualizado',
+    provenanceTitle: 'Procedencia', provider: 'Proveedor', model: 'Modelo', lastRun: 'Última ejecución',
+    suggestionsTitle: 'Sugerencias', noSuggestions: 'No hay sugerencias.', apply: 'Aplicar', reject: 'Rechazar',
+    confidenceLow: 'Confianza baja', confidenceMedium: 'Confianza media', confidenceHigh: 'Confianza alta',
+    contradictionsTitle: 'Contradicciones', observationsTitle: 'Observaciones', missingEvidenceTitle: 'Evidencia faltante', referencesTitle: 'Referencias',
+    contextPreviewTitle: 'Vista previa del contexto de IA', included: 'Incluido', excluded: 'Excluido', emotionIncludedLabel: 'Datos emocionales: incluidos',
+    emotionExcludedLabel: 'Datos emocionales: excluidos por regla de privacidad', similarNotIncluded: 'Sesiones similares: no incluidas',
+    similarIncludedLabel: 'Sesiones similares: incluidas', approxTokens: 'Tokens aprox.',
+    contextTruncated: 'Algunos nodos relacionados se excluyeron del contexto por un límite de tamaño.',
+    err_NETWORK_ERROR: 'Error de red. Verifica tu conexión.', err_ALREADY_RUNNING: 'Este nodo ya se está ejecutando.',
+    err_GRAPH_AI_ANALYSIS_FAILED: 'La ejecución del análisis falló.', err_PROVIDER_TIMEOUT: 'El proveedor superó el tiempo de espera.',
+    err_API_KEY_MISSING: 'No hay una clave de IA configurada.', retry: 'Reintentar'
   }
 };
 function tr(lang, key) { return (copy[lang] && copy[lang][key]) || copy.en[key] || key; }
@@ -141,11 +213,34 @@ function nodeDisplay(node, sourceRecord, lang, registry) {
   return { title: typeDef.display.title(sourceRecord, node, lang, typeDef), status: typeDef.display.status(sourceRecord, node) };
 }
 
+// Section 13 (Node-driven Market Context): what instrument/timeframe the Market Context dock
+// should show, given the single currently-selected node (or none). Only sessionEntry and trade
+// nodes carry real, resolvable context of their own (an entry's own timeframe; a trade's own
+// instrument/timeframe) - every other node (scenario/pattern/note/processing/marketContext
+// itself/none selected) honestly falls back to the Session's own default, exactly what the Desk's
+// own Market chart tab already shows, rather than guessing. Never fabricates a value no selected
+// node/session actually carries.
+function resolveContextInstrumentTimeframe(node, session, registry) {
+  const fallback = { instrument: session.instrument || null, timeframe: session.timeframe || null };
+  if (!node || !registry) return fallback;
+  if (node.type === 'sessionEntry') {
+    const entry = registry.resolveNodeSource(node.source, session);
+    return { instrument: fallback.instrument, timeframe: (entry && entry.timeframe) || fallback.timeframe };
+  }
+  if (node.type === 'trade') {
+    const trade = registry.resolveNodeSource(node.source, session);
+    return { instrument: (trade && trade.instrument) || fallback.instrument, timeframe: (trade && trade.primaryTimeframe) || fallback.timeframe };
+  }
+  return fallback;
+}
+
 export function AnalysisGraphCanvas({
   session, lang, rtl, graph, onOpenSource, onRemoveNode, onMoveNode, onMoveNodes, onSetViewport,
   onAddEdge, onRemoveEdge, onSwitchToList, onChangeNodeStage, onToggleStageCollapsed,
   onUpdateScenario, onUpdateNoteContent, onUpdateProcessingConfig,
-  onCreateScenario, onCreateEntry, onCreateTrade, onCreatePatternRef, onCreateNote, onCreateProcessing
+  onCreateScenario, onCreateEntry, onCreateTrade, onCreatePatternRef, onCreateNote, onCreateProcessing,
+  onCreateMarketContext, marketChartComponent, resolveMarketSymbol, resolveMarketInterval,
+  onRunAiNode, onApplyAiSuggestion, onClearAiResult
 }) {
   // Bundled once per render for the Inspector's QUICK_EDIT_ADAPTERS (section 3's action
   // registry/adapter pattern) - a future adapter only needs its own key added here, never a new
@@ -170,6 +265,11 @@ export function AnalysisGraphCanvas({
   const [boxSelect, setBoxSelect] = React.useState(null); // {startWorld, currentWorld} while shift-dragging the background
   const [searchQuery, setSearchQuery] = React.useState('');
   const [creationMenu, setCreationMenu] = React.useState(null); // {mode:'toolbar'|'context'|'drop', worldPos}
+  // Section 12: Market Context Workspace mode. Deliberately NOT persisted to session.analysisGraph
+  // (it is pure view state, not graph data - section 62's "Map-only metadata" carve-out doesn't
+  // even need to stretch to cover it) - defaults 'off' so a plain graph stays uncluttered (section
+  // 12: "do not let Market Context permanently consume the majority of the UI").
+  const [marketMode, setMarketMode] = React.useState('off');
 
   function clearSelection() { setSelectedNodeIds(new Set()); setSelectedEdgeIds(new Set()); }
   function selectNodeOnly(nodeId) { setSelectedNodeIds(new Set([nodeId])); setSelectedEdgeIds(new Set()); }
@@ -406,23 +506,17 @@ export function AnalysisGraphCanvas({
   // component (every node/edge reachable by following edges in either direction) and dims
   // everything else - "everything outside the selected reasoning path becomes visually
   // subdued." Recomputed only when the single-selected node or the edge set changes.
+  //
+  // The bidirectional-BFS traversal itself now lives in registry.resolveFocusPathNodeIds() (this
+  // AI Node pass) - the new Graph AI Context Builder's structural-inclusion layer (section 3B:
+  // "selected node, Focus Path, upstream evidence, downstream nodes, directly connected nodes,
+  // relevant edges") needs the EXACT same reachability set, and two independent implementations
+  // could silently drift (the canvas dimming a different set than what the AI actually receives).
+  // This is a pure delegation - the visual dimming behavior below is unchanged.
   const focusPath = React.useMemo(() => {
     if (!selectedNode) return null;
-    const nodeIds = new Set([selectedNode.id]);
-    const edgeIds = new Set();
-    let frontier = [selectedNode.id];
-    while (frontier.length) {
-      const next = [];
-      frontier.forEach((id) => {
-        graph.edges.forEach((edge) => {
-          if (edge.sourceNodeId === id && !nodeIds.has(edge.targetNodeId)) { nodeIds.add(edge.targetNodeId); next.push(edge.targetNodeId); edgeIds.add(edge.id); }
-          if (edge.targetNodeId === id && !nodeIds.has(edge.sourceNodeId)) { nodeIds.add(edge.sourceNodeId); next.push(edge.sourceNodeId); edgeIds.add(edge.id); }
-          if ((edge.sourceNodeId === id || edge.targetNodeId === id)) edgeIds.add(edge.id);
-        });
-      });
-      frontier = next;
-    }
-    return { nodeIds, edgeIds };
+    const resolved = registry.resolveFocusPathNodeIds(graph, selectedNode.id);
+    return { nodeIds: new Set(resolved.nodeIds), edgeIds: new Set(resolved.edgeIds) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode && selectedNode.id, graph.edges]);
 
@@ -467,7 +561,7 @@ export function AnalysisGraphCanvas({
         onPointerUp={onBackgroundPointerUp} onWheel={onWheel} onContextMenu={onBackgroundContextMenu}
         onDragOver={onBackgroundDragOver} onDrop={onBackgroundDrop}
         style={{
-          position: 'relative', flex: 1, minWidth: 0, overflow: 'hidden', borderRadius: 12,
+          position: 'relative', flex: marketMode === 'focus' ? '0 1 260px' : 1, minWidth: 0, overflow: 'hidden', borderRadius: 12,
           border: '1px solid var(--border-hairline)', background: 'radial-gradient(circle, rgba(244,234,215,.06) 1px, transparent 1px) 0 0/22px 22px, var(--ink-950)',
           cursor: panning ? 'grabbing' : 'grab', touchAction: 'none'
         }}
@@ -556,16 +650,25 @@ export function AnalysisGraphCanvas({
             <Icon name="Plus" size={13} />{tr(lang, 'addNode')}
           </button>
         </div>
-        <div style={{ position: 'absolute', insetInlineEnd: 10, top: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ position: 'absolute', insetInlineEnd: 10, top: 10, display: 'flex', gap: 8, alignItems: 'center', maxWidth: 'calc(100% - 20px)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <div style={{ position: 'relative' }}>
             <Icon name="Search" size={13} style={{ position: 'absolute', insetInlineStart: 8, top: 8, color: 'var(--text-dim)', pointerEvents: 'none' }} />
             <input
               type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={tr(lang, 'searchPlaceholder')} dir="auto"
-              style={{ height: 30, width: 150, borderRadius: 7, border: '1px solid var(--border-hairline)', background: 'var(--ink-950)', color: 'var(--text-primary)', fontSize: 11.5, paddingInlineStart: 26, paddingInlineEnd: 8 }}
+              style={{ height: 30, width: marketMode === 'focus' ? 90 : 150, borderRadius: 7, border: '1px solid var(--border-hairline)', background: 'var(--ink-950)', color: 'var(--text-primary)', fontSize: 11.5, paddingInlineStart: 26, paddingInlineEnd: 8 }}
             />
           </div>
-          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'deleteHint')}</span>
-          <button type="button" onClick={onSwitchToList} style={{ ...miniBtnStyle, width: 'auto', padding: '0 10px', fontSize: 11 }}>{tr(lang, 'switchToList')}</button>
+          {/* Hidden once the canvas narrows for Market Context Focus mode - it was wrapping onto
+              several lines in that width, per a real bug caught via live browser verification. */}
+          {marketMode !== 'focus' && <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'deleteHint')}</span>}
+          {marketMode === 'off' && marketChartComponent && (
+            <button type="button" onClick={() => setMarketMode('compact')} title={tr(lang, 'marketContextTitle')} style={{ ...miniBtnStyle, width: 'auto', padding: '0 10px', fontSize: 11, gap: 6, display: 'flex', alignItems: 'center' }}>
+              <Icon name="CandlestickChart" size={13} />{tr(lang, 'marketContextTitle')}
+            </button>
+          )}
+          <button type="button" onClick={onSwitchToList} title={tr(lang, 'switchToList')} style={marketMode === 'focus' ? miniBtnStyle : { ...miniBtnStyle, width: 'auto', padding: '0 10px', fontSize: 11 }}>
+            {marketMode === 'focus' ? <Icon name="List" size={14} /> : tr(lang, 'switchToList')}
+          </button>
         </div>
         {connectError && (
           <div style={{ position: 'absolute', insetInlineStart: '50%', transform: 'translateX(-50%)', top: 10, padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,56,48,.45)', background: 'rgba(3,8,7,.92)', color: 'var(--danger)', fontSize: 11.5, maxWidth: 320, textAlign: 'center' }}>
@@ -574,6 +677,14 @@ export function AnalysisGraphCanvas({
         )}
         <Minimap nodes={visibleNodes} positionOf={positionOf} viewport={viewport} containerRef={containerRef} onPan={(next) => { commitViewportLocal(next); commitViewport(next); }} />
       </div>
+
+      {marketChartComponent && (
+        <MarketContextDock
+          lang={lang} mode={marketMode} onModeChange={setMarketMode}
+          session={session} selectedNode={selectedNode} registry={registry}
+          chartComponent={marketChartComponent} resolveSymbol={resolveMarketSymbol} resolveInterval={resolveMarketInterval}
+        />
+      )}
 
       {bulkSelection && (
         <BulkInspector
@@ -590,6 +701,8 @@ export function AnalysisGraphCanvas({
           node={selectedNode} edge={selectedEdge}
           onClose={clearSelection} onOpenSource={onOpenSource} onRemoveNode={onRemoveNode}
           onRemoveEdge={onRemoveEdge} onChangeNodeStage={onChangeNodeStage} actions={inspectorActions}
+          onRunAiNode={onRunAiNode} onApplyAiSuggestion={onApplyAiSuggestion} onClearAiResult={onClearAiResult}
+          onFocusNode={selectNodeOnly} onSelectNodes={(ids) => { setSelectedNodeIds(new Set(ids)); setSelectedEdgeIds(new Set()); }}
         />
       )}
 
@@ -606,6 +719,7 @@ export function AnalysisGraphCanvas({
           onCreatePatternRef={(patternId, stageId) => { const n = onCreatePatternRef(patternId, stageId); placeIfDropped(n); }}
           onCreateNote={(content, stageId) => { const n = onCreateNote(content, stageId); placeIfDropped(n); }}
           onCreateProcessing={(typeId, config, stageId) => { const n = onCreateProcessing(typeId, config, stageId); placeIfDropped(n); }}
+          onCreateMarketContext={(stageId) => { const n = onCreateMarketContext(stageId); placeIfDropped(n); }}
         />
       )}
     </div>
@@ -628,6 +742,74 @@ const selectStyle = {
   height: 30, borderRadius: 7, border: '1px solid var(--border-hairline)', background: 'var(--ink-950)',
   color: 'var(--text-primary)', fontSize: 11.5, padding: '0 8px'
 };
+
+// Section 12 (Market Context Workspace): a dockable/collapsible panel around the real TradingView
+// chart this app already has - reused verbatim via the chartComponent prop (section 11 - never a
+// second chart implementation; see liveSessionView.jsx's own TradingViewAdvancedChart export
+// comment for why it's threaded through as a prop rather than imported directly here). Section 13
+// (node-driven Market Context): follows the single selected node's own resolved instrument/
+// timeframe (resolveContextInstrumentTimeframe above) when it carries one, else the Session's own
+// default - never a fabricated value. 'off' (default), 'compact' (a small dock), 'split' (chart
+// beside the canvas), 'focus' (chart dominant, canvas shrinks to a narrow nav strip - the canvas's
+// own Minimap still works at that width, so there's no separate nav feature to build).
+//
+// Deliberately never passes `fill` to the chart component: `fill` is TradingViewAdvancedChart's
+// own true-fullscreen sizing (calc(100vh - 84px)), meant for the Desk's own fullscreen toggle -
+// inside a non-fullscreen dock it would overflow/crop. The dock instead just gives the chart more
+// WIDTH in focus mode (flex weight); the widget keeps its normal responsive clamped height.
+function MarketContextDock({ lang, mode, onModeChange, session, selectedNode, registry, chartComponent, resolveSymbol, resolveInterval }) {
+  if (mode === 'off') return null;
+  const { instrument, timeframe } = resolveContextInstrumentTimeframe(selectedNode, session, registry);
+  const symbol = resolveSymbol ? resolveSymbol(instrument) : null;
+  const interval = resolveInterval ? resolveInterval(timeframe) : null;
+  const ChartComponent = chartComponent;
+  const followingLabel = selectedNode && (selectedNode.type === 'sessionEntry' || selectedNode.type === 'trade') && registry
+    ? registry.nodeTypeTitle(selectedNode.type, lang) : null;
+
+  const modeButtons = (
+    <div style={{ display: 'flex', gap: 4, flex: 'none' }}>
+      {[['compact', tr(lang, 'modeCompact')], ['split', tr(lang, 'modeSplit')], ['focus', tr(lang, 'modeFocus')]].map(([id, label]) => (
+        <button key={id} type="button" onClick={() => onModeChange(id)} aria-pressed={mode === id} style={{
+          height: 22, padding: '0 7px', borderRadius: 5, cursor: 'pointer', fontSize: 10,
+          border: '1px solid ' + (mode === id ? 'var(--char-accent)' : 'var(--border-hairline)'),
+          background: mode === id ? 'var(--char-active-surface)' : 'transparent',
+          color: mode === id ? 'var(--char-accent)' : 'var(--text-muted)'
+        }}>{label}</button>
+      ))}
+      <button type="button" onClick={() => onModeChange('off')} title={tr(lang, 'modeOff')} style={{ ...miniBtnStyle, width: 22, height: 22 }}>
+        <Icon name="X" size={11} />
+      </button>
+    </div>
+  );
+  const header = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: mode === 'compact' ? 6 : 8 }}>
+      <Icon name="CandlestickChart" size={14} style={{ color: 'var(--char-accent)', flex: 'none' }} />
+      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 'none' }}>{tr(lang, 'marketContextTitle')}</span>
+      {symbol && <span className="navrya-tabular" dir="ltr" style={{ fontSize: 10, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{symbol} · {timeframe || interval}</span>}
+      <span style={{ marginInlineStart: 'auto' }}>{modeButtons}</span>
+    </div>
+  );
+  const dockStyle = {
+    minWidth: 0, display: 'flex', flexDirection: 'column', padding: 10, borderRadius: 12,
+    border: '1px solid var(--border-hairline)', background: 'color-mix(in srgb, var(--char-atmosphere) 22%, var(--ink-900))',
+    overflow: 'hidden', flex: mode === 'compact' ? '0 0 220px' : mode === 'focus' ? 3 : '0 0 380px'
+  };
+  return (
+    <div style={dockStyle}>
+      {header}
+      {followingLabel && <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 6 }}>{tr(lang, 'following')}: {followingLabel}</span>}
+      {mode !== 'compact' && (symbol && ChartComponent ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', borderRadius: 8 }}>
+          <ChartComponent symbol={symbol} interval={interval} lang={lang} />
+        </div>
+      ) : (
+        <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'noInstrumentShort')}</span>
+      ))}
+      {mode === 'compact' && !symbol && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'noInstrumentShort')}</span>}
+      <span dir="auto" style={{ fontSize: 9.5, color: 'var(--text-dim)', marginTop: 6 }}>{tr(lang, 'honestNote')}</span>
+    </div>
+  );
+}
 
 // Section 27/28: stage legend rail - real, persisted collapse state (workflowMeta.collapsedStages),
 // per-stage node counts ("see stage status"), color dot matching each node card's accent strip.
@@ -735,13 +917,265 @@ const QUICK_EDIT_ADAPTERS = {
   marketStructure: ProcessingQuickEdit, confluence: ProcessingQuickEdit, aiAnalysis: ProcessingQuickEdit
 };
 
+// ============================================================================================
+// AI NODE + SELECTIVE AI CONTEXT + TRACEABLE AI SUGGESTIONS (this pass).
+// Registered exactly like QUICK_EDIT_ADAPTERS above - a second, parallel adapter map keyed by
+// node type id, NOT a new branch inside Inspector() itself (that component's own zero-
+// node.type-branch invariant is proven by a dedicated test - see this file's own Inspector
+// comment). Only aiAnalysis is registered (the one executable type - see analysis-graph-
+// registry.js's own capabilities.executable comment); a future second executable processing type
+// would register its own panel component here, never touch Inspector's body.
+// ============================================================================================
+
+// section 23: "Selecting a Scenario should make [Run AI Analysis] contextual" - generalized to
+// ANY non-executable node with a connected aiAnalysis node (not scenario-specific, so it works
+// the same way for a Chart, Trade, etc. that already has an AI node wired to it). Capability-
+// driven (typeDef.capabilities.executable), never a literal node.type === 'aiAnalysis' string
+// comparison, so this helper (and its call site inside Inspector) never trips that test either.
+function findConnectedAiAnalysisNode(node, graph, registry) {
+  if (!node || !graph) return null;
+  const touching = graph.edges.filter((e) => e.sourceNodeId === node.id || e.targetNodeId === node.id);
+  for (let i = 0; i < touching.length; i++) {
+    const otherId = touching[i].sourceNodeId === node.id ? touching[i].targetNodeId : touching[i].sourceNodeId;
+    const other = graph.nodes.find((n) => n.id === otherId);
+    const otherDef = other && registry.NODE_TYPES[other.type];
+    if (otherDef && otherDef.capabilities.executable) return other;
+  }
+  return null;
+}
+
+// Mirrors sessionAiAnalysisModal.jsx's own tr(lang, 'err_' + errorCode) convention (audited this
+// pass) - a known code gets a real localized message, an unrecognized one (a raw stable code
+// string straight from the server, per pattern-ai-server.mjs's own error contract) still shows
+// something readable rather than a blank string.
+function errorLabel(lang, code) {
+  if (!code) return '';
+  if (/_API_KEY_MISSING$/.test(code)) return tr(lang, 'err_API_KEY_MISSING');
+  const key = 'err_' + code;
+  const known = copy[lang] && copy[lang][key];
+  return known || copy.en[key] || code;
+}
+
+function confidenceLabel(lang, confidence) {
+  if (confidence === 'low') return tr(lang, 'confidenceLow');
+  if (confidence === 'medium') return tr(lang, 'confidenceMedium');
+  if (confidence === 'high') return tr(lang, 'confidenceHigh');
+  return null;
+}
+
+// Section 10: a structured reference (never parsed from prose) rendered as a real clickable chip.
+// Clicking selects the node - reusing the canvas's own existing selection/Focus Path/Inspector
+// mechanism (onFocusNode is selectNodeOnly, passed down from AnalysisGraphCanvas), never a new
+// focus system. A reference to a node no longer on the graph (removed since the run) degrades to
+// a plain, unclickable label - never crashes, never a dead click.
+function ReferenceChip({ nodeId, label, graph, onFocusNode }) {
+  const exists = graph.nodes.some((n) => n.id === nodeId);
+  if (!exists) return <span style={{ fontSize: 10, color: 'var(--text-dim)', textDecoration: 'line-through' }}>{label}</span>;
+  return (
+    <button
+      type="button" onClick={() => onFocusNode(nodeId)}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, height: 20, padding: '0 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'rgba(214,175,107,.10)', color: 'var(--char-accent)', fontSize: 10 }}
+    >
+      <Icon name="Link" size={9} />{label}
+    </button>
+  );
+}
+
+// Section 22: "View AI Context" - calls the EXACT SAME window.TradeJournalAnalysisGraphAiContext
+// build() function a real run would send (never a separate/hand-rolled preview implementation -
+// see analysis-graph-ai-context.js's own header comment on why this matters: "context preview
+// matches actual context builder").
+function AiContextPreviewModal({ lang, rtl, session, graph, selectedNodeId, onClose }) {
+  const builder = window.TradeJournalAnalysisGraphAiContext;
+  const pkg = React.useMemo(() => (builder ? builder.build({ session, graph, selectedNodeId }) : null), [session, graph, selectedNodeId]);
+  if (!pkg) return null;
+  return (
+    <div dir={rtl ? 'rtl' : 'ltr'} style={{ position: 'fixed', inset: 0, background: 'rgba(3,8,7,.6)', display: 'grid', placeItems: 'center', zIndex: 50 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 380, maxHeight: '78vh', overflowY: 'auto', borderRadius: 12, padding: 14, border: '1px solid var(--border-gold)', background: 'var(--ink-950)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'contextPreviewTitle')}</span>
+          <button type="button" onClick={onClose} style={{ ...miniBtnStyle, width: 24, height: 24 }}><Icon name="X" size={12} /></button>
+        </div>
+        <span style={{ fontSize: 11.5, color: 'var(--text-primary)' }}>{tr(lang, 'included')}: {pkg.nodes.length} · {tr(lang, 'excluded')}: {pkg.excludedNodeIds.length}</span>
+        {pkg.truncated && <span style={{ fontSize: 10.5, color: 'var(--warning)' }}>{tr(lang, 'contextTruncated')}</span>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {pkg.nodes.map((n) => <span key={n.id} dir="auto" style={{ fontSize: 11, color: 'var(--text-muted)' }}>• {n.title || n.id} ({n.type})</span>)}
+        </div>
+        <span style={{ fontSize: 11, color: pkg.emotionIncluded ? 'var(--warning)' : 'var(--text-dim)' }}>{tr(lang, pkg.emotionIncluded ? 'emotionIncludedLabel' : 'emotionExcludedLabel')}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, pkg.similarSessionsIncluded ? 'similarIncludedLabel' : 'similarNotIncluded')}</span>
+        <span className="navrya-tabular" style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'approxTokens')}: {pkg.approxTokens}</span>
+        <button type="button" onClick={onClose} style={secondaryBtnStyle}>{tr(lang, 'close')}</button>
+      </div>
+    </div>
+  );
+}
+
+// Section 12's approval UI, matching the real app-wide suggestion-card convention this pass's
+// audit found (strategiesHubView.jsx's ChatTab, mental-health-ui.js's suggestionCard) - title/
+// explanation/affected-nodes, then two buttons. Only ever rendered for status:'pending' (the
+// caller filters); a resolved suggestion instead renders as a plain past-tense line (see
+// AiNodePanel below) so approve/reject can never be pressed twice.
+function SuggestionCard({ suggestion, lang, rtl, graph, onFocusNode, onApply, onReject }) {
+  const registry = window.TradeJournalAnalysisGraphRegistry;
+  const label = suggestion.type === 'createNode' ? (suggestion.payload.title || '')
+    : suggestion.type === 'createEdge' ? registry.relationLabel(suggestion.payload.relation, lang)
+    : suggestion.payload.suggestion || '';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '8px 9px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(244,234,215,.04)' }}>
+      <span dir="auto" style={{ fontSize: 11.5, color: 'var(--text-primary)', fontWeight: 600 }}>{label}</span>
+      {suggestion.explanation && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{suggestion.explanation}</span>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {suggestion.confidence && <Chip tone="neutral">{confidenceLabel(lang, suggestion.confidence)}</Chip>}
+        {suggestion.sourceNodeIds.map((id) => {
+          const n = graph.nodes.find((x) => x.id === id);
+          return <ReferenceChip key={id} nodeId={id} label={n ? (n.title || id) : id} graph={graph} onFocusNode={onFocusNode} />;
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button type="button" onClick={onApply} style={{ ...secondaryBtnStyle, flex: 1, height: 26, fontSize: 10.5 }}><Icon name="Check" size={11} />{tr(lang, 'apply')}</button>
+        <button type="button" onClick={onReject} style={{ ...dangerBtnStyle, flex: 1, height: 26, fontSize: 10.5 }}><Icon name="X" size={11} />{tr(lang, 'reject')}</button>
+      </div>
+    </div>
+  );
+}
+
+// Section 21's AI Node Inspector: Status/Provider/Model/Run time/Fresh-Stale/Provenance/
+// Suggestions/References, plus [Run]/[View Context]/[Clear Result]/[Focus Inputs]/[Focus Outputs].
+function AiNodePanel({ node, session, graph, lang, rtl, registry, onRunAiNode, onApplyAiSuggestion, onClearAiResult, onFocusNode, onSelectNodes }) {
+  const [showContext, setShowContext] = React.useState(false);
+  const exec = node.execution || {};
+  const running = exec.state === 'running';
+  // Section 7: staleness is computed live, right here, never read off a stored flag - see
+  // registry.isAiNodeStale()'s own comment for why.
+  const builder = window.TradeJournalAnalysisGraphAiContext;
+  const client = window.TradeJournalAnalysisGraphAiClient;
+  const currentSignature = React.useMemo(() => {
+    if (exec.state !== 'completed' || !builder || !client) return null;
+    return client.computeInputSignature(builder.build({ session, graph, selectedNodeId: node.id }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exec.state, graph, node.id]);
+  const stale = exec.state === 'completed' && registry.isAiNodeStale(node, currentSignature);
+  const stateLabel = stale ? tr(lang, 'stateStale') : tr(lang, 'state' + exec.state.charAt(0).toUpperCase() + exec.state.slice(1));
+  const stateColor = exec.state === 'failed' ? 'var(--danger)' : (stale || exec.state === 'running') ? 'var(--warning)' : exec.state === 'completed' ? 'var(--success)' : 'var(--text-dim)';
+
+  const pendingSuggestions = (exec.suggestions || []).filter((s) => s.status === 'pending');
+  const resolvedSuggestions = (exec.suggestions || []).filter((s) => s.status !== 'pending');
+  const inputNodeIds = graph.edges.filter((e) => e.targetNodeId === node.id).map((e) => e.sourceNodeId);
+  const outputNodeIds = graph.edges.filter((e) => e.sourceNodeId === node.id).map((e) => e.targetNodeId);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: stateColor, flex: 'none' }} />
+        <span style={{ fontSize: 11, color: stateColor }}>{stateLabel}</span>
+      </div>
+
+      {exec.error && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{errorLabel(lang, exec.error)}</span>}
+
+      {exec.provenance && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'provenanceTitle')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{tr(lang, 'provider')}: {exec.provenance.provider || '—'} · {tr(lang, 'model')}: {exec.provenance.model || '—'}</span>
+          {exec.lastRunAt && <span className="navrya-tabular" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{tr(lang, 'lastRun')}: {new Date(exec.lastRunAt).toLocaleString(lang)}</span>}
+        </div>
+      )}
+
+      {exec.result && exec.result.summary && <span dir="auto" style={{ fontSize: 11, color: 'var(--text-primary)' }}>{exec.result.summary}</span>}
+
+      {exec.result && exec.result.contradictions && exec.result.contradictions.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 8px', borderRadius: 7, border: '1px solid rgba(255,56,48,.35)', background: 'rgba(255,56,48,.06)' }}>
+          <span style={{ fontSize: 10, color: 'var(--danger)', letterSpacing: '.04em' }}>{tr(lang, 'contradictionsTitle')}</span>
+          {exec.result.contradictions.map((c, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-primary)' }}>{c.text}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {c.nodeIds.map((id) => { const n = graph.nodes.find((x) => x.id === id); return <ReferenceChip key={id} nodeId={id} label={n ? (n.title || id) : id} graph={graph} onFocusNode={onFocusNode} />; })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {exec.result && exec.result.observations && exec.result.observations.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'observationsTitle')}</span>
+          {exec.result.observations.map((o, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{o.text}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {o.nodeIds.map((id) => { const n = graph.nodes.find((x) => x.id === id); return <ReferenceChip key={id} nodeId={id} label={n ? (n.title || id) : id} graph={graph} onFocusNode={onFocusNode} />; })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {exec.result && exec.result.missingEvidence && exec.result.missingEvidence.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'missingEvidenceTitle')}</span>
+          {exec.result.missingEvidence.map((m, i) => <span key={i} dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{m.text}</span>)}
+        </div>
+      )}
+
+      {exec.result && exec.result.references && exec.result.references.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'referencesTitle')}</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {exec.result.references.map((r) => <ReferenceChip key={r.nodeId} nodeId={r.nodeId} label={r.label} graph={graph} onFocusNode={onFocusNode} />)}
+          </div>
+        </div>
+      )}
+
+      {exec.state === 'completed' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'suggestionsTitle')}</span>
+          {pendingSuggestions.length === 0 && resolvedSuggestions.length === 0 && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'noSuggestions')}</span>}
+          {pendingSuggestions.map((s) => (
+            <SuggestionCard
+              key={s.id} suggestion={s} lang={lang} rtl={rtl} graph={graph} onFocusNode={onFocusNode}
+              onApply={() => onApplyAiSuggestion(node.id, s.id, 'applied')}
+              onReject={() => onApplyAiSuggestion(node.id, s.id, 'rejected')}
+            />
+          ))}
+          {resolvedSuggestions.map((s) => (
+            <span key={s.id} dir="auto" style={{ fontSize: 10, color: s.status === 'applied' ? 'var(--success)' : 'var(--text-dim)', textDecoration: s.status === 'rejected' ? 'line-through' : 'none' }}>
+              {s.type === 'createNode' ? s.payload.title : s.type === 'createEdge' ? registry.relationLabel(s.payload.relation, lang) : s.payload.suggestion}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <button type="button" disabled={running} onClick={() => onRunAiNode(node.id, { selectedNodeId: node.id })} style={{ ...secondaryBtnStyle, opacity: running ? 0.6 : 1 }}>
+          <Icon name={running ? 'LoaderCircle' : 'Sparkles'} size={13} />{tr(lang, running ? 'running' : 'runAnalysis')}
+        </button>
+        <button type="button" onClick={() => setShowContext(true)} style={secondaryBtnStyle}><Icon name="Eye" size={13} />{tr(lang, 'viewContext')}</button>
+        {(exec.result || exec.error) && <button type="button" onClick={() => onClearAiResult(node.id)} style={secondaryBtnStyle}><Icon name="Eraser" size={13} />{tr(lang, 'clearResult')}</button>}
+        {inputNodeIds.length > 0 && <button type="button" onClick={() => onSelectNodes(inputNodeIds)} style={secondaryBtnStyle}><Icon name="ArrowDownToLine" size={13} />{tr(lang, 'focusInputs')}</button>}
+        {outputNodeIds.length > 0 && <button type="button" onClick={() => onSelectNodes(outputNodeIds)} style={secondaryBtnStyle}><Icon name="ArrowUpFromLine" size={13} />{tr(lang, 'focusOutputs')}</button>}
+      </div>
+
+      {showContext && <AiContextPreviewModal lang={lang} rtl={rtl} session={session} graph={graph} selectedNodeId={node.id} onClose={() => setShowContext(false)} />}
+    </div>
+  );
+}
+const AI_NODE_PANEL_ADAPTERS = { aiAnalysis: AiNodePanel };
+
 // Section 18's Inspector - generic over node type, reading only capabilities.canOpenSource/
 // canQuickEdit off the registry and QUICK_EDIT_ADAPTERS above. No `if (node.type === ...)`
 // branch exists in this component itself (verified by a source-text test).
-function Inspector({ lang, rtl, registry, session, graph, node, edge, onClose, onOpenSource, onRemoveNode, onRemoveEdge, onChangeNodeStage, actions }) {
+function Inspector({
+  lang, rtl, registry, session, graph, node, edge, onClose, onOpenSource, onRemoveNode, onRemoveEdge, onChangeNodeStage, actions,
+  onRunAiNode, onApplyAiSuggestion, onClearAiResult, onFocusNode, onSelectNodes
+}) {
   const sourceRecord = node && node.origin === 'reference' ? registry.resolveNodeSource(node.source, session) : null;
   const typeDef = node && registry.NODE_TYPES[node.type];
   const QuickEdit = typeDef && QUICK_EDIT_ADAPTERS[node.type];
+  const AiPanel = typeDef && AI_NODE_PANEL_ADAPTERS[node.type];
+  // Section 23: "Selecting a Scenario should make [Run AI Analysis] contextual" - generalized to
+  // any non-executable node with a real connected AI node (see findConnectedAiAnalysisNode's own
+  // comment on why this stays capability-driven, not a node.type string comparison).
+  const connectedAiNode = (typeDef && !typeDef.capabilities.executable) ? findConnectedAiAnalysisNode(node, graph, registry) : null;
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ width: 230, flex: 'none', display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 12, border: '1px solid var(--border-hairline)', background: 'color-mix(in srgb, var(--char-atmosphere) 30%, var(--ink-900))', overflowY: 'auto' }}>
       {node && typeDef && (
@@ -755,12 +1189,29 @@ function Inspector({ lang, rtl, registry, session, graph, node, edge, onClose, o
           {node.origin === 'reference' && (
             <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'inspectorStatus')}: {sourceRecord ? (sourceRecord.status || node.status) : tr(lang, 'sourceUnavailable')}</span>
           )}
-          {node.origin === 'derived' && (
+          {/* AI Node phase: an executable derived node (aiAnalysis) shows its own AiNodePanel
+              below with the real running/completed/failed state - this line is only the honest
+              "no processor exists" badge for the still-non-executable derived types. */}
+          {node.origin === 'derived' && !typeDef.capabilities.executable && (
             <span style={{ fontSize: 11, color: 'var(--warning)' }}>{tr(lang, 'inspectorStatus')}: {tr(lang, 'executionUnavailable')}</span>
           )}
 
           {typeDef.capabilities.canQuickEdit && QuickEdit && (
             <QuickEdit node={node} session={session} registry={registry} lang={lang} sourceRecord={sourceRecord} actions={actions} />
+          )}
+
+          {typeDef.capabilities.executable && AiPanel && (
+            <AiPanel
+              node={node} session={session} graph={graph} lang={lang} rtl={rtl} registry={registry}
+              onRunAiNode={onRunAiNode} onApplyAiSuggestion={onApplyAiSuggestion} onClearAiResult={onClearAiResult}
+              onFocusNode={onFocusNode} onSelectNodes={onSelectNodes}
+            />
+          )}
+
+          {connectedAiNode && (
+            <button type="button" onClick={() => onRunAiNode(connectedAiNode.id, { selectedNodeId: node.id })} style={secondaryBtnStyle}>
+              <Icon name="Sparkles" size={13} />{tr(lang, 'runConnectedAi')}
+            </button>
           )}
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -869,7 +1320,8 @@ function Minimap({ nodes, positionOf, viewport, containerRef, onPan }) {
 // existing record to attach to/reference, shown as their own picker sub-step.
 function NodeCreationMenu({
   lang, rtl, registry, session, graph, menu, onClose,
-  onCreateScenario, onCreateEntry, onCreateTrade, onCreatePatternRef, onCreateNote, onCreateProcessing
+  onCreateScenario, onCreateEntry, onCreateTrade, onCreatePatternRef, onCreateNote, onCreateProcessing,
+  onCreateMarketContext
 }) {
   const [typeId, setTypeId] = React.useState(menu.presetType || null);
   const stageIds = graph.stages.map((s) => s.id);
@@ -942,6 +1394,18 @@ function NodeCreationMenu({
         {typeId === 'note' && (
           <NoteForm lang={lang} rtl={rtl} stageSelect={stageSelect}
             onBack={() => setTypeId(null)} onCreate={(content) => { onCreateNote(content, stageId); onClose(); }} />
+        )}
+        {typeId === 'marketContext' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {stageSelect}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(244,234,215,.04)' }}>
+              <span className="navrya-tabular" dir="ltr" style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+                {[session.instrument, session.timeframe].filter(Boolean).join(' · ') || tr(lang, 'noInstrumentShort')}
+              </span>
+            </div>
+            <button type="button" onClick={() => { onCreateMarketContext(stageId); onClose(); }} style={secondaryBtnStyle}>{tr(lang, 'addMarketContext')}</button>
+            <button type="button" onClick={() => setTypeId(null)} style={{ ...miniBtnStyle, width: 'auto', padding: '0 10px' }}>{tr(lang, 'back')}</button>
+          </div>
         )}
         {typeId && registry.NODE_TYPES[typeId].origin === 'derived' && (
           <ProcessingForm lang={lang} rtl={rtl} typeId={typeId} registry={registry} stageSelect={stageSelect}

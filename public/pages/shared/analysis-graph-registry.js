@@ -13,8 +13,9 @@
  * Workspace tab kept the internal id `timeline` while its visible label became "میز تحلیل".
  *
  * NODE DATA MODEL: three origins (section 20).
- *  - 'reference' nodes (sessionEntry/sessionScenario/trade/pattern) store ONLY {type, id}
- *    pointing at a real canonical record. resolveNodeSource() always re-reads the live record -
+ *  - 'reference' nodes (sessionEntry/sessionScenario/trade/pattern/marketContext) store ONLY
+ *    {type, id} pointing at a real canonical record (marketContext's "record" is the Session
+ *    itself - see resolveNodeSource()). resolveNodeSource() always re-reads the live record -
  *    a node can never drift out of sync with (or duplicate) canonical data. Canvas node CREATION
  *    for these routes through the real existing creation pipeline (liveSessionView.jsx's
  *    addScenario/addEntry/openLogWizard, or a picker over an already-existing record for
@@ -36,11 +37,13 @@
   // Section 41 (forensic review): a node's lifecycle/review state.
   var NODE_STATUSES = ['active', 'confirmed', 'invalidated', 'rejected', 'expired', 'archived', 'unavailable'];
 
-  // Section 9 (execution model). V1 only ever sets 'unavailable' (no processor implemented) or
-  // 'idle' (n/a for reference/manual nodes, which never carry an execution object at all - see
-  // normalizeNode). 'ready'/'running'/'completed'/'warning'/'failed'/'stale' are reserved for the
-  // real execution engine (section 31/58's explicit future phase) so today's data round-trips
-  // through that phase without a migration.
+  // Section 9 (execution model). marketStructure/confluence stay 'unavailable' forever in V1 (no
+  // processor implemented - section 6.2's "do not pretend a processor exists"). aiAnalysis is the
+  // one type that now actually executes (this pass's AI Node phase) via
+  // liveSessionView.jsx's runAiAnalysisNode() - 'idle' -> 'running' -> 'completed'/'failed'.
+  // 'stale' is deliberately never STORED (see isAiNodeStale below) - it is a live, computed
+  // display state, not a persisted one, so "stale" always reflects the CURRENT graph, never a
+  // snapshot that itself could go stale.
   var EXECUTION_STATES = ['idle', 'ready', 'running', 'completed', 'warning', 'failed', 'stale', 'unavailable'];
 
   // Section 8's stable relation-id vocabulary (semantic edges - "Chart supports Thesis").
@@ -79,7 +82,8 @@
   // move it afterward via the Inspector's "Change Stage" action (section 18).
   var DEFAULT_STAGE_BY_TYPE = {
     sessionEntry: 'evidence', pattern: 'evidence', sessionScenario: 'scenarios', trade: 'decision',
-    note: 'observation', marketStructure: 'observation', confluence: 'observation', aiAnalysis: 'observation'
+    note: 'observation', marketStructure: 'observation', confluence: 'observation', aiAnalysis: 'observation',
+    marketContext: 'evidence'
   };
 
   // Port "types" are plain strings matched for exact equality (compatiblePortPair below) - no
@@ -96,6 +100,11 @@
   //  'observation' - what a processing node produces, and what every node (reference/manual/
   //                  processing) can receive - lets an upstream processor's result point at/
   //                  support a downstream Scenario, another processor, or a Note.
+  //  'marketContext' - section 7/12: the bundled {instrument, timeframe, market} output of the
+  //                  Market Context node (below). Only Market Structure and AI Analysis declare a
+  //                  matching input, per section 7's literal port list for those two types -
+  //                  Confluence's own section-7 input list (structure/liquidity/volume/
+  //                  otherEvidence) does not include marketContext, so it stays unchanged.
   function ports(inputs, outputs) { return { inputs: inputs || [], outputs: outputs || [] }; }
   var UNIVERSAL_OUT = { id: 'out', type: 'node' };
   var UNIVERSAL_IN = { id: 'in', type: 'node' };
@@ -132,6 +141,15 @@
     processing: { // shared by every 'derived' type below - registered per-id further down
       title: fallbackTitle,
       status: function (sourceRecord, node) { return node.execution ? node.execution.state : null; }
+    },
+    // Section 12: title is the real (instrument, timeframe) pair the trader's Session actually
+    // has - never a fabricated symbol/price (section 11/46's "do not fabricate market data").
+    marketContext: {
+      title: function (sourceRecord) {
+        if (!sourceRecord) return '';
+        return [sourceRecord.instrument, sourceRecord.timeframe].filter(Boolean).join(' · ');
+      },
+      status: function () { return null; }
     }
   };
 
@@ -207,11 +225,32 @@
       capabilities: { canCreateCanonicalEntity: false, executable: false, privacyGated: false, canOpenSource: false, canQuickEdit: true },
       creationMode: 'manual', configSchema: null, execute: null, display: DISPLAY.note
     },
+    marketContext: {
+      id: 'marketContext', version: 1, category: 'evidence', icon: 'CandlestickChart', origin: 'reference',
+      title: { fa: 'بافت بازار', ar: 'سياق السوق', en: 'Market Context', es: 'Contexto de mercado' },
+      description: {
+        fa: 'نماد/تایم‌فریم واقعی این سشن (بافت بازار)', ar: 'رمز/إطار زمني حقيقي لهذه الجلسة (سياق السوق)',
+        en: 'This session’s real instrument/timeframe (market context)', es: 'El instrumento/marco temporal real de esta sesión (contexto de mercado)'
+      },
+      // Section 6.1/11: a singleton data node - source is always the Session itself (id ===
+      // session.id, never a second sub-record), so addGraphNode()'s existing dup-by-source check
+      // (liveSessionView.jsx) already gives this "one Market Context node per graph, re-select
+      // the existing one rather than duplicate" for free - see section 51.
+      ports: ports([UNIVERSAL_IN, OBSERVATION_IN], [UNIVERSAL_OUT, { id: 'marketContextOut', type: 'marketContext' }, { id: 'chartOut', type: 'chart' }]),
+      // canOpenSource:true - "Open source" switches the Live Session to the real existing Market
+      // chart tab (MarketChartView/TradingViewAdvancedChart in liveSessionView.jsx), never a
+      // second chart viewer. canQuickEdit:false - the instrument/timeframe this node reflects are
+      // edited via the Session's own command-bar instrument chip / timeframe control, not here.
+      capabilities: { canCreateCanonicalEntity: false, executable: false, privacyGated: false, canOpenSource: true, canQuickEdit: false },
+      creationMode: 'market-context', configSchema: null, execute: null, display: DISPLAY.marketContext
+    },
     marketStructure: {
       id: 'marketStructure', version: 1, category: 'analysis', icon: 'Layers', origin: 'derived',
       title: { fa: 'ساختار بازار', ar: 'هيكل السوق', en: 'Market Structure', es: 'Estructura de mercado' },
       description: { fa: 'پردازشگر تحلیل ساختار (هنوز اجرا نمی‌شود)', ar: 'معالج تحليل الهيكل (لا يعمل بعد)', en: 'Structure-analysis processor (not executable yet)', es: 'Procesador de análisis de estructura (aún no ejecutable)' },
-      ports: ports([{ id: 'chartIn', type: 'chart' }, { id: 'evidenceIn', type: 'evidence' }, OBSERVATION_IN], [{ id: 'structureOut', type: 'observation' }]),
+      // Section 7's literal port list for Market Structure: "inputs: chart, timeframe,
+      // marketContext" (timeframe is covered by configSchema below, not a separate port).
+      ports: ports([{ id: 'chartIn', type: 'chart' }, { id: 'evidenceIn', type: 'evidence' }, { id: 'marketContextIn', type: 'marketContext' }, OBSERVATION_IN], [{ id: 'structureOut', type: 'observation' }]),
       // execute:null - section 6.2/31: the seam a real future execution engine fills in per
       // processing type (e.g. execute: async (inputs, config) => {...}); capabilities.executable
       // stays false until a real one is registered here, so execution.state can never honestly
@@ -232,8 +271,14 @@
       id: 'aiAnalysis', version: 1, category: 'analysis', icon: 'Sparkles', origin: 'derived',
       title: { fa: 'تحلیل هوش مصنوعی', ar: 'تحليل الذكاء الاصطناعي', en: 'AI Analysis', es: 'Análisis de IA' },
       description: { fa: 'گره پردازش هوش مصنوعی (بخش ۱۰ - هنوز اجرا نمی‌شود)', ar: 'عقدة معالجة الذكاء الاصطناعي (القسم ١٠ - لا تعمل بعد)', en: 'AI processing node (section 10 - not executable yet)', es: 'Nodo de procesamiento de IA (sección 10 - aún no ejecutable)' },
-      ports: ports([{ id: 'evidenceIn', type: 'evidence', multiple: true }, { id: 'observationIn2', type: 'observation', multiple: true }], [{ id: 'aiOut', type: 'observation' }]),
-      capabilities: { canCreateCanonicalEntity: false, executable: false, privacyGated: false, canOpenSource: false, canQuickEdit: true },
+      // Section 7's literal port list for AI Analysis includes marketContext directly.
+      ports: ports([{ id: 'evidenceIn', type: 'evidence', multiple: true }, { id: 'observationIn2', type: 'observation', multiple: true }, { id: 'marketContextIn', type: 'marketContext' }], [{ id: 'aiOut', type: 'observation' }]),
+      // AI Node phase (this pass): the ONE processing type that actually executes now, via
+      // liveSessionView.jsx's runAiAnalysisNode() -> analysis-graph-ai-client.js ->
+      // server/pattern-ai-server.mjs's graphAiAnalysis() -> the real, existing callProvider()
+      // gateway. marketStructure/confluence stay executable:false (honestly no processor exists
+      // for those yet) - this flip is deliberately scoped to aiAnalysis alone.
+      capabilities: { canCreateCanonicalEntity: false, executable: true, privacyGated: true, canOpenSource: false, canQuickEdit: true },
       creationMode: 'processing', execute: null, display: DISPLAY.processing,
       configSchema: { fields: [{ key: 'focus', type: 'text', label: { fa: 'تمرکز', ar: 'التركيز', en: 'Focus', es: 'Enfoque' } }] }
     }
@@ -302,6 +347,20 @@
     return stageIds[0] || DEFAULT_STAGES[0].id;
   }
 
+  // Section 26's Pin to AI (of the original 72-section brief) - applies to ANY node (not just
+  // aiAnalysis inputs), so a trader can mark a Scenario/Entry/Note as important/required context
+  // before ever running an AI node. 'normal' (the default) means "included when directly
+  // relevant" (e.g. on the resolved Focus Path); 'important' means "prefer inclusion" even one hop
+  // further out; 'required' means "must be included unless technically unavailable" (this AI
+  // phase's section 3A - EXPLICIT layer). Never auto-set by AI itself - only the trader pins.
+  var AI_PRIORITIES = ['normal', 'important', 'required'];
+  function normalizeAiContext(raw) {
+    return {
+      pinned: !!(raw && raw.pinned),
+      priority: (raw && AI_PRIORITIES.indexOf(raw.priority) !== -1) ? raw.priority : 'normal'
+    };
+  }
+
   function normalizeNode(raw, stageIds) {
     if (!raw || typeof raw !== 'object' || !raw.id) return null;
     var ids = stageIds || DEFAULT_STAGES.map(function (s) { return s.id; });
@@ -323,6 +382,7 @@
       // Processing-node parameters (section 32) - stored separately from canonical Session data,
       // '{}' for every other origin.
       config: (raw.config && typeof raw.config === 'object') ? raw.config : {},
+      aiContext: normalizeAiContext(raw.aiContext),
       createdAt: raw.createdAt || nowIso(), updatedAt: raw.updatedAt || raw.createdAt || nowIso()
     };
     // Section 9: only a real processing-type node carries execution metadata at all - a
@@ -330,14 +390,78 @@
     // meaningless 'idle'.
     if (known && typeDef.origin === 'derived') {
       var validState = raw.execution && EXECUTION_STATES.indexOf(raw.execution.state) !== -1;
+      var rawExec = raw.execution || {};
       node.execution = {
-        state: typeDef.capabilities.executable ? (validState ? raw.execution.state : 'idle') : 'unavailable',
-        lastRunAt: (raw.execution && raw.execution.lastRunAt) || null
+        state: typeDef.capabilities.executable ? (validState ? rawExec.state : 'idle') : 'unavailable',
+        lastRunAt: rawExec.lastRunAt || null,
+        // AI Node phase additions (this pass) - '{}'-safe defaults so a marketStructure/confluence
+        // node (capabilities.executable:false forever in V1) round-trips these as empty/null with
+        // zero behavioral change; only aiAnalysis's runAiAnalysisNode() ever populates them.
+        // provenance answers "what information produced this result?" (section 6); result is the
+        // structured AI response (section 9), never opaque text; suggestions is the array of
+        // pending/applied/rejected AI Suggestion objects (section 11) this run produced; error is
+        // the last run's stable error code (section 19), cleared on the next successful run.
+        provenance: (rawExec.provenance && typeof rawExec.provenance === 'object') ? rawExec.provenance : null,
+        result: normalizeAiResult(rawExec.result),
+        suggestions: Array.isArray(rawExec.suggestions) ? rawExec.suggestions.map(normalizeAiSuggestion).filter(Boolean) : [],
+        error: typeof rawExec.error === 'string' ? rawExec.error : null
       };
     } else {
       node.execution = null;
     }
     return node;
+  }
+
+  // Architecture review (2026-09-12) finding: node.execution.result was previously stored
+  // verbatim behind only a loose `typeof === 'object'` check - a malformed/corrupted/future-
+  // incompatible result (bad persisted JSON, a server schema change, a hand-edited Postgres row)
+  // could crash the Inspector outright (analysisGraphCanvas.jsx's AiNodePanel calls
+  // .map()/.length on result.observations/contradictions/missingEvidence/references with no
+  // Array.isArray guard). Every array field is now deep-normalized here, the one place
+  // "what does a stored AI result actually look like" is decided - AiNodePanel never needs its
+  // own defensive checks. Matches this file's own established discipline (every other stored
+  // shape - nodes, edges, groups, suggestions - is already normalized on read this way).
+  function normalizeAiResult(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    function arr(x) { return Array.isArray(x) ? x : []; }
+    function str(x) { return typeof x === 'string' ? x : ''; }
+    return {
+      summary: str(raw.summary),
+      observations: arr(raw.observations).map(function (o) { return { text: str(o && o.text), nodeIds: arr(o && o.nodeIds) }; }),
+      contradictions: arr(raw.contradictions).map(function (o) { return { text: str(o && o.text), nodeIds: arr(o && o.nodeIds) }; }),
+      missingEvidence: arr(raw.missingEvidence).map(function (o) { return { text: str(o && o.text), relatedNodeIds: arr(o && o.relatedNodeIds) }; }),
+      scenarioSuggestions: arr(raw.scenarioSuggestions),
+      edgeSuggestions: arr(raw.edgeSuggestions),
+      marketContextSuggestions: arr(raw.marketContextSuggestions),
+      references: arr(raw.references).filter(function (r) { return r && typeof r.nodeId === 'string'; }).map(function (r) { return { nodeId: r.nodeId, label: str(r.label) }; })
+    };
+  }
+
+  // ===== AI Suggestion model (this pass's section 11) =====
+  // Matches the REAL, already-shipped app-wide convention discovered by this pass's audit
+  // (strategiesHubView.jsx's ChatTab suggestion cards, mental-health-ui.js's suggestionCard,
+  // mental-health-store.js's applySuggestion) rather than inventing new status wording: 'applied'
+  // (not the generic 'approved') is the real string this codebase already uses everywhere a
+  // suggestion gets accepted.
+  var AI_SUGGESTION_TYPES = ['createNode', 'updateNode', 'createEdge', 'updateRelation', 'suggestMarketContext', 'updateScenario', 'updateProbability'];
+  var AI_SUGGESTION_STATUSES = ['pending', 'applied', 'rejected'];
+  function normalizeAiSuggestion(raw) {
+    if (!raw || typeof raw !== 'object' || !raw.id || AI_SUGGESTION_TYPES.indexOf(raw.type) === -1) return null;
+    return {
+      id: raw.id, type: raw.type,
+      target: raw.target || null,
+      payload: (raw.payload && typeof raw.payload === 'object') ? raw.payload : {},
+      // Section 10/25: every reference here MUST resolve to a real node/edge id - see
+      // analysis-graph-ai-client.js's validateAiReferences(), which strips any suggestion whose
+      // sourceNodeIds/sourceEdgeIds contain an id absent from the graph BEFORE it ever reaches
+      // normalizeAiSuggestion, so a hallucinated id can never even round-trip through storage.
+      sourceNodeIds: Array.isArray(raw.sourceNodeIds) ? raw.sourceNodeIds.slice() : [],
+      sourceEdgeIds: Array.isArray(raw.sourceEdgeIds) ? raw.sourceEdgeIds.slice() : [],
+      explanation: typeof raw.explanation === 'string' ? raw.explanation : '',
+      confidence: (raw.confidence === 'low' || raw.confidence === 'medium' || raw.confidence === 'high') ? raw.confidence : null,
+      status: AI_SUGGESTION_STATUSES.indexOf(raw.status) !== -1 ? raw.status : 'pending',
+      createdAt: raw.createdAt || nowIso()
+    };
   }
 
   // Structural validation only (id + both endpoints present) - relation/ports preserved verbatim
@@ -407,7 +531,56 @@
       var patternStore = window.TradeJournalPatternStore;
       return (patternStore && patternStore.find(source.id)) || null;
     }
+    // Section 12/15: the exact same plain {market, timeframe, instrument} shape already sent to
+    // AI as marketContext (session-analysis-client.js's real, existing analyze() request body) -
+    // not a new/second definition of what "market context" means. Always resolves (never null)
+    // while the session itself exists, since it reads session fields directly rather than a
+    // separate sub-record - a Market Context node can never show "source unavailable" as long as
+    // its Session does.
+    if (source.type === 'marketContext') {
+      return { market: session.market || null, timeframe: session.timeframe || null, instrument: session.instrument || null };
+    }
     return null;
+  }
+
+  // Section 40's Focus Path, extracted as a pure function (this pass) so analysisGraphCanvas.jsx's
+  // own visual Focus Path AND the new Graph AI Context Builder's structural inclusion layer
+  // (section 3B: "selected node, Focus Path, upstream evidence, downstream decision/outcome,
+  // directly connected nodes, relevant edges") use the EXACT SAME traversal - one bidirectional
+  // BFS covers all of those bullets at once, since it reaches every upstream/downstream/directly-
+  // connected node and edge by construction. Two independent implementations could silently drift
+  // (the canvas dimming one set of nodes while the AI context includes a different set) - this
+  // function is the one place that logic lives now.
+  function resolveFocusPathNodeIds(graph, nodeId) {
+    if (!nodeId || !graph) return { nodeIds: [], edgeIds: [] };
+    var edges = graph.edges || [];
+    var nodeIds = {}; nodeIds[nodeId] = true;
+    var edgeIds = {};
+    var frontier = [nodeId];
+    while (frontier.length) {
+      var next = [];
+      frontier.forEach(function (id) {
+        edges.forEach(function (edge) {
+          if (edge.sourceNodeId === id && !nodeIds[edge.targetNodeId]) { nodeIds[edge.targetNodeId] = true; next.push(edge.targetNodeId); edgeIds[edge.id] = true; }
+          if (edge.targetNodeId === id && !nodeIds[edge.sourceNodeId]) { nodeIds[edge.sourceNodeId] = true; next.push(edge.sourceNodeId); edgeIds[edge.id] = true; }
+          if ((edge.sourceNodeId === id || edge.targetNodeId === id)) edgeIds[edge.id] = true;
+        });
+      });
+      frontier = next;
+    }
+    return { nodeIds: Object.keys(nodeIds), edgeIds: Object.keys(edgeIds) };
+  }
+
+  // Section 7 (AI Node phase) - stale detection is a LIVE, computed comparison, never a stored
+  // flag (see the EXECUTION_STATES comment above): an aiAnalysis node is stale exactly when its
+  // last completed run's recorded inputSignature no longer matches the CURRENT one the same
+  // context-building rules would produce. A node that never ran, is still running, or has no
+  // provenance is honestly "not stale" (there is nothing to compare against) - callers that care
+  // about that distinction check node.execution.state themselves.
+  function isAiNodeStale(node, currentInputSignature) {
+    if (!node || !node.execution || node.execution.state !== 'completed') return false;
+    if (!node.execution.provenance || !node.execution.provenance.inputSignature) return false;
+    return node.execution.provenance.inputSignature !== currentInputSignature;
   }
 
   // Given a scenario id, which entry currently nests it - needed to select the right entry in the
@@ -498,6 +671,13 @@
     defaultStageIdForType: defaultStageIdForType,
     normalizeGroup: normalizeGroup,
     COMMAND_TYPES: COMMAND_TYPES,
-    createCommand: createCommand
+    createCommand: createCommand,
+    AI_PRIORITIES: AI_PRIORITIES,
+    AI_SUGGESTION_TYPES: AI_SUGGESTION_TYPES,
+    AI_SUGGESTION_STATUSES: AI_SUGGESTION_STATUSES,
+    normalizeAiSuggestion: normalizeAiSuggestion,
+    normalizeAiResult: normalizeAiResult,
+    resolveFocusPathNodeIds: resolveFocusPathNodeIds,
+    isAiNodeStale: isAiNodeStale
   };
 }());

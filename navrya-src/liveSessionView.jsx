@@ -62,6 +62,18 @@ function tradingViewIntervalFor(timeframe) {
 function tradingViewLocaleFor(lang) {
   return { fa: 'fa_IR', ar: 'ar_AE', en: 'en', es: 'es' }[lang] || 'en';
 }
+// Exported (section 11's Market Data Provider seam / section 58's clean extension points) so the
+// Analysis Map's own Market Context panel can render the exact same real TradingView widget and
+// symbol/interval resolution this Desk chart tab already uses - never a second implementation.
+// Threaded down as props (this file -> analysisGraphView.jsx -> analysisGraphCanvas.jsx) rather
+// than imported directly from there, since this file already imports analysisGraphView.jsx (a
+// reverse import would be circular). A plain trailing `export {}` - rather than inline `export
+// function`/`export const` on the declarations themselves - keeps every one of these three
+// declarations' literal source text byte-for-byte unchanged, which
+// tests/live-session-market-chart.test.mjs's own source-slicing relies on (one of those tests
+// even `new Function()`-evaluates tradingViewSymbolFor's sliced source text directly, which would
+// throw a SyntaxError on a leading `export` keyword inside a Function-constructor body).
+export { tradingViewSymbolFor, tradingViewIntervalFor, TradingViewAdvancedChart };
 
 // React rewrite of the "open session" workspace (session-workspace-logic.js's vanilla-DOM
 // open()/meta()/dashboard()/timeline()/report()) per the "Live Session" design handoff. UI only
@@ -3675,7 +3687,12 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       source: null, title: registry.nodeTypeTitle(typeId, lang), status: 'active',
       stageId: (stageId && stageIds.indexOf(stageId) !== -1) ? stageId : registry.defaultStageIdForType(typeId, stageIds),
       position: { x: 0, y: current.nodes.length * 140 }, content: '', config: config || {},
-      execution: { state: 'unavailable', lastRunAt: null },
+      // AI Node phase: aiAnalysis (the one executable:true processing type) starts 'idle' -
+      // ready to run - never 'unavailable', which stays reserved for marketStructure/confluence
+      // (still honestly no processor implemented for those). Matches exactly what a fresh
+      // normalizeNode() pass would compute for a node with no stored execution at all.
+      execution: { state: typeDef.capabilities.executable ? 'idle' : 'unavailable', lastRunAt: null, provenance: null, result: null, suggestions: [], error: null },
+      aiContext: { pinned: false, priority: 'normal' },
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     };
     persist((s) => {
@@ -3925,7 +3942,10 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     // like this file's own openLogWizard() reuse. Never switches `view`: it opens on top of
     // whichever tab (Desk/Map/Chart/Report) the trader is already on, matching how it behaves
     // everywhere else in the app it's already wired (character-app.jsx).
-    trade: (sourceId) => { openTradeDetails(sourceId); }
+    trade: (sourceId) => { openTradeDetails(sourceId); },
+    // Section 12: the real existing Market chart tab (MarketChartView) - never a second chart
+    // viewer duplicating the one the Map's own Market Context dock already renders inline.
+    marketContext: () => { setView('chart'); }
   };
   function openGraphSource(node) {
     if (!node || !node.source) return;
@@ -3985,6 +4005,268 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     const pattern = patternStore && patternStore.find(patternId);
     if (!pattern) return null;
     return addGraphNode('pattern', pattern.id, pattern.name || '', stageId);
+  }
+  // Section 6.1/12: Market Context is a singleton reference to the Session itself (source.id ===
+  // session.id, never a second sub-record) - addGraphNode()'s existing dup-by-source check means
+  // calling this again just re-selects the one Market Context node already on the map (section
+  // 51's "focus/select the existing node rather than creating a duplicate").
+  function createMarketContextFromMap(stageId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    return addGraphNode('marketContext', session.id, registry ? registry.nodeTypeTitle('marketContext', lang) : '', stageId);
+  }
+
+  // ==========================================================================================
+  // AI NODE + SELECTIVE AI CONTEXT + TRACEABLE AI SUGGESTIONS (this pass).
+  //
+  // Section 2 (reuse existing AI infrastructure - audited before writing any of this): goes
+  // through the exact same server/pattern-ai-server.mjs callProvider() gateway every other AI
+  // route in this app uses (via a new, narrow /api/sessions/graph-ai-analysis route), the exact
+  // same window.TradeJournalAISettingsStore provider/model/BYOK-key resolution
+  // navrya-src/aiAssistantView.jsx already uses, and the exact same 'pending'/'applied'/'rejected'
+  // suggestion-status vocabulary this app's real, shipped suggestion-card UX already uses
+  // (strategiesHubView.jsx's ChatTab, mental-health-ui.js's suggestionCard) - never a second
+  // generic AI client or a second approval mechanism.
+  //
+  // Section 13 (Canonical Domain Safety): applyGraphAiSuggestion() below writes canonical Scenario
+  // data and graph edges INLINE inside ONE persist() call, deliberately NOT by calling
+  // addScenario()/addGraphNode()/addGraphEdge() as separate sequential calls - this pass's own
+  // earlier auto-layout bug (see analysisGraphCanvas.jsx's autoLayout() comment) proved that N
+  // sequential persist()/save() calls against the SAME session record can race over the network;
+  // a canonical Scenario write is far too consequential to risk that same class of bug, so this
+  // is one atomic mutator instead, mirroring the exact same field shapes those functions use.
+  // ==========================================================================================
+
+  // Section 8 (explicit execution only): the ONLY caller of this function is the AI node
+  // Inspector's own [Run Analysis] button (analysisGraphCanvas.jsx) - never invoked from a drag/
+  // pan/zoom/selection/typing handler. Prevents duplicate concurrent runs for the same node.
+  async function runAiAnalysisNode(nodeId, opts) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    const client = window.TradeJournalAnalysisGraphAiClient;
+    if (!registry || !client) return { ok: false, error: 'AI_CLIENT_UNAVAILABLE' };
+    const before = registry.normalizeAnalysisGraph(session.analysisGraph);
+    const node = before.nodes.find((n) => n.id === nodeId);
+    if (!node || node.type !== 'aiAnalysis') return { ok: false, error: 'NODE_NOT_FOUND' };
+    if (node.execution && node.execution.state === 'running') return { ok: false, error: 'ALREADY_RUNNING' };
+
+    // Section 20: reuses the trader's real, existing AI provider/model/BYOK settings - never a
+    // new provider selector. A per-run override (opts.provider/model) is supported the same way
+    // every other AI feature in this app supports one, but the default is always the user's own.
+    const settingsStore = window.TradeJournalAISettingsStore;
+    const provider = (opts && opts.provider) || (settingsStore && settingsStore.activeProvider());
+    const model = (opts && opts.model) || (settingsStore && settingsStore.activeModel());
+    const apiKey = (settingsStore && provider) ? settingsStore.getKey(provider) : '';
+
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const n = g.nodes.find((x) => x.id === nodeId);
+      if (n && n.execution) { n.execution.state = 'running'; n.execution.error = null; n.updatedAt = new Date().toISOString(); }
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, null, '', null, false);
+
+    const selectedNodeId = (opts && opts.selectedNodeId) || nodeId;
+    const outcome = await client.runGraphAiAnalysis({
+      session, graph: registry.normalizeAnalysisGraph(session.analysisGraph), selectedNodeId,
+      // Section 3E/5: both stay false unless the trader explicitly opts in for THIS run - never a
+      // silent default-on (the app-wide dataAccessPrefs.mentalHealth toggle this pass's audit
+      // found is opt-OUT; this Graph Context Builder is deliberately the stricter opposite).
+      includeSimilarSessions: !!(opts && opts.includeSimilarSessions), allowEmotion: !!(opts && opts.allowEmotion),
+      profileId: opts && opts.profileId, nodeId, nodeType: 'aiAnalysis', config: node.config,
+      lang, character, provider, model, apiKey: apiKey || undefined
+    });
+
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const n = g.nodes.find((x) => x.id === nodeId);
+      if (!n || !n.execution) return;
+      if (outcome.ok) {
+        n.execution.state = 'completed';
+        n.execution.lastRunAt = new Date().toISOString();
+        n.execution.result = outcome.result;
+        n.execution.error = null;
+        // Section 6 (provenance - "what information produced this result?"): every field a
+        // forensic review would need, never a duplicated copy of the source nodes' own data.
+        n.execution.provenance = {
+          sourceNodeIds: outcome.contextPackage.includedNodeIds, sourceEdgeIds: outcome.contextPackage.includedEdgeIds,
+          marketContextRef: outcome.contextPackage.marketContext, analysisProfileRef: outcome.contextPackage.analysisProfile,
+          provider: outcome.provider, model: outcome.model, timestamp: new Date().toISOString(),
+          inputSignature: outcome.inputSignature
+        };
+        n.execution.suggestions = buildAiSuggestionsFromResult(outcome.result, selectedNodeId, g);
+      } else {
+        n.execution.state = 'failed';
+        n.execution.error = outcome.error;
+        n.execution.lastRunAt = new Date().toISOString();
+      }
+      n.updatedAt = new Date().toISOString();
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, outcome.ok ? 'analysis_graph_ai_run_completed' : 'analysis_graph_ai_run_failed', outcome.ok ? '' : (outcome.error || ''), null, false);
+
+    return outcome;
+  }
+
+  // Section 11's AI Suggestion model, mapped from this pass's real server response shape
+  // (graphAiAnalysisFormat in pattern-ai-server.mjs) onto registry.normalizeAiSuggestion()'s
+  // generic {id,type,target,payload,sourceNodeIds,sourceEdgeIds,explanation,confidence,status}
+  // shape. V1 only ever produces 'createNode' (new Scenario proposal), 'createEdge', and
+  // 'suggestMarketContext' - 'updateNode'/'updateScenario'/'updateProbability' stay valid, real
+  // vocabulary entries (registry.AI_SUGGESTION_TYPES) for a future evaluation-style graph AI
+  // response, honestly not produced by this pass's schema yet.
+  function buildAiSuggestionsFromResult(result, selectedNodeId, graph) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    const nodeById = {}; graph.nodes.forEach((n) => { nodeById[n.id] = n; });
+    // A new Scenario must attach to a real Session Entry (this data model's own nesting rule -
+    // see createScenarioFromMap's own comment above). Resolved from whichever of the selected
+    // node / the suggestion's own cited source nodes is (or belongs to) a real Entry - never
+    // guessed from nothing.
+    function resolveEntryId(sourceNodeIds) {
+      const candidates = [selectedNodeId].concat(sourceNodeIds || []).filter(Boolean);
+      for (let i = 0; i < candidates.length; i++) {
+        const node = nodeById[candidates[i]];
+        if (!node) continue;
+        if (node.type === 'sessionEntry' && node.source) return node.source.id;
+        if (node.type === 'sessionScenario' && node.source) {
+          const ownerId = registry.findScenarioOwnerEntryId(node.source.id, session);
+          if (ownerId) return ownerId;
+        }
+      }
+      return null;
+    }
+    const scenarioSugs = (result.scenarioSuggestions || []).map((s) => registry.normalizeAiSuggestion({
+      id: s.id, type: 'createNode', target: null,
+      payload: { nodeType: 'sessionScenario', title: s.title, direction: s.direction, summary: s.summary, entryId: resolveEntryId(s.sourceNodeIds) },
+      sourceNodeIds: s.sourceNodeIds, sourceEdgeIds: [], explanation: s.explanation, confidence: s.confidence, status: 'pending'
+    }));
+    const edgeSugs = (result.edgeSuggestions || []).map((s) => registry.normalizeAiSuggestion({
+      id: s.id, type: 'createEdge', target: null,
+      payload: { sourceNodeId: s.sourceNodeId, targetNodeId: s.targetNodeId, relation: s.relation },
+      sourceNodeIds: [s.sourceNodeId, s.targetNodeId], sourceEdgeIds: [], explanation: s.explanation, confidence: s.confidence, status: 'pending'
+    }));
+    const marketSugs = (result.marketContextSuggestions || []).map((s) => registry.normalizeAiSuggestion({
+      id: s.id, type: 'suggestMarketContext', target: null,
+      payload: { suggestion: s.suggestion }, sourceNodeIds: [], sourceEdgeIds: [], explanation: s.explanation, confidence: s.confidence, status: 'pending'
+    }));
+    return scenarioSugs.concat(edgeSugs, marketSugs).filter(Boolean);
+  }
+
+  // Section 12 (Approval UI) / section 13 (Canonical Domain Safety). status is 'applied' or
+  // 'rejected' - a 'rejected' suggestion is marked and nothing else happens (test requirement:
+  // "rejected suggestion does not mutate canonical data"). An 'applied' suggestion writes through
+  // the SAME field shapes the real human mutators use - see this section's own header comment for
+  // why this is one inline persist() rather than calling those mutators separately.
+  //
+  // Architecture review (2026-09-12) fix: this used to set target.status = 'applied'
+  // UNCONDITIONALLY before checking whether the suggestion's target (an entry for a scenario
+  // proposal; both endpoints for an edge proposal) still actually exists - approving a suggestion
+  // whose target had since been deleted from the graph/Session silently "succeeded" in the UI
+  // (the suggestion disappeared from the pending list, shown as applied) while creating nothing at
+  // all. status is now only ever set to 'applied' on the exact line the real mutation happens, so
+  // a suggestion that can no longer be applied simply stays 'pending' (never a false success) -
+  // returns false so a future caller can surface that honestly rather than assuming success.
+  function applyGraphAiSuggestion(aiNodeId, suggestionId, status) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry || (status !== 'applied' && status !== 'rejected')) return false;
+    let createdScenarioId = null;
+    let applied = false;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const node = g.nodes.find((n) => n.id === aiNodeId);
+      if (!node || !node.execution) return;
+      const target = (node.execution.suggestions || []).find((x) => x.id === suggestionId);
+      if (!target || target.status !== 'pending') return; // already resolved - never re-apply
+
+      if (status === 'rejected') {
+        target.status = 'rejected';
+        applied = true; // the rejection itself is the deterministic outcome - always "succeeds"
+      } else if (target.type === 'createNode' && target.payload && target.payload.nodeType === 'sessionScenario' && target.payload.entryId) {
+        const entry = (s.entries || []).find((e) => e.id === target.payload.entryId);
+        if (entry) {
+          target.status = 'applied';
+          applied = true;
+          const scenario = {
+            id: window.TradeJournalWorkspace.id('scenario'), entryId: entry.id,
+            title: target.payload.title || tr(lang, 'newScenarioTitle'), description: target.payload.summary || '',
+            evidence: '', invalidationTagIds: [], invalidationNote: '', problem: '', trigger: '',
+            probabilityHistory: [{ value: 50, loggedAt: new Date().toISOString() }],
+            executionPlan: {
+              actionPlan: '', positionType: target.payload.direction === 'long' ? 'Long' : target.payload.direction === 'short' ? 'Short' : null,
+              entryPrices: [], stopLoss: null, takeProfit: null, positionStatus: null
+            },
+            occurred: false, status: 'pending', pattern: null, aiVisualization: null,
+            // Same provenance convention as buildScenarioDraftFromAi()'s own aiSource - never a
+            // second, differently-shaped "where did this come from" field.
+            aiSource: {
+              source: 'graph_ai_analysis', analysisNodeId: aiNodeId, suggestionId: target.id,
+              provider: node.execution.provenance && node.execution.provenance.provider,
+              model: node.execution.provenance && node.execution.provenance.model
+            }
+          };
+          entry.scenarios = (entry.scenarios || []).concat([scenario]);
+          createdScenarioId = scenario.id;
+          g.nodes = g.nodes.concat([{
+            id: window.TradeJournalWorkspace.id('graphnode'), type: 'sessionScenario', typeVersion: 1, origin: 'reference',
+            source: { type: 'sessionScenario', id: scenario.id }, title: scenario.title, status: 'active',
+            stageId: node.stageId, position: { x: node.position.x + 220, y: node.position.y },
+            content: '', config: {}, aiContext: { pinned: false, priority: 'normal' }, execution: null,
+            createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+          }]);
+        }
+        // else: the target entry was deleted since this run - target.status stays 'pending',
+        // applied stays false, and nothing is created (never a false "applied" success).
+      } else if (target.type === 'createEdge' && target.payload) {
+        const sourceExists = g.nodes.some((n) => n.id === target.payload.sourceNodeId);
+        const targetExists = g.nodes.some((n) => n.id === target.payload.targetNodeId);
+        const dupe = g.edges.some((e) => e.sourceNodeId === target.payload.sourceNodeId && e.targetNodeId === target.payload.targetNodeId && e.relation === target.payload.relation);
+        const sourceType = sourceExists && g.nodes.find((n) => n.id === target.payload.sourceNodeId).type;
+        const targetType = targetExists && g.nodes.find((n) => n.id === target.payload.targetNodeId).type;
+        const pair = (sourceExists && targetExists) ? registry.compatiblePortPair(sourceType, targetType) : null;
+        if (pair && !dupe) {
+          target.status = 'applied';
+          applied = true;
+          g.edges = g.edges.concat([{
+            id: window.TradeJournalWorkspace.id('graphedge'), sourceNodeId: target.payload.sourceNodeId, targetNodeId: target.payload.targetNodeId,
+            sourcePort: pair.sourcePort, targetPort: pair.targetPort, relation: target.payload.relation || 'informs',
+            createdAt: new Date().toISOString()
+          }]);
+        }
+        // else: an endpoint was deleted, or the pair is no longer port-compatible, or the exact
+        // same edge already exists - target.status stays 'pending', never a false success.
+      } else if (target.type === 'suggestMarketContext') {
+        // Section 16: never an automatic mutation - status:'applied' is the only effect; the
+        // trader acts on it manually via the real, existing Market Context dock
+        // (analysisGraphCanvas.jsx), never a cross-component imperative "open the dock" call.
+        // Nothing to validate (no target node/entry), so this always succeeds.
+        target.status = 'applied';
+        applied = true;
+      }
+      node.updatedAt = new Date().toISOString();
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_ai_suggestion_' + status, '', null, false);
+    if (createdScenarioId) setOpenScenarios((prev) => new Set(prev).add(createdScenarioId));
+    return applied;
+  }
+
+  // Section 21's Inspector "[Clear Result]" - clears ONLY this node's graph AI execution metadata
+  // (result/suggestions/provenance/error), never any canonical entity a previously-applied
+  // suggestion may have created (that Scenario stays real Session data regardless).
+  function clearAiNodeResult(nodeId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const node = g.nodes.find((n) => n.id === nodeId);
+      if (!node || !node.execution) return;
+      node.execution.state = 'idle';
+      node.execution.result = null;
+      node.execution.suggestions = [];
+      node.execution.provenance = null;
+      node.execution.error = null;
+      node.updatedAt = new Date().toISOString();
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_ai_cleared', '', null, false);
   }
 
   // Adaptive AI Session Analysis (brief §2/§20/§22): the three write paths a real analysis ever
@@ -4237,6 +4519,10 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           onCreateScenario={createScenarioFromMap} onCreateEntry={createEntryFromMap}
           onCreateTrade={createTradeFromMap} onCreatePatternRef={createPatternReferenceFromMap}
           onCreateNote={addManualGraphNode} onCreateProcessing={addProcessingGraphNode}
+          onCreateMarketContext={createMarketContextFromMap}
+          marketChartComponent={TradingViewAdvancedChart}
+          resolveMarketSymbol={tradingViewSymbolFor} resolveMarketInterval={tradingViewIntervalFor}
+          onRunAiNode={runAiAnalysisNode} onApplyAiSuggestion={applyGraphAiSuggestion} onClearAiResult={clearAiNodeResult}
         />
       ) : view === 'chart' ? null : (
         <ReportView session={session} lang={lang} indexById={indexById} />

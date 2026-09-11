@@ -90,6 +90,10 @@ test('a real node round-trips through normalizeAnalysisGraph unchanged', async (
     id: 'n1', type: 'sessionScenario', typeVersion: 1, origin: 'reference',
     source: { type: 'sessionScenario', id: 'scenario-1' }, title: 'Bearish thesis', status: 'active',
     stageId: 'scenarios', position: { x: 10, y: 20 }, content: '', config: {}, execution: null,
+    // aiContext is the one field normalizeNode always adds even to an input that didn't declare it
+    // (AI Node pass addition) - included here explicitly so this "round-trips unchanged" test
+    // stays a genuine byte-for-byte proof rather than silently passing due to a loose comparison.
+    aiContext: { pinned: false, priority: 'normal' },
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z'
   };
   const graph = plain(registry.normalizeAnalysisGraph({ nodes: [node] }));
@@ -243,12 +247,17 @@ test('every NODE_TYPES entry declares a real category, icon, i18n title in all 4
   });
 });
 
-test('every processing (derived-origin) node type is honestly non-executable in V1 - section 6.2\'s "do not pretend a processor exists" rule, enforced at the registry level', async () => {
+test('marketStructure/confluence stay honestly non-executable in V1 - section 6.2\'s "do not pretend a processor exists" rule; aiAnalysis is the ONE deliberate exception (AI Node pass) and is marked privacyGated:true since it is the one node type that can reach sensitive data under the explicit allowEmotion flow', async () => {
   const registry = await loadRegistry();
   registry.PROCESSING_TYPE_IDS.forEach((typeId) => {
     const def = registry.NODE_TYPES[typeId];
     assert.equal(def.origin, 'derived');
-    assert.equal(def.capabilities.executable, false, `${typeId} claims to be executable - no real processor exists yet`);
+    if (typeId === 'aiAnalysis') {
+      assert.equal(def.capabilities.executable, true, 'aiAnalysis must be executable now that a real AI node execution path exists');
+      assert.equal(def.capabilities.privacyGated, true);
+    } else {
+      assert.equal(def.capabilities.executable, false, `${typeId} claims to be executable - no real processor exists yet`);
+    }
   });
   assert.ok(registry.PROCESSING_TYPE_IDS.length >= 2, 'expected at least a couple of real processing node type definitions (section 6.2\'s extension seam)');
 });
@@ -618,14 +627,31 @@ test('box selection: Shift+drag on empty background starts a selection rectangle
   assert.match(upMatch[0], /setSelectedNodeIds\(\(prev\) => \{ const next = new Set\(prev\); hits\.forEach/, 'hits must be ADDED to the existing selection (shift semantics), never replace it');
 });
 
-test('Focus Path (section 40): selecting exactly one node computes its full connected component via bidirectional edge traversal, and everything outside it is dimmed - both nodes and edges', async () => {
+test('Focus Path (section 40): the canvas delegates to registry.resolveFocusPathNodeIds() (AI Node pass refactor - single source of truth shared with the Graph AI Context Builder), and everything outside it is dimmed - both nodes and edges', async () => {
   const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
   const fnMatch = /const focusPath = React\.useMemo\(\(\) => \{[\s\S]*?\n  \}, \[selectedNode && selectedNode\.id, graph\.edges\]\);/.exec(canvasSrc);
   assert.ok(fnMatch, 'could not find the focusPath useMemo');
-  assert.match(fnMatch[0], /edge\.sourceNodeId === id/);
-  assert.match(fnMatch[0], /edge\.targetNodeId === id/, 'traversal must follow edges in BOTH directions, not just source->target');
+  assert.match(fnMatch[0], /registry\.resolveFocusPathNodeIds\(graph, selectedNode\.id\)/);
+  assert.match(fnMatch[0], /new Set\(resolved\.nodeIds\)/);
+  assert.match(fnMatch[0], /new Set\(resolved\.edgeIds\)/);
   assert.match(canvasSrc, /opacity=\{dimmed \? 0\.22 : 1\}/, 'edges outside the focus path/search match must be visually dimmed');
   assert.match(canvasSrc, /opacity: dimmed \? 0\.22 : \(unavailable \? 0\.55 : 1\)/, 'nodes outside the focus path/search match must be visually dimmed');
+});
+
+test('resolveFocusPathNodeIds (registry): computes the full connected component via bidirectional edge traversal - proves the actual traversal correctness now that the canvas only delegates to it', async () => {
+  const registry = await loadRegistry();
+  const graph = {
+    edges: [
+      { id: 'e1', sourceNodeId: 'a', targetNodeId: 'b' },
+      { id: 'e2', sourceNodeId: 'c', targetNodeId: 'b' }, // reverse direction into b - must still be reached
+      { id: 'e3', sourceNodeId: 'x', targetNodeId: 'y' }  // disconnected component - must NOT be reached
+    ]
+  };
+  const result = plain(registry.resolveFocusPathNodeIds(graph, 'a'));
+  assert.deepEqual(result.nodeIds.slice().sort(), ['a', 'b', 'c'].sort());
+  assert.deepEqual(result.edgeIds.slice().sort(), ['e1', 'e2'].sort());
+  assert.deepEqual(plain(registry.resolveFocusPathNodeIds(graph, null)), { nodeIds: [], edgeIds: [] });
+  assert.deepEqual(plain(registry.resolveFocusPathNodeIds(null, 'a')), { nodeIds: [], edgeIds: [] });
 });
 
 test('search/filter (section 39): matches are highlighted via the SAME dim-others mechanism as Focus Path, never a hide-outright filter, and search takes precedence over an active Focus Path while typing', async () => {
@@ -880,4 +906,150 @@ test('every character page loads analysis-graph-registry.js as a script (window-
     const html = await readFile(path.join(root, 'public', 'pages', character, 'index.html'), 'utf8');
     assert.match(html, /<script defer src="\.\.\/shared\/analysis-graph-registry\.js"><\/script>/, `${character}/index.html is missing the analysis-graph-registry.js script tag`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// ARCHITECTURE.md Phase 7 (Market Context): a real, honest Market Context data node reusing the
+// exact same {market, timeframe, instrument} shape session-analysis-client.js already sends to
+// AI, and a Market Context Workspace dock reusing the exact same real TradingView widget the
+// Desk's own Market chart tab already renders - never a second definition of either.
+// ---------------------------------------------------------------------------
+
+test('marketContext is a real registered node type: reference origin, evidence category, singleton-safe ports, honest capabilities', async () => {
+  const registry = await loadRegistry();
+  const def = registry.NODE_TYPES.marketContext;
+  assert.ok(def, 'marketContext must be registered in NODE_TYPES');
+  assert.equal(def.origin, 'reference');
+  assert.equal(def.category, 'evidence');
+  assert.equal(def.creationMode, 'market-context');
+  assert.equal(def.execute, null);
+  // canOpenSource:true (real Market chart tab) but canQuickEdit:false (instrument/timeframe are
+  // edited via the Session's own instrument chip, never a clone of that control here).
+  assert.deepEqual(plain(def.capabilities), { canCreateCanonicalEntity: false, executable: false, privacyGated: false, canOpenSource: true, canQuickEdit: false });
+  const outputTypes = plain(def.ports.outputs).map((p) => p.type).sort();
+  assert.deepEqual(outputTypes, ['chart', 'marketContext', 'node'].sort());
+  assert.equal(registry.defaultStageIdForType('marketContext', registry.DEFAULT_STAGES.map((s) => s.id)), 'evidence');
+});
+
+test('a Market Context node can feed Market Structure and AI Analysis (section 7\'s literal port list) but NOT Confluence (not listed there) or a manual Note (no marketContext input anywhere)', async () => {
+  const registry = await loadRegistry();
+  assert.ok(registry.compatiblePortPair('marketContext', 'marketStructure'), 'marketContext -> marketStructure must be a valid connection');
+  assert.ok(registry.compatiblePortPair('marketContext', 'aiAnalysis'), 'marketContext -> aiAnalysis must be a valid connection');
+  // Confluence has no UNIVERSAL_IN and no marketContext-typed input in its section-7 port list
+  // (structure/liquidity/volume/otherEvidence only) - this is an intentional scope decision, not
+  // a bug, and this test locks it in so it isn't silently "fixed" into something broader later.
+  assert.equal(registry.compatiblePortPair('marketContext', 'confluence'), null);
+  // A manual Note, however, DOES declare the universal 'node' port (every reference/manual type
+  // does) so marketContext -> note is still a valid ordinary reasoning edge.
+  assert.ok(registry.compatiblePortPair('marketContext', 'note'));
+});
+
+test('resolveNodeSource for marketContext returns the exact real {market, timeframe, instrument} the Session already carries - the same shape session-analysis-client.js already sends to AI, never a second/fabricated definition - and is never null while the Session exists', async () => {
+  const registry = await loadRegistry();
+  const session = { id: 's1', market: 'London', instrument: 'XAUUSD', timeframe: '15m' };
+  const resolved = plain(registry.resolveNodeSource({ type: 'marketContext', id: session.id }, session));
+  assert.deepEqual(resolved, { market: 'London', timeframe: '15m', instrument: 'XAUUSD' });
+  // Missing fields degrade to null, never a fabricated placeholder value.
+  const bare = plain(registry.resolveNodeSource({ type: 'marketContext', id: 's2' }, { id: 's2' }));
+  assert.deepEqual(bare, { market: null, timeframe: null, instrument: null });
+});
+
+test('display.title for marketContext shows the real instrument/timeframe pair, never a placeholder/fabricated symbol', async () => {
+  const registry = await loadRegistry();
+  const def = registry.NODE_TYPES.marketContext;
+  assert.equal(def.display.title({ instrument: 'BTCUSDT', timeframe: '1h' }, {}, 'en', def), 'BTCUSDT · 1h');
+  assert.equal(def.display.title(null, {}, 'en', def), '');
+});
+
+test('createMarketContextFromMap reuses the real addGraphNode() dedup-by-source path - source.id is always session.id, so calling it twice re-selects the one existing node (section 51) rather than creating a duplicate, exactly like every other reference-node creator', async () => {
+  const liveSessionSrc = await readFile(src('liveSessionView.jsx'), 'utf8');
+  const fnMatch = /function createMarketContextFromMap\(stageId\) \{[\s\S]*?\n  \}/.exec(liveSessionSrc);
+  assert.ok(fnMatch, 'could not find createMarketContextFromMap()');
+  assert.match(fnMatch[0], /addGraphNode\('marketContext', session\.id/);
+});
+
+test('graphSourceOpeners.marketContext opens the real existing Market chart tab (setView(\'chart\')) - never a second/duplicate chart viewer', async () => {
+  const liveSessionSrc = await readFile(src('liveSessionView.jsx'), 'utf8');
+  const openersMatch = /const graphSourceOpeners = \{[\s\S]*?\n  \};/.exec(liveSessionSrc);
+  assert.ok(openersMatch, 'could not find graphSourceOpeners');
+  assert.match(openersMatch[0], /marketContext: \(\) => \{ setView\('chart'\); \}/);
+});
+
+test('TradingViewAdvancedChart/tradingViewSymbolFor/tradingViewIntervalFor are exported via a trailing `export {}` statement, not inline `export function`/`export const` - so every existing live-session-market-chart.test.mjs source-slice (including a raw new Function() eval of tradingViewSymbolFor) still matches the exact original declaration text', async () => {
+  const liveSessionSrc = await readFile(src('liveSessionView.jsx'), 'utf8');
+  assert.match(liveSessionSrc, /export \{ tradingViewSymbolFor, tradingViewIntervalFor, TradingViewAdvancedChart \};/);
+  assert.doesNotMatch(liveSessionSrc, /export function tradingViewSymbolFor/);
+  assert.doesNotMatch(liveSessionSrc, /export function TradingViewAdvancedChart/);
+});
+
+test('LiveSessionView passes the real chart widget/symbol/interval resolvers and the Market Context creator down into AnalysisGraphView - never a second chart implementation', async () => {
+  const liveSessionSrc = await readFile(src('liveSessionView.jsx'), 'utf8');
+  // Anchored on the actual render call, not the file's own earlier prose comment mentioning
+  // "<AnalysisGraphView>" - the real call is the occurrence whose slice up to the next `/>`
+  // actually contains onAddNode= (a prop that only exists on the real usage).
+  const callStart = [...liveSessionSrc.matchAll(/<AnalysisGraphView/g)].map((m) => m.index).find((i) => liveSessionSrc.slice(i, liveSessionSrc.indexOf('/>', i)).includes('onAddNode='));
+  assert.ok(callStart > -1, 'could not find the real <AnalysisGraphView> render call');
+  const graphViewCall = liveSessionSrc.slice(callStart, liveSessionSrc.indexOf('/>', callStart));
+  assert.match(graphViewCall, /onCreateMarketContext=\{createMarketContextFromMap\}/);
+  assert.match(graphViewCall, /marketChartComponent=\{TradingViewAdvancedChart\}/);
+  assert.match(graphViewCall, /resolveMarketSymbol=\{tradingViewSymbolFor\}/);
+  assert.match(graphViewCall, /resolveMarketInterval=\{tradingViewIntervalFor\}/);
+});
+
+test('analysisGraphView.jsx forwards the Market Context props through to AnalysisGraphCanvas unchanged', async () => {
+  const viewSrc = await readFile(src('analysisGraphView.jsx'), 'utf8');
+  assert.match(viewSrc, /onCreateMarketContext, marketChartComponent, resolveMarketSymbol, resolveMarketInterval/);
+  const canvasCall = viewSrc.slice(viewSrc.indexOf('<AnalysisGraphCanvas'), viewSrc.indexOf('/>', viewSrc.indexOf('<AnalysisGraphCanvas')));
+  assert.match(canvasCall, /onCreateMarketContext=\{onCreateMarketContext\}/);
+  assert.match(canvasCall, /marketChartComponent=\{marketChartComponent\}/);
+});
+
+test('the Market Context dock defaults to "off" (never automatically consumes canvas space - section 12), and NEVER passes `fill` to the reused chart widget (fill is the Desk\'s own true-fullscreen sizing; inside a non-fullscreen dock it would overflow/crop)', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  assert.match(canvasSrc, /const \[marketMode, setMarketMode\] = React\.useState\('off'\);/);
+  const dockMatch = /function MarketContextDock\(\{[\s\S]*?\n\}/.exec(canvasSrc);
+  assert.ok(dockMatch, 'could not find MarketContextDock()');
+  assert.match(dockMatch[0], /if \(mode === 'off'\) return null;/);
+  assert.doesNotMatch(dockMatch[0], /fill=/, 'MarketContextDock must never pass a fill prop to the reused chart component');
+  assert.match(dockMatch[0], /<ChartComponent symbol=\{symbol\} interval=\{interval\} lang=\{lang\} \/>/);
+});
+
+test('MarketContextDock never fabricates OHLC/price/volume data - only the real chart widget, symbol, and timeframe are ever rendered, alongside an explicit honest-unavailable note', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  const dockMatch = /function MarketContextDock\(\{[\s\S]*?\n\}/.exec(canvasSrc);
+  assert.match(dockMatch[0], /tr\(lang, 'honestNote'\)/);
+  assert.doesNotMatch(canvasSrc, /\bOHLC\b\s*[:=]/, 'no OHLC field is ever assigned a value anywhere in the canvas - section 11/46\'s anti-fabrication rule');
+  assert.doesNotMatch(canvasSrc, /\b(open|high|low|close|volume)\s*:\s*[\d.]/i, 'no hardcoded numeric price/volume literal anywhere in the canvas');
+});
+
+test('section 13 (node-driven Market Context): resolveContextInstrumentTimeframe follows a selected sessionEntry\'s own timeframe or a selected trade\'s own instrument/timeframe when present, and honestly falls back to the Session default for every other node (including no selection at all) - never a fabricated value', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  const fnMatch = /function resolveContextInstrumentTimeframe\(node, session, registry\) \{[\s\S]*?\n\}/.exec(canvasSrc);
+  assert.ok(fnMatch, 'could not find resolveContextInstrumentTimeframe()');
+  assert.match(fnMatch[0], /entry && entry\.timeframe/);
+  assert.match(fnMatch[0], /trade && trade\.instrument/);
+  assert.match(fnMatch[0], /trade && trade\.primaryTimeframe/);
+  // Evaluate it directly (plain function, no JSX) against a fake registry/session to prove the
+  // real fallback behavior, not just that the right substrings exist.
+  const fn = new Function(`${fnMatch[0]}\nreturn resolveContextInstrumentTimeframe;`)();
+  const session = { instrument: 'XAUUSD', timeframe: '1h' };
+  const registryStub = { resolveNodeSource: (source) => (source && source.id === 'entry-1' ? { timeframe: '5m' } : source && source.id === 'trade-1' ? { instrument: 'BTCUSDT', primaryTimeframe: '15m' } : null) };
+  assert.deepEqual(fn(null, session, registryStub), { instrument: 'XAUUSD', timeframe: '1h' }, 'no selection -> session default');
+  assert.deepEqual(fn({ type: 'sessionEntry', source: { id: 'entry-1' } }, session, registryStub), { instrument: 'XAUUSD', timeframe: '5m' }, 'a selected entry overrides only the timeframe, never the instrument');
+  assert.deepEqual(fn({ type: 'trade', source: { id: 'trade-1' } }, session, registryStub), { instrument: 'BTCUSDT', timeframe: '15m' }, 'a selected trade with its own instrument/timeframe overrides both');
+  assert.deepEqual(fn({ type: 'sessionScenario', source: { id: 'x' } }, session, registryStub), { instrument: 'XAUUSD', timeframe: '1h' }, 'every other node type falls back to the session default, never a guess');
+});
+
+test('REAL BUG FOUND VIA LIVE BROWSER VERIFICATION, FIXED: the canvas toolbar wrapped onto several lines when Focus mode narrowed the canvas to a nav strip - the delete-hint text is now hidden and the search box/switch-to-list button shrink in that mode', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  assert.match(canvasSrc, /\{marketMode !== 'focus' && <span[\s\S]{0,80}tr\(lang, 'deleteHint'\)\}<\/span>\}/);
+  assert.match(canvasSrc, /width: marketMode === 'focus' \? 90 : 150/);
+  assert.match(canvasSrc, /\{marketMode === 'focus' \? <Icon name="List" size=\{14\} \/> : tr\(lang, 'switchToList'\)\}/);
+});
+
+test('the node-creation menu offers marketContext with a confirm step showing the real session instrument/timeframe (read-only, no invented fields) and wires it to onCreateMarketContext', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  assert.match(canvasSrc, /typeId === 'marketContext' &&/);
+  assert.match(canvasSrc, /onCreateMarketContext\(stageId\); onClose\(\);/);
+  assert.match(canvasSrc, /\[session\.instrument, session\.timeframe\]\.filter\(Boolean\)\.join\(' · '\)/);
 });

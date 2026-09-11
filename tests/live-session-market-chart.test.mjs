@@ -84,7 +84,14 @@ test('the widget loads the official TradingView free hosted Advanced Chart embed
 });
 
 test('no TradingView API key, npm package, backend endpoint, or secret is introduced', () => {
-  assert.doesNotMatch(src, /apiKey|api_key|API_KEY|process\.env\.[A-Z_]*TRADING/);
+  // The apiKey/API_KEY check is scoped to the TradingView widget/chart region specifically (not
+  // the whole file) since navrya-src/liveSessionView.jsx now also legitimately contains an
+  // unrelated `apiKey` field (feat/analysis-map's AI Node phase - the trader's own AI provider
+  // key, the exact same field name/shape session-analysis-client.js's analyzeSession() already
+  // sends for every other AI feature in this app) - that is real, intentional, and has nothing to
+  // do with TradingView. The widget region itself must still never reference any such key.
+  const widgetRegion = sliceBetween('function TradingViewAdvancedChart(', 'function ReportView(', 'the TradingView widget through MarketChartView');
+  assert.doesNotMatch(widgetRegion, /apiKey|api_key|API_KEY|process\.env\.[A-Z_]*TRADING/);
   assert.doesNotMatch(src, /require\(['"]tradingview|from ['"]tradingview/i);
   assert.doesNotMatch(src, /\/api\/(sync\/)?tradingview|\/api\/[\w-]*chart[\w-]*/i);
 });
