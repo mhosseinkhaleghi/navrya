@@ -184,6 +184,15 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     aiccBalanceManualAmount: 'Amount (USD)', aiccBalanceManualNote: 'Note', aiccBalanceManualSave: 'Save snapshot',
 
     tabConversationStudio: 'Conversation Studio',
+
+    tabSupport: 'Support Tickets', supportPageSubtitle: 'Every support ticket across the platform - search, filter, reply as staff, and manage status.',
+    statAwaitingStaff: 'Awaiting staff reply', statTotalTickets: 'Total tickets',
+    supportSearchPlaceholder: 'Search by subject, user email/name, or ticket ID…',
+    colTicketId: 'Ticket ID', colSubject: 'Subject', colOwner: 'User', colCategory: 'Category', colStatus: 'Status', colLastActivity: 'Last activity',
+    ticketStatusOpen: 'Awaiting staff', ticketStatusWaitingUser: 'Waiting on user', ticketStatusResolved: 'Resolved', ticketStatusClosed: 'Closed',
+    categoryFilterAll: 'All categories', categoryTechnical: 'Technical', categoryBilling: 'Billing', categoryAccount: 'Account', categoryOther: 'Other',
+    ticketDetailBackToQueue: 'Back to queue', ticketOwnerLabel: 'User', ticketCreatedLabel: 'Created {date}',
+    replyAsStaffPlaceholder: 'Reply as support…', sendReply: 'Send reply', statusChangeLabel: 'Change status', ticketNotFound: 'Ticket not found.',
     convStudioTitle: 'Conversation Studio', convStudioHint: 'Author, test, and publish the deterministic scenarios the Conversation Router matches locally, with zero AI calls.',
     convStudioStatTotal: 'Total scenarios', convStudioStatPublished: 'Published', convStudioStatDraft: 'Draft',
     convStudioCreateTitle: 'Create a scenario', convStudioScenarioKey: 'Scenario key (e.g. session.purpose)', convStudioDomain: 'Domain', convStudioKind: 'Kind',
@@ -372,6 +381,15 @@ voiceProvidersTitle: 'ارائه‌دهنده‌های صدا (ElevenLabs)', voi
     aiccBalanceManualAmount: 'مبلغ (دلار)', aiccBalanceManualNote: 'یادداشت', aiccBalanceManualSave: 'ذخیره ثبت',
 
     tabConversationStudio: 'استودیوی گفتگو',
+
+    tabSupport: 'تیکت‌های پشتیبانی', supportPageSubtitle: 'همه تیکت‌های پشتیبانی پلتفرم - جستجو، فیلتر، پاسخ به‌عنوان پشتیبانی و مدیریت وضعیت.',
+    statAwaitingStaff: 'در انتظار پاسخ پشتیبانی', statTotalTickets: 'مجموع تیکت‌ها',
+    supportSearchPlaceholder: 'جستجو بر اساس موضوع، ایمیل/نام کاربر یا شناسه تیکت…',
+    colTicketId: 'شناسه تیکت', colSubject: 'موضوع', colOwner: 'کاربر', colCategory: 'دسته‌بندی', colStatus: 'وضعیت', colLastActivity: 'آخرین فعالیت',
+    ticketStatusOpen: 'در انتظار پشتیبانی', ticketStatusWaitingUser: 'در انتظار کاربر', ticketStatusResolved: 'حل‌شده', ticketStatusClosed: 'بسته‌شده',
+    categoryFilterAll: 'همه دسته‌ها', categoryTechnical: 'فنی', categoryBilling: 'مالی', categoryAccount: 'حساب کاربری', categoryOther: 'سایر',
+    ticketDetailBackToQueue: 'بازگشت به فهرست', ticketOwnerLabel: 'کاربر', ticketCreatedLabel: 'ایجادشده در {date}',
+    replyAsStaffPlaceholder: 'پاسخ به‌عنوان پشتیبانی…', sendReply: 'ارسال پاسخ', statusChangeLabel: 'تغییر وضعیت', ticketNotFound: 'تیکت پیدا نشد.',
     convStudioTitle: 'استودیوی گفتگو', convStudioHint: 'سناریوهای قطعی‌ای که روتر گفتگو به‌صورت محلی و بدون فراخوانی هوش مصنوعی تشخیص می‌دهد را اینجا بساز، تست کن و منتشر کن.',
     convStudioStatTotal: 'مجموع سناریوها', convStudioStatPublished: 'منتشرشده', convStudioStatDraft: 'پیش‌نویس',
     convStudioCreateTitle: 'ساخت سناریو', convStudioScenarioKey: 'کلید سناریو (مثل session.purpose)', convStudioDomain: 'حوزه', convStudioKind: 'نوع',
@@ -560,6 +578,15 @@ voiceProvidersTitle: 'مزوّدو الصوت (ElevenLabs)', voiceProvidersHint:
     aiccBalanceManualAmount: 'المبلغ (دولار)', aiccBalanceManualNote: 'ملاحظة', aiccBalanceManualSave: 'حفظ اللقطة',
 
     tabConversationStudio: 'استوديو المحادثة',
+
+    tabSupport: 'تذاكر الدعم', supportPageSubtitle: 'كل تذاكر الدعم في المنصة - ابحث، صفِّ، رُدّ كفريق دعم، وأدر الحالة.',
+    statAwaitingStaff: 'بانتظار رد الدعم', statTotalTickets: 'إجمالي التذاكر',
+    supportSearchPlaceholder: 'البحث حسب الموضوع أو بريد/اسم المستخدم أو رقم التذكرة…',
+    colTicketId: 'رقم التذكرة', colSubject: 'الموضوع', colOwner: 'المستخدم', colCategory: 'التصنيف', colStatus: 'الحالة', colLastActivity: 'آخر نشاط',
+    ticketStatusOpen: 'بانتظار الدعم', ticketStatusWaitingUser: 'بانتظار المستخدم', ticketStatusResolved: 'تم الحل', ticketStatusClosed: 'مغلقة',
+    categoryFilterAll: 'كل التصنيفات', categoryTechnical: 'تقني', categoryBilling: 'الفواتير', categoryAccount: 'الحساب', categoryOther: 'أخرى',
+    ticketDetailBackToQueue: 'العودة إلى القائمة', ticketOwnerLabel: 'المستخدم', ticketCreatedLabel: 'أُنشئت في {date}',
+    replyAsStaffPlaceholder: 'الرد كفريق الدعم…', sendReply: 'إرسال الرد', statusChangeLabel: 'تغيير الحالة', ticketNotFound: 'التذكرة غير موجودة.',
     convStudioTitle: 'استوديو المحادثة', convStudioHint: 'أنشئ واختبر وانشر السيناريوهات الحتمية التي يطابقها موجّه المحادثة محليًا، بدون أي استدعاء للذكاء الاصطناعي.',
     convStudioStatTotal: 'إجمالي السيناريوهات', convStudioStatPublished: 'منشور', convStudioStatDraft: 'مسودة',
     convStudioCreateTitle: 'إنشاء سيناريو', convStudioScenarioKey: 'مفتاح السيناريو (مثل session.purpose)', convStudioDomain: 'المجال', convStudioKind: 'النوع',
@@ -748,6 +775,15 @@ voiceProvidersTitle: 'Proveedores de voz (ElevenLabs)', voiceProvidersHint: 'Cre
     aiccBalanceManualAmount: 'Monto (USD)', aiccBalanceManualNote: 'Nota', aiccBalanceManualSave: 'Guardar captura',
 
     tabConversationStudio: 'Estudio de Conversación',
+
+    tabSupport: 'Tickets de soporte', supportPageSubtitle: 'Todos los tickets de soporte de la plataforma - busca, filtra, responde como soporte y gestiona el estado.',
+    statAwaitingStaff: 'Esperando respuesta de soporte', statTotalTickets: 'Tickets totales',
+    supportSearchPlaceholder: 'Buscar por asunto, correo/nombre del usuario o ID de ticket…',
+    colTicketId: 'ID de ticket', colSubject: 'Asunto', colOwner: 'Usuario', colCategory: 'Categoría', colStatus: 'Estado', colLastActivity: 'Última actividad',
+    ticketStatusOpen: 'Esperando soporte', ticketStatusWaitingUser: 'Esperando al usuario', ticketStatusResolved: 'Resuelto', ticketStatusClosed: 'Cerrado',
+    categoryFilterAll: 'Todas las categorías', categoryTechnical: 'Técnico', categoryBilling: 'Facturación', categoryAccount: 'Cuenta', categoryOther: 'Otro',
+    ticketDetailBackToQueue: 'Volver a la cola', ticketOwnerLabel: 'Usuario', ticketCreatedLabel: 'Creado el {date}',
+    replyAsStaffPlaceholder: 'Responder como soporte…', sendReply: 'Enviar respuesta', statusChangeLabel: 'Cambiar estado', ticketNotFound: 'Ticket no encontrado.',
     convStudioTitle: 'Estudio de Conversación', convStudioHint: 'Crea, prueba y publica los escenarios deterministas que el Router de Conversación resuelve localmente, sin ninguna llamada a la IA.',
     convStudioStatTotal: 'Escenarios totales', convStudioStatPublished: 'Publicados', convStudioStatDraft: 'Borrador',
     convStudioCreateTitle: 'Crear un escenario', convStudioScenarioKey: 'Clave del escenario (p. ej. session.purpose)', convStudioDomain: 'Dominio', convStudioKind: 'Tipo',
@@ -3723,10 +3759,194 @@ function conversationStudioTab() {
   return conversationStudioSelectedId ? conversationStudioEditor(conversationStudioSelectedId) : conversationStudioLibrary();
 }
 
-const tabBuilders = { users: usersTab, ai: aiTab, technical: technicalTab, xp: xpTab, marketplace: marketplaceTab, financial: financialTab, commercial: commercialTab, conversationStudio: conversationStudioTab };
+// --- Support Tickets tab ---
+// Same list->detail shape every other tab here already uses (Users/Conversation Studio) -
+// mirrored, not reinvented.
+const TICKET_STATUSES = ['open', 'waiting_user', 'resolved', 'closed'];
+const TICKET_CATEGORIES = ['technical', 'billing', 'account', 'other'];
+function ticketStatusLabel(status) { return t('ticketStatus' + status.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('')); }
+function ticketCategoryLabel(category) { return t('category' + category.charAt(0).toUpperCase() + category.slice(1)); }
+
+let supportState = { search: '', status: 'all', category: 'all', page: 1 };
+let supportSelectedId = null;
+
+function supportTicketsTab() {
+  return supportSelectedId ? ticketDetailPage(supportSelectedId) : supportTicketsLibrary();
+}
+function openTicketDetail(id) { supportSelectedId = id; renderTab(); }
+function supportBackButton() {
+  const btn = el('button', 'btn btn-secondary btn-sm', t('ticketDetailBackToQueue'));
+  btn.type = 'button';
+  btn.onclick = () => { supportSelectedId = null; renderTab(); };
+  return btn;
+}
+
+function supportTicketsLibrary() {
+  const params = new URLSearchParams();
+  if (supportState.search) params.set('search', supportState.search);
+  if (supportState.status !== 'all') params.set('status', supportState.status);
+  if (supportState.category !== 'all') params.set('category', supportState.category);
+  params.set('page', String(supportState.page));
+  // The "awaiting staff" stat card reads the SAME canonical notifications summary the sidebar
+  // badge reads (spec: one canonical adapter, never a second parallel counting path) - not
+  // recomputed from this page's own (possibly filtered/paginated) ticket rows.
+  return Promise.all([
+    api('/support-tickets?' + params.toString()),
+    window.TradeJournalNotificationsStore ? window.TradeJournalNotificationsStore.getSummary() : Promise.resolve({ supportAwaitingStaffCount: null })
+  ]).then(([data, summary]) => buildSupportLibraryBody(data, summary));
+}
+
+function statusFilterSelect() {
+  const select = document.createElement('select');
+  [['all', t('statusFilterAll')]].concat(TICKET_STATUSES.map((s) => [s, ticketStatusLabel(s)])).forEach(([value, label]) => select.append(new Option(label, value, false, supportState.status === value)));
+  select.onchange = () => { supportState.status = select.value; supportState.page = 1; renderTab(); };
+  return select;
+}
+function categoryFilterSelect() {
+  const select = document.createElement('select');
+  [['all', t('categoryFilterAll')]].concat(TICKET_CATEGORIES.map((c) => [c, ticketCategoryLabel(c)])).forEach(([value, label]) => select.append(new Option(label, value, false, supportState.category === value)));
+  select.onchange = () => { supportState.category = select.value; supportState.page = 1; renderTab(); };
+  return select;
+}
+
+function buildSupportLibraryBody(data, summary) {
+  const wrap = el('div');
+  wrap.append(pageHeader('life-buoy', 'tabSupport', 'supportPageSubtitle'));
+  wrap.append(statRow([
+    statCard('inbox', fmtNumber(summary.supportAwaitingStaffCount), t('statAwaitingStaff')),
+    statCard('ticket', fmtNumber(data.total), t('statTotalTickets'))
+  ]));
+
+  const toolbar = el('div', 'admin-toolbar');
+  const search = document.createElement('input');
+  search.type = 'text'; search.placeholder = t('supportSearchPlaceholder'); search.value = supportState.search;
+  search.oninput = () => { supportState.search = search.value; supportState.page = 1; renderTab(); };
+  toolbar.append(search, statusFilterSelect(), categoryFilterSelect());
+  wrap.append(toolbar);
+
+  const tableWrap = el('div', 'admin-table-wrap');
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  [t('colSubject'), t('colOwner'), t('colCategory'), t('colStatus'), t('colLastActivity'), t('colActions')].forEach((label) => {
+    const th = document.createElement('th'); th.textContent = label; headRow.append(th);
+  });
+  thead.append(headRow);
+  table.append(thead);
+
+  const tbody = document.createElement('tbody');
+  data.tickets.forEach((ticket) => {
+    const row = document.createElement('tr');
+    row.classList.add('admin-row-clickable');
+    row.onclick = () => openTicketDetail(ticket.id);
+    const subjectCell = document.createElement('td');
+    if (ticket.awaitingStaff) subjectCell.append(el('span', 'online-dot online'), document.createTextNode(' '));
+    subjectCell.append(document.createTextNode(ticket.subject));
+    row.append(subjectCell, cell(ticket.ownerName || ticket.ownerEmail || ticket.ownerId), cell(ticketCategoryLabel(ticket.category)), cell(ticketStatusLabel(ticket.status)), cell(fmtDate(ticket.lastActivityAt)));
+    const actionsCell = document.createElement('td');
+    const viewBtn = el('button', 'btn btn-secondary btn-sm', t('viewProfile'));
+    viewBtn.type = 'button';
+    viewBtn.onclick = (event) => { event.stopPropagation(); openTicketDetail(ticket.id); };
+    actionsCell.append(viewBtn);
+    row.append(actionsCell);
+    tbody.append(row);
+  });
+  table.append(tbody);
+  tableWrap.append(table);
+  wrap.append(tableWrap);
+
+  const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+  const pagination = el('div', 'admin-pagination');
+  const prev = el('button', 'btn btn-secondary', t('prev'));
+  prev.type = 'button'; prev.disabled = supportState.page <= 1;
+  prev.onclick = () => { supportState.page -= 1; renderTab(); };
+  const next = el('button', 'btn btn-secondary', t('next'));
+  next.type = 'button'; next.disabled = supportState.page >= totalPages;
+  next.onclick = () => { supportState.page += 1; renderTab(); };
+  pagination.append(prev, el('span', '', t('pageOf', { page: supportState.page, total: totalPages })), next);
+  wrap.append(pagination);
+  return wrap;
+}
+
+function ticketDetailPage(id) {
+  return api('/support-tickets/' + id).then(buildTicketDetailPage).catch((error) => {
+    const wrap = el('div');
+    wrap.append(supportBackButton());
+    wrap.append(errorNode(error, () => renderTab()));
+    return wrap;
+  });
+}
+
+function buildTicketDetailPage(data) {
+  const { ticket, messages } = data;
+  const wrap = el('div');
+  wrap.append(supportBackButton());
+
+  const header = el('div', 'admin-profile-header');
+  const idBlock = el('div', 'admin-profile-id');
+  const nameLine = el('h2', 'admin-profile-name', ticket.subject + ' ');
+  nameLine.append(el('span', 'badge', ticketCategoryLabel(ticket.category)));
+  const metaLine = el('div', 'admin-profile-meta');
+  metaLine.append(
+    el('span', '', t('ticketOwnerLabel') + ': ' + (ticket.ownerName || t('noEmail'))),
+    el('span', '', ticket.ownerEmail || t('noEmail')),
+    el('span', '', t('ticketCreatedLabel', { date: fmtDate(ticket.createdAt) }))
+  );
+  idBlock.append(nameLine, metaLine);
+
+  const actions = el('div', 'admin-profile-actions');
+  const statusSelect = document.createElement('select');
+  TICKET_STATUSES.forEach((s) => statusSelect.append(new Option(ticketStatusLabel(s), s, false, ticket.status === s)));
+  statusSelect.onchange = () => {
+    api('/support-tickets/' + ticket.id + '/status', { method: 'PATCH', body: JSON.stringify({ status: statusSelect.value }) })
+      .then(() => { showToast(t('saved')); renderTab(); }).catch((error) => showToast(error.message, 'danger'));
+  };
+  actions.append(statusSelect);
+  header.append(idBlock, actions);
+  wrap.append(header);
+
+  const conversation = el('div', 'admin-card');
+  conversation.append(el('h3', '', t('tabSupport')));
+  const list = el('div');
+  list.style.display = 'flex'; list.style.flexDirection = 'column'; list.style.gap = '10px';
+  messages.forEach((message) => {
+    const row = el('div', 'admin-kv-row');
+    row.style.flexDirection = 'column'; row.style.alignItems = 'flex-start'; row.style.gap = '4px';
+    const who = (message.authorRole === 'staff' ? '★ ' : '') + (message.authorName || message.authorId);
+    row.append(el('span', 'hint', who + ' · ' + fmtDate(message.createdAt)));
+    const bubble = el('span', '', message.content);
+    bubble.style.whiteSpace = 'pre-wrap';
+    row.append(bubble);
+    list.append(row);
+  });
+  conversation.append(list);
+
+  const replyRow = el('div', 'admin-toolbar');
+  const replyInput = document.createElement('textarea');
+  replyInput.placeholder = t('replyAsStaffPlaceholder'); replyInput.rows = 3; replyInput.maxLength = 5000;
+  const sendBtn = el('button', 'btn btn-primary', t('sendReply'));
+  sendBtn.type = 'button';
+  sendBtn.onclick = () => {
+    const message = replyInput.value.trim();
+    if (!message) return;
+    sendBtn.disabled = true;
+    api('/support-tickets/' + ticket.id + '/messages', { method: 'POST', body: JSON.stringify({ message }) })
+      .then(() => { replyInput.value = ''; renderTab(); })
+      .catch((error) => showToast(error.message, 'danger'))
+      .finally(() => { sendBtn.disabled = false; });
+  };
+  replyRow.append(replyInput, sendBtn);
+  conversation.append(replyRow);
+  wrap.append(conversation);
+
+  return wrap;
+}
+
+const tabBuilders = { users: usersTab, support: supportTicketsTab, ai: aiTab, technical: technicalTab, xp: xpTab, marketplace: marketplaceTab, financial: financialTab, commercial: commercialTab, conversationStudio: conversationStudioTab };
 
 function route() {
-  const match = location.hash.match(/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial|conversationStudio)$/);
+  const match = location.hash.match(/^#\/admin\/(users|support|ai|technical|xp|marketplace|financial|commercial|conversationStudio)$/);
   return match ? match[1] : 'users';
 }
 
@@ -3760,6 +3980,23 @@ document.addEventListener('click', (event) => {
   if (window.innerWidth <= 880 && layout.classList.contains('sidebar-open') && !event.target.closest('#adminSidebar') && !event.target.closest('#sidebarToggle')) layout.classList.remove('sidebar-open');
 });
 
+// Section C.3: the shared awaiting-staff Support badge, read through the same canonical
+// notifications-store.js poller the main app sidebar uses (30s interval + an immediate first
+// fetch) - stopped on the one real logout path this page has (submitGateLogin's role check
+// below) and on page unload, so a stale interval never outlives the session.
+let stopSupportBadgePolling = null;
+function startSupportBadgePolling() {
+  if (stopSupportBadgePolling || !window.TradeJournalNotificationsStore) return;
+  stopSupportBadgePolling = window.TradeJournalNotificationsStore.startPolling((summary) => {
+    const badge = document.querySelector('#supportNavBadge');
+    if (!badge) return;
+    const count = Number(summary.supportAwaitingStaffCount) || 0;
+    badge.hidden = count <= 0;
+    badge.textContent = count > 99 ? '99+' : String(count);
+  }, 30000);
+}
+window.addEventListener('beforeunload', () => { if (stopSupportBadgePolling) stopSupportBadgePolling(); });
+
 function loadCurrentUserLabel() {
   fetch('/api/users/me', { headers: switcher && switcher.currentUserId() ? { 'x-dev-user-id': switcher.currentUserId() } : {} })
     .then((r) => (r.ok ? r.json() : null))
@@ -3779,8 +4016,9 @@ function startApp() {
   try { if (localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1') layout.classList.add('collapsed'); } catch (_) { /* no-op */ }
   loadCurrentUserLabel();
   icons(document);
-  if (!/^#\/admin\/(users|ai|technical|xp|marketplace|financial|commercial|conversationStudio)$/.test(location.hash)) location.hash = '#/admin/users';
+  if (!/^#\/admin\/(users|support|ai|technical|xp|marketplace|financial|commercial|conversationStudio)$/.test(location.hash)) location.hash = '#/admin/users';
   else renderTab();
+  startSupportBadgePolling();
 }
 
 // Real email/password login only - the old "TEST MODE: continue as any dev-user" bypass is

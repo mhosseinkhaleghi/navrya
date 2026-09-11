@@ -27,6 +27,7 @@
         <nav class="admin-nav" id="adminTabs">
           <div class="nav-group-label" data-i18n="navGroupMonitor">Monitor</div>
           <button type="button" data-tab="users"><i data-lucide="users"></i><span data-i18n="tabUsers">Users</span></button>
+          <button type="button" data-tab="support"><i data-lucide="life-buoy"></i><span data-i18n="tabSupport">Support Tickets</span><span class="nav-badge" id="supportNavBadge" hidden></span></button>
           <button type="button" data-tab="ai"><i data-lucide="brain-circuit"></i><span data-i18n="tabAI">AI</span></button>
           <button type="button" data-tab="technical"><i data-lucide="server-cog"></i><span data-i18n="tabTechnical">Technical</span></button>
           <div class="nav-group-label" data-i18n="navGroupMonetize">Monetize</div>
@@ -66,6 +67,7 @@
     <script src="../shared/icon-system.js"></script>
     <script src="../shared/csrf-fetch-patch.js"></script>
     <script src="../shared/dev-user-switcher.js"></script>
+    <script src="../shared/notifications-store.js"></script>
     <script src="../shared/profile-xp-rules.js"></script>
     <script src="app.js"></script>
   </body>

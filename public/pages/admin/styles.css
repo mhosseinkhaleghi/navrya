@@ -56,6 +56,9 @@ input, select, textarea { font:inherit; color:inherit; }
 .admin-nav button:hover { color:var(--text); background:rgba(255,255,255,.04); }
 .admin-nav button.active { color:#fff; background:linear-gradient(90deg, rgba(165,102,255,.22), rgba(165,102,255,.03)); }
 .admin-nav button.active::before { content:""; position:absolute; inset-inline-start:-8px; top:8px; bottom:8px; width:3px; border-radius:3px; background:linear-gradient(180deg, var(--violet), var(--violet-soft)); }
+/* Numeric unread/awaiting-count badge on a sidebar nav row (e.g. Support Tickets' shared
+   awaiting-staff count) - hidden at 0 via the [hidden] attribute, capped at "99+" in JS. */
+.nav-badge { margin-inline-start:auto; min-width:20px; height:20px; padding:0 6px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:var(--violet); color:#fff; font-size:11px; font-weight:700; line-height:1; flex:none; }
 .admin-back-link { display:flex; align-items:center; gap:10px; margin:8px; padding:11px 12px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; text-decoration:none; white-space:nowrap; }
 .admin-back-link:hover { color:var(--text); }
 
