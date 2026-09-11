@@ -534,6 +534,8 @@ This was the project's **first departure from pure local-first** - originally, e
 | `trade_screenshots` | Section 7.18 Module 4: one row per `TradeScreenshot`, FK to `trades`, cascade-deleted with it. `image_url` mirrors `pattern_screenshots.image_url`/`strategy_attachments.file_url` - populated once the screenshot's blob uploads via the generalized storage module (`category: 'trade'`). |
 | `trade_emotion_log` | Section 7.18 Module 4: one row per `TradeEmotionLog` entry, FK to `trades`, cascade-deleted with it. Its own child table (not jsonb) since Module 5 (Mental Health Profile) is expected to query per-emotion fields directly once it lands. `occurred_at` maps to the client's `timestamp` field name - the one place that translation happens. |
 | `mental_health_profiles` | Section 7.18 Module 5 (final module): one row per user, `user_id` itself the primary key (never a separate generated id - there is exactly one profile per user by construction). The entire client profile object is stored verbatim in a single `profile` jsonb column - no per-section columns, no child tables - since nothing anywhere queries into any of its ~14 nested sections individually. The only migrated module with no associated upload/image table. |
+| `support_tickets`, `support_ticket_messages` | Section 7.26: a support ticket (owner `user_id`, `subject`, `category`, `status` - `open`/`waiting_user`/`resolved`/`closed`) and its ordered child messages (`author_role` `user`/`staff`, snapshotted server-side at write time). `owner_unread` is a plain boolean flag (not a "last read" timestamp compared against a "last reply" timestamp), deliberately - avoids a same-millisecond tie between a write and a read ever misreporting a genuinely-unread reply as read. |
+| `community_notification_cursors` | Section 7.26: one row per user, `last_seen_at` - the Community unread-badge cursor. Initialized to `now()` on first read (`repo.*.communityCursors.getOrInit`), never backfilled, so pre-existing Community content never produces a false first-login badge. |
 
 ### Accounts: dev-mode switcher, not real authentication
 
@@ -1558,6 +1560,61 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   transform in this project's plain `node --test` runner - two steps only, no third question,
   skip creates the exact safe default, first-run mount condition); `strategy-analysis-profile-
   link.test.mjs` (link/clear round trip, never implicitly auto-selected, never AI-fillable).
+
+### 7.26 Support Tickets & Notification Badges
+
+- **Purpose:** A user-facing support ticket system (create, follow, reply, close own ticket) and
+  an admin ticket queue (search/filter, reply as staff, change status), plus simple persisted
+  numeric unread badges for Community and Support in the sidebar/admin nav.
+- **Files:** server: `058_support_tickets.sql`, `server/db/support-ticket-normalize.mjs` (shared
+  pg/memory validation), the `supportTickets`/`communityCursors`/`notifications` repo domains
+  (`repo.pg.mjs`/`repo.memory.mjs`), `server/community/routes.support-tickets.mjs` (owner-facing,
+  mounted `/api/sync/support-tickets`), `server/community/routes.notifications.mjs` (mounted
+  `/api/sync/notifications`), `server/admin/routes.support-tickets.mjs` (staff-facing, mounted
+  `/api/admin/support-tickets`, inherits `requireAdmin`). Browser: `navrya-src/supportView.jsx`
+  (React screen) + `public/pages/shared/{support-store,support-i18n,support-ui}.js` (fetch client,
+  4-language dictionary, legacy hash-route bridge - same three-file shape as Community's own
+  `community-store.js`/`community-i18n.js`/`community-ui.js`), `public/pages/shared/
+  notifications-store.js` (the one canonical client adapter both the main app sidebar and the
+  Admin Panel sidebar poll), admin UI additions in `public/pages/admin/{app.js,index.html,
+  styles.css}`.
+- **Route:** `#support[/:ticketId]` on the main app (same list->detail hash shape as
+  `#community/messages/:threadId`); `#/admin/support` inside the Admin Panel's own hash router.
+- **State model (server-authoritative, no GET-modify-PUT client races):** a new ticket or any user
+  reply always lands on `status='open'` (awaiting staff) - including a user reply to a
+  `resolved` ticket, which reopens it. A staff reply defaults to `status='waiting_user'` unless the
+  admin's own reply carries an explicit `nextStatus` (`resolved`/`closed`) in the same request. A
+  `closed` ticket rejects an ordinary user reply (`409 TICKET_CLOSED`); reopening one is an
+  explicit admin `PATCH .../status` action. Every state-changing write updates `last_activity_at`
+  in the same statement.
+- **Badges - one canonical adapter, never parallel counting:** `repo.*.notifications.summaryFor(userId, {isAdmin})`
+  returns `{communityUnread, supportUnread, supportAwaitingStaffCount}`, exposed at exactly one
+  route (`GET /api/sync/notifications/summary`) that both the main app sidebar and the Admin Panel
+  read (an admin is an authenticated user like any other; `supportAwaitingStaffCount` is populated
+  only when the caller's own role is `admin`). Community's badge is a per-user cursor
+  (`community_notification_cursors.last_seen_at`, initialized to `now()` on first read so
+  pre-existing content never counts, advanced by `POST /api/sync/notifications/community/ack`
+  when `communityView.jsx`'s shell actually mounts) counting posts+comments by others created
+  after it. Support's per-user badge is a plain boolean (`support_tickets.owner_unread`, not a
+  timestamp comparison - see the Schema table above) cleared the moment the owner's own
+  `GET /:id` runs. The admin queue's shared badge is a live `COUNT(status='open')`, never a
+  maintained counter, so it can never drift from the real ticket rows. `NavRow.jsx`'s new `count`/
+  `countLabel` props render the pill (hidden at 0, capped "99+", RTL-safe via logical properties,
+  distinct from the pre-existing boolean `badge` active-state dot); `useNotificationBadges()` in
+  `character-app.jsx` refreshes on mount, on `activeId` navigation, on `tradejournal:community-post-published`/
+  `tradejournal:support-ticket-changed`, and on a 30s poll, cleaned up on unmount.
+- **Security:** every ticket endpoint derives actor identity/role only from the authenticated
+  session (`req.currentUser`), never a request-body field; a normal user 403s on another user's
+  ticket (`NOT_TICKET_OWNER`); admin routes inherit `requireAdmin` and audit-log every mutation.
+  Subject/message are server-trimmed and length-capped (160/5,000 chars); creation and user replies
+  are session-rate-limited; CSRF applies like every other `/api/sync`/`/api/admin` route.
+- **Tests:** `support-tickets-migration-contract.test.mjs`, `support-tickets-repo-memory.test.mjs`
+  (state-model transitions, badge math, community-cursor first-lookup/self-exclusion),
+  `support-tickets-api-contract.test.mjs` (owner CRUD, cross-user 403/404, validation, CSRF, rate
+  limit, notifications summary, community ack), `admin-support-tickets-contract.test.mjs`
+  (non-admin 403, search/filter, staff reply + status transition + audit log), and
+  `support-tickets-i18n-completeness.test.mjs` (every new key across all four languages, badge
+  hidden-at-zero/99+ source assertions).
 
 ## 8. AI Integration Points
 
