@@ -6,12 +6,24 @@ import { Icon } from '../core/Icon.jsx';
    border-trick arrow's slant, and the connected-rail's asymmetric corner radius) - everything
    else uses logical properties (marginInlineStart, textAlign:'start') so it follows
    dir="rtl"/"ltr" from the DOM automatically. */
+// `count`: a numeric unread badge (Section C.3 of the Support Tickets brief) - hidden at 0,
+// shown as "99+" above 99, rendered as a small pill at the icon node's corner (collapsed rail)
+// or trailing the label (expanded row). Distinct from the pre-existing boolean `badge` prop
+// (CollapsedRail's own active-state dot, unrelated to unread counts) so neither meaning shifts
+// for its existing caller.
+function formatCount(count) {
+  const n = Number(count) || 0;
+  if (n <= 0) return null;
+  return n > 99 ? '99+' : String(n);
+}
+
 export function NavRow({
   icon = 'dashboard', label = 'Dashboard', active = false, disabled = false, collapsed = false,
-  first = false, last = false, activeLabel = 'ACTIVE', badge, rtl = false, onClick, style, ...rest
+  first = false, last = false, activeLabel = 'ACTIVE', badge, count, countLabel, rtl = false, onClick, style, ...rest
 }) {
   const [hover, setHover] = React.useState(false);
   const accent = disabled ? 'var(--text-disabled)' : active ? 'var(--char-accent)' : 'var(--gold-antique)';
+  const countText = formatCount(count);
   const node = (
     <span style={{
       position: 'relative', width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center',
@@ -22,7 +34,15 @@ export function NavRow({
       transition: 'border-color var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out)'
     }}>
       <Icon name={icon} size={20} />
-      {badge && (
+      {countText ? (
+        <span aria-hidden="true" style={{
+          position: 'absolute', top: -6, insetInlineEnd: -6, minWidth: 16, height: 16, padding: '0 4px',
+          borderRadius: 8, display: 'grid', placeItems: 'center', boxSizing: 'border-box',
+          background: 'var(--char-accent)', color: 'var(--ink-950)', border: '1px solid var(--ink-950)',
+          font: 'var(--type-caption)', fontSize: 10, fontWeight: 700, lineHeight: 1,
+          boxShadow: '0 0 6px var(--char-glow)'
+        }}>{countText}</span>
+      ) : badge && (
         <span aria-hidden="true" style={{
           position: 'absolute', top: -3, insetInlineEnd: -3, width: 8, height: 8, borderRadius: '50%',
           background: 'var(--char-accent)', boxShadow: '0 0 6px var(--char-glow)'
@@ -35,6 +55,7 @@ export function NavRow({
     <button
       type="button" onClick={disabled ? undefined : onClick} disabled={disabled}
       aria-current={active ? 'page' : undefined}
+      aria-label={countText && countLabel ? label + ', ' + countLabel : undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         position: 'relative', display: 'flex', alignItems: 'center', gap: 0, width: '100%',
@@ -76,9 +97,16 @@ export function NavRow({
             marginInlineStart: active ? 6 : 18, color: disabled ? 'var(--text-disabled)' : active ? 'var(--parchment)' : 'var(--text-primary)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
           }}>{label}</span>
+          {countText && (
+            <span aria-hidden="true" style={{
+              marginInlineStart: active ? 8 : 'auto', minWidth: 20, height: 20, padding: '0 6px', boxSizing: 'border-box',
+              borderRadius: 10, display: 'grid', placeItems: 'center', flex: 'none',
+              background: 'var(--char-accent)', color: 'var(--ink-950)', font: 'var(--type-caption)', fontSize: 11, fontWeight: 700
+            }}>{countText}</span>
+          )}
           {active && (
             <span style={{
-              marginInlineStart: 'auto', font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)',
+              marginInlineStart: countText ? 8 : 'auto', font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)',
               color: 'var(--char-accent)'
             }}>{activeLabel}</span>
           )}

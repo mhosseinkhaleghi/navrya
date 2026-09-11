@@ -28,6 +28,7 @@ function CollapsedRail({ character, items, activeId, onNavigate, progress }) {
             <NavRow
               icon={it.icon} label={it.label} collapsed active={it.id === activeId}
               first={i === 0} last={i === items.length - 1} badge={it.id === activeId}
+              count={it.count} countLabel={it.countLabel}
               onClick={() => onNavigate && onNavigate(it.id)} title={it.label}
               style={{ width: 46, minHeight: 46 }}
             />
@@ -142,6 +143,7 @@ export function Sidebar({
               <NavRow
                 key={it.id} icon={it.icon} label={it.label} active={it.id === activeId}
                 activeLabel={activeLabel} rtl={rtl}
+                count={it.count} countLabel={it.countLabel}
                 first={i === 0} last={i === items.length - 1}
                 onClick={() => navigate(it.id)}
               />

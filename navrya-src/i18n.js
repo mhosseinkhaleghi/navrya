@@ -5,8 +5,9 @@
 export const NAVRYA_STRINGS = {
   en: {
     navSessions: 'Sessions', navDashboard: 'Dashboard', navAccounts: 'Accounts', navStrategies: 'Strategies', navPsychology: 'Psychology',
-    navSubscription: 'Subscription', navAiAssistant: 'AI Assistant', navCommunity: 'Community', navSettings: 'Settings',
+    navSubscription: 'Subscription', navAiAssistant: 'AI Assistant', navCommunity: 'Community', navSupport: 'Support', navSettings: 'Settings',
     navMore: 'More tools', activeLabel: 'ACTIVE', collapseSidebar: 'Collapse sidebar', expandSidebar: 'Expand sidebar',
+    navBadgeUnread: '{count} unread',
     collapseHeader: 'Collapse header', expandHeader: 'Expand header', nextShort: 'Next',
     level: 'LEVEL', rank: 'RANK', honour: 'HONOUR', scenarios: 'SCENARIOS', execution: 'EXECUTION', streak: 'STREAK',
     nextSession: 'NEXT SESSION', startsIn: 'STARTS IN', appUptime: 'APP UPTIME',
@@ -40,8 +41,9 @@ export const NAVRYA_STRINGS = {
   },
   fa: {
     navSessions: 'سشن‌ها', navDashboard: 'داشبورد', navAccounts: 'حساب‌ها', navStrategies: 'استراتژی‌ها', navPsychology: 'روانشناسی',
-    navSubscription: 'اشتراک', navAiAssistant: 'هوش مصنوعی', navCommunity: 'تالار گفتگو', navSettings: 'تنظیمات',
+    navSubscription: 'اشتراک', navAiAssistant: 'هوش مصنوعی', navCommunity: 'تالار گفتگو', navSupport: 'پشتیبانی', navSettings: 'تنظیمات',
     navMore: 'ابزارهای بیشتر', activeLabel: 'فعال', collapseSidebar: 'جمع کردن نوار کناری', expandSidebar: 'باز کردن نوار کناری',
+    navBadgeUnread: '{count} مورد خوانده‌نشده',
     collapseHeader: 'جمع کردن هدر', expandHeader: 'باز کردن هدر', nextShort: 'بعدی',
     level: 'سطح', rank: 'رتبه', honour: 'اعتبار', scenarios: 'سناریوها', execution: 'اجرا', streak: 'توالی',
     nextSession: 'سشن بعدی', startsIn: 'شروع تا', appUptime: 'مدت فعالیت برنامه',
@@ -72,8 +74,9 @@ export const NAVRYA_STRINGS = {
   },
   ar: {
     navSessions: 'الجلسات', navDashboard: 'لوحة التحكم', navAccounts: 'الحسابات', navStrategies: 'الاستراتيجيات', navPsychology: 'علم النفس',
-    navSubscription: 'الاشتراك', navAiAssistant: 'الذكاء الاصطناعي', navCommunity: 'المجتمع', navSettings: 'الإعدادات',
+    navSubscription: 'الاشتراك', navAiAssistant: 'الذكاء الاصطناعي', navCommunity: 'المجتمع', navSupport: 'الدعم', navSettings: 'الإعدادات',
     navMore: 'أدوات إضافية', activeLabel: 'نشط', collapseSidebar: 'طي الشريط الجانبي', expandSidebar: 'فتح الشريط الجانبي',
+    navBadgeUnread: '{count} غير مقروء',
     collapseHeader: 'طي الترويسة', expandHeader: 'فتح الترويسة', nextShort: 'التالي',
     level: 'المستوى', rank: 'الرتبة', honour: 'الشرف', scenarios: 'السيناريوهات', execution: 'التنفيذ', streak: 'التتابع',
     nextSession: 'الجلسة القادمة', startsIn: 'تبدأ خلال', appUptime: 'مدة تشغيل التطبيق',
@@ -104,8 +107,9 @@ export const NAVRYA_STRINGS = {
   },
   es: {
     navSessions: 'Sesiones', navDashboard: 'Panel', navAccounts: 'Cuentas', navStrategies: 'Estrategias', navPsychology: 'Psicología',
-    navSubscription: 'Suscripción', navAiAssistant: 'Asistente IA', navCommunity: 'Comunidad', navSettings: 'Ajustes',
+    navSubscription: 'Suscripción', navAiAssistant: 'Asistente IA', navCommunity: 'Comunidad', navSupport: 'Soporte', navSettings: 'Ajustes',
     navMore: 'Más herramientas', activeLabel: 'ACTIVO', collapseSidebar: 'Contraer barra lateral', expandSidebar: 'Expandir barra lateral',
+    navBadgeUnread: '{count} sin leer',
     collapseHeader: 'Contraer encabezado', expandHeader: 'Expandir encabezado', nextShort: 'Siguiente',
     level: 'NIVEL', rank: 'RANGO', honour: 'HONOR', scenarios: 'ESCENARIOS', execution: 'EJECUCIÓN', streak: 'RACHA',
     nextSession: 'PRÓXIMA SESIÓN', startsIn: 'COMIENZA EN', appUptime: 'TIEMPO ACTIVO',

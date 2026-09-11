@@ -20,6 +20,7 @@ import { renderCanvas } from './canvasApp.jsx';
 import { renderSubscriptions } from './subscriptionsView.jsx';
 import { renderAiAssistant } from './aiAssistantView.jsx';
 import { renderCommunity } from './communityView.jsx';
+import { renderSupport } from './supportView.jsx';
 import { openPublishFlow } from './publishFlowModal.jsx';
 import { renderPsychology } from './psychologyView.jsx';
 import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
@@ -52,7 +53,15 @@ function useClock() {
   return now;
 }
 
-function navItems(t) {
+// `badges` is the optional {communityUnread, supportUnread} summary from useNotificationBadges()
+// below - merged onto the matching item as `count`/`countLabel` (Sidebar/NavRow already know how
+// to render/hide/cap that at 99+, see components/navigation/NavRow.jsx). Omitted entirely (both
+// undefined) until the first successful fetch, so the badge never flashes a false "0"/spinner.
+function navItems(t, badges) {
+  function countFor(id, unread) {
+    if (!badges || !unread) return {};
+    return { count: unread, countLabel: t.navBadgeUnread.replace('{count}', unread) };
+  }
   return [
     { id: 'sessions', icon: 'sessions', label: t.navSessions },
     { id: 'dashboard', icon: 'dashboard', label: t.navDashboard },
@@ -61,10 +70,42 @@ function navItems(t) {
     { id: 'psychology', icon: 'psychology', label: t.navPsychology },
     { id: 'subscription', icon: 'subscription', label: t.navSubscription },
     { id: 'ai-assistant', icon: 'ai-assistant', label: t.navAiAssistant },
-    { id: 'community', icon: 'community', label: t.navCommunity },
+    { id: 'community', icon: 'community', label: t.navCommunity, ...countFor('community', badges && badges.communityUnread) },
+    { id: 'support', icon: 'support', label: t.navSupport, ...countFor('support', badges && badges.supportUnread) },
     { id: 'settings', icon: 'settings', label: t.navSettings },
     { id: 'more', icon: 'more', label: t.navMore }
   ];
+}
+
+// Section C.3: refresh on app start (immediate first fetch), navigation (activeId changes),
+// relevant mutations (community post/comment/like + support-ticket create/reply/close all
+// dispatch their own CustomEvent, listened for here), and lightweight 30s polling - cleaned up on
+// unmount (character-page navigation is a full reload, but React StrictMode/HMR during dev and a
+// future SPA-ification both need this to not leak an interval).
+function useNotificationBadges(store) {
+  const [badges, setBadges] = React.useState(null);
+  React.useEffect(() => {
+    const notifications = window.TradeJournalNotificationsStore;
+    if (!notifications) return undefined;
+    const stopPolling = notifications.startPolling(setBadges, 30000);
+    const refresh = () => notifications.getSummary().then(setBadges).catch(() => {});
+    window.addEventListener('tradejournal:community-post-published', refresh);
+    window.addEventListener('tradejournal:support-ticket-changed', refresh);
+    // "on navigation" - only when activeId itself actually changed, not on every unrelated store
+    // update (collapse toggle, session/profile refresh) the same shared store also emits through.
+    let lastActiveId = store.getState().activeId;
+    const unsubscribeStore = store.subscribe(() => {
+      const nextActiveId = store.getState().activeId;
+      if (nextActiveId !== lastActiveId) { lastActiveId = nextActiveId; refresh(); }
+    });
+    return () => {
+      stopPolling();
+      window.removeEventListener('tradejournal:community-post-published', refresh);
+      window.removeEventListener('tradejournal:support-ticket-changed', refresh);
+      unsubscribeStore();
+    };
+  }, [store]);
+  return badges;
 }
 
 function fmtWalletUsd(microUsd) { return '$' + (microUsd / 1000000).toFixed(2); }
@@ -205,10 +246,11 @@ function SidebarApp({ navryaCharacter, quotes, store }) {
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
   const rewardProps = rewardPropsFor(s.nextGoal, t);
+  const badges = useNotificationBadges(store);
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
       <Sidebar
-        character={navryaCharacter} items={navItems(t)} activeId={s.activeId} collapsed={s.collapsed}
+        character={navryaCharacter} items={navItems(t, badges)} activeId={s.activeId} collapsed={s.collapsed}
         quote={quotes[s.language] || quotes.en} rtl={rtl}
         activeLabel={t.activeLabel} collapseLabel={s.collapsed ? t.expandSidebar : t.collapseSidebar}
         rewardLabel={t.nextGoalLabel} {...rewardProps}
@@ -492,6 +534,9 @@ export function mountCharacterApp(character) {
 
   // community-ui.js's renderPage() defers to this hook when present.
   window.TradeJournalNavryaCommunity = { render: renderCommunity };
+
+  // support-ui.js's renderPage() defers to this hook when present - same convention as Community.
+  window.TradeJournalNavryaSupport = { render: renderSupport };
 
   // marketplace-ui.js's openPublishFlow() defers to this hook when present - shared by
   // Pattern Registry's/Strategy Education's sharing tabs too, not just Community.
@@ -925,6 +970,7 @@ export function mountCharacterApp(character) {
       psychology: () => store.setActiveId('psychology'),
       'ai-assistant': () => store.setActiveId('ai-assistant'),
       community: () => store.setActiveId('community'),
+      support: () => store.setActiveId('support'),
       account: () => { location.hash = '#account/profile'; }
     };
     var NAVIGATE_ALIASES = {
@@ -935,7 +981,8 @@ export function mountCharacterApp(character) {
       setting: 'settings', preferences: 'settings',
       mindset: 'psychology', mental: 'psychology',
       assistant: 'ai-assistant', aisettings: 'ai-assistant', ai: 'ai-assistant',
-      profile: 'account', subscription: 'account', subscriptions: 'account'
+      profile: 'account', subscription: 'account', subscriptions: 'account',
+      ticket: 'support', tickets: 'support', helpdesk: 'support', help: 'support'
     };
     function normalizeNavigateDomainId(raw) {
       var key = String(raw || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -960,7 +1007,7 @@ export function mountCharacterApp(character) {
     if (window.TradeJournalAIActionRegistry) {
       window.TradeJournalAIActionRegistry.registerAction({
         id: 'navigate.to', domain: 'navigation', riskLevel: 'low',
-        description: 'Navigate to a real page/section of NAVRYA. Valid domainId values: dashboard, sessions, accounts, strategies, patterns, settings, psychology, ai-assistant, community, account. "accounts" is the prop-firm/personal trading Accounts ledger; "account" (singular) is the user\'s own profile/subscription page - do not confuse the two. There is no single dedicated page for "reports"/"trading calendar" (legacy, unreachable from current navigation), "trade-planning"/"open positions" (spans three real surfaces, not one page), or "character" (switching the active character is done from Settings) - if asked to go to one of those, say plainly that no such page exists rather than calling this action.',
+        description: 'Navigate to a real page/section of NAVRYA. Valid domainId values: dashboard, sessions, accounts, strategies, patterns, settings, psychology, ai-assistant, community, support, account. "accounts" is the prop-firm/personal trading Accounts ledger; "account" (singular) is the user\'s own profile/subscription page; "support" is the Support Tickets page - do not confuse any of these. There is no single dedicated page for "reports"/"trading calendar" (legacy, unreachable from current navigation), "trade-planning"/"open positions" (spans three real surfaces, not one page), or "character" (switching the active character is done from Settings) - if asked to go to one of those, say plainly that no such page exists rather than calling this action.',
         aliases: ['take me to', 'go to', 'navigate to', 'open the', 'show me the'],
         requiredFields: ['domainId'], optionalFields: [],
         available: () => true,

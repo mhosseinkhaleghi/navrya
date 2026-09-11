@@ -10,6 +10,7 @@ The whole compact sidebar — use it for any NAVRYA app shell instead of assembl
 - Nav scrolls · lower modules stay pinned. The scroll viewport uses the 3px accent scrollbar (`.navrya-scroll`) and a bottom fade with a partially visible "More tools" row.
 - `collapsed` renders the 72px rail: icon nodes, pinned quote button, reward ring with percentage, expand control.
 - Skinning is data-only: set `data-character` on an ancestor and pass `character` for the art.
+- Each `items[]` entry may carry `count`/`countLabel` for a numeric unread badge (see NavRow.prompt.md) - `{ id: 'support', icon: 'support', label: 'Support', count: 3, countLabel: '3 unread' }`.
 - Below 1100px it becomes the 72px icon rail to preserve the main workspace. Below 720px it is
   a full-screen themed overlay opened from the header hamburger and dismissed by its close button,
   backdrop, Escape, or navigation.

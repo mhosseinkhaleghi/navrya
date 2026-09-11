@@ -6,7 +6,7 @@ export declare const SIDEBAR_ITEMS: Array<{ id: string; icon: string; label: str
 export interface SidebarProps extends React.HTMLAttributes<HTMLElement> {
   /** Character skin. Drives every --char-* token. */
   character?: 'hunter' | 'commander' | 'engineer' | 'master';
-  items?: Array<{ id: string; icon: string; label: string }>;
+  items?: Array<{ id: string; icon: string; label: string; count?: number; countLabel?: string }>;
   activeId?: string;
   /** 256px expanded → 72px icon rail. */
   collapsed?: boolean;

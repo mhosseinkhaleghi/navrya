@@ -452,6 +452,17 @@ function CommunityShell({ i18n, tab, itemId }) {
     return () => { delete window.TradeJournalNavryaCommunityShell; };
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Spec section C.1: "when the Community page is actually opened/visible and its data is
+  // loaded, acknowledge Community activity" - this shell only ever mounts once the page is
+  // genuinely visible (renderCommunity() -> layer.show(), see community-ui.js), so one
+  // acknowledge per real mount is the correct "opened" signal, independent of which sub-tab
+  // (feed/marketplace/messages) it lands on - the sidebar's own Community badge counts posts AND
+  // comments together, not per-tab.
+  React.useEffect(() => {
+    const notifications = window.TradeJournalNotificationsStore;
+    if (notifications) notifications.acknowledgeCommunity().catch(() => {});
+  }, []);
+
   return (
     <div className="navrya-community-view" dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
       <div>

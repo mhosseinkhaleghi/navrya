@@ -4,7 +4,7 @@ import React from 'react';
    Lucide is a documented substitution for the unreleased NAVRYA master pack (see readme.md → ICONOGRAPHY). */
 export const NAVRYA_ICONS = {
   sessions: 'Clock', dashboard: 'LayoutGrid', wallet: 'Wallet', strategies: 'Waypoints', psychology: 'Brain',
-  subscription: 'Crown', 'ai-assistant': 'Briefcase', community: 'MessagesSquare', settings: 'Settings',
+  subscription: 'Crown', 'ai-assistant': 'Briefcase', community: 'MessagesSquare', support: 'LifeBuoy', settings: 'Settings',
   more: 'MoreHorizontal', quote: 'Quote', reward: 'Package', collapse: 'ChevronsLeft', expand: 'ChevronsRight',
   'scroll-down': 'ChevronDown', chevron: 'ChevronDown', 'active-arrow': 'ChevronRight', progress: 'CircleDashed',
   status: 'Circle', calendar: 'Calendar', globe: 'Globe', clock: 'Clock', edit: 'Pencil',
