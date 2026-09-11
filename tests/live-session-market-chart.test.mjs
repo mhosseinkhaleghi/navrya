@@ -32,17 +32,23 @@ function sliceBetween(startMarker, endMarker, label) {
 
 test('CommandBar segmented control gains a third "chart" view beside timeline and report, in that order', () => {
   const segmented = block(
-    /\[\['timeline', tr\(lang, 'viewTimeline'\)\][\s\S]{0,80}\]\.map/,
+    // Widened from the original 80-char bound when the Analysis Map ("نقشه تحلیل") tab was
+    // added between timeline and chart (feat/analysis-map) - the view list itself is the same
+    // literal-array shape, just one entry longer.
+    /\[\['timeline', tr\(lang, 'viewTimeline'\)\][\s\S]{0,200}\]\.map/,
     'the CommandBar segmented-control view list'
   );
   assert.match(segmented, /\['chart', tr\(lang, 'viewChart'\)\]/);
-  // Order: timeline, then chart, then report - Timeline/Report positions and behavior unchanged.
-  const order = segmented.match(/\['(timeline|chart|report)',/g).map((s) => s.match(/'(\w+)'/)[1]);
-  assert.deepEqual(order, ['timeline', 'chart', 'report']);
+  // Order: timeline, then graph, then chart, then report - Timeline/Chart/Report positions and
+  // behavior unchanged; graph (Analysis Map) was inserted right after timeline (Analysis Desk),
+  // matching ARCHITECTURE.md's "beside the existing Analysis Desk" placement.
+  const order = segmented.match(/\['(timeline|graph|chart|report)',/g).map((s) => s.match(/'(\w+)'/)[1]);
+  assert.deepEqual(order, ['timeline', 'graph', 'chart', 'report']);
 });
 
 test('the segmented-control buttons expose an accessible active-state label', () => {
-  const segmented = block(/\[\['timeline'[\s\S]{0,700}?<\/button>/, 'the segmented-control button markup');
+  // Widened from 700 for the same reason as the test above.
+  const segmented = block(/\[\['timeline'[\s\S]{0,900}?<\/button>/, 'the segmented-control button markup');
   assert.match(segmented, /aria-pressed=\{view === id\}/);
   assert.match(segmented, /aria-label=\{label\}/);
 });

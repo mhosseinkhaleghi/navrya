@@ -1072,6 +1072,11 @@ export function createMemoryRepo() {
         aiSessionAnalysis: record.aiSessionAnalysis || null,
         aiSessionAnalysisResult: record.aiSessionAnalysisResult ?? null,
         finalEntryId: record.finalEntryId || null, accountId: record.accountId || null, instrument,
+        // 057_analysis_graph.sql: mirrors repo.pg.mjs's analysisGraph passthrough field-for-field
+        // - see that file's comment for why this must never be omitted here (039/045 were both
+        // real production incidents caused by exactly this repo staying in sync while repo.pg.mjs
+        // silently dropped a field, or vice versa).
+        analysisGraph: record.analysisGraph ?? null,
         entries: (record.entries || []).map(function (entry) {
           return {
             id: entry.id, sessionId: record.id, type: normalizeTradingEntryType(entry.type),

@@ -182,6 +182,11 @@
     // "never invent a default" rule market/city already follows for legacy data.
     var instrumentTypes=window.TradeJournalInstrumentCatalogTypes;
     session.instrument=(instrumentTypes&&instrumentTypes.normalizeCode(session.instrument))||null;
+    // Analysis Map ("نقشه تحلیل", analysis-graph-registry.js): normalized the same defensive way
+    // as instrument above - never throws on a missing/malformed value, always returns a valid
+    // (possibly empty) graph so every session, old or new, has a safe session.analysisGraph.
+    var graphRegistry=window.TradeJournalAnalysisGraphRegistry;
+    session.analysisGraph=graphRegistry?graphRegistry.normalizeAnalysisGraph(session.analysisGraph):session.analysisGraph;
     if(!session.entries){ session.entries=(session.charts||[]).map(function(chart){return {id:chart.id||id('entry'),type:'chart',createdAt:chart.createdAt||session.startedAt||Date.now(),preview:chart.preview||'assets/chart-main.webp',timeframe:chart.timeframe||session.timeframe||'5m',market:chart.market||session.market||'London',note:chart.note||'',scenarios:chart.scenarios||[]};}); }
     session.entries.forEach(function(entry){
       entry.scenarios=entry.scenarios||[]; entry.createdAt=entry.createdAt||Date.now(); entry.type=entry.type||'chart';

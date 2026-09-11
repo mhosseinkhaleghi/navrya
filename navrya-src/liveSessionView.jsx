@@ -13,8 +13,10 @@ import * as panelStore from './analysisWorkspacePanelStore.js';
 import { SandboxedPanel, buildSnapshot } from './analysisWorkspacePanelRuntime.jsx';
 import { buildGenerationPrompt, parseGeneration, titleFromPrompt } from './analysisWorkspacePanelBuilder.js';
 import { openLogWizard } from './tradeLogModal.jsx';
+import { openTradeDetails } from './tradeDetailsModal.jsx';
 import { SessionAiAnalysisModal } from './sessionAiAnalysisModal.jsx';
 import { SessionAnalysisCard, ImageLightbox } from './sessionAnalysisCard.jsx';
+import { AnalysisGraphView } from './analysisGraphView.jsx';
 
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
@@ -90,7 +92,7 @@ const SPAN_MIN = 180; // decorative pacing window shared by both pulse rings and
 const copy = {
   fa: {
     back: 'بازگشت', settingsTitle: 'تنظیمات سشن', sessionOpen: 'باز', sessionClosed: 'بسته', instrumentUnassigned: 'نماد مشخص نشده', instrumentUnassignedHint: 'برای مشخص کردن نماد این سشن کلیک کنید',
-    viewTimeline: 'میز تحلیل', viewChart: 'چارت بازار', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
+    viewTimeline: 'میز تحلیل', viewGraph: 'نقشه تحلیل', viewChart: 'چارت بازار', viewReport: 'گزارش سشن', ringSessionLabel: 'زمان سشن', ringLoopLabel: 'تایمر لوپ',
     wsPanelsCount: '{n} پنل روی میز · {m} در کتابخانه', wsArrange: 'چیدمان میز', wsDone: 'پایان چیدمان', wsAddPanel: 'افزودن پنل', wsReset: 'چیدمان پیش‌فرض',
     wsLibrary: 'کتابخانه پنل‌ها', wsCloseLibrary: 'بستن کتابخانه', wsLibraryEmpty: 'همهٔ پنل‌ها روی میز هستند.', wsEmptyBoard: 'میز تحلیل خالی است — با «افزودن پنل» شروع کنید.',
     wsRemove: 'برداشتن از میز', wsUp: 'بالاتر', wsDown: 'پایین‌تر', wsToRail: 'انتقال به ستون باریک', wsToMain: 'انتقال به ستون پهن',
@@ -176,7 +178,7 @@ const copy = {
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
-    viewTimeline: 'مساحة التحليل', viewChart: 'مخطط السوق', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
+    viewTimeline: 'مساحة التحليل', viewGraph: 'خريطة التحليل', viewChart: 'مخطط السوق', viewReport: 'تقرير الجلسة', ringSessionLabel: 'وقت الجلسة', ringLoopLabel: 'مؤقت الحلقة',
     wsPanelsCount: '{n} لوحات على الطاولة · {m} في المكتبة', wsArrange: 'ترتيب الطاولة', wsDone: 'إنهاء الترتيب', wsAddPanel: 'إضافة لوحة', wsReset: 'التخطيط الافتراضي',
     wsLibrary: 'مكتبة اللوحات', wsCloseLibrary: 'إغلاق المكتبة', wsLibraryEmpty: 'كل اللوحات موجودة على الطاولة.', wsEmptyBoard: 'مساحة التحليل فارغة — ابدأ بـ«إضافة لوحة».',
     wsRemove: 'إزالة من الطاولة', wsUp: 'لأعلى', wsDown: 'لأسفل', wsToRail: 'نقل إلى العمود الضيق', wsToMain: 'نقل إلى العمود العريض',
@@ -262,7 +264,7 @@ const copy = {
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
-    viewTimeline: 'Analysis workspace', viewChart: 'Market chart', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
+    viewTimeline: 'Analysis workspace', viewGraph: 'Analysis Map', viewChart: 'Market chart', viewReport: 'Session report', ringSessionLabel: 'Session time', ringLoopLabel: 'Loop timer',
     wsPanelsCount: '{n} panels on the desk · {m} in the library', wsArrange: 'Arrange desk', wsDone: 'Done arranging', wsAddPanel: 'Add panel', wsReset: 'Default layout',
     wsLibrary: 'Panel library', wsCloseLibrary: 'Close library', wsLibraryEmpty: 'Every panel is already on the desk.', wsEmptyBoard: 'The analysis workspace is empty — start with “Add panel”.',
     wsRemove: 'Take off the desk', wsUp: 'Move up', wsDown: 'Move down', wsToRail: 'Move to the narrow column', wsToMain: 'Move to the wide column',
@@ -348,7 +350,7 @@ const copy = {
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
-    viewTimeline: 'Espacio de análisis', viewChart: 'Gráfico de mercado', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
+    viewTimeline: 'Espacio de análisis', viewGraph: 'Mapa de análisis', viewChart: 'Gráfico de mercado', viewReport: 'Informe de sesión', ringSessionLabel: 'Tiempo de sesión', ringLoopLabel: 'Temporizador de bucle',
     wsPanelsCount: '{n} paneles en la mesa · {m} en la biblioteca', wsArrange: 'Organizar mesa', wsDone: 'Terminar de organizar', wsAddPanel: 'Añadir panel', wsReset: 'Diseño por defecto',
     wsLibrary: 'Biblioteca de paneles', wsCloseLibrary: 'Cerrar biblioteca', wsLibraryEmpty: 'Todos los paneles ya están en la mesa.', wsEmptyBoard: 'El espacio de análisis está vacío: empieza con «Añadir panel».',
     wsRemove: 'Quitar de la mesa', wsUp: 'Subir', wsDown: 'Bajar', wsToRail: 'Mover a la columna estrecha', wsToMain: 'Mover a la columna ancha',
@@ -870,7 +872,7 @@ function CommandBar({ session, lang, view, onBack, onSetView, onSetInstrument })
       </span>
       <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
         <span style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 9, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.6)' }}>
-          {[['timeline', tr(lang, 'viewTimeline')], ['chart', tr(lang, 'viewChart')], ['report', tr(lang, 'viewReport')]].map(([id, label]) => (
+          {[['timeline', tr(lang, 'viewTimeline')], ['graph', tr(lang, 'viewGraph')], ['chart', tr(lang, 'viewChart')], ['report', tr(lang, 'viewReport')]].map(([id, label]) => (
             <button key={id} type="button" onClick={() => onSetView(id)} aria-pressed={view === id} aria-label={label} title={label} style={{
               height: 30, padding: '0 14px', borderRadius: 6, cursor: 'pointer', font: 'var(--type-body)', fontSize: 12,
               border: '1px solid ' + (view === id ? 'var(--char-accent)' : 'transparent'),
@@ -3478,6 +3480,15 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     persist((s) => { s.entries = (s.entries || []).concat([entry]); }, 'entry_added', tr(lang, 'addChart'));
     setChartModalOpen(false); setChartModalInitialFile(null); setFilter('all'); setQ('');
     selectEntry(entry.id);
+    // Analysis Map handoff (createEntryFromMap above): only set when the modal was opened from
+    // the Map's node-creation picker rather than the Desk's own "Add chart" button, which leaves
+    // this ref untouched (null) and so is completely unaffected by this block.
+    if (graphPendingEntryStageRef.current) {
+      const stageId = graphPendingEntryStageRef.current;
+      graphPendingEntryStageRef.current = null;
+      const registry = window.TradeJournalAnalysisGraphRegistry;
+      addGraphNode('sessionEntry', entry.id, registry ? registry.nodeTypeTitle('sessionEntry', lang) : '', stageId === true ? null : stageId);
+    }
   }
   async function submitFateEntry({ file, timeframe, market, note }) {
     const { blobId, preview } = await storeImage(file);
@@ -3545,6 +3556,435 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       const target = targetEntry && (targetEntry.scenarios || []).find((sc) => sc.id === scenario.id);
       if (target) Object.assign(target, patch);
     }, logType || null, '', scenario.id, !!logType);
+  }
+
+  // Analysis Map ("نقشه تحلیل", analysisGraphView.jsx + analysisGraphCanvas.jsx +
+  // analysis-graph-registry.js). Every mutator below reuses the exact same persist()/log()/
+  // save() path every other Desk mutation already goes through.
+  //
+  // MAP <-> DESK SYNCHRONIZATION CONTRACT (hardened/documented this pass - see
+  // tests/analysis-graph-desk-sync.test.mjs). This is NOT "Desk and Map happen to share a JS
+  // object" - it is the same real, pre-existing canonical-change propagation every other Session
+  // surface already relies on:
+  //
+  //   Canonical Session change (Desk edit OR Map edit - both call persist() -> save())
+  //     -> save() (session-workspace-logic.js) does ONE upsert() AND dispatches the real
+  //        window CustomEvent 'tradejournal:sessions-changed' exactly once
+  //     -> LiveSessionView's own useEffect (below, ~10 lines down) is the SOLE subscriber to
+  //        that event in this file - one registration, matched by a cleanup that removes it,
+  //        registered/torn down exactly once per mount, verified by test, so remounting this
+  //        view can never accumulate duplicate subscriptions -> rerender() -> `session` is
+  //        re-read fresh via
+  //        window.TradeJournalWorkspace.find(sessionId) (never cached, never the old object)
+  //     -> that ONE fresh `session` is passed as a prop to BOTH <AnalysisWorkspaceBoard> (Desk)
+  //        and <AnalysisGraphView> (Map) on the same render - they can never observe two
+  //        different versions of the session.
+  //
+  // A "remount" (switching away from and back to either tab, or this whole view unmounting on
+  // navigation and remounting on return) never depends on any in-memory reference surviving -
+  // every mount re-reads via the same find(), which is backed by the server-replica's real
+  // upsert/hydrate contract (public/pages/shared/server-replica.js), so a fresh mount always sees
+  // the current canonical truth, including a write made by the OTHER surface, another browser
+  // tab, or another device. Desk and Map mutators must therefore always write onto the SAME
+  // passed-in session object (never construct a partial replacement) - see
+  // tests/analysis-graph-desk-sync.test.mjs's "a Desk-only write never drops analysisGraph, and
+  // vice versa" test for why this matters given tradingSessions.upsert() is a full-record
+  // replace, not a merge.
+  //
+  // Pending-modal handoff for canvas-triggered chart-entry creation: ChartEntryModal's onSubmit
+  // is wired to submitChartEntry() below regardless of who opened the modal (Desk's "Add chart"
+  // button or the Map's node-creation picker) - this ref is how submitChartEntry() knows a
+  // graph node should be created for the entry it's about to persist, without submitChartEntry
+  // needing a second call signature or the Desk's own "Add chart" flow changing at all (the ref
+  // is null/no-op for that path).
+  const graphPendingEntryStageRef = React.useRef(null);
+
+  // Graph History foundation (this pass's item 6 - see analysis-graph-registry.js's own
+  // "Graph History foundation" comment for the full rationale/exclusions). Ephemeral, in-memory,
+  // per-mount ONLY (a ref, never persisted to session.analysisGraph or the server) - this is
+  // groundwork for a future real undo/redo stack, not undo/redo itself; nothing reads this array
+  // back yet. Capped so a long editing session can't grow it unboundedly.
+  const graphHistoryRef = React.useRef([]);
+  function logGraphCommand(type, payload) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    const command = registry && registry.createCommand(type, payload);
+    if (!command) return;
+    graphHistoryRef.current = graphHistoryRef.current.concat([command]).slice(-50);
+  }
+
+  function addGraphNode(sourceType, sourceId, title, stageId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return null;
+    // Section 51 (duplicate node semantics): a reference node for a source that's already on the
+    // map is never duplicated - the existing node is returned as-is so the caller can just
+    // select/focus it instead.
+    const current = registry.normalizeAnalysisGraph(session.analysisGraph);
+    const existing = current.nodes.find((n) => n.source && n.source.type === sourceType && n.source.id === sourceId);
+    if (existing) return existing;
+    const stageIds = current.stages.map((s) => s.id);
+    const node = {
+      id: window.TradeJournalWorkspace.id('graphnode'), type: sourceType, typeVersion: 1, origin: 'reference',
+      source: { type: sourceType, id: sourceId }, title: title || '', status: 'active',
+      stageId: (stageId && stageIds.indexOf(stageId) !== -1) ? stageId : registry.defaultStageIdForType(sourceType, stageIds),
+      position: { x: 0, y: current.nodes.length * 140 }, content: '', config: {}, execution: null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.nodes = g.nodes.concat([node]);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_node_added', title || '', null, false);
+    logGraphCommand('create_node', { nodeId: node.id, type: sourceType });
+    return node;
+  }
+  // Manual node (section 6.4/20): carries its own `content`, never canonical data.
+  function addManualGraphNode(content, stageId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return null;
+    const current = registry.normalizeAnalysisGraph(session.analysisGraph);
+    const stageIds = current.stages.map((s) => s.id);
+    const node = {
+      id: window.TradeJournalWorkspace.id('graphnode'), type: 'note', typeVersion: 1, origin: 'manual',
+      source: null, title: (content || '').slice(0, 40) || registry.nodeTypeTitle('note', lang), status: 'active',
+      stageId: (stageId && stageIds.indexOf(stageId) !== -1) ? stageId : registry.defaultStageIdForType('note', stageIds),
+      position: { x: 0, y: current.nodes.length * 140 }, content: content || '', config: {}, execution: null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.nodes = g.nodes.concat([node]);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_node_added', node.title, null, false);
+    logGraphCommand('create_node', { nodeId: node.id, type: 'note' });
+    return node;
+  }
+  // Processing node (section 6.2/9/32): origin 'derived', carries a `config` object and an
+  // `execution` state. Every processing type in the V1 registry has capabilities.executable:false
+  // (no real processor exists yet - section 6.2's explicit "do not pretend a processor exists"
+  // rule), so this always lands as execution.state:'unavailable', never a fabricated result.
+  function addProcessingGraphNode(typeId, config, stageId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    const typeDef = registry && registry.NODE_TYPES[typeId];
+    if (!registry || !typeDef || typeDef.origin !== 'derived') return null;
+    const current = registry.normalizeAnalysisGraph(session.analysisGraph);
+    const stageIds = current.stages.map((s) => s.id);
+    const node = {
+      id: window.TradeJournalWorkspace.id('graphnode'), type: typeId, typeVersion: typeDef.version, origin: 'derived',
+      source: null, title: registry.nodeTypeTitle(typeId, lang), status: 'active',
+      stageId: (stageId && stageIds.indexOf(stageId) !== -1) ? stageId : registry.defaultStageIdForType(typeId, stageIds),
+      position: { x: 0, y: current.nodes.length * 140 }, content: '', config: config || {},
+      execution: { state: 'unavailable', lastRunAt: null },
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.nodes = g.nodes.concat([node]);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_node_added', node.title, null, false);
+    logGraphCommand('create_node', { nodeId: node.id, type: typeId });
+    return node;
+  }
+  function removeGraphNode(nodeId) {
+    // "Remove from map" (section 18/62): splices the node out of session.analysisGraph.nodes
+    // only. The canonical entry/scenario/trade it referenced is never touched - there is no code
+    // path here that writes to session.entries or any other canonical store. Also drops any edge
+    // touching this node so the graph never accumulates edges dangling off a node that no longer
+    // exists (section 62's "grouping/edges are Map-only metadata" carve-out - this is Map
+    // bookkeeping, not canonical Scenario/Trade forensic history).
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.nodes = g.nodes.filter((n) => n.id !== nodeId);
+      g.edges = g.edges.filter((e) => e.sourceNodeId !== nodeId && e.targetNodeId !== nodeId);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_node_removed', '', null, false);
+    logGraphCommand('remove_node', { nodeId });
+  }
+  // Section 18's Inspector "Change Stage" action / section 27-28's "move a node between stages".
+  function updateGraphNodeStage(nodeId, stageId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const node = g.nodes.find((n) => n.id === nodeId);
+      if (!node || !g.stages.some((st) => st.id === stageId)) return;
+      node.stageId = stageId;
+      node.updatedAt = new Date().toISOString();
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_node_stage_changed', stageId, null, false);
+    logGraphCommand('stage_change', { nodeId, stageId });
+  }
+  // Canonical-editing quick-edit mutators (section 3) - the Inspector's QUICK_EDIT_ADAPTERS
+  // (analysisGraphCanvas.jsx) call these for the two node types with NO existing canonical form
+  // to jump to (Note, Processing): the Map itself is the only place their content/config lives,
+  // so this is the real (only) editor, not a duplicate of anything.
+  function updateGraphNodeContent(nodeId, content) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const node = g.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      node.content = content || '';
+      node.title = (content || '').slice(0, 40) || node.title;
+      node.updatedAt = new Date().toISOString();
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_node_content_changed', '', null, false);
+  }
+  function updateGraphNodeConfig(nodeId, config) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const node = g.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      node.config = config || {};
+      node.updatedAt = new Date().toISOString();
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_node_config_changed', '', null, false);
+  }
+  // Section 27's stage collapse/expand - Map-only UI metadata (section 62), stored in
+  // workflowMeta so it's real, persisted, and shared across devices/reloads like everything else
+  // here, without needing its own column.
+  function toggleGraphStageCollapsed(stageId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const collapsed = (g.workflowMeta && g.workflowMeta.collapsedStages) || {};
+      g.workflowMeta = Object.assign({}, g.workflowMeta, { collapsedStages: Object.assign({}, collapsed, { [stageId]: !collapsed[stageId] }) });
+      s.analysisGraph = g;
+    }, null, '', null, false);
+  }
+  // Group data foundation (this pass's item 7 - see analysis-graph-registry.js's own
+  // normalizeGroup() comment). No dedicated canvas UI wires these yet (deliberately, per the
+  // brief's "even if the complete UI comes later") - the data model, persistence, and mutators
+  // are real and tested end-to-end, ready for a future "group these selected nodes" button.
+  // A group never stores a copy of member node data - only their ids (mirrors an edge's own
+  // sourceNodeId/targetNodeId-by-reference convention).
+  function createGraphGroup(nodeIds, title) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry || !Array.isArray(nodeIds) || !nodeIds.length) return null;
+    const group = { id: window.TradeJournalWorkspace.id('graphgroup'), title: title || '', nodeIds: nodeIds.slice(), collapsed: false, position: null, size: null, createdAt: new Date().toISOString() };
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.groups = g.groups.concat([group]);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_group_created', title || '', null, false);
+    logGraphCommand('group', { groupId: group.id, nodeIds: group.nodeIds });
+    return group;
+  }
+  function removeGraphGroup(groupId) {
+    // Removing a group only ever removes the group record itself - its member nodes (and
+    // whatever canonical data any of them reference) are completely untouched, the same
+    // "container, not owner" guarantee removeGraphNode already gives canonical Scenario/Trade
+    // data.
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.groups = g.groups.filter((group) => group.id !== groupId);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_group_removed', '', null, false);
+    logGraphCommand('ungroup', { groupId });
+  }
+  function toggleGraphGroupCollapsed(groupId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const group = g.groups.find((gr) => gr.id === groupId);
+      if (!group) return;
+      group.collapsed = !group.collapsed;
+      s.analysisGraph = g;
+    }, null, '', null, false);
+  }
+  // Canvas-only position updates (section 52: never persist on every pointer move - the canvas
+  // itself tracks the dragged position purely in local React state and calls this once, on
+  // pointerup, so a drag is a single persist() no matter how long it lasted).
+  function updateGraphNodePosition(nodeId, position) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      const node = g.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      node.position = { x: Number(position.x) || 0, y: Number(position.y) || 0 };
+      node.updatedAt = new Date().toISOString();
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, null, '', null, false);
+    logGraphCommand('move_node', { nodeId, position });
+  }
+  // Bulk position update - REAL BUG FOUND VIA LIVE BROWSER VERIFICATION (this pass): auto-layout
+  // originally called updateGraphNodePosition() once per node in a tight loop, firing N
+  // independent async persist()/upsert() calls against the SAME session record with no ordering
+  // guarantee between their server responses. server-replica.js's upsert() reconciles local state
+  // with whatever record the server returns - if an EARLIER call's response arrived after a
+  // LATER call's, it could silently overwrite the later (correct, final) positions with a stale
+  // intermediate snapshot. Confirmed in the browser: auto-layout looked right immediately, then
+  // reverted to overlapping positions on the next page load. Fixed by making auto-layout (and any
+  // future multi-node reposition) a single mutation/single persist() call instead of N.
+  function updateGraphNodePositions(positionsByNodeId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry || !positionsByNodeId) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      let changed = false;
+      g.nodes.forEach((node) => {
+        const position = positionsByNodeId[node.id];
+        if (!position) return;
+        node.position = { x: Number(position.x) || 0, y: Number(position.y) || 0 };
+        node.updatedAt = new Date().toISOString();
+        changed = true;
+      });
+      if (changed) g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_auto_layout', '', null, false);
+  }
+  // Same "commit once, not per-frame" rule as position updates above - called on pan/zoom end.
+  function updateGraphViewport(viewport) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.viewport = { x: Number(viewport.x) || 0, y: Number(viewport.y) || 0, zoom: Number(viewport.zoom) || 1 };
+      s.analysisGraph = g;
+    }, null, '', null, false);
+  }
+  // Semantic edges (section 8), now with real typed-port validation (section 7/16): the caller
+  // (analysisGraphCanvas.jsx) must resolve a compatible (sourcePort,targetPort) pair via
+  // registry.compatiblePortPair() BEFORE calling this - addGraphEdge itself re-validates so no
+  // call site can bypass the rule (e.g. a Note's connect handle can never reach Market Structure,
+  // because no compatible port pair exists between those two node types - see the registry's
+  // port-type comment for the full worked example).
+  function addGraphEdge(sourceNodeId, targetNodeId, relation) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry || !sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) return null;
+    const current = registry.normalizeAnalysisGraph(session.analysisGraph);
+    const sourceNode = current.nodes.find((n) => n.id === sourceNodeId);
+    const targetNode = current.nodes.find((n) => n.id === targetNodeId);
+    if (!sourceNode || !targetNode) return null;
+    const pair = registry.compatiblePortPair(sourceNode.type, targetNode.type);
+    if (!pair) return null; // "do not allow arbitrary connections"
+    // Never create a second identical edge (same endpoints + relation) - mirrors the "duplicate
+    // node" prevention in addGraphNode above.
+    const existing = current.edges.find((e) => e.sourceNodeId === sourceNodeId && e.targetNodeId === targetNodeId && e.relation === relation);
+    if (existing) return existing;
+    const edge = {
+      id: window.TradeJournalWorkspace.id('graphedge'), sourceNodeId, targetNodeId,
+      sourcePort: pair.sourcePort, targetPort: pair.targetPort, relation: relation || 'references',
+      createdAt: new Date().toISOString()
+    };
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.edges = g.edges.concat([edge]);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_edge_added', relation || '', null, false);
+    logGraphCommand('connect', { edgeId: edge.id, sourceNodeId, targetNodeId, relation: edge.relation });
+    return edge;
+  }
+  function removeGraphEdge(edgeId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (!registry) return;
+    persist((s) => {
+      const g = registry.normalizeAnalysisGraph(s.analysisGraph);
+      g.edges = g.edges.filter((e) => e.id !== edgeId);
+      g.updatedAt = new Date().toISOString();
+      s.analysisGraph = g;
+    }, 'analysis_graph_edge_removed', '', null, false);
+    logGraphCommand('disconnect', { edgeId });
+  }
+  // Canonical-editing action dispatch (this pass's "canonical editing audit" - section 3): one
+  // opener function per node type that genuinely HAS a real existing editor to open, keyed by
+  // type id rather than an if/else chain, so this table (not Inspector, not the canvas) is the
+  // one place that grows when a future type gains a safe integration. Only types whose registry
+  // entry declares capabilities.canOpenSource:true are ever looked up here (see
+  // analysis-graph-registry.js's NODE_TYPES) - Pattern deliberately has no entry, audited above.
+  const graphSourceOpeners = {
+    sessionEntry: (sourceId) => { selectEntry(sourceId); setView('timeline'); },
+    sessionScenario: (sourceId) => {
+      const registry = window.TradeJournalAnalysisGraphRegistry;
+      const ownerEntryId = registry && registry.findScenarioOwnerEntryId(sourceId, session);
+      if (ownerEntryId) selectEntry(ownerEntryId);
+      setOpenScenarios((prev) => new Set(prev).add(sourceId));
+      setView('timeline');
+    },
+    // Self-contained opener (navrya-src/tradeDetailsModal.jsx) - mounts its own root, exactly
+    // like this file's own openLogWizard() reuse. Never switches `view`: it opens on top of
+    // whichever tab (Desk/Map/Chart/Report) the trader is already on, matching how it behaves
+    // everywhere else in the app it's already wired (character-app.jsx).
+    trade: (sourceId) => { openTradeDetails(sourceId); }
+  };
+  function openGraphSource(node) {
+    if (!node || !node.source) return;
+    const opener = graphSourceOpeners[node.type];
+    if (opener) opener(node.source.id);
+  }
+  // Section 4/1's flagship "canvas creates canonical data via the existing pipeline" example.
+  // Reuses the exact same addScenario(entry) the Desk's own "+ Scenario" button calls (this is
+  // NOT a second scenario-creation path) - the only new part is picking which existing entry the
+  // new Scenario attaches to (a Scenario is always nested under an Entry in this data model, see
+  // the audit's session-store findings), since the canvas has no "currently selected entry"
+  // concept of its own.
+  function createScenarioFromMap(entryId, stageId) {
+    const entry = (session.entries || []).find((e) => e.id === entryId);
+    if (!entry) return null;
+    const scenario = addScenario(entry);
+    return addGraphNode('sessionScenario', scenario.id, scenario.title, stageId);
+  }
+  // Movement entries are created synchronously (addEntry already exists for exactly this); chart
+  // entries need a real image, so this opens the SAME ChartEntryModal the Desk's "Add chart"
+  // button opens (rendered near the bottom of this component) - graphPendingEntryStageRef is how
+  // submitChartEntry() below knows to also create a Map node once the modal actually submits.
+  function createEntryFromMap(kind, stageId) {
+    const registry = window.TradeJournalAnalysisGraphRegistry;
+    if (kind === 'movement') {
+      const entry = addEntry('movement');
+      return addGraphNode('sessionEntry', entry.id, registry ? registry.nodeTypeTitle('sessionEntry', lang) : '', stageId);
+    }
+    graphPendingEntryStageRef.current = stageId || true;
+    setChartModalOpen(true);
+    return null; // async - the node is created once the modal submits
+  }
+  // Mirrors ScenarioEditor's own logTrade() (same seed shape, same openLogWizard() pipeline) but
+  // parameterized by an arbitrary scenario rather than that component's closure-bound one, so the
+  // Map's "Add Trade" picker (choose which scenario this trade stems from) can call it too - NOT
+  // a second trade-creation path, the exact same wizard the Desk's own "Log trade" button opens.
+  function createTradeFromMap(scenario, stageId) {
+    const patternId = scenario.pattern && scenario.pattern.patternTagId;
+    const plan = scenario.executionPlan || {};
+    openLogWizard({
+      status: 'hunting',
+      direction: String(plan.positionType || 'long').toLowerCase() === 'short' ? 'short' : 'long',
+      entryPrice: (plan.entryPrices || [])[0] || null,
+      stopLoss: plan.stopLoss || null,
+      takeProfits: plan.takeProfit ? [{ price: plan.takeProfit, portionPercent: 100 }] : [],
+      linkedPatternIds: patternId ? [patternId] : [],
+      accountId: session.accountId || null, instrument: session.instrument || null,
+      source: { character, sessionId: session.id, scenarioId: scenario.id }
+    }, { onSave: (value) => { addGraphNode('trade', value.id, value.instrument || '', stageId); } });
+  }
+  // Pattern is reference-only from the Map (section 4: "supported canonical references" includes
+  // Pattern; section 49 does not require inline creation for every referenceable type - Patterns
+  // are managed in the Strategies Hub's Pattern Registry). Picks an EXISTING pattern, never
+  // creates one.
+  function createPatternReferenceFromMap(patternId, stageId) {
+    const patternStore = window.TradeJournalPatternStore;
+    const pattern = patternStore && patternStore.find(patternId);
+    if (!pattern) return null;
+    return addGraphNode('pattern', pattern.id, pattern.name || '', stageId);
   }
 
   // Adaptive AI Session Analysis (brief §2/§20/§22): the three write paths a real analysis ever
@@ -3786,6 +4226,18 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         <AnalysisWorkspaceContext.Provider value={workspace}>
           <AnalysisWorkspaceBoard character={character} lang={lang} rtl={rtl} />
         </AnalysisWorkspaceContext.Provider>
+      ) : view === 'graph' ? (
+        <AnalysisGraphView
+          session={session} lang={lang} rtl={rtl}
+          onAddNode={addGraphNode} onRemoveNode={removeGraphNode} onOpenSource={openGraphSource}
+          onMoveNode={updateGraphNodePosition} onMoveNodes={updateGraphNodePositions} onSetViewport={updateGraphViewport}
+          onAddEdge={addGraphEdge} onRemoveEdge={removeGraphEdge}
+          onChangeNodeStage={updateGraphNodeStage} onToggleStageCollapsed={toggleGraphStageCollapsed}
+          onUpdateScenario={updateScenario} onUpdateNoteContent={updateGraphNodeContent} onUpdateProcessingConfig={updateGraphNodeConfig}
+          onCreateScenario={createScenarioFromMap} onCreateEntry={createEntryFromMap}
+          onCreateTrade={createTradeFromMap} onCreatePatternRef={createPatternReferenceFromMap}
+          onCreateNote={addManualGraphNode} onCreateProcessing={addProcessingGraphNode}
+        />
       ) : view === 'chart' ? null : (
         <ReportView session={session} lang={lang} indexById={indexById} />
       )}

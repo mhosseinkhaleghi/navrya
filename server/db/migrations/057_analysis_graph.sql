@@ -1,0 +1,22 @@
+-- "Analysis Map" (نقشه تحلیل): a session-level, additive JSONB column holding a lightweight
+-- node/edge graph the trader builds alongside the Analysis Desk ("میز تحلیل", trading_sessions'
+-- existing entries/scenarios). V1 nodes are reference-only (origin:'reference') - they store only
+-- {type, id} pointers into this session's own entries[]/entries[].scenarios[], never a copy of the
+-- canonical data itself (see the app's own "no duplicate canonical data" rule and 045's/039's
+-- precedent for why a duplicated-field drift is a real, previously-shipped bug class here).
+--
+-- Nullable, no default, no CHECK - matches every prior additive-JSONB column on this table
+-- (fate_summary, previous_session_summary, ai_session_analysis_result). A session created before
+-- this column existed simply has analysis_graph = NULL; the client's normalizeAnalysisGraph()
+-- (analysis-graph-registry.js) is solely responsible for turning that into a valid empty graph on
+-- read - this migration does not (and must not) backfill or guess a value for existing rows.
+--
+-- NAME COLLISION NOTE (see feat/analysis-map audit, 2026-09-11): this repo already has an
+-- unrelated, shipped feature internally called "Analysis Map" - the AI chart-overlay image drawn
+-- by visualizeAnalysis()/runVisualizeAiAnalysis(), stored at
+-- trading_session_entries.ai_analysis_result.wholeVisualization. That feature is never called
+-- "Analysis Map" in trader-facing copy (its button says "ترسیم کل تحلیل روی چارت" / "Draw full
+-- analysis on chart"), so there is no UI-string collision, but the *internal* name is taken -
+-- hence this column is `analysis_graph`, not `analysis_map`, exactly the way the Analysis
+-- Workspace tab kept the internal id `timeline` while its visible label became "میز تحلیل".
+ALTER TABLE trading_sessions ADD COLUMN IF NOT EXISTS analysis_graph JSONB;

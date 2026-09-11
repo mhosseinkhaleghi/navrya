@@ -308,6 +308,10 @@ function mapTradingSession(row, entries, activityLog) {
     fateSummary: row.fate_summary, previousSessionSummary: row.previous_session_summary,
     aiSessionAnalysis: row.ai_session_analysis, aiSessionAnalysisResult: row.ai_session_analysis_result,
     finalEntryId: row.final_entry_id, accountId: row.account_id, instrument: row.instrument, entries: entries || [], activityLog: activityLog || [],
+    // 057_analysis_graph.sql: raw passthrough, same as fate_summary/previous_session_summary
+    // above - null for any session that predates this column; normalizeAnalysisGraph()
+    // (analysis-graph-registry.js) is the sole place that turns null into a valid empty graph.
+    analysisGraph: row.analysis_graph ?? null,
     createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
@@ -1734,13 +1738,14 @@ export function createPgRepo(pool) {
           `INSERT INTO trading_sessions
             (id, user_id, character, name, market, timeframe, date, jalali, started_at, closed_at, status,
              update_interval_minutes, grace_period_minutes, fate_summary, previous_session_summary,
-             ai_session_analysis, ai_session_analysis_result, final_entry_id, account_id, instrument, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,now()),$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,now())
+             ai_session_analysis, ai_session_analysis_result, final_entry_id, account_id, instrument, analysis_graph, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,now()),$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,now())
            ON CONFLICT (id) DO UPDATE SET
              character=$3, name=$4, market=$5, timeframe=$6, date=$7, jalali=$8,
              started_at=COALESCE($9, trading_sessions.started_at), closed_at=$10, status=$11,
              update_interval_minutes=$12, grace_period_minutes=$13, fate_summary=$14, previous_session_summary=$15,
-             ai_session_analysis=$16, ai_session_analysis_result=$17, final_entry_id=$18, account_id=$19, instrument=$20, updated_at=now()
+             ai_session_analysis=$16, ai_session_analysis_result=$17, final_entry_id=$18, account_id=$19, instrument=$20,
+             analysis_graph=$21, updated_at=now()
            RETURNING *`,
           // market is NOT NULL (006_trading_sessions.sql) - a bare `|| null` here is what a real
           // NOT-NULL constraint violation looks like the moment any caller sends an empty/missing
@@ -1753,7 +1758,7 @@ export function createPgRepo(pool) {
             Number(record.gracePeriodMinutes) || 5, JSON.stringify(record.fateSummary ?? null),
             JSON.stringify(record.previousSessionSummary ?? null), record.aiSessionAnalysis || null,
             JSON.stringify(record.aiSessionAnalysisResult ?? null), record.finalEntryId || null, record.accountId || null,
-            instrument]
+            instrument, JSON.stringify(record.analysisGraph ?? null)]
         );
 
         await client.query('DELETE FROM trading_session_entries WHERE session_id=$1', [record.id]);
