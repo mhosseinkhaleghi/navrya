@@ -48,7 +48,10 @@ test('every tabConversationStudio/convStudioXxx admin key exists in all four lan
 
 test('the Conversation Studio tab is registered in both the hash-route regex spots and the builder dispatch table', async () => {
   const src = await read('public', 'pages', 'admin', 'app.js');
-  const regexOccurrences = src.match(/\/\^#\\\/admin\\\/\(users\|ai\|technical\|xp\|marketplace\|financial\|commercial\|conversationStudio\)\$\//g) || [];
+  // Support Tickets (feat/support-tickets) added a new tab, 'support', into both regex spots
+  // right after 'users' - this literal must track that real, current text, not the text from
+  // before that tab existed.
+  const regexOccurrences = src.match(/\/\^#\\\/admin\\\/\(users\|support\|ai\|technical\|xp\|marketplace\|financial\|commercial\|conversationStudio\)\$\//g) || [];
   assert.equal(regexOccurrences.length, 2, 'both the route() matcher and startApp()\'s default-redirect check must include conversationStudio');
   assert.match(src, /conversationStudio:\s*conversationStudioTab/);
   const navSrc = await read('public', 'pages', 'admin', 'index.html');
