@@ -530,7 +530,7 @@ test('Inspector() itself contains zero node.type equality branches - every per-t
   const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
   const fnStart = canvasSrc.indexOf('function Inspector(');
   assert.ok(fnStart > -1, 'could not find Inspector()');
-  const fnEnd = canvasSrc.indexOf('\n}\n\n// Section 1/48', fnStart);
+  const fnEnd = canvasSrc.indexOf('function BulkInspector(', fnStart);
   assert.ok(fnEnd > -1, 'could not find the end of Inspector()');
   const body = canvasSrc.slice(fnStart, fnEnd);
   assert.doesNotMatch(body, /node\.type === '/, 'Inspector() must never branch on a specific node.type string directly');
@@ -873,7 +873,7 @@ test('the canvas never persists on every pointer move - node-drag and pan/zoom o
   // drop node-creation commit path - see the next test).
   const start = canvasSrc.indexOf('function onNodePointerDown(node, e) {');
   assert.ok(start > -1, 'could not find onNodePointerDown');
-  const end = canvasSrc.indexOf('\n  }\n\n  // Which node', start);
+  const end = canvasSrc.indexOf('function nodeAtWorldPoint(', start);
   assert.ok(end > -1, 'could not find the end of onNodePointerDown');
   const fnBody = canvasSrc.slice(start, end);
   const onMoveBody = fnBody.slice(fnBody.indexOf('function onMove('), fnBody.indexOf('function onUp('));

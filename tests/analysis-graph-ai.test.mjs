@@ -609,7 +609,7 @@ test('aiAnalysis is the ONE type registered in AI_NODE_PANEL_ADAPTERS, wired int
   assert.match(canvasSrc, /const AI_NODE_PANEL_ADAPTERS = \{ aiAnalysis: AiNodePanel \};/);
   assert.match(canvasSrc, /typeDef\.capabilities\.executable && AiPanel/);
   const fnStart = canvasSrc.indexOf('function Inspector(');
-  const fnEnd = canvasSrc.indexOf('\n}\n\n// Section 1/48', fnStart);
+  const fnEnd = canvasSrc.indexOf('function BulkInspector(', fnStart);
   assert.ok(fnStart > -1 && fnEnd > -1);
   assert.doesNotMatch(canvasSrc.slice(fnStart, fnEnd), /node\.type === '/);
 });
