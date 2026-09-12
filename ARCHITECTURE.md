@@ -534,7 +534,7 @@ This was the project's **first departure from pure local-first** - originally, e
 | `trade_screenshots` | Section 7.18 Module 4: one row per `TradeScreenshot`, FK to `trades`, cascade-deleted with it. `image_url` mirrors `pattern_screenshots.image_url`/`strategy_attachments.file_url` - populated once the screenshot's blob uploads via the generalized storage module (`category: 'trade'`). |
 | `trade_emotion_log` | Section 7.18 Module 4: one row per `TradeEmotionLog` entry, FK to `trades`, cascade-deleted with it. Its own child table (not jsonb) since Module 5 (Mental Health Profile) is expected to query per-emotion fields directly once it lands. `occurred_at` maps to the client's `timestamp` field name - the one place that translation happens. |
 | `mental_health_profiles` | Section 7.18 Module 5 (final module): one row per user, `user_id` itself the primary key (never a separate generated id - there is exactly one profile per user by construction). The entire client profile object is stored verbatim in a single `profile` jsonb column - no per-section columns, no child tables - since nothing anywhere queries into any of its ~14 nested sections individually. The only migrated module with no associated upload/image table. |
-| `support_tickets`, `support_ticket_messages` | Section 7.26: a support ticket (owner `user_id`, `subject`, `category`, `status` - `open`/`waiting_user`/`resolved`/`closed`) and its ordered child messages (`author_role` `user`/`staff`, snapshotted server-side at write time). `owner_unread` is a plain boolean flag (not a "last read" timestamp compared against a "last reply" timestamp), deliberately - avoids a same-millisecond tie between a write and a read ever misreporting a genuinely-unread reply as read. |
+| `support_tickets`, `support_ticket_messages` | Section 7.26: a support ticket (owner `user_id`, `subject`, `category`, `status` - `open`/`waiting_user`/`resolved`/`closed`) and its ordered child messages (`author_role` `user`/`staff`, snapshotted server-side at write time, plus `attachments` JSONB - `059_support_ticket_attachments.sql`). `owner_unread` is a plain boolean flag (not a "last read" timestamp compared against a "last reply" timestamp), deliberately - avoids a same-millisecond tie between a write and a read ever misreporting a genuinely-unread reply as read. |
 | `community_notification_cursors` | Section 7.26: one row per user, `last_seen_at` - the Community unread-badge cursor. Initialized to `now()` on first read (`repo.*.communityCursors.getOrInit`), never backfilled, so pre-existing Community content never produces a false first-login badge. |
 
 ### Accounts: dev-mode switcher, not real authentication
@@ -1563,9 +1563,23 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
 
 ### 7.26 Support Tickets & Notification Badges
 
-- **Purpose:** A user-facing support ticket system (create, follow, reply, close own ticket) and
-  an admin ticket queue (search/filter, reply as staff, change status), plus simple persisted
-  numeric unread badges for Community and Support in the sidebar/admin nav.
+- **Purpose:** A user-facing support ticket system (create, follow, reply, close own ticket,
+  attach images/short videos) and an admin ticket queue (search/filter, reply as staff, change
+  status, view a user's attachments), plus simple persisted numeric unread badges for Community
+  and Support in the sidebar/admin nav.
+- **Attachments (059_support_ticket_attachments.sql):** `support_ticket_messages.attachments`
+  (JSONB `[{url, type, mimeType}]`). Images reuse `saveImages()` verbatim (the same real
+  decode-and-re-encode-via-sharp pipeline Community images already get). Video has no
+  transcode/decode dependency in this project, so `saveVideo()`/`saveVideos()` (storage.mjs) does
+  real container-signature sniffing (ISO-BMFF `ftyp` / EBML header) instead - never trusts the
+  declared MIME alone, but does not re-encode. Capped client- and server-side (15MB/image,
+  50MB/video, 4 images + 2 videos per message). Stored under the PRIVATE `ticket` upload category
+  (`app.mjs`'s `PRIVATE_UPLOAD_CATEGORIES`); `security/upload-ownership.mjs` resolves ownership via
+  a dedicated `repo.supportTickets.findOwnerByAttachmentUrl()` (the same per-domain-resolver shape
+  session/pattern/strategy/trade already use, deliberately NOT the paid storage-quota system) and
+  its `ADMIN_VISIBLE_CATEGORIES` narrowly re-opens exactly this one category to any admin (who
+  already sees the ticket's own subject/messages/owner via the admin API) - every other private
+  category stays owner-only, unaffected.
 - **Files:** server: `058_support_tickets.sql`, `server/db/support-ticket-normalize.mjs` (shared
   pg/memory validation), the `supportTickets`/`communityCursors`/`notifications` repo domains
   (`repo.pg.mjs`/`repo.memory.mjs`), `server/community/routes.support-tickets.mjs` (owner-facing,
@@ -1614,7 +1628,9 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   limit, notifications summary, community ack), `admin-support-tickets-contract.test.mjs`
   (non-admin 403, search/filter, staff reply + status transition + audit log), and
   `support-tickets-i18n-completeness.test.mjs` (every new key across all four languages, badge
-  hidden-at-zero/99+ source assertions).
+  hidden-at-zero/99+ source assertions), and `support-tickets-attachments.test.mjs` (059 migration
+  contract, `saveVideo()` real signature/mime/size checks, image+video round trip, and
+  owner/admin-only/anonymous/stranger access over the real `/uploads/ticket/*` path).
 
 ## 8. AI Integration Points
 
