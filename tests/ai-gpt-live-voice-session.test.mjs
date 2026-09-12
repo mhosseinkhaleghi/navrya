@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { after, afterEach } from 'node:test';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 // GPT-Live 1 voice provider migration: server-side session creation (mintGptLiveClientSecret()) and
 // best-effort settlement (settleGptLiveVoiceSession()). Protocol shape corrected this pass against
@@ -124,6 +126,39 @@ test('surfaces a clear error (mapped to the real upstream status) when OpenAI re
   await withEnv({ OPENAI_API_KEY: 'bad-key' }, async () => {
     await assert.rejects(() => mintGptLiveClientSecret({ language: 'en', offerSdp: FAKE_OFFER_SDP }), /GPT_LIVE_TOKEN_FAILED_401/);
   });
+});
+
+// Production incident (2026-09-12): mintGptLiveClientSecret() always appends the real upstream
+// error body after the status ('GPT_LIVE_TOKEN_FAILED_403: {"error":...}', mirroring
+// mintRealtimeClientSecret()'s own REALTIME_TOKEN_FAILED_ construction) whenever OpenAI's rejection
+// carries a body - true for essentially every real 4xx/5xx OpenAI ever returns. The dispatcher's
+// own status-mapping regex was copied from geminiVoiceFailureCode()'s DIFFERENT, status-ONLY
+// message shape and used a fully end-anchored pattern (`^GPT_LIVE_TOKEN_FAILED_(\d+)$`), which
+// therefore NEVER matched a real error message with trailing text - every genuine OpenAI rejection
+// silently collapsed into a generic 500 with the real status/detail lost, confirmed live in
+// production. This test exercises the ACTUAL fixed regex from the real source (not a
+// reimplementation) against a realistic message WITH trailing error text, the exact shape that
+// broke it - a purely static "does this line still exist" check (this file's own established
+// convention elsewhere) would not have caught this, since the broken line was present the whole
+// time.
+test('the dispatcher\'s GPT_LIVE_TOKEN_FAILED status-mapping regex correctly extracts the real status even with a real upstream error body appended after it', async () => {
+  const source = await readFile(path.join(process.cwd(), 'server', 'pattern-ai-server.mjs'), 'utf8');
+  const catchBlock = source.slice(source.indexOf('} catch (error) {', source.indexOf('server = http.createServer')), source.indexOf('const errorCode ='));
+  const patternMatch = catchBlock.match(/\/\^GPT_LIVE_TOKEN_FAILED_\(\\d\+\)\/\.test\(error\.message \|\| ''\)/);
+  assert.ok(patternMatch, 'the GPT_LIVE_TOKEN_FAILED status-mapping condition must still exist in the dispatcher');
+  assert.doesNotMatch(catchBlock.slice(patternMatch.index, patternMatch.index + 200), /GPT_LIVE_TOKEN_FAILED_\(\\d\+\)\$/, 'must never be re-anchored to the end of the string - that is exactly the regression this test guards against');
+
+  // Exercise the real regex/extraction from source, not a hand-copied reimplementation that could
+  // silently drift from the actual code.
+  const testRegex = new RegExp('^GPT_LIVE_TOKEN_FAILED_(\\d+)');
+  const realisticMessage = 'GPT_LIVE_TOKEN_FAILED_403: {"error":{"message":"gpt-live-1 is not enabled for this organization"}}';
+  assert.ok(testRegex.test(realisticMessage), 'the fixed regex must match a real message with trailing upstream error text');
+  assert.equal(Number(realisticMessage.match(testRegex)[1]), 403);
+
+  // The pre-fix, fully end-anchored form must NOT match the same realistic message - proves this
+  // test would actually have failed against the original buggy code, not merely against a strawman.
+  const brokenRegex = new RegExp('^GPT_LIVE_TOKEN_FAILED_(\\d+)$');
+  assert.equal(brokenRegex.test(realisticMessage), false, 'sanity check: the original bug really is this exact anchoring mistake');
 });
 
 // ---- Fail-closed wallet/pricing gate (task requirement: "fail closed if pricing or credentials

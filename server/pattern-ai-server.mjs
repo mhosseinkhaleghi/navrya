@@ -3613,7 +3613,18 @@ const server = http.createServer(async (request, response) => {
       // doesn't match this and falls through to 500 unchanged - the client already translates that
       // specific message into a friendly string regardless of status code.
       : /^GEMINI_(?:TTS|LIVE_TOKEN)_FAILED_(\d+)$/.test(error.message || '') ? Number((error.message || '').match(/(\d+)$/)[1])
-      : /^GPT_LIVE_TOKEN_FAILED_(\d+)$/.test(error.message || '') ? Number((error.message || '').match(/(\d+)$/)[1])
+      // Production incident (2026-09-12): unlike geminiVoiceFailureCode()'s status-only message
+      // (`${prefix}_FAILED_${status}`, nothing after the digits, so the fully-anchored Gemini
+      // pattern above correctly matches it), mintGptLiveClientSecret()'s own GPT_LIVE_TOKEN_FAILED_
+      // message appends the real upstream error body after the status (mirroring
+      // mintRealtimeClientSecret()'s own REALTIME_TOKEN_FAILED_ construction, which is checked
+      // below via plain substring .test() with no end-anchor at all - never a `$`-anchored one).
+      // A fully end-anchored `$` regex here therefore NEVER matched any real OpenAI rejection with
+      // a body (i.e. almost every real 4xx/5xx from OpenAI), silently collapsing every one of them
+      // into a generic, undiagnosable 500 - confirmed live: a real GPT-Live session-mint failure
+      // surfaced as a bare 500 with no way to tell what OpenAI actually rejected. Fixed by matching
+      // only the fixed prefix, not the whole remaining string.
+      : /^GPT_LIVE_TOKEN_FAILED_(\d+)/.test(error.message || '') ? Number((error.message || '').match(/^GPT_LIVE_TOKEN_FAILED_(\d+)/)[1])
       // mintGptLiveClientSecret()'s own fail-closed wallet gate throws the same reason strings
       // reserveWalletFundsForCall()'s dispatcher-level caller already maps this same way just above
       // (WALLET_INSUFFICIENT_BALANCE -> 402, every other reserve failure -> 503, never a bare 500
