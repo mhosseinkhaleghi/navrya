@@ -4523,6 +4523,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
           marketChartComponent={TradingViewAdvancedChart}
           resolveMarketSymbol={tradingViewSymbolFor} resolveMarketInterval={tradingViewIntervalFor}
           onRunAiNode={runAiAnalysisNode} onApplyAiSuggestion={applyGraphAiSuggestion} onClearAiResult={clearAiNodeResult}
+          imageUrls={imageUrls}
         />
       ) : view === 'chart' ? null : (
         <ReportView session={session} lang={lang} indexById={indexById} />
