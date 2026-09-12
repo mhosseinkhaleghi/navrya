@@ -60,6 +60,20 @@ test('zero and negative reported elapsed seconds never produce a negative charge
   assert.equal(settled.ledgerEntry.providerCostMicroUsd, 0);
 });
 
+// Production incident (2026-09-12): the original 600s (10-minute) reservation estimate sized a
+// hold (~$1.50 at $0.05/min x 3x markup) larger than a brand-new account's own $0.50 signup promo
+// credit, so a real first-time user's very first Voice attempt failed closed with
+// WALLET_INSUFFICIENT_BALANCE before a single second of real usage - see wallet-service.mjs's own
+// ASSUMED_MAX_VOICE_SESSION_SECONDS comment for the full record. This proves the fix: a brand-new
+// account with ONLY the default signup credit (no extra grant) can now actually reserve.
+test('a brand-new user with only the default signup promo credit can reserve a GPT-Live session - the conservative hold no longer exceeds a real starting balance', async () => {
+  const repo = createMemoryRepo();
+  await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-live-1', perMinutePriceMicroUsd: 50000, currency: 'USD', enabled: true });
+  const user = await repo.users.create({ displayName: 'Brand New Trader' }); // signup promo credit only - no extra grant
+  const gate = await reserveForAiCall(repo, { userId: user.id, feature: 'voiceGptLive', provider: 'openai', model: 'gpt-live-1', payload: {} });
+  assert.equal(gate.ok, true, gate.reason);
+});
+
 test('a token-priced row for a different OpenAI model is unaffected by the new per-minute column (byte-identical resolution to before this migration)', async () => {
   const repo = createMemoryRepo();
   await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-5.6-sol', promptPricePer1k: 0.01, completionPricePer1k: 0.03, enabled: true });

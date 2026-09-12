@@ -149,10 +149,18 @@ export function estimateTokensFromPayload(payload) {
 
 // Same "reserve conservative, settle real, never guess a number that could under-reserve" posture
 // as ASSUMED_MAX_COMPLETION_TOKENS above, sized for a per-minute-priced voice session instead of a
-// token-priced call: 10 minutes, matching the same round-number TTL convention already used for the
-// Realtime ephemeral secret's own `expires_after.seconds`. The real charge always comes from the
-// caller-reported elapsed seconds at settle time (see settleGptLiveVoiceSession()), never this hold.
-export const ASSUMED_MAX_VOICE_SESSION_SECONDS = 600;
+// token-priced call. Production incident (2026-09-12): the original 600s (10-minute) hold sized a
+// reservation of ~$1.50 at OpenAI's own $0.05/min rate with the default 3x retail markup - larger
+// than a brand-new account's $0.50 signup promo credit, so a real first-time user's FIRST Voice
+// attempt failed closed with WALLET_INSUFFICIENT_BALANCE before a single second of real usage, and
+// the generic pricing_not_configured message this used to map to (see failureStage() in
+// navrya-src/gptLiveVoice.js) gave no way to tell that apart from a genuinely missing pricing row.
+// 120s (2 minutes) still reserves conservatively above almost any single ordinary Voice turn while
+// no longer demanding more than a brand-new account's own starting balance can cover. The real
+// charge always comes from the caller-reported elapsed seconds at settle time (see
+// settleGptLiveVoiceSession()), never this hold - a genuinely longer session still settles for its
+// real cost afterward, exactly like every other AI_BILLED_ROUTES reservation already does.
+export const ASSUMED_MAX_VOICE_SESSION_SECONDS = 120;
 
 // Reserves a hold for an upcoming provider call. Checks the plan's `ai` feature flag first (spec
 // section 52's "check feature entitlement + Wallet"), then fails closed with

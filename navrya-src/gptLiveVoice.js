@@ -230,8 +230,13 @@ export function createGptLiveSession(options) {
     if (code === 'PROVIDER_TIMEOUT' || code === 'GPT_LIVE_CONNECT_TIMEOUT') return 'token_mint_timeout';
     // Fail-closed wallet/pricing outcomes from mintGptLiveClientSecret()'s own gate (see that
     // function's comment) - never a silent fallback to another provider, an honest, actionable
-    // stage instead (voiceDockErrorPricingNotConfigured, ai-i18n.js).
-    if (code === 'PROVIDER_PRICING_NOT_CONFIGURED' || code === 'FEATURE_NOT_ENTITLED' || code === 'WALLET_SERVICE_UNAVAILABLE' || code === 'WALLET_INSUFFICIENT_BALANCE') return 'pricing_not_configured';
+    // stage instead. Production incident (2026-09-12): WALLET_INSUFFICIENT_BALANCE used to fold
+    // into the same generic pricing_not_configured message as a genuinely missing pricing row,
+    // which made "the row is missing" and "the row exists but this account can't afford the hold"
+    // indistinguishable from the error text alone - kept as its own distinct stage now so the
+    // right fix (top up the wallet, not touch pricing config) is the one actually suggested.
+    if (code === 'WALLET_INSUFFICIENT_BALANCE') return 'insufficient_balance';
+    if (code === 'PROVIDER_PRICING_NOT_CONFIGURED' || code === 'FEATURE_NOT_ENTITLED' || code === 'WALLET_SERVICE_UNAVAILABLE') return 'pricing_not_configured';
     // Real WebRTC negotiation failure classes, reusing the exact stage vocabulary Realtime's own
     // (retired) SDP relay already established (docs/ai/voice-architecture.md, ai-i18n.js) - now
     // genuinely applicable again since GPT-Live is also a real WebRTC transport.

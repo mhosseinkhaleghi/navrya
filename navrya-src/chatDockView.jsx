@@ -45,7 +45,12 @@ const VOICE_ERROR_STAGE_I18N_KEY = {
   // GPT-Live 1 voice provider migration: mintGptLiveClientSecret()'s own fail-closed pricing/
   // billing gate (server/pattern-ai-server.mjs) - never a silent fallback to another provider or
   // transport, an honest, actionable message instead.
-  pricing_not_configured: 'voiceDockErrorPricingNotConfigured'
+  pricing_not_configured: 'voiceDockErrorPricingNotConfigured',
+  // Production incident (2026-09-12): kept distinct from pricing_not_configured above - "the
+  // pricing row is missing" and "this account's wallet balance can't cover the reservation hold"
+  // are different problems with different fixes, and a shared generic message hid which one was
+  // actually happening (see gptLiveVoice.js's own failureStage() comment for the full story).
+  insufficient_balance: 'voiceDockErrorInsufficientBalance'
 };
 function voiceErrorMessageForStage(i18nApi, stage) {
   const key = VOICE_ERROR_STAGE_I18N_KEY[stage] || 'voiceDockError';

@@ -113,6 +113,28 @@ test('never a silent fallback: the capability gate for Voice transports is uncha
   assert.match(server, /error\.message === 'PROVIDER_PRICING_NOT_CONFIGURED' \|\| error\.message === 'FEATURE_NOT_ENTITLED' \|\| error\.message === 'WALLET_SERVICE_UNAVAILABLE' \? 503/);
 });
 
+// Production incident (2026-09-12): a real account with correctly-configured pricing still hit the
+// generic pricing_not_configured message because WALLET_INSUFFICIENT_BALANCE used to fold into the
+// same stage as a genuinely missing pricing row - indistinguishable from the error text alone, so
+// the wrong fix (re-check pricing) was tried first. Split into its own distinct, actionable stage.
+test('WALLET_INSUFFICIENT_BALANCE is its own distinct stage/message - never conflated with a missing pricing row', () => {
+  assert.match(adapter, /if \(code === 'WALLET_INSUFFICIENT_BALANCE'\) return 'insufficient_balance';/);
+  const failureStageBody = adapter.slice(adapter.indexOf('function failureStage(error)'), adapter.indexOf("const TERMINAL_FAILURE_STAGES"));
+  assert.doesNotMatch(failureStageBody, /PROVIDER_PRICING_NOT_CONFIGURED'[^\n]*WALLET_INSUFFICIENT_BALANCE|WALLET_INSUFFICIENT_BALANCE'[^\n]*PROVIDER_PRICING_NOT_CONFIGURED/, 'must not be folded back into the same condition as the genuinely-missing-pricing-row reasons');
+  assert.match(dock, /insufficient_balance: 'voiceDockErrorInsufficientBalance'/);
+});
+
+// Production incident (2026-09-12): the original 10-minute reservation hold ($0.05/min x 10min x
+// the default 3x retail markup = ~$1.50) exceeded a brand-new account's own $0.50 signup promo
+// credit, so a first-time user's very first Voice attempt failed closed before a single second of
+// real usage - see wallet-service.mjs's own ASSUMED_MAX_VOICE_SESSION_SECONDS comment for the full
+// incident record.
+test('the conservative reservation hold is sized small enough not to routinely exceed a brand-new account\'s own starting balance', async () => {
+  const walletService = await import('../server/commercial/wallet-service.mjs');
+  assert.ok(walletService.ASSUMED_MAX_VOICE_SESSION_SECONDS <= 120, 'must stay well under the original 600s (10-minute) hold that caused the incident');
+  assert.ok(walletService.ASSUMED_MAX_VOICE_SESSION_SECONDS > 0);
+});
+
 test('reasoning never gets a provider override for the gpt-live transport either - the already-fixed "voice forced to openai" bug must never be reintroduced', () => {
   assert.doesNotMatch(dock, /provider: source === 'voice' \? 'openai' : undefined/);
   assert.match(dock, /voiceTransport: providerId === 'gemini' \? 'gemini' : 'gpt-live'/);
