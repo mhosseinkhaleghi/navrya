@@ -2049,6 +2049,10 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
                 </div>
                 <BigToggle checked={voice} onChange={(v) => settingsStore.setVoice(model, v)} ariaLabel={i18n.t('aiAsstVoiceMode')} />
               </div>
+              {/* GPT-Live 1 is now the ONLY OpenAI Voice Mode transport - OpenAI Realtime has been
+                  retired (docs/ai/voice-architecture.md's GPT-Live section). There is no longer a
+                  user-facing engine choice to render here; see ai-settings-store.js's own
+                  voiceEngine comment for the read-time migration of any legacy stored value. */}
             </div>
           </Panel>
 

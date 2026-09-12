@@ -110,7 +110,15 @@
       modelByProvider: perProviderMap(function (p) { return p.models[0]; }),
       voiceByProvider: perProviderMap(function (p) { return !!p.supportsVoice; }),
       budgetByProvider: perProviderMap(null),
-      therapistModeDefault: false
+      therapistModeDefault: false,
+      // GPT-Live 1 is now the ONLY OpenAI Voice Mode transport - OpenAI Realtime has been retired
+      // (docs/ai/voice-architecture.md's GPT-Live section). This field is READ-ONLY reporting
+      // metadata, kept only so any code that still reads settings().voiceEngine (diagnostics,
+      // back-compat) sees the honest current value - there is no setter and no UI to change it any
+      // more. Deliberately NOT a new PROVIDER_CATALOG entry: GPT-Live 1 has no structured-output
+      // support, so it can never itself be a reasoning provider the way openai/gemini/anthropic
+      // are - it is purely a transport variant of the existing 'openai' provider/model/key.
+      voiceEngine: 'gpt-live'
     };
   }
 
@@ -125,7 +133,14 @@
     return Object.assign({}, base, stored, {
       modelByProvider: modelByProvider,
       voiceByProvider: Object.assign({}, base.voiceByProvider, stored.voiceByProvider || {}),
-      budgetByProvider: Object.assign({}, base.budgetByProvider, stored.budgetByProvider || {})
+      budgetByProvider: Object.assign({}, base.budgetByProvider, stored.budgetByProvider || {}),
+      // OpenAI Realtime retired: a legacy stored 'realtime' choice (from before this migration) -
+      // or any other value, or the field's simple absence - always reads back as 'gpt-live' now.
+      // There is no other real value this can ever be any more; nothing in this store ever writes
+      // anything else here again (the read-time-only normalization convention this file already
+      // uses for the Gemini 2.5 Pro model retirement just above, never a forced re-write of the
+      // user's actually-stored preferences object).
+      voiceEngine: 'gpt-live'
     });
   }
 
@@ -145,7 +160,8 @@
     if (prefs) {
       prefs.setPref(PREF_KEY, {
         provider: value.provider, modelByProvider: value.modelByProvider, voiceByProvider: value.voiceByProvider,
-        budgetByProvider: value.budgetByProvider, therapistModeDefault: value.therapistModeDefault
+        budgetByProvider: value.budgetByProvider, therapistModeDefault: value.therapistModeDefault,
+        voiceEngine: value.voiceEngine
       });
     }
     notify(value);

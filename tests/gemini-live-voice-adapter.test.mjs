@@ -34,9 +34,13 @@ test('Gemini Voice uses a constrained short-lived Live token, never a browser-ex
 test('Gemini Live is selected only for Gemini as the transport; voice-originated reasoning follows the same active provider a typed turn already uses, never hardcoded to OpenAI', () => {
   assert.doesNotMatch(dock, /provider: source === 'voice' \? 'openai' : undefined/);
   assert.match(dock, /const useGeminiLive = providerId === 'gemini';/);
-  assert.match(dock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
-  assert.match(dock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
-  assert.match(dock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
+  // GPT-Live 1 is now the ONLY OpenAI Voice Mode transport (Realtime is retired - see
+  // tests/gpt-live-voice-adapter.test.mjs for its own dedicated coverage) - Gemini's own selection
+  // condition/priority is unchanged.
+  assert.match(dock, /const useGptLive = providerId === 'openai';/);
+  assert.match(dock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createGptLiveSession;/);
+  assert.match(dock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchGptLiveSession,/);
+  assert.match(dock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : undefined,/);
 });
 
 test('Gemini Voice sends 16 kHz PCM transcription and routes only final text through the existing ChatDock coordinator', () => {

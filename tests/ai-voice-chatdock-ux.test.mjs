@@ -205,10 +205,14 @@ test('the saved provider selects Gemini Live only for Gemini, while every other 
   const connectIdx = toggleVoiceFn.indexOf('voiceRef.current.connect()');
   assert.ok(checkIdx > -1 && connectIdx > -1 && checkIdx < connectIdx);
   assert.match(effectBlock, /const useGeminiLive = providerId === 'gemini';/);
-  assert.match(effectBlock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  // GPT-Live 1 is now the ONLY OpenAI Voice Mode transport - OpenAI Realtime is retired (see
+  // tests/gpt-live-voice-adapter.test.mjs for its own dedicated coverage). Gemini's own
+  // selection/priority is unchanged.
+  assert.match(effectBlock, /const useGptLive = providerId === 'openai';/);
+  assert.match(effectBlock, /const createTransport = useGeminiLive \? createGeminiLiveSession : createGptLiveSession;/);
   assert.match(effectBlock, /voiceRef\.current = createTransport\(\{/);
-  assert.match(effectBlock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
-  assert.match(effectBlock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
+  assert.match(effectBlock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchGptLiveSession,/);
+  assert.match(effectBlock, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : undefined,/);
   assert.match(dockViewSrc, /playbackControllerRef\.current = window\.TradeJournalAIVoicePlaybackController\.create\(/);
   assert.match(dockViewSrc, /turnCoordinatorRef\.current = window\.TradeJournalAIVoiceTurnCoordinator\.create\(/);
   // Slice R1 (request ownership/cancellation): unmount also aborts every still-in-flight request

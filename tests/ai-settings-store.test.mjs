@@ -237,3 +237,53 @@ test('presentation metadata (modelLabels/modelTiers) lives on the same canonical
   assert.equal(openai.modelLabels['gpt-4.1'], undefined);
   assert.equal(openai.modelLabels['gpt-4o'], undefined);
 });
+
+// GPT-Live 1 is now NAVRYA's ONLY OpenAI Voice Mode transport - OpenAI Realtime is retired. There
+// is no longer a user-facing engine choice or setter at all; voiceEngine is read-only reporting
+// metadata that always resolves to 'gpt-live', including for an account with a legacy stored
+// 'realtime' value from before this migration (a read-time-only normalization, never a forced
+// re-write of the user's persisted preferences object - the same convention this file already
+// uses for the Gemini 2.5 Pro model retirement above).
+test('voiceEngine always reads gpt-live for a brand-new user - there is no other real value any more', async () => {
+  const store = await settingsSandbox();
+  assert.equal(store.settings().voiceEngine, 'gpt-live');
+});
+
+test('there is no setVoiceEngine setter any more - the choice was removed along with the retired Realtime option', async () => {
+  const store = await settingsSandbox();
+  assert.equal(store.setVoiceEngine, undefined);
+});
+
+test('a legacy stored voiceEngine:"realtime" preference (or any other stored value) always reads back as gpt-live - the migration this task asked for', async () => {
+  const prefsStore = { aiSettings: { provider: 'openai', voiceEngine: 'realtime' } };
+  const store = await settingsSandbox(memoryStorage(), async (_url, options) => {
+    if (options && options.method === 'GET') return { ok: true, json: async () => ({ preferences: [{ id: 'aiSettings', value: prefsStore.aiSettings }] }) };
+    return { ok: true, json: async () => ({}) };
+  });
+  assert.equal(store.settings().voiceEngine, 'gpt-live', 'a legacy realtime preference must migrate to gpt-live, never stay realtime or leak through unrecognized');
+
+  const prefsStoreOther = { aiSettings: { provider: 'openai', voiceEngine: 'some-other-transport-that-was-never-real' } };
+  const storeOther = await settingsSandbox(memoryStorage(), async (_url, options) => {
+    if (options && options.method === 'GET') return { ok: true, json: async () => ({ preferences: [{ id: 'aiSettings', value: prefsStoreOther.aiSettings }] }) };
+    return { ok: true, json: async () => ({}) };
+  });
+  assert.equal(storeOther.settings().voiceEngine, 'gpt-live');
+});
+
+test('voiceEngine has zero blast radius on the pre-existing provider/model surface - PROVIDER_CATALOG, activeModel(), and capabilitiesFor() are unaffected', async () => {
+  const store = await settingsSandbox();
+  const catalog = store.providerCatalog();
+  assert.equal(catalog.some((p) => p.id === 'gpt-live'), false, 'GPT-Live 1 must never become a second PROVIDER_CATALOG entry - it has no structured-output support and cannot be a reasoning provider');
+  assert.equal(catalog.length, 5, 'the catalog must stay exactly openai/anthropic/gemini/kimi/deepseek');
+  assert.equal(store.activeProvider(), 'openai', 'choosing the gpt-live voice engine must never change the active reasoning provider');
+  assert.equal(store.activeModel(), 'gpt-5.6-luna');
+  // Cross-realm caveat (see this file's own top comment): compare field-by-field, not via
+  // assert.deepEqual, since the returned object's prototype belongs to the vm sandbox's own realm.
+  const capabilities = store.capabilitiesFor('openai');
+  assert.equal(capabilities.supportsVision, true);
+  assert.equal(capabilities.supportsStructuredOutput, true);
+  assert.equal(capabilities.supportsReasoning, true);
+  assert.equal(capabilities.supportsImageGeneration, true);
+  assert.equal(capabilities.recommendedForChartAnalysis, true);
+  assert.equal(store.getKey('gpt-live'), '', 'gpt-live has no credential store of its own - it reuses the real openai key exclusively');
+});

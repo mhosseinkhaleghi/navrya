@@ -49,6 +49,14 @@ export async function resolvePricingRate(repo, { provider, model }) {
     if (modelRow && modelRow.enabled && modelRow.flatPricePerCallMicroUsd != null) {
       return { flatPricePerCallMicroUsd: modelRow.flatPricePerCallMicroUsd };
     }
+    // 057_gpt_live_voice_pricing.sql: a third non-token pricing shape, additive on the SAME
+    // provider_model_pricing table (same precedent as flatPricePerCallMicroUsd just above) - a
+    // full-duplex voice session (GPT-Live 1) is billed by OpenAI per minute of connected session
+    // time, not by token or by call. Checked before the token-shaped branch below for the same
+    // "unambiguous" reason the flat-price check is.
+    if (modelRow && modelRow.enabled && modelRow.perMinutePriceMicroUsd != null) {
+      return { perMinutePriceMicroUsd: modelRow.perMinutePriceMicroUsd };
+    }
     if (modelRow && modelRow.enabled && (modelRow.promptPricePer1k != null || modelRow.completionPricePer1k != null)) {
       return {
         promptPricePer1k: modelRow.promptPricePer1k || 0, completionPricePer1k: modelRow.completionPricePer1k || 0,
@@ -115,6 +123,14 @@ export function costMicroUsdFor(rate, { promptTokens, completionTokens, cachedIn
 // other (token-priced) rate, unchanged.
 function providerCostMicroUsdFor(rate, tokenUsage) {
   if (rate.flatPricePerCallMicroUsd != null) return rate.flatPricePerCallMicroUsd;
+  // GPT-Live 1 / any future per-minute-priced voice model: cost is linear in connected session
+  // duration, never a token count - `tokenUsage.elapsedSeconds` is the ONLY field a caller for this
+  // rate shape ever supplies (see settleGptLiveVoiceSession() in pattern-ai-server.mjs). A missing/
+  // negative value prices as 0 elapsed seconds, never a negative charge.
+  if (rate.perMinutePriceMicroUsd != null) {
+    const elapsedSeconds = Math.max(0, Number(tokenUsage && tokenUsage.elapsedSeconds) || 0);
+    return Math.round((elapsedSeconds / 60) * rate.perMinutePriceMicroUsd);
+  }
   return costMicroUsdFor(rate, tokenUsage);
 }
 
@@ -131,6 +147,13 @@ export function estimateTokensFromPayload(payload) {
   return { promptTokens: approxPromptTokens, completionTokens: ASSUMED_MAX_COMPLETION_TOKENS };
 }
 
+// Same "reserve conservative, settle real, never guess a number that could under-reserve" posture
+// as ASSUMED_MAX_COMPLETION_TOKENS above, sized for a per-minute-priced voice session instead of a
+// token-priced call: 10 minutes, matching the same round-number TTL convention already used for the
+// Realtime ephemeral secret's own `expires_after.seconds`. The real charge always comes from the
+// caller-reported elapsed seconds at settle time (see settleGptLiveVoiceSession()), never this hold.
+export const ASSUMED_MAX_VOICE_SESSION_SECONDS = 600;
+
 // Reserves a hold for an upcoming provider call. Checks the plan's `ai` feature flag first (spec
 // section 52's "check feature entitlement + Wallet"), then fails closed with
 // PROVIDER_PRICING_NOT_CONFIGURED (spec section 20) before ever touching the wallet balance if
@@ -142,7 +165,9 @@ export async function reserveForAiCall(repo, { userId, feature, provider, model,
   const rate = await resolvePricingRate(repo, { provider, model });
   if (!rate) return { ok: false, reason: 'PROVIDER_PRICING_NOT_CONFIGURED' };
   const { markupPercent, retailMultiplier } = await resolveRetailMultiplier(repo, { feature, provider, model });
-  const estimate = estimateTokensFromPayload(payload);
+  const estimate = rate.perMinutePriceMicroUsd != null
+    ? { elapsedSeconds: ASSUMED_MAX_VOICE_SESSION_SECONDS }
+    : estimateTokensFromPayload(payload);
   const estimatedProviderCostMicroUsd = providerCostMicroUsdFor(rate, estimate);
   const estimatedRetailMicroUsd = Math.round(estimatedProviderCostMicroUsd * retailMultiplier);
   const result = await repo.wallet.reserve(userId, { estimatedRetailMicroUsd, provider, model, feature });
@@ -169,7 +194,12 @@ export async function settleAiCall(repo, { reservationId, provider, model, featu
   const { markupPercent, retailMultiplier } = await resolveRetailMultiplier(repo, { feature, provider, model });
   const providerCostMicroUsd = rate ? providerCostMicroUsdFor(rate, {
     promptTokens: usage && usage.promptTokens, completionTokens: usage && usage.completionTokens,
-    cachedInputTokens: usage && usage.cachedInputTokens, cacheWriteInputTokens: usage && usage.cacheWriteInputTokens
+    cachedInputTokens: usage && usage.cachedInputTokens, cacheWriteInputTokens: usage && usage.cacheWriteInputTokens,
+    // GPT-Live 1 voice provider migration: the only field a per-minute-priced rate's own
+    // providerCostMicroUsdFor() branch actually reads (see that function's own comment) - every
+    // token-shaped rate above simply ignores this key, exactly like a per-minute rate ignores the
+    // token fields.
+    elapsedSeconds: usage && usage.elapsedSeconds
   }) : 0;
   const fullRetailChargeMicroUsd = Math.round(providerCostMicroUsd * retailMultiplier);
   // The reservation record is the source of truth for WHICH user this call belongs to (it was

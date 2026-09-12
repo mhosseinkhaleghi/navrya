@@ -1857,7 +1857,7 @@ export function createMemoryRepo() {
       const row = state.providerModelPricing.get(provider + ':' + model);
       return row ? clone(row) : null;
     },
-    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, flatPricePerCallMicroUsd, currency, enabled }) {
+    async upsert({ provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, flatPricePerCallMicroUsd, perMinutePriceMicroUsd, currency, enabled }) {
       const key = provider + ':' + model;
       const record = {
         provider, model, promptPricePer1k: promptPricePer1k ?? null, completionPricePer1k: completionPricePer1k ?? null,
@@ -1865,6 +1865,8 @@ export function createMemoryRepo() {
         cachedInputPricePer1k: cachedInputPricePer1k ?? null, cacheWriteInputPricePer1k: cacheWriteInputPricePer1k ?? null,
         // 046_flat_priced_ai_features.sql - see repo.pg.mjs's mapProviderModelPricing() comment.
         flatPricePerCallMicroUsd: flatPricePerCallMicroUsd ?? null,
+        // 057_gpt_live_voice_pricing.sql - see repo.pg.mjs's mapProviderModelPricing() comment.
+        perMinutePriceMicroUsd: perMinutePriceMicroUsd ?? null,
         currency: currency || 'USD', enabled: enabled !== false, effectiveFrom: null, effectiveUntil: null, updatedAt: now()
       };
       state.providerModelPricing.set(key, record);

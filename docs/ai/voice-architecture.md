@@ -746,3 +746,81 @@ this specific pass remains an open item (see `docs/ai/realtime-deployment.md`).
 See **`docs/ai/realtime-deployment.md`** for environment variables, routing, HTTPS/CSP
 requirements, and the current state of production validation (local-dev-verified only, as of this
 writing - production validation of the Realtime-specific endpoint has not yet been done).
+
+## GPT-Live 1 migration - OpenAI Realtime retired as the Voice Mode transport
+
+A later, two-pass migration (`feat/voice-gpt-live-1`) replaced OpenAI Realtime with `gpt-live-1`
+(OpenAI's newer full-duplex model, reachable only through its own `POST /v1/live/sessions`
+endpoint) as NAVRYA's **sole** OpenAI Voice Mode transport. Gemini Live is entirely unaffected -
+`docs/ai/voice-architecture.md`'s "one brain, not two conversations" contract, the confirmation-
+gate/workflow/wallet architecture above, and everything Journeys A-D own are all unchanged; only
+which transport carries an OpenAI-provider voice turn changed.
+
+**Pass 1** added GPT-Live as a second, user-selectable OpenAI voice engine alongside Realtime (a
+`voiceEngine` setting), built against an *inferred* protocol (a WebSocket connection with manually
+base64-encoded PCM audio chunks, by analogy to `geminiLiveVoice.js`).
+
+**Pass 2** (this section) made GPT-Live the *only* OpenAI Voice Mode transport per explicit product
+direction, and - critically - **corrected the inferred protocol** after fetching and quoting
+OpenAI's own documentation verbatim (`developers.openai.com/api/docs/models/gpt-live-1`,
+`.../guides/voice-webrtc?api=live`, `.../guides/live-delegation`, `.../guides/live-conversations`).
+The corrected facts, each a real change from pass 1's guess:
+
+- **Transport is WebRTC, not WebSocket**, for the browser case - the model's own page states it
+  plainly: "WebRTC for browser voice applications. Media tracks carry audio; a data channel
+  carries JSON events." Audio is therefore real, continuous WebRTC media (mic track added via
+  `RTCPeerConnection.addTrack`, remote audio played through a plain `<audio>` element via
+  `ontrack`) - never a base64-encoded JSON chunk stream. `session.input_audio.append`/
+  `session.output_audio.delta` (pass 1's assumption) are very likely WebSocket-only (server-side/
+  telephony) events and are not used by the browser adapter at all. There is no audio sample rate
+  for the client to pick - WebRTC's own SDP negotiation handles codec/rate.
+- **Session creation is a single combined step**, not Realtime's own two-step ephemeral-token-then-
+  connect pattern: the browser builds its own local SDP offer, posts it to NAVRYA's server
+  alongside the real session config, and the server forwards both to OpenAI's
+  `POST /v1/live/sessions` (`{session: {model, instructions, delegation}, transport: {type:
+  'webrtc', sdp: offer}}`) using the permanent server-only key, then relays back the returned SDP
+  answer (`{session: {id}, transport: {type:'webrtc', sdp: answer}}`). There is no ephemeral
+  client-secret concept for this transport at all - the browser never receives any OpenAI
+  credential for it, a stronger posture than Realtime's own ephemeral `ek_...` token.
+- **Client delegation** (`delegation: {type:'client'}`) is the mechanism that keeps GPT-Live from
+  ever reasoning/deciding/acting on its own - confirmed unchanged from pass 1. `session.delegation.
+  created` (carrying a `delegation.id`, no request text/arguments) is the one documented "backend
+  work needed now" signal, treated as the finalized-transcript-equivalent trigger for the existing
+  `submit()`/`dockChat()` pipeline. The reply is spoken back via `session.commentary.append`
+  (`delegation_id`, `content`, documented as "limited to 500 tokens per append") wrapped in an
+  explicit verbatim/no-paraphrase instruction, mirroring Realtime's own `requestResponse()`
+  pattern - OpenAI's own docs say commentary "causes the model to paraphrase" by default, so this
+  is a real, only partially provable mitigation, not a guarantee.
+- **Session lifecycle is confirmed**: `session.started` (ready), `session.closed` (graceful-close
+  confirmation, fires even on connection loss/safety termination, carries the real, authoritative
+  `usage.seconds`), `session.usage.updated` (interim usage). No terminal "this reply's audio just
+  finished" event is documented at all - the adapter uses a short quiet window on the
+  `session.output_transcript.delta` stream as the honest analog, the same pattern
+  `geminiLiveVoice.js` already established for its own documented-but-unreliable transcript
+  `finished` flag.
+- Wallet settlement now prefers the real `usage.seconds` from `session.closed` over the pass-1
+  locally-estimated elapsed-wall-clock-time fallback (still used only if that event is lost).
+
+**Retirement mechanics**: `POST /api/ai/realtime/session` and `POST /api/ai/realtime/call` (the
+same-origin SDP relay) both now return `410 REALTIME_VOICE_RETIRED` unconditionally for any
+authenticated request, before ever reaching OpenAI - the pre-existing auth checks (401 anonymous,
+403 suspended) are preserved ahead of the retirement check. `navrya-src/aiVoiceRealtime.js`,
+`mintRealtimeClientSecret()`, and `handleRealtimeCallRelay()` are left fully intact (not deleted) -
+unreachable from any live route, but still directly unit-tested as the historical, still-correct
+record of what Realtime Voice Mode used to do; only `VOICE_STATES` is still imported from that
+module by the live client wiring. The Realtime-vs-GPT-Live `voiceEngine` user setting from pass 1
+was removed along with its UI - GPT-Live is unconditional for the `openai` provider now; a legacy
+stored `voiceEngine:'realtime'` preference reads back as `'gpt-live'` (read-time normalization,
+never a forced re-write of the stored record, matching this file's own established convention for
+the Gemini 2.5 Pro model retirement in `ai-settings-store.js`).
+
+**Still genuinely unverified against a real Live-API account** (flagged in code, not silently
+assumed): the exact WebRTC data-channel label (`oai-events`, inferred from OpenAI's own adjacent
+Realtime example on the same guide page, not confirmed GPT-Live-specific); whether an explicit
+client-sent interrupt/cancel event exists at all (none is documented - "Stop reply" instead pauses
+local playback immediately, a guaranteed client-side action, plus a best-effort
+`session.instructions.append`); the real character-to-token ratio behind commentary's documented
+500-token limit (approximated conservatively, client-side, never a real token count). No real
+OpenAI Live API connection was made in either pass (no live account access in this sandboxed
+session) - see `docs/ai/realtime-deployment.md` for the equivalent open item already tracked for
+Realtime, now joined by this same gap for GPT-Live.

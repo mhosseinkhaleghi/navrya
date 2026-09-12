@@ -292,7 +292,10 @@ const dockViewSource = await readFile(path.join(process.cwd(), 'navrya-src', 'ch
 test('a voice-originated turn goes through the exact same submit()/core.sendChat() path a typed message uses - no parallel voice-only conversation logic', () => {
   assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}turnCoordinatorRef\.current\.handleFinalTranscript\(transcriptText, \{/);
   assert.match(dockViewSource, /onFinalTranscript:\s*onVoiceTranscript/);
-  assert.match(dockViewSource, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', character: voiceCharacter\(\), voiceTransport: providerId === 'gemini' \? 'gemini' : 'openai', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/);
+  // GPT-Live 1 is now the ONLY OpenAI Voice Mode transport (see
+  // tests/gpt-live-voice-adapter.test.mjs for its own dedicated coverage) - the submit() call
+  // itself, and the "no provider: override" guarantee, are otherwise unchanged.
+  assert.match(dockViewSource, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', character: voiceCharacter\(\), voiceTransport: providerId === 'gemini' \? 'gemini' : 'gpt-live', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/);
 });
 
 // Found via real E1 multi-turn browser testing: two finalized transcripts arriving close
@@ -305,13 +308,15 @@ test('voice turns are serialized through TurnCoordinator - never processed concu
   assert.match(dockViewSource, /return turnCoordinatorRef\.current\.handleFinalTranscript\(/);
 });
 
-test('the voice-transport mount effect uses OpenAI Realtime except when the saved provider is Gemini', () => {
+test('the voice-transport mount effect uses GPT-Live for OpenAI and Gemini Live for Gemini - OpenAI Realtime is retired and never instantiated', () => {
   const effectBody = dockViewSource.slice(dockViewSource.indexOf('const useGeminiLive = providerId'), dockViewSource.indexOf('// Voice Mode performance pass: PlaybackController owns only speech'));
   assert.match(effectBody, /const useGeminiLive = providerId === 'gemini';/);
-  assert.match(effectBody, /const createTransport = useGeminiLive \? createGeminiLiveSession : createVoiceSession;/);
+  assert.match(effectBody, /const useGptLive = providerId === 'openai';/);
+  assert.match(effectBody, /const createTransport = useGeminiLive \? createGeminiLiveSession : createGptLiveSession;/);
   assert.match(effectBody, /voiceRef\.current = createTransport\(\{/);
-  assert.match(effectBody, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchRealtimeSession,/);
-  assert.match(effectBody, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : fetchVoiceProviderSpeak,/);
+  assert.match(effectBody, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchGptLiveSession,/);
+  assert.match(effectBody, /fetchSpeakAudio: useGeminiLive \? fetchGeminiSpeak : undefined,/);
+  assert.doesNotMatch(effectBody, /createVoiceSession|fetchRealtimeSession|fetchVoiceProviderSpeak/);
 });
 
 test('the voice-transport effect rebuilds when the saved provider changes (critical-bug fix: Voice used to stay pinned to whichever provider was active at page load, ignoring any later switch until a full reload)', () => {
@@ -328,13 +333,16 @@ test('the mounted voice path calls Gemini Live session and TTS endpoints', () =>
   assert.match(dockViewSource, /fetch\('\/api\/ai\/gemini-live\/speak', \{/);
 });
 
-// ElevenLabs voice-provider follow-up (per-character/gender voice routing): both the mint and
-// speak requests must report which character is active and which gender the user prefers for it -
-// the server resolves the actual voice from these (never trusted for anything security-sensitive,
-// same posture as the existing client-reported `language`).
-test('both fetchRealtimeSession and fetchVoiceProviderSpeak report character (voiceCharacter()) and gender (voiceGenderPreference()) in their request bodies', () => {
-  assert.match(dockViewSource, /body: JSON\.stringify\(\{ apiKey: settingsForOpenAI, language, eagerness: options && options\.eagerness, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
-  assert.match(dockViewSource, /body: JSON\.stringify\(\{ language, text, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
+// GPT-Live 1 voice provider migration: fetchGptLiveSession replaces the retired fetchRealtimeSession
+// as the OpenAI Voice Mode session-creation request - both the browser's own locally-built SDP
+// offer and which character/gender is active are reported (the server resolves the actual voice/
+// delivery style from these, never trusted for anything security-sensitive, same posture as the
+// existing client-reported `language`). There is no ElevenLabs-substitution speak request for this
+// transport any more (fetchVoiceProviderSpeak is retired along with Realtime) - GPT-Live always
+// speaks its own native voice over the live connection itself.
+test('fetchGptLiveSession reports the real SDP offer plus character (voiceCharacter()) and gender (voiceGenderPreference()) in its request body', () => {
+  assert.match(dockViewSource, /body: JSON\.stringify\(\{ apiKey: settingsStore\.getKey\('openai'\), language, offerSdp, character: voiceCharacter\(\), gender: voiceGenderPreference\(\) \}\)/);
+  assert.doesNotMatch(dockViewSource, /async function fetchVoiceProviderSpeak/);
 });
 
 test('voiceCharacter() maps the design-system\'s "master" skin id back to the product\'s own "sage" character id - every other voice-provider surface (admin config, user preferences) speaks in terms of hunter/commander/engineer/sage, never master', () => {
@@ -626,11 +634,14 @@ test('a typed (text-source) submit() never reaches the voice onResult/PlaybackCo
   // TurnCoordinator drives via handleFinalTranscript(), which is only ever called from
   // onVoiceTranscript (a Realtime transcript callback), never from the text-input send handler.
   const turnCoordinatorBody = dockViewSource.slice(dockViewSource.indexOf('turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create('), dockViewSource.indexOf('return () => { if (voiceRef.current)'));
-  assert.match(turnCoordinatorBody, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', character: voiceCharacter\(\), voiceTransport: providerId === 'gemini' \? 'gemini' : 'openai', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/, 'the ONLY submit() call inside this voice-only object always reports source:\'voice\' and its selected transport - never source-agnostic');
+  assert.match(turnCoordinatorBody, /submit: \(text, meta\) => submitRef\.current\(text, \{ source: 'voice', character: voiceCharacter\(\), voiceTransport: providerId === 'gemini' \? 'gemini' : 'gpt-live', awaitingCompanionOpeningReply: meta\.awaitingCompanionOpeningReply \}\)/, 'the ONLY submit() call inside this voice-only object always reports source:\'voice\' and its selected transport - never source-agnostic');
 });
 
-test('fetchRealtimeSession (chatDockView.jsx) preserves the real server error code/status on a failed mint instead of collapsing every failure into one opaque VOICE_SESSION_REQUEST_FAILED string - the exact production bug this fix addresses', () => {
-  const fn = dockViewSource.slice(dockViewSource.indexOf('async function fetchRealtimeSession'), dockViewSource.indexOf('// A finalized voice turn goes through'));
+// GPT-Live 1 voice provider migration: fetchGptLiveSession replaces the retired fetchRealtimeSession
+// as the OpenAI Voice Mode session-creation request - same real-error-preservation contract (never
+// collapses every failure into one opaque generic string).
+test('fetchGptLiveSession (chatDockView.jsx) preserves the real server error code/status on a failed mint instead of collapsing every failure into one opaque generic string', () => {
+  const fn = dockViewSource.slice(dockViewSource.indexOf('async function fetchGptLiveSession'), dockViewSource.indexOf('// Best-effort wallet settlement on Voice end'));
   assert.match(fn, /const error = new Error\(code\);/);
   assert.match(fn, /error\.code = code;/);
   assert.match(fn, /error\.status = response\.status;/);

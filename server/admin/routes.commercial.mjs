@@ -187,14 +187,21 @@ export function router(repo) {
     // client.
     const flatPricePerCallUsdInput = numOrNull(body.flatPricePerCallUsd);
     const flatPricePerCallMicroUsd = flatPricePerCallUsdInput === null ? null : toMicroUsd(flatPricePerCallUsdInput);
+    // GPT-Live 1 voice provider migration (057_gpt_live_voice_pricing.sql): a third non-token rate
+    // shape - a full-duplex voice session billed per minute of connected time, independent of the
+    // token/flat fields above. Same plain-USD-in-admin-UI, micro-USD-in-storage convention as
+    // flatPricePerCallUsd just above.
+    const perMinutePriceUsdInput = numOrNull(body.perMinutePriceUsd);
+    const perMinutePriceMicroUsd = perMinutePriceUsdInput === null ? null : toMicroUsd(perMinutePriceUsdInput);
     const enabled = body.enabled !== false;
     // A zero-priced row that resolves as "configured" must never silently make provider-funded
     // calls free forever - see isZeroPricedPair()'s own comment. Only checked when the row would
     // actually be enabled; a disabled row can hold whatever draft values without risk.
     if (enabled && isZeroPricedPair(promptPricePer1k, completionPricePer1k)) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
     if (enabled && isZeroFlatPrice(flatPricePerCallMicroUsd)) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
+    if (enabled && perMinutePriceMicroUsd === 0) throw new ApiError(400, 'ZERO_PRICE_NOT_ALLOWED');
     const row = await repo.providerModelPricing.upsert({
-      provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, flatPricePerCallMicroUsd,
+      provider, model, promptPricePer1k, completionPricePer1k, cachedInputPricePer1k, cacheWriteInputPricePer1k, flatPricePerCallMicroUsd, perMinutePriceMicroUsd,
       currency: body.currency || 'USD', enabled
     });
     await audit(req, 'commercial.providerModelPricing.upsert', 'providerModelPricing', provider + ':' + model, row);

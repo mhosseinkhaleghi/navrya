@@ -3,8 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { ChatDock } from '../public/pages/shared/navrya/components/assistant/ChatDock.jsx';
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
 import { CompanionCard } from '../public/pages/shared/navrya/components/assistant/CompanionCard.jsx';
-import { createVoiceSession, VOICE_STATES } from './aiVoiceRealtime.js';
+// OpenAI Realtime is retired as a Voice Mode transport (GPT-Live 1 migration) - only its shared
+// VOICE_STATES enum is still imported here; createVoiceSession() is never called by this file any
+// more (see docs/ai/voice-architecture.md's GPT-Live section). aiVoiceRealtime.js itself is left
+// intact (its own tests still cover it directly) since VOICE_STATES has no other home yet.
+import { VOICE_STATES } from './aiVoiceRealtime.js';
 import { createGeminiLiveSession } from './geminiLiveVoice.js';
+import { createGptLiveSession } from './gptLiveVoice.js';
 import { CHARACTERS } from './characters.js';
 
 function fieldLabel(tradeI18n, key) { return tradeI18n ? tradeI18n.t(key) : key; }
@@ -36,7 +41,11 @@ const VOICE_ERROR_STAGE_I18N_KEY = {
   // permission revoked, exclusive access lost) mid-session - distinct from every other stage
   // above, all of which are connection/session-setup failures, not a hardware loss after a
   // successful connect. Retryable through toggleVoice() exactly like every other ERROR stage.
-  microphone_lost: 'voiceDockErrorMicrophoneLost'
+  microphone_lost: 'voiceDockErrorMicrophoneLost',
+  // GPT-Live 1 voice provider migration: mintGptLiveClientSecret()'s own fail-closed pricing/
+  // billing gate (server/pattern-ai-server.mjs) - never a silent fallback to another provider or
+  // transport, an honest, actionable message instead.
+  pricing_not_configured: 'voiceDockErrorPricingNotConfigured'
 };
 function voiceErrorMessageForStage(i18nApi, stage) {
   const key = VOICE_ERROR_STAGE_I18N_KEY[stage] || 'voiceDockError';
@@ -44,13 +53,14 @@ function voiceErrorMessageForStage(i18nApi, stage) {
 }
 
 // Provider Ownership addendum, section 1: the only two providers with a real Voice transport
-// implementation in this codebase (aiVoiceRealtime.js's OpenAI Realtime, geminiLiveVoice.js's
-// Gemini Live) - Anthropic/Kimi/DeepSeek have none. Previously, pressing Voice while one of those
-// was the active provider silently fell back to the OpenAI transport (`useGeminiLive = providerId
-// === 'gemini'` below defaults everything else to it) - exactly the forbidden silent-substitution
-// this addendum bans. toggleVoice() now checks this FIRST and fails closed with a clear,
-// localized message instead, before ever calling connect() (so no permission prompt, network
-// call, or quota/billing work of any kind happens for a capability the provider genuinely lacks).
+// implementation in this codebase (gptLiveVoice.js's GPT-Live 1 for 'openai' - Realtime is
+// retired, see this file's own import comment - and geminiLiveVoice.js's Gemini Live) -
+// Anthropic/Kimi/DeepSeek have none. Previously, pressing Voice while one of those was the active
+// provider silently fell back to the OpenAI transport (`useGeminiLive = providerId === 'gemini'`
+// below defaults everything else to it) - exactly the forbidden silent-substitution this addendum
+// bans. toggleVoice() now checks this FIRST and fails closed with a clear, localized message
+// instead, before ever calling connect() (so no permission prompt, network call, or quota/billing
+// work of any kind happens for a capability the provider genuinely lacks).
 // The user's own remaining choices - switch provider (Settings, already reachable), continue in
 // text (Voice simply never opens), or leave Voice off - are all already-existing paths; this adds
 // no new UI surface, only the honest refusal instead of a silent wrong-provider substitution.
@@ -677,50 +687,18 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return (prefs || {})[voiceCharacter()];
   }
 
-  async function fetchRealtimeSession(language, options) {
-    const settingsForOpenAI = settingsStore.getKey('openai');
-    const response = await fetch('/api/ai/realtime/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: settingsForOpenAI, language, eagerness: options && options.eagerness, character: voiceCharacter(), gender: voiceGenderPreference() }),
-      signal: options && options.signal
-    });
-    if (!response.ok) {
-      // fix/voice-mode-hosted-connection: this used to collapse every failure (a 401 session
-      // problem, a 429 quota problem, a 503 missing-key problem, a real OpenAI-side
-      // REALTIME_TOKEN_FAILED_* rejection) into one indistinguishable 'VOICE_SESSION_REQUEST_FAILED'
-      // string, which is exactly what hid the real production failure behind a generic message
-      // (docs/ai/voice-mode-performance-gap-matrix.md). The real server error code/status is now
-      // preserved on the thrown Error so aiVoiceRealtime.js's connect() can classify it into one
-      // of the stage-aware diagnostics (session_auth/session_quota/key_missing/key_rejected/...)
-      // instead of a single opaque failure - never surfaced to the user beyond that sanitized
-      // stage, and the raw response body is never read/logged here.
-      let code = 'VOICE_SESSION_REQUEST_FAILED';
-      try {
-        const body = await response.json();
-        if (body && typeof body.error === 'string' && body.error) code = body.error;
-      } catch (_parseError) { /* non-JSON error body - keep the generic code */ }
-      const error = new Error(code);
-      error.code = code;
-      error.status = response.status;
-      throw error;
-    }
-    return response.json();
-  }
-
   async function fetchGeminiLiveSession(language, options) {
-    // Bugfix (2026-09-10): this never sent the user's own Gemini BYOK key, unlike
-    // fetchRealtimeSession's own `apiKey: settingsForOpenAI` above - resolveGeminiVoiceKey() on the
-    // server therefore silently fell through to the (usually unconfigured) platform key/env var and
-    // threw GEMINI_API_KEY_MISSING, so Voice never connected even with a real key saved in Settings.
+    // Bugfix (2026-09-10): this never sent the user's own Gemini BYOK key - resolveGeminiVoiceKey()
+    // on the server therefore silently fell through to the (usually unconfigured) platform key/env
+    // var and threw GEMINI_API_KEY_MISSING, so Voice never connected even with a real key saved in
+    // Settings.
     const settingsForGemini = settingsStore.getKey('gemini');
     const response = await fetch('/api/ai/gemini-live/session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey: settingsForGemini, language }),
-      // Voice Mode hardening, section 6: same {signal} convention as fetchRealtimeSession's own
-      // OpenAI mint above - geminiLiveVoice.js's own connect() supplies a real AbortController so
-      // disconnect() can truly cancel a pending token mint, not merely discard its result once it
-      // resolves. Optional so a caller that doesn't pass one is unaffected.
+      // Voice Mode hardening, section 6: geminiLiveVoice.js's own connect() supplies a real
+      // AbortController so disconnect() can truly cancel a pending token mint, not merely discard
+      // its result once it resolves. Optional so a caller that doesn't pass one is unaffected.
       signal: options && options.signal
     });
     if (!response.ok) {
@@ -738,10 +716,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     const response = await fetch('/api/ai/gemini-live/speak', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey: settingsStore.getKey('gemini'), language, text, character: voiceCharacter(), gender: voiceGenderPreference() }),
-      // Voice Mode hardening, section 6: same {signal} convention as fetchVoiceProviderSpeak's own
-      // ElevenLabs TTS fetch - geminiLiveVoice.js's own speak() supplies a real AbortController so
-      // interrupt()/disconnect() can truly cancel a pending TTS fetch, not merely discard its
-      // result once it resolves.
+      // Voice Mode hardening, section 6: geminiLiveVoice.js's own speak() supplies a real
+      // AbortController so interrupt()/disconnect() can truly cancel a pending TTS fetch, not
+      // merely discard its result once it resolves.
       signal: options && options.signal
     });
     if (!response.ok) {
@@ -752,29 +729,48 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return response.json();
   }
 
-  // ElevenLabs voice-provider follow-up: injected into aiVoiceRealtime.js as fetchSpeakAudio, the
-  // same pattern as fetchRealtimeSession above - that module keeps zero knowledge of the real HTTP
-  // endpoint. Only reached when mintRealtimeClientSecret()'s own response (fetchRealtimeSession's
-  // return value) reported ttsProvider:'elevenlabs' for the active language; the server resolves
-  // which credential/voice/model to use itself (never trusted from this request) and the API key
-  // never leaves it. Deliberately never throws for an ordinary fallback condition - the server
-  // always answers 200 with {fallback:true, reason} for those (missing config, circuit open,
-  // upstream failure, ...); only a genuine transport failure (network error, non-2xx, malformed
-  // body) rejects here, and aiVoiceRealtime.js's own speakViaElevenLabs() treats that exactly the
-  // same as an explicit fallback - same text, once, through the existing OpenAI voice path.
-  async function fetchVoiceProviderSpeak(language, text, options) {
-    const response = await fetch('/api/ai/voice/speak', {
+  // GPT-Live 1 is the sole OpenAI Voice Mode transport now (Realtime retired). Per OpenAI's own
+  // documented WebRTC connection contract (developers.openai.com/api/docs/guides/voice-webrtc
+  // ?api=live) the browser builds its OWN local SDP offer first (no server round trip needed for
+  // that) and posts it here; this server-side route forwards the offer plus the real session
+  // config (delegation/instructions/tools - never business rules, see mintGptLiveClientSecret()'s
+  // own comment) to OpenAI's POST /v1/live/sessions using the permanent, server-only API key, and
+  // returns the resulting SDP answer - the browser never receives an OpenAI credential of any kind
+  // for this transport (unlike Realtime's now-retired ephemeral-token flow). The real error
+  // code/status is preserved on the thrown Error so gptLiveVoice.js's own connect() can classify
+  // it (e.g. into 'pricing_not_configured').
+  async function fetchGptLiveSession(language, offerSdp, options) {
+    const response = await fetch('/api/ai/gpt-live/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language, text, character: voiceCharacter(), gender: voiceGenderPreference() }),
-      // Voice Mode hardening, section 6: same {signal} convention as fetchRealtimeSession above -
-      // aiVoiceRealtime.js's own speakViaElevenLabs() supplies a real AbortController so
-      // interrupt()/disconnect() can truly cancel a pending TTS fetch, not merely discard its
-      // result once it resolves. Optional so a caller that doesn't pass one is unaffected.
+      body: JSON.stringify({ apiKey: settingsStore.getKey('openai'), language, offerSdp, character: voiceCharacter(), gender: voiceGenderPreference() }),
       signal: options && options.signal
     });
-    if (!response.ok) throw new Error('VOICE_SPEAK_REQUEST_FAILED');
+    if (!response.ok) {
+      let code = 'GPT_LIVE_SESSION_REQUEST_FAILED';
+      try {
+        const body = await response.json();
+        if (body && typeof body.error === 'string' && body.error) code = body.error;
+      } catch (_parseError) { /* non-JSON error body - keep the generic code */ }
+      const error = new Error(code);
+      error.code = code;
+      error.status = response.status;
+      throw error;
+    }
     return response.json();
+  }
+
+  // Best-effort wallet settlement on Voice end - see server/pattern-ai-server.mjs's
+  // settleGptLiveVoiceSession()'s own comment. Deliberately never throws: gptLiveVoice.js's own
+  // disconnect() already calls this fire-and-forget (`.catch(() => {})`) and must never let a
+  // settlement-reporting failure delay or surface through an otherwise-successful Voice teardown.
+  async function fetchGptLiveSettle(payload) {
+    const response = await fetch('/api/ai/gpt-live/session/settle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return response.ok ? response.json() : null;
   }
 
   // A finalized voice turn goes through the exact same submit() a typed message does - one
@@ -896,19 +892,28 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   }
 
   React.useEffect(() => {
-    // Voice follows the saved provider choice for this account: Gemini selects Gemini Live;
-    // every other provider retains the established OpenAI Realtime transport. The approved
-    // voice turn still goes through submit(), which pins its chat response to OpenAI.
+    // Voice follows the saved provider choice for this account: Gemini selects Gemini Live; every
+    // other selectable provider is 'openai', which always uses GPT-Live 1 now - OpenAI Realtime is
+    // retired as a Voice Mode transport (never instantiated, never a fallback - see
+    // docs/ai/voice-architecture.md's GPT-Live section). The approved voice turn still goes through
+    // submit(), which follows the user's real active reasoning provider unchanged (no override).
     // Depends on providerId (see this effect's own deps below) so switching the core provider
     // while idle tears down and rebuilds this transport/turn-coordinator pair for the NEW
     // provider - the ModelSwitcher only ever renders while voiceState is 'idle' (ChatDock.jsx),
     // so this never fires mid-call.
     const useGeminiLive = providerId === 'gemini';
-    const createTransport = useGeminiLive ? createGeminiLiveSession : createVoiceSession;
+    const useGptLive = providerId === 'openai';
+    const createTransport = useGeminiLive ? createGeminiLiveSession : createGptLiveSession;
     voiceRef.current = createTransport({
       language: i18n.language(),
-      fetchSession: useGeminiLive ? fetchGeminiLiveSession : fetchRealtimeSession,
-      fetchSpeakAudio: useGeminiLive ? fetchGeminiSpeak : fetchVoiceProviderSpeak,
+      fetchSession: useGeminiLive ? fetchGeminiLiveSession : fetchGptLiveSession,
+      // GPT-Live has no ElevenLabs-substitution speak path (it always speaks its own native voice
+      // over the live WebRTC connection - see gptLiveVoice.js's own playAudioUrl() no-op); only
+      // ever read by the Gemini transport now that Realtime's own ElevenLabs fallback is retired.
+      fetchSpeakAudio: useGeminiLive ? fetchGeminiSpeak : undefined,
+      // Only meaningful to gptLiveVoice.js's own disconnect() (best-effort wallet settlement) -
+      // the Gemini transport simply never reads this option key.
+      fetchSettle: fetchGptLiveSettle,
       onStateChange: setVoiceState,
       onFinalTranscript: onVoiceTranscript,
       onMuteChange: setVoiceMuted,
@@ -924,7 +929,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       },
       // fix/voice-mode-turn-ux (Part A/B): pure relays into PlaybackController, read fresh via
       // playbackControllerRef.current on every call (never captured once) so they stay correct
-      // across a reconnect (this createVoiceSession() instance is only ever created once per dock
+      // across a reconnect (this createTransport() instance is only ever created once per dock
       // mount; PlaybackController's own instance is created right below, in the same effect, so by
       // the time any of these three callbacks can actually fire - only ever after a real connect() -
       // playbackControllerRef.current already points at it).
@@ -979,7 +984,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // (conversationEpochRef.current), so a New Chat/conversation switch mid-flight is always seen
     // by both the enqueue-time and resolve-time checks (see ai-voice-turn-coordinator.js).
     turnCoordinatorRef.current = window.TradeJournalAIVoiceTurnCoordinator.create({
-      submit: (text, meta) => submitRef.current(text, { source: 'voice', character: voiceCharacter(), voiceTransport: providerId === 'gemini' ? 'gemini' : 'openai', awaitingCompanionOpeningReply: meta.awaitingCompanionOpeningReply }),
+      // No `provider:` override is ever added here for any transport, including gpt-live - the
+      // already-fixed "voice forced to openai regardless of the user's real active provider" bug
+      // (Provider Ownership addendum, section 1) must never be reintroduced. Reasoning keeps
+      // following chat-dock-core.js's own requestedProvider resolution (active.provider) unchanged;
+      // voiceTransport is a pure label for server-side logging/diagnostics, never a billing/
+      // reasoning switch.
+      submit: (text, meta) => submitRef.current(text, { source: 'voice', character: voiceCharacter(), voiceTransport: providerId === 'gemini' ? 'gemini' : 'gpt-live', awaitingCompanionOpeningReply: meta.awaitingCompanionOpeningReply }),
       getEpoch: () => conversationEpochRef.current,
       onResult: (result, meta) => {
         // The conversation moved on (New Chat/switch) while this turn's own submit() was in
@@ -1054,9 +1065,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // provider switch are both real "the user has moved on" moments a pending trade-emotion
     // clarification must not survive either.
     return () => { if (voiceRef.current) voiceRef.current.disconnect(); if (turnCoordinatorRef.current) turnCoordinatorRef.current.invalidate(); if (playbackControllerRef.current) playbackControllerRef.current.invalidate(); abortActiveRequests(); if (core && typeof core.clearPendingClarification === 'function') core.clearPendingClarification(); };
-    // Deliberately not fully exhaustive: fetchRealtimeSession/fetchGeminiLiveSession/fetchGeminiSpeak/
-    // fetchVoiceProviderSpeak/onVoiceTranscript etc. are plain functions re-created every render and
-    // are read fresh via ref (submitRef) or don't need re-triggering on every render - only
+    // Deliberately not fully exhaustive: fetchGptLiveSession/fetchGeminiLiveSession/fetchGeminiSpeak/
+    // onVoiceTranscript etc. are plain functions re-created every render and are read fresh via ref
+    // (submitRef) or don't need re-triggering on every render - only
     // providerId genuinely needs this transport rebuilt when it changes (critical-bug fix:
     // previously `[]`, so a provider switch never took effect for Voice - neither the transport
     // nor the voiceTransport tag sent to the server, above - until a full page reload).

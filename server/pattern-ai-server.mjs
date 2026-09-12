@@ -2622,6 +2622,17 @@ const REALTIME_MODEL = 'gpt-realtime-2.1';
 const REALTIME_VOICE = 'cedar';
 const REALTIME_TRANSCRIBE_MODEL = 'gpt-live-transcribe';
 const REALTIME_LANGUAGES = ['fa', 'ar', 'en', 'es'];
+// GPT-Live 1 voice provider migration: a SEPARATE full-duplex model reachable only through its own
+// endpoint (POST /v1/live/sessions, not /v1/realtime/*) - see mintGptLiveClientSecret() below.
+// Unlike Realtime, it is never itself a reasoning provider (no structured-output support), so it
+// is offered client-side as a `voiceEngine` transport choice under the existing 'openai' provider,
+// never as a new PROVIDER_CATALOG entry (see public/pages/shared/ai-settings-store.js). Session
+// creation uses OpenAI's documented "client delegation" mode (`delegation: {type:'client'}`) so
+// GPT-Live itself never reasons/decides/acts - it only transcribes and, on request, speaks back an
+// exact given sentence, preserving the identical "one brain" contract Realtime already has (see
+// docs/ai/voice-architecture.md).
+const GPT_LIVE_MODEL = 'gpt-live-1';
+const GPT_LIVE_SESSIONS_UPSTREAM = 'https://api.openai.com/v1/live/sessions';
 // Persian Voice Quality gate, section 8: per-language voice mapping. A real Cedar-vs-Marin
 // Persian A/B (voice-ab-scratch/, gitignored, real OpenAI Realtime API audio) was actually
 // listened to by the user, who clearly preferred Marin for Persian naturalness - confirmed across
@@ -2843,15 +2854,23 @@ async function adminTestGeminiVoice(session, body = {}) {
 const REALTIME_EAGERNESS_VALUES = ['low', 'medium', 'high', 'auto'];
 function eagernessFromBody(body) { return REALTIME_EAGERNESS_VALUES.includes(body.eagerness) ? body.eagerness : 'medium'; }
 
+// RETIRED as a live route (GPT-Live 1 migration): OpenAI Realtime is no longer used for Voice
+// Mode - the dispatcher's own POST /api/ai/realtime/session handler throws REALTIME_VOICE_RETIRED
+// (after the existing auth check) before this function is ever reached from a real request any
+// more. Left fully intact (not deleted), including the still-passing tests in
+// tests/ai-realtime-voice-session.test.mjs that call it directly, as the historical, still-correct
+// implementation this migration's own compatibility record documents.
+//
 // `userId` is the caller's own verified NAVRYA session identity (server/pattern-ai-server.mjs's
 // dispatcher passes `session.userId`, already resolved via verifySession() before this function
 // is ever reached) - never trusted from the request body. It is used only to bind the minted
 // ek_ credential to this user in the Realtime SDP-relay lease store (see
-// server/community/security/realtime-lease-store.mjs) so POST /api/ai/realtime/call can later
-// verify the same user is the one relaying it. The existing tests that call this function
-// directly with no second argument (mintRealtimeClientSecret({language:'en'})) are unaffected -
-// `userId` is simply `undefined` there, which the lease store happily stores like any other value
-// since nothing in this file's own tests exercises the relay lease itself.
+// server/community/security/realtime-lease-store.mjs) so POST /api/ai/realtime/call could
+// verify the same user was the one relaying it, back when that route was live. The existing tests
+// that call this function directly with no second argument
+// (mintRealtimeClientSecret({language:'en'})) are unaffected - `userId` is simply `undefined`
+// there, which the lease store happily stores like any other value since nothing in this file's
+// own tests exercises the relay lease itself.
 async function mintRealtimeClientSecret(body, userId) {
   const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
   // Client-reported, same trust level as `language` above (a personalization preference, not a
@@ -2934,6 +2953,132 @@ async function mintRealtimeClientSecret(body, userId) {
   }
 }
 
+// GPT-Live 1 is NAVRYA's sole OpenAI Voice Mode transport (OpenAI Realtime is retired - see the
+// retired /api/ai/realtime/session and /api/ai/realtime/call routes below). This function's
+// protocol shape was corrected against OpenAI's own documented WebRTC connection contract
+// (developers.openai.com/api/docs/guides/voice-webrtc?api=live, fetched and quoted verbatim during
+// this pass) after an earlier pass had guessed a WebSocket/ephemeral-secret shape that does not
+// match it - see docs/ai/voice-architecture.md's GPT-Live section for the full correction record.
+// The confirmed contract: the BROWSER builds its own local SDP offer (no server round trip needed
+// for that - plain WebRTC, no OpenAI involvement yet) and posts it here; this function forwards
+// that offer, together with the real session config, to OpenAI's POST /v1/live/sessions using the
+// permanent, server-only API key, and returns the resulting SDP answer. Unlike the retired Realtime
+// flow, there is no ephemeral client_secret/token concept here at all - the browser never receives
+// any OpenAI credential for this transport, because our own server is the only party that ever
+// talks to OpenAI; it relays only the SDP answer back, nothing else OpenAI-issued.
+//
+// Client delegation (`delegation: {type:'client'}`) is what keeps GPT-Live from ever reasoning/
+// deciding/acting on its own - all business logic, confirmation gates, and action execution stay
+// entirely in NAVRYA's existing dockChat()/workflow/action/proactive stack, reached the same way
+// every other voice transport already reaches it (navrya-src/gptLiveVoice.js's own
+// onFinalTranscript -> chatDockView.jsx's unchanged submit() path). A fail-closed wallet-pricing
+// check runs BEFORE the OpenAI call, since GPT-Live is billed per minute of connected session time
+// (OpenAI's own published rate at this writing: $0.05/min) rather than the per-token cost a normal
+// dockChat() call already prices through AI_BILLED_ROUTES - unlike Realtime and Gemini Live's own
+// voice transports (deliberately excluded from wallet billing today, see AI_BILLED_ROUTES's own
+// comment above), NAVRYA must never mint a GPT-Live session it cannot bill.
+// `reserveWalletFundsForCall`/`settleWalletFundsForCall`/`releaseWalletFundsForCall` are the same
+// DB-free wallet bridge helpers every other billed route already uses (defined near the top of this
+// file) - this route just calls them directly instead of through the generic AI_BILLED_ROUTES
+// dispatcher gate, because settlement here can only happen later, once the browser reports the
+// session's real usage (settleGptLiveVoiceSession() below), not immediately after this request.
+async function mintGptLiveClientSecret(body, userId) {
+  const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
+  const voiceCharacter = voiceCharacterFromRequest(body.character);
+  const offerSdp = typeof body.offerSdp === 'string' ? body.offerSdp.trim() : '';
+  const startedAt = Date.now();
+  let key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey.trim() : '';
+  const isByok = !!key;
+  let walletReservationId = null;
+  try {
+    // The browser builds its own SDP offer client-side before ever reaching this route - a missing
+    // one is a client bug, not a network/billing condition, and must never reach OpenAI as an
+    // empty/malformed session request.
+    if (!offerSdp) throw new Error('GPT_LIVE_OFFER_SDP_REQUIRED');
+    if (!key) {
+      const configured = await adminKeys();
+      key = (configured && configured.openai) || '';
+    }
+    if (!key) key = process.env.OPENAI_API_KEY || '';
+    if (!key) throw new Error('OPENAI_API_KEY_MISSING');
+
+    // Fail closed BEFORE ever spending a real, billable GPT-Live session NAVRYA has no configured
+    // rate for - a BYOK caller pays OpenAI directly and is never gated here (same posture as every
+    // other BYOK call in this file), matching the platform-funded-only billing model already
+    // established for every AI_BILLED_ROUTES entry.
+    if (!isByok && aiWalletEnforced()) {
+      const gate = await reserveWalletFundsForCall({ userId, feature: 'voiceGptLive', provider: 'openai', model: GPT_LIVE_MODEL, payload: {} });
+      if (!gate.ok) throw new Error(gate.reason || 'WALLET_SERVICE_UNAVAILABLE');
+      walletReservationId = gate.reservationId;
+    }
+
+    const model = process.env.OPENAI_GPT_LIVE_MODEL || GPT_LIVE_MODEL;
+    // Deliberately mirrors ONLY the fields OpenAI's own quoted example actually shows
+    // (`session: {model, instructions, delegation}`, `transport: {type:'webrtc', sdp}`) - no guessed
+    // `audio.output.voice`/turn_detection field is included any more (an earlier pass invented one
+    // by analogy to the Realtime API; the real GPT-Live example has no such field, so a named
+    // built-in voice selection is not asserted here - delivery style is carried in plain-language
+    // instructions instead, the one mechanism the docs do confirm).
+    const response = await fetch(GPT_LIVE_SESSIONS_UPSTREAM, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session: {
+          model,
+          instructions: 'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says and hand off to the connected application. When asked to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, with no paraphrasing, no additions, and no omissions. ' + REALTIME_CHARACTER_DELIVERY[voiceCharacter] + (language === 'fa' ? REALTIME_PERSIAN_DELIVERY_INSTRUCTION : ''),
+          delegation: { type: 'client' }
+        },
+        transport: { type: 'webrtc', sdp: offerSdp }
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error('GPT_LIVE_TOKEN_FAILED_' + response.status + (errText ? ': ' + errText.slice(0, 200) : ''));
+    }
+    const data = await response.json();
+    reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.gpt-live-session' });
+
+    // Confirmed shape (quoted verbatim from OpenAI's own guide): { session: {id}, transport:
+    // {type:'webrtc', sdp: <answer>} }. Fails loudly, never returns an unusable/undefined answer to
+    // the browser, if a live response ever doesn't match this.
+    const answerSdp = data.transport && typeof data.transport.sdp === 'string' ? data.transport.sdp : '';
+    if (!answerSdp) throw new Error('GPT_LIVE_SESSION_SHAPE_UNEXPECTED');
+    return {
+      answerSdp,
+      sessionId: (data.session && data.session.id) || null,
+      model: (data.session && data.session.model) || model,
+      language,
+      // Returned so the browser can report it back at Voice-end via
+      // POST /api/ai/gpt-live/session/settle (settleGptLiveVoiceSession below) - null when BYOK or
+      // wallet enforcement is off, exactly mirroring every other reservationId-shaped flow in this
+      // file (never a truthy id for a call nothing was actually reserved for).
+      walletReservationId
+    };
+  } catch (error) {
+    if (walletReservationId) await releaseWalletFundsForCall(walletReservationId);
+    reportProviderHealth({ provider: 'openai', ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source: 'ai.voice.gpt-live-session' });
+    throw error;
+  }
+}
+
+// Best-effort settlement, called once by the browser when a GPT-Live Voice session ends
+// (navrya-src/chatDockView.jsx's endVoice()/toggleVoice() disconnect branch) with the real elapsed
+// connected time. A no-op (never an error) when there was nothing to settle (BYOK, or wallet
+// enforcement was off at mint time) - mirrors settleWalletFundsForCall()'s own "only ever settle a
+// reservation that actually exists" contract. If the browser never calls this at all (a crash, a
+// closed tab, a lost connection), the reservation is never charged - it only ever ages out and
+// releases via the existing stale-pending-reservation sweep (releaseStalePendingReservations(),
+// already run by both repo.pg.mjs/repo.memory.mjs) - the exact same accepted, already-documented
+// gap this codebase states for Realtime/Gemini's own voice wallet settlement (AI_BILLED_ROUTES's
+// own comment above), never a new one, and never an overcharge.
+async function settleGptLiveVoiceSession(body) {
+  if (!body || !body.reservationId) return { ok: true, settled: false };
+  const elapsedSeconds = Math.max(0, Number(body.elapsedSeconds) || 0);
+  await settleWalletFundsForCall({ reservationId: body.reservationId, provider: 'openai', model: GPT_LIVE_MODEL, feature: 'voiceGptLive', usage: { elapsedSeconds } });
+  return { ok: true, settled: true };
+}
+
 // Same-origin SDP relay (fix/voice-mode-hosted-connection). The installed @openai/agents-realtime
 // SDK talks to a fixed upstream (`https://api.openai.com/v1/realtime/calls`) directly from the
 // browser unless given a `baseUrl` override (navrya-src/aiVoiceRealtime.js now passes an absolute
@@ -2963,6 +3108,13 @@ function sanitizedUpstreamError(status) {
   return 'REALTIME_UPSTREAM_ERROR';
 }
 
+// RETIRED as a live route (GPT-Live 1 migration): the dispatcher's own /api/ai/realtime/call
+// handler now returns REALTIME_VOICE_RETIRED unconditionally, before this function is ever
+// reached - see that call site's own comment. Left fully intact (not deleted) as the historical,
+// still-correct implementation of the same-origin SDP relay Realtime Voice Mode used to need;
+// tests/realtime-call-relay.test.mjs was rewritten this pass to prove the retirement at the real
+// HTTP route instead of exercising this function's own internals, which no live path reaches any
+// more.
 async function handleRealtimeCallRelay(request, response) {
   // 1) A real, non-suspended NAVRYA user session, verified via the same session cookie every
   // other /api/ai/* route requires - BEFORE any SDP is read. This route intentionally does not
@@ -3288,12 +3440,15 @@ const server = http.createServer(async (request, response) => {
   // carries the ephemeral `Bearer ek_...` credential, never `Basic` credentials, so the two
   // mechanisms cannot coexist on one header). Every other route below is unaffected - this is a
   // route-specific carve-out, not a change to checkBasicAuth() or to any other route's gate.
+  // RETIRED (GPT-Live 1 migration): OpenAI Realtime is no longer used for Voice Mode - see
+  // docs/ai/voice-architecture.md's GPT-Live section. This route never forwards to OpenAI any
+  // more, for any request shape whatsoever - kept only so an old cached client bundle that still
+  // POSTs here (or a stray external caller) gets a clear, honest 410 instead of a raw 404 or,
+  // worse, a real relayed session. handleRealtimeCallRelay() itself is left fully intact below
+  // (its own implementation, unreachable from any live route now) rather than deleted - see
+  // tests/realtime-call-relay.test.mjs, rewritten this pass to prove this exact retirement.
   if (request.method === 'POST' && request.url === '/api/ai/realtime/call') {
-    try {
-      return await handleRealtimeCallRelay(request, response);
-    } catch (_relayError) {
-      return json(response, 500, { error: 'REALTIME_RELAY_FAILED' });
-    }
+    return json(response, 410, { error: 'REALTIME_VOICE_RETIRED' });
   }
 
   if (!checkBasicAuth(request)) return requireBasicAuth(response);
@@ -3393,7 +3548,15 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/sessions/visualize-analysis') result = await visualizeAnalysis(body);
     else if (request.url === '/api/sessions/graph-ai-analysis') result = await graphAiAnalysis(body);
     else if (request.url === '/api/ai/test-connection') result = await testConnection(body);
-    else if (request.url === '/api/ai/realtime/session') result = await mintRealtimeClientSecret(body, session.userId);
+    // RETIRED (GPT-Live 1 migration): OpenAI Realtime is no longer used for Voice Mode - never
+    // mints a real credential any more, for any authenticated caller. Placed AFTER the real
+    // verifySession() check above (unchanged) so an anonymous caller still gets 401, not 410 -
+    // the pre-existing "requires a real session" contract this route already had stays intact.
+    // mintRealtimeClientSecret() itself is left fully intact below (unreachable from any live
+    // route now) rather than deleted - its own dedicated tests still call it directly.
+    else if (request.url === '/api/ai/realtime/session') throw new Error('REALTIME_VOICE_RETIRED');
+    else if (request.url === '/api/ai/gpt-live/session') result = await mintGptLiveClientSecret(body, session.userId);
+    else if (request.url === '/api/ai/gpt-live/session/settle') result = await settleGptLiveVoiceSession(body);
     else if (request.url === '/api/ai/gemini-live/session') result = await mintGeminiLiveToken(body, session.userId);
     else if (request.url === '/api/ai/gemini-live/speak') result = await speakWithGemini(body);
     else if (request.url === '/api/ai/gemini-live/test') result = await adminTestGeminiVoice(session, body);
@@ -3428,6 +3591,16 @@ const server = http.createServer(async (request, response) => {
       // doesn't match this and falls through to 500 unchanged - the client already translates that
       // specific message into a friendly string regardless of status code.
       : /^GEMINI_(?:TTS|LIVE_TOKEN)_FAILED_(\d+)$/.test(error.message || '') ? Number((error.message || '').match(/(\d+)$/)[1])
+      : /^GPT_LIVE_TOKEN_FAILED_(\d+)$/.test(error.message || '') ? Number((error.message || '').match(/(\d+)$/)[1])
+      // mintGptLiveClientSecret()'s own fail-closed wallet gate throws the same reason strings
+      // reserveWalletFundsForCall()'s dispatcher-level caller already maps this same way just above
+      // (WALLET_INSUFFICIENT_BALANCE -> 402, every other reserve failure -> 503, never a bare 500
+      // for an expected, honestly-classified billing/config condition).
+      : error.message === 'WALLET_INSUFFICIENT_BALANCE' ? 402
+      : error.message === 'PROVIDER_PRICING_NOT_CONFIGURED' || error.message === 'FEATURE_NOT_ENTITLED' || error.message === 'WALLET_SERVICE_UNAVAILABLE' ? 503
+      : error.message === 'GPT_LIVE_SESSION_SHAPE_UNEXPECTED' ? 502
+      : error.message === 'GPT_LIVE_OFFER_SDP_REQUIRED' ? 400
+      : error.message === 'REALTIME_VOICE_RETIRED' ? 410
       : error.message === 'ADMIN_REQUIRED' ? 403
       : error.message === 'UNSUPPORTED_LANGUAGE' ? 400
       : error.message === 'ELEVENLABS_NOT_CONFIGURED' ? 503
@@ -3551,7 +3724,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 export default server;
 export {
   callProvider, callOpenAI, callAnthropic, callGemini, callOpenAICompatible, dockChatFormatFor, sanitizeDockChatModelOutput, buildProductContextText, buildCompanionContextText,
-  historyItem, dockChat, mentalHealthChat, mintRealtimeClientSecret, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
+  historyItem, dockChat, mentalHealthChat, mintRealtimeClientSecret, mintGptLiveClientSecret, settleGptLiveVoiceSession, mintGeminiLiveToken, speakWithGemini, adminTestGeminiVoice, handleRealtimeCallRelay, readRawBody, pcm16ToWav,
   adminTestVoiceProviderTts, speakWithVoiceProvider, resolveElevenLabsForRequest, voiceProviderConfig,
   __resetVoiceConfigCacheForTests, __resetAdminKeyCacheForTests, __resetAdminModelOverrideCacheForTests, __resetAdminGeminiVoiceProfileCacheForTests, internalWalletCallWithRetry,
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
