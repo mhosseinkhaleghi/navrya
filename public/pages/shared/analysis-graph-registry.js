@@ -118,9 +118,18 @@
   // tests/analysis-graph.test.mjs's "canvas core never branches on node.type" test).
   function fallbackTitle(sourceRecord, node, lang, typeDef) { return (typeDef.title[lang] || typeDef.title.en); }
   var DISPLAY = {
+    // imageEntryId (trader feedback, 2026-09-12): the ONE extension seam that lets the canvas
+    // show a real chart thumbnail without gaining any per-type knowledge - it returns which real
+    // Session Entry's image to show (by id), never the image itself. The canvas resolves the
+    // actual blob URL from the SAME imageUrls map liveSessionView.jsx already builds for the Desk
+    // (window.TradeJournalImageStore.loadImageUrl - async, blob-store-backed) - never a second
+    // image-loading path. Only sessionEntry ever has one; every other type simply omits this
+    // function (canvas checks `typeDef.display.imageEntryId &&`, same pattern as every other
+    // capability check already in this registry).
     sessionEntry: {
       title: function (sourceRecord) { return (sourceRecord.type || '') + (sourceRecord.timeframe ? ' · ' + sourceRecord.timeframe : ''); },
-      status: function () { return null; }
+      status: function () { return null; },
+      imageEntryId: function (sourceRecord) { return sourceRecord ? sourceRecord.id : null; }
     },
     sessionScenario: {
       title: function (sourceRecord, node) { return sourceRecord.title || node.title; },

@@ -60,6 +60,8 @@ const copy = {
     pickRelation: 'نوع رابطه را انتخاب کنید', cancel: 'انصراف', connectHint: 'برای اتصال، از نقطهٔ کنار گره به گره دیگر بکشید.',
     edgeInspectorTitle: 'رابطه', removeEdge: 'حذف رابطه', incompatiblePorts: 'این دو گره را نمی‌توان به هم وصل کرد (نوع پورت سازگار نیست).',
     stagesTitle: 'مراحل', changeStage: 'تغییر مرحله', scenarioStatus: 'وضعیت سناریو', executionUnavailable: 'اجرا هنوز پیاده‌سازی نشده',
+    scenarioTitleLabel: 'عنوان سناریو', scenarioDescriptionLabel: 'توضیحات سناریو',
+    enterFullscreenCanvas: 'تمام‌صفحه', exitFullscreenCanvas: 'خروج از تمام‌صفحه',
     pickCategory: 'دسته را انتخاب کنید', pickType: 'نوع گره را انتخاب کنید', back: 'بازگشت', create: 'ایجاد',
     pickEntryForScenario: 'این سناریو به کدام ورودی متصل شود؟', noEntries: 'ابتدا یک ورودی چارت یا حرکت اضافه کنید.',
     pickScenarioForTrade: 'این معامله از کدام سناریو شروع می‌شود؟', noScenarios: 'ابتدا یک سناریو اضافه کنید.',
@@ -94,6 +96,8 @@ const copy = {
     pickRelation: 'اختر نوع العلاقة', cancel: 'إلغاء', connectHint: 'للاتصال، اسحب من نقطة جانب العقدة إلى عقدة أخرى.',
     edgeInspectorTitle: 'العلاقة', removeEdge: 'إزالة العلاقة', incompatiblePorts: 'لا يمكن توصيل هاتين العقدتين (نوع المنفذ غير متوافق).',
     stagesTitle: 'المراحل', changeStage: 'تغيير المرحلة', scenarioStatus: 'حالة السيناريو', executionUnavailable: 'التنفيذ غير مطبّق بعد',
+    scenarioTitleLabel: 'عنوان السيناريو', scenarioDescriptionLabel: 'وصف السيناريو',
+    enterFullscreenCanvas: 'ملء الشاشة', exitFullscreenCanvas: 'الخروج من وضع ملء الشاشة',
     pickCategory: 'اختر الفئة', pickType: 'اختر نوع العقدة', back: 'رجوع', create: 'إنشاء',
     pickEntryForScenario: 'بأي إدخال يرتبط هذا السيناريو؟', noEntries: 'أضف أولًا إدخال مخطط أو حركة.',
     pickScenarioForTrade: 'من أي سيناريو تبدأ هذه الصفقة؟', noScenarios: 'أضف أولًا سيناريو.',
@@ -128,6 +132,8 @@ const copy = {
     pickRelation: 'Choose the relation', cancel: 'Cancel', connectHint: 'To connect, drag from a node’s side handle to another node.',
     edgeInspectorTitle: 'Relation', removeEdge: 'Remove relation', incompatiblePorts: "These two nodes can't be connected (incompatible port type).",
     stagesTitle: 'Stages', changeStage: 'Change stage', scenarioStatus: 'Scenario status', executionUnavailable: 'Execution not implemented yet',
+    scenarioTitleLabel: 'Scenario title', scenarioDescriptionLabel: 'Scenario description',
+    enterFullscreenCanvas: 'Fullscreen', exitFullscreenCanvas: 'Exit fullscreen',
     pickCategory: 'Choose a category', pickType: 'Choose a node type', back: 'Back', create: 'Create',
     pickEntryForScenario: 'Which entry should this scenario attach to?', noEntries: 'Add a chart or movement entry first.',
     pickScenarioForTrade: 'Which scenario does this trade come from?', noScenarios: 'Add a scenario first.',
@@ -162,6 +168,8 @@ const copy = {
     pickRelation: 'Elige la relación', cancel: 'Cancelar', connectHint: 'Para conectar, arrastra desde el punto lateral de un nodo hacia otro.',
     edgeInspectorTitle: 'Relación', removeEdge: 'Quitar relación', incompatiblePorts: 'Estos dos nodos no se pueden conectar (tipo de puerto incompatible).',
     stagesTitle: 'Etapas', changeStage: 'Cambiar etapa', scenarioStatus: 'Estado del escenario', executionUnavailable: 'La ejecución aún no está implementada',
+    scenarioTitleLabel: 'Título del escenario', scenarioDescriptionLabel: 'Descripción del escenario',
+    enterFullscreenCanvas: 'Pantalla completa', exitFullscreenCanvas: 'Salir de pantalla completa',
     pickCategory: 'Elige una categoría', pickType: 'Elige un tipo de nodo', back: 'Atrás', create: 'Crear',
     pickEntryForScenario: '¿A qué entrada se debe vincular este escenario?', noEntries: 'Agrega primero una entrada de gráfico o movimiento.',
     pickScenarioForTrade: '¿De qué escenario proviene esta operación?', noScenarios: 'Agrega primero un escenario.',
@@ -240,7 +248,7 @@ export function AnalysisGraphCanvas({
   onUpdateScenario, onUpdateNoteContent, onUpdateProcessingConfig,
   onCreateScenario, onCreateEntry, onCreateTrade, onCreatePatternRef, onCreateNote, onCreateProcessing,
   onCreateMarketContext, marketChartComponent, resolveMarketSymbol, resolveMarketInterval,
-  onRunAiNode, onApplyAiSuggestion, onClearAiResult
+  onRunAiNode, onApplyAiSuggestion, onClearAiResult, imageUrls
 }) {
   // Bundled once per render for the Inspector's QUICK_EDIT_ADAPTERS (section 3's action
   // registry/adapter pattern) - a future adapter only needs its own key added here, never a new
@@ -249,6 +257,22 @@ export function AnalysisGraphCanvas({
   const registry = window.TradeJournalAnalysisGraphRegistry;
   const containerRef = React.useRef(null);
   const viewportCommitRef = React.useRef(null);
+  // Trader feedback (2026-09-12): a real fullscreen toggle so the canvas can be worked on without
+  // distraction - the exact same standard Fullscreen API pattern liveSessionView.jsx's own
+  // MarketChartView already uses (wrapRef + fullscreenchange listener), never a second/different
+  // fullscreen mechanism.
+  const wrapRef = React.useRef(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  React.useEffect(() => {
+    function onChange() { setIsFullscreen(!!document.fullscreenElement && document.fullscreenElement === wrapRef.current); }
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  function toggleFullscreen() {
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    const el = wrapRef.current;
+    if (el && el.requestFullscreen) el.requestFullscreen();
+  }
 
   const [viewport, setViewport] = React.useState(graph.viewport || { x: 0, y: 0, zoom: 1 });
   const [dragPositions, setDragPositions] = React.useState({}); // nodeId -> {x,y} while dragging, local only
@@ -552,7 +576,8 @@ export function AnalysisGraphCanvas({
   }
 
   return (
-    <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', gap: 10, height: 600 }}>
+    <div ref={wrapRef} style={isFullscreen ? { height: '100vh', background: 'var(--ink-950)', padding: 12, boxSizing: 'border-box' } : undefined}>
+    <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', gap: 10, height: isFullscreen ? '100%' : 600 }}>
       <StageLegend lang={lang} rtl={rtl} stages={graph.stages} nodes={graph.nodes} collapsed={collapsedStages} onToggle={onToggleStageCollapsed} />
 
       <div
@@ -613,6 +638,15 @@ export function AnalysisGraphCanvas({
             const isSelected = selectedNodeIds.has(node.id);
             const dimmed = highlightNodeIds && !highlightNodeIds.has(node.id);
             const typeDef = registry.NODE_TYPES[node.type];
+            // Trader feedback (2026-09-12): a chart entry's node used to show only text ("chart ·
+            // 5m") - the real attached screenshot should render as a thumbnail. imageEntryId is
+            // the registry's own extension seam (see analysis-graph-registry.js's DISPLAY.
+            // sessionEntry comment) - the canvas never knows WHICH types have images, it only
+            // asks "does this type's display declare one?" and resolves the URL from the exact
+            // same imageUrls map (window.TradeJournalImageStore-backed) the Desk's own EntryCard
+            // already uses - never a second image-loading path.
+            const imageEntryId = typeDef && typeDef.display.imageEntryId ? typeDef.display.imageEntryId(sourceRecord, node) : null;
+            const thumbnailUrl = imageEntryId && imageUrls ? imageUrls[imageEntryId] : null;
             return (
               <div
                 key={node.id}
@@ -630,7 +664,12 @@ export function AnalysisGraphCanvas({
                   <Icon name={(typeDef && typeDef.icon) || 'Box'} size={13} style={{ color: 'var(--char-accent)', flex: 'none' }} />
                   <span style={{ fontSize: 11.5, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="auto">{display.title}</span>
                 </div>
-                {display.status && <Chip tone={node.origin === 'derived' ? 'warning' : 'neutral'} style={{ marginTop: 6, height: 18, fontSize: 9.5 }}>{display.status}</Chip>}
+                {display.status && <Chip tone={node.origin === 'derived' ? 'warning' : 'neutral'} style={{ marginTop: 6, height: 18, fontSize: 11 }}>{display.status}</Chip>}
+                {thumbnailUrl && (
+                  <div style={{ marginTop: 6, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border-hairline)', height: 70, background: 'var(--ink-950)' }}>
+                    <img src={thumbnailUrl} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                  </div>
+                )}
                 <div
                   onPointerDown={(e) => onHandlePointerDown(node, e)}
                   title={tr(lang, 'connectHint')}
@@ -660,12 +699,15 @@ export function AnalysisGraphCanvas({
           </div>
           {/* Hidden once the canvas narrows for Market Context Focus mode - it was wrapping onto
               several lines in that width, per a real bug caught via live browser verification. */}
-          {marketMode !== 'focus' && <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'deleteHint')}</span>}
+          {marketMode !== 'focus' && <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'deleteHint')}</span>}
           {marketMode === 'off' && marketChartComponent && (
             <button type="button" onClick={() => setMarketMode('compact')} title={tr(lang, 'marketContextTitle')} style={{ ...miniBtnStyle, width: 'auto', padding: '0 10px', fontSize: 11, gap: 6, display: 'flex', alignItems: 'center' }}>
               <Icon name="CandlestickChart" size={13} />{tr(lang, 'marketContextTitle')}
             </button>
           )}
+          <button type="button" onClick={toggleFullscreen} title={tr(lang, isFullscreen ? 'exitFullscreenCanvas' : 'enterFullscreenCanvas')} style={miniBtnStyle}>
+            <Icon name={isFullscreen ? 'Minimize2' : 'Maximize2'} size={14} />
+          </button>
           <button type="button" onClick={onSwitchToList} title={tr(lang, 'switchToList')} style={marketMode === 'focus' ? miniBtnStyle : { ...miniBtnStyle, width: 'auto', padding: '0 10px', fontSize: 11 }}>
             {marketMode === 'focus' ? <Icon name="List" size={14} /> : tr(lang, 'switchToList')}
           </button>
@@ -723,6 +765,7 @@ export function AnalysisGraphCanvas({
         />
       )}
     </div>
+    </div>
   );
 }
 
@@ -770,7 +813,7 @@ function MarketContextDock({ lang, mode, onModeChange, session, selectedNode, re
     <div style={{ display: 'flex', gap: 4, flex: 'none' }}>
       {[['compact', tr(lang, 'modeCompact')], ['split', tr(lang, 'modeSplit')], ['focus', tr(lang, 'modeFocus')]].map(([id, label]) => (
         <button key={id} type="button" onClick={() => onModeChange(id)} aria-pressed={mode === id} style={{
-          height: 22, padding: '0 7px', borderRadius: 5, cursor: 'pointer', fontSize: 10,
+          height: 22, padding: '0 7px', borderRadius: 5, cursor: 'pointer', fontSize: 11.5,
           border: '1px solid ' + (mode === id ? 'var(--char-accent)' : 'var(--border-hairline)'),
           background: mode === id ? 'var(--char-active-surface)' : 'transparent',
           color: mode === id ? 'var(--char-accent)' : 'var(--text-muted)'
@@ -785,7 +828,7 @@ function MarketContextDock({ lang, mode, onModeChange, session, selectedNode, re
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: mode === 'compact' ? 6 : 8 }}>
       <Icon name="CandlestickChart" size={14} style={{ color: 'var(--char-accent)', flex: 'none' }} />
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 'none' }}>{tr(lang, 'marketContextTitle')}</span>
-      {symbol && <span className="navrya-tabular" dir="ltr" style={{ fontSize: 10, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{symbol} · {timeframe || interval}</span>}
+      {symbol && <span className="navrya-tabular" dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{symbol} · {timeframe || interval}</span>}
       <span style={{ marginInlineStart: 'auto' }}>{modeButtons}</span>
     </div>
   );
@@ -797,7 +840,7 @@ function MarketContextDock({ lang, mode, onModeChange, session, selectedNode, re
   return (
     <div style={dockStyle}>
       {header}
-      {followingLabel && <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 6 }}>{tr(lang, 'following')}: {followingLabel}</span>}
+      {followingLabel && <span dir="auto" style={{ fontSize: 11.5, color: 'var(--text-dim)', marginBottom: 6 }}>{tr(lang, 'following')}: {followingLabel}</span>}
       {mode !== 'compact' && (symbol && ChartComponent ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', borderRadius: 8 }}>
           <ChartComponent symbol={symbol} interval={interval} lang={lang} />
@@ -806,7 +849,7 @@ function MarketContextDock({ lang, mode, onModeChange, session, selectedNode, re
         <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'noInstrumentShort')}</span>
       ))}
       {mode === 'compact' && !symbol && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'noInstrumentShort')}</span>}
-      <span dir="auto" style={{ fontSize: 9.5, color: 'var(--text-dim)', marginTop: 6 }}>{tr(lang, 'honestNote')}</span>
+      <span dir="auto" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>{tr(lang, 'honestNote')}</span>
     </div>
   );
 }
@@ -818,7 +861,7 @@ function StageLegend({ lang, rtl, stages, nodes, collapsed, onToggle }) {
   nodes.forEach((n) => { counts[n.stageId] = (counts[n.stageId] || 0) + 1; });
   return (
     <div style={{ width: 168, flex: 'none', display: 'flex', flexDirection: 'column', gap: 4, padding: 10, borderRadius: 12, border: '1px solid var(--border-hairline)', background: 'color-mix(in srgb, var(--char-atmosphere) 22%, var(--ink-900))', overflowY: 'auto' }}>
-      <span style={{ fontSize: 10.5, color: 'var(--text-dim)', letterSpacing: '.05em', marginBottom: 4 }}>{tr(lang, 'stagesTitle')}</span>
+      <span style={{ fontSize: 12, color: 'var(--text-dim)', letterSpacing: '.05em', marginBottom: 4 }}>{tr(lang, 'stagesTitle')}</span>
       {stages.map((stage) => (
         <button
           key={stage.id} type="button" onClick={() => onToggle(stage.id)}
@@ -829,7 +872,7 @@ function StageLegend({ lang, rtl, stages, nodes, collapsed, onToggle }) {
         >
           <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: stageColor(stages, stage.id), flex: 'none' }} />
           <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="auto">{stage.name[lang] || stage.name.en}</span>
-          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{counts[stage.id] || 0}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{counts[stage.id] || 0}</span>
           <Icon name={collapsed[stage.id] ? 'ChevronRight' : 'ChevronDown'} size={12} style={{ color: 'var(--text-dim)', flex: 'none' }} />
         </button>
       ))}
@@ -872,22 +915,56 @@ function RelationPicker({ lang, rtl, onPick, onCancel, registry }) {
 // - Pattern: neither - audited and confirmed no safe existing-editor integration exists
 //   (PatternDetailsTab lives inside strategiesHubView.jsx's own tab state, not a self-contained
 //   opener; wrapping it would mean building a new editor, which section 3 explicitly forbids).
+// Trader feedback (2026-09-12): this used to expose ONLY the status dropdown - there was no real
+// field to type a title/description into from the canvas at all, so naturally nothing the trader
+// entered here ever showed up on the Desk (there was nothing being written). Now also edits
+// title/description - through the exact same real updateScenario()/actions.onUpdateScenario
+// mutator the status dropdown (and the Desk's own ScenarioEditor) already use, so a canvas edit
+// reaches the Desk the same way any other canonical Scenario write already does. Buffered with
+// local state + an explicit Save (matching NoteQuickEdit's own convention below) rather than
+// persisting on every keystroke.
 function ScenarioQuickEdit({ session, registry, lang, sourceRecord, actions }) {
+  const [title, setTitle] = React.useState(sourceRecord ? sourceRecord.title || '' : '');
+  const [description, setDescription] = React.useState(sourceRecord ? sourceRecord.description || '' : '');
+  React.useEffect(() => {
+    setTitle(sourceRecord ? sourceRecord.title || '' : '');
+    setDescription(sourceRecord ? sourceRecord.description || '' : '');
+  }, [sourceRecord && sourceRecord.id, sourceRecord && sourceRecord.title, sourceRecord && sourceRecord.description]);
   if (!sourceRecord) return null;
+  function ownerEntry() {
+    const ownerEntryId = registry.findScenarioOwnerEntryId(sourceRecord.id, session);
+    return (session.entries || []).find((en) => en.id === ownerEntryId);
+  }
+  const dirty = title !== (sourceRecord.title || '') || description !== (sourceRecord.description || '');
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'scenarioStatus')}</span>
-      <select
-        value={sourceRecord.status || 'pending'} style={selectStyle}
-        onChange={(e) => {
-          const ownerEntryId = registry.findScenarioOwnerEntryId(sourceRecord.id, session);
-          const entry = (session.entries || []).find((en) => en.id === ownerEntryId);
-          if (entry) actions.onUpdateScenario(entry, sourceRecord, { status: e.target.value });
-        }}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'scenarioTitleLabel')}</span>
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} dir="auto" style={selectStyle} />
+      </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'scenarioDescriptionLabel')}</span>
+        <textarea
+          value={description} onChange={(e) => setDescription(e.target.value)} rows={3} dir="auto"
+          style={{ borderRadius: 7, border: '1px solid var(--border-hairline)', background: 'var(--ink-950)', color: 'var(--text-primary)', fontSize: 12, padding: 8, resize: 'vertical' }}
+        />
+      </label>
+      <button
+        type="button" disabled={!dirty} onClick={() => { const entry = ownerEntry(); if (entry) actions.onUpdateScenario(entry, sourceRecord, { title, description }); }}
+        style={{ ...secondaryBtnStyle, opacity: dirty ? 1 : 0.5 }}
       >
-        {SCENARIO_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-      </select>
-    </label>
+        {tr(lang, 'save')}
+      </button>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'scenarioStatus')}</span>
+        <select
+          value={sourceRecord.status || 'pending'} style={selectStyle}
+          onChange={(e) => { const entry = ownerEntry(); if (entry) actions.onUpdateScenario(entry, sourceRecord, { status: e.target.value }); }}
+        >
+          {SCENARIO_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+      </label>
+    </div>
   );
 }
 function NoteQuickEdit({ node, lang, actions }) {
@@ -907,7 +984,7 @@ function ProcessingQuickEdit({ node, registry, lang, actions }) {
   const typeDef = registry.NODE_TYPES[node.type];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'processingConfig')}</span>
+      <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'processingConfig')}</span>
       <ConfigFieldsForm schema={typeDef.configSchema || { fields: [] }} lang={lang} initial={node.config} onSave={(config) => actions.onUpdateProcessingConfig(node.id, config)} saveLabel={tr(lang, 'save')} />
     </div>
   );
@@ -970,11 +1047,11 @@ function confidenceLabel(lang, confidence) {
 // a plain, unclickable label - never crashes, never a dead click.
 function ReferenceChip({ nodeId, label, graph, onFocusNode }) {
   const exists = graph.nodes.some((n) => n.id === nodeId);
-  if (!exists) return <span style={{ fontSize: 10, color: 'var(--text-dim)', textDecoration: 'line-through' }}>{label}</span>;
+  if (!exists) return <span style={{ fontSize: 11.5, color: 'var(--text-dim)', textDecoration: 'line-through' }}>{label}</span>;
   return (
     <button
       type="button" onClick={() => onFocusNode(nodeId)}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, height: 20, padding: '0 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'rgba(214,175,107,.10)', color: 'var(--char-accent)', fontSize: 10 }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, height: 20, padding: '0 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid var(--char-accent)', background: 'rgba(214,175,107,.10)', color: 'var(--char-accent)', fontSize: 11.5 }}
     >
       <Icon name="Link" size={9} />{label}
     </button>
@@ -997,13 +1074,13 @@ function AiContextPreviewModal({ lang, rtl, session, graph, selectedNodeId, onCl
           <button type="button" onClick={onClose} style={{ ...miniBtnStyle, width: 24, height: 24 }}><Icon name="X" size={12} /></button>
         </div>
         <span style={{ fontSize: 11.5, color: 'var(--text-primary)' }}>{tr(lang, 'included')}: {pkg.nodes.length} · {tr(lang, 'excluded')}: {pkg.excludedNodeIds.length}</span>
-        {pkg.truncated && <span style={{ fontSize: 10.5, color: 'var(--warning)' }}>{tr(lang, 'contextTruncated')}</span>}
+        {pkg.truncated && <span style={{ fontSize: 12, color: 'var(--warning)' }}>{tr(lang, 'contextTruncated')}</span>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {pkg.nodes.map((n) => <span key={n.id} dir="auto" style={{ fontSize: 11, color: 'var(--text-muted)' }}>• {n.title || n.id} ({n.type})</span>)}
         </div>
         <span style={{ fontSize: 11, color: pkg.emotionIncluded ? 'var(--warning)' : 'var(--text-dim)' }}>{tr(lang, pkg.emotionIncluded ? 'emotionIncludedLabel' : 'emotionExcludedLabel')}</span>
         <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, pkg.similarSessionsIncluded ? 'similarIncludedLabel' : 'similarNotIncluded')}</span>
-        <span className="navrya-tabular" style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'approxTokens')}: {pkg.approxTokens}</span>
+        <span className="navrya-tabular" style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'approxTokens')}: {pkg.approxTokens}</span>
         <button type="button" onClick={onClose} style={secondaryBtnStyle}>{tr(lang, 'close')}</button>
       </div>
     </div>
@@ -1023,7 +1100,7 @@ function SuggestionCard({ suggestion, lang, rtl, graph, onFocusNode, onApply, on
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '8px 9px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(244,234,215,.04)' }}>
       <span dir="auto" style={{ fontSize: 11.5, color: 'var(--text-primary)', fontWeight: 600 }}>{label}</span>
-      {suggestion.explanation && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{suggestion.explanation}</span>}
+      {suggestion.explanation && <span dir="auto" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{suggestion.explanation}</span>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {suggestion.confidence && <Chip tone="neutral">{confidenceLabel(lang, suggestion.confidence)}</Chip>}
         {suggestion.sourceNodeIds.map((id) => {
@@ -1032,8 +1109,8 @@ function SuggestionCard({ suggestion, lang, rtl, graph, onFocusNode, onApply, on
         })}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" onClick={onApply} style={{ ...secondaryBtnStyle, flex: 1, height: 26, fontSize: 10.5 }}><Icon name="Check" size={11} />{tr(lang, 'apply')}</button>
-        <button type="button" onClick={onReject} style={{ ...dangerBtnStyle, flex: 1, height: 26, fontSize: 10.5 }}><Icon name="X" size={11} />{tr(lang, 'reject')}</button>
+        <button type="button" onClick={onApply} style={{ ...secondaryBtnStyle, flex: 1, height: 26, fontSize: 12 }}><Icon name="Check" size={11} />{tr(lang, 'apply')}</button>
+        <button type="button" onClick={onReject} style={{ ...dangerBtnStyle, flex: 1, height: 26, fontSize: 12 }}><Icon name="X" size={11} />{tr(lang, 'reject')}</button>
       </div>
     </div>
   );
@@ -1070,13 +1147,13 @@ function AiNodePanel({ node, session, graph, lang, rtl, registry, onRunAiNode, o
         <span style={{ fontSize: 11, color: stateColor }}>{stateLabel}</span>
       </div>
 
-      {exec.error && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}>{errorLabel(lang, exec.error)}</span>}
+      {exec.error && <span dir="auto" style={{ fontSize: 12, color: 'var(--danger)' }}>{errorLabel(lang, exec.error)}</span>}
 
       {exec.provenance && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'provenanceTitle')}</span>
-          <span className="navrya-tabular" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{tr(lang, 'provider')}: {exec.provenance.provider || '—'} · {tr(lang, 'model')}: {exec.provenance.model || '—'}</span>
-          {exec.lastRunAt && <span className="navrya-tabular" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{tr(lang, 'lastRun')}: {new Date(exec.lastRunAt).toLocaleString(lang)}</span>}
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'provenanceTitle')}</span>
+          <span className="navrya-tabular" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'provider')}: {exec.provenance.provider || '—'} · {tr(lang, 'model')}: {exec.provenance.model || '—'}</span>
+          {exec.lastRunAt && <span className="navrya-tabular" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'lastRun')}: {new Date(exec.lastRunAt).toLocaleString(lang)}</span>}
         </div>
       )}
 
@@ -1084,10 +1161,10 @@ function AiNodePanel({ node, session, graph, lang, rtl, registry, onRunAiNode, o
 
       {exec.result && exec.result.contradictions && exec.result.contradictions.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 8px', borderRadius: 7, border: '1px solid rgba(255,56,48,.35)', background: 'rgba(255,56,48,.06)' }}>
-          <span style={{ fontSize: 10, color: 'var(--danger)', letterSpacing: '.04em' }}>{tr(lang, 'contradictionsTitle')}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--danger)', letterSpacing: '.04em' }}>{tr(lang, 'contradictionsTitle')}</span>
           {exec.result.contradictions.map((c, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-primary)' }}>{c.text}</span>
+              <span dir="auto" style={{ fontSize: 12, color: 'var(--text-primary)' }}>{c.text}</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {c.nodeIds.map((id) => { const n = graph.nodes.find((x) => x.id === id); return <ReferenceChip key={id} nodeId={id} label={n ? (n.title || id) : id} graph={graph} onFocusNode={onFocusNode} />; })}
               </div>
@@ -1098,10 +1175,10 @@ function AiNodePanel({ node, session, graph, lang, rtl, registry, onRunAiNode, o
 
       {exec.result && exec.result.observations && exec.result.observations.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'observationsTitle')}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'observationsTitle')}</span>
           {exec.result.observations.map((o, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{o.text}</span>
+              <span dir="auto" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{o.text}</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {o.nodeIds.map((id) => { const n = graph.nodes.find((x) => x.id === id); return <ReferenceChip key={id} nodeId={id} label={n ? (n.title || id) : id} graph={graph} onFocusNode={onFocusNode} />; })}
               </div>
@@ -1112,14 +1189,14 @@ function AiNodePanel({ node, session, graph, lang, rtl, registry, onRunAiNode, o
 
       {exec.result && exec.result.missingEvidence && exec.result.missingEvidence.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'missingEvidenceTitle')}</span>
-          {exec.result.missingEvidence.map((m, i) => <span key={i} dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{m.text}</span>)}
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'missingEvidenceTitle')}</span>
+          {exec.result.missingEvidence.map((m, i) => <span key={i} dir="auto" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{m.text}</span>)}
         </div>
       )}
 
       {exec.result && exec.result.references && exec.result.references.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'referencesTitle')}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'referencesTitle')}</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {exec.result.references.map((r) => <ReferenceChip key={r.nodeId} nodeId={r.nodeId} label={r.label} graph={graph} onFocusNode={onFocusNode} />)}
           </div>
@@ -1128,8 +1205,8 @@ function AiNodePanel({ node, session, graph, lang, rtl, registry, onRunAiNode, o
 
       {exec.state === 'completed' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'suggestionsTitle')}</span>
-          {pendingSuggestions.length === 0 && resolvedSuggestions.length === 0 && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'noSuggestions')}</span>}
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)', letterSpacing: '.04em' }}>{tr(lang, 'suggestionsTitle')}</span>
+          {pendingSuggestions.length === 0 && resolvedSuggestions.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'noSuggestions')}</span>}
           {pendingSuggestions.map((s) => (
             <SuggestionCard
               key={s.id} suggestion={s} lang={lang} rtl={rtl} graph={graph} onFocusNode={onFocusNode}
@@ -1138,7 +1215,7 @@ function AiNodePanel({ node, session, graph, lang, rtl, registry, onRunAiNode, o
             />
           ))}
           {resolvedSuggestions.map((s) => (
-            <span key={s.id} dir="auto" style={{ fontSize: 10, color: s.status === 'applied' ? 'var(--success)' : 'var(--text-dim)', textDecoration: s.status === 'rejected' ? 'line-through' : 'none' }}>
+            <span key={s.id} dir="auto" style={{ fontSize: 11.5, color: s.status === 'applied' ? 'var(--success)' : 'var(--text-dim)', textDecoration: s.status === 'rejected' ? 'line-through' : 'none' }}>
               {s.type === 'createNode' ? s.payload.title : s.type === 'createEdge' ? registry.relationLabel(s.payload.relation, lang) : s.payload.suggestion}
             </span>
           ))}
@@ -1215,7 +1292,7 @@ function Inspector({
           )}
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'inspectorStage')}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'inspectorStage')}</span>
             <select value={node.stageId} style={selectStyle} onChange={(e) => onChangeNodeStage(node.id, e.target.value)}>
               {graph.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name[lang] || stage.name.en}</option>)}
             </select>
@@ -1254,7 +1331,7 @@ function BulkInspector({ lang, rtl, graph, nodeCount, edgeCount, onClose, onRemo
       </div>
       {nodeCount > 0 && (
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'bulkChangeStage')}</span>
+          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'bulkChangeStage')}</span>
           <select defaultValue="" style={selectStyle} onChange={(e) => { if (e.target.value) onChangeStage(e.target.value); }}>
             <option value="" disabled>{tr(lang, 'inspectorStage')}</option>
             {graph.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name[lang] || stage.name.en}</option>)}
@@ -1337,7 +1414,7 @@ function NodeCreationMenu({
 
   const stageSelect = typeId && (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'targetStage')}</span>
+      <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'targetStage')}</span>
       <select value={stageId} style={selectStyle} onChange={(e) => setStageId(e.target.value)}>
         {graph.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name[lang] || stage.name.en}</option>)}
       </select>
@@ -1352,7 +1429,7 @@ function NodeCreationMenu({
             <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'pickType')}</span>
             {Object.keys(registry.CATEGORIES).filter((c) => byCategory[c]).map((categoryId) => (
               <div key={categoryId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '.05em' }}>{registry.categoryLabel(categoryId, lang)}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--text-dim)', letterSpacing: '.05em' }}>{registry.categoryLabel(categoryId, lang)}</span>
                 {byCategory[categoryId].map((id) => (
                   <button
                     key={id} type="button" draggable
@@ -1498,7 +1575,7 @@ function ConfigFieldsForm({ schema, lang, initial, onSave, saveLabel }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {(schema.fields || []).map((field) => (
         <label key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{field.label[lang] || field.label.en}</span>
+          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{field.label[lang] || field.label.en}</span>
           {field.type === 'select' ? (
             <select style={selectStyle} value={config[field.key] || ''} onChange={(e) => setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))}>
               <option value="" />
@@ -1519,7 +1596,7 @@ function ProcessingForm({ lang, rtl, typeId, registry, stageSelect, onBack, onCr
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {stageSelect}
       <ConfigFieldsForm schema={schema} lang={lang} initial={{}} onSave={onCreate} saveLabel={tr(lang, 'create')} />
-      <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'executionUnavailable')}</span>
+      <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'executionUnavailable')}</span>
       <button type="button" onClick={onBack} style={{ ...miniBtnStyle, width: 'auto', padding: '0 10px' }}>{tr(lang, 'back')}</button>
     </div>
   );

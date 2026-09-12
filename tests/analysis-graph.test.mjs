@@ -1053,3 +1053,102 @@ test('the node-creation menu offers marketContext with a confirm step showing th
   assert.match(canvasSrc, /onCreateMarketContext\(stageId\); onClose\(\);/);
   assert.match(canvasSrc, /\[session\.instrument, session\.timeframe\]\.filter\(Boolean\)\.join\(' · '\)/);
 });
+
+// ---------------------------------------------------------------------------
+// Trader feedback (2026-09-12): chart thumbnails, canonical Scenario title/description editing
+// from the canvas, canvas fullscreen, and a real registry-sourced educational Guide.
+// ---------------------------------------------------------------------------
+
+test('DISPLAY.sessionEntry declares imageEntryId (the one extension seam a chart thumbnail is resolved through) - it returns the real entry id, never an image URL itself, and every other type omits it', async () => {
+  const registry = await loadRegistry();
+  const def = registry.NODE_TYPES.sessionEntry;
+  assert.equal(typeof def.display.imageEntryId, 'function');
+  assert.equal(def.display.imageEntryId({ id: 'entry-1' }), 'entry-1');
+  assert.equal(def.display.imageEntryId(null), null);
+  ['sessionScenario', 'trade', 'pattern', 'note', 'marketContext'].forEach((typeId) => {
+    assert.equal(registry.NODE_TYPES[typeId].display.imageEntryId, undefined, `${typeId} must not declare an imageEntryId - it has no image field`);
+  });
+});
+
+test('the canvas node card resolves a chart thumbnail through the registry seam and the SAME imageUrls map the Desk\'s own EntryCard already uses - never a second image-loading path', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  assert.match(canvasSrc, /typeDef && typeDef\.display\.imageEntryId \? typeDef\.display\.imageEntryId\(sourceRecord, node\) : null/);
+  assert.match(canvasSrc, /imageEntryId && imageUrls \? imageUrls\[imageEntryId\] : null/);
+  assert.match(canvasSrc, /<img src=\{thumbnailUrl\}/);
+});
+
+test('List mode\'s NodeRow renders the same real chart thumbnail via the same registry seam (no drift between List and Canvas on what a node shows)', async () => {
+  const viewSrc = await readFile(src('analysisGraphView.jsx'), 'utf8');
+  assert.match(viewSrc, /typeDef && typeDef\.display\.imageEntryId \? typeDef\.display\.imageEntryId\(sourceRecord, node\) : null/);
+  assert.match(viewSrc, /<img src=\{thumbnailUrl\}/);
+});
+
+test('imageUrls is threaded from liveSessionView.jsx (the same state Desk EntryCards already resolve via window.TradeJournalImageStore) through AnalysisGraphView into AnalysisGraphCanvas, with no silent prop drop', async () => {
+  const liveSessionSrc = await readFile(src('liveSessionView.jsx'), 'utf8');
+  const callStart = [...liveSessionSrc.matchAll(/<AnalysisGraphView/g)].map((m) => m.index).find((i) => liveSessionSrc.slice(i, liveSessionSrc.indexOf('/>', i)).includes('onAddNode='));
+  assert.ok(callStart > -1);
+  assert.match(liveSessionSrc.slice(callStart, liveSessionSrc.indexOf('/>', callStart)), /imageUrls=\{imageUrls\}/);
+  const viewSrc = await readFile(src('analysisGraphView.jsx'), 'utf8');
+  assert.match(viewSrc, /onRunAiNode, onApplyAiSuggestion, onClearAiResult, imageUrls/);
+  const canvasCall = viewSrc.slice(viewSrc.indexOf('<AnalysisGraphCanvas'), viewSrc.indexOf('/>', viewSrc.indexOf('<AnalysisGraphCanvas')));
+  assert.match(canvasCall, /imageUrls=\{imageUrls\}/);
+});
+
+test('ScenarioQuickEdit now edits title and description too (trader feedback: previously only status could be changed from the canvas, so there was nothing for a canvas edit to sync to the Desk) - through the exact same real onUpdateScenario mutator the Desk\'s own ScenarioEditor and the status dropdown already use', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  const fnMatch = /function ScenarioQuickEdit\(\{[\s\S]*?\n\}/.exec(canvasSrc);
+  assert.ok(fnMatch, 'could not find ScenarioQuickEdit()');
+  assert.match(fnMatch[0], /actions\.onUpdateScenario\(entry, sourceRecord, \{ title, description \}\)/);
+  assert.match(fnMatch[0], /actions\.onUpdateScenario\(entry, sourceRecord, \{ status: e\.target\.value \}\)/);
+  // Buffered with local state (never persists on every keystroke - section 52's own performance
+  // rule), matching NoteQuickEdit's own established convention.
+  assert.match(fnMatch[0], /React\.useState\(sourceRecord \? sourceRecord\.title \|\| '' : ''\)/);
+});
+
+test('the canvas has a real fullscreen toggle using the standard Fullscreen API, mirroring liveSessionView.jsx\'s own MarketChartView pattern exactly (wrapRef + fullscreenchange listener) - never a second/different fullscreen mechanism', async () => {
+  const canvasSrc = await readFile(src('analysisGraphCanvas.jsx'), 'utf8');
+  assert.match(canvasSrc, /const wrapRef = React\.useRef\(null\);/);
+  assert.match(canvasSrc, /const \[isFullscreen, setIsFullscreen\] = React\.useState\(false\);/);
+  assert.match(canvasSrc, /document\.addEventListener\('fullscreenchange', onChange\);/);
+  assert.match(canvasSrc, /if \(document\.fullscreenElement\) \{ document\.exitFullscreen\(\); return; \}/);
+  assert.match(canvasSrc, /el\.requestFullscreen\(\)/);
+  assert.match(canvasSrc, /<div ref=\{wrapRef\}/);
+});
+
+test('GuideModal (the new educational Guide) sources every node-type name/description from the real registry (registry.NODE_TYPES/CATEGORIES/DEFAULT_STAGES) - it never hardcodes a second, duplicated definition of what a node type is', async () => {
+  const viewSrc = await readFile(src('analysisGraphView.jsx'), 'utf8');
+  const fnMatch = /function GuideModal\(\{[\s\S]*?\n\}/.exec(viewSrc);
+  assert.ok(fnMatch, 'could not find GuideModal()');
+  assert.match(fnMatch[0], /registry\.NODE_TYPES/);
+  assert.match(fnMatch[0], /registry\.CATEGORIES/);
+  assert.match(fnMatch[0], /registry\.DEFAULT_STAGES/);
+  assert.match(fnMatch[0], /def\.description\[lang\] \|\| def\.description\.en/);
+  assert.match(fnMatch[0], /registry\.nodeTypeTitle\(typeId, lang\)/);
+});
+
+test('the Guide button is reachable regardless of List/Canvas mode, and all four languages declare the real Guide i18n keys', async () => {
+  const viewSrc = await readFile(src('analysisGraphView.jsx'), 'utf8');
+  assert.match(viewSrc, /const \[guideOpen, setGuideOpen\] = React\.useState\(false\);/);
+  assert.match(viewSrc, /\{guideOpen && <GuideModal lang=\{lang\} rtl=\{rtl\} onClose=\{\(\) => setGuideOpen\(false\)\} \/>\}/);
+  const keys = ['guideButton', 'guideTitle', 'guideIntro', 'guideNodeTypesTitle', 'guideStagesTitle'];
+  ['fa:', 'ar:', 'en:', 'es:'].forEach((langTag) => {
+    const idx = viewSrc.indexOf('\n  ' + langTag);
+    assert.ok(idx > -1, `could not find the ${langTag} copy block`);
+    const nextIdx = viewSrc.indexOf('\n  }', idx);
+    const langBlock = viewSrc.slice(idx, nextIdx);
+    keys.forEach((key) => assert.match(langBlock, new RegExp(key + ':'), `${langTag} copy block is missing ${key}`));
+  });
+});
+
+test('STAGE_DESCRIPTIONS covers all 8 default stages in all 4 languages (the Guide must never show a blank description for a real stage)', async () => {
+  const viewSrc = await readFile(src('analysisGraphView.jsx'), 'utf8');
+  const fnMatch = /const STAGE_DESCRIPTIONS = \{[\s\S]*?\n\};/.exec(viewSrc);
+  assert.ok(fnMatch, 'could not find STAGE_DESCRIPTIONS');
+  ['preparation', 'evidence', 'observation', 'thesis', 'scenarios', 'risk', 'decision', 'outcome'].forEach((stageId) => {
+    assert.match(fnMatch[0], new RegExp(stageId + ':'), `STAGE_DESCRIPTIONS is missing ${stageId}`);
+  });
+  ['fa:', 'ar:', 'en:', 'es:'].forEach((langTag) => {
+    const occurrences = (fnMatch[0].match(new RegExp(langTag, 'g')) || []).length;
+    assert.equal(occurrences, 8, `expected all 8 stages to declare a ${langTag} description`);
+  });
+});
