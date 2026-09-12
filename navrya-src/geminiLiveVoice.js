@@ -1,7 +1,11 @@
 import { VOICE_STATES } from './aiVoiceRealtime.js';
 import { createSpeechActivityDetector } from './geminiSpeechActivityDetector.js';
 
-const LIVE_SOCKET_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
+// Keep the browser on NAVRYA's own origin. Direct browser -> Google WebSocket connections are
+// not dependable from every production network/region, while the server can reach Gemini
+// consistently. The gateway validates the user's session and the one-use token lease before it
+// opens the upstream socket; the wire protocol below remains byte-for-byte Gemini Live.
+const LIVE_SOCKET_PATH = '/api/ai/gemini-live/socket';
 const INPUT_SAMPLE_RATE = 16000;
 const OUTPUT_SAMPLE_RATE = 24000;
 const LIVE_TRANSCRIPTION_LOCALES = Object.freeze({ fa: 'fa-IR', ar: 'ar-EG', en: 'en-US', es: 'es-ES' });
@@ -298,7 +302,8 @@ export function createGeminiLiveSession(options) {
   // separate 15s timer scoped just to socket setup.
   function openSocket(creds, myEpoch, deadline) {
     return new Promise((resolve, reject) => {
-      const url = `${LIVE_SOCKET_URL}?access_token=${encodeURIComponent(creds.token)}`;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = `${protocol}//${window.location.host}${LIVE_SOCKET_PATH}?access_token=${encodeURIComponent(creds.token)}`;
       socket = new WebSocket(url);
       socket.binaryType = 'arraybuffer';
       let settled = false;

@@ -6,9 +6,12 @@ import test from 'node:test';
 const root = process.cwd();
 const adapter = await readFile(path.join(root, 'navrya-src', 'geminiLiveVoice.js'), 'utf8');
 const dock = await readFile(path.join(root, 'navrya-src', 'chatDockView.jsx'), 'utf8');
+const server = await readFile(path.join(root, 'server', 'pattern-ai-server.mjs'), 'utf8');
 
 test('Gemini Voice uses a constrained short-lived Live token, never a browser-exposed permanent API key', () => {
-  assert.match(adapter, /BidiGenerateContentConstrained/);
+  assert.match(adapter, /\/api\/ai\/gemini-live\/socket/);
+  assert.doesNotMatch(adapter, /generativelanguage\.googleapis\.com\/ws/);
+  assert.match(server, /BidiGenerateContentConstrained/);
   assert.match(adapter, /access_token=\$\{encodeURIComponent\(creds\.token\)\}/);
   assert.doesNotMatch(adapter, /GEMINI_API_KEY/);
   assert.match(dock, /fetch\('\/api\/ai\/gemini-live\/session', \{/);

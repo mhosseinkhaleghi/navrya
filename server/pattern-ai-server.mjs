@@ -1,9 +1,11 @@
 import http from 'node:http';
+import { WebSocket, WebSocketServer } from 'ws';
 import { parseCookie } from 'cookie';
 import { sessionCookieName } from './community/security/cookies.mjs';
 import { resolveRateLimitStore } from './community/security/rate-limit.mjs';
 import { sha256Hex } from './community/security/crypto-util.mjs';
 import { resolveRealtimeLeaseStore } from './community/security/realtime-lease-store.mjs';
+import { isOriginAllowed } from './community/security/origins.mjs';
 import * as elevenlabs from './community/elevenlabs-client.mjs';
 import { ElevenLabsError } from './community/elevenlabs-client.mjs';
 import { GEMINI_VOICE_CHARACTERS, GEMINI_VOICE_GENDERS, geminiVoiceForProfile, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from './ai/gemini-voice-profiles.mjs';
@@ -2711,7 +2713,7 @@ async function resolveGeminiVoiceKey(body) {
 // Gemini Live is used for speech recognition only. NAVRYA still routes every final transcript
 // through dockChat(), then Gemini TTS reads back that exact, already-approved reply. This keeps
 // Voice Mode's existing "one brain" safety contract intact while using Google's Live transport.
-async function mintGeminiLiveToken(body) {
+async function mintGeminiLiveToken(body, userId) {
   const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
   const startedAt = Date.now();
   try {
@@ -2741,6 +2743,19 @@ async function mintGeminiLiveToken(body) {
     if (!response.ok) throw new Error(await geminiVoiceFailureCode(response, 'GEMINI_LIVE_TOKEN'));
     const data = await response.json();
     if (!data || typeof data.name !== 'string' || !data.name) throw new Error('GEMINI_LIVE_TOKEN_INVALID');
+    // Bind this one-use upstream token to the authenticated NAVRYA user before returning it.
+    // The same-origin WebSocket relay consumes the lease atomically, preventing cross-user use
+    // and replay while preserving Gemini's existing short-lived ephemeral-token contract.
+    if (userId) {
+      const upstreamNewSessionDeadline = Date.now() + 60 * 1000;
+      const tokenExpiry = Date.parse(data.expireTime || '') || upstreamNewSessionDeadline;
+      const ttlMs = Math.max(1000, Math.min(60 * 1000, tokenExpiry - Date.now()));
+      try {
+        await resolveRealtimeLeaseStore().set(sha256Hex(data.name), userId, ttlMs);
+      } catch (_) {
+        throw new Error('GEMINI_LIVE_LEASE_STORE_FAILED');
+      }
+    }
     reportProviderHealth({ provider: 'gemini', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.live-session' });
     return { provider: 'gemini-live', token: data.name, expiresAt: data.expireTime || null, model, language, voice: geminiVoiceForLanguage(language) };
   } catch (error) {
@@ -3379,7 +3394,7 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/sessions/graph-ai-analysis') result = await graphAiAnalysis(body);
     else if (request.url === '/api/ai/test-connection') result = await testConnection(body);
     else if (request.url === '/api/ai/realtime/session') result = await mintRealtimeClientSecret(body, session.userId);
-    else if (request.url === '/api/ai/gemini-live/session') result = await mintGeminiLiveToken(body);
+    else if (request.url === '/api/ai/gemini-live/session') result = await mintGeminiLiveToken(body, session.userId);
     else if (request.url === '/api/ai/gemini-live/speak') result = await speakWithGemini(body);
     else if (request.url === '/api/ai/gemini-live/test') result = await adminTestGeminiVoice(session, body);
     // Admin-only hardened replacement for the old isolated /api/ai/voice/test-tts-fa (see
@@ -3434,6 +3449,86 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
+const GEMINI_LIVE_SOCKET_PATH = '/api/ai/gemini-live/socket';
+const GEMINI_LIVE_SOCKET_UPSTREAM = process.env.GEMINI_LIVE_SOCKET_UPSTREAM || 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained';
+const GEMINI_LIVE_SOCKET_MAX_BUFFERED_BYTES = 1024 * 1024;
+const geminiLiveWebSocketServer = new WebSocketServer({ noServer: true });
+
+function rejectWebSocketUpgrade(socket, status, message) {
+  if (!socket || socket.destroyed) return;
+  const body = JSON.stringify({ error: message });
+  socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(body)}\r\nCache-Control: no-store\r\n\r\n${body}`);
+}
+
+function bridgeGeminiLiveSocket(client, token) {
+  const upstream = new WebSocket(`${GEMINI_LIVE_SOCKET_UPSTREAM}?access_token=${encodeURIComponent(token)}`);
+  const pending = [];
+  let pendingBytes = 0;
+  let closed = false;
+
+  function closeBoth(code = 1011, reason = 'relay unavailable') {
+    if (closed) return;
+    closed = true;
+    if (client.readyState === WebSocket.OPEN || client.readyState === WebSocket.CONNECTING) client.close(code, reason);
+    if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) upstream.close(code, reason);
+  }
+
+  client.on('message', (data, isBinary) => {
+    if (upstream.readyState === WebSocket.OPEN) {
+      upstream.send(data, { binary: isBinary });
+      return;
+    }
+    const size = Buffer.byteLength(data);
+    pendingBytes += size;
+    if (pendingBytes > GEMINI_LIVE_SOCKET_MAX_BUFFERED_BYTES) return closeBoth(1009, 'relay buffer exceeded');
+    pending.push({ data, isBinary });
+  });
+  client.on('close', () => closeBoth(1000, 'client closed'));
+  client.on('error', () => closeBoth());
+
+  upstream.on('open', () => {
+    for (const message of pending.splice(0)) upstream.send(message.data, { binary: message.isBinary });
+    pendingBytes = 0;
+  });
+  upstream.on('message', (data, isBinary) => {
+    if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
+  });
+  upstream.on('close', (code) => {
+    const reserved = code === 1004 || code === 1005 || code === 1006 || code === 1015;
+    closeBoth(code >= 1000 && code <= 4999 && !reserved ? code : 1011, 'upstream closed');
+  });
+  upstream.on('error', () => closeBoth());
+}
+
+// Same-origin Gemini Live relay. Authentication and the single-use lease are completed before
+// the WebSocket handshake, so an anonymous, suspended, forged, replayed, or cross-user token can
+// never open an upstream Gemini connection. Caddy reverse_proxy forwards WebSocket upgrades on
+// /api/ai/* automatically, so no production proxy exception is required.
+server.on('upgrade', async (request, socket, head) => {
+  socket.on('error', () => {});
+  let parsed;
+  try { parsed = new URL(request.url, 'http://localhost'); } catch (_) { return rejectWebSocketUpgrade(socket, 400, 'GEMINI_LIVE_RELAY_REQUEST_INVALID'); }
+  if (parsed.pathname !== GEMINI_LIVE_SOCKET_PATH) return rejectWebSocketUpgrade(socket, 404, 'NOT_FOUND');
+  // Browsers always send Origin on a WebSocket handshake. Validate it because WebSockets are
+  // not governed by CORS and a cross-site page could otherwise cause the browser to attach the
+  // NAVRYA cookie. Non-browser diagnostics with no Origin still need both session and lease.
+  if (request.headers.origin && !isOriginAllowed(request.headers.origin)) return rejectWebSocketUpgrade(socket, 403, 'ORIGIN_REJECTED');
+
+  const session = await verifySession(request);
+  if (!session.valid) return rejectWebSocketUpgrade(socket, 401, session.suspended ? 'ACCOUNT_SUSPENDED' : 'AUTH_SESSION_REQUIRED');
+  const token = parsed.searchParams.get('access_token') || '';
+  if (!/^auth_tokens\/[A-Za-z0-9._~-]+$/.test(token) || token.length > 2048) return rejectWebSocketUpgrade(socket, 401, 'GEMINI_LIVE_TOKEN_INVALID');
+
+  let leaseUserId = null;
+  try { leaseUserId = await resolveRealtimeLeaseStore().consumeIfValid(sha256Hex(token)); } catch (_) { leaseUserId = null; }
+  if (!leaseUserId || leaseUserId !== session.userId) return rejectWebSocketUpgrade(socket, 401, 'GEMINI_LIVE_LEASE_INVALID');
+
+  geminiLiveWebSocketServer.handleUpgrade(request, socket, head, (client) => {
+    geminiLiveWebSocketServer.emit('connection', client, request);
+    bridgeGeminiLiveSocket(client, token);
+  });
+});
+
 server.listen(port, host, () => {
   console.log(`Pattern AI server: http://${host}:${port}`);
 });
@@ -3446,6 +3541,7 @@ function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[pattern-ai] ${signal} received, shutting down gracefully...`);
+  for (const client of geminiLiveWebSocketServer.clients) client.close(1001, 'server shutting down');
   server.close((error) => { process.exit(error ? 1 : 0); });
   setTimeout(() => { console.warn('[pattern-ai] graceful shutdown timed out, forcing exit'); process.exit(1); }, 10000).unref();
 }

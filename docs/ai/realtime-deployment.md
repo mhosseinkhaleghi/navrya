@@ -1,5 +1,19 @@
 # Realtime Voice — Deployment (Journey E)
 
+## Gemini Live — same-origin WebSocket relay
+
+Gemini Voice uses `POST /api/ai/gemini-live/session` to mint a constrained, short-lived token and
+write a SHA-256 token lease bound to the authenticated NAVRYA user. The browser then connects to
+`WS /api/ai/gemini-live/socket` on its own origin. The gateway verifies the session, atomically
+consumes the lease, and bridges only that socket to the fixed Gemini Live upstream. Anonymous,
+suspended, forged, replayed, and cross-user attempts fail before an upstream connection opens.
+
+Caddy needs no special route: its existing `/api/ai/*` reverse proxy forwards WebSocket upgrades.
+Quota remains charged once at token mint, not again at relay connect. `REDIS_URL` remains required
+for multi-instance production because the relay lease can be minted and consumed by different
+`pattern-ai` replicas. A successful token mint proves credentials/model access; a subsequent
+WebSocket failure is diagnosed separately as relay/upstream connectivity.
+
 ## fix/voice-mode-hosted-connection (current) — same-origin SDP relay
 
 **This section is the current, correct state of this document. Everything below "Production

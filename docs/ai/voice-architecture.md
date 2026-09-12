@@ -4,7 +4,7 @@
 `server/pattern-ai-server.mjs` → `mintRealtimeClientSecret()` / `POST /api/ai/realtime/session`
 
 `navrya-src/geminiLiveVoice.js` → Gemini Live browser transport adapter
-`server/pattern-ai-server.mjs` → `POST /api/ai/gemini-live/session` / `POST /api/ai/gemini-live/speak`
+`server/pattern-ai-server.mjs` → `POST /api/ai/gemini-live/session` / `WS /api/ai/gemini-live/socket` / `POST /api/ai/gemini-live/speak`
 
 Adds OpenAI Realtime Voice (browser WebRTC) as a second input/output *channel* for the existing
 ChatDock/Copilot runtime. It is not a second AI brain: the Realtime model never decides what
@@ -77,9 +77,11 @@ Mic → getUserMedia → RealtimeSession (WebRTC) → OpenAI Realtime API
 ## Gemini Voice: separate transport, same decision path
 
 Gemini Voice is an additive option selected by choosing Gemini in the existing provider control;
-it does not replace or change the OpenAI Voice path. Its microphone audio goes directly from the
-browser to Gemini Live using a server-minted, one-use constrained token. The browser never gets
-`GEMINI_API_KEY`.
+it does not replace or change the OpenAI Voice path. Its microphone audio uses a server-minted,
+one-use constrained token over NAVRYA's same-origin WebSocket relay. The relay validates the real
+NAVRYA session plus a user-bound, atomically consumed token lease before opening the fixed Gemini
+upstream. This avoids production networks that block browser-direct Google WebSockets without
+turning the endpoint into a general proxy. The browser never gets `GEMINI_API_KEY`.
 
 Gemini Live is deliberately used for finalized transcription rather than autonomous replies.
 Each final transcript still takes the same `chatDockView.jsx` → `submit()` route above. Gemini TTS
