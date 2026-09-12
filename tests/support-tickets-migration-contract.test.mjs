@@ -63,11 +63,9 @@ test('the migration is purely additive - CREATE TABLE IF NOT EXISTS / CREATE IND
   assert.doesNotMatch(migrationSql, /DROP (TABLE|COLUMN|INDEX)/i);
 });
 
-test('the migration file is next in the real, current sequence (058) and no other migration reuses that number', async () => {
+test('058 is a real, uniquely-numbered migration file (a later migration, e.g. 059, may legitimately extend the same table)', async () => {
   const files = (await readdir(path.join(root, 'server', 'db', 'migrations'))).filter((f) => f.endsWith('.sql'));
   const own = files.filter((f) => f.startsWith('058_'));
   assert.equal(own.length, 1, 'exactly one migration file must claim number 058');
   assert.equal(own[0], '058_support_tickets.sql');
-  const numbers = files.map((f) => Number(f.slice(0, 3))).filter((n) => Number.isFinite(n));
-  assert.equal(Math.max(...numbers), 58, '058 must be the current latest migration number');
 });
