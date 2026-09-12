@@ -15,6 +15,81 @@ const CATEGORIES = ['technical', 'billing', 'account', 'other'];
 const STATUS_TONE = { open: 'warning', waiting_user: 'accent', resolved: 'success', closed: 'neutral' };
 const STATUS_KEY = { open: 'statusOpen', waiting_user: 'statusWaitingUser', resolved: 'statusResolved', closed: 'statusClosed' };
 
+// Mirrors server/storage/storage.mjs's own caps exactly (MAX_IMAGE_BYTES/MAX_VIDEO_BYTES) - a
+// client-side reject is just a faster, friendlier version of the same real server-side rule,
+// never a substitute for it.
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const MAX_IMAGES = 4;
+const MAX_VIDEOS = 2;
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Shared by the new-ticket dialog and the reply composer - lets a customer attach a screenshot
+// or short screen recording to either the initial ticket or a follow-up reply (spec: "add upload
+// of image and video to the customer side"). Images preview as thumbnails; videos show as a
+// filename chip (no client-side thumbnail generation) - both removable before sending.
+function AttachmentPicker({ i18n, images, videos, onImagesChange, onVideosChange }) {
+  const imageInputRef = React.useRef(null);
+  const videoInputRef = React.useRef(null);
+
+  function pickImage(file) {
+    if (images.length >= MAX_IMAGES || !file) return;
+    if (!/^image\//.test(file.type)) { showToast(i18n.t('attachmentInvalidType'), 'danger'); return; }
+    if (file.size > MAX_IMAGE_BYTES) { showToast(i18n.t('attachmentTooLarge'), 'danger'); return; }
+    fileToDataUrl(file).then((url) => onImagesChange([...images, { id: Date.now() + '-' + images.length, url }]));
+  }
+  function pickVideo(file) {
+    if (videos.length >= MAX_VIDEOS || !file) return;
+    if (!/^video\//.test(file.type)) { showToast(i18n.t('attachmentInvalidType'), 'danger'); return; }
+    if (file.size > MAX_VIDEO_BYTES) { showToast(i18n.t('attachmentTooLarge'), 'danger'); return; }
+    fileToDataUrl(file).then((url) => onVideosChange([...videos, { id: Date.now() + '-' + videos.length, name: file.name, url }]));
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {(images.length > 0 || videos.length > 0) && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {images.map((img, i) => (
+            <div key={img.id} style={{ position: 'relative', width: 64, height: 64, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-hairline)' }}>
+              <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <button
+                type="button" aria-label={i18n.t('removeAttachment')} onClick={() => onImagesChange(images.filter((_, idx) => idx !== i))}
+                style={{ position: 'absolute', top: 2, insetInlineEnd: 2, width: 18, height: 18, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgba(3,8,7,.86)', border: 0, color: '#fff', cursor: 'pointer' }}
+              ><Icon name="close" size={11} /></button>
+            </div>
+          ))}
+          {videos.map((vid, i) => (
+            <div key={vid.id} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
+              <Icon name="video" size={14} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-primary)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{vid.name}</span>
+              <button
+                type="button" aria-label={i18n.t('removeAttachment')} onClick={() => onVideosChange(videos.filter((_, idx) => idx !== i))}
+                style={{ display: 'grid', placeItems: 'center', background: 'transparent', border: 0, color: 'var(--text-muted)', cursor: 'pointer' }}
+              ><Icon name="close" size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files && e.target.files[0]; e.target.value = ''; pickImage(file); }} />
+        <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files && e.target.files[0]; e.target.value = ''; pickVideo(file); }} />
+        <Button variant="secondary" icon="image" onClick={() => imageInputRef.current && imageInputRef.current.click()} disabled={images.length >= MAX_IMAGES}>{i18n.t('attachImage')}</Button>
+        <Button variant="secondary" icon="video" onClick={() => videoInputRef.current && videoInputRef.current.click()} disabled={videos.length >= MAX_VIDEOS}>{i18n.t('attachVideo')}</Button>
+        {images.length > 0 && <Chip tone="accent">{i18n.t('attachmentImageCountLabel', { n: images.length })}</Chip>}
+        {videos.length > 0 && <Chip tone="accent">{i18n.t('attachmentVideoCountLabel', { n: videos.length })}</Chip>}
+      </div>
+    </div>
+  );
+}
+
 function StatusChip({ i18n, status }) {
   return <Chip tone={STATUS_TONE[status] || 'neutral'} dot>{i18n.t(STATUS_KEY[status] || 'statusOpen')}</Chip>;
 }
@@ -23,6 +98,8 @@ function NewTicketDialog({ i18n, onClose, onCreated }) {
   const [subject, setSubject] = React.useState('');
   const [category, setCategory] = React.useState('technical');
   const [message, setMessage] = React.useState('');
+  const [images, setImages] = React.useState([]);
+  const [videos, setVideos] = React.useState([]);
   const [submitting, setSubmitting] = React.useState(false);
 
   function submit() {
@@ -31,7 +108,10 @@ function NewTicketDialog({ i18n, onClose, onCreated }) {
     if (!cleanSubject) { showToast(i18n.t('subjectRequired'), 'danger'); return undefined; }
     if (!cleanMessage) { showToast(i18n.t('messageRequired'), 'danger'); return undefined; }
     setSubmitting(true);
-    return window.TradeJournalSupportStore.createTicket({ subject: cleanSubject, category, message: cleanMessage })
+    return window.TradeJournalSupportStore.createTicket({
+      subject: cleanSubject, category, message: cleanMessage,
+      images: images.map((img) => img.url), videos: videos.map((vid) => vid.url)
+    })
       .then((ticket) => { onCreated(ticket.id); onClose(); return ticket; })
       .catch((error) => { showToast((error && error.code) || 'FAILED', 'danger'); setSubmitting(false); return undefined; });
   }
@@ -69,6 +149,7 @@ function NewTicketDialog({ i18n, onClose, onCreated }) {
           style={{ resize: 'vertical', borderRadius: 8, padding: 14, background: 'rgba(3,8,7,.55)', border: '1px solid var(--border-gold)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
         />
       </label>
+      <AttachmentPicker i18n={i18n} images={images} videos={videos} onImagesChange={setImages} onVideosChange={setVideos} />
     </Modal>
   );
 }
@@ -127,18 +208,36 @@ function TicketEmptyState({ i18n, onNewTicket }) {
   );
 }
 
+function MessageAttachments({ attachments }) {
+  if (!attachments || !attachments.length) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {attachments.map((a, i) => a.type === 'video' ? (
+        <video key={i} src={a.url} controls style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, border: '1px solid var(--border-hairline)' }} />
+      ) : (
+        <a key={i} href={a.url} target="_blank" rel="noreferrer">
+          <img src={a.url} alt="" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border-hairline)' }} />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function MessageBubble({ i18n, message, mine }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', gap: 4, maxWidth: '78%', alignSelf: mine ? 'flex-end' : 'flex-start' }}>
       <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{mine ? i18n.t('youLabel') : (message.authorRole === 'staff' ? i18n.t('staffLabel') : message.authorName || '—')}</span>
-      <div
-        dir="auto"
-        style={{
-          padding: '12px 14px', borderRadius: 8, font: 'var(--type-body)', color: mine ? 'var(--char-accent)' : 'var(--text-primary)',
-          background: mine ? 'var(--char-active-surface)' : 'rgba(3,8,7,.45)',
-          border: '1px solid ' + (mine ? 'color-mix(in srgb, var(--char-accent) 55%, transparent)' : 'var(--border-hairline)')
-        }}
-      >{message.content}</div>
+      {message.content && (
+        <div
+          dir="auto"
+          style={{
+            padding: '12px 14px', borderRadius: 8, font: 'var(--type-body)', color: mine ? 'var(--char-accent)' : 'var(--text-primary)',
+            background: mine ? 'var(--char-active-surface)' : 'rgba(3,8,7,.45)',
+            border: '1px solid ' + (mine ? 'color-mix(in srgb, var(--char-accent) 55%, transparent)' : 'var(--border-hairline)')
+          }}
+        >{message.content}</div>
+      )}
+      <MessageAttachments attachments={message.attachments} />
       <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.date(message.createdAt)}</span>
     </div>
   );
@@ -148,6 +247,8 @@ function MessageBubble({ i18n, message, mine }) {
 function TicketConversationPanel({ i18n, ticketId, reloadKey, onChanged }) {
   const [state, setState] = React.useState('loading');
   const [draft, setDraft] = React.useState('');
+  const [replyImages, setReplyImages] = React.useState([]);
+  const [replyVideos, setReplyVideos] = React.useState([]);
   const [sending, setSending] = React.useState(false);
 
   function load() {
@@ -178,8 +279,10 @@ function TicketConversationPanel({ i18n, ticketId, reloadKey, onChanged }) {
     const value = draft.trim();
     if (!value) return undefined;
     setSending(true);
-    return window.TradeJournalSupportStore.replyToTicket(ticketId, value)
-      .then(() => { setDraft(''); setSending(false); load(); })
+    return window.TradeJournalSupportStore.replyToTicket(ticketId, {
+      message: value, images: replyImages.map((img) => img.url), videos: replyVideos.map((vid) => vid.url)
+    })
+      .then(() => { setDraft(''); setReplyImages([]); setReplyVideos([]); setSending(false); load(); })
       .catch((error) => { showToast((error && error.code) || 'FAILED', 'danger'); setSending(false); });
   }
 
@@ -203,13 +306,16 @@ function TicketConversationPanel({ i18n, ticketId, reloadKey, onChanged }) {
         {messages.map((m) => <MessageBubble key={m.id} i18n={i18n} message={m} mine={m.authorId === currentUserId()} />)}
       </div>
       {canReply ? (
-        <div style={{ display: 'flex', gap: 10, padding: '14px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)' }}>
-          <input
-            type="text" value={draft} maxLength={5000} onChange={(e) => setDraft(e.target.value)} placeholder={i18n.t('replyPlaceholder')} dir="auto"
-            onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
-            style={{ flex: 1, height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, background: 'rgba(3,8,7,.55)', border: '1px solid var(--border-gold)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
-          />
-          <Button variant="primary" icon="send" onClick={send} disabled={sending}>{i18n.t('replySend')}</Button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)' }}>
+          <AttachmentPicker i18n={i18n} images={replyImages} videos={replyVideos} onImagesChange={setReplyImages} onVideosChange={setReplyVideos} />
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              type="text" value={draft} maxLength={5000} onChange={(e) => setDraft(e.target.value)} placeholder={i18n.t('replyPlaceholder')} dir="auto"
+              onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+              style={{ flex: 1, height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, background: 'rgba(3,8,7,.55)', border: '1px solid var(--border-gold)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
+            />
+            <Button variant="primary" icon="send" onClick={send} disabled={sending}>{i18n.t('replySend')}</Button>
+          </div>
         </div>
       ) : (
         <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border-hairline)' }}>

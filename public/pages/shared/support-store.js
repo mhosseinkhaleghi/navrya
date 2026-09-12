@@ -27,7 +27,9 @@
     listTickets: function () { return get('/api/sync/support-tickets'); },
     createTicket: function (data) { return post('/api/sync/support-tickets', data).then(function (r) { notifyChanged(); return r; }); },
     getTicket: function (id) { return get('/api/sync/support-tickets/' + encodeURIComponent(id)).then(function (r) { notifyChanged(); return r; }); },
-    replyToTicket: function (id, message) { return post('/api/sync/support-tickets/' + encodeURIComponent(id) + '/messages', { message: message }).then(function (r) { notifyChanged(); return r; }); },
+    // `data`: { message, images, videos } - images/videos are optional arrays of data URLs,
+    // same shape createTicket() accepts.
+    replyToTicket: function (id, data) { return post('/api/sync/support-tickets/' + encodeURIComponent(id) + '/messages', data).then(function (r) { notifyChanged(); return r; }); },
     closeTicket: function (id) { return post('/api/sync/support-tickets/' + encodeURIComponent(id) + '/close').then(function (r) { notifyChanged(); return r; }); }
   };
 }());

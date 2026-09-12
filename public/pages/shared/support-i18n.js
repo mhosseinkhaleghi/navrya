@@ -15,7 +15,10 @@
       closeTicketAction: 'بستن تیکت', closeTicketConfirm: 'این تیکت بسته شود؟', ticketClosedNotice: 'این تیکت بسته شده و امکان پاسخ جدید در آن نیست.',
       unreadLabel: 'پاسخ جدید', conversationLabel: 'گفتگو', createdAtLabel: 'ایجادشده در {date}', lastActivityLabel: 'آخرین فعالیت {date}',
       youLabel: 'شما', staffLabel: 'پشتیبانی نوریا', subjectRequired: 'موضوع را وارد کن.', messageRequired: 'پیام را وارد کن.',
-      ticketListLabel: 'تیکت‌های من', backToList: 'بازگشت به فهرست'
+      ticketListLabel: 'تیکت‌های من', backToList: 'بازگشت به فهرست',
+      attachImage: 'پیوست تصویر', attachVideo: 'پیوست ویدیو', removeAttachment: 'حذف پیوست',
+      attachmentImageCountLabel: '{n} تصویر پیوست شد', attachmentVideoCountLabel: '{n} ویدیو پیوست شد',
+      attachmentTooLarge: 'حجم فایل بیش از حد مجاز است.', attachmentInvalidType: 'نوع فایل پشتیبانی نمی‌شود.'
     },
     ar: {
       close: 'إغلاق', cancel: 'إلغاء', save: 'حفظ', back: 'رجوع', loading: 'جارٍ التحميل…', errorGeneric: 'حدث خطأ ما.', retry: 'إعادة المحاولة',
@@ -29,7 +32,10 @@
       closeTicketAction: 'إغلاق التذكرة', closeTicketConfirm: 'هل تريد إغلاق هذه التذكرة؟', ticketClosedNotice: 'هذه التذكرة مغلقة ولا يمكن الرد عليها.',
       unreadLabel: 'رد جديد', conversationLabel: 'المحادثة', createdAtLabel: 'أُنشئت في {date}', lastActivityLabel: 'آخر نشاط {date}',
       youLabel: 'أنت', staffLabel: 'فريق دعم نافريا', subjectRequired: 'أدخل الموضوع.', messageRequired: 'أدخل الرسالة.',
-      ticketListLabel: 'تذاكري', backToList: 'العودة إلى القائمة'
+      ticketListLabel: 'تذاكري', backToList: 'العودة إلى القائمة',
+      attachImage: 'إرفاق صورة', attachVideo: 'إرفاق فيديو', removeAttachment: 'إزالة المرفق',
+      attachmentImageCountLabel: 'تم إرفاق {n} صورة', attachmentVideoCountLabel: 'تم إرفاق {n} فيديو',
+      attachmentTooLarge: 'حجم الملف أكبر من المسموح.', attachmentInvalidType: 'نوع الملف غير مدعوم.'
     },
     en: {
       close: 'Close', cancel: 'Cancel', save: 'Save', back: 'Back', loading: 'Loading…', errorGeneric: 'Something went wrong.', retry: 'Retry',
@@ -43,7 +49,10 @@
       closeTicketAction: 'Close ticket', closeTicketConfirm: 'Close this ticket?', ticketClosedNotice: 'This ticket is closed and can no longer receive replies.',
       unreadLabel: 'New reply', conversationLabel: 'Conversation', createdAtLabel: 'Created {date}', lastActivityLabel: 'Last activity {date}',
       youLabel: 'You', staffLabel: 'NAVRYA Support', subjectRequired: 'Enter a subject.', messageRequired: 'Enter a message.',
-      ticketListLabel: 'My tickets', backToList: 'Back to list'
+      ticketListLabel: 'My tickets', backToList: 'Back to list',
+      attachImage: 'Attach image', attachVideo: 'Attach video', removeAttachment: 'Remove attachment',
+      attachmentImageCountLabel: '{n} image attached', attachmentVideoCountLabel: '{n} video attached',
+      attachmentTooLarge: 'The file is too large.', attachmentInvalidType: 'That file type is not supported.'
     },
     es: {
       close: 'Cerrar', cancel: 'Cancelar', save: 'Guardar', back: 'Volver', loading: 'Cargando…', errorGeneric: 'Algo salió mal.', retry: 'Reintentar',
@@ -57,7 +66,10 @@
       closeTicketAction: 'Cerrar ticket', closeTicketConfirm: '¿Cerrar este ticket?', ticketClosedNotice: 'Este ticket está cerrado y ya no puede recibir respuestas.',
       unreadLabel: 'Respuesta nueva', conversationLabel: 'Conversación', createdAtLabel: 'Creado el {date}', lastActivityLabel: 'Última actividad {date}',
       youLabel: 'Tú', staffLabel: 'Soporte NAVRYA', subjectRequired: 'Ingresa un asunto.', messageRequired: 'Ingresa un mensaje.',
-      ticketListLabel: 'Mis tickets', backToList: 'Volver a la lista'
+      ticketListLabel: 'Mis tickets', backToList: 'Volver a la lista',
+      attachImage: 'Adjuntar imagen', attachVideo: 'Adjuntar video', removeAttachment: 'Quitar adjunto',
+      attachmentImageCountLabel: '{n} imagen adjunta', attachmentVideoCountLabel: '{n} video adjunto',
+      attachmentTooLarge: 'El archivo es demasiado grande.', attachmentInvalidType: 'Ese tipo de archivo no es compatible.'
     }
   };
 
