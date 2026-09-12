@@ -108,3 +108,49 @@ export async function saveImages(dataUrls, options) {
   for (const dataUrl of list) results.push(await saveImage(dataUrl, options));
   return results;
 }
+
+// Video attachments (Support Tickets) - honestly narrower validation than saveImage()'s: this
+// project has no video decode/transcode dependency (the sharp-based "decode and re-encode every
+// upload" defense images get has no video equivalent here), so a video is real-content-sniffed
+// via its container's own magic bytes (never the declared MIME alone) and stored byte-for-byte,
+// not re-encoded. That still rejects anything that isn't actually shaped like a real video
+// container, regardless of what it claims to be - the same "never trust the declared type alone"
+// principle, just without the re-encode step images additionally get.
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // a short screen recording comfortably fits; keeps one attachment well inside app.mjs's per-route JSON body limit
+const ALLOWED_VIDEO_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+const EBML_SIGNATURE = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]); // Matroska/WebM container header
+
+function detectVideoContainer(buffer) {
+  // ISO-BMFF family (MP4 and QuickTime/.mov both use it) - a 4-byte box size, then the literal
+  // ASCII tag 'ftyp' at offset 4. Real container structure, not a filename/MIME string.
+  if (buffer.length >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp') return 'mp4';
+  if (buffer.length >= 4 && buffer.subarray(0, 4).equals(EBML_SIGNATURE)) return 'webm';
+  return null;
+}
+
+export async function saveVideo(dataUrl, { uploadsDir, category }) {
+  const match = typeof dataUrl === 'string' ? dataUrl.match(DATA_URL_PATTERN) : null;
+  if (!match) throw new ApiError(400, 'INVALID_VIDEO_TYPE');
+  const [, declaredMime, base64] = match;
+  const mime = declaredMime.toLowerCase();
+  if (!ALLOWED_VIDEO_MIME.has(mime)) throw new ApiError(400, 'INVALID_VIDEO_TYPE');
+  const buffer = Buffer.from(base64, 'base64');
+  if (buffer.byteLength > MAX_VIDEO_BYTES) throw new ApiError(400, 'VIDEO_TOO_LARGE');
+  const container = detectVideoContainer(buffer);
+  if (!container) throw new ApiError(400, 'INVALID_VIDEO_TYPE');
+  // The declared mime is trusted for the mp4-vs-mov split ONLY after the real container check
+  // above already confirmed the bytes are genuinely ISO-BMFF-shaped.
+  const extension = container === 'webm' ? 'webm' : mime === 'video/quicktime' ? 'mov' : 'mp4';
+  const fileName = `${newId('vid')}.${extension}`;
+  const dir = path.join(uploadsDir, category);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, fileName), buffer);
+  return { url: `/uploads/${category}/${fileName}`, sizeBytes: buffer.byteLength, mimeType: mime };
+}
+
+export async function saveVideos(dataUrls, options) {
+  const list = Array.isArray(dataUrls) ? dataUrls.slice(0, 2) : []; // videos are large; a hard cap per message keeps abuse/cost bounded
+  const results = [];
+  for (const dataUrl of list) results.push(await saveVideo(dataUrl, options));
+  return results;
+}

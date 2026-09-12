@@ -9,7 +9,7 @@ import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commerc
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
-import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, TICKET_STATUSES } from './support-ticket-normalize.mjs';
+import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -136,7 +136,7 @@ function mapSupportTicket(row) {
   };
 }
 function mapSupportTicketMessage(row) {
-  return { id: row.id, ticketId: row.ticket_id, authorId: row.author_id, authorRole: row.author_role, content: row.content, createdAt: row.created_at };
+  return { id: row.id, ticketId: row.ticket_id, authorId: row.author_id, authorRole: row.author_role, content: row.content, attachments: row.attachments || [], createdAt: row.created_at };
 }
 function mapCommunityCursor(row) { return { userId: row.user_id, lastSeenAt: row.last_seen_at, updatedAt: row.updated_at }; }
 // Launch-readiness audit fix (P1-1, 052_client_errors.sql).
@@ -904,10 +904,11 @@ export function createPgRepo(pool) {
   // count is a live COUNT(status='open') in `notifications` below, never a maintained counter, so
   // it can never drift out of sync with real ticket rows.
   const supportTickets = {
-    async create({ userId, subject, category, content }) {
+    async create({ userId, subject, category, content, attachments }) {
       const cleanSubject = normalizeTicketSubject(subject);
       const cleanCategory = normalizeTicketCategory(category);
       const cleanContent = normalizeTicketMessage(content);
+      const cleanAttachments = normalizeTicketAttachments(attachments);
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -917,8 +918,8 @@ export function createPgRepo(pool) {
           [ticketId, userId, cleanSubject, cleanCategory]
         );
         await client.query(
-          `INSERT INTO support_ticket_messages (id, ticket_id, author_id, author_role, content) VALUES ($1,$2,$3,'user',$4)`,
-          [newId('ticketmsg'), ticketId, userId, cleanContent]
+          `INSERT INTO support_ticket_messages (id, ticket_id, author_id, author_role, content, attachments) VALUES ($1,$2,$3,'user',$4,$5)`,
+          [newId('ticketmsg'), ticketId, userId, cleanContent, JSON.stringify(cleanAttachments)]
         );
         await client.query('COMMIT');
         return mapSupportTicket(ticketRows[0]);
@@ -959,7 +960,7 @@ export function createPgRepo(pool) {
     // authorRole is resolved server-side by the caller (routes.support-tickets.mjs always passes
     // 'user'; admin/routes.support-tickets.mjs always passes 'staff') - never accepted from the
     // request body.
-    async reply({ ticketId, authorId, authorRole, content, nextStatus }) {
+    async reply({ ticketId, authorId, authorRole, content, attachments, nextStatus }) {
       const ticket = await supportTickets.get(ticketId);
       if (!ticket) throw new ApiError(404, 'TICKET_NOT_FOUND');
       if (authorRole === 'user') {
@@ -967,12 +968,13 @@ export function createPgRepo(pool) {
         if (ticket.status === 'closed') throw new ApiError(409, 'TICKET_CLOSED');
       }
       const cleanContent = normalizeTicketMessage(content);
+      const cleanAttachments = normalizeTicketAttachments(attachments);
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
         const { rows: messageRows } = await client.query(
-          `INSERT INTO support_ticket_messages (id, ticket_id, author_id, author_role, content) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-          [newId('ticketmsg'), ticketId, authorId, authorRole, cleanContent]
+          `INSERT INTO support_ticket_messages (id, ticket_id, author_id, author_role, content, attachments) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+          [newId('ticketmsg'), ticketId, authorId, authorRole, cleanContent, JSON.stringify(cleanAttachments)]
         );
         // Spec section E: a user reply (including reopening a resolved ticket) always lands the
         // ticket back on 'open' (awaiting staff). A staff reply defaults to 'waiting_user' unless
@@ -1015,6 +1017,19 @@ export function createPgRepo(pool) {
     // ticket, so the two independent badges the spec requires stay separate never conflate.
     async markRead(ticketId, userId) {
       await pool.query('UPDATE support_tickets SET owner_unread=false WHERE id=$1 AND user_id=$2', [ticketId, userId]);
+    },
+    // security/upload-ownership.mjs's RESOLVERS['ticket'] - same per-domain-resolver shape as
+    // session/pattern/strategy/trade's own findOwnerByXUrl (never storage_objects/the paid
+    // storage-quota system - a support attachment is unrelated to that purchased quota).
+    async findOwnerByAttachmentUrl(url) {
+      const { rows } = await pool.query(
+        `SELECT t.user_id FROM support_ticket_messages m
+         JOIN support_tickets t ON t.id = m.ticket_id
+         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(m.attachments) AS a WHERE a->>'url' = $1)
+         LIMIT 1`,
+        [url]
+      );
+      return rows[0] ? rows[0].user_id : null;
     }
   };
 

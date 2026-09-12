@@ -26,3 +26,15 @@ export function normalizeTicketMessage(content) {
   if (!trimmed || trimmed.length > MESSAGE_MAX_LENGTH) throw new ApiError(400, 'VALIDATION_FAILED');
   return trimmed;
 }
+
+export const ATTACHMENT_MAX_COUNT = 6;
+
+// Attachments arrive here already saved to disk (routes.support-tickets.mjs calls
+// saveImages()/saveVideos() first, exactly like routes.posts.mjs does for Community) - this is a
+// defensive shape check on server-generated metadata, never a re-validation of raw upload bytes.
+export function normalizeTicketAttachments(attachments) {
+  const list = Array.isArray(attachments) ? attachments.slice(0, ATTACHMENT_MAX_COUNT) : [];
+  return list
+    .filter((a) => a && typeof a.url === 'string' && a.url && (a.type === 'image' || a.type === 'video'))
+    .map((a) => ({ url: a.url, type: a.type, mimeType: typeof a.mimeType === 'string' ? a.mimeType : null }));
+}

@@ -24,8 +24,20 @@ const RESOLVERS = {
   session: (repo, url) => repo.tradingSessions.findOwnerByEntryImageUrl(url),
   pattern: (repo, url) => repo.patterns.findOwnerByScreenshotUrl(url),
   strategy: (repo, url) => repo.strategies.findOwnerByAttachmentUrl(url),
-  trade: (repo, url) => repo.trades.findOwnerByScreenshotUrl(url)
+  trade: (repo, url) => repo.trades.findOwnerByScreenshotUrl(url),
+  // Support Tickets (059_support_ticket_attachments.sql) - same per-domain-resolver shape as the
+  // four above; deliberately NOT routed through storage_objects/the paid storage-quota system, a
+  // support attachment is unrelated to that purchased quota.
+  ticket: (repo, url) => repo.supportTickets.findOwnerByAttachmentUrl(url)
 };
+
+// A support ticket's own owner-facing API already exposes its subject/messages/owner identity to
+// any admin (server/admin/routes.support-tickets.mjs) - an admin viewing that same ticket must
+// also be able to load the attachment FILES it references, to actually see what the user
+// attached. Scoped to exactly this one category: it must never broaden to session/pattern/
+// strategy/trade, whose owner-only posture is the real fix a prior security pass shipped (see
+// this file's header comment) and stays completely unaffected.
+const ADMIN_VISIBLE_CATEGORIES = new Set(['ticket']);
 
 export async function resolveUploadOwnerId(repo, category, objectKey) {
   const viaStorageObjects = await repo.storageObjects.findActiveByObjectKey(objectKey);
@@ -50,7 +62,10 @@ export function requireUploadOwnership(repo) {
       const category = objectKey.split('/')[0];
       if (!objectKey || objectKey === category) return res.status(404).json({ error: 'UPLOAD_NOT_FOUND' });
       const ownerId = await resolveUploadOwnerId(repo, category, objectKey);
-      if (!ownerId || ownerId !== req.currentUser.id) {
+      if (!ownerId) return res.status(404).json({ error: 'UPLOAD_NOT_FOUND' });
+      const isOwner = ownerId === req.currentUser.id;
+      const isAdminVisible = ADMIN_VISIBLE_CATEGORIES.has(category) && req.currentUser.role === 'admin';
+      if (!isOwner && !isAdminVisible) {
         return res.status(404).json({ error: 'UPLOAD_NOT_FOUND' });
       }
       next();

@@ -121,6 +121,11 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   // (P1-1) - a real client error event is a short message plus a few short metadata fields, never
   // anything close to the general 60mb image-upload ceiling.
   app.use('/api/errors', express.json({ limit: '8kb' }));
+  // Support ticket attachments can include one or two video clips (up to 50MB decoded each,
+  // storage.mjs's own MAX_VIDEO_BYTES) - base64 inflates that ~33%, comfortably exceeding the
+  // general 60mb ceiling below. Same "small/large body limit reserved before the general parser"
+  // precedent as every other route-scoped limit on this page, just larger instead of smaller.
+  app.use('/api/sync/support-tickets', express.json({ limit: '110mb' }));
   // Real BSC crypto webhook (task A.6) - needs the RAW request body to verify its HMAC signature
   // (server/commercial/bsc-crypto-billing-provider.mjs's verifyWebhook()), so this is parsed as
   // raw bytes, BEFORE the general JSON parser below would otherwise consume it, exactly like the
@@ -147,7 +152,11 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   // storage_objects for anything uploaded through the normal upload endpoints, falling back to
   // the owning domain row for images uploaded before that table existed) and only lets the request
   // through when that owner is the current session's user - never merely "a" logged-in user.
-  const PRIVATE_UPLOAD_CATEGORIES = new Set(['session', 'pattern', 'strategy', 'trade']);
+  // 'ticket' added for Support Ticket image/video attachments - a support conversation can
+  // contain sensitive account/billing screenshots, so it stays private like the other four
+  // (requireUploadOwnership's ADMIN_VISIBLE_CATEGORIES then narrowly re-opens it to admins only,
+  // for this one category - see that module's own comment).
+  const PRIVATE_UPLOAD_CATEGORIES = new Set(['session', 'pattern', 'strategy', 'trade', 'ticket']);
   function isPrivateUploadPath(req) {
     return PRIVATE_UPLOAD_CATEGORIES.has(req.path.split('/')[1]);
   }
@@ -185,7 +194,7 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   app.use('/api/community', routesPosts.router(repo, uploadsDir));
   app.use('/api/marketplace', routesMarketplace.router(repo, uploadsDir));
   app.use('/api/messages', routesMessages.router(repo));
-  app.use('/api/sync/support-tickets', routesSupportTickets.router(repo));
+  app.use('/api/sync/support-tickets', routesSupportTickets.router(repo, uploadsDir));
   app.use('/api/sync/notifications', routesNotifications.router(repo));
   // /api/sync/* is its own prefix (not /api/sessions, /api/patterns, etc.) because those
   // exact prefixes are already claimed end-to-end by vite.config.js's proxy rules, routed to

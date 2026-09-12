@@ -9,7 +9,7 @@ import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commerc
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
-import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, TICKET_STATUSES } from './support-ticket-normalize.mjs';
+import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -405,18 +405,19 @@ export function createMemoryRepo() {
   // including the same validation (support-ticket-normalize.mjs), the same status-transition
   // rules, and the same denormalized lastStaffReplyAt the per-user unread badge reads.
   const supportTickets = {
-    async create({ userId, subject, category, content }) {
+    async create({ userId, subject, category, content, attachments }) {
       requireUser(userId);
       const cleanSubject = normalizeTicketSubject(subject);
       const cleanCategory = normalizeTicketCategory(category);
       const cleanContent = normalizeTicketMessage(content);
+      const cleanAttachments = normalizeTicketAttachments(attachments);
       const stamp = now();
       const ticket = {
         id: newId('ticket'), userId, subject: cleanSubject, category: cleanCategory, status: 'open',
         lastActivityAt: stamp, ownerUnread: false, createdAt: stamp, updatedAt: stamp
       };
       state.supportTickets.set(ticket.id, ticket);
-      const message = { id: newId('ticketmsg'), ticketId: ticket.id, authorId: userId, authorRole: 'user', content: cleanContent, createdAt: stamp };
+      const message = { id: newId('ticketmsg'), ticketId: ticket.id, authorId: userId, authorRole: 'user', content: cleanContent, attachments: cleanAttachments, createdAt: stamp };
       state.supportTicketMessages.set(message.id, message);
       return clone(ticket);
     },
@@ -434,7 +435,7 @@ export function createMemoryRepo() {
       return Array.from(state.supportTicketMessages.values()).filter((m) => m.ticketId === ticketId)
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map(clone);
     },
-    async reply({ ticketId, authorId, authorRole, content, nextStatus }) {
+    async reply({ ticketId, authorId, authorRole, content, attachments, nextStatus }) {
       const ticket = state.supportTickets.get(ticketId);
       if (!ticket) throw new ApiError(404, 'TICKET_NOT_FOUND');
       if (authorRole === 'user') {
@@ -442,8 +443,9 @@ export function createMemoryRepo() {
         if (ticket.status === 'closed') throw new ApiError(409, 'TICKET_CLOSED');
       }
       const cleanContent = normalizeTicketMessage(content);
+      const cleanAttachments = normalizeTicketAttachments(attachments);
       const stamp = now();
-      const message = { id: newId('ticketmsg'), ticketId, authorId, authorRole, content: cleanContent, createdAt: stamp };
+      const message = { id: newId('ticketmsg'), ticketId, authorId, authorRole, content: cleanContent, attachments: cleanAttachments, createdAt: stamp };
       state.supportTicketMessages.set(message.id, message);
       ticket.status = authorRole === 'user' ? 'open' : (nextStatus && TICKET_STATUSES.includes(nextStatus) ? nextStatus : 'waiting_user');
       ticket.lastActivityAt = stamp;
@@ -471,6 +473,16 @@ export function createMemoryRepo() {
     async markRead(ticketId, userId) {
       const ticket = state.supportTickets.get(ticketId);
       if (ticket && ticket.userId === userId) ticket.ownerUnread = false;
+    },
+    // Mirrors repo.pg.mjs's findOwnerByAttachmentUrl exactly.
+    async findOwnerByAttachmentUrl(url) {
+      for (const message of state.supportTicketMessages.values()) {
+        if ((message.attachments || []).some((a) => a.url === url)) {
+          const ticket = state.supportTickets.get(message.ticketId);
+          return ticket ? ticket.userId : null;
+        }
+      }
+      return null;
     }
   };
 

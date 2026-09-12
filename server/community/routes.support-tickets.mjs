@@ -1,6 +1,8 @@
 import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
 import { rateLimit, sessionKey } from './security/rate-limit.mjs';
+import { saveImages, saveVideos } from '../storage/storage.mjs';
+import { ATTACHMENT_MAX_COUNT } from '../db/support-ticket-normalize.mjs';
 
 // Same primitive/shape as routes.posts.mjs's postLimiter/commentLimiter and
 // routes.messages.mjs's threadLimiter/messageLimiter - session-keyed, not IP-keyed (every caller
@@ -36,10 +38,26 @@ async function loadOwnedTicket(repo, id, userId) {
   return ticket;
 }
 
+// Saves any attached images/videos under the PRIVATE 'ticket' category (app.mjs's
+// PRIVATE_UPLOAD_CATEGORIES + security/upload-ownership.mjs's 'ticket' resolver - owner and any
+// admin only, never public) BEFORE the repo write, mirroring routes.posts.mjs's own
+// save-then-store-the-resulting-urls shape. `images`/`videos` are raw data URLs from the client;
+// the combined result is capped at ATTACHMENT_MAX_COUNT total (repo.supportTickets normalizes
+// this again defensively, but bounding it here avoids saving files that would just be dropped).
+async function saveAttachments({ images, videos, uploadsDir }) {
+  const savedImages = await saveImages(Array.isArray(images) ? images : [], { uploadsDir, category: 'ticket' });
+  const remaining = Math.max(0, ATTACHMENT_MAX_COUNT - savedImages.length);
+  const savedVideos = remaining > 0 ? await saveVideos((Array.isArray(videos) ? videos : []).slice(0, remaining), { uploadsDir, category: 'ticket' }) : [];
+  return [
+    ...savedImages.map((img) => ({ url: img.url, type: 'image', mimeType: img.mimeType })),
+    ...savedVideos.map((vid) => ({ url: vid.url, type: 'video', mimeType: vid.mimeType }))
+  ];
+}
+
 // Mounted at /api/sync/support-tickets, behind requireAuth+csrfProtection (see app.mjs) - a
 // normal authenticated user's own tickets only. The admin queue/reply surface is a separate
 // router (server/admin/routes.support-tickets.mjs), mounted behind requireAdmin.
-export function router(repo) {
+export function router(repo, uploadsDir) {
   const app = express.Router();
 
   app.get('/', asyncHandler(async (req, res) => {
@@ -48,8 +66,9 @@ export function router(repo) {
   }));
 
   app.post('/', ticketCreateLimiter, asyncHandler(async (req, res) => {
-    const { subject, category, message } = req.body || {};
-    const ticket = await repo.supportTickets.create({ userId: req.currentUser.id, subject, category, content: message });
+    const { subject, category, message, images, videos } = req.body || {};
+    const attachments = await saveAttachments({ images, videos, uploadsDir });
+    const ticket = await repo.supportTickets.create({ userId: req.currentUser.id, subject, category, content: message, attachments });
     res.status(201).json(ticketResponse(ticket));
   }));
 
@@ -65,8 +84,9 @@ export function router(repo) {
 
   app.post('/:id/messages', ticketReplyLimiter, asyncHandler(async (req, res) => {
     await loadOwnedTicket(repo, req.params.id, req.currentUser.id);
-    const { message: content } = req.body || {};
-    const result = await repo.supportTickets.reply({ ticketId: req.params.id, authorId: req.currentUser.id, authorRole: 'user', content });
+    const { message: content, images, videos } = req.body || {};
+    const attachments = await saveAttachments({ images, videos, uploadsDir });
+    const result = await repo.supportTickets.reply({ ticketId: req.params.id, authorId: req.currentUser.id, authorRole: 'user', content, attachments });
     const [message] = await withAuthorNames(repo, [result.message]);
     res.status(201).json({ ticket: ticketResponse(result.ticket), message });
   }));
