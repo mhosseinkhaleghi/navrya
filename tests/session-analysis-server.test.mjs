@@ -9,7 +9,7 @@ const serverModule = await import('../server/pattern-ai-server.mjs');
 const {
   analyzeSession, visualizeScenario, visualizeAnalysis, buildAnalysisVisualizationPrompt,
   buildSessionAnalysisSystemPrompt, sessionAnalysisOutputBudget, sessionAnalysisReasoningEffort,
-  validateSessionAnalysisResult, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT
+  validateSessionAnalysisResult, sessionAnalysisFormat, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT
 } = serverModule;
 const server = serverModule.default;
 
@@ -226,6 +226,24 @@ test('analyzeSession never leaks its internal payload.timeoutMs into the real re
   assert.ok(sentBody, 'the provider request must actually have been made');
   assert.equal('timeoutMs' in sentBody, false);
   assert.ok(Number.isFinite(sentBody.max_output_tokens), 'max_output_tokens, the one real budget field, must still be forwarded');
+});
+
+test('analyzeSession gives Gemini the accepted compact schema in exactly one provider call', async () => {
+  let providerCalls = 0;
+  let sentBody = null;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    providerCalls += 1;
+    sentBody = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }] } }], usageMetadata: {} }) };
+  };
+  await analyzeSession(Object.assign(validAnalysisBody(), { provider: 'gemini', model: 'gemini-3.1-pro-preview' }));
+  assert.equal(providerCalls, 1, 'schema compaction must not add a retry or a second billable analysis call');
+  const schema = sentBody.generationConfig.responseSchema;
+  assert.ok(schema.properties.blocks.items.properties.title, 'the complete response shape remains present');
+  assert.equal(schema.properties.blocks.maxItems, undefined, 'only provider-rejected constraints are omitted');
+  assert.equal(schema.properties.blocks.items.properties.type.enum, undefined);
+  assert.deepEqual(schema.required, sessionAnalysisFormat.schema.required);
 });
 
 test('analyzeSession rejects MODEL_VISION_UNSUPPORTED before ever calling the provider, when images are supplied for a non-vision provider (brief §40 test 13)', async () => {

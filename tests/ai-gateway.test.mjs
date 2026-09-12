@@ -82,10 +82,12 @@ test('OpenAI never receives Gemini-only schema compaction or NAVRYA timeout cont
   await callOpenAI({
     input: [],
     compactGeminiLargeEnums: true,
+    compactGeminiSchemaConstraints: true,
     timeoutMs: 1234,
     text: { format: { schema: { required: [] } } }
   }, 'openai-key', 'gpt-5.6');
   assert.equal(sentBody.compactGeminiLargeEnums, undefined, 'Gemini-only routing metadata must not leak into the OpenAI API body');
+  assert.equal(sentBody.compactGeminiSchemaConstraints, undefined, 'Gemini schema-compaction metadata must not leak into the OpenAI API body');
   assert.equal(sentBody.timeoutMs, undefined, 'NAVRYA timeout metadata must not leak into the OpenAI API body');
   assert.equal(sentBody.model, 'gpt-5.6');
 });
@@ -199,6 +201,35 @@ test('Gemini keeps small enums but compacts the oversized action enums that its 
   assert.deepEqual(schema.properties.action.properties.mode.enum, ['append', 'replace'], 'small safety-relevant enums remain provider-enforced');
   assert.equal(schema.properties.nextFieldPath.enum, undefined, 'the oversized field enum is compacted too');
   assert.equal(schema.properties.nextFieldPath.nullable, true, 'compaction must preserve nullability');
+});
+
+test('Gemini can compact a large structured schema without deleting legitimate property names', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ title: 'Market read', probability: 55, items: [] }) }] } }], usageMetadata: {} }) };
+  };
+  await callProvider('gemini', 'gemini-key', 'gemini-3.1-pro-preview', {
+    input: [{ role: 'user', content: [{ type: 'input_text', text: 'analyze' }] }],
+    compactGeminiSchemaConstraints: true,
+    text: { format: { schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        probability: { type: 'number', minimum: 0, maximum: 100 },
+        items: { type: 'array', maxItems: 3, items: { type: 'string', enum: ['a', 'b'] } }
+      },
+      required: ['title', 'probability', 'items']
+    } } }
+  });
+  const schema = sentBody.generationConfig.responseSchema;
+  assert.deepEqual(Object.keys(schema.properties), ['title', 'probability', 'items']);
+  assert.equal(schema.properties.probability.minimum, undefined);
+  assert.equal(schema.properties.probability.maximum, undefined);
+  assert.equal(schema.properties.items.maxItems, undefined);
+  assert.equal(schema.properties.items.items.enum, undefined);
+  assert.deepEqual(schema.required, ['title', 'probability', 'items']);
 });
 
 test('a Kimi/DeepSeek response missing a required schema key throws SCHEMA_VALIDATION_FAILED, not a fabricated field', async () => {

@@ -652,11 +652,11 @@ async function callOpenAI(payload, apiKey, model, externalSignal) {
   // the same request completed in 43-56s on the faster tiers). Every other existing caller never
   // sets this field and keeps the original 90s ceiling unchanged.
   const timer = setTimeout(() => controller.abort(), Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : 90000);
-  // timeoutMs and compactGeminiLargeEnums are NAVRYA-only transport controls, not Responses API
-  // fields. Neither may reach OpenAI: the latter is set by dockChat() whenever the discovery
+  // timeoutMs and the compactGemini* flags are NAVRYA-only transport controls, not Responses API
+  // fields. None may reach OpenAI: compactGeminiLargeEnums is set by dockChat() whenever the discovery
   // catalog is present, regardless of which provider the user selected, and production confirmed
   // OpenAI rejects the whole call with "Unknown parameter: 'compactGeminiLargeEnums'."
-  const { timeoutMs, compactGeminiLargeEnums, ...providerPayload } = payload;
+  const { timeoutMs, compactGeminiLargeEnums, compactGeminiSchemaConstraints, ...providerPayload } = payload;
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -791,13 +791,25 @@ function geminiInlineData(dataUrl) {
 // enum when the caller opts into this bounded compaction. NAVRYA then validates the returned
 // action/field ids against the exact offered catalog in sanitizeDockChatModelOutput() below.
 const GEMINI_MAX_ENUM_VALUES = 32;
-function geminiResponseSchema(value, options) {
+const GEMINI_COMPACT_CONSTRAINT_KEYS = new Set(['enum', 'minItems', 'maxItems', 'minimum', 'maximum']);
+function geminiResponseSchema(value, options, propertyMap = false) {
   if (Array.isArray(value)) return value.map((entry) => geminiResponseSchema(entry, options));
   if (!value || typeof value !== 'object') return value;
   const output = {};
   for (const [key, nested] of Object.entries(value)) {
+    // A property may legitimately be named `title`, `enum`, etc. Once inside `properties`, keys
+    // are field names rather than schema keywords and must never be interpreted as constraints.
+    if (propertyMap) {
+      output[key] = geminiResponseSchema(nested, options);
+      continue;
+    }
     if (key === 'additionalProperties') continue;
+    if (options?.compactConstraints && GEMINI_COMPACT_CONSTRAINT_KEYS.has(key)) continue;
     if (key === 'enum' && options?.compactLargeEnums && Array.isArray(nested) && nested.length > GEMINI_MAX_ENUM_VALUES) continue;
+    if (key === 'properties') {
+      output.properties = geminiResponseSchema(nested, options, true);
+      continue;
+    }
     if (key === 'type' && Array.isArray(nested)) {
       const concreteTypes = nested.filter((type) => type !== 'null');
       output.type = concreteTypes[0] || 'string';
@@ -844,7 +856,10 @@ async function callGemini(payload, apiKey, model, externalSignal) {
     });
     const generationConfig = {
       responseMimeType: 'application/json',
-      responseSchema: geminiResponseSchema(schema, { compactLargeEnums: payload.compactGeminiLargeEnums === true })
+      responseSchema: geminiResponseSchema(schema, {
+        compactLargeEnums: payload.compactGeminiLargeEnums === true,
+        compactConstraints: payload.compactGeminiSchemaConstraints === true
+      })
     };
     if (Number.isFinite(payload.max_output_tokens)) generationConfig.maxOutputTokens = payload.max_output_tokens;
     const body = { contents, generationConfig };
@@ -2267,6 +2282,13 @@ async function analyzeSession(body) {
       { role: 'user', content: [{ type: 'input_text', text: contextText }, ...imageContent(images)] }
     ],
     text: { format: sessionAnalysisFormat },
+    // Production incident (2026-09-12): Gemini rejects this otherwise-valid 73-property schema
+    // with HTTP 400 "Request contains an invalid argument". A real production canary proved that
+    // preserving the complete object/array/required shape while omitting only enum/range/length
+    // constraints is accepted. NAVRYA still clamps/drops those exact values in
+    // validateSessionAnalysisResult() and the client normalizer, so safety never depends on the
+    // provider enforcing them. This stays one provider call; there is no retry/double charge.
+    compactGeminiSchemaConstraints: true,
     max_output_tokens: budget,
     // Production incident: a frontier-tier reasoning model (real chart, deep reasoning, full
     // structured JSON answer) can genuinely take well over the platform-wide 90s default - raised
