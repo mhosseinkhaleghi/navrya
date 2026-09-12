@@ -34,6 +34,9 @@ services:
       PATTERN_AI_PORT: 8787
       COMMUNITY_API_URL: http://community-api:8788
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      # WebSocket upgrades are not protected by CORS. The Gemini Live relay validates the
+      # browser Origin against this existing production allowlist before it checks the session.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       REDIS_URL: redis://redis:6379
       AI_QUOTA_PER_USER_PER_HOUR: ${AI_QUOTA_PER_USER_PER_HOUR:-200}
       AI_QUOTA_GLOBAL_PER_HOUR: ${AI_QUOTA_GLOBAL_PER_HOUR:-20000}

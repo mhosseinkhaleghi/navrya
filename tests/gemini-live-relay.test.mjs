@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test, { after, before, afterEach } from 'node:test';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createApp } from '../server/community/app.mjs';
@@ -124,7 +125,16 @@ test('a cross-site WebSocket origin is rejected before it can consume a valid le
 });
 
 test('the browser adapter uses the same-origin relay and contains no direct Google WebSocket endpoint', async () => {
-  const source = await import('node:fs/promises').then((fs) => fs.readFile(new URL('../navrya-src/geminiLiveVoice.js', import.meta.url), 'utf8'));
+  const source = await readFile(new URL('../navrya-src/geminiLiveVoice.js', import.meta.url), 'utf8');
   assert.match(source, /\/api\/ai\/gemini-live\/socket/);
   assert.doesNotMatch(source, /generativelanguage\.googleapis\.com\/ws/);
+});
+
+test('production passes the browser-origin allowlist to the AI gateway that owns the Gemini relay', async () => {
+  const compose = await readFile(new URL('../docker-compose.production.yml', import.meta.url), 'utf8');
+  const patternAiStart = compose.indexOf('\n  pattern-ai:');
+  const communityApiStart = compose.indexOf('\n  community-api:');
+  assert.ok(patternAiStart !== -1 && communityApiStart > patternAiStart, 'pattern-ai service block is missing');
+  const patternAi = compose.slice(patternAiStart, communityApiStart);
+  assert.match(patternAi, /\n\s+ALLOWED_ORIGINS:\s+\$\{ALLOWED_ORIGINS\}/);
 });
