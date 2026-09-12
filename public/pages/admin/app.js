@@ -3918,6 +3918,27 @@ function buildTicketDetailPage(data) {
     const bubble = el('span', '', message.content);
     bubble.style.whiteSpace = 'pre-wrap';
     row.append(bubble);
+    if (message.attachments && message.attachments.length) {
+      const attachRow = el('div');
+      attachRow.style.display = 'flex'; attachRow.style.gap = '8px'; attachRow.style.flexWrap = 'wrap';
+      message.attachments.forEach((a) => {
+        if (a.type === 'video') {
+          const video = document.createElement('video');
+          video.src = a.url; video.controls = true;
+          video.style.maxWidth = '220px'; video.style.maxHeight = '160px'; video.style.borderRadius = '8px'; video.style.border = '1px solid var(--line)';
+          attachRow.append(video);
+        } else {
+          const link = document.createElement('a');
+          link.href = a.url; link.target = '_blank'; link.rel = 'noreferrer';
+          const img = document.createElement('img');
+          img.src = a.url; img.alt = '';
+          img.style.width = '80px'; img.style.height = '80px'; img.style.objectFit = 'cover'; img.style.borderRadius = '8px'; img.style.border = '1px solid var(--line)';
+          link.append(img);
+          attachRow.append(link);
+        }
+      });
+      row.append(attachRow);
+    }
     list.append(row);
   });
   conversation.append(list);

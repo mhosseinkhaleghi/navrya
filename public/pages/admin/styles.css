@@ -233,6 +233,11 @@ html[dir="rtl"] select { background-position:left 10px center; padding:0 12px 0 
 
 .admin-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
 .admin-toolbar input[type="text"] { height:38px; padding:0 12px; min-width:220px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.03); color:var(--text); }
+/* Plain <textarea> elements (e.g. the Support Tickets staff-reply box) had no dark-theme rule at
+   all, so they fell back to the browser default white background - a real bug found via a live
+   screenshot, not a hypothetical. */
+textarea { padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.03); color:var(--text); resize:vertical; }
+textarea:focus { outline:0; border-color:var(--violet); }
 
 .admin-table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; }
 /* XP & Segmentation tab (admin-editable rule overrides) */
