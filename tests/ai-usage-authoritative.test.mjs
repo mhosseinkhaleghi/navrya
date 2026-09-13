@@ -86,6 +86,36 @@ test('a request without the internal secret is rejected', async () => {
   assert.equal(response.status, 403);
 });
 
+// GPT-Live 1 production report (2026-09-14): a real user's voice usage never appeared in either
+// the admin AI Cost Control table or their own AI dashboard cost list. Root cause: this route used
+// to call wallet-service.mjs's costMicroUsdFor() directly - the narrower, TOKEN-ONLY formula - so
+// any flat-priced (046) or per-minute-priced (057, e.g. gpt-live-1) usage event always recorded
+// providerCostMicroUsd:0 here, even though reserveForAiCall()/settleAiCall() (which already call
+// providerCostMicroUsdFor(), not costMicroUsdFor(), for exactly this reason) priced and billed it
+// correctly the whole time. Fixed by switching this route to providerCostMicroUsdFor() too, which
+// understands all three pricing shapes and is now exported from wallet-service.mjs for this.
+test('recording usage for a per-minute-priced model (gpt-live-1) computes the real per-minute cost here too, not $0 - the exact production gap this fixed', async () => {
+  await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-live-1', perMinutePriceMicroUsd: 50000, currency: 'USD', enabled: true });
+  const response = await internalPost('/usage/record', {
+    userId: 'user-voice-1', feature: 'voiceGptLive', provider: 'openai', model: 'gpt-live-1',
+    usage: { elapsedSeconds: 90 }, billed: false
+  });
+  assert.equal(response.status, 201);
+  const record = await response.json();
+  assert.equal(record.providerCostMicroUsd, 75000, '90s = 1.5min * 50000 micro-USD/min = 75000, never 0');
+});
+
+test('recording usage for a flat-per-call-priced model computes the real flat cost here too, not $0', async () => {
+  await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-image-flat', flatPricePerCallMicroUsd: 20000, currency: 'USD', enabled: true });
+  const response = await internalPost('/usage/record', {
+    userId: 'user-image-1', feature: 'imageGeneration', provider: 'openai', model: 'gpt-image-flat',
+    usage: null, billed: false
+  });
+  assert.equal(response.status, 201);
+  const record = await response.json();
+  assert.equal(record.providerCostMicroUsd, 20000);
+});
+
 test('aggregateByModelForUser defaults to origin=gateway and excludes an untrusted client-reported row from real cost reporting', async () => {
   const memRepo = createMemoryRepo();
   await memRepo.usageEvents.create({ userId: 'u1', provider: 'openai', model: 'gpt-4o', promptTokens: 10, completionTokens: 10, totalTokens: 20, source: 'client-report' }); // origin defaults to 'client'

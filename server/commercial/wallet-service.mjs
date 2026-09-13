@@ -121,7 +121,17 @@ export function costMicroUsdFor(rate, { promptTokens, completionTokens, cachedIn
 // variance to estimate, and no usage to price it from (visualizeScenario() always reports
 // usage:null for exactly this reason). Falls through to the existing token formula for every
 // other (token-priced) rate, unchanged.
-function providerCostMicroUsdFor(rate, tokenUsage) {
+//
+// Cost-visibility fix (2026-09-14): exported (alongside resolvePricingRate/costMicroUsdFor above)
+// because /internal/usage/record (routes.internal.mjs) - the authoritative, unconditional usage-
+// recording path every billed route relies on regardless of aiWalletEnforced() - used to call the
+// narrower costMicroUsdFor() directly, which only ever understands the token-priced shape. Any
+// flat-priced (046) or per-minute-priced (057, e.g. gpt-live-1) usage event therefore always
+// recorded providerCostMicroUsd:0 there, even though reserveForAiCall/settleAiCall (which already
+// call THIS function, not costMicroUsdFor, for exactly this reason) priced and billed it
+// correctly the whole time. This is the one real cost formula for all three pricing shapes -
+// routes.internal.mjs now calls this instead, passing the full usage object through unchanged.
+export function providerCostMicroUsdFor(rate, tokenUsage) {
   if (rate.flatPricePerCallMicroUsd != null) return rate.flatPricePerCallMicroUsd;
   // GPT-Live 1 / any future per-minute-priced voice model: cost is linear in connected session
   // duration, never a token count - `tokenUsage.elapsedSeconds` is the ONLY field a caller for this

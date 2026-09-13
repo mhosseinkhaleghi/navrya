@@ -29,6 +29,7 @@ const neutralHealthEventResponse = { ok: true, json: async () => ({}) };
 const WALLET_RESERVE_URL = '/internal/wallet/reserve';
 const WALLET_RELEASE_URL = '/internal/wallet/release';
 const WALLET_SETTLE_URL = '/internal/wallet/settle';
+const USAGE_RECORD_URL = '/internal/usage/record';
 const FAKE_OFFER_SDP = 'v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n';
 
 function withEnv(vars, fn) {
@@ -80,6 +81,10 @@ test('forwards the browser-built SDP offer, real session config, and zero tools 
   assert.equal(body.session.audio, undefined);
   assert.equal(result.answerSdp, 'v=0\r\n...answer...');
   assert.equal(result.sessionId, 'live_123');
+  // Cost-visibility fix (2026-09-14): echoed so the client can tell settleGptLiveVoiceSession() -
+  // at settle time, when reservationId alone can no longer distinguish it from "enforcement was
+  // off" - that this was NOT a BYOK call.
+  assert.equal(result.isByok, false);
 });
 
 // Production incident (2026-09-13): this route used to forward body.offerSdp.trim() to OpenAI.
@@ -209,6 +214,7 @@ test('a BYOK caller (their own apiKey in the request body) is never gated by the
   const result = await withEnv({ AI_WALLET_ENFORCED: 'true' }, () => mintGptLiveClientSecret({ language: 'en', offerSdp: FAKE_OFFER_SDP, apiKey: 'sk-user-own-key' }, 'user-1'));
   assert.equal(result.sessionId, 'live_byok');
   assert.equal(getRequest().liveEndpointCalled, true);
+  assert.equal(result.isByok, true);
 });
 
 test('when wallet enforcement is off (default), a session mints even with no pricing configured at all - matches the existing accepted Realtime/Gemini voice behavior', async () => {
@@ -218,15 +224,17 @@ test('when wallet enforcement is off (default), a session mints even with no pri
   assert.equal(getRequest().liveEndpointCalled, true);
 });
 
-test('once a session is successfully reserved and minted, settleGptLiveVoiceSession() reports the real elapsed seconds to the wallet bridge', async () => {
+test('once a session is successfully reserved and minted, settleGptLiveVoiceSession() reports the real elapsed seconds to the wallet bridge, AND records authoritative usage', async () => {
   let settleRequest = null;
+  let usageRequest = null;
   globalThis.fetch = async (url, options) => {
     const target = String(url);
     if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     if (target.includes(WALLET_SETTLE_URL)) { settleRequest = { target, options }; return { ok: true, json: async () => ({ ok: true }) }; }
+    if (target.includes(USAGE_RECORD_URL)) { usageRequest = { target, options }; return { ok: true, json: async () => ({ ok: true }) }; }
     return { ok: true, json: async () => ({}) };
   };
-  const result = await settleGptLiveVoiceSession({ reservationId: 'res-test-1', elapsedSeconds: 42.9 });
+  const result = await settleGptLiveVoiceSession({ reservationId: 'res-test-1', elapsedSeconds: 42.9 }, 'user-1');
   assert.equal(result.settled, true);
   assert.ok(settleRequest, 'the internal wallet settle bridge must actually be reached');
   const body = JSON.parse(settleRequest.options.body);
@@ -234,12 +242,73 @@ test('once a session is successfully reserved and minted, settleGptLiveVoiceSess
   assert.equal(body.usage.elapsedSeconds, 42.9);
   assert.equal(body.provider, 'openai');
   assert.equal(body.model, 'gpt-live-1');
+  // Cost-visibility fix (2026-09-14): the authoritative, unconditional usage-recording path every
+  // other billed route already reaches must be reached here too, marked billed:true since a real
+  // reservation existed.
+  assert.ok(usageRequest, 'recordAiUsageForCall must actually be reached for a real (non-BYOK) settlement');
+  const usageBody = JSON.parse(usageRequest.options.body);
+  assert.equal(usageBody.userId, 'user-1');
+  assert.equal(usageBody.feature, 'voiceGptLive');
+  assert.equal(usageBody.billed, true);
+  assert.equal(usageBody.reservationId, 'res-test-1');
+  assert.equal(usageBody.usage.elapsedSeconds, 42.9);
 });
 
-test('settleGptLiveVoiceSession is a safe no-op when there is nothing to settle (BYOK/enforcement-off sessions never reserved anything)', async () => {
+// Cost-visibility fix (2026-09-14, real user report): a real user's gpt-live-1 usage never showed
+// up in either the admin AI Cost Control table or their own AI dashboard cost list. Root cause:
+// this function used to be a hard no-op whenever body.reservationId was absent - true both for
+// BYOK (correctly nothing to record) AND for "wallet enforcement was off at mint time" (still a
+// real NAVRYA-funded OpenAI call). Every other billed route already calls recordAiUsageForCall()
+// unconditionally, regardless of AI_WALLET_ENFORCED, specifically so real provider cost stays
+// reportable "even in today's rollout-safe (enforcement off) production configuration" - this was
+// the one route that contract was never wired up for. isByok (echoed back from
+// mintGptLiveClientSecret()'s own result via the client - see gptLiveVoice.js) is what lets this
+// function tell those two reservationId-less cases apart.
+test('a reservation-less, non-BYOK settlement (wallet enforcement was off) still records real usage for cost visibility - no longer a silent no-op', async () => {
+  let usageRequest = null;
+  globalThis.fetch = async (url, options) => {
+    const target = String(url);
+    if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    if (target.includes(USAGE_RECORD_URL)) { usageRequest = { target, options }; return { ok: true, json: async () => ({ ok: true }) }; }
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+  const result = await settleGptLiveVoiceSession({ elapsedSeconds: 90, isByok: false }, 'user-2');
+  assert.equal(result.ok, true);
+  assert.equal(result.settled, false, 'nothing was reserved, so the wallet was never touched - but usage IS still recorded below');
+  assert.ok(usageRequest, 'recordAiUsageForCall must be reached even with no reservationId, as long as this was not BYOK');
+  const usageBody = JSON.parse(usageRequest.options.body);
+  assert.equal(usageBody.userId, 'user-2');
+  assert.equal(usageBody.billed, false, 'never invents a charge - this call was genuinely platform-funded but unenforced');
+  assert.equal(usageBody.reservationId, null);
+  assert.equal(usageBody.usage.elapsedSeconds, 90);
+});
+
+test('a BYOK settlement (isByok:true) never records a usage event - it is the user\'s own key/cost, not NAVRYA\'s', async () => {
+  let usageOrSettleCalled = false;
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    if (target.includes(USAGE_RECORD_URL) || target.includes(WALLET_SETTLE_URL)) usageOrSettleCalled = true;
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+  const result = await settleGptLiveVoiceSession({ elapsedSeconds: 60, isByok: true }, 'user-3');
+  assert.equal(result.ok, true);
+  assert.equal(result.settled, false);
+  assert.equal(usageOrSettleCalled, false, 'a BYOK call must never reach either the wallet settle bridge or the usage-recording bridge');
+});
+
+test('settleGptLiveVoiceSession is a safe no-op (no usage recorded, no error) when there is no real user to attribute it to', async () => {
+  let usageOrSettleCalled = false;
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    if (target.includes(USAGE_RECORD_URL) || target.includes(WALLET_SETTLE_URL)) usageOrSettleCalled = true;
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
   const result = await settleGptLiveVoiceSession({});
   assert.equal(result.ok, true);
   assert.equal(result.settled, false);
+  assert.equal(usageOrSettleCalled, false);
 });
 
 test('a negative or non-numeric reported elapsedSeconds never produces a negative charge', async () => {

@@ -185,3 +185,20 @@ test('debugState() (dev diagnostic) never exposes the transcript text or any cre
   assert.match(adapter, /debugState: \(\) => \(\{ state, language, sessionActive: !!pc, connectionEpoch \}\)/);
   assert.doesNotMatch(adapter, /debugState[\s\S]{0,120}pendingTranscript/);
 });
+
+// Cost-visibility fix (2026-09-14, real user report): a real user's gpt-live-1 usage never showed
+// up in the admin AI Cost Control table or their own AI dashboard cost list, because reportSettlement()
+// used to skip calling fetchSettle entirely whenever walletReservationId was empty - true both for
+// BYOK (correctly nothing to report) AND "wallet enforcement was off at mint time" (a real
+// NAVRYA-funded call whose usage still needs recording server-side - see
+// server/pattern-ai-server.mjs's settleGptLiveVoiceSession()). isByok - echoed straight from
+// mintGptLiveClientSecret()'s own result, never inferred client-side - is what this module now
+// checks instead of the mere presence of a reservationId.
+test('isByok is tracked from the mint result and threaded through to settle - reportSettlement() now calls fetchSettle whenever the session was not BYOK, not only when a reservation existed', () => {
+  assert.match(adapter, /isByokSession = !!\(sessionResult && sessionResult\.isByok\);/);
+  assert.match(adapter, /if \(isByokSession \|\| typeof fetchSettle !== 'function'\) \{ walletReservationId = null; isByokSession = false; connectedAtMs = null; return; \}/);
+  assert.match(adapter, /fetchSettle\(\{ reservationId, elapsedSeconds, isByok: false \}\)/);
+  // The old, narrower gate must not remain anywhere in this function.
+  const reportSettlementBody = adapter.slice(adapter.indexOf('function reportSettlement'), adapter.indexOf('function teardown'));
+  assert.doesNotMatch(reportSettlementBody, /if \(!walletReservationId/, 'must no longer gate on the mere presence of a reservationId - see isByokSession above');
+});

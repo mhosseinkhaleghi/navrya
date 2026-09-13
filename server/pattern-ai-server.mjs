@@ -3091,7 +3091,13 @@ async function mintGptLiveClientSecret(body, userId) {
       // POST /api/ai/gpt-live/session/settle (settleGptLiveVoiceSession below) - null when BYOK or
       // wallet enforcement is off, exactly mirroring every other reservationId-shaped flow in this
       // file (never a truthy id for a call nothing was actually reserved for).
-      walletReservationId
+      walletReservationId,
+      // Echoed back at settle time so settleGptLiveVoiceSession() can tell "no reservation because
+      // wallet enforcement was off" (still a real NAVRYA-funded call - usage IS recorded) apart
+      // from "no reservation because this was BYOK" (the user's own key/cost - correctly never
+      // recorded), even though both cases look identical from walletReservationId alone. See that
+      // function's own comment.
+      isByok
     };
   } catch (error) {
     if (walletReservationId) await releaseWalletFundsForCall(walletReservationId);
@@ -3102,19 +3108,38 @@ async function mintGptLiveClientSecret(body, userId) {
 
 // Best-effort settlement, called once by the browser when a GPT-Live Voice session ends
 // (navrya-src/chatDockView.jsx's endVoice()/toggleVoice() disconnect branch) with the real elapsed
-// connected time. A no-op (never an error) when there was nothing to settle (BYOK, or wallet
-// enforcement was off at mint time) - mirrors settleWalletFundsForCall()'s own "only ever settle a
-// reservation that actually exists" contract. If the browser never calls this at all (a crash, a
-// closed tab, a lost connection), the reservation is never charged - it only ever ages out and
-// releases via the existing stale-pending-reservation sweep (releaseStalePendingReservations(),
-// already run by both repo.pg.mjs/repo.memory.mjs) - the exact same accepted, already-documented
-// gap this codebase states for Realtime/Gemini's own voice wallet settlement (AI_BILLED_ROUTES's
-// own comment above), never a new one, and never an overcharge.
-async function settleGptLiveVoiceSession(body) {
-  if (!body || !body.reservationId) return { ok: true, settled: false };
+// connected time. If the browser never calls this at all (a crash, a closed tab, a lost
+// connection), a real reservation is never charged - it only ever ages out and releases via the
+// existing stale-pending-reservation sweep (releaseStalePendingReservations(), already run by both
+// repo.pg.mjs/repo.memory.mjs) - the exact same accepted, already-documented gap this codebase
+// states for Realtime/Gemini's own voice wallet settlement (AI_BILLED_ROUTES's own comment above),
+// never a new one, and never an overcharge.
+//
+// Cost-visibility fix (2026-09-14, real user report): a real user's gpt-live-1 usage never
+// appeared in either the admin AI Cost Control table or the user's own AI dashboard cost list -
+// this route used to be a hard no-op whenever body.reservationId was absent, which is true both
+// for BYOK (nothing to record - the user's own key/cost) AND for "wallet enforcement was off at
+// mint time" (still a real NAVRYA-funded OpenAI call). Every OTHER billed route already calls
+// recordAiUsageForCall() unconditionally, regardless of aiWalletEnforced(), specifically so real
+// provider cost stays reportable "even in today's rollout-safe (enforcement off) production
+// configuration" (see that function's own comment) - this route was the one place that contract
+// was never wired up at all. isByok is echoed back from mintGptLiveClientSecret()'s own result
+// (navrya-src/gptLiveVoice.js threads it through) precisely so this function can tell those two
+// reservationId-less cases apart.
+async function settleGptLiveVoiceSession(body, userId) {
+  if (!body) return { ok: true, settled: false };
   const elapsedSeconds = Math.max(0, Number(body.elapsedSeconds) || 0);
-  await settleWalletFundsForCall({ reservationId: body.reservationId, provider: 'openai', model: GPT_LIVE_MODEL, feature: 'voiceGptLive', usage: { elapsedSeconds } });
-  return { ok: true, settled: true };
+  const isByok = !!body.isByok;
+  if (body.reservationId) {
+    await settleWalletFundsForCall({ reservationId: body.reservationId, provider: 'openai', model: GPT_LIVE_MODEL, feature: 'voiceGptLive', usage: { elapsedSeconds } });
+  }
+  if (!isByok && userId) {
+    await recordAiUsageForCall({
+      userId, feature: 'voiceGptLive', provider: 'openai', model: GPT_LIVE_MODEL,
+      usage: { elapsedSeconds }, billed: !!body.reservationId, reservationId: body.reservationId || null
+    });
+  }
+  return { ok: true, settled: !!body.reservationId };
 }
 
 // Same-origin SDP relay (fix/voice-mode-hosted-connection). The installed @openai/agents-realtime
@@ -3594,7 +3619,7 @@ const server = http.createServer(async (request, response) => {
     // route now) rather than deleted - its own dedicated tests still call it directly.
     else if (request.url === '/api/ai/realtime/session') throw new Error('REALTIME_VOICE_RETIRED');
     else if (request.url === '/api/ai/gpt-live/session') result = await mintGptLiveClientSecret(body, session.userId);
-    else if (request.url === '/api/ai/gpt-live/session/settle') result = await settleGptLiveVoiceSession(body);
+    else if (request.url === '/api/ai/gpt-live/session/settle') result = await settleGptLiveVoiceSession(body, session.userId);
     else if (request.url === '/api/ai/gemini-live/session') result = await mintGeminiLiveToken(body, session.userId);
     else if (request.url === '/api/ai/gemini-live/speak') result = await speakWithGemini(body);
     else if (request.url === '/api/ai/gemini-live/test') result = await adminTestGeminiVoice(session, body);

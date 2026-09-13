@@ -3,7 +3,7 @@ import { asyncHandler } from './errors.mjs';
 import { resolveSessionByRawId } from './security/session-service.mjs';
 import { resolveRedisClient } from './security/rate-limit.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
-import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, costMicroUsdFor } from '../commercial/wallet-service.mjs';
+import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, providerCostMicroUsdFor } from '../commercial/wallet-service.mjs';
 import { resolveRetailMultiplier } from '../commercial/markup.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
@@ -207,13 +207,13 @@ export function router(repo) {
     const usage = body.usage || {};
     const rate = await resolvePricingRate(repo, { provider: body.provider, model: body.model });
     // AI Cost Control: cachedInputTokens/cacheWriteInputTokens are real pricing dimensions
-    // (costMicroUsdFor() prices them - see wallet-service.mjs); reasoningTokens is not (already
-    // included in completionTokens by the provider's own accounting) and is stored only for
-    // admin observability.
-    const providerCostMicroUsd = rate ? costMicroUsdFor(rate, {
-      promptTokens: usage.promptTokens, completionTokens: usage.completionTokens,
-      cachedInputTokens: usage.cachedInputTokens, cacheWriteInputTokens: usage.cacheWriteInputTokens
-    }) : 0;
+    // (providerCostMicroUsdFor()/costMicroUsdFor() price them - see wallet-service.mjs);
+    // reasoningTokens is not (already included in completionTokens by the provider's own
+    // accounting) and is stored only for admin observability. providerCostMicroUsdFor() (not the
+    // narrower costMicroUsdFor() this used to call directly) is what makes a flat-priced or
+    // per-minute-priced usage event (gpt-live-1) record its real cost here too - see that
+    // function's own comment for the production incident this fixed.
+    const providerCostMicroUsd = rate ? providerCostMicroUsdFor(rate, usage) : 0;
     let retailChargeMicroUsd = 0;
     let linkedLedgerIdempotencyKey = null;
     let tokenDiscountPercent = null;

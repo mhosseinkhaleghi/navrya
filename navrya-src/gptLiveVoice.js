@@ -144,6 +144,13 @@ export function createGptLiveSession(options) {
   let inputTranscriptQuietTimer = null;
   let speaking = false;
   let walletReservationId = null;
+  // Cost-visibility fix (2026-09-14): echoed from mintGptLiveClientSecret()'s own result (server-
+  // side, never inferred client-side), and threaded back to fetchSettle() so
+  // settleGptLiveVoiceSession() (server/pattern-ai-server.mjs) can tell "no reservation because
+  // wallet enforcement was off" (a real NAVRYA-funded call - usage should still be recorded) apart
+  // from "no reservation because this was BYOK" (the user's own key/cost - correctly never
+  // recorded) - see that function's own comment.
+  let isByokSession = false;
   let connectedAtMs = null;
   // Best-effort running total from session.usage.updated, used only as a fallback if the real
   // session.closed confirmation (which carries its own authoritative usage.seconds) is lost - see
@@ -220,7 +227,13 @@ export function createGptLiveSession(options) {
   function resumeLocalAudio() { if (audioElement) { try { audioElement.play().catch(() => {}); } catch (_) {} } }
 
   function reportSettlement(usageSeconds) {
-    if (!walletReservationId || typeof fetchSettle !== 'function') { walletReservationId = null; connectedAtMs = null; return; }
+    // Cost-visibility fix (2026-09-14): this used to skip calling fetchSettle entirely whenever
+    // walletReservationId was empty - true both for BYOK (correctly nothing to report) AND for
+    // "wallet enforcement was off at mint time" (a real NAVRYA-funded call whose usage still needs
+    // recording - see settleGptLiveVoiceSession()'s own comment). Only BYOK is skipped now; the
+    // isByok flag (not the presence of a reservationId) is what the server needs to tell the two
+    // apart, since both leave walletReservationId null.
+    if (isByokSession || typeof fetchSettle !== 'function') { walletReservationId = null; isByokSession = false; connectedAtMs = null; return; }
     // Prefer OpenAI's own authoritative usage.seconds (from the real session.closed/
     // session.usage.updated events) - only fall back to a locally-computed wall-clock estimate
     // when neither ever arrived (a lost event, or a connection that dropped before either could).
@@ -229,8 +242,12 @@ export function createGptLiveSession(options) {
       : Math.max(0, connectedAtMs ? Math.round((Date.now() - connectedAtMs) / 1000) : 0);
     const reservationId = walletReservationId;
     walletReservationId = null;
+    isByokSession = false;
     connectedAtMs = null;
-    Promise.resolve(fetchSettle({ reservationId, elapsedSeconds })).catch(() => {}); // fire-and-forget, never blocks teardown
+    // isByok is always false here (the BYOK case already returned above) - sent explicitly anyway
+    // as defense-in-depth, since settleGptLiveVoiceSession() (server-side) is what actually decides
+    // whether to record usage, never trusting the mere presence/absence of a reservationId alone.
+    Promise.resolve(fetchSettle({ reservationId, elapsedSeconds, isByok: false })).catch(() => {}); // fire-and-forget, never blocks teardown
   }
 
   function teardown() {
@@ -482,6 +499,7 @@ export function createGptLiveSession(options) {
       const sessionResult = await Promise.race([fetchSession(language, pc.localDescription.sdp, { signal: mintAbortController && mintAbortController.signal }), deadline]);
       if (myEpoch !== connectionEpoch) return;
       walletReservationId = sessionResult && sessionResult.walletReservationId ? sessionResult.walletReservationId : null;
+      isByokSession = !!(sessionResult && sessionResult.isByok);
       const answerSdp = sessionResult && sessionResult.answerSdp;
       if (!answerSdp) throw Object.assign(new Error('GPT_LIVE_ANSWER_REJECTED'), { code: 'GPT_LIVE_ANSWER_REJECTED' });
       await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
