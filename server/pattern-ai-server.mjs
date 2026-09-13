@@ -3007,7 +3007,18 @@ async function mintRealtimeClientSecret(body, userId) {
 async function mintGptLiveClientSecret(body, userId) {
   const language = REALTIME_LANGUAGES.includes(body.language) ? body.language : 'en';
   const voiceCharacter = voiceCharacterFromRequest(body.character);
-  const offerSdp = typeof body.offerSdp === 'string' ? body.offerSdp.trim() : '';
+  // Production incident (2026-09-13): a real SDP offer's own final line - like every other SDP
+  // line - is required by spec to end in its own CRLF ("m=...\r\n"). This route used to forward
+  // offerSdp.trim() to OpenAI, which strips exactly that trailing CRLF along with any incidental
+  // surrounding whitespace. OpenAI's own upstream SDP parser rejected every real offer this route
+  // ever sent with "failed to parse offer: failed to unmarshal SDP: EOF" - byte-length logging
+  // during this incident confirmed the offer text reaching this route was a genuine, complete,
+  // several-KB SDP the whole time (never empty/truncated), which is what pointed at a
+  // content-mutating bug here rather than a client-side or upstream-shape problem. rawOfferSdp is
+  // untouched and is what actually gets forwarded; offerSdp (trimmed) exists ONLY to detect a
+  // blank/whitespace-only value - it must never be the thing sent upstream again.
+  const rawOfferSdp = typeof body.offerSdp === 'string' ? body.offerSdp : '';
+  const offerSdp = rawOfferSdp.trim();
   const startedAt = Date.now();
   let key = typeof body.apiKey === 'string' && body.apiKey.trim() ? body.apiKey.trim() : '';
   const isByok = !!key;
@@ -3050,20 +3061,18 @@ async function mintGptLiveClientSecret(body, userId) {
           instructions: 'You are a transcription and voice-playback transport only, embedded inside a trading journal app called NAVRYA. Never answer questions, never decide anything, never take an action yourself. Only transcribe what the user says and hand off to the connected application. When asked to speak an exact given sentence back, speak exactly that sentence, in the same language it is written in, with no paraphrasing, no additions, and no omissions. ' + REALTIME_CHARACTER_DELIVERY[voiceCharacter] + (language === 'fa' ? REALTIME_PERSIAN_DELIVERY_INSTRUCTION : ''),
           delegation: { type: 'client' }
         },
-        transport: { type: 'webrtc', sdp: offerSdp }
+        transport: { type: 'webrtc', sdp: rawOfferSdp }
       }),
       signal: AbortSignal.timeout(15000)
     });
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      // Temporary diagnostic (production incident, 2026-09-13): OpenAI has rejected every real
-      // WebRTC offer this route has forwarded so far with "failed to unmarshal SDP: EOF", even
-      // though the browser-captured request payload shows a genuine, non-empty, well-formed offer
-      // reaching this server. offerSdp.length is not secret (SDP carries no credentials) - surfacing
-      // it here lets us confirm, from the browser's own next attempt, whether the text this route
-      // actually forwards to OpenAI is still the same length as what the browser sent, ruling out
-      // in-process truncation/mangling as the cause. Remove once this incident is resolved.
-      throw new Error('GPT_LIVE_TOKEN_FAILED_' + response.status + ' (offerSdp.length=' + offerSdp.length + ')' + (errText ? ': ' + errText.slice(0, 200) : ''));
+      // Diagnostic left in place from the 2026-09-13 incident (see rawOfferSdp's own comment above
+      // for the root cause this helped confirm): rawOfferSdp.length is not secret (SDP carries no
+      // credentials), and keeping it visible in any future GPT_LIVE_TOKEN_FAILED_* is cheap
+      // insurance against a similar "the text OpenAI actually received wasn't what the browser
+      // sent" class of bug going undetected again.
+      throw new Error('GPT_LIVE_TOKEN_FAILED_' + response.status + ' (offerSdp.length=' + rawOfferSdp.length + ')' + (errText ? ': ' + errText.slice(0, 200) : ''));
     }
     const data = await response.json();
     reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.gpt-live-session' });

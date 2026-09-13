@@ -72,12 +72,41 @@ test('forwards the browser-built SDP offer, real session config, and zero tools 
   assert.equal(body.session.model, 'gpt-live-1');
   assert.deepEqual(body.session.delegation, { type: 'client' });
   assert.equal(body.transport.type, 'webrtc');
-  assert.equal(body.transport.sdp, FAKE_OFFER_SDP.trim());
+  // Byte-for-byte, INCLUDING the trailing CRLF on FAKE_OFFER_SDP's own last line - see the
+  // dedicated regression test below for why this must never again be offerSdp.trim().
+  assert.equal(body.transport.sdp, FAKE_OFFER_SDP);
   // No guessed audio/voice-selection field is sent any more - OpenAI's own quoted example shows
   // only {model, instructions, delegation} inside `session`.
   assert.equal(body.session.audio, undefined);
   assert.equal(result.answerSdp, 'v=0\r\n...answer...');
   assert.equal(result.sessionId, 'live_123');
+});
+
+// Production incident (2026-09-13): this route used to forward body.offerSdp.trim() to OpenAI.
+// A real SDP offer's final line, like every other line, must end in its own CRLF per spec
+// ("m=audio ...\r\n") - .trim() strips exactly that trailing CRLF (plus any incidental leading/
+// trailing whitespace), leaving OpenAI's own upstream SDP parser to read a last line with no
+// terminating newline. Every real GPT-Live connection attempt was rejected with "failed to parse
+// offer: failed to unmarshal SDP: EOF" - a byte-length diagnostic added mid-incident (still present
+// in the GPT_LIVE_TOKEN_FAILED_* error message above) confirmed the offer text reaching this route
+// was always a genuine, complete, several-KB SDP, which is what pointed at a content-mutating bug
+// in this route rather than a client-side or request-shape problem. Fixed by keeping rawOfferSdp
+// (untouched) as the only thing ever forwarded upstream; the trimmed copy exists solely to detect a
+// blank/whitespace-only value.
+test('forwards the SDP offer byte-for-byte, including a trailing CRLF and incidental surrounding whitespace, never a trimmed copy', async () => {
+  const offerWithSurroundingWhitespace = '  \r\n' + FAKE_OFFER_SDP + '\r\n\r\n';
+  const getRequest = stubLiveSession({ session: { id: 'live_1' }, transport: { type: 'webrtc', sdp: 'v=0\r\nanswer' } });
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, () => mintGptLiveClientSecret({ language: 'en', offerSdp: offerWithSurroundingWhitespace }));
+  const body = JSON.parse(getRequest().options.body);
+  assert.equal(body.transport.sdp, offerWithSurroundingWhitespace, 'must be forwarded exactly as received - trimming it is the incident this test guards against');
+});
+
+test('a genuinely blank/whitespace-only offerSdp is still rejected with GPT_LIVE_OFFER_SDP_REQUIRED - the trimmed copy is still used for this emptiness check', async () => {
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
+    await assert.rejects(() => mintGptLiveClientSecret({ language: 'en', offerSdp: '   \r\n  ' }), /GPT_LIVE_OFFER_SDP_REQUIRED/);
+    await assert.rejects(() => mintGptLiveClientSecret({ language: 'en', offerSdp: '' }), /GPT_LIVE_OFFER_SDP_REQUIRED/);
+    await assert.rejects(() => mintGptLiveClientSecret({ language: 'en' }), /GPT_LIVE_OFFER_SDP_REQUIRED/);
+  });
 });
 
 test('never leaks the permanent server API key into the response - there is no ephemeral credential of any kind in the returned object', async () => {
