@@ -3056,7 +3056,14 @@ async function mintGptLiveClientSecret(body, userId) {
     });
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new Error('GPT_LIVE_TOKEN_FAILED_' + response.status + (errText ? ': ' + errText.slice(0, 200) : ''));
+      // Temporary diagnostic (production incident, 2026-09-13): OpenAI has rejected every real
+      // WebRTC offer this route has forwarded so far with "failed to unmarshal SDP: EOF", even
+      // though the browser-captured request payload shows a genuine, non-empty, well-formed offer
+      // reaching this server. offerSdp.length is not secret (SDP carries no credentials) - surfacing
+      // it here lets us confirm, from the browser's own next attempt, whether the text this route
+      // actually forwards to OpenAI is still the same length as what the browser sent, ruling out
+      // in-process truncation/mangling as the cause. Remove once this incident is resolved.
+      throw new Error('GPT_LIVE_TOKEN_FAILED_' + response.status + ' (offerSdp.length=' + offerSdp.length + ')' + (errText ? ': ' + errText.slice(0, 200) : ''));
     }
     const data = await response.json();
     reportProviderHealth({ provider: 'openai', ok: true, errorCode: null, latencyMs: Date.now() - startedAt, source: 'ai.voice.gpt-live-session' });
