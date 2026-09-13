@@ -130,6 +130,9 @@ export function createGptLiveSession(options) {
   // transcript event).
   let pendingTranscript = '';
   let currentDelegationId = null;
+  // Live caption buffer for the CURRENT reply's own output_transcript.delta fragments - reset each
+  // time a new speak() call begins (see speak()'s own comment), never accumulated across turns.
+  let pendingOutputTranscript = '';
 
   // Same activeSpeakToken idiom aiVoiceRealtime.js/geminiLiveVoice.js already use: an output-
   // transcript delta arriving after its own speak() call was superseded (interrupt()/a newer
@@ -159,6 +162,18 @@ export function createGptLiveSession(options) {
   const onError = options.onError || function () {};
   const onOutputAudioBufferEvent = options.onOutputAudioBufferEvent || function () {};
   const onBargeIn = options.onBargeIn || function () {};
+  // Live caption fix (2026-09-13, real user report): purely additive/optional, like every other
+  // capability-gated callback in this file - a caller that never passes these (both existing
+  // transports today) keeps their exact prior behavior. Unlike the (retired) Realtime transport,
+  // which VoiceConsole.jsx's own header comment documents as only ever exposing a *finalized*
+  // transcript, GPT-Live's input_transcript.delta/output_transcript.delta genuinely stream live,
+  // real fragments - discarding that content (the previous behavior: these events were read only
+  // for their arrival timing, never their text) left the UI with no accurate way to show what was
+  // actually being heard/said while a turn was still in progress. Fired with the CURRENT
+  // accumulated buffer on every delta (never a single word), so the caller can render a live,
+  // growing caption without doing its own accumulation.
+  const onInputTranscript = options.onInputTranscript || function () {};
+  const onOutputTranscript = options.onOutputTranscript || function () {};
   // fetchSession(language, offerSdp, {signal}) -> {answerSdp, sessionId, walletReservationId} -
   // the browser builds its OWN local SDP offer (see connect() below) before ever calling this; the
   // server never sees this module's internal state, only the offer text and personalization
@@ -227,6 +242,7 @@ export function createGptLiveSession(options) {
     if (pendingStartReject) { const reject = pendingStartReject; pendingStartSettle = null; pendingStartReject = null; reject(Object.assign(new Error('GPT_LIVE_CONNECT_SUPERSEDED'), { name: 'GPT_LIVE_CONNECT_SUPERSEDED' })); }
     clearInputTranscriptQuietTimer();
     pendingTranscript = '';
+    pendingOutputTranscript = '';
     currentDelegationId = null;
     lastKnownUsageSeconds = null;
     if (dc) { try { dc.onopen = dc.onmessage = dc.onclose = dc.onerror = null; dc.close(); } catch (_) {} dc = null; }
@@ -354,6 +370,7 @@ export function createGptLiveSession(options) {
       }
       pendingTranscript += message.delta;
       if (state === VOICE_STATES.LISTENING || state === VOICE_STATES.ASSISTANT_SPEAKING) setState(VOICE_STATES.USER_SPEAKING);
+      onInputTranscript(pendingTranscript);
       armInputTranscriptQuietCheck(connectionEpoch);
       return;
     }
@@ -374,6 +391,8 @@ export function createGptLiveSession(options) {
       // unexpected message must never silently flip playback state on a guess) is ignored.
       if (activeSpeakToken == null) return;
       if (!speaking) { speaking = true; setState(VOICE_STATES.ASSISTANT_SPEAKING); onOutputAudioBufferEvent('output_audio_buffer.started', null); }
+      pendingOutputTranscript += message.delta;
+      onOutputTranscript(pendingOutputTranscript);
       armOutputTranscriptQuietCheck(activeSpeakToken);
     }
   }
@@ -586,6 +605,14 @@ export function createGptLiveSession(options) {
   }
   function supportsManualFinish() { return false; }
   function markPlaybackEnded() { if (state === VOICE_STATES.ASSISTANT_SPEAKING) setState(VOICE_STATES.LISTENING); }
+  // Live caption fix (2026-09-13): unlike the retired Realtime transport (VoiceConsole.jsx's own
+  // header comment: only a *finalized* transcript is ever exposed), this transport genuinely
+  // streams live input/output transcript fragments (onInputTranscript/onOutputTranscript above) -
+  // same capability-accessor convention as supportsManualFinish() so chatDockView.jsx can tell
+  // adapters apart without hardcoding a transport name. Mirrored by Gemini's own adapter reporting
+  // false (or simply not implementing this accessor at all, which chatDockView.jsx's own defensive
+  // read treats identically) so its console keeps today's exact "reveal only once finalized" look.
+  function supportsLiveCaption() { return true; }
 
   // Speaks NAVRYA's own already-approved text back, verbatim - never GPT-Live's own paraphrase of
   // it (see this file's header comment for the documented "commentary causes paraphrasing" risk
@@ -598,6 +625,9 @@ export function createGptLiveSession(options) {
     if (!text || !dc || dc.readyState !== 'open' || !currentDelegationId) return Promise.resolve();
     const token = {};
     activeSpeakToken = token;
+    // A genuinely new reply's own live caption must never start from a previous turn's leftover
+    // text - see this file's own pendingOutputTranscript declaration.
+    pendingOutputTranscript = '';
     // A prior interrupt() left local playback deliberately paused (see that function's own
     // comment) - resume it now, at the one place a genuinely new turn actually begins, so this
     // reply is audible.
@@ -619,7 +649,7 @@ export function createGptLiveSession(options) {
   function playAudioUrl() { return Promise.resolve(); }
 
   return {
-    connect, disconnect, mute, interrupt, speak, playAudioUrl, finishUserTurn, supportsManualFinish, markPlaybackEnded,
+    connect, disconnect, mute, interrupt, speak, playAudioUrl, finishUserTurn, supportsManualFinish, markPlaybackEnded, supportsLiveCaption,
     setLanguage: (value) => { language = value || 'en'; }, setEagerness: () => false,
     state: () => state, isMuted: () => muted, getMediaStream: () => mediaStream,
     // Provider Ownership addendum, section 1's own convention: reasoning already follows the real

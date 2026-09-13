@@ -210,10 +210,19 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // after the mount effect below constructs the transport, since which adapter is active never
   // changes for the lifetime of one mount (matches that effect's own never-re-run [] deps).
   const [voiceSupportsManualFinish, setVoiceSupportsManualFinish] = React.useState(true);
-  // Voice Mode console (ChatDock.jsx/VoiceConsole.jsx): the real, finalized text NAVRYA just
-  // heard (shown during PROCESSING) and the real reply text it's about to speak (timed-revealed
-  // during ASSISTANT_SPEAKING) - both set right where onVoiceTranscript already has them, never
-  // fabricated/interim text (see aiVoiceRealtime.js's own "finalized transcript only" rule).
+  // Live caption fix (2026-09-13): same read-once-after-mount convention as
+  // voiceSupportsManualFinish above, but defaults to false - unlike that flag (Realtime, the
+  // original adapter, DOES support manual finish, so "missing accessor" safely means true there),
+  // only gptLiveVoice.js implements supportsLiveCaption() at all, so "missing" must mean false
+  // here to keep Realtime/Gemini's console looking exactly as it always has.
+  const [voiceSupportsLiveCaption, setVoiceSupportsLiveCaption] = React.useState(false);
+  // Voice Mode console (ChatDock.jsx/VoiceConsole.jsx): the real text NAVRYA heard/is about to
+  // speak. For a transport with no live-partial-transcript event (Realtime historically, still
+  // true for Gemini), these are only ever set once finalized - see aiVoiceRealtime.js's own
+  // "finalized transcript only" rule. For GPT-Live (voiceSupportsLiveCaption above), the SAME
+  // state is instead updated progressively as real fragments arrive (onInputTranscript/
+  // onOutputTranscript below) - VoiceConsole.jsx's own showHeard/showReply gating is what actually
+  // decides, per adapter, whether to reveal that live value or wait for the final one.
   const [voiceHeardText, setVoiceHeardText] = React.useState('');
   const [voiceReplyCaption, setVoiceReplyCaption] = React.useState('');
   const voiceRef = React.useRef(null);
@@ -608,14 +617,30 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         ]).slice(-24);
         replaceTranscript(nextTranscript);
         if (result.conversationId) replaceConversationId(result.conversationId);
+        // Voice UX fix (2026-09-13, real user report): a voice-originated turn is hands-free by
+        // design - requiring the user to reach for the mouse and click "Apply" on every extracted
+        // field, the same review step a typed turn shows, defeated that. Text turns are completely
+        // unaffected: chat-dock-core.js/server dockChat()'s own "suggestions are previews, never
+        // already applied, the user must approve" contract (its own system-prompt instructions)
+        // still holds there exactly as before - this only ever runs, for a voice turn, the SAME
+        // core.applySuggestion() call a manual click would have made, and publishes what was set
+        // the same way an AI-discovered workflow's own already-applied fields already do (the meta
+        // chip row below), never silently/invisibly.
+        const rawSuggestions = result.suggestions || [];
+        const autoApplyVoiceSuggestions = source === 'voice' && rawSuggestions.length > 0 && !!result.activeProcess;
+        if (autoApplyVoiceSuggestions) {
+          rawSuggestions.forEach((s) => { try { core.applySuggestion(result.activeProcess.id, s.path, s.value, s.mode); } catch (_) {} });
+        }
         setPopover({
           open: true, state: 'answer', messages: nextTranscript,
-          suggestions: (result.suggestions || []).map((s, i) => ({ id: s.id || 'sugg-' + i, ...s })),
+          suggestions: autoApplyVoiceSuggestions ? [] : rawSuggestions.map((s, i) => ({ id: s.id || 'sugg-' + i, ...s })),
           activeProcessId: result.activeProcess ? result.activeProcess.id : null,
           // result.kind === 'workflow' (an AI-discovered/in-progress action, e.g. session.create):
           // fields it already applied live are shown as plain meta chips - reusing the popover's
-          // existing meta row rather than a new dedicated "AI action progress" component.
-          meta: result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : [],
+          // existing meta row rather than a new dedicated "AI action progress" component. A voice
+          // turn's own auto-applied suggestions (above) are appended here for the same reason.
+          meta: (result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : [])
+            .concat(autoApplyVoiceSuggestions ? rawSuggestions.map((s) => `${s.path}: ${s.value}`) : []),
           // NAVRYA chat dock redesign: real "a Journey C proactive rule was applied to this reply"
           // banner - only ever true when chat-dock-core.js genuinely resolved a proactive
           // confirmation this turn (ai-proactive-engine.js's own real ruleId), never fabricated.
@@ -919,8 +944,20 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // Only meaningful to gptLiveVoice.js's own disconnect() (best-effort wallet settlement) -
       // the Gemini transport simply never reads this option key.
       fetchSettle: fetchGptLiveSettle,
-      onStateChange: setVoiceState,
+      // Live caption fix (2026-09-13): a fresh LISTENING phase must never keep showing the
+      // PREVIOUS utterance's live-heard text (voiceHeardText is otherwise only ever appended to /
+      // replaced, never cleared - see that state's own declaration comment) - harmless no-op for
+      // Realtime/Gemini, which never populate it before PROCESSING anyway.
+      onStateChange: (next) => { if (next === VOICE_STATES.LISTENING) setVoiceHeardText(''); setVoiceState(next); },
       onFinalTranscript: onVoiceTranscript,
+      // Live caption fix (2026-09-13, real user report): only gptLiveVoice.js ever calls these
+      // (Gemini/the retired Realtime transport have no live-partial-transcript event to report, so
+      // this is simply never invoked there - same feature-detected-and-harmless pattern as
+      // fetchSpeakAudio/fetchSettle above). Reuses the exact same voiceHeardText/voiceReplyCaption
+      // state onVoiceTranscript()/onAudioStart() already publish to, so VoiceConsole.jsx needs no
+      // new props - only its own "when to show it" gating changes (see that file's own comment).
+      onInputTranscript: setVoiceHeardText,
+      onOutputTranscript: setVoiceReplyCaption,
       onMuteChange: setVoiceMuted,
       // Every failure aiVoiceRealtime.js's connect() reports now carries a sanitized stage label
       // (see that file's classifyMintFailureStage()/classifySdpFailureStage()) - stored as-is and
@@ -957,6 +994,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // transport - so this is recomputed every time this effect (re-)runs, never read once and
     // frozen. Defensive `&&` covers a legacy/test double missing the accessor entirely.
     setVoiceSupportsManualFinish(!voiceRef.current.supportsManualFinish || voiceRef.current.supportsManualFinish());
+    // Live caption fix (2026-09-13): opposite default from the read above - see
+    // voiceSupportsLiveCaption's own declaration comment for why "missing accessor" means false.
+    setVoiceSupportsLiveCaption(!!(voiceRef.current.supportsLiveCaption && voiceRef.current.supportsLiveCaption()));
     // Voice Mode performance pass: PlaybackController owns only speech - speak()/interrupt() are
     // read fresh from voiceRef.current on every call (never captured once), so they stay correct
     // across a reconnect (aiVoiceRealtime.js's own returned object identity never changes; only
@@ -1346,6 +1386,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
         voiceManualFinishPending={voiceManualFinishPending} voiceSupportsManualFinish={voiceSupportsManualFinish}
+        voiceSupportsLiveCaption={voiceSupportsLiveCaption}
         onVoiceToggle={toggleVoice} onVoiceEnd={endVoice} onVoiceMuteToggle={toggleVoiceMute} onVoiceInterrupt={interruptVoice}
         onVoiceEndMessage={endVoiceMessage}
         voiceErrorLabel={voiceErrorMessageForStage(i18n, voiceErrorStage)}

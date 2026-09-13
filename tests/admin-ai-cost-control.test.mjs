@@ -191,6 +191,30 @@ test('the model table and reconciliation-internal drill-down are paginated', asy
   });
 });
 
+// GPT-Live 1 production report (2026-09-13): the AI Cost Control models table showed gpt-live-1's
+// real usage/cost correctly (it comes straight from usageEvents), but its "is pricing configured"
+// column read as NOT configured even though an admin had genuinely set a per-minute rate for it -
+// this route's own priceConfigured check only ever looked at the two original token-priced fields,
+// never the flat-per-call (046) or per-minute (057) shapes wallet-service.mjs has resolved and
+// billed by correctly the whole time. Display-only bug, never a billing one - this proves the fix
+// for both additive shapes, mirroring the exact fields tests/gpt-live-voice-pricing.test.mjs and
+// tests/wallet-service.test.mjs already exercise on the billing side.
+test('the model table reports priceConfigured:true for a flat-per-call or per-minute priced row, not just the original token-priced fields', async () => {
+  await withFreshAdmin(async ({ api, repo }) => {
+    await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-live-1', perMinutePriceMicroUsd: 50000, currency: 'USD', enabled: true });
+    await repo.providerModelPricing.upsert({ provider: 'openai', model: 'gpt-image-flat', flatPricePerCallMicroUsd: 20000, currency: 'USD', enabled: true });
+    await repo.usageEvents.create({ userId: null, provider: 'openai', model: 'gpt-live-1', feature: 'voiceGptLive', totalTokens: 0, source: 'test', origin: 'gateway', providerCostMicroUsd: 75000, retailChargeMicroUsd: 225000 });
+    await repo.usageEvents.create({ userId: null, provider: 'openai', model: 'gpt-image-flat', feature: 'imageGeneration', totalTokens: 0, source: 'test', origin: 'gateway', providerCostMicroUsd: 20000, retailChargeMicroUsd: 60000 });
+    const { body } = await api('GET', '/models?range=30d&pageSize=25');
+    const liveRow = body.models.find((m) => m.model === 'gpt-live-1');
+    const flatRow = body.models.find((m) => m.model === 'gpt-image-flat');
+    assert.ok(liveRow, 'gpt-live-1 usage must appear in the model table like any other model');
+    assert.equal(liveRow.priceConfigured, true);
+    assert.ok(flatRow, 'the flat-priced model must appear too');
+    assert.equal(flatRow.priceConfigured, true);
+  });
+});
+
 test('manual balance snapshot is stored, real, and clearly labeled as never used for reconciliation', async () => {
   await withFreshAdmin(async ({ api }) => {
     const saved = await api('POST', '/balance/openai/manual-snapshot', { body: { amountUsd: 42.5, currency: 'usd', note: 'Checked dashboard manually' } });

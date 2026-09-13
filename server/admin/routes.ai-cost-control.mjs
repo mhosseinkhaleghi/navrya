@@ -160,7 +160,15 @@ export function router(repo) {
       const pricing = await repo.providerModelPricing.get(row.provider, row.model);
       return {
         ...row,
-        priceConfigured: Boolean(pricing && pricing.enabled && (pricing.promptPricePer1k != null || pricing.completionPricePer1k != null)),
+        // Fixed alongside the GPT-Live 1 migration (2026-09-13): this only ever checked the
+        // original token-priced fields, so a row priced by the flat-per-call shape (046) or the
+        // newer per-minute-of-voice shape (057, e.g. openai/gpt-live-1) was reported as NOT
+        // configured here even when reserveForAiCall()/settleAiCall() (wallet-service.mjs) were
+        // already resolving and billing it correctly - a display-only gap, never a billing one.
+        priceConfigured: Boolean(pricing && pricing.enabled && (
+          pricing.promptPricePer1k != null || pricing.completionPricePer1k != null ||
+          pricing.flatPricePerCallMicroUsd != null || pricing.perMinutePriceMicroUsd != null
+        )),
         // Per this feature's own scoped decision (see the OpenAI adapter's own header comment):
         // no provider's Costs API is model-attributable in this pass, so this is always false -
         // the model table's "external cost" column stays explicitly unsupported, never guessed.

@@ -17,6 +17,7 @@ const responsePopoverSrc = await readFile(path.join(root, 'public', 'pages', 'sh
 const dockViewSrc = await readFile(path.join(root, 'navrya-src', 'chatDockView.jsx'), 'utf8');
 const realtimeSrc = await readFile(path.join(root, 'navrya-src', 'aiVoiceRealtime.js'), 'utf8');
 const geminiSrc = await readFile(path.join(root, 'navrya-src', 'geminiLiveVoice.js'), 'utf8');
+const gptLiveSrc = await readFile(path.join(root, 'navrya-src', 'gptLiveVoice.js'), 'utf8');
 
 // ---- Part D: button modes ----
 
@@ -89,7 +90,51 @@ test('the "heard" listening-placeholder box is suppressed whenever a real reply 
 test('the caption is rendered directly from voiceReplyCaption, never a local re-typed/reset copy - the previous typewriter effect (which reset to \'\' the instant assistant_speaking ended) is gone', () => {
   assert.doesNotMatch(voiceConsoleSrc, /replyShown/, 'the old typewriter state must be fully removed, not merely unused');
   assert.doesNotMatch(voiceConsoleSrc, /setInterval/, 'no char-by-char reveal timer should remain in this file');
-  assert.match(voiceConsoleSrc, /<CaptionBox label=\{strings\.replyLabel\} text=\{voiceReplyCaption\} caret=\{false\} tone="reply" \/>/);
+  // Live caption fix (2026-09-13): caret is now conditional (voiceSupportsLiveCaption && replying),
+  // not a bare `false` literal - see the dedicated live-caption test group below for why.
+  assert.match(voiceConsoleSrc, /<CaptionBox label=\{strings\.replyLabel\} text=\{voiceReplyCaption\} caret=\{voiceSupportsLiveCaption && replying\} tone="reply" \/>/);
+});
+
+// ---- Live caption fix (2026-09-13, real user report): GPT-Live genuinely streams live partial
+// transcript fragments (unlike the retired Realtime transport, and unlike Gemini), so a capability
+// flag - same read-once-after-mount convention as voiceSupportsManualFinish, opposite default -
+// lets this console reveal them progressively for that one transport while every other adapter
+// keeps today's exact "reveal only once finalized" look. ----
+
+test('voiceSupportsLiveCaption defaults to false everywhere it is declared (opposite default from voiceSupportsManualFinish) - only an adapter that actually reports the capability turns this on', () => {
+  assert.match(voiceConsoleSrc, /voiceSupportsLiveCaption = false,/);
+  assert.match(chatDockSrc, /voiceSupportsLiveCaption = false,/);
+  assert.match(dockViewSrc, /const \[voiceSupportsLiveCaption, setVoiceSupportsLiveCaption\] = React\.useState\(false\);/);
+});
+
+test('the live-caption capability is read the same defensive way as voiceSupportsManualFinish, and gptLiveVoice.js is the only adapter that reports it true', () => {
+  assert.match(dockViewSrc, /setVoiceSupportsLiveCaption\(!!\(voiceRef\.current\.supportsLiveCaption && voiceRef\.current\.supportsLiveCaption\(\)\)\);/);
+  assert.match(gptLiveSrc, /function supportsLiveCaption\(\) \{ return true; \}/);
+  assert.doesNotMatch(geminiSrc, /supportsLiveCaption/, 'Gemini must not claim this capability - it has no live partial transcript event');
+  assert.doesNotMatch(realtimeSrc, /supportsLiveCaption/, 'the retired Realtime adapter must not claim this capability either');
+});
+
+test('the heard-text box only shows a live, still-growing value for a voiceSupportsLiveCaption adapter - every other adapter keeps the old thinking-only reveal untouched', () => {
+  assert.match(voiceConsoleSrc, /label=\{\(thinking \|\| \(voiceSupportsLiveCaption && voiceHeardText\)\) \? strings\.heardLabel : strings\.listeningPlaceholder\}/);
+  assert.match(voiceConsoleSrc, /text=\{\(thinking \|\| voiceSupportsLiveCaption\) \? \(voiceHeardText \|\| ''\) : ''\}/);
+});
+
+test('a fresh LISTENING phase clears the previous utterance\'s own live-heard text so it can never linger into the next one', () => {
+  assert.match(dockViewSrc, /onStateChange: \(next\) => \{ if \(next === VOICE_STATES\.LISTENING\) setVoiceHeardText\(''\); setVoiceState\(next\); \},/);
+});
+
+test('gptLiveVoice.js accumulates and reports BOTH live transcript streams via optional, purely-additive callbacks, reset per-turn on the output side', () => {
+  assert.match(gptLiveSrc, /const onInputTranscript = options\.onInputTranscript \|\| function \(\) \{\};/);
+  assert.match(gptLiveSrc, /const onOutputTranscript = options\.onOutputTranscript \|\| function \(\) \{\};/);
+  assert.match(gptLiveSrc, /pendingTranscript \+= message\.delta;[\s\S]{0,250}onInputTranscript\(pendingTranscript\);/);
+  assert.match(gptLiveSrc, /pendingOutputTranscript \+= message\.delta;\s*\r?\n\s*onOutputTranscript\(pendingOutputTranscript\);/);
+  // Reset exactly where a genuinely new reply begins - never left over from the previous turn.
+  assert.match(gptLiveSrc, /activeSpeakToken = token;[\s\S]{0,250}pendingOutputTranscript = '';/);
+});
+
+test('chatDockView.jsx wires the two new callbacks straight into the existing voiceHeardText/voiceReplyCaption state - no new UI state was introduced', () => {
+  assert.match(dockViewSrc, /onInputTranscript: setVoiceHeardText,/);
+  assert.match(dockViewSrc, /onOutputTranscript: setVoiceReplyCaption,/);
 });
 
 // ---- Part E: same-origin measured geometry (structural - real pixel alignment needs a real browser) ----

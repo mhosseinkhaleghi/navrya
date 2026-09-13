@@ -219,6 +219,14 @@ export function VoiceConsole({
   // Slice R2, audit finding T12: defaults to true (the OpenAI Realtime adapter's real capability)
   // so every existing caller that never passes this keeps the exact prior behavior.
   voiceSupportsManualFinish = true,
+  // Live caption fix (2026-09-13, real user report): defaults to false, the OPPOSITE default from
+  // voiceSupportsManualFinish above - only GPT-Live reports this capability (gptLiveVoice.js's own
+  // supportsLiveCaption()), so a caller that never passes it (or the retired Realtime/Gemini
+  // transports) keeps today's exact "reveal only once finalized" look this component's own header
+  // comment documents. When true, voiceHeardText/voiceReplyCaption are real, live, progressively
+  // updating fragments (chatDockView.jsx's onInputTranscript/onOutputTranscript) rather than a
+  // single value that only ever appears once a turn is fully finalized.
+  voiceSupportsLiveCaption = false,
   onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,
   getVoiceMediaStream, strings
 }) {
@@ -335,10 +343,16 @@ export function VoiceConsole({
           {errored && <DeniedCard strings={{ deniedTitle: strings.errorLabel, deniedBody: strings.errorLabel, retry: strings.retry, close: strings.close }} onRetry={onVoiceToggle} onEnd={onVoiceEnd} />}
         </div>
 
+        {/* Live caption fix (2026-09-13): voiceSupportsLiveCaption-gated - a transport with no live
+            partial transcript (Realtime historically, still Gemini) keeps the exact prior "reveal
+            only once PROCESSING starts" behavior below unchanged. GPT-Live's own voiceHeardText is
+            instead a real, progressively-growing fragment stream (chatDockView.jsx's
+            onInputTranscript), so it is shown as soon as there is anything to show - the label
+            only falls back to the plain listening placeholder while it is still genuinely empty. */}
         {showHeard && (
           <CaptionBox
-            label={thinking ? strings.heardLabel : strings.listeningPlaceholder}
-            text={thinking ? (voiceHeardText || '') : ''}
+            label={(thinking || (voiceSupportsLiveCaption && voiceHeardText)) ? strings.heardLabel : strings.listeningPlaceholder}
+            text={(thinking || voiceSupportsLiveCaption) ? (voiceHeardText || '') : ''}
             caret={!thinking}
             tone="heard"
           />
@@ -346,8 +360,12 @@ export function VoiceConsole({
         {/* fix/voice-mode-turn-ux (Part C req 10): renders the full text directly - the previous
             char-by-char typewriter reset to '' the instant `replying` went false (entering
             LISTENING), which would have made the reply appear to vanish right as this requirement
-            says it must stay visible. An instant, complete reveal can never be truncated/disappear. */}
-        {showReply && <CaptionBox label={strings.replyLabel} text={voiceReplyCaption} caret={false} tone="reply" />}
+            says it must stay visible. An instant, complete reveal can never be truncated/disappear.
+            Live caption fix (2026-09-13): a caret is shown only while a live-caption-capable
+            transport is still actively speaking (voiceReplyCaption is still growing then) - off
+            the instant it stops (the text is complete) and always off for a transport whose
+            caption only ever arrives as one already-complete value. */}
+        {showReply && <CaptionBox label={strings.replyLabel} text={voiceReplyCaption} caret={voiceSupportsLiveCaption && replying} tone="reply" />}
       </div>
 
       <div className="navrya-voice-console-controls" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>

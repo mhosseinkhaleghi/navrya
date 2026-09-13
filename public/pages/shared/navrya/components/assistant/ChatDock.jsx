@@ -124,6 +124,11 @@ export function ChatDock({
   // finishUserTurn()/supportsManualFinish() comment) - defaults to true so every existing caller
   // that never passes this keeps the exact prior OpenAI Realtime behavior.
   voiceSupportsManualFinish = true,
+  // Live caption fix (2026-09-13): opposite default from voiceSupportsManualFinish above - only
+  // gptLiveVoice.js reports this capability at all, so "not passed" must mean false here to keep
+  // every other caller's console looking exactly as it always has (see chatDockView.jsx's own
+  // voiceSupportsLiveCaption declaration comment).
+  voiceSupportsLiveCaption = false,
   onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, voiceErrorLabel, voiceLabels = {},
   getVoiceMediaStream, voiceHeardText, voiceReplyCaption,
   // Journey G UX correction: the one real "the user just deliberately engaged with the dock"
@@ -368,6 +373,7 @@ export function ChatDock({
               dotColor={dotColor} phaseLabel={phaseLabel} phaseCaption={phaseCaption}
               voicePermissionDenied={voicePermissionDenied} voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}
               voiceManualFinishPending={voiceManualFinishPending} voiceSupportsManualFinish={voiceSupportsManualFinish}
+              voiceSupportsLiveCaption={voiceSupportsLiveCaption}
               onVoiceToggle={onVoiceToggle} onVoiceEnd={onVoiceEnd} onVoiceMuteToggle={onVoiceMuteToggle} onVoiceInterrupt={onVoiceInterrupt}
               onVoiceEndMessage={onVoiceEndMessage}
               onMinimize={() => setVoiceMinimized(true)} getVoiceMediaStream={getVoiceMediaStream}
