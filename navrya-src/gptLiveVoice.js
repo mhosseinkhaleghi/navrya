@@ -60,6 +60,13 @@ const RECONNECT_MAX_ATTEMPTS = 5;
 // the other transports' own real playback-boundary signal, applied to the one event stream this
 // transport actually confirms exists for a spoken reply.
 const OUTPUT_TRANSCRIPT_QUIET_MS = 900;
+// Symmetric fix for the INPUT side (see this file's own "TURN-COMPLETION CORRECTION" header
+// comment): no documented event marks "the user's utterance is complete" either, and
+// session.delegation.created cannot be relied on to fire for every turn. A slightly longer window
+// than OUTPUT_TRANSCRIPT_QUIET_MS - people pause mid-sentence while speaking more than a model
+// pauses mid-reply, and STT delta delivery itself trails the real audio by some margin - before
+// treating the accumulated buffer as a finished utterance and handing it to flushTranscript().
+const INPUT_TRANSCRIPT_QUIET_MS = 1200;
 // speak() safety timeout (mirrors aiVoiceRealtime.js's own 12s speak() stall fix / Gemini's
 // watchdogs): commentary.append has no documented completion ack either, so a lost or never-sent
 // reply must never wedge the shared PlaybackController queue forever.
@@ -87,6 +94,20 @@ function microphoneStage(error) {
 // NAVRYA's existing backend (chat-dock-core.js's submit()/dockChat()) keeps owning every decision,
 // action, confirmation gate, and reply - client delegation is what makes that split real rather
 // than aspirational (see this file's own header comment).
+//
+// TURN-COMPLETION CORRECTION (production incident, 2026-09-13): the original implementation used
+// session.delegation.created as the ONLY signal to flush the accumulated transcript and hand it to
+// NAVRYA's backend. Live testing showed Voice could hear and speak but never actually filled a
+// form, opened a trade, or ran any workflow step - the transcript never left this module. Re-
+// checked against OpenAI's own delegation guide: for client delegation specifically, "delegation
+// decisions remain under the model's discretion" and the guide states plainly there is no
+// documented mechanism to force it to fire on every turn - it is not a deterministic "user
+// finished speaking" event, and no amount of instruction wording can make it one. Fixed the same
+// way OUTPUT_TRANSCRIPT_QUIET_MS already covers the symmetric "no completion event exists" gap on
+// the reply side: a bounded quiet window with no new session.input_transcript.delta is now the
+// PRIMARY, guaranteed trigger that flushes the buffer via flushTranscript() - delegation.created
+// (kept below) is only a bonus early-flush path when the model happens to fire it, never the sole
+// mechanism a real user's request depends on.
 export function createGptLiveSession(options) {
   options = options || {};
   let language = options.language || 'en';
@@ -117,6 +138,7 @@ export function createGptLiveSession(options) {
   let activeSpeakToken = null;
   let pendingSpeakSettle = null;
   let outputTranscriptQuietTimer = null;
+  let inputTranscriptQuietTimer = null;
   let speaking = false;
   let walletReservationId = null;
   let connectedAtMs = null;
@@ -151,6 +173,7 @@ export function createGptLiveSession(options) {
   function setState(next) { state = next; onStateChange(next); }
   function clearReconnectTimer() { if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; } }
   function clearOutputTranscriptQuietTimer() { if (outputTranscriptQuietTimer) { clearTimeout(outputTranscriptQuietTimer); outputTranscriptQuietTimer = null; } }
+  function clearInputTranscriptQuietTimer() { if (inputTranscriptQuietTimer) { clearTimeout(inputTranscriptQuietTimer); inputTranscriptQuietTimer = null; } }
 
   function wireMicTrackLifecycle(stream, myEpoch) {
     const tracks = stream && typeof stream.getAudioTracks === 'function' ? stream.getAudioTracks() : [];
@@ -202,6 +225,7 @@ export function createGptLiveSession(options) {
     // A superseded connect() attempt's own session.started wait (see connect()'s own comment) must
     // never hang forever once this teardown discards the peer connection it was waiting on.
     if (pendingStartReject) { const reject = pendingStartReject; pendingStartSettle = null; pendingStartReject = null; reject(Object.assign(new Error('GPT_LIVE_CONNECT_SUPERSEDED'), { name: 'GPT_LIVE_CONNECT_SUPERSEDED' })); }
+    clearInputTranscriptQuietTimer();
     pendingTranscript = '';
     currentDelegationId = null;
     lastKnownUsageSeconds = null;
@@ -255,6 +279,7 @@ export function createGptLiveSession(options) {
   }
 
   function flushTranscript() {
+    clearInputTranscriptQuietTimer();
     const text = pendingTranscript.trim();
     pendingTranscript = '';
     if (!text) return;
@@ -270,6 +295,19 @@ export function createGptLiveSession(options) {
       if (state === VOICE_STATES.ASSISTANT_SPEAKING) setState(VOICE_STATES.LISTENING);
       settleSpeak();
     }, OUTPUT_TRANSCRIPT_QUIET_MS);
+  }
+
+  // Primary turn-completion trigger (see this file's own "TURN-COMPLETION CORRECTION" header
+  // comment) - (re)armed on every session.input_transcript.delta. As long as fragments keep
+  // arriving the timer keeps getting pushed back, so a normal continuous utterance is never cut
+  // short; once they stop for INPUT_TRANSCRIPT_QUIET_MS, whatever is buffered is treated as a
+  // complete utterance and handed to NAVRYA's own backend via flushTranscript().
+  function armInputTranscriptQuietCheck(myEpoch) {
+    clearInputTranscriptQuietTimer();
+    inputTranscriptQuietTimer = setTimeout(() => {
+      if (myEpoch !== connectionEpoch) return; // superseded - a reconnect/disconnect already tore this down
+      flushTranscript();
+    }, INPUT_TRANSCRIPT_QUIET_MS);
   }
 
   function handleDataChannelMessage(raw) {
@@ -316,9 +354,13 @@ export function createGptLiveSession(options) {
       }
       pendingTranscript += message.delta;
       if (state === VOICE_STATES.LISTENING || state === VOICE_STATES.ASSISTANT_SPEAKING) setState(VOICE_STATES.USER_SPEAKING);
+      armInputTranscriptQuietCheck(connectionEpoch);
       return;
     }
     if (message.type === 'session.delegation.created' && message.delegation) {
+      // Bonus early-flush path only, never the sole trigger - see this file's own "TURN-COMPLETION
+      // CORRECTION" header comment for why armInputTranscriptQuietCheck() above is what a real
+      // user's request actually depends on now.
       currentDelegationId = message.delegation.id || null;
       flushTranscript();
       return;

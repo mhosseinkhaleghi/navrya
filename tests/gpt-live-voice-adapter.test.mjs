@@ -61,11 +61,28 @@ test('the module holds zero tools and never itself decides/answers/acts - client
   assert.match(server, /tools: \[\]/);
 });
 
-test('session.delegation.created is the one trigger that flushes the accumulated transcript into exactly one onFinalTranscript() call, mirroring the finalized-transcript contract every other transport already has', () => {
-  assert.match(adapter, /message\.type === 'session\.delegation\.created' && message\.delegation/);
+// Production incident (2026-09-13): delegation.created alone left Voice able to hear/speak but
+// never actually hand anything to NAVRYA's backend, because client delegation firing "remains
+// under the model's discretion" (OpenAI's own delegation guide) with no documented way to force it
+// on every turn. A quiet-window timer on the input transcript stream (mirroring the existing
+// OUTPUT_TRANSCRIPT_QUIET_MS heuristic on the reply side) is now the guaranteed trigger;
+// delegation.created is kept only as a bonus early-flush path.
+test('a bounded quiet window on session.input_transcript.delta, not session.delegation.created alone, is the guaranteed trigger that flushes the accumulated transcript into onFinalTranscript()', () => {
+  assert.match(adapter, /const INPUT_TRANSCRIPT_QUIET_MS = \d+;/);
+  assert.match(adapter, /function armInputTranscriptQuietCheck\(myEpoch\) \{[\s\S]*?flushTranscript\(\);[\s\S]*?\}, INPUT_TRANSCRIPT_QUIET_MS\);/);
+  // Actually armed every time a fragment arrives, not just declared and forgotten.
+  assert.match(adapter, /pendingTranscript \+= message\.delta;[\s\S]{0,200}armInputTranscriptQuietCheck\(connectionEpoch\);/);
   assert.match(adapter, /function flushTranscript\(\) \{[\s\S]*?onFinalTranscript\(text\);/);
+  // delegation.created still exists as a (non-exclusive) early-flush path.
+  assert.match(adapter, /message\.type === 'session\.delegation\.created' && message\.delegation/);
   assert.match(dock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchGptLiveSession,/);
   assert.match(dock, /onFinalTranscript: onVoiceTranscript,/);
+});
+
+test('the input-quiet timer is torn down on disconnect/reconnect - a superseded connection can never fire a stale flush', () => {
+  assert.match(adapter, /function clearInputTranscriptQuietTimer\(\) \{ if \(inputTranscriptQuietTimer\) \{ clearTimeout\(inputTranscriptQuietTimer\); inputTranscriptQuietTimer = null; \} \}/);
+  assert.match(adapter, /if \(myEpoch !== connectionEpoch\) return; \/\/ superseded[\s\S]{0,80}\n\s*flushTranscript\(\);/);
+  assert.match(adapter, /function teardown\(\) \{[\s\S]*?clearInputTranscriptQuietTimer\(\);/);
 });
 
 test('speak() wraps the approved reply in an explicit verbatim/no-paraphrase instruction before sending it as commentary - a real mitigation for OpenAI\'s own documented paraphrasing behavior, not a silent trust of the model', () => {
