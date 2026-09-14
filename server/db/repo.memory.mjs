@@ -41,6 +41,7 @@ export function createMemoryRepo() {
       lastTestedAt: null, lastTestOk: null, lastDetectedChainId: null, updatedBy: null, updatedAt: null
     },
     storageProducts: new Map(), storageEntitlements: new Map(), storageObjects: new Map(),
+    mediaAssets: new Map(), mediaAssetLinks: new Map(),
     conversationScenarios: new Map(), conversationScenarioVersions: new Map(), conversationAudioAssets: new Map(),
     conversationScenarioExposures: new Map(),
     // AI Cost Control (043_ai_cost_control.sql) - see repo.pg.mjs's identical-purpose domains.
@@ -2506,6 +2507,107 @@ export function createMemoryRepo() {
     }
   };
 
+  // Media Drive (060_media_assets.sql) - canonical, reusable trader-owned media asset domain.
+  // References (never copies) the existing storage_objects row for the real bytes. metadataStatus
+  // transitions are guarded (`processing` -> a terminal status, or `failed`/`unavailable` ->
+  // `processing` on an explicit retry) so a stale/duplicate analysis result can never silently
+  // clobber a fresher one - same "pinned write" caution this app's other domains use.
+  const mediaAssets = {
+    async create({ userId, storageObjectId, url, kind, originalFilename, mimeType, source, sessionId, activeMarketSession, metadataStatus }) {
+      const stamp = now();
+      const record = {
+        id: newId('mediaAsset'), userId, storageObjectId, url, kind,
+        originalFilename: originalFilename || null, mimeType: mimeType || null, source: source === 'capture' ? 'capture' : 'upload',
+        sessionId: sessionId || null, activeMarketSession: activeMarketSession || null,
+        metadataStatus: metadataStatus || 'not_applicable',
+        isTradingChart: null, symbol: null, timeframe: null, confidence: null,
+        analysisProvider: null, analysisModel: null, analysisErrorCode: null,
+        registeredAt: stamp, createdAt: stamp, deletedAt: null
+      };
+      state.mediaAssets.set(record.id, record);
+      return clone(record);
+    },
+    async get(id) {
+      const record = state.mediaAssets.get(id);
+      return record ? clone(record) : null;
+    },
+    async listRecentForUser(userId, { limit } = {}) {
+      return Array.from(state.mediaAssets.values())
+        .filter((a) => a.userId === userId && !a.deletedAt)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+        .slice(0, limit || 24)
+        .map(clone);
+    },
+    // "My Drive" - full owned library, optionally text-filtered (symbol/filename), keyset-paged
+    // by createdAt (cursor = the last-seen item's own createdAt, exclusive).
+    async listForUser(userId, { q, cursor, limit } = {}) {
+      const needle = (q || '').trim().toLowerCase();
+      let rows = Array.from(state.mediaAssets.values())
+        .filter((a) => a.userId === userId && !a.deletedAt)
+        .filter((a) => !needle || (a.symbol && a.symbol.toLowerCase().includes(needle)) || (a.originalFilename && a.originalFilename.toLowerCase().includes(needle)))
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      if (cursor) rows = rows.filter((a) => a.createdAt < cursor);
+      const page = rows.slice(0, limit || 30);
+      return { assets: page.map(clone), nextCursor: page.length === (limit || 30) ? page[page.length - 1].createdAt : null };
+    },
+    // Applies a validated extraction result - a no-op (returns null) unless the asset is still
+    // genuinely 'processing', so a slow/duplicate/late-arriving result can never overwrite a
+    // fresher retry's own outcome.
+    async updateAnalysis(id, { status, isTradingChart, symbol, timeframe, confidence, provider, model, errorCode }) {
+      const record = state.mediaAssets.get(id);
+      if (!record || record.deletedAt || record.metadataStatus !== 'processing') return null;
+      record.metadataStatus = status;
+      record.isTradingChart = typeof isTradingChart === 'boolean' ? isTradingChart : null;
+      record.symbol = symbol || null;
+      record.timeframe = timeframe || null;
+      record.confidence = Number.isFinite(confidence) ? confidence : null;
+      record.analysisProvider = provider || null;
+      record.analysisModel = model || null;
+      record.analysisErrorCode = errorCode || null;
+      return clone(record);
+    },
+    // Explicit user-triggered retry - only allowed from a terminal non-'processing' status, so a
+    // retry can never race/duplicate an extraction that is already in flight.
+    async markProcessing(id) {
+      const record = state.mediaAssets.get(id);
+      if (!record || record.deletedAt || record.metadataStatus === 'processing') return null;
+      record.metadataStatus = 'processing';
+      record.analysisErrorCode = null;
+      return clone(record);
+    },
+    async markDeleted(id) {
+      const record = state.mediaAssets.get(id);
+      if (!record) return null;
+      record.deletedAt = now();
+      return clone(record);
+    },
+    async countLinksForAsset(mediaAssetId) {
+      return Array.from(state.mediaAssetLinks.values()).filter((l) => l.mediaAssetId === mediaAssetId).length;
+    }
+  };
+
+  // Reuse links - lets one Media Asset be attached to more than one domain record (Session chart
+  // entry, Trade, Pattern, Strategy) without ever re-uploading bytes. Idempotent: linking the same
+  // (asset, domain, recordId) triple twice returns the existing link rather than duplicating it.
+  const mediaAssetLinks = {
+    async create({ mediaAssetId, userId, domain, recordId }) {
+      const existing = Array.from(state.mediaAssetLinks.values())
+        .find((l) => l.mediaAssetId === mediaAssetId && l.domain === domain && l.recordId === recordId);
+      if (existing) return clone(existing);
+      const record = { id: newId('mediaAssetLink'), mediaAssetId, userId, domain, recordId, createdAt: now() };
+      state.mediaAssetLinks.set(record.id, record);
+      return clone(record);
+    },
+    async listForAsset(mediaAssetId) {
+      return Array.from(state.mediaAssetLinks.values()).filter((l) => l.mediaAssetId === mediaAssetId).map(clone);
+    },
+    async deleteForAsset(mediaAssetId) {
+      Array.from(state.mediaAssetLinks.values())
+        .filter((l) => l.mediaAssetId === mediaAssetId)
+        .forEach((l) => state.mediaAssetLinks.delete(l.id));
+    }
+  };
+
   // Module 5 (final module) of the local-first-to-server migration. One document per user, no
   // child tables, no list - see the migration file's comment. Stored (and returned) verbatim as
   // the client sent it; this repo layer only owns the user_id-scoped upsert/read, never
@@ -3046,6 +3148,7 @@ export function createMemoryRepo() {
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
+    mediaAssets, mediaAssetLinks,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
     providerCostCredentials, providerCostSync, providerBalanceSnapshots, clientErrors
   };

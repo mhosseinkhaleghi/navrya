@@ -30,6 +30,7 @@ import * as routesAnalysisSymbols from './routes.analysis-symbols.mjs';
 import * as routesWallet from './routes.wallet.mjs';
 import * as routesSubscriptions from './routes.subscriptions.mjs';
 import * as routesStorage from './routes.storage.mjs';
+import * as routesMedia from './routes.media.mjs';
 import * as routesConversationScenariosSync from './routes.conversation-scenarios-sync.mjs';
 import * as routesConversationScenarioExposuresSync from './routes.conversation-scenario-exposures-sync.mjs';
 import * as routesWebhooksBsc from './routes.webhooks-bsc.mjs';
@@ -156,7 +157,11 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   // contain sensitive account/billing screenshots, so it stays private like the other four
   // (requireUploadOwnership's ADMIN_VISIBLE_CATEGORIES then narrowly re-opens it to admins only,
   // for this one category - see that module's own comment).
-  const PRIVATE_UPLOAD_CATEGORIES = new Set(['session', 'pattern', 'strategy', 'trade', 'ticket']);
+  // 'media' added for the Media Drive domain (routes.media.mjs) - every Media Asset's bytes are
+  // saved under this category and always have a storage_objects row from upload time, so
+  // upload-ownership.mjs's own tier-1 (storage_objects.findActiveByObjectKey) lookup already
+  // resolves real ownership; no new RESOLVERS entry is needed there.
+  const PRIVATE_UPLOAD_CATEGORIES = new Set(['session', 'pattern', 'strategy', 'trade', 'ticket', 'media']);
   function isPrivateUploadPath(req) {
     return PRIVATE_UPLOAD_CATEGORIES.has(req.path.split('/')[1]);
   }
@@ -219,6 +224,7 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   app.use('/api/sync/wallet', routesWallet.router(repo));
   app.use('/api/sync/subscriptions', routesSubscriptions.router(repo));
   app.use('/api/sync/storage', routesStorage.router(repo, uploadsDir));
+  app.use('/api/sync/media', routesMedia.router(repo, uploadsDir));
   // Journey H2, Gate 2: the published Conversation Scenario bundle the browser Router fetches -
   // public app content, not user data, but still sits behind requireAuth()/csrfProtection() like
   // every other /api/sync/* route (a GET needs no CSRF token; this just keeps the mount

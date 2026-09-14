@@ -5,6 +5,10 @@ import { resolveRedisClient } from './security/rate-limit.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
 import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, providerCostMicroUsdFor } from '../commercial/wallet-service.mjs';
 import { resolveRetailMultiplier } from '../commercial/markup.mjs';
+import { normalizeInstrumentCode } from '../db/instrument-normalize.mjs';
+import { normalizeTimeframe } from '../db/timeframe-normalize.mjs';
+
+const MEDIA_ANALYSIS_STATUSES = new Set(['ready', 'failed', 'unavailable']);
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
@@ -238,6 +242,32 @@ export function router(repo) {
       providerCostMicroUsd, retailChargeMicroUsd, tokenDiscountPercent, linkedLedgerIdempotencyKey
     });
     res.status(201).json(record);
+  }));
+
+  // Media Drive (060_media_assets.sql) chart-extraction bridge - server/pattern-ai-server.mjs
+  // (deliberately DB-free, see the file header above) calls this to persist the ONLY fields AI is
+  // ever allowed to write for a Media Asset: extraction status plus isTradingChart/symbol/
+  // timeframe/confidence. Every other Media Asset field (registration time, active market
+  // session, ownership) is set elsewhere, from verified server context, never from this call.
+  // Re-validated here (never trusting the caller's own claim) with the SAME real Instrument
+  // Catalog/TIMEFRAMES normalizers the rest of this app uses - an unrecognized symbol/timeframe
+  // is stored as null/unknown, never as a raw unvalidated string. repo.mediaAssets.updateAnalysis
+  // itself is the concurrency guard (a no-op unless the asset is still genuinely 'processing'), so
+  // a stale/duplicate result can never clobber a fresher retry's own outcome.
+  app.post('/media/assets/:id/analysis', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const status = MEDIA_ANALYSIS_STATUSES.has(body.status) ? body.status : 'failed';
+    const updated = await repo.mediaAssets.updateAnalysis(req.params.id, {
+      status,
+      isTradingChart: typeof body.isTradingChart === 'boolean' ? body.isTradingChart : null,
+      symbol: status === 'ready' ? normalizeInstrumentCode(body.symbol) : null,
+      timeframe: status === 'ready' ? normalizeTimeframe(body.timeframe) : null,
+      confidence: status === 'ready' && Number.isFinite(body.confidence) ? Math.max(0, Math.min(1, body.confidence)) : null,
+      provider: body.provider || null, model: body.model || null, errorCode: body.errorCode || null
+    });
+    if (!updated) return res.json({ ok: false, reason: 'MEDIA_ASSET_NOT_PROCESSING' });
+    res.json({ ok: true, asset: updated });
   }));
 
   app.get('/entitlements/:userId', asyncHandler(async (req, res) => {

@@ -366,7 +366,8 @@ const AI_BILLED_ROUTES = {
   '/api/sessions/analyze': 'sessionAnalyze',
   '/api/sessions/visualize-scenario': 'sessionScenarioVisualization',
   '/api/sessions/visualize-analysis': 'sessionAnalysisVisualization',
-  '/api/sessions/graph-ai-analysis': 'graphAiAnalysis'
+  '/api/sessions/graph-ai-analysis': 'graphAiAnalysis',
+  '/api/media/analyze-chart': 'mediaChartAnalyze'
 };
 
 // Both image-generation routes above are explicitly, always OpenAI/IMAGE_EDIT_MODEL (see
@@ -446,6 +447,21 @@ async function releaseWalletFundsForCall(reservationId) {
   try {
     await internalWalletCall('/internal/wallet/release', { reservationId });
   } catch (_) { /* best-effort, see settleWalletFundsForCall's comment */ }
+}
+
+// Media Drive (060_media_assets.sql) bridge - persists a real extraction outcome (or an honest
+// failed/unavailable status) the same INTERNAL_API_SECRET-protected way every other write this
+// DB-free process needs goes through. Uses the retrying variant (like settleWalletFundsForCall)
+// since a real, already-computed result must not be lost to one transient Community-API blip -
+// a stuck 'processing' asset would otherwise never resolve without a manual retry.
+async function persistMediaAnalysisResult({ mediaAssetId, status, isTradingChart, symbol, timeframe, confidence, provider, model, errorCode }) {
+  try {
+    return await internalWalletCallWithRetry('/internal/media/assets/' + encodeURIComponent(mediaAssetId) + '/analysis', {
+      status, isTradingChart, symbol, timeframe, confidence, provider, model, errorCode
+    });
+  } catch (_) {
+    return { ok: false, reason: 'MEDIA_SERVICE_UNAVAILABLE' };
+  }
 }
 
 // Authoritative AI cost/usage recording (never client-reported) - called for EVERY real
@@ -2301,6 +2317,73 @@ async function analyzeSession(body) {
   return { data, provider, model, usage };
 }
 
+const MEDIA_CHART_ANALYSIS_FORMAT = {
+  type: 'json_schema', name: 'media_chart_analysis', strict: true,
+  schema: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      isTradingChart: { type: 'boolean' },
+      symbol: { type: 'string' },
+      timeframe: { type: 'string' },
+      confidence: { type: 'number' }
+    },
+    required: ['isTradingChart', 'symbol', 'timeframe', 'confidence']
+  }
+};
+
+// Media Drive (060_media_assets.sql) chart-metadata extraction. This is the ONLY thing AI is ever
+// allowed to write for a Media Asset - whether the image is a trading chart at all, its visible
+// symbol/timeframe label, and a confidence score. Registration time, active market session, and
+// every other Media Asset field are deterministic/server-derived (routes.media.mjs) and never
+// touch this function. One provider call per invocation, same vision-capability gate as
+// analyzeSession above; every outcome (success, unsupported provider, or a real provider failure)
+// is persisted through persistMediaAnalysisResult() below so the asset never gets stuck showing
+// 'processing' forever, and a failed/unsupported call is never wallet-charged (see the dispatcher's
+// own release-on-throw handling further down this file).
+async function analyzeMediaChart(body) {
+  const image = typeof body.imageDataUrl === 'string' && body.imageDataUrl.startsWith('data:image/') ? body.imageDataUrl : null;
+  if (!image) throw new Error('MEDIA_IMAGE_REQUIRED');
+  const resolvedProvider = Object.prototype.hasOwnProperty.call(providerEnvKey, body.provider) ? body.provider : 'openai';
+  if (!SESSION_ANALYSIS_VISION_SUPPORT[resolvedProvider]) {
+    await persistMediaAnalysisResult({ mediaAssetId: body.mediaAssetId, status: 'unavailable', errorCode: 'MODEL_VISION_UNSUPPORTED' });
+    throw new Error('MODEL_VISION_UNSUPPORTED');
+  }
+
+  const systemText = 'You inspect a single trading-chart screenshot. Report only what is visibly certain in the image itself: whether it truly is a real trading/market chart at all, the exact ticker/symbol label if it is legibly printed on the chart, the exact timeframe label if it is legibly printed on the chart, and your confidence from 0 to 1. Never guess a price, level, or value. Use an empty string for symbol/timeframe when you cannot read one with real confidence - never invent one.';
+
+  let outcome;
+  try {
+    outcome = await callProvider(body.provider, body.apiKey, body.model, {
+      input: [
+        { role: 'system', content: [{ type: 'input_text', text: systemText }] },
+        { role: 'user', content: [{ type: 'input_text', text: 'Identify this chart.' }, ...imageContent([image])] }
+      ],
+      text: { format: MEDIA_CHART_ANALYSIS_FORMAT },
+      compactGeminiSchemaConstraints: true,
+      max_output_tokens: 400,
+      timeoutMs: 60000
+    }, 'media.analyzeChart');
+  } catch (error) {
+    // A provider/extraction failure never fabricates a value - persisted as an honest 'failed'
+    // status (extraction contract step 3/4), never silently retried here (see routes.media.mjs's
+    // own explicit, guarded retry endpoint).
+    await persistMediaAnalysisResult({ mediaAssetId: body.mediaAssetId, status: 'failed', errorCode: String((error && error.message) || 'EXTRACTION_FAILED').slice(0, 64) });
+    throw error;
+  }
+
+  const raw = outcome.data || {};
+  const persisted = await persistMediaAnalysisResult({
+    mediaAssetId: body.mediaAssetId, status: 'ready',
+    isTradingChart: Boolean(raw.isTradingChart),
+    symbol: typeof raw.symbol === 'string' ? raw.symbol.trim() : '',
+    timeframe: typeof raw.timeframe === 'string' ? raw.timeframe.trim() : '',
+    confidence: Number.isFinite(raw.confidence) ? raw.confidence : null,
+    provider: outcome.provider, model: outcome.model
+  });
+  const data = persisted && persisted.ok !== false ? persisted.asset : { mediaAssetId: body.mediaAssetId, metadataStatus: 'ready' };
+  return { data, provider: outcome.provider, model: outcome.model, usage: outcome.usage };
+}
+
 // OpenAI's key-resolution tiers only (Scenario Map is an explicitly OpenAI-only capability - brief
 // §25/§30: "the currently active provider [for the analysis] is fine to be Claude/Kimi/etc - the
 // permanent OpenAI key must never reach the browser" either way) - same 3-tier order as
@@ -3610,6 +3693,7 @@ const server = http.createServer(async (request, response) => {
     else if (request.url === '/api/sessions/visualize-scenario') result = await visualizeScenario(body);
     else if (request.url === '/api/sessions/visualize-analysis') result = await visualizeAnalysis(body);
     else if (request.url === '/api/sessions/graph-ai-analysis') result = await graphAiAnalysis(body);
+    else if (request.url === '/api/media/analyze-chart') result = await analyzeMediaChart(body);
     else if (request.url === '/api/ai/test-connection') result = await testConnection(body);
     // RETIRED (GPT-Live 1 migration): OpenAI Realtime is no longer used for Voice Mode - never
     // mints a real credential any more, for any authenticated caller. Placed AFTER the real
@@ -3805,5 +3889,6 @@ export {
   buildSessionAnalysisSystemPrompt, buildSessionAnalysisContextText,
   validateSessionAnalysisResult, sessionAnalysisOutputBudget, sessionAnalysisFormat, sessionAnalysisReasoningEffort,
   SESSION_ANALYSIS_TYPES, SESSION_ANALYSIS_SOURCE, SESSION_ANALYSIS_OUTPUT_BUDGET, SESSION_ANALYSIS_VISION_SUPPORT,
-  SESSION_ANALYSIS_REASONING_EFFORT, SESSION_ANALYSIS_REASONING_BUDGET_MULTIPLIER
+  SESSION_ANALYSIS_REASONING_EFFORT, SESSION_ANALYSIS_REASONING_BUDGET_MULTIPLIER,
+  analyzeMediaChart, MEDIA_CHART_ANALYSIS_FORMAT, AI_BILLED_ROUTES
 };

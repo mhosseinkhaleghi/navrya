@@ -3820,6 +3820,113 @@ export function createPgRepo(pool) {
     }
   };
 
+  function mapMediaAsset(row) {
+    return {
+      id: row.id, userId: row.user_id, storageObjectId: row.storage_object_id, url: row.url, kind: row.kind,
+      originalFilename: row.original_filename, mimeType: row.mime_type, source: row.source,
+      sessionId: row.session_id, activeMarketSession: row.active_market_session,
+      metadataStatus: row.metadata_status, isTradingChart: row.is_trading_chart,
+      symbol: row.symbol, timeframe: row.timeframe, confidence: row.confidence === null ? null : Number(row.confidence),
+      analysisProvider: row.analysis_provider, analysisModel: row.analysis_model, analysisErrorCode: row.analysis_error_code,
+      registeredAt: row.registered_at, createdAt: row.created_at, deletedAt: row.deleted_at
+    };
+  }
+  // Media Drive (060_media_assets.sql) - canonical, reusable trader-owned media asset domain.
+  // References (never copies) the existing storage_objects row for the real bytes. metadataStatus
+  // transitions are guarded (`processing` -> a terminal status, or `failed`/`unavailable` ->
+  // `processing` on an explicit retry) so a stale/duplicate analysis result can never silently
+  // clobber a fresher one - same "pinned write" caution this app's other domains use.
+  const mediaAssets = {
+    async create({ userId, storageObjectId, url, kind, originalFilename, mimeType, source, sessionId, activeMarketSession, metadataStatus }) {
+      const { rows } = await pool.query(
+        `INSERT INTO media_assets (id, user_id, storage_object_id, url, kind, original_filename, mime_type, source, session_id, active_market_session, metadata_status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        [newId('mediaAsset'), userId, storageObjectId, url, kind, originalFilename || null, mimeType || null,
+          source === 'capture' ? 'capture' : 'upload', sessionId || null, activeMarketSession || null, metadataStatus || 'not_applicable']
+      );
+      return mapMediaAsset(rows[0]);
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM media_assets WHERE id=$1', [id]);
+      return rows[0] ? mapMediaAsset(rows[0]) : null;
+    },
+    async listRecentForUser(userId, { limit } = {}) {
+      const { rows } = await pool.query(
+        'SELECT * FROM media_assets WHERE user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2',
+        [userId, limit || 24]
+      );
+      return rows.map(mapMediaAsset);
+    },
+    // "My Drive" - full owned library, optionally text-filtered (symbol/filename), keyset-paged
+    // by createdAt (cursor = the last-seen item's own createdAt, exclusive).
+    async listForUser(userId, { q, cursor, limit } = {}) {
+      const needle = (q || '').trim();
+      const cap = limit || 30;
+      const params = [userId];
+      let where = 'user_id=$1 AND deleted_at IS NULL';
+      if (needle) { params.push('%' + needle + '%'); where += ` AND (symbol ILIKE $${params.length} OR original_filename ILIKE $${params.length})`; }
+      if (cursor) { params.push(cursor); where += ` AND created_at < $${params.length}`; }
+      params.push(cap);
+      const { rows } = await pool.query(`SELECT * FROM media_assets WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length}`, params);
+      const assets = rows.map(mapMediaAsset);
+      return { assets, nextCursor: assets.length === cap ? assets[assets.length - 1].createdAt : null };
+    },
+    // Applies a validated extraction result - a no-op (returns null) unless the asset is still
+    // genuinely 'processing', so a slow/duplicate/late-arriving result can never overwrite a
+    // fresher retry's own outcome.
+    async updateAnalysis(id, { status, isTradingChart, symbol, timeframe, confidence, provider, model, errorCode }) {
+      const { rows } = await pool.query(
+        `UPDATE media_assets SET metadata_status=$2, is_trading_chart=$3, symbol=$4, timeframe=$5, confidence=$6,
+           analysis_provider=$7, analysis_model=$8, analysis_error_code=$9
+         WHERE id=$1 AND deleted_at IS NULL AND metadata_status='processing' RETURNING *`,
+        [id, status, typeof isTradingChart === 'boolean' ? isTradingChart : null, symbol || null, timeframe || null,
+          Number.isFinite(confidence) ? confidence : null, provider || null, model || null, errorCode || null]
+      );
+      return rows[0] ? mapMediaAsset(rows[0]) : null;
+    },
+    // Explicit user-triggered retry - only allowed from a terminal non-'processing' status, so a
+    // retry can never race/duplicate an extraction that is already in flight.
+    async markProcessing(id) {
+      const { rows } = await pool.query(
+        `UPDATE media_assets SET metadata_status='processing', analysis_error_code=NULL
+         WHERE id=$1 AND deleted_at IS NULL AND metadata_status <> 'processing' RETURNING *`,
+        [id]
+      );
+      return rows[0] ? mapMediaAsset(rows[0]) : null;
+    },
+    async markDeleted(id) {
+      const { rows } = await pool.query('UPDATE media_assets SET deleted_at=now() WHERE id=$1 RETURNING *', [id]);
+      return rows[0] ? mapMediaAsset(rows[0]) : null;
+    },
+    async countLinksForAsset(mediaAssetId) {
+      const { rows } = await pool.query('SELECT COUNT(*) AS total FROM media_asset_links WHERE media_asset_id=$1', [mediaAssetId]);
+      return Number(rows[0].total);
+    }
+  };
+
+  // Reuse links - lets one Media Asset be attached to more than one domain record (Session chart
+  // entry, Trade, Pattern, Strategy) without ever re-uploading bytes. Idempotent: linking the same
+  // (asset, domain, recordId) triple twice returns the existing link rather than duplicating it
+  // (media_asset_links_unique_idx enforces this at the DB level too).
+  const mediaAssetLinks = {
+    async create({ mediaAssetId, userId, domain, recordId }) {
+      const { rows } = await pool.query(
+        `INSERT INTO media_asset_links (id, media_asset_id, user_id, domain, record_id) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (media_asset_id, domain, record_id) DO UPDATE SET media_asset_id = EXCLUDED.media_asset_id RETURNING *`,
+        [newId('mediaAssetLink'), mediaAssetId, userId, domain, recordId]
+      );
+      const row = rows[0];
+      return { id: row.id, mediaAssetId: row.media_asset_id, userId: row.user_id, domain: row.domain, recordId: row.record_id, createdAt: row.created_at };
+    },
+    async listForAsset(mediaAssetId) {
+      const { rows } = await pool.query('SELECT * FROM media_asset_links WHERE media_asset_id=$1', [mediaAssetId]);
+      return rows.map((row) => ({ id: row.id, mediaAssetId: row.media_asset_id, userId: row.user_id, domain: row.domain, recordId: row.record_id, createdAt: row.created_at }));
+    },
+    async deleteForAsset(mediaAssetId) {
+      await pool.query('DELETE FROM media_asset_links WHERE media_asset_id=$1', [mediaAssetId]);
+    }
+  };
+
   // Module 5 (final module) of the local-first-to-server migration. One row per user, the
   // entire client profile stored (and returned) verbatim as a single jsonb column - no child
   // tables, no transaction needed (a single-row upsert can't partially fail the way a
@@ -4527,6 +4634,7 @@ export function createPgRepo(pool) {
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
+    mediaAssets, mediaAssetLinks,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
     providerCostCredentials, providerCostSync, providerBalanceSnapshots, clientErrors
   };

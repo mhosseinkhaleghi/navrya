@@ -2,6 +2,7 @@ import express from 'express';
 import { asyncHandler, ApiError } from './errors.mjs';
 import { getBillingProvider } from '../commercial/billing-provider-factory.mjs';
 import { resolveStorageUsageBytes, resolveStorageQuotaBytes, percentUsed, thresholdCrossedFor } from '../commercial/storage-service.mjs';
+import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
 import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provider.mjs';
 
 // Commercial System Slice 2/Validation Gate - the user-facing Storage surface (spec section
@@ -15,13 +16,17 @@ export function router(repo, uploadsDir) {
   const objectStorage = new LocalDiskObjectStorageProvider({ uploadsDir });
 
   app.get('/', asyncHandler(async (req, res) => {
-    const [usedBytes, quotaBytes, entitlements] = await Promise.all([
+    const [usedBytes, quotaBytes, entitlements, userEntitlements] = await Promise.all([
       resolveStorageUsageBytes(repo, req.currentUser.id),
       resolveStorageQuotaBytes(repo, req.currentUser.id),
-      repo.storageEntitlements.listForUser(req.currentUser.id)
+      repo.storageEntitlements.listForUser(req.currentUser.id),
+      // Media Drive's own storage-usage strip shows the real plan name only when it is genuinely
+      // available - never a guess. `plan` is additive; every pre-existing caller of this response
+      // shape is unaffected by the extra field.
+      resolveUserEntitlements(req.currentUser.id, repo)
     ]);
     const percent = percentUsed(usedBytes, quotaBytes);
-    res.json({ usedBytes, quotaBytes, percentUsed: percent, thresholdCrossed: thresholdCrossedFor(percent), entitlements });
+    res.json({ usedBytes, quotaBytes, percentUsed: percent, thresholdCrossed: thresholdCrossedFor(percent), entitlements, plan: userEntitlements.plan });
   }));
 
   app.get('/products', asyncHandler(async (req, res) => {

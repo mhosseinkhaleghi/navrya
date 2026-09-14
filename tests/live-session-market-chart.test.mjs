@@ -70,7 +70,10 @@ test('the Market chart widget is mounted once (lazily) and never destroyed on a 
   // of this Live Session visit) and only ever hidden/shown via CSS display, never remounted.
   const persistBlock = sliceBetween('{chartEverOpenedRef.current && (', '{chartModalOpen', 'the chartEverOpenedRef persistence block');
   assert.match(persistBlock, /style=\{\{ display: view === 'chart' \? 'block' : 'none' \}\}/);
-  assert.match(persistBlock, /<MarketChartView\s*\n\s*session=\{session\} lang=\{lang\}\s*\n\s*onAddChart=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ setChartModalInitialFile\(file\); setChartModalOpen\(true\); \}\)\}\s*\n\s*onLogMove=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ const entry = addEntry\('movement'\); if \(file\) attachImage\(entry, file\); \}\)\}/);
+  // NAVRYA Media Drive: MarketChartView now receives a canonical Media Asset reference (never a
+  // raw File) once the trader has confirmed the Media Picker - see the dedicated capture-first
+  // flow tests below.
+  assert.match(persistBlock, /<MarketChartView\s*\n\s*session=\{session\} lang=\{lang\}\s*\n\s*onAddChart=\{\(asset\) => withPreSessionCheckIn\(\(\) => \{ setChartModalMediaAsset\(asset\); setChartModalOpen\(true\); \}\)\}\s*\n\s*onLogMove=\{\(asset\) => withPreSessionCheckIn\(\(\) => \{ const entry = addEntry\('movement'\); if \(asset\) attachMediaAsset\(entry, asset\); \}\)\}/);
 });
 
 test('the widget loads the official TradingView free hosted Advanced Chart embed script, and nothing else', () => {
@@ -84,13 +87,15 @@ test('the widget loads the official TradingView free hosted Advanced Chart embed
 });
 
 test('no TradingView API key, npm package, backend endpoint, or secret is introduced', () => {
-  // The apiKey/API_KEY check is scoped to the TradingView widget/chart region specifically (not
-  // the whole file) since navrya-src/liveSessionView.jsx now also legitimately contains an
-  // unrelated `apiKey` field (feat/analysis-map's AI Node phase - the trader's own AI provider
-  // key, the exact same field name/shape session-analysis-client.js's analyzeSession() already
-  // sends for every other AI feature in this app) - that is real, intentional, and has nothing to
-  // do with TradingView. The widget region itself must still never reference any such key.
-  const widgetRegion = sliceBetween('function TradingViewAdvancedChart(', 'function ReportView(', 'the TradingView widget through MarketChartView');
+  // The apiKey/API_KEY check is scoped to the TradingView widget itself (not the whole file, and
+  // not MarketChartView - see the next paragraph) since navrya-src/liveSessionView.jsx now also
+  // legitimately contains an unrelated `apiKey` field in two places: feat/analysis-map's AI Node
+  // phase, and NAVRYA Media Drive's own chart-metadata AI extraction (MarketChartView's
+  // captureAndStoreAsset(), the exact same field name/shape session-analysis-client.js's
+  // analyzeSession() already sends for every other AI feature in this app) - both are real,
+  // intentional, and have nothing to do with TradingView. The TradingView widget itself must still
+  // never reference any such key.
+  const widgetRegion = sliceBetween('function TradingViewAdvancedChart(', 'function ChartUnmappedNotice(', 'the TradingView widget itself');
   assert.doesNotMatch(widgetRegion, /apiKey|api_key|API_KEY|process\.env\.[A-Z_]*TRADING/);
   assert.doesNotMatch(src, /require\(['"]tradingview|from ['"]tradingview/i);
   assert.doesNotMatch(src, /\/api\/(sync\/)?tradingview|\/api\/[\w-]*chart[\w-]*/i);
@@ -161,12 +166,17 @@ test('MarketChartView reads only session.instrument for the chart symbol, never 
   assert.doesNotMatch(view, /tradingViewSymbolFor\(session\.market/);
 });
 
-test('both Add chart and Log movement capture a screenshot via the browser\'s own tab-capture API through one shared pipeline before calling their respective handler with the file - never blocking on failure/denial', () => {
+test('Add chart, Log movement and Screenshot all capture through the ONE shared capture pipeline (never a second copy) before any of them stores anything', () => {
   const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
-  // One shared capture function - not two independent copies - used by both buttons.
+  // One shared capture function - not two/three independent copies - used by all three actions,
+  // via one shared "capture -> store Media Asset -> start extraction" coordinator.
   assert.match(view, /async function captureChartScreenshot\(\) \{/);
-  assert.match(view, /async function handleAddChartClick\(\) \{\s*\n\s*const file = await captureChartScreenshot\(\);\s*\n\s*onAddChart\(file\);\s*\n\s*\}/);
-  assert.match(view, /async function handleLogMoveClick\(\) \{\s*\n\s*const file = await captureChartScreenshot\(\);\s*\n\s*onLogMove\(file\);\s*\n\s*\}/);
+  assert.match(view, /async function captureAndStoreAsset\(\) \{/);
+  assert.match(view, /const file = await captureChartScreenshot\(\);/);
+  assert.match(view, /async function handleScreenshotClick\(\) \{\s*\n\s*setScreenshotStatus\('saving'\);\s*\n\s*const asset = await captureAndStoreAsset\(\);/);
+  assert.match(view, /async function handleAddChartClick\(\) \{\s*\n\s*const asset = await captureAndStoreAsset\(\);\s*\n\s*setPicker\(\{ intent: 'chartEntry', initialAsset: asset \}\);\s*\n\s*\}/);
+  assert.match(view, /async function handleLogMoveClick\(\) \{\s*\n\s*const asset = await captureAndStoreAsset\(\);\s*\n\s*setPicker\(\{ intent: 'movementEntry', initialAsset: asset \}\);\s*\n\s*\}/);
+  assert.match(view, /<Button variant="secondary" size="sm" icon=\{screenshotStatus === 'saving' \? 'LoaderCircle' : 'Camera'\} disabled=\{capturing\} title=\{tr\(lang, 'chartCaptureHint'\)\} onClick=\{handleScreenshotClick\}>\{tr\(lang, 'screenshotButton'\)\}<\/Button>/);
   assert.match(view, /<Button variant="secondary" size="sm" icon=\{capturing \? 'LoaderCircle' : 'Activity'\} disabled=\{capturing\} title=\{tr\(lang, 'chartCaptureHint'\)\} onClick=\{handleLogMoveClick\}>\{tr\(lang, 'addMove'\)\}<\/Button>/);
   assert.match(view, /<Button variant="primary" size="sm" icon=\{capturing \? 'LoaderCircle' : 'ImagePlus'\} disabled=\{capturing\} title=\{tr\(lang, 'chartCaptureHint'\)\} onClick=\{handleAddChartClick\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
   // getDisplayMedia is a native browser API - no npm package, no TradingView involvement at all.
@@ -263,7 +273,8 @@ test('all four i18n dictionaries (fa, ar, en, es) declare the new view label and
     'viewChart', 'chartLoadingText', 'chartLoadErrorTitle', 'chartLoadErrorBody',
     'chartUnmappedTitle', 'chartUnmappedBodyNoInstrument', 'chartUnmappedHint', 'tvAttribution',
     'enterFullscreenChart', 'exitFullscreenChart', 'chartCaptureHint', 'chartCapturePermissionDenied',
-    'chartCaptureUnsupported', 'chartCaptureFailed'
+    'chartCaptureUnsupported', 'chartCaptureFailed',
+    'screenshotButton', 'screenshotSaving', 'screenshotSaved', 'screenshotFailed', 'mediaAnalyzing', 'mediaMetadataUnavailable'
   ];
   ['fa:', 'ar:', 'en:', 'es:'].forEach((langTag) => {
     const idx = src.indexOf('\n  ' + langTag);
@@ -281,27 +292,67 @@ test('fa/ar Persian and Arabic labels are the required literal strings; en/es ar
   assert.match(src, /viewChart: 'Gráfico de mercado'/);
 });
 
-test('ChartEntryModal accepts an optional initialFile (the captured screenshot) and pre-fills the preview from it, without changing behavior for a plain manual "Add chart" (no initialFile)', () => {
-  const modal = sliceBetween('function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {', 'function Ring(', 'ChartEntryModal');
+test('ChartEntryModal accepts an optional mediaAsset (the picked/confirmed Media Drive asset) as well as the older initialFile, without changing behavior for a plain manual "Add chart" (neither prop)', () => {
+  const modal = sliceBetween('function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile, mediaAsset }) {', 'function Ring(', 'ChartEntryModal');
   assert.match(modal, /const \[file, setFile\] = React\.useState\(initialFile \|\| null\);/);
   assert.match(modal, /const \[previewUrl, setPreviewUrl\] = React\.useState\(\(\) => \(initialFile \? URL\.createObjectURL\(initialFile\) : ''\)\);/);
+  // A mediaAsset is a REFERENCE only - it must never require the plain file dropzone, and its own
+  // AI-detected timeframe (once ready) pre-fills the form without ever being forced/unchangeable.
+  assert.match(modal, /const \[timeframe, setTimeframe\] = React\.useState\(\(mediaAsset && mediaAsset\.timeframe\) \|\| session\.timeframe \|\| '5m'\);/);
+  assert.match(modal, /if \(!mediaAsset && !file\) \{ setError\(tr\(lang, 'uploadRequired'\)\); return; \}/);
+  assert.match(modal, /if \(mediaAsset\) onSubmit\(\{ mediaAssetId: mediaAsset\.id, imageUrl: mediaAsset\.url, timeframe, market, date, note, relatedScenarioIds: related \}\);/);
 });
 
-test('LiveSessionView wires the captured screenshot from Market chart into ChartEntryModal, and resets it on close/submit so a later plain Timeline "Add chart" never reuses a stale file', () => {
-  assert.match(src, /const \[chartModalInitialFile, setChartModalInitialFile\] = React\.useState\(null\);/);
-  // Market chart's onAddChart(file) - not Timeline's own onClick={() => withPreSessionCheckIn(() => setChartModalOpen(true))} calls - is the only path that sets it.
-  assert.match(src, /onAddChart=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ setChartModalInitialFile\(file\); setChartModalOpen\(true\); \}\)\}/);
-  assert.match(src, /<ChartEntryModal\s*\n\s*session=\{session\} lang=\{lang\} initialFile=\{chartModalInitialFile\}\s*\n\s*onClose=\{\(\) => \{ setChartModalOpen\(false\); setChartModalInitialFile\(null\); \}\}/);
-  assert.match(src, /setChartModalOpen\(false\); setChartModalInitialFile\(null\); setFilter\('all'\); setQ\(''\);/);
+test('NAVRYA Media Drive: Add chart follows capture -> store asset -> Media Picker -> "Continue to chart registration" opens ChartEntryModal bound to the picked asset -> submit; canceling the picker never opens the registration modal', () => {
+  assert.match(src, /const \[chartModalMediaAsset, setChartModalMediaAsset\] = React\.useState\(null\);/);
+  assert.match(src, /onAddChart=\{\(asset\) => withPreSessionCheckIn\(\(\) => \{ setChartModalMediaAsset\(asset\); setChartModalOpen\(true\); \}\)\}/);
+  assert.match(src, /<ChartEntryModal\s*\n\s*session=\{session\} lang=\{lang\} mediaAsset=\{chartModalMediaAsset\}\s*\n\s*onClose=\{\(\) => \{ setChartModalOpen\(false\); setChartModalMediaAsset\(null\); \}\}/);
+  assert.match(src, /setChartModalOpen\(false\); setChartModalMediaAsset\(null\); setFilter\('all'\); setQ\(''\);/);
+  // Confirming the picker (handlePickerConfirm) is the ONLY thing that ever calls onAddChart -
+  // closing/canceling the picker (onClose={() => setPicker(null)}) never reaches it, so no chart
+  // entry/registration modal is ever opened on a cancel.
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(view, /function handlePickerConfirm\(asset\) \{\s*\n\s*const intent = picker && picker\.intent;\s*\n\s*setPicker\(null\);\s*\n\s*if \(intent === 'chartEntry'\) onAddChart\(asset\);\s*\n\s*else if \(intent === 'movementEntry'\) onLogMove\(asset\);\s*\n\s*\}/);
+  assert.match(view, /onClose=\{\(\) => setPicker\(null\)\} onConfirm=\{handlePickerConfirm\}/);
   // Timeline's own three "Add chart" trigger points are untouched - still the plain boolean open,
-  // never passing a file.
+  // never passing an asset.
   assert.match(src, /onClick=\{\(\) => withPreSessionCheckIn\(\(\) => setChartModalOpen\(true\)\)\}>\{tr\(lang, 'addChart'\)\}<\/Button>/);
 });
 
-test('LiveSessionView also attaches the captured screenshot to a Log movement entry created from Market chart, via the existing attachImage() function - Timeline\'s own plain Log movement button is untouched', () => {
-  // Market chart's onLogMove(file) creates the movement entry first (so it always exists, capture
-  // failure or not), then attaches the file only when one was actually captured.
-  assert.match(src, /onLogMove=\{\(file\) => withPreSessionCheckIn\(\(\) => \{ const entry = addEntry\('movement'\); if \(file\) attachImage\(entry, file\); \}\)\}/);
-  // Timeline's own plain Log movement button is untouched - still no file involved at all.
+test('NAVRYA Media Drive: Log movement follows capture -> store asset -> Media Picker -> "Register movement" finalizes directly (no second modal) via attachMediaAsset; Timeline\'s own plain Log movement button is untouched', () => {
+  // Market chart's onLogMove(asset) creates the movement entry first (so it always exists, capture
+  // failure or not), then attaches the picked/confirmed asset only when one was actually chosen -
+  // confirming the picker is the only path that reaches this at all (see handlePickerConfirm above).
+  assert.match(src, /onLogMove=\{\(asset\) => withPreSessionCheckIn\(\(\) => \{ const entry = addEntry\('movement'\); if \(asset\) attachMediaAsset\(entry, asset\); \}\)\}/);
+  assert.match(src, /async function attachMediaAsset\(entry, asset\) \{/);
+  assert.match(src, /linkMediaAsset\(asset\.id, \{ domain: 'sessionEntry', recordId: entry\.id \}\)\.catch\(\(\) => \{\}\);/);
+  // Timeline's own plain Log movement button is untouched - still no asset involved at all.
   assert.match(src, /onClick=\{\(\) => withPreSessionCheckIn\(\(\) => addEntry\('movement'\)\)\}>\{tr\(lang, 'addMove'\)\}<\/Button>/);
+});
+
+test('Screenshot only ever stores a Media Asset - it never opens the Media Picker, never creates a chart/movement entry, and shows a real saving/saved/failed notice', () => {
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  const handler = sliceBetween('async function handleScreenshotClick() {', 'async function handleAddChartClick', 'handleScreenshotClick');
+  assert.doesNotMatch(handler, /setPicker/);
+  assert.doesNotMatch(handler, /addEntry/);
+  assert.match(handler, /setScreenshotStatus\(asset \? 'saved' : 'error'\);/);
+  assert.match(view, /screenshotStatus === 'saving' \? 'screenshotSaving' : screenshotStatus === 'saved' \? 'screenshotSaved' : 'screenshotFailed'/);
+});
+
+test('a denied/unsupported/failed capture still opens the Media Picker for Add chart/Log movement, with no asset preselected - it never blocks registration', () => {
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  // captureAndStoreAsset() returns null on any capture failure (captureChartScreenshot already
+  // never throws) - handleAddChartClick/handleLogMoveClick still call setPicker() unconditionally
+  // with whatever captureAndStoreAsset() returned, asset or null.
+  assert.match(view, /async function captureAndStoreAsset\(\) \{\s*\n\s*const file = await captureChartScreenshot\(\);\s*\n\s*if \(!file\) return null;/);
+  assert.match(view, /setPicker\(\{ intent: 'chartEntry', initialAsset: asset \}\);/);
+  assert.match(view, /setPicker\(\{ intent: 'movementEntry', initialAsset: asset \}\);/);
+});
+
+test('the MediaPicker component is imported once and reused for both Add chart and Log movement - never a duplicate implementation per action', () => {
+  assert.match(src, /import \{ MediaPicker \} from '\.\.\/public\/pages\/shared\/navrya\/components\/media\/MediaPicker\.jsx';/);
+  const matches = src.match(/<MediaPicker\b/g) || [];
+  assert.equal(matches.length, 1, 'exactly one MediaPicker render site - Add chart and Log movement share it via the intent prop, never a second copy');
+  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(view, /intent=\{picker\.intent\} initialAsset=\{picker\.initialAsset\} sessionId=\{session\.id\}/);
 });

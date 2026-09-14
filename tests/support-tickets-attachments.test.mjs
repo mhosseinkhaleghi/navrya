@@ -31,7 +31,9 @@ test('058_support_tickets.sql extended by 059_support_ticket_attachments.sql - a
   const { readdir } = await import('node:fs/promises');
   const files = (await readdir(path.join(root, 'server', 'db', 'migrations'))).filter((f) => f.endsWith('.sql'));
   const numbers = files.map((f) => Number(f.slice(0, 3))).filter(Number.isFinite);
-  assert.equal(Math.max(...numbers), 59, '059 must be the current latest migration number');
+  // Not "059 is the latest" (a later migration, e.g. 060_media_assets.sql, legitimately exists
+  // now) - only that 059 is real, additive, and still a real, uniquely-numbered file.
+  assert.ok(Math.max(...numbers) >= 59, 'a migration numbered at least 059 must exist');
   assert.equal(files.filter((f) => f.startsWith('059_')).length, 1);
 });
 

@@ -7,6 +7,8 @@ import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
+import { MediaPicker } from '../public/pages/shared/navrya/components/media/MediaPicker.jsx';
+import { createAsset as createMediaAsset, analyzeChart as analyzeMediaChart, fileToDataUrl, linkAsset as linkMediaAsset } from '../public/pages/shared/navrya/components/media/mediaDriveClient.js';
 import * as sessionsAdapter from './sessionsAdapter.js';
 import * as workspaceBoard from './analysisWorkspaceBoard.js';
 import * as panelStore from './analysisWorkspacePanelStore.js';
@@ -186,7 +188,9 @@ const copy = {
     chartCaptureHint: 'یک اسکرین‌شات از این چارت می‌گیرد. ممکن است مرورگر یک‌بار از شما بخواهد اشتراک‌گذاری همین تب را تأیید کنید.',
     chartCapturePermissionDenied: 'اجازه‌ی اسکرین‌شات داده نشد. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
     chartCaptureUnsupported: 'گرفتن اسکرین‌شات در این مرورگر پشتیبانی نمی‌شود. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
-    chartCaptureFailed: 'گرفتن اسکرین‌شات از چارت ممکن نشد. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.'
+    chartCaptureFailed: 'گرفتن اسکرین‌شات از چارت ممکن نشد. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
+    screenshotButton: 'اسکرین‌شات', screenshotSaving: 'در حال ذخیره در مدیا درایو...', screenshotSaved: 'در مدیا درایو ذخیره شد', screenshotFailed: 'ذخیره اسکرین‌شات ممکن نشد',
+    mediaAnalyzing: 'در حال تحلیل...', mediaMetadataUnavailable: 'اطلاعات چارت در دسترس نیست'
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
@@ -272,7 +276,9 @@ const copy = {
     chartCaptureHint: 'يلتقط لقطة شاشة لهذا المخطط. قد يطلب المتصفح مرة واحدة الموافقة على مشاركة هذا التبويب.',
     chartCapturePermissionDenied: 'لم يتم منح إذن التقاط الشاشة. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
     chartCaptureUnsupported: 'التقاط لقطة الشاشة غير مدعوم في هذا المتصفح. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
-    chartCaptureFailed: 'تعذّر التقاط لقطة شاشة للمخطط. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.'
+    chartCaptureFailed: 'تعذّر التقاط لقطة شاشة للمخطط. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
+    screenshotButton: 'لقطة شاشة', screenshotSaving: 'جارٍ الحفظ في درايف الوسائط...', screenshotSaved: 'تم الحفظ في درايف الوسائط', screenshotFailed: 'تعذّر حفظ لقطة الشاشة',
+    mediaAnalyzing: 'جارٍ التحليل...', mediaMetadataUnavailable: 'بيانات الرسم غير متاحة'
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
@@ -358,7 +364,9 @@ const copy = {
     chartCaptureHint: 'Captures a screenshot of this chart. Your browser may ask you to share this tab once.',
     chartCapturePermissionDenied: 'Screenshot permission was not granted. You can still attach an image manually below.',
     chartCaptureUnsupported: 'Screenshot capture is not supported in this browser. You can still attach an image manually below.',
-    chartCaptureFailed: 'Could not capture a screenshot of the chart. You can still attach an image manually below.'
+    chartCaptureFailed: 'Could not capture a screenshot of the chart. You can still attach an image manually below.',
+    screenshotButton: 'Screenshot', screenshotSaving: 'Saving to Media Drive...', screenshotSaved: 'Saved to Media Drive', screenshotFailed: 'Could not save the screenshot',
+    mediaAnalyzing: 'Analyzing...', mediaMetadataUnavailable: 'Chart metadata unavailable'
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
@@ -444,7 +452,9 @@ const copy = {
     chartCaptureHint: 'Captura una imagen de este gráfico. Es posible que el navegador te pida una vez compartir esta pestaña.',
     chartCapturePermissionDenied: 'No se concedió permiso para la captura. Aún puedes adjuntar una imagen manualmente abajo.',
     chartCaptureUnsupported: 'La captura de pantalla no es compatible con este navegador. Aún puedes adjuntar una imagen manualmente abajo.',
-    chartCaptureFailed: 'No se pudo capturar una imagen del gráfico. Aún puedes adjuntar una imagen manualmente abajo.'
+    chartCaptureFailed: 'No se pudo capturar una imagen del gráfico. Aún puedes adjuntar una imagen manualmente abajo.',
+    screenshotButton: 'Captura', screenshotSaving: 'Guardando en Media Drive...', screenshotSaved: 'Guardado en Media Drive', screenshotFailed: 'No se pudo guardar la captura',
+    mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles'
   }
 };
 
@@ -644,11 +654,17 @@ function SessionModalShell({ title, icon, eyebrow, onClose, footer, width = 640,
 // chart panel's own screenshot-capture button (see MarketChartView) - so the trader lands on a
 // populated preview instead of an empty dropzone; every other field/behavior is unchanged, and a
 // plain manual "Add chart" (Timeline's own buttons) never passes this prop.
-function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
+// `mediaAsset` (NAVRYA Media Drive) is the newer, preferred path - a canonical Media Asset the
+// trader picked/confirmed in the Media Picker (MarketChartView's own flow, below). When present,
+// this modal binds directly to that asset (its own uploaded bytes, never re-uploaded here) instead
+// of the plain file dropzone, and auto-populates timeframe from the asset's own AI-detected value
+// once ready - the trader can still edit every field, exactly as before. `initialFile` and
+// `mediaAsset` are mutually exclusive; a caller passes at most one.
+function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile, mediaAsset }) {
   const rtl = lang === 'fa' || lang === 'ar';
   const [file, setFile] = React.useState(initialFile || null);
   const [previewUrl, setPreviewUrl] = React.useState(() => (initialFile ? URL.createObjectURL(initialFile) : ''));
-  const [timeframe, setTimeframe] = React.useState(session.timeframe || '5m');
+  const [timeframe, setTimeframe] = React.useState((mediaAsset && mediaAsset.timeframe) || session.timeframe || '5m');
   const [market, setMarket] = React.useState(sessionsAdapter.displayCity(session.market) === 'New York' ? 'NewYork' : (session.market || 'London'));
   // HOTFIX: session.date used to come out of NewSessionDialog's own hardcoded, non-ISO default
   // ('08/01/2026', fixed alongside this) for any session whose creator never touched the date
@@ -691,9 +707,10 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
     setRelated((list) => (list.indexOf(id) > -1 ? list.filter((x) => x !== id) : list.concat([id])));
   }
   function submit() {
-    if (!file) { setError(tr(lang, 'uploadRequired')); return; }
+    if (!mediaAsset && !file) { setError(tr(lang, 'uploadRequired')); return; }
     if (!timeframe) { setError(tr(lang, 'timeframeRequired')); return; }
-    onSubmit({ file, timeframe, market, date, note, relatedScenarioIds: related });
+    if (mediaAsset) onSubmit({ mediaAssetId: mediaAsset.id, imageUrl: mediaAsset.url, timeframe, market, date, note, relatedScenarioIds: related });
+    else onSubmit({ file, timeframe, market, date, note, relatedScenarioIds: related });
   }
 
   // AI process registry (A4) - mountedRef template. Only mounted while chartModalOpen is true
@@ -757,7 +774,18 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
       </>
     )}>
       <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {previewUrl ? (
+        {mediaAsset ? (
+          <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
+            <img src={mediaAsset.url} alt="" style={{ display: 'block', width: '100%', height: 240, objectFit: 'cover' }} />
+            <span dir="auto" style={{ position: 'absolute', bottom: 10, insetInlineStart: 10, insetInlineEnd: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', fontSize: 11 }}>
+              {mediaAsset.metadataStatus === 'processing'
+                ? (<><Icon name="LoaderCircle" size={13} />{tr(lang, 'mediaAnalyzing')}</>)
+                : (mediaAsset.symbol || mediaAsset.timeframe)
+                  ? [mediaAsset.symbol, mediaAsset.timeframe].filter(Boolean).join(' · ')
+                  : tr(lang, 'mediaMetadataUnavailable')}
+            </span>
+          </span>
+        ) : previewUrl ? (
           <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
             <img src={previewUrl} alt="" style={{ display: 'block', width: '100%', height: 240, objectFit: 'cover' }} />
             <button type="button" onClick={() => fileRef.current && fileRef.current.click()} style={{ position: 'absolute', bottom: 10, insetInlineEnd: 10, height: 32, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'uploadChartTitle')}</button>
@@ -772,7 +800,7 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile }) {
             <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'uploadPrompt')}</span>
           </button>
         )}
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />
+        {!mediaAsset && <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <AiMagicFill active={timeframeFilled}>
@@ -2132,17 +2160,30 @@ function grabStreamFrame(stream) {
 //
 // Screenshot capture (user's explicit choice over TradingView's own native export, see
 // docs/HANDOFF.md): the free widget renders in a cross-origin iframe with no way for this page's
-// own JS to read its pixels directly, so both "Add chart" and "Log movement" instead use the
+// own JS to read its pixels directly, so all three toolbar actions below instead use the
 // browser's own tab-capture API (navigator.mediaDevices.getDisplayMedia) - real product feedback:
 // whichever button the trader presses from this panel should attach the exact chart it is
 // currently showing. The permission is requested once (a real, unavoidable browser dialog - the
 // trader should keep "This Tab" selected) and the resulting MediaStream is kept alive in
-// captureStreamRef for the rest of this Live Session visit, so every later click (either button)
+// captureStreamRef for the rest of this Live Session visit, so every later click (any button)
 // grabs a fresh frame silently, with no further prompts, until the trader stops sharing (the
-// track's own 'ended' event) or leaves the session. A denied/unsupported/failed capture never
-// blocks logging an entry - onAddChart(null)/onLogMove(null) still complete the same action
-// (the modal's normal empty, manually-uploadable dropzone; a movement entry with no image) that
-// clicking either button already did before this capture existed.
+// track's own 'ended' event) or leaves the session.
+//
+// NAVRYA Media Drive - this panel now has THREE toolbar actions, all funneled through the ONE
+// capture coordinator below (captureAndStoreAsset) and the ONE shared MediaPicker component -
+// never a second, parallel implementation per action:
+//   - Screenshot: capture -> store one chart Media Asset -> start AI extraction -> done. Never
+//     opens a modal and never creates a session entry.
+//   - Add chart: capture -> store asset -> open the Media Picker (that asset preselected) ->
+//     trader confirms/replaces/uploads -> "Continue to chart registration" opens the existing
+//     ChartEntryModal, bound to whichever asset was picked. onAddChart(asset) fires only at that
+//     point - closing the picker beforehand creates nothing.
+//   - Log movement: same capture-first sequence, but the picker's own "Register movement" CTA
+//     finalizes directly - onLogMove(asset) creates the movement entry and attaches the asset,
+//     with no second modal.
+// A denied/unsupported/failed capture never blocks either flow - the picker still opens with no
+// asset preselected, so the trader can pick an existing Drive item or upload a device image
+// instead; onAddChart(null)/onLogMove(null) is also still reachable this way, same as before.
 function MarketChartView({ session, lang, onAddChart, onLogMove }) {
   const symbol = tradingViewSymbolFor(session.instrument);
   const wrapRef = React.useRef(null);
@@ -2151,6 +2192,8 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [capturing, setCapturing] = React.useState(false);
   const [captureError, setCaptureError] = React.useState('');
+  const [screenshotStatus, setScreenshotStatus] = React.useState(''); // '' | 'saving' | 'analyzing' | 'saved' | 'error'
+  const [picker, setPicker] = React.useState(null); // null | { intent: 'chartEntry'|'movementEntry', initialAsset: object|null }
 
   React.useEffect(() => {
     function onChange() { setIsFullscreen(!!document.fullscreenElement && document.fullscreenElement === wrapRef.current); }
@@ -2240,14 +2283,53 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
     return file;
   }
 
-  async function handleAddChartClick() {
+  // Shared by all three toolbar actions - captures a frame (or returns null on denial/failure,
+  // never throwing - captureChartScreenshot already guarantees that), stores it as a new 'chart'
+  // Media Asset, and fires exactly one bounded AI extraction call for it. Registration time/
+  // ownership/active-market-session are all set server-side (server/community/routes.media.mjs);
+  // this function never invents or sends any of those itself. Returns the created asset, or null
+  // when capture failed/was denied/unsupported (the caller still proceeds - see each handler).
+  async function captureAndStoreAsset() {
     const file = await captureChartScreenshot();
-    onAddChart(file);
+    if (!file) return null;
+    let dataUrl;
+    try { dataUrl = await fileToDataUrl(file); } catch (_) { return null; }
+    const result = await createMediaAsset({ dataUrl, filename: file.name, mimeType: file.type, kind: 'chart', source: 'capture', sessionId: session.id });
+    if (!result.ok) return null;
+    const settings = window.TradeJournalAISettingsStore;
+    const provider = settings ? settings.activeProvider() : undefined;
+    // Fire-and-forget from this function's own perspective - the AI gateway persists the real
+    // result server-side regardless of whether anything here is still mounted to see it; the
+    // Media Picker (if open) polls the asset itself to reflect the outcome live.
+    analyzeMediaChart({
+      mediaAssetId: result.asset.id, imageDataUrl: dataUrl, sessionId: session.id,
+      provider, model: settings ? settings.activeModel() : undefined, apiKey: settings ? settings.getKey(provider) : undefined
+    }).catch(() => {});
+    return result.asset;
+  }
+
+  async function handleScreenshotClick() {
+    setScreenshotStatus('saving');
+    const asset = await captureAndStoreAsset();
+    setScreenshotStatus(asset ? 'saved' : 'error');
+    window.setTimeout(() => setScreenshotStatus(''), 3000);
+  }
+
+  async function handleAddChartClick() {
+    const asset = await captureAndStoreAsset();
+    setPicker({ intent: 'chartEntry', initialAsset: asset });
   }
 
   async function handleLogMoveClick() {
-    const file = await captureChartScreenshot();
-    onLogMove(file);
+    const asset = await captureAndStoreAsset();
+    setPicker({ intent: 'movementEntry', initialAsset: asset });
+  }
+
+  function handlePickerConfirm(asset) {
+    const intent = picker && picker.intent;
+    setPicker(null);
+    if (intent === 'chartEntry') onAddChart(asset);
+    else if (intent === 'movementEntry') onLogMove(asset);
   }
 
   if (!symbol) return <ChartUnmappedNotice lang={lang} />;
@@ -2260,7 +2342,13 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
             <Icon name="CandlestickChart" size={18} /><span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'viewChart')}</span>
             <span className="navrya-tabular" dir="ltr" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{symbol} · {session.timeframe || interval}</span>
             {captureError && <span dir="auto" style={{ fontSize: 11, color: 'var(--danger)' }}>{captureError}</span>}
+            {screenshotStatus && (
+              <span dir="auto" style={{ fontSize: 11, color: screenshotStatus === 'error' ? 'var(--danger)' : 'var(--char-accent)' }}>
+                {tr(lang, screenshotStatus === 'saving' ? 'screenshotSaving' : screenshotStatus === 'saved' ? 'screenshotSaved' : 'screenshotFailed')}
+              </span>
+            )}
             <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Button variant="secondary" size="sm" icon={screenshotStatus === 'saving' ? 'LoaderCircle' : 'Camera'} disabled={capturing} title={tr(lang, 'chartCaptureHint')} onClick={handleScreenshotClick}>{tr(lang, 'screenshotButton')}</Button>
               <Button variant="secondary" size="sm" icon={capturing ? 'LoaderCircle' : 'Activity'} disabled={capturing} title={tr(lang, 'chartCaptureHint')} onClick={handleLogMoveClick}>{tr(lang, 'addMove')}</Button>
               <Button variant="primary" size="sm" icon={capturing ? 'LoaderCircle' : 'ImagePlus'} disabled={capturing} title={tr(lang, 'chartCaptureHint')} onClick={handleAddChartClick}>{tr(lang, 'addChart')}</Button>
               <button
@@ -2278,6 +2366,12 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
           </div>
         </div>
       </Panel>
+      {picker && (
+        <MediaPicker
+          open lang={lang} intent={picker.intent} initialAsset={picker.initialAsset} sessionId={session.id}
+          onClose={() => setPicker(null)} onConfirm={handlePickerConfirm}
+        />
+      )}
     </div>
   );
 }
@@ -3313,10 +3407,12 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   const [openScenarios, setOpenScenarios] = React.useState(() => new Set());
   const [imageUrls, setImageUrls] = React.useState({});
   const [chartModalOpen, setChartModalOpen] = React.useState(false);
-  // Set only by the Market chart panel's own screenshot-capture "Add chart" button
-  // (MarketChartView's onAddChart(file)) - Timeline's plain "Add chart" buttons never touch this,
-  // so the modal keeps opening with an empty dropzone for that unchanged path.
-  const [chartModalInitialFile, setChartModalInitialFile] = React.useState(null);
+  // Set only by the Market chart panel's own Media Drive flow (MarketChartView's
+  // onAddChart(asset), fired after the trader confirms the Media Picker) - Timeline's plain "Add
+  // chart" button never touches this, so the modal keeps opening with an empty dropzone for that
+  // unchanged path. Holds a canonical Media Asset reference (id/url/kind/timeframe/symbol/...),
+  // never a raw File - selecting an EXISTING Drive asset must never re-upload its bytes.
+  const [chartModalMediaAsset, setChartModalMediaAsset] = React.useState(null);
   const [fateStep, setFateStep] = React.useState(null); // null | 'entry' | 'summary'
   // SCENARIO_EVALUATION (brief §22) - a distinct, explicit operation from ANALYSIS_UPDATE, opened
   // directly from a scenario's own "Evaluate with AI" action rather than through the Fate flow.
@@ -3472,6 +3568,24 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       if (blobId) target.imageBlobId = blobId; else target.preview = preview;
     }, 'image_attached', tr(lang, 'uploadImage'), null, true);
   }
+  // Media Drive counterpart to attachImage() above - attaches an already-uploaded canonical Media
+  // Asset (never a raw File) to an entry: creates the reuse link server-side (so the SAME asset
+  // can later also be attached elsewhere without re-uploading) and sets imageUrl/mediaAssetId,
+  // which the existing entry-image-loading effect above already reads as a real image source
+  // (`url = e.preview || e.imageUrl || null`) - no further rendering change needed. Used by the
+  // Market chart panel's "Log movement" flow, which finalizes directly from the Media Picker with
+  // no second modal (see MarketChartView's onLogMove below).
+  async function attachMediaAsset(entry, asset) {
+    if (!asset) return;
+    linkMediaAsset(asset.id, { domain: 'sessionEntry', recordId: entry.id }).catch(() => {});
+    persist((s) => {
+      const target = (s.entries || []).find((e) => e.id === entry.id);
+      if (!target) return;
+      target.hasImage = true;
+      target.imageUrl = asset.url;
+      target.mediaAssetId = asset.id;
+    }, 'image_attached', tr(lang, 'uploadImage'), null, true);
+  }
   // Shared by the chart-entry and fate-entry modals - same real IndexedDB-then-dataURL fallback
   // attachImage() above already uses.
   async function storeImage(file) {
@@ -3482,15 +3596,21 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     }
     return { preview: await readAsDataUrl(file) };
   }
-  async function submitChartEntry({ file, timeframe, market, date, note, relatedScenarioIds }) {
-    const { blobId, preview } = await storeImage(file);
+  async function submitChartEntry({ file, mediaAssetId, imageUrl, timeframe, market, date, note, relatedScenarioIds }) {
+    // A picked/confirmed Media Asset is a REFERENCE only - its bytes are already stored server-
+    // side (Market chart panel's own capture/upload flow, or an existing Drive item), so this
+    // never calls storeImage()/re-uploads anything for that path. The plain manual dropzone path
+    // (no mediaAssetId - Timeline's own "Add chart" button) is completely unchanged.
+    const { blobId, preview } = mediaAssetId ? { blobId: undefined, preview: undefined } : await storeImage(file);
     const entry = {
       id: window.TradeJournalWorkspace.id('entry'), sessionId: session.id, type: 'chart', createdAt: new Date().toISOString(),
-      hasImage: true, imageBlobId: blobId, preview, timeframe, tradingSession: market, market, gregorianDate: date,
+      hasImage: true, imageBlobId: blobId, preview, imageUrl: mediaAssetId ? imageUrl : undefined, mediaAssetId: mediaAssetId || undefined,
+      timeframe, tradingSession: market, market, gregorianDate: date,
       note: note || '', relatedScenarioIds: relatedScenarioIds || [], scenarios: []
     };
     persist((s) => { s.entries = (s.entries || []).concat([entry]); }, 'entry_added', tr(lang, 'addChart'));
-    setChartModalOpen(false); setChartModalInitialFile(null); setFilter('all'); setQ('');
+    if (mediaAssetId) linkMediaAsset(mediaAssetId, { domain: 'sessionEntry', recordId: entry.id }).catch(() => {});
+    setChartModalOpen(false); setChartModalMediaAsset(null); setFilter('all'); setQ('');
     selectEntry(entry.id);
     // Analysis Map handoff (createEntryFromMap above): only set when the modal was opened from
     // the Map's node-creation picker rather than the Desk's own "Add chart" button, which leaves
@@ -4537,16 +4657,16 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         <div style={{ display: view === 'chart' ? 'block' : 'none' }}>
           <MarketChartView
             session={session} lang={lang}
-            onAddChart={(file) => withPreSessionCheckIn(() => { setChartModalInitialFile(file); setChartModalOpen(true); })}
-            onLogMove={(file) => withPreSessionCheckIn(() => { const entry = addEntry('movement'); if (file) attachImage(entry, file); })}
+            onAddChart={(asset) => withPreSessionCheckIn(() => { setChartModalMediaAsset(asset); setChartModalOpen(true); })}
+            onLogMove={(asset) => withPreSessionCheckIn(() => { const entry = addEntry('movement'); if (asset) attachMediaAsset(entry, asset); })}
           />
         </div>
       )}
 
       {chartModalOpen && (
         <ChartEntryModal
-          session={session} lang={lang} initialFile={chartModalInitialFile}
-          onClose={() => { setChartModalOpen(false); setChartModalInitialFile(null); }}
+          session={session} lang={lang} mediaAsset={chartModalMediaAsset}
+          onClose={() => { setChartModalOpen(false); setChartModalMediaAsset(null); }}
           onSubmit={submitChartEntry}
         />
       )}
