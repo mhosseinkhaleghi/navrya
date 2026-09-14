@@ -137,3 +137,137 @@ test('analysisTypeForSession: no prior memory means INITIAL, an existing memory 
   assert.equal(schema.analysisTypeForSession({ aiSessionAnalysisResult: { memory: { eventCount: 0 } } }), 'initial');
   assert.equal(schema.analysisTypeForSession({ aiSessionAnalysisResult: { memory: { eventCount: 2 } } }), 'update');
 });
+
+// ---- Session / Analysis Desk AI upgrade ------------------------------------------------------
+
+test('noteRevision is deterministic and changes when the note text changes', async () => {
+  const schema = await loadSchema();
+  assert.equal(schema.noteRevision('liquidity grab below 100'), schema.noteRevision('liquidity grab below 100'));
+  assert.notEqual(schema.noteRevision('liquidity grab below 100'), schema.noteRevision('liquidity grab below 101'));
+});
+
+test('calibratedActiveProbability floors a still-viable value at 10 and never rounds off a legitimate precise estimate', async () => {
+  const schema = await loadSchema();
+  assert.equal(schema.calibratedActiveProbability(2), 10, 'a meaningless single-digit % must be floored, never left as 2%');
+  assert.equal(schema.calibratedActiveProbability(4), 10);
+  assert.equal(schema.calibratedActiveProbability(78), 78, 'a precise model estimate must not be forced onto a multiple of 5');
+  assert.equal(schema.calibratedActiveProbability(500), 100);
+  assert.equal(schema.calibratedActiveProbability(undefined), 50);
+});
+
+test('normalizeUnresolvedItem: a structured item keeps its id/status/action, a legacy plain string degrades to an open item with no id continuity', async () => {
+  const schema = await loadSchema();
+  const structured = schema.normalizeUnresolvedItem({ id: 'u1', status: 'partially_resolved', description: 'Needs a 1m confirmation', whyItMatters: 'entry timing', missingEvidence: '1m chart', action: 'Upload a 1-minute chart' });
+  assert.equal(structured.id, 'u1');
+  assert.equal(structured.status, 'partially_resolved');
+  assert.equal(structured.action, 'Upload a 1-minute chart');
+  assert.equal(structured.legacy, false);
+  const legacy = schema.normalizeUnresolvedItem('Unclear whether volume confirms the breakout');
+  assert.equal(legacy.status, 'open');
+  assert.equal(legacy.description, 'Unclear whether volume confirms the breakout');
+  assert.equal(legacy.legacy, true);
+});
+
+test('normalizeAnalysisResult continues to support legacy stored string unknowns safely by mapping them into unresolvedItems', async () => {
+  const schema = await loadSchema();
+  const result = schema.normalizeAnalysisResult({ unknowns: ['Volume unclear', 'No higher-timeframe context'] }, {});
+  assert.equal(result.unresolvedItems.length, 2);
+  assert.equal(result.unresolvedItems[0].description, 'Volume unclear');
+  assert.equal(result.unresolvedItems[0].status, 'open');
+  assert.equal(result.unknowns.length, 2, 'the raw legacy field itself is still preserved untouched');
+});
+
+test('normalizeAnalysisResult prefers a fresh structured unresolvedItems response over legacy unknowns when both are present', async () => {
+  const schema = await loadSchema();
+  const result = schema.normalizeAnalysisResult({
+    unknowns: ['ignored legacy text'],
+    unresolvedItems: [{ id: 'u1', status: 'resolved', description: 'Confirmed on the 1m chart', action: '' }]
+  }, {});
+  assert.equal(result.unresolvedItems.length, 1);
+  assert.equal(result.unresolvedItems[0].id, 'u1');
+  assert.equal(result.unresolvedItems[0].status, 'resolved');
+});
+
+test('normalizeNoteFeedback defaults a missing verdict to insufficient_evidence and keeps the exact noteRef triple', async () => {
+  const schema = await loadSchema();
+  const feedback = schema.normalizeNoteFeedback({ noteRef: { entryId: 'e1', field: 'note', revision: 'abc' }, evidence: 'price held the level' });
+  assert.equal(feedback.verdict, 'insufficient_evidence');
+  assert.equal(feedback.noteRef.entryId, 'e1');
+  assert.equal(feedback.noteRef.field, 'note');
+  assert.equal(feedback.noteRef.revision, 'abc');
+});
+
+test('normalizeRequestResponse defaults every field to an empty string so the card can hide an all-empty section', async () => {
+  const schema = await loadSchema();
+  const empty = schema.normalizeRequestResponse(null);
+  assert.equal(empty.requested, '');
+  assert.equal(empty.answer, '');
+  const filled = schema.normalizeRequestResponse({ requested: 'liquidity zones', analyzed: 'the visible chart', answer: 'a sweep sits above 65200', limitation: 'no volume profile supplied' });
+  assert.equal(filled.answer, 'a sweep sits above 65200');
+});
+
+test('normalizeTimeframeAnalysis defaults trend/momentum safely and caps keyEvidence', async () => {
+  const schema = await loadSchema();
+  const tf = schema.normalizeTimeframeAnalysis({ imageId: 'img1', timeframe: '15m', trend: 'bogus', momentum: 'bogus', keyEvidence: ['a', 'b', 'c', 'd', 'e', 'f'] });
+  assert.equal(tf.imageId, 'img1');
+  assert.equal(tf.trend, 'unclear');
+  assert.equal(tf.momentum, 'unclear');
+  assert.equal(tf.keyEvidence.length, 5);
+});
+
+test('isScenarioActiveState treats status===invalidated or a latest probability of 0 as inactive', async () => {
+  const schema = await loadSchema();
+  const base = { occurred: false, invalidationTagIds: [], probabilityHistory: [{ value: 40 }] };
+  assert.equal(schema.isScenarioActiveState(base), true);
+  assert.equal(schema.isScenarioActiveState({ ...base, status: 'invalidated' }), false);
+  assert.equal(schema.isScenarioActiveState({ ...base, probabilityHistory: [{ value: 0 }] }), false);
+  assert.equal(schema.isScenarioActiveState({ ...base, probabilityHistory: [] }), true, 'no history yet defaults to the initial 50, still active');
+});
+
+test('applyScenarioEvaluationPatch deterministically zeroes an invalidated scenario, appends the audit trail, and never overwrites history', async () => {
+  const schema = await loadSchema();
+  const scenario = { probabilityHistory: [{ value: 65, loggedAt: '2026-09-01T00:00:00.000Z' }], occurred: false };
+  const patch = schema.applyScenarioEvaluationPatch(scenario, {
+    status: 'weakened', invalidationOccurred: true, newProbability: 30, whatHappened: 'broke below invalidation', confirmedBy: [], contradictedBy: ['closed below the line'], remainsUnresolved: []
+  }, { sourceEntryId: 'e1', analysisId: 'a1', provider: 'openai', model: 'gpt-5.6' });
+  assert.equal(patch.status, 'invalidated', 'invalidationOccurred forces the status regardless of the model-reported status');
+  assert.equal(patch.probabilityHistory.length, 2);
+  assert.equal(patch.probabilityHistory[0].value, 65, 'the prior entry is preserved, never overwritten');
+  assert.equal(patch.probabilityHistory[1].value, 0, 'an invalidated scenario must deterministically become 0%, never the model-reported 30');
+  assert.equal(patch.occurred, false);
+  assert.equal(patch.evaluationHistory.length, 1);
+  assert.equal(patch.evaluationHistory[0].previousProbability, 65);
+  assert.equal(patch.evaluationHistory[0].newProbability, 0);
+  assert.equal(patch.evaluationHistory[0].delta, -65);
+  assert.equal(patch.evaluationHistory[0].sourceEntryId, 'e1');
+  assert.equal(patch.evaluationHistory[0].analysisId, 'a1');
+  assert.equal(patch.lastEvaluation.provider, 'openai');
+});
+
+test('applyScenarioEvaluationPatch calibrates a still-viable evaluation (never a meaningless single-digit %) while preserving a legitimate precise value', async () => {
+  const schema = await loadSchema();
+  const scenario = { probabilityHistory: [{ value: 50, loggedAt: '2026-09-01T00:00:00.000Z' }], occurred: false };
+  const tiny = schema.applyScenarioEvaluationPatch(scenario, { status: 'weakened', newProbability: 3, whatHappened: '', confirmedBy: [], contradictedBy: [], remainsUnresolved: [] });
+  assert.equal(tiny.probabilityHistory[1].value, 10, 'a still-active scenario must never persist a meaningless 3%');
+  const precise = schema.applyScenarioEvaluationPatch(scenario, { status: 'strengthened', newProbability: 78, whatHappened: '', confirmedBy: [], contradictedBy: [], remainsUnresolved: [] });
+  assert.equal(precise.probabilityHistory[1].value, 78);
+});
+
+test('buildAnalysisFingerprint changes when the user instruction, a pending note revision, active scenario state, or the unresolved revision changes', async () => {
+  const schema = await loadSchema();
+  const base = { sessionId: 's1', entryId: 'e1', provider: 'openai', model: 'gpt-5.6' };
+  assert.notEqual(schema.buildAnalysisFingerprint(base), schema.buildAnalysisFingerprint({ ...base, userInstruction: 'check liquidity zones' }));
+  assert.notEqual(schema.buildAnalysisFingerprint(base), schema.buildAnalysisFingerprint({ ...base, pendingNoteRevisions: ['e1:note:abc'] }));
+  assert.notEqual(schema.buildAnalysisFingerprint(base), schema.buildAnalysisFingerprint({ ...base, activeScenarioState: ['sc1:pending:60'] }));
+  assert.notEqual(schema.buildAnalysisFingerprint(base), schema.buildAnalysisFingerprint({ ...base, unresolvedRevision: 'u1:open' }));
+});
+
+test('buildAnalysisFingerprint changes when the ordered multi-image identities/timeframes change, and a plain single-image caller keeps the exact pre-existing fingerprint shape', async () => {
+  const schema = await loadSchema();
+  const singleOld = schema.buildAnalysisFingerprint({ sessionId: 's1', entryId: 'e1', imageIdentity: 'img1', provider: 'openai', model: 'gpt-5.6' });
+  const singleNew = schema.buildAnalysisFingerprint({ sessionId: 's1', entryId: 'e1', imageIdentity: 'img1', imageIdentities: undefined, provider: 'openai', model: 'gpt-5.6' });
+  assert.equal(singleOld, singleNew, 'omitting imageIdentities must fall back to the single imageIdentity, unchanged');
+  const multiA = schema.buildAnalysisFingerprint({ sessionId: 's1', entryId: 'e1', imageIdentities: ['img1:5m', 'img2:1h'], provider: 'openai', model: 'gpt-5.6' });
+  const multiB = schema.buildAnalysisFingerprint({ sessionId: 's1', entryId: 'e1', imageIdentities: ['img1:5m', 'img2:4h'], provider: 'openai', model: 'gpt-5.6' });
+  assert.notEqual(multiA, multiB, 'a changed timeframe label on one of the images must change the fingerprint');
+});

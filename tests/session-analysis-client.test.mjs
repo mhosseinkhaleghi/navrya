@@ -311,6 +311,104 @@ test('visualizeAnalysis uploads the generated image (never persists raw base64) 
   assert.equal(fetchCalls, 2, 'a cached visualization must never trigger a second paid call');
 });
 
+// ---- Session / Analysis Desk AI upgrade ------------------------------------------------------
+
+test('gatherPendingNotes: an unreviewed note is sent once, a reviewed-and-unchanged note is omitted, and an edited note re-enters context', async () => {
+  const { client, sandbox } = await loadClient();
+  const schema = sandbox.window.TradeJournalSessionAnalysisSchema;
+  const session = { entries: [{ id: 'e1', note: 'liquidity grab below 100' }, { id: 'e2', movementNote: 'spiked and reversed' }] };
+  const fresh = client.gatherPendingNotes(session, null);
+  assert.equal(fresh.length, 2);
+
+  const revision = schema.noteRevision('liquidity grab below 100');
+  const memory = { noteReceipts: [{ entryId: 'e1', field: 'note', revision }] };
+  const afterReview = client.gatherPendingNotes(session, memory);
+  assert.equal(afterReview.length, 1, 'the reviewed, unchanged note must be omitted');
+  assert.equal(afterReview[0].entryId, 'e2');
+
+  session.entries[0].note = 'liquidity grab below 100, now retested';
+  const afterEdit = client.gatherPendingNotes(session, memory);
+  assert.equal(afterEdit.length, 2, 'an edited note must become eligible again even though entryId+field was previously reviewed');
+});
+
+test('gatherOpenUnresolvedItems only returns open/partially_resolved items, never resolved/superseded ones', async () => {
+  const { client } = await loadClient();
+  const memory = { unresolvedItems: [{ id: 'u1', status: 'open' }, { id: 'u2', status: 'resolved' }, { id: 'u3', status: 'partially_resolved' }, { id: 'u4', status: 'superseded' }] };
+  const open = client.gatherOpenUnresolvedItems(memory);
+  assert.deepEqual(Array.from(open.map((i) => i.id)).sort(), ['u1', 'u3']);
+});
+
+test('gatherDeferredScenarios reports every eligible active scenario NOT included, never silently dropping them', async () => {
+  const { client } = await loadClient();
+  const session = { entries: [{ scenarios: [makeScenario({ id: 'a' }), makeScenario({ id: 'b' }), makeScenario({ id: 'c', occurred: true })] }] };
+  const deferred = client.gatherDeferredScenarios(session, ['a']);
+  assert.deepEqual(Array.from(deferred.map((d) => d.id)), ['b'], 'occurred scenario c is not active at all, and included scenario a must not reappear as deferred');
+});
+
+test('canonicalEntryImages normalizes a legacy single-image entry into a one-item array, and caps a real images[] array at 4', async () => {
+  const { client } = await loadClient();
+  const legacy = client.canonicalEntryImages({ id: 'e1', imageUrl: '/uploads/x.png', timeframe: '5m' });
+  assert.equal(legacy.length, 1);
+  assert.equal(legacy[0].id, 'e1:primary');
+  assert.equal(legacy[0].timeframe, '5m');
+
+  const multi = { id: 'e2', images: Array.from({ length: 6 }, (_, i) => ({ id: 'img' + i, imageUrl: '/u/' + i + '.png', timeframe: '5m' })) };
+  const resolved = client.canonicalEntryImages(multi);
+  assert.equal(resolved.length, 4, 'at most MAX_TIMEFRAME_IMAGES images are ever used for one analysis call');
+});
+
+test('computeAnalysisPatches folds every returned scenario evaluation into a real patch against its own persisted Scenario, using the exact same applyScenarioEvaluationPatch', async () => {
+  const { client, sandbox } = await loadClient();
+  const schema = sandbox.window.TradeJournalSessionAnalysisSchema;
+  const scenario = makeScenario({ id: 'sc1' });
+  const session = { id: 's1', entries: [{ id: 'e1', scenarios: [scenario] }] };
+  const result = schema.normalizeAnalysisResult({
+    thesis: { headline: 'update', summary: '' },
+    scenarioEvaluations: [{ scenarioId: 'sc1', status: 'strengthened', newProbability: 72, whatHappened: 'retest held', confirmedBy: ['retest'], contradictedBy: [], remainsUnresolved: [], triggerOccurred: true, invalidationOccurred: false }]
+  }, { analysisId: 'a1', entryId: 'e1', analysisType: 'update', provider: 'openai', model: 'gpt-5.6' });
+  const patches = client.computeAnalysisPatches(session, result);
+  assert.equal(patches.scenarioPatches.length, 1);
+  assert.equal(patches.scenarioPatches[0].scenarioId, 'sc1');
+  assert.equal(patches.scenarioPatches[0].entryId, 'e1');
+  assert.equal(patches.scenarioPatches[0].patch.probabilityHistory.length, 2, 'must append, never overwrite');
+  assert.equal(patches.scenarioPatches[0].patch.probabilityHistory[1].value, 72);
+  assert.equal(patches.scenarioPatches[0].patch.evaluationHistory[0].analysisId, 'a1');
+});
+
+test('computeAnalysisPatches persists compact note receipts (no raw text) and drops a noteFeedback item whose noteRef was never actually sent - re-derived from (session, previousMemory), not trusted from the caller', async () => {
+  const { client, sandbox } = await loadClient();
+  const schema = sandbox.window.TradeJournalSessionAnalysisSchema;
+  const session = { id: 's1', entries: [{ id: 'e1', note: 'x' }] };
+  const realRevision = schema.noteRevision('x');
+  const result = schema.normalizeAnalysisResult({
+    thesis: { headline: 't', summary: '' },
+    noteFeedback: [
+      { noteRef: { entryId: 'e1', field: 'note', revision: realRevision }, verdict: 'supported', evidence: 'held the level' },
+      { noteRef: { entryId: 'e1', field: 'note', revision: 'HALLUCINATED' }, verdict: 'supported', evidence: 'fabricated' }
+    ]
+  }, { analysisId: 'a1', entryId: 'e1', analysisType: 'initial' });
+  const patches = client.computeAnalysisPatches(session, result);
+  const receipts = patches.sessionPatch.aiSessionAnalysisResult.memory.noteReceipts;
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0].revision, realRevision);
+  assert.equal(JSON.stringify(receipts[0]).includes('held the level'), false, 'a receipt must never carry the raw note/feedback text');
+});
+
+test('computeAnalysisPatches carries forward open unresolved items and folds this analysis\' own returned items by id', async () => {
+  const { client, sandbox } = await loadClient();
+  const schema = sandbox.window.TradeJournalSessionAnalysisSchema;
+  const session = { id: 's1', aiSessionAnalysisResult: { memory: { unresolvedItems: [{ id: 'u1', status: 'open', description: 'needs 1m chart' }] } }, entries: [{ id: 'e1', scenarios: [] }] };
+  const result = schema.normalizeAnalysisResult({
+    thesis: { headline: 't', summary: '' },
+    unresolvedItems: [{ id: 'u1', status: 'resolved', description: 'confirmed on the 1m chart' }, { id: 'u2', status: 'open', description: 'still needs volume confirmation' }]
+  }, { analysisId: 'a2', entryId: 'e1', analysisType: 'update' });
+  const patches = client.computeAnalysisPatches(session, result);
+  const items = patches.sessionPatch.aiSessionAnalysisResult.memory.unresolvedItems;
+  const byId = {}; items.forEach((i) => { byId[i.id] = i; });
+  assert.equal(byId.u1.status, 'resolved');
+  assert.equal(byId.u2.status, 'open');
+});
+
 test('visualizeAnalysis fails outright (VISUALIZATION_SAVE_FAILED) rather than silently keeping the raw base64 when the image upload fails', async () => {
   const { client } = await loadClient({
     fetch: async (url) => {
