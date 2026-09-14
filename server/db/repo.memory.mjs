@@ -1223,6 +1223,20 @@ export function createMemoryRepo() {
             gregorianDate: entry.gregorianDate || null, note: entry.note || null, movementNote: entry.movementNote || null,
             relatedScenarioIds: Array.isArray(entry.relatedScenarioIds) ? entry.relatedScenarioIds : [],
             aiAnalysisResult: entry.aiAnalysisResult ?? null,
+            // Session / Analysis Desk AI upgrade, section 3 (061_session_entry_images.sql):
+            // canonical ordered multi-image array - mirrors repo.pg.mjs's own explicit column
+            // mapping field-for-field, same reasoning as scenario's problem/invalidationNote/etc
+            // above (this repo must reproduce the same persisted shape, never silently drop a new
+            // field a real client now sends). A legacy entry with no `images[]` at all persists an
+            // empty array here; read-time normalization (session-analysis-client.js's
+            // canonicalEntryImages) is what derives the single-image fallback for display/AI use.
+            images: (Array.isArray(entry.images) ? entry.images : []).map(function (img, i) {
+              return {
+                id: img.id || (entry.id + ':' + i), entryId: entry.id, sessionId: record.id, order: i,
+                mediaAssetId: img.mediaAssetId || null, imageBlobId: img.imageBlobId || null, imageUrl: img.imageUrl || null,
+                timeframe: img.timeframe || null, detectedTimeframe: img.detectedTimeframe || null
+              };
+            }),
             scenarios: (entry.scenarios || []).map(function (scenario) {
               return {
                 id: scenario.id, entryId: entry.id, sessionId: record.id,

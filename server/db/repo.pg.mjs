@@ -285,13 +285,25 @@ function mapTradingSessionScenario(row) {
     status: row.status, aiSource: row.ai_source, aiVisualization: row.ai_visualization, lastEvaluation: row.last_evaluation
   };
 }
-function mapTradingSessionEntry(row, scenarios) {
+// Session / Analysis Desk AI upgrade, section 3 (061_session_entry_images.sql).
+function mapTradingSessionEntryImage(row) {
+  return {
+    id: row.id, entryId: row.entry_id, sessionId: row.session_id, order: row.order_index,
+    mediaAssetId: row.media_asset_id, imageBlobId: row.image_blob_id, imageUrl: row.image_url,
+    timeframe: row.timeframe, detectedTimeframe: row.detected_timeframe
+  };
+}
+function mapTradingSessionEntry(row, scenarios, images) {
   return {
     id: row.id, sessionId: row.session_id, type: row.type, createdAt: row.created_at,
     hasImage: row.has_image, imageBlobId: row.image_blob_id, imageUrl: row.image_url,
     timeframe: row.timeframe, market: row.market, tradingSession: row.trading_session,
     gregorianDate: row.gregorian_date, note: row.note, movementNote: row.movement_note,
     relatedScenarioIds: row.related_scenario_ids || [], aiAnalysisResult: row.ai_analysis_result,
+    // Canonical ordered multi-image array (section 3) - empty for a legacy entry that predates
+    // this upgrade; canonicalEntryImages() (session-analysis-client.js) is the one place that
+    // falls back to this entry's own single-image fields for display/AI transport in that case.
+    images: images || [],
     scenarios: scenarios || []
   };
 }
@@ -1880,16 +1892,22 @@ export function createPgRepo(pool) {
     const ids = sessionRows.map((row) => row.id);
     const { rows: entryRows } = await pool.query('SELECT * FROM trading_session_entries WHERE session_id = ANY($1) ORDER BY created_at ASC', [ids]);
     const { rows: scenarioRows } = await pool.query('SELECT * FROM trading_session_scenarios WHERE session_id = ANY($1)', [ids]);
+    const { rows: imageRows } = await pool.query('SELECT * FROM trading_session_entry_images WHERE session_id = ANY($1) ORDER BY order_index ASC', [ids]);
     const { rows: logRows } = await pool.query('SELECT * FROM trading_session_activity_log WHERE session_id = ANY($1) ORDER BY logged_at ASC', [ids]);
     const scenariosByEntry = new Map();
     scenarioRows.forEach((row) => {
       if (!scenariosByEntry.has(row.entry_id)) scenariosByEntry.set(row.entry_id, []);
       scenariosByEntry.get(row.entry_id).push(mapTradingSessionScenario(row));
     });
+    const imagesByEntry = new Map();
+    imageRows.forEach((row) => {
+      if (!imagesByEntry.has(row.entry_id)) imagesByEntry.set(row.entry_id, []);
+      imagesByEntry.get(row.entry_id).push(mapTradingSessionEntryImage(row));
+    });
     const entriesBySession = new Map();
     entryRows.forEach((row) => {
       if (!entriesBySession.has(row.session_id)) entriesBySession.set(row.session_id, []);
-      entriesBySession.get(row.session_id).push(mapTradingSessionEntry(row, scenariosByEntry.get(row.id) || []));
+      entriesBySession.get(row.session_id).push(mapTradingSessionEntry(row, scenariosByEntry.get(row.id) || [], imagesByEntry.get(row.id) || []));
     });
     const logsBySession = new Map();
     logRows.forEach((row) => {
@@ -1984,6 +2002,28 @@ export function createPgRepo(pool) {
               entry.movementNote || null, JSON.stringify(Array.isArray(entry.relatedScenarioIds) ? entry.relatedScenarioIds : []),
               JSON.stringify(entry.aiAnalysisResult ?? null)]
           );
+
+          // Section 3 (061_session_entry_images.sql) - same delete-then-reinsert-children
+          // approach as every other child table in this upsert, for the same reason (a
+          // background write, never the interactive save path). A legacy entry with no
+          // `images[]` at all simply persists zero rows here.
+          await client.query('DELETE FROM trading_session_entry_images WHERE entry_id=$1', [entry.id]);
+          const images = Array.isArray(entry.images) ? entry.images : [];
+          const mappedImages = [];
+          for (let imageIndex = 0; imageIndex < images.length; imageIndex++) {
+            const image = images[imageIndex];
+            const { rows: imageRows } = await client.query(
+              `INSERT INTO trading_session_entry_images
+                (id, entry_id, session_id, order_index, media_asset_id, image_blob_id, image_url, timeframe, detected_timeframe)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+               RETURNING *`,
+              [image.id || (entry.id + ':' + imageIndex), entry.id, record.id, imageIndex,
+                image.mediaAssetId || null, image.imageBlobId || null, image.imageUrl || null,
+                image.timeframe || null, image.detectedTimeframe || null]
+            );
+            mappedImages.push(mapTradingSessionEntryImage(imageRows[0]));
+          }
+
           const scenarios = Array.isArray(entry.scenarios) ? entry.scenarios : [];
           const mappedScenarios = [];
           for (const scenario of scenarios) {
@@ -2011,7 +2051,7 @@ export function createPgRepo(pool) {
             );
             mappedScenarios.push(mapTradingSessionScenario(scenarioRows[0]));
           }
-          mappedEntries.push(mapTradingSessionEntry(entryRows[0], mappedScenarios));
+          mappedEntries.push(mapTradingSessionEntry(entryRows[0], mappedScenarios, mappedImages));
         }
 
         await client.query('DELETE FROM trading_session_activity_log WHERE session_id=$1', [record.id]);

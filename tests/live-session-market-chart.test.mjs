@@ -380,10 +380,15 @@ test('a denied/unsupported/failed capture still opens the Media Picker for Add c
   assert.match(view, /setPicker\(\{ intent: 'movementEntry', initialAsset: asset \}\);/);
 });
 
-test('the MediaPicker component is imported once (a single shared component, never a duplicate implementation) - Add chart and Log movement inside MarketChartView share ONE render site via the intent prop; ChartEntryModal and EntryDetailPanel each own a separate, legitimate render site for their own later/inline picking step', () => {
+test('MediaPicker is imported once and has only the four legitimate render sites: MarketChartView, the shared multi-timeframe slots, ChartEntryModal, and EntryDetailPanel', () => {
   assert.match(src, /import \{ MediaPicker \} from '\.\.\/public\/pages\/shared\/navrya\/components\/media\/MediaPicker\.jsx';/);
   const matches = src.match(/<MediaPicker\b/g) || [];
-  assert.equal(matches.length, 3, 'exactly three MediaPicker render sites are expected: MarketChartView (Add chart + Log movement share one via intent), ChartEntryModal (its own image selection step), and EntryDetailPanel (inline re-attach on an entry with no image)');
+  assert.equal(matches.length, 4, 'four render sites preserve the Media Drive single-image flows and add one shared multi-timeframe picker');
   const marketChartView = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
   assert.match(marketChartView, /intent=\{picker\.intent\} initialAsset=\{picker\.initialAsset\} sessionId=\{session\.id\}/);
+  const slotsView = sliceBetween('function MultiTimeframeSlots({ lang, slots, onChange, maxSlots }) {', 'function ChartEntryModal(', 'MultiTimeframeSlots');
+  assert.match(slotsView, /<MediaPicker\b/);
+  assert.match(src, /<MultiTimeframeSlots lang=\{lang\} slots=\{multiSlots\} onChange=\{setMultiSlots\} maxSlots=\{4\} \/>/);
+  assert.match(src, /<MultiTimeframeSlots lang=\{lang\} slots=\{slots\} onChange=\{setSlots\} maxSlots=\{4\} \/>/);
+});
 });

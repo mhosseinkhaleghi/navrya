@@ -79,10 +79,24 @@ test('openAiAnalysis() opens the real, non-autoRun request-collection form (defe
 });
 
 test('applyAnalysisResult() (the real, shared per-entry persistence function) resolves the pending runAiAnalysis() Promise with the real, already-persisted result, then clears sessionAnalysisAutoRun - a no-op for the 3 pre-existing manual trigger paths, which never set the pending ref in the first place', () => {
-  const fn = liveSessionSrc.slice(liveSessionSrc.indexOf('function applyAnalysisResult'), liveSessionSrc.indexOf('function applyAnalysisResult') + 1200);
+  const fn = liveSessionSrc.slice(liveSessionSrc.indexOf('function applyAnalysisResult'), liveSessionSrc.indexOf('function applyAnalysisResult') + 1900);
   assert.match(fn, /if \(pendingAnalysisResolverRef\.current\) \{/);
   assert.match(fn, /resolve\(patches\.sessionPatch\.aiSessionAnalysisResult\);/);
   assert.match(fn, /setSessionAnalysisAutoRun\(false\);/);
+});
+
+// Session / Analysis Desk AI upgrade, section 2: a normal analysis now folds computeAnalysisPatches'
+// scenarioPatches into the SAME persist() call as entryPatch/sessionPatch - but only for a fresh
+// result, never a cached redisplay (brief: "a cache hit is display-only").
+test('applyAnalysisResult() folds scenarioPatches into the same persist() call, but skips them entirely on a cached redisplay (meta.cached)', () => {
+  const fn = liveSessionSrc.slice(liveSessionSrc.indexOf('function applyAnalysisResult'), liveSessionSrc.indexOf('function applyAnalysisResult') + 1900);
+  assert.match(fn, /const cached = !!\(meta && meta\.cached\);/);
+  assert.match(fn, /if \(!cached\) \{/);
+  assert.match(fn, /patches\.scenarioPatches/);
+  // Both real call sites must forward `meta` (which carries `cached`) into applyAnalysisResult -
+  // never just the entry, or a cache hit could not be distinguished from a fresh result.
+  assert.match(liveSessionSrc, /applyAnalysisResult\(meta && meta\.entry, result, meta\)/);
+  assert.match(liveSessionSrc, /onAnalysisResult\(meta && meta\.entry, result, meta\)/);
 });
 
 // Regression: announceAnalysisResult() originally lived nested inside FateSummaryModal's own body
@@ -116,7 +130,7 @@ test('announceAnalysisResult() dispatches tradejournal:ai-analysis-ready with th
 });
 
 test('BOTH real places an analysis result lands - applyAnalysisResult (per-entry, and the one runAiAnalysis() itself uses) and handleAnalysisResult (the whole-session Fate summary flow) - call announceAnalysisResult(), so voice narration works identically regardless of which of the 4 trigger paths (3 manual + this new action) produced the result', () => {
-  const applyFn = liveSessionSrc.slice(liveSessionSrc.indexOf('function applyAnalysisResult'), liveSessionSrc.indexOf('function applyAnalysisResult') + 1200);
+  const applyFn = liveSessionSrc.slice(liveSessionSrc.indexOf('function applyAnalysisResult'), liveSessionSrc.indexOf('function applyAnalysisResult') + 1900);
   const handleFn = liveSessionSrc.slice(liveSessionSrc.indexOf('function handleAnalysisResult'), liveSessionSrc.indexOf('function handleAnalysisResult') + 500);
   assert.match(applyFn, /announceAnalysisResult\(normalizedResult\);/);
   assert.match(handleFn, /announceAnalysisResult\(result\);/);

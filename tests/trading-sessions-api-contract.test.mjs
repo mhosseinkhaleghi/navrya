@@ -107,6 +107,56 @@ test('POST upserts a full nested session (entries + scenarios + activity log) an
   assert.equal(list.body.sessions.length, 1);
 });
 
+// Session / Analysis Desk AI upgrade, section 3 (061_session_entry_images.sql): the canonical
+// ordered multi-image array on a Session Entry must survive the same repository mapping/upsert/
+// reload round trip every other new persisted field on this domain already does - "every
+// persisted field must survive repository mapping/upsert/reload" (brief section 3).
+test('a chart entry with a real 4-image images[] array round-trips through POST/GET with every field (id/timeframe/detectedTimeframe/mediaAssetId) intact, in order', async () => {
+  const user = await createUser('Hunter Images');
+  await seedInstrument(user.id);
+  const session = sampleSession('session-images');
+  session.entries[0].images = [
+    { id: 'img-a', imageBlobId: 'blob-a', timeframe: '5m', detectedTimeframe: '5m' },
+    { id: 'img-b', imageUrl: '/uploads/session/b.png', timeframe: '15m', detectedTimeframe: '' },
+    { id: 'img-c', mediaAssetId: 'asset-c', imageUrl: '/uploads/media/c.png', timeframe: '1h', detectedTimeframe: '4h' },
+    { id: 'img-d', imageBlobId: 'blob-d', timeframe: '1D', detectedTimeframe: '1D' }
+  ];
+  const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(created.status, 200);
+  assert.equal(created.body.entries[0].images.length, 4);
+  assert.deepEqual(created.body.entries[0].images.map((i) => i.id), ['img-a', 'img-b', 'img-c', 'img-d'], 'order must be preserved');
+  assert.equal(created.body.entries[0].images[2].mediaAssetId, 'asset-c');
+  assert.equal(created.body.entries[0].images[2].detectedTimeframe, '4h');
+
+  const fetched = await api('GET', '/api/sync/sessions/session-images', { userId: user.id });
+  assert.equal(fetched.status, 200);
+  assert.equal(fetched.body.entries[0].images.length, 4);
+  assert.deepEqual(fetched.body.entries[0].images.map((i) => i.timeframe), ['5m', '15m', '1h', '1D']);
+
+  // Re-POSTing with fewer images must fully replace the child rows (delete-then-reinsert), never
+  // leave a stale 4th row behind - same contract as scenarios/activity log above.
+  session.entries[0].images = [{ id: 'img-a', imageBlobId: 'blob-a', timeframe: '5m' }];
+  const replaced = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(replaced.body.entries[0].images.length, 1);
+});
+
+// Legacy single-image compatibility: an entry with no `images[]` at all (every pre-existing
+// session) must keep round-tripping through its own single imageBlobId/imageUrl fields, exactly as
+// before this upgrade - persisting zero rows in the new child table, never a forced migration.
+test('a legacy entry with no images[] array at all round-trips its own single-image fields unchanged, with an empty images array', async () => {
+  const user = await createUser('Hunter Legacy');
+  await seedInstrument(user.id);
+  const session = sampleSession('session-legacy-image');
+  const created = await api('POST', '/api/sync/sessions', { userId: user.id, body: session });
+  assert.equal(created.status, 200);
+  assert.equal(created.body.entries[0].imageBlobId, 'img-1');
+  assert.deepEqual(created.body.entries[0].images, []);
+
+  const fetched = await api('GET', '/api/sync/sessions/session-legacy-image', { userId: user.id });
+  assert.equal(fetched.body.entries[0].imageBlobId, 'img-1');
+  assert.deepEqual(fetched.body.entries[0].images, []);
+});
+
 test('re-POSTing the same session id is an idempotent upsert, not a duplicate, and fully replaces the child rows', async () => {
   const user = await createUser('Hunter Two');
   await seedInstrument(user.id);

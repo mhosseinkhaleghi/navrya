@@ -190,7 +190,11 @@ const copy = {
     chartCaptureUnsupported: 'گرفتن اسکرین‌شات در این مرورگر پشتیبانی نمی‌شود. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
     chartCaptureFailed: 'گرفتن اسکرین‌شات از چارت ممکن نشد. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
     screenshotButton: 'اسکرین‌شات', screenshotSaving: 'در حال ذخیره در مدیا درایو...', screenshotSaved: 'در مدیا درایو ذخیره شد', screenshotFailed: 'ذخیره اسکرین‌شات ممکن نشد',
-    mediaAnalyzing: 'در حال تحلیل...', mediaMetadataUnavailable: 'اطلاعات چارت در دسترس نیست', mediaDriveButton: 'مدیا درایو'
+    mediaAnalyzing: 'در حال تحلیل...', mediaMetadataUnavailable: 'اطلاعات چارت در دسترس نیست',
+    // Session / Analysis Desk AI upgrade, section 3
+    multiTimeframeToggle: 'چند تایم‌فریم', multiTimeframeHint: 'تا ۴ تصویر با تایم‌فریم‌های مختلف برای همین رویداد اضافه کنید.',
+    addImageSlot: 'افزودن تصویر', slotTimeframeDetected: 'تشخیص خودکار', slotTimeframeManual: 'تایم‌فریم را انتخاب کنید',
+    atLeastOneImageRequired: 'حداقل یک تصویر با تایم‌فریم مشخص لازم است.', removeImageSlot: 'حذف تصویر', mediaDriveButton: 'مدیا درایو'
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
@@ -278,7 +282,10 @@ const copy = {
     chartCaptureUnsupported: 'التقاط لقطة الشاشة غير مدعوم في هذا المتصفح. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
     chartCaptureFailed: 'تعذّر التقاط لقطة شاشة للمخطط. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
     screenshotButton: 'لقطة شاشة', screenshotSaving: 'جارٍ الحفظ في درايف الوسائط...', screenshotSaved: 'تم الحفظ في درايف الوسائط', screenshotFailed: 'تعذّر حفظ لقطة الشاشة',
-    mediaAnalyzing: 'جارٍ التحليل...', mediaMetadataUnavailable: 'بيانات الرسم غير متاحة', mediaDriveButton: 'درايف الوسائط'
+    mediaAnalyzing: 'جارٍ التحليل...', mediaMetadataUnavailable: 'بيانات الرسم غير متاحة',
+    multiTimeframeToggle: 'أطر زمنية متعددة', multiTimeframeHint: 'أضف حتى 4 صور بأطر زمنية مختلفة لهذا الحدث نفسه.',
+    addImageSlot: 'إضافة صورة', slotTimeframeDetected: 'اكتشاف تلقائي', slotTimeframeManual: 'اختر الإطار الزمني',
+    atLeastOneImageRequired: 'مطلوب صورة واحدة على الأقل بإطار زمني محدد.', removeImageSlot: 'إزالة الصورة', mediaDriveButton: 'درايف الوسائط'
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
@@ -366,7 +373,10 @@ const copy = {
     chartCaptureUnsupported: 'Screenshot capture is not supported in this browser. You can still attach an image manually below.',
     chartCaptureFailed: 'Could not capture a screenshot of the chart. You can still attach an image manually below.',
     screenshotButton: 'Screenshot', screenshotSaving: 'Saving to Media Drive...', screenshotSaved: 'Saved to Media Drive', screenshotFailed: 'Could not save the screenshot',
-    mediaAnalyzing: 'Analyzing...', mediaMetadataUnavailable: 'Chart metadata unavailable', mediaDriveButton: 'Media Drive'
+    mediaAnalyzing: 'Analyzing...', mediaMetadataUnavailable: 'Chart metadata unavailable',
+    multiTimeframeToggle: 'Multi-timeframe', multiTimeframeHint: 'Add up to 4 images at different timeframes for this same entry.',
+    addImageSlot: 'Add image', slotTimeframeDetected: 'Auto-detected', slotTimeframeManual: 'Pick a timeframe',
+    atLeastOneImageRequired: 'At least one image with a timeframe is required.', removeImageSlot: 'Remove image', mediaDriveButton: 'Media Drive'
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
@@ -455,6 +465,10 @@ const copy = {
     chartCaptureFailed: 'No se pudo capturar una imagen del gráfico. Aún puedes adjuntar una imagen manualmente abajo.',
     screenshotButton: 'Captura', screenshotSaving: 'Guardando en Media Drive...', screenshotSaved: 'Guardado en Media Drive', screenshotFailed: 'No se pudo guardar la captura',
     mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles', mediaDriveButton: 'Media Drive'
+    mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles',
+    multiTimeframeToggle: 'Multi-temporalidad', multiTimeframeHint: 'Añade hasta 4 imágenes con distintas temporalidades para este mismo registro.',
+    addImageSlot: 'Añadir imagen', slotTimeframeDetected: 'Detectado automáticamente', slotTimeframeManual: 'Elige una temporalidad',
+    atLeastOneImageRequired: 'Se requiere al menos una imagen con una temporalidad definida.', removeImageSlot: 'Quitar imagen'
   }
 };
 
@@ -660,6 +674,108 @@ function SessionModalShell({ title, icon, eyebrow, onClose, footer, width = 640,
 // of the plain file dropzone, and auto-populates timeframe from the asset's own AI-detected value
 // once ready - the trader can still edit every field, exactly as before. `initialFile` and
 // `mediaAsset` are mutually exclusive; a caller passes at most one.
+// Session / Analysis Desk AI upgrade, section 3 - the ONE reusable multi-timeframe slot picker,
+// shared by ChartEntryModal (at chart-entry creation) and MultiImageAttachModal below (adding more
+// timeframe images to an already-created chart OR movement entry) - never a duplicate slot-
+// management implementation per caller. Every slot reuses the SAME MediaPicker component every
+// other image-attach flow in this app already uses (intent='chartEntry' so a freshly uploaded
+// image runs through the real Media Drive upload + chart-detection call, never a second upload
+// path) - a picked/uploaded asset is never re-uploaded, only referenced. `slots` is an array of
+// up to `maxSlots` entries, each either null (empty) or { asset, timeframe }; `timeframe` starts
+// pre-filled from the asset's own detected value where available (never silently guessed when
+// detection failed or is still processing - the field simply starts empty and stays editable).
+function MultiTimeframeSlots({ lang, slots, onChange, maxSlots }) {
+  const max = maxSlots || 4;
+  const [pickingIndex, setPickingIndex] = React.useState(null);
+  function setSlot(index, value) {
+    const next = slots.slice();
+    while (next.length < max) next.push(null);
+    next[index] = value;
+    onChange(next);
+  }
+  function removeSlot(index) { setSlot(index, null); }
+  const filledCount = slots.filter(Boolean).length;
+  const tiles = Array.from({ length: max }, (_, i) => slots[i] || null);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(lang, 'multiTimeframeHint')}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+        {tiles.map((slot, i) => (
+          slot ? (
+            <div key={i} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.5)' }}>
+              <span style={{ position: 'relative', display: 'block', width: '100%', height: 96, borderRadius: 8, overflow: 'hidden', background: '#000' }}>
+                <img src={slot.asset.url} alt="" style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
+                <button type="button" onClick={() => removeSlot(i)} title={tr(lang, 'removeImageSlot')} style={{ position: 'absolute', top: 5, insetInlineEnd: 5, width: 22, height: 22, borderRadius: 999, display: 'grid', placeItems: 'center', cursor: 'pointer', border: 0, background: 'rgba(3,8,7,.8)', color: 'var(--text-muted)' }}>
+                  <Icon name="close" size={12} />
+                </button>
+              </span>
+              <select
+                value={slot.timeframe || ''} onChange={(e) => setSlot(i, { ...slot, timeframe: e.target.value })}
+                style={{ ...inputStyle, height: 32, fontSize: 11, borderColor: !slot.timeframe ? 'var(--danger)' : 'var(--border-hairline)' }}
+              >
+                <option value="">{tr(lang, 'slotTimeframeManual')}</option>
+                {TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+              {slot.asset.metadataStatus === 'processing' && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9.5, color: 'var(--text-dim)' }}><Icon name="LoaderCircle" size={11} />{tr(lang, 'mediaAnalyzing')}</span>
+              )}
+              {slot.asset.timeframe && slot.timeframe === slot.asset.timeframe && (
+                <span style={{ fontSize: 9.5, color: 'var(--char-accent)' }}>{tr(lang, 'slotTimeframeDetected')}</span>
+              )}
+            </div>
+          ) : filledCount < max ? (
+            <button
+              key={i} type="button" onClick={() => setPickingIndex(i)}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, height: 138, borderRadius: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.4)', color: 'var(--text-dim)' }}
+            >
+              <Icon name="ImagePlus" size={20} />
+              <span style={{ fontSize: 10.5 }}>{tr(lang, 'addImageSlot')}</span>
+            </button>
+          ) : null
+        ))}
+      </div>
+      <MediaPicker
+        open={pickingIndex != null} lang={lang} intent="chartEntry" sessionId={null}
+        onClose={() => setPickingIndex(null)}
+        onConfirm={(asset) => { const index = pickingIndex; setPickingIndex(null); if (asset && index != null) setSlot(index, { asset, timeframe: asset.timeframe || '' }); }}
+      />
+    </div>
+  );
+}
+
+// Section 3 - "Add images" for an EXISTING entry (chart or movement), reusing the exact same
+// MultiTimeframeSlots picker as ChartEntryModal's own multi-timeframe toggle. This is how a
+// movement entry (created instantly with no modal - see addEntry('movement')/MarketChartView's
+// onLogMove) gets real multi-timeframe support without a second, duplicate capture UI: the trader
+// logs the movement first, exactly as before, then optionally attaches 1-4 labelled images here.
+function MultiImageAttachModal({ lang, entry, onClose, onSave }) {
+  const rtl = lang === 'fa' || lang === 'ar';
+  const [slots, setSlots] = React.useState(() => {
+    const existing = Array.isArray(entry.images) ? entry.images : [];
+    return existing.map((img) => ({ asset: { id: img.mediaAssetId, url: img.imageUrl, timeframe: img.detectedTimeframe }, timeframe: img.timeframe }));
+  });
+  const [error, setError] = React.useState('');
+  function save() {
+    const filled = slots.filter(Boolean);
+    if (!filled.length || filled.some((s) => !s.timeframe)) { setError(tr(lang, 'atLeastOneImageRequired')); return; }
+    onSave(filled.map((s) => ({ mediaAssetId: s.asset.id, imageUrl: s.asset.url, timeframe: s.timeframe, detectedTimeframe: s.asset.timeframe || '' })));
+  }
+  return (
+    <SessionModalShell title={tr(lang, 'multiTimeframeToggle')} icon="ImagePlus" onClose={onClose} width={520} footer={(
+      <>
+        <span style={{ flex: 1 }} />
+        <Button variant="secondary" onClick={onClose}>{tr(lang, 'cancel')}</Button>
+        <Button variant="primary" icon="check" onClick={save}>{tr(lang, 'submitLabel')}</Button>
+      </>
+    )}>
+      <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <MultiTimeframeSlots lang={lang} slots={slots} onChange={setSlots} maxSlots={4} />
+        {error && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</span>}
+      </div>
+    </SessionModalShell>
+  );
+}
+
 function ChartEntryModal({ session, lang, onClose, onSubmit, mediaAsset }) {
   const rtl = lang === 'fa' || lang === 'ar';
   // NAVRYA Media Drive - the ONLY way to attach an image here, whether this modal opened already
@@ -684,6 +800,10 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, mediaAsset }) {
   const [related, setRelated] = React.useState([]);
   const [error, setError] = React.useState('');
   const scenarios = flatScenarios(session);
+  // Section 3 - Multi-timeframe toggle. Off by default so a plain single-image "Add chart" stays
+  // exactly the same flow it always was; `multiSlots` only matters once the toggle is on.
+  const [multiTimeframe, setMultiTimeframe] = React.useState(false);
+  const [multiSlots, setMultiSlots] = React.useState([]);
   // Slice U2-e: kept current every render so the mount-once registration effect's own applyValue()
   // below can re-derive the real, CURRENT scenario list fresh each call, instead of the one
   // captured at mount - the same anti-stale-closure convention this file already uses everywhere
@@ -704,6 +824,19 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, mediaAsset }) {
     setRelated((list) => (list.indexOf(id) > -1 ? list.filter((x) => x !== id) : list.concat([id])));
   }
   function submit() {
+    // Section 3: exactly the supplied images are analyzed - never require a manual timeframe if
+    // detection succeeded, but never silently guess when it failed (each slot's own select stays
+    // empty until the trader fills or overrides it).
+    if (multiTimeframe) {
+      const filled = multiSlots.filter(Boolean);
+      if (!filled.length) { setError(tr(lang, 'atLeastOneImageRequired')); return; }
+      if (filled.some((s) => !s.timeframe)) { setError(tr(lang, 'atLeastOneImageRequired')); return; }
+      onSubmit({
+        images: filled.map((s) => ({ mediaAssetId: s.asset.id, imageUrl: s.asset.url, timeframe: s.timeframe, detectedTimeframe: s.asset.timeframe || '' })),
+        timeframe: filled[0].timeframe, market, date, note, relatedScenarioIds: related
+      });
+      return;
+    }
     if (!pickedAsset) { setError(tr(lang, 'uploadRequired')); return; }
     if (!timeframe) { setError(tr(lang, 'timeframeRequired')); return; }
     onSubmit({ mediaAssetId: pickedAsset.id, imageUrl: pickedAsset.url, timeframe, market, date, note, relatedScenarioIds: related });
@@ -770,7 +903,23 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, mediaAsset }) {
       </>
     )}>
       <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {pickedAsset ? (
+        {/* Section 3 - only offered when this modal was not already pinned to one specific,
+            already-captured Media Asset (the Market chart panel's own "Add chart" hand-off) -
+            that flow stays exactly the single-image experience it always was. */}
+        {!mediaAsset && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)', cursor: 'pointer' }}>
+            <input
+              type="checkbox" checked={multiTimeframe}
+              onChange={(e) => { setMultiTimeframe(e.target.checked); setError(''); }}
+              style={{ width: 16, height: 16, accentColor: 'var(--char-accent)' }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{tr(lang, 'multiTimeframeToggle')}</span>
+          </label>
+        )}
+
+        {multiTimeframe ? (
+          <MultiTimeframeSlots lang={lang} slots={multiSlots} onChange={setMultiSlots} maxSlots={4} />
+        ) : pickedAsset ? (
           <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
             <img src={pickedAsset.url} alt="" style={{ display: 'block', width: '100%', height: 240, objectFit: 'cover' }} />
             <span dir="auto" style={{ position: 'absolute', bottom: 10, insetInlineStart: 10, insetInlineEnd: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', fontSize: 11 }}>
@@ -799,15 +948,19 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, mediaAsset }) {
           />
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <AiMagicFill active={timeframeFilled}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')} <span style={{ color: 'var(--danger)' }}>*</span></span>
-              <select value={timeframe} onChange={(e) => { setTimeframe(e.target.value); setError(''); }} style={{ ...inputStyle, borderColor: error && !timeframe ? 'var(--danger)' : 'var(--border-hairline)' }}>
-                {TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </label>
-          </AiMagicFill>
+        <div style={{ display: 'grid', gridTemplateColumns: multiTimeframe ? '1fr' : '1fr 1fr', gap: 10 }}>
+          {/* Section 3 - in multi-timeframe mode, each slot carries its own timeframe (see
+              MultiTimeframeSlots above); this single shared field would only conflict with that. */}
+          {!multiTimeframe && (
+            <AiMagicFill active={timeframeFilled}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <span style={fieldLabelStyle}>{tr(lang, 'timeframeLabel')} <span style={{ color: 'var(--danger)' }}>*</span></span>
+                <select value={timeframe} onChange={(e) => { setTimeframe(e.target.value); setError(''); }} style={{ ...inputStyle, borderColor: error && !timeframe ? 'var(--danger)' : 'var(--border-hairline)' }}>
+                  {TIMEFRAMES.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+            </AiMagicFill>
+          )}
           <AiMagicFill active={marketFilled}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               <span style={fieldLabelStyle}>{tr(lang, 'marketLabel')}</span>
@@ -1586,10 +1739,15 @@ function appendToNote(text, addition) {
   return base ? base + ' ' + add : add;
 }
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachMediaAsset, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, onAddAiScenario, onVisualizeAiScenario, onVisualizeAiAnalysis, scenarioTitleFor, character }) {
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachMediaAsset, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, onAddAiScenario, onVisualizeAiScenario, onVisualizeAiAnalysis, scenarioTitleFor, character, onAttachMultipleImages }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
+  // Section 3 - "Add images" (multi-timeframe), a first-class capability for both a chart AND a
+  // movement entry (movements are logged instantly with no modal - see addEntry('movement') - so
+  // this post-creation action is how a movement entry gets real multi-timeframe support without a
+  // second, duplicate capture UI).
+  const [multiAttachOpen, setMultiAttachOpen] = React.useState(false);
 
   // AI process registry (A4) - mountedRef template. The parent renders this with key={entry.id}
   // (LiveSessionView, above), so React genuinely remounts a fresh instance per selected entry -
@@ -1703,12 +1861,21 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
         <Chip tone="neutral">{entryTimeLabel(entry, lang)}</Chip>
         <Chip tone="neutral">{[sessionsAdapter.displayCity(entry.market || entry.tradingSession || session.market), entry.timeframe || session.timeframe].filter(Boolean).join(' · ')}</Chip>
         <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+          {onAttachMultipleImages && (
+            <Button variant="secondary" size="sm" icon="ImagePlus" onClick={() => setMultiAttachOpen(true)}>{tr(lang, 'multiTimeframeToggle')}</Button>
+          )}
           <Button variant="secondary" size="sm" icon="sparkle" onClick={onOpenSessionAnalysis}>{tr(lang, 'aiAnalyzeButton')}</Button>
           <button type="button" onClick={() => onDeleteEntry(entry)} title={tr(lang, 'deleteEntryTitle')} style={{ display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 8, cursor: 'pointer', border: '1px solid rgba(255,56,48,.35)', background: 'rgba(255,56,48,.08)', color: 'var(--danger)' }}>
             <Icon name="trash" size={16} />
           </button>
         </span>
       </div>
+      {multiAttachOpen && (
+        <MultiImageAttachModal
+          lang={lang} entry={entry} onClose={() => setMultiAttachOpen(false)}
+          onSave={async (images) => { await onAttachMultipleImages(entry, images); setMultiAttachOpen(false); }}
+        />
+      )}
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
         <div style={{ flex: 1, minWidth: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {entry.hasImage && imageUrl ? (
@@ -2584,7 +2751,7 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
     onSave({ moveStrength, spike, note, analysisEnvelope: envelope });
   }
   function handleAnalysisResult(result, meta) {
-    const envelope = onAnalysisResult ? onAnalysisResult(meta && meta.entry, result) : { version: 1, memory: null, latestAnalysis: result, updatedAt: new Date().toISOString() };
+    const envelope = onAnalysisResult ? onAnalysisResult(meta && meta.entry, result, meta) : { version: 1, memory: null, latestAnalysis: result, updatedAt: new Date().toISOString() };
     setAnalysisEnvelope(envelope);
     setAnalysisEntry(meta && meta.entry);
     setAnalysisVisualization(null); // a genuinely new analysis has no visualization of its own yet
@@ -2902,7 +3069,7 @@ function EntryPanelSlot() {
       key={selEntry.id}
       session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
       openScenarios={openScenarios}
-      onNote={updateNote} onDeleteEntry={deleteEntry} onAttachMediaAsset={attachMediaAsset}
+      onNote={updateNote} onDeleteEntry={deleteEntry} onAttachMediaAsset={attachMediaAsset} onAttachMultipleImages={attachMultipleImages}
       onOpenSessionAnalysis={() => setSessionAnalysisEntry(selEntry)}
       onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
       onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
@@ -3589,6 +3756,32 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
       target.mediaAssetId = asset.id;
     }, 'image_attached', tr(lang, 'uploadImage'), null, true);
   }
+  // Section 3 - attaches (or replaces) an existing entry's canonical multi-image array. Works for
+  // ANY entry kind (chart or movement, satisfying "first-class Session Entry capability for both
+  // 'Add chart' and 'Log movement'" without a second implementation per kind) - `images` is already
+  // {mediaAssetId, imageUrl, timeframe, detectedTimeframe}[] from the SAME MultiTimeframeSlots
+  // component ChartEntryModal itself uses, so every image here is already a real, already-uploaded
+  // Media Drive reference - never re-uploaded. Mirrors the first image onto the entry's own legacy
+  // single-image fields when the entry did not already have one, same reasoning as
+  // submitChartEntry()'s own primary-image mirror.
+  async function attachMultipleImages(entry, images) {
+    if (!entry || !Array.isArray(images) || !images.length) return;
+    const canonicalImages = images.map((img, i) => ({
+      id: entry.id + ':img' + i, mediaAssetId: img.mediaAssetId || undefined, imageUrl: img.imageUrl,
+      timeframe: img.timeframe || '', detectedTimeframe: img.detectedTimeframe || ''
+    }));
+    persist((s) => {
+      const target = (s.entries || []).find((e) => e.id === entry.id);
+      if (!target) return;
+      target.images = canonicalImages;
+      if (!target.hasImage) {
+        target.hasImage = true;
+        target.imageUrl = canonicalImages[0].imageUrl;
+        target.mediaAssetId = canonicalImages[0].mediaAssetId || undefined;
+      }
+    }, 'image_attached', tr(lang, 'uploadImage'), null, true);
+    canonicalImages.forEach((img) => { if (img.mediaAssetId) linkMediaAsset(img.mediaAssetId, { domain: 'sessionEntry', recordId: entry.id }).catch(() => {}); });
+  }
   // Shared by the chart-entry and fate-entry modals - same real IndexedDB-then-dataURL fallback
   // attachImage() above already uses.
   async function storeImage(file) {
@@ -3599,20 +3792,43 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     }
     return { preview: await readAsDataUrl(file) };
   }
-  async function submitChartEntry({ file, mediaAssetId, imageUrl, timeframe, market, date, note, relatedScenarioIds }) {
+  // Section 3 - the canonical ordered multi-image array for a fresh entry. `images` is already
+  // {mediaAssetId, imageUrl, timeframe, detectedTimeframe}[] (ChartEntryModal's own multi-
+  // timeframe submit() shape) - every entry here is already a real, already-uploaded Media Drive
+  // reference (MultiTimeframeSlots only ever fills a slot through the real MediaPicker), so this
+  // never re-uploads anything, only mints a stable id per image and links each asset.
+  function buildCanonicalImages(images, entryId) {
+    return (images || []).map((img, i) => ({
+      id: entryId + ':img' + i, mediaAssetId: img.mediaAssetId || undefined, imageUrl: img.imageUrl,
+      timeframe: img.timeframe || '', detectedTimeframe: img.detectedTimeframe || ''
+    }));
+  }
+  async function submitChartEntry({ file, mediaAssetId, imageUrl, images, timeframe, market, date, note, relatedScenarioIds }) {
     // A picked/confirmed Media Asset is a REFERENCE only - its bytes are already stored server-
     // side (Market chart panel's own capture/upload flow, or an existing Drive item), so this
     // never calls storeImage()/re-uploads anything for that path. The plain manual dropzone path
     // (no mediaAssetId - Timeline's own "Add chart" button) is completely unchanged.
-    const { blobId, preview } = mediaAssetId ? { blobId: undefined, preview: undefined } : await storeImage(file);
+    const isMulti = Array.isArray(images) && images.length > 0;
+    const { blobId, preview } = (mediaAssetId || isMulti) ? { blobId: undefined, preview: undefined } : await storeImage(file);
+    const entryId = window.TradeJournalWorkspace.id('entry');
+    // A multi-timeframe entry mirrors its FIRST image onto the entry's own legacy single-image
+    // fields (brief section 3: "preserve legacy single-image entries through normalization/read
+    // fallback" - the inverse direction too, so a reader that only ever looks at the entry's own
+    // imageUrl/hasImage, never entry.images[], still sees a real chart on this entry).
+    const primary = isMulti ? images[0] : null;
+    const canonicalImages = isMulti ? buildCanonicalImages(images, entryId) : [];
     const entry = {
-      id: window.TradeJournalWorkspace.id('entry'), sessionId: session.id, type: 'chart', createdAt: new Date().toISOString(),
-      hasImage: true, imageBlobId: blobId, preview, imageUrl: mediaAssetId ? imageUrl : undefined, mediaAssetId: mediaAssetId || undefined,
+      id: entryId, sessionId: session.id, type: 'chart', createdAt: new Date().toISOString(),
+      hasImage: true, imageBlobId: blobId, preview,
+      imageUrl: isMulti ? primary.imageUrl : (mediaAssetId ? imageUrl : undefined),
+      mediaAssetId: isMulti ? (primary.mediaAssetId || undefined) : (mediaAssetId || undefined),
+      images: canonicalImages,
       timeframe, tradingSession: market, market, gregorianDate: date,
       note: note || '', relatedScenarioIds: relatedScenarioIds || [], scenarios: []
     };
     persist((s) => { s.entries = (s.entries || []).concat([entry]); }, 'entry_added', tr(lang, 'addChart'));
-    if (mediaAssetId) linkMediaAsset(mediaAssetId, { domain: 'sessionEntry', recordId: entry.id }).catch(() => {});
+    if (isMulti) canonicalImages.forEach((img) => { if (img.mediaAssetId) linkMediaAsset(img.mediaAssetId, { domain: 'sessionEntry', recordId: entry.id }).catch(() => {}); });
+    else if (mediaAssetId) linkMediaAsset(mediaAssetId, { domain: 'sessionEntry', recordId: entry.id }).catch(() => {});
     setChartModalOpen(false); setChartModalMediaAsset(null); setFilter('all'); setQ('');
     selectEntry(entry.id);
     // Analysis Map handoff (createEntryFromMap above): only set when the modal was opened from
@@ -4395,9 +4611,15 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
   // Adaptive AI Session Analysis (brief §2/§20/§22): the three write paths a real analysis ever
   // triggers, each going through the SAME persist()/scenario functions above a human edit already
   // uses - session-analysis-client.js only ever computes what to write, never writes it itself.
-  function applyAnalysisResult(entry, normalizedResult) {
+  // `meta.cached` (Session / Analysis Desk AI upgrade, section 2): a cache hit is DISPLAY-ONLY -
+  // reopening a previously-computed result must never re-apply its scenarioPatches again (that
+  // would append a duplicate entry to probabilityHistory/evaluationHistory every single time the
+  // popup is reopened). The entry/session patches themselves stay idempotent either way (same
+  // already-persisted values), matching this function's own pre-existing behavior.
+  function applyAnalysisResult(entry, normalizedResult, meta) {
     const client = window.TradeJournalSessionAnalysisClient;
     if (!client) return null;
+    const cached = !!(meta && meta.cached);
     const patches = client.computeAnalysisPatches(session, normalizedResult);
     persist((s) => {
       if (patches.entryPatch) {
@@ -4405,6 +4627,13 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
         if (target) Object.assign(target, patches.entryPatch);
       }
       Object.assign(s, patches.sessionPatch);
+      if (!cached) {
+        (patches.scenarioPatches || []).forEach((scenarioPatch) => {
+          const targetEntry = (s.entries || []).find((e) => e.id === scenarioPatch.entryId);
+          const targetScenario = targetEntry && (targetEntry.scenarios || []).find((sc) => sc.id === scenarioPatch.scenarioId);
+          if (targetScenario) Object.assign(targetScenario, scenarioPatch.patch);
+        });
+      }
     }, 'ai_analysis_completed', tr(lang, 'aiAnalyzeButton'), null, false);
     announceAnalysisResult(normalizedResult);
     // AI-access follow-up: resolves runAiAnalysis()'s own returned Promise (session.analysis.run's
@@ -4711,7 +4940,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
             // never set this ref.
             if (pendingAnalysisResolverRef.current) { const resolve = pendingAnalysisResolverRef.current; pendingAnalysisResolverRef.current = null; resolve(null); }
           }}
-          onResult={(result, meta) => applyAnalysisResult(meta && meta.entry, result)}
+          onResult={(result, meta) => applyAnalysisResult(meta && meta.entry, result, meta)}
           onAddScenario={addAiScenario} onVisualizeScenario={runVisualizeAiScenario} onVisualizeAnalysis={runVisualizeAiAnalysis}
         />
       )}
