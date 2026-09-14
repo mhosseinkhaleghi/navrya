@@ -30,15 +30,21 @@
     return focuses ? focuses.get(id) : null;
   }
 
-  // Union of the primary style's own requiredInputs plus every secondary style's, de-duplicated -
-  // a future consumer can compare this against what a Session actually has attached (e.g. "your
-  // profile requires Order Flow data, but this Session only contains a standard candlestick
-  // screenshot", brief §10) without duplicating that requirement-merging logic itself.
-  function mergedRequiredInputs(primary, secondaries) {
+  // Union of the primary style's own requiredInputs, every secondary style's, and every selected
+  // Focus's own requiredInputs (Session / Analysis Desk AI upgrade, section 4: "Read required
+  // inputs from the existing analysis style/focus registry" - the Focus Registry declares real
+  // requirements too, e.g. poc/value_area -> structured_volume_profile, delta/absorption ->
+  // visible_orderflow_chart), de-duplicated. A future/present consumer (the Session AI Analysis
+  // indicator preflight) compares this against what a Session actually has attached without
+  // duplicating this requirement-merging logic itself.
+  function mergedRequiredInputs(primary, secondaries, focuses) {
     var seen = {}, out = [];
     (primary ? primary.requiredInputs || [] : []).forEach(function (input) { if (!seen[input]) { seen[input] = true; out.push(input); } });
     secondaries.forEach(function (style) {
       (style.requiredInputs || []).forEach(function (input) { if (!seen[input]) { seen[input] = true; out.push(input); } });
+    });
+    (focuses || []).forEach(function (focus) {
+      (focus.requiredInputs || []).forEach(function (input) { if (!seen[input]) { seen[input] = true; out.push(input); } });
     });
     return out;
   }
@@ -64,7 +70,7 @@
       secondaryStyles: secondaryStyles,
       focuses: focuses,
       customMethodNotes: profile.customMethodNotes,
-      requiredInputs: mergedRequiredInputs(primaryStyle, secondaryStyles),
+      requiredInputs: mergedRequiredInputs(primaryStyle, secondaryStyles, focuses),
       // analysisPrinciples/futurePromptGuidance are carried through unmodified from the registry
       // definitions above (primaryStyle.analysisPrinciples, primaryStyle.futurePromptGuidance,
       // etc.) - this function does not duplicate or rewrite them, only assembles the bundle.

@@ -185,9 +185,10 @@ function GeneratingView({ lang, active, isEvaluation }) {
 const copy = {
   fa: {
     title: 'تحلیل هوش مصنوعی', eyebrowRight: 'سشن جاری',
-    userViewLabel: 'دیدگاه شما',
-    userViewHelper: 'اگر درباره وضعیت فعلی بازار، سناریوها یا حرکت قیمت دیدگاهی دارید، برای هوش مصنوعی بنویسید.',
-    userViewNote: 'این یادداشت به‌عنوان زمینه در نظر گرفته می‌شود، نه یک واقعیت قطعی — هوش مصنوعی می‌تواند نظر متفاوتی داشته باشد.',
+    userViewLabel: 'دیدگاه و درخواست شما',
+    userViewHelper: 'دیدگاه خودتان درباره بازار را بنویسید، یا یک درخواست تحلیلی مشخص بدهید؛ مثلاً بررسی نواحی نقدینگی، خوانش کندل‌ها یا شتاب حرکت.',
+    userViewNote: 'این یادداشت به‌عنوان زمینه در نظر گرفته می‌شود، نه یک واقعیت قطعی — هوش مصنوعی می‌تواند نظر متفاوتی داشته باشد و هرگز قوانین ایمنی یا الزامات مبتنی‌بر‌شواهد را کنار نمی‌گذارد.',
+    requiredInputsTitle: 'برای این سبک تحلیل مطمئن شوید:',
     userViewPlaceholder: 'مثلاً: به نظرم قیمت در حال جمع‌آوری نقدینگی قبل از یک حرکت بزرگ‌تر است…',
     modelLabel: 'مدل هوش مصنوعی',
     profileLabel: 'سبک تحلیل', profileNone: 'بدون پروفایل تحلیل', addProfile: 'افزودن پروفایل جدید',
@@ -214,9 +215,10 @@ const copy = {
   },
   ar: {
     title: 'تحليل الذكاء الاصطناعي', eyebrowRight: 'الجلسة الحالية',
-    userViewLabel: 'وجهة نظرك',
-    userViewHelper: 'إذا كان لديك رأي حول وضع السوق الحالي أو السيناريوهات أو حركة السعر، اكتبه للذكاء الاصطناعي.',
-    userViewNote: 'تُعامل هذه الملاحظة كسياق، لا كحقيقة ثابتة - يمكن للذكاء الاصطناعي أن يخالفها لاحقاً.',
+    userViewLabel: 'وجهة نظرك وطلبك',
+    userViewHelper: 'اكتب رأيك حول السوق، أو طلباً تحليلياً محدداً - مثل فحص مناطق السيولة، قراءة الشموع، أو تقييم الزخم.',
+    userViewNote: 'تُعامل هذه الملاحظة كسياق، لا كحقيقة ثابتة - يمكن للذكاء الاصطناعي أن يخالفها لاحقاً ولا يمكنها إلغاء قواعد السلامة أو متطلبات الأدلة.',
+    requiredInputsTitle: 'لهذا أسلوب التحليل، تأكد من:',
     userViewPlaceholder: 'مثال: أعتقد أن السعر يجمع السيولة قبل حركة أكبر…',
     modelLabel: 'نموذج الذكاء الاصطناعي',
     profileLabel: 'أسلوب التحليل', profileNone: 'بدون ملف تحليل', addProfile: 'إضافة ملف جديد',
@@ -243,9 +245,10 @@ const copy = {
   },
   en: {
     title: 'AI Analysis', eyebrowRight: 'Current session',
-    userViewLabel: 'Your view',
-    userViewHelper: 'If you have a view on the current market state, scenarios or price movement, write it for the AI.',
-    userViewNote: 'This note is taken as context, not established fact - the AI may reasonably disagree with it.',
+    userViewLabel: 'Your view and instruction',
+    userViewHelper: 'Write your own market view, or a specific analytical request - for example, check liquidity zones, read the candlestick structure, or assess momentum.',
+    userViewNote: 'This note is taken as context, not established fact - the AI may reasonably disagree with it, and it can never override a safety rule or evidence requirement.',
+    requiredInputsTitle: 'For this analysis style, make sure:',
     userViewPlaceholder: 'e.g. I think price is collecting liquidity before a bigger move…',
     modelLabel: 'AI model',
     profileLabel: 'Analysis style', profileNone: 'No analysis profile', addProfile: 'Add new profile',
@@ -272,9 +275,10 @@ const copy = {
   },
   es: {
     title: 'Análisis de IA', eyebrowRight: 'Sesión actual',
-    userViewLabel: 'Tu opinión',
-    userViewHelper: 'Si tienes una opinión sobre el estado actual del mercado, los escenarios o el movimiento del precio, escríbela para la IA.',
-    userViewNote: 'Esta nota se toma como contexto, no como un hecho establecido - la IA puede razonablemente no estar de acuerdo.',
+    userViewLabel: 'Tu opinión e instrucción',
+    userViewHelper: 'Escribe tu propia opinión sobre el mercado, o una solicitud analítica específica - por ejemplo, revisar zonas de liquidez, leer la estructura de velas o evaluar el momentum.',
+    userViewNote: 'Esta nota se toma como contexto, no como un hecho establecido - la IA puede razonablemente no estar de acuerdo, y nunca puede anular una regla de seguridad o un requisito de evidencia.',
+    requiredInputsTitle: 'Para este estilo de análisis, asegúrate de que:',
     userViewPlaceholder: 'p. ej. creo que el precio está acumulando liquidez antes de un movimiento mayor…',
     modelLabel: 'Modelo de IA',
     profileLabel: 'Estilo de análisis', profileNone: 'Sin perfil de análisis', addProfile: 'Añadir nuevo perfil',
@@ -313,7 +317,14 @@ function buildSessionContextRefs(session) {
   const reversedEntries = entries.slice().reverse();
   const latestChart = reversedEntries.find((e) => e.type === 'chart' && (e.hasImage || e.preview || e.imageBlobId));
   const latestMovement = reversedEntries.find((e) => e.type === 'movement');
-  const activeScenarios = scenarios.filter((s) => !s.occurred && !((s.confirmedInvalidationTagIds || []).length));
+  // Fixed (Session / Analysis Desk AI upgrade): this read `confirmedInvalidationTagIds`, a field
+  // that does not exist for this purpose anywhere else in this codebase - the real, canonical
+  // field is `invalidationTagIds` (session-analysis-client.js's own isScenarioActive() already
+  // fixed the same typo; this is the modal's own separate copy of the same check). Reuses the one
+  // canonical predicate (window.TradeJournalSessionAnalysisClient.isScenarioActive) so this
+  // context-preview list and the real request-building logic can never disagree.
+  const analysisClientApi = window.TradeJournalSessionAnalysisClient;
+  const activeScenarios = scenarios.filter((s) => (analysisClientApi ? analysisClientApi.isScenarioActive(s) : (!s.occurred && !((s.invalidationTagIds || []).length))));
   const patternScenarios = scenarios.filter((s) => s.pattern && (s.pattern.stages || []).length);
   const strategyScenarios = scenarios.filter((s) => s.strategy || (s.pattern && s.pattern.name));
   return {
@@ -324,6 +335,54 @@ function buildSessionContextRefs(session) {
     hasStrategyContext: strategyScenarios.length > 0,
     previousAiAnalysisAvailable: Boolean(session.aiSessionAnalysisResult)
   };
+}
+
+// Section 4 (style-specific indicator preflight) - localized label/hint per required-input id
+// declared by the Style/Focus registries (public/pages/shared/analysis-style-registry.js /
+// analysis-focus-registry.js), read generically off analysisContext.requiredInputs - never a
+// hand-maintained per-style list. `chart_image` is every style's trivial default and never worth
+// a warning on its own, so it is intentionally absent here (silently ignored by the renderer).
+const REQUIRED_INPUT_INFO = {
+  visible_indicator_overlay: {
+    fa: 'مطمئن شوید اندیکاتور سبک انتخابی روی چارت آپلودشده واقعاً قابل مشاهده است.',
+    ar: 'تأكد من أن مؤشر الأسلوب المختار مرئي بالفعل على الرسم البياني المرفوع.',
+    en: 'Make sure the uploaded chart visibly includes this style\'s own indicator overlay.',
+    es: 'Asegúrate de que el gráfico subido muestre visiblemente el indicador de este estilo.'
+  },
+  structured_volume_profile: {
+    fa: 'این سبک به یک نمای پروفایل حجم ساختاریافته روی چارت نیاز دارد.',
+    ar: 'يحتاج هذا الأسلوب إلى عرض بروفايل حجم منظم على الرسم البياني.',
+    en: 'This style needs a structured volume-profile view visible on the chart.',
+    es: 'Este estilo necesita una vista de perfil de volumen estructurado visible en el gráfico.'
+  },
+  structured_market_data: {
+    fa: 'این سبک به داده‌های بازار ساختاریافته (نه فقط یک اسکرین‌شات ساده) نیاز دارد.',
+    ar: 'يحتاج هذا الأسلوب إلى بيانات سوق منظمة (وليس لقطة شاشة بسيطة فقط).',
+    en: 'This style needs structured market data, not just a plain chart screenshot.',
+    es: 'Este estilo necesita datos de mercado estructurados, no solo una captura simple.'
+  },
+  visible_orderflow_chart: {
+    fa: 'این سبک به یک چارت جریان سفارش (Order Flow) قابل مشاهده نیاز دارد.',
+    ar: 'يحتاج هذا الأسلوب إلى رسم بياني لتدفق الأوامر مرئي.',
+    en: 'This style needs a visible order-flow chart.',
+    es: 'Este estilo necesita un gráfico de flujo de órdenes visible.'
+  },
+  footprint_data: {
+    fa: 'این سبک به داده‌های فوت‌پرینت (حجم به تفکیک قیمت) نیاز دارد.',
+    ar: 'يحتاج هذا الأسلوب إلى بيانات فوت‌برنت (حجم موزع على مستويات السعر).',
+    en: 'This style needs footprint (per-price-level volume) data.',
+    es: 'Este estilo necesita datos de footprint (volumen por nivel de precio).'
+  },
+  tick_data: {
+    fa: 'این سبک به داده‌های تیک (تک‌به‌تک معاملات) نیاز دارد که یک اسکرین‌شات ساده معمولاً ندارد.',
+    ar: 'يحتاج هذا الأسلوب إلى بيانات تيك (صفقة بصفقة) لا تتوفر عادة في لقطة شاشة بسيطة.',
+    en: 'This style needs tick-by-tick data, which a plain chart screenshot usually cannot show.',
+    es: 'Este estilo necesita datos tick a tick, que una captura simple del gráfico normalmente no muestra.'
+  }
+};
+function requiredInputWarnings(lang, analysisContext) {
+  const requiredInputs = (analysisContext && analysisContext.requiredInputs) || [];
+  return requiredInputs.filter((id) => REQUIRED_INPUT_INFO[id]).map((id) => (REQUIRED_INPUT_INFO[id][lang] || REQUIRED_INPUT_INFO[id].en));
 }
 
 function ContextRow({ icon, label, count }) {
@@ -421,6 +480,15 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     profiles.map((p) => ({ value: p.id, label: p.name || p.id }))
   );
 
+  // Section 4 - non-blocking indicator preflight, re-derived live as the trader changes the
+  // Analysis Profile selector (never only computed at submit time), reading the same
+  // getAnalysisContext() seam startAnalysis() itself uses so the warning and the actual request
+  // context can never disagree.
+  const liveAnalysisContext = React.useMemo(() => (
+    (profileId && analysisContextApi()) ? analysisContextApi().getAnalysisContext(profileId) : null
+  ), [profileId]);
+  const preflightWarnings = React.useMemo(() => requiredInputWarnings(activeLang, liveAnalysisContext), [activeLang, liveAnalysisContext]);
+
   const contextRefs = React.useMemo(() => buildSessionContextRefs(session), [session]);
   const contextRows = [
     contextRefs.latestChartEntryId && { icon: 'image', label: tr(activeLang, 'ctxLatestChart') },
@@ -449,7 +517,7 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     if (visionBlocked) return;
     const client = analysisClient();
     if (!client) { setErrorCode('ANALYSIS_FAILED'); setPhase('error'); return; }
-    const context = (profileId && analysisContextApi()) ? analysisContextApi().getAnalysisContext(profileId) : null;
+    const context = liveAnalysisContext;
     const request = {
       session, character, entry: targetEntry,
       analysisType: isEvaluation ? 'scenario_evaluation' : undefined,
@@ -472,7 +540,9 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     // wholeVisualization; a genuinely NEW analysis has no visualization of its own yet.
     setLocalAnalysisVisualization(outcome.cached ? outcome.result.wholeVisualization || null : null);
     setPhase('result');
-    if (onResult) onResult(outcome.result, { entry: targetEntry });
+    // Section 2: `cached` is forwarded so the caller (liveSessionView.jsx's applyAnalysisResult)
+    // can skip re-applying scenario mutations on a mere redisplay - "a cache hit is display-only".
+    if (onResult) onResult(outcome.result, { entry: targetEntry, cached: outcome.cached });
   }
 
   // Voice/Chat form-interview workflow upgrade, defect 4: `autoRun` is kept as a mechanism (still
@@ -673,6 +743,19 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
                   <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(activeLang, 'contextEmpty')}</span>
                 )}
               </div>
+
+              {/* Section 4 - non-blocking (this never disables "Start analysis"), unlike the
+                  vision-capability check below which genuinely blocks on a real model limitation. */}
+              {!!preflightWarnings.length && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.08)' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--gold-warm)' }}>
+                    <Icon name="TriangleAlert" size={13} />{tr(activeLang, 'requiredInputsTitle')}
+                  </span>
+                  {preflightWarnings.map((line, i) => (
+                    <span key={i} dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)', paddingInlineStart: 19 }}>— {line}</span>
+                  ))}
+                </div>
+              )}
 
               {visionBlocked && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, border: '1px solid var(--danger)', background: 'rgba(255,56,48,.08)' }}>

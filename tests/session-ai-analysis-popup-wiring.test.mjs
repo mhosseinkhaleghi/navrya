@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../navrya-src/liveSessionView.jsx', import.meta.url), 'utf8');
+const modalSource = await readFile(new URL('../navrya-src/sessionAiAnalysisModal.jsx', import.meta.url), 'utf8');
 
 // Superseded by the real Adaptive AI Session Analysis wiring (server/pattern-ai-server.mjs's
 // /api/sessions/analyze, session-analysis-client.js): the per-entry "AI analysis" button now
@@ -47,4 +48,27 @@ test('the dead, now-crashing AiStrip local-demo component and its analyzeEntry()
 test('EntryDetailPanel\'s single AI-analysis button is the real popup trigger, with no separate onAnalyze prop left over', () => {
   assert.doesNotMatch(source, /onAnalyze/);
   assert.match(source, /function EntryDetailPanel\(\{ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachMediaAsset, onOpenSessionAnalysis,/);
+});
+
+// ---- Session / Analysis Desk AI upgrade -------------------------------------------------------
+
+test('the modal field is relabelled "Your view and instruction" (not just "Your view") in all four languages, with helper text naming a concrete analytical-request example', () => {
+  assert.match(modalSource, /userViewLabel: 'دیدگاه و درخواست شما'/);
+  assert.match(modalSource, /userViewLabel: 'وجهة نظرك وطلبك'/);
+  assert.match(modalSource, /userViewLabel: 'Your view and instruction'/);
+  assert.match(modalSource, /userViewLabel: 'Tu opinión e instrucción'/);
+  assert.match(modalSource, /liquidity zones/);
+});
+
+test('buildSessionContextRefs delegates to the one canonical isScenarioActive predicate instead of the pre-existing confirmedInvalidationTagIds typo', () => {
+  assert.doesNotMatch(modalSource, /!\(\(s\.confirmedInvalidationTagIds/, 'the real filter expression must no longer read the wrong field - only an explanatory comment may still name it');
+  assert.match(modalSource, /analysisClientApi \? analysisClientApi\.isScenarioActive\(s\)/);
+});
+
+test('the modal renders a non-blocking style-specific indicator preflight warning, driven from the registry (analysisContext.requiredInputs), never a hand-maintained per-style list', () => {
+  assert.match(modalSource, /REQUIRED_INPUT_INFO/);
+  assert.match(modalSource, /function requiredInputWarnings\(lang, analysisContext\)/);
+  assert.match(modalSource, /visible_indicator_overlay/);
+  assert.doesNotMatch(modalSource, /styleId === 'ichimoku'/, 'must never hand-check a specific style id - only the registry-declared requiredInputs');
+  assert.match(modalSource, /preflightWarnings\.map/);
 });

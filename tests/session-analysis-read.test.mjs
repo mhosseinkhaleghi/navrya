@@ -47,6 +47,13 @@ function narrationSandbox() {
   const trCalls = [];
   const sandbox = {
     analysisCardTr: (lang, key) => { trCalls.push(key); return 'T(' + key + ')'; },
+    // Session / Analysis Desk AI upgrade: analysisSectionTexts() now calls the real
+    // resolveUnresolvedItems() imported from sessionAnalysisCard.jsx - stubbed here with the exact
+    // same legacy-fallback behavior (never a divergent second implementation of that fallback).
+    resolveUnresolvedItems: (result) => {
+      if (result.unresolvedItems && result.unresolvedItems.length) return result.unresolvedItems;
+      return (result.unknowns || []).map((text) => ({ id: null, status: 'open', description: text, whyItMatters: '', missingEvidence: '', action: '', resolutionEvidence: '' }));
+    },
     ANALYSIS_VOICE_CHUNK_MAX_CHARS: 600
   };
   vm.createContext(sandbox);
@@ -76,51 +83,74 @@ test('session.analysis.read dispatches tradejournal:ai-analysis-narrate with the
   assert.match(block, /detail: \{ chunks: chunks,/);
 });
 
-test('analysisSectionTexts() assembles every real section, in the exact order SessionAnalysisCard itself renders them: thesis, metrics, high-importance blocks, scenario evaluations, scenarios, watch items, then the progressive-disclosure section (other blocks, unknowns, what-would-change-view, confidence)', () => {
+// Session / Analysis Desk AI upgrade: extended to cover the card's new sections (deferred
+// scenarios, "your view and instruction" response, per-timeframe read/synthesis, note feedback,
+// structured unresolvedItems via resolveUnresolvedItems) in the exact new order the card renders
+// them.
+test('analysisSectionTexts() assembles every real section, in the exact order SessionAnalysisCard itself renders them: deferred scenarios, thesis, request/response, metrics, high-importance blocks, per-timeframe read/synthesis, scenario evaluations, scenarios, watch items, note feedback, then the progressive-disclosure section (other blocks, unresolved items, what-would-change-view, confidence)', () => {
   const { analysisSectionTexts, trCalls } = narrationSandbox();
   const result = {
+    deferredScenarios: [{ id: 'sc9', title: 'Range continuation' }],
     thesis: { headline: 'Price is coiling under resistance.', summary: 'Liquidity above needs to be swept first.' },
+    requestResponse: { requested: 'check liquidity zones', analyzed: 'the visible chart', answer: 'a sweep sits above 65200', limitation: '' },
     stateMetrics: [{ label: 'Trend', value: 'Bullish' }, { label: 'Momentum', value: 'Weak' }],
     blocks: [
       { id: 'b1', title: 'Key structure', importance: 'high', summary: 'A clean higher low formed.' },
       { id: 'b2', title: 'Session context', importance: 'low', items: ['London already swept Asia highs.'] }
     ],
+    timeframeAnalyses: [{ imageId: 'img1', timeframe: '15m', trend: 'up', momentum: 'steady', keyEvidence: ['higher low on the 15m'] }],
+    timeframeSynthesis: 'The 15m and 1h both agree on an uptrend.',
     scenarioEvaluations: [{ scenarioId: 's1', status: 'confirmed', newProbability: 72 }],
     scenarios: [{ localKey: 'sc1', role: 'primary', title: 'Breakout continuation', summary: 'Price breaks and retests.', probability: 65 }],
     watchItems: ['4200 resistance', 'NY open volume'],
+    noteFeedback: [{ noteRef: { entryId: 'e1', field: 'note', revision: 'r1' }, verdict: 'supported', evidence: 'price held the level' }],
     unknowns: ['Unclear whether the news release already priced in.'],
     whatWouldChangeView: 'A clean break and hold above 4230.',
     confidence: { level: 'medium', reasons: ['Mixed higher-timeframe signal.'] }
   };
   const sections = analysisSectionTexts(result, 'en');
 
-  assert.ok(sections[0].includes('Price is coiling under resistance.') && sections[0].includes('Liquidity above needs to be swept first.'));
+  assert.ok(sections.some((s) => s.includes('Range continuation')), 'deferred scenarios must be included');
+  assert.ok(sections.some((s) => s.includes('Price is coiling under resistance.') && s.includes('Liquidity above needs to be swept first.')));
+  assert.ok(sections.some((s) => s.includes('a sweep sits above 65200')), 'the request/response answer must be included');
   assert.ok(sections.some((s) => s === 'Trend: Bullish'));
   assert.ok(sections.some((s) => s === 'Momentum: Weak'));
   assert.ok(sections.some((s) => s.includes('Key structure') && s.includes('A clean higher low formed.')), 'high-importance block must be included');
+  assert.ok(sections.some((s) => s.includes('higher low on the 15m')), 'per-timeframe read must be included');
+  assert.ok(sections.some((s) => s.includes('The 15m and 1h both agree')), 'timeframe synthesis must be included');
   assert.ok(sections.some((s) => s.includes('72%')), 'scenario evaluation probability must be included');
   assert.ok(sections.some((s) => s.includes('Breakout continuation') && s.includes('65%')), 'scenario title/probability must be included');
   assert.ok(sections.some((s) => s.includes('4200 resistance') && s.includes('NY open volume')), 'watch items must be included');
+  assert.ok(sections.some((s) => s.includes('price held the level')), 'note feedback must be included');
   assert.ok(sections.some((s) => s.includes('London already swept Asia highs.')), 'the progressive-disclosure "other" block must be included, not just what is visible by default');
-  assert.ok(sections.some((s) => s.includes('Unclear whether the news release')), 'unknowns must be included');
+  assert.ok(sections.some((s) => s.includes('Unclear whether the news release')), 'the legacy unknowns fallback (via resolveUnresolvedItems) must still be included');
   assert.ok(sections.some((s) => s.includes('A clean break and hold above 4230.')), 'whatWouldChangeView must be included');
   assert.ok(sections.some((s) => s.includes('medium') && s.includes('Mixed higher-timeframe signal.')), 'confidence level/reasons must be included');
 
-  // Real declared display order: thesis -> metrics -> high blocks -> scenario evaluations ->
-  // scenarios -> watch items -> other blocks -> unknowns -> whatWouldChangeView -> confidence.
+  const deferredIdx = sections.findIndex((s) => s.includes('Range continuation'));
   const thesisIdx = sections.findIndex((s) => s.includes('Price is coiling'));
+  const requestIdx = sections.findIndex((s) => s.includes('a sweep sits above 65200'));
   const metricIdx = sections.findIndex((s) => s === 'Trend: Bullish');
   const highBlockIdx = sections.findIndex((s) => s.includes('Key structure'));
+  const timeframeIdx = sections.findIndex((s) => s.includes('higher low on the 15m'));
+  const synthesisIdx = sections.findIndex((s) => s.includes('The 15m and 1h both agree'));
   const evalIdx = sections.findIndex((s) => s.includes('72%'));
   const scenarioIdx = sections.findIndex((s) => s.includes('Breakout continuation'));
   const watchIdx = sections.findIndex((s) => s.includes('4200 resistance'));
+  const noteFeedbackIdx = sections.findIndex((s) => s.includes('price held the level'));
   const otherBlockIdx = sections.findIndex((s) => s.includes('London already swept'));
-  const unknownsIdx = sections.findIndex((s) => s.includes('Unclear whether'));
+  const unresolvedIdx = sections.findIndex((s) => s.includes('Unclear whether'));
   const changeViewIdx = sections.findIndex((s) => s.includes('4230'));
   const confidenceIdx = sections.findIndex((s) => s.includes('Mixed higher-timeframe'));
-  assert.ok(thesisIdx < metricIdx && metricIdx < highBlockIdx && highBlockIdx < evalIdx && evalIdx < scenarioIdx && scenarioIdx < watchIdx && watchIdx < otherBlockIdx && otherBlockIdx < unknownsIdx && unknownsIdx < changeViewIdx && changeViewIdx < confidenceIdx);
+  assert.ok(
+    deferredIdx < thesisIdx && thesisIdx < requestIdx && requestIdx < metricIdx && metricIdx < highBlockIdx &&
+    highBlockIdx < timeframeIdx && timeframeIdx < synthesisIdx && synthesisIdx < evalIdx && evalIdx < scenarioIdx &&
+    scenarioIdx < watchIdx && watchIdx < noteFeedbackIdx && noteFeedbackIdx < otherBlockIdx &&
+    otherBlockIdx < unresolvedIdx && unresolvedIdx < changeViewIdx && changeViewIdx < confidenceIdx,
+    'sections must appear in the exact declared display order'
+  );
 
-  assert.ok(trCalls.includes('thesisTitle') && trCalls.includes('watchingTitle') && trCalls.includes('unknownsTitle') && trCalls.includes('confidenceTitle'), 'real card labels must be reused, never invented terminology');
+  assert.ok(trCalls.includes('thesisTitle') && trCalls.includes('watchingTitle') && trCalls.includes('confidenceTitle'), 'real card labels must be reused, never invented terminology');
 });
 
 test('chunkAnalysisSections() never splits a real section across two chunks, and respects the per-chunk bound', () => {

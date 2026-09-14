@@ -38,7 +38,7 @@ import { openEmotion } from './logEmotionModal.jsx';
 import { openTradeDetails } from './tradeDetailsModal.jsx';
 import { openPostTradeReflection } from './postTradeReflectionModal.jsx';
 import { openPreSessionCheckIn } from './preSessionCheckInModal.jsx';
-import { tr as analysisCardTr } from './sessionAnalysisCard.jsx';
+import { tr as analysisCardTr, resolveUnresolvedItems } from './sessionAnalysisCard.jsx';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -1726,8 +1726,14 @@ export function mountCharacterApp(character) {
       // (never a model call), in the exact order SessionAnalysisCard itself renders them, reusing
       // its own real labels (analysisCardTr, imported above) - never invented terminology, never a
       // fabricated chart fact. Includes the card's own progressive-disclosure section (otherBlocks/
-      // unknowns/whatWouldChangeView/confidence) - visually collapsed by default, but still part of
-      // the real analysis a listening user explicitly asked to hear top to bottom.
+      // unresolvedItems/whatWouldChangeView/confidence) - visually collapsed by default, but still
+      // part of the real analysis a listening user explicitly asked to hear top to bottom.
+      //
+      // Session / Analysis Desk AI upgrade: extended to mirror the card's new sections in the SAME
+      // order they render there - deferred scenarios, "your view and instruction" response, the
+      // per-timeframe read/synthesis, note feedback, and the structured unresolvedItems lifecycle
+      // (resolveUnresolvedItems() - the exact same legacy-`unknowns`-fallback shape the card itself
+      // uses, imported above, never a second, divergent implementation of that fallback).
       function analysisBlockText(block, lang) {
         var parts = [];
         if (block.title) parts.push(block.title);
@@ -1741,20 +1747,32 @@ export function mountCharacterApp(character) {
       }
       function analysisSectionTexts(result, lang) {
         var sections = [];
+        if (result.deferredScenarios && result.deferredScenarios.length) {
+          sections.push(analysisCardTr(lang, 'deferredScenariosTitle') + ': ' + result.deferredScenarios.map((d) => d.title || d.id).join(', '));
+        }
         if (result.thesis && result.thesis.headline) sections.push(analysisCardTr(lang, 'thesisTitle') + ': ' + result.thesis.headline + (result.thesis.summary ? ' ' + result.thesis.summary : ''));
+        if (result.requestResponse && (result.requestResponse.requested || result.requestResponse.answer)) {
+          sections.push(analysisCardTr(lang, 'requestResponseTitle') + ': ' + [result.requestResponse.answer, result.requestResponse.limitation].filter(Boolean).join('. '));
+        }
         (result.stateMetrics || []).forEach((m) => { if (m && m.label != null && m.value != null) sections.push(m.label + ': ' + m.value); });
         var blocks = result.blocks || [];
         var highBlocks = blocks.filter((b) => b.importance === 'high');
         var otherBlocks = blocks.filter((b) => b.importance !== 'high');
         highBlocks.forEach((b) => sections.push(analysisBlockText(b, lang)));
+        (result.timeframeAnalyses || []).forEach((t) => {
+          sections.push(t.timeframe + ': ' + analysisCardTr(lang, 'trend_' + t.trend) + ', ' + analysisCardTr(lang, 'momentum_' + t.momentum) + (t.keyEvidence && t.keyEvidence.length ? '. ' + t.keyEvidence.join('. ') : ''));
+        });
+        if (result.timeframeSynthesis) sections.push(analysisCardTr(lang, 'synthesisTitle') + ': ' + result.timeframeSynthesis);
         (result.scenarioEvaluations || []).forEach((e) => sections.push(analysisCardTr(lang, 'status_' + e.status) + (e.newProbability != null ? ' (' + e.newProbability + '%)' : '')));
         (result.scenarios || []).forEach((s) => {
           var roleLabel = s.role === 'alternative' ? analysisCardTr(lang, 'alternativeScenario') : s.role === 'tail_risk' ? analysisCardTr(lang, 'tailRiskScenario') : analysisCardTr(lang, 'primaryScenario');
           sections.push(roleLabel + (s.probability != null ? ' (' + s.probability + '%)' : '') + ': ' + s.title + (s.summary ? '. ' + s.summary : ''));
         });
         if (result.watchItems && result.watchItems.length) sections.push(analysisCardTr(lang, 'watchingTitle') + ': ' + result.watchItems.join(', '));
+        (result.noteFeedback || []).forEach((n) => sections.push(analysisCardTr(lang, 'verdict_' + n.verdict) + (n.evidence ? ': ' + n.evidence : '')));
         otherBlocks.forEach((b) => sections.push(analysisBlockText(b, lang)));
-        if (result.unknowns && result.unknowns.length) sections.push(analysisCardTr(lang, 'unknownsTitle') + ': ' + result.unknowns.join('. '));
+        var unresolvedItems = resolveUnresolvedItems(result);
+        unresolvedItems.forEach((item) => sections.push(analysisCardTr(lang, 'unresolvedStatus_' + item.status) + ': ' + item.description + (item.action ? '. ' + analysisCardTr(lang, 'actionLabel') + ': ' + item.action : '')));
         if (result.whatWouldChangeView) sections.push(analysisCardTr(lang, 'changeViewTitle') + ': ' + result.whatWouldChangeView);
         if (result.confidence) sections.push(analysisCardTr(lang, 'confidenceTitle') + ': ' + result.confidence.level + (result.confidence.reasons && result.confidence.reasons.length ? ' - ' + result.confidence.reasons.join(', ') : ''));
         return sections.filter(Boolean);

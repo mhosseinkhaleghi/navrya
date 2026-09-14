@@ -475,7 +475,11 @@
         optionalFocusIds: ['kumo_twist', 'key_levels'],
         relatedStyleIds: ['moving_average_analysis', 'trend_analysis'],
         analysisPrinciples: ['Price position relative to the kumo is the primary trend filter before any signal is weighed'],
-        limitations: ['Lagging by construction on lower timeframes']
+        limitations: ['Lagging by construction on lower timeframes'],
+        // Section 4 (indicator preflight): this style's whole basis is a visible indicator
+        // overlay on the chart - additive to the default chart_image requirement, driven from
+        // this registry (never a hand-maintained Ichimoku-only list in the consuming UI).
+        requiredInputs: ['chart_image', 'visible_indicator_overlay']
       }),
     s('moving_average_analysis', 'indicator_mathematical',
       { fa: 'تحلیل میانگین متحرک', ar: 'تحليل المتوسطات المتحركة', en: 'Moving Average Analysis', es: 'Análisis de medias móviles' },
@@ -486,7 +490,8 @@
         optionalFocusIds: ['trend_strength', 'multi_timeframe'],
         relatedStyleIds: ['ichimoku', 'trend_following', 'trend_analysis'],
         analysisPrinciples: ['MA slope is weighed alongside price position relative to the average, not price position alone'],
-        limitations: ['Inherently lagging; whipsaws frequently in ranging conditions']
+        limitations: ['Inherently lagging; whipsaws frequently in ranging conditions'],
+        requiredInputs: ['chart_image', 'visible_indicator_overlay']
       }),
     s('momentum_analysis', 'indicator_mathematical',
       { fa: 'تحلیل مومنتوم', ar: 'تحليل الزخم', en: 'Momentum Analysis', es: 'Análisis de momentum' },
@@ -497,7 +502,8 @@
         optionalFocusIds: ['exhaustion', 'oscillator_state'],
         relatedStyleIds: ['oscillator_analysis', 'rsi_analysis', 'momentum_trading_analysis'],
         analysisPrinciples: ['A deceleration in momentum is treated as an early warning, not a reversal signal on its own'],
-        limitations: ['Momentum readings can stay extended far longer than expected in a strong trend']
+        limitations: ['Momentum readings can stay extended far longer than expected in a strong trend'],
+        requiredInputs: ['chart_image', 'visible_indicator_overlay']
       }),
     s('oscillator_analysis', 'indicator_mathematical',
       { fa: 'تحلیل نوسان‌گر (اسیلاتور)', ar: 'تحليل المذبذبات', en: 'Oscillator-Based Analysis', es: 'Análisis con osciladores' },
@@ -508,7 +514,8 @@
         optionalFocusIds: ['momentum', 'exhaustion'],
         relatedStyleIds: ['rsi_analysis', 'macd_analysis', 'momentum_analysis'],
         analysisPrinciples: ['A divergence is treated as a warning to watch for, not an automatic reversal signal'],
-        limitations: ['Overbought/oversold readings can persist through a strong trend']
+        limitations: ['Overbought/oversold readings can persist through a strong trend'],
+        requiredInputs: ['chart_image', 'visible_indicator_overlay']
       }),
     s('rsi_analysis', 'indicator_mathematical',
       { fa: 'تحلیل مبتنی بر RSI', ar: 'تحليل مبني على RSI', en: 'RSI-based Analysis', es: 'Análisis basado en RSI' },
@@ -519,7 +526,8 @@
         optionalFocusIds: ['multi_timeframe'],
         relatedStyleIds: ['oscillator_analysis', 'momentum_analysis'],
         analysisPrinciples: ['RSI divergence is read together with price structure, never as a standalone trigger'],
-        limitations: ['A single-indicator read without structural context has a high false-signal rate']
+        limitations: ['A single-indicator read without structural context has a high false-signal rate'],
+        requiredInputs: ['chart_image', 'visible_indicator_overlay']
       }),
     s('macd_analysis', 'indicator_mathematical',
       { fa: 'تحلیل مبتنی بر MACD', ar: 'تحليل مبني على MACD', en: 'MACD-based Analysis', es: 'Análisis basado en MACD' },
@@ -530,7 +538,8 @@
         optionalFocusIds: ['trend', 'multi_timeframe'],
         relatedStyleIds: ['oscillator_analysis', 'momentum_analysis'],
         analysisPrinciples: ['A MACD signal is weighed against the prevailing trend context, not used in isolation'],
-        limitations: ['Lagging; crossovers can trigger late relative to the actual price turn']
+        limitations: ['Lagging; crossovers can trigger late relative to the actual price turn'],
+        requiredInputs: ['chart_image', 'visible_indicator_overlay']
       }),
     s('bollinger_volatility_analysis', 'indicator_mathematical',
       { fa: 'باند بولینگر / نوسان', ar: 'نطاق بولينجر / التقلب', en: 'Bollinger / Volatility Band Analysis', es: 'Bandas de Bollinger / volatilidad' },
@@ -541,7 +550,8 @@
         optionalFocusIds: ['breakout', 'trend'],
         relatedStyleIds: ['volatility_analysis', 'mean_reversion', 'breakout_expansion'],
         analysisPrinciples: ['A band squeeze is read as a volatility-contraction warning, not a directional signal by itself'],
-        limitations: ['Band width alone gives no directional information']
+        limitations: ['Band width alone gives no directional information'],
+        requiredInputs: ['chart_image', 'visible_indicator_overlay']
       }),
     s('volatility_analysis', 'indicator_mathematical',
       { fa: 'تحلیل نوسان', ar: 'تحليل التقلب', en: 'Volatility Analysis', es: 'Análisis de volatilidad' },

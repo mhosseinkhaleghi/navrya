@@ -3,6 +3,7 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
+import { ModelGlyph } from '../public/pages/shared/navrya/components/assistant/ModelSwitcher.jsx';
 
 // The Adaptive AI Session Analysis result card (brief §11-26, §33). Renders the fixed NAVRYA
 // envelope (thesis/stateMetrics/scenarios/memoryUpdate/...) with a MODEL-CHOSEN, model-ordered set
@@ -34,7 +35,19 @@ const copy = {
     original: 'اصلی', scenarioMap: 'نقشه سناریو', regenerate: 'تحلیل مجدد',
     original_data_note: 'این تصویر یک روکش تصویری‌سازی‌شده است، نه داده واقعی بازار.',
     visualizeAnalysis: 'ترسیم کل تحلیل روی چارت', visualizingAnalysis: 'در حال ترسیم تحلیل…', visualizeAnalysisError: 'تولید تصویر تحلیل ناموفق بود. دوباره تلاش کنید.',
-    visualizeAnalysisErrorBalance: 'موجودی کیف پول شما کافی نیست. از بخش کیف پول یا اشتراک شارژ کنید.'
+    visualizeAnalysisErrorBalance: 'موجودی کیف پول شما کافی نیست. از بخش کیف پول یا اشتراک شارژ کنید.',
+    // Session / Analysis Desk AI upgrade
+    requestResponseTitle: 'پاسخ به درخواست شما', requestedLabel: 'درخواست شما', answerLabel: 'پاسخ', limitationLabel: 'محدودیت',
+    deferredScenariosTitle: 'در این نوبت ارزیابی نشد', deferredScenariosNote: 'برای ماندن در محدودیت یک فراخوانی، این سناریوهای فعال ارزیابی نشدند:',
+    delta: 'تغییر',
+    timeframeTitle: 'خوانش بر اساس تایم‌فریم', synthesisTitle: 'جمع‌بندی چند تایم‌فریم',
+    trend_up: 'صعودی', trend_down: 'نزولی', trend_range: 'رنج', trend_unclear: 'نامشخص',
+    momentum_accelerating: 'در حال شتاب‌گیری', momentum_decelerating: 'در حال کاهش شتاب', momentum_steady: 'ثابت', momentum_unclear: 'نامشخص',
+    noteFeedbackTitle: 'بازخورد یادداشت‌های شما', noteEvidenceLabel: 'شواهد', noteCorrectionLabel: 'اصلاح', noteEncouragementLabel: 'نقطه قوت', noteWatchForLabel: 'در ادامه مراقب باشید',
+    verdict_supported: 'تأیید شد', verdict_partially_supported: 'تا حدی تأیید شد', verdict_contradicted: 'نقض شد', verdict_insufficient_evidence: 'شواهد کافی نیست',
+    unresolvedItemsTitle: 'موارد نامشخص و اقدام لازم', actionLabel: 'اقدام لازم', missingEvidenceLabel: 'شواهد ناقص',
+    unresolvedStatus_open: 'باز', unresolvedStatus_partially_resolved: 'تا حدی حل‌شده', unresolvedStatus_resolved: 'حل‌شده', unresolvedStatus_superseded: 'جای خود را به مورد جدید داد',
+    analyzedByLabel: 'تحلیل‌شده توسط'
   },
   ar: {
     header: 'تحليل الذكاء الاصطناعي للسوق', memoryChip: 'ذاكرة الجلسة · {n} حدث', depthAuto: 'تلقائي', depthEfficient: 'تحليل فعّال', depthDeep: 'تحليل عميق',
@@ -53,7 +66,18 @@ const copy = {
     original: 'الأصلي', scenarioMap: 'خريطة السيناريو', regenerate: 'إعادة التحليل',
     original_data_note: 'هذه صورة توضيحية مولّدة، وليست بيانات سوق حقيقية.',
     visualizeAnalysis: 'رسم التحليل الكامل على الرسم البياني', visualizingAnalysis: 'جارٍ رسم التحليل…', visualizeAnalysisError: 'فشل إنشاء صورة التحليل. حاول مرة أخرى.',
-    visualizeAnalysisErrorBalance: 'رصيد محفظتك غير كافٍ. اشحن من قسم المحفظة أو الاشتراك.'
+    visualizeAnalysisErrorBalance: 'رصيد محفظتك غير كافٍ. اشحن من قسم المحفظة أو الاشتراك.',
+    requestResponseTitle: 'الرد على طلبك', requestedLabel: 'طلبك', answerLabel: 'الإجابة', limitationLabel: 'القيود',
+    deferredScenariosTitle: 'لم يتم تقييمها في هذه الجولة', deferredScenariosNote: 'للبقاء ضمن حد الاستدعاء الواحد، لم تُقيَّم هذه السيناريوهات النشطة:',
+    delta: 'التغيّر',
+    timeframeTitle: 'القراءة حسب الإطار الزمني', synthesisTitle: 'تجميع الأطر الزمنية',
+    trend_up: 'صاعد', trend_down: 'نازل', trend_range: 'نطاق', trend_unclear: 'غير واضح',
+    momentum_accelerating: 'يتسارع', momentum_decelerating: 'يتباطأ', momentum_steady: 'ثابت', momentum_unclear: 'غير واضح',
+    noteFeedbackTitle: 'ملاحظات على يومياتك', noteEvidenceLabel: 'الدليل', noteCorrectionLabel: 'تصحيح', noteEncouragementLabel: 'نقطة قوة', noteWatchForLabel: 'راقب هذا لاحقاً',
+    verdict_supported: 'مؤكَّد', verdict_partially_supported: 'مؤكَّد جزئياً', verdict_contradicted: 'مخالِف', verdict_insufficient_evidence: 'دليل غير كافٍ',
+    unresolvedItemsTitle: 'نقاط غير واضحة وإجراء مطلوب', actionLabel: 'الإجراء المطلوب', missingEvidenceLabel: 'الدليل الناقص',
+    unresolvedStatus_open: 'مفتوح', unresolvedStatus_partially_resolved: 'حُلّ جزئياً', unresolvedStatus_resolved: 'محلول', unresolvedStatus_superseded: 'حلّ محله بند جديد',
+    analyzedByLabel: 'تم التحليل بواسطة'
   },
   en: {
     header: 'AI Market Analysis', memoryChip: 'Session Memory · {n} events', depthAuto: 'Auto', depthEfficient: 'Efficient analysis', depthDeep: 'Deep analysis',
@@ -72,7 +96,18 @@ const copy = {
     original: 'Original', scenarioMap: 'Scenario Map', regenerate: 'Regenerate',
     original_data_note: 'This is an illustrative generated overlay, not real market data.',
     visualizeAnalysis: 'Draw full analysis on chart', visualizingAnalysis: 'Drawing analysis…', visualizeAnalysisError: "Couldn't generate the analysis image. Try again.",
-    visualizeAnalysisErrorBalance: 'Your wallet balance is too low. Top up from Wallet or Subscription.'
+    visualizeAnalysisErrorBalance: 'Your wallet balance is too low. Top up from Wallet or Subscription.',
+    requestResponseTitle: 'Response to Your Request', requestedLabel: 'You asked', answerLabel: 'Answer', limitationLabel: 'Limitation',
+    deferredScenariosTitle: 'Not evaluated this pass', deferredScenariosNote: 'To stay within one call, these active scenarios were not evaluated:',
+    delta: 'Change',
+    timeframeTitle: 'Per-Timeframe Read', synthesisTitle: 'Multi-Timeframe Synthesis',
+    trend_up: 'Up', trend_down: 'Down', trend_range: 'Range', trend_unclear: 'Unclear',
+    momentum_accelerating: 'Accelerating', momentum_decelerating: 'Decelerating', momentum_steady: 'Steady', momentum_unclear: 'Unclear',
+    noteFeedbackTitle: 'Feedback on Your Notes', noteEvidenceLabel: 'Evidence', noteCorrectionLabel: 'Correction', noteEncouragementLabel: 'Strength', noteWatchForLabel: 'Watch for',
+    verdict_supported: 'Supported', verdict_partially_supported: 'Partially supported', verdict_contradicted: 'Contradicted', verdict_insufficient_evidence: 'Insufficient evidence',
+    unresolvedItemsTitle: 'Unresolved Points & Next Action', actionLabel: 'Action needed', missingEvidenceLabel: 'Missing evidence',
+    unresolvedStatus_open: 'Open', unresolvedStatus_partially_resolved: 'Partially resolved', unresolvedStatus_resolved: 'Resolved', unresolvedStatus_superseded: 'Superseded',
+    analyzedByLabel: 'Analyzed by'
   },
   es: {
     header: 'Análisis de IA del mercado', memoryChip: 'Memoria de sesión · {n} eventos', depthAuto: 'Automático', depthEfficient: 'Análisis eficiente', depthDeep: 'Análisis profundo',
@@ -91,7 +126,18 @@ const copy = {
     original: 'Original', scenarioMap: 'Mapa de escenario', regenerate: 'Regenerar',
     original_data_note: 'Esta es una superposición ilustrativa generada, no datos reales del mercado.',
     visualizeAnalysis: 'Dibujar el análisis completo en el gráfico', visualizingAnalysis: 'Dibujando el análisis…', visualizeAnalysisError: 'No se pudo generar la imagen del análisis. Inténtalo de nuevo.',
-    visualizeAnalysisErrorBalance: 'Tu saldo de billetera es insuficiente. Recarga desde Billetera o Suscripción.'
+    visualizeAnalysisErrorBalance: 'Tu saldo de billetera es insuficiente. Recarga desde Billetera o Suscripción.',
+    requestResponseTitle: 'Respuesta a tu solicitud', requestedLabel: 'Pediste', answerLabel: 'Respuesta', limitationLabel: 'Limitación',
+    deferredScenariosTitle: 'No evaluados en esta pasada', deferredScenariosNote: 'Para mantenerse dentro de una sola llamada, estos escenarios activos no se evaluaron:',
+    delta: 'Cambio',
+    timeframeTitle: 'Lectura por temporalidad', synthesisTitle: 'Síntesis multi-temporalidad',
+    trend_up: 'Alcista', trend_down: 'Bajista', trend_range: 'Rango', trend_unclear: 'Poco claro',
+    momentum_accelerating: 'Acelerando', momentum_decelerating: 'Desacelerando', momentum_steady: 'Estable', momentum_unclear: 'Poco claro',
+    noteFeedbackTitle: 'Comentarios sobre tus notas', noteEvidenceLabel: 'Evidencia', noteCorrectionLabel: 'Corrección', noteEncouragementLabel: 'Punto fuerte', noteWatchForLabel: 'Vigila esto',
+    verdict_supported: 'Respaldado', verdict_partially_supported: 'Parcialmente respaldado', verdict_contradicted: 'Contradicho', verdict_insufficient_evidence: 'Evidencia insuficiente',
+    unresolvedItemsTitle: 'Puntos sin resolver y próxima acción', actionLabel: 'Acción necesaria', missingEvidenceLabel: 'Evidencia faltante',
+    unresolvedStatus_open: 'Abierto', unresolvedStatus_partially_resolved: 'Parcialmente resuelto', unresolvedStatus_resolved: 'Resuelto', unresolvedStatus_superseded: 'Reemplazado',
+    analyzedByLabel: 'Analizado por'
   }
 };
 // Voice/Chat form-interview workflow upgrade: exported so session.analysis.read's narration
@@ -300,7 +346,14 @@ function ScenarioCard({ scenario, lang, added, onAdd, onVisualize, visualization
   );
 }
 
+// Section 2 - prior -> new probability plus the delta is now always shown, sourced from
+// evaluation.previousProbability/delta when this same evaluation carries the enriched audit
+// trail (session-analysis-schema.js's applyScenarioEvaluationPatch); falls back to hiding the
+// prior-probability row for an evaluation object that predates this upgrade (still renders
+// everything else safely).
 function ScenarioEvaluationCard({ evaluation, scenarioTitle, lang }) {
+  const hasPrior = typeof evaluation.previousProbability === 'number';
+  const delta = typeof evaluation.delta === 'number' ? evaluation.delta : (hasPrior ? evaluation.newProbability - evaluation.previousProbability : null);
   return (
     <Panel variant="raised" ornament padding={14} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -310,16 +363,163 @@ function ScenarioEvaluationCard({ evaluation, scenarioTitle, lang }) {
         <Chip tone={evaluation.status === 'invalidated' ? 'danger' : evaluation.status === 'confirmed' || evaluation.status === 'strengthened' ? 'success' : 'neutral'}>{tr(lang, 'status_' + evaluation.status)}</Chip>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {hasPrior && (
+          <span style={{ flex: 1, textAlign: 'center' }}>
+            <span style={{ display: 'block', fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(lang, 'previousProbability')}</span>
+            <span className="navrya-tabular" style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-dim)' }}>{evaluation.previousProbability}%</span>
+          </span>
+        )}
+        {hasPrior && <Icon name="ArrowLeftRight" size={13} style={{ color: 'var(--text-dim)', flex: 'none' }} />}
         <span style={{ flex: 1, textAlign: 'center' }}>
           <span style={{ display: 'block', fontSize: 9.5, color: 'var(--text-dim)' }}>{tr(lang, 'currentProbability')}</span>
           <span className="navrya-tabular" style={{ fontSize: 16, fontWeight: 700, color: 'var(--success)' }}>{evaluation.newProbability}%</span>
         </span>
+        {delta != null && (
+          <Chip tone={delta > 0 ? 'success' : delta < 0 ? 'danger' : 'neutral'}>{(delta > 0 ? '+' : '') + delta + '% ' + tr(lang, 'delta')}</Chip>
+        )}
       </div>
       <p dir="auto" style={{ margin: 0, fontSize: 11.5, color: 'var(--text-primary)', lineHeight: 1.8 }}><b>{tr(lang, 'whatHappened')}:</b> {evaluation.whatHappened}</p>
       {!!evaluation.confirmedBy.length && <p dir="auto" style={{ margin: 0, fontSize: 11, color: 'var(--success)', lineHeight: 1.8 }}><b>{tr(lang, 'confirmedBy')}:</b> {evaluation.confirmedBy.join(' · ')}</p>}
       {!!evaluation.contradictedBy.length && <p dir="auto" style={{ margin: 0, fontSize: 11, color: 'var(--danger)', lineHeight: 1.8 }}><b>{tr(lang, 'contradictedBy')}:</b> {evaluation.contradictedBy.join(' · ')}</p>}
       {!!evaluation.remainsUnresolved.length && <p dir="auto" style={{ margin: 0, fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.8 }}><b>{tr(lang, 'remainsUnresolved')}:</b> {evaluation.remainsUnresolved.join(' · ')}</p>}
     </Panel>
+  );
+}
+
+// Section 1.B - "Your view and instruction" structured response. Hidden entirely when every field
+// is empty (the trader wrote nothing this time), matching every other optional card section.
+function RequestResponseBlock({ requestResponse, lang }) {
+  if (!requestResponse || !(requestResponse.requested || requestResponse.answer)) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.06)' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)' }}>
+        <Icon name="MessageCircleQuestion" size={12} />{tr(lang, 'requestResponseTitle')}
+      </span>
+      {requestResponse.requested && <p dir="auto" style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.7 }}><b>{tr(lang, 'requestedLabel')}:</b> {requestResponse.requested}</p>}
+      {requestResponse.answer && <p dir="auto" style={{ margin: 0, fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.8 }}><b>{tr(lang, 'answerLabel')}:</b> {requestResponse.answer}</p>}
+      {requestResponse.limitation && <p dir="auto" style={{ margin: 0, fontSize: 10.5, color: 'var(--text-dim)', lineHeight: 1.7 }}><b>{tr(lang, 'limitationLabel')}:</b> {requestResponse.limitation}</p>}
+    </div>
+  );
+}
+
+// Section 2 - real active scenarios excluded from this one-call bound, disclosed explicitly
+// (id/title only) rather than silently dropped.
+function DeferredScenariosNote({ deferredScenarios, lang }) {
+  if (!deferredScenarios || !deferredScenarios.length) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)' }}>
+      <Icon name="Clock" size={13} style={{ color: 'var(--text-dim)', flex: 'none', marginTop: 1 }} />
+      <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>
+        <b>{tr(lang, 'deferredScenariosTitle')}</b> — {tr(lang, 'deferredScenariosNote')} {deferredScenarios.map((d) => d.title || d.id).join(' · ')}
+      </span>
+    </div>
+  );
+}
+
+// Section 3 - one labelled per-timeframe read plus a synthesis of how the supplied timeframes
+// align/conflict. Hidden entirely for a plain single-image analysis (timeframeAnalyses empty).
+function TimeframeBlock({ timeframeAnalyses, timeframeSynthesis, lang }) {
+  if (!timeframeAnalyses || !timeframeAnalyses.length) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)' }}>{tr(lang, 'timeframeTitle')}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {timeframeAnalyses.map((t, i) => (
+          <div key={t.imageId || i} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="navrya-tabular" dir="ltr" style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold-warm)' }}>{t.timeframe}</span>
+              <Icon name={t.trend === 'up' ? 'TrendingUp' : t.trend === 'down' ? 'TrendingDown' : 'Minus'} size={13} />
+              <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{tr(lang, 'trend_' + t.trend)}</span>
+              <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>· {tr(lang, 'momentum_' + t.momentum)}</span>
+            </span>
+            {!!t.keyEvidence.length && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-primary)' }}>{t.keyEvidence.join(' · ')}</span>}
+            {t.uncertainty && <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', fontStyle: 'italic' }}>{t.uncertainty}</span>}
+          </div>
+        ))}
+      </div>
+      {timeframeSynthesis && (
+        <div style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(214,175,107,.06)' }}>
+          <span style={{ display: 'block', fontSize: 9.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 3 }}>{tr(lang, 'synthesisTitle')}</span>
+          <p dir="auto" style={{ margin: 0, fontSize: 11.5, color: 'var(--text-primary)', lineHeight: 1.8 }}>{timeframeSynthesis}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const NOTE_VERDICT_TONE = { supported: 'success', partially_supported: 'accent', contradicted: 'danger', insufficient_evidence: 'neutral' };
+// Section 1.A - each item is keyed to a noteRef only (entryId/field/revision); noteLabelFor
+// (optional) resolves it to a short human label ("Chart note", "Movement note on entry #3") - a
+// caller that omits it still gets a safe, generic fallback.
+function NoteFeedbackBlock({ noteFeedback, lang, noteLabelFor }) {
+  if (!noteFeedback || !noteFeedback.length) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)' }}>{tr(lang, 'noteFeedbackTitle')}</span>
+      {noteFeedback.map((item, i) => (
+        <div key={item.noteRef.entryId + ':' + item.noteRef.field + ':' + i} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span dir="auto" style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1 }}>{noteLabelFor ? noteLabelFor(item.noteRef) : (item.noteRef.field === 'movementNote' ? tr(lang, 'noteLabel') : tr(lang, 'noteLabel'))}</span>
+            <Chip tone={NOTE_VERDICT_TONE[item.verdict] || 'neutral'}>{tr(lang, 'verdict_' + item.verdict)}</Chip>
+          </span>
+          {item.evidence && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-primary)' }}><b>{tr(lang, 'noteEvidenceLabel')}:</b> {item.evidence}</span>}
+          {item.correction && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--danger)' }}><b>{tr(lang, 'noteCorrectionLabel')}:</b> {item.correction}</span>}
+          {item.encouragement && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--success)' }}><b>{tr(lang, 'noteEncouragementLabel')}:</b> {item.encouragement}</span>}
+          {item.watchFor && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-dim)' }}><b>{tr(lang, 'noteWatchForLabel')}:</b> {item.watchFor}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const UNRESOLVED_STATUS_TONE = { open: 'neutral', partially_resolved: 'accent', resolved: 'success', superseded: 'neutral' };
+// Section 1.C - structured unresolved-item lifecycle, replacing the old plain-string `unknowns`
+// list. Reads `result.unresolvedItems` when present; a stored result from before this upgrade
+// (no `unresolvedItems` field at all, only `unknowns`) degrades safely to a minimal open item per
+// legacy string - see resolveUnresolvedItems() below, the one place both paths converge.
+function UnresolvedItemsBlock({ items, lang }) {
+  if (!items || !items.length) return null;
+  return (
+    <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+      <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 6 }}>{tr(lang, 'unresolvedItemsTitle')}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((item, i) => (
+          <div key={item.id || i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span dir="auto" style={{ fontSize: 11.5, color: 'var(--text-primary)', flex: 1 }}>— {item.description}</span>
+              <Chip tone={UNRESOLVED_STATUS_TONE[item.status] || 'neutral'}>{tr(lang, 'unresolvedStatus_' + item.status)}</Chip>
+            </span>
+            {item.whyItMatters && <span dir="auto" style={{ fontSize: 10, color: 'var(--text-dim)', paddingInlineStart: 12 }}>{item.whyItMatters}</span>}
+            {item.action && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--char-accent)', paddingInlineStart: 12 }}><b>{tr(lang, 'actionLabel')}:</b> {item.action}</span>}
+            {item.resolutionEvidence && <span dir="auto" style={{ fontSize: 10, color: 'var(--success)', paddingInlineStart: 12 }}>{item.resolutionEvidence}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+// Exported so character-app.jsx's analysisSectionTexts() (voice narration) resolves the exact
+// same legacy-fallback shape the card itself renders, never a second, divergent implementation.
+export function resolveUnresolvedItems(result) {
+  if (!result) return [];
+  if (result.unresolvedItems && result.unresolvedItems.length) return result.unresolvedItems;
+  return (result.unknowns || []).map((text) => ({ id: null, status: 'open', description: text, whyItMatters: '', missingEvidence: '', action: '', resolutionEvidence: '' }));
+}
+
+// Section 5 - provider/model attribution, always from the SAVED result's own provider/model
+// (never the currently-selected settings) - reuses the existing provider catalog/ModelGlyph
+// system rather than a second logo registry. Degrades to a plain text label when the catalog
+// entry cannot be resolved (e.g. a provider later removed from the catalog).
+function ProviderAttribution({ result, lang }) {
+  if (!result || !result.provider) return null;
+  const settings = window.TradeJournalAISettingsStore;
+  const catalogEntry = settings ? (settings.providerCatalog() || []).find((p) => p.id === result.provider) : null;
+  const modelLabel = (catalogEntry && catalogEntry.modelLabels && catalogEntry.modelLabels[result.model]) || result.model;
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-dim)' }}>
+      {catalogEntry && <ModelGlyph model={{ id: catalogEntry.id, trait: catalogEntry.trait, knockout: catalogEntry.knockout }} size={13} muted />}
+      <span dir="ltr" className="navrya-tabular">{tr(lang, 'analyzedByLabel')} {(catalogEntry && catalogEntry.label) || result.provider}{modelLabel ? ' · ' + modelLabel : ''}</span>
+    </span>
   );
 }
 
@@ -338,20 +538,28 @@ export function SessionAnalysisCard({
   const highBlocks = result.blocks.filter((b) => b.importance === 'high');
   const otherBlocks = result.blocks.filter((b) => b.importance !== 'high');
   const totalTokens = result.usage && (result.usage.totalTokens || (result.usage.promptTokens || 0) + (result.usage.completionTokens || 0));
+  const unresolvedItems = resolveUnresolvedItems(result);
 
   return (
     <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         {memoryReceipt && memoryReceipt.hasInitialAnalysis && <Chip tone="neutral" dot>{tr(activeLang, 'memoryChip', { n: memoryReceipt.eventCount })}</Chip>}
         <Chip tone="accent">{depth === 'deep' ? tr(activeLang, 'depthDeep') : depth === 'efficient' ? tr(activeLang, 'depthEfficient') : tr(activeLang, 'depthAuto')}</Chip>
-        {!!totalTokens && <span title={JSON.stringify(result.usage)} style={{ marginInlineStart: 'auto', fontSize: 10, color: 'var(--text-dim)' }}>{tr(activeLang, 'tokenUsage', { n: (totalTokens / 1000).toFixed(1) + 'k' })}</span>}
+        <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {!!totalTokens && <span title={JSON.stringify(result.usage)} style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tr(activeLang, 'tokenUsage', { n: (totalTokens / 1000).toFixed(1) + 'k' })}</span>}
+          <ProviderAttribution result={result} lang={activeLang} />
+        </span>
       </div>
+
+      <DeferredScenariosNote deferredScenarios={result.deferredScenarios} lang={activeLang} />
 
       <div>
         <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)', marginBottom: 4 }}>{tr(activeLang, 'thesisTitle')}</span>
         <p dir="auto" style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--parchment)', lineHeight: 1.7 }}>{result.thesis.headline}</p>
         {result.thesis.summary && <p dir="auto" style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>{result.thesis.summary}</p>}
       </div>
+
+      <RequestResponseBlock requestResponse={result.requestResponse} lang={activeLang} />
 
       {/* Analysis Map (brief follow-up, 2026-08-31): the whole analysis (every key zone + the
           primary scenario's path) drawn onto the actual chart in one image, rather than per
@@ -407,6 +615,8 @@ export function SessionAnalysisCard({
         </div>
       )}
 
+      <TimeframeBlock timeframeAnalyses={result.timeframeAnalyses} timeframeSynthesis={result.timeframeSynthesis} lang={activeLang} />
+
       {!!result.scenarioEvaluations.length && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {result.scenarioEvaluations.map((evaluation) => (
@@ -438,7 +648,9 @@ export function SessionAnalysisCard({
         </div>
       )}
 
-      {(otherBlocks.length > 0 || result.unknowns.length > 0 || result.whatWouldChangeView) && (
+      <NoteFeedbackBlock noteFeedback={result.noteFeedback} lang={activeLang} />
+
+      {(otherBlocks.length > 0 || unresolvedItems.length > 0 || result.whatWouldChangeView) && (
         <div>
           <button type="button" onClick={() => setDeepOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', height: 36, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-body)', fontSize: 11.5 }}>
             <Icon name={deepOpen ? 'ChevronUp' : 'ChevronDown'} size={14} />{deepOpen ? tr(activeLang, 'collapse') : tr(activeLang, 'deepAnalysis')}
@@ -446,14 +658,7 @@ export function SessionAnalysisCard({
           {deepOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
               {otherBlocks.map((block) => <AnalysisBlock key={block.id} block={block} lang={activeLang} />)}
-              {!!result.unknowns.length && (
-                <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
-                  <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>{tr(activeLang, 'unknownsTitle')}</span>
-                  <ul dir="auto" style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {result.unknowns.map((u, i) => <li key={i} style={{ fontSize: 11, color: 'var(--text-muted)' }}>— {u}</li>)}
-                  </ul>
-                </div>
-              )}
+              <UnresolvedItemsBlock items={unresolvedItems} lang={activeLang} />
               {result.whatWouldChangeView && (
                 <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
                   <span style={{ display: 'block', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>{tr(activeLang, 'changeViewTitle')}</span>
