@@ -464,8 +464,7 @@ const copy = {
     chartCaptureUnsupported: 'La captura de pantalla no es compatible con este navegador. Aún puedes adjuntar una imagen manualmente abajo.',
     chartCaptureFailed: 'No se pudo capturar una imagen del gráfico. Aún puedes adjuntar una imagen manualmente abajo.',
     screenshotButton: 'Captura', screenshotSaving: 'Guardando en Media Drive...', screenshotSaved: 'Guardado en Media Drive', screenshotFailed: 'No se pudo guardar la captura',
-    mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles', mediaDriveButton: 'Media Drive'
-    mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles',
+    mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles', mediaDriveButton: 'Media Drive',
     multiTimeframeToggle: 'Multi-temporalidad', multiTimeframeHint: 'Añade hasta 4 imágenes con distintas temporalidades para este mismo registro.',
     addImageSlot: 'Añadir imagen', slotTimeframeDetected: 'Detectado automáticamente', slotTimeframeManual: 'Elige una temporalidad',
     atLeastOneImageRequired: 'Se requiere al menos una imagen con una temporalidad definida.', removeImageSlot: 'Quitar imagen'

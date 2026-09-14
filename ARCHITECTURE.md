@@ -715,7 +715,12 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   - Closing and summarizing a session upserts a global `SessionSignature`. A one-time idempotent backfill scans all four character stores, while deliberately skipping open or unsummarized sessions.
   - `TradeJournalSessionSignatureEngine.compare()` is deterministic: market 45%, movement-prefix similarity 35%, pattern overlap 12%, and strategy overlap 8%. `TradeJournalSessionSimilarityProvider` is the replacement seam for a future remote/AI implementation.
   - The Similar Sessions panel compares the live partial signature after every workspace refresh, displays the top three historical matches, and shows a non-blocking alert above the configurable threshold (70% by default).
-  - Session chart/summary AI is currently local deterministic demonstration logic, not an API call.
+  - Session chart/summary AI is a real provider call (one call per user-triggered analysis, never
+    a second "summarize/evaluate" round trip) - structured note feedback, "your view and
+    instruction" request/response, a structured unresolved-item lifecycle, normal-analysis
+    scenario-probability updates, multi-timeframe input/output, style-specific indicator
+    preflight, and provider/model attribution. See `docs/ai/session-analysis.md` for the full
+    canonical contract.
 
 ### 7.6 Pattern Registry
 
