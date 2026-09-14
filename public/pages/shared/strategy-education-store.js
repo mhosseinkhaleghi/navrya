@@ -140,6 +140,32 @@
     }
     return save(strategy);
   }
+  // NAVRYA Media Drive counterpart to addAttachments() above - attaches an ALREADY-UPLOADED
+  // canonical Media Asset (picked/uploaded via MediaPicker.jsx, navrya-src/strategyEducationView.jsx's
+  // AttachmentSection) instead of a raw File. Never re-uploads bytes/re-checks quota - only
+  // records the server-side reuse link and stores the reference in the same attachments[] shape.
+  async function linkMediaAsset(mediaAssetId, recordId) {
+    var switcher = window.TradeJournalDevUserSwitcher;
+    var uid2 = switcher && switcher.currentUserId();
+    if (!uid2) return;
+    try {
+      await fetch('/api/sync/media/assets/' + encodeURIComponent(mediaAssetId) + '/links', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid2 },
+        body: JSON.stringify({ domain: 'strategy', recordId: recordId })
+      });
+    } catch (_) { /* best-effort - the reference below is still saved on the strategy itself */ }
+  }
+  async function addAttachmentFromAsset(strategyId, category, asset) {
+    var strategy = find(strategyId); if (!strategy) throw new Error('STRATEGY_NOT_FOUND');
+    var section = strategy[category]; if (!section) throw new Error('INVALID_CATEGORY');
+    if (!asset || !asset.url) throw new Error('INVALID_MEDIA_ASSET');
+    var item = attachment({ fileName: asset.originalFilename || '', mimeType: asset.mimeType || 'image/png', size: 0, note: '', fileUrl: asset.url }, category);
+    item.mediaAssetId = asset.id;
+    section.attachments.push(item);
+    var saved = save(strategy);
+    linkMediaAsset(asset.id, strategyId);
+    return saved;
+  }
   async function removeAttachment(strategyId, category, id) { var strategy = find(strategyId); if (!strategy || !strategy[category]) return strategy; var item = strategy[category].attachments.find(function (entry) { return entry.id === id; }); if (item && item.blobId && window.TradeJournalImageStore) await window.TradeJournalImageStore.deleteImage(item.blobId); strategy[category].attachments = strategy[category].attachments.filter(function (entry) { return entry.id !== id; }); return save(strategy); }
   // fileUrl (the server-hosted copy) now correctly takes priority - a pre-existing gap fixed as
   // part of this migration: the old sync's image-upload sender already patched fileUrl onto a
@@ -162,7 +188,7 @@
     listSync: listSync, listActive: listActive, find: find, read: read,
     create: create, save: save, remove: remove, setActive: setActive,
     getPath: getPath, setPath: setPath, localSummary: localSummary, saveSummary: saveSummary,
-    addAttachments: addAttachments, removeAttachment: removeAttachment, attachmentUrl: attachmentUrl, attachmentsForAI: attachmentsForAI,
+    addAttachments: addAttachments, addAttachmentFromAsset: addAttachmentFromAsset, removeAttachment: removeAttachment, attachmentUrl: attachmentUrl, attachmentsForAI: attachmentsForAI,
     addMessage: addMessage, applySuggestion: applySuggestion,
     getRiskDefaults: getRiskDefaults, getPositionGuide: getPositionGuide,
     addDetectionEvent: addDetectionEvent, updateDetectionEvent: updateDetectionEvent, detectionStats: detectionStats

@@ -11,6 +11,7 @@ import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/A
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
+import { MediaPicker } from '../public/pages/shared/navrya/components/media/MediaPicker.jsx';
 
 // ============================================================================
 // Redesign of the "Log a Trade" wizard (Session tools · trade journal) against the design
@@ -782,18 +783,41 @@ function StepEmotions({ t, mhi18n, types, emotion, setEmotion, breathOpen, onClo
 // ============================================================================
 // Step 5 - Screenshots
 // ============================================================================
-function StepScreenshots({ t, shots, onPick, onRemoveShot, review }) {
+// NAVRYA Media Drive: a "Media Drive" trigger sits beside the existing device-drop dropzone
+// (unchanged) - `shots` can hold either a not-yet-uploaded local pick ({file, url, name}, still
+// uploaded at finish() via tradeStore.addScreenshots) or an already-uploaded Drive reference
+// ({asset, url, name}, attached at finish() via tradeStore.addScreenshotFromAsset - never
+// re-uploaded/re-charged). Both render identically below (only `url`/`name` are read), so no
+// other change was needed to the existing preview grid/remove button.
+function StepScreenshots({ t, lang, shots, onPick, onRemoveShot, onAddDriveAsset, review }) {
+  const [pickerOpen, setPickerOpen] = React.useState(false);
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'stretch' }}>
       <div style={{ flex: '1.3 1 420px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <button
-          type="button" onClick={onPick}
-          style={{ minHeight: 196, boxSizing: 'border-box', width: '100%', padding: 20, borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.45)' }}
-        >
-          <span style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', borderRadius: 8, color: 'var(--char-accent)', background: 'rgba(3,8,7,.7)', border: '1px solid color-mix(in srgb, var(--char-accent) 60%, transparent)' }}><Icon name="upload" size={17} /></span>
-          <span style={{ font: 'var(--type-display-md)', letterSpacing: 'var(--tracking-display)', color: 'var(--parchment)' }}>{t('logScreenshotsTitle')}</span>
-          <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('logOptionalFormats')}</span>
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+          <button
+            type="button" onClick={onPick}
+            style={{ flex: 1, minHeight: 196, boxSizing: 'border-box', padding: 20, borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.45)' }}
+          >
+            <span style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', borderRadius: 8, color: 'var(--char-accent)', background: 'rgba(3,8,7,.7)', border: '1px solid color-mix(in srgb, var(--char-accent) 60%, transparent)' }}><Icon name="upload" size={17} /></span>
+            <span style={{ font: 'var(--type-display-md)', letterSpacing: 'var(--tracking-display)', color: 'var(--parchment)' }}>{t('logScreenshotsTitle')}</span>
+            <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('logOptionalFormats')}</span>
+          </button>
+          <button
+            type="button" onClick={() => setPickerOpen(true)}
+            style={{ flex: '0 0 130px', minHeight: 196, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}
+          >
+            <Icon name="FolderOpen" size={20} />
+            <span style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{t('logMediaDriveButton')}</span>
+          </button>
+        </div>
+        {pickerOpen && (
+          <MediaPicker
+            open lang={lang} intent="generic"
+            onClose={() => setPickerOpen(false)}
+            onConfirm={(asset) => { setPickerOpen(false); if (asset) onAddDriveAsset(asset); }}
+          />
+        )}
         {shots.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
             {shots.map((shot, i) => (
@@ -1344,8 +1368,18 @@ function TradeLogModal({ seed, options, onClose }) {
     if (mh && (preTradeContext.sleepQuality !== 5 || preTradeContext.significantPersonalEvent)) {
       mh.addPreTradeContext(mh.load(), saved.id, { sleepQuality: preTradeContext.sleepQuality, significantPersonalEvent: preTradeContext.significantPersonalEvent || null });
     }
-    const filesToUpload = shots.map((s) => s.file);
-    const promise = filesToUpload.length ? tradeStore.addScreenshots(saved.id, filesToUpload) : Promise.resolve(saved);
+    // NAVRYA Media Drive: `shots` mixes not-yet-uploaded local picks (`.file`, uploaded here via
+    // addScreenshots) with already-uploaded Drive references (`.asset`, attached via
+    // addScreenshotFromAsset - never re-uploaded/re-charged). Drive assets are attached AFTER the
+    // batch upload, sequentially (each addScreenshotFromAsset call both persists and returns the
+    // updated trade), so `value` below always ends up as the final trade with every screenshot.
+    const filesToUpload = shots.filter((s) => s.file).map((s) => s.file);
+    const driveAssets = shots.filter((s) => s.asset).map((s) => s.asset);
+    const uploadPromise = filesToUpload.length ? tradeStore.addScreenshots(saved.id, filesToUpload) : Promise.resolve(saved);
+    const promise = uploadPromise.then((value) => driveAssets.reduce(
+      (chain, asset) => chain.then((v) => tradeStore.addScreenshotFromAsset(v.id, asset)),
+      Promise.resolve(value)
+    ));
     // Journey H1: return the chain (previously fire-and-forget, its result discarded by the one
     // existing caller, goNext()) so ai-process-registry.js's submit() - and, through it,
     // ai-workflow-engine.js's action.resultContext() - can receive the real saved trade once
@@ -1559,7 +1593,14 @@ function TradeLogModal({ seed, options, onClose }) {
                 />
               </>
             )}
-            {step === 5 && <StepScreenshots t={t} shots={shots} onPick={pickFile} onRemoveShot={(i) => setShots((prev) => prev.filter((_, j) => j !== i))} review={review} />}
+            {step === 5 && (
+              <StepScreenshots
+                t={t} lang={i18n.language()} shots={shots} onPick={pickFile}
+                onRemoveShot={(i) => setShots((prev) => prev.filter((_, j) => j !== i))}
+                onAddDriveAsset={(asset) => setShots((prev) => prev.concat([{ asset, url: asset.url, name: asset.originalFilename || '' }]))}
+                review={review}
+              />
+            )}
           </div>
 
           {/* Footer */}

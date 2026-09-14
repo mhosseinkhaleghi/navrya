@@ -6,6 +6,7 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
 import { SearchField } from '../public/pages/shared/navrya/components/forms/SearchField.jsx';
 import { UploadField } from '../public/pages/shared/navrya/components/forms/UploadField.jsx';
+import { MediaPicker } from '../public/pages/shared/navrya/components/media/MediaPicker.jsx';
 import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms/InstrumentPicker.jsx';
 import { ChatThread } from '../public/pages/shared/navrya/components/feedback/ChatThread.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
@@ -274,6 +275,17 @@ function PatternEditor({ pattern, i18n, ai, onChat }) {
     catch (error) { showToast(i18n.t(error.message === 'INVALID_IMAGE_TYPE' ? 'imageTypeError' : error.message === 'IMAGE_TOO_LARGE' ? 'imageSizeError' : 'uploadError'), 'danger'); }
   }
   async function removeScreenshot(imageId) { await store.removeScreenshot(pattern.id, imageId); forceTick(); }
+  // NAVRYA Media Drive - a reference-only reuse path (store.addScreenshotFromAsset), additive
+  // beside the existing UploadField (still local device upload -> /api/sync/patterns/images
+  // -> addScreenshots above), never replacing it - a trader picking an image already in the
+  // Drive never re-uploads bytes or re-charges quota.
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  async function onPickerConfirm(asset) {
+    setPickerOpen(false);
+    if (!asset) return;
+    try { await store.addScreenshotFromAsset(pattern.id, asset); forceTick(); }
+    catch (_) { showToast(i18n.t('uploadError'), 'danger'); }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -343,7 +355,21 @@ function PatternEditor({ pattern, i18n, ai, onChat }) {
 
       <Panel variant="base" radius={12} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ margin: 0, font: 'var(--type-body)', fontWeight: 700, color: 'var(--parchment)' }}>{i18n.t('referenceImages')}</h3>
-        <UploadField label={i18n.t('uploadTitle')} formats={i18n.t('uploadHint')} onSelect={(file) => addScreenshots([file])} />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <UploadField label={i18n.t('uploadTitle')} formats={i18n.t('uploadHint')} onSelect={(file) => addScreenshots([file])} />
+          </div>
+          <button
+            type="button" onClick={() => setPickerOpen(true)}
+            style={{ flex: '0 0 140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, border: '1px solid var(--border-hairline)', cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)' }}
+          >
+            <Icon name="FolderOpen" size={20} />
+            <b style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('mediaDriveButton')}</b>
+          </button>
+        </div>
+        {pickerOpen && (
+          <MediaPicker open lang={i18n.language()} intent="generic" onClose={() => setPickerOpen(false)} onConfirm={onPickerConfirm} />
+        )}
         {pattern.referenceScreenshots.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
             {pattern.referenceScreenshots.map((image) => (

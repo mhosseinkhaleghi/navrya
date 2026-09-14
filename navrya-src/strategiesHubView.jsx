@@ -8,6 +8,7 @@ import { InstrumentPicker } from '../public/pages/shared/navrya/components/forms
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
+import { MediaPicker } from '../public/pages/shared/navrya/components/media/MediaPicker.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { AnalysisProfilesTab } from './analysisProfilesView.jsx';
 
@@ -55,7 +56,7 @@ const copy = {
     thresholdHelp: 'وقتی درصد تکمیل مراحل به این مقدار برسد، باز کردن پوزیشن سناریو آزاد می‌شود. این حد برای هر الگو مستقل است.',
     stepsTitle: 'مراحل الگو', stepsHelp: 'برای حذف یا افزودن مرحله از دکمه‌های کنار هر ردیف استفاده کنید.',
     deleteStep: 'حذف مرحله', newStepPlaceholder: 'نام مرحله جدید…', addStep: 'افزودن مرحله',
-    shotsTitle: 'اسکرین‌شات‌های مرجع', uploadShot: 'کلیک کنید یا تصاویر را اینجا رها کنید', uploadHint: 'PNG، JPG یا WebP',
+    shotsTitle: 'اسکرین‌شات‌های مرجع', uploadShot: 'کلیک کنید یا تصاویر را اینجا رها کنید', uploadHint: 'PNG، JPG یا WebP', mediaDriveButton: 'مدیا درایو',
     removeShot: 'حذف تصویر',
     groupPositionTitle: 'مدیریت پوزیشن', groupPositionSub: 'ورود، حد ضرر، خروج و حجم',
     entryRulesLabel: 'قواعد ورود', stopRulesLabel: 'قواعد حد ضرر', exitRulesLabel: 'قواعد خروج و هدف', sizingRulesLabel: 'قواعد حجم',
@@ -138,7 +139,7 @@ const copy = {
     thresholdHelp: 'عند وصول نسبة اكتمال المراحل لهذا الحد، يُفتح بروتوكول الصفقة. هذا الحد مستقل لكل نمط.',
     stepsTitle: 'مراحل النمط', stepsHelp: 'استخدم الأزرار بجانب كل صف لحذف أو إضافة مرحلة.',
     deleteStep: 'حذف المرحلة', newStepPlaceholder: 'اسم مرحلة جديدة…', addStep: 'إضافة مرحلة',
-    shotsTitle: 'لقطات مرجعية', uploadShot: 'انقر أو اسحب الصور هنا', uploadHint: 'PNG أو JPG أو WebP',
+    shotsTitle: 'لقطات مرجعية', uploadShot: 'انقر أو اسحب الصور هنا', uploadHint: 'PNG أو JPG أو WebP', mediaDriveButton: 'درايف الوسائط',
     removeShot: 'حذف الصورة',
     groupPositionTitle: 'إدارة الصفقة', groupPositionSub: 'الدخول ووقف الخسارة والخروج والحجم',
     entryRulesLabel: 'قواعد الدخول', stopRulesLabel: 'قواعد وقف الخسارة', exitRulesLabel: 'قواعد الخروج والهدف', sizingRulesLabel: 'قواعد الحجم',
@@ -221,7 +222,7 @@ const copy = {
     thresholdHelp: 'Once stage completion reaches this value, opening a position on the scenario is unlocked. This threshold is independent per pattern.',
     stepsTitle: 'Pattern stages', stepsHelp: 'Use the buttons next to each row to add or remove a stage.',
     deleteStep: 'Delete stage', newStepPlaceholder: 'New stage name…', addStep: 'Add stage',
-    shotsTitle: 'Reference screenshots', uploadShot: 'Click or drop images here', uploadHint: 'PNG, JPG or WebP',
+    shotsTitle: 'Reference screenshots', uploadShot: 'Click or drop images here', uploadHint: 'PNG, JPG or WebP', mediaDriveButton: 'Media Drive',
     removeShot: 'Remove image',
     groupPositionTitle: 'Position management', groupPositionSub: 'Entry, stop loss, exit and sizing',
     entryRulesLabel: 'Entry rules', stopRulesLabel: 'Stop-loss rules', exitRulesLabel: 'Exit & target rules', sizingRulesLabel: 'Sizing rules',
@@ -304,7 +305,7 @@ const copy = {
     thresholdHelp: 'Cuando la finalización de etapas alcance este valor, se desbloquea abrir una posición en el escenario. Este umbral es independiente por patrón.',
     stepsTitle: 'Etapas del patrón', stepsHelp: 'Usa los botones junto a cada fila para añadir o eliminar una etapa.',
     deleteStep: 'Eliminar etapa', newStepPlaceholder: 'Nombre de la nueva etapa…', addStep: 'Añadir etapa',
-    shotsTitle: 'Capturas de referencia', uploadShot: 'Haz clic o arrastra imágenes aquí', uploadHint: 'PNG, JPG o WebP',
+    shotsTitle: 'Capturas de referencia', uploadShot: 'Haz clic o arrastra imágenes aquí', uploadHint: 'PNG, JPG o WebP', mediaDriveButton: 'Media Drive',
     removeShot: 'Eliminar imagen',
     groupPositionTitle: 'Gestión de la posición', groupPositionSub: 'Entrada, stop loss, salida y tamaño',
     entryRulesLabel: 'Reglas de entrada', stopRulesLabel: 'Reglas de stop loss', exitRulesLabel: 'Reglas de salida y objetivo', sizingRulesLabel: 'Reglas de tamaño',
@@ -1102,6 +1103,18 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
     setBusy(false);
   }
   async function removeShot(id) { await window.TradeJournalPatternStore.removeScreenshot(pattern.id, id); onSave(window.TradeJournalPatternStore.find(pattern.id)); }
+  // NAVRYA Media Drive - additive, reference-only reuse path beside the existing raw <input
+  // type=file> upload above (unchanged) - never re-uploads bytes/re-charges quota for an asset
+  // already in the trader's Drive (e.g. a chart captured from Live Session's Market Chart panel).
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  async function onPickerConfirm(asset) {
+    setPickerOpen(false);
+    if (!asset) return;
+    setBusy(true);
+    try { await window.TradeJournalPatternStore.addScreenshotFromAsset(pattern.id, asset); onSave(window.TradeJournalPatternStore.find(pattern.id)); }
+    catch (_) { /* reference error - screenshots simply stay unchanged */ }
+    setBusy(false);
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1176,9 +1189,15 @@ function PatternDetailsTab({ lang, pattern, onSave, onAiSteps }) {
               <Icon name="upload" size={22} /><span style={{ fontSize: 12 }}>{tr(lang, 'uploadShot')}</span><span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'uploadHint')}</span>
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
+            <button type="button" disabled={busy} onClick={() => setPickerOpen(true)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, aspectRatio: '16/10', borderRadius: 9, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)', font: 'inherit' }}>
+              <Icon name="FolderOpen" size={22} /><span style={{ fontSize: 12 }}>{tr(lang, 'mediaDriveButton')}</span>
+            </button>
           </div>
         </div>
       </Panel>
+      {pickerOpen && (
+        <MediaPicker open lang={lang} intent="generic" onClose={() => setPickerOpen(false)} onConfirm={onPickerConfirm} />
+      )}
     </div>
   );
 }

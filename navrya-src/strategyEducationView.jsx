@@ -10,6 +10,7 @@ import { ChatThread } from '../public/pages/shared/navrya/components/feedback/Ch
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { MetricTile } from '../public/pages/shared/navrya/components/metrics/MetricTile.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
+import { MediaPicker } from '../public/pages/shared/navrya/components/media/MediaPicker.jsx';
 import { StrategyModuleTabs } from './strategyModuleTabs.jsx';
 import { showToast } from './toast.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
@@ -288,9 +289,16 @@ function AttachmentCard({ item, i18n, store, onRemove, onNote }) {
   );
 }
 
+// NAVRYA Media Drive: a "Media Drive" trigger sits beside the existing raw-upload dropzone
+// (unchanged - still local device upload -> /api/sync/strategies/images) rather than replacing
+// it, so an already-Drive-stored chart/image (captured elsewhere, e.g. Live Session's Market
+// Chart panel) can be reused here by reference (store.addAttachmentFromAsset - no re-upload, no
+// second quota charge) without removing the plain "pick a file from this device" path a trader
+// may still prefer for a document that was never in the Drive.
 function AttachmentSection({ strategy, category, i18n, onChanged }) {
   const store = window.TradeJournalStrategyEducationStore;
   const section = strategy[category];
+  const [pickerOpen, setPickerOpen] = React.useState(false);
 
   async function addFiles(files) {
     try { onChanged(await store.addAttachments(strategy.id, category, files)); }
@@ -298,6 +306,12 @@ function AttachmentSection({ strategy, category, i18n, onChanged }) {
   }
   async function removeFile(id) { onChanged(await store.removeAttachment(strategy.id, category, id)); }
   function noteChanged(item, note) { item.note = note; store.save(strategy); }
+  async function onPickerConfirm(asset) {
+    setPickerOpen(false);
+    if (!asset) return;
+    try { onChanged(await store.addAttachmentFromAsset(strategy.id, category, asset)); }
+    catch (_) { showToast(i18n.t('uploadError'), 'danger'); }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -305,12 +319,24 @@ function AttachmentSection({ strategy, category, i18n, onChanged }) {
         <h4 style={{ margin: 0, font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('attachments')}</h4>
         <small style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('filesCount', { count: i18n.number(section.attachments.length) })}</small>
       </div>
-      <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16, borderRadius: 10, border: '1px dashed var(--border-gold)', cursor: 'pointer', color: 'var(--text-muted)' }}>
-        <input type="file" multiple accept="image/*,.pdf,.txt,.doc,.docx" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.target.files || []); e.target.value = ''; if (files.length) addFiles(files); }} />
-        <Icon name="file-up" size={20} />
-        <b style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('uploadTitle')}</b>
-        <small style={{ font: 'var(--type-caption)' }}>{i18n.t('uploadHint')}</small>
-      </label>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <label style={{ flex: 1, minWidth: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16, borderRadius: 10, border: '1px dashed var(--border-gold)', cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <input type="file" multiple accept="image/*,.pdf,.txt,.doc,.docx" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.target.files || []); e.target.value = ''; if (files.length) addFiles(files); }} />
+          <Icon name="file-up" size={20} />
+          <b style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('uploadTitle')}</b>
+          <small style={{ font: 'var(--type-caption)' }}>{i18n.t('uploadHint')}</small>
+        </label>
+        <button
+          type="button" onClick={() => setPickerOpen(true)}
+          style={{ flex: '0 0 140px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16, borderRadius: 10, border: '1px solid var(--border-hairline)', cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)' }}
+        >
+          <Icon name="FolderOpen" size={20} />
+          <b style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{i18n.t('mediaDriveButton')}</b>
+        </button>
+      </div>
+      {pickerOpen && (
+        <MediaPicker open lang={i18n.language()} intent="generic" onClose={() => setPickerOpen(false)} onConfirm={onPickerConfirm} />
+      )}
       {section.attachments.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
           {section.attachments.map((item) => (

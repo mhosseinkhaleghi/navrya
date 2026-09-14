@@ -12,6 +12,7 @@ import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/A
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
+import { MediaPicker } from '../public/pages/shared/navrya/components/media/MediaPicker.jsx';
 
 // ============================================================================
 // Redesign of the Trade Calculator (Session tools · position sizing) against the design handoff
@@ -392,6 +393,7 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
   const [filled, setFilled] = React.useState([]);
   const [snapshot, setSnapshot] = React.useState(null);
   const [dragging, setDragging] = React.useState(false);
+  const [drivePickerOpen, setDrivePickerOpen] = React.useState(false);
   const fileInputRef = React.useRef(null);
   const readTokenRef = React.useRef(0);
 
@@ -556,6 +558,46 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
 
   function resetImportState() { setImg({ state: 'idle', url: null, name: '', summary: '', failKind: null }); setFilled([]); setSnapshot(null); }
 
+  // Shared by both import sources (a freshly-picked device file below, and a NAVRYA Media Drive
+  // asset - see handleDriveAsset) - one real vision extraction call per image, regardless of
+  // where the dataUrl came from. This is a purely ephemeral, one-shot AI read (unlike the wizard's
+  // real trade.screenshots[] attachments) - the image itself is never persisted here even when it
+  // came from the Drive; only the extracted numbers are kept.
+  async function runExtraction(dataUrl, fileName, token) {
+    const core = window.TradeJournalChatDockCore;
+    if (!core) { setImg({ state: 'failed', url: dataUrl, name: fileName, summary: '', failKind: 'unavailable' }); return; }
+    try {
+      const extraction = await core.analyzeScreenshot(dataUrl);
+      if (readTokenRef.current !== token) return;
+      const gotDir = extraction.direction === 'long' || extraction.direction === 'short';
+      const gotEntry = typeof extraction.entryPrice === 'number';
+      const gotStop = typeof extraction.stopLoss === 'number';
+      const gotTps = Array.isArray(extraction.takeProfits) && extraction.takeProfits.length > 0;
+      if (!gotDir && !gotEntry && !gotStop && !gotTps) { setImg({ state: 'failed', url: dataUrl, name: fileName, summary: '', failKind: 'empty' }); return; }
+      const next = [];
+      if (gotDir) { setDir(extraction.direction); next.push('dir'); }
+      if (gotEntry) { setEntry(String(extraction.entryPrice)); next.push('entry'); }
+      if (gotStop) { setStop(String(extraction.stopLoss)); next.push('stop'); }
+      if (gotTps) {
+        const n = extraction.takeProfits.length, equal = Math.round(100 / n);
+        setTps(extraction.takeProfits.map((tp, i) => ({ price: String(tp.price), portion: String(i === n - 1 ? 100 - equal * (n - 1) : equal) })));
+        next.push('tps');
+      }
+      if (typeof extraction.leverage === 'number') { setLeverage(String(extraction.leverage)); next.push('leverage'); }
+      setFilled(next);
+      const segments = [];
+      if (gotDir) segments.push(t(extraction.direction));
+      if (gotEntry && gotStop) segments.push(t('calcSummaryEntryStop'));
+      else if (gotEntry) segments.push(t('entryPrice'));
+      else if (gotStop) segments.push(t('stopLoss'));
+      if (gotTps) segments.push(t('calcSummaryTargets', { count: extraction.takeProfits.length }));
+      const confidence = typeof extraction.confidence === 'number' ? ' · ' + Math.round(extraction.confidence * 100) + '%' : '';
+      setImg({ state: 'filled', url: dataUrl, name: fileName, summary: segments.join(' · ') + confidence, failKind: null });
+    } catch (err) {
+      if (readTokenRef.current === token) setImg({ state: 'failed', url: dataUrl, name: fileName, summary: '', failKind: 'ai' });
+    }
+  }
+
   async function handleFiles(list) {
     const file = list && list[0];
     if (!file) return;
@@ -564,45 +606,41 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
     const reader = new FileReader();
     const token = ++readTokenRef.current;
     reader.onerror = () => { if (readTokenRef.current === token) setImg({ state: 'failed', url: null, name: file.name, summary: '', failKind: 'ai' }); };
-    reader.onload = async () => {
+    reader.onload = () => {
       if (readTokenRef.current !== token) return;
       const dataUrl = String(reader.result || '');
       setSnapshot(snap);
       setImg({ state: 'reading', url: dataUrl, name: file.name, summary: '', failKind: null });
-      const core = window.TradeJournalChatDockCore;
-      if (!core) { setImg({ state: 'failed', url: dataUrl, name: file.name, summary: '', failKind: 'unavailable' }); return; }
-      try {
-        const extraction = await core.analyzeScreenshot(dataUrl);
-        if (readTokenRef.current !== token) return;
-        const gotDir = extraction.direction === 'long' || extraction.direction === 'short';
-        const gotEntry = typeof extraction.entryPrice === 'number';
-        const gotStop = typeof extraction.stopLoss === 'number';
-        const gotTps = Array.isArray(extraction.takeProfits) && extraction.takeProfits.length > 0;
-        if (!gotDir && !gotEntry && !gotStop && !gotTps) { setImg({ state: 'failed', url: dataUrl, name: file.name, summary: '', failKind: 'empty' }); return; }
-        const next = [];
-        if (gotDir) { setDir(extraction.direction); next.push('dir'); }
-        if (gotEntry) { setEntry(String(extraction.entryPrice)); next.push('entry'); }
-        if (gotStop) { setStop(String(extraction.stopLoss)); next.push('stop'); }
-        if (gotTps) {
-          const n = extraction.takeProfits.length, equal = Math.round(100 / n);
-          setTps(extraction.takeProfits.map((tp, i) => ({ price: String(tp.price), portion: String(i === n - 1 ? 100 - equal * (n - 1) : equal) })));
-          next.push('tps');
-        }
-        if (typeof extraction.leverage === 'number') { setLeverage(String(extraction.leverage)); next.push('leverage'); }
-        setFilled(next);
-        const segments = [];
-        if (gotDir) segments.push(t(extraction.direction));
-        if (gotEntry && gotStop) segments.push(t('calcSummaryEntryStop'));
-        else if (gotEntry) segments.push(t('entryPrice'));
-        else if (gotStop) segments.push(t('stopLoss'));
-        if (gotTps) segments.push(t('calcSummaryTargets', { count: extraction.takeProfits.length }));
-        const confidence = typeof extraction.confidence === 'number' ? ' · ' + Math.round(extraction.confidence * 100) + '%' : '';
-        setImg({ state: 'filled', url: dataUrl, name: file.name, summary: segments.join(' · ') + confidence, failKind: null });
-      } catch (err) {
-        if (readTokenRef.current === token) setImg({ state: 'failed', url: dataUrl, name: file.name, summary: '', failKind: 'ai' });
-      }
+      runExtraction(dataUrl, file.name, token);
     };
     reader.readAsDataURL(file);
+  }
+
+  // NAVRYA Media Drive: lets the trader reuse an already-stored chart (e.g. captured earlier from
+  // Live Session's Market Chart panel) as the extraction source instead of picking a fresh device
+  // file - same one-shot, never-persisted extraction as handleFiles() above, just sourced from
+  // the asset's own URL instead of a raw File.
+  async function handleDriveAsset(asset) {
+    if (!asset || !asset.url) return;
+    const snap = { dir, entry, stop, tps };
+    const token = ++readTokenRef.current;
+    const fileName = asset.originalFilename || asset.symbol || '';
+    setSnapshot(snap);
+    setImg({ state: 'reading', url: asset.url, name: fileName, summary: '', failKind: null });
+    try {
+      const response = await fetch(asset.url);
+      const blob = await response.blob();
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      if (readTokenRef.current !== token) return;
+      runExtraction(dataUrl, fileName, token);
+    } catch (_) {
+      if (readTokenRef.current === token) setImg({ state: 'failed', url: asset.url, name: fileName, summary: '', failKind: 'ai' });
+    }
   }
 
   function undoImport() {
@@ -770,7 +808,20 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
           <span style={{ flex: 1 }} />
           <div style={{ width: 252, flex: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('calcChartScreenshot')}</span>
-            <ScreenshotImport img={img} onPick={pickFile} onUndo={undoImport} t={t} />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+              <div style={{ flex: 1, minWidth: 0 }}><ScreenshotImport img={img} onPick={pickFile} onUndo={undoImport} t={t} /></div>
+              <button
+                type="button" onClick={() => setDrivePickerOpen(true)} title={t('calcMediaDriveButton')} aria-label={t('calcMediaDriveButton')}
+                style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}
+              ><Icon name="FolderOpen" size={16} /></button>
+            </div>
+            {drivePickerOpen && (
+              <MediaPicker
+                open lang={i18n.language()} intent="generic"
+                onClose={() => setDrivePickerOpen(false)}
+                onConfirm={(asset) => { setDrivePickerOpen(false); if (asset) handleDriveAsset(asset); }}
+              />
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: accountError && accountRequired ? 'var(--danger)' : 'var(--text-muted)' }}>{t('account')}{activeAccounts.length > 0 ? ' *' : ''}</span>

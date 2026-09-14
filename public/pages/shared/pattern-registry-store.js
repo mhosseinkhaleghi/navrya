@@ -198,6 +198,34 @@
     return added;
   }
 
+  // NAVRYA Media Drive counterpart to addScreenshots() - attaches an ALREADY-UPLOADED canonical
+  // Media Asset (public/pages/shared/navrya/components/media/MediaPicker.jsx, selected from
+  // navrya-src/patternRegistryView.jsx / strategiesHubView.jsx) instead of a raw File. Never
+  // re-uploads bytes or re-checks quota - only creates the server-side reuse link
+  // (POST /api/sync/media/assets/:id/links) and stores the reference the same shape a normal
+  // screenshotUrl()/imageUrl consumer already expects.
+  async function linkMediaAsset(mediaAssetId, recordId) {
+    var switcher = window.TradeJournalDevUserSwitcher;
+    var uid2 = switcher && switcher.currentUserId();
+    if (!uid2) return;
+    try {
+      await fetch('/api/sync/media/assets/' + encodeURIComponent(mediaAssetId) + '/links', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dev-user-id': uid2 },
+        body: JSON.stringify({ domain: 'pattern', recordId: recordId })
+      });
+    } catch (_) { /* best-effort - the reference below is still saved on the pattern itself */ }
+  }
+  async function addScreenshotFromAsset(patternId, asset) {
+    var pattern = find(patternId);
+    if (!pattern) throw new Error('PATTERN_NOT_FOUND');
+    if (!asset || !asset.url) throw new Error('INVALID_MEDIA_ASSET');
+    var image = { id: uid('screenshot'), fileName: asset.originalFilename || '', uploadedAt: now(), note: '', imageUrl: asset.url, mediaAssetId: asset.id };
+    pattern.referenceScreenshots.push(image);
+    save(pattern);
+    linkMediaAsset(asset.id, patternId);
+    return image;
+  }
+
   async function removeScreenshot(patternId, screenshotId) {
     var pattern = find(patternId);
     if (!pattern) return;
@@ -310,6 +338,7 @@
     save: save,
     remove: remove,
     addScreenshots: addScreenshots,
+    addScreenshotFromAsset: addScreenshotFromAsset,
     removeScreenshot: removeScreenshot,
     screenshotUrl: screenshotUrl,
     imageDataUrls: imageDataUrls,
