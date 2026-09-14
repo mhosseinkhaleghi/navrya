@@ -334,6 +334,23 @@ test('attachMediaAsset is actually IN SCOPE where EntryPanelSlot uses it - prese
   assert.match(slot, /\battachMediaAsset\b/, 'EntryPanelSlot must destructure attachMediaAsset from useWorkspace(), or the identifier it passes to EntryDetailPanel is undefined');
 });
 
+// Same real production bug, same missing wiring, different identifier (2026-09-14): the
+// attachMediaAsset fix above did not also cover `attachMultipleImages`, which EntryPanelSlot's
+// JSX passes as onAttachMultipleImages={attachMultipleImages} exactly the same way - a bare
+// identifier read from module scope, not from useWorkspace(). It was never added to the
+// AnalysisWorkspaceContext.Provider's `workspace` value object or to EntryPanelSlot's own
+// destructuring either, so it was genuinely undefined at render time
+// (`ReferenceError: attachMultipleImages is not defined`), crashing the whole Sessions screen
+// for every user again. Mirrors the attachMediaAsset regression test above so this class of bug
+// (a prop-text match that looks correct while the identifier itself is out of scope) is caught
+// per-identifier, not just for the one that was reported first.
+test('attachMultipleImages is actually IN SCOPE where EntryPanelSlot uses it - present in both the AnalysisWorkspaceContext value object and EntryPanelSlot\'s own useWorkspace() destructuring, not just in the onAttachMultipleImages prop text', () => {
+  const providerValue = sliceBetween('const workspace = {', '};', 'the AnalysisWorkspaceContext value object');
+  assert.match(providerValue, /\battachMultipleImages\b/, 'attachMultipleImages must be included in the workspace context value, or every consumer reading it via useWorkspace() sees undefined');
+  const slot = sliceBetween('function EntryPanelSlot() {', 'function SessionDashboardSlot(', 'EntryPanelSlot');
+  assert.match(slot, /\battachMultipleImages\b/, 'EntryPanelSlot must destructure attachMultipleImages from useWorkspace(), or the identifier it passes to EntryDetailPanel is undefined');
+});
+
 test('NAVRYA Media Drive: Add chart follows capture -> store asset -> Media Picker -> "Continue to chart registration" opens ChartEntryModal bound to the picked asset -> submit; canceling the picker never opens the registration modal', () => {
   assert.match(src, /const \[chartModalMediaAsset, setChartModalMediaAsset\] = React\.useState\(null\);/);
   assert.match(src, /onAddChart=\{\(asset\) => withPreSessionCheckIn\(\(\) => \{ setChartModalMediaAsset\(asset\); setChartModalOpen\(true\); \}\)\}/);

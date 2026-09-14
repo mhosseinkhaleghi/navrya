@@ -3047,7 +3047,7 @@ function CockpitPanel() {
 function EntryPanelSlot() {
   const {
     session, lang, selEntry, indexById, imageUrls, openScenarios, character,
-    updateNote, deleteEntry, attachMediaAsset, setSessionAnalysisEntry, setOpenScenarios,
+    updateNote, deleteEntry, attachMediaAsset, attachMultipleImages, setSessionAnalysisEntry, setOpenScenarios,
     updateScenario, deleteScenario, toggleStage, setScenarioSide, addScenario,
     setEvaluatingScenario, addAiScenario, runVisualizeAiScenario, runVisualizeAiAnalysis,
     setFilter, setQ
@@ -4837,7 +4837,7 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     session, lang, rtl, character, entries, list, indexById, selId, selEntry, imageUrls,
     filter, setFilter, q, setQ, tfFilter, setTfFilter, presentTimeframes,
     selectEntry, stepEntry, railRef, withPreSessionCheckIn, addEntry, setChartModalOpen,
-    openScenarios, setOpenScenarios, updateNote, deleteEntry, attachImage, attachMediaAsset, setSessionAnalysisEntry,
+    openScenarios, setOpenScenarios, updateNote, deleteEntry, attachImage, attachMediaAsset, attachMultipleImages, setSessionAnalysisEntry,
     updateScenario, deleteScenario, toggleStage, setScenarioSide, addScenario, setEvaluatingScenario,
     addAiScenario, runVisualizeAiScenario, runVisualizeAiAnalysis,
     dash, setDash, openPositions, rerender
