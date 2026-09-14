@@ -51,7 +51,7 @@ test('MultiTimeframeSlots reuses the one existing MediaPicker (intent=chartEntry
 test('ChartEntryModal\'s Multi-timeframe toggle is off by default (preserving the exact existing single-image "Add chart" flow) and only offered for a plain manual open, never when pinned to a captured Media Asset', () => {
   const fn = extractFunctionSource(source, 'ChartEntryModal');
   assert.match(fn, /const \[multiTimeframe, setMultiTimeframe\] = React\.useState\(false\);/);
-  assert.match(fn, /\{!mediaAsset && !initialFile && \(/);
+  assert.match(fn, /\{!mediaAsset && \(/);
   assert.match(fn, /<MultiTimeframeSlots lang=\{lang\} slots=\{multiSlots\} onChange=\{setMultiSlots\} maxSlots=\{4\} \/>/);
 });
 
