@@ -391,4 +391,3 @@ test('MediaPicker is imported once and has only the four legitimate render sites
   assert.match(src, /<MultiTimeframeSlots lang=\{lang\} slots=\{multiSlots\} onChange=\{setMultiSlots\} maxSlots=\{4\} \/>/);
   assert.match(src, /<MultiTimeframeSlots lang=\{lang\} slots=\{slots\} onChange=\{setSlots\} maxSlots=\{4\} \/>/);
 });
-});
