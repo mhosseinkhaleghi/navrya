@@ -46,5 +46,5 @@ test('the dead, now-crashing AiStrip local-demo component and its analyzeEntry()
 // of AiStrip's broken toggle - see sessionAiAnalysisModal.jsx's hasSavedResult.
 test('EntryDetailPanel\'s single AI-analysis button is the real popup trigger, with no separate onAnalyze prop left over', () => {
   assert.doesNotMatch(source, /onAnalyze/);
-  assert.match(source, /function EntryDetailPanel\(\{ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onOpenSessionAnalysis,/);
+  assert.match(source, /function EntryDetailPanel\(\{ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachMediaAsset, onOpenSessionAnalysis,/);
 });

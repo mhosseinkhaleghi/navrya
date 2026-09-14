@@ -292,15 +292,31 @@ test('fa/ar Persian and Arabic labels are the required literal strings; en/es ar
   assert.match(src, /viewChart: 'Gráfico de mercado'/);
 });
 
-test('ChartEntryModal accepts an optional mediaAsset (the picked/confirmed Media Drive asset) as well as the older initialFile, without changing behavior for a plain manual "Add chart" (neither prop)', () => {
-  const modal = sliceBetween('function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile, mediaAsset }) {', 'function Ring(', 'ChartEntryModal');
-  assert.match(modal, /const \[file, setFile\] = React\.useState\(initialFile \|\| null\);/);
-  assert.match(modal, /const \[previewUrl, setPreviewUrl\] = React\.useState\(\(\) => \(initialFile \? URL\.createObjectURL\(initialFile\) : ''\)\);/);
-  // A mediaAsset is a REFERENCE only - it must never require the plain file dropzone, and its own
-  // AI-detected timeframe (once ready) pre-fills the form without ever being forced/unchangeable.
+test('ChartEntryModal has NO plain file dropzone at all any more - every image selection, whether a preset mediaAsset prop or a trader-opened pick, goes through the Media Picker; a mediaAsset prop pre-fills the form without ever being forced/unchangeable', () => {
+  const modal = sliceBetween('function ChartEntryModal({ session, lang, onClose, onSubmit, mediaAsset }) {', 'function Ring(', 'ChartEntryModal');
+  // No raw file input/FileReader/dropzone survives here - Media Drive's own Upload tab is the
+  // only way to add a device file, so a second, parallel uploader would be redundant.
+  assert.doesNotMatch(modal, /type="file"/);
+  assert.doesNotMatch(modal, /FileReader/);
+  assert.doesNotMatch(modal, /URL\.createObjectURL/);
+  assert.match(modal, /const \[pickedAsset, setPickedAsset\] = React\.useState\(mediaAsset \|\| null\);/);
+  assert.match(modal, /const \[pickerOpen, setPickerOpen\] = React\.useState\(false\);/);
   assert.match(modal, /const \[timeframe, setTimeframe\] = React\.useState\(\(mediaAsset && mediaAsset\.timeframe\) \|\| session\.timeframe \|\| '5m'\);/);
-  assert.match(modal, /if \(!mediaAsset && !file\) \{ setError\(tr\(lang, 'uploadRequired'\)\); return; \}/);
-  assert.match(modal, /if \(mediaAsset\) onSubmit\(\{ mediaAssetId: mediaAsset\.id, imageUrl: mediaAsset\.url, timeframe, market, date, note, relatedScenarioIds: related \}\);/);
+  assert.match(modal, /if \(!pickedAsset\) \{ setError\(tr\(lang, 'uploadRequired'\)\); return; \}/);
+  assert.match(modal, /onSubmit\(\{ mediaAssetId: pickedAsset\.id, imageUrl: pickedAsset\.url, timeframe, market, date, note, relatedScenarioIds: related \}\);/);
+  // The empty-state control itself opens the Media Picker (intent="chartEntry", so a fresh upload
+  // still gets real chart extraction, and the picker's confirm CTA reads correctly).
+  assert.match(modal, /type="button" onClick=\{\(\) => setPickerOpen\(true\)\}/);
+  assert.match(modal, /<MediaPicker\s*\n\s*open lang=\{lang\} intent="chartEntry" initialAsset=\{pickedAsset\} sessionId=\{session\.id\}/);
+});
+
+test('EntryDetailPanel: attaching an image to an entry that has none opens the Media Picker (never a plain file input), and links the picked asset via attachMediaAsset - never onAttachImage/a raw File', () => {
+  const panel = sliceBetween('function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachMediaAsset, onOpenSessionAnalysis,', 'function DashboardPatternRow(', 'EntryDetailPanel');
+  assert.doesNotMatch(panel, /type="file"/);
+  assert.match(panel, /const \[pickerOpen, setPickerOpen\] = React\.useState\(false\);/);
+  assert.match(panel, /<Button variant="secondary" size="sm" icon="FolderOpen" onClick=\{\(\) => setPickerOpen\(true\)\}>\{tr\(lang, 'mediaDriveButton'\)\}<\/Button>/);
+  assert.match(panel, /onConfirm=\{\(asset\) => \{ setPickerOpen\(false\); if \(asset\) onAttachMediaAsset\(entry, asset\); \}\}/);
+  assert.match(src, /onNote=\{updateNote\} onDeleteEntry=\{deleteEntry\} onAttachMediaAsset=\{attachMediaAsset\}/);
 });
 
 test('NAVRYA Media Drive: Add chart follows capture -> store asset -> Media Picker -> "Continue to chart registration" opens ChartEntryModal bound to the picked asset -> submit; canceling the picker never opens the registration modal', () => {
@@ -349,10 +365,10 @@ test('a denied/unsupported/failed capture still opens the Media Picker for Add c
   assert.match(view, /setPicker\(\{ intent: 'movementEntry', initialAsset: asset \}\);/);
 });
 
-test('the MediaPicker component is imported once and reused for both Add chart and Log movement - never a duplicate implementation per action', () => {
+test('the MediaPicker component is imported once (a single shared component, never a duplicate implementation) - Add chart and Log movement inside MarketChartView share ONE render site via the intent prop; ChartEntryModal and EntryDetailPanel each own a separate, legitimate render site for their own later/inline picking step', () => {
   assert.match(src, /import \{ MediaPicker \} from '\.\.\/public\/pages\/shared\/navrya\/components\/media\/MediaPicker\.jsx';/);
   const matches = src.match(/<MediaPicker\b/g) || [];
-  assert.equal(matches.length, 1, 'exactly one MediaPicker render site - Add chart and Log movement share it via the intent prop, never a second copy');
-  const view = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
-  assert.match(view, /intent=\{picker\.intent\} initialAsset=\{picker\.initialAsset\} sessionId=\{session\.id\}/);
+  assert.equal(matches.length, 3, 'exactly three MediaPicker render sites are expected: MarketChartView (Add chart + Log movement share one via intent), ChartEntryModal (its own image selection step), and EntryDetailPanel (inline re-attach on an entry with no image)');
+  const marketChartView = sliceBetween('function MarketChartView({ session, lang, onAddChart, onLogMove }) {', 'function ReportView(', 'MarketChartView');
+  assert.match(marketChartView, /intent=\{picker\.intent\} initialAsset=\{picker\.initialAsset\} sessionId=\{session\.id\}/);
 });

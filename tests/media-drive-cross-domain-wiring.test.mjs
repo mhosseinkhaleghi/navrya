@@ -72,7 +72,7 @@ test('strategy-education-store.js: addAttachmentFromAsset attaches a reference a
 
 test('Trade Log wizard (tradeLogModal.jsx): StepScreenshots gets a Media Drive trigger; finish() attaches picked Drive assets via addScreenshotFromAsset, in addition to (never instead of) the existing device-upload path', () => {
   assert.match(tradeLogSrc, /import \{ MediaPicker \} from '\.\.\/public\/pages\/shared\/navrya\/components\/media\/MediaPicker\.jsx';/);
-  assert.match(tradeLogSrc, /function StepScreenshots\(\{ t, lang, shots, onPick, onRemoveShot, onAddDriveAsset, review \}\)/);
+  assert.match(tradeLogSrc, /function StepScreenshots\(\{ t, lang, shots, onRemoveShot, onAddDriveAsset, review \}\)/);
   assert.match(tradeLogSrc, /intent="generic"/);
   assert.match(tradeLogSrc, /onAddDriveAsset=\{\(asset\) => setShots\(\(prev\) => prev\.concat\(\[\{ asset, url: asset\.url, name: asset\.originalFilename \|\| '' \}\]\)\)\}/);
   assert.match(tradeLogSrc, /const filesToUpload = shots\.filter\(\(s\) => s\.file\)\.map\(\(s\) => s\.file\);/);
@@ -96,6 +96,31 @@ test('Trade Calculator (tradeCalculatorModal.jsx): a Media Drive trigger reuses 
   // Ephemeral only - this file must never call the Media Asset creation/store endpoints (it is
   // explicitly NOT a persistence flow, unlike the wizard/pattern/strategy surfaces).
   assert.doesNotMatch(tradeCalcSrc, /createAsset\(|\/api\/sync\/media\/assets'/);
+});
+
+test('Trade Calculator: the screenshot control is Media Drive ONLY (no separate device-upload button/hidden file input beside it) - the dashed-border design is preserved on the idle state', () => {
+  const screenshotImport = tradeCalcSrc.slice(tradeCalcSrc.indexOf('function ScreenshotImport'), tradeCalcSrc.indexOf('function TakeProfitRow'));
+  assert.doesNotMatch(screenshotImport, /type="file"/);
+  assert.match(screenshotImport, /border: '1px dashed var\(--border-gold\)'/, 'the idle state must keep the shared dashed-border upload-area design');
+  assert.match(screenshotImport, /t\('calcMediaDriveButton'\)/);
+  // Only one control renders ScreenshotImport - no separate small Drive-only icon button beside it.
+  assert.equal((tradeCalcSrc.match(/<ScreenshotImport /g) || []).length, 1);
+  assert.doesNotMatch(tradeCalcSrc, /type="file" accept="image\/png,image\/jpeg,image\/webp" ref=\{fileInputRef\}/);
+});
+
+test('Trade Log wizard: the screenshot step is Media Drive ONLY (no separate device-dropzone box beside it), still dashed-border, and never re-adds the hidden multi-file input the explicit browse button used to trigger', () => {
+  const stepStart = tradeLogSrc.indexOf('function StepScreenshots');
+  const stepEnd = tradeLogSrc.indexOf('function TradeLogModal({ seed, options, onClose }) {');
+  assert.ok(stepStart > -1 && stepEnd > stepStart, 'could not bound the real StepScreenshots function in tradeLogModal.jsx');
+  const stepScreenshots = tradeLogSrc.slice(stepStart, stepEnd);
+  assert.doesNotMatch(stepScreenshots, /type="file"/);
+  assert.match(stepScreenshots, /border: '1px dashed var\(--border-gold\)'/);
+  assert.match(stepScreenshots, /t\('logMediaDriveButton'\)/);
+  // Exactly one Media Drive trigger box - the ONLY other button left in this step is the
+  // pre-existing per-shot remove ("trash") button, never a second upload/browse control.
+  assert.equal((stepScreenshots.match(/type="button" onClick=\{\(\) => setPickerOpen\(true\)\}/g) || []).length, 1);
+  assert.equal((stepScreenshots.match(/type="button" onClick=/g) || []).length, 2);
+  assert.doesNotMatch(tradeLogSrc, /type="file" accept="image\/png,image\/jpeg,image\/webp" multiple ref=\{fileInputRef\}/);
 });
 
 test('Pattern reference screenshots: BOTH live UI surfaces (PatternEditor and PatternDetailsTab) get a Media Drive trigger wired to addScreenshotFromAsset', () => {

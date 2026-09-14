@@ -191,7 +191,6 @@ function ScreenshotImport({ img, onPick, onUndo, t }) {
   }
   if (img.state === 'failed') {
     const label = img.failKind === 'type' ? t('calcNotImage') : img.failKind === 'unavailable' ? t('calcAiUnavailable') : img.failKind === 'empty' ? t('calcNothingFound') : t('calcAiFailed');
-    const hint = img.failKind === 'type' ? t('calcChooseImageType') : t('calcImportScreenshot');
     return (
       <button type="button" onClick={onPick} style={{ ...base, cursor: 'pointer', border: '1px dashed rgba(255,56,48,.5)', background: 'rgba(255,56,48,.07)', textAlign: 'start' }}>
         <span style={{ width: 26, height: 26, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 6, color: 'var(--danger)', background: 'rgba(3,8,7,.7)', border: '1px solid rgba(255,56,48,.5)' }}>
@@ -199,18 +198,21 @@ function ScreenshotImport({ img, onPick, onUndo, t }) {
         </span>
         <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
           <span style={{ font: 'var(--type-body)', fontWeight: 600, color: 'var(--parchment)' }}>{label}</span>
-          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hint}</span>
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('calcMediaDriveButton')}</span>
         </span>
       </button>
     );
   }
+  // NAVRYA Media Drive - the idle state's own dashed border already matches the app's shared
+  // upload-area design language; onPick now opens the Media Picker (Recent/My Drive/Upload)
+  // instead of the native file dialog directly.
   return (
     <button type="button" onClick={onPick} style={{ ...base, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.45)', textAlign: 'start' }}>
       <span style={{ width: 26, height: 26, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 6, color: 'var(--char-accent)', background: 'rgba(3,8,7,.7)', border: '1px solid color-mix(in srgb, var(--char-accent) 60%, transparent)' }}>
-        <Icon name="upload" size={14} />
+        <Icon name="FolderOpen" size={14} />
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
-        <span style={{ font: 'var(--type-body)', fontWeight: 600, color: 'var(--parchment)' }}>{t('calcImportScreenshot')}</span>
+        <span style={{ font: 'var(--type-body)', fontWeight: 600, color: 'var(--parchment)' }}>{t('calcMediaDriveButton')}</span>
         <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('calcImportHint')}</span>
       </span>
     </button>
@@ -394,7 +396,6 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
   const [snapshot, setSnapshot] = React.useState(null);
   const [dragging, setDragging] = React.useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = React.useState(false);
-  const fileInputRef = React.useRef(null);
   const readTokenRef = React.useRef(0);
 
   // Computed here, before the AI registration effect below (moved up from its original spot
@@ -650,8 +651,6 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
     setDir(snap.dir || 'long'); setEntry(snap.entry || ''); setStop(snap.stop || ''); setTps(snap.tps || [{ price: '', portion: '100' }]);
   }
 
-  function pickFile() { if (fileInputRef.current) fileInputRef.current.click(); }
-
   function setTpField(index, key) {
     return (v) => setTps((prev) => prev.map((tp, i) => (i === index ? { ...tp, [key]: v } : tp)));
   }
@@ -808,13 +807,10 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
           <span style={{ flex: 1 }} />
           <div style={{ width: 252, flex: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: 'var(--type-caption)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('calcChartScreenshot')}</span>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
-              <div style={{ flex: 1, minWidth: 0 }}><ScreenshotImport img={img} onPick={pickFile} onUndo={undoImport} t={t} /></div>
-              <button
-                type="button" onClick={() => setDrivePickerOpen(true)} title={t('calcMediaDriveButton')} aria-label={t('calcMediaDriveButton')}
-                style={{ width: 44, height: 44, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}
-              ><Icon name="FolderOpen" size={16} /></button>
-            </div>
+            {/* NAVRYA Media Drive - the ONE trigger for a chart screenshot here, dashed-border like
+                every other upload area in the app; Media Drive's own Upload tab already covers a
+                fresh device file, so no second/parallel uploader control is shown beside it. */}
+            <ScreenshotImport img={img} onPick={() => setDrivePickerOpen(true)} onUndo={undoImport} t={t} />
             {drivePickerOpen && (
               <MediaPicker
                 open lang={i18n.language()} intent="generic"
@@ -1103,12 +1099,6 @@ function TradeCalculatorModal({ onClose, initialSeed }) {
             onSaved={(id) => { setShowCreateAccount(false); setAccountError(false); handleAccount(id); }}
           />
         )}
-
-        <input
-          type="file" accept="image/png,image/jpeg,image/webp" ref={fileInputRef}
-          onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
-          tabIndex={-1} aria-hidden="true" style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-        />
 
         {dragging && (
           <div aria-hidden="true" style={{ position: 'absolute', inset: 0, zIndex: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(3,8,7,.84)', pointerEvents: 'none' }}>

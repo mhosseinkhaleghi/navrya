@@ -789,28 +789,22 @@ function StepEmotions({ t, mhi18n, types, emotion, setEmotion, breathOpen, onClo
 // ({asset, url, name}, attached at finish() via tradeStore.addScreenshotFromAsset - never
 // re-uploaded/re-charged). Both render identically below (only `url`/`name` are read), so no
 // other change was needed to the existing preview grid/remove button.
-function StepScreenshots({ t, lang, shots, onPick, onRemoveShot, onAddDriveAsset, review }) {
+function StepScreenshots({ t, lang, shots, onRemoveShot, onAddDriveAsset, review }) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'stretch' }}>
       <div style={{ flex: '1.3 1 420px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
-          <button
-            type="button" onClick={onPick}
-            style={{ flex: 1, minHeight: 196, boxSizing: 'border-box', padding: 20, borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.45)' }}
-          >
-            <span style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', borderRadius: 8, color: 'var(--char-accent)', background: 'rgba(3,8,7,.7)', border: '1px solid color-mix(in srgb, var(--char-accent) 60%, transparent)' }}><Icon name="upload" size={17} /></span>
-            <span style={{ font: 'var(--type-display-md)', letterSpacing: 'var(--tracking-display)', color: 'var(--parchment)' }}>{t('logScreenshotsTitle')}</span>
-            <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('logOptionalFormats')}</span>
-          </button>
-          <button
-            type="button" onClick={() => setPickerOpen(true)}
-            style={{ flex: '0 0 130px', minHeight: 196, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}
-          >
-            <Icon name="FolderOpen" size={20} />
-            <span style={{ font: 'var(--type-body)', color: 'var(--parchment)' }}>{t('logMediaDriveButton')}</span>
-          </button>
-        </div>
+        {/* NAVRYA Media Drive - the ONE trigger for a trade screenshot, dashed-border matching
+            this app's shared upload-area design language; Media Drive's own Upload tab already
+            covers a fresh device file, so no second/parallel uploader control is shown beside it. */}
+        <button
+          type="button" onClick={() => setPickerOpen(true)}
+          style={{ minHeight: 196, boxSizing: 'border-box', width: '100%', padding: 20, borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.45)' }}
+        >
+          <span style={{ width: 34, height: 34, display: 'grid', placeItems: 'center', borderRadius: 8, color: 'var(--char-accent)', background: 'rgba(3,8,7,.7)', border: '1px solid color-mix(in srgb, var(--char-accent) 60%, transparent)' }}><Icon name="FolderOpen" size={17} /></span>
+          <span style={{ font: 'var(--type-display-md)', letterSpacing: 'var(--tracking-display)', color: 'var(--parchment)' }}>{t('logMediaDriveButton')}</span>
+          <span style={{ font: 'var(--type-caption)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{t('logOptionalFormats')}</span>
+        </button>
         {pickerOpen && (
           <MediaPicker
             open lang={lang} intent="generic"
@@ -914,7 +908,6 @@ function TradeLogModal({ seed, options, onClose }) {
   const [dragging, setDragging] = React.useState(false);
   const [safetyNode, setSafetyNode] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
-  const fileInputRef = React.useRef(null);
   const trendRequestedRef = React.useRef(false);
   const stepRef = React.useRef(step);
   stepRef.current = step;
@@ -1115,7 +1108,9 @@ function TradeLogModal({ seed, options, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function pickFile() { if (fileInputRef.current) fileInputRef.current.click(); }
+  // Still used by the whole-modal drag-and-drop overlay below (onDrop) - a direct OS-level file
+  // drop is a different interaction from the explicit "browse" button, which now opens Media
+  // Drive instead (see StepScreenshots) - dropping a file here stays a quick, unchanged shortcut.
   function handleFiles(list) {
     const all = Array.prototype.slice.call(list || []);
     const images = all.filter((f) => /^image\//.test(f.type || ''));
@@ -1595,7 +1590,7 @@ function TradeLogModal({ seed, options, onClose }) {
             )}
             {step === 5 && (
               <StepScreenshots
-                t={t} lang={i18n.language()} shots={shots} onPick={pickFile}
+                t={t} lang={i18n.language()} shots={shots}
                 onRemoveShot={(i) => setShots((prev) => prev.filter((_, j) => j !== i))}
                 onAddDriveAsset={(asset) => setShots((prev) => prev.concat([{ asset, url: asset.url, name: asset.originalFilename || '' }]))}
                 review={review}
@@ -1622,11 +1617,6 @@ function TradeLogModal({ seed, options, onClose }) {
           </div>
         </div>
 
-        <input
-          type="file" accept="image/png,image/jpeg,image/webp" multiple ref={fileInputRef}
-          onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
-          tabIndex={-1} aria-hidden="true" style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-        />
         {dragging && (
           <div aria-hidden="true" style={{ position: 'absolute', inset: 0, zIndex: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(3,8,7,.84)', pointerEvents: 'none' }}>
             <div style={{ width: 'min(420px,74%)', boxSizing: 'border-box', padding: 26, borderRadius: 10, border: '1px dashed var(--char-accent)', background: 'rgba(3,8,7,.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>

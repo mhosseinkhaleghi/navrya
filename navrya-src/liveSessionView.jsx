@@ -190,7 +190,7 @@ const copy = {
     chartCaptureUnsupported: 'گرفتن اسکرین‌شات در این مرورگر پشتیبانی نمی‌شود. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
     chartCaptureFailed: 'گرفتن اسکرین‌شات از چارت ممکن نشد. همچنان می‌توانید تصویر را دستی از پایین اضافه کنید.',
     screenshotButton: 'اسکرین‌شات', screenshotSaving: 'در حال ذخیره در مدیا درایو...', screenshotSaved: 'در مدیا درایو ذخیره شد', screenshotFailed: 'ذخیره اسکرین‌شات ممکن نشد',
-    mediaAnalyzing: 'در حال تحلیل...', mediaMetadataUnavailable: 'اطلاعات چارت در دسترس نیست'
+    mediaAnalyzing: 'در حال تحلیل...', mediaMetadataUnavailable: 'اطلاعات چارت در دسترس نیست', mediaDriveButton: 'مدیا درایو'
   },
   ar: {
     back: 'رجوع', settingsTitle: 'إعدادات الجلسة', sessionOpen: 'مفتوحة', sessionClosed: 'مغلقة', instrumentUnassigned: 'الأداة غير محددة', instrumentUnassignedHint: 'انقر لتحديد أداة هذه الجلسة',
@@ -278,7 +278,7 @@ const copy = {
     chartCaptureUnsupported: 'التقاط لقطة الشاشة غير مدعوم في هذا المتصفح. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
     chartCaptureFailed: 'تعذّر التقاط لقطة شاشة للمخطط. لا يزال بإمكانك إرفاق صورة يدوياً أدناه.',
     screenshotButton: 'لقطة شاشة', screenshotSaving: 'جارٍ الحفظ في درايف الوسائط...', screenshotSaved: 'تم الحفظ في درايف الوسائط', screenshotFailed: 'تعذّر حفظ لقطة الشاشة',
-    mediaAnalyzing: 'جارٍ التحليل...', mediaMetadataUnavailable: 'بيانات الرسم غير متاحة'
+    mediaAnalyzing: 'جارٍ التحليل...', mediaMetadataUnavailable: 'بيانات الرسم غير متاحة', mediaDriveButton: 'درايف الوسائط'
   },
   en: {
     back: 'Back', settingsTitle: 'Session settings', sessionOpen: 'Open', sessionClosed: 'Closed', instrumentUnassigned: 'Instrument not set', instrumentUnassignedHint: 'Click to classify this session\'s instrument',
@@ -366,7 +366,7 @@ const copy = {
     chartCaptureUnsupported: 'Screenshot capture is not supported in this browser. You can still attach an image manually below.',
     chartCaptureFailed: 'Could not capture a screenshot of the chart. You can still attach an image manually below.',
     screenshotButton: 'Screenshot', screenshotSaving: 'Saving to Media Drive...', screenshotSaved: 'Saved to Media Drive', screenshotFailed: 'Could not save the screenshot',
-    mediaAnalyzing: 'Analyzing...', mediaMetadataUnavailable: 'Chart metadata unavailable'
+    mediaAnalyzing: 'Analyzing...', mediaMetadataUnavailable: 'Chart metadata unavailable', mediaDriveButton: 'Media Drive'
   },
   es: {
     back: 'Volver', settingsTitle: 'Ajustes de la sesión', sessionOpen: 'Abierta', sessionClosed: 'Cerrada', instrumentUnassigned: 'Instrumento sin definir', instrumentUnassignedHint: 'Haz clic para clasificar el instrumento de esta sesión',
@@ -454,7 +454,7 @@ const copy = {
     chartCaptureUnsupported: 'La captura de pantalla no es compatible con este navegador. Aún puedes adjuntar una imagen manualmente abajo.',
     chartCaptureFailed: 'No se pudo capturar una imagen del gráfico. Aún puedes adjuntar una imagen manualmente abajo.',
     screenshotButton: 'Captura', screenshotSaving: 'Guardando en Media Drive...', screenshotSaved: 'Guardado en Media Drive', screenshotFailed: 'No se pudo guardar la captura',
-    mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles'
+    mediaAnalyzing: 'Analizando...', mediaMetadataUnavailable: 'Metadatos del gráfico no disponibles', mediaDriveButton: 'Media Drive'
   }
 };
 
@@ -660,10 +660,15 @@ function SessionModalShell({ title, icon, eyebrow, onClose, footer, width = 640,
 // of the plain file dropzone, and auto-populates timeframe from the asset's own AI-detected value
 // once ready - the trader can still edit every field, exactly as before. `initialFile` and
 // `mediaAsset` are mutually exclusive; a caller passes at most one.
-function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile, mediaAsset }) {
+function ChartEntryModal({ session, lang, onClose, onSubmit, mediaAsset }) {
   const rtl = lang === 'fa' || lang === 'ar';
-  const [file, setFile] = React.useState(initialFile || null);
-  const [previewUrl, setPreviewUrl] = React.useState(() => (initialFile ? URL.createObjectURL(initialFile) : ''));
+  // NAVRYA Media Drive - the ONLY way to attach an image here, whether this modal opened already
+  // bound to a captured/picked asset (Market chart panel's own flow, `mediaAsset` prop) or opened
+  // empty (Timeline's plain "Add chart" button) - a bare file dropzone/browse never appears here
+  // any more; Media Drive's own Upload tab already covers "add a device file", so a second,
+  // parallel uploader here would be redundant.
+  const [pickedAsset, setPickedAsset] = React.useState(mediaAsset || null);
+  const [pickerOpen, setPickerOpen] = React.useState(false);
   const [timeframe, setTimeframe] = React.useState((mediaAsset && mediaAsset.timeframe) || session.timeframe || '5m');
   const [market, setMarket] = React.useState(sessionsAdapter.displayCity(session.market) === 'New York' ? 'NewYork' : (session.market || 'London'));
   // HOTFIX: session.date used to come out of NewSessionDialog's own hardcoded, non-ISO default
@@ -678,7 +683,6 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile, mediaA
   const [note, setNote] = React.useState('');
   const [related, setRelated] = React.useState([]);
   const [error, setError] = React.useState('');
-  const fileRef = React.useRef(null);
   const scenarios = flatScenarios(session);
   // Slice U2-e: kept current every render so the mount-once registration effect's own applyValue()
   // below can re-derive the real, CURRENT scenario list fresh each call, instead of the one
@@ -696,21 +700,13 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile, mediaA
   const noteFilled = useAiFieldFill('live-session-chart-entry', 'note');
   const relatedScenariosFilled = useAiFieldFill('live-session-chart-entry', 'relatedScenarios');
 
-  function handleFile(f) {
-    if (!f || !f.type.startsWith('image/')) return;
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setFile(f);
-    setPreviewUrl(URL.createObjectURL(f));
-    setError('');
-  }
   function toggleRelated(id) {
     setRelated((list) => (list.indexOf(id) > -1 ? list.filter((x) => x !== id) : list.concat([id])));
   }
   function submit() {
-    if (!mediaAsset && !file) { setError(tr(lang, 'uploadRequired')); return; }
+    if (!pickedAsset) { setError(tr(lang, 'uploadRequired')); return; }
     if (!timeframe) { setError(tr(lang, 'timeframeRequired')); return; }
-    if (mediaAsset) onSubmit({ mediaAssetId: mediaAsset.id, imageUrl: mediaAsset.url, timeframe, market, date, note, relatedScenarioIds: related });
-    else onSubmit({ file, timeframe, market, date, note, relatedScenarioIds: related });
+    onSubmit({ mediaAssetId: pickedAsset.id, imageUrl: pickedAsset.url, timeframe, market, date, note, relatedScenarioIds: related });
   }
 
   // AI process registry (A4) - mountedRef template. Only mounted while chartModalOpen is true
@@ -774,33 +770,34 @@ function ChartEntryModal({ session, lang, onClose, onSubmit, initialFile, mediaA
       </>
     )}>
       <div dir={rtl ? 'rtl' : 'ltr'} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {mediaAsset ? (
+        {pickedAsset ? (
           <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
-            <img src={mediaAsset.url} alt="" style={{ display: 'block', width: '100%', height: 240, objectFit: 'cover' }} />
+            <img src={pickedAsset.url} alt="" style={{ display: 'block', width: '100%', height: 240, objectFit: 'cover' }} />
             <span dir="auto" style={{ position: 'absolute', bottom: 10, insetInlineStart: 10, insetInlineEnd: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', fontSize: 11 }}>
-              {mediaAsset.metadataStatus === 'processing'
+              {pickedAsset.metadataStatus === 'processing'
                 ? (<><Icon name="LoaderCircle" size={13} />{tr(lang, 'mediaAnalyzing')}</>)
-                : (mediaAsset.symbol || mediaAsset.timeframe)
-                  ? [mediaAsset.symbol, mediaAsset.timeframe].filter(Boolean).join(' · ')
+                : (pickedAsset.symbol || pickedAsset.timeframe)
+                  ? [pickedAsset.symbol, pickedAsset.timeframe].filter(Boolean).join(' · ')
                   : tr(lang, 'mediaMetadataUnavailable')}
             </span>
-          </span>
-        ) : previewUrl ? (
-          <span style={{ position: 'relative', display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-gold)', background: '#000' }}>
-            <img src={previewUrl} alt="" style={{ display: 'block', width: '100%', height: 240, objectFit: 'cover' }} />
-            <button type="button" onClick={() => fileRef.current && fileRef.current.click()} style={{ position: 'absolute', bottom: 10, insetInlineEnd: 10, height: 32, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'uploadChartTitle')}</button>
+            <button type="button" onClick={() => setPickerOpen(true)} style={{ position: 'absolute', top: 10, insetInlineEnd: 10, height: 32, padding: '0 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.75)', color: 'var(--text-primary)', font: 'var(--type-caption)', fontSize: 11 }}>{tr(lang, 'uploadChartTitle')}</button>
           </span>
         ) : (
           <button
-            type="button" onClick={() => fileRef.current && fileRef.current.click()}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, height: 200, borderRadius: 10, cursor: 'pointer', border: '1px dashed ' + (error && !file ? 'var(--danger)' : 'var(--border-gold)'), background: 'rgba(3,8,7,.5)' }}
-            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]); }}
+            type="button" onClick={() => setPickerOpen(true)}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, height: 200, borderRadius: 10, cursor: 'pointer', border: '1px dashed ' + (error && !pickedAsset ? 'var(--danger)' : 'var(--border-gold)'), background: 'rgba(3,8,7,.5)' }}
           >
-            <span style={{ color: 'rgba(244,234,215,.2)' }}><Icon name="image" size={28} /></span>
-            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'uploadPrompt')}</span>
+            <span style={{ color: 'rgba(244,234,215,.2)' }}><Icon name="FolderOpen" size={28} /></span>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'mediaDriveButton')}</span>
           </button>
         )}
-        {!mediaAsset && <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />}
+        {pickerOpen && (
+          <MediaPicker
+            open lang={lang} intent="chartEntry" initialAsset={pickedAsset} sessionId={session.id}
+            onClose={() => setPickerOpen(false)}
+            onConfirm={(asset) => { setPickerOpen(false); if (asset) { setPickedAsset(asset); setError(''); } }}
+          />
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <AiMagicFill active={timeframeFilled}>
@@ -1589,9 +1586,9 @@ function appendToNote(text, addition) {
   return base ? base + ' ' + add : add;
 }
 
-function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachImage, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, onAddAiScenario, onVisualizeAiScenario, onVisualizeAiAnalysis, scenarioTitleFor, character }) {
+function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios, onNote, onDeleteEntry, onAttachMediaAsset, onOpenSessionAnalysis, onScenarioToggle, onScenarioUpdate, onScenarioDelete, onScenarioStage, onScenarioSide, onAddScenario, onScenarioEvaluate, onAddAiScenario, onVisualizeAiScenario, onVisualizeAiAnalysis, scenarioTitleFor, character }) {
   const kindMeta = kindInfo(lang)[entry.type] || kindInfo(lang).chart;
-  const fileRef = React.useRef(null);
+  const [pickerOpen, setPickerOpen] = React.useState(false);
   const note = entry.type === 'movement' ? entry.movementNote : entry.note;
 
   // AI process registry (A4) - mountedRef template. The parent renders this with key={entry.id}
@@ -1720,8 +1717,14 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: 300, borderRadius: 10, border: '1px dashed var(--border-gold)', background: 'rgba(3,8,7,.5)' }}>
               <span style={{ color: 'rgba(244,234,215,.2)' }}><Icon name="image" size={30} /></span>
               <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'noImageText')}</span>
-              <Button variant="secondary" size="sm" icon="upload" onClick={() => fileRef.current && fileRef.current.click()}>{tr(lang, 'uploadImage')}</Button>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) onAttachImage(entry, f); e.target.value = ''; }} />
+              <Button variant="secondary" size="sm" icon="FolderOpen" onClick={() => setPickerOpen(true)}>{tr(lang, 'mediaDriveButton')}</Button>
+              {pickerOpen && (
+                <MediaPicker
+                  open lang={lang} intent="generic" sessionId={session.id}
+                  onClose={() => setPickerOpen(false)}
+                  onConfirm={(asset) => { setPickerOpen(false); if (asset) onAttachMediaAsset(entry, asset); }}
+                />
+              )}
             </span>
           )}
           {/* "Show the analysis below the chart" (2026-09-01 feedback) - inline, always-visible
@@ -2899,7 +2902,7 @@ function EntryPanelSlot() {
       key={selEntry.id}
       session={session} entry={selEntry} index={indexById[selEntry.id]} lang={lang} imageUrl={imageUrls[selEntry.id]}
       openScenarios={openScenarios}
-      onNote={updateNote} onDeleteEntry={deleteEntry} onAttachImage={attachImage}
+      onNote={updateNote} onDeleteEntry={deleteEntry} onAttachMediaAsset={attachMediaAsset}
       onOpenSessionAnalysis={() => setSessionAnalysisEntry(selEntry)}
       onScenarioToggle={(id) => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
       onScenarioUpdate={updateScenario} onScenarioDelete={deleteScenario} onScenarioStage={toggleStage} onScenarioSide={setScenarioSide}
