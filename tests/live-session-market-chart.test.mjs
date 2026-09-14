@@ -319,6 +319,21 @@ test('EntryDetailPanel: attaching an image to an entry that has none opens the M
   assert.match(src, /onNote=\{updateNote\} onDeleteEntry=\{deleteEntry\} onAttachMediaAsset=\{attachMediaAsset\}/);
 });
 
+// Real production bug (2026-09-14): EntryPanelSlot() is a SEPARATE component from LiveSessionView,
+// reading everything through React Context (useWorkspace()) rather than closing over
+// LiveSessionView's own local variables directly - `attachMediaAsset` was wired into the JSX prop
+// text (the assertion above) without ever being added to the AnalysisWorkspaceContext.Provider's
+// own `workspace` value object or to EntryPanelSlot's own destructuring of it, so the identifier
+// was genuinely undefined at render time (`ReferenceError: attachMediaAsset is not defined`),
+// crashing the whole Sessions screen for every user - a source-text prop-name match alone can
+// never catch this class of bug, since the JSX text itself was already "correct" looking.
+test('attachMediaAsset is actually IN SCOPE where EntryPanelSlot uses it - present in both the AnalysisWorkspaceContext value object and EntryPanelSlot\'s own useWorkspace() destructuring, not just in the onAttachMediaAsset prop text', () => {
+  const providerValue = sliceBetween('const workspace = {', '};', 'the AnalysisWorkspaceContext value object');
+  assert.match(providerValue, /\battachMediaAsset\b/, 'attachMediaAsset must be included in the workspace context value, or every consumer reading it via useWorkspace() sees undefined');
+  const slot = sliceBetween('function EntryPanelSlot() {', 'function SessionDashboardSlot(', 'EntryPanelSlot');
+  assert.match(slot, /\battachMediaAsset\b/, 'EntryPanelSlot must destructure attachMediaAsset from useWorkspace(), or the identifier it passes to EntryDetailPanel is undefined');
+});
+
 test('NAVRYA Media Drive: Add chart follows capture -> store asset -> Media Picker -> "Continue to chart registration" opens ChartEntryModal bound to the picked asset -> submit; canceling the picker never opens the registration modal', () => {
   assert.match(src, /const \[chartModalMediaAsset, setChartModalMediaAsset\] = React\.useState\(null\);/);
   assert.match(src, /onAddChart=\{\(asset\) => withPreSessionCheckIn\(\(\) => \{ setChartModalMediaAsset\(asset\); setChartModalOpen\(true\); \}\)\}/);
