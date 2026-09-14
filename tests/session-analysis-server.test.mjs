@@ -43,11 +43,19 @@ test('the system prompt for INITIAL differs from UPDATE and emphasizes depth/his
   assert.doesNotMatch(initial, /WHAT CHANGED/);
 });
 
-test('the system prompt for UPDATE is change-first and explicitly forbids mutating scenario probability/status', () => {
-  const update = buildSessionAnalysisSystemPrompt({ analysisType: 'update', adherence: 'balanced' }, 'English');
-  assert.match(update, /ANALYSIS UPDATE/);
-  assert.match(update, /WHAT CHANGED/);
-  assert.match(update, /must NOT evaluate or restate its probability\/status/);
+// Session / Analysis Desk AI upgrade, section 2: the old prohibition on evaluating scenario
+// probability/status during an UPDATE is removed - a normal update now assesses every supplied
+// active scenario in the same call, exactly like the explicit "Evaluate with AI" action.
+test('the system prompt for UPDATE is change-first, and evaluates active scenarios only when any are actually supplied', () => {
+  const withoutScenarios = buildSessionAnalysisSystemPrompt({ analysisType: 'update', adherence: 'balanced' }, 'English');
+  assert.match(withoutScenarios, /ANALYSIS UPDATE/);
+  assert.match(withoutScenarios, /WHAT CHANGED/);
+  assert.match(withoutScenarios, /Leave `scenarioEvaluations` empty - no active scenarios were supplied/);
+
+  const withScenarios = buildSessionAnalysisSystemPrompt({ analysisType: 'update', adherence: 'balanced', activeScenarios: [{ id: 'sc1', title: 'Bullish continuation' }] }, 'English');
+  assert.match(withScenarios, /Assess every scenario listed under "Active Session scenarios"/);
+  assert.match(withScenarios, /force 0% and status "invalidated"/);
+  assert.doesNotMatch(withScenarios, /must NOT evaluate or restate/);
 });
 
 test('the system prompt for SCENARIO_EVALUATION scopes the model to only the named scenario(s)', () => {
@@ -123,7 +131,7 @@ test('analyzeSession sends a real reasoning.effort field (and a correspondingly 
   globalThis.fetch = async (url, init) => {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     sentBody = JSON.parse(init.body);
-    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
   };
   await analyzeSession(Object.assign(validAnalysisBody(), { model: 'gpt-5.6-sol' }));
   assert.equal(sentBody.reasoning.effort, 'high');
@@ -135,7 +143,7 @@ test('analyzeSession sends a lower reasoning.effort (and a correspondingly narro
   globalThis.fetch = async (url, init) => {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     sentBody = JSON.parse(init.body);
-    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
   };
   await analyzeSession(Object.assign(validAnalysisBody(), { model: 'gpt-5.6-luna' }));
   assert.equal(sentBody.reasoning.effort, 'low');
@@ -147,7 +155,7 @@ test('analyzeSession never sends a reasoning field at all for a model it has not
   globalThis.fetch = async (url, init) => {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     sentBody = JSON.parse(init.body);
-    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
   };
   await analyzeSession(Object.assign(validAnalysisBody(), { model: 'gpt-4.1' }));
   assert.equal('reasoning' in sentBody, false);
@@ -178,16 +186,66 @@ test('validateSessionAnalysisResult clamps a scenario probability outside [0,100
 
 test('validateSessionAnalysisResult drops (not rejects the whole analysis for) a scenario evaluation targeting an id NAVRYA never asked about - never trust a model-invented scenario id', () => {
   const body = { scenarioTargets: ['real-scenario-1'] };
-  const data = validateSessionAnalysisResult({ blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'invented-id' }, { scenarioId: 'real-scenario-1' }] }, body);
+  const data = validateSessionAnalysisResult({ analysisType: 'scenario_evaluation', blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'invented-id' }, { scenarioId: 'real-scenario-1' }] }, body);
   assert.equal(data.scenarioEvaluations.length, 1);
   assert.equal(data.scenarioEvaluations[0].scenarioId, 'real-scenario-1');
 });
 
 test('validateSessionAnalysisResult accepts a scenario evaluation for a real requested scenario id', () => {
   const body = { scenarioTargets: ['real-scenario-1'] };
-  const data = validateSessionAnalysisResult({ blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'real-scenario-1' }] }, body);
+  const data = validateSessionAnalysisResult({ analysisType: 'scenario_evaluation', blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'real-scenario-1' }] }, body);
   assert.equal(data.scenarioEvaluations.length, 1);
   assert.equal(data.scenarioEvaluations[0].scenarioId, 'real-scenario-1');
+});
+
+// Session / Analysis Desk AI upgrade, section 2 fix: a normal initial/update analysis validates
+// scenarioEvaluations against the real `activeScenarios` ids sent as context, never
+// `scenarioTargets` (that field is only ever populated for the separate scenario_evaluation
+// request type) - validating against the wrong field would silently discard every evaluation a
+// normal analysis ever returns.
+test('validateSessionAnalysisResult validates a normal update/initial scenario evaluation against activeScenarios, not scenarioTargets', () => {
+  const body = { activeScenarios: [{ id: 'real-scenario-1' }] };
+  const data = validateSessionAnalysisResult({ analysisType: 'update', blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'invented-id' }, { scenarioId: 'real-scenario-1' }] }, body);
+  assert.equal(data.scenarioEvaluations.length, 1);
+  assert.equal(data.scenarioEvaluations[0].scenarioId, 'real-scenario-1');
+});
+
+test('validateSessionAnalysisResult deterministically forces an invalidated scenario evaluation to exactly 0%, regardless of what numeric value the model itself returned', () => {
+  const body = { activeScenarios: [{ id: 'sc1' }] };
+  const data = validateSessionAnalysisResult({ analysisType: 'update', blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'sc1', status: 'weakened', invalidationOccurred: true, newProbability: 35 }] }, body);
+  assert.equal(data.scenarioEvaluations[0].newProbability, 0);
+  assert.equal(data.scenarioEvaluations[0].status, 'invalidated');
+});
+
+test('validateSessionAnalysisResult calibrates a still-viable scenario proposal/evaluation probability, never leaving a meaningless single-digit percentage', () => {
+  const proposals = validateSessionAnalysisResult({ blocks: [], scenarios: [{ localKey: 's1', probability: 3 }], scenarioEvaluations: [] }, {});
+  assert.equal(proposals.scenarios[0].probability, 10);
+  const body = { activeScenarios: [{ id: 'sc1' }] };
+  const evaluations = validateSessionAnalysisResult({ analysisType: 'update', blocks: [], scenarios: [], scenarioEvaluations: [{ scenarioId: 'sc1', status: 'weakened', newProbability: 2 }] }, body);
+  assert.equal(evaluations.scenarioEvaluations[0].newProbability, 10);
+});
+
+test('validateSessionAnalysisResult drops a noteFeedback item whose noteRef was never actually sent, and keeps one that matches exactly', () => {
+  const body = { pendingNoteRefs: [{ entryId: 'e1', field: 'note', revision: 'rev1' }] };
+  const data = validateSessionAnalysisResult({
+    blocks: [], scenarios: [], scenarioEvaluations: [],
+    noteFeedback: [
+      { noteRef: { entryId: 'e1', field: 'note', revision: 'rev1' }, verdict: 'supported' },
+      { noteRef: { entryId: 'e1', field: 'note', revision: 'HALLUCINATED' }, verdict: 'supported' }
+    ]
+  }, body);
+  assert.equal(data.noteFeedback.length, 1);
+  assert.equal(data.noteFeedback[0].noteRef.revision, 'rev1');
+});
+
+test('validateSessionAnalysisResult drops a timeframeAnalyses entry referencing an image id that was never supplied', () => {
+  const body = { images: [{ id: 'img1', timeframe: '5m', dataUrl: 'data:image/png;base64,AAAA' }] };
+  const data = validateSessionAnalysisResult({
+    blocks: [], scenarios: [], scenarioEvaluations: [],
+    timeframeAnalyses: [{ imageId: 'img1', timeframe: '5m' }, { imageId: 'HALLUCINATED', timeframe: '1h' }]
+  }, body);
+  assert.equal(data.timeframeAnalyses.length, 1);
+  assert.equal(data.timeframeAnalyses[0].imageId, 'img1');
 });
 
 test('validateSessionAnalysisResult still throws for a genuinely non-object response (nothing usable to repair)', () => {
@@ -199,7 +257,7 @@ test('validateSessionAnalysisResult still throws for a genuinely non-object resp
 // --------------------------------------------------------------------------------------------
 
 test('analyzeSession returns the normalized provider data plus provider/model/usage, never fabricating usage the provider omitted (brief §40 test 11)', async () => {
-  globalThis.fetch = minimalOpenAiStub({ thesis: { headline: 'h', summary: 's' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }, null);
+  globalThis.fetch = minimalOpenAiStub({ thesis: { headline: 'h', summary: 's' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }, null);
   const result = await analyzeSession(validAnalysisBody());
   assert.equal(result.provider, 'openai');
   assert.equal(result.data.thesis.headline, 'h');
@@ -220,7 +278,7 @@ test('analyzeSession never leaks its internal payload.timeoutMs into the real re
   globalThis.fetch = async (url, init) => {
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     sentBody = JSON.parse(init.body);
-    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
   };
   await analyzeSession(validAnalysisBody());
   assert.ok(sentBody, 'the provider request must actually have been made');
@@ -235,7 +293,7 @@ test('analyzeSession gives Gemini the accepted compact schema in exactly one pro
     if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
     providerCalls += 1;
     sentBody = JSON.parse(init.body);
-    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }] } }], usageMetadata: {} }) };
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }] } }], usageMetadata: {} }) };
   };
   await analyzeSession(Object.assign(validAnalysisBody(), { provider: 'gemini', model: 'gemini-3.1-pro-preview' }));
   assert.equal(providerCalls, 1, 'schema compaction must not add a retry or a second billable analysis call');
@@ -254,6 +312,36 @@ test('analyzeSession rejects MODEL_VISION_UNSUPPORTED before ever calling the pr
   assert.equal(calls, 0, 'no provider/health call may happen once the vision check rejects');
 });
 
+// Section 3 - each supplied image is labelled with its own id/timeframe immediately before its
+// own image content block, and a legacy plain-string image still works unchanged.
+test('analyzeSession labels every supplied image with its own id/timeframe before its image content, in order', async () => {
+  let sentBody = null;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes(HEALTH_EVENT_URL)) return neutralHealthEventResponse;
+    sentBody = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ output_text: JSON.stringify({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [{ imageId: 'img1', timeframe: '5m', trend: 'up', momentum: 'steady', keyEvidence: [], uncertainty: '' }], timeframeSynthesis: 'aligned', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }) }) };
+  };
+  const body = Object.assign(validAnalysisBody(), {
+    images: [{ id: 'img1', timeframe: '5m', dataUrl: 'data:image/png;base64,AAAA' }, { id: 'img2', timeframe: '1h', dataUrl: 'data:image/png;base64,BBBB' }]
+  });
+  const result = await analyzeSession(body);
+  const content = sentBody.input[1].content;
+  assert.match(content[1].text, /Image img1.*5m/);
+  assert.equal(content[2].image_url, 'data:image/png;base64,AAAA');
+  assert.match(content[3].text, /Image img2.*1h/);
+  assert.equal(content[4].image_url, 'data:image/png;base64,BBBB');
+  assert.equal(result.data.timeframeAnalyses.length, 1);
+  assert.equal(result.data.timeframeAnalyses[0].imageId, 'img1');
+  assert.equal(result.data.timeframeSynthesis, 'aligned');
+});
+
+test('analyzeSession still accepts the legacy plain-string images array (backward compatibility)', async () => {
+  globalThis.fetch = minimalOpenAiStub({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } }, null);
+  const body = Object.assign(validAnalysisBody(), { images: ['data:image/png;base64,AAAA'] });
+  const result = await analyzeSession(body);
+  assert.equal(result.data.thesis.headline, 'h');
+});
+
 test('SESSION_ANALYSIS_VISION_SUPPORT matches the gateway\'s own per-provider vision gate (Gemini and Kimi vision-capable, DeepSeek not)', () => {
   assert.equal(SESSION_ANALYSIS_VISION_SUPPORT.openai, true);
   assert.equal(SESSION_ANALYSIS_VISION_SUPPORT.anthropic, true);
@@ -263,7 +351,7 @@ test('SESSION_ANALYSIS_VISION_SUPPORT matches the gateway\'s own per-provider vi
 });
 
 test('analyzeSession defaults to INITIAL for a missing/invalid analysisType rather than throwing', async () => {
-  globalThis.fetch = minimalOpenAiStub({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } });
+  globalThis.fetch = minimalOpenAiStub({ thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: [], blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], unresolvedItems: [], whatWouldChangeView: '', confidence: { level: 'medium', reasons: [] }, requestResponse: { requested: '', analyzed: '', answer: '', limitation: '' }, noteFeedback: [], timeframeAnalyses: [], timeframeSynthesis: '', memoryUpdate: { currentThesis: '', marketState: '', keyZones: [], importantObservations: [], recentChanges: [], watchItems: [], unresolvedQuestions: [], compactNarrative: '' } });
   const body = Object.assign(validAnalysisBody(), { analysisType: 'not_a_real_type' });
   const result = await analyzeSession(body);
   assert.equal(result.data.analysisType, 'initial');
