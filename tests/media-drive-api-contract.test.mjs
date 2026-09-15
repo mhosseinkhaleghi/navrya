@@ -3,18 +3,24 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after, before } from 'node:test';
+import sharp from 'sharp';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
+import { terminateOcrWorker } from '../server/community/media-chart-ocr.mjs';
 
 // NAVRYA Media Drive - server-canonical domain contract (server/community/routes.media.mjs,
 // server/db/repo.memory.mjs's mediaAssets/mediaAssetLinks). Covers: user-scoped Recent/My Drive
 // listing and ordering, ownership enforcement, quota accounting (no second charge on reuse), safe
 // deletion with linked assets, the explicit guarded retry-analysis endpoint, and session-derived
-// (never client-supplied) active market session. The AI extraction pipeline itself
-// (server/pattern-ai-server.mjs's analyzeMediaChart + the internal persist bridge) is covered
-// separately in tests/media-chart-analysis.test.mjs, which does not need a live Postgres/AI
-// provider either (same memory-repo precedent as every other domain test in this suite).
+// (never client-supplied) active market session. Chart-metadata detection itself is fully local
+// OCR now (server/community/media-chart-ocr.mjs, 2026-09-15 - replaced the earlier AI-vision
+// call/internal persist bridge) and runs synchronously inside these same routes - its own
+// symbol/timeframe accuracy against real chart images is covered separately, with real synthetic
+// chart fixtures, in tests/media-chart-ocr.test.mjs. The tiny 1x1 PNG_DATA_URL fixture used
+// throughout this file has no readable legend at all, so every chart asset created here honestly
+// resolves to metadataStatus 'ready' with a null symbol/timeframe - that null-safety, not
+// detection accuracy, is what this file is testing.
 
 const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
@@ -30,6 +36,7 @@ before(async () => {
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await rm(uploadsDir, { recursive: true, force: true });
+  await terminateOcrWorker();
 });
 
 async function api(method, urlPath, { body, userId, headers } = {}) {
@@ -48,18 +55,23 @@ test('a request with no session is rejected with AUTH_SESSION_REQUIRED', async (
   assert.equal(list.body.error, 'AUTH_SESSION_REQUIRED');
 });
 
-test('uploading a chart starts extraction as processing; an ordinary image is not_applicable and never analyzed', async () => {
+test('uploading a chart runs local OCR synchronously and returns a final status directly (never left stuck "processing"); an ordinary image is not_applicable and never analyzed at all', async () => {
   const user = await createUser('Uploader1');
   const chart = await api('POST', '/api/sync/media/assets', { userId: user.id, body: { dataUrl: PNG_DATA_URL, filename: 'chart.png', mimeType: 'image/png', kind: 'chart', source: 'capture' } });
   assert.equal(chart.status, 201);
   assert.equal(chart.body.kind, 'chart');
-  assert.equal(chart.body.metadataStatus, 'processing');
+  // The fixture PNG has no readable legend, so this is an honest "nothing recognized" result -
+  // 'ready' (not 'processing'/'failed') is exactly the point: local OCR completes inside this
+  // same request, so the response already carries the real, final outcome.
+  assert.equal(chart.body.metadataStatus, 'ready');
   assert.equal(chart.body.symbol, null);
+  assert.equal(chart.body.analysisProvider, 'local-ocr');
 
   const image = await api('POST', '/api/sync/media/assets', { userId: user.id, body: { dataUrl: PNG_DATA_URL, filename: 'photo.png', mimeType: 'image/png', kind: 'image', source: 'upload' } });
   assert.equal(image.status, 201);
   assert.equal(image.body.kind, 'image');
   assert.equal(image.body.metadataStatus, 'not_applicable');
+  assert.equal(image.body.analysisProvider, null, 'an ordinary image is never run through OCR at all');
 });
 
 test('Recent lists newest first and scopes to the caller; My Drive supports a text search', async () => {
@@ -146,7 +158,7 @@ test('deletion is blocked while an asset is linked, and detach=true performs a s
   assert.equal(goneRead.status, 404);
 });
 
-test('retry-analysis: refused while still processing, refused for a non-chart asset, allowed once terminal', async () => {
+test('retry-analysis: refused while genuinely in flight, refused for a non-chart asset, and re-runs local OCR end to end once terminal - returning the real final result directly, no separate follow-up call needed', async () => {
   const user = await createUser('Retrier1');
   const image = await api('POST', '/api/sync/media/assets', { userId: user.id, body: { dataUrl: PNG_DATA_URL, kind: 'image', source: 'upload' } });
   const notChart = await api('POST', `/api/sync/media/assets/${image.body.id}/retry-analysis`, { userId: user.id });
@@ -154,16 +166,37 @@ test('retry-analysis: refused while still processing, refused for a non-chart as
   assert.equal(notChart.body.error, 'NOT_A_CHART_ASSET');
 
   const chart = await api('POST', '/api/sync/media/assets', { userId: user.id, body: { dataUrl: PNG_DATA_URL, kind: 'chart', source: 'capture' } });
-  assert.equal(chart.body.metadataStatus, 'processing');
+  // Local OCR already completed synchronously inside the create call above (see the earlier
+  // test), so this simulates the one real way a chart asset can still be mid-extraction when a
+  // retry is attempted: a concurrent/overlapping request. repo.mediaAssets.markProcessing() is
+  // the same guarded transition the route itself uses.
+  await repo.mediaAssets.markProcessing(chart.body.id);
   const whileProcessing = await api('POST', `/api/sync/media/assets/${chart.body.id}/retry-analysis`, { userId: user.id });
   assert.equal(whileProcessing.status, 409);
   assert.equal(whileProcessing.body.error, 'ANALYSIS_ALREADY_IN_PROGRESS');
 
-  // Simulate a terminal 'failed' extraction the way the AI gateway's internal bridge would.
+  // Back to a real terminal state (the concurrent job the simulated 'processing' above stood in
+  // for has now genuinely finished) before proving retry is allowed once terminal.
   await repo.mediaAssets.updateAnalysis(chart.body.id, { status: 'failed', errorCode: 'EXTRACTION_FAILED' });
   const retried = await api('POST', `/api/sync/media/assets/${chart.body.id}/retry-analysis`, { userId: user.id });
   assert.equal(retried.status, 200);
-  assert.equal(retried.body.metadataStatus, 'processing');
+  // Re-reads the real stored file off disk and re-runs OCR synchronously - a terminal status
+  // comes back directly, never left at 'processing' for the client to poll.
+  assert.equal(retried.body.metadataStatus, 'ready');
+  assert.equal(retried.body.analysisProvider, 'local-ocr');
+});
+
+test('the retired AI-gateway internal analysis bridge no longer exists - detection is fully local now, with no server-to-server hop for it at all', async () => {
+  // No handler in the /internal router matches this path any more, so Express falls through to
+  // the app's next mounted middleware - requireAuth() - which rejects the unauthenticated request
+  // before any route-matching for it could even happen. That fallthrough (never a real response
+  // from a still-live handler) is exactly what proves this internal route is genuinely gone.
+  const response = await fetch(`${baseUrl}/internal/media/assets/some-id/analysis`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ready' })
+  });
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.error, 'AUTH_SESSION_REQUIRED');
 });
 
 test('active market session is derived from a real, owned trading session - never trusted from the client, and silently ignored when foreign/invalid', async () => {
@@ -184,37 +217,28 @@ test('active market session is derived from a real, owned trading session - neve
   assert.equal(withForeignSession.body.sessionId, null);
 });
 
-test('internal analysis bridge: normalizes symbol/timeframe with the real Instrument Catalog/TIMEFRAMES rules, never trusts a raw string, and guards against a stale/duplicate write', async () => {
-  const user = await createUser('InternalBridge1');
-  const chart = await api('POST', '/api/sync/media/assets', { userId: user.id, body: { dataUrl: PNG_DATA_URL, kind: 'chart', source: 'capture' } });
-  assert.equal(chart.body.metadataStatus, 'processing');
+test('end to end through the real HTTP endpoint: a real synthetic chart image is stored, OCR\'d, and normalized in one request - the exact real-world path, not just the OCR module in isolation', async () => {
+  const user = await createUser('EndToEnd1');
+  const width = 1200, height = 700;
+  const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">`
+    + `<rect width="100%" height="100%" fill="#0b0e11"/><rect x="0" y="0" width="100%" height="40" fill="#131722"/>`
+    + `<text x="20" y="26" font-family="Arial" font-size="16" fill="#d1d4dc">1m  5m  15m  1h  4h  1D</text>`
+    + `<text x="14" y="70" font-family="Arial" font-size="22" font-weight="bold" fill="#d1d4dc">BINANCE:BTCUSDT, 15</text>`
+    + `</svg>`;
+  const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+  const chartDataUrl = 'data:image/png;base64,' + buffer.toString('base64');
 
-  // An unrecognized symbol/timeframe must be stored as null/unknown, never as the raw text.
-  const invalid = await fetch(`${baseUrl}/internal/media/assets/${chart.body.id}/analysis`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: 'ready', isTradingChart: true, symbol: 'not a real symbol!!', timeframe: '17m', confidence: 0.8, provider: 'openai', model: 'gpt-5.6-luna' })
-  });
-  assert.equal(invalid.status, 200);
-  const invalidBody = await invalid.json();
-  assert.equal(invalidBody.ok, true);
-  assert.equal(invalidBody.asset.symbol, null);
-  assert.equal(invalidBody.asset.timeframe, null);
+  const chart = await api('POST', '/api/sync/media/assets', { userId: user.id, body: { dataUrl: chartDataUrl, kind: 'chart', source: 'capture' } });
+  assert.equal(chart.status, 201);
+  assert.equal(chart.body.metadataStatus, 'ready');
+  assert.equal(chart.body.symbol, 'BTCUSDT');
+  assert.equal(chart.body.timeframe, '15m');
+  assert.equal(chart.body.isTradingChart, true);
+  assert.ok(chart.body.confidence > 0.5);
+  assert.equal(chart.body.analysisProvider, 'local-ocr');
 
   const read = await api('GET', `/api/sync/media/assets/${chart.body.id}`, { userId: user.id });
-  assert.equal(read.body.metadataStatus, 'ready');
-
-  // Concurrency guard: the asset is no longer 'processing', so a second (stale/duplicate) result
-  // must never silently overwrite the first one.
-  const stale = await fetch(`${baseUrl}/internal/media/assets/${chart.body.id}/analysis`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: 'ready', isTradingChart: true, symbol: 'ETHUSDT', timeframe: '1h', confidence: 0.9 })
-  });
-  assert.equal(stale.status, 200);
-  const staleBody = await stale.json();
-  assert.equal(staleBody.ok, false, 'a result for an asset that is no longer processing must be refused, never silently applied');
-
-  const stillFirstResult = await api('GET', `/api/sync/media/assets/${chart.body.id}`, { userId: user.id });
-  assert.equal(stillFirstResult.body.symbol, null, 'the stale write must not have overwritten anything');
+  assert.equal(read.body.symbol, 'BTCUSDT', 'the real, persisted row must carry the same result, not just the create response');
 });
 
 test('private upload ownership: the raw /uploads/media/... file itself requires a real session AND the real owner - a stranger and an anonymous caller are both denied', async () => {

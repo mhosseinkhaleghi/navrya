@@ -1,12 +1,16 @@
 // NAVRYA Media Drive - the ONE client-side API surface for the server-canonical Media Asset
-// domain (server/community/routes.media.mjs + server/pattern-ai-server.mjs's /api/media/
-// analyze-chart). Every caller (MediaPicker.jsx, liveSessionView.jsx's capture flows, and any
-// future Trade/Pattern/Strategy attachment flow) goes through these functions rather than calling
-// fetch() directly, so there is exactly one request/response shape for this domain. Plain relative
-// fetch() paths - /api/sync/* is same-origin proxied to the Community API, /api/media/* is
-// same-origin proxied to the AI gateway (same convention session-analysis-client.js already uses
-// for /api/sessions/*). CSRF/session cookies are attached automatically by
+// domain (server/community/routes.media.mjs). Every caller (MediaPicker.jsx, liveSessionView.jsx's
+// capture flows, and any future Trade/Pattern/Strategy attachment flow) goes through these
+// functions rather than calling fetch() directly, so there is exactly one request/response shape
+// for this domain. Plain relative fetch() paths - /api/sync/* is same-origin proxied to the
+// Community API. CSRF/session cookies are attached automatically by
 // public/pages/shared/csrf-fetch-patch.js - no header wiring needed here.
+//
+// Chart-metadata detection (symbol/timeframe) is fully local server-side OCR now
+// (server/community/media-chart-ocr.mjs, 2026-09-15 - replaced the earlier AI-vision call) and
+// runs synchronously inside createAsset()'s own request - there is no separate "analyze" call for
+// this client to make any more; a newly created chart asset's response already carries its final
+// metadataStatus/symbol/timeframe.
 
 async function readJson(response) {
   return response.json().catch(() => ({}));
@@ -47,25 +51,6 @@ export async function createAsset({ dataUrl, filename, mimeType, kind, source, s
   const body = await readJson(response);
   if (!response.ok) return { ok: false, error: body.error || 'MEDIA_UPLOAD_FAILED' };
   return { ok: true, asset: body };
-}
-
-// Fire-and-awaited by the caller right after createAsset() for a 'chart' kind asset - the AI
-// gateway persists the result server-side itself (server/pattern-ai-server.mjs ->
-// /internal/media/assets/:id/analysis); this function's own return value is only used to update
-// the picker's UI immediately, never as the source of truth for a later reload.
-export async function analyzeChart({ mediaAssetId, imageDataUrl, sessionId, provider, model, apiKey }) {
-  let response;
-  try {
-    response = await fetch('/api/media/analyze-chart', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mediaAssetId, imageDataUrl, sessionId: sessionId || undefined, provider, model, apiKey: apiKey || undefined })
-    });
-  } catch (_) {
-    return { ok: false, error: 'NETWORK_ERROR' };
-  }
-  const body = await readJson(response);
-  if (!response.ok) return { ok: false, error: body.error || 'MEDIA_ANALYSIS_FAILED', status: response.status };
-  return { ok: true, asset: body.data, provider: body.provider, model: body.model, usage: body.usage };
 }
 
 export async function retryAnalysis(id) {

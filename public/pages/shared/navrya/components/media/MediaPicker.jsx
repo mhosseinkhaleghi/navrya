@@ -3,7 +3,7 @@ import { Icon } from '../core/Icon.jsx';
 import { Button } from '../forms/Button.jsx';
 import { AnalyzingImageIcon } from '../feedback/AnalyzingImageIcon.jsx';
 import {
-  listRecentAssets, listMyDriveAssets, getAsset, createAsset, analyzeChart, fetchStorageUsage, fileToDataUrl
+  listRecentAssets, listMyDriveAssets, getAsset, createAsset, fetchStorageUsage, fileToDataUrl
 } from './mediaDriveClient.js';
 
 // NAVRYA Media Drive - the ONE reusable chart/image picker behind every personal-media attachment
@@ -212,18 +212,13 @@ export function MediaPicker({ open, lang = 'en', intent = 'generic', initialAsse
     try {
       const dataUrl = await fileToDataUrl(file);
       const kind = intent === 'generic' ? 'image' : 'chart';
+      // NAVRYA Media Drive: chart-metadata detection is fully local OCR now, run synchronously
+      // server-side inside this very call (server/community/media-chart-ocr.mjs) - the response
+      // already carries the final symbol/timeframe/metadataStatus, no separate analyze step.
       const result = await createAsset({ dataUrl, filename: file.name, mimeType: file.type, kind, source: 'upload', sessionId });
       if (!result.ok) { setUploadError(tr(lang, 'uploadFailed')); setUploading(false); return; }
       setSelected(result.asset);
       setRecent((prev) => [result.asset].concat(prev));
-      if (kind === 'chart') {
-        const ai = window.TradeJournalAISettingsStore;
-        analyzeChart({
-          mediaAssetId: result.asset.id, imageDataUrl: dataUrl, sessionId,
-          provider: ai ? ai.activeProvider() : undefined, model: ai ? ai.activeModel() : undefined,
-          apiKey: ai ? ai.getKey(ai.activeProvider()) : undefined
-        }).then((analysis) => { if (analysis.ok && analysis.asset) setSelected((prev) => (prev && prev.id === analysis.asset.id ? analysis.asset : prev)); }).catch(() => {});
-      }
     } catch (_) {
       setUploadError(tr(lang, 'uploadFailed'));
     } finally {

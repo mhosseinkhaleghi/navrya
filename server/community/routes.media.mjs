@@ -1,11 +1,38 @@
 import express from 'express';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { asyncHandler, ApiError } from './errors.mjs';
 import { decodedByteLength } from '../storage/storage.mjs';
 import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provider.mjs';
 import { assertStorageAvailable, recordStorageObject } from '../commercial/storage-service.mjs';
+import { detectChartMetadata } from './media-chart-ocr.mjs';
 
 const KINDS = new Set(['chart', 'image']);
 const LINK_DOMAINS = new Set(['sessionEntry', 'trade', 'pattern', 'strategy']);
+
+function bufferFromDataUrl(dataUrl) {
+  const match = /^data:[^;]+;base64,(.+)$/.exec(dataUrl || '');
+  return match ? Buffer.from(match[1], 'base64') : null;
+}
+
+// Runs the fully local OCR pipeline (server/community/media-chart-ocr.mjs) and persists whatever
+// it honestly found - guarded so a genuine crash in the OCR module itself (never expected, since
+// that module already catches its own decode/recognize failures) still leaves the asset in a
+// real, visible 'failed' state instead of stuck 'processing' forever. Synchronous within the
+// same request - local OCR on the small, pre-cropped legend region typically completes in well
+// under a second, so there is no async "processing -> poll later" round trip to manage any more.
+async function runChartDetection(repo, assetId, imageBuffer) {
+  let outcome;
+  try {
+    outcome = await detectChartMetadata(imageBuffer);
+  } catch (_) {
+    outcome = { status: 'failed', isTradingChart: null, symbol: null, timeframe: null, confidence: null, errorCode: 'OCR_FAILED' };
+  }
+  return repo.mediaAssets.updateAnalysis(assetId, {
+    status: outcome.status, isTradingChart: outcome.isTradingChart, symbol: outcome.symbol, timeframe: outcome.timeframe,
+    confidence: outcome.confidence, provider: 'local-ocr', model: 'tesseract.js', errorCode: outcome.errorCode
+  });
+}
 
 function assetResponse(asset, linkCount) {
   return {
@@ -84,28 +111,41 @@ export function router(repo, uploadsDir) {
       if (session) { verifiedSessionId = session.id; activeMarketSession = session.market || null; }
     }
 
-    const asset = await repo.mediaAssets.create({
+    let asset = await repo.mediaAssets.create({
       userId: req.currentUser.id, storageObjectId: storageObject.id, url: stored.url, kind: resolvedKind,
       originalFilename: typeof filename === 'string' ? filename.slice(0, 200) : null, mimeType: stored.mimeType || mimeType || null,
       source: source === 'capture' ? 'capture' : 'upload', sessionId: verifiedSessionId, activeMarketSession,
-      // Only a real chart ever gets AI extraction (step 1 of the extraction contract) - an
-      // ordinary image is 'not_applicable' and never billed/analyzed.
+      // Only a real chart ever gets metadata extraction (step 1 of the extraction contract) - an
+      // ordinary image is 'not_applicable' and never analyzed at all.
       metadataStatus: resolvedKind === 'chart' ? 'processing' : 'not_applicable'
     });
+    // Local OCR (server/community/media-chart-ocr.mjs) - no AI provider, no wallet, no network
+    // call, so this runs right here, synchronously, before the response - the trader gets the
+    // real result immediately rather than polling a separate "processing" state.
+    if (resolvedKind === 'chart') {
+      const imageBuffer = bufferFromDataUrl(dataUrl);
+      const updated = imageBuffer ? await runChartDetection(repo, asset.id, imageBuffer) : null;
+      if (updated) asset = updated;
+    }
     res.status(201).json(assetResponse(asset, 0));
   }));
 
   // Explicit, user-triggered retry only - refused (409) while an extraction is already in flight
-  // (metadataStatus==='processing'), so a duplicate concurrent job can never start. The client is
-  // responsible for calling the AI gateway's /api/media/analyze-chart again after this succeeds
-  // (this route only flips the status; it holds no AI provider credentials itself).
+  // (metadataStatus==='processing'), so a duplicate concurrent job can never start. Re-reads the
+  // already-stored file straight off disk (never re-uploaded/re-charged) and re-runs the same
+  // local OCR pipeline synchronously, returning the final result directly - no separate follow-up
+  // call for the client to make.
   app.post('/assets/:id/retry-analysis', asyncHandler(async (req, res) => {
     const asset = await loadOwnedAsset(repo, req.params.id, req.currentUser.id);
     if (asset.kind !== 'chart') throw new ApiError(400, 'NOT_A_CHART_ASSET');
     if (asset.metadataStatus === 'processing') throw new ApiError(409, 'ANALYSIS_ALREADY_IN_PROGRESS');
-    const updated = await repo.mediaAssets.markProcessing(asset.id);
-    if (!updated) throw new ApiError(409, 'ANALYSIS_ALREADY_IN_PROGRESS');
-    res.json(assetResponse(updated));
+    const marked = await repo.mediaAssets.markProcessing(asset.id);
+    if (!marked) throw new ApiError(409, 'ANALYSIS_ALREADY_IN_PROGRESS');
+    const storageObject = await repo.storageObjects.get(asset.storageObjectId);
+    let imageBuffer = null;
+    try { imageBuffer = storageObject ? await readFile(path.join(uploadsDir, storageObject.objectKey)) : null; } catch (_) { imageBuffer = null; }
+    const updated = imageBuffer ? await runChartDetection(repo, asset.id, imageBuffer) : await repo.mediaAssets.updateAnalysis(asset.id, { status: 'failed', errorCode: 'SOURCE_FILE_MISSING' });
+    res.json(assetResponse(updated || marked));
   }));
 
   // Creates a REFERENCE only - never re-uploads bytes or re-checks/re-charges storage quota. This

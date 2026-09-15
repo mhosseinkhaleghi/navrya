@@ -8,7 +8,7 @@ import { Select } from '../public/pages/shared/navrya/components/forms/Select.js
 import { AiMagicFill } from '../public/pages/shared/navrya/components/feedback/AiMagicFill.jsx';
 import { useAiFieldFill } from '../public/pages/shared/navrya/hooks/useAiFieldFill.js';
 import { MediaPicker } from '../public/pages/shared/navrya/components/media/MediaPicker.jsx';
-import { createAsset as createMediaAsset, analyzeChart as analyzeMediaChart, fileToDataUrl, linkAsset as linkMediaAsset } from '../public/pages/shared/navrya/components/media/mediaDriveClient.js';
+import { createAsset as createMediaAsset, fileToDataUrl, linkAsset as linkMediaAsset } from '../public/pages/shared/navrya/components/media/mediaDriveClient.js';
 import * as sessionsAdapter from './sessionsAdapter.js';
 import * as workspaceBoard from './analysisWorkspaceBoard.js';
 import * as panelStore from './analysisWorkspacePanelStore.js';
@@ -2453,28 +2453,22 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
   }
 
   // Shared by all three toolbar actions - captures a frame (or returns null on denial/failure,
-  // never throwing - captureChartScreenshot already guarantees that), stores it as a new 'chart'
-  // Media Asset, and fires exactly one bounded AI extraction call for it. Registration time/
-  // ownership/active-market-session are all set server-side (server/community/routes.media.mjs);
-  // this function never invents or sends any of those itself. Returns the created asset, or null
-  // when capture failed/was denied/unsupported (the caller still proceeds - see each handler).
+  // never throwing - captureChartScreenshot already guarantees that) and stores it as a new
+  // 'chart' Media Asset. Registration time/ownership/active-market-session are all set
+  // server-side (server/community/routes.media.mjs); this function never invents or sends any of
+  // those itself. Chart-metadata detection (symbol/timeframe) is fully local OCR now
+  // (server/community/media-chart-ocr.mjs, 2026-09-15 - replaced the earlier AI-vision call) and
+  // runs synchronously inside createMediaAsset()'s own request - the returned asset already
+  // carries its final metadataStatus/symbol/timeframe, no separate follow-up call needed. Returns
+  // the created asset, or null when capture failed/was denied/unsupported (the caller still
+  // proceeds - see each handler).
   async function captureAndStoreAsset() {
     const file = await captureChartScreenshot();
     if (!file) return null;
     let dataUrl;
     try { dataUrl = await fileToDataUrl(file); } catch (_) { return null; }
     const result = await createMediaAsset({ dataUrl, filename: file.name, mimeType: file.type, kind: 'chart', source: 'capture', sessionId: session.id });
-    if (!result.ok) return null;
-    const settings = window.TradeJournalAISettingsStore;
-    const provider = settings ? settings.activeProvider() : undefined;
-    // Fire-and-forget from this function's own perspective - the AI gateway persists the real
-    // result server-side regardless of whether anything here is still mounted to see it; the
-    // Media Picker (if open) polls the asset itself to reflect the outcome live.
-    analyzeMediaChart({
-      mediaAssetId: result.asset.id, imageDataUrl: dataUrl, sessionId: session.id,
-      provider, model: settings ? settings.activeModel() : undefined, apiKey: settings ? settings.getKey(provider) : undefined
-    }).catch(() => {});
-    return result.asset;
+    return result.ok ? result.asset : null;
   }
 
   async function handleScreenshotClick() {
