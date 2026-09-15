@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import sharp from 'sharp';
 import test, { after } from 'node:test';
 import { detectChartMetadata, terminateOcrWorker } from '../server/community/media-chart-ocr.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURES_DIR = path.join(__dirname, 'fixtures', 'media-chart-ocr');
 
 // NAVRYA Media Drive - fully local chart-metadata detection (2026-09-15, replacing the earlier
 // AI-vision call - real-user feedback: too slow, inconsistent, and burned tokens for a small,
@@ -253,6 +259,31 @@ test('extra indicator-overlay legend lines packed with bare numbers never contam
   const image = await sharp(Buffer.from(svg)).png().toBuffer();
   const result = await detectChartMetadata(image);
   assert.equal(result.timeframe, '5m', 'must read the real legend\'s own interval, never a stray "5" out of an indicator overlay line');
+});
+
+// Real production files (2026-09-15, fourth pass) - actual PNGs the user captured through the
+// real app and downloaded via Media Drive's own Download button, not a synthetic reproduction.
+// Found the actual remaining real bug this way: raw OCR on real-gold-1h-oanda.png reads
+// "...Dollar: 1h-OANDA (c) (c) 04,281.545..." - the "·" separator between the interval and the
+// exchange vanished ENTIRELY (no dash, no space), fusing them into one glued token "1h-OANDA" that
+// matched nothing on its own, since both '-' and ':' are kept as valid instrument-code characters.
+// Fixed by also offering a token's own dash/colon-split pieces as fallback candidates. These two
+// fixtures are the real, ground-truth regression test for that fix - not a guess at what a real
+// capture might look like.
+test('real production file: real-gold-1h-oanda.png - a genuine capture where OCR fused the interval and exchange into one token ("1h-OANDA"), the actual bug this module was fixed for', async () => {
+  const buffer = await readFile(path.join(FIXTURES_DIR, 'real-gold-1h-oanda.png'));
+  const result = await detectChartMetadata(buffer);
+  assert.equal(result.symbol, 'GOLD');
+  assert.equal(result.timeframe, '1h');
+  assert.equal(result.exchange, 'OANDA');
+});
+
+test('real production file: real-bitcoin-1h-binance.png - a second genuine capture, confirming the fix generalizes beyond the one fixture it was found from', async () => {
+  const buffer = await readFile(path.join(FIXTURES_DIR, 'real-bitcoin-1h-binance.png'));
+  const result = await detectChartMetadata(buffer);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '1h');
+  assert.equal(result.exchange, 'Binance');
 });
 
 test('a corrupt/undecodable buffer fails honestly as "unavailable", never throwing past this module or hanging', async () => {

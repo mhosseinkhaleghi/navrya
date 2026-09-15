@@ -218,7 +218,21 @@ export async function detectChartMetadata(imageBuffer) {
     // (candidateExchange, the OHLC-region guards below). Dropping any token with no alnum
     // character at all removes exactly that noise - a real symbol/timeframe/exchange token always
     // contains at least one letter or digit, so this can never drop a genuine candidate.
-    const tokens = line.split(/[^A-Za-z0-9:._-]+/).map((w) => w.trim()).filter((w) => w && /[A-Za-z0-9]/.test(w));
+    const rawTokens = line.split(/[^A-Za-z0-9:._-]+/).map((w) => w.trim()).filter((w) => w && /[A-Za-z0-9]/.test(w));
+    // A real, reproduced OCR artifact (found via an actual downloaded production file, not a
+    // guess): the "·" separator between the interval and the exchange sometimes vanishes
+    // ENTIRELY - no dash, no space, nothing - fusing them into one glued-together token like
+    // "1h-OANDA" (real raw OCR output: "...Dollar: 1h-OANDA © © O4,281.545..."). Since '-'/':' are
+    // both kept as valid instrument-code characters, that whole blob never matches anything on its
+    // own. Every token that contains an internal '-' or ':' is also offered, split apart, as
+    // ADDITIONAL candidates right after itself - a real ticker containing one (e.g. "BRK-B") still
+    // matches correctly as the whole, un-split token first (tokens are always scanned in order, and
+    // symbol/timeframe are each claimed on FIRST match), so this only ever adds a fallback
+    // interpretation, never removes the original one.
+    const tokens = rawTokens.flatMap((token) => {
+      const parts = token.split(/[-:]/).filter(Boolean);
+      return parts.length > 1 ? [token, ...parts] : [token];
+    });
     // A real legend's own OHLC readout always starts with a token shaped like "O<digits>" (the
     // Open price glued directly to its own "O" label, e.g. "O76,930.00" - real, evidenced by every
     // reference capture this module has been calibrated against) - tokens from that point on are
