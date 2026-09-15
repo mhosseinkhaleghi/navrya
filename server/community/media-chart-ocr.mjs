@@ -20,6 +20,17 @@
 // screenshot (browser automation is out of scope here) - if real captures show the legend
 // slightly outside this box, CROP is the one place to retune it.
 //
+// 2026-09-15 real-production fix: a live capture showed the symbol ("BITCOIN") recognized
+// correctly while the timeframe stayed unknown. The parsing below originally only scanned OCR's
+// FIRST non-blank line, assuming the real legend always prints "SYMBOL, INTERVAL" as one line the
+// way the synthetic test fixture does - but TradingView's own raw interval code (see
+// TV_RAW_INTERVAL_TO_TIMEFRAME below) is exactly what a real OHLC readout row also starts with
+// ("15  O 43,251.00 H..."), on a line separate from the symbol above it. detectChartMetadata()
+// below now scans every line in the crop and trusts a bare numeric interval code either right
+// after the symbol on its own line (the single-line layout) or leading a different line entirely
+// (the two-line layout) - still never a bare number found anywhere else, which is what keeps the
+// original OHLC-price false positive (a lone "60" out of "O 60,120.5 H...") rejected.
+//
 // Contract preserved from the retired AI version: isTradingChart/symbol/timeframe/confidence
 // only, null/unknown whenever nothing was confidently read - this module never guesses a value
 // that was not actually recognized against the real Instrument Catalog / TIMEFRAMES rules.
@@ -52,7 +63,7 @@ const CACHE_DIR = path.join(os.tmpdir(), 'navrya-tessdata-cache');
 // that whole class of false match. Generous on both axes - cheap insurance against a slightly
 // different real-world position - while still excluding the candlesticks themselves, which is
 // what makes this both fast and resistant to an unrelated number deep in the chart body.
-const CROP = { topPct: 0.05, heightPct: 0.14, widthPct: 0.6 };
+const CROP = { topPct: 0.05, heightPct: 0.2, widthPct: 0.6 };
 // A real ticker (BTCUSDT, XAUUSD, EURUSD...) is always at least this many characters - the
 // toolbar's own timeframe buttons (1M, 5M, 15M, 1H, 4H, 1D) are all shorter, so this alone
 // rejects that entire false-positive class even if the crop above ever includes a sliver of it.
@@ -144,33 +155,59 @@ export async function detectChartMetadata(imageBuffer) {
 
   const pageConfidence = Number(recognized && recognized.data && recognized.data.confidence);
   const rawText = (recognized && recognized.data && recognized.data.text) || '';
-  // Only the FIRST non-blank OCR line, deliberately - TradingView's own legend always draws the
-  // symbol+interval as its own first line, with any OHLC value readout (when the widget shows
-  // one) on a SEPARATE line right below it. A real, reproduced false positive during tuning: a
-  // whole-region token scan picked up a plain "60" out of an OHLC price line and misread it as
-  // the RAW interval code for "1h" - restricting to the legend's own first line avoids that whole
-  // class of contamination instead of relying on crop-height pixel-tuning alone.
-  // ':' is deliberately kept OUT of the split/separator class - "BINANCE:BTCUSDT" survives as one
-  // token exactly as printed, which is what candidateSymbol()'s own exchange-prefix strip expects.
-  // (An earlier version also concatenated adjacent token pairs to guard against font-kerning
-  // splits that never actually occurred in practice - dropped after it produced its own false
-  // positive, joining an unrelated price token to a following stray letter into a string that
-  // technically passed the symbol pattern; seen in this module's own test suite.)
-  const firstLine = rawText.split(/\r?\n/).map((line) => line.trim()).find((line) => line.length > 0) || '';
-  const tokens = firstLine.split(/[^A-Za-z0-9:._-]+/).map((w) => w.trim()).filter(Boolean);
+  // Every non-blank OCR line is scanned, not just the first - a REAL TradingView legend (unlike
+  // this module's earlier assumption, written before any live-production evidence existed) does
+  // NOT reliably put "SYMBOL, INTERVAL" on one single line: the symbol/description often sits on
+  // its own first line, with the interval code printed as the LEADING token of the OHLC readout
+  // line right below it (e.g. "15  O 43,251.00 H 43,500.00 L ..."). Restricting to line 1 alone
+  // (the previous design) silently dropped that second line's interval entirely - confirmed by a
+  // real production capture where the symbol ("BITCOIN") was recognized correctly but the
+  // timeframe never was. ':' is deliberately kept OUT of the split/separator class -
+  // "BINANCE:BTCUSDT" survives as one token exactly as printed, which is what candidateSymbol()'s
+  // own exchange-prefix strip expects.
+  const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
 
   let symbol = null;
   let safeTimeframe = null;
   let unsafeTimeframe = null;
-  for (const token of tokens) {
-    if (!symbol) symbol = candidateSymbol(token);
-    const tf = candidateTimeframe(token);
-    if (tf && tf.safe && !safeTimeframe) safeTimeframe = tf.value;
-    else if (tf && !tf.safe && !unsafeTimeframe) unsafeTimeframe = tf.value;
+  for (const line of lines) {
+    const tokens = line.split(/[^A-Za-z0-9:._-]+/).map((w) => w.trim()).filter(Boolean);
+    // Found first so a same-line timeframe token can check adjacency to it below - real legends
+    // print "EXCHANGE:SYMBOL, INTERVAL" as one line (interval is the token right after the
+    // symbol), while a real OHLC readout row prints the interval as that ENTIRE line's own first
+    // token instead (e.g. "15  O 43,251.00 H..."), with the symbol on a separate line above it -
+    // both real, seen layouts, so both are recognized.
+    let symbolIndexInLine = -1;
+    if (!symbol) {
+      tokens.forEach((token, index) => {
+        if (symbolIndexInLine === -1) {
+          const candidate = candidateSymbol(token);
+          if (candidate) { symbol = candidate; symbolIndexInLine = index; }
+        }
+      });
+    }
+    tokens.forEach((token, index) => {
+      const tf = candidateTimeframe(token);
+      if (!tf) return;
+      if (tf.safe) {
+        if (!safeTimeframe) safeTimeframe = tf.value;
+        return;
+      }
+      // A bare numeric raw code (e.g. "60", "240") is shape-identical to a fragment an OCR'd OHLC
+      // price readout can equally produce ("O 60,120.5 H..." tokenizes to a lone "60" once the
+      // comma splits it - a real, reproduced false positive this module was hardened against, see
+      // this module's own test suite). Requiring it to either lead its own line, or sit directly
+      // after the symbol on the SAME line, is what still rejects that exact case (there, "O"
+      // leads the line and the symbol is on a different line entirely) while covering both real
+      // legend layouts above.
+      const leadsItsOwnLine = index === 0;
+      const followsSymbolOnSameLine = symbolIndexInLine !== -1 && index === symbolIndexInLine + 1;
+      if ((leadsItsOwnLine || followsSymbolOnSameLine) && !unsafeTimeframe) unsafeTimeframe = tf.value;
+    });
   }
-  // A letter-suffixed label (15m/1h/1D...) is trusted on its own; a bare numeric raw code (which
-  // an OCR'd price fragment can equally produce) is only trusted once a real symbol was ALSO
-  // found on the same legend line - see candidateTimeframe()'s own comment.
+  // A letter-suffixed label (15m/1h/1D...) is trusted anywhere it appears; a bare numeric raw code
+  // is only trusted once a real symbol was ALSO found somewhere in the crop - see
+  // candidateTimeframe()'s own comment - and it satisfied one of the two positional guards above.
   const timeframe = safeTimeframe || (symbol ? unsafeTimeframe : null);
 
   const matched = Boolean(symbol || timeframe);

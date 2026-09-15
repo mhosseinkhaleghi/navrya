@@ -101,6 +101,35 @@ test('an exchange-prefixed symbol ("EXCHANGE:CODE") is normalized to the plain i
   assert.doesNotMatch(result.symbol, /:/);
 });
 
+// Real production bug fixed 2026-09-15: a live capture recognized the symbol ("BITCOIN") but not
+// the timeframe. Root cause - unlike this suite's earlier single-line fixture, a real TradingView
+// legend can print the symbol/description on its OWN first line, with the raw interval code
+// leading the OHLC readout line right below it, instead of comma-joined with the symbol. This
+// reproduces that exact two-line layout to prove detection now covers it too.
+test('reads the timeframe even when it is NOT on the same line as the symbol - the interval leading a separate OHLC line below it, as a real capture can look', async () => {
+  const width = 1200, height = 700;
+  const svg = `
+  <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="#0b0e11"/>
+    <rect x="0" y="0" width="100%" height="40" fill="#131722"/>
+    <text x="20" y="26" font-family="Arial" font-size="16" fill="#d1d4dc">1m  5m  15m  1h  4h  1D</text>
+    <text x="14" y="70" font-family="Arial" font-size="22" font-weight="bold" fill="#d1d4dc">BINANCE:BTCUSDT</text>
+    <text x="14" y="96" font-family="Arial" font-size="14" fill="#787b86">15  O 43,251.00 H 43,500.00 L 43,100.00 C 43,300.00</text>
+    ${Array.from({ length: 40 }).map((_, i) => {
+      const x = 100 + i * 26;
+      const up = i % 2 === 0;
+      const bodyTop = 300 + (Math.sin(i) * 80);
+      const bodyH = 40 + (i % 5) * 8;
+      return `<rect x="${x}" y="${bodyTop}" width="10" height="${bodyH}" fill="${up ? '#26a69a' : '#ef5350'}"/>`;
+    }).join('\n')}
+  </svg>`;
+  const image = await sharp(Buffer.from(svg)).png().toBuffer();
+  const result = await detectChartMetadata(image);
+  assert.equal(result.symbol, 'BTCUSDT');
+  assert.equal(result.timeframe, '15m');
+  assert.equal(result.isTradingChart, true);
+});
+
 test('a corrupt/undecodable buffer fails honestly as "unavailable", never throwing past this module or hanging', async () => {
   const result = await detectChartMetadata(Buffer.from('not a real image'));
   assert.equal(result.status, 'unavailable');
