@@ -170,6 +170,91 @@ test('timeframe matching against this app\'s own human labels (1D/4h/1W...) is c
   assert.equal(result.timeframe, '4h');
 });
 
+// Real reference captures the user supplied (2026-09-15, second pass): four screenshots of the
+// SAME app-embedded widget at four different real intervals. Proved a real, reproduced bug: the
+// legend's "Description" is regularly TWO tokens ("Bitcoin" / "TetherUS"), so an interval shown as
+// TradingView's own bare numeric code (not this app's own letter-suffixed label - real evidence:
+// "5" for 5-minute, "30" for 30-minute, but "1h"/"1D" ARE shown letter-suffixed) was never actually
+// adjacent to the SYMBOL token alone, only to the full two-token description - the earlier
+// "immediately after the symbol" adjacency check silently failed on every one of these real
+// captures. This full-widget fixture (small text, real toolbar, real legend format) reproduces
+// each of the four real captures at their own real interval to prove the fix.
+function realWidgetChart({ legend, toolbar = 'BTCUSD1   1m  5m  30m  1h  4h' } = {}) {
+  const width = 1270, height = 651;
+  const svg = `
+  <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="#131722"/>
+    <rect x="0" y="0" width="100%" height="34" fill="#1e222d"/>
+    <text x="10" y="22" font-family="Arial" font-size="13" fill="#d1d4dc">${toolbar}</text>
+    <text x="10" y="58" font-family="Arial" font-size="13" fill="#d1d4dc">${legend}</text>
+    <text x="10" y="80" font-family="Arial" font-size="11" fill="#787b86">Vol &#183; BTC 265</text>
+    ${Array.from({ length: 60 }).map((_, i) => {
+      const x = 60 + i * 20;
+      const up = i % 2 === 0;
+      const bodyTop = 300 + (Math.sin(i) * 80);
+      const bodyH = 40 + (i % 5) * 8;
+      return `<rect x="${x}" y="${bodyTop}" width="8" height="${bodyH}" fill="${up ? '#26a69a' : '#ef5350'}"/>`;
+    }).join('\n')}
+  </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+test('real reference capture #1 (1h, safe letter-suffixed path): "Bitcoin / TetherUS · 1h · Binance ..."', async () => {
+  const image = await realWidgetChart({ legend: 'Bitcoin / TetherUS &#183; 1h &#183; Binance   O76,984.05 H77,054.64 L76,892.01 C76,892.02 -92.03 (-0.12%)' });
+  const result = await detectChartMetadata(image);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '1h');
+  assert.equal(result.exchange, 'Binance');
+});
+
+test('real reference capture #2 (bare "5", unsafe path - the actual real bug: two description tokens sit between the symbol and the interval): "Bitcoin / TetherUS · 5 · Binance ..."', async () => {
+  const image = await realWidgetChart({ legend: 'Bitcoin / TetherUS &#183; 5 &#183; Binance   O77,032.63 H77,042.01 L76,892.01 C76,895.25 -137.38 (-0.18%)', toolbar: 'BTCUSD1   1m  5m  30m  1h' });
+  const result = await detectChartMetadata(image);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '5m');
+  assert.equal(result.exchange, 'Binance');
+});
+
+test('real reference capture #3 (1D, safe letter-suffixed path): "Bitcoin / TetherUS · 1D · Binance ..."', async () => {
+  const image = await realWidgetChart({ legend: 'Bitcoin / TetherUS &#183; 1D &#183; Binance   O78,189.20 H78,250.46 L76,703.59 C76,920.54 -1,268.67 (-1.62%)', toolbar: 'BTCUSD1   1m  5m  30m  1h  D' });
+  const result = await detectChartMetadata(image);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '1D');
+  assert.equal(result.exchange, 'Binance');
+});
+
+test('real reference capture #4 (bare "30", unsafe path, a different symbol/exchange): "Ethereum / U.S. Dollar · 30 · Coinbase ..."', async () => {
+  const image = await realWidgetChart({ legend: 'Ethereum / U.S. Dollar &#183; 30 &#183; Coinbase   O2,473.50 H2,478.35 L2,470.77 C2,473.62 +0.10 (+0.00%)', toolbar: 'ETHUSD   1m  5m  30m  1h  D' });
+  const result = await detectChartMetadata(image);
+  assert.equal(result.symbol, 'ETHEREUM');
+  assert.equal(result.timeframe, '30m');
+  assert.equal(result.exchange, 'Coinbase');
+});
+
+// Real reference capture (a wildly different, arbitrary third-party TradingView skin, not this
+// app's own embedded widget - a real user-supplied example of what an ordinary device Upload can
+// contain): extra indicator-overlay legend lines below the real one, packed with bare numbers
+// ("Sessions Flow [Cartel Console] 0000-0900 2100-0600 ... 25 70 20 5 90 95 99 70 1 8 90 top_right",
+// "ICT Concepts [LuxAlgo] Present 5 2 10 1 1 4 2 FVG 2 3 1 Default 0700-0900 ..."). Proves the
+// OHLC-region cutoff keeps those numbers from ever being mistaken for the real interval, even
+// though several of them exactly equal a real raw interval code (5, 90->no, but literally "5"
+// appears twice, "30" nowhere here but the principle is the same class of risk).
+test('extra indicator-overlay legend lines packed with bare numbers never contaminate timeframe detection - only the real legend line\'s own OHLC-bounded region is ever searched', async () => {
+  const width = 1320, height = 900;
+  const svg = `
+  <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="#ffffff"/>
+    <rect x="0" y="0" width="100%" height="30" fill="#f0f3fa"/>
+    <text x="10" y="20" font-family="Arial" font-size="13" fill="#131722">OILUSD   1m  5m  15m  1h  4h  D  W</text>
+    <text x="10" y="90" font-family="Arial" font-size="13" fill="#131722">WTI Crude (OIL) / US Dollar &#183; 5 &#183; easyMarkets   O103.460 H103.495 L103.445 C103.475 +0.020 (+0.02%)</text>
+    <text x="10" y="110" font-family="Arial" font-size="11" fill="#787b86">Sessions Flow [Cartel Console] 0000-0900 2100-0600 0800-1700 1300-2200 25 70 20 5 90 95 99 70 1 8 90 top_right</text>
+    <text x="10" y="128" font-family="Arial" font-size="11" fill="#787b86">ICT Concepts [LuxAlgo] Present 5 2 10 1 1 4 2 FVG 2 3 1 Default 0700-0900 0700-1000 1500-1700 1000-1400</text>
+  </svg>`;
+  const image = await sharp(Buffer.from(svg)).png().toBuffer();
+  const result = await detectChartMetadata(image);
+  assert.equal(result.timeframe, '5m', 'must read the real legend\'s own interval, never a stray "5" out of an indicator overlay line');
+});
+
 test('a corrupt/undecodable buffer fails honestly as "unavailable", never throwing past this module or hanging', async () => {
   const result = await detectChartMetadata(Buffer.from('not a real image'));
   assert.equal(result.status, 'unavailable');

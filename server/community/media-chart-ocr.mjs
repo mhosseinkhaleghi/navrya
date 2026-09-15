@@ -215,42 +215,56 @@ export async function detectChartMetadata(imageBuffer) {
     // "-" is deliberately kept as a valid TOKEN character (a real ticker can contain one, e.g.
     // "BRK-B") - so that misread separator forms its own isolated one-character token instead of
     // being swallowed as whitespace, throwing off "the token right after this one" adjacency
-    // (candidateExchange, the OHLC-line positional guards below). Dropping any token with no
-    // alnum character at all removes exactly that noise - a real symbol/timeframe/exchange token
-    // always contains at least one letter or digit, so this can never drop a genuine candidate.
+    // (candidateExchange, the OHLC-region guards below). Dropping any token with no alnum
+    // character at all removes exactly that noise - a real symbol/timeframe/exchange token always
+    // contains at least one letter or digit, so this can never drop a genuine candidate.
     const tokens = line.split(/[^A-Za-z0-9:._-]+/).map((w) => w.trim()).filter((w) => w && /[A-Za-z0-9]/.test(w));
-    // Found first so a same-line timeframe token can check adjacency to it below - real legends
-    // print "Description / Quote · INTERVAL · EXCHANGE" as one line (interval is a few tokens
-    // after the symbol's own description, exchange right after that - see this module's own
-    // header comment), while a real OHLC readout row prints the interval as that ENTIRE line's
-    // own first token instead (e.g. "15  O 43,251.00 H..."), with the symbol on a separate line
-    // above it - both real, seen layouts, so both are recognized.
+    // A real legend's own OHLC readout always starts with a token shaped like "O<digits>" (the
+    // Open price glued directly to its own "O" label, e.g. "O76,930.00" - real, evidenced by every
+    // reference capture this module has been calibrated against) - tokens from that point on are
+    // price data, NEVER legend content, so they are excluded from symbol/timeframe/exchange
+    // matching entirely on this line. A real, reproduced false positive this guards against: an
+    // indicator overlay's own legend line (e.g. "Sessions Flow [...] 0000-0900 2100-0600 25 70...")
+    // can otherwise plant a bare number that happens to equal a raw interval code.
+    const ohlcCutIndex = tokens.findIndex((t) => /^O\d/i.test(t));
+    const inLegendRegion = (index) => ohlcCutIndex === -1 || index < ohlcCutIndex;
+    // Found first so a same-line timeframe token can check its position relative to it below - real
+    // legends print "Description / Quote · INTERVAL · EXCHANGE" as one line, where "Description"
+    // itself is regularly MORE than one token (a real, reproduced bug: "Bitcoin / TetherUS · 5 ·
+    // Binance" has TWO description tokens - "Bitcoin" and "TetherUS" - before the interval, so
+    // requiring the interval to sit strictly one token after the SYMBOL token, as an earlier
+    // version of this module did, silently failed on every real 2-word description). A real OHLC
+    // readout row can also print the interval as that ENTIRE line's own first token instead (e.g.
+    // "15  O 43,251.00 H..."), with the symbol on a separate line above it - both real, seen
+    // layouts, so both are recognized.
     let symbolIndexInLine = -1;
     if (!symbol) {
       tokens.forEach((token, index) => {
-        if (symbolIndexInLine === -1) {
+        if (symbolIndexInLine === -1 && inLegendRegion(index)) {
           const candidate = candidateSymbol(token);
           if (candidate) { symbol = candidate; symbolIndexInLine = index; }
         }
       });
     }
     tokens.forEach((token, index) => {
+      if (!inLegendRegion(index)) return;
       const tf = candidateTimeframe(token);
       if (!tf) return;
       if (tf.safe) {
         if (!safeTimeframe) { safeTimeframe = tf.value; if (!exchange) exchange = candidateExchange(tokens[index + 1]); }
         return;
       }
-      // A bare numeric raw code (e.g. "60", "240") is shape-identical to a fragment an OCR'd OHLC
+      // A bare numeric raw code (e.g. "5", "30") is shape-identical to a fragment an OCR'd OHLC
       // price readout can equally produce ("O 60,120.5 H..." tokenizes to a lone "60" once the
       // comma splits it - a real, reproduced false positive this module was hardened against, see
-      // this module's own test suite). Requiring it to either lead its own line, or sit directly
-      // after the symbol on the SAME line, is what still rejects that exact case (there, "O"
+      // this module's own test suite). Requiring it to either lead its own line, or sit ANYWHERE
+      // after the symbol on the SAME line (not strictly adjacent - see this loop's own comment
+      // above), while never past the OHLC cut, is what still rejects that exact case (there, "O"
       // leads the line and the symbol is on a different line entirely) while covering both real
       // legend layouts above.
       const leadsItsOwnLine = index === 0;
-      const followsSymbolOnSameLine = symbolIndexInLine !== -1 && index === symbolIndexInLine + 1;
-      if ((leadsItsOwnLine || followsSymbolOnSameLine) && !unsafeTimeframe) {
+      const afterSymbolOnSameLine = symbolIndexInLine !== -1 && index > symbolIndexInLine;
+      if ((leadsItsOwnLine || afterSymbolOnSameLine) && !unsafeTimeframe) {
         unsafeTimeframe = tf.value;
         if (!exchange) exchange = candidateExchange(tokens[index + 1]);
       }
