@@ -2534,7 +2534,7 @@ export function createMemoryRepo() {
         originalFilename: originalFilename || null, mimeType: mimeType || null, source: source === 'capture' ? 'capture' : 'upload',
         sessionId: sessionId || null, activeMarketSession: activeMarketSession || null,
         metadataStatus: metadataStatus || 'not_applicable',
-        isTradingChart: null, symbol: null, timeframe: null, confidence: null,
+        isTradingChart: null, symbol: null, timeframe: null, exchange: null, confidence: null,
         analysisProvider: null, analysisModel: null, analysisErrorCode: null,
         registeredAt: stamp, createdAt: stamp, deletedAt: null
       };
@@ -2567,13 +2567,14 @@ export function createMemoryRepo() {
     // Applies a validated extraction result - a no-op (returns null) unless the asset is still
     // genuinely 'processing', so a slow/duplicate/late-arriving result can never overwrite a
     // fresher retry's own outcome.
-    async updateAnalysis(id, { status, isTradingChart, symbol, timeframe, confidence, provider, model, errorCode }) {
+    async updateAnalysis(id, { status, isTradingChart, symbol, timeframe, exchange, confidence, provider, model, errorCode }) {
       const record = state.mediaAssets.get(id);
       if (!record || record.deletedAt || record.metadataStatus !== 'processing') return null;
       record.metadataStatus = status;
       record.isTradingChart = typeof isTradingChart === 'boolean' ? isTradingChart : null;
       record.symbol = symbol || null;
       record.timeframe = timeframe || null;
+      record.exchange = exchange || null;
       record.confidence = Number.isFinite(confidence) ? confidence : null;
       record.analysisProvider = provider || null;
       record.analysisModel = model || null;

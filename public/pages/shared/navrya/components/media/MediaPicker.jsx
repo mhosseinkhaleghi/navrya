@@ -3,7 +3,7 @@ import { Icon } from '../core/Icon.jsx';
 import { Button } from '../forms/Button.jsx';
 import { AnalyzingImageIcon } from '../feedback/AnalyzingImageIcon.jsx';
 import {
-  listRecentAssets, listMyDriveAssets, getAsset, createAsset, fetchStorageUsage, fileToDataUrl
+  listRecentAssets, listMyDriveAssets, getAsset, createAsset, deleteAsset, downloadAsset, fetchStorageUsage, fileToDataUrl
 } from './mediaDriveClient.js';
 
 // NAVRYA Media Drive - the ONE reusable chart/image picker behind every personal-media attachment
@@ -36,7 +36,10 @@ const copy = {
     analyzing: 'در حال تحلیل چارت...', analysisReady: 'شناسایی شد', analysisFailed: 'تحلیل ناموفق بود',
     analysisUnavailable: 'تحلیل در دسترس نیست', analysisProcessing: 'در حال تحلیل',
     unknownSymbol: 'نماد نامشخص', unknownTimeframe: 'تایم‌فریم نامشخص', usedOfQuota: '{used} از {quota}',
-    justCaptured: 'به‌تازگی گرفته‌شد', title: 'مدیا درایو NAVRYA'
+    justCaptured: 'به‌تازگی گرفته‌شد', title: 'مدیا درایو NAVRYA',
+    download: 'دانلود', delete: 'حذف', deleteConfirm: 'این تصویر حذف شود؟',
+    deleteConfirmLinked: 'این تصویر در {count} مورد دیگر استفاده شده است. حذف کامل شود؟',
+    deleteFailed: 'حذف ناموفق بود.'
   },
   ar: {
     tabRecent: 'الأخيرة', tabMine: 'درايفي', tabUpload: 'رفع',
@@ -47,7 +50,10 @@ const copy = {
     analyzing: 'جارٍ تحليل الرسم...', analysisReady: 'تم التعرف عليه', analysisFailed: 'فشل التحليل',
     analysisUnavailable: 'التحليل غير متاح', analysisProcessing: 'جارٍ التحليل',
     unknownSymbol: 'رمز غير معروف', unknownTimeframe: 'إطار زمني غير معروف', usedOfQuota: '{used} من {quota}',
-    justCaptured: 'التُقطت للتو', title: 'درايف الوسائط NAVRYA'
+    justCaptured: 'التُقطت للتو', title: 'درايف الوسائط NAVRYA',
+    download: 'تنزيل', delete: 'حذف', deleteConfirm: 'هل تريد حذف هذه الصورة؟',
+    deleteConfirmLinked: 'هذه الصورة مستخدمة في {count} مكان آخر. هل تريد حذفها نهائيًا؟',
+    deleteFailed: 'فشل الحذف.'
   },
   en: {
     tabRecent: 'Recent', tabMine: 'My Drive', tabUpload: 'Upload',
@@ -58,7 +64,10 @@ const copy = {
     analyzing: 'Analyzing chart metadata...', analysisReady: 'Detected', analysisFailed: 'Analysis failed',
     analysisUnavailable: 'Analysis unavailable', analysisProcessing: 'Analyzing',
     unknownSymbol: 'Unknown symbol', unknownTimeframe: 'Unknown timeframe', usedOfQuota: '{used} of {quota}',
-    justCaptured: 'Just captured', title: 'NAVRYA Media Drive'
+    justCaptured: 'Just captured', title: 'NAVRYA Media Drive',
+    download: 'Download', delete: 'Delete', deleteConfirm: 'Delete this image?',
+    deleteConfirmLinked: 'This image is used in {count} other place(s). Delete it anyway?',
+    deleteFailed: 'Delete failed.'
   },
   es: {
     tabRecent: 'Recientes', tabMine: 'Mi unidad', tabUpload: 'Subir',
@@ -69,7 +78,10 @@ const copy = {
     analyzing: 'Analizando el gráfico...', analysisReady: 'Detectado', analysisFailed: 'Análisis fallido',
     analysisUnavailable: 'Análisis no disponible', analysisProcessing: 'Analizando',
     unknownSymbol: 'Símbolo desconocido', unknownTimeframe: 'Temporalidad desconocida', usedOfQuota: '{used} de {quota}',
-    justCaptured: 'Recién capturado', title: 'NAVRYA Media Drive'
+    justCaptured: 'Recién capturado', title: 'NAVRYA Media Drive',
+    download: 'Descargar', delete: 'Eliminar', deleteConfirm: '¿Eliminar esta imagen?',
+    deleteConfirmLinked: 'Esta imagen se usa en {count} otro(s) lugar(es). ¿Eliminarla de todas formas?',
+    deleteFailed: 'Error al eliminar.'
   }
 };
 function tr(lang, key, vars) {
@@ -94,12 +106,19 @@ function statusMeta(lang, asset) {
   return { icon: 'LoaderCircle', color: 'var(--text-muted)', label: tr(lang, 'analysisProcessing') };
 }
 
-function AssetCard({ asset, lang, selected, onSelect }) {
+const cardIconButtonStyle = {
+  width: 22, height: 22, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer',
+  border: '1px solid var(--border-hairline)', background: 'rgba(11,16,22,.75)', color: 'var(--text-primary)'
+};
+
+function AssetCard({ asset, lang, selected, onSelect, onDelete, onDownload }) {
   const meta = statusMeta(lang, asset);
   const registeredLabel = asset.registeredAt ? new Date(asset.registeredAt).toLocaleString(lang === 'fa' ? 'fa-IR' : lang) : '';
+  const chartInfoLine = [asset.symbol || tr(lang, 'unknownSymbol'), asset.timeframe || tr(lang, 'unknownTimeframe'), asset.exchange].filter(Boolean).join(' · ');
   return (
-    <button
-      type="button" onClick={() => onSelect(asset)}
+    <div
+      role="button" tabIndex={0} onClick={() => onSelect(asset)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(asset); } }}
       style={{
         display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 10, cursor: 'pointer', textAlign: 'start',
         border: '1px solid ' + (selected ? 'var(--char-accent)' : 'var(--border-hairline)'),
@@ -114,11 +133,19 @@ function AssetCard({ asset, lang, selected, onSelect }) {
             <Icon name="Check" size={13} />
           </span>
         )}
+        <span style={{ position: 'absolute', top: 6, insetInlineStart: 6, display: 'flex', gap: 4 }}>
+          <button type="button" title={tr(lang, 'download')} aria-label={tr(lang, 'download')} onClick={(e) => { e.stopPropagation(); onDownload(asset); }} style={cardIconButtonStyle}>
+            <Icon name="Download" size={12} />
+          </button>
+          <button type="button" title={tr(lang, 'delete')} aria-label={tr(lang, 'delete')} onClick={(e) => { e.stopPropagation(); onDelete(asset); }} style={cardIconButtonStyle}>
+            <Icon name="trash" size={12} />
+          </button>
+        </span>
       </span>
       {asset.kind === 'chart' ? (
         <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-            {asset.symbol || tr(lang, 'unknownSymbol')} · {asset.timeframe || tr(lang, 'unknownTimeframe')}
+          <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {chartInfoLine}
           </span>
           <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{[asset.activeMarketSession, registeredLabel].filter(Boolean).join(' · ')}</span>
           {meta && (
@@ -134,7 +161,7 @@ function AssetCard({ asset, lang, selected, onSelect }) {
           <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{registeredLabel}</span>
         </span>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -219,11 +246,34 @@ export function MediaPicker({ open, lang = 'en', intent = 'generic', initialAsse
       if (!result.ok) { setUploadError(tr(lang, 'uploadFailed')); setUploading(false); return; }
       setSelected(result.asset);
       setRecent((prev) => [result.asset].concat(prev));
+      fetchStorageUsage().then((usage) => { if (usage) setStorageUsage(usage); }).catch(() => {});
     } catch (_) {
       setUploadError(tr(lang, 'uploadFailed'));
     } finally {
       setUploading(false);
     }
+  }
+
+  function removeAssetFromLists(id) {
+    setRecent((prev) => prev.filter((a) => a.id !== id));
+    setMine((prev) => prev.filter((a) => a.id !== id));
+    setSelected((prev) => (prev && prev.id === id ? null : prev));
+  }
+
+  // Deletion mirrors the server's own two-step contract (routes.media.mjs): a linked asset is
+  // refused (409, MEDIA_ASSET_LINKED) unless the caller explicitly confirms detaching every link
+  // first - so a second, more specific confirmation is only ever shown once the server has
+  // actually told us this asset is shared elsewhere, never guessed upfront.
+  async function handleDelete(asset) {
+    if (!window.confirm(tr(lang, 'deleteConfirm'))) return;
+    const result = await deleteAsset(asset.id);
+    if (result.ok) { removeAssetFromLists(asset.id); fetchStorageUsage().then((usage) => { if (usage) setStorageUsage(usage); }).catch(() => {}); return; }
+    if (result.error === 'MEDIA_ASSET_LINKED') {
+      if (!window.confirm(tr(lang, 'deleteConfirmLinked', { count: result.linkCount || '' }))) return;
+      const forced = await deleteAsset(asset.id, { detach: true });
+      if (forced.ok) { removeAssetFromLists(asset.id); fetchStorageUsage().then((usage) => { if (usage) setStorageUsage(usage); }).catch(() => {}); return; }
+    }
+    window.alert(tr(lang, 'deleteFailed'));
   }
 
   const confirmLabel = intent === 'chartEntry' ? tr(lang, 'confirmChartEntry') : intent === 'movementEntry' ? tr(lang, 'confirmMovementEntry') : tr(lang, 'confirmGeneric');
@@ -241,16 +291,28 @@ export function MediaPicker({ open, lang = 'en', intent = 'generic', initialAsse
             <Icon name="FolderOpen" size={20} />
           </span>
           <span style={{ flex: 1, font: 'var(--type-display-md)', letterSpacing: 'var(--tracking-display)', color: 'var(--text-primary)' }}>{tr(lang, 'title')}</span>
-          {storageUsage && Number.isFinite(storageUsage.quotaBytes) && storageUsage.quotaBytes > 0 && (
-            <span dir="ltr" className="navrya-tabular" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-              {tr(lang, 'usedOfQuota', { used: humanizeBytes(storageUsage.usedBytes), quota: humanizeBytes(storageUsage.quotaBytes) })}
-              {storageUsage.plan ? ' · ' + storageUsage.plan : ''}
-            </span>
-          )}
           <button type="button" onClick={onClose} aria-label="close" style={{ width: 40, height: 40, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-muted)' }}>
             <Icon name="close" size={18} />
           </button>
         </div>
+
+        {storageUsage && Number.isFinite(storageUsage.quotaBytes) && storageUsage.quotaBytes > 0 && (() => {
+          const pct = Math.max(0, Math.min(100, (storageUsage.usedBytes / storageUsage.quotaBytes) * 100));
+          const barColor = pct >= 95 ? 'var(--danger)' : pct >= 80 ? 'var(--gold-warm)' : 'var(--char-accent)';
+          return (
+            <div style={{ padding: '0 20px 12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBlockEnd: 6 }}>
+                <span dir="ltr" className="navrya-tabular" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                  {tr(lang, 'usedOfQuota', { used: humanizeBytes(storageUsage.usedBytes), quota: humanizeBytes(storageUsage.quotaBytes) })}
+                  {storageUsage.plan ? ' · ' + storageUsage.plan : ''}
+                </span>
+              </div>
+              <div style={{ height: 6, borderRadius: 999, background: 'rgba(244,234,215,.12)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: pct + '%', borderRadius: 999, background: barColor, transition: 'width .3s ease' }} />
+              </div>
+            </div>
+          );
+        })()}
 
         <div style={{ display: 'flex', gap: 6, padding: '0 20px' }}>
           {[['recent', 'FolderClock'], ['mine', 'HardDrive'], ['upload', 'Upload']].map(([key, icon]) => (
@@ -288,7 +350,7 @@ export function MediaPicker({ open, lang = 'en', intent = 'generic', initialAsse
               )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
                 {list.map((asset) => (
-                  <AssetCard key={asset.id} asset={asset} lang={lang} selected={selected && selected.id === asset.id} onSelect={setSelected} />
+                  <AssetCard key={asset.id} asset={asset} lang={lang} selected={selected && selected.id === asset.id} onSelect={setSelected} onDelete={handleDelete} onDownload={downloadAsset} />
                 ))}
               </div>
               {tab === 'mine' && mineCursor && (

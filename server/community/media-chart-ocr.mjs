@@ -20,20 +20,33 @@
 // screenshot (browser automation is out of scope here) - if real captures show the legend
 // slightly outside this box, CROP is the one place to retune it.
 //
-// 2026-09-15 real-production fix: a live capture showed the symbol ("BITCOIN") recognized
-// correctly while the timeframe stayed unknown. The parsing below originally only scanned OCR's
-// FIRST non-blank line, assuming the real legend always prints "SYMBOL, INTERVAL" as one line the
-// way the synthetic test fixture does - but TradingView's own raw interval code (see
-// TV_RAW_INTERVAL_TO_TIMEFRAME below) is exactly what a real OHLC readout row also starts with
-// ("15  O 43,251.00 H..."), on a line separate from the symbol above it. detectChartMetadata()
-// below now scans every line in the crop and trusts a bare numeric interval code either right
-// after the symbol on its own line (the single-line layout) or leading a different line entirely
-// (the two-line layout) - still never a bare number found anywhere else, which is what keeps the
-// original OHLC-price false positive (a lone "60" out of "O 60,120.5 H...") rejected.
+// 2026-09-15 real-production fix #1: a live capture showed the symbol ("BITCOIN") recognized
+// correctly while the timeframe stayed unknown. Scanning only OCR's first non-blank line (the
+// original design, before any real evidence existed) was widened to every line in the crop.
 //
-// Contract preserved from the retired AI version: isTradingChart/symbol/timeframe/confidence
-// only, null/unknown whenever nothing was confidently read - this module never guesses a value
-// that was not actually recognized against the real Instrument Catalog / TIMEFRAMES rules.
+// 2026-09-15 real-production fix #2: the user then supplied an actual reference screenshot of the
+// real embedded widget (a full "hide_top_toolbar:false / hide_side_toolbar:false" capture, exactly
+// this app's own config - see navrya-src/liveSessionView.jsx's TradingViewAdvancedChart). Its real
+// legend line reads, verbatim: "Bitcoin / TetherUS · 4h · Binance   O76,930.00 H77,007.84
+// L76,703.59 C76,975.43 +45.42 (+0.06%)" - ONE single line, "Description / Quote · INTERVAL ·
+// EXCHANGE", then the OHLC readout - not the two-line layout fix #1 above assumed as its primary
+// case (kept anyway as a secondary, harmless-if-unused code path, in case a different widget skin
+// ever does wrap it). Concretely this reference image proved three real, previously-unverified
+// assumptions wrong/incomplete: (1) TradingView's legend interval is NOT always the bare numeric
+// widget-config code (TV_RAW_INTERVAL_TO_TIMEFRAME) - here it renders the human label "4h"
+// directly, which happens to already be a literal TIMEFRAMES entry, but ONLY if OCR preserves its
+// exact lowercase 'h' - a real OCR engine has no guarantee of that, so timeframe matching below is
+// now case-insensitive; (2) the crop's `widthPct` (0.6) was measured against this module's own
+// synthetic fixture, not a real legend line, which runs noticeably wider once description text,
+// separators, and the exchange name are all real, proportional pixels - widened with margin;
+// (3) the exchange/data-source ("Binance") was never extracted at all - it now is, read as the
+// token immediately following a trusted timeframe match on the same line (this app's own capture
+// flow never lets a user type a source, so this is read only, best-effort, and null when absent).
+//
+// Contract: isTradingChart/symbol/timeframe/confidence (the original AI-version fields) plus a new
+// read-only `exchange` field - null/unknown whenever nothing was confidently read, this module
+// never guesses a value that was not actually recognized against the real Instrument Catalog /
+// TIMEFRAMES rules.
 
 import path from 'node:path';
 import os from 'node:os';
@@ -41,7 +54,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { createWorker, OEM } from 'tesseract.js';
 import { normalizeInstrumentCode } from '../db/instrument-normalize.mjs';
-import { normalizeTimeframe } from '../db/timeframe-normalize.mjs';
+import { TIMEFRAMES } from '../db/timeframe-normalize.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Vendored trained data - a local directory path (never a URL), so tesseract.js's own worker
@@ -63,7 +76,12 @@ const CACHE_DIR = path.join(os.tmpdir(), 'navrya-tessdata-cache');
 // that whole class of false match. Generous on both axes - cheap insurance against a slightly
 // different real-world position - while still excluding the candlesticks themselves, which is
 // what makes this both fast and resistant to an unrelated number deep in the chart body.
-const CROP = { topPct: 0.05, heightPct: 0.2, widthPct: 0.6 };
+// widthPct widened from an earlier 0.6, measured only against this module's own synthetic test
+// fixture - a real legend line ("Bitcoin / TetherUS · 4h · Binance   O76,930.00 H...") runs
+// noticeably wider once a real description, both separators, and a real exchange name are all
+// real proportional pixels, not the short guessed string the fixture used. Cropping too WIDE only
+// risks capturing harmless extra OHLC digits we never read anyway - cheap insurance.
+const CROP = { topPct: 0.05, heightPct: 0.2, widthPct: 0.85 };
 // A real ticker (BTCUSDT, XAUUSD, EURUSD...) is always at least this many characters - the
 // toolbar's own timeframe buttons (1M, 5M, 15M, 1H, 4H, 1D) are all shorter, so this alone
 // rejects that entire false-positive class even if the crop above ever includes a sliver of it.
@@ -76,6 +94,11 @@ const MIN_SYMBOL_LENGTH = 4;
 const TV_RAW_INTERVAL_TO_TIMEFRAME = {
   1: '1m', 3: '3m', 5: '5m', 15: '15m', 30: '30m', 60: '1h', 120: '2h', 240: '4h', D: '1D', W: '1W'
 };
+// Case-insensitive lookup for the OTHER vocabulary - this app's own already-human labels (a real
+// reference capture showed the widget printing "4h" directly, a literal TIMEFRAMES entry - but
+// OCR has no guarantee of preserving that exact lowercase 'h'; a real engine misreading it as "4H"
+// must still resolve to the same canonical '4h', not silently fail).
+const TIMEFRAME_UPPER_LOOKUP = new Map(TIMEFRAMES.map((tf) => [tf.toUpperCase(), tf]));
 
 let workerPromise = null;
 function getWorker() {
@@ -114,11 +137,24 @@ function candidateSymbol(rawToken) {
 function candidateTimeframe(rawToken) {
   const text = String(rawToken || '').trim();
   if (!text) return null;
-  const direct = normalizeTimeframe(text);
-  if (direct) return { value: direct, safe: true };
   const upper = text.toUpperCase().replace(/[.,]$/, '');
+  const direct = TIMEFRAME_UPPER_LOOKUP.get(upper);
+  if (direct) return { value: direct, safe: true };
   if (Object.prototype.hasOwnProperty.call(TV_RAW_INTERVAL_TO_TIMEFRAME, upper)) return { value: TV_RAW_INTERVAL_TO_TIMEFRAME[upper], safe: false };
   return null;
+}
+
+// The chart's data source/exchange (e.g. "Binance", "OANDA") - read-only, best-effort, never
+// validated against a catalog (this app has none for exchanges the way it does for instruments) -
+// a real legend prints it as the token right after the interval ("... · 4h · Binance ...", see
+// this module's own header comment), so that is the one place this ever looks. Never itself a
+// timeframe/price fragment - requires a letter and rejects a bare number outright.
+function candidateExchange(rawToken) {
+  const text = String(rawToken || '').trim();
+  if (!text || text.length > 40) return null;
+  if (!/[A-Za-z]/.test(text)) return null;
+  if (/^[\d.,]+$/.test(text)) return null;
+  return text;
 }
 
 // The ONLY fields this module is ever allowed to report - the exact same contract the retired AI
@@ -137,12 +173,15 @@ export async function detectChartMetadata(imageBuffer) {
     cropped = await sharp(imageBuffer)
       .extract({ left: 0, top, width, height })
       // Upscale + greyscale + contrast-normalize - small anti-aliased UI text OCRs far more
-      // reliably at 2x with stretched contrast than at native chart-panel resolution.
-      .resize({ width: Math.min(1800, width * 2) })
+      // reliably at 3x with stretched contrast than at native chart-panel resolution. A real
+      // reference capture's legend text renders quite small relative to the full chart image, so
+      // 2x (this module's original guess) left it too small/blurry to reliably recognize; bumped
+      // to 3x (with a taller cap, since CROP's own widthPct was also widened above).
+      .resize({ width: Math.min(3000, width * 3) })
       .greyscale().normalize()
       .png().toBuffer();
   } catch (_) {
-    return { status: 'unavailable', isTradingChart: null, symbol: null, timeframe: null, confidence: null, errorCode: 'IMAGE_DECODE_FAILED' };
+    return { status: 'unavailable', isTradingChart: null, symbol: null, timeframe: null, exchange: null, confidence: null, errorCode: 'IMAGE_DECODE_FAILED' };
   }
 
   let recognized;
@@ -150,7 +189,7 @@ export async function detectChartMetadata(imageBuffer) {
     const worker = await getWorker();
     recognized = await worker.recognize(cropped);
   } catch (_) {
-    return { status: 'failed', isTradingChart: null, symbol: null, timeframe: null, confidence: null, errorCode: 'OCR_FAILED' };
+    return { status: 'failed', isTradingChart: null, symbol: null, timeframe: null, exchange: null, confidence: null, errorCode: 'OCR_FAILED' };
   }
 
   const pageConfidence = Number(recognized && recognized.data && recognized.data.confidence);
@@ -168,15 +207,24 @@ export async function detectChartMetadata(imageBuffer) {
   const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
 
   let symbol = null;
+  let exchange = null;
   let safeTimeframe = null;
   let unsafeTimeframe = null;
   for (const line of lines) {
-    const tokens = line.split(/[^A-Za-z0-9:._-]+/).map((w) => w.trim()).filter(Boolean);
+    // A real, reproduced bug: the real legend's "·" separator regularly OCRs as a lone "-", and
+    // "-" is deliberately kept as a valid TOKEN character (a real ticker can contain one, e.g.
+    // "BRK-B") - so that misread separator forms its own isolated one-character token instead of
+    // being swallowed as whitespace, throwing off "the token right after this one" adjacency
+    // (candidateExchange, the OHLC-line positional guards below). Dropping any token with no
+    // alnum character at all removes exactly that noise - a real symbol/timeframe/exchange token
+    // always contains at least one letter or digit, so this can never drop a genuine candidate.
+    const tokens = line.split(/[^A-Za-z0-9:._-]+/).map((w) => w.trim()).filter((w) => w && /[A-Za-z0-9]/.test(w));
     // Found first so a same-line timeframe token can check adjacency to it below - real legends
-    // print "EXCHANGE:SYMBOL, INTERVAL" as one line (interval is the token right after the
-    // symbol), while a real OHLC readout row prints the interval as that ENTIRE line's own first
-    // token instead (e.g. "15  O 43,251.00 H..."), with the symbol on a separate line above it -
-    // both real, seen layouts, so both are recognized.
+    // print "Description / Quote · INTERVAL · EXCHANGE" as one line (interval is a few tokens
+    // after the symbol's own description, exchange right after that - see this module's own
+    // header comment), while a real OHLC readout row prints the interval as that ENTIRE line's
+    // own first token instead (e.g. "15  O 43,251.00 H..."), with the symbol on a separate line
+    // above it - both real, seen layouts, so both are recognized.
     let symbolIndexInLine = -1;
     if (!symbol) {
       tokens.forEach((token, index) => {
@@ -190,7 +238,7 @@ export async function detectChartMetadata(imageBuffer) {
       const tf = candidateTimeframe(token);
       if (!tf) return;
       if (tf.safe) {
-        if (!safeTimeframe) safeTimeframe = tf.value;
+        if (!safeTimeframe) { safeTimeframe = tf.value; if (!exchange) exchange = candidateExchange(tokens[index + 1]); }
         return;
       }
       // A bare numeric raw code (e.g. "60", "240") is shape-identical to a fragment an OCR'd OHLC
@@ -202,13 +250,17 @@ export async function detectChartMetadata(imageBuffer) {
       // legend layouts above.
       const leadsItsOwnLine = index === 0;
       const followsSymbolOnSameLine = symbolIndexInLine !== -1 && index === symbolIndexInLine + 1;
-      if ((leadsItsOwnLine || followsSymbolOnSameLine) && !unsafeTimeframe) unsafeTimeframe = tf.value;
+      if ((leadsItsOwnLine || followsSymbolOnSameLine) && !unsafeTimeframe) {
+        unsafeTimeframe = tf.value;
+        if (!exchange) exchange = candidateExchange(tokens[index + 1]);
+      }
     });
   }
   // A letter-suffixed label (15m/1h/1D...) is trusted anywhere it appears; a bare numeric raw code
   // is only trusted once a real symbol was ALSO found somewhere in the crop - see
   // candidateTimeframe()'s own comment - and it satisfied one of the two positional guards above.
   const timeframe = safeTimeframe || (symbol ? unsafeTimeframe : null);
+  if (!timeframe) exchange = null;
 
   const matched = Boolean(symbol || timeframe);
   const confidence = matched && Number.isFinite(pageConfidence) ? Math.max(0, Math.min(1, pageConfidence / 100)) : null;
@@ -218,7 +270,7 @@ export async function detectChartMetadata(imageBuffer) {
     // whether a real, catalog-shaped symbol or a real timeframe label was actually recognized,
     // never a free-standing visual judgment the way the retired AI prompt made one.
     isTradingChart: matched ? true : null,
-    symbol, timeframe, confidence, errorCode: null
+    symbol, timeframe, exchange, confidence, errorCode: null
   };
 }
 

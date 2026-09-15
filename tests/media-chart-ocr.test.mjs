@@ -130,6 +130,46 @@ test('reads the timeframe even when it is NOT on the same line as the symbol - t
   assert.equal(result.isTradingChart, true);
 });
 
+// Real production bug fixed 2026-09-15 (second pass): the user supplied an actual reference
+// screenshot of the real embedded widget. Its real legend line reads, verbatim: "Bitcoin /
+// TetherUS · 4h · Binance   O76,930.00 H77,007.84 L76,703.59 C76,975.43 +45.42 (+0.06%)" - ONE
+// line, "/" and "·" separators (not the earlier synthetic fixtures' comma), a human-readable
+// interval label rather than a bare numeric code, an exchange name right after it, and much
+// smaller real-world text/image proportions than this suite's other (deliberately large, easy)
+// fixtures. This reproduces that exact real layout/proportions - including the toolbar row still
+// genuinely containing its own "4h" button label directly above the legend, which must NOT be
+// what gets matched - to prove symbol/timeframe/exchange all now come from the real legend line.
+test('reads the real reference capture\'s own legend format ("Description / Quote · INTERVAL · EXCHANGE") at realistic small-text/full-widget proportions, never the toolbar\'s own matching button label above it', async () => {
+  const width = 1270, height = 651;
+  const svg = `
+  <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="#131722"/>
+    <rect x="0" y="0" width="100%" height="34" fill="#1e222d"/>
+    <text x="10" y="22" font-family="Arial" font-size="13" fill="#d1d4dc">BTCUSD1   1m  5m  30m  1h  4h</text>
+    <text x="10" y="58" font-family="Arial" font-size="13" fill="#d1d4dc">Bitcoin / TetherUS &#183; 4h &#183; Binance   O76,930.00 H77,007.84 L76,703.59 C76,975.43 +45.42 (+0.06%)</text>
+    <text x="10" y="80" font-family="Arial" font-size="11" fill="#787b86">Vol &#183; BTC 998</text>
+    ${Array.from({ length: 60 }).map((_, i) => {
+      const x = 60 + i * 20;
+      const up = i % 2 === 0;
+      const bodyTop = 300 + (Math.sin(i) * 80);
+      const bodyH = 40 + (i % 5) * 8;
+      return `<rect x="${x}" y="${bodyTop}" width="8" height="${bodyH}" fill="${up ? '#26a69a' : '#ef5350'}"/>`;
+    }).join('\n')}
+  </svg>`;
+  const image = await sharp(Buffer.from(svg)).png().toBuffer();
+  const result = await detectChartMetadata(image);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '4h');
+  assert.equal(result.exchange, 'Binance');
+  assert.equal(result.isTradingChart, true);
+});
+
+test('timeframe matching against this app\'s own human labels (1D/4h/1W...) is case-insensitive, since real OCR has no guarantee of preserving exact letter case', async () => {
+  const image = await syntheticChart({ legend: 'Gold / U.S. Dollar · 4H · OANDA' });
+  const result = await detectChartMetadata(image);
+  assert.equal(result.timeframe, '4h');
+});
+
 test('a corrupt/undecodable buffer fails honestly as "unavailable", never throwing past this module or hanging', async () => {
   const result = await detectChartMetadata(Buffer.from('not a real image'));
   assert.equal(result.status, 'unavailable');

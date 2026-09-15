@@ -6,6 +6,7 @@ import { decodedByteLength } from '../storage/storage.mjs';
 import { LocalDiskObjectStorageProvider } from '../storage/object-storage-provider.mjs';
 import { assertStorageAvailable, recordStorageObject } from '../commercial/storage-service.mjs';
 import { detectChartMetadata } from './media-chart-ocr.mjs';
+import { currentMarketSession } from './market-session-clock.mjs';
 
 const KINDS = new Set(['chart', 'image']);
 const LINK_DOMAINS = new Set(['sessionEntry', 'trade', 'pattern', 'strategy']);
@@ -30,7 +31,7 @@ async function runChartDetection(repo, assetId, imageBuffer) {
   }
   return repo.mediaAssets.updateAnalysis(assetId, {
     status: outcome.status, isTradingChart: outcome.isTradingChart, symbol: outcome.symbol, timeframe: outcome.timeframe,
-    confidence: outcome.confidence, provider: 'local-ocr', model: 'tesseract.js', errorCode: outcome.errorCode
+    exchange: outcome.exchange, confidence: outcome.confidence, provider: 'local-ocr', model: 'tesseract.js', errorCode: outcome.errorCode
   });
 }
 
@@ -39,7 +40,7 @@ function assetResponse(asset, linkCount) {
     id: asset.id, url: asset.url, kind: asset.kind, originalFilename: asset.originalFilename, mimeType: asset.mimeType,
     source: asset.source, sessionId: asset.sessionId, activeMarketSession: asset.activeMarketSession,
     metadataStatus: asset.metadataStatus, isTradingChart: asset.isTradingChart, symbol: asset.symbol, timeframe: asset.timeframe,
-    confidence: asset.confidence, analysisProvider: asset.analysisProvider, analysisModel: asset.analysisModel, analysisErrorCode: asset.analysisErrorCode,
+    exchange: asset.exchange, confidence: asset.confidence, analysisProvider: asset.analysisProvider, analysisModel: asset.analysisModel, analysisErrorCode: asset.analysisErrorCode,
     registeredAt: asset.registeredAt, createdAt: asset.createdAt,
     linkCount: typeof linkCount === 'number' ? linkCount : undefined
   };
@@ -88,11 +89,16 @@ export function router(repo, uploadsDir) {
 
   // Stores a NEW chart/image (capture or manual upload) - the only endpoint that ever writes new
   // bytes for this domain. Every later "reuse" of the same asset goes through POST /assets/:id/links
-  // instead, which never touches storage or quota again. When sessionId is given (the trader is
-  // inside a real Live Session), the active market session is derived from that OWNED session row
-  // itself - never from a client-supplied label, and silently ignored (not a hard failure) if the
-  // session id doesn't resolve to one this user actually owns, so an otherwise-valid upload is
-  // never blocked by a stale/foreign sessionId.
+  // instead, which never touches storage or quota again. `sessionId` (when the trader is inside a
+  // real Live Session) is still verified against that user's own owned session row and stored for
+  // linking purposes - silently ignored (not a hard failure) if it doesn't resolve to one this
+  // user actually owns, so an otherwise-valid upload is never blocked by a stale/foreign sessionId
+  // - but activeMarketSession itself is NEVER read from that session's own stored `market` label
+  // any more (real user correction: a session can stay open long after its own city's real market
+  // has closed, or the trader can screenshot a chart well after switching context - the field this
+  // app calls "the active market session" must mean the one genuinely live RIGHT NOW, at capture
+  // time, not whichever one the trader happened to pick when they opened their session). Always
+  // computed fresh from the server's own real clock (market-session-clock.mjs) instead.
   app.post('/assets', asyncHandler(async (req, res) => {
     const { dataUrl, filename, mimeType, kind, source, sessionId } = req.body || {};
     if (!dataUrl || typeof dataUrl !== 'string') throw new ApiError(400, 'VALIDATION_FAILED');
@@ -104,17 +110,16 @@ export function router(repo, uploadsDir) {
       category: 'media', sourceDomain: 'media-drive', sourceRecordId: null
     });
 
-    let activeMarketSession = null;
     let verifiedSessionId = null;
     if (sessionId) {
       const session = await repo.tradingSessions.get(req.currentUser.id, sessionId);
-      if (session) { verifiedSessionId = session.id; activeMarketSession = session.market || null; }
+      if (session) verifiedSessionId = session.id;
     }
 
     let asset = await repo.mediaAssets.create({
       userId: req.currentUser.id, storageObjectId: storageObject.id, url: stored.url, kind: resolvedKind,
       originalFilename: typeof filename === 'string' ? filename.slice(0, 200) : null, mimeType: stored.mimeType || mimeType || null,
-      source: source === 'capture' ? 'capture' : 'upload', sessionId: verifiedSessionId, activeMarketSession,
+      source: source === 'capture' ? 'capture' : 'upload', sessionId: verifiedSessionId, activeMarketSession: currentMarketSession(),
       // Only a real chart ever gets metadata extraction (step 1 of the extraction contract) - an
       // ordinary image is 'not_applicable' and never analyzed at all.
       metadataStatus: resolvedKind === 'chart' ? 'processing' : 'not_applicable'

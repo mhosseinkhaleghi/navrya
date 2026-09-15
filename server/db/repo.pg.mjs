@@ -3866,7 +3866,7 @@ export function createPgRepo(pool) {
       originalFilename: row.original_filename, mimeType: row.mime_type, source: row.source,
       sessionId: row.session_id, activeMarketSession: row.active_market_session,
       metadataStatus: row.metadata_status, isTradingChart: row.is_trading_chart,
-      symbol: row.symbol, timeframe: row.timeframe, confidence: row.confidence === null ? null : Number(row.confidence),
+      symbol: row.symbol, timeframe: row.timeframe, exchange: row.exchange, confidence: row.confidence === null ? null : Number(row.confidence),
       analysisProvider: row.analysis_provider, analysisModel: row.analysis_model, analysisErrorCode: row.analysis_error_code,
       registeredAt: row.registered_at, createdAt: row.created_at, deletedAt: row.deleted_at
     };
@@ -3914,12 +3914,12 @@ export function createPgRepo(pool) {
     // Applies a validated extraction result - a no-op (returns null) unless the asset is still
     // genuinely 'processing', so a slow/duplicate/late-arriving result can never overwrite a
     // fresher retry's own outcome.
-    async updateAnalysis(id, { status, isTradingChart, symbol, timeframe, confidence, provider, model, errorCode }) {
+    async updateAnalysis(id, { status, isTradingChart, symbol, timeframe, exchange, confidence, provider, model, errorCode }) {
       const { rows } = await pool.query(
-        `UPDATE media_assets SET metadata_status=$2, is_trading_chart=$3, symbol=$4, timeframe=$5, confidence=$6,
-           analysis_provider=$7, analysis_model=$8, analysis_error_code=$9
+        `UPDATE media_assets SET metadata_status=$2, is_trading_chart=$3, symbol=$4, timeframe=$5, exchange=$6, confidence=$7,
+           analysis_provider=$8, analysis_model=$9, analysis_error_code=$10
          WHERE id=$1 AND deleted_at IS NULL AND metadata_status='processing' RETURNING *`,
-        [id, status, typeof isTradingChart === 'boolean' ? isTradingChart : null, symbol || null, timeframe || null,
+        [id, status, typeof isTradingChart === 'boolean' ? isTradingChart : null, symbol || null, timeframe || null, exchange || null,
           Number.isFinite(confidence) ? confidence : null, provider || null, model || null, errorCode || null]
       );
       return rows[0] ? mapMediaAsset(rows[0]) : null;

@@ -8,6 +8,7 @@ import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
 import { terminateOcrWorker } from '../server/community/media-chart-ocr.mjs';
+import { currentMarketSession } from '../server/community/market-session-clock.mjs';
 
 // NAVRYA Media Drive - server-canonical domain contract (server/community/routes.media.mjs,
 // server/db/repo.memory.mjs's mediaAssets/mediaAssetLinks). Covers: user-scoped Recent/My Drive
@@ -199,21 +200,27 @@ test('the retired AI-gateway internal analysis bridge no longer exists - detecti
   assert.equal(body.error, 'AUTH_SESSION_REQUIRED');
 });
 
-test('active market session is derived from a real, owned trading session - never trusted from the client, and silently ignored when foreign/invalid', async () => {
+test('activeMarketSession is always the REAL, current market session (server clock) - never the linked session\'s own stored market label, even when they genuinely disagree', async () => {
   const owner = await createUser('SessionOwner1');
   const stranger = await createUser('SessionStranger1');
   await repo.instrumentCatalog.upsert(owner.id, { id: 'instr-1', code: 'BTCUSDT' });
-  await repo.tradingSessions.upsert(owner.id, { id: 'sess-1', instrument: 'BTCUSDT', timeframe: '5m', market: 'London', date: '2026-01-01', status: 'open', entries: [] });
+  // Deliberately a label the real clock is virtually certain to disagree with (see
+  // tests/market-session-clock.test.mjs) - real user-reported bug: a session opened while London
+  // was live can still be attached to a chart captured hours later, once a different market is
+  // genuinely the live one; the OLD behavior (reading session.market) reported the stale label.
+  await repo.tradingSessions.upsert(owner.id, { id: 'sess-1', instrument: 'BTCUSDT', timeframe: '5m', market: 'a-label-the-real-clock-would-never-produce', date: '2026-01-01', status: 'open', entries: [] });
 
+  const expected = currentMarketSession();
   const withRealSession = await api('POST', '/api/sync/media/assets', { userId: owner.id, body: { dataUrl: PNG_DATA_URL, kind: 'chart', source: 'capture', sessionId: 'sess-1' } });
-  assert.equal(withRealSession.body.activeMarketSession, 'London');
-  assert.equal(withRealSession.body.sessionId, 'sess-1');
+  assert.equal(withRealSession.body.activeMarketSession, expected, 'must be the real current session, never the linked session\'s own stale label');
+  assert.equal(withRealSession.body.sessionId, 'sess-1', 'the session id itself is still recorded, for linking purposes');
 
   // A foreign session id (owned by someone else) must never leak that user's session context, and
-  // must never fail the otherwise-valid upload.
+  // must never fail the otherwise-valid upload - but activeMarketSession is still the real current
+  // one regardless, since it no longer depends on the session lookup succeeding at all.
   const withForeignSession = await api('POST', '/api/sync/media/assets', { userId: stranger.id, body: { dataUrl: PNG_DATA_URL, kind: 'chart', source: 'capture', sessionId: 'sess-1' } });
   assert.equal(withForeignSession.status, 201);
-  assert.equal(withForeignSession.body.activeMarketSession, null);
+  assert.equal(withForeignSession.body.activeMarketSession, expected);
   assert.equal(withForeignSession.body.sessionId, null);
 });
 
@@ -236,9 +243,31 @@ test('end to end through the real HTTP endpoint: a real synthetic chart image is
   assert.equal(chart.body.isTradingChart, true);
   assert.ok(chart.body.confidence > 0.5);
   assert.equal(chart.body.analysisProvider, 'local-ocr');
+  assert.equal(chart.body.activeMarketSession, currentMarketSession(), 'always the real current session, computed fresh, even with no sessionId at all');
 
   const read = await api('GET', `/api/sync/media/assets/${chart.body.id}`, { userId: user.id });
   assert.equal(read.body.symbol, 'BTCUSDT', 'the real, persisted row must carry the same result, not just the create response');
+});
+
+test('end to end: the chart\'s data source/exchange is also read from a real legend line ("Description / Quote · INTERVAL · EXCHANGE") and persisted alongside symbol/timeframe', async () => {
+  const user = await createUser('EndToEnd2');
+  const width = 1270, height = 651;
+  const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">`
+    + `<rect width="100%" height="100%" fill="#131722"/><rect x="0" y="0" width="100%" height="34" fill="#1e222d"/>`
+    + `<text x="10" y="22" font-family="Arial" font-size="13" fill="#d1d4dc">BTCUSD1   1m  5m  30m  1h  4h</text>`
+    + `<text x="10" y="58" font-family="Arial" font-size="13" fill="#d1d4dc">Bitcoin / TetherUS &#183; 4h &#183; Binance   O76,930.00 H77,007.84 L76,703.59 C76,975.43 +45.42 (+0.06%)</text>`
+    + `</svg>`;
+  const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+  const chartDataUrl = 'data:image/png;base64,' + buffer.toString('base64');
+
+  const chart = await api('POST', '/api/sync/media/assets', { userId: user.id, body: { dataUrl: chartDataUrl, kind: 'chart', source: 'capture' } });
+  assert.equal(chart.status, 201);
+  assert.equal(chart.body.symbol, 'BITCOIN');
+  assert.equal(chart.body.timeframe, '4h');
+  assert.equal(chart.body.exchange, 'Binance');
+
+  const read = await api('GET', `/api/sync/media/assets/${chart.body.id}`, { userId: user.id });
+  assert.equal(read.body.exchange, 'Binance', 'the real, persisted row must carry the same exchange, not just the create response');
 });
 
 test('private upload ownership: the raw /uploads/media/... file itself requires a real session AND the real owner - a stranger and an anonymous caller are both denied', async () => {

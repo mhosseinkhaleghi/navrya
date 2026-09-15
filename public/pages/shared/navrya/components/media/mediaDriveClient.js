@@ -76,6 +76,18 @@ export async function deleteAsset(id, { detach } = {}) {
   return { ok: false, error: body.error || 'DELETE_FAILED', linkCount: body.linkCount };
 }
 
+// A same-origin authenticated download - the browser attaches the existing session cookie to this
+// plain navigation exactly the way it already does for the <img src={asset.url}> tags this
+// component renders, so no separate fetch/blob step is needed.
+export function downloadAsset(asset) {
+  const link = document.createElement('a');
+  link.href = asset.url;
+  link.download = asset.originalFilename || (asset.kind === 'chart' ? 'chart.png' : 'image.png');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 export async function fetchStorageUsage() {
   const response = await fetch('/api/sync/storage');
   if (!response.ok) return null;
