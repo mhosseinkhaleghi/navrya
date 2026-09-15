@@ -286,6 +286,39 @@ test('real production file: real-bitcoin-1h-binance.png - a second genuine captu
   assert.equal(result.exchange, 'Binance');
 });
 
+// Real production files (2026-09-15, fifth pass) - three MORE real downloads, found via the same
+// method (batch-testing every real file straight from the user's own Downloads folder). Two new
+// real OCR artifacts, distinct from the token-fusion bug above: (1) the "·" separator sometimes
+// glues a dash to the TRAILING edge of the interval token itself while the token after it stays
+// properly separated - real raw OCR text "TetherUS - 15- Binance" tokenizes to "15-" and "Binance",
+// and "15-" doesn't equal "15" under a strict lookup; (2) OCR occasionally misreads the unit letter
+// itself - real raw text "1n- Binance" for a genuine 1-hour chart (h/n look alike at small sizes in
+// many fonts). Fixed by stripping any leading/trailing punctuation before matching, and trying a
+// trailing N->H substitution (safe: no real timeframe value ever legitimately contains "N").
+test('real production file: real-bitcoin-1h-binance-2.png - trailing-dash artifact ("1n- Binance") PLUS an h/n OCR misread, both on the same real capture', async () => {
+  const buffer = await readFile(path.join(FIXTURES_DIR, 'real-bitcoin-1h-binance-2.png'));
+  const result = await detectChartMetadata(buffer);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '1h');
+  assert.equal(result.exchange, 'Binance');
+});
+
+test('real production file: real-bitcoin-15m-binance.png - a genuine 15-minute chart with the same trailing-dash artifact ("15- Binance")', async () => {
+  const buffer = await readFile(path.join(FIXTURES_DIR, 'real-bitcoin-15m-binance.png'));
+  const result = await detectChartMetadata(buffer);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '15m');
+  assert.equal(result.exchange, 'Binance');
+});
+
+test('real production file: real-bitcoin-1h-binance-3.png - a third independent 1h capture, confirming the fix is not a one-off', async () => {
+  const buffer = await readFile(path.join(FIXTURES_DIR, 'real-bitcoin-1h-binance-3.png'));
+  const result = await detectChartMetadata(buffer);
+  assert.equal(result.symbol, 'BITCOIN');
+  assert.equal(result.timeframe, '1h');
+  assert.equal(result.exchange, 'Binance');
+});
+
 test('a corrupt/undecodable buffer fails honestly as "unavailable", never throwing past this module or hanging', async () => {
   const result = await detectChartMetadata(Buffer.from('not a real image'));
   assert.equal(result.status, 'unavailable');

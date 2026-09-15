@@ -134,13 +134,26 @@ function candidateSymbol(rawToken) {
 // ALSO found on the same legend line (see the real false positive this fixed, in this module's
 // own test suite: a lone "60" inside "O 60,120.5 H..." was briefly misread as a raw interval code
 // with nothing else corroborating it was actually a legend at all).
+// Two more real, reproduced OCR artifacts (found the same way as the "1h-OANDA" fusion bug -
+// running actual downloaded production files through this module directly, not guessing): (1) the
+// "·" separator sometimes OCRs as a dash glued to the TRAILING edge of the interval token itself,
+// with the following token still properly space-separated - e.g. real raw OCR text "TetherUS - 15-
+// Binance" tokenizes to "15-" and "Binance" as two separate tokens, but "15-" doesn't equal "15"
+// under a strict lookup; (2) OCR occasionally misreads the unit letter itself - real raw text
+// "1n- Binance" for what is genuinely a "1h" chart (h/n are visually close at small sizes in many
+// fonts). Every valid entry in TIMEFRAMES/TV_RAW_INTERVAL_TO_TIMEFRAME is pure alphanumeric, so
+// stripping any leading/trailing punctuation is always safe; substituting a trailing "N" with "H"
+// is equally safe - no real entry ever legitimately contains the letter N, so this substitution
+// can only ever help recover a real, otherwise-lost match, never create a false one.
 function candidateTimeframe(rawToken) {
   const text = String(rawToken || '').trim();
   if (!text) return null;
-  const upper = text.toUpperCase().replace(/[.,]$/, '');
-  const direct = TIMEFRAME_UPPER_LOOKUP.get(upper);
-  if (direct) return { value: direct, safe: true };
-  if (Object.prototype.hasOwnProperty.call(TV_RAW_INTERVAL_TO_TIMEFRAME, upper)) return { value: TV_RAW_INTERVAL_TO_TIMEFRAME[upper], safe: false };
+  const upper = text.toUpperCase().replace(/^[^A-Z0-9]+/, '').replace(/[^A-Z0-9]+$/, '');
+  for (const candidate of upper.endsWith('N') ? [upper, upper.slice(0, -1) + 'H'] : [upper]) {
+    const direct = TIMEFRAME_UPPER_LOOKUP.get(candidate);
+    if (direct) return { value: direct, safe: true };
+    if (Object.prototype.hasOwnProperty.call(TV_RAW_INTERVAL_TO_TIMEFRAME, candidate)) return { value: TV_RAW_INTERVAL_TO_TIMEFRAME[candidate], safe: false };
+  }
   return null;
 }
 
