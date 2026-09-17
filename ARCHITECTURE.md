@@ -871,6 +871,7 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
 - **Purpose:** The first *real* XP/level/achievement system in this app, server-backed so the Admin Panel can see it (Section 4's `users`/`user_xp_events`/`user_achievements`), with a trader-facing profile page inside each character dashboard as the surface. Separate concern from the still-purely-decorative dashboard-header XP ring (`.level-ring b`, unchanged, still static presentation data - see Known Constraints) and from KYC/subscriptions, which reuse existing server-backed pipelines rather than inventing new ones.
 - **Files:** browser: `profile-xp-rules.js`, `profile-achievements.js`, `account-profile.types.js`, `account-profile-i18n.js`, `account-profile-store.js`, `account-profile-ui.js`, `account-profile.css` (all under `public/pages/shared/`); server: `server/community/xp-rules.mjs`, `server/community/achievement-rules.mjs`, `server/community/routes.profile.mjs`, the `xpEvents`/`achievements` repo domains and extended `mapUser()` (Section 4), the `005_account_profile.sql` migration, and the `GET /api/admin/users/:id` enrichment + `PATCH /api/admin/users/:id/kyc` in `server/admin/routes.mjs` (7.16).
 - **Route:** `#account/profile[/identity|level|achievements|subscriptions|role]`, mounted via `layer.show(page,'account-profile')` - the same "route outside `panel-system.js`'s `setActiveNav` map" pattern `mental-health-profile-page.js` and Community already use, with `route()`/`render()`/`open(tab)`/`history.replaceState`/a `hashchange` listener/an initial `setTimeout(render,0)` copied from `mental-health-profile-page.js`'s exact shape.
+- **A second, richer surface now exists in the sidebar itself - see Section 7.17a.**
 - **Sidebar entry point: the existing `.user-chip` button, not a new sidebar link.** Every character's sidebar already ends with a `<button class="user-chip">` showing static per-character flavor text (avatar image, a title, a subtitle) - given `id="userChip"` on all four character pages, it is now populated on load with the real signed-in user's `displayName`, `Level {n}` (from `profile-xp-rules.js`'s `levelForXp(xpTotal)`), and `avatarDataUrl` (falling back to the existing character-hero image if none is set), and wired to navigate to `#account/profile` on click. This was a deliberate, user-directed change from an earlier plan to add a new sibling sidebar `<a>` - the existing chip already occupied exactly the right spot.
 - **Dependencies:** `TradeJournalPanelLayer`, `TradeJournalDevUserSwitcher` (identity), the `/api/users/me/profile`, `/api/users/me/xp-events`, `/api/users/me/achievements`, `/api/users/me/subscriptions` endpoints (Section 4). XP/achievement triggers additionally read (never duplicate) `TradeJournalTradeStore`, the per-character `tradejournal:sessions:v1:{character}` localStorage key, `TradeJournalMentalHealthStore`, and two new `community-store.js` events (below).
 - **Important details:**
@@ -884,6 +885,53 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   - **Subscriptions are a `marketplace_listings.type = 'subscription'` row, riding the exact same `marketplace_purchases`/`mock:true` pipeline every other listing purchase already uses** - not a parallel billing system. `GET /api/users/me/subscriptions` is just `purchases.listByBuyer` joined to `listings.get` and filtered to `type === 'subscription'`.
   - **The bias-checklist-completion achievement's evidence source was originally a best-effort, unverified field-path guess - fixed during the Section 11 XP engine pass.** `account-profile-store.js`'s `biasChecklistCount()` now reads the real field (`profile.psychologicalProfile.biasChecklist.lastAssessedAt`, confirmed against `mental-health-store.js`) instead of the two originally-guessed paths (`psychologicalProfile.biasChecklistHistory` / a top-level `biasChecklistHistory`, neither of which actually existed in the store's shape) - the achievement now genuinely unlocks rather than silently never firing.
   - **Section 11 (below) replaced this system's original 4-event `POINTS_BY_TYPE` (`trade_closed`/`session_closed`/`listing_published`/`intake_completed`) with the full domain/dedupe/cap engine described there, while keeping `LEVEL_THRESHOLDS`, `xp_total`, and the achievements table exactly as built here.** The two legacy types are still declared (so old `user_xp_events` rows stay resolvable) but are no longer emitted by the client - `session_closed_with_summary`/`trade_closed_with_pnl` supersede them with real server-side ownership/state verification.
+
+### 7.17a Sidebar profile block (profile card + account menu)
+
+- **Purpose:** The sidebar's lower block is the trader's own identity surface: photo, name, character
+  title, plan, streak, achievements, the seven-step level ladder, the next goal, notifications,
+  wallet credit and log out. It replaces the pinned quote card and the separate "next goal"
+  (`RewardCard`) block those 292px used to hold - the quote itself is retired from the sidebar,
+  while character identity is carried by the accent, crest, atmosphere texture and portrait frame.
+  Built from an approved design artboard ("Option B" card with "Option A"'s side menu).
+- **Files:** `public/pages/shared/navrya/components/identity/ProfileCard.jsx` (`ProfileCard`, the
+  256px card, and `ProfileRail`, its 72px collapsed-rail form), `.../identity/AccountMenu.jsx` (the
+  menu), `public/pages/shared/navrya/profile-card.css` (all of the design's own values, imported by
+  `navrya/styles.css` so no character page had to change), `navrya-src/sidebarProfile.js` (the data
+  hook, which also now owns `useWalletBalance()` - moved out of `character-app.jsx` so the header's
+  HONOUR metric and this card read one implementation), `navrya-src/profileMenuModel.js` (pure level
+  math / notification shaping, unit-tested), plus the `profile` prop on
+  `components/navigation/Sidebar.jsx`. Without that prop the Sidebar still renders the original
+  quote + reward cards, so the design-system card page is unaffected.
+- **The menu opens beside the sidebar, not inside it.** It is portalled to `document.body` (the
+  sidebar clips its own overflow), re-applies `data-character`/`dir` itself, is bottom-aligned to
+  the sidebar with a notch pointing at the card, and is repositioned on scroll/resize. At <=720px
+  CSS turns it into a bottom sheet over a scrim. Escape returns focus to whichever control opened
+  it; an outside click, a navigation or a `hashchange` closes it.
+- **Every value is real** (no placeholder anywhere): profile/XP from `store.getState().profile`,
+  level math from `TradeJournalProfileXPRules.LEVEL_THRESHOLDS`, next goal from the same
+  `nextGoal()` the old RewardCard used, credit from `GET /api/sync/wallet`, plan and renewal notice
+  from `GET /api/sync/subscriptions`, streak from `TradeJournalPsychologyStore.disciplineStreak()`,
+  achievements from `GET /api/users/me/achievements` (x/14 plus recent unlocks), unread counts from
+  `GET /api/sync/notifications/summary`, per-ticket support rows from
+  `TradeJournalSupportStore.listTickets()` (fetched when the menu opens), and log out from the
+  existing `TradeJournalDevUserSwitcher.logout()` - with a confirm step on the card and, unlike the
+  Account Profile page's own button, a real error state when logout fails.
+- **Notification honesty, unchanged by this feature:** there is still no per-item notification feed
+  server-side (Section 4). Support is listed ticket by ticket because each ticket carries its own
+  `unread` flag; **Community is one grouped row built from the unread count alone** (no post list,
+  and deliberately no invented timestamp); achievement and subscription rows are derived in the
+  browser from data it already has. "Mark all read" acknowledges the Community cursor, opens each
+  unread ticket (the real server-side way that flag clears) and stamps an `accountMenuSeenAt` user
+  preference - server-backed, never `localStorage`. A unified, cross-device read state remains
+  server work that does not exist yet.
+- **Tests:** `tests/sidebar-profile-model.test.mjs` (level thresholds, plan/wallet formatting,
+  Latin-digit relative times in Persian, every notification rule and count) and
+  `tests/sidebar-profile-card.test.mjs` (component wiring, the stylesheet import, that every `nv-*`
+  class rendered exists in the CSS, four-language string completeness, and that none of the new
+  files touch browser storage). Verified in a real browser on hunter/fa, sage/en and engineer/es:
+  open from card and bell, filters, Escape/outside-click, logout confirm, collapsed rail and the
+  phone bottom sheet.
 
 ### 7.18 Global Data Sync (local-first-to-server migration) - **COMPLETE, all 5 modules**
 

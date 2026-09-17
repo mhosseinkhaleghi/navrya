@@ -1490,7 +1490,7 @@ function planLabel(lang, planId, catalog) {
 }
 
 // Wallet-affecting actions in this tab dispatch this so the header's own HONOUR metric
-// (navrya-src/character-app.jsx's useWalletBalance()) refetches without a full page reload -
+// (navrya-src/sidebarProfile.js's useWalletBalance()) refetches without a full page reload -
 // same balance-changed convention used app-wide for other CustomEvent-driven refreshes.
 function notifyWalletChanged() { window.dispatchEvent(new CustomEvent('navrya:wallet-changed')); }
 

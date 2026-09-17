@@ -39,6 +39,7 @@ import { openTradeDetails } from './tradeDetailsModal.jsx';
 import { openPostTradeReflection } from './postTradeReflectionModal.jsx';
 import { openPreSessionCheckIn } from './preSessionCheckInModal.jsx';
 import { tr as analysisCardTr, resolveUnresolvedItems } from './sessionAnalysisCard.jsx';
+import { useSidebarProfile, useWalletBalance, fmtWalletUsd } from './sidebarProfile.js';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -91,6 +92,8 @@ function useNotificationBadges(store) {
     const refresh = () => notifications.getSummary().then(setBadges).catch(() => {});
     window.addEventListener('tradejournal:community-post-published', refresh);
     window.addEventListener('tradejournal:support-ticket-changed', refresh);
+    // The sidebar profile menu's "mark all read" acknowledges Community and opens unread tickets.
+    window.addEventListener('navrya:notifications-changed', refresh);
     // "on navigation" - only when activeId itself actually changed, not on every unrelated store
     // update (collapse toggle, session/profile refresh) the same shared store also emits through.
     let lastActiveId = store.getState().activeId;
@@ -102,45 +105,11 @@ function useNotificationBadges(store) {
       stopPolling();
       window.removeEventListener('tradejournal:community-post-published', refresh);
       window.removeEventListener('tradejournal:support-ticket-changed', refresh);
+      window.removeEventListener('navrya:notifications-changed', refresh);
       unsubscribeStore();
     };
   }, [store]);
   return badges;
-}
-
-function fmtWalletUsd(microUsd) { return '$' + (microUsd / 1000000).toFixed(2); }
-
-// HONOUR now shows the real AI Wallet balance (GET /api/sync/wallet - the same endpoint
-// accountProfileView.jsx's Subscription tab already uses as its own source of truth for this
-// number, never a second/parallel wallet read). SCENARIOS and STREAK are computed from real
-// stores; EXECUTION still has no backing metric anywhere in this codebase and renders an honest
-// '—' rather than an invented number - the same "insufficient data over fabricated numbers"
-// standard used throughout this app.
-function useWalletBalance() {
-  const [balance, setBalance] = React.useState(null);
-  React.useEffect(() => {
-    let cancelled = false;
-    function reload() {
-      fetch('/api/sync/wallet').then((r) => r.json()).then((d) => { if (!cancelled) setBalance(d.totalBalanceMicroUsd); }).catch(() => {});
-    }
-    reload();
-    // Refetch whenever a wallet-affecting action fires this event (topup/purchase confirmed,
-    // upgrade confirmed - accountProfileView.jsx dispatches it) and whenever the tab regains
-    // focus/visibility, so the header never shows a stale balance after the user does something
-    // wallet-affecting on another tab/device or comes back to this one.
-    function onWalletChanged() { reload(); }
-    function onVisible() { if (document.visibilityState === 'visible') reload(); }
-    window.addEventListener('navrya:wallet-changed', onWalletChanged);
-    window.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', reload);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('navrya:wallet-changed', onWalletChanged);
-      window.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', reload);
-    };
-  }, []);
-  return balance;
 }
 
 // Real-money subscription rollout: an attractive, hard-to-miss popup when the wallet is genuinely
@@ -201,6 +170,10 @@ function WalletLowBalanceGate({ lang }) {
   );
 }
 
+// HONOUR shows the real AI Wallet balance (GET /api/sync/wallet) through useWalletBalance()
+// in sidebarProfile.js - the same hook the sidebar profile card reads, never a parallel wallet
+// read. SCENARIOS and STREAK are computed from real stores; EXECUTION still has no backing metric
+// anywhere in this codebase and renders an honest '—' rather than an invented number.
 function useMetrics(sessions, t) {
   const [streak, setStreak] = React.useState(null);
   React.useEffect(() => {
@@ -219,42 +192,22 @@ function useMetrics(sessions, t) {
   ];
 }
 
-// Translates the real nextGoal computed by account-profile-store.js's nextGoal() into the
-// Sidebar/RewardCard's existing {reward, xp, progress} prop shape - previously these were always
-// the same hardcoded "250 XP / 73%" chest regardless of the trader's actual state (Section 11's
-// XP engine had no client-side surface at all until this pass). Achievement titles are looked up
-// via the account-profile i18n dictionary (already loaded, already the single source for these
-// strings) rather than duplicating them here.
-function rewardPropsFor(goal, t) {
-  const profileI18n = window.TradeJournalAccountProfileI18n;
-  if (!goal) return {};
-  if (goal.kind === 'achievement') {
-    const title = profileI18n ? profileI18n.t('ach' + goal.labelKey + 'Title') : goal.key;
-    return { reward: title, rewardXp: goal.points + ' XP', rewardProgress: goal.progress };
-  }
-  if (goal.kind === 'level') {
-    return { reward: t.level, rewardXp: t.goalXpToGo.replace('{xp}', goal.xpToGo), rewardProgress: goal.progress };
-  }
-  if (goal.kind === 'maxLevel') {
-    return { reward: t.goalMaxLevel, rewardXp: '', rewardProgress: 100 };
-  }
-  return {};
-}
-
-function SidebarApp({ navryaCharacter, quotes, store }) {
+// The sidebar's lower block is the profile card (name, photo, level ladder, next goal,
+// notifications, wallet, log out); its account menu opens beside the sidebar. Every value comes
+// from real account data - see sidebarProfile.js. The nextGoal translation that used to feed the
+// old RewardCard now lives there too.
+function SidebarApp({ navryaCharacter, store }) {
   const s = useStore(store);
   const t = stringsFor(s.language);
   const rtl = isRtl(s.language);
-  const rewardProps = rewardPropsFor(s.nextGoal, t);
   const badges = useNotificationBadges(store);
+  const profile = useSidebarProfile({ store, state: s, navryaCharacter, badges });
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'} style={{ direction: rtl ? 'rtl' : 'ltr' }}>
       <Sidebar
         character={navryaCharacter} items={navItems(t, badges)} activeId={s.activeId} collapsed={s.collapsed}
-        quote={quotes[s.language] || quotes.en} rtl={rtl}
+        rtl={rtl} profile={profile}
         activeLabel={t.activeLabel} collapseLabel={s.collapsed ? t.expandSidebar : t.collapseSidebar}
-        rewardLabel={t.nextGoalLabel} {...rewardProps}
-        onRewardOpen={() => { location.hash = s.nextGoal && s.nextGoal.kind === 'achievement' ? '#account/profile/achievements' : '#account/profile/level'; }}
         onNavigate={store.setActiveId} onToggle={() => store.setCollapsed(!s.collapsed)}
       />
     </div>
@@ -3933,7 +3886,7 @@ export function mountCharacterApp(character) {
         return;
       }
       store.init();
-      createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);
+      createRoot(sidebarRoot).render(<SidebarApp navryaCharacter={navryaCharacter} store={store} />);
       createRoot(headerRoot).render(<HeaderApp navryaCharacter={navryaCharacter} quotes={quotes} store={store} />);
       createRoot(sessionsRoot).render(<SessionsApp character={character} navryaCharacter={navryaCharacter} store={store} />);
 

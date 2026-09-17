@@ -10,7 +10,8 @@ const root = process.cwd();
 const read = (...parts) => readFile(path.join(root, ...parts), 'utf8');
 
 test('useWalletBalance() fetches the real GET /api/sync/wallet endpoint - the same one accountProfileView.jsx already uses, never a second/parallel wallet read', async () => {
-  const src = await read('navrya-src', 'character-app.jsx');
+  // useWalletBalance() lives in sidebarProfile.js, shared by the header and the sidebar profile card.
+  const src = await read('navrya-src', 'sidebarProfile.js');
   const fnIdx = src.indexOf('function useWalletBalance()');
   assert.ok(fnIdx > -1, 'useWalletBalance must exist');
   const fn = src.slice(fnIdx, fnIdx + 1200);
@@ -19,7 +20,8 @@ test('useWalletBalance() fetches the real GET /api/sync/wallet endpoint - the sa
 });
 
 test('useWalletBalance() refreshes on the navrya:wallet-changed event and on focus/visibilitychange, per task B.2', async () => {
-  const src = await read('navrya-src', 'character-app.jsx');
+  // useWalletBalance() lives in sidebarProfile.js, shared by the header and the sidebar profile card.
+  const src = await read('navrya-src', 'sidebarProfile.js');
   const fnIdx = src.indexOf('function useWalletBalance()');
   const fn = src.slice(fnIdx, fnIdx + 1200);
   assert.match(fn, /navrya:wallet-changed/);

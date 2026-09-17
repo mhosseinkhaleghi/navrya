@@ -845,9 +845,9 @@ function PatternsPanel({ t, lang }) {
   );
 }
 
-// Next reward: ports character-app.jsx's own rewardPropsFor()/nextGoal logic (same real
-// TradeJournalAccountProfileStore.nextGoal() + TradeJournalProfileXPRules the Sidebar's
-// RewardCard already uses) so the number here can never drift from what the sidebar shows.
+// Next reward: reads the same real TradeJournalAccountProfileStore.nextGoal() +
+// TradeJournalProfileXPRules the sidebar profile card uses (navrya-src/sidebarProfile.js), so the
+// number here can never drift from what the sidebar shows.
 function RewardPanel({ t, lang }) {
   const [goal, setGoal] = React.useState(undefined);
   React.useEffect(() => {

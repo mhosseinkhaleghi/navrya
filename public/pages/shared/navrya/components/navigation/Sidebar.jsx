@@ -6,6 +6,8 @@ import { QuoteCard } from '../cards/QuoteCard.jsx';
 import { RewardCard, CHARACTER_REWARD } from '../cards/RewardCard.jsx';
 import { Icon } from '../core/Icon.jsx';
 import { assetUrl } from '../core/AssetBase.jsx';
+import { ProfileCard, ProfileRail } from '../identity/ProfileCard.jsx';
+import { AccountMenu } from '../identity/AccountMenu.jsx';
 
 export const SIDEBAR_ITEMS = [
   { id: 'sessions', icon: 'sessions', label: 'Sessions' },
@@ -19,7 +21,7 @@ export const SIDEBAR_ITEMS = [
   { id: 'more', icon: 'more', label: 'More tools' }
 ];
 
-function CollapsedRail({ character, items, activeId, onNavigate, progress }) {
+function CollapsedRail({ character, items, activeId, onNavigate, progress, profile, menu, onOpenMenu, profileBlockRef, identityRef, bellRef }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div className="navrya-scroll" style={{ flex: 1, overflowY: 'auto', padding: '8px 0', minHeight: 0 }}>
@@ -38,6 +40,11 @@ function CollapsedRail({ character, items, activeId, onNavigate, progress }) {
       <div aria-hidden="true" style={{ display: 'grid', placeItems: 'center', color: 'var(--gold-antique)', paddingBottom: 4 }}>
         <Icon name="scroll-down" size={18} />
       </div>
+      {profile ? (
+        <div ref={profileBlockRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 10 }}>
+          <ProfileRail character={character} profile={profile} menu={menu} onOpenMenu={onOpenMenu} identityRef={identityRef} bellRef={bellRef} />
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 10 }}>
         <button type="button" aria-label="Character quote" style={{
           width: 44, height: 40, borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer',
@@ -57,6 +64,7 @@ function CollapsedRail({ character, items, activeId, onNavigate, progress }) {
         </div>
         <span className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--char-accent)' }}>{progress}%</span>
       </div>
+      )}
     </div>
   );
 }
@@ -71,16 +79,38 @@ function useViewportWidth() {
   return width;
 }
 
-/* Full compact sidebar. Nav scrolls · lower modules stay pinned. 256px expanded / 72px collapsed. */
+/* Full compact sidebar. Nav scrolls · lower modules stay pinned. 256px expanded / 72px collapsed.
+   With `profile` (see navrya-src/sidebarProfile.js) the lower block is the profile card, whose
+   account menu opens beside the sidebar; without it the original quote + reward cards render. */
 export function Sidebar({
   character = 'hunter', items = SIDEBAR_ITEMS, activeId = 'sessions', collapsed = false,
   height = 900, quote, reward, rewardXp, rewardLabel, rewardProgress = 73, onRewardOpen, onNavigate, onToggle,
-  activeLabel = 'ACTIVE', collapseLabel, rtl = false, style, className, ...rest
+  activeLabel = 'ACTIVE', collapseLabel, rtl = false, profile, style, className, ...rest
 }) {
   const viewportWidth = useViewportWidth();
   const mobile = viewportWidth <= 720;
   const compact = !mobile && (collapsed || viewportWidth <= 1100);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [menu, setMenu] = React.useState(null); // null | 'profile' | 'notifications'
+  const navRef = React.useRef(null);
+  const profileBlockRef = React.useRef(null);
+  const identityRef = React.useRef(null);
+  const bellRef = React.useRef(null);
+  const onMenuOpenChange = profile ? profile.onMenuOpenChange : undefined;
+  React.useEffect(() => { if (onMenuOpenChange) onMenuOpenChange(menu !== null); }, [menu, onMenuOpenChange]);
+  React.useEffect(() => { setMenu(null); }, [compact, mobile]);
+  const openMenu = React.useCallback((section) => {
+    setMenu((current) => (current === section ? null : section));
+  }, []);
+  const closeMenu = React.useCallback((reason) => {
+    setMenu((current) => {
+      if (current && reason === 'escape') {
+        const trigger = current === 'notifications' ? bellRef.current : identityRef.current;
+        if (trigger) setTimeout(() => trigger.focus(), 0);
+      }
+      return null;
+    });
+  }, []);
   React.useEffect(() => {
     const open = (event) => setMobileOpen(!event.detail || event.detail.open !== false);
     const closeOnEscape = (event) => { if (event.key === 'Escape') setMobileOpen(false); };
@@ -113,6 +143,7 @@ export function Sidebar({
     };
   }, [mobile, mobileOpen]);
   const navigate = (id) => {
+    setMenu(null);
     if (onNavigate) onNavigate(id);
     if (mobile) setMobileOpen(false);
   };
@@ -120,6 +151,7 @@ export function Sidebar({
     <React.Fragment>
       {mobileOpen && <button type="button" className="navrya-mobile-menu-backdrop" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
     <nav
+      ref={navRef}
       aria-label="Primary"
       className={['navrya-sidebar', mobileOpen ? 'navrya-sidebar--mobile-open' : '', className].filter(Boolean).join(' ')}
       style={{
@@ -135,7 +167,10 @@ export function Sidebar({
       {mobile && <button type="button" className="navrya-mobile-nav-close" aria-label="Close navigation" onClick={() => setMobileOpen(false)}><Icon name="close" size={20} /></button>}
       <BrandStrip character={character} collapsed={compact} />
       {compact ? (
-        <CollapsedRail character={character} items={items} activeId={activeId} onNavigate={navigate} progress={rewardProgress} />
+        <CollapsedRail
+          character={character} items={items} activeId={activeId} onNavigate={navigate} progress={rewardProgress}
+          profile={profile} menu={menu} onOpenMenu={openMenu} profileBlockRef={profileBlockRef} identityRef={identityRef} bellRef={bellRef}
+        />
       ) : (
         <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div className="navrya-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingTop: 4 }}>
@@ -160,13 +195,21 @@ export function Sidebar({
       )}
       {!compact && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sidebar-gap)', padding: 'var(--sidebar-pad)' }}>
-          <QuoteCard character={character} quote={quote} />
-          <RewardCard
-            character={character} reward={reward || CHARACTER_REWARD[character]} progress={rewardProgress}
-            {...(rewardXp !== undefined ? { xp: rewardXp } : {})}
-            {...(rewardLabel !== undefined ? { label: rewardLabel } : {})}
-            onOpen={onRewardOpen}
-          />
+          {profile ? (
+            <div ref={profileBlockRef} style={{ display: 'flex', flexDirection: 'column' }}>
+              <ProfileCard character={character} profile={profile} menu={menu} onOpenMenu={openMenu} identityRef={identityRef} bellRef={bellRef} />
+            </div>
+          ) : (
+            <React.Fragment>
+              <QuoteCard character={character} quote={quote} />
+              <RewardCard
+                character={character} reward={reward || CHARACTER_REWARD[character]} progress={rewardProgress}
+                {...(rewardXp !== undefined ? { xp: rewardXp } : {})}
+                {...(rewardLabel !== undefined ? { label: rewardLabel } : {})}
+                onOpen={onRewardOpen}
+              />
+            </React.Fragment>
+          )}
           <CollapseControl collapsed={false} onToggle={onToggle} label={collapseLabel} />
         </div>
       )}
@@ -176,6 +219,12 @@ export function Sidebar({
         </div>
       )}
     </nav>
+    {profile ? (
+      <AccountMenu
+        open={menu !== null} focus={menu || 'profile'} character={character} rtl={rtl} profile={profile}
+        containerRef={navRef} anchorRef={menu === 'notifications' ? bellRef : identityRef} ignoreRef={profileBlockRef} onClose={closeMenu}
+      />
+    ) : null}
     </React.Fragment>
   );
 }
