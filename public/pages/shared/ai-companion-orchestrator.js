@@ -163,6 +163,24 @@
   // turn" are transient UI state this module has no visibility into - the caller MUST check those
   // itself before ever calling this (same split as the Companion card's own render gate).
   // ==========================================================================================
+  // Character Interaction Policy (Hunter gate): prefers a "<key>_hunter" i18n entry when Hunter is
+  // the active character and one exists for the current language; falls back to the original,
+  // character-neutral key otherwise (which is exactly what every other character still gets,
+  // unchanged - see docs/ai/character-interaction-policy.md). NAVRYA still decides WHICH greeting
+  // kind fires (voiceCtx above); this only ever swaps which copy is spoken for the SAME kind.
+  function characterGreetingText(i18n, baseKey) {
+    var policy = window.TradeJournalCharacterPolicy;
+    var isHunter = policy && typeof policy.isHunterActive === 'function'
+      ? policy.isHunterActive()
+      : ((window.TradeJournalPanelLayer && window.TradeJournalPanelLayer.character) || 'hunter') === 'hunter';
+    if (isHunter) {
+      var hunterKey = baseKey + '_hunter';
+      var table = i18n.messages && i18n.messages[i18n.language()];
+      if (table && Object.prototype.hasOwnProperty.call(table, hunterKey)) return i18n.t(hunterKey);
+    }
+    return i18n.t(baseKey);
+  }
+
   function voiceOpening() {
     var eng = engine();
     var i18n = window.TradeJournalAII18n;
@@ -183,12 +201,12 @@
     var surfaceContext = window.TradeJournalAISurfaceContext;
     var surface = surfaceContext && typeof surfaceContext.snapshot === 'function' ? surfaceContext.snapshot() : null;
     if (voiceCtx.openSessionId && surface && surface.page === 'sessions' && surface.entities && surface.entities.sessionId === voiceCtx.openSessionId) {
-      return { kind: 'activeSession', text: i18n.t('voiceOpeningActiveSession') };
+      return { kind: 'activeSession', text: characterGreetingText(i18n, 'voiceOpeningActiveSession') };
     }
 
-    if (voiceCtx.openTradeId) return { kind: 'activeTrade', text: i18n.t('voiceOpeningActiveTrade') };
-    if (voiceCtx.reflectionDueTradeId) return { kind: 'dueReflection', text: i18n.t('voiceOpeningDueReflection') };
-    if (voiceCtx.openSessionId) return { kind: 'activeSession', text: i18n.t('voiceOpeningActiveSession') };
+    if (voiceCtx.openTradeId) return { kind: 'activeTrade', text: characterGreetingText(i18n, 'voiceOpeningActiveTrade') };
+    if (voiceCtx.reflectionDueTradeId) return { kind: 'dueReflection', text: characterGreetingText(i18n, 'voiceOpeningDueReflection') };
+    if (voiceCtx.openSessionId) return { kind: 'activeSession', text: characterGreetingText(i18n, 'voiceOpeningActiveSession') };
     if (!voiceCtx.hasSeenWalkthrough) {
       // Spoken once it's delivered - marked seen right here, before the user even replies, is
       // what stops this exact onboarding greeting repeating on the NEXT Voice activation (item
@@ -199,9 +217,9 @@
       if (store) store.setWalkthroughSeen();
       resetCooldown();
       publish();
-      return { kind: 'freshWelcome', text: i18n.t('voiceOpeningFreshWelcome') };
+      return { kind: 'freshWelcome', text: characterGreetingText(i18n, 'voiceOpeningFreshWelcome') };
     }
-    return { kind: 'returningNeutral', text: i18n.t('voiceOpeningReturningNeutral') };
+    return { kind: 'returningNeutral', text: characterGreetingText(i18n, 'voiceOpeningReturningNeutral') };
   }
 
   // Deterministic classification of the user's spoken reply to a just-delivered Companion opening
