@@ -1019,14 +1019,28 @@
       if (nextInterviewField) {
         requestBody.activeProcess.nextQuestion = {
           path: nextInterviewField.path, label: nextInterviewField.label || null, help: nextInterviewField.help || null,
-          type: nextInterviewField.type || null, options: nextInterviewField.options || null, required: !!nextInterviewField.required
+          type: nextInterviewField.type || null, options: nextInterviewField.options || null, required: !!nextInterviewField.required,
+          // Character Interaction Policy (Hunter gate): the server's own delivery-gear resolver
+          // needs to tell a destructive/override gate field apart from an ordinary one (they get
+          // NEUTRAL, not FOCUSED, delivery - see pattern-ai-server.mjs's hunterDeliveryGear()).
+          // Purely descriptive of an already-registered field's own role; never a new field or a
+          // second place role is decided.
+          role: nextInterviewField.role || null
         };
       }
     }
     if (availableActions) requestBody.availableActions = availableActions;
+    // Character Interaction Policy (Hunter gate): previously only ever sent for a voice turn, so a
+    // written chat conversation got zero character-aware delivery even when Hunter (this app's
+    // default character) was active - see docs/ai/character-interaction-policy.md. Sent on every
+    // turn now; harmless for every other character, whose server-side style still only ever
+    // applies on a voice turn exactly as before (pattern-ai-server.mjs's voiceCharacterReplyStyle).
+    var activeCharacterId = (typeof options.character === 'string' && options.character)
+      || (window.TradeJournalPanelLayer && window.TradeJournalPanelLayer.character)
+      || null;
+    if (activeCharacterId) requestBody.character = activeCharacterId;
     if (source === 'voice') {
       requestBody.source = 'voice';
-      if (typeof options.character === 'string') requestBody.character = options.character;
       if (options.voiceTransport === 'gemini') requestBody.voiceTransport = 'gemini';
     }
     if (companionIntent) requestBody.companionIntent = companionIntent;
@@ -1305,7 +1319,7 @@
 
     if (tookWorkflowPath) {
       var result = { kind: 'workflow', reply: payload.reply, voiceReply: payload.voiceReply || null, workflow: workflowResult, activeProcess: activeProcess, conversationId: nextConversationId };
-      if (proactiveFindings.length) { result.kind = 'proactive-warning'; result.proactive = proactiveFindings; result.reply = buildProactiveReply(proactiveFindings); result.voiceReply = null; }
+      if (proactiveFindings.length) { result.kind = 'proactive-warning'; result.proactive = proactiveFindings; result.reply = buildProactiveReply(proactiveFindings, activeCharacterId || 'hunter'); result.voiceReply = null; }
       return result;
     }
 
@@ -1451,16 +1465,45 @@
     return { fieldsToApply: fieldsToApply, findings: evalResult.findings };
   }
 
+  // Character Interaction Policy (Hunter gate): the deterministic proactive-engine finding itself
+  // (severity/evidence/f.message) is never touched here - Hunter only ever adds the surrounding
+  // address/override-question framing, matching the event policy for RISK_WARNING/
+  // RISK_OVERRIDE_CONFIRMATION (docs/ai/character-interaction-policy.md: FACT -> CONFLICT ->
+  // OPTIONS; never shame the user, never invent a new risk condition). Every other character (and
+  // any turn where the active character is unknown) keeps the exact original English override
+  // question, byte for byte.
+  // Delegates to the shared character-interaction-policy.js module when it is loaded (the
+  // canonical copy of this wording); falls back to the exact same text inline otherwise - best-
+  // effort, same "additive, never load-bearing" posture as this file's other optional shared-
+  // module integrations (e.g. TradeJournalAIContextBuilder above).
+  function hunterProactiveOpener(language) {
+    var policy = window.TradeJournalCharacterPolicy;
+    if (policy && typeof policy.proactiveOpener === 'function') return policy.proactiveOpener(language);
+    return ({ en: 'Hold on a sec.', fa: 'یه لحظه رفیق.', ar: 'لحظة واحدة.', es: 'Un momento.' })[language] || 'Hold on a sec.';
+  }
+  function hunterOverrideQuestion(language) {
+    var policy = window.TradeJournalCharacterPolicy;
+    if (policy && typeof policy.proactiveOverrideQuestion === 'function') return policy.proactiveOverrideQuestion(language);
+    return ({
+      en: 'Want to stick with the plan, or knowingly push past it?',
+      fa: 'می‌خوای برگردیم روی پلن، یا همین استثنا رو آگاهانه تأیید می‌کنی؟',
+      ar: 'تريد نلتزم بالخطة، أم نتجاوزها بوعي؟',
+      es: '¿Nos quedamos con el plan, o lo superamos a propósito?'
+    })[language] || 'Want to stick with the plan, or knowingly push past it?';
+  }
+
   // Deterministic, local evidence text - never the model's own payload.reply, and never depends
   // on a provider call succeeding (section 37). A finding whose severity blocks the field states
   // the conflict first, followed by any supporting non-blocking evidence (recent losses, stress),
   // matching section 1's own worked example.
-  function buildProactiveReply(findings) {
+  function buildProactiveReply(findings, character) {
     var proactiveEngine = window.TradeJournalAIProactiveEngine;
     var blocking = findings.filter(function (f) { return proactiveEngine && proactiveEngine.BLOCKING_SEVERITIES[f.severity]; });
     var rest = findings.filter(function (f) { return blocking.indexOf(f) === -1; });
     var lines = blocking.map(function (f) { return f.message; }).concat(rest.map(function (f) { return f.message; }));
-    if (blocking.length) lines.push('Do you want to keep the current value, or deliberately override it?');
+    var isHunter = character === 'hunter';
+    if (blocking.length && isHunter) lines.unshift(hunterProactiveOpener(i18n.language()));
+    if (blocking.length) lines.push(isHunter ? hunterOverrideQuestion(i18n.language()) : 'Do you want to keep the current value, or deliberately override it?');
     return lines.join(' ');
   }
 

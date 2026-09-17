@@ -1988,9 +1988,37 @@ const VOICE_CHARACTER_REPLY_STYLE = {
   engineer: 'You are speaking as the Market Engineer: precise, evidence-led, and systematic. Explain conditions, validation, and cause-and-effect clearly.',
   sage: 'You are speaking as the Market Master: calm, seasoned, and insightful. Teach the lesson in the moment, connect it to a deliberate plan, and keep uncertainty honest.'
 };
-function voiceCharacterReplyStyle(body, voiceSource) {
-  if (!voiceSource) return '';
+
+function isPsychologyProcessId(id) { return /^(mh-|psychology-)/.test(String(id)); }
+
+// NAVRYA — Hunter Character Interaction Policy (first character with an event-aware delivery
+// layer; every other character keeps its original single-line, voice-only style below untouched).
+// NAVRYA/the deterministic engines still decide WHAT happens; this only ever adjusts HOW Hunter
+// phrases it. Deliberately four compact, reusable "delivery gears" rather than a per-event bible,
+// so this stays a small, fixed addition to every Hunter prompt rather than growing per event
+// (character-interaction-policy brief, section 33: never send the whole Character Bible).
+const HUNTER_GEAR_INSTRUCTION = {
+  NORMAL: 'You are speaking as Hunter: a fast, observant field partner, not a teacher or commander. Warm, direct, street-smart, mildly witty in small doses. Track and verify before acting - never rush the user into a decision ("never chase"). Keep sentences short, rhythmic, one idea at a time. In Persian, you may naturally use "رفیق" now and then - never every turn, and never a formal/bureaucratic register. Avoid mystical, military, or salesy language.',
+  FOCUSED: 'You are speaking as Hunter in fast, focused interview mode: compact, controlled, minimal filler, one question at a time, a short specific acknowledgement of what was just said before moving to the next question. Little to no metaphor here, and address terms like "رفیق" mostly drop out in this mode - efficiency over warmth.',
+  HUMAN_MOMENT: 'You are speaking as Hunter, but this is a quieter, more human moment (a loss, a reflection, something sensitive). Slightly slower, warmer, shorter sentences than usual, no metaphor, no forced positivity - never say things like "don\'t worry" or claim to know exactly how they feel, and never sound clinical or diagnostic. Stay a plain, caring field partner, not a therapist.',
+  NEUTRAL: 'You are speaking as Hunter, but this is a confirmation step (a destructive or override confirmation). Drop the character flavor entirely here: no metaphor, no humor, no playful tone - state the confirmation plainly, neutrally, and clearly.'
+};
+// A gate field (a destructive/override confirmation) always wins NEUTRAL regardless of what
+// process it belongs to; a psychology/self-reflection process is the Human Moment gear; any other
+// open form is the fast Focused interview gear; nothing open at all is the default Normal gear.
+function hunterDeliveryGear(activeProcess) {
+  if (activeProcess && activeProcess.nextQuestion && activeProcess.nextQuestion.role === 'gate') return 'NEUTRAL';
+  if (activeProcess && isPsychologyProcessId(activeProcess.id)) return 'HUMAN_MOMENT';
+  if (activeProcess) return 'FOCUSED';
+  return 'NORMAL';
+}
+function voiceCharacterReplyStyle(body, voiceSource, activeProcess) {
   const character = Object.prototype.hasOwnProperty.call(VOICE_CHARACTER_REPLY_STYLE, body.character) ? body.character : 'hunter';
+  if (character === 'hunter') {
+    const gear = hunterDeliveryGear(activeProcess);
+    return ` ${HUNTER_GEAR_INSTRUCTION[gear]} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
+  }
+  if (!voiceSource) return '';
   const rule = body.voiceTransport === 'gemini'
     ? mergeGeminiVoiceProfile(character, currentAdminGeminiVoiceProfiles()[character]).interactionRule
     : VOICE_CHARACTER_REPLY_STYLE[character];
@@ -2694,7 +2722,7 @@ async function dockChat(body, externalSignal) {
   // unconditional (unlike companionContextText above) and carries real instructional weight.
   const personaStyleText = buildPersonaStyleText(body.personaStyle);
   const voiceSource = body.source === 'voice';
-  const voiceCharacterStyle = voiceCharacterReplyStyle(body, voiceSource);
+  const voiceCharacterStyle = voiceCharacterReplyStyle(body, voiceSource, activeProcess);
   // Persian Voice Quality gate, section 9-11: the gap this pass found is that voiceReply was
   // ONLY ever asked to be "shorter" - never told that written Persian and spoken Persian are
   // different registers. This addendum is deliberately AUDIO-STYLE guidance only (never a fact/
@@ -2754,7 +2782,7 @@ async function dockChat(body, externalSignal) {
   // DO/DON'T pair below is deliberately the exact scenario reported in real use: a natural reaction
   // to "I'm married" is fine and wanted; inventing gender/family assumptions from it is not - the
   // difference is "react to what was literally said" vs. "conclude something that was not said".
-  const isPsychologyProcess = activeProcess && /^(mh-|psychology-)/.test(String(activeProcess.id));
+  const isPsychologyProcess = activeProcess && isPsychologyProcessId(activeProcess.id);
   const naturalInterviewToneInstruction = ' Sound like a warm, attentive person actually listening, not a form reading its own field names back: notice something real in what they just said and react to it briefly and specifically, in your own words, then flow into the next question in the same breath - never a flat "Noted, next question." Ground every reaction in exactly what was said; never invent a conclusion, a label for the person, or a fact they did not state - for example, if someone says they are married, a natural reply is something like "Got it, married - thanks for sharing" or similar; never an invented assumption like "so we\'re dealing with a family man" (that assumes gender and family details nobody stated). Skip the reaction entirely for a routine, low-content answer (a bare number, a simple yes/no) rather than forcing one.'
     + (isPsychologyProcess ? ' This is a psychology/self-reflection context: stay warm but plainly non-diagnostic, never clinical, and never sound cheerful, amused, or congratulatory about anything that could indicate financial distress, debt, a large loss, revenge trading, or another sign of struggle - acknowledge it gently and plainly instead, the way a caring, professional companion would, never as a joke or a light remark.' : '');
   const systemText = (activeProcess

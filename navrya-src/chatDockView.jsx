@@ -705,6 +705,17 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // other product-facing surface use the app's own 4 character ids ('hunter'/'commander'/
   // 'engineer'/'sage'), so this maps back at the one point a voice request is actually built.
   function voiceCharacter() { return navryaCharacter === 'master' ? 'sage' : navryaCharacter; }
+  // Character Interaction Policy (Hunter gate): the ANALYSIS_HEADLINE lead-in - see
+  // docs/ai/character-interaction-policy.md and docs/ai/characters/hunter.md. Never the analysis
+  // content itself, only Hunter's own compact framing in front of it. Delegates to the shared
+  // character-interaction-policy.js module (loaded on every character page alongside
+  // ai-i18n.js/ai-companion-orchestrator.js) when present; falls back to the same text inline
+  // otherwise.
+  function hunterHeadlineLeadIn(language) {
+    const policy = window.TradeJournalCharacterPolicy;
+    if (policy && typeof policy.analysisHeadlineLeadIn === 'function') return policy.analysisHeadlineLeadIn(language);
+    return ({ en: 'Main signal:', fa: 'ردپای اصلی اینه:', ar: 'الإشارة الرئيسية:', es: 'Señal principal:' })[language] || 'Main signal:';
+  }
   // Reads the same per-account preference settingsView.jsx's VoiceGenderSection writes via
   // window.TradeJournalUserPreferences (public/pages/shared/user-preferences.js) - one gender pick
   // per character, applied globally regardless of which language is active. A caller before the
@@ -1184,10 +1195,15 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // `voiceState` React variable, which would otherwise always read its stale mount-time value.
   React.useEffect(() => {
     function onAnalysisReady(event) {
-      const headline = event && event.detail && event.detail.headline;
+      let headline = event && event.detail && event.detail.headline;
       if (!headline || !voiceRef.current || !playbackControllerRef.current) return;
       const currentState = voiceRef.current.state();
       if (currentState === VOICE_STATES.IDLE || currentState === VOICE_STATES.ERROR) return;
+      // Character Interaction Policy (Hunter gate): ANALYSIS_HEADLINE event - the headline text
+      // itself is the model's real, unchanged analysis (never rewritten here); Hunter only ever
+      // prepends its own compact "main signal" lead-in framing. See
+      // docs/ai/character-interaction-policy.md.
+      if (voiceCharacter() === 'hunter') headline = `${hunterHeadlineLeadIn(i18n.language())} ${headline}`;
       const spoken = voiceText ? voiceText.toSpokenText(headline, i18n.language()) : headline;
       playbackControllerRef.current.enqueue(spoken, { kind: 'ai-analysis-result', caption: headline });
     }

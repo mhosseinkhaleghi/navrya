@@ -1685,6 +1685,41 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   contract, `saveVideo()` real signature/mime/size checks, image+video round trip, and
   owner/admin-only/anonymous/stranger access over the real `/uploads/ticket/*` path).
 
+### 7.27 Character Interaction Policy (Hunter gate)
+
+- **What changed:** before this gate, "character" only ever meant an ElevenLabs/Gemini voice-ID
+  pick plus one hard-coded, voice-turn-only style line server-side - a written chat conversation
+  got zero character-aware wording, even for Hunter (this app's default character). This gate adds
+  a small, reusable event→delivery-gear policy (`NORMAL`/`FOCUSED`/`HUMAN_MOMENT`/`NEUTRAL`) for
+  **Hunter only**; `commander`/`engineer`/`sage` are byte-for-byte unchanged. NAVRYA's deterministic
+  engines (Workflow/Action/Risk/Safety/Proactive) still decide every real outcome; this only ever
+  changes wording/delivery. Full detail, the event→integration-point table, and Hunter's own
+  identity/example lines are in `docs/ai/character-interaction-policy.md` and
+  `docs/ai/characters/hunter.md`.
+- **No shared server/client module:** this codebase has no bundler and no existing file-sharing
+  mechanism between `server/*.mjs` and `public/pages/shared/*.js` - every per-character server
+  string was already hand-authored independently of the client. This gate follows that same
+  convention rather than inventing a new cross-runtime import: `server/pattern-ai-server.mjs`'s
+  `HUNTER_GEAR_INSTRUCTION`/`hunterDeliveryGear()` and the new
+  `public/pages/shared/character-interaction-policy.js` implement the same event→gear model
+  independently, kept in sync by hand.
+- **Real integration points:** the LLM prompt fragment in `dockChat()` (general Q&A, product
+  explanation, data answers, and form-question/gate-confirmation wording - now applied on text
+  turns too, not just voice); `ai-companion-orchestrator.js`'s `voiceOpening()` (Hunter-specific
+  greeting variants via new `_hunter`-suffixed `ai-i18n.js` keys); `chat-dock-core.js`'s
+  `buildProactiveReply()` (a short Hunter opener/override question around the Proactive Engine's
+  own unmodified finding text); `chatDockView.jsx`'s `onAnalysisReady()` (a "main signal" lead-in
+  prepended to the model's real, unchanged analysis headline).
+- **Safety/gate override is structural:** a destructive/override confirmation or an explicit
+  safety sensitivity always resolves to the `NEUTRAL` gear (no metaphor, no humor), and a genuine
+  crisis-safety turn never reaches this policy layer at all (`mental-health-safety.js`'s preflight
+  in `chat-dock-core.js`'s `sendChat()` already returns before any reply is composed).
+- **Tests:** `character-interaction-policy.test.mjs` (event→gear mapping, the safety/gate override,
+  Persian quality checks), `hunter-character-server-prompt.test.mjs` (server-side gear selection
+  per `activeProcess`/`nextQuestion.role`, non-Hunter characters unaffected),
+  `hunter-character-client-integration.test.mjs` (real `ai-i18n.js` end-to-end voice-opening
+  selection, and the best-effort fallback when the shared module isn't loaded).
+
 ## 8. AI Integration Points
 
 ### Server configuration

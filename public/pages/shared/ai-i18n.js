@@ -157,6 +157,14 @@
       voiceOpeningDueReflection: 'سلام. یه معامله‌ی بسته داری که هنوز جمع‌بندی نشده. می‌خوای الان مرورش کنیم؟',
       voiceOpeningStartAck: 'بسیار خب، بیا شروع کنیم.', voiceOpeningLaterAck: 'باشه، هر وقت خواستی اینجام.',
 
+      // Character Interaction Policy (Hunter gate): Hunter-specific voice-opening variants, per
+      // docs/ai/characters/hunter.md's worked examples - "رفیق" used naturally, not on every line.
+      voiceOpeningFreshWelcome_hunter: 'خوش اومدی رفیق. بیا از یه جای ساده شروع کنیم.',
+      voiceOpeningReturningNeutral_hunter: 'خب رفیق، امروز دنبال چی‌ای؟',
+      voiceOpeningActiveSession_hunter: 'خب رفیق، سشن هنوز بازه. ادامه‌ش بدیم؟',
+      voiceOpeningActiveTrade_hunter: 'یه پوزیشن هنوز بازه. اول یه نگاه به اون بندازیم؟',
+      voiceOpeningDueReflection_hunter: 'قبل از حرکت بعدی، یه Reflection عقب‌افتاده داریم. انجامش بدیم؟',
+
       convRouterSessionPurpose: 'سشن یعنی همون فضایی که قبل از ورود به معامله، توش چارت رو می‌بینی، حرکت بازار رو دنبال می‌کنی و سناریوهات رو با دلیل ثبت می‌کنی — به‌جای اینکه سرراست بری تو معامله.',
       convRouterPatternPurpose: 'پترن یعنی یک رفتار تکرارشونده‌ی بازار که یک بار با مراحلش ثبتش می‌کنی؛ بعد هر وقت همون رفتار رو توی یه سناریوی جدید دیدی، می‌تونی بهش لینکش کنی و ببینی چقدر واقعاً جواب داده.',
       convRouterStrategyPurpose: 'استراتژی یعنی همون قانون‌های شخصی خودت برای ورود، خروج و مدیریت ریسک — یک‌بار می‌نویسیش، بعد هر معامله رو بهش لینک می‌کنی تا ببینی چقدر واقعاً طبق پلن پیش رفتی.',
@@ -453,6 +461,14 @@
       voiceOpeningDueReflection: 'أهلاً. لديك صفقة مغلقة لم تتم مراجعتها بعد. هل تريد أن نراجعها الآن؟',
       voiceOpeningStartAck: 'ممتاز، لنبدأ.', voiceOpeningLaterAck: 'حسناً، أنا هنا كلما كنت مستعداً.',
 
+      // Character Interaction Policy (Hunter gate): natural Arabic equivalent register, not a
+      // literal translation of the Persian "رفیق" - see docs/ai/characters/hunter.md.
+      voiceOpeningFreshWelcome_hunter: 'أهلاً بك. خلّينا نبدأ بشيء بسيط.',
+      voiceOpeningReturningNeutral_hunter: 'طيب، وراء أي شيء اليوم؟',
+      voiceOpeningActiveSession_hunter: 'جلستك ما زالت مفتوحة. نكمل من هناك؟',
+      voiceOpeningActiveTrade_hunter: 'عندك صفقة لسه مفتوحة. نلقي نظرة عليها الأول؟',
+      voiceOpeningDueReflection_hunter: 'قبل ما نكمل، عندنا مراجعة متأخرة. نخلصها الآن؟',
+
       convRouterSessionPurpose: 'الجلسة هي المكان الذي تراقب فيه الرسم البياني، وتتابع حركة السوق، وتسجّل سيناريوهاتك بمنطق واضح قبل الدخول في أي صفقة — بدلاً من الدخول مباشرة.',
       convRouterPatternPurpose: 'النمط هو سلوك متكرر في السوق تسجّله مرة واحدة بمراحله؛ وفي كل مرة ترى فيها نفس السلوك ضمن سيناريو جديد، يمكنك ربطه به ومعرفة مدى نجاحه فعلياً.',
       convRouterStrategyPurpose: 'الاستراتيجية هي قواعدك الخاصة للدخول والخروج وإدارة المخاطر — تكتبها مرة واحدة، ثم تربط كل صفقة بها لترى مدى التزامك الفعلي بالخطة.',
@@ -614,6 +630,13 @@
       voiceOpeningActiveTrade: 'Hi. You have an open trade. Want to review it first?',
       voiceOpeningDueReflection: 'Hi. You have a closed trade that hasn\'t been reviewed yet. Want to go over it now?',
       voiceOpeningStartAck: 'Great, let\'s get started.', voiceOpeningLaterAck: 'Okay, I\'m here whenever you\'re ready.',
+
+      // Character Interaction Policy (Hunter gate): see docs/ai/characters/hunter.md.
+      voiceOpeningFreshWelcome_hunter: 'Welcome. Let\'s start somewhere simple.',
+      voiceOpeningReturningNeutral_hunter: 'Alright, what are we tracking today?',
+      voiceOpeningActiveSession_hunter: 'Hey, your session\'s still open. Want to keep going from there?',
+      voiceOpeningActiveTrade_hunter: 'You\'ve got a position still open. Want to take a look at that first?',
+      voiceOpeningDueReflection_hunter: 'Before we move on, there\'s a reflection still waiting on you. Want to knock it out now?',
 
       convRouterSessionPurpose: 'A Session is where you watch the chart, track market movement, and log your scenarios with real reasoning before you ever place a trade — instead of jumping straight into a position.',
       convRouterPatternPurpose: 'A Pattern is a repeatable market behavior you record once, with its own stages; whenever you see that same behavior in a new scenario, you can link it and see how well it\'s actually performed over time.',
@@ -910,6 +933,13 @@
       voiceOpeningActiveTrade: 'Hola. Tienes una operación abierta. ¿Quieres revisarla primero?',
       voiceOpeningDueReflection: 'Hola. Tienes una operación cerrada que aún no se ha revisado. ¿Quieres revisarla ahora?',
       voiceOpeningStartAck: 'Perfecto, empecemos.', voiceOpeningLaterAck: 'Vale, aquí estoy cuando quieras.',
+
+      // Character Interaction Policy (Hunter gate): see docs/ai/characters/hunter.md.
+      voiceOpeningFreshWelcome_hunter: 'Bienvenido. Empecemos por algo sencillo.',
+      voiceOpeningReturningNeutral_hunter: 'Bueno, ¿qué andamos rastreando hoy?',
+      voiceOpeningActiveSession_hunter: 'Tu sesión sigue abierta, compa. ¿Seguimos desde ahí?',
+      voiceOpeningActiveTrade_hunter: 'Tienes una posición abierta todavía. ¿Le echamos un vistazo primero?',
+      voiceOpeningDueReflection_hunter: 'Antes de seguir, tenemos una reflexión pendiente. ¿La hacemos ahora?',
 
       convRouterSessionPurpose: 'Una Sesión es donde observas el gráfico, sigues el movimiento del mercado y registras tus escenarios con una razón real antes de entrar en una operación — en lugar de entrar directamente.',
       convRouterPatternPurpose: 'Un Patrón es un comportamiento repetible del mercado que registras una vez, con sus propias etapas; cada vez que veas ese mismo comportamiento en un escenario nuevo, puedes vincularlo y ver qué tan bien ha funcionado en realidad.',
