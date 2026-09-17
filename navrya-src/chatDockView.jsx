@@ -831,7 +831,15 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // the instant the next transcript arrives, so only that ONE reply is ever treated specially,
   // regardless of how it's classified (start/later/explain/ambiguous).
   const awaitingCompanionOpeningReplyRef = React.useRef(false);
-  function onVoiceTranscript(transcriptText) {
+  // fix/voice-gpt-live-repair: `transportMeta` is optional (only gptLiveVoice.js's own
+  // onFinalTranscript(text, {gptLiveTurnId}) passes a second argument today - Gemini/the retired
+  // Realtime transport call this with just the text, same tolerant-extra-arg convention as every
+  // other feature-detected transport callback in this file). gptLiveTurnId threads through
+  // TurnCoordinator's own meta (a distinct field from its own `turnId`, never overwritten by it -
+  // see ai-voice-turn-coordinator.js) all the way to PlaybackController's enqueue() below, so
+  // gptLiveVoice.js's own speak(text, entry) can correlate this reply with the exact GPT-Live turn
+  // that produced it (see that file's DELEGATION-CORRELATION REPAIR comment).
+  function onVoiceTranscript(transcriptText, transportMeta) {
     setVoiceHeardText(transcriptText);
     const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef.current;
     awaitingCompanionOpeningReplyRef.current = false;
@@ -841,7 +849,8 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     return turnCoordinatorRef.current.handleFinalTranscript(transcriptText, {
       awaitingCompanionOpeningReply: wasAwaitingCompanionOpeningReply,
       transcriptAt: transcriptAt,
-      connectionEpoch: connectionEpochAtTranscript
+      connectionEpoch: connectionEpochAtTranscript,
+      gptLiveTurnId: transportMeta && transportMeta.gptLiveTurnId != null ? transportMeta.gptLiveTurnId : null
     });
   }
 
@@ -987,7 +996,15 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       // never calls its own transport-level interrupt() in response to a barge-in any more (see
       // that file's own onTransportEvent comment); this is what replaces that direct, queue-
       // bypassing call with the controller-owned path (Part B).
-      onBargeIn: () => { if (playbackControllerRef.current) playbackControllerRef.current.interrupt(); }
+      onBargeIn: () => { if (playbackControllerRef.current) playbackControllerRef.current.interrupt(); },
+      // fix/voice-gpt-live-repair: only gptLiveVoice.js's own speak() ever calls this - a narrow,
+      // per-turn "this one reply's speech was lost" signal (a same-turn delegation never arrived in
+      // time), deliberately NOT routed through onError()/VOICE_STATES.ERROR so one missed reply
+      // never tears down an otherwise-healthy session. The written reply already reached the
+      // transcript through the ordinary text pipeline regardless. Recorded the same lightweight,
+      // inspectable-diagnostic way this file already tracks TradeJournalChatDockVoiceLatency/
+      // TradeJournalChatDockVoiceLastPlayback - no UI/i18n surface exists for this yet.
+      onSpeakError: (detail) => { window.TradeJournalChatDockVoiceLastSpeakError = Object.assign({ atMs: Date.now() }, detail); }
     });
     // Slice R2 (transport repair), audit finding T12, revised: the adapter CAN change now - a
     // provider switch re-runs this effect (see the providerId dep below) and rebuilds the
@@ -1012,7 +1029,11 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // output-audio-buffer stop, an interrupt, an error, or its own bounded watchdog fallback) -
     // never the SDK's own high-level audio_stopped any more (see aiVoiceRealtime.js's own comment).
     playbackControllerRef.current = window.TradeJournalAIVoicePlaybackController.create({
-      speak: (text) => voiceRef.current.speak(text),
+      // fix/voice-gpt-live-repair: `entry` (the playback-queue entry, carrying gptLiveTurnId when
+      // this reply came from GPT-Live) is now passed through - see ai-voice-playback-controller.js's
+      // own processNext() comment. Gemini's speak(text) signature simply ignores the extra
+      // argument.
+      speak: (text, entry) => voiceRef.current.speak(text, entry),
       // Journey H2, Gate 3: read fresh via voiceRef.current on every call, same convention as
       // speak()/interrupt() just above - only ever reached by PlaybackController itself, for an
       // entry the onResult wiring below tagged with a real audioUrl.
@@ -1080,7 +1101,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
             ? outputResolver.resolve({ source: 'voice', hasAudio: !!(result && result.audioUrl) })
             : 'DYNAMIC_TTS';
           const audioUrlForEntry = outputDecision === 'PUBLISHED_AUDIO' ? result.audioUrl : null;
-          playbackControllerRef.current.enqueue(toSpeak, { turnId: meta.turnId, connectionEpoch: meta.connectionEpoch, caption: rawToSpeak || '', audioUrl: audioUrlForEntry });
+          playbackControllerRef.current.enqueue(toSpeak, { turnId: meta.turnId, connectionEpoch: meta.connectionEpoch, caption: rawToSpeak || '', audioUrl: audioUrlForEntry, gptLiveTurnId: meta.gptLiveTurnId });
         }
         window.TradeJournalChatDockVoiceLatency = latency;
         // Dynamic VAD (Voice Mode performance pass): re-derive eagerness for the NEXT user turn

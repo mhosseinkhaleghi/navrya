@@ -290,7 +290,10 @@ const dockViewSource = await readFile(path.join(process.cwd(), 'navrya-src', 'ch
 // Still the exact same real submit()/core.sendChat() call, one hop further away - see
 // tests/ai-voice-turn-coordinator.test.mjs for TurnCoordinator's own sequencing behavior.
 test('a voice-originated turn goes through the exact same submit()/core.sendChat() path a typed message uses - no parallel voice-only conversation logic', () => {
-  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText\)[\s\S]{0,600}turnCoordinatorRef\.current\.handleFinalTranscript\(transcriptText, \{/);
+  // fix/voice-gpt-live-repair: onVoiceTranscript gained an optional second parameter
+  // (transportMeta) - see gpt-live-voice-adapter.test.mjs for the DELEGATION-CORRELATION coverage
+  // that added it. The real submit()-path guarantee this test asserts is otherwise unchanged.
+  assert.match(dockViewSource, /function onVoiceTranscript\(transcriptText, transportMeta\)[\s\S]{0,600}turnCoordinatorRef\.current\.handleFinalTranscript\(transcriptText, \{/);
   assert.match(dockViewSource, /onFinalTranscript:\s*onVoiceTranscript/);
   // GPT-Live 1 is now the ONLY OpenAI Voice Mode transport (see
   // tests/gpt-live-voice-adapter.test.mjs for its own dedicated coverage) - the submit() call
@@ -364,7 +367,7 @@ test('voiceGenderPreference() reads the per-character gender pick from window.Tr
 test('the text handed to PlaybackController is only ever what NAVRYA\'s own deterministic turn produced (voiceReply/reply from the submit() result, then the Persian Voice Quality gate\'s own deterministic ai-voice-text.js post-processing - see ai-voice-chatdock-ux.test.mjs), never anything the Realtime model decided on its own, and is never awaited (playback must never block the next turn)', () => {
   assert.match(dockViewSource, /const rawToSpeak = result && \(result\.voiceReply \|\| result\.reply\)/);
   assert.match(dockViewSource, /const toSpeak = rawToSpeak && voiceText \? voiceText\.toSpokenText\(rawToSpeak, i18n\.language\(\)\) : rawToSpeak;/);
-  assert.match(dockViewSource, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '', audioUrl: audioUrlForEntry \}\);/);
+  assert.match(dockViewSource, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '', audioUrl: audioUrlForEntry, gptLiveTurnId: meta\.gptLiveTurnId \}\);/);
   assert.doesNotMatch(dockViewSource, /await playbackControllerRef\.current\.enqueue/, 'enqueue() must never be awaited - that would recreate the exact coupling this pass removes');
 });
 
@@ -626,7 +629,10 @@ test('the voice onResult wiring calls ai-voice-output-resolver.js with source:\'
   assert.match(body, /outputResolver\.resolve\(\{ source: 'voice', hasAudio: !!\(result && result\.audioUrl\) \}\)/);
   assert.match(body, /: 'DYNAMIC_TTS';/, 'the no-resolver fallback must be the safe DYNAMIC_TTS decision, never PUBLISHED_AUDIO');
   assert.match(body, /const audioUrlForEntry = outputDecision === 'PUBLISHED_AUDIO' \? result\.audioUrl : null;/);
-  assert.match(body, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '', audioUrl: audioUrlForEntry \}\);/);
+  // fix/voice-gpt-live-repair: the entry also carries gptLiveTurnId now (undefined for every
+  // non-GPT-Live turn) so gptLiveVoice.js's own speak(text, entry) can correlate this reply with
+  // its own per-turn delegation - see that file's DELEGATION-CORRELATION REPAIR comment.
+  assert.match(body, /playbackControllerRef\.current\.enqueue\(toSpeak, \{ turnId: meta\.turnId, connectionEpoch: meta\.connectionEpoch, caption: rawToSpeak \|\| '', audioUrl: audioUrlForEntry, gptLiveTurnId: meta\.gptLiveTurnId \}\);/);
 });
 
 test('a typed (text-source) submit() never reaches the voice onResult/PlaybackController wiring at all - audioUrl can never autoplay for a typed message, structurally, not just by the resolver\'s own source check', () => {

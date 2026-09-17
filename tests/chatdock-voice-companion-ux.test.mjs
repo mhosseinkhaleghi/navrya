@@ -148,7 +148,10 @@ test('the opening is routed through the SAME PlaybackController every real voice
 test('awaitingCompanionOpeningReplyRef is set true only inside deliverCompanionOpening, and is read-and-cleared exactly once at the top of onVoiceTranscript - so only the ONE next transcript is ever special', () => {
   const setCalls = dockViewSource.match(/awaitingCompanionOpeningReplyRef\.current = true;/g) || [];
   assert.equal(setCalls.length, 1);
-  const onVoiceTranscriptBody = dockViewSource.slice(dockViewSource.indexOf('function onVoiceTranscript(transcriptText)'), companionOpeningStart);
+  // fix/voice-gpt-live-repair: onVoiceTranscript gained an optional second parameter
+  // (transportMeta, carrying gptLiveVoice.js's own gptLiveTurnId - see that file's
+  // DELEGATION-CORRELATION REPAIR comment) - the read-and-clear contract itself is unchanged.
+  const onVoiceTranscriptBody = dockViewSource.slice(dockViewSource.indexOf('function onVoiceTranscript(transcriptText, transportMeta)'), companionOpeningStart);
   assert.match(onVoiceTranscriptBody, /const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef\.current;\s*\n\s*awaitingCompanionOpeningReplyRef\.current = false;/);
 });
 

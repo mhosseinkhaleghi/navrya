@@ -824,3 +824,110 @@ local playback immediately, a guaranteed client-side action, plus a best-effort
 OpenAI Live API connection was made in either pass (no live account access in this sandboxed
 session) - see `docs/ai/realtime-deployment.md` for the equivalent open item already tracked for
 Realtime, now joined by this same gap for GPT-Live.
+
+## GPT-Live turn-boundary, barge-in, and delegation-correlation repair (`fix/voice-gpt-live-repair`)
+
+A later, focused repair pass on top of the migration above - same "one brain, transport only"
+architecture and event vocabulary, no protocol re-guessing. Five confirmed production defects, all
+in `navrya-src/gptLiveVoice.js`'s own turn-completion/playback bookkeeping, fixed together since
+they interact:
+
+1. **Natural pauses/fillers/self-correction/code-switching cut into multiple turns.**
+   `INPUT_TRANSCRIPT_QUIET_MS` (the conservative, cancellable fallback finalize timer - re-armed on
+   every `session.input_transcript.delta`, since no documented event marks "the user finished
+   speaking") was 1200ms, measured cutting a real pause like "fifteen minutes... no, five minutes"
+   into two turns. Raised to 2200ms - a reasoned increase, not re-tuned against real GPT-Live audio
+   (no live account available in this sandboxed session). A **separate, much shorter**
+   `POST_TURN_STRAY_FRAGMENT_MS` (700ms) now absorbs a late STT straggler for an utterance that has
+   ALREADY been flushed (arriving either before its own reply has started, or after playback has
+   begun) - discarded outright rather than starting a spurious second, fragmentary turn. The two
+   constants measure different things (human pause tolerance vs. pure STT delivery lag) and are
+   deliberately not the same value.
+2. **Any delta during `ASSISTANT_SPEAKING` fired an instant, unverified barge-in.** A delayed tail
+   fragment of the very utterance whose reply was already playing could cancel that fresh answer.
+   Replaced with a timer-based confirmation (`BARGE_IN_CONFIRM_MS`, 500ms): candidate speech
+   arriving past the stray-fragment grace window is buffered but never flushed/never interrupts
+   anything until `confirmBargeIn()` actually fires, armed once from the candidate's own first
+   delta (not re-armed per fragment, so a genuine short interruption like "Stop!" confirms exactly
+   as reliably as a longer one). An unconfirmed candidate is never lost - promoted into ordinary
+   accumulation if the reply ends naturally first (`armOutputTranscriptQuietCheck`'s own promotion)
+   or an explicit "Stop reply"/interrupt happens first (`interrupt()`'s own promotion).
+3. **A single mutable `currentDelegationId` could let a reply arrive before its own delegation, or
+   (in principle) reuse a stale one.** Replaced with per-turn delivery correlation: every flushed
+   turn gets a local, immutable `turnId` (threaded back out via `onFinalTranscript(text, {
+   gptLiveTurnId })` → `chatDockView.jsx`'s `onVoiceTranscript` → `TurnCoordinator`'s own `meta` →
+   `PlaybackController`'s entry → `speak(text, entry)`), paired with its delegation via
+   client-side, FIFO, best-effort bookkeeping (`delegationByTurnId`/`unpairedFlushedTurnIds`/
+   `pendingUnclaimedDelegationIds` - OpenAI's delegation guide documents no correlation id on these
+   events at all, so ordered-single-conversation FIFO is the honest, non-fabricated assumption).
+   `speak()` for a turn whose delegation hasn't arrived yet waits, bounded
+   (`SPEAK_DELEGATION_WAIT_MS`, 4000ms), rather than silently resolving as if nothing needed to
+   happen (the confirmed defect) - a permanently missing delegation reports a narrow, additive
+   `onSpeakError({code:'GPT_LIVE_DELEGATION_MISSING'})` callback, deliberately **not** routed
+   through `onError()`/`VOICE_STATES.ERROR` (one missed reply is not a connection failure - forcing
+   the whole session into ERROR over one edge case would itself be a regression). Unprompted/
+   system-initiated speech with no `turnId` at all (the Companion opening, an AI-analysis
+   narration) is still sent, with `delegation_id:null`, instead of silently refused the way the old
+   unconditional guard refused it.
+4. **Interrupted audio could resume on the next reply.** GPT-Live's own "Stop speaking immediately"
+   instruction is best-effort only (no confirmed client-cancel event exists), so audio for an
+   interrupted reply can still be arriving on the same continuous WebRTC track when the next
+   `speak()` begins. `interrupt()` now flags `audioSinkNeedsRebuild`; the next `speak()` call
+   re-attaches the `<audio>` element's `srcObject` to the cached remote `MediaStream`
+   (`resetAudioSink()`) before resuming playback - a standard technique for discarding whatever a
+   media sink may still be internally buffering from a live stream, without tearing down the
+   underlying `RTCPeerConnection`/track.
+5. **A synchronous data-channel `send()` failure (a genuine send race) could throw uncaught.**
+   `send()` now wraps `dc.send()` in try/catch, converting a failure into the same honest `false`
+   this function already returns for "not connected" - `interrupt()` previously had no protection
+   at all against this (unlike `speak()`, which happened to be shielded only because it runs inside
+   a `Promise` executor).
+
+None of this invents an undocumented provider event - every mechanism is client-side bookkeeping
+layered on the exact event vocabulary already confirmed in the GPT-Live migration section above.
+**Network access to re-verify OpenAI's own documentation was unavailable in this sandboxed
+session** (outbound web access blocked) - the design builds strictly on the facts already quoted
+verbatim during the migration pass, plus that section's own "STILL UNVERIFIED" list, unchanged.
+Whether `session.input_transcript.delta`/`session.output_transcript.delta` carry any
+server-assigned correlation id at all is now explicitly added to that unverified list - this pass's
+own turn/delegation correlation never assumes one exists.
+
+**Gemini audit** (task requirement: verify the same "do not cut speech" guarantee elsewhere): a
+real, focused, executable test
+(`tests/gemini-live-voice-transcript-timing.test.mjs`) proved `geminiLiveVoice.js`'s own equivalent
+fallback window, `TRANSCRIPT_FRAGMENT_QUIET_MS` (700ms - shorter than GPT-Live's own pre-fix
+1200ms), reproduced the identical defect class, since Gemini's documented per-fragment `finished`
+flag is confirmed not reliably sent (a still-open upstream gap,
+`googleapis/js-genai#1429`) - the fallback is the real, load-bearing boundary in practice, not a
+rare edge case. Raised to the same 2200ms reasoned default, a narrow single-constant fix - **not**
+a port of the barge-in-candidate/delegation-correlation machinery above, since Gemini's barge-in is
+a separate, already-safe mechanism (`geminiSpeechActivityDetector.js`'s own calibrated acoustic
+energy detector, entirely decoupled from this text-fragment timer) with no delegation concept at
+all.
+
+**Testing**: `tests/gpt-live-voice-turn-boundary.test.mjs` and
+`tests/gemini-live-voice-transcript-timing.test.mjs` are real, executable behavioral tests -
+`node:test`'s own mock `Date`/`setTimeout` against a minimal fake WebRTC/data-channel (GPT-Live) or
+WebSocket/AudioContext (Gemini) harness, not the static-source-regex convention this file's
+existing GPT-Live tests otherwise use (see `tests/gpt-live-voice-adapter.test.mjs`, still kept and
+updated alongside for the wiring/contract assertions regex is well-suited to). Cover: natural
+pauses/fillers/self-correction/code-switching landing as one turn; a delayed fragment discarded
+after provisional finalization and after reply playback begins; barge-in requiring sustained
+confirmation, including a single short interruption with no further fragment; late/missing/
+out-of-order delegation (including strict FIFO pairing across two concurrently-unpaired turns);
+unprompted speech with no `turnId`; stale output events ignored after interrupt and after
+reconnect; a data-channel send failure never throwing uncaught; End Voice mid-turn; and a
+reconnect's epoch invalidating a stale pending flush. Full regression: 3466 tests, 3465 passed, 1
+skipped (Postgres, no `DATABASE_URL`), `npm run build:navrya` clean,
+`ai:knowledge:check`/`action-learnability:check` clean.
+
+**Not done this pass, honestly flagged rather than silently skipped**: no real OpenAI Live API/
+Gemini Live account access in this sandboxed session, so none of the new timing constants
+(`INPUT_TRANSCRIPT_QUIET_MS`, `POST_TURN_STRAY_FRAGMENT_MS`, `BARGE_IN_CONFIRM_MS`,
+`SPEAK_DELEGATION_WAIT_MS`, Gemini's `TRANSCRIPT_FRAGMENT_QUIET_MS`) are validated against real
+speech/STT-delivery timing - reasoned defaults only, matching this file's own established
+convention for every other untuned Voice timing constant (e.g. `geminiSpeechActivityDetector.js`'s
+`MIN_SILENCE_MS`). A real-device microphone/speaker walkthrough (natural pauses, a genuine
+one-word interruption, a spoken self-correction, Persian/English code-switching, a deliberately
+throttled/dropped connection) against production GPT-Live and Gemini Live accounts remains the one
+verification this pass could not perform and is not claimed as done.

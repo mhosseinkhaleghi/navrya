@@ -29,7 +29,23 @@ const RECONNECT_MAX_ATTEMPTS = 5;
 // flag is not reliably sent by the server. `finished:true` is honored immediately when the server
 // does send it; otherwise, a short quiet window with no new fragment is the resilient fallback
 // boundary - see flushTranscript()'s own comment.
-const TRANSCRIPT_FRAGMENT_QUIET_MS = 700;
+//
+// fix/voice-gpt-live-repair (Gemini audit): the task brief that repaired gptLiveVoice.js's own
+// equivalent window ("Audit Gemini for the same 'do not cut speech' guarantee, especially its
+// fragment fallback timer") asked this exact question here too. A focused, real, executable test
+// (tests/gemini-live-voice-transcript-timing.test.mjs) proved the identical defect class: since
+// `finished` is not reliably sent (confirmed above, not a rare edge case - the fallback below is
+// the load-bearing boundary in practice), a single ordinary mid-sentence pause past this window
+// split one utterance into two finalized turns. Was 700ms (shorter than gptLiveVoice.js's own
+// pre-fix 1200ms, which that file's own INPUT_TRANSCRIPT_QUIET_MS comment already documents as
+// measured too aggressive). Raised to the same reasoned default used there, for the same reasoning
+// and the same honesty caveat: not empirically re-tuned against real Gemini Live audio in this
+// sandboxed session (no live account available). This is a narrow, single-constant fix, not a
+// port of gptLiveVoice.js's own barge-in-candidate/delegation-correlation machinery - Gemini's
+// barge-in is a separate, already-safe mechanism (geminiSpeechActivityDetector.js's calibrated
+// acoustic energy detector, entirely decoupled from this text-fragment timer - see
+// wireMicrophone()'s own comment), so none of that additional machinery applies here.
+const TRANSCRIPT_FRAGMENT_QUIET_MS = 2200;
 // Voice Mode hardening, audit finding T11 (published-audio ownership): mirrors
 // aiVoiceRealtime.js's own FIRST_AUDIO_DEADLINE_MS/PLAYBACK_STALL_DEADLINE_MS exactly - a
 // two-stage deadline (nothing-ever-started vs a genuine mid-playback stall) for playAudioUrl()

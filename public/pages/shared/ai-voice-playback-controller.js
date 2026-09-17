@@ -97,10 +97,16 @@
               // published file NEVER re-runs business logic - the text is already known, so this
               // only ever changes HOW the same entry gets spoken, falling back to the normal live
               // TTS engine for this exact entry.
-              return typeof speakFn === 'function' ? speakFn(entry.text) : Promise.resolve();
+              return typeof speakFn === 'function' ? speakFn(entry.text, entry) : Promise.resolve();
             });
         } else {
-          result = typeof speakFn === 'function' ? speakFn(entry.text) : Promise.resolve();
+          // fix/voice-gpt-live-repair: the whole entry (not just its text) is now passed through -
+          // gptLiveVoice.js's own speak(text, entry) reads entry.gptLiveTurnId to correlate this
+          // reply with its own per-turn delegation (see that file's DELEGATION-CORRELATION REPAIR
+          // comment). Every other speakFn implementation simply ignores the extra argument, the
+          // same tolerant-extra-arg convention JS functions already have everywhere else in this
+          // codebase.
+          result = typeof speakFn === 'function' ? speakFn(entry.text, entry) : Promise.resolve();
         }
       } catch (_err) {
         settleOnce(false, 'error');

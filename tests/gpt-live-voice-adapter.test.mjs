@@ -32,7 +32,12 @@ test('real WebRTC transport, not a guessed WebSocket/base64-audio one: mic track
   assert.match(adapter, /new RTCPeerConnection\(\)/);
   assert.match(adapter, /pc\.addTrack\(track, mediaStream\)/);
   assert.match(adapter, /pc\.ontrack = /);
-  assert.match(adapter, /audioElement\.srcObject = event\.streams\[0\]/);
+  // fix/voice-gpt-live-repair: the remote MediaStream is now also cached (remoteStream) so
+  // resetAudioSink() can re-attach it after an interrupt (see that function's own comment) -
+  // audioElement.srcObject is still assigned from the same event.streams[0], just via the cached
+  // variable rather than the event object directly.
+  assert.match(adapter, /remoteStream = event\.streams\[0\];/);
+  assert.match(adapter, /audioElement\.srcObject = remoteStream;/);
   assert.doesNotMatch(adapter, /new WebSocket\(/, 'the browser connects via WebRTC, not a WebSocket, for this transport');
   // Checks actual CODE usage (a function definition, or the event name as a real JSON `type`
   // comparison/literal), not this file's own header comment explaining why those wrongly-assumed
@@ -72,11 +77,39 @@ test('a bounded quiet window on session.input_transcript.delta, not session.dele
   assert.match(adapter, /function armInputTranscriptQuietCheck\(myEpoch\) \{[\s\S]*?flushTranscript\(\);[\s\S]*?\}, INPUT_TRANSCRIPT_QUIET_MS\);/);
   // Actually armed every time a fragment arrives, not just declared and forgotten.
   assert.match(adapter, /pendingTranscript \+= message\.delta;[\s\S]{0,200}armInputTranscriptQuietCheck\(connectionEpoch\);/);
-  assert.match(adapter, /function flushTranscript\(\) \{[\s\S]*?onFinalTranscript\(text\);/);
+  assert.match(adapter, /function flushTranscript\(delegationIdForThisFlush\) \{[\s\S]*?onFinalTranscript\(text, \{ gptLiveTurnId: turnId \}\);/);
   // delegation.created still exists as a (non-exclusive) early-flush path.
   assert.match(adapter, /message\.type === 'session\.delegation\.created' && message\.delegation/);
   assert.match(dock, /fetchSession: useGeminiLive \? fetchGeminiLiveSession : fetchGptLiveSession,/);
   assert.match(dock, /onFinalTranscript: onVoiceTranscript,/);
+});
+
+// fix/voice-gpt-live-repair: replaces the fixed 1200ms-only quiet window with a more conservative
+// default PLUS a distinct, much shorter guard against a late STT straggler re-triggering a second,
+// spurious turn for an utterance that was already flushed - see gptLiveVoice.js's own
+// POST_TURN_STRAY_FRAGMENT_MS comment for why these are deliberately two different constants.
+test('a late input-transcript delta arriving shortly after a flush is discarded as a stray tail fragment, never a new turn - distinct, shorter window than the pause-tolerance one', () => {
+  assert.match(adapter, /const POST_TURN_STRAY_FRAGMENT_MS = \d+;/);
+  assert.match(adapter, /let lastFlushedAtMs = null;/);
+  assert.match(adapter, /lastFlushedAtMs = Date\.now\(\);/);
+  assert.match(adapter, /if \(lastFlushedAtMs != null && \(now - lastFlushedAtMs\) < POST_TURN_STRAY_FRAGMENT_MS\) return;/);
+});
+
+// fix/voice-gpt-live-repair: replaces the unconditional "any delta while ASSISTANT_SPEAKING is a
+// barge-in" behavior with a sustained-confirmation window - a single delayed fragment of the just-
+// answered utterance must never cancel its own fresh reply.
+test('barge-in during active playback is held as an unconfirmed, timer-based candidate - onBargeIn()/pendingTranscript are only ever touched once confirmBargeIn() itself fires', () => {
+  assert.match(adapter, /const BARGE_IN_CONFIRM_MS = \d+;/);
+  assert.match(adapter, /let bargeInCandidate = null;/);
+  assert.match(adapter, /let bargeInConfirmTimer = null;/);
+  const deltaHandlerStart = adapter.indexOf("message.type === 'session.input_transcript.delta'");
+  const deltaHandlerBody = adapter.slice(deltaHandlerStart, adapter.indexOf("message.type === 'session.delegation.created'"));
+  // The delta handler itself only ever buffers - it never calls onBargeIn() or touches
+  // pendingTranscript directly (that only ever happens inside confirmBargeIn(), armed by a
+  // dedicated timer, checked below).
+  assert.match(deltaHandlerBody, /bargeInConfirmTimer = setTimeout\(confirmBargeIn, BARGE_IN_CONFIRM_MS\);/);
+  assert.doesNotMatch(deltaHandlerBody, /onBargeIn\(\)/, 'the delta handler must never fire onBargeIn() directly - only confirmBargeIn(), on its own timer, may');
+  assert.match(adapter, /function confirmBargeIn\(\) \{[\s\S]*?onBargeIn\(\);[\s\S]*?pendingTranscript = text;/);
 });
 
 test('the input-quiet timer is torn down on disconnect/reconnect - a superseded connection can never fire a stale flush', () => {
@@ -87,9 +120,36 @@ test('the input-quiet timer is torn down on disconnect/reconnect - a superseded 
 
 test('speak() wraps the approved reply in an explicit verbatim/no-paraphrase instruction before sending it as commentary - a real mitigation for OpenAI\'s own documented paraphrasing behavior, not a silent trust of the model', () => {
   assert.match(adapter, /Speak exactly the following sentence, verbatim, in the same language it is written in, with no paraphrasing, no additions, and no omissions:/);
-  assert.match(adapter, /type: 'session\.commentary\.append', delegation_id: currentDelegationId, content:/);
-  // Only ever reached with a real delegation to reply to - never speaks unprompted.
-  assert.match(adapter, /if \(!text \|\| !dc \|\| dc\.readyState !== 'open' \|\| !currentDelegationId\) return Promise\.resolve\(\);/);
+  assert.match(adapter, /type: 'session\.commentary\.append', delegation_id: delegationId, content:/);
+  assert.match(adapter, /if \(!text \|\| !dc \|\| dc\.readyState !== 'open'\) return Promise\.resolve\(\);/);
+});
+
+// fix/voice-gpt-live-repair: the old single mutable currentDelegationId (confirmed production
+// defect - a reply could arrive before its matching delegation, or reuse a stale one) is replaced
+// with per-turn delivery correlation, keyed by a locally-assigned turnId threaded through
+// onFinalTranscript/entry.gptLiveTurnId - see gptLiveVoice.js's own DELEGATION-CORRELATION REPAIR
+// comment.
+test('delegation correlation is per-turn (a Map keyed by turnId), never a single global mutable value - and a missing delegation is reported honestly, never silently swallowed', () => {
+  assert.doesNotMatch(adapter, /let currentDelegationId/, 'the old single mutable delegation value must not exist any more');
+  assert.match(adapter, /const delegationByTurnId = new Map\(\);/);
+  assert.match(adapter, /function pairDelegation\(turnId, delegationId\) \{/);
+  assert.match(adapter, /const SPEAK_DELEGATION_WAIT_MS = \d+;/);
+  assert.match(adapter, /onSpeakError\(\{ code: 'GPT_LIVE_DELEGATION_MISSING', turnId: turnId \}\);/);
+  // Unprompted/system-initiated speech (no turnId at all - e.g. the Companion opening) is still
+  // sent, with delegation_id:null, rather than silently refused the way the old unconditional
+  // `!currentDelegationId` guard used to refuse it.
+  assert.match(adapter, /if \(turnId == null\) \{[\s\S]{0,700}sendCommentaryAndAwaitSettle\(null\);/);
+});
+
+// fix/voice-gpt-live-repair item 4: a real WebRTC audio track is never "seekable" the way a file
+// is, but a paused <audio> element sinking a live MediaStream can still carry stale
+// internally-buffered frames from an interrupted reply forward into the next one, since OpenAI's
+// own stop instruction is best-effort only (no confirmed client-cancel event exists).
+test('interrupt() flags the audio sink for a rebuild, and the next speak() call re-attaches the remote MediaStream before resuming playback', () => {
+  assert.match(adapter, /let audioSinkNeedsRebuild = false;/);
+  assert.match(adapter, /function interrupt\(\) \{[\s\S]*?audioSinkNeedsRebuild = true;/);
+  assert.match(adapter, /function resetAudioSink\(\) \{[\s\S]*?audioElement\.srcObject = null; audioElement\.srcObject = remoteStream;/);
+  assert.match(adapter, /if \(audioSinkNeedsRebuild\) \{ resetAudioSink\(\); audioSinkNeedsRebuild = false; \}/);
 });
 
 test('the documented ~500-token commentary limit is respected via a deliberately conservative character approximation, never an unbounded send', () => {
@@ -177,13 +237,16 @@ test('interrupt() guarantees immediate local silence by pausing real playback (n
   // comment naming resumeLocalAudio() to document why it is deliberately NOT called here.
   const interruptBody = adapter.slice(adapter.indexOf('function interrupt() {'), adapter.indexOf('\n  function finishUserTurn'));
   assert.doesNotMatch(interruptBody, /\n\s*resumeLocalAudio\(\);/, 'interrupt() must never immediately resume playback it just paused - that would defeat "Stop reply" on a continuous live stream');
-  assert.match(adapter, /function speak\(text\) \{[\s\S]*?resumeLocalAudio\(\);/);
+  assert.match(adapter, /function speak\(text, entry\) \{[\s\S]*?resumeLocalAudio\(\);/);
   assert.match(adapter, /track\.enabled = !muted/);
 });
 
 test('debugState() (dev diagnostic) never exposes the transcript text or any credential, matching the existing privacy contract', () => {
-  assert.match(adapter, /debugState: \(\) => \(\{ state, language, sessionActive: !!pc, connectionEpoch \}\)/);
-  assert.doesNotMatch(adapter, /debugState[\s\S]{0,120}pendingTranscript/);
+  assert.match(adapter, /debugState: \(\) => \(\{/);
+  const debugStateBody = adapter.slice(adapter.indexOf('debugState: () => ({'), adapter.indexOf('debugState: () => ({') + 500);
+  assert.match(debugStateBody, /state, language, sessionActive: !!pc, connectionEpoch,/);
+  assert.match(debugStateBody, /hasBargeInCandidate: !!bargeInCandidate/);
+  assert.doesNotMatch(debugStateBody, /pendingTranscript|pendingOutputTranscript|delegationId|walletReservationId/);
 });
 
 // Cost-visibility fix (2026-09-14, real user report): a real user's gpt-live-1 usage never showed
