@@ -62,7 +62,23 @@
     // one browser tab) - listed here only so points/labels live in the one canonical place.
     // `serverOnly` means checkAll() never calls check() for these two.
     { key: 'level_5_reached', points: 0, labelKey: 'Level5Reached', serverOnly: true },
-    { key: 'five_day_login_streak', points: 40, labelKey: 'FiveDayLoginStreak', serverOnly: true }
+    { key: 'five_day_login_streak', points: 40, labelKey: 'FiveDayLoginStreak', serverOnly: true },
+    // Level 1 "Start of the Path" + AI Analysis Discipline ladder (server/community/ai-discipline.mjs).
+    // Also serverOnly: unlike every achievement above, these require real evidence a browser tab
+    // can never independently confirm (a signed AI-gateway completion receipt for
+    // first_session_ai_analysis, and the streak's own cross-day, cross-timezone bookkeeping) -
+    // GET /api/users/me/achievements grants them, the exact same opportunistic path as the two
+    // definitions above. Points/labels still live here so sidebarProfile.js's generic
+    // definitions-driven rendering needs no per-achievement special-casing.
+    { key: 'first_session_ai_analysis', points: 10, labelKey: 'FirstSessionAiAnalysis', serverOnly: true },
+    { key: 'first_chart_instrument_added', points: 5, labelKey: 'FirstChartInstrumentAdded', serverOnly: true },
+    { key: 'session_ai_discipline_3d', points: 10, labelKey: 'SessionAiDiscipline3d', serverOnly: true },
+    { key: 'session_ai_discipline_7d', points: 20, labelKey: 'SessionAiDiscipline7d', serverOnly: true },
+    { key: 'session_ai_discipline_14d', points: 30, labelKey: 'SessionAiDiscipline14d', serverOnly: true },
+    { key: 'session_ai_discipline_30d', points: 60, labelKey: 'SessionAiDiscipline30d', serverOnly: true },
+    { key: 'session_ai_discipline_90d', points: 100, labelKey: 'SessionAiDiscipline90d', serverOnly: true },
+    { key: 'session_ai_discipline_180d', points: 150, labelKey: 'SessionAiDiscipline180d', serverOnly: true },
+    { key: 'session_ai_discipline_365d', points: 250, labelKey: 'SessionAiDiscipline365d', serverOnly: true }
   ];
 
   function checkAll(snapshot) {
