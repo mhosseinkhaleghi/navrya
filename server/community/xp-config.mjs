@@ -15,7 +15,18 @@ import { ACHIEVEMENTS } from './achievement-rules.mjs';
 // level_5_reached/five_day_login_streak are granted outside the normal achievement-unlock route
 // (see routes.profile.mjs's GET /me/achievements) and were previously hardcoded inline there -
 // pulled out here so their points are admin-editable too, same as every other achievement.
-export const SERVER_ONLY_ACHIEVEMENT_POINTS = { level_5_reached: 0, five_day_login_streak: 40 };
+// The AI Analysis Discipline additions (server/community/ai-discipline.mjs) follow the identical
+// pattern: server-only, never client-submittable via POST /me/achievements/:key/unlock, admin-
+// editable through the same achievementPoints:<key> override namespace (buildEffective() below).
+export const SERVER_ONLY_ACHIEVEMENT_POINTS = {
+  level_5_reached: 0, five_day_login_streak: 40,
+  // Level 1 "Start of the Path"
+  first_session_ai_analysis: 10, first_chart_instrument_added: 5,
+  // AI Analysis Discipline ladder
+  session_ai_discipline_3d: 10, session_ai_discipline_7d: 20, session_ai_discipline_14d: 30,
+  session_ai_discipline_30d: 60, session_ai_discipline_90d: 100, session_ai_discipline_180d: 150,
+  session_ai_discipline_365d: 250
+};
 
 const CACHE_TTL_MS = 30000;
 let cache = { data: null, fetchedAt: 0 };
