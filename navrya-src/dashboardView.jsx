@@ -10,6 +10,8 @@ import { openLogWizard } from './tradeLogModal.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
+import { RoutineTab } from './routineTab.jsx';
+import { CalmRoomPanel } from './moodTab.jsx';
 
 // ============================================================================
 // Redesign of the Dashboard (Session tools' home screen) against the design handoff
@@ -28,7 +30,7 @@ import { ManualAccountModal } from './accountsView.jsx';
 // ============================================================================
 
 export const SPANS = [3, 4, 6, 8, 12];
-const DEFAULT_BOARD = ['accounts', 'session', 'psych', 'weather', 'positions', 'chart', 'sessions', 'strategies', 'patterns', 'reward'];
+const DEFAULT_BOARD = ['accounts', 'session', 'psych', 'weather', 'positions', 'chart', 'sessions', 'strategies', 'patterns', 'reward', 'routine', 'calmRoom'];
 const CITIES = [
   { market: 'london', city: 'LONDON', off: 0, from: 7, to: 16 },
   { market: 'new-york', city: 'NEW YORK', off: -5, from: 13, to: 22 },
@@ -101,6 +103,8 @@ const copy = {
     catBannerTitle: 'بنر کمپین', catBannerMeta: 'اسلات ادمین', catBannerDesc: 'تصویر تبلیغاتی مدیریت‌شده از پنل ادمین — هنوز پیکربندی نشده.',
     catWatchlistTitle: 'واچ‌لیست بازار', catWatchlistMeta: 'قیمت زنده', catWatchlistDesc: 'نمادهایی که دنبال می‌کنی — هنوز به منبع قیمت زنده وصل نیست.',
     catAccountsTitle: 'حساب‌ها', catAccountsMeta: 'ریسک زنده', catAccountsDesc: 'موجودی واقعی، وضعیت ریسک و اقدامات سریع برای حساب‌های فعال.',
+    catRoutineTitle: 'روتین روزانه', catRoutineDesc: 'همان چک‌لیست روتین معاملاتی‌ات که در پرونده روان‌شناسی می‌سازی — درست روی داشبورد.',
+    catCalmRoomTitle: 'اتاق آرامش', catCalmRoomDesc: 'تمرین تنفس و آرام‌سازی قبل یا بعد از معامله، همیشه در دسترس.',
     noAccountsYet: 'هنوز حسابی ثبت نشده', noAccountsNote: 'یک حساب پراپ یا شخصی اضافه کن تا موجودی و ریسک واقعی‌ات اینجا دنبال شود.',
     createFirstAccount: 'افزودن حساب', viewAllAccounts: 'مشاهده همه حساب‌ها',
     personalAccount: 'حساب شخصی', propAccount: 'حساب پراپ‌فرم', equity: 'موجودی', todayPl: 'سود/زیان امروز',
@@ -138,6 +142,8 @@ const copy = {
     catBannerTitle: 'بانر الحملة', catBannerMeta: 'فتحة الإدارة', catBannerDesc: 'صورة ترويجية تديرها لوحة الإدارة — لم تُهيَّأ بعد.',
     catWatchlistTitle: 'قائمة المراقبة', catWatchlistMeta: 'سعر مباشر', catWatchlistDesc: 'الرموز التي تتابعها — غير متصلة بمصدر أسعار مباشر بعد.',
     catAccountsTitle: 'الحسابات', catAccountsMeta: 'مخاطر مباشرة', catAccountsDesc: 'الرصيد الحقيقي وحالة المخاطر وإجراءات سريعة للحسابات النشطة.',
+    catRoutineTitle: 'الروتين اليومي', catRoutineDesc: 'نفس قائمة روتين التداول التي تبنيها في الملف النفسي — مباشرة على لوحة التحكم.',
+    catCalmRoomTitle: 'غرفة الهدوء', catCalmRoomDesc: 'تمرين تنفس واسترخاء قبل أو بعد الصفقة، متاح دائماً.',
     noAccountsYet: 'لم يتم تسجيل أي حساب بعد', noAccountsNote: 'أضف حساب تمويل أو حساب شخصي لمتابعة رصيدك ومخاطرك الحقيقية هنا.',
     createFirstAccount: 'إضافة حساب', viewAllAccounts: 'عرض كل الحسابات',
     personalAccount: 'حساب شخصي', propAccount: 'حساب تمويل', equity: 'الرصيد', todayPl: 'ربح/خسارة اليوم',
@@ -175,6 +181,8 @@ const copy = {
     catBannerTitle: 'Campaign banner', catBannerMeta: 'admin slot', catBannerDesc: 'Full-width promotional image managed by the admin — not configured yet.',
     catWatchlistTitle: 'Market watchlist', catWatchlistMeta: 'live price', catWatchlistDesc: 'Instruments you follow — not wired to a live price source yet.',
     catAccountsTitle: 'Accounts', catAccountsMeta: 'live risk', catAccountsDesc: 'Real balance, risk state and quick actions for your active accounts.',
+    catRoutineTitle: 'Daily routine', catRoutineDesc: 'The same trading-routine checklist you build in the psychology dossier — right on the dashboard.',
+    catCalmRoomTitle: 'Calm room', catCalmRoomDesc: 'A breathing and cooldown exercise before or after a trade, always one click away.',
     noAccountsYet: 'No accounts yet', noAccountsNote: 'Add a prop-firm or personal account to follow your real balance and risk right here.',
     createFirstAccount: 'Add account', viewAllAccounts: 'View all accounts',
     personalAccount: 'Personal account', propAccount: 'Prop firm account', equity: 'Equity', todayPl: "Today's P/L",
@@ -212,6 +220,8 @@ const copy = {
     catBannerTitle: 'Banner de campaña', catBannerMeta: 'espacio admin', catBannerDesc: 'Imagen promocional gestionada por el panel admin — aún sin configurar.',
     catWatchlistTitle: 'Lista de seguimiento', catWatchlistMeta: 'precio en vivo', catWatchlistDesc: 'Instrumentos que sigues — aún sin fuente de precios en vivo.',
     catAccountsTitle: 'Cuentas', catAccountsMeta: 'riesgo en vivo', catAccountsDesc: 'Saldo real, estado de riesgo y acciones rápidas para tus cuentas activas.',
+    catRoutineTitle: 'Rutina diaria', catRoutineDesc: 'La misma lista de rutina de trading que construyes en el expediente psicológico — directo en el panel.',
+    catCalmRoomTitle: 'Sala de calma', catCalmRoomDesc: 'Un ejercicio de respiración y enfriamiento antes o después de una operación, siempre a un clic.',
     noAccountsYet: 'Aún no hay cuentas', noAccountsNote: 'Añade una cuenta de prop firm o personal para seguir aquí tu saldo y riesgo reales.',
     createFirstAccount: 'Añadir cuenta', viewAllAccounts: 'Ver todas las cuentas',
     personalAccount: 'Cuenta personal', propAccount: 'Cuenta de prop firm', equity: 'Equidad', todayPl: 'P/L de hoy',
@@ -246,6 +256,10 @@ function digits(lang, value) {
 // screen (navrya-src/settingsView.jsx's "Manage panels") to get real, translated catalog entries
 // without duplicating or mismatching this file's own keys.
 export function catalogForLang(lang) { return catalog((key, vars) => tr(lang, key, vars)); }
+// Same bound-tr shape catalogForLang() hands to catalog(), exported directly so another screen
+// (liveSessionView.jsx's Session panel library, reusing AccountsPanel/WeatherPanel verbatim) can
+// resolve this file's own translated strings without duplicating its copy/tr.
+export function dashboardT(lang) { return (key, vars) => tr(lang, key, vars); }
 function pad(n) { return String(n).padStart(2, '0'); }
 function round1(n) { return Math.round(n * 10) / 10; }
 // trade.session holds trade-store.js's detectSession() output ('london'/'newyork'/'tokyo'/
@@ -272,7 +286,9 @@ export function catalog(t) {
     reward: { title: t('catRewardTitle'), icon: 'reward', span: 4, desc: t('catRewardDesc') },
     video: { title: t('catVideoTitle'), icon: 'ai-assistant', span: 4, desc: t('catVideoDesc') },
     banner: { title: t('catBannerTitle'), icon: 'subscription', span: 12, desc: t('catBannerDesc') },
-    watchlist: { title: t('catWatchlistTitle'), icon: 'globe', span: 4, desc: t('catWatchlistDesc') }
+    watchlist: { title: t('catWatchlistTitle'), icon: 'globe', span: 4, desc: t('catWatchlistDesc') },
+    routine: { title: t('catRoutineTitle'), icon: 'calendar', span: 8, desc: t('catRoutineDesc') },
+    calmRoom: { title: t('catCalmRoomTitle'), icon: 'honour', span: 4, desc: t('catCalmRoomDesc') }
   };
 }
 
@@ -368,7 +384,7 @@ function goToAccounts(accountId) {
   if (layer && layer.render) layer.render('accounts');
   if (accountId) pollForAccountsHub((hub) => hub.open(accountId));
 }
-function AccountsPanel({ t, lang }) {
+export function AccountsPanel({ t, lang }) {
   const [showCreate, setShowCreate] = React.useState(false);
   const { accounts, trades } = useDashboardAccounts();
   const engine = window.TradeJournalAccountsEngine;
@@ -504,7 +520,7 @@ function PsychPanel({ t, lang }) {
 // stress from actual emotion logs) inverted into a 0-100 "mood index" (low stress -> high mood),
 // plus emotionFrequency() for the dominant-emotion chips. Days with no logged stress render as an
 // honest gap, not an invented bar.
-function WeatherPanel({ t, lang }) {
+export function WeatherPanel({ t, lang }) {
   const psy = window.TradeJournalPsychologyStore;
   const tradeStore = window.TradeJournalTradeStore;
   const tradeI18n = window.TradeJournalTradeI18n;
@@ -924,6 +940,8 @@ function panelBody(id, ctx) {
     case 'video': return <NoBackendPanel t={t} />;
     case 'banner': return <NoBackendPanel t={t} />;
     case 'watchlist': return <NoBackendPanel t={t} />;
+    case 'routine': return <RoutineTab i18n={window.TradeJournalTradeI18n} />;
+    case 'calmRoom': return <CalmRoomPanel i18n={window.TradeJournalTradeI18n} />;
     default: {
       // Custom (AI-drafted) panel: a plain note, exactly what it was drafted as - no invented
       // data binding, since a free-form prompt has no real store backing it.

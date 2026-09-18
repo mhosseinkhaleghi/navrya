@@ -24,7 +24,11 @@ export const REGIONS = ['main', 'rail'];
 // wide column; session dashboard, previous-session summary and similar sessions down the rail.
 export const DEFAULT_BOARD = ['cockpit', 'entry', 'dashboard', 'prevSummary', 'similar'];
 export const DEFAULT_REGIONS = {
-  cockpit: 'main', entry: 'main', dashboard: 'rail', prevSummary: 'rail', similar: 'rail'
+  cockpit: 'main', entry: 'main', dashboard: 'rail', prevSummary: 'rail', similar: 'rail',
+  // Library-only additions (never in DEFAULT_BOARD) - accounts/weather/calmRoom are the same
+  // compact digest cards the Dashboard renders at a narrow span, so the rail is their natural
+  // first landing spot too, exactly like dashboard/prevSummary/similar above.
+  accounts: 'rail', weather: 'rail', calmRoom: 'rail'
 };
 
 // Underscore, NOT the colon dashboardView.jsx's own boardKey() uses. server/community/

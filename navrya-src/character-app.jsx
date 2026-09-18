@@ -64,8 +64,8 @@ function navItems(t, badges) {
     return { count: unread, countLabel: t.navBadgeUnread.replace('{count}', unread) };
   }
   return [
-    { id: 'sessions', icon: 'sessions', label: t.navSessions },
     { id: 'dashboard', icon: 'dashboard', label: t.navDashboard },
+    { id: 'sessions', icon: 'sessions', label: t.navSessions },
     { id: 'accounts', icon: 'wallet', label: t.navAccounts },
     { id: 'strategies', icon: 'strategies', label: t.navStrategies },
     { id: 'psychology', icon: 'psychology', label: t.navPsychology },

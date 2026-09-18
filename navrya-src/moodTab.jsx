@@ -224,6 +224,38 @@ export function CalmRoom({ i18n, psych, profile, trades, reason, onClose }) {
 }
 
 // ============================================================================
+// CALM ROOM PANEL - the compact preview card (title + breathing pacer + open button) that
+// psychologyView.jsx already renders inline as one of its Protective-tab cards, pulled out here so
+// the Dashboard and Session panel catalogs can each install it as a real panel without a second,
+// drifting copy of the card markup or the CalmRoom wiring. Self-contained like RoutineTab/MoodTab -
+// reads the same real globals directly rather than expecting a parent to prop-drill them.
+// ============================================================================
+export function CalmRoomPanel({ i18n }) {
+  const psych = window.TradeJournalPsychologyStore;
+  const mhStore = window.TradeJournalMentalHealthStore;
+  const collector = window.TradeJournalMentalHealthCollector;
+  const tradeStore = window.TradeJournalTradeStore;
+  const [open, setOpen] = React.useState(false);
+  if (!psych || !tradeStore) return null;
+  const profile = collector ? collector.ensureFresh() : mhStore.load();
+  const trades = tradeStore.listSync();
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+        <SectionLabel>{i18n.t('psyCalmRoomTitle')}</SectionLabel>
+        <Chip tone="accent" style={{ marginInlineStart: 'auto' }}>{i18n.t('psyCalmRoomPattern')}</Chip>
+      </div>
+      <BreathPreview size={140} label={i18n.t('psyBreathInLabel')} />
+      <Caption style={{ textAlign: 'center', lineHeight: '18px' }}>{i18n.t('psyCalmRoomHint')}</Caption>
+      <Button variant="primary" icon="honour" fullWidth onClick={() => setOpen(true)}>{i18n.t('psyOpenCalmRoom')}</Button>
+      {/* No `reason` chip here: psyCalmRoomManualReason's copy is hardcoded to "from the Protective
+          tab", which would be false when this panel is the one that opened it (Dashboard/Session). */}
+      {open && <CalmRoom i18n={i18n} psych={psych} profile={profile} trades={trades} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+// ============================================================================
 // MOOD TAB
 // ============================================================================
 export function MoodTab({ i18n, psych, mhStore, profile, trades, onLogged }) {

@@ -19,6 +19,8 @@ import { openTradeDetails } from './tradeDetailsModal.jsx';
 import { SessionAiAnalysisModal } from './sessionAiAnalysisModal.jsx';
 import { SessionAnalysisCard, ImageLightbox } from './sessionAnalysisCard.jsx';
 import { AnalysisGraphView } from './analysisGraphView.jsx';
+import { AccountsPanel as DashAccountsPanel, WeatherPanel as DashWeatherPanel, dashboardT } from './dashboardView.jsx';
+import { CalmRoomPanel } from './moodTab.jsx';
 
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
@@ -2947,14 +2949,21 @@ function useWorkspace() { return React.useContext(AnalysisWorkspaceContext); }
 
 // Panel catalog: title/icon/description for the library and the arrange-mode chrome. Titles reuse
 // the panels' own existing header keys (cockpitTitle/dashboardTitle/prevSummaryTitle/similarTitle)
-// so the library never invents a second name for a panel the trader already knows.
+// so the library never invents a second name for a panel the trader already knows. accounts/
+// weather/calmRoom are the exact same panels the Dashboard board offers (dashboardView.jsx's own
+// catalog()) - reused verbatim, including their titles/descriptions via dashboardT(lang), so a
+// trader who adds "Accounts" here sees the same name and the same real component, not a second one.
 function workspaceCatalog(lang) {
+  const dt = dashboardT(lang);
   return {
     cockpit: { title: tr(lang, 'cockpitTitle'), icon: 'Film', desc: tr(lang, 'wsCatCockpitDesc') },
     entry: { title: tr(lang, 'wsCatEntryTitle'), icon: 'CandlestickChart', desc: tr(lang, 'wsCatEntryDesc') },
     dashboard: { title: tr(lang, 'dashboardTitle'), icon: 'LayoutGrid', desc: tr(lang, 'wsCatDashboardDesc') },
     prevSummary: { title: tr(lang, 'prevSummaryTitle'), icon: 'Flag', desc: tr(lang, 'wsCatPrevDesc') },
-    similar: { title: tr(lang, 'similarTitle'), icon: 'Copy', desc: tr(lang, 'wsCatSimilarDesc') }
+    similar: { title: tr(lang, 'similarTitle'), icon: 'Copy', desc: tr(lang, 'wsCatSimilarDesc') },
+    accounts: { title: dt('catAccountsTitle'), icon: 'wallet', desc: dt('catAccountsDesc') },
+    weather: { title: dt('catWeatherTitle'), icon: 'streak', desc: dt('catWeatherDesc') },
+    calmRoom: { title: dt('catCalmRoomTitle'), icon: 'honour', desc: dt('catCalmRoomDesc') }
   };
 }
 
@@ -3127,6 +3136,21 @@ function CustomPanelSlot({ id, meta, character, snapshotRef }) {
   return <SandboxedPanel source={record.source} snapshotRef={snapshotRef} title={record.title || (meta && meta.title) || ''} lang={lang} pulse={pulse} />;
 }
 
+// Same Accounts/Emotional-weather panels the Dashboard board renders, reused verbatim - both read
+// their own real global stores off {t, lang} alone (account/psychology data is user-scoped, not
+// session-scoped), so no workspace context needs to be threaded through.
+function SessionAccountsSlot() {
+  const { lang } = useWorkspace();
+  return <DashAccountsPanel t={dashboardT(lang)} lang={lang} />;
+}
+function SessionWeatherSlot() {
+  const { lang } = useWorkspace();
+  return <DashWeatherPanel t={dashboardT(lang)} lang={lang} />;
+}
+function SessionCalmRoomSlot() {
+  return <CalmRoomPanel i18n={window.TradeJournalTradeI18n} />;
+}
+
 function workspacePanelBody(id) {
   switch (id) {
     case 'cockpit': return <CockpitPanel />;
@@ -3134,6 +3158,9 @@ function workspacePanelBody(id) {
     case 'dashboard': return <SessionDashboardSlot />;
     case 'prevSummary': return <PrevSummarySlot />;
     case 'similar': return <SimilarSessionsSlot />;
+    case 'accounts': return <SessionAccountsSlot />;
+    case 'weather': return <SessionWeatherSlot />;
+    case 'calmRoom': return <SessionCalmRoomSlot />;
     default: return null;
   }
 }
