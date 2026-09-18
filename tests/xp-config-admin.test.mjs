@@ -3,7 +3,7 @@ import test, { after, before } from 'node:test';
 import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
-import { getEffectiveXpConfig, invalidateXpConfigCache } from '../server/community/xp-config.mjs';
+import { getEffectiveXpConfig, invalidateXpConfigCache, SERVER_ONLY_ACHIEVEMENT_POINTS } from '../server/community/xp-config.mjs';
 import { POINTS_BY_TYPE } from '../server/community/xp-rules.mjs';
 import { LEVEL_REQUIREMENTS, blockersForLevel } from '../server/community/mastery-rules.mjs';
 
@@ -64,6 +64,22 @@ test('getEffectiveXpConfig merges an override on top of the code default without
   const after2 = await getEffectiveXpConfig(memRepo);
   assert.equal(after2.points.session_created, 99, 'the overridden type reflects the admin value');
   assert.equal(after2.points.trade_closed_with_pnl, POINTS_BY_TYPE.trade_closed_with_pnl, 'an unrelated type is untouched');
+});
+
+test('AI Analysis Discipline achievement XP defaults are exposed through the same achievementPoints config and are admin-overridable', async () => {
+  const memRepo = createMemoryRepo();
+  invalidateXpConfigCache();
+  const before2 = await getEffectiveXpConfig(memRepo);
+  assert.equal(before2.achievementPoints.first_session_ai_analysis, SERVER_ONLY_ACHIEVEMENT_POINTS.first_session_ai_analysis);
+  assert.equal(before2.achievementPoints.first_chart_instrument_added, SERVER_ONLY_ACHIEVEMENT_POINTS.first_chart_instrument_added);
+  assert.equal(before2.achievementPoints.session_ai_discipline_7d, SERVER_ONLY_ACHIEVEMENT_POINTS.session_ai_discipline_7d);
+  assert.equal(before2.achievementPoints.session_ai_discipline_365d, SERVER_ONLY_ACHIEVEMENT_POINTS.session_ai_discipline_365d);
+
+  await memRepo.xpConfig.set('achievementPoints:session_ai_discipline_7d', { points: 999 }, null);
+  invalidateXpConfigCache();
+  const after2 = await getEffectiveXpConfig(memRepo);
+  assert.equal(after2.achievementPoints.session_ai_discipline_7d, 999, 'the admin override must reach the effective config');
+  assert.equal(after2.achievementPoints.session_ai_discipline_14d, SERVER_ONLY_ACHIEVEMENT_POINTS.session_ai_discipline_14d, 'a sibling milestone is untouched');
 });
 
 test('getEffectiveXpConfig merges a nested mastery requirement (domainXpMin:psychology) without disturbing sibling requirements', async () => {

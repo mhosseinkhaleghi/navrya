@@ -4,6 +4,7 @@ import { ONCE_PER_USER_TYPES, DOMAIN_BY_TYPE, levelForXp } from './xp-rules.mjs'
 import { ACHIEVEMENTS } from './achievement-rules.mjs';
 import { evaluateGate } from './mastery-rules.mjs';
 import { getEffectiveXpConfig } from './xp-config.mjs';
+import { evaluateNewAchievements, ensureDisciplineTimezone, DISCIPLINE_MILESTONES, HEATMAP_MAX_DAYS } from './ai-discipline.mjs';
 
 // ONCE_PER_USER_TYPES and DOMAIN_BY_TYPE stay static imports on purpose - which domain a type
 // belongs to, and which types are one-time-ever, are structural decisions (Section 11's admin
@@ -323,7 +324,45 @@ export function router(repo) {
       }
     }
 
+    // Level 1 "Start of the Path" + AI Analysis Discipline ladder (server/community/ai-discipline.mjs) -
+    // same opportunistic-recompute-on-read shape as the two checks above. `timezone` query param
+    // is the browser's own IANA zone (Intl.DateTimeFormat().resolvedOptions().timeZone,
+    // account-profile-store.js), captured once and then held stable for this user's discipline
+    // track regardless of what the browser sends on a later call.
+    try {
+      const timezone = await ensureDisciplineTimezone(repo, userId, req.query.timezone);
+      const result = await evaluateNewAchievements(repo, userId, { unlockedKeys, cfg, timezone });
+      if (result.grantedAny) grantedAny = true;
+    } catch (_) { /* best-effort, never block achievements load */ }
+
     res.json(grantedAny ? await repo.achievements.listForUser(userId) : existing);
+  }));
+
+  // Read-mostly AI Analysis Discipline progress (current/longest streak, next milestone) for the
+  // Level tab's "Start of the Path"/"AI Analysis Discipline" panels and the Achievements tab's
+  // real (never misleading 0/1) progress bars on the 7 ladder cards. Also opportunistically
+  // grants any newly-crossed milestone, same idempotent path as GET /me/achievements, so this
+  // endpoint alone is a self-consistent source for the Level tab even before that endpoint has
+  // been polled this session.
+  app.get('/me/ai-discipline', asyncHandler(async (req, res) => {
+    const userId = req.currentUser.id;
+    const cfg = await getEffectiveXpConfig(repo);
+    const timezone = await ensureDisciplineTimezone(repo, userId, req.query.timezone);
+    const existing = await repo.achievements.listForUser(userId);
+    const unlockedKeys = new Set(existing.map((a) => a.achievementKey));
+    const { streak, analysisDebt, weeklyConsistency } = await evaluateNewAchievements(repo, userId, { unlockedKeys, cfg, timezone });
+    const milestones = DISCIPLINE_MILESTONES.map((m) => ({
+      key: m.key, days: m.days, points: cfg.achievementPoints[m.key], unlocked: unlockedKeys.has(m.key)
+    }));
+    const nextMilestone = milestones.find((m) => !m.unlocked) || null;
+    // Follow-up #3 (discipline history heatmap): only the most recent HEATMAP_MAX_DAYS qualifying
+    // days ever leave this endpoint - streak/milestone math above already used the full history.
+    const heatmapDays = streak.qualifyingDayKeys.slice(-HEATMAP_MAX_DAYS);
+    res.json({
+      timezone, currentStreak: streak.currentStreak, longestStreak: streak.longestStreak,
+      lastQualifyingDay: streak.lastQualifyingDay, milestones, nextMilestone,
+      analysisDebt, weeklyConsistency, qualifyingDayKeys: heatmapDays
+    });
   }));
 
   app.post('/me/achievements/:key/unlock', asyncHandler(async (req, res) => {

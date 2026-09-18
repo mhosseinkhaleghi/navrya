@@ -257,6 +257,12 @@ function mapXpEvent(row) {
   };
 }
 function mapAchievement(row) { return { id: row.id, userId: row.user_id, achievementKey: row.achievement_key, unlockedAt: row.unlocked_at, evidence: row.evidence }; }
+function mapSessionAiAnalysisCompletion(row) {
+  return {
+    id: row.id, userId: row.user_id, sessionId: row.session_id, entryId: row.entry_id, analysisId: row.analysis_id,
+    analysisType: row.analysis_type, provider: row.provider, model: row.model, source: row.source, occurredAt: row.occurred_at
+  };
+}
 function mapXpConfigOverride(row) { return { key: row.config_key, value: row.value, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
 
 // Module 1 of the local-first-to-server migration (see ARCHITECTURE.md's Global Data Sync
@@ -1858,6 +1864,61 @@ export function createPgRepo(pool) {
     async listForUser(userId) {
       const { rows } = await pool.query('SELECT * FROM user_achievements WHERE user_id=$1 ORDER BY unlocked_at DESC', [userId]);
       return rows.map(mapAchievement);
+    }
+  };
+
+  // 063_ai_analysis_discipline.sql - authoritative, gateway-recorded evidence that a real AI
+  // Session Analysis succeeded for a specific (user, session, entry). Written only by
+  // routes.internal.mjs's POST /internal/session-analysis-completions after a real provider
+  // call has already succeeded (see server/pattern-ai-server.mjs's analyzeSession() caller) -
+  // never reachable from a plain client request. UNIQUE(analysis_id) makes a retried internal
+  // call idempotent, same 23505-catch convention as xpEvents.record()/achievements.unlock().
+  const sessionAiAnalysisCompletions = {
+    async record({ userId, sessionId, entryId, analysisId, analysisType, provider, model, source, occurredAt }) {
+      const id = newId('sessionAnalysisCompletion');
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO session_ai_analysis_completions
+            (id, user_id, session_id, entry_id, analysis_id, analysis_type, provider, model, source, occurred_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,now()))
+           RETURNING *`,
+          [id, userId, sessionId, entryId || null, String(analysisId || ''), analysisType || null, provider || null,
+            model || null, source === 'backfill' ? 'backfill' : 'live', occurredAt ? new Date(occurredAt).toISOString() : null]
+        );
+        return { completion: mapSessionAiAnalysisCompletion(rows[0]), created: true };
+      } catch (error) {
+        if (error && error.code === '23505') {
+          const { rows } = await pool.query('SELECT * FROM session_ai_analysis_completions WHERE analysis_id=$1', [analysisId]);
+          return { completion: rows[0] ? mapSessionAiAnalysisCompletion(rows[0]) : null, created: false };
+        }
+        throw error;
+      }
+    },
+    async listForUser(userId) {
+      const { rows } = await pool.query('SELECT * FROM session_ai_analysis_completions WHERE user_id=$1 ORDER BY occurred_at ASC', [userId]);
+      return rows.map(mapSessionAiAnalysisCompletion);
+    }
+  };
+
+  // One-row-per-user IANA timezone for the AI Analysis Discipline track (063_ai_analysis_discipline.sql) -
+  // same singleton-per-user upsert shape as companionState below, but write-once-then-stable:
+  // ensure() only ever inserts; a pre-existing row is returned unchanged so a later browser
+  // timezone change can never re-bucket past days (brief requirement).
+  const disciplineSettings = {
+    async ensure(userId, candidateTimezone) {
+      const { rows } = await pool.query(
+        `INSERT INTO user_discipline_settings (user_id, timezone) VALUES ($1,$2)
+         ON CONFLICT (user_id) DO NOTHING
+         RETURNING *`,
+        [userId, String(candidateTimezone || 'UTC')]
+      );
+      if (rows[0]) return rows[0].timezone;
+      const { rows: existing } = await pool.query('SELECT timezone FROM user_discipline_settings WHERE user_id=$1', [userId]);
+      return existing[0] ? existing[0].timezone : 'UTC';
+    },
+    async get(userId) {
+      const { rows } = await pool.query('SELECT timezone FROM user_discipline_settings WHERE user_id=$1', [userId]);
+      return rows[0] ? rows[0].timezone : null;
     }
   };
 
@@ -4669,7 +4730,7 @@ export function createPgRepo(pool) {
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
-    xpEvents, achievements, xpConfig, tradingSessions, patterns,
+    xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,

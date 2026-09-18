@@ -381,6 +381,11 @@
     var body = {
       provider: opts.provider, model: opts.model, apiKey: apiKey || undefined,
       language: opts.language || 'fa', analysisType: analysisType, depth: depth,
+      // AI Analysis Discipline (server/community/ai-discipline.mjs) - identity only, so the
+      // gateway can record a completion receipt against the SAME Session/entry once its own
+      // provider call actually succeeds (server/pattern-ai-server.mjs). Never itself sufficient
+      // evidence of anything: the server re-verifies session/entry ownership before recording.
+      sessionId: session && session.id, entryId: entry && entry.id,
       analysisProfile: pickAdherenceProfile(opts.analysisContext, opts.adherence),
       adherence: opts.adherence || 'balanced',
       // "Your view and instruction" (brief 1.B) - the wire field name (userView) is kept for

@@ -25,6 +25,7 @@ export function createMemoryRepo() {
     adminKeys: new Map(), adminModelOverrides: new Map(), adminGeminiVoiceProfiles: new Map(), auditLog: new Map(),
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
+    sessionAiAnalysisCompletions: new Map(), disciplineSettings: new Map(),
     tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), trades: new Map(), accounts: new Map(),
     instrumentCatalog: new Map(), learnedCommands: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
@@ -1136,6 +1137,48 @@ export function createMemoryRepo() {
     },
     async listForUser(userId) {
       return Array.from(state.achievements.values()).filter((a) => a.userId === userId).sort((a, b) => new Date(b.unlockedAt) - new Date(a.unlockedAt)).map(clone);
+    }
+  };
+
+  // 063_ai_analysis_discipline.sql - mirrors repo.pg.mjs's sessionAiAnalysisCompletions exactly.
+  // Dedupe is by analysisId (the UNIQUE(analysis_id) constraint's in-memory equivalent), not by
+  // id, matching the real table's idempotency guarantee for a retried internal-route call.
+  const sessionAiAnalysisCompletions = {
+    async record({ userId, sessionId, entryId, analysisId, analysisType, provider, model, source, occurredAt }) {
+      requireUser(userId);
+      const key = String(analysisId || '');
+      const existing = Array.from(state.sessionAiAnalysisCompletions.values()).find((c) => c.analysisId === key);
+      if (existing) return { completion: clone(existing), created: false };
+      const record = {
+        id: newId('sessionAnalysisCompletion'), userId, sessionId, entryId: entryId || null, analysisId: key,
+        analysisType: analysisType || null, provider: provider || null, model: model || null,
+        source: source === 'backfill' ? 'backfill' : 'live', occurredAt: occurredAt ? new Date(occurredAt).toISOString() : now()
+      };
+      state.sessionAiAnalysisCompletions.set(record.id, record);
+      return { completion: clone(record), created: true };
+    },
+    async listForUser(userId) {
+      return Array.from(state.sessionAiAnalysisCompletions.values())
+        .filter((c) => c.userId === userId)
+        .sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt))
+        .map(clone);
+    }
+  };
+
+  // Write-once-per-user IANA timezone for the AI Analysis Discipline track - mirrors
+  // repo.pg.mjs's disciplineSettings.ensure() exactly (a pre-existing row is never overwritten).
+  const disciplineSettings = {
+    async ensure(userId, candidateTimezone) {
+      requireUser(userId);
+      const existing = state.disciplineSettings.get(userId);
+      if (existing) return existing.timezone;
+      const record = { userId, timezone: String(candidateTimezone || 'UTC') };
+      state.disciplineSettings.set(userId, record);
+      return record.timezone;
+    },
+    async get(userId) {
+      const record = state.disciplineSettings.get(userId);
+      return record ? record.timezone : null;
     }
   };
 
@@ -3158,7 +3201,7 @@ export function createMemoryRepo() {
   return {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
-    xpEvents, achievements, xpConfig, tradingSessions, patterns,
+    xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,

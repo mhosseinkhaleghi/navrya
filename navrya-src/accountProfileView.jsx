@@ -50,6 +50,16 @@ const copy = {
     gateTitle: 'دروازهٔ سطح {n}', gateSub: 'امتیاز تنها بخشی از ماجراست؛ برای عبور باید این کارها را هم تمام کنید.',
     gateSummary: '{xp} امتیاز و {n} شرط باقی', gateFooter: 'پس از تکمیل شرط‌ها، سطح در همگام‌سازی بعدی باز می‌شود.',
     gateNoneTitle: 'دروازه‌ای در انتظار نیست', gateNoneBody: 'سطح فعلی شما با امتیاز واقعی هم‌سو است؛ شرط دیگری برای عبور باقی نمانده.',
+    startOfPathTitle: 'آغاز مسیر', startOfPathHint: 'دو گام نخستی که هر معامله‌گر پیش از ادامهٔ مسیر برمی‌دارد.',
+    disciplineTitle: 'نظم تحلیل هوش مصنوعی', disciplineHint: 'یک روز فقط زمانی شمرده می‌شود که همان روز یک سشن بسازید و برای همان سشن یک تحلیل واقعی هوش مصنوعی را کامل کنید.',
+    disciplineStreakDaysSuffix: 'روز متوالی', disciplineNextMilestone: 'نشان بعدی: {n} روز', disciplineAllMilestones: 'همهٔ نشان‌های نظم باز شده‌اند.',
+    disciplineActionToday: 'امروز: سشن کامل است — برای حفظ رشته، یک تحلیل هوش مصنوعی اجرا کنید.',
+    disciplineActionStart: 'امروز یک سشن بسازید و یک تحلیل واقعی هوش مصنوعی روی آن اجرا کنید تا رشته آغاز شود.',
+    disciplineLongestLine: 'بلندترین رشته: {n} روز', disciplineTimezoneNote: 'روزها بر اساس منطقهٔ زمانی شما ({tz}) شمرده می‌شوند.',
+    disciplineLoading: 'در حال بارگذاری رشتهٔ نظم…',
+    disciplineWeeklyLabel: 'این هفته', disciplineDebtUnnamedSession: 'یک سشن',
+    disciplineDebtNotice: '«{name}» بیش از {hours} ساعت است باز مانده و هنوز تحلیل نشده — یک تحلیل هوش مصنوعی برایش اجرا کنید.',
+    disciplineHeatmapTitle: 'تاریخچهٔ نظم', disciplineHeatmapHint: '۹۰ روز اخیر',
     ledgerTitle: 'امتیازهای اخیر', ledgerTotal30: 'مجموع ۳۰ روز: {n} امتیاز', ledgerEmpty: 'هنوز امتیازی کسب نشده است.',
     showAll: 'نمایش همهٔ رویدادها', showLess: 'نمایش کمتر',
 
@@ -185,6 +195,16 @@ const copy = {
     gateTitle: 'Level {n} gate', gateSub: 'XP is only part of it - you also need to finish these to pass.',
     gateSummary: '{xp} XP and {n} condition(s) left', gateFooter: 'Once these are met, the level unlocks on the next sync.',
     gateNoneTitle: 'No gate pending', gateNoneBody: 'Your current level matches your real XP - nothing else is blocking you.',
+    startOfPathTitle: 'Start of the Path', startOfPathHint: 'Two first steps every trader takes before the deeper journey begins.',
+    disciplineTitle: 'AI Analysis Discipline', disciplineHint: 'A day only counts when you create a Session and finish a real AI analysis on that same Session, on the same day.',
+    disciplineStreakDaysSuffix: 'day streak', disciplineNextMilestone: 'Next milestone: {n} days', disciplineAllMilestones: 'Every discipline milestone is unlocked.',
+    disciplineActionToday: 'Today: Session complete - run an AI analysis to preserve your streak.',
+    disciplineActionStart: 'Create a Session today and run a real AI analysis on it to start your streak.',
+    disciplineLongestLine: 'Longest streak: {n} days', disciplineTimezoneNote: 'Days are counted in your timezone ({tz}).',
+    disciplineLoading: 'Loading your discipline streak…',
+    disciplineWeeklyLabel: 'This week', disciplineDebtUnnamedSession: 'A Session',
+    disciplineDebtNotice: '"{name}" has been open for over {hours}h without an AI analysis - run one to preserve your streak.',
+    disciplineHeatmapTitle: 'Discipline history', disciplineHeatmapHint: 'last 90 days',
     ledgerTitle: 'Recent XP', ledgerTotal30: '30-day total: {n} XP', ledgerEmpty: 'No XP earned yet.',
     showAll: 'Show all events', showLess: 'Show less',
 
@@ -320,6 +340,16 @@ const copy = {
     gateTitle: 'بوابة المستوى {n}', gateSub: 'النقاط جزء فقط من القصة - يجب إكمال هذه أيضاً للعبور.',
     gateSummary: '{xp} نقطة و{n} شرط متبقٍ', gateFooter: 'بعد إكمال الشروط، يُفتح المستوى في المزامنة القادمة.',
     gateNoneTitle: 'لا توجد بوابة قيد الانتظار', gateNoneBody: 'مستواك الحالي متوافق مع نقاطك الفعلية - لا يوجد شرط آخر يعيقك.',
+    startOfPathTitle: 'بداية الطريق', startOfPathHint: 'خطوتان أوليان يقوم بهما كل متداول قبل مواصلة المسار الأعمق.',
+    disciplineTitle: 'انضباط التحليل بالذكاء الاصطناعي', disciplineHint: 'يُحتسب اليوم فقط عند إنشاء جلسة وإكمال تحليل حقيقي بالذكاء الاصطناعي لنفس الجلسة، في نفس اليوم.',
+    disciplineStreakDaysSuffix: 'يوم متتالٍ', disciplineNextMilestone: 'الإنجاز التالي: {n} يومًا', disciplineAllMilestones: 'تم فتح جميع إنجازات الانضباط.',
+    disciplineActionToday: 'اليوم: الجلسة مكتملة — شغّل تحليلًا بالذكاء الاصطناعي للحفاظ على تتابعك.',
+    disciplineActionStart: 'أنشئ جلسة اليوم وشغّل تحليلًا حقيقيًا بالذكاء الاصطناعي لها لبدء تتابعك.',
+    disciplineLongestLine: 'أطول تتابع: {n} يومًا', disciplineTimezoneNote: 'تُحتسب الأيام بتوقيتك ({tz}).',
+    disciplineLoading: 'جارٍ تحميل تتابع الانضباط…',
+    disciplineWeeklyLabel: 'هذا الأسبوع', disciplineDebtUnnamedSession: 'جلسة',
+    disciplineDebtNotice: '"{name}" مفتوحة منذ أكثر من {hours} ساعة دون تحليل بالذكاء الاصطناعي — شغّل تحليلًا للحفاظ على تتابعك.',
+    disciplineHeatmapTitle: 'سجل الانضباط', disciplineHeatmapHint: 'آخر 90 يومًا',
     ledgerTitle: 'النقاط الأخيرة', ledgerTotal30: 'إجمالي 30 يوماً: {n} نقطة', ledgerEmpty: 'لم تكسب أي نقاط بعد.',
     showAll: 'عرض كل الأحداث', showLess: 'عرض أقل',
 
@@ -455,6 +485,16 @@ const copy = {
     gateTitle: 'Puerta del nivel {n}', gateSub: 'El XP es solo una parte - también debes completar esto para avanzar.',
     gateSummary: '{xp} XP y {n} condición(es) restante(s)', gateFooter: 'Al completar los requisitos, el nivel se desbloquea en la próxima sincronización.',
     gateNoneTitle: 'No hay puerta pendiente', gateNoneBody: 'Tu nivel actual coincide con tu XP real; no queda ninguna condición.',
+    startOfPathTitle: 'Inicio del camino', startOfPathHint: 'Dos primeros pasos que da cada trader antes de continuar el camino.',
+    disciplineTitle: 'Disciplina de análisis con IA', disciplineHint: 'Un día solo cuenta cuando creas una Sesión y completas un análisis real con IA para esa misma Sesión, el mismo día.',
+    disciplineStreakDaysSuffix: 'días seguidos', disciplineNextMilestone: 'Próximo hito: {n} días', disciplineAllMilestones: 'Todos los hitos de disciplina están desbloqueados.',
+    disciplineActionToday: 'Hoy: Sesión completa - ejecuta un análisis con IA para mantener tu racha.',
+    disciplineActionStart: 'Crea una Sesión hoy y ejecuta un análisis real con IA para comenzar tu racha.',
+    disciplineLongestLine: 'Racha más larga: {n} días', disciplineTimezoneNote: 'Los días se cuentan en tu zona horaria ({tz}).',
+    disciplineLoading: 'Cargando tu racha de disciplina…',
+    disciplineWeeklyLabel: 'Esta semana', disciplineDebtUnnamedSession: 'Una Sesión',
+    disciplineDebtNotice: '"{name}" lleva abierta más de {hours}h sin un análisis con IA - ejecuta uno para mantener tu racha.',
+    disciplineHeatmapTitle: 'Historial de disciplina', disciplineHeatmapHint: 'últimos 90 días',
     ledgerTitle: 'XP reciente', ledgerTotal30: 'Total de 30 días: {n} XP', ledgerEmpty: 'Aún no has ganado XP.',
     showAll: 'Mostrar todos los eventos', showLess: 'Mostrar menos',
 
@@ -654,21 +694,43 @@ function achievementProgress(key, snapshot, xpTotal) {
   if (!pair) return null; // honestly unknown (e.g. five_day_login_streak - server-only, never exposed)
   return { cur: pair[0], total: pair[1], pct: Math.max(0, Math.min(100, Math.round((pair[0] / pair[1]) * 100))) };
 }
+// Real [cur,total] for one AI Analysis Discipline milestone card, from the server's own
+// GET /me/ai-discipline response (routes.profile.mjs) - never a local snapshot guess, and never
+// the misleading "0/1" fallback achievementProgress() uses for a key it has no local data for.
+// null while aiDiscipline hasn't loaded yet, same brief moment every other server-fed panel here
+// already tolerates.
+function disciplineProgressFor(key, aiDiscipline) {
+  const milestone = aiDiscipline && (aiDiscipline.milestones || []).find((m) => m.key === key);
+  if (!milestone) return null;
+  const cur = Math.min(aiDiscipline.currentStreak || 0, milestone.days);
+  return { cur, total: milestone.days, pct: Math.max(0, Math.min(100, Math.round((cur / milestone.days) * 100))) };
+}
 
-// Presentational-only grouping over the real, fixed 14 achievement keys - matches the design's
-// own tier assignment; no hidden data field is invented, only a display bucket.
+// Presentational-only grouping over the real, fixed achievement keys - matches the design's own
+// tier assignment; no hidden data field is invented, only a display bucket. The Level 1 "Start of
+// the Path" pair and the 7-rung AI Analysis Discipline ladder (server/community/ai-discipline.mjs)
+// added below follow the same bronze-onboarding / rising-tier-by-difficulty convention as every
+// pre-existing key above them.
 const ACH_TIER = {
   first_trade_closed: 'bronze', intake_completed: 'bronze', first_session_completed: 'bronze', first_purchase: 'bronze',
   ten_trades_closed: 'silver', first_listing_published: 'silver', bias_checklist_completed: 'silver', ten_sessions_closed: 'silver',
   level_5_reached: 'silver', five_day_login_streak: 'silver',
   fifty_trades_closed: 'gold', twenty_five_sessions_closed: 'gold', ten_sessions_with_lesson: 'gold',
-  fifty_sessions_closed: 'legend'
+  fifty_sessions_closed: 'legend',
+  first_session_ai_analysis: 'bronze', first_chart_instrument_added: 'bronze',
+  session_ai_discipline_3d: 'bronze', session_ai_discipline_7d: 'silver', session_ai_discipline_14d: 'silver',
+  session_ai_discipline_30d: 'gold', session_ai_discipline_90d: 'gold', session_ai_discipline_180d: 'legend', session_ai_discipline_365d: 'legend',
+  session_analysis_follow_through: 'silver'
 };
 const ACH_ICON = {
   first_trade_closed: 'target', intake_completed: 'brain', first_session_completed: 'clock', first_purchase: 'coins',
   ten_trades_closed: 'activity', first_listing_published: 'shopping-bag', bias_checklist_completed: 'list-checks', ten_sessions_closed: 'calendar',
   level_5_reached: 'trending-up', five_day_login_streak: 'flame',
-  fifty_trades_closed: 'swords', twenty_five_sessions_closed: 'layers', ten_sessions_with_lesson: 'book-open', fifty_sessions_closed: 'hourglass'
+  fifty_trades_closed: 'swords', twenty_five_sessions_closed: 'layers', ten_sessions_with_lesson: 'book-open', fifty_sessions_closed: 'hourglass',
+  first_session_ai_analysis: 'sparkles', first_chart_instrument_added: 'image',
+  session_ai_discipline_3d: 'flame', session_ai_discipline_7d: 'flame', session_ai_discipline_14d: 'flame',
+  session_ai_discipline_30d: 'flame', session_ai_discipline_90d: 'flame', session_ai_discipline_180d: 'flame', session_ai_discipline_365d: 'flame',
+  session_analysis_follow_through: 'check-check'
 };
 const TIER_META = {
   bronze: { metal: 'var(--bronze)', icon: 'medal', order: 0 }, silver: { metal: '#BFC3D4', icon: 'award', order: 1 },
@@ -890,7 +952,159 @@ function DossierBand({ lang, character, profile, pendingXp, nextGoal }) {
 // Level tab
 // ---------------------------------------------------------------------------------------------
 
-function LevelTab({ lang, i18n, profile, mastery, xpEvents }) {
+const START_OF_PATH_KEYS = ['first_session_ai_analysis', 'first_chart_instrument_added'];
+
+// Level 1 "Start of the Path" checklist - the same two onboarding achievements also appear as
+// normal cards in the Achievements tab; this is a compact, Level-1-focused restatement, not a
+// second data source (unlockedByKey is the exact same server-authoritative map that tab uses).
+function StartOfPathPanel({ lang, i18n, unlockedByKey }) {
+  const defs = (window.TradeJournalProfileAchievements && window.TradeJournalProfileAchievements.definitions) || [];
+  const done = START_OF_PATH_KEYS.filter((key) => unlockedByKey[key]).length;
+  return (
+    <Panel variant="base" ornament padding={0}>
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 22px', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: 'var(--char-accent)', display: 'flex' }}><Icon name="footprints" size={20} /></span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'startOfPathTitle')}</span>
+          <span className="navrya-tabular" style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>{ratio(lang, done, START_OF_PATH_KEYS.length)}</span>
+        </div>
+        <span style={{ fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'startOfPathHint')}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {START_OF_PATH_KEYS.map((key) => {
+            const def = defs.find((d) => d.key === key);
+            if (!def) return null;
+            const earned = unlockedByKey[key];
+            return (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 13px', borderRadius: 9, border: '1px solid ' + (earned ? 'var(--char-accent)' : 'var(--border-hairline)'), background: earned ? 'var(--char-active-surface)' : 'rgba(3,8,7,.5)' }}>
+                <span style={{ flex: 'none', width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center', border: '1px solid ' + (earned ? 'var(--char-accent)' : 'var(--border-hairline)'), color: earned ? 'var(--char-accent)' : 'var(--text-dim)' }}>
+                  <Icon name={earned ? 'check' : 'circle-dashed'} size={15} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--parchment)' }}>{i18n.t('ach' + def.labelKey + 'Title')}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6 }}>{i18n.t('ach' + def.labelKey + 'Desc')}</span>
+                </span>
+                <span dir="ltr" className="navrya-tabular" style={{ flex: 'none', fontSize: 11, fontWeight: 600, color: earned ? 'var(--char-accent)' : 'var(--text-muted)' }}>{'+' + digits(lang, def.points) + ' XP'}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+// AI Analysis Discipline ladder - current/longest streak and the next uncrossed milestone, from
+// server/community/ai-discipline.mjs's own opportunistic evaluation (GET /me/ai-discipline).
+// Deliberately never derived from any local store: the whole point of this track is that only a
+// real, server-verified AI Session Analysis on a Session created that same day counts.
+function AiDisciplinePanel({ lang, aiDiscipline }) {
+  if (!aiDiscipline) {
+    return (
+      <Panel variant="active" ornament padding={0}>
+        <div style={{ padding: '20px 22px' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineLoading')}</span>
+        </div>
+      </Panel>
+    );
+  }
+  const next = aiDiscipline.nextMilestone;
+  const pct = next ? Math.max(0, Math.min(100, Math.round((Math.min(aiDiscipline.currentStreak, next.days) / next.days) * 100))) : 100;
+  const active = aiDiscipline.currentStreak > 0;
+  return (
+    <Panel variant="active" ornament padding={0}>
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 22px', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: 'var(--char-accent)', display: 'flex' }}><Icon name="flame" size={20} /></span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'disciplineTitle')}</span>
+          <span className="navrya-tabular" style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'baseline', gap: 5 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--char-accent)', fontFamily: 'var(--font-display)' }}>{digits(lang, aiDiscipline.currentStreak)}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineStreakDaysSuffix')}</span>
+          </span>
+        </div>
+        <span style={{ fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'disciplineHint')}</span>
+        {aiDiscipline.weeklyConsistency && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--char-accent)', display: 'flex' }}><Icon name="calendar-check" size={14} /></span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{tr(lang, 'disciplineWeeklyLabel')}</span>
+            <span className="navrya-tabular" style={{ marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text-primary)' }}>{ratio(lang, aiDiscipline.weeklyConsistency.qualifiedDays, aiDiscipline.weeklyConsistency.totalDays)}</span>
+          </span>
+        )}
+        {aiDiscipline.analysisDebt && (
+          <Notice tone="warning" icon="alert-triangle">
+            {tr(lang, 'disciplineDebtNotice', { name: aiDiscipline.analysisDebt.name || aiDiscipline.analysisDebt.instrument || aiDiscipline.analysisDebt.market || tr(lang, 'disciplineDebtUnnamedSession'), hours: digits(lang, aiDiscipline.analysisDebt.ageHours) })}
+          </Notice>
+        )}
+        {next ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>{tr(lang, 'disciplineNextMilestone', { n: digits(lang, next.days) })}</span>
+              <span className="navrya-tabular" style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>{ratio(lang, Math.min(aiDiscipline.currentStreak, next.days), next.days)}</span>
+            </span>
+            <span style={{ height: 5, borderRadius: 3, background: 'rgba(244,234,215,.07)', overflow: 'hidden', display: 'block' }}>
+              <span style={{ display: 'block', height: '100%', borderRadius: 3, background: 'var(--char-accent)', width: pct + '%' }}></span>
+            </span>
+          </div>
+        ) : (
+          <Notice tone="accent" icon="crown">{tr(lang, 'disciplineAllMilestones')}</Notice>
+        )}
+        <Notice tone={active ? 'accent' : 'info'} icon="lightbulb">{tr(lang, active ? 'disciplineActionToday' : 'disciplineActionStart')}</Notice>
+        {aiDiscipline.longestStreak > aiDiscipline.currentStreak && (
+          <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineLongestLine', { n: digits(lang, aiDiscipline.longestStreak) })}</span>
+        )}
+        <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineTimezoneNote', { tz: aiDiscipline.timezone })}</span>
+      </div>
+    </Panel>
+  );
+}
+
+// Follow-up creative addition #3 - a GitHub-contributions-style heatmap of the last
+// HEATMAP_MAX_DAYS qualifying discipline days (server/community/ai-discipline.mjs), purely
+// presentational over data GET /me/ai-discipline already computed - no new endpoint, no client-
+// side re-derivation of "did this day qualify".
+function DisciplineHeatmapPanel({ lang, aiDiscipline }) {
+  if (!aiDiscipline || !aiDiscipline.qualifyingDayKeys) return null;
+  const qualifying = new Set(aiDiscipline.qualifyingDayKeys);
+  if (!qualifying.size) return null;
+  // en-CA formats as YYYY-MM-DD in the given zone - the exact same day-key shape
+  // server/community/ai-discipline.mjs's dayKeyInTimeZone() produces, so a day here lines up with
+  // the server's own qualifying-day computation rather than an independent (and possibly
+  // off-by-one-day) client-side UTC bucketing.
+  var formatter;
+  try { formatter = new Intl.DateTimeFormat('en-CA', { timeZone: aiDiscipline.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
+  catch (_) { formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
+  const now = Date.now();
+  const days = [];
+  for (let i = 89; i >= 0; i -= 1) {
+    const key = formatter.format(new Date(now - i * 86400000));
+    days.push({ key, on: qualifying.has(key) });
+  }
+  return (
+    <Panel variant="base" ornament padding={0}>
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 22px', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: 'var(--char-accent)', display: 'flex' }}><Icon name="layout-grid" size={18} /></span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'disciplineHeatmapTitle')}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineHeatmapHint')}</span>
+        </div>
+        <div dir="ltr" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 11px)', gap: 3 }}>
+          {days.map((d) => (
+            <span
+              key={d.key} title={d.key}
+              style={{
+                width: 11, height: 11, borderRadius: 2,
+                background: d.on ? 'var(--char-accent)' : 'rgba(244,234,215,.08)',
+                border: '1px solid ' + (d.on ? 'var(--char-accent)' : 'var(--border-hairline)'),
+                opacity: d.on ? 0.9 : 1
+              }}
+            ></span>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function LevelTab({ lang, i18n, profile, mastery, xpEvents, unlockedByKey, aiDiscipline }) {
   const rules = window.TradeJournalProfileXPRules;
   const level = rules.levelForXp(profile.xpTotal);
   const THRESHOLDS = rules.LEVEL_THRESHOLDS; // 7 real levels
@@ -945,6 +1159,13 @@ function LevelTab({ lang, i18n, profile, mastery, xpEvents }) {
           </div>
         </div>
       </Panel>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+        <StartOfPathPanel lang={lang} i18n={i18n} unlockedByKey={unlockedByKey} />
+        <AiDisciplinePanel lang={lang} aiDiscipline={aiDiscipline} />
+      </div>
+
+      <DisciplineHeatmapPanel lang={lang} aiDiscipline={aiDiscipline} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 16, alignItems: 'start' }}>
         <Panel variant="active" ornament padding={0}>
@@ -1024,14 +1245,15 @@ function LevelTab({ lang, i18n, profile, mastery, xpEvents }) {
 // Achievements tab
 // ---------------------------------------------------------------------------------------------
 
-function AchievementsTab({ lang, i18n, profile, unlockedByKey, openId, setOpenId }) {
+function AchievementsTab({ lang, i18n, profile, unlockedByKey, openId, setOpenId, aiDiscipline }) {
   const [filter, setFilter] = React.useState('all');
   const defs = (window.TradeJournalProfileAchievements && window.TradeJournalProfileAchievements.definitions) || [];
   const snapshot = buildSnapshot();
 
   const items = defs.map((def) => {
     const earned = unlockedByKey[def.key];
-    const progress = achievementProgress(def.key, snapshot, profile.xpTotal);
+    const isDisciplineMilestone = def.key.indexOf('session_ai_discipline_') === 0;
+    const progress = isDisciplineMilestone ? disciplineProgressFor(def.key, aiDiscipline) : achievementProgress(def.key, snapshot, profile.xpTotal);
     return {
       key: def.key, title: i18n.t('ach' + def.labelKey + 'Title'), desc: i18n.t('ach' + def.labelKey + 'Desc'),
       icon: ACH_ICON[def.key] || 'trophy', tier: ACH_TIER[def.key] || 'bronze', xp: def.points,
@@ -2458,6 +2680,7 @@ function AccountProfileView({ initialTab, character }) {
   const [mastery, setMastery] = React.useState(null);
   const [xpEvents, setXpEvents] = React.useState([]);
   const [unlockedByKey, setUnlockedByKey] = React.useState({});
+  const [aiDiscipline, setAiDiscipline] = React.useState(null);
   const [nextGoal, setNextGoal] = React.useState(null);
   const [openAch, setOpenAch] = React.useState(null);
   const [, setTick] = React.useState(0);
@@ -2471,6 +2694,7 @@ function AccountProfileView({ initialTab, character }) {
     store.getAchievements().then((rows) => {
       const map = {}; rows.forEach((a) => { map[a.achievementKey] = a; }); setUnlockedByKey(map);
     }).catch(() => {});
+    if (store.getAiDisciplineStatus) store.getAiDisciplineStatus().then(setAiDiscipline).catch(() => setAiDiscipline(null));
     store.nextGoal().then((goal) => {
       if (!goal) { setNextGoal(null); return; }
       if (goal.kind === 'achievement') {
@@ -2539,8 +2763,8 @@ function AccountProfileView({ initialTab, character }) {
       </div>
 
       {tab === 'identity' && <IdentityTab lang={lang} i18n={i18n} character={character} profile={profile} onSaved={setProfile} />}
-      {tab === 'level' && <LevelTab lang={lang} i18n={i18n} profile={profile} mastery={mastery} xpEvents={xpEvents} />}
-      {tab === 'ach' && <AchievementsTab lang={lang} i18n={i18n} profile={profile} unlockedByKey={unlockedByKey} openId={openAch} setOpenId={setOpenAch} />}
+      {tab === 'level' && <LevelTab lang={lang} i18n={i18n} profile={profile} mastery={mastery} xpEvents={xpEvents} unlockedByKey={unlockedByKey} aiDiscipline={aiDiscipline} />}
+      {tab === 'ach' && <AchievementsTab lang={lang} i18n={i18n} profile={profile} unlockedByKey={unlockedByKey} openId={openAch} setOpenId={setOpenAch} aiDiscipline={aiDiscipline} />}
       {tab === 'sub' && <SubscriptionTab lang={lang} />}
       {tab === 'role' && <RoleTab lang={lang} profile={profile} onSaved={setProfile} />}
     </div>

@@ -34,7 +34,17 @@
   }
   function getXpEvents() { return request('GET', '/api/users/me/xp-events'); }
   function getMastery() { return request('GET', '/api/users/me/mastery'); }
-  function getAchievements() { return request('GET', '/api/users/me/achievements'); }
+  // AI Analysis Discipline (server/community/ai-discipline.mjs) captures the browser's own IANA
+  // timezone once, the first time either endpoint below is ever called for this user, then holds
+  // it stable forever (routes.profile.mjs's ensureDisciplineTimezone()) - sending it on every
+  // call is harmless (the server ignores it once a row exists) and needs no separate "first run"
+  // bookkeeping on this side. Falls back to an empty string (server falls back to UTC) when
+  // Intl/resolvedOptions is unavailable, rather than throwing.
+  function browserTimezone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { return ''; }
+  }
+  function getAchievements() { return request('GET', '/api/users/me/achievements?timezone=' + encodeURIComponent(browserTimezone())); }
+  function getAiDisciplineStatus() { return request('GET', '/api/users/me/ai-discipline?timezone=' + encodeURIComponent(browserTimezone())); }
   function unlockAchievement(key, evidence) { return request('POST', '/api/users/me/achievements/' + encodeURIComponent(key) + '/unlock', { evidence: evidence }).catch(function () {}); }
   function getSubscriptions() { return request('GET', '/api/users/me/subscriptions'); }
 
@@ -549,6 +559,7 @@
   window.TradeJournalAccountProfileStore = {
     getProfile: getProfile, updateProfile: updateProfile, recordXp: recordXp, getXpEvents: getXpEvents,
     getMastery: getMastery, getAchievements: getAchievements, unlockAchievement: unlockAchievement,
+    getAiDisciplineStatus: getAiDisciplineStatus,
     getSubscriptions: getSubscriptions, checkAchievements: checkAchievements, nextGoal: nextGoal
   };
 }());
