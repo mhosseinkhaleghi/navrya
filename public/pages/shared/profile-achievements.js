@@ -78,7 +78,9 @@
     { key: 'session_ai_discipline_30d', points: 60, labelKey: 'SessionAiDiscipline30d', serverOnly: true },
     { key: 'session_ai_discipline_90d', points: 100, labelKey: 'SessionAiDiscipline90d', serverOnly: true },
     { key: 'session_ai_discipline_180d', points: 150, labelKey: 'SessionAiDiscipline180d', serverOnly: true },
-    { key: 'session_ai_discipline_365d', points: 250, labelKey: 'SessionAiDiscipline365d', serverOnly: true }
+    { key: 'session_ai_discipline_365d', points: 250, labelKey: 'SessionAiDiscipline365d', serverOnly: true },
+    // Follow-up creative addition #4 - one-time "Reflection Quality" bonus, never part of the ladder.
+    { key: 'session_analysis_follow_through', points: 15, labelKey: 'SessionAnalysisFollowThrough', serverOnly: true }
   ];
 
   function checkAll(snapshot) {

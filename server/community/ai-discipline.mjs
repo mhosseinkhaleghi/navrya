@@ -25,6 +25,25 @@ export const DISCIPLINE_MILESTONES = [
 
 export const ONBOARDING_ACHIEVEMENT_KEYS = ['first_session_ai_analysis', 'first_chart_instrument_added'];
 
+// Follow-up creative addition #4: a single, one-time "Reflection Quality" achievement - rewards a
+// trader who actually engages with the AI's own feedback loop over multiple analyses (an earlier
+// open/partially_resolved unresolved item later reported resolved), never a ladder, never
+// P&L/profit-adjacent. Low-stakes by design (same trust level as ten_sessions_with_lesson's own
+// fateSummary.note check) - reads already-persisted, already-trusted session memory, not the
+// security-critical completions ledger, since gaming it nets nothing more than one small bonus.
+export const FOLLOW_THROUGH_ACHIEVEMENT_KEY = 'session_analysis_follow_through';
+
+// Follow-up creative addition #1: a Session sitting open this long with zero real AI analysis
+// completions is "analysis debt" - a distinct, gentler nudge from the discipline streak itself
+// (a broken streak already implies debt; this also flags a FIRST-time straggler before any streak
+// exists at all).
+const ANALYSIS_DEBT_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+// Follow-up creative addition #3: how many of the most recent qualifying days to expose for a
+// GitHub-style history heatmap - bounds the GET /me/ai-discipline response instead of returning a
+// user's entire lifetime history.
+export const HEATMAP_MAX_DAYS = 120;
+
 // Pre-existing trading_sessions.aiSessionAnalysisResult / trading_session_entries.aiAnalysisResult
 // data predates this ledger and was never backed by a signed completion receipt - trusted ONLY
 // for a one-time backfill of genuinely pre-existing usage, and only strictly before this instant.
@@ -183,6 +202,48 @@ export function firstValidChartInstrumentSession(sessions) {
   }) || null;
 }
 
+// Follow-up creative addition #2: how many of the last 7 calendar days (in `timezone`, inclusive
+// of today) already qualify - a rolling weekly consistency signal, distinct from the streak's own
+// "must be unbroken" requirement, so a trader who deliberately rests one day still sees an honest
+// "5 of 7" rather than a discouraging blank state.
+export function weeklyConsistency(qualifyingDayKeys, timezone, nowInstant) {
+  const qualifying = new Set(qualifyingDayKeys || []);
+  const todayMs = dayKeyToUtcMs(dayKeyInTimeZone(nowInstant || new Date(), timezone));
+  let qualifiedDays = 0;
+  for (let i = 0; i < 7; i += 1) {
+    const dayKey = dayKeyInTimeZone(new Date(todayMs - i * 86400000), timezone);
+    if (qualifying.has(dayKey)) qualifiedDays += 1;
+  }
+  return { qualifiedDays, totalDays: 7 };
+}
+
+// Follow-up creative addition #1: the oldest still-open Session with zero real AI analysis
+// completions ever recorded against it, more than 24h old. Never flags a closed Session (already
+// done, nothing to nudge) and never looks at P&L/instrument/anything profit-adjacent - purely
+// "you started this, you have not analyzed it yet."
+export function findAnalysisDebtSession(sessions, completions, nowInstant) {
+  const analyzedSessionIds = new Set((completions || []).map((c) => c.sessionId));
+  const nowMs = (nowInstant instanceof Date ? nowInstant : new Date(nowInstant || Date.now())).getTime();
+  const candidates = (sessions || [])
+    .filter((s) => s.status === 'open' && s.createdAt && !analyzedSessionIds.has(s.id))
+    .filter((s) => nowMs - new Date(s.createdAt).getTime() >= ANALYSIS_DEBT_THRESHOLD_MS)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  if (!candidates.length) return null;
+  const oldest = candidates[0];
+  const ageHours = Math.floor((nowMs - new Date(oldest.createdAt).getTime()) / (60 * 60 * 1000));
+  return { sessionId: oldest.id, name: oldest.name || null, market: oldest.market || null, instrument: oldest.instrument || null, ageHours };
+}
+
+// Follow-up creative addition #4: has this user ever had a Session where the AI's own compact
+// memory later reported a previously-tracked unresolved item as genuinely resolved - real
+// engagement with the feedback loop across more than one analysis, not just running one.
+export function hasFollowThroughSession(sessions) {
+  return (sessions || []).some((session) => {
+    const items = session.aiSessionAnalysisResult && session.aiSessionAnalysisResult.memory && session.aiSessionAnalysisResult.memory.unresolvedItems;
+    return Array.isArray(items) && items.some((item) => item && item.status === 'resolved');
+  });
+}
+
 // Resolves (and, on first use, persists) the one stable IANA timezone this user's discipline
 // track is bucketed in. Never re-resolves once a row exists, so a later browser timezone change
 // can never re-bucket past days.
@@ -231,14 +292,25 @@ export async function evaluateNewAchievements(repo, userId, { unlockedKeys, cfg,
     if (match) await grant('first_chart_instrument_added', { sessionId: match.id });
   }
 
+  // Follow-up #4: Reflection Quality - a single, one-time bonus (never part of the ladder).
+  if (!unlockedKeys.has(FOLLOW_THROUGH_ACHIEVEMENT_KEY) && hasFollowThroughSession(sessions)) {
+    await grant(FOLLOW_THROUGH_ACHIEVEMENT_KEY, {});
+  }
+
   // AI Analysis Discipline ladder - qualifying days from the real ledger, unioned with the
   // one-time, cutoff-bounded legacy backfill so genuinely pre-existing usage isn't lost.
   const ledgerDays = qualifyingDaysFromCompletions(completions, sessionsById, timezone);
   const legacyDays = legacyQualifyingDaysFromSessions(sessions, timezone);
-  const streak = computeDisciplineStreak(ledgerDays.concat(legacyDays), timezone);
+  const allQualifyingDays = ledgerDays.concat(legacyDays);
+  const streak = computeDisciplineStreak(allQualifyingDays, timezone);
   for (const milestone of DISCIPLINE_MILESTONES) {
     if (streak.longestStreak >= milestone.days) await grant(milestone.key, { streakDays: milestone.days, timezone });
   }
 
-  return { grantedAny, streak };
+  // Follow-ups #1/#2: read-only insights for GET /me/ai-discipline, computed here so a caller
+  // never has to re-fetch/re-derive sessions/completions/qualifying-days a second time.
+  const analysisDebt = findAnalysisDebtSession(sessions, completions);
+  const weekly = weeklyConsistency(allQualifyingDays, timezone);
+
+  return { grantedAny, streak, analysisDebt, weeklyConsistency: weekly };
 }

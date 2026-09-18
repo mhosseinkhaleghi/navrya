@@ -57,6 +57,9 @@ const copy = {
     disciplineActionStart: 'امروز یک سشن بسازید و یک تحلیل واقعی هوش مصنوعی روی آن اجرا کنید تا رشته آغاز شود.',
     disciplineLongestLine: 'بلندترین رشته: {n} روز', disciplineTimezoneNote: 'روزها بر اساس منطقهٔ زمانی شما ({tz}) شمرده می‌شوند.',
     disciplineLoading: 'در حال بارگذاری رشتهٔ نظم…',
+    disciplineWeeklyLabel: 'این هفته', disciplineDebtUnnamedSession: 'یک سشن',
+    disciplineDebtNotice: '«{name}» بیش از {hours} ساعت است باز مانده و هنوز تحلیل نشده — یک تحلیل هوش مصنوعی برایش اجرا کنید.',
+    disciplineHeatmapTitle: 'تاریخچهٔ نظم', disciplineHeatmapHint: '۹۰ روز اخیر',
     ledgerTitle: 'امتیازهای اخیر', ledgerTotal30: 'مجموع ۳۰ روز: {n} امتیاز', ledgerEmpty: 'هنوز امتیازی کسب نشده است.',
     showAll: 'نمایش همهٔ رویدادها', showLess: 'نمایش کمتر',
 
@@ -199,6 +202,9 @@ const copy = {
     disciplineActionStart: 'Create a Session today and run a real AI analysis on it to start your streak.',
     disciplineLongestLine: 'Longest streak: {n} days', disciplineTimezoneNote: 'Days are counted in your timezone ({tz}).',
     disciplineLoading: 'Loading your discipline streak…',
+    disciplineWeeklyLabel: 'This week', disciplineDebtUnnamedSession: 'A Session',
+    disciplineDebtNotice: '"{name}" has been open for over {hours}h without an AI analysis - run one to preserve your streak.',
+    disciplineHeatmapTitle: 'Discipline history', disciplineHeatmapHint: 'last 90 days',
     ledgerTitle: 'Recent XP', ledgerTotal30: '30-day total: {n} XP', ledgerEmpty: 'No XP earned yet.',
     showAll: 'Show all events', showLess: 'Show less',
 
@@ -341,6 +347,9 @@ const copy = {
     disciplineActionStart: 'أنشئ جلسة اليوم وشغّل تحليلًا حقيقيًا بالذكاء الاصطناعي لها لبدء تتابعك.',
     disciplineLongestLine: 'أطول تتابع: {n} يومًا', disciplineTimezoneNote: 'تُحتسب الأيام بتوقيتك ({tz}).',
     disciplineLoading: 'جارٍ تحميل تتابع الانضباط…',
+    disciplineWeeklyLabel: 'هذا الأسبوع', disciplineDebtUnnamedSession: 'جلسة',
+    disciplineDebtNotice: '"{name}" مفتوحة منذ أكثر من {hours} ساعة دون تحليل بالذكاء الاصطناعي — شغّل تحليلًا للحفاظ على تتابعك.',
+    disciplineHeatmapTitle: 'سجل الانضباط', disciplineHeatmapHint: 'آخر 90 يومًا',
     ledgerTitle: 'النقاط الأخيرة', ledgerTotal30: 'إجمالي 30 يوماً: {n} نقطة', ledgerEmpty: 'لم تكسب أي نقاط بعد.',
     showAll: 'عرض كل الأحداث', showLess: 'عرض أقل',
 
@@ -483,6 +492,9 @@ const copy = {
     disciplineActionStart: 'Crea una Sesión hoy y ejecuta un análisis real con IA para comenzar tu racha.',
     disciplineLongestLine: 'Racha más larga: {n} días', disciplineTimezoneNote: 'Los días se cuentan en tu zona horaria ({tz}).',
     disciplineLoading: 'Cargando tu racha de disciplina…',
+    disciplineWeeklyLabel: 'Esta semana', disciplineDebtUnnamedSession: 'Una Sesión',
+    disciplineDebtNotice: '"{name}" lleva abierta más de {hours}h sin un análisis con IA - ejecuta uno para mantener tu racha.',
+    disciplineHeatmapTitle: 'Historial de disciplina', disciplineHeatmapHint: 'últimos 90 días',
     ledgerTitle: 'XP reciente', ledgerTotal30: 'Total de 30 días: {n} XP', ledgerEmpty: 'Aún no has ganado XP.',
     showAll: 'Mostrar todos los eventos', showLess: 'Mostrar menos',
 
@@ -707,7 +719,8 @@ const ACH_TIER = {
   fifty_sessions_closed: 'legend',
   first_session_ai_analysis: 'bronze', first_chart_instrument_added: 'bronze',
   session_ai_discipline_3d: 'bronze', session_ai_discipline_7d: 'silver', session_ai_discipline_14d: 'silver',
-  session_ai_discipline_30d: 'gold', session_ai_discipline_90d: 'gold', session_ai_discipline_180d: 'legend', session_ai_discipline_365d: 'legend'
+  session_ai_discipline_30d: 'gold', session_ai_discipline_90d: 'gold', session_ai_discipline_180d: 'legend', session_ai_discipline_365d: 'legend',
+  session_analysis_follow_through: 'silver'
 };
 const ACH_ICON = {
   first_trade_closed: 'target', intake_completed: 'brain', first_session_completed: 'clock', first_purchase: 'coins',
@@ -716,7 +729,8 @@ const ACH_ICON = {
   fifty_trades_closed: 'swords', twenty_five_sessions_closed: 'layers', ten_sessions_with_lesson: 'book-open', fifty_sessions_closed: 'hourglass',
   first_session_ai_analysis: 'sparkles', first_chart_instrument_added: 'image',
   session_ai_discipline_3d: 'flame', session_ai_discipline_7d: 'flame', session_ai_discipline_14d: 'flame',
-  session_ai_discipline_30d: 'flame', session_ai_discipline_90d: 'flame', session_ai_discipline_180d: 'flame', session_ai_discipline_365d: 'flame'
+  session_ai_discipline_30d: 'flame', session_ai_discipline_90d: 'flame', session_ai_discipline_180d: 'flame', session_ai_discipline_365d: 'flame',
+  session_analysis_follow_through: 'check-check'
 };
 const TIER_META = {
   bronze: { metal: 'var(--bronze)', icon: 'medal', order: 0 }, silver: { metal: '#BFC3D4', icon: 'award', order: 1 },
@@ -1008,6 +1022,18 @@ function AiDisciplinePanel({ lang, aiDiscipline }) {
           </span>
         </div>
         <span style={{ fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.8 }}>{tr(lang, 'disciplineHint')}</span>
+        {aiDiscipline.weeklyConsistency && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--char-accent)', display: 'flex' }}><Icon name="calendar-check" size={14} /></span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{tr(lang, 'disciplineWeeklyLabel')}</span>
+            <span className="navrya-tabular" style={{ marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text-primary)' }}>{ratio(lang, aiDiscipline.weeklyConsistency.qualifiedDays, aiDiscipline.weeklyConsistency.totalDays)}</span>
+          </span>
+        )}
+        {aiDiscipline.analysisDebt && (
+          <Notice tone="warning" icon="alert-triangle">
+            {tr(lang, 'disciplineDebtNotice', { name: aiDiscipline.analysisDebt.name || aiDiscipline.analysisDebt.instrument || aiDiscipline.analysisDebt.market || tr(lang, 'disciplineDebtUnnamedSession'), hours: digits(lang, aiDiscipline.analysisDebt.ageHours) })}
+          </Notice>
+        )}
         {next ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -1026,6 +1052,53 @@ function AiDisciplinePanel({ lang, aiDiscipline }) {
           <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineLongestLine', { n: digits(lang, aiDiscipline.longestStreak) })}</span>
         )}
         <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineTimezoneNote', { tz: aiDiscipline.timezone })}</span>
+      </div>
+    </Panel>
+  );
+}
+
+// Follow-up creative addition #3 - a GitHub-contributions-style heatmap of the last
+// HEATMAP_MAX_DAYS qualifying discipline days (server/community/ai-discipline.mjs), purely
+// presentational over data GET /me/ai-discipline already computed - no new endpoint, no client-
+// side re-derivation of "did this day qualify".
+function DisciplineHeatmapPanel({ lang, aiDiscipline }) {
+  if (!aiDiscipline || !aiDiscipline.qualifyingDayKeys) return null;
+  const qualifying = new Set(aiDiscipline.qualifyingDayKeys);
+  if (!qualifying.size) return null;
+  // en-CA formats as YYYY-MM-DD in the given zone - the exact same day-key shape
+  // server/community/ai-discipline.mjs's dayKeyInTimeZone() produces, so a day here lines up with
+  // the server's own qualifying-day computation rather than an independent (and possibly
+  // off-by-one-day) client-side UTC bucketing.
+  var formatter;
+  try { formatter = new Intl.DateTimeFormat('en-CA', { timeZone: aiDiscipline.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
+  catch (_) { formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
+  const now = Date.now();
+  const days = [];
+  for (let i = 89; i >= 0; i -= 1) {
+    const key = formatter.format(new Date(now - i * 86400000));
+    days.push({ key, on: qualifying.has(key) });
+  }
+  return (
+    <Panel variant="base" ornament padding={0}>
+      <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 22px', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: 'var(--char-accent)', display: 'flex' }}><Icon name="layout-grid" size={18} /></span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'disciplineHeatmapTitle')}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'disciplineHeatmapHint')}</span>
+        </div>
+        <div dir="ltr" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 11px)', gap: 3 }}>
+          {days.map((d) => (
+            <span
+              key={d.key} title={d.key}
+              style={{
+                width: 11, height: 11, borderRadius: 2,
+                background: d.on ? 'var(--char-accent)' : 'rgba(244,234,215,.08)',
+                border: '1px solid ' + (d.on ? 'var(--char-accent)' : 'var(--border-hairline)'),
+                opacity: d.on ? 0.9 : 1
+              }}
+            ></span>
+          ))}
+        </div>
       </div>
     </Panel>
   );
@@ -1091,6 +1164,8 @@ function LevelTab({ lang, i18n, profile, mastery, xpEvents, unlockedByKey, aiDis
         <StartOfPathPanel lang={lang} i18n={i18n} unlockedByKey={unlockedByKey} />
         <AiDisciplinePanel lang={lang} aiDiscipline={aiDiscipline} />
       </div>
+
+      <DisciplineHeatmapPanel lang={lang} aiDiscipline={aiDiscipline} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 16, alignItems: 'start' }}>
         <Panel variant="active" ornament padding={0}>

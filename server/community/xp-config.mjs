@@ -25,7 +25,9 @@ export const SERVER_ONLY_ACHIEVEMENT_POINTS = {
   // AI Analysis Discipline ladder
   session_ai_discipline_3d: 10, session_ai_discipline_7d: 20, session_ai_discipline_14d: 30,
   session_ai_discipline_30d: 60, session_ai_discipline_90d: 100, session_ai_discipline_180d: 150,
-  session_ai_discipline_365d: 250
+  session_ai_discipline_365d: 250,
+  // Follow-up creative addition #4 - one-time, never part of the ladder.
+  session_analysis_follow_through: 15
 };
 
 const CACHE_TTL_MS = 30000;
