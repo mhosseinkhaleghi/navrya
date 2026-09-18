@@ -826,11 +826,27 @@ export function createGptLiveSession(options) {
     });
   }
 
+  // Real user report (close/"X" button silently "not working" while GPT-Live was still audibly
+  // speaking): the graceful-close handshake below (session.close -> await session.closed, up to
+  // GRACEFUL_CLOSE_TIMEOUT_MS/4000ms) is real and deliberate - it is what lets reportSettlement()
+  // bill the wallet against the server's own authoritative usage.seconds instead of a local guess -
+  // but the actual <audio> element was only ever paused inside teardown(), which only runs once
+  // that whole wait resolves. Clicking "X" DID flip voiceState to IDLE immediately (closing the
+  // console), so the control was never truly inert - but GPT-Live's own voice kept playing audibly
+  // for up to 4 more seconds after the panel disappeared, which reads exactly like "the close
+  // button doesn't work" to anyone still hearing it. interrupt() ("Stop reply") already documents
+  // and honors the real guarantee this module can make ("pausing the real <audio> element is the
+  // one thing this module can guarantee synchronously, regardless of whether the model itself ever
+  // honors any server-side stop request") - disconnect() now gives that exact same immediate,
+  // synchronous silence, while the billing-accurate graceful close/teardown below is unchanged.
   function disconnect() {
     intentionalClose = true;
     connectionEpoch += 1;
     clearReconnectTimer();
     reconnectAttempt = 0;
+    pauseLocalAudio();
+    stopSpeaking('output_audio_buffer.cleared');
+    settleSpeak();
     const hadDataChannel = !!(dc && dc.readyState === 'open');
     if (hadDataChannel) {
       send({ type: 'session.close' });

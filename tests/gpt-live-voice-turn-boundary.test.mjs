@@ -611,6 +611,38 @@ test('End Voice (disconnect) mid-turn tears down cleanly with no crash and no da
   } finally { restore(); }
 });
 
+test('real user report: disconnect() ("X"/End Voice) silences GPT-Live audio IMMEDIATELY, even while the assistant is still audibly speaking - never deferred behind the graceful session.close wait', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const restore = installFakeGlobals();
+  try {
+    const session = createGptLiveSession(baseOptions());
+    const pc = await connectSession(session);
+    const audioElement = FakeAudioElement.instances[FakeAudioElement.instances.length - 1];
+
+    pc.dataChannel.push(deltaMessage('Tell me everything about risk.'));
+    t.mock.timers.tick(2200);
+    pc.dataChannel.push(delegationMessage('deleg-1'));
+    session.speak('Risk management works by controlling position size...', { gptLiveTurnId: 1 });
+    pc.dataChannel.push(outputDeltaMessage('Risk management works by'));
+    assert.equal(session.state(), VOICE_STATES.ASSISTANT_SPEAKING);
+    assert.equal(audioElement.paused, false, 'test setup: the reply must genuinely be audible before disconnect() is exercised');
+
+    // The data channel is still open (a real graceful-close handshake is about to begin, bounded
+    // at GRACEFUL_CLOSE_TIMEOUT_MS/4000ms) - the confirmed defect let the audio keep playing for
+    // that whole window because pausing only ever happened inside teardown(), deferred behind the
+    // session.closed wait. The real fix pauses synchronously inside disconnect() itself, so this
+    // assertion must hold true with ZERO timer ticks elapsed - proving it does not wait on the
+    // handshake at all.
+    session.disconnect();
+    assert.equal(audioElement.paused, true, 'disconnect() must silence the assistant\'s voice the instant it is called, not up to 4 seconds later');
+    assert.equal(session.state(), VOICE_STATES.IDLE);
+
+    // The rest of the graceful-close/teardown/billing sequence still runs to completion afterward,
+    // unaffected by the fix.
+    t.mock.timers.tick(4000);
+  } finally { restore(); }
+});
+
 test('reconnect invalidates the old connection epoch - a quiet-window timer armed before it can never fire a stale flush afterward', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const restore = installFakeGlobals();
