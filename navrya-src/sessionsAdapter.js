@@ -36,6 +36,16 @@ export function scenarioCount(session) {
   return count;
 }
 
+// Every {entry, scenario} pair in a session, in entry order - the same flattening
+// liveSessionView.jsx's own workspace "dashboard" panel already does for its Scenarios tab, moved
+// here so a second surface (dashboardView.jsx's own Scenarios panel) can read the identical list
+// without either file importing the other for it.
+export function flatScenarios(session) {
+  const out = [];
+  (session.entries || []).forEach((e) => (e.scenarios || []).forEach((s) => out.push({ entry: e, scenario: s })));
+  return out;
+}
+
 export function hasChart(session) {
   return (session.entries || []).some((entry) => entry.hasImage && (entry.imageBlobId || entry.preview)) ||
     (session.charts || []).some((chart) => Boolean(chart.preview));

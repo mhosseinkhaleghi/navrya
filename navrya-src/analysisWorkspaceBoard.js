@@ -28,7 +28,7 @@ export const DEFAULT_REGIONS = {
   // Library-only additions (never in DEFAULT_BOARD) - accounts/weather/calmRoom are the same
   // compact digest cards the Dashboard renders at a narrow span, so the rail is their natural
   // first landing spot too, exactly like dashboard/prevSummary/similar above.
-  accounts: 'rail', weather: 'rail', calmRoom: 'rail'
+  accounts: 'rail', weather: 'rail', calmRoom: 'rail', scenarios: 'rail'
 };
 
 // Underscore, NOT the colon dashboardView.jsx's own boardKey() uses. server/community/

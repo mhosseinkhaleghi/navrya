@@ -116,6 +116,7 @@ const copy = {
     wsDeleteConfirm: 'پنل «{title}» و کد آن برای همیشه حذف شود؟',
     wsCatEntryTitle: 'ورودی انتخاب‌شده', wsCatCockpitDesc: 'فیلترها، نوار ورودی‌ها و خط‌کش زمانی سشن.', wsCatEntryDesc: 'چارت، یادداشت و سناریوهای ورودی انتخاب‌شده.',
     wsCatDashboardDesc: 'الگوها، سناریوها، پوزیشن‌ها و لاگ این سشن.', wsCatPrevDesc: 'خلاصهٔ سشن قبلیِ همین نماد.', wsCatSimilarDesc: 'سشن‌های گذشته با امضای مشابه.',
+    wsCatScenariosDesc: 'همهٔ سناریوهای این سشن، در یک لیست ثابت — با تعویض چارت عوض نمی‌شود.',
     wsBuildWithAi: 'ساخت پنل با پرامپت', wsEditPanel: 'ویرایش این پنل با پرامپت', wsPanelSourceMissing: 'کد این پنل پیدا نشد. با ویرایش، دوباره بسازیدش.',
     wsBuilderTitle: 'ساخت پنل با پرامپت', wsBuilderEditTitle: 'ویرایش پنل', wsBuilderEyebrow: 'میز تحلیل',
     wsBuilderIntro: 'بنویسید چه پنلی می‌خواهید. هوش مصنوعی کد آن را می‌نویسد و پنل داخل یک محیط ایزوله روی میز شما اجرا می‌شود.',
@@ -208,6 +209,7 @@ const copy = {
     wsDeleteConfirm: 'هل تريد حذف اللوحة «{title}» وكودها نهائياً؟',
     wsCatEntryTitle: 'الإدخال المحدد', wsCatCockpitDesc: 'عوامل التصفية وشريط الإدخالات ومسطرة زمن الجلسة.', wsCatEntryDesc: 'مخطط الإدخال المحدد وملاحظته وسيناريوهاته.',
     wsCatDashboardDesc: 'أنماط هذه الجلسة وسيناريوهاتها وصفقاتها وسجلها.', wsCatPrevDesc: 'ملخص الجلسة السابقة لنفس الأداة.', wsCatSimilarDesc: 'جلسات سابقة ببصمة مشابهة.',
+    wsCatScenariosDesc: 'كل سيناريوهات هذه الجلسة، في قائمة ثابتة - لا تتغيّر بتغيير الرسم البياني.',
     wsBuildWithAi: 'إنشاء لوحة بالوصف', wsEditPanel: 'تعديل هذه اللوحة بالوصف', wsPanelSourceMissing: 'لم يُعثر على كود هذه اللوحة. أعد إنشاءها من التعديل.',
     wsBuilderTitle: 'إنشاء لوحة بالوصف', wsBuilderEditTitle: 'تعديل اللوحة', wsBuilderEyebrow: 'مساحة التحليل',
     wsBuilderIntro: 'اكتب اللوحة التي تريدها. سيكتب الذكاء الاصطناعي كودها وتُشغَّل داخل بيئة معزولة على طاولتك.',
@@ -299,6 +301,7 @@ const copy = {
     wsDeleteConfirm: 'Delete the panel “{title}” and its code permanently?',
     wsCatEntryTitle: 'Selected entry', wsCatCockpitDesc: 'Filters, the entry rail and the session time ruler.', wsCatEntryDesc: 'Chart, note and scenarios for the selected entry.',
     wsCatDashboardDesc: 'Patterns, scenarios, positions and log for this session.', wsCatPrevDesc: 'Summary of the previous session on this instrument.', wsCatSimilarDesc: 'Past sessions with a similar signature.',
+    wsCatScenariosDesc: 'Every scenario in this session, in one steady list - it never changes when you switch charts.',
     wsBuildWithAi: 'Build a panel from a prompt', wsEditPanel: 'Revise this panel with a prompt', wsPanelSourceMissing: 'This panel’s code was not found. Revise it to rebuild it.',
     wsBuilderTitle: 'Build a panel from a prompt', wsBuilderEditTitle: 'Revise panel', wsBuilderEyebrow: 'Analysis workspace',
     wsBuilderIntro: 'Describe the panel you want. The AI writes its code and the panel runs inside an isolated sandbox on your desk.',
@@ -390,6 +393,7 @@ const copy = {
     wsDeleteConfirm: '¿Eliminar el panel «{title}» y su código de forma permanente?',
     wsCatEntryTitle: 'Entrada seleccionada', wsCatCockpitDesc: 'Filtros, la fila de entradas y la regla de tiempo.', wsCatEntryDesc: 'Gráfico, nota y escenarios de la entrada seleccionada.',
     wsCatDashboardDesc: 'Patrones, escenarios, posiciones y registro de la sesión.', wsCatPrevDesc: 'Resumen de la sesión anterior con el mismo instrumento.', wsCatSimilarDesc: 'Sesiones pasadas con firma similar.',
+    wsCatScenariosDesc: 'Todos los escenarios de esta sesión, en una lista estable - no cambia al cambiar de gráfico.',
     wsBuildWithAi: 'Crear un panel con una instrucción', wsEditPanel: 'Revisar este panel con una instrucción', wsPanelSourceMissing: 'No se encontró el código de este panel. Revísalo para reconstruirlo.',
     wsBuilderTitle: 'Crear un panel con una instrucción', wsBuilderEditTitle: 'Revisar panel', wsBuilderEyebrow: 'Espacio de análisis',
     wsBuilderIntro: 'Describe el panel que quieres. La IA escribe su código y el panel se ejecuta en un entorno aislado en tu mesa.',
@@ -1984,7 +1988,7 @@ function DashboardPatternRow({ lang, x, entryN, readOnly, onSelectEntry, onToggl
   );
 }
 
-function DashboardScenarioRow({ lang, x, entryN, readOnly, onSelectEntry, onProbabilityChange }) {
+export function DashboardScenarioRow({ lang, x, entryN, readOnly, onSelectEntry, onProbabilityChange }) {
   const prob = probabilityOf(x.scenario);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.45)' }}>
@@ -2963,7 +2967,8 @@ function workspaceCatalog(lang) {
     similar: { title: tr(lang, 'similarTitle'), icon: 'Copy', desc: tr(lang, 'wsCatSimilarDesc') },
     accounts: { title: dt('catAccountsTitle'), icon: 'wallet', desc: dt('catAccountsDesc') },
     weather: { title: dt('catWeatherTitle'), icon: 'streak', desc: dt('catWeatherDesc') },
-    calmRoom: { title: dt('catCalmRoomTitle'), icon: 'honour', desc: dt('catCalmRoomDesc') }
+    calmRoom: { title: dt('catCalmRoomTitle'), icon: 'honour', desc: dt('catCalmRoomDesc') },
+    scenarios: { title: tr(lang, 'dashScenarios'), icon: 'scenarios', desc: tr(lang, 'wsCatScenariosDesc') }
   };
 }
 
@@ -3093,6 +3098,37 @@ function SessionDashboardSlot() {
   );
 }
 
+// Every scenario in the session, in one place, never filtered to whichever entry happens to be
+// selected right now (unlike EntryPanelSlot's own "scenarios for this entry" sidebar, which is
+// correctly entry-scoped since a scenario is authored against one specific chart). Reuses the
+// exact rows the "dashboard" panel's own Scenarios tab already renders (DashboardScenarioRow), so
+// a trader who wants a steady, always-the-same-shape scenario list doesn't have to fight the tab
+// switcher or re-select a chart to keep it in view.
+function AllScenariosSlot() {
+  const { session, lang, indexById, selectEntry, updateScenario } = useWorkspace();
+  const readOnly = session.status === 'closed';
+  const flat = flatScenarios(session);
+  return (
+    <Panel variant="base" padding="14px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="scenarios" size={16} /><span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tr(lang, 'dashScenarios')}</span>
+          <span style={{ marginInlineStart: 'auto' }}><Chip tone="neutral">{flat.length}</Chip></span>
+        </div>
+        {!flat.length ? (
+          <span style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'dashEmptyScenarios')}</span>
+        ) : flat.map((x) => (
+          <DashboardScenarioRow
+            key={x.scenario.id} lang={lang} x={x} entryN={indexById[x.entry.id]} readOnly={readOnly}
+            onSelectEntry={selectEntry}
+            onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')}
+          />
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
 function PrevSummarySlot() {
   const { session, lang } = useWorkspace();
   return <PrevSummaryPanel session={session} lang={lang} />;
@@ -3161,6 +3197,7 @@ function workspacePanelBody(id) {
     case 'accounts': return <SessionAccountsSlot />;
     case 'weather': return <SessionWeatherSlot />;
     case 'calmRoom': return <SessionCalmRoomSlot />;
+    case 'scenarios': return <AllScenariosSlot />;
     default: return null;
   }
 }

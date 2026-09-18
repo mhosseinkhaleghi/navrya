@@ -12,6 +12,8 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
 import { RoutineTab } from './routineTab.jsx';
 import { CalmRoomPanel } from './moodTab.jsx';
+import { DashboardScenarioRow } from './liveSessionView.jsx';
+import { openLiveSession } from './liveSessionSignal.js';
 
 // ============================================================================
 // Redesign of the Dashboard (Session tools' home screen) against the design handoff
@@ -30,7 +32,7 @@ import { CalmRoomPanel } from './moodTab.jsx';
 // ============================================================================
 
 export const SPANS = [3, 4, 6, 8, 12];
-const DEFAULT_BOARD = ['accounts', 'session', 'psych', 'weather', 'positions', 'chart', 'sessions', 'strategies', 'patterns', 'reward', 'routine', 'calmRoom'];
+const DEFAULT_BOARD = ['accounts', 'session', 'psych', 'weather', 'positions', 'chart', 'sessions', 'strategies', 'patterns', 'reward', 'routine', 'calmRoom', 'scenarios'];
 const CITIES = [
   { market: 'london', city: 'LONDON', off: 0, from: 7, to: 16 },
   { market: 'new-york', city: 'NEW YORK', off: -5, from: 13, to: 22 },
@@ -105,6 +107,7 @@ const copy = {
     catAccountsTitle: 'حساب‌ها', catAccountsMeta: 'ریسک زنده', catAccountsDesc: 'موجودی واقعی، وضعیت ریسک و اقدامات سریع برای حساب‌های فعال.',
     catRoutineTitle: 'روتین روزانه', catRoutineDesc: 'همان چک‌لیست روتین معاملاتی‌ات که در پرونده روان‌شناسی می‌سازی — درست روی داشبورد.',
     catCalmRoomTitle: 'اتاق آرامش', catCalmRoomDesc: 'تمرین تنفس و آرام‌سازی قبل یا بعد از معامله، همیشه در دسترس.',
+    catScenariosTitle: 'سناریوها', catScenariosDesc: 'همهٔ سناریوهای سشن باز، در یک لیست ثابت که با تعویض چارت عوض نمی‌شود.', noScenariosYet: 'هنوز سناریویی در این سشن ثبت نشده.',
     noAccountsYet: 'هنوز حسابی ثبت نشده', noAccountsNote: 'یک حساب پراپ یا شخصی اضافه کن تا موجودی و ریسک واقعی‌ات اینجا دنبال شود.',
     createFirstAccount: 'افزودن حساب', viewAllAccounts: 'مشاهده همه حساب‌ها',
     personalAccount: 'حساب شخصی', propAccount: 'حساب پراپ‌فرم', equity: 'موجودی', todayPl: 'سود/زیان امروز',
@@ -144,6 +147,7 @@ const copy = {
     catAccountsTitle: 'الحسابات', catAccountsMeta: 'مخاطر مباشرة', catAccountsDesc: 'الرصيد الحقيقي وحالة المخاطر وإجراءات سريعة للحسابات النشطة.',
     catRoutineTitle: 'الروتين اليومي', catRoutineDesc: 'نفس قائمة روتين التداول التي تبنيها في الملف النفسي — مباشرة على لوحة التحكم.',
     catCalmRoomTitle: 'غرفة الهدوء', catCalmRoomDesc: 'تمرين تنفس واسترخاء قبل أو بعد الصفقة، متاح دائماً.',
+    catScenariosTitle: 'السيناريوهات', catScenariosDesc: 'كل سيناريوهات الجلسة المفتوحة، في قائمة ثابتة لا تتغيّر بتغيير الرسم البياني.', noScenariosYet: 'لم يُسجَّل أي سيناريو في هذه الجلسة بعد.',
     noAccountsYet: 'لم يتم تسجيل أي حساب بعد', noAccountsNote: 'أضف حساب تمويل أو حساب شخصي لمتابعة رصيدك ومخاطرك الحقيقية هنا.',
     createFirstAccount: 'إضافة حساب', viewAllAccounts: 'عرض كل الحسابات',
     personalAccount: 'حساب شخصي', propAccount: 'حساب تمويل', equity: 'الرصيد', todayPl: 'ربح/خسارة اليوم',
@@ -183,6 +187,7 @@ const copy = {
     catAccountsTitle: 'Accounts', catAccountsMeta: 'live risk', catAccountsDesc: 'Real balance, risk state and quick actions for your active accounts.',
     catRoutineTitle: 'Daily routine', catRoutineDesc: 'The same trading-routine checklist you build in the psychology dossier — right on the dashboard.',
     catCalmRoomTitle: 'Calm room', catCalmRoomDesc: 'A breathing and cooldown exercise before or after a trade, always one click away.',
+    catScenariosTitle: 'Scenarios', catScenariosDesc: 'Every scenario in the open session, in one steady list that never changes when you switch charts.', noScenariosYet: 'No scenario is logged in this session yet.',
     noAccountsYet: 'No accounts yet', noAccountsNote: 'Add a prop-firm or personal account to follow your real balance and risk right here.',
     createFirstAccount: 'Add account', viewAllAccounts: 'View all accounts',
     personalAccount: 'Personal account', propAccount: 'Prop firm account', equity: 'Equity', todayPl: "Today's P/L",
@@ -222,6 +227,7 @@ const copy = {
     catAccountsTitle: 'Cuentas', catAccountsMeta: 'riesgo en vivo', catAccountsDesc: 'Saldo real, estado de riesgo y acciones rápidas para tus cuentas activas.',
     catRoutineTitle: 'Rutina diaria', catRoutineDesc: 'La misma lista de rutina de trading que construyes en el expediente psicológico — directo en el panel.',
     catCalmRoomTitle: 'Sala de calma', catCalmRoomDesc: 'Un ejercicio de respiración y enfriamiento antes o después de una operación, siempre a un clic.',
+    catScenariosTitle: 'Escenarios', catScenariosDesc: 'Todos los escenarios de la sesión abierta, en una lista estable que no cambia al cambiar de gráfico.', noScenariosYet: 'Aún no hay ningún escenario registrado en esta sesión.',
     noAccountsYet: 'Aún no hay cuentas', noAccountsNote: 'Añade una cuenta de prop firm o personal para seguir aquí tu saldo y riesgo reales.',
     createFirstAccount: 'Añadir cuenta', viewAllAccounts: 'Ver todas las cuentas',
     personalAccount: 'Cuenta personal', propAccount: 'Cuenta de prop firm', equity: 'Equidad', todayPl: 'P/L de hoy',
@@ -288,7 +294,8 @@ export function catalog(t) {
     banner: { title: t('catBannerTitle'), icon: 'subscription', span: 12, desc: t('catBannerDesc') },
     watchlist: { title: t('catWatchlistTitle'), icon: 'globe', span: 4, desc: t('catWatchlistDesc') },
     routine: { title: t('catRoutineTitle'), icon: 'calendar', span: 8, desc: t('catRoutineDesc') },
-    calmRoom: { title: t('catCalmRoomTitle'), icon: 'honour', span: 4, desc: t('catCalmRoomDesc') }
+    calmRoom: { title: t('catCalmRoomTitle'), icon: 'honour', span: 4, desc: t('catCalmRoomDesc') },
+    scenarios: { title: t('catScenariosTitle'), icon: 'scenarios', span: 6, desc: t('catScenariosDesc') }
   };
 }
 
@@ -627,6 +634,31 @@ function OpenSessionPanel({ t, lang, character, now }) {
   );
 }
 
+// Every scenario across the currently open session, in one steady list - reuses the exact row
+// liveSessionView.jsx's own Scenarios tab renders (DashboardScenarioRow, exported from there for
+// this), so this never drifts into a second, slightly-different scenario list. Read-only here (no
+// probability slider, no per-entry edit) since the Dashboard has no live entry-rail concept -
+// clicking a row jumps into that session's own Live view instead, via the same cross-root
+// liveSessionSignal.js hook the Sessions screen itself uses.
+function ScenariosPanel({ t, lang, character }) {
+  let sessions = [];
+  try { sessions = sessionsAdapter.readSessions(character) || []; } catch (_) { sessions = []; }
+  const open = sessions.filter((s) => s.status !== 'closed' && (s.startedAt || s.createdAt)).sort((a, b) => (Number(b.startedAt || b.createdAt) || 0) - (Number(a.startedAt || a.createdAt) || 0))[0];
+  if (!open) return <EmptyPanelNote icon="scenarios" title={t('noOpenSession')} note={t('startOneNote')} />;
+  const flat = sessionsAdapter.flatScenarios(open);
+  if (!flat.length) return <EmptyPanelNote icon="scenarios" title={t('noScenariosYet')} />;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {flat.map((x) => (
+        <DashboardScenarioRow
+          key={x.scenario.id} lang={lang} x={x} entryN={open.entries.findIndex((e) => e.id === x.entry.id) + 1}
+          readOnly onSelectEntry={() => openLiveSession(open.id)} onProbabilityChange={() => {}}
+        />
+      ))}
+    </div>
+  );
+}
+
 // Market sessions: the same real UTC-window math marketAdapter.js already gives HeaderApp's
 // market cards - just laid out as a 24h track here instead of a card row.
 function MarketSessionsPanel({ t, lang, now }) {
@@ -942,6 +974,7 @@ function panelBody(id, ctx) {
     case 'watchlist': return <NoBackendPanel t={t} />;
     case 'routine': return <RoutineTab i18n={window.TradeJournalTradeI18n} />;
     case 'calmRoom': return <CalmRoomPanel i18n={window.TradeJournalTradeI18n} />;
+    case 'scenarios': return <ScenariosPanel t={t} lang={lang} character={character} />;
     default: {
       // Custom (AI-drafted) panel: a plain note, exactly what it was drafted as - no invented
       // data binding, since a free-form prompt has no real store backing it.
