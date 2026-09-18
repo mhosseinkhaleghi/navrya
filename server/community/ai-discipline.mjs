@@ -46,10 +46,13 @@ export const HEATMAP_MAX_DAYS = 120;
 
 // Pre-existing trading_sessions.aiSessionAnalysisResult / trading_session_entries.aiAnalysisResult
 // data predates this ledger and was never backed by a signed completion receipt - trusted ONLY
-// for a one-time backfill of genuinely pre-existing usage, and only strictly before this instant.
-// Any analysis timestamped at or after it must come from the real ledger; the generic session-
-// sync endpoint's client-writable aiAnalysisResult field is never trusted as ONGOING evidence
-// (brief: "New results after release must use the authoritative completion path").
+// for the one-time first_session_ai_analysis backfill, and ONLY for a Session whose own
+// server-set created_at is strictly before this instant (legacyHasAnyAnalysis). The decision is
+// deliberately never made from a timestamp inside the analysis payload: that field is client-
+// writable through the generic session-sync upsert, so a cutoff check on it would be forgeable.
+// Every Session created at or after this instant, and every discipline-streak day, must come
+// from the real ledger (brief: "New results after release must use the authoritative completion
+// path").
 export const LEGACY_BACKFILL_CUTOFF_ISO = '2026-09-18T00:00:00.000Z';
 
 export function isValidTimeZone(timezone) {
@@ -97,6 +100,14 @@ function dayKeyToUtcMs(dayKey) {
   return new Date(dayKey + 'T00:00:00Z').getTime();
 }
 
+// Calendar arithmetic on a YYYY-MM-DD key, done in UTC where there is no DST. Never derive a
+// neighbouring LOCAL day by re-formatting a shifted instant in the user's timezone: a key's own
+// UTC midnight is a different local day in any zone west of UTC (2026-03-10T00:00Z is still the
+// evening of 2026-03-09 in America/New_York), which silently shifts the answer by a whole day.
+function addDaysToDayKey(dayKey, days) {
+  return new Date(dayKeyToUtcMs(dayKey) + days * 86400000).toISOString().slice(0, 10);
+}
+
 // Runs of consecutive calendar days by day-key string - DST-safe since each key is already a
 // resolved local calendar date, diffed as whole UTC-midnight days (same approach routes.profile.mjs's
 // own checkStreaks() uses for the separate, broader generic streak system).
@@ -130,7 +141,7 @@ export function computeDisciplineStreak(qualifyingDayKeys, timezone, nowInstant)
   const lastQualifyingDay = unique[unique.length - 1];
   const lastRun = runs[runs.length - 1];
   const todayKey = dayKeyInTimeZone(nowInstant || new Date(), timezone);
-  const yesterdayKey = dayKeyInTimeZone(new Date(dayKeyToUtcMs(todayKey) - 86400000), timezone);
+  const yesterdayKey = addDaysToDayKey(todayKey, -1);
   const isActive = lastQualifyingDay === todayKey || lastQualifyingDay === yesterdayKey;
   return { qualifyingDayKeys: unique, longestStreak, currentStreak: isActive ? lastRun.length : 0, lastQualifyingDay };
 }
@@ -151,44 +162,26 @@ export function qualifyingDaysFromCompletions(completions, sessionsById, timezon
   return days;
 }
 
-function legacyAnalysisTimestamps(session) {
-  const stamps = [];
-  const sessionLevel = session.aiSessionAnalysisResult && session.aiSessionAnalysisResult.updatedAt;
-  if (sessionLevel) stamps.push(sessionLevel);
-  (session.entries || []).forEach((entry) => {
-    const result = entry && entry.aiAnalysisResult;
-    const ts = result && (result.generatedAt || result.updatedAt);
-    if (ts) stamps.push(ts);
-  });
-  return stamps;
+function sessionHasPersistedAnalysis(session) {
+  if (session.aiSessionAnalysisResult) return true;
+  return (session.entries || []).some((entry) => entry && entry.aiAnalysisResult);
 }
 
-// One-time, cutoff-bounded backfill of pre-existing (pre-ledger) same-day usage. session.createdAt
-// itself is always a real, immutable server-set column regardless of the cutoff - only the "was
-// this genuinely analyzed" signal needs the cutoff guard, since that field predates any signed
-// completion receipt.
-export function legacyQualifyingDaysFromSessions(sessions, timezone, cutoffIso) {
-  const cutoffMs = new Date(cutoffIso || LEGACY_BACKFILL_CUTOFF_ISO).getTime();
-  const days = [];
-  (sessions || []).forEach((session) => {
-    if (!session.createdAt) return;
-    const sessionDay = dayKeyInTimeZone(session.createdAt, timezone);
-    if (!sessionDay) return;
-    const qualifies = legacyAnalysisTimestamps(session).some((ts) => {
-      const ms = new Date(ts).getTime();
-      return Number.isFinite(ms) && ms < cutoffMs && dayKeyInTimeZone(ts, timezone) === sessionDay;
-    });
-    if (qualifies) days.push(sessionDay);
-  });
-  return days;
-}
-
+// One-time backfill for genuinely pre-existing usage, decided ONLY from server-controlled facts:
+// the Session's own created_at (a DB default the client can never write, immutable) must predate
+// the release cutoff AND the Session must already carry a persisted analysis. It deliberately
+// never reads a timestamp out of the analysis payload - that is client-writable through the
+// generic session-sync upsert, so a cutoff test on it would be forgeable by writing an older
+// date. This grants only the one-time first_session_ai_analysis bonus. The discipline streak is
+// never backfilled: same-day linkage of pre-ledger data cannot be established safely, so streak
+// days come exclusively from real ledger completions.
 export function legacyHasAnyAnalysis(sessions, cutoffIso) {
   const cutoffMs = new Date(cutoffIso || LEGACY_BACKFILL_CUTOFF_ISO).getTime();
-  return (sessions || []).some((session) => legacyAnalysisTimestamps(session).some((ts) => {
-    const ms = new Date(ts).getTime();
-    return Number.isFinite(ms) && ms < cutoffMs;
-  }));
+  return (sessions || []).some((session) => {
+    if (!session.createdAt) return false;
+    const createdMs = new Date(session.createdAt).getTime();
+    return Number.isFinite(createdMs) && createdMs < cutoffMs && sessionHasPersistedAnalysis(session);
+  });
 }
 
 // The first valid chart entry (a real image plus a real, non-blank note) on a Session that
@@ -208,11 +201,10 @@ export function firstValidChartInstrumentSession(sessions) {
 // "5 of 7" rather than a discouraging blank state.
 export function weeklyConsistency(qualifyingDayKeys, timezone, nowInstant) {
   const qualifying = new Set(qualifyingDayKeys || []);
-  const todayMs = dayKeyToUtcMs(dayKeyInTimeZone(nowInstant || new Date(), timezone));
+  const todayKey = dayKeyInTimeZone(nowInstant || new Date(), timezone);
   let qualifiedDays = 0;
   for (let i = 0; i < 7; i += 1) {
-    const dayKey = dayKeyInTimeZone(new Date(todayMs - i * 86400000), timezone);
-    if (qualifying.has(dayKey)) qualifiedDays += 1;
+    if (qualifying.has(addDaysToDayKey(todayKey, -i))) qualifiedDays += 1;
   }
   return { qualifiedDays, totalDays: 7 };
 }
@@ -297,12 +289,10 @@ export async function evaluateNewAchievements(repo, userId, { unlockedKeys, cfg,
     await grant(FOLLOW_THROUGH_ACHIEVEMENT_KEY, {});
   }
 
-  // AI Analysis Discipline ladder - qualifying days from the real ledger, unioned with the
-  // one-time, cutoff-bounded legacy backfill so genuinely pre-existing usage isn't lost.
-  const ledgerDays = qualifyingDaysFromCompletions(completions, sessionsById, timezone);
-  const legacyDays = legacyQualifyingDaysFromSessions(sessions, timezone);
-  const allQualifyingDays = ledgerDays.concat(legacyDays);
-  const streak = computeDisciplineStreak(allQualifyingDays, timezone);
+  // AI Analysis Discipline ladder - qualifying days come ONLY from the real, gateway-recorded
+  // ledger. Legacy (pre-ledger) session data never feeds the streak (see legacyHasAnyAnalysis).
+  const qualifyingDays = qualifyingDaysFromCompletions(completions, sessionsById, timezone);
+  const streak = computeDisciplineStreak(qualifyingDays, timezone);
   for (const milestone of DISCIPLINE_MILESTONES) {
     if (streak.longestStreak >= milestone.days) await grant(milestone.key, { streakDays: milestone.days, timezone });
   }
@@ -310,7 +300,7 @@ export async function evaluateNewAchievements(repo, userId, { unlockedKeys, cfg,
   // Follow-ups #1/#2: read-only insights for GET /me/ai-discipline, computed here so a caller
   // never has to re-fetch/re-derive sessions/completions/qualifying-days a second time.
   const analysisDebt = findAnalysisDebtSession(sessions, completions);
-  const weekly = weeklyConsistency(allQualifyingDays, timezone);
+  const weekly = weeklyConsistency(qualifyingDays, timezone);
 
   return { grantedAny, streak, analysisDebt, weeklyConsistency: weekly };
 }

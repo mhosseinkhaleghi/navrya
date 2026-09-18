@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   isValidTimeZone, resolveTimezone, dayKeyInTimeZone, computeDisciplineStreak,
-  qualifyingDaysFromCompletions, legacyQualifyingDaysFromSessions, legacyHasAnyAnalysis,
+  qualifyingDaysFromCompletions, legacyHasAnyAnalysis,
   firstValidChartInstrumentSession, evaluateNewAchievements, DISCIPLINE_MILESTONES, LEGACY_BACKFILL_CUTOFF_ISO,
   weeklyConsistency, findAnalysisDebtSession, hasFollowThroughSession, FOLLOW_THROUGH_ACHIEVEMENT_KEY
 } from '../server/community/ai-discipline.mjs';
@@ -99,24 +99,52 @@ test('computeDisciplineStreak crosses every one of the seven real thresholds on 
   DISCIPLINE_MILESTONES.forEach((m) => assert.ok(streak.longestStreak >= m.days, m.key + ' must be considered crossed'));
 });
 
-test('legacyQualifyingDaysFromSessions only trusts pre-existing analysis timestamps strictly before the release cutoff', () => {
-  const sessions = [
-    {
-      id: 'legacy', createdAt: '2026-01-01T10:00:00.000Z',
-      aiSessionAnalysisResult: { updatedAt: '2026-01-01T11:00:00.000Z' }
-    },
-    {
-      id: 'postCutoff', createdAt: '2026-09-19T10:00:00.000Z',
-      entries: [{ type: 'chart', aiAnalysisResult: { generatedAt: '2026-09-19T11:00:00.000Z' } }]
-    }
-  ];
-  const days = legacyQualifyingDaysFromSessions(sessions, 'UTC', LEGACY_BACKFILL_CUTOFF_ISO);
-  assert.deepEqual(days, ['2026-01-01'], 'a post-cutoff aiAnalysisResult must never backfill a discipline day');
-  assert.equal(legacyHasAnyAnalysis(sessions, LEGACY_BACKFILL_CUTOFF_ISO), true, 'the pre-cutoff session still counts for the one-time first_session_ai_analysis backfill');
-  assert.equal(
-    legacyHasAnyAnalysis([sessions[1]], LEGACY_BACKFILL_CUTOFF_ISO), false,
-    'a post-cutoff-only history must never backfill the onboarding achievement either'
-  );
+test('legacyHasAnyAnalysis decides ONLY from the Session\'s own server created_at - a client-written analysis timestamp never moves the cutoff either way', () => {
+  const analysisBlob = { updatedAt: '2026-01-01T11:00:00.000Z' };
+  // Created before the release with a persisted analysis -> an honest one-time backfill. The
+  // payload's own (client-writable) timestamp is AFTER the cutoff and must not matter.
+  const preReleaseSession = { id: 'a', createdAt: '2026-01-01T10:00:00.000Z', aiSessionAnalysisResult: { updatedAt: '2026-09-30T00:00:00.000Z' } };
+  const preReleaseNoAnalysis = { id: 'b', createdAt: '2026-01-01T10:00:00.000Z', entries: [{ type: 'chart' }] };
+  // Created AFTER the release with a FORGED pre-cutoff timestamp inside the payload -> never counts.
+  const postReleaseForged = { id: 'c', createdAt: '2026-09-19T10:00:00.000Z', aiSessionAnalysisResult: analysisBlob, entries: [{ type: 'chart', aiAnalysisResult: { generatedAt: '2026-01-01T11:00:00.000Z' } }] };
+  const missingCreatedAt = { id: 'd', createdAt: null, aiSessionAnalysisResult: analysisBlob };
+  const preReleaseEntryOnly = { id: 'e', createdAt: '2026-02-01T00:00:00.000Z', entries: [{ type: 'chart', aiAnalysisResult: { generatedAt: 'not-a-date' } }] };
+  assert.equal(legacyHasAnyAnalysis([preReleaseSession], LEGACY_BACKFILL_CUTOFF_ISO), true);
+  assert.equal(legacyHasAnyAnalysis([preReleaseNoAnalysis], LEGACY_BACKFILL_CUTOFF_ISO), false);
+  assert.equal(legacyHasAnyAnalysis([postReleaseForged], LEGACY_BACKFILL_CUTOFF_ISO), false, 'a forged pre-cutoff payload timestamp on a post-release Session must never backfill');
+  assert.equal(legacyHasAnyAnalysis([missingCreatedAt], LEGACY_BACKFILL_CUTOFF_ISO), false, 'a missing created_at must never be treated as epoch 0 (pre-cutoff)');
+  assert.equal(legacyHasAnyAnalysis([preReleaseEntryOnly], LEGACY_BACKFILL_CUTOFF_ISO), true, 'entry-level analysis on a pre-release Session counts too');
+});
+
+const ZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'America/Sao_Paulo', 'Pacific/Pago_Pago', 'Europe/London', 'Asia/Tehran', 'Asia/Kolkata', 'Australia/Sydney', 'Pacific/Kiritimati'];
+
+// Independent, obviously-correct reference: plain calendar arithmetic on a YYYY-MM-DD key in UTC.
+function shiftKey(key, deltaDays) {
+  return new Date(Date.parse(key + 'T00:00:00Z') + deltaDays * 86400000).toISOString().slice(0, 10);
+}
+
+test('computeDisciplineStreak: "today or yesterday" is exact in every timezone, including zones WEST of UTC (regression: yesterday used to resolve to two days ago there)', () => {
+  const now = new Date('2026-03-10T15:00:00.000Z');
+  ZONES.forEach((zone) => {
+    const today = dayKeyInTimeZone(now, zone);
+    assert.equal(computeDisciplineStreak([today], zone, now).currentStreak, 1, zone + ': a qualifying day today is a live streak');
+    assert.equal(computeDisciplineStreak([shiftKey(today, -1)], zone, now).currentStreak, 1, zone + ': a qualifying day yesterday is still a live streak');
+    assert.equal(computeDisciplineStreak([shiftKey(today, -2)], zone, now).currentStreak, 0, zone + ': two days ago is a broken streak');
+  });
+});
+
+test('weeklyConsistency is exactly the 7 local calendar days ending today in every timezone, including across DST changes', () => {
+  // 03-09 is the day after US DST began, 03-30 the day after EU DST began, 11-02 the day after US DST ended.
+  ['2026-03-10T15:00:00.000Z', '2026-03-09T15:00:00.000Z', '2026-03-30T15:00:00.000Z', '2026-11-02T15:00:00.000Z'].forEach((iso) => {
+    const now = new Date(iso);
+    ZONES.forEach((zone) => {
+      const today = dayKeyInTimeZone(now, zone);
+      const week = [0, 1, 2, 3, 4, 5, 6].map((i) => shiftKey(today, -i));
+      assert.deepEqual(weeklyConsistency(week, zone, now), { qualifiedDays: 7, totalDays: 7 }, zone + ' ' + iso + ': the full window counts');
+      assert.equal(weeklyConsistency([today], zone, now).qualifiedDays, 1, zone + ' ' + iso + ': today itself must count');
+      assert.equal(weeklyConsistency([shiftKey(today, -7)], zone, now).qualifiedDays, 0, zone + ' ' + iso + ': 7 days ago is outside the window');
+    });
+  });
 });
 
 // A minimal fake repo satisfying exactly the surface evaluateNewAchievements() calls, with full
@@ -201,6 +229,21 @@ test('evaluateNewAchievements: a gap that breaks the streak never revokes an alr
   const keys = achievementRows.map((a) => a.achievementKey);
   assert.ok(keys.includes('session_ai_discipline_3d') && keys.includes('session_ai_discipline_7d'));
   assert.ok(!keys.includes('session_ai_discipline_14d'));
+});
+
+test('evaluateNewAchievements never derives discipline streak days from legacy session data, even three consecutive pre-release days that each carry an analysis', async () => {
+  const sessions = [0, 1, 2].map((i) => ({
+    id: 'legacy-' + i, createdAt: new Date(Date.UTC(2026, 0, 1 + i, 10)).toISOString(), instrument: 'XAUUSD', entries: [],
+    aiSessionAnalysisResult: { updatedAt: new Date(Date.UTC(2026, 0, 1 + i, 11)).toISOString() }
+  }));
+  const { repo, achievementRows } = fakeRepo({ completions: [], sessions });
+  const cfg = { achievementPoints: SERVER_ONLY_ACHIEVEMENT_POINTS };
+  const result = await evaluateNewAchievements(repo, 'user-legacy', { unlockedKeys: new Set(), cfg, timezone: 'UTC' });
+  const keys = achievementRows.map((a) => a.achievementKey);
+  assert.ok(keys.includes('first_session_ai_analysis'), 'the one-time onboarding bonus is still honoured for genuine pre-release usage');
+  assert.equal(achievementRows.find((a) => a.achievementKey === 'first_session_ai_analysis').evidence.source, 'backfill');
+  assert.ok(!keys.some((k) => k.startsWith('session_ai_discipline_')), 'legacy data must never unlock a discipline milestone');
+  assert.equal(result.streak.longestStreak, 0);
 });
 
 // Follow-up creative addition #2 - weekly consistency
