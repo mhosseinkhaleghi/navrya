@@ -3100,13 +3100,17 @@ function SessionDashboardSlot() {
 
 // Every scenario in the session, in one place, never filtered to whichever entry happens to be
 // selected right now (unlike EntryPanelSlot's own "scenarios for this entry" sidebar, which is
-// correctly entry-scoped since a scenario is authored against one specific chart). Reuses the
-// exact rows the "dashboard" panel's own Scenarios tab already renders (DashboardScenarioRow), so
-// a trader who wants a steady, always-the-same-shape scenario list doesn't have to fight the tab
-// switcher or re-select a chart to keep it in view.
+// correctly entry-scoped since a scenario is authored against one specific chart). Renders the
+// exact same real, editable ScenarioEditor cards that sidebar uses - full open/collapse, field
+// edits, stage/side toggles, AI evaluate and delete - not a read-only summary row, so this is
+// genuinely the same scenario data a trader already knows, just never reset by switching charts.
+// "Add scenario" still needs one entry to attach the new scenario to (the data model's own
+// constraint - a scenario belongs to a chart), so it targets whichever entry is currently selected.
 function AllScenariosSlot() {
-  const { session, lang, indexById, selectEntry, updateScenario } = useWorkspace();
-  const readOnly = session.status === 'closed';
+  const {
+    session, lang, character, selEntry, openScenarios, setOpenScenarios,
+    updateScenario, deleteScenario, toggleStage, setScenarioSide, addScenario, setEvaluatingScenario
+  } = useWorkspace();
   const flat = flatScenarios(session);
   return (
     <Panel variant="base" padding="14px">
@@ -3118,12 +3122,23 @@ function AllScenariosSlot() {
         {!flat.length ? (
           <span style={{ padding: '14px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'dashEmptyScenarios')}</span>
         ) : flat.map((x) => (
-          <DashboardScenarioRow
-            key={x.scenario.id} lang={lang} x={x} entryN={indexById[x.entry.id]} readOnly={readOnly}
-            onSelectEntry={selectEntry}
-            onProbabilityChange={(entry, scenario, value) => updateScenario(entry, scenario, { probabilityHistory: (scenario.probabilityHistory || []).concat([{ value, loggedAt: new Date().toISOString() }]) }, 'probability_changed')}
+          <ScenarioEditor
+            key={x.scenario.id} session={session} entry={x.entry} scenario={x.scenario} lang={lang}
+            open={openScenarios.has(x.scenario.id)}
+            onToggle={() => setOpenScenarios((prev) => { const next = new Set(prev); if (next.has(x.scenario.id)) next.delete(x.scenario.id); else next.add(x.scenario.id); return next; })}
+            onUpdate={(patch, logType) => updateScenario(x.entry, x.scenario, patch, logType)}
+            onDelete={() => deleteScenario(x.entry, x.scenario)}
+            onToggleStage={(stage) => toggleStage(x.entry, x.scenario, stage)}
+            onSetSide={(side) => setScenarioSide(x.entry, x.scenario, side)}
+            onEvaluate={() => setEvaluatingScenario({ entry: x.entry, scenario: x.scenario })}
+            character={character}
           />
         ))}
+        {session.status !== 'closed' && selEntry && (
+          <button type="button" onClick={() => addScenario(selEntry)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 40, borderRadius: 8, cursor: 'pointer', border: '1px dashed var(--border-gold)', background: 'transparent', color: 'var(--text-muted)', font: 'var(--type-body)', fontSize: 12 }}>
+            <Icon name="plus" size={16} />{tr(lang, 'addScenario')}
+          </button>
+        )}
       </div>
     </Panel>
   );
