@@ -5,6 +5,7 @@ import { resolveRedisClient } from './security/rate-limit.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
 import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, providerCostMicroUsdFor } from '../commercial/wallet-service.mjs';
 import { resolveRetailMultiplier } from '../commercial/markup.mjs';
+import { invalidateNewAchievementEvaluation } from './ai-discipline.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
@@ -285,6 +286,9 @@ export function router(repo) {
       provider: body.provider ? String(body.provider) : null, model: body.model ? String(body.model) : null,
       source: 'live'
     });
+    // A brand-new completion is the one event that can unlock the analysis-driven achievements:
+    // clear the per-user evaluation bound so the very next GET /me/achievements sees it at once.
+    if (result.created) invalidateNewAchievementEvaluation(userId);
     res.status(result.created ? 201 : 200).json(result.completion);
   }));
 

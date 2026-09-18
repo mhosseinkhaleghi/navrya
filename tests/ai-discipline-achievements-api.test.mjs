@@ -4,6 +4,9 @@ import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
 import { invalidateXpConfigCache } from '../server/community/xp-config.mjs';
+import { invalidateNewAchievementEvaluation } from '../server/community/ai-discipline.mjs';
+
+process.env.INTERNAL_API_SECRET = 'test-internal-secret-please-ignore';
 
 // Level 1 "Start of the Path" + AI Analysis Discipline ladder, exercised through the real
 // GET /api/users/me/achievements and GET /api/users/me/ai-discipline routes (routes.profile.mjs)
@@ -27,6 +30,15 @@ async function api(method, path, { body, userId } = {}) {
   const response = await fetch(baseUrl + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : null };
+}
+
+// The exact write path pattern-ai-server.mjs uses in production - and the one that clears the
+// per-user evaluation bound so the next read of GET /me/achievements sees the new completion.
+function internalPost(body) {
+  return fetch(baseUrl + '/internal/session-analysis-completions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_API_SECRET },
+    body: JSON.stringify(body)
+  });
 }
 
 async function makeUserWithSession({ instrument = 'XAUUSD', note = 'a real setup', hasImage = true } = {}) {
@@ -66,7 +78,8 @@ test('first_session_ai_analysis unlocks from a real ledger completion, awards XP
   const before1 = await api('GET', '/api/users/me/achievements', { userId: user.id });
   assert.ok(!before1.body.some((a) => a.achievementKey === 'first_session_ai_analysis'));
 
-  await repo.sessionAiAnalysisCompletions.record({ userId: user.id, sessionId: 'sess-2-' + user.id, entryId: null, analysisId: 'a-' + user.id, analysisType: 'initial', provider: 'openai', model: 'gpt' });
+  const recorded = await internalPost({ userId: user.id, sessionId: 'sess-2-' + user.id, analysisId: 'a-' + user.id, analysisType: 'initial', provider: 'openai', model: 'gpt' });
+  assert.equal(recorded.status, 201);
 
   const after1 = await api('GET', '/api/users/me/achievements', { userId: user.id });
   const unlocked = after1.body.find((a) => a.achievementKey === 'first_session_ai_analysis');
@@ -77,7 +90,9 @@ test('first_session_ai_analysis unlocks from a real ledger completion, awards XP
   const xpAfterFirst = profile1.body.xpTotal;
   assert.ok(xpAfterFirst >= 10, 'first_session_ai_analysis is worth 10 XP');
 
-  // Re-hitting the endpoint (as the UI polls) must never double-award.
+  // Re-hitting the endpoint (as the UI polls) must never double-award - clear the evaluation bound
+  // first so the evaluation genuinely re-runs rather than being skipped.
+  invalidateNewAchievementEvaluation(user.id);
   await api('GET', '/api/users/me/achievements', { userId: user.id });
   const profile2 = await api('GET', '/api/users/me/profile', { userId: user.id });
   assert.equal(profile2.body.xpTotal, xpAfterFirst, 'a repeat opportunistic check must never double-award XP');
@@ -147,6 +162,35 @@ test('session_analysis_follow_through unlocks once a Session\'s own AI memory re
   assert.ok(unlocked, 'session_analysis_follow_through must unlock from a real resolved unresolvedItem');
   const profile = await api('GET', '/api/users/me/profile', { userId: user.id });
   assert.ok(profile.body.xpTotal >= 15);
+});
+
+test('GET /me/achievements is rate-bounded per user (the sidebar refetches it after every edit), while GET /me/ai-discipline and a newly recorded completion always see fresh data', async () => {
+  const { user } = await makeUserWithSession();
+  const realListByUser = repo.tradingSessions.listByUser;
+  let evaluations = 0; // evaluateNewAchievements() loads every session graph exactly once per run
+  repo.tradingSessions.listByUser = async (userId) => { if (userId === user.id) evaluations += 1; return realListByUser(userId); };
+  try {
+    for (let i = 0; i < 5; i += 1) await api('GET', '/api/users/me/achievements', { userId: user.id });
+    assert.equal(evaluations, 1, 'five back-to-back polls must run the full-history evaluation once, not five times');
+
+    await api('GET', '/api/users/me/ai-discipline', { userId: user.id });
+    assert.equal(evaluations, 2, 'the on-demand discipline read always evaluates fresh');
+    await api('GET', '/api/users/me/achievements', { userId: user.id });
+    assert.equal(evaluations, 2, '...and marks the user as just evaluated, so the very next poll skips');
+
+    const recorded = await internalPost({ userId: user.id, sessionId: 'sess-' + user.id, analysisId: 'bound-' + user.id });
+    assert.equal(recorded.status, 201);
+    const afterCompletion = await api('GET', '/api/users/me/achievements', { userId: user.id });
+    assert.equal(evaluations, 3, 'a newly recorded completion clears the bound');
+    assert.ok(afterCompletion.body.some((a) => a.achievementKey === 'first_session_ai_analysis'), 'and the analysis-driven unlock appears on that very read');
+
+    const retry = await internalPost({ userId: user.id, sessionId: 'sess-' + user.id, analysisId: 'bound-' + user.id });
+    assert.equal(retry.status, 200, 'a retried analysisId is a no-op');
+    await api('GET', '/api/users/me/achievements', { userId: user.id });
+    assert.equal(evaluations, 3, 'a duplicate (non-created) completion must NOT clear the bound');
+  } finally {
+    repo.tradingSessions.listByUser = realListByUser;
+  }
 });
 
 test('a single real qualifying day never falsely crosses the 3-day discipline milestone', async () => {

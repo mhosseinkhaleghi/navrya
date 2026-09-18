@@ -4,7 +4,8 @@ import {
   isValidTimeZone, resolveTimezone, dayKeyInTimeZone, computeDisciplineStreak,
   qualifyingDaysFromCompletions, legacyHasAnyAnalysis,
   firstValidChartInstrumentSession, evaluateNewAchievements, DISCIPLINE_MILESTONES, LEGACY_BACKFILL_CUTOFF_ISO,
-  weeklyConsistency, findAnalysisDebtSession, hasFollowThroughSession, FOLLOW_THROUGH_ACHIEVEMENT_KEY
+  weeklyConsistency, findAnalysisDebtSession, hasFollowThroughSession, FOLLOW_THROUGH_ACHIEVEMENT_KEY,
+  shouldEvaluateNewAchievements, markNewAchievementsEvaluated, invalidateNewAchievementEvaluation, NEW_ACHIEVEMENT_EVAL_MIN_INTERVAL_MS
 } from '../server/community/ai-discipline.mjs';
 import { SERVER_ONLY_ACHIEVEMENT_POINTS } from '../server/community/xp-config.mjs';
 
@@ -244,6 +245,20 @@ test('evaluateNewAchievements never derives discipline streak days from legacy s
   assert.equal(achievementRows.find((a) => a.achievementKey === 'first_session_ai_analysis').evidence.source, 'backfill');
   assert.ok(!keys.some((k) => k.startsWith('session_ai_discipline_')), 'legacy data must never unlock a discipline milestone');
   assert.equal(result.streak.longestStreak, 0);
+});
+
+test('shouldEvaluateNewAchievements bounds the polled evaluation to once per interval per user; mark/invalidate control it and users are independent', () => {
+  const t0 = 1000000;
+  const interval = NEW_ACHIEVEMENT_EVAL_MIN_INTERVAL_MS;
+  assert.equal(shouldEvaluateNewAchievements('u-bound', t0), true, 'the first call is due');
+  assert.equal(shouldEvaluateNewAchievements('u-bound', t0 + 1), false);
+  assert.equal(shouldEvaluateNewAchievements('u-bound', t0 + interval - 1), false, 'still inside the interval');
+  assert.equal(shouldEvaluateNewAchievements('u-bound', t0 + interval), true, 'due again once the interval has elapsed');
+  assert.equal(shouldEvaluateNewAchievements('u-bound-other', t0 + 5), true, 'users are independent');
+  invalidateNewAchievementEvaluation('u-bound');
+  assert.equal(shouldEvaluateNewAchievements('u-bound', t0 + interval + 1), true, 'invalidate clears the bound immediately');
+  markNewAchievementsEvaluated('u-bound-marked', t0);
+  assert.equal(shouldEvaluateNewAchievements('u-bound-marked', t0 + 10), false, 'an on-demand evaluation marks the user as just evaluated');
 });
 
 // Follow-up creative addition #2 - weekly consistency

@@ -243,6 +243,36 @@ export async function ensureDisciplineTimezone(repo, userId, candidateTimezone) 
   return repo.disciplineSettings.ensure(userId, resolveTimezone(candidateTimezone));
 }
 
+// Bounds the cost of evaluateNewAchievements(), which loads every one of a user's session graphs
+// (entries, scenarios, images, analysis JSON). The sidebar re-fetches GET /me/achievements ~1.5s
+// after EVERY session/trade/pattern edit (navrya-src/sidebarProfile.js), so without a bound each
+// debounced edit would trigger a full-history load. That polled route therefore evaluates at most
+// once per user per interval per process. GET /me/ai-discipline (opened on demand) always
+// evaluates fresh and marks the user as just evaluated. Recording a real completion - the one
+// event that can unlock the analysis-driven achievements - clears the bound so those appear on
+// the very next read. Worst-case staleness for the rest (a first chart+note, a resolved
+// follow-through item) is this interval; nothing is ever lost, only re-checked later.
+export const NEW_ACHIEVEMENT_EVAL_MIN_INTERVAL_MS = 30000;
+const MAX_TRACKED_USERS = 5000;
+const lastEvaluationAt = new Map();
+
+export function markNewAchievementsEvaluated(userId, nowMs = Date.now()) {
+  if (lastEvaluationAt.size >= MAX_TRACKED_USERS && !lastEvaluationAt.has(userId)) lastEvaluationAt.clear();
+  lastEvaluationAt.set(userId, nowMs);
+}
+
+// True when this user is due an evaluation (and records that one is about to run).
+export function shouldEvaluateNewAchievements(userId, nowMs = Date.now()) {
+  const last = lastEvaluationAt.get(userId);
+  if (last != null && nowMs - last < NEW_ACHIEVEMENT_EVAL_MIN_INTERVAL_MS) return false;
+  markNewAchievementsEvaluated(userId, nowMs);
+  return true;
+}
+
+export function invalidateNewAchievementEvaluation(userId) {
+  lastEvaluationAt.delete(userId);
+}
+
 // The one orchestrator both GET /me/achievements (opportunistic unlock, same shape as
 // level_5_reached/five_day_login_streak) and GET /me/ai-discipline (read-mostly progress display)
 // call. Mutates `unlockedKeys` in place as it grants, and returns the resolved streak snapshot so
