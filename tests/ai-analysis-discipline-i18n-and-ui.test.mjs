@@ -101,6 +101,10 @@ test('accountProfileView.jsx defines the discipline heatmap, weekly consistency,
   assert.match(viewSrc, /<DisciplineHeatmapPanel lang=\{lang\} aiDiscipline=\{aiDiscipline\} \/>/);
   assert.match(viewSrc, /aiDiscipline\.weeklyConsistency/);
   assert.match(viewSrc, /aiDiscipline\.analysisDebt/);
+  // The heatmap's 90 cells come from the DST-safe, unit-tested helper, never "now minus N x 24h".
+  assert.match(viewSrc, /import \{ lastDayKeys \} from '\.\/disciplineDays\.js';/);
+  assert.match(viewSrc, /lastDayKeys\(aiDiscipline\.timezone, 90, Date\.now\(\)\)/);
+  assert.doesNotMatch(viewSrc, /now - i \* 86400000/, 'the DST-unsafe day generation must not come back');
   ['disciplineWeeklyLabel', 'disciplineDebtNotice', 'disciplineHeatmapTitle'].forEach((key) => {
     assert.equal(countOccurrences(viewSrc, key + ':'), 4, key + ' must be translated in all 4 languages');
   });

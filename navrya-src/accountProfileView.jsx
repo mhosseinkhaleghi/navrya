@@ -11,6 +11,7 @@ import { RankCrest, RANK_TITLE } from '../public/pages/shared/navrya/components/
 import { CharacterPortrait } from '../public/pages/shared/navrya/components/identity/CharacterPortrait.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { CryptoInvoiceModal, CryptoInvoicePanel } from './cryptoInvoiceModal.jsx';
+import { lastDayKeys } from './disciplineDays.js';
 
 // React rewrite of the Account Profile destination (sidebar "اشتراک", #account/profile[/tab])
 // per the design handoff: a persistent "dossier band" (rank/level/XP/next-reward) above a tab
@@ -1065,19 +1066,9 @@ function DisciplineHeatmapPanel({ lang, aiDiscipline }) {
   if (!aiDiscipline || !aiDiscipline.qualifyingDayKeys) return null;
   const qualifying = new Set(aiDiscipline.qualifyingDayKeys);
   if (!qualifying.size) return null;
-  // en-CA formats as YYYY-MM-DD in the given zone - the exact same day-key shape
-  // server/community/ai-discipline.mjs's dayKeyInTimeZone() produces, so a day here lines up with
-  // the server's own qualifying-day computation rather than an independent (and possibly
-  // off-by-one-day) client-side UTC bucketing.
-  var formatter;
-  try { formatter = new Intl.DateTimeFormat('en-CA', { timeZone: aiDiscipline.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
-  catch (_) { formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
-  const now = Date.now();
-  const days = [];
-  for (let i = 89; i >= 0; i -= 1) {
-    const key = formatter.format(new Date(now - i * 86400000));
-    days.push({ key, on: qualifying.has(key) });
-  }
+  // 90 consecutive LOCAL days in the server's own day-key format - see disciplineDays.js for why
+  // this is calendar arithmetic on the key rather than "now minus N x 24h" (DST-safe).
+  const days = lastDayKeys(aiDiscipline.timezone, 90, Date.now()).map((key) => ({ key, on: qualifying.has(key) }));
   return (
     <Panel variant="base" ornament padding={0}>
       <div style={{ display: 'flex', flexDirection: 'column', padding: '20px 22px', gap: 12 }}>
