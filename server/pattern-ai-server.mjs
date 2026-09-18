@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
 import { parseCookie } from 'cookie';
 import { sessionCookieName } from './community/security/cookies.mjs';
@@ -390,6 +391,29 @@ async function internalWalletCall(path, payload) {
   if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
   const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) });
   return response.ok ? await response.json() : { ok: false, reason: 'WALLET_SERVICE_UNAVAILABLE' };
+}
+
+// AI Analysis Discipline's authoritative evidence write (063_ai_analysis_discipline.sql,
+// server/community/routes.internal.mjs's POST /internal/session-analysis-completions). Called
+// ONLY here, ONLY after analyzeSession() has already returned successfully against a real
+// provider, with `session.userId` from THIS gateway's own verified identity (verifySession()
+// above) - never a value the browser could claim on its own. `sessionId`/`entryId` travel in the
+// request body only as identity to record against; the community API still independently
+// re-verifies both belong to this same user before writing anything (see that route's own
+// comment) - a forged or mismatched id there is simply dropped, never trusted. The analysisId
+// minted here is a fresh server-side UUID, distinct from the client's own display/cache-key
+// analysisId (session-analysis-client.js), so the ledger's proof of "a real call happened" never
+// depends on anything the browser generated. Best-effort and never awaited into the user-visible
+// response path failing: a lost completion costs nothing but one delayed streak day, while a
+// blocked analysis response would be a real regression.
+async function recordSessionAnalysisCompletion({ userId, sessionId, entryId, analysisType, provider, model }) {
+  if (!userId || !sessionId) return;
+  try {
+    await internalWalletCall('/internal/session-analysis-completions', {
+      userId, sessionId, entryId: entryId || null, analysisId: randomUUID(), analysisType: analysisType || null,
+      provider: provider || null, model: model || null
+    });
+  } catch (_) { /* best-effort - never surfaces as a failure on the analysis response itself */ }
 }
 
 // AI billing operational fix (task B) - a real charge already earned by a successful, already-paid
@@ -3880,6 +3904,16 @@ const server = http.createServer(async (request, response) => {
       await recordAiUsageForCall({
         userId: session.userId, feature: billedFeature, provider: result && result.provider, model: result && result.model,
         usage: result && result.usage, billed: !!walletReservationId, reservationId: walletReservationId
+      });
+    }
+    // AI Analysis Discipline (ai-discipline.mjs) - only for the one real Session Analysis route,
+    // only once analyzeSession() has already returned successfully above (an exception before
+    // this point skips straight to the catch block below and never reaches here), and only when
+    // the browser actually named a session/entry to record against.
+    if (request.url === '/api/sessions/analyze' && body.sessionId) {
+      await recordSessionAnalysisCompletion({
+        userId: session.userId, sessionId: body.sessionId, entryId: body.entryId,
+        analysisType: result && result.data && result.data.analysisType, provider: result && result.provider, model: result && result.model
       });
     }
     return json(response, 200, result);

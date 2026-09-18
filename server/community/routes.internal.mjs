@@ -251,5 +251,42 @@ export function router(repo) {
     res.json(await resolveUserEntitlements(req.params.userId, repo));
   }));
 
+  // AI Analysis Discipline's authoritative evidence write (063_ai_analysis_discipline.sql,
+  // server/community/ai-discipline.mjs). Called ONLY by server/pattern-ai-server.mjs, and only
+  // from inside its own dispatcher AFTER its analyzeSession() call has already returned
+  // successfully against a real provider, using session.userId from that gateway's own verified
+  // identity (never a value read out of the request body) - a browser can never reach this route
+  // directly (no cookie/session concept exists on this internal bridge at all) and a call to it
+  // proves nothing on its own unless it also passes the ownership checks below. userId itself is
+  // still re-verified against a real user record so a caller with a stale/deleted id can never
+  // silently mint an orphaned completion row.
+  app.post('/session-analysis-completions', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const userId = String(body.userId || '');
+    const sessionId = String(body.sessionId || '');
+    const analysisId = String(body.analysisId || '');
+    if (!userId || !sessionId || !analysisId) return res.status(400).json({ error: 'VALIDATION_FAILED' });
+    const user = await repo.users.get(userId);
+    if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+    // Ownership re-check, not a trust of the caller's own claim: the named session must really
+    // belong to the named user. repo.tradingSessions.get(userId, id) already returns null for a
+    // session owned by someone else (see routes.trading-sessions.mjs's identical convention).
+    const session = await repo.tradingSessions.get(userId, sessionId);
+    if (!session) return res.status(404).json({ error: 'SESSION_NOT_FOUND' });
+    // entryId is optional (a session-level analysis may run with no one chart entry pinned) but,
+    // when supplied, must name a real entry that actually belongs to this same session - never
+    // trusted merely because the caller sent it.
+    const entryId = body.entryId ? String(body.entryId) : null;
+    const entryOwned = !entryId || (session.entries || []).some((entry) => entry.id === entryId);
+    const result = await repo.sessionAiAnalysisCompletions.record({
+      userId, sessionId, entryId: entryOwned ? entryId : null, analysisId,
+      analysisType: body.analysisType ? String(body.analysisType) : null,
+      provider: body.provider ? String(body.provider) : null, model: body.model ? String(body.model) : null,
+      source: 'live'
+    });
+    res.status(result.created ? 201 : 200).json(result.completion);
+  }));
+
   return app;
 }
