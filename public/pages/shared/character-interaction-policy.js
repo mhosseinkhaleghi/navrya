@@ -1,14 +1,14 @@
 (function () {
   'use strict';
-  // NAVRYA — Hunter Character Interaction Policy.
+  // NAVRYA — Character Interaction Policy (Hunter gate, extended to Commander).
   //
   // NAVRYA's own deterministic engines (Workflow/Action/Risk/Safety/Proactive) decide WHAT
   // happens; a character only ever decides HOW it is communicated. This module is the one shared,
   // reusable place that answers "given this real event, how should the active character deliver
   // it" - it holds no business logic of its own (no field order, no risk math, no safety rule) and
-  // is never itself an AI call. Only Hunter has real content in this gate (brief: "implementing
-  // ONLY the Hunter character"); every other character resolves to `active: false` and every
-  // caller's own existing, unchanged behavior applies.
+  // is never itself an AI call. Only Hunter and Commander have real content so far (each its own
+  // gate: "implementing ONLY the Hunter/Commander character"); `engineer`/`sage` resolve to
+  // `active: false` and every caller's own existing, unchanged behavior applies.
   //
   // This is deliberately a small, fixed set of four reusable "delivery gears" (section 7 of the
   // interaction-policy brief), not a per-event bible - the same four gears cover every event below,
@@ -42,6 +42,11 @@
   };
 
   var GEARS = { NORMAL: 'NORMAL', FOCUSED: 'FOCUSED', HUMAN_MOMENT: 'HUMAN_MOMENT', NEUTRAL: 'NEUTRAL' };
+
+  // Characters with real Character Interaction Policy content. The event->gear table below is
+  // shared/character-agnostic (brief section 7: "reuse existing gears, do not add a second gear
+  // enum") - only the actual phrase tables further down differ per character.
+  var IMPLEMENTED_CHARACTERS = { hunter: true, commander: true };
 
   // Default gear per event, absent any overriding sensitivity (see gearForEvent()). Events not
   // listed here (a future addition, or a caller's typo) fall back to NORMAL - the safest, most
@@ -95,14 +100,30 @@
     return (window.TradeJournalPanelLayer && window.TradeJournalPanelLayer.character) || 'hunter';
   }
   function isHunterActive(character) { return (character || activeCharacter()) === 'hunter'; }
+  function isCommanderActive(character) { return (character || activeCharacter()) === 'commander'; }
+  function hasCharacterPolicy(character) { return !!IMPLEMENTED_CHARACTERS[character || activeCharacter()]; }
 
   // NAVRYA/the proactive engine's own finding (severity/evidence/message) is never touched by
   // either of these - only the address opening a blocking risk conflict starts with, and the
   // closing override question, both reused verbatim by chat-dock-core.js's buildProactiveReply().
-  function proactiveOpener(language) {
+  // `character` defaults to 'hunter' (this module's original, still-default character) when
+  // omitted, so every pre-existing caller that only ever passed `language` keeps its exact
+  // original behavior.
+  function proactiveOpener(language, character) {
+    if ((character || 'hunter') === 'commander') {
+      return pick(language, { en: 'Hold on, sir.', fa: 'قربان، یه تضاد داریم.', ar: 'سيدي، لدينا تعارض.', es: 'Señor, tenemos un conflicto.' });
+    }
     return pick(language, { en: 'Hold on a sec.', fa: 'یه لحظه رفیق.', ar: 'لحظة واحدة.', es: 'Un momento.' });
   }
-  function proactiveOverrideQuestion(language) {
+  function proactiveOverrideQuestion(language, character) {
+    if ((character || 'hunter') === 'commander') {
+      return pick(language, {
+        en: 'Two options: fall back to the cap, or knowingly confirm this exception.',
+        fa: 'دو انتخاب داریم: برگردیم روی سقف، یا این استثنا رو آگاهانه تأیید کنید.',
+        ar: 'أمامنا خياران: الالتزام بالحد، أو تأكيد هذا الاستثناء عن وعي.',
+        es: 'Tenemos dos opciones: volver al límite, o confirmar esta excepción a propósito.'
+      });
+    }
     return pick(language, {
       en: 'Want to stick with the plan, or knowingly push past it?',
       fa: 'می‌خوای برگردیم روی پلن، یا همین استثنا رو آگاهانه تأیید می‌کنی؟',
@@ -110,17 +131,20 @@
       es: '¿Nos quedamos con el plan, o lo superamos a propósito?'
     });
   }
-  // ANALYSIS_HEADLINE lead-in (section 20: MAIN SIGNAL first) - the headline text itself is always
-  // the model's real, already-generated analysis; this is only ever prepended, never blended into
-  // or replacing it.
-  function analysisHeadlineLeadIn(language) {
+  // ANALYSIS_HEADLINE lead-in (section 20/19: MAIN SIGNAL first) - the headline text itself is
+  // always the model's real, already-generated analysis; this is only ever prepended, never
+  // blended into or replacing it.
+  function analysisHeadlineLeadIn(language, character) {
+    if ((character || 'hunter') === 'commander') {
+      return pick(language, { en: 'Sir, quick briefing:', fa: 'قربان، گزارش کوتاه:', ar: 'سيدي، تقرير موجز:', es: 'Señor, informe breve:' });
+    }
     return pick(language, { en: 'Main signal:', fa: 'ردپای اصلی اینه:', ar: 'الإشارة الرئيسية:', es: 'Señal principal:' });
   }
 
   function resolve(ctx) {
     ctx = ctx || {};
     var character = ctx.character || activeCharacter();
-    var active = character === 'hunter';
+    var active = hasCharacterPolicy(character);
     var gear = active ? gearForEvent(ctx.event, ctx) : null;
     return {
       active: active,
@@ -138,6 +162,8 @@
     resolve: resolve,
     activeCharacter: activeCharacter,
     isHunterActive: isHunterActive,
+    isCommanderActive: isCommanderActive,
+    hasCharacterPolicy: hasCharacterPolicy,
     proactiveOpener: proactiveOpener,
     proactiveOverrideQuestion: proactiveOverrideQuestion,
     analysisHeadlineLeadIn: analysisHeadlineLeadIn

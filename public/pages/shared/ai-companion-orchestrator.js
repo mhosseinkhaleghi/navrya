@@ -163,20 +163,24 @@
   // turn" are transient UI state this module has no visibility into - the caller MUST check those
   // itself before ever calling this (same split as the Companion card's own render gate).
   // ==========================================================================================
-  // Character Interaction Policy (Hunter gate): prefers a "<key>_hunter" i18n entry when Hunter is
-  // the active character and one exists for the current language; falls back to the original,
-  // character-neutral key otherwise (which is exactly what every other character still gets,
-  // unchanged - see docs/ai/character-interaction-policy.md). NAVRYA still decides WHICH greeting
-  // kind fires (voiceCtx above); this only ever swaps which copy is spoken for the SAME kind.
+  // Character Interaction Policy (Hunter gate, extended to Commander): prefers a
+  // "<key>_<character>" i18n entry when an implemented character (hunter, commander) is active
+  // and one exists for the current language; falls back to the original, character-neutral key
+  // otherwise (which is exactly what engineer/sage still get, unchanged - see
+  // docs/ai/character-interaction-policy.md). NAVRYA still decides WHICH greeting kind fires
+  // (voiceCtx above); this only ever swaps which copy is spoken for the SAME kind.
   function characterGreetingText(i18n, baseKey) {
     var policy = window.TradeJournalCharacterPolicy;
-    var isHunter = policy && typeof policy.isHunterActive === 'function'
-      ? policy.isHunterActive()
-      : ((window.TradeJournalPanelLayer && window.TradeJournalPanelLayer.character) || 'hunter') === 'hunter';
-    if (isHunter) {
-      var hunterKey = baseKey + '_hunter';
+    var character = policy && typeof policy.activeCharacter === 'function'
+      ? policy.activeCharacter()
+      : (window.TradeJournalPanelLayer && window.TradeJournalPanelLayer.character) || 'hunter';
+    var hasCharacterPolicy = policy && typeof policy.hasCharacterPolicy === 'function'
+      ? policy.hasCharacterPolicy(character)
+      : (character === 'hunter' || character === 'commander');
+    if (hasCharacterPolicy) {
+      var characterKey = baseKey + '_' + character;
       var table = i18n.messages && i18n.messages[i18n.language()];
-      if (table && Object.prototype.hasOwnProperty.call(table, hunterKey)) return i18n.t(hunterKey);
+      if (table && Object.prototype.hasOwnProperty.call(table, characterKey)) return i18n.t(characterKey);
     }
     return i18n.t(baseKey);
   }

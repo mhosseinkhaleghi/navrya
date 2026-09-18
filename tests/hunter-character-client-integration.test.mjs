@@ -48,8 +48,8 @@ test('Hunter (the app default character) gets the real Hunter-specific Persian v
   assert.equal(opening.text, 'خب رفیق، سشن هنوز بازه. ادامه‌ش بدیم؟');
 });
 
-test('an explicitly non-Hunter character keeps the exact original, generic Persian greeting - unaffected by this gate', async () => {
-  const orchestrator = await loadOrchestrator('commander', ACTIVE_SESSION_CTX);
+test('a character with no Character Interaction Policy (sage) keeps the exact original, generic Persian greeting - unaffected by this gate', async () => {
+  const orchestrator = await loadOrchestrator('sage', ACTIVE_SESSION_CTX);
   const opening = orchestrator.voiceOpening();
   assert.equal(opening.kind, 'activeSession');
   assert.equal(opening.text, 'سلام. سشن بازت هنوز فعاله. می‌خوای از همون‌جا ادامه بدیم؟');

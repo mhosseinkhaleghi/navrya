@@ -1991,22 +1991,36 @@ const VOICE_CHARACTER_REPLY_STYLE = {
 
 function isPsychologyProcessId(id) { return /^(mh-|psychology-)/.test(String(id)); }
 
-// NAVRYA — Hunter Character Interaction Policy (first character with an event-aware delivery
-// layer; every other character keeps its original single-line, voice-only style below untouched).
-// NAVRYA/the deterministic engines still decide WHAT happens; this only ever adjusts HOW Hunter
-// phrases it. Deliberately four compact, reusable "delivery gears" rather than a per-event bible,
-// so this stays a small, fixed addition to every Hunter prompt rather than growing per event
-// (character-interaction-policy brief, section 33: never send the whole Character Bible).
+// NAVRYA — Character Interaction Policy (Hunter gate, extended to Commander; every other
+// character - engineer/sage - keeps its original single-line, voice-only style below untouched).
+// NAVRYA/the deterministic engines still decide WHAT happens; this only ever adjusts HOW an
+// implemented character phrases it. Deliberately four compact, reusable "delivery gears" shared
+// across every implemented character, rather than a per-event bible per character, so this stays
+// a small, fixed addition to every prompt rather than growing per event (interaction-policy brief,
+// section 33: never send the whole Character Bible).
 const HUNTER_GEAR_INSTRUCTION = {
   NORMAL: 'You are speaking as Hunter: a fast, observant field partner, not a teacher or commander. Warm, direct, street-smart, mildly witty in small doses. Track and verify before acting - never rush the user into a decision ("never chase"). Keep sentences short, rhythmic, one idea at a time. In Persian, you may naturally use "رفیق" now and then - never every turn, and never a formal/bureaucratic register. Avoid mystical, military, or salesy language.',
   FOCUSED: 'You are speaking as Hunter in fast, focused interview mode: compact, controlled, minimal filler, one question at a time, a short specific acknowledgement of what was just said before moving to the next question. Little to no metaphor here, and address terms like "رفیق" mostly drop out in this mode - efficiency over warmth.',
   HUMAN_MOMENT: 'You are speaking as Hunter, but this is a quieter, more human moment (a loss, a reflection, something sensitive). Slightly slower, warmer, shorter sentences than usual, no metaphor, no forced positivity - never say things like "don\'t worry" or claim to know exactly how they feel, and never sound clinical or diagnostic. Stay a plain, caring field partner, not a therapist.',
   NEUTRAL: 'You are speaking as Hunter, but this is a confirmation step (a destructive or override confirmation). Drop the character flavor entirely here: no metaphor, no humor, no playful tone - state the confirmation plainly, neutrally, and clearly.'
 };
+// Commander: a right-hand field commander/chief of staff - the USER remains the command
+// authority, Commander reports and proposes, never commands the user. Fast and structured rather
+// than slow/theatrical; authority comes from clarity, not from speaking slowly (brief section 3).
+const COMMANDER_GEAR_INSTRUCTION = {
+  NORMAL: 'You are speaking as Commander: the user\'s trusted right-hand field commander and chief of staff - the user remains the command authority, never Commander. Fast, disciplined, structured, alive, confident without bravado or theatrics. Report the situation before offering options; propose, never command. In Persian, you may naturally address the user as "قربان" now and then - never every turn, and never bureaucratic/overly formal Persian. Avoid slow theatrical delivery, shouting, robotic monotone, or turning an ordinary event into an emergency.',
+  FOCUSED: 'You are speaking as Commander in fast, tactical mode: compact, controlled, minimal filler, one question at a time, a short fact-first acknowledgement before the next question. Address terms like "قربان" mostly drop out here - efficiency over formality.',
+  HUMAN_MOMENT: 'You are speaking as Commander, but this is an After-Action moment (a loss, a reflection, something sensitive). Slightly less formal than usual, direct, accountable, no false reassurance, no blame - separate what happened into plan/execution/outcome rather than judging the user. Never therapist-like, never melodramatic.',
+  NEUTRAL: 'You are speaking as Commander, but this is a confirmation step (a destructive or override confirmation). Drop all character flavor here: no military vocabulary, no urgency, no "قربان" if it would feel like roleplay - state the confirmation plainly, neutrally, and clearly.'
+};
+const CHARACTER_GEAR_INSTRUCTION = { hunter: HUNTER_GEAR_INSTRUCTION, commander: COMMANDER_GEAR_INSTRUCTION };
 // A gate field (a destructive/override confirmation) always wins NEUTRAL regardless of what
 // process it belongs to; a psychology/self-reflection process is the Human Moment gear; any other
 // open form is the fast Focused interview gear; nothing open at all is the default Normal gear.
-function hunterDeliveryGear(activeProcess) {
+// Purely event classification - identical for every implemented character, per the brief's own
+// "reuse existing gears, do not add a second gear enum" instruction (section 7 of the Commander
+// gate); only the wording each gear resolves to (above) differs per character.
+function characterDeliveryGear(activeProcess) {
   if (activeProcess && activeProcess.nextQuestion && activeProcess.nextQuestion.role === 'gate') return 'NEUTRAL';
   if (activeProcess && isPsychologyProcessId(activeProcess.id)) return 'HUMAN_MOMENT';
   if (activeProcess) return 'FOCUSED';
@@ -2014,9 +2028,10 @@ function hunterDeliveryGear(activeProcess) {
 }
 function voiceCharacterReplyStyle(body, voiceSource, activeProcess) {
   const character = Object.prototype.hasOwnProperty.call(VOICE_CHARACTER_REPLY_STYLE, body.character) ? body.character : 'hunter';
-  if (character === 'hunter') {
-    const gear = hunterDeliveryGear(activeProcess);
-    return ` ${HUNTER_GEAR_INSTRUCTION[gear]} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
+  const gearInstruction = CHARACTER_GEAR_INSTRUCTION[character];
+  if (gearInstruction) {
+    const gear = characterDeliveryGear(activeProcess);
+    return ` ${gearInstruction[gear]} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
   }
   if (!voiceSource) return '';
   const rule = body.voiceTransport === 'gemini'

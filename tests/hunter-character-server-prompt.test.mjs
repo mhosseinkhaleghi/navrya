@@ -47,10 +47,10 @@ test('a plain text turn (no source, no character) defaults to Hunter\'s NORMAL g
   assert.match(systemText, /preserve every fact, number, safety warning, and required confirmation/);
 });
 
-test('an explicit non-Hunter character on a text turn gets no style at all, exactly as before (voice-only for every character but Hunter)', async () => {
+test('a character without a Character Interaction Policy (engineer) on a text turn gets no style at all, exactly as before', async () => {
   const getBody = captureOpenAIRequest({ reply: 'ok' });
   await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
-    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'commander' });
+    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'engineer' });
   });
   const systemText = getBody().input[0].content[0].text;
   assert.doesNotMatch(systemText, /speaking as/);

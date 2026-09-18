@@ -705,15 +705,18 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // other product-facing surface use the app's own 4 character ids ('hunter'/'commander'/
   // 'engineer'/'sage'), so this maps back at the one point a voice request is actually built.
   function voiceCharacter() { return navryaCharacter === 'master' ? 'sage' : navryaCharacter; }
-  // Character Interaction Policy (Hunter gate): the ANALYSIS_HEADLINE lead-in - see
-  // docs/ai/character-interaction-policy.md and docs/ai/characters/hunter.md. Never the analysis
-  // content itself, only Hunter's own compact framing in front of it. Delegates to the shared
-  // character-interaction-policy.js module (loaded on every character page alongside
-  // ai-i18n.js/ai-companion-orchestrator.js) when present; falls back to the same text inline
-  // otherwise.
-  function hunterHeadlineLeadIn(language) {
+  // Character Interaction Policy (Hunter gate, extended to Commander): the ANALYSIS_HEADLINE
+  // lead-in - see docs/ai/character-interaction-policy.md, docs/ai/characters/hunter.md,
+  // docs/ai/characters/commander.md. Never the analysis content itself, only the character's own
+  // compact framing in front of it. Delegates to the shared character-interaction-policy.js module
+  // (loaded on every character page alongside ai-i18n.js/ai-companion-orchestrator.js) when
+  // present; falls back to the same text inline otherwise.
+  function characterHeadlineLeadIn(language, character) {
     const policy = window.TradeJournalCharacterPolicy;
-    if (policy && typeof policy.analysisHeadlineLeadIn === 'function') return policy.analysisHeadlineLeadIn(language);
+    if (policy && typeof policy.analysisHeadlineLeadIn === 'function') return policy.analysisHeadlineLeadIn(language, character);
+    if (character === 'commander') {
+      return ({ en: 'Sir, quick briefing:', fa: 'قربان، گزارش کوتاه:', ar: 'سيدي، تقرير موجز:', es: 'Señor, informe breve:' })[language] || 'Sir, quick briefing:';
+    }
     return ({ en: 'Main signal:', fa: 'ردپای اصلی اینه:', ar: 'الإشارة الرئيسية:', es: 'Señal principal:' })[language] || 'Main signal:';
   }
   // Reads the same per-account preference settingsView.jsx's VoiceGenderSection writes via
@@ -1199,11 +1202,16 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       if (!headline || !voiceRef.current || !playbackControllerRef.current) return;
       const currentState = voiceRef.current.state();
       if (currentState === VOICE_STATES.IDLE || currentState === VOICE_STATES.ERROR) return;
-      // Character Interaction Policy (Hunter gate): ANALYSIS_HEADLINE event - the headline text
-      // itself is the model's real, unchanged analysis (never rewritten here); Hunter only ever
-      // prepends its own compact "main signal" lead-in framing. See
+      // Character Interaction Policy (Hunter gate, extended to Commander): ANALYSIS_HEADLINE
+      // event - the headline text itself is the model's real, unchanged analysis (never rewritten
+      // here); an implemented character only ever prepends its own compact lead-in framing. See
       // docs/ai/character-interaction-policy.md.
-      if (voiceCharacter() === 'hunter') headline = `${hunterHeadlineLeadIn(i18n.language())} ${headline}`;
+      const headlineCharacter = voiceCharacter();
+      const headlinePolicy = window.TradeJournalCharacterPolicy;
+      const headlineCharacterHasPolicy = headlinePolicy && typeof headlinePolicy.hasCharacterPolicy === 'function'
+        ? headlinePolicy.hasCharacterPolicy(headlineCharacter)
+        : (headlineCharacter === 'hunter' || headlineCharacter === 'commander');
+      if (headlineCharacterHasPolicy) headline = `${characterHeadlineLeadIn(i18n.language(), headlineCharacter)} ${headline}`;
       const spoken = voiceText ? voiceText.toSpokenText(headline, i18n.language()) : headline;
       playbackControllerRef.current.enqueue(spoken, { kind: 'ai-analysis-result', caption: headline });
     }

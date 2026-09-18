@@ -39,13 +39,22 @@ test('activeCharacter() reads the real per-page character when set, for every ch
 
 // ---- resolve(): only Hunter is active in this gate ----
 
-test('resolve() is inactive (no gear, "none" allowances) for every non-Hunter character - this gate implements ONLY Hunter', async () => {
+test('resolve() is inactive (no gear, "none" allowances) for every character without a real Character Interaction Policy (engineer/sage)', async () => {
+  for (const character of ['engineer', 'sage']) {
+    const policy = await policySandbox(character);
+    const result = policy.resolve({ event: policy.EVENTS.GENERAL_QA });
+    assert.equal(result.active, false, character);
+    assert.equal(result.gear, null, character);
+    assert.equal(result.addressAllowance, 'none', character);
+    assert.equal(result.metaphorAllowance, 'none', character);
+  }
+});
+
+test('resolve() is active for Commander too (extended in the Commander gate), same shape as Hunter', async () => {
   const policy = await policySandbox('commander');
   const result = policy.resolve({ event: policy.EVENTS.GENERAL_QA });
-  assert.equal(result.active, false);
-  assert.equal(result.gear, null);
-  assert.equal(result.addressAllowance, 'none');
-  assert.equal(result.metaphorAllowance, 'none');
+  assert.equal(result.active, true);
+  assert.equal(result.character, 'commander');
 });
 
 test('resolve() is active for Hunter and reports the character/event back unchanged', async () => {

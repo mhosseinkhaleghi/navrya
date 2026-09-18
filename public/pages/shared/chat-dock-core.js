@@ -1465,25 +1465,36 @@
     return { fieldsToApply: fieldsToApply, findings: evalResult.findings };
   }
 
-  // Character Interaction Policy (Hunter gate): the deterministic proactive-engine finding itself
-  // (severity/evidence/f.message) is never touched here - Hunter only ever adds the surrounding
-  // address/override-question framing, matching the event policy for RISK_WARNING/
-  // RISK_OVERRIDE_CONFIRMATION (docs/ai/character-interaction-policy.md: FACT -> CONFLICT ->
-  // OPTIONS; never shame the user, never invent a new risk condition). Every other character (and
-  // any turn where the active character is unknown) keeps the exact original English override
-  // question, byte for byte.
-  // Delegates to the shared character-interaction-policy.js module when it is loaded (the
+  // Character Interaction Policy (Hunter gate, extended to Commander): the deterministic
+  // proactive-engine finding itself (severity/evidence/f.message) is never touched here - an
+  // implemented character only ever adds the surrounding address/override-question framing,
+  // matching the event policy for RISK_WARNING/RISK_OVERRIDE_CONFIRMATION
+  // (docs/ai/character-interaction-policy.md: FACT -> CONFLICT -> OPTIONS; never shame the user,
+  // never invent a new risk condition). Every other character (engineer/sage, and any turn where
+  // the active character is unknown) keeps the exact original English override question, byte for
+  // byte. Delegates to the shared character-interaction-policy.js module when it is loaded (the
   // canonical copy of this wording); falls back to the exact same text inline otherwise - best-
   // effort, same "additive, never load-bearing" posture as this file's other optional shared-
   // module integrations (e.g. TradeJournalAIContextBuilder above).
-  function hunterProactiveOpener(language) {
+  function characterProactiveOpener(language, character) {
     var policy = window.TradeJournalCharacterPolicy;
-    if (policy && typeof policy.proactiveOpener === 'function') return policy.proactiveOpener(language);
+    if (policy && typeof policy.proactiveOpener === 'function') return policy.proactiveOpener(language, character);
+    if (character === 'commander') {
+      return ({ en: 'Hold on, sir.', fa: 'قربان، یه تضاد داریم.', ar: 'سيدي، لدينا تعارض.', es: 'Señor, tenemos un conflicto.' })[language] || 'Hold on, sir.';
+    }
     return ({ en: 'Hold on a sec.', fa: 'یه لحظه رفیق.', ar: 'لحظة واحدة.', es: 'Un momento.' })[language] || 'Hold on a sec.';
   }
-  function hunterOverrideQuestion(language) {
+  function characterOverrideQuestion(language, character) {
     var policy = window.TradeJournalCharacterPolicy;
-    if (policy && typeof policy.proactiveOverrideQuestion === 'function') return policy.proactiveOverrideQuestion(language);
+    if (policy && typeof policy.proactiveOverrideQuestion === 'function') return policy.proactiveOverrideQuestion(language, character);
+    if (character === 'commander') {
+      return ({
+        en: 'Two options: fall back to the cap, or knowingly confirm this exception.',
+        fa: 'دو انتخاب داریم: برگردیم روی سقف، یا این استثنا رو آگاهانه تأیید کنید.',
+        ar: 'أمامنا خياران: الالتزام بالحد، أو تأكيد هذا الاستثناء عن وعي.',
+        es: 'Tenemos dos opciones: volver al límite, o confirmar esta excepción a propósito.'
+      })[language] || 'Two options: fall back to the cap, or knowingly confirm this exception.';
+    }
     return ({
       en: 'Want to stick with the plan, or knowingly push past it?',
       fa: 'می‌خوای برگردیم روی پلن، یا همین استثنا رو آگاهانه تأیید می‌کنی؟',
@@ -1501,9 +1512,12 @@
     var blocking = findings.filter(function (f) { return proactiveEngine && proactiveEngine.BLOCKING_SEVERITIES[f.severity]; });
     var rest = findings.filter(function (f) { return blocking.indexOf(f) === -1; });
     var lines = blocking.map(function (f) { return f.message; }).concat(rest.map(function (f) { return f.message; }));
-    var isHunter = character === 'hunter';
-    if (blocking.length && isHunter) lines.unshift(hunterProactiveOpener(i18n.language()));
-    if (blocking.length) lines.push(isHunter ? hunterOverrideQuestion(i18n.language()) : 'Do you want to keep the current value, or deliberately override it?');
+    var policy = window.TradeJournalCharacterPolicy;
+    var hasCharacterPolicy = policy && typeof policy.hasCharacterPolicy === 'function'
+      ? policy.hasCharacterPolicy(character)
+      : (character === 'hunter' || character === 'commander');
+    if (blocking.length && hasCharacterPolicy) lines.unshift(characterProactiveOpener(i18n.language(), character));
+    if (blocking.length) lines.push(hasCharacterPolicy ? characterOverrideQuestion(i18n.language(), character) : 'Do you want to keep the current value, or deliberately override it?');
     return lines.join(' ');
   }
 
