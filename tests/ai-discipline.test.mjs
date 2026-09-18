@@ -3,7 +3,8 @@ import test from 'node:test';
 import {
   isValidTimeZone, resolveTimezone, dayKeyInTimeZone, computeDisciplineStreak,
   qualifyingDaysFromCompletions, legacyQualifyingDaysFromSessions, legacyHasAnyAnalysis,
-  firstValidChartInstrumentSession, evaluateNewAchievements, DISCIPLINE_MILESTONES, LEGACY_BACKFILL_CUTOFF_ISO
+  firstValidChartInstrumentSession, evaluateNewAchievements, DISCIPLINE_MILESTONES, LEGACY_BACKFILL_CUTOFF_ISO,
+  weeklyConsistency, findAnalysisDebtSession, hasFollowThroughSession, FOLLOW_THROUGH_ACHIEVEMENT_KEY
 } from '../server/community/ai-discipline.mjs';
 import { SERVER_ONLY_ACHIEVEMENT_POINTS } from '../server/community/xp-config.mjs';
 
@@ -200,6 +201,72 @@ test('evaluateNewAchievements: a gap that breaks the streak never revokes an alr
   const keys = achievementRows.map((a) => a.achievementKey);
   assert.ok(keys.includes('session_ai_discipline_3d') && keys.includes('session_ai_discipline_7d'));
   assert.ok(!keys.includes('session_ai_discipline_14d'));
+});
+
+// Follow-up creative addition #2 - weekly consistency
+test('weeklyConsistency counts qualifying days within the trailing 7-day window (inclusive of today), never more', () => {
+  const today = new Date('2026-03-10T12:00:00.000Z');
+  const days = ['2026-03-04', '2026-03-05', '2026-03-08', '2026-03-10', '2026-02-01'];
+  const result = weeklyConsistency(days, 'UTC', today);
+  assert.equal(result.totalDays, 7);
+  // Window is 2026-03-04..2026-03-10 inclusive (7 days): 03-04, 03-05, 03-08, and 03-10 all fall
+  // inside it (4 matches) - 2026-02-01 is well outside the window and must not count.
+  assert.equal(result.qualifiedDays, 4);
+});
+
+test('weeklyConsistency reports 0 of 7 when there is no qualifying activity at all', () => {
+  assert.deepEqual(weeklyConsistency([], 'UTC', new Date('2026-03-10T00:00:00.000Z')), { qualifiedDays: 0, totalDays: 7 });
+});
+
+// Follow-up creative addition #1 - analysis debt
+test('findAnalysisDebtSession flags the oldest open Session with zero completions, older than 24h, and ignores closed Sessions', () => {
+  const now = new Date('2026-01-05T00:00:00.000Z');
+  const sessions = [
+    { id: 'old-open-no-analysis', status: 'open', createdAt: '2026-01-01T00:00:00.000Z', name: 'Gold Watch', market: 'London', instrument: 'XAUUSD' },
+    { id: 'recent-open-no-analysis', status: 'open', createdAt: '2026-01-04T23:00:00.000Z' },
+    { id: 'old-open-analyzed', status: 'open', createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'old-closed-no-analysis', status: 'closed', createdAt: '2026-01-01T00:00:00.000Z' }
+  ];
+  const completions = [{ sessionId: 'old-open-analyzed', occurredAt: '2026-01-01T05:00:00.000Z' }];
+  const debt = findAnalysisDebtSession(sessions, completions, now);
+  assert.equal(debt.sessionId, 'old-open-no-analysis');
+  assert.equal(debt.name, 'Gold Watch');
+  assert.ok(debt.ageHours >= 24 * 4 - 1);
+});
+
+test('findAnalysisDebtSession returns null when nothing qualifies (nothing old enough, or every open Session already has a completion)', () => {
+  const now = new Date('2026-01-05T00:00:00.000Z');
+  assert.equal(findAnalysisDebtSession([{ id: 's1', status: 'open', createdAt: '2026-01-04T23:30:00.000Z' }], [], now), null);
+  assert.equal(findAnalysisDebtSession([{ id: 's2', status: 'open', createdAt: '2026-01-01T00:00:00.000Z' }], [{ sessionId: 's2', occurredAt: '2026-01-01T01:00:00.000Z' }], now), null);
+  assert.equal(findAnalysisDebtSession([], [], now), null);
+});
+
+// Follow-up creative addition #4 - reflection quality / follow-through
+test('hasFollowThroughSession requires a real "resolved" status inside a session\'s own AI memory, not merely any unresolvedItems entry', () => {
+  const noMemory = { id: 's1' };
+  const stillOpen = { id: 's2', aiSessionAnalysisResult: { memory: { unresolvedItems: [{ id: 'u1', status: 'open' }] } } };
+  const resolved = { id: 's3', aiSessionAnalysisResult: { memory: { unresolvedItems: [{ id: 'u1', status: 'open' }, { id: 'u2', status: 'resolved' }] } } };
+  assert.equal(hasFollowThroughSession([noMemory, stillOpen]), false);
+  assert.equal(hasFollowThroughSession([noMemory, stillOpen, resolved]), true);
+});
+
+test('FOLLOW_THROUGH_ACHIEVEMENT_KEY unlocks once, is never part of the discipline ladder, and awards its configured XP exactly once', async () => {
+  const sessions = [{ id: 's1', instrument: 'XAUUSD', entries: [], aiSessionAnalysisResult: { memory: { unresolvedItems: [{ id: 'u1', status: 'resolved' }] } } }];
+  const { repo, achievementRows, xpRecords } = fakeRepo({ completions: [], sessions });
+  const cfg = { achievementPoints: SERVER_ONLY_ACHIEVEMENT_POINTS };
+  const unlockedKeys = new Set();
+  const result = await evaluateNewAchievements(repo, 'user-3', { unlockedKeys, cfg, timezone: 'UTC' });
+  assert.equal(result.grantedAny, true);
+  assert.ok(achievementRows.some((a) => a.achievementKey === FOLLOW_THROUGH_ACHIEVEMENT_KEY));
+  assert.ok(!DISCIPLINE_MILESTONES.some((m) => m.key === FOLLOW_THROUGH_ACHIEVEMENT_KEY));
+  const awarded = xpRecords.filter((e) => e.type === 'achievement:' + FOLLOW_THROUGH_ACHIEVEMENT_KEY);
+  assert.equal(awarded.length, 1);
+  assert.equal(awarded[0].points, SERVER_ONLY_ACHIEVEMENT_POINTS.session_analysis_follow_through);
+
+  // Re-running must never double-award.
+  const before = xpRecords.length;
+  await evaluateNewAchievements(repo, 'user-3', { unlockedKeys, cfg, timezone: 'UTC' });
+  assert.equal(xpRecords.length, before);
 });
 
 test('firstValidChartInstrumentSession requires an image AND a real note AND a non-empty session instrument', () => {
