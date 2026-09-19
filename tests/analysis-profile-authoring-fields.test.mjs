@@ -69,10 +69,15 @@ function describeImpl(name, normalizeCustomMethodLinks, normalizeCustomFocuses) 
 
 describeImpl('server', serverNormalize.normalizeCustomMethodLinks, serverNormalize.normalizeCustomFocuses);
 
-test('client and server agree on the exact same fixtures', async () => {
-  const client = await loadClientHelpers();
-  describeImpl('client', client.normalizeCustomMethodLinks, client.normalizeCustomFocuses);
-});
+// Registered via top-level await (not from inside another running test's callback): node:test's
+// own docs warn that dynamically calling the imported test() from inside a test callback races the
+// parent test group's completion - proven flaky against a real CI Node version (cancelledByParent
+// on GitHub Actions' Node 22, passing every time locally on Node 24). Loading the client helpers up
+// front, then calling describeImpl('client', ...) exactly like describeImpl('server', ...) above,
+// makes "client and server agree" a property of BOTH describeImpl calls sharing the same fixtures,
+// registered before node:test starts running anything - deterministic on every Node version.
+const client = await loadClientHelpers();
+describeImpl('client', client.normalizeCustomMethodLinks, client.normalizeCustomFocuses);
 
 test('server normalizeHttpUrl/isYoutubeUrl agree with the client twin on a spot-check of tricky URLs', async () => {
   const client = await loadClientHelpers();

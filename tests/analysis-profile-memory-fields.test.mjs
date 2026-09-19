@@ -75,10 +75,11 @@ function describeImpl(name, normalizeConcepts, normalizeUnderstanding) {
 
 describeImpl('server', serverNormalize.normalizeConcepts, serverNormalize.normalizeUnderstanding);
 
-test('client and server agree on the exact same fixtures', async () => {
-  const client = await loadClientHelpers();
-  describeImpl('client', client.normalizeConcepts, client.normalizeUnderstanding);
-});
+// Registered via top-level await (not from inside another running test's callback) - same fix and
+// same reasoning as tests/analysis-profile-authoring-fields.test.mjs applies right above its own
+// matching describeImpl('client', ...) call.
+const client = await loadClientHelpers();
+describeImpl('client', client.normalizeConcepts, client.normalizeUnderstanding);
 
 test('server makeConcept-equivalent (client only) creates a fresh, unique, valid concept from a title/description/priority triple', async () => {
   const client = await loadClientHelpers();
