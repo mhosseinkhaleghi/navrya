@@ -134,6 +134,14 @@ const copy = {
     subPayOriginalPrice: 'قیمت اصلی', subPayDiscountLine: 'تخفیف ({code})',
     subPayBonusLine: 'پس از تأیید پرداخت، {amount} اعتبار به کیف پول شما اضافه می‌شود.',
     subPayNoCostNote: 'این کد اشتراک را رایگان می‌کند. چیزی برای پرداخت نیست — به‌محض تأیید فعال می‌شود.',
+    subPayUrgencyEndsIn: 'زمان باقی‌مانده تا پایان این تخفیف',
+    subPayUnitDay: 'روز',
+    subPayUnitHour: 'ساعت',
+    subPayUnitMinute: 'دقیقه',
+    subPayUnitSecond: 'ثانیه',
+    subPayUrgencyLeft: 'فقط {count} بار استفاده باقی مانده!',
+    subPayUrgencyLastOne: 'آخرین ظرفیت باقی مانده است!',
+    subPayUrgencyLive: 'زنده',
     subDiscountErrInvalid: 'این کد معتبر نیست.', subDiscountErrNotStarted: 'این کد هنوز فعال نشده است.',
     subDiscountErrExpired: 'مهلت استفاده از این کد به پایان رسیده است.', subDiscountErrExhausted: 'ظرفیت استفاده از این کد تکمیل شده است.',
     subDiscountErrAlreadyUsed: 'شما قبلاً از این کد استفاده کرده‌اید.',
@@ -302,6 +310,14 @@ const copy = {
     subPayOriginalPrice: 'Original price', subPayDiscountLine: 'Discount ({code})',
     subPayBonusLine: 'You will receive {amount} in wallet credit once your payment is confirmed.',
     subPayNoCostNote: 'This code makes the plan free. There is nothing to pay — it activates as soon as you confirm.',
+    subPayUrgencyEndsIn: 'This discount ends in',
+    subPayUnitDay: 'Days',
+    subPayUnitHour: 'Hours',
+    subPayUnitMinute: 'Min',
+    subPayUnitSecond: 'Sec',
+    subPayUrgencyLeft: 'Only {count} uses left!',
+    subPayUrgencyLastOne: 'Last one left!',
+    subPayUrgencyLive: 'LIVE',
     subDiscountErrInvalid: 'This code is not valid.', subDiscountErrNotStarted: 'This code is not active yet.',
     subDiscountErrExpired: 'This code has expired.', subDiscountErrExhausted: 'All uses of this code have already been claimed.',
     subDiscountErrAlreadyUsed: 'You have already used this code.',
@@ -470,6 +486,14 @@ const copy = {
     subPayOriginalPrice: 'السعر الأصلي', subPayDiscountLine: 'الخصم ({code})',
     subPayBonusLine: 'ستحصل على {amount} كرصيد في محفظتك بعد تأكيد الدفع.',
     subPayNoCostNote: 'هذا الرمز يجعل الخطة مجانية. لا يوجد ما تدفعه — تُفعَّل فور التأكيد.',
+    subPayUrgencyEndsIn: 'ينتهي هذا الخصم خلال',
+    subPayUnitDay: 'يوم',
+    subPayUnitHour: 'ساعة',
+    subPayUnitMinute: 'دقيقة',
+    subPayUnitSecond: 'ثانية',
+    subPayUrgencyLeft: 'المتبقي {count} استخدام فقط!',
+    subPayUrgencyLastOne: 'تبقّى الاستخدام الأخير!',
+    subPayUrgencyLive: 'مباشر',
     subDiscountErrInvalid: 'هذا الرمز غير صالح.', subDiscountErrNotStarted: 'هذا الرمز لم يبدأ بعد.',
     subDiscountErrExpired: 'انتهت صلاحية هذا الرمز.', subDiscountErrExhausted: 'تم استهلاك جميع استخدامات هذا الرمز.',
     subDiscountErrAlreadyUsed: 'لقد استخدمتَ هذا الرمز من قبل.',
@@ -638,6 +662,14 @@ const copy = {
     subPayOriginalPrice: 'Precio original', subPayDiscountLine: 'Descuento ({code})',
     subPayBonusLine: 'Recibirás {amount} de crédito en tu cartera cuando se confirme el pago.',
     subPayNoCostNote: 'Este código hace que el plan sea gratis. No hay nada que pagar: se activa en cuanto confirmes.',
+    subPayUrgencyEndsIn: 'Este descuento termina en',
+    subPayUnitDay: 'Días',
+    subPayUnitHour: 'Horas',
+    subPayUnitMinute: 'Min',
+    subPayUnitSecond: 'Seg',
+    subPayUrgencyLeft: '¡Solo quedan {count} usos!',
+    subPayUrgencyLastOne: '¡Queda el último!',
+    subPayUrgencyLive: 'EN VIVO',
     subDiscountErrInvalid: 'Este código no es válido.', subDiscountErrNotStarted: 'Este código todavía no está activo.',
     subDiscountErrExpired: 'Este código ha caducado.', subDiscountErrExhausted: 'Ya se han agotado todos los usos de este código.',
     subDiscountErrAlreadyUsed: 'Ya has usado este código.',
@@ -2172,6 +2204,127 @@ function discountErrorText(lang, code) {
 
 const PAY_SHEET_STEPS = 3;
 
+// ---- Checkout urgency: a reverse countdown for a time-limited code and a LIVE remaining-uses count for a usage-limited one ----
+// Both show SERVER figures only (the quote, then the status poll): the client formats and animates them, it never decides on
+// its own that a code is still - or no longer - valid. The motion is injected once (this app's established way to get a real CSS
+// animation out of pure inline-style components, see sessionAnalysisCard.jsx) and switched off by prefers-reduced-motion.
+const URGENCY_POLL_MS = 4000;
+const DISCOUNT_URGENCY_MOTION_CSS = `
+@keyframes nv-urgency-enter{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes nv-urgency-glow{
+  0%,100%{box-shadow:inset 0 0 0 0 color-mix(in srgb,var(--warning,#f5a524) 0%,transparent);border-color:color-mix(in srgb,var(--warning,#f5a524) 40%,transparent)}
+  50%{box-shadow:inset 0 0 22px 0 color-mix(in srgb,var(--warning,#f5a524) 22%,transparent);border-color:color-mix(in srgb,var(--warning,#f5a524) 85%,transparent)}
+}
+@keyframes nv-urgency-tick{from{opacity:0;transform:translateY(-55%)}to{opacity:1;transform:translateY(0)}}
+@keyframes nv-urgency-pop{0%{transform:scale(1.75);color:var(--danger,#ff3830)}55%{transform:scale(.93)}100%{transform:scale(1)}}
+@keyframes nv-urgency-float{0%{opacity:0;transform:translateY(8px)}18%{opacity:1}100%{opacity:0;transform:translateY(-22px)}}
+@keyframes nv-urgency-live{0%{transform:scale(.7);opacity:.75}100%{transform:scale(2.7);opacity:0}}
+@keyframes nv-urgency-colon{0%,49%{opacity:1}50%,100%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){
+  [data-nv-urgency],[data-nv-urgency] *{animation:none!important}
+}
+`;
+function useDiscountUrgencyMotion() {
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || document.getElementById('nv-discount-urgency-motion')) return;
+    const el = document.createElement('style');
+    el.id = 'nv-discount-urgency-motion';
+    el.textContent = DISCOUNT_URGENCY_MOTION_CSS;
+    document.head.appendChild(el);
+  }, []);
+}
+
+// days : hours : minutes : seconds until `expiresAt`. `offsetMs` is (server clock - this device's clock), so a wrong device
+// clock cannot mis-time the discount. Reaching zero only calls `onZero` (once per target): the parent asks the SERVER before
+// removing anything, so a fast clock can never strip a code that is still valid.
+function DiscountCountdown({ lang, expiresAt, offsetMs = 0, onZero }) {
+  const targetMs = Date.parse(expiresAt);
+  const [now, setNow] = React.useState(() => Date.now() + offsetMs);
+  const firedFor = React.useRef(null);
+  React.useEffect(() => {
+    setNow(Date.now() + offsetMs);
+    const timer = setInterval(() => setNow(Date.now() + offsetMs), 1000);
+    return () => clearInterval(timer);
+  }, [offsetMs]);
+  const msLeft = Math.max(0, targetMs - now);
+  React.useEffect(() => {
+    if (msLeft > 0 || firedFor.current === expiresAt) return;
+    firedFor.current = expiresAt;
+    if (onZero) onZero();
+  }, [msLeft, expiresAt]);
+  const pad = (value) => String(value).padStart(2, '0');
+  const total = Math.floor(msLeft / 1000);
+  const parts = [
+    { id: 'd', value: Math.floor(total / 86400), label: 'subPayUnitDay' },
+    { id: 'h', value: Math.floor((total % 86400) / 3600), label: 'subPayUnitHour' },
+    { id: 'm', value: Math.floor((total % 3600) / 60), label: 'subPayUnitMinute' },
+    { id: 's', value: total % 60, label: 'subPayUnitSecond' }
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, color: 'var(--warning)' }}>
+        <Icon name="hourglass" size={14} strokeWidth={2.2} />
+        {tr(lang, 'subPayUrgencyEndsIn')}
+      </span>
+      <div dir="ltr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 5 }}>
+        {parts.map((part, index) => (
+          <React.Fragment key={part.id}>
+            {index > 0 && <span style={{ paddingBlockStart: 7, fontSize: 19, fontWeight: 700, color: 'var(--warning)', animation: 'nv-urgency-colon 1s steps(1, end) infinite' }}>:</span>}
+            <span style={{ flex: 1, maxWidth: 66, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: '100%', height: 40, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid color-mix(in srgb, var(--warning) 38%, transparent)', background: 'rgba(3,8,7,.72)' }}>
+                <span key={part.value} className="navrya-tabular" style={{ fontSize: 21, fontWeight: 700, color: 'var(--parchment)', animation: 'nv-urgency-tick 320ms var(--ease-out) both' }}>{pad(part.value)}</span>
+              </span>
+              <span style={{ fontSize: 9.5, letterSpacing: '.06em', color: 'var(--text-dim)' }}>{tr(lang, part.label)}</span>
+            </span>
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// How many uses of a usage-limited code are left RIGHT NOW (server-reported, refreshed by the status poll): a pulsing LIVE dot,
+// a number that pops when it changes, a floating "-N" when others claim uses, and a bar that drains as it runs out.
+function DiscountLiveRemaining({ lang, remaining, maxRedemptions }) {
+  const previous = React.useRef(remaining);
+  const [dropped, setDropped] = React.useState(0);
+  React.useEffect(() => {
+    const drop = previous.current - remaining;
+    previous.current = remaining;
+    if (drop <= 0) return undefined;
+    setDropped(drop);
+    const timer = setTimeout(() => setDropped(0), 1400);
+    return () => clearTimeout(timer);
+  }, [remaining]);
+  const fraction = maxRedemptions > 0 ? Math.max(0, Math.min(1, remaining / maxRedemptions)) : 1;
+  const barColor = fraction <= 0.2 || remaining <= 3 ? 'var(--danger)' : fraction <= 0.5 ? 'var(--warning)' : 'var(--char-accent)';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ position: 'relative', width: 8, height: 8, flex: 'none' }}>
+          <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'var(--danger)' }} />
+          <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'var(--danger)', animation: 'nv-urgency-live 1.6s ease-out infinite' }} />
+        </span>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: 'var(--danger)' }}>{tr(lang, 'subPayUrgencyLive')}</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+          {dropped > 0 && (
+            <span key={'drop' + remaining} dir="ltr" className="navrya-tabular" style={{ position: 'absolute', insetInlineEnd: '100%', paddingInlineEnd: 6, fontSize: 12, fontWeight: 700, color: 'var(--danger)', animation: 'nv-urgency-float 1200ms ease-out both' }}>{'-' + dropped}</span>
+          )}
+          <span key={remaining} dir="ltr" className="navrya-tabular" style={{ display: 'inline-block', fontSize: 22, fontWeight: 800, color: 'var(--parchment)', animation: 'nv-urgency-pop 640ms var(--ease-out) both' }}>{remaining}</span>
+        </span>
+      </div>
+      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)' }}>
+        {remaining === 1 ? tr(lang, 'subPayUrgencyLastOne') : tr(lang, 'subPayUrgencyLeft', { count: remaining })}
+      </span>
+      <span style={{ display: 'block', height: 6, borderRadius: 6, background: 'rgba(244,234,215,.10)', overflow: 'hidden' }}>
+        <span style={{ display: 'block', height: '100%', width: (fraction * 100) + '%', borderRadius: 6, background: barColor, transition: 'width 700ms var(--ease-out), background 400ms var(--ease-out)' }} />
+      </span>
+    </div>
+  );
+}
+
+
 function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed, resumeInvoiceId = null, onInvoiceCreated, discountEnabled = false, planId = null, walletBonusUsd = 0 }) {
   const [step, setStep] = React.useState(resumeInvoiceId ? 2 : 0);
   const [method, setMethod] = React.useState(null);
@@ -2193,6 +2346,11 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
   const [quote, setQuote] = React.useState(null);
   const [quoting, setQuoting] = React.useState(false);
   const [codeError, setCodeError] = React.useState('');
+  // Checkout urgency: the latest status poll of the applied code (null until the first one answers) and the offset between
+  // the server's clock and this device's, so a wrong device clock cannot mis-time a countdown.
+  const [live, setLive] = React.useState(null);
+  const [serverOffsetMs, setServerOffsetMs] = React.useState(0);
+  useDiscountUrgencyMotion();
 
   const methods = [
     { id: 'crypto', icon: 'wallet', label: tr(lang, 'subPayMethodCrypto'), desc: tr(lang, 'subPayMethodCryptoDesc'), implemented: true },
@@ -2204,6 +2362,12 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
   // The wallet bonus shown before paying: the server quote's when a code is applied (it is 0 for a free result),
   // otherwise the plan's admin-set bonus from the catalog. Only a subscription passes one.
   const bonusMicroUsd = quote ? quote.walletBonusMicroUsd : Math.round(Number(walletBonusUsd || 0) * 1000000);
+  // The poll's figures win over the quote's as soon as they exist (an admin may change the expiry or the cap while it is open).
+  const urgencyExpiresAt = quote ? (live && live.expiresAt !== undefined ? live.expiresAt : quote.expiresAt) : null;
+  const urgencyRemaining = quote ? (live && live.remaining != null ? live.remaining : quote.remaining) : null;
+  const urgencyMax = quote ? (live && live.maxRedemptions != null ? live.maxRedemptions : quote.maxRedemptions) : null;
+  const showCountdown = Boolean(quote && urgencyExpiresAt);
+  const showRemaining = Boolean(quote && urgencyMax != null && urgencyRemaining != null);
 
   // The sheet's height follows whichever panel is showing, measured rather than hardcoded - a
   // fixed height would clip the taller step in a language whose strings wrap differently.
@@ -2249,6 +2413,7 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
 
   function clearCode() {
     setQuote(null);
+    setLive(null);
     setCodeError('');
   }
 
@@ -2258,11 +2423,58 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
     setQuoting(true);
     setCodeError('');
     fetch('/api/sync/subscriptions/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId, code: typed }) })
-      .then((r) => r.json().then((body) => { if (!r.ok) { const error = new Error(body.error); error.code = body.error; throw error; } return body; }))
-      .then((result) => { setQuote(result); setCodeInput(''); })
+      .then((r) => { noteServerClock(r); return r.json().then((body) => { if (!r.ok) { const error = new Error(body.error); error.code = body.error; throw error; } return body; }); })
+      .then((result) => { setQuote(result); setLive(null); setCodeInput(''); })
       .catch((error) => { setQuote(null); setCodeError(discountErrorText(lang, error && error.code) || tr(lang, 'subDiscountErrInvalid')); })
       .finally(() => setQuoting(false));
   }
+
+  // The urgency poll and its helpers. Everything here reacts to what the SERVER reports about the applied code.
+  function noteServerClock(response) {
+    const header = response && response.headers ? response.headers.get('Date') : null;
+    const serverMs = header ? Date.parse(header) : NaN;
+    // The HTTP Date header is whole seconds, so only a real skew (a wrong device clock) moves the offset - never jitter.
+    if (Number.isFinite(serverMs)) setServerOffsetMs((current) => (Math.abs(serverMs - Date.now() - current) > 1500 ? serverMs - Date.now() : current));
+  }
+
+  function fetchCodeStatus(codeId) {
+    return fetch('/api/sync/subscriptions/discount-codes/' + encodeURIComponent(codeId) + '/status')
+      .then((r) => { noteServerClock(r); return r.ok ? r.json() : null; })
+      .catch(() => null);
+  }
+
+  // Removes the applied code but keeps the REASON on screen (clearCode() would wipe it). Only ever called with what the
+  // server reported.
+  function expireQuote(status) {
+    setQuote(null);
+    setLive(null);
+    setCodeError(tr(lang, status === 'expired' ? 'subDiscountErrExpired' : status === 'exhausted' ? 'subDiscountErrExhausted' : 'subDiscountErrInvalid'));
+  }
+
+  function applyLiveStatus(body) {
+    setLive(body);
+    if (body.active === false) expireQuote(body.status);
+  }
+
+  // A countdown reaching zero on THIS device's clock proves nothing (the clock may be wrong): ask the server, and let only
+  // its answer remove the code.
+  function verifyWithServer() {
+    if (!quote || !quote.codeId) return;
+    fetchCodeStatus(quote.codeId).then((body) => { if (body) applyLiveStatus(body); });
+  }
+
+  React.useEffect(() => {
+    // Only while the review step is showing, only for a code that can actually run out, and never while the payment is being
+    // submitted (the user's own reservation would otherwise look like the code running out).
+    if (!quote || !quote.codeId || step !== 1 || submitting) return undefined;
+    if (!quote.expiresAt && quote.maxRedemptions == null) return undefined;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchCodeStatus(quote.codeId).then((body) => { if (!cancelled && body) applyLiveStatus(body); });
+    }, URGENCY_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [quote, step, submitting, lang]);
 
   const footer = step === 0
     ? (<><span style={{ flex: 1 }} /><Button variant="secondary" onClick={onClose}>{tr(lang, 'subCancel')}</Button></>)
@@ -2355,6 +2567,12 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
                   )
                 ) : (
                   <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'subPayDiscountSubscriptionOnly')}</span>
+                )}
+                {discountEnabled && quote && (showCountdown || showRemaining) && (
+                  <div data-nv-urgency style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '12px 14px', borderRadius: 9, border: '1px solid color-mix(in srgb, var(--warning) 45%, transparent)', background: 'linear-gradient(180deg, color-mix(in srgb, var(--warning) 9%, transparent), rgba(3,8,7,.45))', animation: 'nv-urgency-enter 420ms var(--ease-out) both, nv-urgency-glow 2.6s ease-in-out 480ms infinite' }}>
+                    {showCountdown && <DiscountCountdown lang={lang} expiresAt={urgencyExpiresAt} offsetMs={serverOffsetMs} onZero={verifyWithServer} />}
+                    {showRemaining && <DiscountLiveRemaining lang={lang} remaining={urgencyRemaining} maxRedemptions={urgencyMax} />}
+                  </div>
                 )}
                 {!!codeError && <Notice tone="danger" icon="status">{codeError}</Notice>}
               </div>
