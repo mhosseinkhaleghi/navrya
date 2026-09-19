@@ -9,6 +9,7 @@ import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commerc
 import { assertCodeAvailable, assertStoredCodeValid, computeDiscount } from '../commercial/discount-codes.mjs';
 import { allocateFifo, sumAllocations, grantKey as bonusGrantKey, reversalKey as bonusReversalKey, reversalMetadata } from '../commercial/subscription-bonus-lots.mjs';
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
+import { createReferralPgDomains } from './referral-repo.pg.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
@@ -5187,7 +5188,11 @@ export function createPgRepo(pool) {
     return { backend: 'postgres', dbOk, migrations };
   }
 
+  // Referral & Affiliate domains (068-070): implemented in referral-repo.pg.mjs (mirror of referral-repo.memory.mjs).
+  const referralDomains = createReferralPgDomains({ pool, newId, mapWalletLedgerEntry });
+
   return {
+    ...referralDomains,
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,

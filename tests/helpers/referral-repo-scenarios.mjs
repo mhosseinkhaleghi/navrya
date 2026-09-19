@@ -3,6 +3,7 @@
 // (real pg, DATABASE_URL-gated). Identical assertions on two implementations is the parity guarantee: the
 // memory repo (what every route test injects) can only be trusted if a real database behaves the same way.
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { MICRO, parseProgramVersionInput, parseAssignmentInput, buildRulesSnapshot, commissionEndsAtFor } from '../../server/commercial/referral-rules.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -388,12 +389,14 @@ export function registerReferralRepoScenarios({ test, makeRepo, label }) {
       transactionId: purchase.id, chainId: 56, assetSymbol: 'USDT', tokenContract: ASSET.tokenContract, tokenDecimals: 18, recipientAddress: ASSET.treasurySender,
       atomicAmount: '5000000000000000000', usdAmountMicroUsd: 5 * MICRO, exchangeRateSnapshot: 1, expiresAt: new Date(Date.now() + DAY).toISOString(), gatewayInvoiceId: null
     });
-    await repo.cryptoInvoices.claimTxHash(invoice.id, hash('c'));
+    // A fresh random hash per run: crypto_invoices is not truncated between runs on a shared test database.
+    const inboundHash = '0x' + randomBytes(32).toString('hex');
+    await repo.cryptoInvoices.claimTxHash(invoice.id, inboundHash);
     const req = (await repo.referralPayouts.createRequest(payoutArgs(ctx.referrer.id, 10 * MICRO, 'kc'))).request;
     await repo.referralPayouts.transition(req.id, { expectedFrom: 'requested', to: 'under_review', actor: { type: 'admin', id: ctx.admin.id } });
     await repo.referralPayouts.transition(req.id, { expectedFrom: 'under_review', to: 'approved', actor: { type: 'admin', id: ctx.admin.id } });
-    const clash = await repo.referralPayouts.setTxHash(req.id, { txHash: hash('c'), actorId: ctx.admin.id, expectedFrom: 'approved' });
-    assert.deepEqual([clash.ok, clash.reason], [false, 'TX_HASH_ALREADY_USED']);
+    const clash = await repo.referralPayouts.setTxHash(req.id, { txHash: inboundHash.toUpperCase().replace('0X', '0x'), actorId: ctx.admin.id, expectedFrom: 'approved' });
+    assert.deepEqual([clash.ok, clash.reason], [false, 'TX_HASH_ALREADY_USED'], 'compared case-insensitively');
   });
 
   // --- reversals -------------------------------------------------------------------------------------
