@@ -100,7 +100,8 @@ test('065 is additive only and idempotent: no destructive statement, no edit of 
 test('the migration runner will pick 065 up: migrations are applied in numeric filename order', async () => {
   const files = (await readdir(migrationsDir)).filter((name) => name.endsWith('.sql')).sort();
   assert.ok(files.indexOf(MIGRATION) > files.indexOf('064_discount_codes.sql'));
-  assert.equal(files[files.length - 1], MIGRATION, '065 is the newest migration');
+  // Not asserted to be the newest file overall - a later migration (e.g. 066_widen_plan_checks_for_pro.sql) is
+  // expected to be added after this one without this test needing to change.
 });
 
 // ---- memory / PostgreSQL repository parity ---------------------------------------------------------------------------
