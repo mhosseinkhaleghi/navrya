@@ -7,7 +7,10 @@
  * `ingestLearning` (the engine-memory learning loop, POST `/api/analysis-profiles/ingest`); all
  * three are real, wallet-billed routes in server/pattern-ai-server.mjs. `readSource` (POST
  * `/api/analysis-profiles/read-source`) is the one call here that is NOT billed - it only fetches
- * a website/YouTube page and never touches an LLM, so it carries no provider key and records no usage. Same real request()/baseUrl convention as
+ * a website/YouTube page and never touches an LLM, so it carries no provider key and records no usage.
+ * `chat` (the teaching-chat tab, POST `/api/analysis-profiles/chat`) and `preview` (the Preview
+ * tab's optional billed sample, POST `/api/analysis-profiles/preview`) are both real, wallet-billed
+ * routes like `suggestFocuses`/`suggestConcepts`/`ingestLearning`. Same real request()/baseUrl convention as
  * pattern-registry-ai.js/strategy-education-ai.js, but deliberately does NOT fall back to a canned
  * local reply on failure - a billed AI feature that silently pretends to succeed with fake text
  * would hide a real WALLET_INSUFFICIENT_BALANCE/PROVIDER_PRICING_NOT_CONFIGURED condition from the
@@ -151,8 +154,47 @@
     };
   }
 
+  // Unlike suggest/ingest (which only need the style half, built by styleContext() from raw ids),
+  // chat and preview read the SAME full profile shape the Session analysis prompt does - focuses,
+  // customFocuses, concepts, understanding, requiredInputs too - because both build the shared brief
+  // (server/ai/analysis-profile-brief.mjs) server-side. `profileContext` is exactly
+  // window.TradeJournalAnalysisContext.getAnalysisContext(profileId)'s own return value; forwarded
+  // wholesale so the two can never drift out of sync field by field.
+  function fullProfileContext(profileContext) { return profileContext || {}; }
+
+  // The teaching chat's ONE AI call. options: { message, history, profileContext, language }.
+  // `history` is the conversation so far as plain {role, content} turns (proposals/tokenUsage are the
+  // caller's own concern, never sent back to the model). Resolves to { reply, proposals, provider,
+  // usage } - `proposals` is already the exact shape analysis_profile_messages.proposals expects,
+  // ready to pass straight to TradeJournalAnalysisProfileStore.appendMessages(). Empty text is
+  // refused locally, before any network call.
+  async function chat(options) {
+    var opts = options || {};
+    var message = typeof opts.message === 'string' ? opts.message.trim() : '';
+    if (!message) throw new AnalysisProfileAIError('ANALYSIS_PROFILE_CHAT_MESSAGE_REQUIRED');
+    var payload = {
+      message: message, language: opts.language || 'en', profile: fullProfileContext(opts.profileContext),
+      history: (opts.history || []).slice(-24).map(function (m) { return { role: m.role, content: String(m.content || '') }; })
+    };
+    var result = await request('/api/analysis-profiles/chat', payload);
+    recordUsage('analysisProfiles.chat', result);
+    return { reply: String(result.reply || ''), proposals: result.proposals || [], provider: result.provider || 'openai', usage: result.usage || null };
+  }
+
+  // The Preview tab's optional billed sample. options: { profileContext, language }. Resolves to
+  // { observations: [{title, detail}], provider, usage } - each observation is clearly illustrative,
+  // never claiming a real chart (server/pattern-ai-server.mjs's own system prompt enforces this).
+  async function preview(options) {
+    var opts = options || {};
+    var payload = { language: opts.language || 'en', profile: fullProfileContext(opts.profileContext) };
+    var result = await request('/api/analysis-profiles/preview', payload);
+    recordUsage('analysisProfiles.preview', result);
+    return { observations: result.observations || [], provider: result.provider || 'openai', usage: result.usage || null };
+  }
+
   window.TradeJournalAnalysisProfileAI = {
     suggestFocuses: suggestFocuses, suggestConcepts: suggestConcepts, ingestLearning: ingestLearning, readSource: readSource,
+    chat: chat, preview: preview,
     AnalysisProfileAIError: AnalysisProfileAIError
   };
 }());

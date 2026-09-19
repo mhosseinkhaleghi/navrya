@@ -350,6 +350,38 @@
     return queued;
   }
 
+  // ---- teaching chat (Phase 4: an ongoing conversation, distinct from the events ledger's plain
+  // diary entries) - NOT a replica list domain, nested under the owning profile, fetched only when
+  // the Chat tab opens. A turn (the trader's message + the engine's reply) is appended in ONE POST,
+  // and only after the AI call already succeeded (the caller builds the reply message itself from
+  // window.TradeJournalAnalysisProfileAI.chat()'s result) - a failed call never stores half a turn.
+  function messagesUrl(profileId, suffix) { return '/api/sync/analysis-profiles/' + encodeURIComponent(profileId) + '/messages' + (suffix || ''); }
+  async function messageRequest(method, url, body) {
+    var init = { method: method };
+    if (body !== undefined) { init.headers = { 'Content-Type': 'application/json' }; init.body = JSON.stringify(body); }
+    var response = await fetch(url, init);
+    if (response.status === 204) return null;
+    var parsed = await response.json().catch(function () { return {}; });
+    if (!response.ok) throw new AnalysisProfileError(parsed.error || 'ANALYSIS_PROFILE_MESSAGE_REQUEST_FAILED');
+    return parsed;
+  }
+  async function listMessages(profileId) {
+    await whenPersisted(profileId);
+    var body = await messageRequest('GET', messagesUrl(profileId));
+    return (body && body.messages) || [];
+  }
+  // turn: [{role:'user', content}, {role:'assistant', content, proposals?, tokenUsage?}] - one or two
+  // messages, exactly what the server accepts as one atomic batch.
+  async function appendMessages(profileId, turn) {
+    await whenPersisted(profileId);
+    var body = await messageRequest('POST', messagesUrl(profileId), { messages: turn });
+    return (body && body.messages) || [];
+  }
+  // statuses: {[proposalId]: 'applied' | 'dismissed'} - resolves a pending proposal once; an
+  // already-resolved one is left alone by the server, never flipped back.
+  function resolveProposals(profileId, messageId, statuses) { return messageRequest('PATCH', messagesUrl(profileId, '/' + encodeURIComponent(messageId)), { statuses: statuses }); }
+  function clearMessages(profileId) { return messageRequest('DELETE', messagesUrl(profileId)); }
+
   // A plain diary entry: zero tokens, no concept/understanding change, no profile save at all - the
   // "Save without teaching" action. Best-effort like every ledger write (resolves null on any
   // failure, an empty note, or an unknown profile).
@@ -549,6 +581,10 @@
     removeSource: removeSource,
     uploadSourcePdf: uploadSourcePdf,
     queueLinkSources: queueLinkSources,
+    listMessages: listMessages,
+    appendMessages: appendMessages,
+    resolveProposals: resolveProposals,
+    clearMessages: clearMessages,
     AnalysisProfileError: AnalysisProfileError,
     // Pure authoring helpers the wizard/inline editor share so validation never forks per screen.
     helpers: {

@@ -33,8 +33,11 @@ function stubOpenAi(dataObject, usage) {
 
 const baseBody = () => ({
   message: 'I always wait for a liquidity sweep before trusting a breakout.', language: 'en', provider: 'openai', apiKey: 'k', model: 'gpt-5.6-luna',
+  // The existing-concept titles and the current understanding to dedupe against come from THIS
+  // object (profile.concepts / profile.understanding) - the same one the brief itself reads - never
+  // a separate, independently-supplied field.
   profile: { primaryStyle: { id: 'smc', name: { en: 'Smart Money Concepts' } }, secondaryStyles: [], concepts: [{ title: 'Order block mitigation', priority: 'preferred' }], understanding: '' },
-  existingConcepts: [{ title: 'Order block mitigation' }], currentUnderstanding: '', history: []
+  history: []
 });
 
 test('the /api/analysis-profiles/chat route is registered in AI_BILLED_ROUTES and the dispatch table', async () => {
@@ -83,7 +86,9 @@ test('a concept identical to an existing one is never re-proposed, even case/whi
 
 test('an understanding identical to the current one is never proposed (nothing genuinely changed)', async () => {
   globalThis.fetch = stubOpenAi({ reply: '', conceptsProposed: [], understandingProposed: 'Reads structure first.' });
-  const result = await chatWithAnalysisProfile({ ...baseBody(), currentUnderstanding: 'Reads structure first.' });
+  const body = baseBody();
+  body.profile.understanding = 'Reads structure first.';
+  const result = await chatWithAnalysisProfile(body);
   assert.deepEqual(result.proposals, []);
 });
 
@@ -134,6 +139,12 @@ test('sanitizeAnalysisProfileChat caps title/description length and validates pr
   assert.equal(result.proposals[0].title.length, 100);
   assert.equal(result.proposals[0].description.length, 300);
   assert.equal(result.proposals[0].priority, 'preferred');
+});
+
+test('a missing body.profile (e.g. a brand-new profile with no style chosen yet) still works - an empty brief, no crash', async () => {
+  globalThis.fetch = stubOpenAi({ reply: 'Sure, tell me more.', conceptsProposed: [], understandingProposed: '' });
+  const result = await chatWithAnalysisProfile({ message: 'hi', language: 'en', provider: 'openai', apiKey: 'k' });
+  assert.equal(result.reply, 'Sure, tell me more.');
 });
 
 test('the schema is strict JSON with no additional properties, requiring reply/conceptsProposed/understandingProposed', () => {

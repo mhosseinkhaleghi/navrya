@@ -1478,7 +1478,8 @@ async function chatWithAnalysisProfile(body) {
   const message = typeof body.message === 'string' ? body.message.trim() : '';
   if (!message) throw new Error('ANALYSIS_PROFILE_CHAT_MESSAGE_REQUIRED');
   const language = languageNames[body.language] || languageNames.en;
-  const brief = buildAnalysisProfileBrief(body.profile);
+  const profile = body.profile || {};
+  const brief = buildAnalysisProfileBrief(profile);
   const history = (Array.isArray(body.history) ? body.history : []).slice(-ANALYSIS_PROFILE_CHAT_HISTORY_MAX).map(historyItem);
   const { data: result, usage, provider, model } = await callProvider(body.provider, body.apiKey, body.model, {
     input: [
@@ -1488,8 +1489,11 @@ async function chatWithAnalysisProfile(body) {
     ],
     text: { format: analysisProfileChatFormat }
   }, 'analysisProfiles.chat');
-  const existingTitles = (Array.isArray(body.existingConcepts) ? body.existingConcepts : []).map((c) => (c && c.title) || '');
-  return { ...sanitizeAnalysisProfileChat(result, existingTitles, body.currentUnderstanding), provider, model, usage };
+  // The existing-concept titles and the current understanding to dedupe proposals against come from
+  // the SAME profile object the brief itself was built from - never a second, separately-supplied
+  // copy the caller could let drift out of sync with what the model was actually shown.
+  const existingTitles = (Array.isArray(profile.concepts) ? profile.concepts : []).map((c) => (c && c.title) || '');
+  return { ...sanitizeAnalysisProfileChat(result, existingTitles, profile.understanding), provider, model, usage };
 }
 
 // ---- Preview (Phase 4): a clearly-labelled ILLUSTRATIVE sample, never a real chart --------------
