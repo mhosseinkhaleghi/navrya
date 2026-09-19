@@ -7,9 +7,11 @@
 import { newId } from '../db/id.mjs';
 import { ApiError } from '../community/errors.mjs';
 import { BillingProvider } from './billing-provider.mjs';
-import { getPlanPrice, getWalletRules } from './commercial-config.mjs';
+import { getWalletRules } from './commercial-config.mjs';
 import { toMicroUsd } from './wallet-service.mjs';
 import { PAID_PLAN_NAMES } from './commercial-defaults.mjs';
+import { MANUAL_CHECKOUT_HOLD_MINUTES } from './commercial-defaults.mjs';
+import { prepareSubscriptionCheckout, createSubscriptionTransaction } from './subscription-checkout.mjs';
 
 export class ManualBillingProvider extends BillingProvider {
   constructor(repo) {
@@ -29,18 +31,17 @@ export class ManualBillingProvider extends BillingProvider {
     return { transactionId: transaction.id, status: transaction.status };
   }
 
-  // Snapshots the plan's CURRENT price into the transaction's metadata right now - confirming
-  // this transaction later never re-reads live commercial config (spec section 2's price-snapshot
-  // requirement).
-  async createSubscription({ userId, planId }) {
+  // Snapshots the plan's CURRENT price, the optional discount code's terms and the plan's wallet bonus into the
+  // transaction's metadata right now - confirming this transaction later never re-reads live commercial config
+  // (spec section 2's price-snapshot requirement). The transaction is created at the FINAL (discounted) amount, and
+  // a discount code's slot is reserved for MANUAL_CHECKOUT_HOLD_MINUTES while the admin confirmation is
+  // outstanding. See subscription-checkout.mjs (shared with the BSC provider).
+  async createSubscription({ userId, planId, discountCode }) {
     if (!PAID_PLAN_NAMES.includes(planId)) throw new ApiError(400, 'VALIDATION_FAILED');
-    const price = await getPlanPrice(this.repo, planId);
-    const transaction = await this.repo.paymentTransactions.create({
-      userId, type: 'subscription', provider: 'manual', externalTransactionId: newId('manualTx'),
-      amountMicroUsd: toMicroUsd(price.amountUsd), currency: 'USD', productId: planId,
-      metadata: { planId, priceAmountUsd: price.amountUsd, billingInterval: price.billingInterval }
+    const checkout = await prepareSubscriptionCheckout(this.repo, { userId, planId, discountCode, holdMinutes: MANUAL_CHECKOUT_HOLD_MINUTES });
+    return createSubscriptionTransaction(this.repo, {
+      checkout, userId, planId, provider: 'manual', externalTransactionId: newId('manualTx'), createInvoice: null
     });
-    return { transactionId: transaction.id, status: transaction.status };
   }
 
   // Snapshots the storage product's CURRENT capacity/price/validity - same reasoning as above,

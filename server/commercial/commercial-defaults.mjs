@@ -28,6 +28,10 @@
 //   "use your own API key" section of the AI Assistant screen; `premiumModels` gates the specific
 //   real, already-existing frontier model ids named in ai-settings-store.js's
 //   PROVIDER_CATALOG[*].premiumModels (GPT-5.6 Sol, Claude Opus 4.1) - never a made-up model name.
+// - `walletBonusUsd`: an admin-set PROMO wallet credit granted once per CONFIRMED paid subscription purchase
+//   (see server/commercial/subscription-bonus.mjs). Defaults to 0 everywhere; Free's is fixed at 0 (same "no
+//   admin edit for the $0 tier" rule as price). The amount actually granted is the one snapshotted on the
+//   purchase's transaction at checkout, never today's setting.
 // - The new `pro` plan sits between Plus and Personalized, introduced specifically to carry the
 //   premium-model unlock and a meaningful token discount as an upsell step before Personalized's
 //   full aiPanelBuilder tier. Every field below (price, limits, discount, features) is
@@ -39,6 +43,7 @@ export const PLAN_DEFAULTS = {
     features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false, byok: false, premiumModels: false },
     price: { amountUsd: 0, billingInterval: 'month' },
     tokenDiscountPercent: 0,
+    walletBonusUsd: 0,
     displayName: null
   },
   plus: {
@@ -47,6 +52,7 @@ export const PLAN_DEFAULTS = {
     features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false, byok: true, premiumModels: false },
     price: { amountUsd: 4.99, billingInterval: 'month' },
     tokenDiscountPercent: 10,
+    walletBonusUsd: 0,
     displayName: null
   },
   pro: {
@@ -55,6 +61,7 @@ export const PLAN_DEFAULTS = {
     features: { wallet: true, ai: true, voice: true, aiPanelBuilder: false, byok: true, premiumModels: true },
     price: { amountUsd: 14.99, billingInterval: 'month' },
     tokenDiscountPercent: 20,
+    walletBonusUsd: 0,
     displayName: null
   },
   personalized: {
@@ -66,6 +73,7 @@ export const PLAN_DEFAULTS = {
     features: { wallet: true, ai: true, voice: true, aiPanelBuilder: true, byok: true, premiumModels: true },
     price: { amountUsd: 59, billingInterval: 'month' },
     tokenDiscountPercent: 25,
+    walletBonusUsd: 0,
     displayName: null
   }
 };
@@ -92,6 +100,14 @@ export const WALLET_DEFAULTS = {
   minimumTopUpUsd: 5,
   signupPromoRetailUsd: 0.50
 };
+
+// Upper bound an admin may set for a plan's wallet bonus (a typo guard, not a business rule).
+export const MAX_WALLET_BONUS_USD = 10000;
+
+// How long a Manual-provider discounted checkout holds its discount-code slot. A BSC checkout holds it for the
+// invoice's own expiry instead (bsc:invoiceExpiryMinutes). A hold that lapses stops counting immediately; a late
+// confirmation re-claims the slot if it is still free (see repo.discountRedemptions.confirmForTransaction).
+export const MANUAL_CHECKOUT_HOLD_MINUTES = 24 * 60;
 
 export const PLAN_NAMES = ['free', 'plus', 'pro', 'personalized'];
 // Every plan that can actually be PURCHASED - i.e. PLAN_NAMES minus the free tier. Derived rather

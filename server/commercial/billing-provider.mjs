@@ -7,7 +7,7 @@ export class BillingProvider {
   // eslint-disable-next-line no-unused-vars
   async createWalletTopUp({ userId, amountUsd }) { throw new Error('NOT_IMPLEMENTED'); }
   // eslint-disable-next-line no-unused-vars
-  async createSubscription({ userId, planId }) { throw new Error('NOT_IMPLEMENTED'); }
+  async createSubscription({ userId, planId, discountCode }) { throw new Error('NOT_IMPLEMENTED'); }
   // eslint-disable-next-line no-unused-vars
   async createStoragePurchase({ userId, productId }) { throw new Error('NOT_IMPLEMENTED'); }
   // eslint-disable-next-line no-unused-vars

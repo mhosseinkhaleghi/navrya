@@ -5,7 +5,7 @@
 // gateway process (server/pattern-ai-server.mjs) never imports this file directly - it has no
 // Postgres access by design - it reads resolved config over the internal HTTP bridge instead
 // (server/community/routes.internal.mjs's /internal/entitlements/:userId and wallet endpoints).
-import { PLAN_DEFAULTS, WALLET_DEFAULTS, BSC_DEFAULTS, PLAN_NAMES } from './commercial-defaults.mjs';
+import { PLAN_DEFAULTS, WALLET_DEFAULTS, BSC_DEFAULTS, PLAN_NAMES, MAX_WALLET_BONUS_USD } from './commercial-defaults.mjs';
 
 const CACHE_TTL_MS = 30000;
 let cache = { data: null, fetchedAt: 0 };
@@ -52,6 +52,8 @@ function buildEffective(overrideRows) {
     const planPriceMatch = /^plan:(plus|pro|personalized):price$/.exec(row.configKey);
     // Same "free is fixed, never admin-editable" rule as price - a $0 tier has nothing to discount.
     const planDiscountMatch = /^plan:(plus|pro|personalized):tokenDiscountPercent$/.exec(row.configKey);
+    // Same "free is fixed, nothing to grant" rule as price: a $0 tier has no purchase to attach a bonus to.
+    const planWalletBonusMatch = /^plan:(plus|pro|personalized):walletBonusUsd$/.exec(row.configKey);
     // displayName IS allowed for free too (spec: an admin can rename every plan, including Free).
     const planDisplayNameMatch = /^plan:(free|plus|pro|personalized):displayName$/.exec(row.configKey);
     if (planLimitsMatch) {
@@ -72,6 +74,8 @@ function buildEffective(overrideRows) {
       if (value.billingInterval === 'month' || value.billingInterval === 'year') plan.price.billingInterval = value.billingInterval;
     } else if (planDiscountMatch) {
       if (Number.isFinite(value.percent) && value.percent >= 0 && value.percent <= 100) plans[planDiscountMatch[1]].tokenDiscountPercent = value.percent;
+    } else if (planWalletBonusMatch) {
+      if (Number.isFinite(value.amountUsd) && value.amountUsd >= 0 && value.amountUsd <= MAX_WALLET_BONUS_USD) plans[planWalletBonusMatch[1]].walletBonusUsd = value.amountUsd;
     } else if (planDisplayNameMatch) {
       plans[planDisplayNameMatch[1]].displayName = typeof value.name === 'string' && value.name.trim() ? value.name.trim() : null;
     } else if (row.configKey === 'wallet:markupPercent') {

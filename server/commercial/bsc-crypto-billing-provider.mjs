@@ -13,11 +13,12 @@ import crypto from 'node:crypto';
 import { newId } from '../db/id.mjs';
 import { ApiError } from '../community/errors.mjs';
 import { BillingProvider } from './billing-provider.mjs';
-import { getPlanPrice, getWalletRules } from './commercial-config.mjs';
+import { getWalletRules } from './commercial-config.mjs';
 import { toMicroUsd } from './wallet-service.mjs';
 import { PAID_PLAN_NAMES } from './commercial-defaults.mjs';
 import { getChainId } from './bsc-chain-client.mjs';
 import { resolveBscRuntimeConfig, isBscConfigComplete } from './bsc-config.mjs';
+import { prepareSubscriptionCheckout, createSubscriptionTransaction } from './subscription-checkout.mjs';
 
 // Fails explicitly (task A.8) the moment any required config is missing - never a fake/simulated
 // invoice. Resolves the admin-managed config (public settings + encrypted RPC URL) via
@@ -113,16 +114,18 @@ export class BscCryptoBillingProvider extends BillingProvider {
     return { transactionId: transaction.id, status: transaction.status, invoiceId: invoice.id };
   }
 
-  async createSubscription({ userId, planId }) {
+  // The transaction - and therefore the invoice (usd_amount / atomic_amount are derived from
+  // transaction.amountMicroUsd) - is created at the FINAL discounted amount: an invoice is never generated for the
+  // undiscounted price. A discounted checkout's code slot is held for the invoice's own lifetime. A code-produced
+  // $0 price needs no invoice at all and never contacts the chain (see createSubscriptionTransaction()).
+  async createSubscription({ userId, planId, discountCode }) {
     if (!PAID_PLAN_NAMES.includes(planId)) throw new ApiError(400, 'VALIDATION_FAILED');
-    const price = await getPlanPrice(this.repo, planId);
-    const transaction = await this.repo.paymentTransactions.create({
-      userId, type: 'subscription', provider: 'bsc_crypto', externalTransactionId: newId('bscTx'),
-      amountMicroUsd: toMicroUsd(price.amountUsd), currency: 'USD', productId: planId,
-      metadata: { planId, priceAmountUsd: price.amountUsd, billingInterval: price.billingInterval }
+    const { invoiceExpiryMinutes } = await resolveBscRuntimeConfig(this.repo);
+    const checkout = await prepareSubscriptionCheckout(this.repo, { userId, planId, discountCode, holdMinutes: invoiceExpiryMinutes });
+    return createSubscriptionTransaction(this.repo, {
+      checkout, userId, planId, provider: 'bsc_crypto', externalTransactionId: newId('bscTx'),
+      createInvoice: (transaction) => this._createInvoiceFor(transaction)
     });
-    const invoice = await this._createInvoiceFor(transaction);
-    return { transactionId: transaction.id, status: transaction.status, invoiceId: invoice.id };
   }
 
   async createStoragePurchase({ userId, productId }) {

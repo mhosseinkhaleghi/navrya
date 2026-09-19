@@ -4,7 +4,9 @@ import { requireRecentReauth } from './auth-admin.mjs';
 import { isStepUpFresh } from '../community/security/session-service.mjs';
 import { randomToken } from '../community/security/crypto-util.mjs';
 import { getEffectiveCommercialConfig, getBscPublicConfig, invalidateCommercialConfigCache, retailMultiplierFor } from '../commercial/commercial-config.mjs';
-import { PLAN_NAMES, RESOURCE_TYPES } from '../commercial/commercial-defaults.mjs';
+import { PLAN_NAMES, RESOURCE_TYPES, MAX_WALLET_BONUS_USD } from '../commercial/commercial-defaults.mjs';
+import { decimalPlaces } from '../commercial/discount-codes.mjs';
+import { enrichTransactionsForAdmin, enrichLedgerEntries, repairSubscriptionBonus } from '../commercial/subscription-bonus.mjs';
 import { toMicroUsd } from '../commercial/wallet-service.mjs';
 import { confirmTransaction, failTransaction } from '../commercial/payment-service.mjs';
 import { ManualBillingProvider } from '../commercial/manual-billing-provider.mjs';
@@ -12,6 +14,7 @@ import { resolveBscRuntimeConfig, isBscConfigComplete } from '../commercial/bsc-
 import { getChainId, isValidEvmAddress } from '../commercial/bsc-chain-client.mjs';
 import { resolvePricingRate } from '../commercial/wallet-service.mjs';
 import { router as aiCostControlRouter } from './routes.ai-cost-control.mjs';
+import { router as discountCodesRouter } from './routes.discount-codes.mjs';
 
 const STEP_UP_MAX_AGE_MS = 15 * 60 * 1000; // mirrors auth-admin.mjs's own DEFAULT_STEP_UP_MAX_AGE_MS
 
@@ -96,6 +99,15 @@ export function router(repo) {
       const percent = Number(body.tokenDiscountPercent);
       if (!Number.isFinite(percent) || percent < 0 || percent > 100) throw new ApiError(400, 'VALIDATION_FAILED');
       await repo.commercialConfig.publish('plan:' + plan + ':tokenDiscountPercent', { percent }, { updatedBy: req.currentUser.id, changeSummary: 'Updated ' + plan + ' token discount' });
+    }
+    // Subscription wallet bonus (promo credit granted once per CONFIRMED paid purchase, from the checkout snapshot) -
+    // same "free is fixed, nothing to grant" rule as price. Strictly a number: no coercion of null/strings.
+    if ('walletBonusUsd' in body && plan !== 'free') {
+      const amountUsd = body.walletBonusUsd;
+      if (typeof amountUsd !== 'number' || !Number.isFinite(amountUsd) || amountUsd < 0 || amountUsd > MAX_WALLET_BONUS_USD || decimalPlaces(amountUsd) > 6) {
+        throw new ApiError(400, 'VALIDATION_FAILED');
+      }
+      await repo.commercialConfig.publish('plan:' + plan + ':walletBonusUsd', { amountUsd }, { updatedBy: req.currentUser.id, changeSummary: 'Updated ' + plan + ' wallet bonus' });
     }
     // displayName IS allowed for Free too - an admin can rename every plan, even the $0 one.
     if ('displayName' in body) {
@@ -220,7 +232,7 @@ export function router(repo) {
   }));
 
   app.get('/ledger', asyncHandler(async (req, res) => {
-    res.json({ entries: await repo.wallet.recentLedger({ limit: 200 }) });
+    res.json({ entries: await enrichLedgerEntries(repo, await repo.wallet.recentLedger({ limit: 200 })) });
   }));
 
   // ---- Per-user Wallet + plan admin actions (spec section 50) --------------------------------
@@ -264,7 +276,7 @@ export function router(repo) {
 
   app.get('/users/:id/wallet', asyncHandler(async (req, res) => {
     const account = await repo.wallet.getAccount(req.params.id);
-    const ledger = await repo.wallet.ledgerForUser(req.params.id, { limit: 100 });
+    const ledger = await enrichLedgerEntries(repo, await repo.wallet.ledgerForUser(req.params.id, { limit: 100 }));
     res.json({ account, ledger });
   }));
 
@@ -328,14 +340,28 @@ export function router(repo) {
   }));
 
   // ---- Transactions (spec section 20) ---------------------------------------------------------
+  // Enriched with the authoritative pricing snapshot (original / discount / final / bonus), the ledger-derived
+  // bonusStatus ('none' | 'pending' | 'credited' | 'reversed' | 'missing') and any discountOutcome - the canonical
+  // purchase list stays this one, it just tells the whole story of a subscription purchase.
   app.get('/transactions', asyncHandler(async (req, res) => {
-    res.json({ transactions: await repo.paymentTransactions.listAll({ status: req.query.status, limit: 200 }) });
+    const transactions = await repo.paymentTransactions.listAll({ status: req.query.status, limit: 200 });
+    res.json({ transactions: await enrichTransactionsForAdmin(repo, transactions) });
   }));
 
   // Money-adjacent - same step-up reauth requirement as wallet credit/debit above.
   app.post('/transactions/:id/confirm', requireRecentReauth(), asyncHandler(async (req, res) => {
     const result = await confirmTransaction(repo, req.params.id, { adminUserId: req.currentUser.id });
-    await audit(req, 'commercial.transaction.confirm', 'paymentTransaction', req.params.id, { alreadyProcessed: result.alreadyProcessed });
+    await audit(req, 'commercial.transaction.confirm', 'paymentTransaction', req.params.id, { alreadyProcessed: result.alreadyProcessed, discountLost: Boolean(result.discountLost) });
+    res.json(result);
+  }));
+
+  // Repair for bonusStatus 'missing' (a confirmed subscription whose wallet bonus was never written, e.g. a crash
+  // between the status flip and the grant). Moves wallet money, so it needs the same fresh re-authentication as
+  // every other money action here. Idempotent: it grants with the ledger key the normal grant uses, from the
+  // checkout snapshot, and a second call answers { repaired: false, alreadyGranted: true }.
+  app.post('/transactions/:id/repair-bonus', requireRecentReauth(), asyncHandler(async (req, res) => {
+    const result = await repairSubscriptionBonus(repo, req.params.id);
+    await audit(req, 'commercial.transaction.repairBonus', 'paymentTransaction', req.params.id, { repaired: result.repaired, bonusMicroUsd: result.bonusMicroUsd });
     res.json(result);
   }));
 
@@ -563,6 +589,10 @@ export function router(repo) {
   // surface, own file, mounted here to inherit requireAdmin for free" reason crypto-payments and
   // voice-providers already use. -------------------------------------------------------------
   app.use('/ai-cost-control', aiCostControlRouter(repo));
+
+  // Discount codes (subscription checkout) - own file for the same reason: a self-contained surface mounted here
+  // to inherit requireAdmin. Every mutation requires a recent re-authentication (see that file).
+  app.use('/discount-codes', discountCodesRouter(repo));
 
   return app;
 }

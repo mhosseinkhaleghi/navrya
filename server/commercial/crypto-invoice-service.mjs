@@ -134,6 +134,16 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
             idempotencyKey: 'crypto-overpay:' + invoiceId, metadata: baseMetadata
           });
         }
+        // Strict late-payment rule (payment-service.mjs's settleLostDiscount): the discounted code slot was lost, so the
+        // subscription was NOT activated and the invoiced amount was credited to the wallet - reported exactly like the
+        // under-payment outcome, including the excess this over-payment also credited.
+        if (confirmResult.discountLost) {
+          const totalCreditedMicroUsd = confirmResult.creditedMicroUsd + excessMicroUsd;
+          const lostInvoice = await repo.cryptoInvoices.updateStatus(invoiceId, 'failed', {
+            confirmationCount: verification.confirmations, confirmedAt: new Date().toISOString(), mismatchCreditedMicroUsd: totalCreditedMicroUsd
+          });
+          return { status: 'mismatched_credited', invoice: lostInvoice, creditedMicroUsd: totalCreditedMicroUsd };
+        }
         const finalInvoice = await repo.cryptoInvoices.get(invoiceId);
         return { status: 'confirmed', invoice: finalInvoice, alreadyProcessed: confirmResult.alreadyProcessed, overpaidCreditedMicroUsd: excessMicroUsd };
       }
@@ -158,6 +168,15 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
 
   await repo.cryptoInvoices.updateStatus(invoiceId, 'confirmed', { confirmationCount: verification.confirmations, confirmedAt: new Date().toISOString() });
   const confirmResult = await confirmTransaction(repo, invoice.transactionId, { adminUserId: null });
+  // Strict late-payment rule: the payment was verified but a limited discount code's slot was lost while it was in
+  // flight. The subscription was NOT activated; the paid amount was credited to the wallet and the transaction
+  // failed (payment-service.mjs) - the invoice ends in the same visible state as an under-payment credit.
+  if (confirmResult.discountLost) {
+    const lostInvoice = await repo.cryptoInvoices.updateStatus(invoiceId, 'failed', {
+      confirmationCount: verification.confirmations, confirmedAt: new Date().toISOString(), mismatchCreditedMicroUsd: confirmResult.creditedMicroUsd
+    });
+    return { status: 'mismatched_credited', invoice: lostInvoice, creditedMicroUsd: confirmResult.creditedMicroUsd };
+  }
   const finalInvoice = await repo.cryptoInvoices.get(invoiceId);
   return { status: 'confirmed', invoice: finalInvoice, alreadyProcessed: confirmResult.alreadyProcessed };
 }
