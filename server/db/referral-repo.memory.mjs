@@ -160,6 +160,8 @@ export function createReferralMemoryDomains({ state, clone, now, wallet }) {
         const legal = (from === 'active' && to === 'paused') || (from === 'paused' && to === 'active') || to === 'archived';
         if (!legal) throw new ApiError(409, 'REFERRAL_PROGRAM_ILLEGAL_TRANSITION', null, { from, to });
         program.status = to;
+        // An archived program gives up the platform-default flag, so a replacement default can be created.
+        if (to === 'archived') program.isPlatformDefault = false;
       }
       program.updatedAt = now();
       return clone(program);

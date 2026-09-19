@@ -6,6 +6,7 @@ import { createSession, issueSessionCookies } from './security/session-service.m
 import { serializeOidcTxnCookie, readOidcTxnCookie, appendSetCookie } from './security/cookies.mjs';
 import { recordSecurityEvent } from './security/audit.mjs';
 import { rateLimit, ipKey } from './security/rate-limit.mjs';
+import { claimReferralAttributionSafe } from '../commercial/referral-attribution.mjs';
 
 // Generic OIDC Relying Party routes (ADR-0001 section 1) - mounted at /api/auth/oidc, separate
 // from routes.auth.mjs purely to keep that already-large file from growing further, not for any
@@ -86,6 +87,8 @@ export function router(repo) {
         if (claims.email_verified === true) await repo.users.markEmailVerified(user.id);
         userId = user.id;
         await recordSecurityEvent(repo, { req, userId, type: 'register', detail: { provider: 'oidc', issuer } });
+        // A genuinely NEW identity only (this branch) - never an existing identity's login below. Never throws.
+        await claimReferralAttributionSafe(repo, { req, res, userId });
       } else {
         await recordSecurityEvent(repo, { req, userId, type: 'login_success', detail: { provider: 'oidc', issuer } });
       }

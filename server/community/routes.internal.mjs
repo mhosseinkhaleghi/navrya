@@ -4,6 +4,7 @@ import { resolveSessionByRawId } from './security/session-service.mjs';
 import { resolveRedisClient } from './security/rate-limit.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
 import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, providerCostMicroUsdFor } from '../commercial/wallet-service.mjs';
+import { safeAwardReferralForAiSettlement } from '../commercial/referral-earnings.mjs';
 import { resolveRetailMultiplier } from '../commercial/markup.mjs';
 import { invalidateNewAchievementEvaluation } from './ai-discipline.mjs';
 
@@ -183,6 +184,9 @@ export function router(repo) {
     if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
     const body = req.body || {};
     const result = await settleAiCall(repo, { reservationId: body.reservationId, provider: body.provider, model: body.model, feature: body.feature, usage: body.usage });
+    // Referral AI gross-margin source (OFF unless a published program version lists 'ai_margin'): one cached lookup per payer, never
+    // able to throw into billing (safe wrapper), idempotent per settlement, and skipped for a replayed settlement.
+    await safeAwardReferralForAiSettlement(repo, result);
     res.json(result);
   }));
 

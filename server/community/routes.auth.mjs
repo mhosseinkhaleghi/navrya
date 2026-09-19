@@ -17,6 +17,7 @@ import { csrfProtection, issueCsrfToken, verifyCsrfToken } from './security/csrf
 import { appendSetCookie, clearAuthCookies, readCsrfCookie, serializeCsrfCookie } from './security/cookies.mjs';
 import { sendMail } from './security/mailer.mjs';
 import { verifyToken as verifyLegacyToken, resolveAuthSecret as legacyAuthSecret } from './auth-tokens.mjs';
+import { claimReferralAttributionSafe } from '../commercial/referral-attribution.mjs';
 
 // Temporary production bootstrap while the approved server operator does not have access to set
 // GOOGLE_CLIENT_ID in the private server .env. This is a public OAuth client ID, not a secret.
@@ -114,6 +115,9 @@ export function router(repo, deps = {}) {
       const csrfToken = issueSessionCookies(res, rawId, record.id);
       await sendVerificationEmail(repo, user);
       await recordSecurityEvent(repo, { req, userId: user.id, type: 'register', detail: { email } });
+      // Referral attribution for a GENUINELY NEW email account only (never on login). Never throws: a referral problem can
+      // never prevent or delay account creation.
+      await claimReferralAttributionSafe(repo, { req, res, userId: user.id });
       res.status(201).json({ user: selfUserView(user), csrfToken });
     })
   );
@@ -197,6 +201,9 @@ export function router(repo, deps = {}) {
       const { rawId, record } = await createSession(repo, { userId: user.id, req });
       const csrfToken = issueSessionCookies(res, rawId, record.id);
       await recordSecurityEvent(repo, { req, userId: user.id, type: 'register', detail: { provider: 'google', email } });
+      // Only this genuinely-new-account branch attributes: an existing-identity login (above) and an email collision (409)
+      // never reach it.
+      await claimReferralAttributionSafe(repo, { req, res, userId: user.id });
       res.status(201).json({ user: selfUserView(await repo.users.get(user.id)), csrfToken });
     })
   );
@@ -314,6 +321,42 @@ export function router(repo, deps = {}) {
       await revokeOtherSessionsAfterPrivilegeChange(repo, req.currentUser.id, req.sessionId, 'password_changed');
       await recordSecurityEvent(repo, { req, userId: req.currentUser.id, type: 'password_changed', detail: {} });
       res.json({ ok: true });
+    })
+  );
+
+  // ---- Recent re-authentication for a CUSTOMER session (money-adjacent actions such as a referral payout request). ---------
+  // There was no customer-safe step-up before: a session's `reauth_at` was simply its login time. This lets a signed-in user
+  // prove themselves again WITHOUT signing out - by their current password, or by re-presenting a Google credential that
+  // resolves to THEIR OWN linked Google identity - and stamps the session (markReauth), which is exactly what
+  // isStepUpFresh() reads. A generic 401 never says which factor was wrong; attempts are rate limited per user. An account
+  // that has neither (OIDC-only) simply signs in again, which also creates a fresh-reauth session.
+  r.post(
+    '/reauth',
+    requireAuth(repo),
+    csrfProtection(),
+    rateLimit({ windowMs: 15 * 60 * 1000, max: 10, keyFn: (req) => `reauth:${req.currentUser.id}` }),
+    asyncHandler(async (req, res) => {
+      const body = req.body || {};
+      let method = null;
+      if (typeof body.password === 'string' && body.password) {
+        const creds = req.currentUser.email ? await repo.users.findCredentialsByEmail(req.currentUser.email) : null;
+        if (!creds || !creds.passwordHash || !(await verifyPassword(body.password, creds.passwordHash))) throw new ApiError(401, 'REAUTH_FAILED');
+        method = 'password';
+      } else if (typeof body.googleCredential === 'string' && body.googleCredential) {
+        const clientId = googleClientId();
+        if (!clientId) throw new ApiError(503, 'GOOGLE_AUTH_NOT_CONFIGURED');
+        const payload = await verifyGoogleCredential(clientId, body.googleCredential);
+        if (!payload || payload.email_verified !== true) throw new ApiError(401, 'REAUTH_FAILED');
+        const issuer = 'https://accounts.google.com';
+        const linkedUserId = (await repo.externalIdentities.findUserId(issuer, payload.sub)) || (await repo.users.findIdByGoogleId(payload.sub));
+        if (linkedUserId !== req.currentUser.id) throw new ApiError(401, 'REAUTH_FAILED');
+        method = 'google';
+      } else {
+        throw new ApiError(400, 'VALIDATION_FAILED');
+      }
+      await repo.authSessions.markReauth(req.sessionId);
+      await recordSecurityEvent(repo, { req, userId: req.currentUser.id, type: 'reauth', detail: { method } });
+      res.json({ ok: true, method, reauthAt: new Date().toISOString() });
     })
   );
 

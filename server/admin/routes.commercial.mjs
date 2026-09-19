@@ -15,6 +15,7 @@ import { getChainId, isValidEvmAddress } from '../commercial/bsc-chain-client.mj
 import { resolvePricingRate } from '../commercial/wallet-service.mjs';
 import { router as aiCostControlRouter } from './routes.ai-cost-control.mjs';
 import { router as discountCodesRouter } from './routes.discount-codes.mjs';
+import { router as referralsRouter } from './routes.referrals.mjs';
 
 const STEP_UP_MAX_AGE_MS = 15 * 60 * 1000; // mirrors auth-admin.mjs's own DEFAULT_STEP_UP_MAX_AGE_MS
 
@@ -593,6 +594,7 @@ export function router(repo) {
   // Discount codes (subscription checkout) - own file for the same reason: a self-contained surface mounted here
   // to inherit requireAdmin. Every mutation requires a recent re-authentication (see that file).
   app.use('/discount-codes', discountCodesRouter(repo));
+  app.use('/referrals', referralsRouter(repo));
 
   return app;
 }

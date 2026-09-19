@@ -34,6 +34,7 @@ import * as routesMedia from './routes.media.mjs';
 import * as routesConversationScenariosSync from './routes.conversation-scenarios-sync.mjs';
 import * as routesConversationScenarioExposuresSync from './routes.conversation-scenario-exposures-sync.mjs';
 import * as routesWebhooksBsc from './routes.webhooks-bsc.mjs';
+import * as routesReferrals from './routes.referrals.mjs';
 import * as routesErrors from './routes.errors.mjs';
 import { corsMiddleware, originCheck } from './security/origins.mjs';
 import { securityHeaders, noStoreAuthResponses } from './security/headers.mjs';
@@ -186,6 +187,10 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   // has no session to attach to. See routes.errors.mjs's own comment for the real abuse defenses
   // (rate limit, field caps, upsert-based aggregation) this relies on instead of requireAuth.
   app.use('/api/errors', routesErrors.router(repo));
+  // Public by design (referral share links are opened by people with no session): GET /api/referrals/c/:publicCode sets the signed
+  // host-only attribution cookie and 302s to "/". Mounted BEFORE requireAuth/csrfProtection; every other /api/referrals path falls
+  // through this router (it only defines that one GET) to the authenticated router below. See routes.referrals.mjs.
+  app.use('/api/referrals', routesReferrals.clickRouter(repo));
 
   app.use('/api/auth', routesAuth.router(repo, authDeps)); // register/login/google/logout/sessions/password/email - bootstraps identity, applies its own per-route auth+CSRF (authDeps: test-only Google-verify override)
   app.use('/api/auth/oidc', routesAuthOidc.router(repo)); // generic OIDC start/callback
@@ -223,6 +228,7 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   app.use('/api/sync/analysis-symbols', routesAnalysisSymbols.router(repo));
   app.use('/api/sync/wallet', routesWallet.router(repo));
   app.use('/api/sync/subscriptions', routesSubscriptions.router(repo));
+  app.use('/api/referrals', routesReferrals.router(repo)); // customer Referral Marketing (summary, ledger, AI conversion, BSC payout requests)
   app.use('/api/sync/storage', routesStorage.router(repo, uploadsDir));
   app.use('/api/sync/media', routesMedia.router(repo, uploadsDir));
   // Journey H2, Gate 2: the published Conversation Scenario bundle the browser Router fetches -

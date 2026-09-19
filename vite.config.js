@@ -16,6 +16,7 @@ export default defineConfig({
       '/api/community': 'http://127.0.0.1:8788',
       '/api/sync': 'http://127.0.0.1:8788',
       '/api/users': 'http://127.0.0.1:8788',
+      '/api/referrals': 'http://127.0.0.1:8788',
       '/api/marketplace': 'http://127.0.0.1:8788',
       '/api/messages': 'http://127.0.0.1:8788',
       '/api/admin': 'http://127.0.0.1:8788',

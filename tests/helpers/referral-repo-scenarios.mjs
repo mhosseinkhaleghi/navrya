@@ -95,6 +95,14 @@ export function registerReferralRepoScenarios({ test, makeRepo, label }) {
     await assert.rejects(() => repo.referralPrograms.createProgram({ kind: 'standard', name: 'Second default', isPlatformDefault: true, createdBy: ctx.admin.id }), /REFERRAL_DEFAULT_PROGRAM_EXISTS/);
     await assert.rejects(() => repo.referralPrograms.createProgram({ kind: 'influencer', name: 'Bad', isPlatformDefault: true, createdBy: ctx.admin.id }), /VALIDATION_FAILED/);
   });
+  t('archiving the platform default relinquishes the default flag so a replacement default can be created', async (repo) => {
+    const ctx = await setupProgram(repo);
+    await repo.referralPrograms.updateProgram(ctx.program.id, { status: 'archived' });
+    assert.equal((await repo.referralPrograms.getProgram(ctx.program.id)).isPlatformDefault, false);
+    assert.equal(await repo.referralPrograms.getPlatformDefault(), null);
+    const replacement = await repo.referralPrograms.createProgram({ kind: 'standard', name: 'Replacement ' + uniq(), isPlatformDefault: true, createdBy: ctx.admin.id });
+    assert.equal((await repo.referralPrograms.getPlatformDefault()).program.id, replacement.id);
+  });
   t('program status: pause/resume/archive, archived is terminal and blocks new versions', async (repo) => {
     const ctx = await setupProgram(repo);
     assert.equal((await repo.referralPrograms.updateProgram(ctx.program.id, { status: 'paused' })).status, 'paused');

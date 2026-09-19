@@ -276,8 +276,9 @@ export function createReferralPgDomains({ pool, newId, mapWalletLedgerEntry }) {
           if (!legal) throw new ApiError(409, 'REFERRAL_PROGRAM_ILLEGAL_TRANSITION', null, { from: status, to: patch.status });
           status = patch.status;
         }
+        // An archived program gives up the platform-default flag, so a replacement default can be created.
         const { rows: updated } = await client.query(
-          'UPDATE referral_programs SET name=$2, auto_enroll_unassigned=$3, status=$4, updated_at=now() WHERE id=$1 RETURNING *', [id, name, autoEnrollUnassigned, status]
+          `UPDATE referral_programs SET name=$2, auto_enroll_unassigned=$3, status=$4, is_platform_default = CASE WHEN $4 = 'archived' THEN false ELSE is_platform_default END, updated_at=now() WHERE id=$1 RETURNING *`, [id, name, autoEnrollUnassigned, status]
         );
         return mapProgram(updated[0]);
       });
