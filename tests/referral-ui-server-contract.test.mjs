@@ -72,7 +72,7 @@ const control = (root, labelText, index = 0) => {
 // The innermost .admin-card that holds the given button - scopes a field lookup to ONE editor (the create form, each draft
 // row and the profitability preview all reuse the same rules-form labels).
 const cardWith = (root, buttonText) => findAll(root, (n) => n.className === 'admin-card' && button(n, buttonText)).pop();
-async function until(check, what, timeoutMs = 4000) {
+async function until(check, what, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await check();
@@ -128,9 +128,12 @@ async function startWorld(repo) {
   vm.runInNewContext(await source(), sandbox, { filename: 'admin-app.js' });
   return { repo, sandbox, app: sandbox.window.TradeJournalAdminApp, calls, alerts, adminUser, baseUrl, headers, toast: byId.toast };
 }
-const lastCall = (calls, method, fragment) => [...calls].reverse().find((c) => c.method === method && c.url.includes(fragment));
+// `pattern` is a substring or a RegExp. Ambiguous URLs MUST use an anchored RegExp: '/versions' also matches
+// '/versions/<id>/publish', so under load an already-recorded publish (200) was mistaken for the clone POST (201) still in flight.
+const matches = (call, method, pattern) => call.method === method && (pattern instanceof RegExp ? pattern.test(call.url) : call.url.includes(pattern));
+const lastCall = (calls, method, pattern) => [...calls].reverse().find((c) => matches(c, method, pattern));
 // The server state can change a tick before the UI's fetch() promise resolves and the call is recorded - wait for the record.
-const settled = (calls, method, fragment) => until(() => lastCall(calls, method, fragment), `${method} ${fragment} to be recorded`);
+const settled = (calls, method, pattern) => until(() => lastCall(calls, method, pattern), `${method} ${pattern} to be recorded`);
 async function serverCall(world, method, urlPath, body) {
   const response = await realFetch(world.baseUrl + urlPath, { method, headers: { 'Content-Type': 'application/json', ...world.headers }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await response.text();
@@ -153,7 +156,7 @@ test('the admin console creates, edits, publishes and clones a program through p
   assert.equal(kind.value, 'standard', 'the Standard option is the default');
   button(tab, 'Create program').onclick();
   const program = await until(async () => (await repo.referralPrograms.listPrograms())[0], 'the program to be created');
-  assert.equal((await settled(calls, 'POST', '/commercial/referrals/programs')).status, 201);
+  assert.equal((await settled(calls, 'POST', /\/commercial\/referrals\/programs$/)).status, 201);
   const drafts = await repo.referralPrograms.listVersions(program.id);
   assert.equal(drafts.length, 1);
   assert.equal(drafts[0].status, 'draft');
@@ -171,10 +174,10 @@ test('the admin console creates, edits, publishes and clones a program through p
   control(cardWith(tab, 'Save draft'), 'Hold period (days)').value = 21;
   button(tab, 'Save draft').onclick();
   await until(async () => (await repo.referralPrograms.getVersion(drafts[0].id)).holdDays === 21, 'the draft edit to be saved');
-  assert.equal((await settled(calls, 'PATCH', '/versions/')).status, 200);
+  assert.equal((await settled(calls, 'PATCH', /\/programs\/[^/]+\/versions\/[^/]+$/)).status, 200);
   button(tab, 'Publish').onclick();
   await until(async () => (await repo.referralPrograms.getVersion(drafts[0].id)).status === 'published', 'the version to be published');
-  assert.equal((await settled(calls, 'POST', '/publish')).status, 200);
+  assert.equal((await settled(calls, 'POST', /\/versions\/[^/]+\/publish$/)).status, 200);
 
   // A new draft cloned from the published version carries its rules and stays a draft (the published one is immutable).
   tab = await app.commercialReferralsSubTab();
@@ -183,7 +186,7 @@ test('the admin console creates, edits, publishes and clones a program through p
   const clone = versions.find((v) => v.status === 'draft');
   assert.equal(clone.holdDays, 21);
   assert.equal(clone.commissionBps, 1000);
-  assert.equal((await settled(calls, 'POST', '/versions')).status, 201);
+  assert.equal((await settled(calls, 'POST', /\/programs\/[^/]+\/versions$/)).status, 201);
 
   // The rendered programs list now reflects the real DTO (published version id, both versions, budget line).
   tab = await app.commercialReferralsSubTab();
@@ -195,8 +198,8 @@ test('the admin console creates, edits, publishes and clones a program through p
   // Profitability preview: the UI's payload is accepted and a result table (or the honest "no paid plans") renders.
   const previewButton = button(tab, 'Preview profitability');
   previewButton.onclick();
-  await until(() => lastCall(calls, 'POST', '/commercial/referrals/preview'), 'the preview request');
-  assert.equal((await settled(calls, 'POST', '/commercial/referrals/preview')).status, 200);
+  await settled(calls, 'POST', /\/commercial\/referrals\/preview$/);
+  assert.equal((await settled(calls, 'POST', /\/commercial\/referrals\/preview$/)).status, 200);
 
   // Nothing the UI did was rejected.
   for (const call of calls.filter((c) => c.method !== 'GET' && c.url.includes('/commercial/referrals'))) assert.ok(call.status >= 200 && call.status < 300, `${call.method} ${call.url} -> ${call.status}`);
