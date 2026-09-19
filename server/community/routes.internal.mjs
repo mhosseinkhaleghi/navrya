@@ -7,6 +7,8 @@ import { reserveForAiCall, settleAiCall, releaseAiCall, resolvePricingRate, prov
 import { safeAwardReferralForAiSettlement } from '../commercial/referral-earnings.mjs';
 import { resolveRetailMultiplier } from '../commercial/markup.mjs';
 import { invalidateNewAchievementEvaluation } from './ai-discipline.mjs';
+import { currentMarketSession } from './market-session-clock.mjs';
+import { sanitizeCompletionAttribution } from '../db/analysis-profile-normalize.mjs';
 
 const KNOWN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'kimi', 'deepseek'];
 const VOICE_CONFIG_VERSION_KEY = 'voice_provider_config:version';
@@ -284,11 +286,20 @@ export function router(repo) {
     // trusted merely because the caller sent it.
     const entryId = body.entryId ? String(body.entryId) : null;
     const entryOwned = !entryId || (session.entries || []).some((entry) => entry.id === entryId);
+    // Analysis Profile attribution (072): the id the gateway forwarded is only the BROWSER'S claim about which
+    // profile it ran under - re-verified here against the real profile row, exactly like session/entry ownership
+    // above. A profile that is not this user's (or does not exist) is stored as NULL, never as a claim.
+    const claimed = sanitizeCompletionAttribution(body);
+    const profile = claimed.analysisProfileId ? await repo.analysisProfiles.get(userId, claimed.analysisProfileId) : null;
     const result = await repo.sessionAiAnalysisCompletions.record({
       userId, sessionId, entryId: entryOwned ? entryId : null, analysisId,
       analysisType: body.analysisType ? String(body.analysisType) : null,
       provider: body.provider ? String(body.provider) : null, model: body.model ? String(body.model) : null,
-      source: 'live'
+      source: 'live',
+      analysisProfileId: profile ? profile.id : null, analysisProfileRevision: profile ? claimed.analysisProfileRevision : '',
+      // The server's own clock at record time - never a client-supplied label.
+      activeMarketSession: currentMarketSession(),
+      conceptCoverage: profile ? claimed.conceptCoverage : null
     });
     // A brand-new completion is the one event that can unlock the analysis-driven achievements:
     // clear the per-user evaluation bound so the very next GET /me/achievements sees it at once.

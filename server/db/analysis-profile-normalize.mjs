@@ -287,3 +287,30 @@ export function mergeProposalStatuses(proposals, statuses) {
     proposal.status === 'pending' && Object.prototype.hasOwnProperty.call(lookup, proposal.id) ? { ...proposal, status: lookup[proposal.id] } : proposal
   ));
 }
+
+// ---- completions-ledger attribution (072_session_analysis_profile_attribution.sql) ---------------------
+
+export const COMPLETION_COVERAGE_STATUSES = ['applied', 'not_visible', 'not_applicable', 'unaddressed'];
+const COMPLETION_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const COMPLETION_MARKET_SESSIONS = ['London', 'New York', 'Tokyo', 'Sydney'];
+
+// Normalizes the attribution facts recorded on one AI Session Analysis completion. A FORMAT check only -
+// that the profile id really belongs to the verified user is the internal route's job (it needs the
+// repository), and the market session is the server's own clock, never a client label. Never throws:
+// anything unusable becomes null / '' rather than failing a completion that already happened.
+export function sanitizeCompletionAttribution(input) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const id = typeof source.analysisProfileId === 'string' && COMPLETION_ID_PATTERN.test(source.analysisProfileId) ? source.analysisProfileId : null;
+  const coverage = Array.isArray(source.conceptCoverage)
+    ? source.conceptCoverage
+      .filter((row) => row && typeof row === 'object' && COMPLETION_ID_PATTERN.test(String(row.conceptId || '')) && COMPLETION_COVERAGE_STATUSES.includes(row.status))
+      .slice(0, 40).map((row) => ({ conceptId: String(row.conceptId), status: row.status }))
+    : null;
+  return {
+    analysisProfileId: id,
+    // A revision only means something alongside a profile id.
+    analysisProfileRevision: id ? String(source.analysisProfileRevision == null ? '' : source.analysisProfileRevision).replace(/[^A-Za-z0-9._-]/g, '').slice(0, 40) : '',
+    activeMarketSession: COMPLETION_MARKET_SESSIONS.includes(source.activeMarketSession) ? source.activeMarketSession : '',
+    conceptCoverage: coverage && coverage.length ? coverage : null
+  };
+}

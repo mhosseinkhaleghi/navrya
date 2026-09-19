@@ -13,7 +13,7 @@ import { createReferralMemoryDomains } from './referral-repo.memory.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX, sanitizeMessageFields, mergeProposalStatuses, MESSAGE_BATCH_MAX, MESSAGES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX, sanitizeMessageFields, mergeProposalStatuses, MESSAGE_BATCH_MAX, MESSAGES_PER_PROFILE_MAX, sanitizeCompletionAttribution } from './analysis-profile-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -1150,7 +1150,7 @@ export function createMemoryRepo() {
   // Dedupe is by analysisId (the UNIQUE(analysis_id) constraint's in-memory equivalent), not by
   // id, matching the real table's idempotency guarantee for a retried internal-route call.
   const sessionAiAnalysisCompletions = {
-    async record({ userId, sessionId, entryId, analysisId, analysisType, provider, model, source, occurredAt }) {
+    async record({ userId, sessionId, entryId, analysisId, analysisType, provider, model, source, occurredAt, analysisProfileId, analysisProfileRevision, activeMarketSession, conceptCoverage }) {
       requireUser(userId);
       const key = String(analysisId || '');
       const existing = Array.from(state.sessionAiAnalysisCompletions.values()).find((c) => c.analysisId === key);
@@ -1158,7 +1158,8 @@ export function createMemoryRepo() {
       const record = {
         id: newId('sessionAnalysisCompletion'), userId, sessionId, entryId: entryId || null, analysisId: key,
         analysisType: analysisType || null, provider: provider || null, model: model || null,
-        source: source === 'backfill' ? 'backfill' : 'live', occurredAt: occurredAt ? new Date(occurredAt).toISOString() : now()
+        source: source === 'backfill' ? 'backfill' : 'live', occurredAt: occurredAt ? new Date(occurredAt).toISOString() : now(),
+        ...sanitizeCompletionAttribution({ analysisProfileId, analysisProfileRevision, activeMarketSession, conceptCoverage })
       };
       state.sessionAiAnalysisCompletions.set(record.id, record);
       return { completion: clone(record), created: true };
@@ -1167,6 +1168,14 @@ export function createMemoryRepo() {
       return Array.from(state.sessionAiAnalysisCompletions.values())
         .filter((c) => c.userId === userId)
         .sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt))
+        .map(clone);
+    },
+    // One profile's runs, oldest first, capped at the latest 3000 (the Analysis Profile Report's data source).
+    async listForProfile(userId, profileId) {
+      return Array.from(state.sessionAiAnalysisCompletions.values())
+        .filter((c) => c.userId === userId && c.analysisProfileId === profileId)
+        .sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt))
+        .slice(-3000)
         .map(clone);
     }
   };

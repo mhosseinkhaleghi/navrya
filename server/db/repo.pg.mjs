@@ -13,7 +13,7 @@ import { createReferralPgDomains } from './referral-repo.pg.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX, sanitizeMessageFields, mergeProposalStatuses, MESSAGE_BATCH_MAX, MESSAGES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX, sanitizeMessageFields, mergeProposalStatuses, MESSAGE_BATCH_MAX, MESSAGES_PER_PROFILE_MAX, sanitizeCompletionAttribution } from './analysis-profile-normalize.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -264,7 +264,9 @@ function mapAchievement(row) { return { id: row.id, userId: row.user_id, achieve
 function mapSessionAiAnalysisCompletion(row) {
   return {
     id: row.id, userId: row.user_id, sessionId: row.session_id, entryId: row.entry_id, analysisId: row.analysis_id,
-    analysisType: row.analysis_type, provider: row.provider, model: row.model, source: row.source, occurredAt: row.occurred_at
+    analysisType: row.analysis_type, provider: row.provider, model: row.model, source: row.source, occurredAt: row.occurred_at,
+    analysisProfileId: row.analysis_profile_id || null, analysisProfileRevision: row.analysis_profile_revision || '',
+    activeMarketSession: row.active_market_session || '', conceptCoverage: Array.isArray(row.concept_coverage) ? row.concept_coverage : null
   };
 }
 function mapXpConfigOverride(row) { return { key: row.config_key, value: row.value, updatedBy: row.updated_by, updatedAt: row.updated_at }; }
@@ -1882,16 +1884,20 @@ export function createPgRepo(pool) {
   // never reachable from a plain client request. UNIQUE(analysis_id) makes a retried internal
   // call idempotent, same 23505-catch convention as xpEvents.record()/achievements.unlock().
   const sessionAiAnalysisCompletions = {
-    async record({ userId, sessionId, entryId, analysisId, analysisType, provider, model, source, occurredAt }) {
+    async record({ userId, sessionId, entryId, analysisId, analysisType, provider, model, source, occurredAt, analysisProfileId, analysisProfileRevision, activeMarketSession, conceptCoverage }) {
       const id = newId('sessionAnalysisCompletion');
+      const attribution = sanitizeCompletionAttribution({ analysisProfileId, analysisProfileRevision, activeMarketSession, conceptCoverage });
       try {
         const { rows } = await pool.query(
           `INSERT INTO session_ai_analysis_completions
-            (id, user_id, session_id, entry_id, analysis_id, analysis_type, provider, model, source, occurred_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,now()))
+            (id, user_id, session_id, entry_id, analysis_id, analysis_type, provider, model, source, occurred_at,
+             analysis_profile_id, analysis_profile_revision, active_market_session, concept_coverage)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,now()),$11,$12,$13,$14)
            RETURNING *`,
           [id, userId, sessionId, entryId || null, String(analysisId || ''), analysisType || null, provider || null,
-            model || null, source === 'backfill' ? 'backfill' : 'live', occurredAt ? new Date(occurredAt).toISOString() : null]
+            model || null, source === 'backfill' ? 'backfill' : 'live', occurredAt ? new Date(occurredAt).toISOString() : null,
+            attribution.analysisProfileId, attribution.analysisProfileRevision || null, attribution.activeMarketSession || null,
+            attribution.conceptCoverage ? JSON.stringify(attribution.conceptCoverage) : null]
         );
         return { completion: mapSessionAiAnalysisCompletion(rows[0]), created: true };
       } catch (error) {
@@ -1904,6 +1910,14 @@ export function createPgRepo(pool) {
     },
     async listForUser(userId) {
       const { rows } = await pool.query('SELECT * FROM session_ai_analysis_completions WHERE user_id=$1 ORDER BY occurred_at ASC', [userId]);
+      return rows.map(mapSessionAiAnalysisCompletion);
+    },
+    // One profile's runs, oldest first, capped at the latest 3000 (the Analysis Profile Report's data source).
+    async listForProfile(userId, profileId) {
+      const { rows } = await pool.query(
+        'SELECT * FROM (SELECT * FROM session_ai_analysis_completions WHERE user_id=$1 AND analysis_profile_id=$2 ORDER BY occurred_at DESC LIMIT 3000) latest ORDER BY occurred_at ASC',
+        [userId, profileId]
+      );
       return rows.map(mapSessionAiAnalysisCompletion);
     }
   };

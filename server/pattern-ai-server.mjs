@@ -17,6 +17,7 @@ import { GEMINI_VOICE_CHARACTERS, GEMINI_VOICE_GENDERS, geminiVoiceForProfile, m
 import { CONCEPT_PRIORITIES, UNDERSTANDING_SUMMARY_MAX } from './db/analysis-profile-normalize.mjs';
 import { readWebsiteSource, readYoutubeSource, extractYoutubeVideoId } from './ai/source-reader.mjs';
 import { describeAnalysisStyle, buildAnalysisProfileBrief } from './ai/analysis-profile-brief.mjs';
+import { mandatoryConceptsOf, sessionAnalysisFormatWithCoverage, coverageOutputBudget, buildConceptCoverageInstruction, sanitizeConceptCoverage, coverageForLedger } from './ai/analysis-profile-coverage.mjs';
 // Note on CORS here: this gateway's `Access-Control-Allow-Origin: '*'` (see json() below) is
 // deliberately NOT tightened to an allowlist in this pass. Since identity now travels as a
 // HttpOnly, host-only session cookie (never a bearer header a cross-origin script could attach
@@ -417,12 +418,17 @@ async function internalWalletCall(path, payload) {
 // depends on anything the browser generated. Best-effort and never awaited into the user-visible
 // response path failing: a lost completion costs nothing but one delayed streak day, while a
 // blocked analysis response would be a real regression.
-async function recordSessionAnalysisCompletion({ userId, sessionId, entryId, analysisType, provider, model }) {
+async function recordSessionAnalysisCompletion({ userId, sessionId, entryId, analysisType, provider, model, analysisProfileId, analysisProfileRevision, conceptCoverage }) {
   if (!userId || !sessionId) return;
   try {
     await internalWalletCall('/internal/session-analysis-completions', {
       userId, sessionId, entryId: entryId || null, analysisId: randomUUID(), analysisType: analysisType || null,
-      provider: provider || null, model: model || null
+      provider: provider || null, model: model || null,
+      // Attribution for the Analysis Profile Report. The id is only a CLAIM here - routes.internal.mjs re-verifies the
+      // profile really belongs to this verified user before storing it (never trusted). Coverage is the server's own
+      // rebuilt result, compacted to ids + statuses.
+      analysisProfileId: analysisProfileId || null, analysisProfileRevision: analysisProfileRevision || null,
+      conceptCoverage: conceptCoverage ? coverageForLedger(conceptCoverage) : null
     });
   } catch (_) { /* best-effort - never surfaces as a failure on the analysis response itself */ }
 }
@@ -596,9 +602,14 @@ function historyItem(message) {
   return { role, content: [{ type: role === 'assistant' ? 'output_text' : 'input_text', text: String(message.content || '') }] };
 }
 
-function assertRequiredKeys(data, schema) {
+// `optionalKeys` (payload.optionalSchemaKeys) names keys that are in `required` ONLY because OpenAI's
+// strict mode demands every property be required - a non-strict provider (Anthropic, Gemini, Kimi,
+// DeepSeek) that omits one must degrade gracefully, not fail an analysis the trader already paid for.
+// Today that is exactly one key: conceptCoverage, which the server then rebuilds honestly.
+function assertRequiredKeys(data, schema, optionalKeys) {
   const required = (schema && schema.required) || [];
   for (const key of required) {
+    if (Array.isArray(optionalKeys) && optionalKeys.includes(key)) continue;
     if (!(key in data)) throw new Error('SCHEMA_VALIDATION_FAILED');
   }
 }
@@ -691,7 +702,10 @@ async function callOpenAI(payload, apiKey, model, externalSignal) {
   // fields. None may reach OpenAI: compactGeminiLargeEnums is set by dockChat() whenever the discovery
   // catalog is present, regardless of which provider the user selected, and production confirmed
   // OpenAI rejects the whole call with "Unknown parameter: 'compactGeminiLargeEnums'."
-  const { timeoutMs, compactGeminiLargeEnums, compactGeminiSchemaConstraints, ...providerPayload } = payload;
+  // optionalSchemaKeys (Analysis Profile concept coverage) is the same kind of NAVRYA-only control: it only
+  // tells assertRequiredKeys() which required keys a NON-strict provider may omit. OpenAI's strict mode
+  // needs no such tolerance (it always returns every required key), and it must never be sent.
+  const { timeoutMs, compactGeminiLargeEnums, compactGeminiSchemaConstraints, optionalSchemaKeys, ...providerPayload } = payload;
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -801,7 +815,7 @@ async function callAnthropic(payload, apiKey, model, externalSignal) {
     const toolUse = (result.content || []).find((block) => block.type === 'tool_use');
     if (!toolUse) throw new Error('EMPTY_MODEL_RESPONSE');
     const data = toolUse.input || {};
-    assertRequiredKeys(data, schema);
+    assertRequiredKeys(data, schema, payload.optionalSchemaKeys);
     // AI Cost Control: Anthropic's Messages API usage object reports real prompt-caching fields -
     // cache_read_input_tokens (a discounted re-read of a previously cached prefix) and
     // cache_creation_input_tokens (a premium-priced write of a NEW cache entry) - both additive
@@ -925,7 +939,7 @@ async function callGemini(payload, apiKey, model, externalSignal) {
     } catch (_) {
       throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
     }
-    assertRequiredKeys(data, schema);
+    assertRequiredKeys(data, schema, payload.optionalSchemaKeys);
     const usageMetadata = result.usageMetadata || null;
     const usage = usageMetadata ? {
       promptTokens: usageMetadata.promptTokenCount ?? null,
@@ -999,7 +1013,7 @@ async function callOpenAICompatible(provider, payload, apiKey, model, externalSi
     } catch (parseError) {
       throw new Error('ANALYSIS_OUTPUT_TRUNCATED');
     }
-    assertRequiredKeys(data, schema);
+    assertRequiredKeys(data, schema, payload.optionalSchemaKeys);
     // AI Cost Control: Kimi/DeepSeek's own cache-token field names are not independently verified
     // against official documentation the way OpenAI's/Anthropic's were - left null rather than
     // guessed, per the instruction to never invent provider data. The `raw` usage object is still
@@ -2214,6 +2228,10 @@ function buildSessionAnalysisSystemPrompt(body, language) {
   // per-request adherence line below is appended AFTER it: freedom/strictness is never part of a profile.
   lines.push(...buildAnalysisProfileBrief(profile).lines);
   if (ADHERENCE_INSTRUCTION[body.adherence]) lines.push(ADHERENCE_INSTRUCTION[body.adherence]);
+  // Verifiable enforcement of MANDATORY concepts (server/ai/analysis-profile-coverage.mjs): the brief above says WHAT
+  // to address, this says HOW to report it. Only present when there is at least one mandatory concept.
+  const mandatoryForCoverage = mandatoryConceptsOf(profile);
+  if (mandatoryForCoverage.length) lines.push(buildConceptCoverageInstruction(mandatoryForCoverage));
 
   // Section 2: the old UPDATE-time prohibition on evaluating scenario probability/status is
   // removed - a normal initial/update analysis now assesses every active scenario supplied below
@@ -2926,14 +2944,18 @@ async function analyzeSession(body) {
   const systemText = buildSessionAnalysisSystemPrompt(body, language);
   const contextText = buildSessionAnalysisContextText(body);
   const reasoningEffort = sessionAnalysisReasoningEffort(resolvedProvider, body.model);
-  const budget = sessionAnalysisOutputBudget(analysisType, body.depth, reasoningEffort);
+  const mandatoryConcepts = mandatoryConceptsOf(body.analysisProfile);
+  const budget = sessionAnalysisOutputBudget(analysisType, body.depth, reasoningEffort) + coverageOutputBudget(mandatoryConcepts);
 
   const { data: rawResult, usage, provider, model } = await callProvider(body.provider, body.apiKey, body.model, Object.assign({
     input: [
       { role: 'system', content: [{ type: 'input_text', text: systemText }] },
       { role: 'user', content: [{ type: 'input_text', text: contextText }, ...labelledImageContent(images)] }
     ],
-    text: { format: sessionAnalysisFormat },
+    text: { format: sessionAnalysisFormatWithCoverage(sessionAnalysisFormat, mandatoryConcepts) },
+    // conceptCoverage is required in the schema (OpenAI strict mode demands it) but a non-strict provider that
+    // omits it must not fail the analysis - the server rebuilds it below, marking every concept unaddressed.
+    optionalSchemaKeys: mandatoryConcepts.length ? ['conceptCoverage'] : [],
     // Production incident (2026-09-12): Gemini rejects this otherwise-valid 73-property schema
     // with HTTP 400 "Request contains an invalid argument". A real production canary proved that
     // preserving the complete object/array/required shape while omitting only enum/range/length
@@ -2950,6 +2972,9 @@ async function analyzeSession(body) {
   }, reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}), SESSION_ANALYSIS_SOURCE[analysisType] || 'sessions.analyze');
 
   const data = validateSessionAnalysisResult(Object.assign({ analysisType }, rawResult), body);
+  // One row per mandatory concept the request carried, in order, keyed by the request's own ids - what the
+  // model chose, or the honest `unaddressed`. Absent entirely when the profile has no mandatory concepts.
+  if (mandatoryConcepts.length) data.conceptCoverage = sanitizeConceptCoverage(rawResult && rawResult.conceptCoverage, mandatoryConcepts);
   return { data, provider, model, usage };
 }
 
@@ -4314,7 +4339,10 @@ const server = http.createServer(async (request, response) => {
     if (request.url === '/api/sessions/analyze' && body.sessionId) {
       await recordSessionAnalysisCompletion({
         userId: session.userId, sessionId: body.sessionId, entryId: body.entryId,
-        analysisType: result && result.data && result.data.analysisType, provider: result && result.provider, model: result && result.model
+        analysisType: result && result.data && result.data.analysisType, provider: result && result.provider, model: result && result.model,
+        analysisProfileId: typeof body.analysisProfileId === 'string' ? body.analysisProfileId : null,
+        analysisProfileRevision: typeof body.analysisProfileRevision === 'string' ? body.analysisProfileRevision : null,
+        conceptCoverage: result && result.data && result.data.conceptCoverage
       });
     }
     return json(response, 200, result);

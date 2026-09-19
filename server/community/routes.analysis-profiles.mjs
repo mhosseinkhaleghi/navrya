@@ -149,6 +149,19 @@ export function router(repo, uploadsDir) {
     res.status(204).end();
   }));
 
+  // Report data source (072_session_analysis_profile_attribution.sql): the server-authoritative runs of AI Session
+  // Analysis made under THIS profile - when, with which model, the server-clock market session, and the rebuilt
+  // mandatory-concept coverage. Read-only, oldest first. Scoped to the caller's own profile: get() returns null both
+  // for a missing profile and for someone else's, so both are the same 404 and a stranger can never even learn that
+  // the id exists (the runs themselves are additionally filtered by user_id in the repository). Analyses run before
+  // attribution existed carry no profile id and so are simply not here - the Report says "tracking began <date>"
+  // instead of inventing them.
+  app.get('/:id/usage', asyncHandler(async (req, res) => {
+    const profile = await repo.analysisProfiles.get(req.currentUser.id, req.params.id);
+    if (!profile) throw new ApiError(404, 'ANALYSIS_PROFILE_NOT_FOUND');
+    res.json({ analyses: await repo.sessionAiAnalysisCompletions.listForProfile(req.currentUser.id, req.params.id) });
+  }));
+
   // Teaching chat (071_analysis_profile_messages.sql) - the conversation a trader has with the engine to teach
   // a profile. Nested under the owning profile like events and sources, lazily fetched when the Chat tab opens.
   // The browser appends a turn (the trader's message and the engine's reply) only AFTER the AI call succeeded,
