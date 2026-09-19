@@ -16,7 +16,9 @@ import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 //   - mode:'create'/'edit' - analysisProfilesView.jsx's own "New profile"/"Edit" actions.
 
 const FEATURED_STYLE_IDS = ['price_action', 'classical_ta', 'smc', 'liquidity_analysis', 'ichimoku', 'wyckoff', 'elliott_wave', 'order_flow'];
-const SPECIAL_STYLE_IDS = ['general_analysis', 'hybrid', 'custom_method'];
+// Exported: analysisProfilesView.jsx's inline Setup tab filters the same three special ids out of its
+// secondary-style dropdown, and must never keep a second, driftable copy of this list.
+export const SPECIAL_STYLE_IDS = ['general_analysis', 'hybrid', 'custom_method'];
 
 const copy = {
   fa: {

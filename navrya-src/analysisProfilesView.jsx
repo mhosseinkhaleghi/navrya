@@ -5,7 +5,7 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
-import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
+import { AnalysisProfileOnboarding, SPECIAL_STYLE_IDS } from './analysisProfileOnboarding.jsx';
 import { ConceptsTab } from './analysisProfileConcepts.jsx';
 import { MemoryTab } from './analysisProfileMemory.jsx';
 import { KnowledgeTab } from './analysisProfileKnowledge.jsx';
