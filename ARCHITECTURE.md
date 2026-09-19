@@ -1743,6 +1743,14 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   `metadata.pricing` (original, discount, final, wallet bonus, code terms) - so the BSC invoice and any refund derive from the discounted amount. The client sends
   only the plan and the code text. A code-produced $0 price is settled server-side through `confirmTransaction` (no invoice, never contacts the chain, no bonus).
   Code attempts share one per-user rate limit (20 / 10 min).
+- **Plan scope & automatic discounts** (migration 067): `planIds` restricts a code to specific paid plans (empty = every paid plan, so every
+  older code keeps working); `applicationMode` is `'code'` (typed, the default) or `'automatic'` (no code - an internally generated, unguessable
+  identifier the customer never sees). Both are immutable after creation like the code string. Plan scope is enforced by `assertCodeAvailable()`
+  (409 `DISCOUNT_CODE_PLAN_NOT_ELIGIBLE`) inside the SAME row lock every other rule uses. `GET /api/sync/subscriptions/automatic-discounts` (its own rate
+  limit) returns, per eligible paid plan, the single best automatic offer (largest discount; ties go to the oldest) with server-computed amounts - a
+  plan card strikes the list price and shows this; checkout claims it by `automaticDiscountId` (never both a code and an id). An offer no longer valid at
+  checkout is refused loudly, never silently charged at full price. The internal identifier is scrubbed from every customer-facing surface
+  (`customerFacingPricing()` in `discount-codes.mjs`; the customer transaction DTO also drops the raw `metadata` blob it lived in) - admin keeps it in full.
 - **Checkout urgency:** the quote also returns `codeId`, `expiresAt`, `maxRedemptions` and `remaining`. A time-limited code shows a reverse countdown
   (days : hours : minutes : seconds) on the review step, a usage-limited one a LIVE remaining-uses count. Both poll
   `GET /api/sync/subscriptions/discount-codes/:id/status` every 4s (`URGENCY_POLL_MS`) - a read-only lookup (capacity in use is read on every call, never cached) with its
