@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 // The REAL-PostgreSQL companion to analysis-profile-authoring-fields.test.mjs and
-// analysis-profile-authoring-migration-contract.test.mjs - proves migration 067's two columns
+// analysis-profile-authoring-migration-contract.test.mjs - proves migration 068's two columns
 // really exist and round-trip through repo.pg.mjs's own upsert(), which the memory repo cannot
 // show. Skips cleanly (one explicit log line, exit 0) unless DATABASE_URL is set - `npm test`
 // must never fail or hang because no database is reachable, same convention as
@@ -42,7 +42,7 @@ if (!hasDb) {
     if (pool) await pool.end();
   });
 
-  test('migration 067 is applied: analysis_profiles has custom_method_links and custom_focuses, both JSONB defaulted', async () => {
+  test('migration 068 is applied: analysis_profiles has custom_method_links and custom_focuses, both JSONB defaulted', async () => {
     const { rows } = await pool.query(
       "SELECT column_name, data_type, column_default FROM information_schema.columns WHERE table_name='analysis_profiles' AND column_name IN ('custom_method_links','custom_focuses')"
     );

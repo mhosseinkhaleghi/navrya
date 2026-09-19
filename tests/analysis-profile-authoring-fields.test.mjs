@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import * as serverNormalize from '../server/db/analysis-profile-normalize.mjs';
 import { CUSTOM_METHOD_LINKS_CASES, CUSTOM_FOCUS_CASES } from './helpers/analysis-profile-authoring-fixtures.mjs';
 
-// Analysis Profile authoring fields (customMethodLinks / customFocuses, 067_analysis_profile_
+// Analysis Profile authoring fields (customMethodLinks / customFocuses, 068_analysis_profile_
 // authoring.sql). Two independent implementations exist by necessity - server/db/analysis-profile-
 // normalize.mjs (real ESM, imported by both repo.pg.mjs and repo.memory.mjs) and a classic-script
 // twin inside public/pages/shared/analysis-profile-store.js (the browser store, no ESM in that

@@ -316,7 +316,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
     setFocusIds((prev) => (prev.indexOf(id) > -1 ? prev.filter((fid) => fid !== id) : prev.concat(id)));
   }
 
-  // Custom focus areas (067_analysis_profile_authoring.sql) - a trader's own wording, kept in a
+  // Custom focus areas (068_analysis_profile_authoring.sql) - a trader's own wording, kept in a
   // SEPARATE list from focusIds (which only ever hold Focus Registry ids). Both the manual
   // "+ Add your own" form and an accepted AI suggestion go through this one function, so the two
   // paths can never diverge on validation.

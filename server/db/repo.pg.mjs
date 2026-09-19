@@ -2511,7 +2511,7 @@ export function createPgRepo(pool) {
     }
   };
 
-  // Analysis Profile engine-memory learning ledger (068_analysis_profile_memory.sql) - append-only,
+  // Analysis Profile engine-memory learning ledger (069_analysis_profile_memory.sql) - append-only,
   // never updated or deleted by anything in this codebase. Lazily loaded only when a profile's
   // Memory tab opens (see routes.analysis-profiles.mjs's nested /:id/events routes), never part of
   // the boot-time replica hydrate a flat list domain like analysisProfiles itself uses.

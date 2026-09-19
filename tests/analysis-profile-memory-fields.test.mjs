@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import * as serverNormalize from '../server/db/analysis-profile-normalize.mjs';
 import { CONCEPT_CASES, UNDERSTANDING_CASES, oversizedUnderstandingSummary } from './helpers/analysis-profile-memory-fixtures.mjs';
 
-// Analysis Profile engine-memory fields (concepts / understanding, 068_analysis_profile_memory
+// Analysis Profile engine-memory fields (concepts / understanding, 069_analysis_profile_memory
 // .sql). Two independent implementations exist by necessity - server/db/analysis-profile-
 // normalize.mjs (real ESM, imported by both repo.pg.mjs and repo.memory.mjs) and a classic-script
 // twin inside public/pages/shared/analysis-profile-store.js (the browser store) - this file runs

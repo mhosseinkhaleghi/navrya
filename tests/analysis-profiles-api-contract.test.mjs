@@ -142,7 +142,7 @@ test('a different user setting their own default never affects another user\'s d
   assert.equal(aliceList.body.analysisProfiles[0].id, 'alice-default');
 });
 
-// customMethodLinks / customFocuses (067_analysis_profile_authoring.sql) - real HTTP round trip
+// customMethodLinks / customFocuses (068_analysis_profile_authoring.sql) - real HTTP round trip
 // over the memory repo, server-side re-normalization on every write (never trusts the client
 // alone), matching server/db/analysis-profile-normalize.mjs's own fixture tests.
 test('customMethodLinks/customFocuses round-trip through POST/GET, and the server re-normalizes them - never trusts the client alone', async () => {
@@ -174,7 +174,7 @@ test('omitting customMethodLinks/customFocuses on POST defaults them to the empt
   assert.deepEqual(created.body.customFocuses, []);
 });
 
-// concepts / understanding (068_analysis_profile_memory.sql) - real HTTP round trip, server-side
+// concepts / understanding (069_analysis_profile_memory.sql) - real HTTP round trip, server-side
 // re-normalization on every write, matching the authoring-fields contract test above.
 test('concepts/understanding round-trip through POST/GET, and the server re-normalizes them - never trusts the client alone', async () => {
   const user = await createUser('Trader Nine');

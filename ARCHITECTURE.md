@@ -1648,10 +1648,10 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   unique index (`WHERE is_default`) enforcing "at most one default per user" as a hard database
   backstop on top of the client store's own clearing logic; plus `ALTER TABLE strategies ADD
   COLUMN IF NOT EXISTS linked_analysis_profile_id TEXT` (loose, no FK - same convention as
-  `trades.linked_strategy_id`). Extended additively by `067_analysis_profile_authoring.sql`
+  `trades.linked_strategy_id`). Extended additively by `068_analysis_profile_authoring.sql`
   (`custom_method_links` JSONB `{youtubeUrl,websiteUrl,referenceUrl}`, each validated http(s) or
   dropped to `''`; `custom_focuses` JSONB, a trader-added/AI-accepted focus area list kept
-  SEPARATE from the registry-validated `focus_ids`) and `068_analysis_profile_memory.sql`
+  SEPARATE from the registry-validated `focus_ids`) and `069_analysis_profile_memory.sql`
   (`concepts` JSONB, `understanding` JSONB `{summary,version,updatedAt}`, plus a new append-only
   `analysis_profile_events` table - the learning ledger: `kind`/`title`/`detail`/
   `understanding_version`/real `token_usage`, indexed on `(profile_id, created_at)` and `user_id`,

@@ -5,11 +5,11 @@
 --                    origin: 'user'|'ai'|'source'|'chat'|'starter', enabled, createdAt}] - specific,
 --                   checkable things the engine should look for under this profile (e.g. "Elliott
 --                   impulse count", "swept liquidity levels"). A small JSON document nothing
---                   queries into individually, same reasoning as custom_focuses (067).
+--                   queries into individually, same reasoning as custom_focuses (068).
 --   understanding  {summary, version, updatedAt} - the engine's own compact, evolving
 --                   understanding of how this trader reads a chart under this profile.
 --
--- Additive only (expand, never edit 001-067): both columns default to their empty document, so
+-- Additive only (expand, never edit 001-068): both columns default to their empty document, so
 -- every existing row and every older client that never sends them keeps working unchanged.
 ALTER TABLE analysis_profiles
   ADD COLUMN IF NOT EXISTS concepts      JSONB NOT NULL DEFAULT '[]',
