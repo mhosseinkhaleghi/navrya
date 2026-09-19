@@ -173,3 +173,36 @@ test('omitting customMethodLinks/customFocuses on POST defaults them to the empt
   assert.deepEqual(created.body.customMethodLinks, { youtubeUrl: '', websiteUrl: '', referenceUrl: '' });
   assert.deepEqual(created.body.customFocuses, []);
 });
+
+// concepts / understanding (067_analysis_profile_memory.sql) - real HTTP round trip, server-side
+// re-normalization on every write, matching the authoring-fields contract test above.
+test('concepts/understanding round-trip through POST/GET, and the server re-normalizes them - never trusts the client alone', async () => {
+  const user = await createUser('Trader Nine');
+  const created = await api('POST', '/api/sync/analysis-profiles', { userId: user.id, body: sampleProfile('ap-i', {
+    concepts: [
+      { id: 'cpt-1', title: '  Swept liquidity levels  ', description: 'stop hunts', priority: 'mandatory', origin: 'user' },
+      { id: 'cpt-1', title: 'Duplicate id, must be dropped' },
+      { id: 'not valid!', title: 'Invalid id, must be dropped' },
+      { id: 'cpt-2', title: 'Unknown priority', priority: 'urgent' }
+    ],
+    understanding: { summary: 'Reads price action first.', version: 2 }
+  }) });
+  assert.equal(created.status, 200);
+  assert.equal(created.body.concepts.length, 2, 'the duplicate id and the invalid id must both be dropped server-side');
+  assert.equal(created.body.concepts[0].title, 'Swept liquidity levels');
+  assert.equal(created.body.concepts[0].priority, 'mandatory');
+  assert.equal(created.body.concepts[1].priority, 'preferred', 'an unrecognized priority must fall back to preferred, never be stored as-is');
+  assert.equal(created.body.understanding.summary, 'Reads price action first.');
+  assert.equal(created.body.understanding.version, 2);
+
+  const fetched = await api('GET', '/api/sync/analysis-profiles/ap-i', { userId: user.id });
+  assert.deepEqual(fetched.body.concepts, created.body.concepts);
+  assert.deepEqual(fetched.body.understanding, created.body.understanding);
+});
+
+test('omitting concepts/understanding on POST defaults them to the empty shape, never null/undefined - a pre-memory-fields client keeps working unchanged', async () => {
+  const user = await createUser('Trader Ten');
+  const created = await api('POST', '/api/sync/analysis-profiles', { userId: user.id, body: sampleProfile('ap-j') });
+  assert.deepEqual(created.body.concepts, []);
+  assert.deepEqual(created.body.understanding, { summary: '', version: 0, updatedAt: null });
+});

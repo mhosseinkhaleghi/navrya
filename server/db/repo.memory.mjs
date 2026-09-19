@@ -13,7 +13,7 @@ import { createReferralMemoryDomains } from './referral-repo.memory.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding } from './analysis-profile-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -30,7 +30,7 @@ export function createMemoryRepo() {
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     sessionAiAnalysisCompletions: new Map(), disciplineSettings: new Map(),
-    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), trades: new Map(), accounts: new Map(),
+    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), analysisProfileEvents: new Map(), trades: new Map(), accounts: new Map(),
     instrumentCatalog: new Map(), learnedCommands: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
@@ -1537,6 +1537,8 @@ export function createMemoryRepo() {
         customMethodNotes: record.customMethodNotes || '',
         customMethodLinks: normalizeCustomMethodLinks(record.customMethodLinks),
         customFocuses: normalizeCustomFocuses(record.customFocuses),
+        concepts: normalizeConcepts(record.concepts),
+        understanding: normalizeUnderstanding(record.understanding),
         isDefault, isActive: record.isActive !== false,
         registryVersion: Math.max(1, Number(record.registryVersion) || 1),
         createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp
@@ -1557,6 +1559,39 @@ export function createMemoryRepo() {
       if (!record) return;
       if (record.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
       state.analysisProfiles.delete(id);
+    }
+  };
+
+  // Analysis Profile engine-memory learning ledger (067_analysis_profile_memory.sql) - mirrors
+  // repo.pg.mjs's analysisProfileEvents exactly (append-only, ownership checked against the real
+  // profile row, 200-row cap, newest first).
+  const analysisProfileEvents = {
+    async listByProfile(userId, profileId) {
+      const profile = state.analysisProfiles.get(profileId);
+      if (!profile) throw new ApiError(404, 'ANALYSIS_PROFILE_NOT_FOUND');
+      if (profile.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+      return Array.from(state.analysisProfileEvents.values())
+        .filter((e) => e.profileId === profileId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 200)
+        .map(clone);
+    },
+    async create(userId, profileId, event) {
+      const profile = state.analysisProfiles.get(profileId);
+      if (!profile) throw new ApiError(404, 'ANALYSIS_PROFILE_NOT_FOUND');
+      if (profile.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+      const kind = String((event && event.kind) || '').trim().slice(0, 60);
+      if (!kind) throw new ApiError(400, 'VALIDATION_FAILED');
+      const stored = {
+        id: newId('ap-event'), userId, profileId, kind,
+        title: String((event && event.title) || '').trim().slice(0, 200),
+        detail: String((event && event.detail) || '').trim().slice(0, 4000),
+        understandingVersion: Number.isFinite(Number(event && event.understandingVersion)) ? Math.trunc(Number(event.understandingVersion)) : null,
+        tokenUsage: (event && event.tokenUsage) ? clone(event.tokenUsage) : null,
+        createdAt: now()
+      };
+      state.analysisProfileEvents.set(stored.id, stored);
+      return clone(stored);
     }
   };
 
@@ -3478,7 +3513,7 @@ export function createMemoryRepo() {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
-    strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, analysisProfileEvents, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

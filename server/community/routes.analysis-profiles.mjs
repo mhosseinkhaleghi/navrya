@@ -36,5 +36,19 @@ export function router(repo) {
     res.status(204).end();
   }));
 
+  // Engine-memory learning ledger (067_analysis_profile_memory.sql) - append-only, nested under
+  // its owning profile (same "action route under the parent id" shape as routes.media.mjs's own
+  // POST /assets/:id/links), never a top-level server-replica list domain: lazily fetched only
+  // when a profile's Memory tab actually opens, not part of the boot-time hydrate every list
+  // domain participates in. Ownership is re-checked against the real profile row inside the repo
+  // methods themselves, never trusted from the URL alone.
+  app.get('/:id/events', asyncHandler(async (req, res) => {
+    res.json({ events: await repo.analysisProfileEvents.listByProfile(req.currentUser.id, req.params.id) });
+  }));
+  app.post('/:id/events', asyncHandler(async (req, res) => {
+    const saved = await repo.analysisProfileEvents.create(req.currentUser.id, req.params.id, req.body || {});
+    res.status(201).json(saved);
+  }));
+
   return app;
 }

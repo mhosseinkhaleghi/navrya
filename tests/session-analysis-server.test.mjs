@@ -98,6 +98,59 @@ test('a profile with zero customFocuses adds no "additional focus areas" line at
   assert.doesNotMatch(prompt, /additional focus areas/);
 });
 
+// Engine memory (Phase 2, 067_analysis_profile_memory.sql).
+test('a MANDATORY concept becomes a real "directly address" instruction, distinct from a preferred/reference concept', () => {
+  const prompt = buildSessionAnalysisSystemPrompt({
+    analysisType: 'initial', adherence: 'balanced',
+    analysisProfile: {
+      primaryStyle: { id: 'price_action', name: { en: 'Price Action' } }, secondaryStyles: [], focuses: [], customFocuses: [], customMethodNotes: '',
+      concepts: [
+        { id: 'cpt-1', title: 'Swept liquidity levels', description: 'stop hunts', priority: 'mandatory' },
+        { id: 'cpt-2', title: 'Order block mitigation', priority: 'preferred' }
+      ]
+    }
+  }, 'English');
+  assert.match(prompt, /MANDATORY/);
+  assert.match(prompt, /Swept liquidity levels \(stop hunts\)/);
+  assert.match(prompt, /never silently omit one, never invent one/);
+  assert.match(prompt, /Order block mitigation/);
+  // The mandatory and non-mandatory concepts must land in two DIFFERENT lines, never merged into
+  // one - otherwise a model could not tell which ones are genuinely non-negotiable.
+  const mandatoryLine = prompt.split('\n\n').find((line) => line.includes('MANDATORY'));
+  const otherLine = prompt.split('\n\n').find((line) => line.startsWith('Other concepts'));
+  assert.ok(mandatoryLine && !mandatoryLine.includes('Order block mitigation'));
+  assert.ok(otherLine && otherLine.includes('Order block mitigation') && !otherLine.includes('Swept liquidity levels'));
+});
+
+test('a profile with zero concepts adds neither the MANDATORY line nor the "Other concepts" line', () => {
+  const prompt = buildSessionAnalysisSystemPrompt({
+    analysisType: 'initial', adherence: 'balanced',
+    analysisProfile: { primaryStyle: { id: 'price_action', name: { en: 'Price Action' } }, secondaryStyles: [], focuses: [], customFocuses: [], customMethodNotes: '', concepts: [] }
+  }, 'English');
+  assert.doesNotMatch(prompt, /MANDATORY/);
+  assert.doesNotMatch(prompt, /Other concepts the trader has taught/);
+});
+
+test('the engine\'s own current understanding is woven in as historical context, not established truth, and is capped defensively', () => {
+  const prompt = buildSessionAnalysisSystemPrompt({
+    analysisType: 'initial', adherence: 'balanced',
+    analysisProfile: {
+      primaryStyle: { id: 'price_action', name: { en: 'Price Action' } }, secondaryStyles: [], focuses: [], customFocuses: [], customMethodNotes: '',
+      concepts: [], understanding: 'This trader reads price action first, checks liquidity second.'
+    }
+  }, 'English');
+  assert.match(prompt, /This trader reads price action first, checks liquidity second\./);
+  assert.match(prompt, /historical context, not established truth/);
+});
+
+test('an empty understanding string adds no understanding line at all', () => {
+  const prompt = buildSessionAnalysisSystemPrompt({
+    analysisType: 'initial', adherence: 'balanced',
+    analysisProfile: { primaryStyle: { id: 'price_action', name: { en: 'Price Action' } }, secondaryStyles: [], focuses: [], customFocuses: [], customMethodNotes: '', concepts: [], understanding: '' }
+  }, 'English');
+  assert.doesNotMatch(prompt, /current understanding of how this trader reads a chart/);
+});
+
 // --------------------------------------------------------------------------------------------
 // Output budget policy - Initial largest, Update medium, Scenario Evaluation smallest (brief §4).
 // --------------------------------------------------------------------------------------------

@@ -75,8 +75,20 @@
       secondary: profile.secondaryStyleIds || [],
       focuses: profile.focusIds || [],
       customFocuses: (profile.customFocuses || []).map(function (focus) { return [focus.id, focus.name, focus.description]; }),
-      notes: profile.customMethodNotes || ''
+      notes: profile.customMethodNotes || '',
+      // Engine memory (Phase 2): a disabled concept is excluded, matching what enabledConcepts()
+      // below actually sends to the model - toggling one on/off must invalidate the cache exactly
+      // like adding/removing one does.
+      concepts: (profile.concepts || []).filter(function (c) { return c.enabled; }).map(function (c) { return [c.id, c.title, c.description, c.priority]; }),
+      understanding: (profile.understanding && profile.understanding.summary) || ''
     }));
+  }
+
+  // Only concepts the trader has left enabled ever reach the model - a disabled one keeps its
+  // history/origin in the store but is excluded here, same convention as customFocuses/focusIds.
+  function enabledConcepts(profile) {
+    return (profile.concepts || []).filter(function (c) { return c.enabled; })
+      .map(function (c) { return { id: c.id, title: c.title, description: c.description, priority: c.priority }; });
   }
 
   function getAnalysisContext(profileId) {
@@ -103,6 +115,11 @@
       // The trader's own (or accepted-AI) focus areas - their own wording, no registry entry.
       customFocuses: (profile.customFocuses || []).map(function (focus) { return { name: focus.name, description: focus.description }; }),
       customMethodNotes: profile.customMethodNotes,
+      // Engine memory (Phase 2): specific, checkable things this trader has taught the engine to
+      // look for under this profile - see analysis-profile-normalize.mjs's own header for what
+      // `priority` means (never AI freedom/strictness, which stays a per-request choice).
+      concepts: enabledConcepts(profile),
+      understanding: profile.understanding ? profile.understanding.summary : '',
       requiredInputs: mergedRequiredInputs(primaryStyle, secondaryStyles, focuses),
       // analysisPrinciples/futurePromptGuidance are carried through unmodified from the registry
       // definitions above (primaryStyle.analysisPrinciples, primaryStyle.futurePromptGuidance,

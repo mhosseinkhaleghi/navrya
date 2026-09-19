@@ -8,7 +8,7 @@ import test, { after, afterEach } from 'node:test';
 // tests/session-analysis-server.test.mjs already uses - this stubs the underlying provider HTTP
 // call, never a mocked callProvider() seam of its own.
 const serverModule = await import('../server/pattern-ai-server.mjs');
-const { suggestAnalysisProfile, buildAnalysisProfileSuggestSystemPrompt, sanitizeAnalysisProfileSuggestions } = serverModule;
+const { suggestAnalysisProfile, buildAnalysisProfileSuggestSystemPrompt, sanitizeAnalysisProfileSuggestions, analysisProfileSuggestFormatFor } = serverModule;
 const server = serverModule.default;
 
 after(() => { server.close(); });
@@ -87,4 +87,49 @@ test('a full round trip through suggestAnalysisProfile also applies the sanitize
   const result = await suggestAnalysisProfile({ ...baseBody(), alreadySelected: ['Momentum'] });
   assert.equal(result.suggestions.length, 1);
   assert.equal(result.suggestions[0].name, 'New idea');
+});
+
+// ---- 'concepts' kind (Phase 2, the Concepts tab's own "Suggest with AI") ---------------------------
+
+test('a concepts suggestion carries a validated priority; an unrecognized one falls back to preferred, never trusted as-is', () => {
+  const cleaned = sanitizeAnalysisProfileSuggestions(
+    [{ name: 'Swept liquidity levels', description: 'x', priority: 'mandatory' }, { name: 'Order block mitigation', description: 'y', priority: 'urgent' }, { name: 'Elliott impulse count', description: 'z' }],
+    [], 'concepts'
+  );
+  assert.equal(cleaned.length, 3);
+  assert.equal(cleaned[0].priority, 'mandatory');
+  assert.equal(cleaned[1].priority, 'preferred', 'an unrecognized priority must fall back to preferred');
+  assert.equal(cleaned[2].priority, 'preferred', 'a missing priority must fall back to preferred');
+});
+
+test('a focuses suggestion never grows a priority field (kind defaults to focuses)', () => {
+  const cleaned = sanitizeAnalysisProfileSuggestions([{ name: 'Momentum', description: 'x', priority: 'mandatory' }], []);
+  assert.equal('priority' in cleaned[0], false);
+});
+
+test('the concepts schema requires a priority enum drawn from the one shared CONCEPT_PRIORITIES source, the focuses schema does not', () => {
+  const concepts = analysisProfileSuggestFormatFor('concepts').schema.properties.suggestions.items;
+  assert.deepEqual(concepts.properties.priority.enum, ['mandatory', 'preferred', 'reference']);
+  assert.ok(concepts.required.includes('priority'));
+  const focuses = analysisProfileSuggestFormatFor('focuses').schema.properties.suggestions.items;
+  assert.equal(focuses.properties.priority, undefined);
+  assert.equal(focuses.required.includes('priority'), false);
+});
+
+test('the concepts system prompt is concept-specific (checkable, not vague) and tells the model to default to "preferred"', () => {
+  const prompt = buildAnalysisProfileSuggestSystemPrompt({ kind: 'concepts' }, 'English');
+  assert.match(prompt, /concept/i);
+  assert.match(prompt, /checkable/i);
+  assert.match(prompt, /default to "preferred"/);
+});
+
+test('a full concepts round trip returns sanitized suggestions WITH priority, and excludes what the trader already has', async () => {
+  globalThis.fetch = stubOpenAi({ suggestions: [
+    { name: 'Order block mitigation', description: 'already have this', priority: 'mandatory' },
+    { name: 'Breaker block', description: 'genuinely new', priority: 'reference' }
+  ] });
+  const result = await suggestAnalysisProfile({ ...baseBody(), kind: 'concepts', alreadySelected: ['Order block mitigation'] });
+  assert.equal(result.suggestions.length, 1);
+  assert.equal(result.suggestions[0].name, 'Breaker block');
+  assert.equal(result.suggestions[0].priority, 'reference');
 });

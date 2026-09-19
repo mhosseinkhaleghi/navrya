@@ -283,3 +283,127 @@ test('deleting a Strategy never touches an Analysis Profile - the relationship i
   assert.equal(store.find(a.id).name, 'A');
   assert.equal(store.find(b.id).name, 'B');
 });
+
+// Engine memory (Phase 2, 067_analysis_profile_memory.sql) - applyLearning()'s single mutation
+// funnel, and the events client.
+test('applyLearning() merges new concepts (deduped by folded title) in exactly one save(), never per-concept', async () => {
+  const { store, fetchCalls } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
+  await flush();
+  const created = store.create({ name: 'PA', primaryStyleId: 'price_action' });
+  await flush();
+  const before = fetchCalls.filter((call) => call[1] && call[1].method === 'POST' && call[0] === '/api/sync/analysis-profiles').length;
+
+  const updated = store.applyLearning(created.id, {
+    conceptsToAdd: [
+      { title: 'Swept liquidity levels', description: 'stop hunts', priority: 'mandatory' },
+      { title: '  swept   liquidity  levels ' } // same concept, different casing/spacing - must be deduped
+    ]
+  });
+  assert.equal(updated.concepts.length, 1, 'a duplicate (folded) title must not create a second concept');
+  assert.equal(updated.concepts[0].title, 'Swept liquidity levels');
+  await flush();
+  const after = fetchCalls.filter((call) => call[1] && call[1].method === 'POST' && call[0] === '/api/sync/analysis-profiles').length;
+  assert.equal(after - before, 1, 'applyLearning must persist through exactly one profile save(), never one per concept');
+});
+
+test('applyLearning() adding a concept that already exists on the profile is a no-op for that concept', async () => {
+  const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
+  await flush();
+  const created = store.create({ name: 'PA', primaryStyleId: 'price_action', concepts: [{ id: 'cpt-1', title: 'Order block mitigation' }] });
+  await flush();
+  const updated = store.applyLearning(created.id, { conceptsToAdd: [{ title: 'Order block mitigation' }] });
+  assert.equal(updated.concepts.length, 1);
+});
+
+test('applyLearning() bumps understanding.version only when the proposed summary genuinely differs from the current one', async () => {
+  const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
+  await flush();
+  const created = store.create({ name: 'PA', primaryStyleId: 'price_action' });
+  await flush();
+  assert.equal(created.understanding.version, 0);
+
+  const first = store.applyLearning(created.id, { understandingSummary: 'Reads price action first.' });
+  assert.equal(first.understanding.version, 1);
+  assert.equal(first.understanding.summary, 'Reads price action first.');
+
+  const unchanged = store.applyLearning(created.id, { understandingSummary: 'Reads price action first.' });
+  assert.equal(unchanged.understanding.version, 1, 'proposing the exact same summary again must not bump the version');
+
+  const second = store.applyLearning(created.id, { understandingSummary: 'Reads price action first, liquidity second.' });
+  assert.equal(second.understanding.version, 2);
+});
+
+test('applyLearning() returns null for an unknown profile id, rather than throwing', async () => {
+  const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
+  await flush();
+  assert.equal(store.applyLearning('not-a-real-id', { understandingSummary: 'x' }), null);
+});
+
+test('listEvents() hits the real nested GET /events endpoint for the given profile id and returns [] on a failed response, never throwing', async () => {
+  const calls = [];
+  const { store } = await loadStore({
+    currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      calls.push([url, options]);
+      if (url === '/api/sync/analysis-profiles/p1/events' && (!options || options.method === undefined)) return { ok: true, json: async () => ({ events: [{ id: 'ev-1', kind: 'note' }] }) };
+      if (url === '/api/sync/analysis-profiles/p2/events') return { ok: false, status: 403 };
+      return { ok: true, json: async () => ({ analysisProfiles: [] }) };
+    }
+  });
+  await flush();
+  const events = await store.listEvents('p1');
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'note');
+  assert.ok(calls.some((call) => call[0] === '/api/sync/analysis-profiles/p1/events'));
+  const failed = await store.listEvents('p2');
+  assert.equal(failed.length, 0);
+});
+
+test('applyLearning() posts exactly one best-effort learning event to the real nested /events endpoint, carrying the token usage through', async () => {
+  const eventPosts = [];
+  const { store } = await loadStore({
+    currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      if (url === '/api/sync/analysis-profiles/p1/events' && options && options.method === 'POST') { eventPosts.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ id: 'ev-1' }) }; }
+      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ analysisProfiles: [{ id: 'p1', name: 'PA', primaryStyleId: 'price_action', secondaryStyleIds: [], focusIds: [] }] }) };
+    }
+  });
+  await flush();
+  store.applyLearning('p1', { conceptsToAdd: [{ title: 'Order block mitigation' }], eventKind: 'concept_added', eventTitle: 'Accepted an AI suggestion', tokenUsage: { promptTokens: 80, completionTokens: 20 } });
+  await flush();
+  assert.equal(eventPosts.length, 1);
+  assert.equal(eventPosts[0].kind, 'concept_added');
+  assert.equal(eventPosts[0].tokenUsage.promptTokens, 80);
+});
+
+test('recordNote() posts exactly one plain "note" event with zero tokens and NEVER saves the profile (no concept/understanding change)', async () => {
+  const eventPosts = [];
+  let profilePosts = 0;
+  const { store } = await loadStore({
+    currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      if (url === '/api/sync/analysis-profiles/p1/events' && options && options.method === 'POST') { eventPosts.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ id: 'ev-1' }) }; }
+      if (options && options.method === 'POST') { profilePosts += 1; return { ok: true, json: async () => JSON.parse(options.body) }; }
+      return { ok: true, json: async () => ({ analysisProfiles: [{ id: 'p1', name: 'PA', primaryStyleId: 'price_action', secondaryStyleIds: [], focusIds: [], understanding: { summary: 'x', version: 4 } }] }) };
+    }
+  });
+  await flush();
+  await store.recordNote('p1', '  Remember to wait for the retest.  ');
+  await flush();
+  assert.equal(eventPosts.length, 1);
+  assert.equal(eventPosts[0].kind, 'note');
+  assert.equal(eventPosts[0].detail, 'Remember to wait for the retest.');
+  assert.equal(eventPosts[0].tokenUsage, null, 'a diary note spends no tokens');
+  assert.equal(eventPosts[0].understandingVersion, 4);
+  assert.equal(profilePosts, 0, 'a plain note must never re-save the profile');
+});
+
+test('recordNote() is a no-op (resolves null, no network) for an empty note or an unknown profile', async () => {
+  let posts = 0;
+  const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: async (url, options) => { if (options && options.method === 'POST') posts += 1; return { ok: true, json: async () => ({ analysisProfiles: [] }) }; } });
+  await flush();
+  assert.equal(await store.recordNote('p1', 'hello'), null, 'unknown profile');
+  assert.equal(await store.recordNote('p1', '   '), null, 'empty note');
+  assert.equal(posts, 0);
+});

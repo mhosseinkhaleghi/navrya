@@ -13,7 +13,7 @@ import { createReferralPgDomains } from './referral-repo.pg.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding } from './analysis-profile-normalize.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -406,6 +406,8 @@ function mapAnalysisProfile(row) {
     focusIds: row.focus_ids || [], customMethodNotes: row.custom_method_notes,
     customMethodLinks: normalizeCustomMethodLinks(row.custom_method_links),
     customFocuses: normalizeCustomFocuses(row.custom_focuses),
+    concepts: normalizeConcepts(row.concepts),
+    understanding: normalizeUnderstanding(row.understanding),
     isDefault: row.is_default, isActive: row.is_active, registryVersion: row.registry_version,
     createdAt: row.created_at, updatedAt: row.updated_at
   };
@@ -2465,12 +2467,12 @@ export function createPgRepo(pool) {
           `INSERT INTO analysis_profiles
             (id, user_id, name, description, primary_style_id, secondary_style_ids, focus_ids,
              custom_method_notes, is_default, is_active, registry_version, custom_method_links,
-             custom_focuses, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
+             custom_focuses, concepts, understanding, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now())
            ON CONFLICT (id) DO UPDATE SET
              name=$3, description=$4, primary_style_id=$5, secondary_style_ids=$6, focus_ids=$7,
              custom_method_notes=$8, is_default=$9, is_active=$10, registry_version=$11,
-             custom_method_links=$12, custom_focuses=$13, updated_at=now()
+             custom_method_links=$12, custom_focuses=$13, concepts=$14, understanding=$15, updated_at=now()
            RETURNING *`,
           [record.id, userId, record.name || '', record.description || '',
             record.primaryStyleId || 'general_analysis',
@@ -2479,7 +2481,9 @@ export function createPgRepo(pool) {
             record.customMethodNotes || '', isDefault, record.isActive !== false,
             Math.max(1, Number(record.registryVersion) || 1),
             JSON.stringify(normalizeCustomMethodLinks(record.customMethodLinks)),
-            JSON.stringify(normalizeCustomFocuses(record.customFocuses))]
+            JSON.stringify(normalizeCustomFocuses(record.customFocuses)),
+            JSON.stringify(normalizeConcepts(record.concepts)),
+            JSON.stringify(normalizeUnderstanding(record.understanding))]
         );
 
         await client.query('COMMIT');
@@ -2504,6 +2508,47 @@ export function createPgRepo(pool) {
       if (!rows[0]) return;
       if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
       await pool.query('DELETE FROM analysis_profiles WHERE id=$1', [id]);
+    }
+  };
+
+  // Analysis Profile engine-memory learning ledger (067_analysis_profile_memory.sql) - append-only,
+  // never updated or deleted by anything in this codebase. Lazily loaded only when a profile's
+  // Memory tab opens (see routes.analysis-profiles.mjs's nested /:id/events routes), never part of
+  // the boot-time replica hydrate a flat list domain like analysisProfiles itself uses.
+  function mapAnalysisProfileEvent(row) {
+    return {
+      id: row.id, userId: row.user_id, profileId: row.profile_id, kind: row.kind,
+      title: row.title, detail: row.detail, understandingVersion: row.understanding_version,
+      tokenUsage: row.token_usage || null, createdAt: row.created_at
+    };
+  }
+  const analysisProfileEvents = {
+    // Ownership is checked against the real profile row, never trusted from the client - the same
+    // "resolve the real owner, 404 for anyone else" convention every nested domain in this file
+    // follows (e.g. trade screenshots, strategy attachments).
+    async listByProfile(userId, profileId) {
+      const owner = await pool.query('SELECT user_id FROM analysis_profiles WHERE id=$1', [profileId]);
+      if (!owner.rows[0]) throw new ApiError(404, 'ANALYSIS_PROFILE_NOT_FOUND');
+      if (owner.rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+      const { rows } = await pool.query('SELECT * FROM analysis_profile_events WHERE profile_id=$1 ORDER BY created_at DESC LIMIT 200', [profileId]);
+      return rows.map(mapAnalysisProfileEvent);
+    },
+    async create(userId, profileId, event) {
+      const owner = await pool.query('SELECT user_id FROM analysis_profiles WHERE id=$1', [profileId]);
+      if (!owner.rows[0]) throw new ApiError(404, 'ANALYSIS_PROFILE_NOT_FOUND');
+      if (owner.rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+      const kind = String((event && event.kind) || '').trim().slice(0, 60);
+      if (!kind) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows } = await pool.query(
+        `INSERT INTO analysis_profile_events (id, user_id, profile_id, kind, title, detail, understanding_version, token_usage)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [newId('ap-event'), userId, profileId, kind,
+          String((event && event.title) || '').trim().slice(0, 200),
+          String((event && event.detail) || '').trim().slice(0, 4000),
+          Number.isFinite(Number(event && event.understandingVersion)) ? Math.trunc(Number(event.understandingVersion)) : null,
+          (event && event.tokenUsage) ? JSON.stringify(event.tokenUsage) : null]
+      );
+      return mapAnalysisProfileEvent(rows[0]);
     }
   };
 
@@ -5203,7 +5248,7 @@ export function createPgRepo(pool) {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
-    strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, analysisProfileEvents, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

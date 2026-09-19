@@ -167,12 +167,28 @@ test('the request body carries analysisContext.profile.revision through into a p
     profile: { id: 'p1', registryVersion: 1, revision: 'abc123' },
     primaryStyle: { id: 'price_action' }, secondaryStyles: [],
     focuses: [], customFocuses: [{ name: 'Swept liquidity levels', description: 'stop hunts' }],
-    customMethodNotes: '', requiredInputs: []
+    customMethodNotes: '', requiredInputs: [],
+    concepts: [{ id: 'cpt-1', title: 'Elliott impulse count', priority: 'mandatory' }], understanding: 'Reads structure first.'
   };
   await client.analyzeSession({ session, entry: session.entries[0], provider: 'openai', model: 'gpt-5.6-luna', analysisType: 'initial', profileId: 'p1', analysisContext, adherence: 'balanced' });
   assert.ok(capturedBody, 'a real network call must have been made');
   assert.equal(capturedBody.analysisProfile.customFocuses[0].name, 'Swept liquidity levels');
   assert.equal(capturedBody.analysisProfile.adherence, 'balanced');
+  assert.equal(capturedBody.analysisProfile.concepts[0].title, 'Elliott impulse count');
+  assert.equal(capturedBody.analysisProfile.understanding, 'Reads structure first.');
+});
+
+test('an analysisContext with no concepts/understanding yet still produces a valid request body (concepts defaults to an empty array, understanding to an empty string)', async () => {
+  let capturedBody = null;
+  const { client } = await loadClient({
+    fetch: async (url, options) => { capturedBody = JSON.parse(options.body); return { ok: true, json: async () => ({ data: { thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: null, blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: [], confidence: 50, memoryUpdate: {} }, provider: 'openai', model: 'gpt-5.6-luna', usage: null }) }; },
+    TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: false }), getKey: () => '' }
+  });
+  const session = { id: 's1', entries: [{ id: 'e1', type: 'chart', scenarios: [] }] };
+  const analysisContext = { profile: { id: 'p1', registryVersion: 1, revision: 'abc123' }, primaryStyle: { id: 'price_action' }, secondaryStyles: [], focuses: [], customFocuses: [], customMethodNotes: '', requiredInputs: [] };
+  await client.analyzeSession({ session, entry: session.entries[0], provider: 'openai', model: 'gpt-5.6-luna', analysisType: 'initial', profileId: 'p1', analysisContext, adherence: 'balanced' });
+  assert.deepEqual(capturedBody.analysisProfile.concepts, []);
+  assert.equal(capturedBody.analysisProfile.understanding, '');
 });
 
 test('two analyses that differ ONLY in analysisContext.profile.revision (e.g. after the trader edits the profile) produce different cache fingerprints', async () => {

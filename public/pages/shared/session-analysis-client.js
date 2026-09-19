@@ -329,6 +329,11 @@
       focuses: analysisContext.focuses || [],
       customFocuses: analysisContext.customFocuses || [],
       customMethodNotes: analysisContext.customMethodNotes || '',
+      // Engine memory (Phase 2) - the trader's taught concepts/understanding, data the server
+      // weaves into the prompt (never an instruction to follow blindly - see the system prompt's
+      // own framing).
+      concepts: analysisContext.concepts || [],
+      understanding: analysisContext.understanding || '',
       adherence: adherence,
       // Section 4 - the union of every involved style/focus's declared requiredInputs, echoed to
       // the server so the prompt can ask the model to honestly report unavailable evidence instead

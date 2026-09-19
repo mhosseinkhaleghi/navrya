@@ -92,6 +92,52 @@
     return made[0] || null;
   }
 
+  // ---- engine memory (concepts / understanding) -------------------------------------------------
+  // Classic-script twin of server/db/analysis-profile-normalize.mjs's own concept/understanding
+  // rules - tests/analysis-profile-memory-fields.test.mjs runs both against one fixture set.
+  var CONCEPT_MAX = 120, CONCEPT_TITLE_MAX = 100, CONCEPT_DESCRIPTION_MAX = 300;
+  var CONCEPT_PRIORITIES = ['mandatory', 'preferred', 'reference'];
+  var CONCEPT_ORIGINS = ['user', 'ai', 'source', 'chat', 'starter'];
+  var CONCEPT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+  var UNDERSTANDING_SUMMARY_MAX = 4000;
+
+  function normalizeConcepts(value) {
+    var list = Array.isArray(value) ? value : [];
+    var seenIds = {}, seenTitles = {}, out = [];
+    for (var i = 0; i < list.length && out.length < CONCEPT_MAX; i += 1) {
+      var item = list[i];
+      if (!item || typeof item !== 'object') continue;
+      var id = typeof item.id === 'string' ? item.id.trim() : '';
+      var title = String(item.title == null ? '' : item.title).replace(/\s+/g, ' ').trim().slice(0, CONCEPT_TITLE_MAX);
+      if (!CONCEPT_ID_PATTERN.test(id) || !title) continue;
+      var titleKey = foldFocusName(title);
+      if (seenIds[id] || seenTitles[titleKey]) continue;
+      seenIds[id] = true; seenTitles[titleKey] = true;
+      out.push({
+        id: id, title: title,
+        description: String(item.description == null ? '' : item.description).replace(/\s+/g, ' ').trim().slice(0, CONCEPT_DESCRIPTION_MAX),
+        priority: CONCEPT_PRIORITIES.indexOf(item.priority) > -1 ? item.priority : 'preferred',
+        origin: CONCEPT_ORIGINS.indexOf(item.origin) > -1 ? item.origin : 'user',
+        enabled: item.enabled !== false,
+        createdAt: typeof item.createdAt === 'string' && !isNaN(Date.parse(item.createdAt)) ? item.createdAt : now()
+      });
+    }
+    return out;
+  }
+  function normalizeUnderstanding(value) {
+    var source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    var version = isFinite(Number(source.version)) ? Math.max(0, Math.trunc(Number(source.version))) : 0;
+    var updatedAt = typeof source.updatedAt === 'string' && !isNaN(Date.parse(source.updatedAt)) ? source.updatedAt : null;
+    return { summary: String(source.summary == null ? '' : source.summary).trim().slice(0, UNDERSTANDING_SUMMARY_MAX), version: version, updatedAt: updatedAt };
+  }
+  // A brand-new concept with a fresh stable id - what the Concepts tab's manual add, "Add starter
+  // concepts", and an accepted AI suggestion all create. Returns null for an empty title.
+  function makeConcept(seed) {
+    var value = seed || {};
+    var made = normalizeConcepts([{ id: uid('cpt'), title: value.title, description: value.description, priority: value.priority, origin: value.origin, enabled: true, createdAt: now() }]);
+    return made[0] || null;
+  }
+
   function empty(seed) {
     var stamp = now(), value = seed || {};
     return {
@@ -105,6 +151,8 @@
       customMethodNotes: String(value.customMethodNotes || ''),
       customMethodLinks: normalizeCustomMethodLinks(value.customMethodLinks),
       customFocuses: normalizeCustomFocuses(value.customFocuses),
+      concepts: normalizeConcepts(value.concepts),
+      understanding: normalizeUnderstanding(value.understanding),
       isDefault: Boolean(value.isDefault),
       isActive: value.isActive !== false,
       registryVersion: Number.isFinite(Number(value.registryVersion)) ? Number(value.registryVersion) : ((styleRegistry() && styleRegistry().VERSION) || 1),
@@ -128,6 +176,8 @@
     base.customMethodNotes = String(source.customMethodNotes || '');
     base.customMethodLinks = normalizeCustomMethodLinks(source.customMethodLinks);
     base.customFocuses = normalizeCustomFocuses(source.customFocuses);
+    base.concepts = normalizeConcepts(source.concepts);
+    base.understanding = normalizeUnderstanding(source.understanding);
     base.isDefault = Boolean(source.isDefault);
     base.isActive = source.isActive !== false;
 
@@ -200,6 +250,86 @@
     if (replica()) replica().upsert(record).catch(function () {});
     notifyChanged();
     return record;
+  }
+
+  // ---- engine-memory learning ledger (append-only, lazily fetched per profile) --------------------
+  // NOT a server-replica list domain (never part of the boot-time hydrate) - nested under its
+  // owning profile, fetched only when a profile's Memory tab actually opens. Plain fetch() is
+  // enough here: csrf-fetch-patch.js already attaches the CSRF header to every same-origin,
+  // state-changing call, the same way it does for server-replica.js's own writes.
+  function eventsUrl(profileId) { return '/api/sync/analysis-profiles/' + encodeURIComponent(profileId) + '/events'; }
+  async function listEvents(profileId) {
+    var response = await fetch(eventsUrl(profileId));
+    if (!response.ok) return [];
+    var body = await response.json().catch(function () { return {}; });
+    return body.events || [];
+  }
+  // Every ledger write is tracked while in flight so a screen that just triggered one (a teach
+  // action, an accepted suggestion) can wait for it to LAND before re-reading the history - the
+  // write itself stays fire-and-forget for the caller that does not care.
+  var inflightEvents = [];
+  function recordEvent(profileId, event) {
+    var pending = (async function () {
+      var response = await fetch(eventsUrl(profileId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event || {}) });
+      if (!response.ok) throw new Error('ANALYSIS_PROFILE_EVENT_FAILED');
+      return response.json();
+    }());
+    var settled = pending.catch(function () { return null; });
+    inflightEvents.push(settled);
+    settled.then(function () { inflightEvents = inflightEvents.filter(function (item) { return item !== settled; }); });
+    return pending;
+  }
+  // Resolves (never rejects) once every ledger write started so far has finished, success or not.
+  function settleEvents() { return Promise.all(inflightEvents.slice()).then(function () {}); }
+
+  // A plain diary entry: zero tokens, no concept/understanding change, no profile save at all - the
+  // "Save without teaching" action. Best-effort like every ledger write (resolves null on any
+  // failure, an empty note, or an unknown profile).
+  function recordNote(profileId, text) {
+    var clean = String(text == null ? '' : text).trim();
+    var existing = find(profileId);
+    if (!clean || !existing) return Promise.resolve(null);
+    return recordEvent(profileId, {
+      kind: 'note', title: clean.slice(0, 80), detail: clean,
+      understandingVersion: existing.understanding.version, tokenUsage: null
+    }).catch(function () { return null; });
+  }
+
+  // The ONE mutation funnel every "teach the engine" action goes through - a manually added
+  // concept, "Add starter concepts", an accepted AI concept/understanding suggestion (Phase 2's
+  // /ingest), a source ingested (Phase 3), or a chat lesson (Phase 4) all call this rather than
+  // hand-rolling their own concepts/understanding merge. `conceptsToAdd` is deduplicated against
+  // what the profile already has by folded title (never a second, silently-differently-worded
+  // copy of the same concept); `understandingSummary`, when it genuinely differs from the current
+  // one, bumps `understanding.version` - the profile's own single source of "has learning actually
+  // happened here" the Memory tab's version timeline reads. Exactly ONE save() (never per-concept),
+  // then ONE best-effort learning-ledger event - a lost event never blocks the real save that
+  // already succeeded.
+  function applyLearning(id, patch) {
+    var existing = find(id);
+    if (!existing) return null;
+    var value = patch || {};
+    var concepts = existing.concepts.slice();
+    (Array.isArray(value.conceptsToAdd) ? value.conceptsToAdd : []).forEach(function (proposed) {
+      var made = makeConcept(proposed);
+      if (!made) return;
+      var already = concepts.some(function (c) { return foldFocusName(c.title) === foldFocusName(made.title); });
+      if (!already) concepts.push(made);
+    });
+    var understanding = existing.understanding;
+    var proposedSummary = typeof value.understandingSummary === 'string' ? value.understandingSummary.trim() : '';
+    if (proposedSummary && proposedSummary !== existing.understanding.summary) {
+      understanding = { summary: proposedSummary.slice(0, UNDERSTANDING_SUMMARY_MAX), version: existing.understanding.version + 1, updatedAt: now() };
+    }
+    var saved = save(Object.assign({}, existing, { id: id, concepts: concepts, understanding: understanding }));
+    recordEvent(id, {
+      kind: value.eventKind || 'learning_applied',
+      title: value.eventTitle || '',
+      detail: value.eventDetail || '',
+      understandingVersion: understanding.version,
+      tokenUsage: value.tokenUsage || null
+    }).catch(function () { /* best-effort - the real save above already succeeded */ });
+    return saved;
   }
 
   function create(seed) {
@@ -317,6 +447,10 @@
       customFocuses: (profile.customFocuses || []).map(function (focus) { return { id: focus.id, name: focus.name, description: focus.description }; }),
       customMethodNotes: profile.customMethodNotes,
       customMethodLinks: normalizeCustomMethodLinks(profile.customMethodLinks),
+      // Only ENABLED concepts - a disabled one is deliberately excluded from what the engine
+      // sees, so a snapshot must honor that too, never silently including it.
+      concepts: (profile.concepts || []).filter(function (c) { return c.enabled; }).map(function (c) { return { id: c.id, title: c.title, description: c.description, priority: c.priority }; }),
+      understanding: normalizeUnderstanding(profile.understanding),
       capturedAt: now()
     };
   }
@@ -335,6 +469,11 @@
     getDefault: getDefault,
     snapshot: snapshot,
     suggestedName: suggestedName,
+    applyLearning: applyLearning,
+    recordNote: recordNote,
+    recordEvent: recordEvent,
+    settleEvents: settleEvents,
+    listEvents: listEvents,
     AnalysisProfileError: AnalysisProfileError,
     // Pure authoring helpers the wizard/inline editor share so validation never forks per screen.
     helpers: {
@@ -343,8 +482,14 @@
       normalizeCustomMethodLinks: normalizeCustomMethodLinks,
       normalizeCustomFocuses: normalizeCustomFocuses,
       makeCustomFocus: makeCustomFocus,
+      normalizeConcepts: normalizeConcepts,
+      normalizeUnderstanding: normalizeUnderstanding,
+      makeConcept: makeConcept,
       foldFocusName: foldFocusName,
-      LIMITS: { customFocusMax: CUSTOM_FOCUS_MAX, customFocusNameMax: CUSTOM_FOCUS_NAME_MAX, customFocusDescriptionMax: CUSTOM_FOCUS_DESCRIPTION_MAX }
+      LIMITS: {
+        customFocusMax: CUSTOM_FOCUS_MAX, customFocusNameMax: CUSTOM_FOCUS_NAME_MAX, customFocusDescriptionMax: CUSTOM_FOCUS_DESCRIPTION_MAX,
+        conceptMax: CONCEPT_MAX, conceptTitleMax: CONCEPT_TITLE_MAX, conceptDescriptionMax: CONCEPT_DESCRIPTION_MAX
+      }
     }
   };
 }());

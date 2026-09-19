@@ -28,8 +28,12 @@ async function loadContext(profiles) {
 function baseProfile(overrides) {
   return Object.assign({
     id: 'p1', name: 'PA', description: '', primaryStyleId: 'price_action', secondaryStyleIds: [],
-    focusIds: ['market_structure'], customMethodNotes: '', customFocuses: [], registryVersion: 1
+    focusIds: ['market_structure'], customMethodNotes: '', customFocuses: [], registryVersion: 1,
+    concepts: [], understanding: { summary: '', version: 0, updatedAt: null }
   }, overrides || {});
+}
+function concept(overrides) {
+  return Object.assign({ id: 'cpt-1', title: 'Swept liquidity levels', description: 'stop hunts', priority: 'mandatory', origin: 'user', enabled: true, createdAt: '2026-01-01T00:00:00.000Z' }, overrides || {});
 }
 
 test('getAnalysisContext returns null for an unknown profile id, rather than throwing', async () => {
@@ -90,4 +94,47 @@ test('profile.revision is order-independent for array fields (focusIds/secondary
   const revisionA = (await loadContext([a])).getAnalysisContext('p1').profile.revision;
   const revisionB = (await loadContext([b])).getAnalysisContext('p1').profile.revision;
   assert.equal(revisionA, revisionB, 'key order inside an object must never change the computed revision');
+});
+
+// Engine memory (Phase 2, 067_analysis_profile_memory.sql).
+test('getAnalysisContext exposes only ENABLED concepts, and the trader\'s current understanding summary', async () => {
+  const context = await loadContext([baseProfile({
+    concepts: [concept(), concept({ id: 'cpt-2', title: 'Disabled one', enabled: false })],
+    understanding: { summary: 'Reads price action first, liquidity second.', version: 2, updatedAt: '2026-01-02T00:00:00.000Z' }
+  })]);
+  const result = context.getAnalysisContext('p1');
+  assert.equal(result.concepts.length, 1, 'a disabled concept must never reach the model');
+  assert.equal(result.concepts[0].title, 'Swept liquidity levels');
+  assert.equal(result.concepts[0].priority, 'mandatory');
+  assert.equal(result.understanding, 'Reads price action first, liquidity second.');
+});
+
+test('a profile with no concepts/understanding yet exposes an empty concepts array and an empty understanding string, never null/undefined', async () => {
+  const context = await loadContext([baseProfile()]);
+  const result = context.getAnalysisContext('p1');
+  assert.deepEqual(JSON.parse(JSON.stringify(result.concepts)), []);
+  assert.equal(result.understanding, '');
+});
+
+test('profile.revision changes when a concept is added, its priority/enabled flag changes, or the understanding summary changes - never when only its title/description differs from another distinct concept', async () => {
+  const base = baseProfile({ concepts: [concept()] });
+  const baseline = (await loadContext([base])).getAnalysisContext('p1').profile.revision;
+
+  const withNewConcept = { ...base, concepts: [concept(), concept({ id: 'cpt-2', title: 'Order block mitigation' })] };
+  const withDisabled = { ...base, concepts: [concept({ enabled: false })] };
+  const withDifferentPriority = { ...base, concepts: [concept({ priority: 'reference' })] };
+  const withUnderstanding = { ...base, understanding: { summary: 'A brand-new understanding.', version: 1, updatedAt: '2026-01-03T00:00:00.000Z' } };
+
+  for (const edited of [withNewConcept, withDisabled, withDifferentPriority, withUnderstanding]) {
+    const revision = (await loadContext([edited])).getAnalysisContext('p1').profile.revision;
+    assert.notEqual(revision, baseline, `revision must change for: ${JSON.stringify(edited)}`);
+  }
+});
+
+test('profile.revision does NOT change when a concept\'s createdAt timestamp differs but everything the model reads is identical', async () => {
+  const a = baseProfile({ concepts: [concept({ createdAt: '2026-01-01T00:00:00.000Z' })] });
+  const b = baseProfile({ concepts: [concept({ createdAt: '2027-06-01T00:00:00.000Z' })] });
+  const revisionA = (await loadContext([a])).getAnalysisContext('p1').profile.revision;
+  const revisionB = (await loadContext([b])).getAnalysisContext('p1').profile.revision;
+  assert.equal(revisionA, revisionB);
 });
