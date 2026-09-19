@@ -359,6 +359,38 @@ test('listEvents() hits the real nested GET /events endpoint for the given profi
   assert.equal(failed.length, 0);
 });
 
+test('getUsage() waits for the profile\'s own write to land, then hits the real GET /usage endpoint and returns its analyses array', async () => {
+  const calls = [];
+  const { store } = await loadStore({
+    currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      calls.push([url, options]);
+      if (url.endsWith('/usage')) return { ok: true, json: async () => ({ analyses: [{ id: 'run-1' }] }) };
+      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ analysisProfiles: [] }) };
+    }
+  });
+  await flush();
+  const created = store.create({ name: 'PA', primaryStyleId: 'price_action', focusIds: [] });
+  // getUsage() must not race the create() POST still in flight - it awaits whenPersisted() first.
+  const rows = await store.getUsage(created.id);
+  assert.deepEqual(rows, [{ id: 'run-1' }]);
+  assert.ok(calls.some((call) => call[0] === '/api/sync/analysis-profiles/' + created.id + '/usage'));
+});
+
+test('getUsage() rejects with the server\'s stable error code on a failed response, and never on a plain unparsable body', async () => {
+  const { store } = await loadStore({
+    currentUserId: 'user-1',
+    fetchImpl: async (url, options) => {
+      if (url === '/api/sync/analysis-profiles/missing/usage') return { ok: false, status: 404, json: async () => ({ error: 'ANALYSIS_PROFILE_NOT_FOUND' }) };
+      if (options && options.method === 'POST') return { ok: true, json: async () => JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ analysisProfiles: [] }) };
+    }
+  });
+  await flush();
+  await assert.rejects(store.getUsage('missing'), (err) => err.name === 'AnalysisProfileError' && err.code === 'ANALYSIS_PROFILE_NOT_FOUND');
+});
+
 test('applyLearning() posts exactly one best-effort learning event to the real nested /events endpoint, carrying the token usage through', async () => {
   const eventPosts = [];
   const { store } = await loadStore({

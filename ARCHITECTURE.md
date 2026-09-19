@@ -1755,7 +1755,10 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   with the failure `error_code` kept on the row, a bounded `digest`, and for a PDF a LOOSE
   `storage_object_id` with no FK, because the Storage page can delete an object independently) and
   `071_analysis_profile_messages.sql` (the teaching-chat conversation - `role` user|assistant,
-  `proposals` JSONB, `token_usage` JSONB; rolled to the latest 200 messages per profile). All shared normalization (URLs, custom
+  `proposals` JSONB, `token_usage` JSONB; rolled to the latest 200 messages per profile) and
+  `072_session_analysis_profile_attribution.sql` (four nullable columns added to the pre-existing
+  `session_ai_analysis_completions` ledger table - see the Run attribution bullet below; this
+  migration touches no Analysis Profile table itself). All shared normalization (URLs, custom
   focuses, concepts, understanding) lives in one dependency-free `server/db/analysis-profile-
   normalize.mjs`, imported by both `repo.pg.mjs` and `repo.memory.mjs` (and, for the concept-
   priority enum only, by `pattern-ai-server.mjs` - a pure-function import, not a database
@@ -1791,18 +1794,104 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   records - they live in version-controlled `public/pages/shared/*.js`, never one database row per
   style/focus per user (brief §19). `analysis_profiles` rows reference their stable string ids by
   value only, with no foreign-key constraint into either registry.
-- **Session-ready architecture, not yet Session-integrated:** `AnalysisProfileStore.snapshot(id)`
-  returns the normalized, self-contained `AnalysisProfileSnapshot` shape a future Session record
-  could embed (`{profileId, profileName, primaryStyle, secondaryStyles, focuses, customFocuses,
-  customMethodNotes, customMethodLinks, concepts (enabled only), understanding, capturedAt}` -
-  proven stable after later profile edits by `tests/analysis-profile-store.test.mjs`), matching
-  this codebase's existing snapshot philosophy for Pattern data attached to a historical Scenario.
-  Session records themselves were **not** modified in this pass (no `analysisProfileId`/
-  `analysisProfileSnapshot` field added to `SessionRecord` yet) - the brief explicitly allowed
-  deferring this. Live Session Analysis instead reads the profile directly and freshly through
-  `getAnalysisContext()` on every call (never a stale snapshot), which is why `profile.revision`
-  exists - the still-undecided open question for a future pass is whether a Session should also
-  start persisting a point-in-time `snapshot()` for its own historical record.
+- **Session-ready architecture:** `AnalysisProfileStore.snapshot(id)` returns the normalized,
+  self-contained `AnalysisProfileSnapshot` shape (`{profileId, profileName, primaryStyle,
+  secondaryStyles, focuses, customFocuses, customMethodNotes, customMethodLinks, concepts (enabled
+  only), understanding, capturedAt}` - proven stable after later profile edits by
+  `tests/analysis-profile-store.test.mjs`), matching this codebase's existing snapshot philosophy
+  for Pattern data attached to a historical Scenario. Session records themselves still carry no
+  `analysisProfileSnapshot` field - Live Session Analysis instead reads the profile directly and
+  freshly through `getAnalysisContext()` on every call (never a stale snapshot), which is why
+  `profile.revision` exists; the still-undecided open question for a future pass remains whether a
+  Session should also persist a point-in-time `snapshot()` for its own historical record. What
+  Session integration now DOES do (Phase 5, below) is enforce the training on every run and
+  attribute every run back to the profile that produced it.
+- **Mandatory-concept enforcement in Session AI Analysis (Phase 5):** training a concept as
+  `priority: 'mandatory'` (Concepts tab) is not just a prompt hint - it is verified on every run.
+  `server/ai/analysis-profile-coverage.mjs` is the one shared module both the request and the
+  response side read: `mandatoryConceptsOf(profile)` (capped at `COVERAGE_MAX_CONCEPTS=40`),
+  `conceptCoverageSchemaProperty()` (an ADDITIVE, optional `conceptCoverage[]` property - `{conceptId,
+  status: applied|not_visible|not_applicable, evidence}` per concept - appended to
+  `sessionAnalysisFormat` only when the profile actually has mandatory concepts; the static base
+  schema is byte-identical for a profile with none, so back-compat is structural, not a flag),
+  `buildConceptCoverageInstruction()` (rendered into the system prompt right AFTER the existing
+  adherence line, never before it), and `sanitizeConceptCoverage(raw, mandatoryConcepts)` - the
+  actual enforcement: the server rebuilds exactly one row per mandatory concept **in request order,
+  keyed by the request's own ids**, ignores any id the model invented, and marks every concept the
+  model's JSON omitted as `unaddressed` (`COVERAGE_UNADDRESSED`) - so "the model silently skipped a
+  mandatory concept" is a status the report can count, never a silent gap. `pattern-ai-server.mjs`'s
+  `analyzeSession` wires this in: output budget grows by `COVERAGE_TOKENS_PER_CONCEPT=90` per
+  concept, and a new `optionalSchemaKeys` payload flag (`['conceptCoverage']` only when mandatory
+  concepts exist) tells `callOpenAI` which JSON-schema property is allowed to be absent from a
+  provider that does not support optional schema keys - the flag is **transport-only**, destructured
+  out of the object before it ever reaches an actual provider call (a real request body must never
+  carry it, proven by a mutation test: five tests fail if that destructuring is removed). Gemini's
+  own schema compaction strips `enum`/`maxItems` from the coverage property the same way it already
+  did for the rest of the schema. Tested against all four provider request shapes plus the
+  no-mandatory-concepts case in `session-analysis-coverage-server.test.mjs` (15 tests) and the module
+  itself in `analysis-profile-coverage.test.mjs` (21 tests, including the evidence-stringification
+  and trim-before-strip-punctuation bugs those tests caught).
+- **Run attribution (Phase 5):** `server/db/migrations/072_session_analysis_profile_attribution.sql`
+  adds four **nullable** columns to the existing, server-verified `session_ai_analysis_completions`
+  ledger: `analysis_profile_id` (loose, deliberately **no** foreign key - so deleting a profile never
+  deletes the discipline-XP credit already earned for runs made under it), `analysis_profile_revision`,
+  `active_market_session` (stamped from the REAL server clock via `market-session-clock.mjs`, never
+  trusted from the client), and `concept_coverage` (JSONB, the sanitized coverage array). A partial
+  index (`session_ai_analysis_completions_profile_idx`) serves the new read. Ownership is
+  re-verified server-side on every write - `routes.internal.mjs` calls
+  `repo.analysisProfiles.get(userId, id)` before ever attaching an id to a ledger row, so a forged
+  profile id from the client can never attribute a run to someone else's profile. On the read side,
+  `GET /api/sync/analysis-profiles/:id/usage` (`routes.analysis-profiles.mjs`) returns
+  `{analyses: [...]}` - the oldest-first array of that profile's own real, server-authoritative runs -
+  and 404s identically whether the id is missing or belongs to another user (so a stranger can never
+  even learn the id exists). Analyses run **before** this migration landed carry no profile id and
+  are simply absent from this list forever - there is no retroactive backfill, and the Report (below)
+  says so explicitly ("tracking began &lt;date&gt;") rather than inventing history.
+- **Session UI (Phase 5):** `sessionAiAnalysisModal.jsx` shows a training chip when the adherence
+  profile has mandatory concepts or a recorded understanding (`trainedMandatory`/
+  `trainedUnderstanding` copy) so a trader sees, before pressing Generate, that this run is trained,
+  not generic. `sessionAnalysisCard.jsx`'s `ConceptCoverageBlock` renders the per-concept checklist
+  the server actually returned - four honest states (`coverage_applied`/`_not_visible`/
+  `_not_applicable`/an `unaddressed` row with `coverageUnaddressedHint`) plus the model's own
+  `evidence` string, never a generic checkmark. The scenario a Session-triggered analysis creates is
+  stamped `aiSource.analysisProfileId` at creation time (`session-analysis-client.js`), which is what
+  lets the Report (below) later attribute a resolved/confirmed scenario back to the profile that
+  produced it. `analysis-graph-ai-context.js`'s `pickAnalysisProfileForAi()` (the Analysis-Map AI
+  node) was extended to include `customFocuses`/`concepts`/`understanding` - it was previously
+  silently trained on less than the Session prompt itself.
+- **Report tab (Phase 5) - "Patterns-style" usage reporting for a trained profile:** a profile's
+  Report tab (`navrya-src/analysisProfileReport.jsx`) and its Overview usage line are both driven by
+  one pure, dependency-free, unit-tested module, `public/pages/shared/analysis-profile-usage.js` →
+  `window.TradeJournalAnalysisProfileUsage.compute(input)`. It reads nothing itself (no store, no
+  network, no clock beyond the `now` it is handed) - it turns the REAL records (`GET .../usage`
+  runs, the trader's sessions/trades/events/concepts) into: `analyses` (total + by type),
+  `scenarios` (added/confirmed/invalidated/open/resolved, `accuracy = confirmed / (confirmed +
+  invalidated)` - an OPEN scenario counts toward neither side - flagged `smallSample` below
+  `SMALL_SAMPLE=10` resolved), a `funnel` (analyses → scenarios → resolved → confirmed), a 12-week
+  `accuracyTrend` (a quiet week carries the previous week's rate forward rather than lying with a
+  0%), per-mandatory-concept `adherence` (`appliedRate` vs. the stricter `checkedRate`, which counts
+  an honest `not_visible`/`not_applicable` as "checked" but not "applied" - only `unaddressed` is the
+  engine actually skipping it), linked-trade `trades` (win rate/avg R/R-distribution, linked through
+  `trade.source.scenarioId` back to a scenario this profile's own runs produced), a weekday ×
+  market-session `heatmap`, and `topInstruments`/`topTimeframes`. Every number is a real record or
+  `null` - never a placeholder zero that would read as "measured and nothing happened". Calendar
+  days/weeks are computed as integer day numbers via `Intl.DateTimeFormat` in the trader's own IANA
+  time zone (never `ms / 86400000`), the fix for a DST/west-of-UTC bug this codebase had already hit
+  once elsewhere. The eleven chart primitives the Patterns/Strategies report already drew with
+  (`digits`, `donutChart`, `trendSvg`, `funnelSvg`, `rDistSvg`, `heatCellEl`, `barFillEl`,
+  `movingAverage`, `KpiTile`, ...) were extracted, unchanged in substance, out of
+  `strategiesHubView.jsx` into `navrya-src/reportCharts.jsx` so both reports draw with the exact same
+  code - plus one new shared helper, `percentSign(lang)` (fa/ar get the Arabic sign, en/es get a
+  plain `%`; the donut used to hardcode the Arabic sign for every language) and a fix so
+  `heatCellEl(v, lang, max)` scales its color intensity against the grid's own real maximum instead
+  of a hardcoded ceiling (a busy profile no longer paints every cell at full intensity once it passes
+  6 hits). `analysisProfileReport.jsx`'s `useProfileUsage()` hook and `UsageSummary` component both
+  call the exact same `loadProfileUsage()`/`buildProfileReport()` pair, so the Overview line and the
+  full Report can never compute two different numbers for the same profile. `analysisProfilesView
+  .jsx`'s Report tab keeps its pre-existing plain configuration facts (created/updated/default/
+  styles/focus count/linked strategies) underneath the new charts; the old placeholder
+  "insufficient data" usage/markets/timeframes rows and the `sessionUsageUnavailable` copy key are
+  gone now that the real thing exists.
 - **Explicit future-AI boundary, stated here at full strength per the brief's own instruction:**
   **AI analysis freedom/strictness is intentionally NOT part of Analysis Profile. It is selected
   per AI analysis generation request**, at the moment a user presses "Generate AI Analysis" inside
@@ -1890,7 +1979,31 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   design bug these tests caught before any UI existed); `analysis-profile-chat-preview-ui.test.mjs`
   (ChatTab's one-request turn append and per-proposal apply/dismiss, PreviewTab's free-vs-billed
   separation, `EngineLearningPanel`'s `editable` preset requiring the trader's own typed correction,
-  pill-bar wiring).
+  pill-bar wiring); **Session obeys training and the Report tab (Phase 5):**
+  `analysis-profile-coverage.test.mjs` (the coverage module itself - schema shape, the
+  optionalSchemaKeys leak-prevention mutation test, request-order/unaddressed rebuilding, evidence
+  stringification, the fold-before-strip-punctuation fix); `session-analysis-coverage-server.test.mjs`
+  (all four provider request shapes with and without mandatory concepts, budget math, Gemini
+  enum/maxItems compaction); `session-analysis-profile-attribution-migration-contract.test.mjs` /
+  `-postgres-integration.test.mjs` (migration 072's four nullable columns, no FK on
+  `analysis_profile_id`, idempotent retry, cross-user isolation on `listForProfile()`, a deleted
+  profile's completions surviving with no cascade); `analysis-profile-usage-api-contract.test.mjs`
+  (`GET .../:id/usage` - the same 404-for-missing-or-someone-else's-profile shape as every other
+  child route, oldest-first ordering); `session-analysis-profile-attribution-client.test.mjs` (the
+  scenario `aiSource.analysisProfileId` stamp, the training chip's copy selection, the
+  `ConceptCoverageBlock`'s four status renderings, `pickAnalysisProfileForAi()`'s widened context,
+  the client schema's strict-timestamp `normalizeConceptCoverage`); `analysis-profile-usage.test.mjs`
+  (21 tests against the pure `compute()` module directly - the DST/west-of-UTC calendar-day
+  arithmetic, accuracy/small-sample/adherence/heatmap math, determinism, no-mutation-of-input);
+  `analysis-profile-report-ui.test.mjs` (`loadProfileUsage()`/`buildProfileReport()` executed for
+  real in a bare vm sandbox - ledger settled before read, `events:false` skipping it entirely, a
+  thrown `compute()` degrading to `null` rather than crashing the tab - plus static wiring checks:
+  the funnel's three real subset stages vs. the deliberately-excluded `analyses` KPI tile, heat-cell
+  scaling against the grid's own max, dangling coverage rows for a deleted concept silently dropped,
+  Overview and Report reading the exact same `usage.compute()` call site, the four character pages
+  loading `analysis-profile-usage.js` right after `analysis-profile-brief.js`); `analysis-profile-
+  store.test.mjs`'s `getUsage()` cases (awaits the profile's own write before reading, rejects with
+  the server's real `AnalysisProfileError` code on failure).
 
 ### 7.26 Support Tickets & Notification Badges
 

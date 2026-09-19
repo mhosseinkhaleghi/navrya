@@ -382,6 +382,18 @@
   function resolveProposals(profileId, messageId, statuses) { return messageRequest('PATCH', messagesUrl(profileId, '/' + encodeURIComponent(messageId)), { statuses: statuses }); }
   function clearMessages(profileId) { return messageRequest('DELETE', messagesUrl(profileId)); }
 
+  // The profile's Report data source: the server-authoritative runs of AI Session Analysis made under this profile
+  // (GET .../:id/usage - when, which model, the server-clock market session, the rebuilt mandatory-concept coverage). Not a
+  // replica list domain and never part of the boot hydrate: fetched only when a screen that shows usage opens. Rejects with the
+  // server's stable code on failure (the Report shows an honest error state, never an empty report that reads as "no usage").
+  async function getUsage(profileId) {
+    await whenPersisted(profileId);
+    var response = await fetch('/api/sync/analysis-profiles/' + encodeURIComponent(profileId) + '/usage');
+    var parsed = await response.json().catch(function () { return {}; });
+    if (!response.ok) throw new AnalysisProfileError(parsed.error || 'ANALYSIS_PROFILE_USAGE_REQUEST_FAILED');
+    return parsed.analyses || [];
+  }
+
   // A plain diary entry: zero tokens, no concept/understanding change, no profile save at all - the
   // "Save without teaching" action. Best-effort like every ledger write (resolves null on any
   // failure, an empty note, or an unknown profile).
@@ -585,6 +597,7 @@
     appendMessages: appendMessages,
     resolveProposals: resolveProposals,
     clearMessages: clearMessages,
+    getUsage: getUsage,
     AnalysisProfileError: AnalysisProfileError,
     // Pure authoring helpers the wizard/inline editor share so validation never forks per screen.
     helpers: {

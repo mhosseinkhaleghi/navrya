@@ -57,7 +57,7 @@ test('trDigits localizes ASCII digits for fa/ar only, and trDate never throws on
 });
 
 test('every key a training component looks up actually exists (a typo would render the raw key in the UI)', async () => {
-  const files = ['analysisProfileConcepts.jsx', 'analysisProfileMemory.jsx', 'analysisProfileKnowledge.jsx', 'engineLearning.jsx', 'analysisProfilesView.jsx'];
+  const files = ['analysisProfileConcepts.jsx', 'analysisProfileMemory.jsx', 'analysisProfileKnowledge.jsx', 'engineLearning.jsx', 'analysisProfilesView.jsx', 'analysisProfileReport.jsx'];
   const known = new Set(Object.keys(trainingCopy.en));
   for (const file of files) {
     const source = await read(file);
@@ -69,7 +69,9 @@ test('every key a training component looks up actually exists (a typo would rend
       ...[...source.matchAll(/: '(evt[A-Za-z]+)'/g)].map((m) => m[1]),
       ...[...source.matchAll(/'(col[A-Z][A-Za-z]+)'/g)].map((m) => m[1]),
       ...[...source.matchAll(/'(sort[A-Z][A-Za-z]+)'/g)].map((m) => m[1]),
-      ...[...source.matchAll(/'(teachKind[A-Z][A-Za-z]+)'/g)].map((m) => m[1])
+      ...[...source.matchAll(/'(teachKind[A-Z][A-Za-z]+)'/g)].map((m) => m[1]),
+      // Report tab: keys reached through the WEEKDAY_KEYS/SESSION_KEYS/STAGE_KEYS lookup tables rather than a literal trt(lang, 'x') call.
+      ...[...source.matchAll(/'(rpt[A-Za-z]+)'/g)].map((m) => m[1])
     ];
     for (const key of direct.concat(mapped)) assert.ok(known.has(key), `${file} references missing copy key "${key}"`);
   }

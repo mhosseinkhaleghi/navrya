@@ -11,6 +11,7 @@ import { MemoryTab } from './analysisProfileMemory.jsx';
 import { KnowledgeTab } from './analysisProfileKnowledge.jsx';
 import { ChatTab as AnalysisProfileChatTab } from './analysisProfileChat.jsx';
 import { PreviewTab } from './analysisProfilePreview.jsx';
+import { ProfileReport, UsageSummary } from './analysisProfileReport.jsx';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25). List + detail (Overview / Report) for
@@ -37,11 +38,10 @@ const copy = {
     backToList: 'بازگشت به فهرست', tabOverview: 'مرور کلی', tabReport: 'گزارش',
     dnaLabel: 'دی‌ان‌ای تحلیلی', primaryLens: 'لنز اصلی', secondaryLens: 'لنزهای مکمل', coreFocus: 'تمرکز اصلی', customNotes: 'یادداشت روش سفارشی',
     linkedStrategies: 'استراتژی‌های لینک‌شده', noLinkedStrategies: 'هنوز استراتژی‌ای به این پروفایل لینک نشده است.',
-    usage: 'استفاده', sessionUsageUnavailable: 'اتصال به جلسات هنوز فعال نیست — این آمار در فاز بعدی اضافه می‌شود.',
+    usage: 'استفاده',
     reportCreated: 'تاریخ ایجاد', reportUpdated: 'آخرین بروزرسانی', reportDefault: 'وضعیت پیش‌فرض', reportPrimary: 'سبک اصلی',
     reportSecondary: 'سبک‌های مکمل', reportFocusCount: 'تعداد حوزه‌های تمرکز', reportLinkedStrategies: 'استراتژی‌های لینک‌شده',
-    reportSessionUsage: 'استفاده در جلسات', reportMarkets: 'پرکاربردترین بازارها', reportTimeframes: 'پرکاربردترین تایم‌فریم‌ها', reportHistory: 'تاریخچه تغییرات',
-    insufficientData: 'داده کافی نیست.', yes: 'بله', no: 'خیر',
+    yes: 'بله', no: 'خیر',
     deleteConfirmTitle: 'حذف این پروفایل؟', deleteConfirmBody: 'این پروفایل به‌طور کامل حذف می‌شود. استراتژی‌های لینک‌شده لینک خود را از دست می‌دهند اما حذف نمی‌شوند.',
     cancel: 'انصراف', confirmDelete: 'حذف پروفایل', lastProfileError: 'نمی‌توان تنها پروفایل تحلیل را حذف کرد. ابتدا یک پروفایل دیگر بساز.',
     activeToggleHelp: 'می‌توانی این پروفایل را بدون حذف کردن غیرفعال کنی.', description: 'توضیحات',
@@ -62,11 +62,10 @@ const copy = {
     backToList: 'العودة إلى القائمة', tabOverview: 'نظرة عامة', tabReport: 'التقرير',
     dnaLabel: 'الحمض النووي التحليلي', primaryLens: 'العدسة الأساسية', secondaryLens: 'العدسات المكملة', coreFocus: 'التركيز الأساسي', customNotes: 'ملاحظة المنهج المخصص',
     linkedStrategies: 'الاستراتيجيات المرتبطة', noLinkedStrategies: 'لا توجد استراتيجية مرتبطة بهذا الملف بعد.',
-    usage: 'الاستخدام', sessionUsageUnavailable: 'الربط بالجلسات غير مفعّل بعد — ستضاف هذه الإحصائية في مرحلة لاحقة.',
+    usage: 'الاستخدام',
     reportCreated: 'تاريخ الإنشاء', reportUpdated: 'آخر تحديث', reportDefault: 'الحالة الافتراضية', reportPrimary: 'النمط الأساسي',
     reportSecondary: 'الأنماط المكملة', reportFocusCount: 'عدد مجالات التركيز', reportLinkedStrategies: 'الاستراتيجيات المرتبطة',
-    reportSessionUsage: 'الاستخدام في الجلسات', reportMarkets: 'الأسواق الأكثر استخداماً', reportTimeframes: 'الأطر الزمنية الأكثر استخداماً', reportHistory: 'سجل التغييرات',
-    insufficientData: 'بيانات غير كافية.', yes: 'نعم', no: 'لا',
+    yes: 'نعم', no: 'لا',
     deleteConfirmTitle: 'حذف هذا الملف؟', deleteConfirmBody: 'سيُحذف هذا الملف نهائياً. الاستراتيجيات المرتبطة تفقد ارتباطها لكن لا تُحذف.',
     cancel: 'إلغاء', confirmDelete: 'حذف الملف', lastProfileError: 'لا يمكن حذف ملف التحليل الوحيد. أنشئ ملفاً آخر أولاً.',
     activeToggleHelp: 'يمكنك تعطيل هذا الملف دون حذفه.', description: 'الوصف',
@@ -87,11 +86,10 @@ const copy = {
     backToList: 'Back to list', tabOverview: 'Overview', tabReport: 'Report',
     dnaLabel: 'Analysis DNA', primaryLens: 'Primary Lens', secondaryLens: 'Secondary Lenses', coreFocus: 'Core Focus', customNotes: 'Custom method notes',
     linkedStrategies: 'Linked Strategies', noLinkedStrategies: 'No Strategy is linked to this profile yet.',
-    usage: 'Usage', sessionUsageUnavailable: 'Session linkage isn’t wired up yet — this metric arrives in a future phase.',
+    usage: 'Usage',
     reportCreated: 'Created', reportUpdated: 'Last updated', reportDefault: 'Default status', reportPrimary: 'Primary Style',
     reportSecondary: 'Secondary Styles', reportFocusCount: 'Focus count', reportLinkedStrategies: 'Linked Strategies',
-    reportSessionUsage: 'Session usage', reportMarkets: 'Most-used markets', reportTimeframes: 'Most-used timeframes', reportHistory: 'Configuration history',
-    insufficientData: 'Insufficient data.', yes: 'Yes', no: 'No',
+    yes: 'Yes', no: 'No',
     deleteConfirmTitle: 'Delete this profile?', deleteConfirmBody: 'This profile will be permanently deleted. Linked Strategies keep their own data but lose the link.',
     cancel: 'Cancel', confirmDelete: 'Delete profile', lastProfileError: 'You can’t delete your only Analysis Profile. Create another one first.',
     activeToggleHelp: 'You can deactivate this profile without deleting it.', description: 'Description',
@@ -112,11 +110,10 @@ const copy = {
     backToList: 'Volver a la lista', tabOverview: 'Resumen', tabReport: 'Informe',
     dnaLabel: 'ADN de análisis', primaryLens: 'Lente principal', secondaryLens: 'Lentes secundarios', coreFocus: 'Enfoque principal', customNotes: 'Notas del método personalizado',
     linkedStrategies: 'Estrategias vinculadas', noLinkedStrategies: 'Aún no hay ninguna estrategia vinculada a este perfil.',
-    usage: 'Uso', sessionUsageUnavailable: 'La vinculación con sesiones aún no está disponible: esta métrica llegará en una fase futura.',
+    usage: 'Uso',
     reportCreated: 'Creado', reportUpdated: 'Última actualización', reportDefault: 'Estado predeterminado', reportPrimary: 'Estilo principal',
     reportSecondary: 'Estilos secundarios', reportFocusCount: 'Número de enfoques', reportLinkedStrategies: 'Estrategias vinculadas',
-    reportSessionUsage: 'Uso en sesiones', reportMarkets: 'Mercados más usados', reportTimeframes: 'Timeframes más usados', reportHistory: 'Historial de configuración',
-    insufficientData: 'Datos insuficientes.', yes: 'Sí', no: 'No',
+    yes: 'Sí', no: 'No',
     deleteConfirmTitle: '¿Eliminar este perfil?', deleteConfirmBody: 'Este perfil se eliminará permanentemente. Las estrategias vinculadas conservan sus datos pero pierden el vínculo.',
     cancel: 'Cancelar', confirmDelete: 'Eliminar perfil', lastProfileError: 'No puedes eliminar tu único perfil de análisis. Crea otro primero.',
     activeToggleHelp: 'Puedes desactivar este perfil sin eliminarlo.', description: 'Descripción',
@@ -203,14 +200,6 @@ function ProfileCard({ profile, lang, onOpen, onEdit, onDuplicate, onSetDefault,
         </div>
       </div>
     </Panel>
-  );
-}
-
-function InsufficientData({ lang }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', color: 'var(--text-dim)', fontSize: 12.5 }}>
-      <Icon name="scenarios" size={15} />{tr(lang, 'insufficientData')}
-    </div>
   );
 }
 
@@ -482,39 +471,27 @@ function ProfileDetail({ profile, lang, dtab, setDtab, queuedLinks, onBack, onEd
               </div>
             )}
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--parchment)', marginTop: 8 }}>{tr(lang, 'usage')}</span>
-            <InsufficientDataText lang={lang} text={tr(lang, 'sessionUsageUnavailable')} />
+            <UsageSummary key={profile.id} profile={profile} lang={lang} onOpenReport={() => setDtab('report')} />
           </div>
         </Panel>
       )}
 
       {dtab === 'report' && (
-        <Panel padding="18px 20px">
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <ReportRow label={tr(lang, 'reportCreated')} value={formatDate(lang, profile.createdAt)} />
-            <ReportRow label={tr(lang, 'reportUpdated')} value={formatDate(lang, profile.updatedAt)} />
-            <ReportRow label={tr(lang, 'reportDefault')} value={profile.isDefault ? tr(lang, 'yes') : tr(lang, 'no')} />
-            <ReportRow label={tr(lang, 'reportPrimary')} value={primary ? (primary.name[lang] || primary.name.en) : profile.primaryStyleId} />
-            <ReportRow label={tr(lang, 'reportSecondary')} value={profile.secondaryStyleIds.length ? profile.secondaryStyleIds.map((id) => styleName(id, lang)).join(' + ') : '—'} />
-            <ReportRow label={tr(lang, 'reportFocusCount')} value={digits(lang, profile.focusIds.length)} />
-            <ReportRow label={tr(lang, 'reportLinkedStrategies')} value={digits(lang, linked.length)} />
-            <div style={{ padding: '10px 0', borderBottom: '1px solid var(--border-hairline)' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'reportSessionUsage')}</span>
-              <InsufficientData lang={lang} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <ProfileReport key={profile.id} profile={profile} lang={lang} />
+          <Panel padding="18px 20px">
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--parchment)', marginBottom: 6 }}>{trt(lang, 'rptConfigTitle')}</span>
+              <ReportRow label={tr(lang, 'reportCreated')} value={formatDate(lang, profile.createdAt)} />
+              <ReportRow label={tr(lang, 'reportUpdated')} value={formatDate(lang, profile.updatedAt)} />
+              <ReportRow label={tr(lang, 'reportDefault')} value={profile.isDefault ? tr(lang, 'yes') : tr(lang, 'no')} />
+              <ReportRow label={tr(lang, 'reportPrimary')} value={primary ? (primary.name[lang] || primary.name.en) : profile.primaryStyleId} />
+              <ReportRow label={tr(lang, 'reportSecondary')} value={profile.secondaryStyleIds.length ? profile.secondaryStyleIds.map((id) => styleName(id, lang)).join(' + ') : '—'} />
+              <ReportRow label={tr(lang, 'reportFocusCount')} value={digits(lang, profile.focusIds.length)} />
+              <ReportRow label={tr(lang, 'reportLinkedStrategies')} value={digits(lang, linked.length)} />
             </div>
-            <div style={{ padding: '10px 0', borderBottom: '1px solid var(--border-hairline)' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'reportMarkets')}</span>
-              <InsufficientData lang={lang} />
-            </div>
-            <div style={{ padding: '10px 0', borderBottom: '1px solid var(--border-hairline)' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'reportTimeframes')}</span>
-              <InsufficientData lang={lang} />
-            </div>
-            <div style={{ padding: '10px 0' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(lang, 'reportHistory')}</span>
-              <InsufficientData lang={lang} />
-            </div>
-          </div>
-        </Panel>
+          </Panel>
+        </div>
       )}
     </div>
   );
