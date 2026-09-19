@@ -9,9 +9,9 @@ import test from 'node:test';
 const root = process.cwd();
 const source = async () => (await readFile(path.join(root, 'navrya-src', 'analysisProfilesView.jsx'), 'utf8')).replace(/\r\n/g, '\n');
 
-test('the detail pill bar has a Setup tab right after Overview (Concepts, Knowledge, Memory and Report follow)', async () => {
+test('the detail pill bar has a Setup tab right after Overview (Concepts, Knowledge, Memory, Chat, Preview and Report follow)', async () => {
   const text = await source();
-  assert.match(text, /\['overview', tr\(lang, 'tabOverview'\)\], \['setup', tr\(lang, 'tabSetup'\)\], \['concepts', tr\(lang, 'tabConcepts'\)\], \['knowledge', tr\(lang, 'tabKnowledge'\)\], \['memory', tr\(lang, 'tabMemory'\)\], \['report', tr\(lang, 'tabReport'\)\]/);
+  assert.match(text, /\['overview', tr\(lang, 'tabOverview'\)\], \['setup', tr\(lang, 'tabSetup'\)\], \['concepts', tr\(lang, 'tabConcepts'\)\], \['knowledge', tr\(lang, 'tabKnowledge'\)\], \['memory', tr\(lang, 'tabMemory'\)\], \['chat', tr\(lang, 'tabChat'\)\], \['preview', tr\(lang, 'tabPreview'\)\], \['report', tr\(lang, 'tabReport'\)\]/);
 });
 
 test('SetupTab edits every field the wizard popup captures: primary/secondary style, focusIds, customFocuses, customMethodNotes, customMethodLinks', async () => {

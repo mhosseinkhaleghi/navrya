@@ -275,10 +275,10 @@ test('the preset teach flow reuses the same single-call propose/apply path: kind
   const engine = await read('engineLearning.jsx');
   const teach = fnBody(engine, 'teach');
   assert.equal((teach.match(/ingestLearning\(/g) || []).length, 1);
-  assert.match(engine, /const teachKind = preset \? 'source' : kind;/);
+  assert.match(engine, /const teachKind = preset \? \(preset\.kind \|\| 'source'\) : kind;/, 'the Knowledge tab relies on the default (no preset.kind override) staying "source"');
   assert.ok(teach.indexOf('preset.loadAttachment()') > -1 && teach.indexOf('preset.loadAttachment()') < teach.indexOf('ingestLearning('));
   assert.match(teach, /MODEL_PDF_UNSUPPORTED/);
-  assert.match(engine, /preset \? 'taught_source'/);
+  assert.match(engine, /preset \? \(teachKind === 'correction' \? 'taught_correction' : 'taught_source'\)/, 'the Knowledge tab (no preset.kind override) still records taught_source');
 });
 
 test('the new ledger kinds the source flow writes have history labels', async () => {
@@ -293,7 +293,7 @@ test('the detail pill bar lists Knowledge between Concepts and Memory, renders K
   const view = await read('analysisProfilesView.jsx');
   assert.match(view, /\['concepts', tr\(lang, 'tabConcepts'\)\], \['knowledge', tr\(lang, 'tabKnowledge'\)\], \['memory', tr\(lang, 'tabMemory'\)\]/);
   assert.match(view, /dtab === 'knowledge' && <KnowledgeTab key=\{profile\.id\}/);
-  for (const lang of LANGS) assert.match(view, new RegExp(`  ${lang}: \\{[\\s\\S]*?tabMemory: '[^']+', tabKnowledge: '[^']+'`), `${lang} must label the Knowledge tab`);
+  for (const lang of LANGS) assert.match(view, new RegExp(`  ${lang}: \\{[\\s\\S]*?tabMemory: '[^']+',[\\s\\S]*?tabKnowledge: '[^']+'`), `${lang} must label the Knowledge tab`);
 });
 
 test('creating a profile with Custom Method links queues them and opens the Knowledge tab; editing, and a profile with no links, behave exactly as before', async () => {

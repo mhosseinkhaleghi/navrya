@@ -76,15 +76,23 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
 
   const currentUnderstanding = profile.understanding ? profile.understanding.summary : '';
   const trimmed = text.trim();
-  // What is being taught from: a source's digest/title, or what the trader just typed.
-  const material = preset ? String(preset.text || '').trim() : trimmed;
+  // preset.editable (the Preview tab's "Correct this"): the preset supplies FIXED context (the
+  // illustrative sample being corrected) but the trader must still type what is actually wrong with
+  // it - a correction with no correction text would just resend the sample verbatim and teach
+  // nothing. The Knowledge tab's source teaching has no such second input: preset.text alone (the
+  // source's own digest) is the whole material.
+  const requiresTypedText = !preset || preset.editable;
+  const material = preset ? (preset.editable ? String(preset.text || '').trim() + (trimmed ? '\n\nTrader\'s correction: ' + trimmed : '') : String(preset.text || '').trim()) : trimmed;
   const label = preset ? String(preset.title || '').trim() : trimmed;
-  const teachKind = preset ? 'source' : kind;
+  // The Knowledge tab teaches from a source (the default); the Preview tab's "Correct this" reuses
+  // this same panel but needs the ingest system prompt's distinct correction framing ("the teaching
+  // material wins over the current understanding"), so it passes preset.kind explicitly.
+  const teachKind = preset ? (preset.kind || 'source') : kind;
 
   async function teach() {
     const client = aiClient();
     const profiles = store();
-    if (!client || !profiles || (!preset && !trimmed) || phase === 'working') return;
+    if (!client || !profiles || (requiresTypedText && !trimmed) || phase === 'working') return;
     setPhase('working'); setError(''); setNotice('');
     try {
       // A stored PDF is only downloaded now, on the explicit click - and a failure to load it is
@@ -127,7 +135,7 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
     if (!conceptsToAdd.length && !understandingChange) { discard(); return; }
     const saved = profiles.applyLearning(profile.id, {
       conceptsToAdd, understandingSummary: understandingChange,
-      eventKind: preset ? 'taught_source' : (kind === 'correction' ? 'taught_correction' : 'taught_note'), eventTitle: label.slice(0, 80), eventDetail: material || label,
+      eventKind: preset ? (teachKind === 'correction' ? 'taught_correction' : 'taught_source') : (kind === 'correction' ? 'taught_correction' : 'taught_note'), eventTitle: label.slice(0, 80), eventDetail: material || label,
       tokenUsage: null // already recorded on the analysis event above - never counted twice
     });
     setPhase('idle'); setProposal(null); setText('');
@@ -159,12 +167,18 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
         {phase !== 'review' && preset && (
           <React.Fragment>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
-              <span dir="auto" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{trt(lang, 'sourceTeaching', { title: label })}</span>
+              <span dir="auto" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{trt(lang, preset.headingKey || 'sourceTeaching', { title: label })}</span>
               {preset.loadAttachment && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'sourcePdfHint')}</span>}
             </div>
+            {preset.editable && (
+              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} dir="auto" disabled={phase === 'working'} maxLength={2000}
+                placeholder={trt(lang, 'correctPlaceholder')} style={{ ...fieldStyle, resize: 'vertical' }} />
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <Button variant="primary" size="sm" icon="sparkle" loading={phase === 'working'} disabled={phase === 'working'} onClick={teach}>{trt(lang, 'teachBtn')}</Button>
-              {preset.onClose && <Button variant="ghost" size="sm" icon="close" disabled={phase === 'working'} onClick={preset.onClose}>{trt(lang, 'closePanel')}</Button>}
+              <Button variant="primary" size="sm" icon="sparkle" loading={phase === 'working'} disabled={(requiresTypedText && !trimmed) || phase === 'working'} onClick={teach}>
+                {trt(lang, preset.editable ? 'correctSubmitBtn' : 'teachBtn')}
+              </Button>
+              {preset.onClose && <Button variant="ghost" size="sm" icon="close" disabled={phase === 'working'} onClick={preset.onClose}>{trt(lang, preset.editable ? 'correctCancelBtn' : 'closePanel')}</Button>}
             </div>
             <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'sourceTeachHint')}</span>
           </React.Fragment>

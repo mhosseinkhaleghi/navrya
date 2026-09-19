@@ -9,6 +9,8 @@ import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
 import { ConceptsTab } from './analysisProfileConcepts.jsx';
 import { MemoryTab } from './analysisProfileMemory.jsx';
 import { KnowledgeTab } from './analysisProfileKnowledge.jsx';
+import { ChatTab as AnalysisProfileChatTab } from './analysisProfileChat.jsx';
+import { PreviewTab } from './analysisProfilePreview.jsx';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25). List + detail (Overview / Report) for
@@ -43,7 +45,7 @@ const copy = {
     deleteConfirmTitle: 'حذف این پروفایل؟', deleteConfirmBody: 'این پروفایل به‌طور کامل حذف می‌شود. استراتژی‌های لینک‌شده لینک خود را از دست می‌دهند اما حذف نمی‌شوند.',
     cancel: 'انصراف', confirmDelete: 'حذف پروفایل', lastProfileError: 'نمی‌توان تنها پروفایل تحلیل را حذف کرد. ابتدا یک پروفایل دیگر بساز.',
     activeToggleHelp: 'می‌توانی این پروفایل را بدون حذف کردن غیرفعال کنی.', description: 'توضیحات',
-    tabConcepts: 'مفاهیم', tabMemory: 'حافظه', tabKnowledge: 'دانش', tabSetup: 'تنظیمات', setupPrimaryLabel: 'لنز اصلی', setupSecondaryLabel: 'لنزهای مکمل (حداکثر دو مورد)',
+    tabConcepts: 'مفاهیم', tabMemory: 'حافظه', tabChat: 'گفتگو', tabPreview: 'پیش‌نمایش', tabKnowledge: 'دانش', tabSetup: 'تنظیمات', setupPrimaryLabel: 'لنز اصلی', setupSecondaryLabel: 'لنزهای مکمل (حداکثر دو مورد)',
     setupFocusLabel: 'حوزه‌های تمرکز', setupCustomFocusLabel: 'حوزه‌های تمرکز خودت',
     setupAddFocusPlaceholder: 'مثلاً: سطح‌های سوییپ‌شده', setupAddFocusDescPlaceholder: 'توضیح کوتاه (اختیاری)', setupAddFocusButton: 'افزودن',
     setupLinksLabel: 'مواد آموزشی', setupYoutubeLabel: 'لینک ویدیوی یوتیوب', setupWebsiteLabel: 'لینک وب‌سایت آموزشی', setupReferenceLabel: 'لینک مرجع دیگر',
@@ -68,7 +70,7 @@ const copy = {
     deleteConfirmTitle: 'حذف هذا الملف؟', deleteConfirmBody: 'سيُحذف هذا الملف نهائياً. الاستراتيجيات المرتبطة تفقد ارتباطها لكن لا تُحذف.',
     cancel: 'إلغاء', confirmDelete: 'حذف الملف', lastProfileError: 'لا يمكن حذف ملف التحليل الوحيد. أنشئ ملفاً آخر أولاً.',
     activeToggleHelp: 'يمكنك تعطيل هذا الملف دون حذفه.', description: 'الوصف',
-    tabConcepts: 'المفاهيم', tabMemory: 'الذاكرة', tabKnowledge: 'المعرفة', tabSetup: 'الإعدادات', setupPrimaryLabel: 'العدسة الأساسية', setupSecondaryLabel: 'العدسات المكملة (حتى عدستين)',
+    tabConcepts: 'المفاهيم', tabMemory: 'الذاكرة', tabChat: 'المحادثة', tabPreview: 'المعاينة', tabKnowledge: 'المعرفة', tabSetup: 'الإعدادات', setupPrimaryLabel: 'العدسة الأساسية', setupSecondaryLabel: 'العدسات المكملة (حتى عدستين)',
     setupFocusLabel: 'مجالات التركيز', setupCustomFocusLabel: 'مجالات تركيزك الخاصة',
     setupAddFocusPlaceholder: 'مثال: مستويات تم اكتساحها', setupAddFocusDescPlaceholder: 'وصف قصير (اختياري)', setupAddFocusButton: 'إضافة',
     setupLinksLabel: 'مواد تعليمية', setupYoutubeLabel: 'رابط فيديو يوتيوب', setupWebsiteLabel: 'رابط موقع تعليمي', setupReferenceLabel: 'رابط مرجعي آخر',
@@ -93,7 +95,7 @@ const copy = {
     deleteConfirmTitle: 'Delete this profile?', deleteConfirmBody: 'This profile will be permanently deleted. Linked Strategies keep their own data but lose the link.',
     cancel: 'Cancel', confirmDelete: 'Delete profile', lastProfileError: 'You can’t delete your only Analysis Profile. Create another one first.',
     activeToggleHelp: 'You can deactivate this profile without deleting it.', description: 'Description',
-    tabConcepts: 'Concepts', tabMemory: 'Memory', tabKnowledge: 'Knowledge', tabSetup: 'Setup', setupPrimaryLabel: 'Primary lens', setupSecondaryLabel: 'Secondary lenses (up to two)',
+    tabConcepts: 'Concepts', tabMemory: 'Memory', tabChat: 'Chat', tabPreview: 'Preview', tabKnowledge: 'Knowledge', tabSetup: 'Setup', setupPrimaryLabel: 'Primary lens', setupSecondaryLabel: 'Secondary lenses (up to two)',
     setupFocusLabel: 'Focus areas', setupCustomFocusLabel: 'Your own focus areas',
     setupAddFocusPlaceholder: 'e.g. Swept liquidity levels', setupAddFocusDescPlaceholder: 'Short description (optional)', setupAddFocusButton: 'Add',
     setupLinksLabel: 'Teaching material', setupYoutubeLabel: 'YouTube video link', setupWebsiteLabel: 'Educational website link', setupReferenceLabel: 'Another reference link',
@@ -118,7 +120,7 @@ const copy = {
     deleteConfirmTitle: '¿Eliminar este perfil?', deleteConfirmBody: 'Este perfil se eliminará permanentemente. Las estrategias vinculadas conservan sus datos pero pierden el vínculo.',
     cancel: 'Cancelar', confirmDelete: 'Eliminar perfil', lastProfileError: 'No puedes eliminar tu único perfil de análisis. Crea otro primero.',
     activeToggleHelp: 'Puedes desactivar este perfil sin eliminarlo.', description: 'Descripción',
-    tabConcepts: 'Conceptos', tabMemory: 'Memoria', tabKnowledge: 'Conocimiento', tabSetup: 'Configuración', setupPrimaryLabel: 'Lente principal', setupSecondaryLabel: 'Lentes secundarios (hasta dos)',
+    tabConcepts: 'Conceptos', tabMemory: 'Memoria', tabChat: 'Chat', tabPreview: 'Vista previa', tabKnowledge: 'Conocimiento', tabSetup: 'Configuración', setupPrimaryLabel: 'Lente principal', setupSecondaryLabel: 'Lentes secundarios (hasta dos)',
     setupFocusLabel: 'Áreas de enfoque', setupCustomFocusLabel: 'Tus propias áreas de enfoque',
     setupAddFocusPlaceholder: 'p. ej.: Niveles de liquidez barridos', setupAddFocusDescPlaceholder: 'Descripción breve (opcional)', setupAddFocusButton: 'Añadir',
     setupLinksLabel: 'Material educativo', setupYoutubeLabel: 'Enlace de vídeo de YouTube', setupWebsiteLabel: 'Enlace de sitio web educativo', setupReferenceLabel: 'Otro enlace de referencia',
@@ -450,7 +452,7 @@ function ProfileDetail({ profile, lang, dtab, setDtab, queuedLinks, onBack, onEd
       </div>
 
       <div style={{ display: 'flex', gap: 6, padding: 6, border: '1px solid var(--border-gold)', borderRadius: 10, background: 'var(--surface-card)', width: 'fit-content' }}>
-        {[['overview', tr(lang, 'tabOverview')], ['setup', tr(lang, 'tabSetup')], ['concepts', tr(lang, 'tabConcepts')], ['knowledge', tr(lang, 'tabKnowledge')], ['memory', tr(lang, 'tabMemory')], ['report', tr(lang, 'tabReport')]].map(([id, label]) => (
+        {[['overview', tr(lang, 'tabOverview')], ['setup', tr(lang, 'tabSetup')], ['concepts', tr(lang, 'tabConcepts')], ['knowledge', tr(lang, 'tabKnowledge')], ['memory', tr(lang, 'tabMemory')], ['chat', tr(lang, 'tabChat')], ['preview', tr(lang, 'tabPreview')], ['report', tr(lang, 'tabReport')]].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setDtab(id)} style={{
             height: 38, padding: '0 16px', borderRadius: 7, cursor: 'pointer', border: 0, font: 'inherit', fontSize: 12.5,
             background: dtab === id ? 'var(--char-active-surface)' : 'transparent', color: dtab === id ? 'var(--char-accent)' : 'var(--text-muted)', fontWeight: dtab === id ? 600 : 500
@@ -462,6 +464,8 @@ function ProfileDetail({ profile, lang, dtab, setDtab, queuedLinks, onBack, onEd
       {dtab === 'concepts' && <ConceptsTab key={profile.id} profile={profile} lang={lang} />}
       {dtab === 'knowledge' && <KnowledgeTab key={profile.id} profile={profile} lang={lang} queued={queuedLinks} />}
       {dtab === 'memory' && <MemoryTab key={profile.id} profile={profile} lang={lang} />}
+      {dtab === 'chat' && <AnalysisProfileChatTab key={profile.id} profile={profile} lang={lang} />}
+      {dtab === 'preview' && <PreviewTab key={profile.id} profile={profile} lang={lang} />}
 
       {dtab === 'overview' && (
         <Panel padding="18px 20px">
