@@ -6,6 +6,9 @@ import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
+import { ConceptsTab } from './analysisProfileConcepts.jsx';
+import { MemoryTab } from './analysisProfileMemory.jsx';
+import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25). List + detail (Overview / Report) for
 // the "Analysis Profiles" tab inside strategiesHubView.jsx. Deliberately self-contained: every
@@ -39,7 +42,7 @@ const copy = {
     deleteConfirmTitle: 'حذف این پروفایل؟', deleteConfirmBody: 'این پروفایل به‌طور کامل حذف می‌شود. استراتژی‌های لینک‌شده لینک خود را از دست می‌دهند اما حذف نمی‌شوند.',
     cancel: 'انصراف', confirmDelete: 'حذف پروفایل', lastProfileError: 'نمی‌توان تنها پروفایل تحلیل را حذف کرد. ابتدا یک پروفایل دیگر بساز.',
     activeToggleHelp: 'می‌توانی این پروفایل را بدون حذف کردن غیرفعال کنی.', description: 'توضیحات',
-    tabSetup: 'تنظیمات', setupPrimaryLabel: 'لنز اصلی', setupSecondaryLabel: 'لنزهای مکمل (حداکثر دو مورد)',
+    tabConcepts: 'مفاهیم', tabMemory: 'حافظه', tabSetup: 'تنظیمات', setupPrimaryLabel: 'لنز اصلی', setupSecondaryLabel: 'لنزهای مکمل (حداکثر دو مورد)',
     setupFocusLabel: 'حوزه‌های تمرکز', setupCustomFocusLabel: 'حوزه‌های تمرکز خودت',
     setupAddFocusPlaceholder: 'مثلاً: سطح‌های سوییپ‌شده', setupAddFocusDescPlaceholder: 'توضیح کوتاه (اختیاری)', setupAddFocusButton: 'افزودن',
     setupLinksLabel: 'مواد آموزشی', setupYoutubeLabel: 'لینک ویدیوی یوتیوب', setupWebsiteLabel: 'لینک وب‌سایت آموزشی', setupReferenceLabel: 'لینک مرجع دیگر',
@@ -64,7 +67,7 @@ const copy = {
     deleteConfirmTitle: 'حذف هذا الملف؟', deleteConfirmBody: 'سيُحذف هذا الملف نهائياً. الاستراتيجيات المرتبطة تفقد ارتباطها لكن لا تُحذف.',
     cancel: 'إلغاء', confirmDelete: 'حذف الملف', lastProfileError: 'لا يمكن حذف ملف التحليل الوحيد. أنشئ ملفاً آخر أولاً.',
     activeToggleHelp: 'يمكنك تعطيل هذا الملف دون حذفه.', description: 'الوصف',
-    tabSetup: 'الإعدادات', setupPrimaryLabel: 'العدسة الأساسية', setupSecondaryLabel: 'العدسات المكملة (حتى عدستين)',
+    tabConcepts: 'المفاهيم', tabMemory: 'الذاكرة', tabSetup: 'الإعدادات', setupPrimaryLabel: 'العدسة الأساسية', setupSecondaryLabel: 'العدسات المكملة (حتى عدستين)',
     setupFocusLabel: 'مجالات التركيز', setupCustomFocusLabel: 'مجالات تركيزك الخاصة',
     setupAddFocusPlaceholder: 'مثال: مستويات تم اكتساحها', setupAddFocusDescPlaceholder: 'وصف قصير (اختياري)', setupAddFocusButton: 'إضافة',
     setupLinksLabel: 'مواد تعليمية', setupYoutubeLabel: 'رابط فيديو يوتيوب', setupWebsiteLabel: 'رابط موقع تعليمي', setupReferenceLabel: 'رابط مرجعي آخر',
@@ -89,7 +92,7 @@ const copy = {
     deleteConfirmTitle: 'Delete this profile?', deleteConfirmBody: 'This profile will be permanently deleted. Linked Strategies keep their own data but lose the link.',
     cancel: 'Cancel', confirmDelete: 'Delete profile', lastProfileError: 'You can’t delete your only Analysis Profile. Create another one first.',
     activeToggleHelp: 'You can deactivate this profile without deleting it.', description: 'Description',
-    tabSetup: 'Setup', setupPrimaryLabel: 'Primary lens', setupSecondaryLabel: 'Secondary lenses (up to two)',
+    tabConcepts: 'Concepts', tabMemory: 'Memory', tabSetup: 'Setup', setupPrimaryLabel: 'Primary lens', setupSecondaryLabel: 'Secondary lenses (up to two)',
     setupFocusLabel: 'Focus areas', setupCustomFocusLabel: 'Your own focus areas',
     setupAddFocusPlaceholder: 'e.g. Swept liquidity levels', setupAddFocusDescPlaceholder: 'Short description (optional)', setupAddFocusButton: 'Add',
     setupLinksLabel: 'Teaching material', setupYoutubeLabel: 'YouTube video link', setupWebsiteLabel: 'Educational website link', setupReferenceLabel: 'Another reference link',
@@ -114,7 +117,7 @@ const copy = {
     deleteConfirmTitle: '¿Eliminar este perfil?', deleteConfirmBody: 'Este perfil se eliminará permanentemente. Las estrategias vinculadas conservan sus datos pero pierden el vínculo.',
     cancel: 'Cancelar', confirmDelete: 'Eliminar perfil', lastProfileError: 'No puedes eliminar tu único perfil de análisis. Crea otro primero.',
     activeToggleHelp: 'Puedes desactivar este perfil sin eliminarlo.', description: 'Descripción',
-    tabSetup: 'Configuración', setupPrimaryLabel: 'Lente principal', setupSecondaryLabel: 'Lentes secundarios (hasta dos)',
+    tabConcepts: 'Conceptos', tabMemory: 'Memoria', tabSetup: 'Configuración', setupPrimaryLabel: 'Lente principal', setupSecondaryLabel: 'Lentes secundarios (hasta dos)',
     setupFocusLabel: 'Áreas de enfoque', setupCustomFocusLabel: 'Tus propias áreas de enfoque',
     setupAddFocusPlaceholder: 'p. ej.: Niveles de liquidez barridos', setupAddFocusDescPlaceholder: 'Descripción breve (opcional)', setupAddFocusButton: 'Añadir',
     setupLinksLabel: 'Material educativo', setupYoutubeLabel: 'Enlace de vídeo de YouTube', setupWebsiteLabel: 'Enlace de sitio web educativo', setupReferenceLabel: 'Otro enlace de referencia',
@@ -410,6 +413,27 @@ function ProfileDetail({ profile, lang, dtab, setDtab, onBack, onEdit, onToggleA
             </div>
           </div>
         )}
+        {(profile.customFocuses || []).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {profile.customFocuses.map((f) => <Chip key={f.id} tone="accent">{f.name}</Chip>)}
+          </div>
+        )}
+        {/* What the engine has learned so far - concepts (mandatory ones highlighted) and its own
+            current understanding - so opening a profile shows more than the style/focus DNA. */}
+        {(profile.concepts || []).length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'conceptsTitle')} · {trt(lang, 'conceptsCount', { n: trDigits(lang, profile.concepts.length), m: trDigits(lang, profile.concepts.filter((c) => c.priority === 'mandatory').length) })}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {profile.concepts.filter((c) => c.enabled).slice(0, 12).map((c) => <Chip key={c.id} tone={c.priority === 'mandatory' ? 'accent' : 'neutral'}>{c.title}</Chip>)}
+            </div>
+          </div>
+        )}
+        {profile.understanding && profile.understanding.summary && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'understandingTitle')} · {trt(lang, 'understandingVersion', { n: trDigits(lang, profile.understanding.version) })}</span>
+            <p dir="auto" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.9, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{profile.understanding.summary.length > 420 ? profile.understanding.summary.slice(0, 420) + '…' : profile.understanding.summary}</p>
+          </div>
+        )}
         {profile.description && <p style={{ margin: '10px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>{profile.description}</p>}
         {profile.customMethodNotes && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
@@ -425,7 +449,7 @@ function ProfileDetail({ profile, lang, dtab, setDtab, onBack, onEdit, onToggleA
       </div>
 
       <div style={{ display: 'flex', gap: 6, padding: 6, border: '1px solid var(--border-gold)', borderRadius: 10, background: 'var(--surface-card)', width: 'fit-content' }}>
-        {[['overview', tr(lang, 'tabOverview')], ['setup', tr(lang, 'tabSetup')], ['report', tr(lang, 'tabReport')]].map(([id, label]) => (
+        {[['overview', tr(lang, 'tabOverview')], ['setup', tr(lang, 'tabSetup')], ['concepts', tr(lang, 'tabConcepts')], ['memory', tr(lang, 'tabMemory')], ['report', tr(lang, 'tabReport')]].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setDtab(id)} style={{
             height: 38, padding: '0 16px', borderRadius: 7, cursor: 'pointer', border: 0, font: 'inherit', fontSize: 12.5,
             background: dtab === id ? 'var(--char-active-surface)' : 'transparent', color: dtab === id ? 'var(--char-accent)' : 'var(--text-muted)', fontWeight: dtab === id ? 600 : 500
@@ -434,6 +458,8 @@ function ProfileDetail({ profile, lang, dtab, setDtab, onBack, onEdit, onToggleA
       </div>
 
       {dtab === 'setup' && <SetupTab key={profile.id} profile={profile} lang={lang} onUpdate={(patch) => onUpdateProfile(patch)} />}
+      {dtab === 'concepts' && <ConceptsTab key={profile.id} profile={profile} lang={lang} />}
+      {dtab === 'memory' && <MemoryTab key={profile.id} profile={profile} lang={lang} />}
 
       {dtab === 'overview' && (
         <Panel padding="18px 20px">

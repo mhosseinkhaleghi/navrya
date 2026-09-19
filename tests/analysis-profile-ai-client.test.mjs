@@ -82,3 +82,102 @@ test('a missing window.TradeJournalAIUsage never breaks the call (best-effort re
   const result = await client.suggestFocuses({ primaryStyleId: 'price_action' });
   assert.equal(result.suggestions.length, 1);
 });
+
+// ---- suggestConcepts / ingestLearning (Phase 2) ----------------------------------------------------
+
+test('suggestConcepts posts kind "concepts" to the SAME real suggest route, with the resolved style objects, and records usage under its own source label', async () => {
+  let captured = null;
+  const recorded = [];
+  const { client, window: sandboxWindow } = await loadClient({
+    fetchImpl: async (url, options) => { captured = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ suggestions: [{ name: 'Breaker block', description: 'd', priority: 'reference' }], provider: 'openai', usage: { promptTokens: 5 } }) }; }
+  });
+  sandboxWindow.TradeJournalAIUsage = { record: (entry) => recorded.push(entry) };
+  const result = await client.suggestConcepts({ primaryStyleId: 'smc', alreadySelected: ['Order block mitigation'], language: 'fa' });
+  assert.match(captured.url, /\/api\/analysis-profiles\/suggest$/);
+  assert.equal(captured.body.kind, 'concepts');
+  assert.equal(captured.body.primaryStyle.id, 'smc');
+  assert.equal(captured.body.language, 'fa');
+  assert.equal(result.suggestions[0].priority, 'reference');
+  assert.equal(recorded[0].source, 'analysisProfiles.suggestConcepts');
+});
+
+test('ingestLearning posts the trimmed teaching text, current understanding and existing concept titles to the real ingest route, and returns only a PROPOSAL', async () => {
+  let captured = null;
+  const { client } = await loadClient({
+    fetchImpl: async (url, options) => { captured = { url, body: JSON.parse(options.body) }; return { ok: true, json: async () => ({ updatedUnderstanding: 'Checks swept liquidity first.', conceptsProposed: [{ title: 'Swept liquidity levels', description: 'd', priority: 'mandatory' }], provider: 'openai', usage: { promptTokens: 200, completionTokens: 60 } }) }; }
+  });
+  const result = await client.ingestLearning({
+    kind: 'correction', text: '   I never trade before checking swept liquidity.  ', primaryStyleId: 'smc',
+    currentUnderstanding: 'Reads structure first.', existingConceptTitles: ['Order block mitigation'], language: 'en'
+  });
+  assert.match(captured.url, /\/api\/analysis-profiles\/ingest$/);
+  assert.equal(captured.body.kind, 'correction');
+  assert.equal(captured.body.text, 'I never trade before checking swept liquidity.', 'the text must be trimmed');
+  assert.equal(captured.body.currentUnderstanding, 'Reads structure first.');
+  assert.equal(captured.body.existingConcepts[0].title, 'Order block mitigation');
+  assert.equal(captured.body.primaryStyle.id, 'smc');
+  assert.equal(result.updatedUnderstanding, 'Checks swept liquidity first.');
+  assert.equal(result.conceptsProposed[0].title, 'Swept liquidity levels');
+  assert.equal(result.usage.promptTokens, 200);
+});
+
+test('ingestLearning refuses empty / whitespace-only text locally, BEFORE any network call - a click on an empty box can never bill', async () => {
+  let calls = 0;
+  const { client } = await loadClient({ fetchImpl: async () => { calls += 1; return { ok: true, json: async () => ({}) }; } });
+  for (const text of ['', '   \n ', undefined, null]) {
+    await assert.rejects(() => client.ingestLearning({ kind: 'note', text }), (error) => error.name === 'AnalysisProfileAIError' && error.code === 'ANALYSIS_PROFILE_INGEST_TEXT_REQUIRED');
+  }
+  assert.equal(calls, 0);
+});
+
+test('ingestLearning surfaces the real server error code (e.g. an insufficient wallet balance) - never a faked proposal', async () => {
+  const { client } = await loadClient({ fetchImpl: async () => ({ ok: false, status: 402, json: async () => ({ error: 'WALLET_INSUFFICIENT_BALANCE' }) }) });
+  await assert.rejects(() => client.ingestLearning({ kind: 'note', text: 'hello' }), (error) => error.code === 'WALLET_INSUFFICIENT_BALANCE');
+});
+
+test('ingestLearning records the real server-reported usage under the analysisProfiles.ingest source label', async () => {
+  const recorded = [];
+  const { client, window: sandboxWindow } = await loadClient({ fetchImpl: async () => ({ ok: true, json: async () => ({ updatedUnderstanding: '', conceptsProposed: [], provider: 'openai', usage: { promptTokens: 9 } }) }) });
+  sandboxWindow.TradeJournalAIUsage = { record: (entry) => recorded.push(entry) };
+  await client.ingestLearning({ kind: 'note', text: 'x' });
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].source, 'analysisProfiles.ingest');
+});
+
+// ---- bring-your-own-key ------------------------------------------------------------------------------
+
+test('with a personal provider key configured, EVERY request carries provider/model/apiKey (so the gateway treats it as BYOK and never bills the wallet)', async () => {
+  const bodies = [];
+  const { client, window: sandboxWindow } = await loadClient({
+    fetchImpl: async (url, options) => { bodies.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ suggestions: [], updatedUnderstanding: '', conceptsProposed: [], provider: 'anthropic', usage: null }) }; }
+  });
+  sandboxWindow.TradeJournalAISettingsStore = { activeProvider: () => 'anthropic', activeModel: () => 'claude-sonnet-4-5', getKey: (provider) => (provider === 'anthropic' ? 'sk-user-own-key' : '') };
+  await client.suggestFocuses({ primaryStyleId: 'price_action' });
+  await client.suggestConcepts({ primaryStyleId: 'price_action' });
+  await client.ingestLearning({ kind: 'note', text: 'hello' });
+  assert.equal(bodies.length, 3);
+  for (const body of bodies) {
+    assert.equal(body.apiKey, 'sk-user-own-key');
+    assert.equal(body.provider, 'anthropic');
+    assert.equal(body.model, 'claude-sonnet-4-5');
+  }
+});
+
+test('with NO personal key, no apiKey/provider/model is sent at all - the platform default serves the call and it is billed per the token policy', async () => {
+  let body = null;
+  const { client, window: sandboxWindow } = await loadClient({ fetchImpl: async (url, options) => { body = JSON.parse(options.body); return { ok: true, json: async () => ({ suggestions: [], provider: 'openai', usage: null }) }; } });
+  sandboxWindow.TradeJournalAISettingsStore = { activeProvider: () => 'openai', activeModel: () => 'gpt-5.6', getKey: () => '' };
+  await client.suggestFocuses({ primaryStyleId: 'price_action' });
+  assert.equal('apiKey' in body, false);
+  assert.equal('provider' in body, false);
+  assert.equal('model' in body, false);
+});
+
+test('a missing or throwing settings store never breaks the call - it simply falls back to the platform default', async () => {
+  let body = null;
+  const { client, window: sandboxWindow } = await loadClient({ fetchImpl: async (url, options) => { body = JSON.parse(options.body); return { ok: true, json: async () => ({ suggestions: [], provider: 'openai', usage: null }) }; } });
+  sandboxWindow.TradeJournalAISettingsStore = { activeProvider: () => { throw new Error('settings exploded'); }, getKey: () => 'x' };
+  const result = await client.suggestFocuses({ primaryStyleId: 'price_action' });
+  assert.equal(result.suggestions.length, 0);
+  assert.equal('apiKey' in body, false);
+});

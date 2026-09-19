@@ -1,9 +1,11 @@
 /**
  * Analysis Profile AI client - Analysis Profiles domain (see ARCHITECTURE.md §7.25).
  *
- * `window.TradeJournalAnalysisProfileAI.suggestFocuses(...)` is the onboarding wizard's "Suggest
- * more with AI" (regenerate) call, POSTing to the real billed `/api/analysis-profiles/suggest`
- * route (server/pattern-ai-server.mjs). Same real request()/baseUrl convention as
+ * `window.TradeJournalAnalysisProfileAI` holds every billed AI call the Analysis Profile domain
+ * makes: `suggestFocuses` (the onboarding wizard's "Suggest more with AI"), `suggestConcepts` (the
+ * Concepts tab's own suggestions) - both POST to `/api/analysis-profiles/suggest` - and
+ * `ingestLearning` (the engine-memory learning loop, POST `/api/analysis-profiles/ingest`); all
+ * three are real, wallet-billed routes in server/pattern-ai-server.mjs. Same real request()/baseUrl convention as
  * pattern-registry-ai.js/strategy-education-ai.js, but deliberately does NOT fall back to a canned
  * local reply on failure - a billed AI feature that silently pretends to succeed with fake text
  * would hide a real WALLET_INSUFFICIENT_BALANCE/PROVIDER_PRICING_NOT_CONFIGURED condition from the
@@ -25,11 +27,28 @@
   }
   AnalysisProfileAIError.prototype = Object.create(Error.prototype);
 
+  // Bring-your-own-key: when the trader has configured their own provider key (Settings), every
+  // request also carries it plus their chosen provider/model, and the gateway treats the call as
+  // BYOK - never wallet-billed (server/pattern-ai-server.mjs's `isByok`). With no personal key
+  // nothing is added: the platform default provider serves the call and it is billed per the token
+  // policy. Same convention the Session analysis and Analysis Map AI already follow, which is what
+  // makes the UI's "free with your own API key" hint actually true.
+  function providerContext() {
+    try {
+      var settings = window.TradeJournalAISettingsStore;
+      if (!settings || typeof settings.activeProvider !== 'function' || typeof settings.getKey !== 'function') return {};
+      var provider = settings.activeProvider();
+      var apiKey = provider ? settings.getKey(provider) : '';
+      if (!apiKey) return {};
+      return { provider: provider, model: typeof settings.activeModel === 'function' ? settings.activeModel() : undefined, apiKey: apiKey };
+    } catch (_) { return {}; }
+  }
+
   function request(path, payload) {
     var controller = new AbortController();
     var timeout = window.setTimeout(function () { controller.abort(); }, 45000);
     return fetch(baseUrl + path, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, providerContext(), payload)), signal: controller.signal
     }).then(function (response) {
       if (!response.ok) {
         return response.json().catch(function () { return {}; }).then(function (body) {
@@ -51,25 +70,66 @@
     try { if (window.TradeJournalAIUsage && result) window.TradeJournalAIUsage.record({ provider: result.provider, usage: result.usage, source: source }); } catch (_) { /* display-only */ }
   }
 
+  // The style half of every request body: resolved from the REAL registry (never a second,
+  // invented style shape), tolerant of an unknown/missing id (resolves to null, never throws).
+  function styleContext(opts) {
+    var styles = styleRegistry();
+    return {
+      primaryStyle: styles && opts.primaryStyleId ? styles.get(opts.primaryStyleId) : null,
+      secondaryStyles: (opts.secondaryStyleIds || []).map(function (id) { return styles ? styles.get(id) : null; }).filter(Boolean),
+      customMethodNotes: opts.customMethodNotes || ''
+    };
+  }
+  function suggest(kind, sourceLabel, options) {
+    var opts = options || {};
+    var payload = Object.assign({
+      kind: kind, language: opts.language || 'en',
+      alreadySelected: (opts.alreadySelected || []).slice(0, 60), alreadySuggested: (opts.alreadySuggested || []).slice(0, 60)
+    }, styleContext(opts));
+    return request('/api/analysis-profiles/suggest', payload).then(function (result) {
+      recordUsage(sourceLabel, result);
+      return { suggestions: result.suggestions || [], provider: result.provider || 'openai', usage: result.usage || null };
+    });
+  }
+
   // options: { primaryStyleId, secondaryStyleIds, customMethodNotes, alreadySelected,
   //            alreadySuggested, language }. alreadySelected/alreadySuggested are plain name
   // strings (registry focus names + custom focus names already on screen) - the server's own
   // sanitizer treats them as case/whitespace-insensitive exclusions, never trusting the model
   // alone to avoid repeating them.
-  async function suggestFocuses(options) {
+  function suggestFocuses(options) { return suggest('focuses', 'analysisProfiles.suggestFocuses', options); }
+  // Same options; each returned suggestion also carries a validated `priority`
+  // (mandatory | preferred | reference).
+  function suggestConcepts(options) { return suggest('concepts', 'analysisProfiles.suggestConcepts', options); }
+
+  // The engine-memory learning loop's ONE AI call. options: { kind: 'note' | 'chat' | 'correction'
+  // | 'source', text, primaryStyleId, secondaryStyleIds, customMethodNotes, existingConceptTitles,
+  // currentUnderstanding, language }. Resolves to a PROPOSAL only -
+  // { updatedUnderstanding, conceptsProposed: [{title, description, priority}], provider, usage } -
+  // which the caller shows for explicit approval and then applies through
+  // TradeJournalAnalysisProfileStore.applyLearning() (one save, one ledger event); this function
+  // never writes anywhere. Empty text is refused locally, before any network call, so a click on
+  // an empty box can never bill.
+  async function ingestLearning(options) {
     var opts = options || {};
-    var styles = styleRegistry();
-    var primaryStyle = styles && opts.primaryStyleId ? styles.get(opts.primaryStyleId) : null;
-    var secondaryStyles = (opts.secondaryStyleIds || []).map(function (id) { return styles ? styles.get(id) : null; }).filter(Boolean);
-    var payload = {
-      kind: 'focuses', language: opts.language || 'en',
-      primaryStyle: primaryStyle, secondaryStyles: secondaryStyles, customMethodNotes: opts.customMethodNotes || '',
-      alreadySelected: (opts.alreadySelected || []).slice(0, 60), alreadySuggested: (opts.alreadySuggested || []).slice(0, 60)
+    var text = typeof opts.text === 'string' ? opts.text.trim() : '';
+    if (!text) throw new AnalysisProfileAIError('ANALYSIS_PROFILE_INGEST_TEXT_REQUIRED');
+    var payload = Object.assign({
+      kind: opts.kind || 'note', text: text, language: opts.language || 'en',
+      currentUnderstanding: opts.currentUnderstanding || '',
+      existingConcepts: (opts.existingConceptTitles || []).slice(0, 120).map(function (title) { return { title: title }; })
+    }, styleContext(opts));
+    var result = await request('/api/analysis-profiles/ingest', payload);
+    recordUsage('analysisProfiles.ingest', result);
+    return {
+      updatedUnderstanding: String(result.updatedUnderstanding || ''),
+      conceptsProposed: result.conceptsProposed || [],
+      provider: result.provider || 'openai', usage: result.usage || null
     };
-    var result = await request('/api/analysis-profiles/suggest', payload);
-    recordUsage('analysisProfiles.suggestFocuses', result);
-    return { suggestions: result.suggestions || [], provider: result.provider || 'openai', usage: result.usage || null };
   }
 
-  window.TradeJournalAnalysisProfileAI = { suggestFocuses: suggestFocuses, AnalysisProfileAIError: AnalysisProfileAIError };
+  window.TradeJournalAnalysisProfileAI = {
+    suggestFocuses: suggestFocuses, suggestConcepts: suggestConcepts, ingestLearning: ingestLearning,
+    AnalysisProfileAIError: AnalysisProfileAIError
+  };
 }());
