@@ -82,7 +82,7 @@ test('accountProfileView.jsx: a PaymentSheet exists, offers crypto/Visa/Iran-gat
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const idx = src.indexOf('function PaymentSheet(');
   assert.ok(idx > -1, 'PaymentSheet must exist');
-  const fn = src.slice(idx, idx + 2600);
+  const fn = src.slice(idx, idx + 5000);
   assert.match(fn, /id: 'crypto'.*implemented: true/);
   assert.match(fn, /id: 'visa'.*implemented: false/);
   assert.match(fn, /lang === 'fa'.*id: 'iran-gateway'/s, 'the Iran gateway option must only be offered for lang===fa');
@@ -95,7 +95,7 @@ test('accountProfileView.jsx: a PaymentSheet exists, offers crypto/Visa/Iran-gat
 test('accountProfileView.jsx: PaymentSheet slides between its three steps inside one modal, ending on the real invoice', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const idx = src.indexOf('function PaymentSheet(');
-  const fn = src.slice(idx, idx + 12000);
+  const fn = src.slice(idx, idx + 20000);
   assert.match(src, /const PAY_SHEET_STEPS = 3;/, 'the sheet must carry a third step for the invoice');
   assert.match(fn, /transform: 'translateX\(-' \+ \(step \* \(100 \/ PAY_SHEET_STEPS\)\) \+ '%\)'/, 'all three steps must slide within one sheet');
   assert.match(fn, /<CryptoInvoicePanel ref=\{invoiceApiRef\}[^>]*invoiceId=\{invoiceId\}/, 'the invoice must render INSIDE the sheet, never as a second popup');
@@ -106,14 +106,14 @@ test('accountProfileView.jsx: PaymentSheet slides between its three steps inside
   assert.match(fn, /invoiceApiRef\.current && invoiceApiRef\.current\.checkNow\(\)/, 'the footer button must call the panel\'s own imperative Check Now action');
   assert.match(fn, /subPayInvoice/);
   assert.match(fn, /subPayTotal/);
-  assert.match(fn, /subPayDiscountUnavailable/, 'the discount-code row must be honestly marked unavailable - there is no coupon backend');
-  assert.match(fn, /disabled placeholder=\{tr\(lang, 'subPayDiscountPlaceholder'\)\}/, 'the discount input must be disabled, never appear to accept a code');
+  assert.doesNotMatch(src, /subPayDiscountUnavailable/, 'the "not added yet" placeholder must be gone now that server-authoritative discount codes exist');
+  assert.match(fn, /discountEnabled/, 'the discount input is driven by discountEnabled (subscription checkout only) - see discount-checkout-ui-static.test.mjs');
 });
 
 test('accountProfileView.jsx: both WalletCard\'s top-up and SubscriptionTab\'s upgrade flow route through the shared PaymentSheet before actually submitting', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   assert.match(src, /<PaymentSheet[\s\S]{0,400}onProceed=\{requestTopUp\}/, 'WalletCard must gate requestTopUp behind the sheet');
-  assert.match(src, /<PaymentSheet[\s\S]{0,500}onProceed=\{\(\) => requestUpgrade\(upgradeTarget\)\}/, 'the upgrade only actually submits from the sheet');
+  assert.match(src, /<PaymentSheet[\s\S]{0,900}onProceed=\{[^}]*requestUpgrade\(upgradeTarget[^)]*\)[^}]*\}/, 'the upgrade only actually submits from the sheet');
   assert.doesNotMatch(src, /function UpgradeModal\(/, 'the separate upgrade-confirmation modal must be gone');
   assert.doesNotMatch(src, /upgradeAwaitingPayment/, 'the two-popup handshake state must be gone with it');
 });
@@ -135,7 +135,7 @@ test('both billing providers accept every paid plan, derived from PLAN_NAMES rat
 test('accountProfileView.jsx: every plan card band has a fixed height so the four cards line up row-for-row', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const idx = src.indexOf('function PlanComparisonGrid(');
-  const fn = src.slice(idx, idx + 6500);
+  const fn = src.slice(idx, idx + 9500);
   assert.match(src, /const PLAN_SPEC_ROW_COUNT = 6;/);
   assert.match(src, /const SPEC_ROWS = \[/, 'every card must render the SAME six spec rows');
   assert.equal(src.match(/\{ key: '[a-zA-Z]+', label: 'subSpec/g).length, PLAN_SPEC_ROW_COUNT_EXPECTED, 'there must be exactly six spec rows');

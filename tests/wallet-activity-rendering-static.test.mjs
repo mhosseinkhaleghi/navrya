@@ -22,7 +22,7 @@ test('ledgerEntryDisplay() composes an AI_SETTLEMENT reason from feature/provide
 test('ledgerEntryDisplay() reports a paid-vs-promo impact qualifier, not just the net amount', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const fnIdx = src.indexOf('function ledgerEntryDisplay(');
-  const fn = src.slice(fnIdx, fnIdx + 2400);
+  const fn = src.slice(fnIdx, fnIdx + 4200);
   assert.match(fn, /subImpactBoth/);
   assert.match(fn, /subImpactPromo/);
   assert.match(fn, /subImpactPaid/);

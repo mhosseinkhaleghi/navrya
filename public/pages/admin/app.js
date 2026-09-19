@@ -109,6 +109,18 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     // Commercial tab (deliberately English-only, see commercialSubNav's own comment), this
     // surface is fully localized in en/fa/ar/es.
     comSubCryptoPayments: 'Crypto payments',
+    comSubDiscountCodes: 'Discount codes', comDiscountCreate: 'Create discount code', comDiscountCode: 'Code', comDiscountCampaign: 'Campaign name',
+    comDiscountType: 'Discount type', comDiscountTypePercent: 'Percent (%)', comDiscountTypeFixed: 'Fixed amount (USD)', comDiscountValue: 'Discount value',
+    comDiscountStartsAt: 'Starts at (optional)', comDiscountExpiresAt: 'Expires at (optional)', comDiscountMaxRedemptions: 'Max distinct users (blank = unlimited)',
+    comDiscountStatus: 'Status', comDiscountConfirmed: 'Redeemed', comDiscountPending: 'Held (pending)', comDiscountRemaining: 'Remaining',
+    comDiscountActivate: 'Activate', comDiscountDeactivate: 'Deactivate', comDiscountEdit: 'Edit', comDiscountHistory: 'Redemption history',
+    comDiscountNoCodes: 'No discount codes yet.', comDiscountUnlimited: 'Unlimited', comDiscountSave: 'Save', comDiscountHeldUntil: 'Held until', comDiscountClose: 'Close',
+    comDiscountStatusActive: 'Active', comDiscountStatusInactive: 'Inactive', comDiscountStatusScheduled: 'Scheduled', comDiscountStatusExpired: 'Expired', comDiscountStatusExhausted: 'Fully redeemed',
+    comStepUpRequired: 'Recent re-authentication is required for this action. Please log in again and retry.',
+    comPlanWalletBonus: 'Wallet bonus per purchase (USD)', comColOriginal: 'Original', comColDiscount: 'Discount / code', comColFinal: 'Charged', comColBonus: 'Wallet bonus',
+    comRepairBonus: 'Repair bonus', comBonusStatusPending: 'pending', comBonusStatusCredited: 'credited', comBonusStatusReversed: 'reversed', comBonusStatusMissing: 'MISSING',
+    comBonusUsedAi: 'used on AI', comBonusRemaining: 'remaining', comBonusReversedAmount: 'reversed', comBonusFullyConsumed: 'fully used - nothing reversed', comColBonusLot: 'Subscription bonus', comBonusFromLot: 'from bonus',
+    comDiscountOutcomeLost: 'Code slot lost - payment credited to the wallet:',
     cryptoPayStatusTitle: 'Provider status', cryptoPayModeBsc: 'BSC Crypto', cryptoPayModeManual: 'Manual',
     cryptoPayConfigComplete: 'Configuration complete', cryptoPayRpcConfigured: 'RPC configured', cryptoPayWebhookConfigured: 'Webhook configured',
     cryptoPayYes: 'Yes', cryptoPayNo: 'No', cryptoPayLastTested: 'Last tested {date}', cryptoPayTestOk: 'succeeded', cryptoPayTestFailed: 'failed',
@@ -307,6 +319,18 @@ voiceProvidersTitle: 'ارائه‌دهنده‌های صدا (ElevenLabs)', voi
     aiUsageByModelTitle: 'هزینه واقعی تسویه‌شده به تفکیک مدل (همه کاربران)', aiUsageByModelEmpty: 'هنوز هزینه واقعی هوش مصنوعی به تفکیک مدل ثبت نشده است.',
     aiCostProvider: 'سرویس‌دهنده', aiCostPromptTokens: 'توکن‌های ورودی', aiCostCompletionTokens: 'توکن‌های خروجی', aiCostTotalTokens: 'مجموع توکن‌ها',
     comSubCryptoPayments: 'پرداخت‌های ارز دیجیتال',
+    comSubDiscountCodes: 'کدهای تخفیف', comDiscountCreate: 'ایجاد کد تخفیف', comDiscountCode: 'کد', comDiscountCampaign: 'نام کمپین',
+    comDiscountType: 'نوع تخفیف', comDiscountTypePercent: 'درصدی (٪)', comDiscountTypeFixed: 'مبلغ ثابت (دلار)', comDiscountValue: 'مقدار تخفیف',
+    comDiscountStartsAt: 'شروع (اختیاری)', comDiscountExpiresAt: 'انقضا (اختیاری)', comDiscountMaxRedemptions: 'حداکثر تعداد کاربر متمایز (خالی = نامحدود)',
+    comDiscountStatus: 'وضعیت', comDiscountConfirmed: 'استفاده‌شده', comDiscountPending: 'رزرو (در انتظار)', comDiscountRemaining: 'باقی‌مانده',
+    comDiscountActivate: 'فعال‌سازی', comDiscountDeactivate: 'غیرفعال‌سازی', comDiscountEdit: 'ویرایش', comDiscountHistory: 'تاریخچهٔ استفاده',
+    comDiscountNoCodes: 'هنوز کد تخفیفی ساخته نشده است.', comDiscountUnlimited: 'نامحدود', comDiscountSave: 'ذخیره', comDiscountHeldUntil: 'رزرو تا', comDiscountClose: 'بستن',
+    comDiscountStatusActive: 'فعال', comDiscountStatusInactive: 'غیرفعال', comDiscountStatusScheduled: 'زمان‌بندی‌شده', comDiscountStatusExpired: 'منقضی', comDiscountStatusExhausted: 'ظرفیت تکمیل',
+    comStepUpRequired: 'این عملیات به احراز هویت مجدد اخیر نیاز دارد. لطفاً دوباره وارد شوید و تلاش کنید.',
+    comPlanWalletBonus: 'هدیهٔ کیف پول برای هر خرید (دلار)', comColOriginal: 'قیمت اصلی', comColDiscount: 'تخفیف / کد', comColFinal: 'مبلغ پرداختی', comColBonus: 'هدیهٔ کیف پول',
+    comRepairBonus: 'ترمیم هدیه', comBonusStatusPending: 'در انتظار', comBonusStatusCredited: 'واریز شده', comBonusStatusReversed: 'بازگردانده شده', comBonusStatusMissing: 'واریز نشده',
+    comBonusUsedAi: 'مصرف‌شده در هوش مصنوعی', comBonusRemaining: 'باقی‌مانده', comBonusReversedAmount: 'بازگردانده‌شده', comBonusFullyConsumed: 'کاملاً مصرف شده - چیزی بازگردانده نشد', comColBonusLot: 'هدیهٔ اشتراک', comBonusFromLot: 'از هدیه',
+    comDiscountOutcomeLost: 'ظرفیت کد از دست رفت — مبلغ به کیف پول واریز شد:',
     cryptoPayStatusTitle: 'وضعیت درگاه پرداخت', cryptoPayModeBsc: 'ارز دیجیتال BSC', cryptoPayModeManual: 'دستی',
     cryptoPayConfigComplete: 'پیکربندی کامل است', cryptoPayRpcConfigured: 'آدرس RPC تنظیم شده', cryptoPayWebhookConfigured: 'وب‌هوک تنظیم شده',
     cryptoPayYes: 'بله', cryptoPayNo: 'خیر', cryptoPayLastTested: 'آخرین آزمایش: {date}', cryptoPayTestOk: 'موفق', cryptoPayTestFailed: 'ناموفق',
@@ -504,6 +528,18 @@ voiceProvidersTitle: 'مزوّدو الصوت (ElevenLabs)', voiceProvidersHint:
     aiUsageByModelTitle: 'التكلفة الفعلية المسوّاة حسب النموذج (كل المستخدمين)', aiUsageByModelEmpty: 'لا توجد تكلفة ذكاء اصطناعي فعلية مسجّلة حسب النموذج بعد.',
     aiCostProvider: 'المزوّد', aiCostPromptTokens: 'رموز الإدخال', aiCostCompletionTokens: 'رموز الإخراج', aiCostTotalTokens: 'إجمالي الرموز',
     comSubCryptoPayments: 'المدفوعات بالعملات الرقمية',
+    comSubDiscountCodes: 'رموز الخصم', comDiscountCreate: 'إنشاء رمز خصم', comDiscountCode: 'الرمز', comDiscountCampaign: 'اسم الحملة',
+    comDiscountType: 'نوع الخصم', comDiscountTypePercent: 'نسبة مئوية (٪)', comDiscountTypeFixed: 'مبلغ ثابت (دولار)', comDiscountValue: 'قيمة الخصم',
+    comDiscountStartsAt: 'يبدأ في (اختياري)', comDiscountExpiresAt: 'ينتهي في (اختياري)', comDiscountMaxRedemptions: 'الحد الأقصى للمستخدمين المختلفين (فارغ = غير محدود)',
+    comDiscountStatus: 'الحالة', comDiscountConfirmed: 'مستخدَم', comDiscountPending: 'محجوز (معلّق)', comDiscountRemaining: 'المتبقي',
+    comDiscountActivate: 'تفعيل', comDiscountDeactivate: 'تعطيل', comDiscountEdit: 'تعديل', comDiscountHistory: 'سجل الاستخدام',
+    comDiscountNoCodes: 'لا توجد رموز خصم بعد.', comDiscountUnlimited: 'غير محدود', comDiscountSave: 'حفظ', comDiscountHeldUntil: 'محجوز حتى', comDiscountClose: 'إغلاق',
+    comDiscountStatusActive: 'نشط', comDiscountStatusInactive: 'معطّل', comDiscountStatusScheduled: 'مجدوَل', comDiscountStatusExpired: 'منتهٍ', comDiscountStatusExhausted: 'اكتملت الاستخدامات',
+    comStepUpRequired: 'يتطلب هذا الإجراء إعادة مصادقة حديثة. يُرجى تسجيل الدخول مرة أخرى وإعادة المحاولة.',
+    comPlanWalletBonus: 'مكافأة المحفظة لكل عملية شراء (دولار)', comColOriginal: 'السعر الأصلي', comColDiscount: 'الخصم / الرمز', comColFinal: 'المبلغ المدفوع', comColBonus: 'مكافأة المحفظة',
+    comRepairBonus: 'إصلاح المكافأة', comBonusStatusPending: 'معلّقة', comBonusStatusCredited: 'مُضافة', comBonusStatusReversed: 'معكوسة', comBonusStatusMissing: 'مفقودة',
+    comBonusUsedAi: 'المستخدم في الذكاء الاصطناعي', comBonusRemaining: 'المتبقي', comBonusReversedAmount: 'المعكوس', comBonusFullyConsumed: 'مستخدمة بالكامل - لم يُعكس شيء', comColBonusLot: 'مكافأة الاشتراك', comBonusFromLot: 'من المكافأة',
+    comDiscountOutcomeLost: 'فُقدت حصة الرمز — أُضيف المبلغ إلى المحفظة:',
     cryptoPayStatusTitle: 'حالة مزوّد الدفع', cryptoPayModeBsc: 'عملة رقمية BSC', cryptoPayModeManual: 'يدوي',
     cryptoPayConfigComplete: 'الإعداد مكتمل', cryptoPayRpcConfigured: 'تم ضبط RPC', cryptoPayWebhookConfigured: 'تم ضبط الويب هوك',
     cryptoPayYes: 'نعم', cryptoPayNo: 'لا', cryptoPayLastTested: 'آخر اختبار: {date}', cryptoPayTestOk: 'نجح', cryptoPayTestFailed: 'فشل',
@@ -701,6 +737,18 @@ voiceProvidersTitle: 'Proveedores de voz (ElevenLabs)', voiceProvidersHint: 'Cre
     aiUsageByModelTitle: 'Costo real liquidado por modelo (todos los usuarios)', aiUsageByModelEmpty: 'Aún no hay costo real de IA por modelo registrado.',
     aiCostProvider: 'Proveedor', aiCostPromptTokens: 'Tokens de entrada', aiCostCompletionTokens: 'Tokens de salida', aiCostTotalTokens: 'Tokens totales',
     comSubCryptoPayments: 'Pagos con criptomonedas',
+    comSubDiscountCodes: 'Códigos de descuento', comDiscountCreate: 'Crear código de descuento', comDiscountCode: 'Código', comDiscountCampaign: 'Nombre de la campaña',
+    comDiscountType: 'Tipo de descuento', comDiscountTypePercent: 'Porcentaje (%)', comDiscountTypeFixed: 'Importe fijo (USD)', comDiscountValue: 'Valor del descuento',
+    comDiscountStartsAt: 'Inicio (opcional)', comDiscountExpiresAt: 'Caducidad (opcional)', comDiscountMaxRedemptions: 'Máximo de usuarios distintos (vacío = ilimitado)',
+    comDiscountStatus: 'Estado', comDiscountConfirmed: 'Canjeados', comDiscountPending: 'Reservados (pendientes)', comDiscountRemaining: 'Restantes',
+    comDiscountActivate: 'Activar', comDiscountDeactivate: 'Desactivar', comDiscountEdit: 'Editar', comDiscountHistory: 'Historial de canjes',
+    comDiscountNoCodes: 'Aún no hay códigos de descuento.', comDiscountUnlimited: 'Ilimitado', comDiscountSave: 'Guardar', comDiscountHeldUntil: 'Reservado hasta', comDiscountClose: 'Cerrar',
+    comDiscountStatusActive: 'Activo', comDiscountStatusInactive: 'Inactivo', comDiscountStatusScheduled: 'Programado', comDiscountStatusExpired: 'Caducado', comDiscountStatusExhausted: 'Agotado',
+    comStepUpRequired: 'Esta acción requiere una reautenticación reciente. Inicia sesión de nuevo e inténtalo otra vez.',
+    comPlanWalletBonus: 'Bono de cartera por compra (USD)', comColOriginal: 'Original', comColDiscount: 'Descuento / código', comColFinal: 'Cobrado', comColBonus: 'Bono de cartera',
+    comRepairBonus: 'Reparar bono', comBonusStatusPending: 'pendiente', comBonusStatusCredited: 'acreditado', comBonusStatusReversed: 'revertido', comBonusStatusMissing: 'FALTANTE',
+    comBonusUsedAi: 'usado en IA', comBonusRemaining: 'restante', comBonusReversedAmount: 'revertido', comBonusFullyConsumed: 'usado por completo - nada revertido', comColBonusLot: 'Bono de suscripción', comBonusFromLot: 'del bono',
+    comDiscountOutcomeLost: 'Cupo del código perdido: pago acreditado a la cartera:',
     cryptoPayStatusTitle: 'Estado del proveedor', cryptoPayModeBsc: 'Cripto BSC', cryptoPayModeManual: 'Manual',
     cryptoPayConfigComplete: 'Configuración completa', cryptoPayRpcConfigured: 'RPC configurado', cryptoPayWebhookConfigured: 'Webhook configurado',
     cryptoPayYes: 'Sí', cryptoPayNo: 'No', cryptoPayLastTested: 'Última prueba: {date}', cryptoPayTestOk: 'correcta', cryptoPayTestFailed: 'fallida',
@@ -2193,7 +2241,7 @@ function commercialSubNav(active) {
   const nav = el('div', 'admin-seg-nav');
   [
     ['plans', t('comSubPlans')], ['wallet', t('comSubWallet')], ['subscriptions', t('comSubSubscriptions')],
-    ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['history', t('comSubHistory')],
+    ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['discountCodes', t('comSubDiscountCodes')], ['history', t('comSubHistory')],
     ['cryptoPayments', t('comSubCryptoPayments')], ['aiCostControl', t('comSubAiCostControl')]
   ].forEach(([id, label]) => {
     const btn = el('button', 'admin-seg-btn' + (id === active ? ' active' : ''), label);
@@ -2253,6 +2301,10 @@ function commercialPlansSubTab() {
       const discountField = plan !== 'free' ? field(t('comPlanTokenDiscount'), 'number', planConfig.tokenDiscountPercent || 0) : null;
       if (discountField) card.append(discountField.wrap);
 
+      // Wallet bonus: promo credit granted once per CONFIRMED paid purchase (snapshotted at checkout). Free has none.
+      const bonusField = plan !== 'free' ? field(t('comPlanWalletBonus'), 'number', planConfig.walletBonusUsd || 0) : null;
+      if (bonusField) card.append(bonusField.wrap);
+
       const featureInputs = {};
       PLAN_FEATURE_KEYS.forEach((key) => {
         const featureLabel = el('label', 'field-check');
@@ -2274,6 +2326,7 @@ function commercialPlansSubTab() {
         const payload = { limits, storageBytes: Number(storageField.input.value), features, displayName: displayNameField.input.value };
         if (priceField) payload.price = { amountUsd: Number(priceField.input.value), billingInterval: 'month' };
         if (discountField) payload.tokenDiscountPercent = Number(discountField.input.value);
+        if (bonusField) payload.walletBonusUsd = Number(bonusField.input.value);
         api('/commercial/plans/' + plan, { method: 'PATCH', body: JSON.stringify(payload) })
           .then(() => showToast(t('saved'))).catch((error) => showToast(error.message, 'danger'));
       };
@@ -2466,15 +2519,23 @@ function commercialWalletSubTab() {
       table.className = 'admin-table';
       const thead = document.createElement('thead');
       const headRow = document.createElement('tr');
-      [t('comColTime'), t('comColUser'), t('comColType'), t('comColCash'), t('comColPromo'), t('comColProviderModel'), t('comColFeature')].forEach((label) => headRow.append(el('th', '', label)));
+      [t('comColTime'), t('comColUser'), t('comColType'), t('comColCash'), t('comColPromo'), t('comColProviderModel'), t('comColFeature'), t('comColBonusLot')].forEach((label) => headRow.append(el('th', '', label)));
       thead.append(headRow);
       table.append(thead);
       const tbody = document.createElement('tbody');
       ledgerData.entries.forEach((entry) => {
         const row = document.createElement('tr');
+        // Subscription-bonus lots: what an AI settlement drew from the bonus, or the lot's state on a bonus / reversal entry.
+        let lotCell = '—';
+        if (entry.type === 'AI_SETTLEMENT' && entry.subscriptionBonusUsedMicroUsd > 0) {
+          lotCell = t('comBonusFromLot') + ' ' + fmtMicroUsd(entry.subscriptionBonusUsedMicroUsd);
+        } else if (entry.bonusLot) {
+          lotCell = fmtMicroUsd(entry.bonusLot.originalMicroUsd) + ' · ' + t('comBonusUsedAi') + ' ' + fmtMicroUsd(entry.bonusLot.consumedMicroUsd) + ' · '
+            + (entry.bonusLot.status === 'reversed' ? t('comBonusReversedAmount') + ' ' + fmtMicroUsd(entry.bonusLot.reversedMicroUsd) : t('comBonusRemaining') + ' ' + fmtMicroUsd(entry.bonusLot.remainingMicroUsd));
+        }
         [
           fmtDate(entry.createdAt), entry.userId, entry.type, fmtMicroUsd(entry.cashDeltaMicroUsd), fmtMicroUsd(entry.promoDeltaMicroUsd),
-          [entry.provider, entry.model].filter(Boolean).join(' / ') || '—', entry.feature || '—'
+          [entry.provider, entry.model].filter(Boolean).join(' / ') || '—', entry.feature || '—', lotCell
         ].forEach((value) => row.append(el('td', '', String(value))));
         tbody.append(row);
       });
@@ -2616,21 +2677,44 @@ function commercialTransactionsSubTab() {
     table.className = 'admin-table';
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    [t('comColUser'), t('comColType'), t('comColAmount'), t('comColStatus'), t('comColProduct'), t('comColTime'), t('comColConfirmed'), t('colActions')]
+    [t('comColUser'), t('comColType'), t('comColOriginal'), t('comColDiscount'), t('comColFinal'), t('comColStatus'), t('comColBonus'), t('comColProduct'), t('comColTime'), t('comColConfirmed'), t('colActions')]
       .forEach((label) => headRow.append(el('th', '', label)));
     thead.append(headRow);
     table.append(thead);
     const tbody = document.createElement('tbody');
     data.transactions.forEach((transaction) => {
       const row = document.createElement('tr');
-      [transaction.userId, transaction.type, fmtMicroUsd(transaction.amountMicroUsd), transaction.status, transaction.productId || '—', fmtDate(transaction.createdAt), fmtDate(transaction.confirmedAt)]
+      // Subscription rows carry the authoritative pricing snapshot, the ledger-derived bonus state and (if a limited
+      // code ran out while the payment was in flight) the outcome that explains why it was credited to the wallet.
+      const pricing = transaction.pricing;
+      const discountText = pricing && pricing.discount ? pricing.discount.code + ' (-' + fmtMicroUsd(pricing.discountAmountMicroUsd) + ')' : '—';
+      const outcomeText = transaction.discountOutcome ? ' · ' + t('comDiscountOutcomeLost') + ' ' + fmtMicroUsd(transaction.discountOutcome.creditedMicroUsd) : '';
+      // The bonus as the SERVER tracked it (lot accounting): what was granted, how much AI usage consumed, and what is left
+      // or what a refund took back. Nothing is recomputed here.
+      const bonus = transaction.bonus;
+      let bonusText = '—';
+      if (bonus && transaction.bonusStatus && transaction.bonusStatus !== 'none') {
+        bonusText = fmtMicroUsd(bonus.originalMicroUsd) + ' · ' + t('comBonusStatus' + transaction.bonusStatus.charAt(0).toUpperCase() + transaction.bonusStatus.slice(1));
+        if (transaction.bonusStatus === 'credited' || transaction.bonusStatus === 'reversed') {
+          bonusText += ' · ' + t('comBonusUsedAi') + ' ' + fmtMicroUsd(bonus.consumedMicroUsd);
+          if (transaction.bonusStatus === 'credited') bonusText += ' · ' + t('comBonusRemaining') + ' ' + fmtMicroUsd(bonus.remainingMicroUsd);
+          else if (bonus.reversedMicroUsd > 0) bonusText += ' · ' + t('comBonusReversedAmount') + ' ' + fmtMicroUsd(bonus.reversedMicroUsd);
+          else bonusText += ' · ' + t('comBonusFullyConsumed');
+        }
+      }
+      [transaction.userId, transaction.type, pricing ? fmtMicroUsd(pricing.originalAmountMicroUsd) : '—', discountText + outcomeText, fmtMicroUsd(transaction.amountMicroUsd),
+        transaction.status, bonusText, transaction.productId || '—', fmtDate(transaction.createdAt), fmtDate(transaction.confirmedAt)]
         .forEach((value) => row.append(el('td', '', String(value))));
       const actionsTd = document.createElement('td');
       if (transaction.status === 'pending') {
         const confirmBtn = el('button', 'btn btn-primary btn-sm', t('comConfirm'));
         confirmBtn.type = 'button';
         confirmBtn.onclick = () => api('/commercial/transactions/' + transaction.id + '/confirm', { method: 'POST' })
-          .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
+          .then((result) => {
+            // Strict late-payment rule: the plan was NOT activated because a limited code ran out - say so plainly.
+            if (result && result.discountLost) showToast(t('comDiscountOutcomeLost') + ' ' + fmtMicroUsd(result.creditedMicroUsd), 'danger');
+            renderTab();
+          }).catch((error) => showToast(error.message, 'danger'));
         const failBtn = el('button', 'btn btn-secondary btn-sm', t('comFail'));
         failBtn.type = 'button';
         failBtn.onclick = () => api('/commercial/transactions/' + transaction.id + '/fail', { method: 'POST' })
@@ -2645,6 +2729,15 @@ function commercialTransactionsSubTab() {
           .then(() => renderTab()).catch((error) => showToast(error.message, 'danger'));
         actionsTd.append(refundBtn);
       }
+      // A confirmed subscription whose wallet bonus was never written (e.g. a crash between the status flip and the
+      // grant) can be repaired - idempotent and step-up protected server-side; only offered when it is really missing.
+      if (transaction.bonusStatus === 'missing') {
+        const repairBtn = el('button', 'btn btn-primary btn-sm', t('comRepairBonus'));
+        repairBtn.type = 'button';
+        repairBtn.onclick = () => api('/commercial/transactions/' + transaction.id + '/repair-bonus', { method: 'POST' })
+          .then(() => renderTab()).catch((error) => showToast(error.message === 'STEP_UP_REQUIRED' ? t('comStepUpRequired') : error.message, 'danger'));
+        actionsTd.append(repairBtn);
+      }
       row.append(actionsTd);
       tbody.append(row);
     });
@@ -2652,6 +2745,158 @@ function commercialTransactionsSubTab() {
     tableWrap.append(table);
     wrap.append(tableWrap);
     return wrap;
+  });
+}
+
+// Discount codes (subscription checkout): create / edit / activate / deactivate, with live capacity (redeemed, held by
+// pending checkouts, remaining) and each code's redemption history. Every mutation needs a RECENT re-authentication -
+// a stale admin session is answered with 401 STEP_UP_REQUIRED, shown here as a clear "log in again" message instead of
+// a raw error code. A code is never deleted, only deactivated; editing changes future redemptions only.
+let discountEditId = null;
+let discountHistoryId = null;
+function commercialDiscountCodesSubTab() {
+  const fail = (error) => showToast(error && error.message === 'STEP_UP_REQUIRED' ? t('comStepUpRequired') : ((error && error.message) || 'REQUEST_FAILED'), 'danger');
+  const done = () => { showToast(t('saved')); renderTab(); };
+  const toIsoOrNull = (value) => (value ? new Date(value).toISOString() : null);
+  const toLocalInput = (iso) => {
+    const date = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + 'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+  };
+  const statusBadgeClass = { active: 'valid', inactive: 'unknown', scheduled: 'unknown', expired: 'invalid', exhausted: 'invalid' };
+  const valueText = (code) => (code.discountType === 'percent' ? code.discountValue + '%' : '$' + code.discountValue);
+
+  function typeSelect(current) {
+    const wrap = el('label', 'field');
+    wrap.append(el('span', '', t('comDiscountType')));
+    const select = document.createElement('select');
+    [['percent', t('comDiscountTypePercent')], ['fixed', t('comDiscountTypeFixed')]].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value; option.textContent = label;
+      select.append(option);
+    });
+    select.value = current;
+    wrap.append(select);
+    return { wrap, select };
+  }
+
+  // One form for create AND edit (the code string itself is immutable, so it is only asked for on create).
+  function codeForm(existing) {
+    const card = el('div', 'admin-card');
+    card.append(el('h3', '', existing ? t('comDiscountEdit') + ' - ' + existing.code : t('comDiscountCreate')));
+    const codeField = existing ? null : field(t('comDiscountCode'), 'text', '');
+    const campaignField = field(t('comDiscountCampaign'), 'text', existing ? existing.campaignName : '');
+    const type = typeSelect(existing ? existing.discountType : 'percent');
+    const valueField = field(t('comDiscountValue'), 'number', existing ? existing.discountValue : '');
+    const startsField = field(t('comDiscountStartsAt'), 'datetime-local', existing && existing.startsAt ? toLocalInput(existing.startsAt) : '');
+    const expiresField = field(t('comDiscountExpiresAt'), 'datetime-local', existing && existing.expiresAt ? toLocalInput(existing.expiresAt) : '');
+    const capacityField = field(t('comDiscountMaxRedemptions'), 'number', existing && existing.maxRedemptions != null ? existing.maxRedemptions : '');
+    const saveBtn = el('button', 'btn btn-primary', existing ? t('comDiscountSave') : t('comDiscountCreate'));
+    saveBtn.type = 'button';
+    saveBtn.onclick = () => {
+      const payload = {
+        campaignName: campaignField.input.value, discountType: type.select.value, discountValue: Number(valueField.input.value),
+        startsAt: toIsoOrNull(startsField.input.value), expiresAt: toIsoOrNull(expiresField.input.value),
+        maxRedemptions: capacityField.input.value === '' ? null : Number(capacityField.input.value)
+      };
+      const request = existing
+        ? api('/commercial/discount-codes/' + existing.id, { method: 'PATCH', body: JSON.stringify(payload) })
+        : api('/commercial/discount-codes', { method: 'POST', body: JSON.stringify(Object.assign({ code: codeField.input.value }, payload)) });
+      request.then(() => { discountEditId = null; done(); }).catch(fail);
+    };
+    if (codeField) card.append(codeField.wrap);
+    card.append(campaignField.wrap, type.wrap, valueField.wrap, startsField.wrap, expiresField.wrap, capacityField.wrap, saveBtn);
+    if (existing) {
+      const cancelBtn = el('button', 'btn btn-secondary', t('comDiscountClose'));
+      cancelBtn.type = 'button';
+      cancelBtn.onclick = () => { discountEditId = null; renderTab(); };
+      card.append(cancelBtn);
+    }
+    return card;
+  }
+
+  function historyCard(detail) {
+    const card = el('div', 'admin-card');
+    card.append(el('h3', '', t('comDiscountHistory') + ' - ' + detail.code.code));
+    const closeBtn = el('button', 'btn btn-secondary btn-sm', t('comDiscountClose'));
+    closeBtn.type = 'button';
+    closeBtn.onclick = () => { discountHistoryId = null; renderTab(); };
+    card.append(closeBtn);
+    if (!detail.redemptions.length) { card.append(el('p', 'hint', t('comDiscountNoCodes'))); return card; }
+    const tableWrap = el('div', 'admin-table-wrap');
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    const headRow = document.createElement('tr');
+    [t('comColUser'), t('comColProduct'), t('comColStatus'), t('comColOriginal'), t('comColDiscount'), t('comColFinal'), t('comDiscountHeldUntil'), t('comColTime')]
+      .forEach((label) => headRow.append(el('th', '', label)));
+    const thead = document.createElement('thead');
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = document.createElement('tbody');
+    detail.redemptions.forEach((redemption) => {
+      const row = document.createElement('tr');
+      const statusText = redemption.status + (redemption.refundedAt ? ' (refunded)' : '') + (redemption.releaseReason ? ' - ' + redemption.releaseReason : '');
+      [redemption.userId, redemption.planId, statusText, fmtMicroUsd(redemption.originalAmountMicroUsd), fmtMicroUsd(redemption.discountAmountMicroUsd),
+        fmtMicroUsd(redemption.finalAmountMicroUsd), fmtDate(redemption.reservedUntil), fmtDate(redemption.createdAt)]
+        .forEach((value) => row.append(el('td', '', String(value))));
+      tbody.append(row);
+    });
+    table.append(tbody);
+    tableWrap.append(table);
+    card.append(tableWrap);
+    return card;
+  }
+
+  return api('/commercial/discount-codes').then((data) => {
+    const wrap = el('div');
+    const editing = discountEditId ? data.codes.find((code) => code.id === discountEditId) : null;
+    wrap.append(codeForm(editing || null));
+
+    const listCard = el('div', 'admin-card');
+    if (!data.codes.length) {
+      listCard.append(el('p', 'hint', t('comDiscountNoCodes')));
+    } else {
+      const tableWrap = el('div', 'admin-table-wrap');
+      const table = document.createElement('table');
+      table.className = 'admin-table';
+      const headRow = document.createElement('tr');
+      [t('comDiscountCode'), t('comDiscountCampaign'), t('comDiscountValue'), t('comDiscountStatus'), t('comDiscountStartsAt'), t('comDiscountExpiresAt'),
+        t('comDiscountConfirmed'), t('comDiscountPending'), t('comDiscountRemaining'), t('colActions')].forEach((label) => headRow.append(el('th', '', label)));
+      const thead = document.createElement('thead');
+      thead.append(headRow);
+      table.append(thead);
+      const tbody = document.createElement('tbody');
+      data.codes.forEach((code) => {
+        const row = document.createElement('tr');
+        [code.code, code.campaignName, valueText(code)].forEach((value) => row.append(el('td', '', String(value))));
+        const statusTd = document.createElement('td');
+        statusTd.append(el('span', 'badge status-' + statusBadgeClass[code.status], t('comDiscountStatus' + code.status.charAt(0).toUpperCase() + code.status.slice(1))));
+        row.append(statusTd);
+        const capacityText = code.stats.remaining === null ? t('comDiscountUnlimited') : String(code.stats.remaining);
+        [fmtDate(code.startsAt), fmtDate(code.expiresAt), String(code.stats.confirmed) + (code.maxRedemptions ? ' / ' + code.maxRedemptions : ''),
+          String(code.stats.pendingReservations), capacityText].forEach((value) => row.append(el('td', '', value)));
+        const actionsTd = document.createElement('td');
+        const editBtn = el('button', 'btn btn-secondary btn-sm', t('comDiscountEdit'));
+        editBtn.type = 'button';
+        editBtn.onclick = () => { discountEditId = code.id; renderTab(); };
+        const toggleBtn = el('button', 'btn btn-secondary btn-sm', code.active ? t('comDiscountDeactivate') : t('comDiscountActivate'));
+        toggleBtn.type = 'button';
+        toggleBtn.onclick = () => api('/commercial/discount-codes/' + code.id, { method: 'PATCH', body: JSON.stringify({ active: !code.active }) }).then(done).catch(fail);
+        const historyBtn = el('button', 'btn btn-secondary btn-sm', t('comDiscountHistory'));
+        historyBtn.type = 'button';
+        historyBtn.onclick = () => { discountHistoryId = code.id; renderTab(); };
+        actionsTd.append(editBtn, toggleBtn, historyBtn);
+        row.append(actionsTd);
+        tbody.append(row);
+      });
+      table.append(tbody);
+      tableWrap.append(table);
+      listCard.append(tableWrap);
+    }
+    wrap.append(listCard);
+
+    if (!discountHistoryId) return wrap;
+    return api('/commercial/discount-codes/' + discountHistoryId).then((detail) => { wrap.append(historyCard(detail)); return wrap; });
   });
 }
 
@@ -3138,7 +3383,7 @@ function listAdaptersProvidersForSelect() { return ['openai', 'anthropic', 'gemi
 
 const COMMERCIAL_SUB_TAB_BUILDERS = {
   plans: commercialPlansSubTab, wallet: commercialWalletSubTab, subscriptions: commercialSubscriptionsSubTab,
-  storage: commercialStorageSubTab, transactions: commercialTransactionsSubTab, history: commercialHistorySubTab,
+  storage: commercialStorageSubTab, transactions: commercialTransactionsSubTab, discountCodes: commercialDiscountCodesSubTab, history: commercialHistorySubTab,
   cryptoPayments: commercialCryptoPaymentsSubTab, aiCostControl: commercialAiCostControlSubTab
 };
 function commercialTab() {

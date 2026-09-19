@@ -129,7 +129,30 @@ const copy = {
     subPayInvoice: 'فاکتور', subPayTotal: 'جمع کل',
     subPayLineItemTopUp: 'شارژ کیف پول هوش مصنوعی', subPayLineItemPlan: 'اشتراک {plan}',
     subPayDiscountCode: 'کد تخفیف', subPayDiscountPlaceholder: 'کد تخفیف',
-    subPayDiscountUnavailable: 'کد تخفیف هنوز اضافه نشده است.',
+    subPayDiscountApply: 'اعمال', subPayDiscountApplying: 'در حال بررسی…', subPayDiscountClear: 'حذف',
+    subPayDiscountApplied: 'کد {code} اعمال شد', subPayDiscountSubscriptionOnly: 'کد تخفیف فقط برای اشتراک‌ها قابل استفاده است.',
+    subPayOriginalPrice: 'قیمت اصلی', subPayDiscountLine: 'تخفیف ({code})',
+    subPayBonusLine: 'پس از تأیید پرداخت، {amount} اعتبار به کیف پول شما اضافه می‌شود.',
+    subPayNoCostNote: 'این کد اشتراک را رایگان می‌کند. چیزی برای پرداخت نیست — به‌محض تأیید فعال می‌شود.',
+    subDiscountErrInvalid: 'این کد معتبر نیست.', subDiscountErrNotStarted: 'این کد هنوز فعال نشده است.',
+    subDiscountErrExpired: 'مهلت استفاده از این کد به پایان رسیده است.', subDiscountErrExhausted: 'ظرفیت استفاده از این کد تکمیل شده است.',
+    subDiscountErrAlreadyUsed: 'شما قبلاً از این کد استفاده کرده‌اید.',
+    subDiscountErrReservationPending: 'شما هم‌اکنون یک پرداخت در انتظار با این کد دارید. آن را تکمیل کنید یا منتظر پایان مهلتش بمانید.',
+    subDiscountErrRateLimited: 'تعداد تلاش‌ها زیاد بود. چند دقیقه دیگر دوباره امتحان کنید.',
+    subPlanWalletBonusLabel: 'هدیهٔ کیف پول',
+    subLedgerSubscriptionBonus: 'هدیهٔ اشتراک', subLedgerBonusReversal: 'بازگشت هدیهٔ اشتراک', subLedgerBonusReversalSubtitle: 'اشتراک بازپرداخت شد',
+    subBillingBonusUsed: 'مصرف‌شده در هوش مصنوعی: {amount}',
+    subBillingBonusRemaining: 'باقی‌مانده: {amount}',
+    subBillingBonusReversedPart: 'بازگردانده‌شده هنگام بازپرداخت: {amount}',
+    subBillingBonusFullyUsed: 'کاملاً مصرف شده - چیزی برای بازگرداندن نبود',
+    subLedgerBonusUsedPart: 'پرداخت‌شده از هدیهٔ اشتراک: {amount}',
+    subLedgerBonusReversalPartial: 'فقط {amount} مصرف‌نشده بازگردانده شد - {used} قبلاً در هوش مصنوعی مصرف شده بود',
+    subLedgerBonusReversalNone: 'هدیه کاملاً مصرف شده بود - چیزی بازگردانده نشد',
+    subBillingOriginalPrice: 'قیمت اصلی {amount}', subBillingDiscountCode: 'کد {code} (−{amount})',
+    subBillingBonusCredited: '+{amount} هدیهٔ کیف پول واریز شد', subBillingBonusPending: '{amount} هدیهٔ کیف پول پس از تأیید',
+    subBillingBonusReversed: '{amount} هدیهٔ کیف پول بازگردانده شد',
+    subBillingDiscountLost: 'ظرفیت کد پیش از تأیید پرداخت شما تمام شد — به‌جای آن {amount} به کیف پول شما اضافه شد.',
+    subUpgradeNoCostActive: 'اشتراک {plan} شما اکنون فعال است.',
     subPayCurrencyNote: 'مبلغ به دلار آمریکا محاسبه و در لحظهٔ پرداخت تبدیل می‌شود.',
     subPayBack: 'بازگشت', subPayConfirm: 'پرداخت {amount}',
     subTopUpMinHint: 'حداقل مبلغ شارژ {amount} است', subTopUpAmountValid: 'مبلغ معتبر است',
@@ -274,7 +297,30 @@ const copy = {
     subPayInvoice: 'Invoice', subPayTotal: 'Total',
     subPayLineItemTopUp: 'AI wallet top-up', subPayLineItemPlan: '{plan} subscription',
     subPayDiscountCode: 'Discount code', subPayDiscountPlaceholder: 'Discount code',
-    subPayDiscountUnavailable: 'Discount codes have not been added yet.',
+    subPayDiscountApply: 'Apply', subPayDiscountApplying: 'Checking…', subPayDiscountClear: 'Remove',
+    subPayDiscountApplied: 'Code {code} applied', subPayDiscountSubscriptionOnly: 'Discount codes apply to subscription plans only.',
+    subPayOriginalPrice: 'Original price', subPayDiscountLine: 'Discount ({code})',
+    subPayBonusLine: 'You will receive {amount} in wallet credit once your payment is confirmed.',
+    subPayNoCostNote: 'This code makes the plan free. There is nothing to pay — it activates as soon as you confirm.',
+    subDiscountErrInvalid: 'This code is not valid.', subDiscountErrNotStarted: 'This code is not active yet.',
+    subDiscountErrExpired: 'This code has expired.', subDiscountErrExhausted: 'All uses of this code have already been claimed.',
+    subDiscountErrAlreadyUsed: 'You have already used this code.',
+    subDiscountErrReservationPending: 'You already have a pending checkout with this code. Finish it, or wait for it to expire.',
+    subDiscountErrRateLimited: 'Too many attempts. Please try again in a few minutes.',
+    subPlanWalletBonusLabel: 'Wallet bonus',
+    subLedgerSubscriptionBonus: 'Subscription bonus', subLedgerBonusReversal: 'Subscription bonus reversed', subLedgerBonusReversalSubtitle: 'Plan refunded',
+    subBillingBonusUsed: 'Used on AI: {amount}',
+    subBillingBonusRemaining: 'Remaining: {amount}',
+    subBillingBonusReversedPart: 'Reversed on refund: {amount}',
+    subBillingBonusFullyUsed: 'Fully used - nothing to reverse',
+    subLedgerBonusUsedPart: 'Covered by subscription bonus: {amount}',
+    subLedgerBonusReversalPartial: 'Only the unused {amount} was reversed - {used} had already been spent on AI',
+    subLedgerBonusReversalNone: 'The bonus was already fully used - nothing was reversed',
+    subBillingOriginalPrice: 'Original price {amount}', subBillingDiscountCode: 'Code {code} (−{amount})',
+    subBillingBonusCredited: '+{amount} wallet bonus credited', subBillingBonusPending: '{amount} wallet bonus after confirmation',
+    subBillingBonusReversed: '{amount} wallet bonus reversed',
+    subBillingDiscountLost: 'The code ran out of uses before your payment was confirmed — {amount} was credited to your wallet instead.',
+    subUpgradeNoCostActive: 'Your {plan} plan is now active.',
     subPayCurrencyNote: 'Charged in US dollars and converted at payment time.',
     subPayBack: 'Back', subPayConfirm: 'Pay {amount}',
     subTopUpMinHint: 'Minimum top-up is {amount}', subTopUpAmountValid: 'Amount is valid',
@@ -419,7 +465,30 @@ const copy = {
     subPayInvoice: 'الفاتورة', subPayTotal: 'الإجمالي',
     subPayLineItemTopUp: 'شحن محفظة الذكاء الاصطناعي', subPayLineItemPlan: 'اشتراك {plan}',
     subPayDiscountCode: 'رمز الخصم', subPayDiscountPlaceholder: 'رمز الخصم',
-    subPayDiscountUnavailable: 'لم تتم إضافة رموز الخصم بعد.',
+    subPayDiscountApply: 'تطبيق', subPayDiscountApplying: 'جارٍ التحقق…', subPayDiscountClear: 'إزالة',
+    subPayDiscountApplied: 'تم تطبيق الرمز {code}', subPayDiscountSubscriptionOnly: 'رموز الخصم متاحة لخطط الاشتراك فقط.',
+    subPayOriginalPrice: 'السعر الأصلي', subPayDiscountLine: 'الخصم ({code})',
+    subPayBonusLine: 'ستحصل على {amount} كرصيد في محفظتك بعد تأكيد الدفع.',
+    subPayNoCostNote: 'هذا الرمز يجعل الخطة مجانية. لا يوجد ما تدفعه — تُفعَّل فور التأكيد.',
+    subDiscountErrInvalid: 'هذا الرمز غير صالح.', subDiscountErrNotStarted: 'هذا الرمز لم يبدأ بعد.',
+    subDiscountErrExpired: 'انتهت صلاحية هذا الرمز.', subDiscountErrExhausted: 'تم استهلاك جميع استخدامات هذا الرمز.',
+    subDiscountErrAlreadyUsed: 'لقد استخدمتَ هذا الرمز من قبل.',
+    subDiscountErrReservationPending: 'لديك بالفعل عملية دفع معلّقة بهذا الرمز. أكملها أو انتظر حتى تنتهي مهلتها.',
+    subDiscountErrRateLimited: 'محاولات كثيرة جدًا. يُرجى المحاولة مرة أخرى بعد بضع دقائق.',
+    subPlanWalletBonusLabel: 'مكافأة المحفظة',
+    subLedgerSubscriptionBonus: 'مكافأة الاشتراك', subLedgerBonusReversal: 'تم عكس مكافأة الاشتراك', subLedgerBonusReversalSubtitle: 'تم استرداد الخطة',
+    subBillingBonusUsed: 'المستخدم في الذكاء الاصطناعي: {amount}',
+    subBillingBonusRemaining: 'المتبقي: {amount}',
+    subBillingBonusReversedPart: 'المعكوس عند الاسترداد: {amount}',
+    subBillingBonusFullyUsed: 'تم استخدامها بالكامل - لا شيء لعكسه',
+    subLedgerBonusUsedPart: 'مغطّى بمكافأة الاشتراك: {amount}',
+    subLedgerBonusReversalPartial: 'تم عكس الجزء غير المستخدم فقط ({amount}) - كان {used} قد أُنفق بالفعل على الذكاء الاصطناعي',
+    subLedgerBonusReversalNone: 'كانت المكافأة مستخدمة بالكامل - لم يُعكس شيء',
+    subBillingOriginalPrice: 'السعر الأصلي {amount}', subBillingDiscountCode: 'الرمز {code} (−{amount})',
+    subBillingBonusCredited: 'تمت إضافة +{amount} مكافأة إلى المحفظة', subBillingBonusPending: 'مكافأة محفظة {amount} بعد التأكيد',
+    subBillingBonusReversed: 'تم عكس مكافأة المحفظة {amount}',
+    subBillingDiscountLost: 'نفدت استخدامات الرمز قبل تأكيد دفعتك — تمت إضافة {amount} إلى محفظتك بدلًا من ذلك.',
+    subUpgradeNoCostActive: 'خطة {plan} الخاصة بك مفعّلة الآن.',
     subPayCurrencyNote: 'يُحتسب المبلغ بالدولار الأمريكي ويُحوَّل عند الدفع.',
     subPayBack: 'رجوع', subPayConfirm: 'ادفع {amount}',
     subTopUpMinHint: 'الحد الأدنى للشحن هو {amount}', subTopUpAmountValid: 'المبلغ صالح',
@@ -564,7 +633,30 @@ const copy = {
     subPayInvoice: 'Factura', subPayTotal: 'Total',
     subPayLineItemTopUp: 'Recarga de la billetera de IA', subPayLineItemPlan: 'Suscripción {plan}',
     subPayDiscountCode: 'Código de descuento', subPayDiscountPlaceholder: 'Código de descuento',
-    subPayDiscountUnavailable: 'Los códigos de descuento aún no se han agregado.',
+    subPayDiscountApply: 'Aplicar', subPayDiscountApplying: 'Comprobando…', subPayDiscountClear: 'Quitar',
+    subPayDiscountApplied: 'Código {code} aplicado', subPayDiscountSubscriptionOnly: 'Los códigos de descuento solo se aplican a los planes de suscripción.',
+    subPayOriginalPrice: 'Precio original', subPayDiscountLine: 'Descuento ({code})',
+    subPayBonusLine: 'Recibirás {amount} de crédito en tu cartera cuando se confirme el pago.',
+    subPayNoCostNote: 'Este código hace que el plan sea gratis. No hay nada que pagar: se activa en cuanto confirmes.',
+    subDiscountErrInvalid: 'Este código no es válido.', subDiscountErrNotStarted: 'Este código todavía no está activo.',
+    subDiscountErrExpired: 'Este código ha caducado.', subDiscountErrExhausted: 'Ya se han agotado todos los usos de este código.',
+    subDiscountErrAlreadyUsed: 'Ya has usado este código.',
+    subDiscountErrReservationPending: 'Ya tienes un pago pendiente con este código. Termínalo o espera a que caduque.',
+    subDiscountErrRateLimited: 'Demasiados intentos. Vuelve a intentarlo en unos minutos.',
+    subPlanWalletBonusLabel: 'Bono de cartera',
+    subLedgerSubscriptionBonus: 'Bono de suscripción', subLedgerBonusReversal: 'Bono de suscripción revertido', subLedgerBonusReversalSubtitle: 'Plan reembolsado',
+    subBillingBonusUsed: 'Usado en IA: {amount}',
+    subBillingBonusRemaining: 'Restante: {amount}',
+    subBillingBonusReversedPart: 'Revertido en el reembolso: {amount}',
+    subBillingBonusFullyUsed: 'Usado por completo - nada que revertir',
+    subLedgerBonusUsedPart: 'Cubierto por el bono de suscripción: {amount}',
+    subLedgerBonusReversalPartial: 'Solo se revirtieron los {amount} no usados - {used} ya se habían gastado en IA',
+    subLedgerBonusReversalNone: 'El bono ya se había usado por completo - no se revirtió nada',
+    subBillingOriginalPrice: 'Precio original {amount}', subBillingDiscountCode: 'Código {code} (−{amount})',
+    subBillingBonusCredited: '+{amount} de bono acreditado a tu cartera', subBillingBonusPending: '{amount} de bono de cartera tras la confirmación',
+    subBillingBonusReversed: '{amount} de bono de cartera revertido',
+    subBillingDiscountLost: 'El código se agotó antes de confirmar tu pago: en su lugar se acreditaron {amount} a tu cartera.',
+    subUpgradeNoCostActive: 'Tu plan {plan} ya está activo.',
     subPayCurrencyNote: 'Se cobra en dólares estadounidenses y se convierte al momento del pago.',
     subPayBack: 'Atrás', subPayConfirm: 'Pagar {amount}',
     subTopUpMinHint: 'La recarga mínima es {amount}', subTopUpAmountValid: 'El importe es válido',
@@ -1720,7 +1812,14 @@ function ledgerEntryDisplay(lang, entry) {
     title = tr(lang, 'subLedgerAiUsage', { feature: entry.feature ? humanizeSlug(entry.feature) : tr(lang, 'subLedgerAssistant') });
     subtitle = [entry.provider, entry.model].filter(Boolean).join(' · ');
   } else if (entry.type === 'TOP_UP') {
-    title = tr(lang, 'subLedgerTopUp'); subtitle = tr(lang, 'subLedgerManualBilling');
+    title = tr(lang, 'subLedgerTopUp');
+    // A payment credited here because a limited discount code ran out while the payment was in flight says so.
+    subtitle = entry.sourceAction === 'discount-capacity-lost'
+      ? tr(lang, 'subBillingDiscountLost', { amount: fmtMicroUsd(Math.abs(netMicroUsd)) }) : tr(lang, 'subLedgerManualBilling');
+  } else if (entry.type === 'SUBSCRIPTION_BONUS') {
+    title = tr(lang, 'subLedgerSubscriptionBonus'); subtitle = tr(lang, 'subLedgerPromoCredit');
+  } else if (entry.type === 'SUBSCRIPTION_BONUS_REVERSAL') {
+    title = tr(lang, 'subLedgerBonusReversal'); subtitle = tr(lang, 'subLedgerBonusReversalSubtitle');
   } else if (entry.type === 'PROMO_CREDIT') {
     title = tr(lang, 'subLedgerSignupBonus'); subtitle = tr(lang, 'subLedgerPromoCredit');
   } else if (entry.type === 'ADMIN_CREDIT') {
@@ -1740,7 +1839,20 @@ function ledgerEntryDisplay(lang, entry) {
   if (entry.cashDeltaMicroUsd && entry.promoDeltaMicroUsd) impact = tr(lang, 'subImpactBoth');
   else if (entry.promoDeltaMicroUsd) impact = tr(lang, 'subImpactPromo');
   else if (entry.cashDeltaMicroUsd) impact = tr(lang, 'subImpactPaid');
-  return { isCredit, title, subtitle, impact, amountLabel: (isCredit ? '+' : '-') + fmtMicroUsd(Math.abs(netMicroUsd)) };
+  // Subscription-bonus lots: an AI charge says how much of it the bonus covered, and a bonus reversal says when only
+  // the unused part was taken back (or that nothing was left to take back). Every figure is the server's own
+  // (entry.subscriptionBonusUsedMicroUsd / entry.bonusLot) - nothing is derived here.
+  let bonusNote = '';
+  if (entry.type === 'AI_SETTLEMENT' && entry.subscriptionBonusUsedMicroUsd > 0) {
+    bonusNote = tr(lang, 'subLedgerBonusUsedPart', { amount: fmtMicroUsd(entry.subscriptionBonusUsedMicroUsd) });
+  } else if (entry.type === 'SUBSCRIPTION_BONUS_REVERSAL' && entry.bonusLot) {
+    if (entry.bonusLot.reversedMicroUsd === 0) bonusNote = tr(lang, 'subLedgerBonusReversalNone');
+    else if (entry.bonusLot.consumedMicroUsd > 0) bonusNote = tr(lang, 'subLedgerBonusReversalPartial', { amount: fmtMicroUsd(entry.bonusLot.reversedMicroUsd), used: fmtMicroUsd(entry.bonusLot.consumedMicroUsd) });
+  }
+  const display = { isCredit, title, subtitle, impact, bonusNote, amountLabel: (isCredit ? '+' : '-') + fmtMicroUsd(Math.abs(netMicroUsd)) };
+  // A zero-amount entry (the reversal of a bonus that was already fully spent) has no direction to show.
+  if (netMicroUsd === 0) display.amountLabel = fmtMicroUsd(0);
+  return display;
 }
 
 const PLAN_ORDER = ['free', 'plus', 'pro', 'personalized'];
@@ -1975,6 +2087,17 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
                 <span dir="ltr" className="navrya-tabular" style={{ fontSize: 13, fontWeight: 700, flex: 'none', color: cfg.tokenDiscountPercent ? 'var(--char-accent)' : 'var(--text-disabled)' }}>{cfg.tokenDiscountPercent ? digits(lang, cfg.tokenDiscountPercent) + '٪' : '—'}</span>
               </div>
 
+              {/* wallet-bonus strip - the admin-set walletBonusUsd from the catalog, the same fixed 36px as the
+                  token-discount strip above so a plan without a bonus does not shorten its card */}
+              <div style={{
+                height: 36, marginTop: 8, flex: 'none', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 12px',
+                background: cfg.walletBonusUsd > 0 ? 'var(--char-active-surface)' : 'rgba(3,8,7,.35)',
+                border: cfg.walletBonusUsd > 0 ? '1px solid color-mix(in srgb, var(--char-accent) 55%, transparent)' : '1px dashed rgba(244,234,215,.14)'
+              }}>
+                <span style={{ fontSize: 11.5, fontWeight: cfg.walletBonusUsd > 0 ? 600 : 500, color: cfg.walletBonusUsd > 0 ? 'var(--char-accent)' : 'var(--text-disabled)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr(lang, 'subPlanWalletBonusLabel')}</span>
+                <span dir="ltr" className="navrya-tabular" style={{ fontSize: 13, fontWeight: 700, flex: 'none', color: cfg.walletBonusUsd > 0 ? 'var(--char-accent)' : 'var(--text-disabled)' }}>{cfg.walletBonusUsd > 0 ? '$' + Number(cfg.walletBonusUsd).toFixed(2).replace(/\.00$/, '') : '—'}</span>
+              </div>
+
               <div style={{ height: 44, marginTop: 16, flex: 'none', display: 'flex', alignItems: 'center' }}>
                 {isCurrent ? (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 12, fontWeight: 600, color: 'var(--char-accent)' }}>
@@ -2026,13 +2149,30 @@ function TopUpMinimumModal({ lang, minimumTopUpUsd, onClose }) {
 // server will charge (the wallet amount the user typed, or catalog[plan].price.amountUsd straight
 // from GET /subscriptions/catalog) - never a separate client-side price calculation.
 //
-// The discount-code row is rendered DISABLED with an honest "not added yet" line: there is no
-// coupon/discount-code implementation anywhere on the server (no table, no route, no validation),
-// so an input that appeared to accept a code would be inventing a feature. It is placed here, in
-// its designed position, so wiring a real one later is a drop-in.
+// The discount-code row is LIVE for subscription checkout only (`discountEnabled`); wallet top-ups say codes are
+// subscription-only. The code text is sent to the server (POST /subscriptions/quote) and the sheet only DISPLAYS the
+// server's provisional result - original price, discount and final total; it never does any discount math. The
+// authoritative validation and calculation run again when the request is really created (a code can be used up or
+// deactivated in between), and a zero-price result is settled server-side (`noCost`), never faked here.
+// Server error code -> i18n key for every way a discount code can be refused (quote AND checkout). The server is the
+// only authority: these are just its answers, shown clearly and in the user's language.
+const DISCOUNT_ERROR_KEYS = {
+  DISCOUNT_CODE_INVALID: 'subDiscountErrInvalid',
+  DISCOUNT_CODE_NOT_STARTED: 'subDiscountErrNotStarted',
+  DISCOUNT_CODE_EXPIRED: 'subDiscountErrExpired',
+  DISCOUNT_CODE_EXHAUSTED: 'subDiscountErrExhausted',
+  DISCOUNT_CODE_ALREADY_USED: 'subDiscountErrAlreadyUsed',
+  DISCOUNT_CODE_RESERVATION_PENDING: 'subDiscountErrReservationPending',
+  RATE_LIMITED: 'subDiscountErrRateLimited'
+};
+function discountErrorText(lang, code) {
+  const key = DISCOUNT_ERROR_KEYS[code];
+  return key ? tr(lang, key) : null;
+}
+
 const PAY_SHEET_STEPS = 3;
 
-function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed, resumeInvoiceId = null, onInvoiceCreated }) {
+function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed, resumeInvoiceId = null, onInvoiceCreated, discountEnabled = false, planId = null, walletBonusUsd = 0 }) {
   const [step, setStep] = React.useState(resumeInvoiceId ? 2 : 0);
   const [method, setMethod] = React.useState(null);
   const [notAdded, setNotAdded] = React.useState(false);
@@ -2049,13 +2189,21 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
   const invoiceApiRef = React.useRef(null);
   const [invoiceStatus, setInvoiceStatus] = React.useState({ checking: false, canCheck: false });
   const [bodyHeight, setBodyHeight] = React.useState(null);
+  const [codeInput, setCodeInput] = React.useState('');
+  const [quote, setQuote] = React.useState(null);
+  const [quoting, setQuoting] = React.useState(false);
+  const [codeError, setCodeError] = React.useState('');
 
   const methods = [
     { id: 'crypto', icon: 'wallet', label: tr(lang, 'subPayMethodCrypto'), desc: tr(lang, 'subPayMethodCryptoDesc'), implemented: true },
     { id: 'visa', icon: 'credit-card', label: tr(lang, 'subPayMethodVisa'), desc: tr(lang, 'subPayMethodVisaDesc'), implemented: false },
     ...(lang === 'fa' ? [{ id: 'iran-gateway', icon: 'landmark', label: tr(lang, 'subPayMethodIranGateway'), desc: tr(lang, 'subPayMethodIranGatewayDesc'), implemented: false }] : [])
   ];
-  const amountLabel = fmtMicroUsd(Math.round(Number(amountUsd || 0) * 1000000));
+  const originalAmountMicroUsd = Math.round(Number(amountUsd || 0) * 1000000);
+  const amountLabel = fmtMicroUsd(quote ? quote.finalAmountMicroUsd : originalAmountMicroUsd);
+  // The wallet bonus shown before paying: the server quote's when a code is applied (it is 0 for a free result),
+  // otherwise the plan's admin-set bonus from the catalog. Only a subscription passes one.
+  const bonusMicroUsd = quote ? quote.walletBonusMicroUsd : Math.round(Number(walletBonusUsd || 0) * 1000000);
 
   // The sheet's height follows whichever panel is showing, measured rather than hardcoded - a
   // fixed height would clip the taller step in a language whose strings wrap differently.
@@ -2077,17 +2225,43 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
   function submit() {
     setSubmitting(true);
     setFailure('');
-    Promise.resolve(onProceed(method.id))
+    Promise.resolve(onProceed(method.id, { discountCode: quote ? quote.code : null }))
       .then((result) => {
-        if (result && result.invoiceId) {
+        if (result && result.noCost) {
+          // A code made the plan free: the server already confirmed it through the normal transaction path.
+          if (onConfirmed) onConfirmed();
+          onClose();
+        } else if (result && result.invoiceId) {
           setInvoiceId(result.invoiceId);
           if (onInvoiceCreated) onInvoiceCreated(result.invoiceId);
           setStep(2);
         }
         else onClose();
       })
-      .catch((error) => setFailure(error && error.message ? error.message : String(error)))
+      .catch((error) => {
+        setFailure(error && error.message ? error.message : String(error));
+        // A discount error means the quoted result is no longer true (used up, expired, deactivated...): drop it
+        // so the total returns to the real price instead of showing a discount the server just refused.
+        if (error && error.discountError) setQuote(null);
+      })
       .finally(() => setSubmitting(false));
+  }
+
+  function clearCode() {
+    setQuote(null);
+    setCodeError('');
+  }
+
+  function applyCode() {
+    const typed = codeInput.trim();
+    if (!typed || quoting) return;
+    setQuoting(true);
+    setCodeError('');
+    fetch('/api/sync/subscriptions/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId, code: typed }) })
+      .then((r) => r.json().then((body) => { if (!r.ok) { const error = new Error(body.error); error.code = body.error; throw error; } return body; }))
+      .then((result) => { setQuote(result); setCodeInput(''); })
+      .catch((error) => { setQuote(null); setCodeError(discountErrorText(lang, error && error.code) || tr(lang, 'subDiscountErrInvalid')); })
+      .finally(() => setQuoting(false));
   }
 
   const footer = step === 0
@@ -2166,11 +2340,23 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{tr(lang, 'subPayDiscountCode')}</span>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}><TextField value="" onChange={() => {}} disabled placeholder={tr(lang, 'subPayDiscountPlaceholder')} /></div>
-                  <span style={{ fontSize: 10.5, color: 'var(--text-dim)', flex: 'none' }}>{tr(lang, 'subPayMethodComingSoon')}</span>
-                </div>
-                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'subPayDiscountUnavailable')}</span>
+                {discountEnabled ? (
+                  quote ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '4px 6px 4px 12px', borderRadius: 9, border: '1px solid color-mix(in srgb, var(--char-accent) 55%, transparent)', background: 'var(--char-active-surface)' }}>
+                      <Icon name="check" size={15} strokeWidth={2.4} style={{ flex: 'none', color: 'var(--char-accent)' }} />
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr(lang, 'subPayDiscountApplied', { code: quote.code })}</span>
+                      <Button variant="ghost" size="sm" onClick={clearCode}>{tr(lang, 'subPayDiscountClear')}</Button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <div style={{ flex: 1 }}><TextField value={codeInput} onChange={setCodeInput} dir="ltr" placeholder={tr(lang, 'subPayDiscountPlaceholder')} /></div>
+                      <Button variant="secondary" size="sm" loading={quoting} disabled={quoting || !codeInput.trim()} onClick={applyCode}>{tr(lang, quoting ? 'subPayDiscountApplying' : 'subPayDiscountApply')}</Button>
+                    </div>
+                  )
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'subPayDiscountSubscriptionOnly')}</span>
+                )}
+                {!!codeError && <Notice tone="danger" icon="status">{codeError}</Notice>}
               </div>
 
               <div style={{ borderRadius: 9, border: '1px solid var(--divider-gold)', background: 'rgba(3,8,7,.45)', overflow: 'hidden' }}>
@@ -2180,17 +2366,28 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
                 <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 26 }}>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{lineItem}</span>
-                    <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>{amountLabel}</span>
+                    <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>{fmtMicroUsd(quote ? quote.originalAmountMicroUsd : originalAmountMicroUsd)}</span>
                   </div>
+                  {quote && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 26 }}>
+                      <span style={{ fontSize: 12, color: 'var(--char-accent)' }}>{tr(lang, 'subPayDiscountLine', { code: quote.code })}</span>
+                      <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12.5, color: 'var(--char-accent)' }}>{'-' + fmtMicroUsd(quote.discountAmountMicroUsd)}</span>
+                    </div>
+                  )}
                   <div style={{ height: 1, background: 'var(--divider-gold)', margin: '8px 0' }} />
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 30 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'subPayTotal')}</span>
                     <span dir="ltr" className="navrya-tabular" style={{ fontSize: 19, fontWeight: 700, color: 'var(--char-accent)' }}>{amountLabel}</span>
                   </div>
+                  {quote && (
+                    <span style={{ fontSize: 10.5, color: 'var(--text-dim)', marginTop: 2 }}>{tr(lang, 'subPayOriginalPrice')}: <s dir="ltr">{fmtMicroUsd(quote.originalAmountMicroUsd)}</s></span>
+                  )}
                   <span style={{ fontSize: 10.5, color: 'var(--text-dim)', lineHeight: 1.5, marginTop: 2 }}>{tr(lang, 'subPayCurrencyNote')}</span>
                 </div>
               </div>
 
+              {quote && quote.noCost && <Notice tone="accent" icon="status">{tr(lang, 'subPayNoCostNote')}</Notice>}
+              {bonusMicroUsd > 0 && <Notice tone="accent" icon="status">{tr(lang, 'subPayBonusLine', { amount: fmtMicroUsd(bonusMicroUsd) })}</Notice>}
               {!!failure && <Notice tone="danger" icon="status">{failure}</Notice>}
             </div>
 
@@ -2456,6 +2653,7 @@ function WalletActivityCard({ lang }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{d.title}</div>
                   <div dir="ltr" style={{ fontSize: 11.5, color: 'var(--text-dim)', marginTop: 2 }}>{d.subtitle}{d.subtitle ? ' · ' : ''}{fmtDateTime(entry.createdAt)}</div>
+                  {!!d.bonusNote && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{d.bonusNote}</div>}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                   <div dir="ltr" className="navrya-tabular" style={{ fontSize: 14, fontWeight: 700, color: d.isCredit ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap' }}>{d.amountLabel}</div>
@@ -2559,7 +2757,34 @@ function BillingHistoryCard({ lang }) {
             return (
               <div key={tx.id} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 100px 90px', gap: 12, padding: '14px 6px', borderBottom: '1px solid rgba(244,234,215,.06)', alignItems: 'center' }}>
                 <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{fmtDate(tx.confirmedAt || tx.createdAt)}</span>
-                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{tx.type && TX_TYPE_KEY[tx.type] ? tr(lang, TX_TYPE_KEY[tx.type]) : humanizeSlug(tx.type)}</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{tx.type && TX_TYPE_KEY[tx.type] ? tr(lang, TX_TYPE_KEY[tx.type]) : humanizeSlug(tx.type)}</span>
+                  {tx.pricing && tx.pricing.discount && (
+                    <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                      {tr(lang, 'subBillingOriginalPrice', { amount: fmtMicroUsd(tx.pricing.originalAmountMicroUsd) })} · {tr(lang, 'subBillingDiscountCode', { code: tx.pricing.discount.code, amount: fmtMicroUsd(tx.pricing.discountAmountMicroUsd) })}
+                    </span>
+                  )}
+                  {tx.bonus && tx.bonus.status !== 'none' && tx.bonus.originalMicroUsd > 0 && (
+                    <span style={{ fontSize: 11, color: 'var(--char-accent)' }}>
+                      {tx.bonus.status === 'credited' ? tr(lang, 'subBillingBonusCredited', { amount: fmtMicroUsd(tx.bonus.originalMicroUsd) })
+                        : tx.bonus.status === 'reversed' ? tr(lang, 'subBillingBonusReversed', { amount: fmtMicroUsd(tx.bonus.originalMicroUsd) })
+                          : tr(lang, 'subBillingBonusPending', { amount: fmtMicroUsd(tx.bonus.originalMicroUsd) })}
+                    </span>
+                  )}
+                  {/* How much of the bonus AI usage consumed, and what is left or what a refund took back - the server's figures. */}
+                  {tx.bonus && (tx.bonus.status === 'credited' || tx.bonus.status === 'reversed') && (
+                    <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                      {tr(lang, 'subBillingBonusUsed', { amount: fmtMicroUsd(tx.bonus.consumedMicroUsd) })}
+                      {' · '}
+                      {tx.bonus.status === 'credited' ? tr(lang, 'subBillingBonusRemaining', { amount: fmtMicroUsd(tx.bonus.remainingMicroUsd) })
+                        : tx.bonus.reversedMicroUsd > 0 ? tr(lang, 'subBillingBonusReversedPart', { amount: fmtMicroUsd(tx.bonus.reversedMicroUsd) })
+                          : tr(lang, 'subBillingBonusFullyUsed')}
+                    </span>
+                  )}
+                  {tx.discountOutcome && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tr(lang, 'subBillingDiscountLost', { amount: fmtMicroUsd(tx.discountOutcome.creditedMicroUsd) })}</span>
+                  )}
+                </span>
                 <span className="navrya-tabular" style={{ fontSize: 13, fontWeight: 600, color: 'var(--parchment)' }}>{fmtMicroUsd(tx.amountMicroUsd)}</span>
                 <Chip style={{ color: st.color, borderColor: st.border, background: st.background }}>{tr(lang, st.key)}</Chip>
               </div>
@@ -2604,15 +2829,24 @@ function SubscriptionTab({ lang }) {
 
   // Returns the created request so the checkout sheet can slide its own invoice step in rather
   // than closing and reopening a second popup over the page.
-  function requestUpgrade(planId) {
-    return fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId }) })
-      .then((r) => r.json().then((body) => { if (!r.ok) throw new Error(body.error); return body; }))
+  function requestUpgrade(planId, discountCode) {
+    // Only the plan and the code TEXT go to the server - it computes every amount itself.
+    const payload = { planId };
+    if (discountCode) payload.discountCode = discountCode;
+    return fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then((r) => r.json().then((body) => { if (!r.ok) { const error = new Error(body.error); error.code = body.error; throw error; } return body; }))
       .then((result) => {
         notifyWalletChanged();
-        if (!result.invoiceId) setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId, catalog) }));
+        if (result.noCost) setNotice(tr(lang, 'subUpgradeNoCostActive', { plan: planLabel(lang, planId, catalog) }));
+        else if (!result.invoiceId) setNotice(tr(lang, 'subUpgradeNotice', { plan: planLabel(lang, planId, catalog) }));
         return result;
       })
-      .catch((error) => { throw new Error(tr(lang, 'subUpgradeError', { error: error.message })); });
+      .catch((error) => {
+        // The server's answer about the code (used up, expired, already used...) is shown as-is, localized.
+        const discountText = discountErrorText(lang, error.code);
+        if (discountText) { const shown = new Error(discountText); shown.discountError = true; throw shown; }
+        throw new Error(tr(lang, 'subUpgradeError', { error: error.message }));
+      });
   }
   function toggleCancel() {
     const sub = subData && subData.subscription;
@@ -2638,7 +2872,10 @@ function SubscriptionTab({ lang }) {
           title={tr(lang, 'subUpgradeModalTitle', { plan: planLabel(lang, upgradeTarget, catalog) })}
           lineItem={tr(lang, 'subPayLineItemPlan', { plan: planLabel(lang, upgradeTarget, catalog) })}
           amountUsd={(catalog && catalog[upgradeTarget] && catalog[upgradeTarget].price && catalog[upgradeTarget].price.amountUsd) || 0}
-          onProceed={() => requestUpgrade(upgradeTarget)}
+          discountEnabled
+          planId={upgradeTarget}
+          walletBonusUsd={(catalog && catalog[upgradeTarget] && catalog[upgradeTarget].walletBonusUsd) || 0}
+          onProceed={(methodId, extras) => requestUpgrade(upgradeTarget, extras && extras.discountCode)}
           onConfirmed={() => { reloadSub(); notifyWalletChanged(); }}
           onClose={() => { setUpgradeTarget(null); reloadSub(); }}
         />
