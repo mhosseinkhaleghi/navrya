@@ -1543,7 +1543,7 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   - **List/detail UI:** `navrya-src/analysisProfilesView.jsx` - `AnalysisProfilesTab({lang,
     header})`: search (folds Arabic/Persian keyboard forms/ZWNJ/digits via the Style Registry's own
     `search()`), card grid (Open/Edit/Duplicate/Set as Default/Report/Delete), and a detail view
-    with Overview / Setup / Concepts / Memory / Report tabs. `header` is an opaque node the hosting
+    with Overview / Setup / Concepts / Knowledge / Memory / Report tabs. `header` is an opaque node the hosting
     hub renders above the LIST screen only (its own hero + the Patterns/Strategies/Positions/
     Analysis Profiles pill bar) - fixes a real bug where opening this tab used to strand the trader
     with no way back to another tab except the sidebar; the detail screen keeps its own real
@@ -1613,6 +1613,63 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     suggested names never re-proposed, `priority` validated against the one shared
     `CONCEPT_PRIORITIES` enum, lengths capped) - the strict JSON schema is defense in depth, not
     the only guard.
+  - **Knowledge tab:** `navrya-src/analysisProfileKnowledge.jsx` - the website / YouTube / PDF material
+    a trader teaches a profile from, in three stages that each state their own cost. ADD (free): a link
+    is only recorded; a PDF is uploaded and stored. READ (free - no model): a link is fetched
+    server-side into a title and a BOUNDED text digest, straight away for a link added from this tab,
+    and only on an explicit click for a link queued from the wizard. TEACH (the only billed step, an
+    explicit click): the digest - or for a PDF the file itself - goes through the SAME propose ->
+    review -> apply flow as a typed note, by passing a `preset` to `EngineLearningPanel`, so there is
+    no second review UI. A stored PDF is downloaded from its owner-gated URL only when Teach is
+    pressed (never on tab open, never server-to-server), a source is marked `taught` only through the
+    `onTaught` callback which fires after `applyLearning()` actually ran, and a failed RE-read never
+    destroys a source that already holds content. Custom Method links entered in the wizard become
+    queued sources after the profile is created (`queueLinkSources`) and the profile opens on this tab;
+    a profile with no links behaves as before. Every reader/storage/gateway failure code maps to a
+    translated message (an unknown code falls back to a generic one, never a raw code).
+  - **Source reader:** `server/ai/source-reader.mjs` - the ONE place this codebase fetches a URL the
+    trader supplies (every other outbound call goes to a fixed, code-chosen host), so it carries its
+    own defense in depth. http/https on default ports only; no embedded credentials; the hostname is
+    resolved once, EVERY resolved address is checked against the private/reserved ranges (loopback,
+    RFC1918, link-local incl. the 169.254.169.254 metadata address, CGNAT, TEST-NET, multicast,
+    reserved) and the socket is then PINNED to that vetted address through the request's `lookup`
+    option, so it is never re-resolved at connect time (closing DNS rebinding); each redirect hop is
+    followed manually and re-vetted from scratch (max 3); 10s timeout; 2 MB cap (the connection is
+    destroyed the instant more arrives); only a text-shaped Content-Type is accepted for a website.
+    IPv6 is fully parsed rather than prefix-matched, because a prefix check is bypassable: the WHATWG
+    URL parser serializes `::ffff:127.0.0.1` as `::ffff:7f00:1`, and NAT64 (`64:ff9b::/96`), 6to4
+    (`2002::/16`) and IPv4-compatible forms all wrap an IPv4 address - each is unwrapped and re-checked
+    against the IPv4 rules, and anything unparseable fails closed. The pinned `lookup` also answers
+    Node's `all:true` (autoSelectFamily) call shape - the single-address form fails to connect. A
+    website yields a title and a plain-text digest capped at 6000 characters (never the full page);
+    YouTube yields the oEmbed title plus, best-effort, the caption track the watch page itself offers,
+    degrading to `transcriptAvailable:false` so the UI offers paste-a-transcript rather than failing.
+    Nothing here calls an LLM or persists anything. Exposed as `POST /api/analysis-profiles/read-source`
+    on the AI gateway: deliberately NOT in `AI_BILLED_ROUTES` (no model, so no tokens), but still behind
+    the gateway's session + per-user rate-limit gate; reader failures map to 400 (a URL the trader can
+    fix), 504 (timeout) or 502 (upstream unreachable).
+  - **PDF sources:** `savePdf()` in `server/storage/storage.mjs` (mirrors `saveVideo()` - there is no
+    decode/re-encode defense for a PDF without a new dependency, so the contract is a declared
+    `application/pdf` AND real bytes: the `%PDF-` signature within the first 1024 bytes, which the spec
+    allows to be preceded by junk; 15 MB cap) via `LocalDiskObjectStorageProvider.putDocument()`. It is
+    stored under the EXISTING private `media` category: every object there already has a
+    `storage_objects` row from upload time, which is exactly what `upload-ownership.mjs` resolves
+    ownership from, so it is owner-only with no new category or resolver, and it counts against the
+    trader's storage quota (`assertStorageAvailable` before, `recordStorageObject` after, tagged
+    `sourceDomain:'analysis-profile-source'`). Ownership and the per-profile cap are checked BEFORE any
+    bytes are written, so a refused upload leaves no file or quota row; deleting a source, or a whole
+    profile (whose child rows cascade in the database but whose FILES would not), removes the file and
+    frees exactly its quota. A PDF removed from the Storage page is reported as `fileAvailable:false`
+    instead of breaking the list. There is no local PDF-text extraction: the model reads the document
+    natively - `POST /api/analysis-profiles/ingest` takes an optional `attachment` for `kind:'source'`,
+    OpenAI and Gemini already forwarded `input_file`, and `callAnthropic` used to drop it silently (an
+    empty text part) and now sends a native `document` block. A provider that cannot read a PDF
+    (`ANALYSIS_PROFILE_PDF_SUPPORT`: Kimi, DeepSeek) fails loudly with `MODEL_PDF_UNSUPPORTED` (422)
+    before any provider call, never silently ignoring the document. The wallet reserves against a
+    bounded proxy payload (`analysisProfileReservationPayload`: the base64 body is dropped and replaced by
+    `estimatedExtraPromptTokens` ~ 1 token per 30 decoded bytes, capped at 300k) because
+    `estimateTokensFromPayload` sizes a hold from the JSON length and a 15 MB base64 body would reserve
+    ~5M tokens; settlement always true-ups to the real usage, and the estimator only ever ADDS the extra.
   - **Session AI Analysis integration:** `server/pattern-ai-server.mjs`'s
     `buildSessionAnalysisSystemPrompt` weaves the profile's customFocuses, concepts and
     understanding into the prompt. A concept with `priority:'mandatory'` becomes a real
@@ -1655,7 +1712,10 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   (`concepts` JSONB, `understanding` JSONB `{summary,version,updatedAt}`, plus a new append-only
   `analysis_profile_events` table - the learning ledger: `kind`/`title`/`detail`/
   `understanding_version`/real `token_usage`, indexed on `(profile_id, created_at)` and `user_id`,
-  never updated or deleted by anything in this codebase). All shared normalization (URLs, custom
+  never updated or deleted by anything in this codebase) and `070_analysis_profile_sources.sql` (the
+  `analysis_profile_sources` child table - `kind` youtube|website|pdf, `status` queued|ready|taught|failed
+  with the failure `error_code` kept on the row, a bounded `digest`, and for a PDF a LOOSE
+  `storage_object_id` with no FK, because the Storage page can delete an object independently). All shared normalization (URLs, custom
   focuses, concepts, understanding) lives in one dependency-free `server/db/analysis-profile-
   normalize.mjs`, imported by both `repo.pg.mjs` and `repo.memory.mjs` (and, for the concept-
   priority enum only, by `pattern-ai-server.mjs` - a pure-function import, not a database
@@ -1665,12 +1725,18 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   `server/community/routes.analysis-profiles.mjs` mounted at `/api/sync/analysis-profiles` in
   `server/community/app.mjs`, mirroring `routes.patterns.mjs`'s shape minus an `/images` route
   (this domain has no user-uploaded files), plus nested, owner-checked
-  `GET`/`POST .../:id/events` for the learning ledger - lazily fetched only when a profile's
-  Memory tab opens, never part of the boot-time replica hydrate every list domain participates
-  in. `repo.pg.mjs`'s `analysisProfiles.upsert()` additionally clears any other default row for
+  `GET`/`POST .../:id/events` for the learning ledger and `GET`/`POST .../:id/sources`,
+  `POST .../:id/sources/pdf`, `PATCH`/`DELETE .../:id/sources/:sourceId` for knowledge sources - each
+  lazily fetched only when the owning tab opens, never part of the boot-time replica hydrate every list
+  domain participates in. A source PATCH only ever touches an allowlist (title, digest, status,
+  errorCode, taughtUnderstandingVersion): the URL and kind are fixed at creation, so a source can never
+  be re-pointed at another URL afterwards. This process never makes an outbound request to a
+  trader-supplied URL - it only RECORDS a link; reading it is the AI gateway's job. A profile holds at
+  most 40 sources and the same URL cannot be added twice (409). `repo.pg.mjs`'s `analysisProfiles.upsert()` additionally clears any other default row for
   the same user inside its own transaction (defense in depth, since a client that skipped its own
   clear-the-old-default step would otherwise violate the partial unique index instead of silently
-  succeeding); `repo.memory.mjs` mirrors the same contract for tests. **Deliberately not gated by
+  succeeding); `repo.memory.mjs` mirrors the same contract for tests (including the cascade of the two child
+  tables when a profile is removed). **Deliberately not gated by
   `createWithQuota`** - unlike Patterns/Strategies (commercial content domains with their own plan
   limits), the brief never asked Analysis Profiles to be plan-limited, so that gate was not added.
 - **Registry storage:** the Style and Focus Registries are product/domain reference data, not user
@@ -1739,7 +1805,24 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   profile-link.test.mjs` (link/clear round trip, never implicitly auto-selected, never
   AI-fillable); `session-analysis-client.test.mjs` / `session-analysis-server.test.mjs` (profile
   revision folded into the cache fingerprint, concepts/understanding woven into the system prompt,
-  MANDATORY concepts phrased as a real instruction distinct from preferred/reference).
+  MANDATORY concepts phrased as a real instruction distinct from preferred/reference);
+  **knowledge sources:** `analysis-profile-source-reader.test.mjs` (the SSRF matrix against the REAL blocklist -
+  every private/reserved IPv4 range, IPv6 loopback/link-local/ULA, every IPv4-wrapping IPv6 form
+  including the hex-mapped one, every URL spelling of loopback/metadata through the REAL resolver with no
+  external network; then the HTTP mechanics against a real local server - redirects re-vetted per hop,
+  loops capped, byte cap, timeout, content-type gate, the pinned lookup resolving exactly once - and the
+  YouTube best-effort degradation), `analysis-profile-source-ingest.test.mjs` (the PDF attachment on
+  OpenAI/Anthropic/Gemini request shapes, the Kimi/DeepSeek gate, attachment validation, the bounded
+  wallet-reservation proxy, `read-source` never touching an LLM and the dispatcher's status mapping),
+  `analysis-profile-sources-api-contract.test.mjs` (real HTTP with a real temporary uploads directory:
+  cross-user 403 with no file or quota left behind, duplicate/limit/validation rules, the PATCH allowlist,
+  PDF privacy - anonymous 401, stranger refused, owner 200 - quota exceeded, file and quota freed on source
+  and profile delete, Storage-page deletion reported as `fileAvailable:false`),
+  `analysis-profile-sources-migration-contract.test.mjs` / `-postgres-integration.test.mjs`,
+  `uploads-pdf-storage.test.mjs` (`savePdf` signature, 1024-byte window, 15 MB cap),
+  `analysis-profile-knowledge-ui.test.mjs` (the store's source methods and the create-then-queue
+  persistence race in a vm sandbox, `readSource` sending no provider key, PDF attachment on
+  `ingestLearning`, the real error-code mapper evaluated rather than grepped, the tab's cost discipline).
 
 ### 7.26 Support Tickets & Notification Badges
 
