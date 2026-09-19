@@ -1743,6 +1743,13 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   `metadata.pricing` (original, discount, final, wallet bonus, code terms) - so the BSC invoice and any refund derive from the discounted amount. The client sends
   only the plan and the code text. A code-produced $0 price is settled server-side through `confirmTransaction` (no invoice, never contacts the chain, no bonus).
   Code attempts share one per-user rate limit (20 / 10 min).
+- **Checkout urgency:** the quote also returns `codeId`, `expiresAt`, `maxRedemptions` and `remaining`. A time-limited code shows a reverse countdown
+  (days : hours : minutes : seconds) on the review step, a usage-limited one a LIVE remaining-uses count. Both poll
+  `GET /api/sync/subscriptions/discount-codes/:id/status` every 4s (`URGENCY_POLL_MS`) - a read-only lookup (capacity in use is read on every call, never cached) with its
+  OWN limiter (30 / min / user), never the 20 / 10 min code-attempt budget - only on the review step, paused while the tab is hidden or the payment is submitting. The
+  countdown is corrected by the server `Date` header, and reaching zero on the device clock only triggers a server check: only the server's expired / exhausted /
+  inactive answer removes the applied code. UI: `DiscountCountdown` / `DiscountLiveRemaining` in `navrya-src/accountProfileView.jsx` (motion injected once,
+  `prefers-reduced-motion` honoured); tests: `tests/discount-checkout-urgency-*.test.mjs`.
 - **Holds:** Manual 24h (`MANUAL_CHECKOUT_HOLD_MINUTES`), BSC = the invoice expiry. A lapsed hold stops counting immediately; `failTransaction` and a failed
   payment rail release it; a refund keeps the redemption consumed (one redemption per user, slot not returned).
 - **Strict late-payment rule** (`payment-service.mjs`): a late confirmation re-claims its lapsed slot if it is still free; if it was reused the subscription is NOT
