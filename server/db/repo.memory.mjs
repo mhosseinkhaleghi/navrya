@@ -9,6 +9,7 @@ import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commerc
 import { assertCodeAvailable, assertStoredCodeValid, computeDiscount } from '../commercial/discount-codes.mjs';
 import { allocateFifo, sumAllocations, lotRemainingMicroUsd, grantKey as bonusGrantKey, reversalKey as bonusReversalKey, reversalMetadata } from '../commercial/subscription-bonus-lots.mjs';
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
+import { createReferralMemoryDomains } from './referral-repo.memory.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
@@ -3465,7 +3466,12 @@ export function createMemoryRepo() {
     }
   };
 
+  // Referral & Affiliate domains (068-070): implemented in referral-repo.memory.mjs (mirror of referral-repo.pg.mjs), sharing
+  // this repo's own `state` and wallet so the AI-conversion credit and the cross-domain reads touch the same maps.
+  const referralDomains = createReferralMemoryDomains({ state, clone, now, wallet });
+
   return {
+    ...referralDomains,
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,

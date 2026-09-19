@@ -579,3 +579,13 @@ export function atomicAmountFor(microUsd, tokenDecimals) {
 export const PAYOUT_FUNDS_MAY_HAVE_LEFT = ['submitted', 'confirmed', 'paid'];
 export const PAYOUT_RESERVING_STATES = ['requested', 'under_review', 'approved', 'submitted', 'confirmed'];
 export const PAYOUT_PRE_SEND_STATES = ['requested', 'under_review', 'approved'];
+
+// Earnings are stopped ONLY by an explicit, currently-effective 'disabled' assignment (the admin kill switch).
+// A paused program, or an implicit-standard referrer whose auto-enrolment was later switched off, keeps earning for
+// attributions that already exist - those terms were snapshotted and are contractual.
+export function isReferrerExplicitlyDisabled(assignment, now = Date.now()) {
+  if (!assignment || assignment.status !== 'active' || assignment.mode !== 'disabled') return false;
+  const started = !assignment.effectiveFrom || Date.parse(assignment.effectiveFrom) <= now;
+  const notEnded = !assignment.effectiveTo || Date.parse(assignment.effectiveTo) > now;
+  return started && notEnded;
+}
