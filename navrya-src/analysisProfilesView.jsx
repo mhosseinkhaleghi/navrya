@@ -3,6 +3,7 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
+import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
 
@@ -37,7 +38,13 @@ const copy = {
     insufficientData: 'داده کافی نیست.', yes: 'بله', no: 'خیر',
     deleteConfirmTitle: 'حذف این پروفایل؟', deleteConfirmBody: 'این پروفایل به‌طور کامل حذف می‌شود. استراتژی‌های لینک‌شده لینک خود را از دست می‌دهند اما حذف نمی‌شوند.',
     cancel: 'انصراف', confirmDelete: 'حذف پروفایل', lastProfileError: 'نمی‌توان تنها پروفایل تحلیل را حذف کرد. ابتدا یک پروفایل دیگر بساز.',
-    activeToggleHelp: 'می‌توانی این پروفایل را بدون حذف کردن غیرفعال کنی.', description: 'توضیحات'
+    activeToggleHelp: 'می‌توانی این پروفایل را بدون حذف کردن غیرفعال کنی.', description: 'توضیحات',
+    tabSetup: 'تنظیمات', setupPrimaryLabel: 'لنز اصلی', setupSecondaryLabel: 'لنزهای مکمل (حداکثر دو مورد)',
+    setupFocusLabel: 'حوزه‌های تمرکز', setupCustomFocusLabel: 'حوزه‌های تمرکز خودت',
+    setupAddFocusPlaceholder: 'مثلاً: سطح‌های سوییپ‌شده', setupAddFocusDescPlaceholder: 'توضیح کوتاه (اختیاری)', setupAddFocusButton: 'افزودن',
+    setupLinksLabel: 'مواد آموزشی', setupYoutubeLabel: 'لینک ویدیوی یوتیوب', setupWebsiteLabel: 'لینک وب‌سایت آموزشی', setupReferenceLabel: 'لینک مرجع دیگر',
+    setupLinksHint: 'اگر پر نکنی مشکلی نیست.', setupLinksInvalid: 'این یک لینک معتبر نیست.', setupLinksNotYoutube: 'این یک لینک یوتیوب معتبر نیست.',
+    setupNotesLabel: 'یادداشت روش سفارشی', setupSaveButton: 'ذخیره تغییرات', setupSaved: 'تغییرات ذخیره شد.'
   },
   ar: {
     title: 'ملفات التحليل', subtitle: 'هويتك التحليلية — كيف تقرأ الرسم البياني عادةً، بمعزل عن الاستراتيجية والنمط.',
@@ -56,7 +63,13 @@ const copy = {
     insufficientData: 'بيانات غير كافية.', yes: 'نعم', no: 'لا',
     deleteConfirmTitle: 'حذف هذا الملف؟', deleteConfirmBody: 'سيُحذف هذا الملف نهائياً. الاستراتيجيات المرتبطة تفقد ارتباطها لكن لا تُحذف.',
     cancel: 'إلغاء', confirmDelete: 'حذف الملف', lastProfileError: 'لا يمكن حذف ملف التحليل الوحيد. أنشئ ملفاً آخر أولاً.',
-    activeToggleHelp: 'يمكنك تعطيل هذا الملف دون حذفه.', description: 'الوصف'
+    activeToggleHelp: 'يمكنك تعطيل هذا الملف دون حذفه.', description: 'الوصف',
+    tabSetup: 'الإعدادات', setupPrimaryLabel: 'العدسة الأساسية', setupSecondaryLabel: 'العدسات المكملة (حتى عدستين)',
+    setupFocusLabel: 'مجالات التركيز', setupCustomFocusLabel: 'مجالات تركيزك الخاصة',
+    setupAddFocusPlaceholder: 'مثال: مستويات تم اكتساحها', setupAddFocusDescPlaceholder: 'وصف قصير (اختياري)', setupAddFocusButton: 'إضافة',
+    setupLinksLabel: 'مواد تعليمية', setupYoutubeLabel: 'رابط فيديو يوتيوب', setupWebsiteLabel: 'رابط موقع تعليمي', setupReferenceLabel: 'رابط مرجعي آخر',
+    setupLinksHint: 'لا بأس إن تركتها فارغة.', setupLinksInvalid: 'هذا الرابط غير صالح.', setupLinksNotYoutube: 'هذا ليس رابط يوتيوب صالحاً.',
+    setupNotesLabel: 'ملاحظة المنهج المخصص', setupSaveButton: 'حفظ التغييرات', setupSaved: 'تم حفظ التغييرات.'
   },
   en: {
     title: 'Analysis Profiles', subtitle: 'Your analytical identity — how you usually read a chart, independent of Strategy and Pattern.',
@@ -75,7 +88,13 @@ const copy = {
     insufficientData: 'Insufficient data.', yes: 'Yes', no: 'No',
     deleteConfirmTitle: 'Delete this profile?', deleteConfirmBody: 'This profile will be permanently deleted. Linked Strategies keep their own data but lose the link.',
     cancel: 'Cancel', confirmDelete: 'Delete profile', lastProfileError: 'You can’t delete your only Analysis Profile. Create another one first.',
-    activeToggleHelp: 'You can deactivate this profile without deleting it.', description: 'Description'
+    activeToggleHelp: 'You can deactivate this profile without deleting it.', description: 'Description',
+    tabSetup: 'Setup', setupPrimaryLabel: 'Primary lens', setupSecondaryLabel: 'Secondary lenses (up to two)',
+    setupFocusLabel: 'Focus areas', setupCustomFocusLabel: 'Your own focus areas',
+    setupAddFocusPlaceholder: 'e.g. Swept liquidity levels', setupAddFocusDescPlaceholder: 'Short description (optional)', setupAddFocusButton: 'Add',
+    setupLinksLabel: 'Teaching material', setupYoutubeLabel: 'YouTube video link', setupWebsiteLabel: 'Educational website link', setupReferenceLabel: 'Another reference link',
+    setupLinksHint: "It's fine to leave these empty.", setupLinksInvalid: 'That is not a valid link.', setupLinksNotYoutube: 'That is not a valid YouTube link.',
+    setupNotesLabel: 'Custom-method notes', setupSaveButton: 'Save changes', setupSaved: 'Changes saved.'
   },
   es: {
     title: 'Perfiles de análisis', subtitle: 'Tu identidad analítica: cómo sueles leer un gráfico, independiente de la Estrategia y el Patrón.',
@@ -94,7 +113,13 @@ const copy = {
     insufficientData: 'Datos insuficientes.', yes: 'Sí', no: 'No',
     deleteConfirmTitle: '¿Eliminar este perfil?', deleteConfirmBody: 'Este perfil se eliminará permanentemente. Las estrategias vinculadas conservan sus datos pero pierden el vínculo.',
     cancel: 'Cancelar', confirmDelete: 'Eliminar perfil', lastProfileError: 'No puedes eliminar tu único perfil de análisis. Crea otro primero.',
-    activeToggleHelp: 'Puedes desactivar este perfil sin eliminarlo.', description: 'Descripción'
+    activeToggleHelp: 'Puedes desactivar este perfil sin eliminarlo.', description: 'Descripción',
+    tabSetup: 'Configuración', setupPrimaryLabel: 'Lente principal', setupSecondaryLabel: 'Lentes secundarios (hasta dos)',
+    setupFocusLabel: 'Áreas de enfoque', setupCustomFocusLabel: 'Tus propias áreas de enfoque',
+    setupAddFocusPlaceholder: 'p. ej.: Niveles de liquidez barridos', setupAddFocusDescPlaceholder: 'Descripción breve (opcional)', setupAddFocusButton: 'Añadir',
+    setupLinksLabel: 'Material educativo', setupYoutubeLabel: 'Enlace de vídeo de YouTube', setupWebsiteLabel: 'Enlace de sitio web educativo', setupReferenceLabel: 'Otro enlace de referencia',
+    setupLinksHint: 'Puedes dejarlo vacío.', setupLinksInvalid: 'Ese enlace no es válido.', setupLinksNotYoutube: 'Ese no es un enlace válido de YouTube.',
+    setupNotesLabel: 'Notas del método personalizado', setupSaveButton: 'Guardar cambios', setupSaved: 'Cambios guardados.'
   }
 };
 
@@ -192,7 +217,163 @@ function ReportRow({ label, value }) {
   );
 }
 
-function ProfileDetail({ profile, lang, dtab, setDtab, onBack, onEdit, onToggleActive, onDelete }) {
+// Setup tab: everything the two-step wizard popup captures, inline-editable here too - so a
+// trader who already created a profile can revisit and change any of it without reopening the
+// wizard. Built on the exact same real registries/store helpers the wizard uses
+// (window.TradeJournalAnalysisProfileStore.helpers), never a second validation copy. Every save
+// is one explicit store.update() call (this file's own "single mutation funnel" convention),
+// never an autosave-per-keystroke.
+function SetupTab({ profile, lang, onUpdate }) {
+  const styles = styleRegistry(), focuses = focusRegistry();
+  const helpers = profileStore() && profileStore().helpers;
+  const [secondaryStyleIds, setSecondaryStyleIds] = React.useState(profile.secondaryStyleIds);
+  const [focusIds, setFocusIds] = React.useState(profile.focusIds);
+  const [customFocuses, setCustomFocuses] = React.useState(profile.customFocuses || []);
+  const [customMethodNotes, setCustomMethodNotes] = React.useState(profile.customMethodNotes || '');
+  const seedLinks = profile.customMethodLinks || {};
+  const [youtubeUrl, setYoutubeUrl] = React.useState(seedLinks.youtubeUrl || '');
+  const [websiteUrl, setWebsiteUrl] = React.useState(seedLinks.websiteUrl || '');
+  const [referenceUrl, setReferenceUrl] = React.useState(seedLinks.referenceUrl || '');
+  const [newFocusName, setNewFocusName] = React.useState('');
+  const [newFocusDescription, setNewFocusDescription] = React.useState('');
+  const [saved, setSaved] = React.useState(false);
+  // primaryStyleId is its own field (not re-derived from profile every render) so switching it in
+  // the Select below doesn't require re-mounting this whole tab.
+  const [primaryStyleId, setPrimaryStyleId] = React.useState(profile.primaryStyleId);
+
+  const allStyles = styles ? styles.list() : [];
+  const styleOptions = allStyles.map((st) => ({ value: st.id, label: st.name[lang] || st.name.en }));
+  const secondaryOptions = allStyles.filter((st) => st.id !== primaryStyleId && SPECIAL_STYLE_IDS.indexOf(st.id) === -1);
+  const isCustom = primaryStyleId === 'custom_method';
+  const focusGroups = isCustom
+    ? { recommended: [], optional: focuses ? focuses.list() : [] }
+    : (styles ? (() => {
+        const merged = styles.mergeFocusRecommendations(primaryStyleId, secondaryStyleIds);
+        return { recommended: merged.recommended.map((id) => focuses.get(id)).filter(Boolean), optional: merged.optional.map((id) => focuses.get(id)).filter(Boolean) };
+      })() : { recommended: [], optional: [] });
+
+  function toggleFocus(id) { setFocusIds((prev) => (prev.indexOf(id) > -1 ? prev.filter((fid) => fid !== id) : prev.concat(id))); }
+  function toggleSecondary(id) {
+    setSecondaryStyleIds((prev) => {
+      if (prev.indexOf(id) > -1) return prev.filter((sid) => sid !== id);
+      if (prev.length >= 2) return prev;
+      return prev.concat(id);
+    });
+  }
+  function addFocus() {
+    if (!helpers || !newFocusName.trim()) return;
+    const made = helpers.makeCustomFocus({ name: newFocusName, description: newFocusDescription, origin: 'user' });
+    if (!made) return;
+    setCustomFocuses((prev) => (prev.some((f) => helpers.foldFocusName(f.name) === helpers.foldFocusName(made.name)) ? prev : prev.concat(made)));
+    setNewFocusName(''); setNewFocusDescription('');
+  }
+  function removeFocus(id) { setCustomFocuses((prev) => prev.filter((f) => f.id !== id)); }
+
+  function save() {
+    onUpdate({
+      primaryStyleId, secondaryStyleIds: isCustom ? [] : secondaryStyleIds, focusIds, customFocuses,
+      customMethodNotes, customMethodLinks: { youtubeUrl, websiteUrl, referenceUrl }
+    });
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2400);
+  }
+
+  return (
+    <Panel padding="18px 20px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupPrimaryLabel')}</span>
+          <Select value={primaryStyleId} onChange={setPrimaryStyleId} options={styleOptions} icon="strategies" width={280} />
+        </div>
+
+        {!isCustom && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupSecondaryLabel')}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {secondaryOptions.map((st) => (
+                <FocusChip key={st.id} selected={secondaryStyleIds.indexOf(st.id) > -1} onClick={() => toggleSecondary(st.id)} label={st.name[lang] || st.name.en} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupFocusLabel')}</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {focusGroups.recommended.concat(focusGroups.optional).map((f) => (
+              <FocusChip key={f.id} selected={focusIds.indexOf(f.id) > -1} onClick={() => toggleFocus(f.id)} label={f.name[lang] || f.name.en} />
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupCustomFocusLabel')}</span>
+          {customFocuses.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {customFocuses.map((f) => (
+                <span key={f.id} title={f.description || ''} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 6px 0 14px', borderRadius: 999,
+                  fontSize: 12.5, fontWeight: 600, color: 'var(--char-accent)', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)'
+                }}>
+                  {f.name}
+                  <button type="button" onClick={() => removeFocus(f.id)} style={{ width: 22, height: 22, display: 'grid', placeItems: 'center', borderRadius: '50%', cursor: 'pointer', border: 0, background: 'transparent', color: 'inherit' }}>
+                    <Icon name="close" size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input type="text" value={newFocusName} onChange={(e) => setNewFocusName(e.target.value)} dir="auto" placeholder={tr(lang, 'setupAddFocusPlaceholder')}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addFocus(); } }}
+              style={{ flex: '1 1 200px', height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
+            <input type="text" value={newFocusDescription} onChange={(e) => setNewFocusDescription(e.target.value)} dir="auto" placeholder={tr(lang, 'setupAddFocusDescPlaceholder')}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addFocus(); } }}
+              style={{ flex: '1 1 200px', height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
+            <Button variant="secondary" size="sm" icon="plus" disabled={!newFocusName.trim()} onClick={addFocus}>{tr(lang, 'setupAddFocusButton')}</Button>
+          </div>
+        </div>
+
+        {isCustom && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupNotesLabel')}</span>
+            <textarea value={customMethodNotes} onChange={(e) => setCustomMethodNotes(e.target.value)} dir="auto" rows={3}
+              style={{ resize: 'vertical', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', color: 'var(--text-primary)', font: 'inherit', fontSize: 13 }} />
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupLinksLabel')}</span>
+          {[
+            ['setupYoutubeLabel', youtubeUrl, setYoutubeUrl, true],
+            ['setupWebsiteLabel', websiteUrl, setWebsiteUrl, false],
+            ['setupReferenceLabel', referenceUrl, setReferenceUrl, false]
+          ].map(([labelKey, value, setValue, isYoutubeField]) => {
+            const invalid = value.trim() && !(helpers && helpers.normalizeHttpUrl(value));
+            const notYoutube = isYoutubeField && value.trim() && !invalid && helpers && !helpers.isYoutubeUrl(value);
+            return (
+              <div key={labelKey} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, labelKey)}</label>
+                <input type="url" value={value} onChange={(e) => setValue(e.target.value)} placeholder="https://…" dir="ltr"
+                  style={{ height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid ' + (invalid || notYoutube ? 'var(--danger)' : 'var(--border-hairline)'), background: 'rgba(11,20,21,.6)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5, maxWidth: 420 }} />
+                {invalid && <span style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(lang, 'setupLinksInvalid')}</span>}
+                {notYoutube && <span style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(lang, 'setupLinksNotYoutube')}</span>}
+              </div>
+            );
+          })}
+          <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupLinksHint')}</span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Button variant="primary" size="sm" icon="check" onClick={save}>{tr(lang, 'setupSaveButton')}</Button>
+          {saved && <span style={{ fontSize: 12, color: 'var(--success)' }}>{tr(lang, 'setupSaved')}</span>}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ProfileDetail({ profile, lang, dtab, setDtab, onBack, onEdit, onToggleActive, onUpdateProfile, onDelete }) {
   const primary = styleRegistry() && styleRegistry().get(profile.primaryStyleId);
   const linked = linkedStrategiesFor(profile.id);
 
@@ -244,13 +425,15 @@ function ProfileDetail({ profile, lang, dtab, setDtab, onBack, onEdit, onToggleA
       </div>
 
       <div style={{ display: 'flex', gap: 6, padding: 6, border: '1px solid var(--border-gold)', borderRadius: 10, background: 'var(--surface-card)', width: 'fit-content' }}>
-        {[['overview', tr(lang, 'tabOverview')], ['report', tr(lang, 'tabReport')]].map(([id, label]) => (
+        {[['overview', tr(lang, 'tabOverview')], ['setup', tr(lang, 'tabSetup')], ['report', tr(lang, 'tabReport')]].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setDtab(id)} style={{
             height: 38, padding: '0 16px', borderRadius: 7, cursor: 'pointer', border: 0, font: 'inherit', fontSize: 12.5,
             background: dtab === id ? 'var(--char-active-surface)' : 'transparent', color: dtab === id ? 'var(--char-accent)' : 'var(--text-muted)', fontWeight: dtab === id ? 600 : 500
           }}>{label}</button>
         ))}
       </div>
+
+      {dtab === 'setup' && <SetupTab key={profile.id} profile={profile} lang={lang} onUpdate={(patch) => onUpdateProfile(patch)} />}
 
       {dtab === 'overview' && (
         <Panel padding="18px 20px">
@@ -329,7 +512,10 @@ function DeleteConfirmModal({ target, error, lang, onCancel, onConfirm }) {
   );
 }
 
-export function AnalysisProfilesTab({ lang }) {
+// `header` is an optional, opaque node the hosting hub renders above the LIST screen only (its hero
+// + the Patterns/Strategies/Positions/Analysis Profiles pill bar) - this file stays unaware of the
+// hub's own tab model, so the domain remains movable to a future #ai/analysis-profiles route.
+export function AnalysisProfilesTab({ lang, header }) {
   const [, forceRerender] = React.useReducer((x) => x + 1, 0);
   React.useEffect(() => {
     const onChange = () => forceRerender();
@@ -406,6 +592,7 @@ export function AnalysisProfilesTab({ lang }) {
           profile={openProfile} lang={lang} dtab={dtab} setDtab={setDtab}
           onBack={() => setOpenId(null)} onEdit={() => setWizard({ mode: 'edit', existingProfile: openProfile })}
           onToggleActive={(active) => store.update(openProfile.id, { isActive: active })}
+          onUpdateProfile={(patch) => store.update(openProfile.id, patch)}
           onDelete={() => { setDeleteTarget(openProfile); setDeleteError(''); }}
         />
         {wizard && (
@@ -421,6 +608,7 @@ export function AnalysisProfilesTab({ lang }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {header}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 620 }}>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'title')}</h2>

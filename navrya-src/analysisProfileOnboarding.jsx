@@ -34,7 +34,16 @@ const copy = {
     nameLabel: 'نام پروفایل',
     back: 'بازگشت', next: 'بعدی', create: 'ایجاد پروفایل تحلیل', setUpLater: 'بعداً تنظیم می‌کنم', cancel: 'انصراف',
     customModePrimaryLabel: 'روش سفارشی',
-    titleFirstRun: 'پروفایل تحلیلی خودت را بساز', titleCreate: 'پروفایل تحلیل جدید', titleEdit: 'ویرایش پروفایل تحلیل'
+    titleFirstRun: 'پروفایل تحلیلی خودت را بساز', titleCreate: 'پروفایل تحلیل جدید', titleEdit: 'ویرایش پروفایل تحلیل',
+    styleSearchPlaceholder: 'جستجوی سبک تحلیل…', styleSearchEmpty: 'سبکی با این نام پیدا نشد.',
+    customLinksLabel: 'مواد آموزشی (اختیاری)', customLinksHint: 'اگر پر نکنی مشکلی نیست — بعداً هم می‌توانی اضافه کنی.',
+    customLinksYoutube: 'لینک ویدیوی یوتیوب', customLinksWebsite: 'لینک وب‌سایت آموزشی', customLinksReference: 'لینک مرجع دیگر',
+    customLinksInvalid: 'این یک لینک معتبر نیست.', customLinksNotYoutube: 'این یک لینک یوتیوب معتبر نیست.',
+    addOwnFocusLabel: 'حوزه تمرکز خودت را اضافه کن', addOwnFocusNamePlaceholder: 'مثلاً: سطح‌های سوییپ‌شده',
+    addOwnFocusDescriptionPlaceholder: 'توضیح کوتاه (اختیاری)', addOwnFocusButton: 'افزودن', yourOwnFocuses: 'حوزه‌های تمرکز خودت',
+    aiSuggestButton: 'پیشنهاد بیشتر با هوش مصنوعی', aiSuggestLoading: 'در حال ساخت پیشنهاد…', aiSuggestBadge: 'AI',
+    aiSuggestAdd: 'افزودن', aiSuggestErrorBalance: 'موجودی کافی نیست.', aiSuggestErrorGeneric: 'ساخت پیشنهاد ممکن نشد. دوباره تلاش کن.',
+    aiSuggestHint: 'این کار از توکن هوش مصنوعی استفاده می‌کند — با کلید API خودت رایگان است.'
   },
   ar: {
     step: 'الخطوة {n} من ٢',
@@ -51,7 +60,16 @@ const copy = {
     nameLabel: 'اسم الملف',
     back: 'رجوع', next: 'التالي', create: 'إنشاء ملف تحليل', setUpLater: 'سأقوم بذلك لاحقاً', cancel: 'إلغاء',
     customModePrimaryLabel: 'منهج مخصص',
-    titleFirstRun: 'أنشئ ملفك التحليلي', titleCreate: 'ملف تحليل جديد', titleEdit: 'تعديل ملف التحليل'
+    titleFirstRun: 'أنشئ ملفك التحليلي', titleCreate: 'ملف تحليل جديد', titleEdit: 'تعديل ملف التحليل',
+    styleSearchPlaceholder: 'ابحث عن نمط تحليل…', styleSearchEmpty: 'لم يُعثر على نمط بهذا الاسم.',
+    customLinksLabel: 'مواد تعليمية (اختياري)', customLinksHint: 'لا بأس إن تركتها فارغة - يمكنك إضافتها لاحقاً.',
+    customLinksYoutube: 'رابط فيديو يوتيوب', customLinksWebsite: 'رابط موقع تعليمي', customLinksReference: 'رابط مرجعي آخر',
+    customLinksInvalid: 'هذا الرابط غير صالح.', customLinksNotYoutube: 'هذا ليس رابط يوتيوب صالحاً.',
+    addOwnFocusLabel: 'أضف مجال تركيز خاص بك', addOwnFocusNamePlaceholder: 'مثال: مستويات تم اكتساحها',
+    addOwnFocusDescriptionPlaceholder: 'وصف قصير (اختياري)', addOwnFocusButton: 'إضافة', yourOwnFocuses: 'مجالات تركيزك الخاصة',
+    aiSuggestButton: 'اقتراح المزيد بالذكاء الاصطناعي', aiSuggestLoading: 'جارٍ إنشاء الاقتراحات…', aiSuggestBadge: 'AI',
+    aiSuggestAdd: 'إضافة', aiSuggestErrorBalance: 'الرصيد غير كافٍ.', aiSuggestErrorGeneric: 'تعذّر إنشاء الاقتراحات. حاول مجدداً.',
+    aiSuggestHint: 'يستخدم هذا رموز الذكاء الاصطناعي - مجاني إذا استخدمت مفتاح API الخاص بك.'
   },
   en: {
     step: 'Step {n} of 2',
@@ -68,7 +86,16 @@ const copy = {
     nameLabel: 'Profile name',
     back: 'Back', next: 'Next', create: 'Create Analysis Profile', setUpLater: 'Set up later', cancel: 'Cancel',
     customModePrimaryLabel: 'Custom Method',
-    titleFirstRun: 'Set up your Analysis Profile', titleCreate: 'New Analysis Profile', titleEdit: 'Edit Analysis Profile'
+    titleFirstRun: 'Set up your Analysis Profile', titleCreate: 'New Analysis Profile', titleEdit: 'Edit Analysis Profile',
+    styleSearchPlaceholder: 'Search analysis styles…', styleSearchEmpty: 'No style matched that search.',
+    customLinksLabel: 'Teaching material (optional)', customLinksHint: "It's fine to leave these empty - you can add them later.",
+    customLinksYoutube: 'YouTube video link', customLinksWebsite: 'Educational website link', customLinksReference: 'Another reference link',
+    customLinksInvalid: 'That is not a valid link.', customLinksNotYoutube: 'That is not a valid YouTube link.',
+    addOwnFocusLabel: 'Add your own focus area', addOwnFocusNamePlaceholder: 'e.g. Swept liquidity levels',
+    addOwnFocusDescriptionPlaceholder: 'Short description (optional)', addOwnFocusButton: 'Add', yourOwnFocuses: 'Your own focus areas',
+    aiSuggestButton: 'Suggest more with AI', aiSuggestLoading: 'Generating suggestions…', aiSuggestBadge: 'AI',
+    aiSuggestAdd: 'Add', aiSuggestErrorBalance: 'Insufficient balance.', aiSuggestErrorGeneric: "Couldn't generate suggestions. Try again.",
+    aiSuggestHint: 'This uses AI tokens - free if you use your own API key.'
   },
   es: {
     step: 'Paso {n} de 2',
@@ -85,7 +112,16 @@ const copy = {
     nameLabel: 'Nombre del perfil',
     back: 'Atrás', next: 'Siguiente', create: 'Crear perfil de análisis', setUpLater: 'Configurar más tarde', cancel: 'Cancelar',
     customModePrimaryLabel: 'Método personalizado',
-    titleFirstRun: 'Configura tu perfil de análisis', titleCreate: 'Nuevo perfil de análisis', titleEdit: 'Editar perfil de análisis'
+    titleFirstRun: 'Configura tu perfil de análisis', titleCreate: 'Nuevo perfil de análisis', titleEdit: 'Editar perfil de análisis',
+    styleSearchPlaceholder: 'Buscar estilos de análisis…', styleSearchEmpty: 'Ningún estilo coincide con esa búsqueda.',
+    customLinksLabel: 'Material educativo (opcional)', customLinksHint: 'Puedes dejarlo vacío y añadirlo más tarde.',
+    customLinksYoutube: 'Enlace de vídeo de YouTube', customLinksWebsite: 'Enlace de sitio web educativo', customLinksReference: 'Otro enlace de referencia',
+    customLinksInvalid: 'Ese enlace no es válido.', customLinksNotYoutube: 'Ese no es un enlace válido de YouTube.',
+    addOwnFocusLabel: 'Añade tu propia área de enfoque', addOwnFocusNamePlaceholder: 'p. ej.: Niveles de liquidez barridos',
+    addOwnFocusDescriptionPlaceholder: 'Descripción breve (opcional)', addOwnFocusButton: 'Añadir', yourOwnFocuses: 'Tus propias áreas de enfoque',
+    aiSuggestButton: 'Sugerir más con IA', aiSuggestLoading: 'Generando sugerencias…', aiSuggestBadge: 'IA',
+    aiSuggestAdd: 'Añadir', aiSuggestErrorBalance: 'Saldo insuficiente.', aiSuggestErrorGeneric: 'No se pudieron generar sugerencias. Inténtalo de nuevo.',
+    aiSuggestHint: 'Esto usa tokens de IA - gratis si usas tu propia clave API.'
   }
 };
 
@@ -147,7 +183,7 @@ function SectionLabel({ children }) {
   return <span style={{ fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{children}</span>;
 }
 
-function DnaPreview({ lang, primaryStyleId, secondaryStyleIds, focusIds, name }) {
+function DnaPreview({ lang, primaryStyleId, secondaryStyleIds, focusIds, customFocuses, name }) {
   const styles = styleRegistry(), focuses = focusRegistry();
   const primary = styles ? styles.get(primaryStyleId) : null;
   const secondaries = (secondaryStyleIds || []).map((id) => (styles ? styles.get(id) : null)).filter(Boolean);
@@ -176,13 +212,18 @@ function DnaPreview({ lang, primaryStyleId, secondaryStyleIds, focusIds, name })
               </div>
             )}
           </div>
-          {focusList.length > 0 && (
+          {(focusList.length > 0 || (customFocuses || []).length > 0) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <SectionLabel>{tr(lang, 'dnaFocus')}</SectionLabel>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {focusList.map((f) => (
                   <span key={f.id} style={{ fontSize: 11.5, padding: '4px 10px', borderRadius: 999, background: 'rgba(3,8,7,.4)', border: '1px solid var(--border-hairline)', color: 'var(--text-primary)' }}>
                     {f.name[lang] || f.name.en}
+                  </span>
+                ))}
+                {(customFocuses || []).map((f) => (
+                  <span key={f.id} style={{ fontSize: 11.5, padding: '4px 10px', borderRadius: 999, background: 'rgba(3,8,7,.4)', border: '1px solid var(--char-accent)', color: 'var(--char-accent)' }}>
+                    {f.name}
                   </span>
                 ))}
               </div>
@@ -222,6 +263,17 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   const [focusIds, setFocusIds] = React.useState(seed ? seed.focusIds || [] : []);
   const [name, setName] = React.useState(seed ? seed.name || '' : '');
   const [nameTouched, setNameTouched] = React.useState(Boolean(seed && seed.name));
+  const [styleQuery, setStyleQuery] = React.useState('');
+  const seedLinks = seed && seed.customMethodLinks;
+  const [youtubeUrl, setYoutubeUrl] = React.useState(seedLinks ? seedLinks.youtubeUrl || '' : '');
+  const [websiteUrl, setWebsiteUrl] = React.useState(seedLinks ? seedLinks.websiteUrl || '' : '');
+  const [referenceUrl, setReferenceUrl] = React.useState(seedLinks ? seedLinks.referenceUrl || '' : '');
+  const [customFocuses, setCustomFocuses] = React.useState(seed ? seed.customFocuses || [] : []);
+  const [newFocusName, setNewFocusName] = React.useState('');
+  const [newFocusDescription, setNewFocusDescription] = React.useState('');
+  const [aiSuggestions, setAiSuggestions] = React.useState([]);
+  const [aiSuggestLoading, setAiSuggestLoading] = React.useState(false);
+  const [aiSuggestError, setAiSuggestError] = React.useState('');
   const stepRef = React.useRef(step);
   const completeRef = React.useRef(null);
   stepRef.current = step;
@@ -236,6 +288,11 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   const browsableStyles = allStyles.filter((s) => SPECIAL_STYLE_IDS.indexOf(s.id) === -1);
   const featured = FEATURED_STYLE_IDS.map((id) => styles && styles.get(id)).filter(Boolean);
   const special = SPECIAL_STYLE_IDS.map((id) => styles && styles.get(id)).filter(Boolean);
+  const trimmedStyleQuery = styleQuery.trim();
+  // A non-empty search flattens featured/full-list/special into one ranked result set (the
+  // registry's own search() already orders a name match ahead of a description-only one) - see
+  // analysis-style-registry.js's own header comment for the ranking rule.
+  const styleSearchResults = trimmedStyleQuery && styles ? styles.search(trimmedStyleQuery) : null;
 
   function pickPrimary(id) {
     if (id === 'hybrid') { setHybridMode(true); setPrimaryStyleId(''); setSecondaryStyleIds([]); return; }
@@ -257,6 +314,57 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   }
   function toggleFocus(id) {
     setFocusIds((prev) => (prev.indexOf(id) > -1 ? prev.filter((fid) => fid !== id) : prev.concat(id)));
+  }
+
+  // Custom focus areas (066_analysis_profile_authoring.sql) - a trader's own wording, kept in a
+  // SEPARATE list from focusIds (which only ever hold Focus Registry ids). Both the manual
+  // "+ Add your own" form and an accepted AI suggestion go through this one function, so the two
+  // paths can never diverge on validation.
+  const helpers = window.TradeJournalAnalysisProfileStore && window.TradeJournalAnalysisProfileStore.helpers;
+  function addCustomFocus(nameValue, descriptionValue, origin) {
+    if (!helpers) return;
+    const made = helpers.makeCustomFocus({ name: nameValue, description: descriptionValue, origin: origin || 'user' });
+    if (!made) return;
+    setCustomFocuses((prev) => (prev.some((f) => helpers.foldFocusName(f.name) === helpers.foldFocusName(made.name)) ? prev : prev.concat(made)));
+  }
+  function submitNewCustomFocus() {
+    if (!newFocusName.trim()) return;
+    addCustomFocus(newFocusName, newFocusDescription, 'user');
+    setNewFocusName(''); setNewFocusDescription('');
+  }
+  function removeCustomFocus(id) {
+    setCustomFocuses((prev) => prev.filter((f) => f.id !== id));
+  }
+
+  // "Suggest more with AI" (regenerate) - a real, billed AI call (server/pattern-ai-server.mjs's
+  // suggestAnalysisProfile(), see AI_BILLED_ROUTES). Never falls back to a fake local suggestion on
+  // failure (analysis-profile-ai.js's own header comment) - a real error (e.g. insufficient wallet
+  // balance) is shown honestly instead. Suggestions are proposals only: nothing is added to the
+  // profile until the trader explicitly clicks "Add" on one.
+  const alreadyFocusNames = React.useMemo(() => {
+    const registryNames = focusIds.map((id) => { const f = focuses ? focuses.get(id) : null; return f ? (f.name[activeLang] || f.name.en) : null; }).filter(Boolean);
+    return registryNames.concat(customFocuses.map((f) => f.name));
+  }, [focusIds, customFocuses, focuses, activeLang]);
+  async function regenerateFocusSuggestions() {
+    const client = window.TradeJournalAnalysisProfileAI;
+    if (!client || aiSuggestLoading) return;
+    setAiSuggestLoading(true);
+    setAiSuggestError('');
+    try {
+      const result = await client.suggestFocuses({
+        primaryStyleId, secondaryStyleIds, customMethodNotes, language: activeLang,
+        alreadySelected: alreadyFocusNames, alreadySuggested: aiSuggestions.map((s) => s.name)
+      });
+      setAiSuggestions((prev) => prev.concat(result.suggestions));
+    } catch (error) {
+      setAiSuggestError(error && error.code === 'WALLET_INSUFFICIENT_BALANCE' ? tr(activeLang, 'aiSuggestErrorBalance') : tr(activeLang, 'aiSuggestErrorGeneric'));
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  }
+  function acceptAiSuggestion(suggestion) {
+    addCustomFocus(suggestion.name, suggestion.description, 'ai');
+    setAiSuggestions((prev) => prev.filter((s) => s !== suggestion));
   }
 
   const isCustom = primaryStyleId === 'custom_method';
@@ -282,6 +390,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
       id: seed ? seed.id : undefined,
       name: name.trim() || (window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.suggestedName(primaryStyleId, focusIds, activeLang) : ''),
       primaryStyleId, secondaryStyleIds, focusIds, customMethodNotes,
+      customMethodLinks: { youtubeUrl, websiteUrl, referenceUrl }, customFocuses,
       isDefault: seed ? seed.isDefault : undefined
     };
   }
@@ -386,51 +495,73 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
 
           {!hybridMode ? (
             <React.Fragment>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10 }}>
-                {featured.map((st) => (
-                  <SelectableCard key={st.id} selected={primaryStyleId === st.id} onClick={() => pickPrimary(st.id)}
-                    title={st.name[activeLang] || st.name.en} subtitle={st.shortDescription[activeLang] || st.shortDescription.en} icon="execution" />
-                ))}
-              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 9, height: 40, padding: '0 13px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.6)', maxWidth: 420 }}>
+                <Icon name="search" size={16} style={{ color: 'var(--text-dim)' }} />
+                <input type="text" value={styleQuery} onChange={(e) => setStyleQuery(e.target.value)} placeholder={tr(activeLang, 'styleSearchPlaceholder')} dir="auto"
+                  style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
+              </label>
 
-              <button type="button" onClick={() => setShowAllStyles((v) => !v)} style={{
-                alignSelf: 'flex-start', background: 'transparent', border: 0, cursor: 'pointer', padding: 0,
-                display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--char-accent)', font: 'inherit'
-              }}>
-                <Icon name={showAllStyles ? 'collapse' : 'expand'} size={14} />
-                {tr(activeLang, showAllStyles ? 'hideAll' : 'viewAll')}
-              </button>
+              {styleSearchResults ? (
+                styleSearchResults.length ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10 }}>
+                    {styleSearchResults.map((st) => (
+                      <SelectableCard key={st.id} selected={primaryStyleId === st.id} onClick={() => pickPrimary(st.id)}
+                        title={st.name[activeLang] || st.name.en} subtitle={st.shortDescription[activeLang] || st.shortDescription.en}
+                        icon={st.id === 'hybrid' ? 'sparkle' : st.id === 'custom_method' ? 'edit' : st.id === 'general_analysis' ? 'globe' : undefined} />
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'styleSearchEmpty')}</span>
+                )
+              ) : (
+                <React.Fragment>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10 }}>
+                    {featured.map((st) => (
+                      <SelectableCard key={st.id} selected={primaryStyleId === st.id} onClick={() => pickPrimary(st.id)}
+                        title={st.name[activeLang] || st.name.en} subtitle={st.shortDescription[activeLang] || st.shortDescription.en} icon="execution" />
+                    ))}
+                  </div>
 
-              {showAllStyles && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 260, overflowY: 'auto', padding: '2px 2px 2px 0' }} className="navrya-scroll">
-                  {styles.categories().map((cat) => {
-                    const items = browsableStyles.filter((s) => s.category === cat.id);
-                    if (!items.length) return null;
-                    return (
-                      <div key={cat.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <SectionLabel>{cat.name[activeLang] || cat.name.en}</SectionLabel>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 8 }}>
-                          {items.map((st) => (
-                            <SelectableCard key={st.id} selected={primaryStyleId === st.id} onClick={() => pickPrimary(st.id)}
-                              title={st.name[activeLang] || st.name.en} subtitle={st.shortDescription[activeLang] || st.shortDescription.en} />
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                  <button type="button" onClick={() => setShowAllStyles((v) => !v)} style={{
+                    alignSelf: 'flex-start', background: 'transparent', border: 0, cursor: 'pointer', padding: 0,
+                    display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--char-accent)', font: 'inherit'
+                  }}>
+                    <Icon name={showAllStyles ? 'collapse' : 'expand'} size={14} />
+                    {tr(activeLang, showAllStyles ? 'hideAll' : 'viewAll')}
+                  </button>
+
+                  {showAllStyles && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 260, overflowY: 'auto', padding: '2px 2px 2px 0' }} className="navrya-scroll">
+                      {styles.categories().map((cat) => {
+                        const items = browsableStyles.filter((s) => s.category === cat.id);
+                        if (!items.length) return null;
+                        return (
+                          <div key={cat.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <SectionLabel>{cat.name[activeLang] || cat.name.en}</SectionLabel>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 8 }}>
+                              {items.map((st) => (
+                                <SelectableCard key={st.id} selected={primaryStyleId === st.id} onClick={() => pickPrimary(st.id)}
+                                  title={st.name[activeLang] || st.name.en} subtitle={st.shortDescription[activeLang] || st.shortDescription.en} />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <SectionLabel>{tr(activeLang, 'moreWays')}</SectionLabel>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10 }}>
+                      {special.map((st) => (
+                        <SelectableCard key={st.id} selected={primaryStyleId === st.id || (st.id === 'hybrid' && hybridMode)} onClick={() => pickPrimary(st.id)}
+                          title={st.name[activeLang] || st.name.en} subtitle={st.shortDescription[activeLang] || st.shortDescription.en}
+                          icon={st.id === 'hybrid' ? 'sparkle' : st.id === 'custom_method' ? 'edit' : 'globe'} />
+                      ))}
+                    </div>
+                  </div>
+                </React.Fragment>
               )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <SectionLabel>{tr(activeLang, 'moreWays')}</SectionLabel>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10 }}>
-                  {special.map((st) => (
-                    <SelectableCard key={st.id} selected={primaryStyleId === st.id || (st.id === 'hybrid' && hybridMode)} onClick={() => pickPrimary(st.id)}
-                      title={st.name[activeLang] || st.name.en} subtitle={st.shortDescription[activeLang] || st.shortDescription.en}
-                      icon={st.id === 'hybrid' ? 'sparkle' : st.id === 'custom_method' ? 'edit' : 'globe'} />
-                  ))}
-                </div>
-              </div>
 
               {isCustom && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -444,6 +575,33 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
                     }}
                   />
                   {!customNotesOk && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(activeLang, 'customNotesHint')}</span>}
+                </div>
+              )}
+
+              {isCustom && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <SectionLabel>{tr(activeLang, 'customLinksLabel')}</SectionLabel>
+                  {[
+                    ['customLinksYoutube', youtubeUrl, setYoutubeUrl],
+                    ['customLinksWebsite', websiteUrl, setWebsiteUrl],
+                    ['customLinksReference', referenceUrl, setReferenceUrl]
+                  ].map(([labelKey, value, setValue]) => {
+                    const invalid = value.trim() && !(helpers && helpers.normalizeHttpUrl(value));
+                    const notYoutube = labelKey === 'customLinksYoutube' && value.trim() && !invalid && helpers && !helpers.isYoutubeUrl(value);
+                    return (
+                      <div key={labelKey} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(activeLang, labelKey)}</label>
+                        <input type="url" value={value} onChange={(e) => setValue(e.target.value)} placeholder="https://…" dir="ltr"
+                          style={{
+                            height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid ' + (invalid || notYoutube ? 'var(--danger)' : 'var(--border-gold)'),
+                            background: 'rgba(11,20,21,.72)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5
+                          }} />
+                        {invalid && <span style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(activeLang, 'customLinksInvalid')}</span>}
+                        {notYoutube && <span style={{ fontSize: 10.5, color: 'var(--danger)' }}>{tr(activeLang, 'customLinksNotYoutube')}</span>}
+                      </div>
+                    );
+                  })}
+                  <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'customLinksHint')}</span>
                 </div>
               )}
             </React.Fragment>
@@ -508,7 +666,63 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
               </div>
             </div>
           )}
-          <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'selectedCount', { n: focusIds.length })}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'selectedCount', { n: focusIds.length + customFocuses.length })}</span>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <SectionLabel>{tr(activeLang, 'addOwnFocusLabel')}</SectionLabel>
+            {customFocuses.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {customFocuses.map((f) => (
+                  <span key={f.id} title={f.description || ''} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 6px 0 14px', borderRadius: 999,
+                    fontSize: 12.5, fontWeight: 600, color: 'var(--char-accent)', border: '1px solid var(--char-accent)', background: 'var(--char-active-surface)'
+                  }}>
+                    {f.origin === 'ai' && <span style={{ fontSize: 9.5, letterSpacing: '.06em', padding: '2px 5px', borderRadius: 5, background: 'rgba(3,8,7,.5)' }}>{tr(activeLang, 'aiSuggestBadge')}</span>}
+                    {f.name}
+                    <button type="button" onClick={() => removeCustomFocus(f.id)} aria-label={tr(activeLang, 'cancel')} style={{
+                      width: 22, height: 22, display: 'grid', placeItems: 'center', borderRadius: '50%', cursor: 'pointer', border: 0, background: 'transparent', color: 'inherit'
+                    }}><Icon name="close" size={12} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input type="text" value={newFocusName} onChange={(e) => setNewFocusName(e.target.value)} dir="auto"
+                placeholder={tr(activeLang, 'addOwnFocusNamePlaceholder')}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNewCustomFocus(); } }}
+                style={{ flex: '1 1 200px', height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
+              <input type="text" value={newFocusDescription} onChange={(e) => setNewFocusDescription(e.target.value)} dir="auto"
+                placeholder={tr(activeLang, 'addOwnFocusDescriptionPlaceholder')}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNewCustomFocus(); } }}
+                style={{ flex: '1 1 200px', height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(11,20,21,.72)', color: 'var(--text-primary)', font: 'inherit', fontSize: 12.5 }} />
+              <Button variant="secondary" size="sm" icon="plus" disabled={!newFocusName.trim()} onClick={submitNewCustomFocus}>{tr(activeLang, 'addOwnFocusButton')}</Button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+              <Button variant="ghost" size="sm" icon="sparkle" disabled={!primaryStyleId || aiSuggestLoading} onClick={regenerateFocusSuggestions}>
+                {aiSuggestLoading ? tr(activeLang, 'aiSuggestLoading') : tr(activeLang, 'aiSuggestButton')}
+              </Button>
+              <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'aiSuggestHint')}</span>
+            </div>
+            {aiSuggestError && <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{aiSuggestError}</span>}
+            {aiSuggestions.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {aiSuggestions.map((s) => (
+                  <span key={s.name} title={s.description || ''} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7, height: 34, padding: '0 6px 0 12px', borderRadius: 999,
+                    fontSize: 12.5, color: 'var(--text-muted)', border: '1px dashed var(--divider-gold)', background: 'rgba(183,138,74,.06)'
+                  }}>
+                    <span style={{ fontSize: 9.5, letterSpacing: '.06em', padding: '2px 5px', borderRadius: 5, background: 'rgba(3,8,7,.4)', color: 'var(--gold-warm)' }}>{tr(activeLang, 'aiSuggestBadge')}</span>
+                    {s.name}
+                    <button type="button" onClick={() => acceptAiSuggestion(s)} style={{
+                      height: 22, padding: '0 8px', borderRadius: 999, cursor: 'pointer', border: 0, fontSize: 10.5, fontWeight: 600,
+                      background: 'var(--char-accent)', color: 'var(--ink-950)'
+                    }}>{tr(activeLang, 'aiSuggestAdd')}</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>{tr(activeLang, 'nameLabel')}</label>
@@ -522,7 +736,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
             />
           </div>
 
-          <DnaPreview lang={activeLang} primaryStyleId={primaryStyleId} secondaryStyleIds={secondaryStyleIds} focusIds={focusIds} name={name} />
+          <DnaPreview lang={activeLang} primaryStyleId={primaryStyleId} secondaryStyleIds={secondaryStyleIds} focusIds={focusIds} customFocuses={customFocuses} name={name} />
         </div>
       )}
     </div>

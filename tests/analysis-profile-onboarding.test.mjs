@@ -66,7 +66,7 @@ test('Step 2 focus recommendations come from the Style/Focus Registries via merg
 test('a live Analysis DNA preview is rendered from the real selected style/focus, not static placeholder text', async () => {
   const text = await source('analysisProfileOnboarding.jsx');
   assert.match(text, /function DnaPreview\(/);
-  assert.match(text, /<DnaPreview lang={activeLang} primaryStyleId={primaryStyleId} secondaryStyleIds={secondaryStyleIds} focusIds={focusIds} name={name} \/>/);
+  assert.match(text, /<DnaPreview lang={activeLang} primaryStyleId={primaryStyleId} secondaryStyleIds={secondaryStyleIds} focusIds={focusIds} customFocuses={customFocuses} name={name} \/>/);
 });
 
 test('a default profile name is auto-suggested from the real store, and never overwrites a name the user already typed', async () => {
@@ -109,7 +109,11 @@ test('the first-run gate never leaves the user with zero profiles: both complete
 test('strategiesHubView.jsx mounts the Analysis Profiles tab as a fully self-contained branch, the same pattern as the Positions tab - no Analysis-Profile business logic embedded in the hub itself', async () => {
   const text = await source('strategiesHubView.jsx');
   assert.match(text, /import \{ AnalysisProfilesTab \} from '\.\/analysisProfilesView\.jsx';/);
-  assert.match(text, /if \(tab === 'analysis-profiles'\) \{\s*\n\s*return \(\s*\n\s*<div style={container}>\s*\n\s*<AnalysisProfilesTab lang={lang} character={character} \/>/);
+  // The hub owns the hero + TopTabBar (see tests/analysis-profiles-tab-bar.test.mjs for that
+  // wiring in full) and hands it in as an opaque `header` prop - AnalysisProfilesTab itself still
+  // carries no Analysis-Profile business logic, and the tab bar wiring lives entirely in the hub.
+  assert.match(text, /if \(tab === 'analysis-profiles'\) \{/);
+  assert.match(text, /<AnalysisProfilesTab lang={lang} character={character} header={header} \/>/);
 });
 
 test('Strategy detail exposes a Preferred Analysis Profile selector, defaulting to "no profile linked" - a Strategy is never implicitly pre-selected', async () => {

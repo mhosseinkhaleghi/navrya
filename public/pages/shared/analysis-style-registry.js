@@ -722,6 +722,82 @@
   }
   function isValidStyleId(id) { return Boolean(id) && Boolean(byId[id]); }
 
+  // ---- search -----------------------------------------------------------------------------------
+  // Wizard Step 1's search box (and the Analysis Profiles list search) both fold text through this
+  // ONE function so a query matches the same way everywhere. Folding is deliberately about how
+  // people actually type, not about linguistics: the Arabic-vs-Persian keyboard forms of yeh/kaf
+  // (ي ى -> ی, ك -> ک), the zero-width non-joiner Persian writes inside compounds (پرایس‌اکشن),
+  // tatweel and Arabic diacritics, Latin accents, and Persian/Arabic-Indic digits all fold to one
+  // canonical form; case is ignored; whitespace collapses.
+  function normalizeSearchText(value) {
+    var text = String(value == null ? '' : value).toLowerCase();
+    if (typeof text.normalize === 'function') text = text.normalize('NFKD');
+    return text
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[ً-ٰٟـ]/g, '')
+      .replace(/[‌‍‎‏]/g, '')
+      .replace(/[يى]/g, 'ی')
+      .replace(/ك/g, 'ک')
+      .replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x06f0); })
+      .replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+      .replace(/[_\-\/()]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  var LANG_KEYS = ['fa', 'ar', 'en', 'es'];
+  function localizedTexts(map) {
+    return LANG_KEYS.map(function (lang) { return map && map[lang] ? normalizeSearchText(map[lang]) : ''; }).filter(Boolean);
+  }
+
+  // Lazily built, cached search index: every language's name/description/category label plus the
+  // id and the English core concepts, so a trader can find "Elliott" by typing in any of the four
+  // languages, by the id they may have seen ("smc"), or by a concept word ("liquidity").
+  var searchIndex = null;
+  function buildSearchIndex() {
+    if (searchIndex) return searchIndex;
+    searchIndex = DEFS.map(function (def, order) {
+      var category = CATEGORIES.find(function (c) { return c.id === def.category; });
+      var names = localizedTexts(def.name).concat(normalizeSearchText(def.id));
+      var rest = localizedTexts(def.shortDescription)
+        .concat(category ? localizedTexts(category.name) : [])
+        .concat((def.coreConcepts || []).map(normalizeSearchText));
+      return { def: def, order: order, names: names, rest: rest };
+    });
+    return searchIndex;
+  }
+
+  // Returns matching style definitions, best first. Every whitespace-separated query token must
+  // match (AND), each against the name-side text (names in all languages + id) or the description
+  // side (descriptions, category labels, core concepts). Ranking: an exact/prefix name match beats a
+  // name substring, which beats a description-only match; ties keep the catalog's own order so the
+  // result is deterministic. A token also matches with spaces removed ("پرایساکشن" finds "پرایس
+  // اکشن"). An empty query returns the whole catalog in catalog order.
+  function search(query) {
+    var q = normalizeSearchText(query);
+    var index = buildSearchIndex();
+    if (!q) return index.map(function (entry) { return entry.def; });
+    var tokens = q.split(' ');
+    var compactQuery = q.replace(/ /g, '');
+    var scored = [];
+    index.forEach(function (entry) {
+      var nameText = entry.names.join(' | ');
+      var restText = entry.rest.join(' | ');
+      var all = nameText + ' | ' + restText;
+      var compactAll = all.replace(/ /g, '');
+      var everyToken = tokens.every(function (token) { return all.indexOf(token) > -1 || compactAll.indexOf(token) > -1; });
+      var compactMatch = compactAll.indexOf(compactQuery) > -1;
+      if (!everyToken && !compactMatch) return;
+      var score = 3;
+      if (entry.names.some(function (n) { return n === q || n.indexOf(q) === 0; })) score = 0;
+      else if (entry.names.some(function (n) { return n.indexOf(q) > -1 || n.replace(/ /g, '').indexOf(compactQuery) > -1; })) score = 1;
+      else if (tokens.every(function (token) { return nameText.indexOf(token) > -1; })) score = 2;
+      scored.push({ def: entry.def, score: score, order: entry.order });
+    });
+    scored.sort(function (a, b) { return a.score - b.score || a.order - b.order; });
+    return scored.map(function (item) { return item.def; });
+  }
+
   // Hybrid dedup rule (§20): primary style's recommended focuses first, then each secondary's
   // (in the order given), optional lists appended the same way, de-duplicated throughout so a
   // focus recommended by two styles is only ever suggested once.
@@ -748,6 +824,8 @@
     categoryLabel: categoryLabel,
     isValidStyleId: isValidStyleId,
     mergeFocusRecommendations: mergeFocusRecommendations,
+    search: search,
+    normalizeSearchText: normalizeSearchText,
     VERSION: VERSION
   };
 }());
