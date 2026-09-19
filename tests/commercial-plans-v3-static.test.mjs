@@ -95,7 +95,11 @@ test('accountProfileView.jsx: a PaymentSheet exists, offers crypto/Visa/Iran-gat
 test('accountProfileView.jsx: PaymentSheet slides between its three steps inside one modal, ending on the real invoice', async () => {
   const src = await read('navrya-src', 'accountProfileView.jsx');
   const idx = src.indexOf('function PaymentSheet(');
-  const fn = src.slice(idx, idx + 20000);
+  // A real end boundary (not a fixed-size window, which this component has already outgrown more than once as
+  // features were added to it) - the same top-level-function convention the newer *-ui-static tests use. This
+  // file's own `read()` keeps the working tree's real CRLF, so the terminator is matched with it.
+  const end = src.indexOf('\r\n}\r\n', idx);
+  const fn = src.slice(idx, end + 5);
   assert.match(src, /const PAY_SHEET_STEPS = 3;/, 'the sheet must carry a third step for the invoice');
   assert.match(fn, /transform: 'translateX\(-' \+ \(step \* \(100 \/ PAY_SHEET_STEPS\)\) \+ '%\)'/, 'all three steps must slide within one sheet');
   assert.match(fn, /<CryptoInvoicePanel ref=\{invoiceApiRef\}[^>]*invoiceId=\{invoiceId\}/, 'the invoice must render INSIDE the sheet, never as a second popup');

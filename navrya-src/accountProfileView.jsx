@@ -132,6 +132,8 @@ const copy = {
     subPayDiscountApply: 'اعمال', subPayDiscountApplying: 'در حال بررسی…', subPayDiscountClear: 'حذف',
     subPayDiscountApplied: 'کد {code} اعمال شد', subPayDiscountSubscriptionOnly: 'کد تخفیف فقط برای اشتراک‌ها قابل استفاده است.',
     subPayOriginalPrice: 'قیمت اصلی', subPayDiscountLine: 'تخفیف ({code})',
+    subPayAutomaticDiscountApplied: 'تخفیف خودکار «{campaign}» اعمال شد',
+    subPayAutomaticDiscountLine: 'تخفیف خودکار ({campaign})',
     subPayBonusLine: 'پس از تأیید پرداخت، {amount} اعتبار به کیف پول شما اضافه می‌شود.',
     subPayNoCostNote: 'این کد اشتراک را رایگان می‌کند. چیزی برای پرداخت نیست — به‌محض تأیید فعال می‌شود.',
     subPayUrgencyEndsIn: 'زمان باقی‌مانده تا پایان این تخفیف',
@@ -308,6 +310,8 @@ const copy = {
     subPayDiscountApply: 'Apply', subPayDiscountApplying: 'Checking…', subPayDiscountClear: 'Remove',
     subPayDiscountApplied: 'Code {code} applied', subPayDiscountSubscriptionOnly: 'Discount codes apply to subscription plans only.',
     subPayOriginalPrice: 'Original price', subPayDiscountLine: 'Discount ({code})',
+    subPayAutomaticDiscountApplied: 'Automatic discount "{campaign}" applied',
+    subPayAutomaticDiscountLine: 'Automatic discount ({campaign})',
     subPayBonusLine: 'You will receive {amount} in wallet credit once your payment is confirmed.',
     subPayNoCostNote: 'This code makes the plan free. There is nothing to pay — it activates as soon as you confirm.',
     subPayUrgencyEndsIn: 'This discount ends in',
@@ -484,6 +488,8 @@ const copy = {
     subPayDiscountApply: 'تطبيق', subPayDiscountApplying: 'جارٍ التحقق…', subPayDiscountClear: 'إزالة',
     subPayDiscountApplied: 'تم تطبيق الرمز {code}', subPayDiscountSubscriptionOnly: 'رموز الخصم متاحة لخطط الاشتراك فقط.',
     subPayOriginalPrice: 'السعر الأصلي', subPayDiscountLine: 'الخصم ({code})',
+    subPayAutomaticDiscountApplied: 'تم تطبيق الخصم التلقائي "{campaign}"',
+    subPayAutomaticDiscountLine: 'خصم تلقائي ({campaign})',
     subPayBonusLine: 'ستحصل على {amount} كرصيد في محفظتك بعد تأكيد الدفع.',
     subPayNoCostNote: 'هذا الرمز يجعل الخطة مجانية. لا يوجد ما تدفعه — تُفعَّل فور التأكيد.',
     subPayUrgencyEndsIn: 'ينتهي هذا الخصم خلال',
@@ -660,6 +666,8 @@ const copy = {
     subPayDiscountApply: 'Aplicar', subPayDiscountApplying: 'Comprobando…', subPayDiscountClear: 'Quitar',
     subPayDiscountApplied: 'Código {code} aplicado', subPayDiscountSubscriptionOnly: 'Los códigos de descuento solo se aplican a los planes de suscripción.',
     subPayOriginalPrice: 'Precio original', subPayDiscountLine: 'Descuento ({code})',
+    subPayAutomaticDiscountApplied: 'Descuento automático "{campaign}" aplicado',
+    subPayAutomaticDiscountLine: 'Descuento automático ({campaign})',
     subPayBonusLine: 'Recibirás {amount} de crédito en tu cartera cuando se confirme el pago.',
     subPayNoCostNote: 'Este código hace que el plan sea gratis. No hay nada que pagar: se activa en cuanto confirmes.',
     subPayUrgencyEndsIn: 'Este descuento termina en',
@@ -2036,7 +2044,7 @@ function specValue(lang, cfg, key) {
   return limit === null || limit === undefined ? tr(lang, 'subSpecUnlimited') : digits(lang, limit);
 }
 
-function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
+function PlanComparisonGrid({ lang, plan, catalog, onUpgrade, offers }) {
   if (!catalog) return null;
   return (
     <div>
@@ -2048,6 +2056,8 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
         {PLAN_ORDER.map((planId) => {
           const cfg = catalog[planId];
           if (!cfg) return null;
+          // An automatic discount this customer can use right now on this plan (server-computed; never the client's own math).
+          const offer = offers && offers[planId];
           const isCurrent = planId === plan;
           const isPast = PLAN_ORDER.indexOf(planId) < PLAN_ORDER.indexOf(plan);
           const isRecommended = planId === RECOMMENDED_PLAN && !isCurrent && !isPast;
@@ -2078,8 +2088,15 @@ function PlanComparisonGrid({ lang, plan, catalog, onUpgrade }) {
 
               {/* an explicit lineHeight keeps the 34px figure inside its own 46px band - without it
                   the glyph box overflowed upward into the name band above */}
-              <div style={{ height: 46, display: 'flex', alignItems: 'baseline', gap: 8, flex: 'none' }}>
-                <span dir="ltr" className="navrya-tabular" style={{ fontSize: 34, lineHeight: '42px', fontWeight: 800, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
+              <div style={{ height: 46, display: 'flex', alignItems: 'baseline', gap: 8, flex: 'none', flexWrap: 'wrap' }}>
+                {offer ? (
+                  <>
+                    <span dir="ltr" className="navrya-tabular" style={{ fontSize: 17, lineHeight: '42px', fontWeight: 600, color: 'var(--text-dim)', textDecoration: 'line-through' }}>{fmtMicroUsd(offer.originalAmountMicroUsd)}</span>
+                    <span dir="ltr" className="navrya-tabular" style={{ fontSize: 34, lineHeight: '42px', fontWeight: 800, color: 'var(--char-accent)' }}>{fmtMicroUsd(offer.finalAmountMicroUsd)}</span>
+                  </>
+                ) : (
+                  <span dir="ltr" className="navrya-tabular" style={{ fontSize: 34, lineHeight: '42px', fontWeight: 800, color: 'var(--parchment)' }}>{cfg.price.amountUsd > 0 ? '$' + cfg.price.amountUsd.toFixed(2).replace(/\.00$/, '') : '$0'}</span>
+                )}
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {tr(lang, cfg.price.billingInterval === 'year' ? 'subIntervalYear' : 'subIntervalMonth')}</span>
               </div>
 
@@ -2325,7 +2342,7 @@ function DiscountLiveRemaining({ lang, remaining, maxRedemptions }) {
 }
 
 
-function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed, resumeInvoiceId = null, onInvoiceCreated, discountEnabled = false, planId = null, walletBonusUsd = 0 }) {
+function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, onConfirmed, resumeInvoiceId = null, onInvoiceCreated, discountEnabled = false, planId = null, walletBonusUsd = 0, automaticOffer = null }) {
   const [step, setStep] = React.useState(resumeInvoiceId ? 2 : 0);
   const [method, setMethod] = React.useState(null);
   const [notAdded, setNotAdded] = React.useState(false);
@@ -2346,6 +2363,14 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
   const [quote, setQuote] = React.useState(null);
   const [quoting, setQuoting] = React.useState(false);
   const [codeError, setCodeError] = React.useState('');
+  // An automatic offer is applied by itself, once - a ref (not state) so removing it never brings it back on this same
+  // sheet, and re-mounting the sheet (a fresh upgrade attempt) always re-considers it.
+  const autoOfferAppliedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (step !== 1 || quote || autoOfferAppliedRef.current || !discountEnabled || !automaticOffer) return;
+    autoOfferAppliedRef.current = true;
+    setQuote({ ...automaticOffer, code: null, automatic: true });
+  }, [step, quote, discountEnabled, automaticOffer]);
   // Checkout urgency: the latest status poll of the applied code (null until the first one answers) and the offset between
   // the server's clock and this device's, so a wrong device clock cannot mis-time a countdown.
   const [live, setLive] = React.useState(null);
@@ -2389,7 +2414,7 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
   function submit() {
     setSubmitting(true);
     setFailure('');
-    Promise.resolve(onProceed(method.id, { discountCode: quote ? quote.code : null }))
+    Promise.resolve(onProceed(method.id, quote ? (quote.automatic ? { automaticDiscountId: quote.codeId } : { discountCode: quote.code }) : {}))
       .then((result) => {
         if (result && result.noCost) {
           // A code made the plan free: the server already confirmed it through the normal transaction path.
@@ -2556,7 +2581,9 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
                   quote ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '4px 6px 4px 12px', borderRadius: 9, border: '1px solid color-mix(in srgb, var(--char-accent) 55%, transparent)', background: 'var(--char-active-surface)' }}>
                       <Icon name="check" size={15} strokeWidth={2.4} style={{ flex: 'none', color: 'var(--char-accent)' }} />
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr(lang, 'subPayDiscountApplied', { code: quote.code })}</span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {quote.automatic ? tr(lang, 'subPayAutomaticDiscountApplied', { campaign: quote.campaignName }) : tr(lang, 'subPayDiscountApplied', { code: quote.code })}
+                      </span>
                       <Button variant="ghost" size="sm" onClick={clearCode}>{tr(lang, 'subPayDiscountClear')}</Button>
                     </div>
                   ) : (
@@ -2588,7 +2615,7 @@ function PaymentSheet({ lang, title, lineItem, amountUsd, onProceed, onClose, on
                   </div>
                   {quote && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 26 }}>
-                      <span style={{ fontSize: 12, color: 'var(--char-accent)' }}>{tr(lang, 'subPayDiscountLine', { code: quote.code })}</span>
+                      <span style={{ fontSize: 12, color: 'var(--char-accent)' }}>{tr(lang, quote.automatic ? 'subPayAutomaticDiscountLine' : 'subPayDiscountLine', quote.automatic ? { campaign: quote.campaignName } : { code: quote.code })}</span>
                       <span dir="ltr" className="navrya-tabular" style={{ fontSize: 12.5, color: 'var(--char-accent)' }}>{'-' + fmtMicroUsd(quote.discountAmountMicroUsd)}</span>
                     </div>
                   )}
@@ -3023,6 +3050,9 @@ function BillingHistoryCard({ lang }) {
 function SubscriptionTab({ lang }) {
   const [subData, setSubData] = React.useState(null);
   const [catalog, setCatalog] = React.useState(null);
+  // Automatic (no-code) discounts this customer can use right now, per plan - the server's own eligibility check, so a
+  // plan card can strike the price and the checkout sheet can apply it by itself without either recomputing anything.
+  const [offers, setOffers] = React.useState({});
   const [notice, setNotice] = React.useState('');
   // Picking a plan opens the checkout sheet directly - there is no separate "confirm the request"
   // step any more (explicitly removed): the price the user is agreeing to is the invoice inside
@@ -3044,13 +3074,18 @@ function SubscriptionTab({ lang }) {
   React.useEffect(() => {
     fetch('/api/sync/subscriptions/catalog').then((r) => r.json()).then((d) => setCatalog(d.plans)).catch(() => setCatalog(null));
   }, []);
+  React.useEffect(() => {
+    fetch('/api/sync/subscriptions/automatic-discounts').then((r) => r.json()).then((d) => setOffers(d.offers || {})).catch(() => setOffers({}));
+  }, []);
 
   // Returns the created request so the checkout sheet can slide its own invoice step in rather
   // than closing and reopening a second popup over the page.
-  function requestUpgrade(planId, discountCode) {
-    // Only the plan and the code TEXT go to the server - it computes every amount itself.
+  function requestUpgrade(planId, discount) {
+    // Only the plan and either the code TEXT or the automatic discount's opaque id go to the server - it computes every
+    // amount itself, and refuses loudly (never silently at full price) if that discount is no longer valid.
     const payload = { planId };
-    if (discountCode) payload.discountCode = discountCode;
+    if (discount && discount.discountCode) payload.discountCode = discount.discountCode;
+    if (discount && discount.automaticDiscountId) payload.automaticDiscountId = discount.automaticDiscountId;
     return fetch('/api/sync/subscriptions/upgrade-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then((r) => r.json().then((body) => { if (!r.ok) { const error = new Error(body.error); error.code = body.error; throw error; } return body; }))
       .then((result) => {
@@ -3079,7 +3114,7 @@ function SubscriptionTab({ lang }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
       <PlanHero lang={lang} plan={subData.plan} subscription={subData.subscription} catalog={catalog} onToggleCancel={toggleCancel} />
-      <PlanComparisonGrid lang={lang} plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} />
+      <PlanComparisonGrid lang={lang} plan={subData.plan} catalog={catalog} onUpgrade={setUpgradeTarget} offers={offers} />
       <WalletCard lang={lang} onNotice={setNotice} onBelowMinimum={setBelowMinimumUsd} />
       <WalletActivityCard lang={lang} />
       <StorageCard lang={lang} onNotice={setNotice} onInvoice={setInvoiceId} />
@@ -3093,7 +3128,8 @@ function SubscriptionTab({ lang }) {
           discountEnabled
           planId={upgradeTarget}
           walletBonusUsd={(catalog && catalog[upgradeTarget] && catalog[upgradeTarget].walletBonusUsd) || 0}
-          onProceed={(methodId, extras) => requestUpgrade(upgradeTarget, extras && extras.discountCode)}
+          automaticOffer={offers[upgradeTarget] || null}
+          onProceed={(methodId, extras) => requestUpgrade(upgradeTarget, extras)}
           onConfirmed={() => { reloadSub(); notifyWalletChanged(); }}
           onClose={() => { setUpgradeTarget(null); reloadSub(); }}
         />

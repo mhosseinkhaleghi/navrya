@@ -39,7 +39,8 @@ test('every historic migration (001-065) is untouched by this change', async () 
 test('the migration runner will pick 066 up after 065 in numeric filename order', async () => {
   const files = (await readdir(migrationsDir)).filter((name) => name.endsWith('.sql')).sort();
   assert.ok(files.indexOf(MIGRATION) > files.indexOf('065_subscription_bonus_lots.sql'));
-  assert.equal(files[files.length - 1], MIGRATION, '066 is the newest migration');
+  // Not asserted to be the newest file overall - a later migration (e.g. 067_discount_code_scope_and_mode.sql) is
+  // expected to be added after this one without this test needing to change.
 });
 
 test('users.plan is widened to allow pro while keeping free/plus/personalized, and the old auto-generated constraint is found by its definition, never guessed', async () => {

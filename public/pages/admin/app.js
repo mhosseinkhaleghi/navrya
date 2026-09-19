@@ -116,6 +116,7 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     comDiscountActivate: 'Activate', comDiscountDeactivate: 'Deactivate', comDiscountEdit: 'Edit', comDiscountHistory: 'Redemption history',
     comDiscountNoCodes: 'No discount codes yet.', comDiscountUnlimited: 'Unlimited', comDiscountSave: 'Save', comDiscountHeldUntil: 'Held until', comDiscountClose: 'Close',
     comDiscountStatusActive: 'Active', comDiscountStatusInactive: 'Inactive', comDiscountStatusScheduled: 'Scheduled', comDiscountStatusExpired: 'Expired', comDiscountStatusExhausted: 'Fully redeemed',
+    comDiscountApplicationMode: 'How it is applied', comDiscountModeCode: 'Customer types a code', comDiscountModeAutomatic: 'Automatic (no code)', comDiscountPlans: 'Applies to plans', comDiscountAllPlans: 'All plans', comDiscountAutomaticBadge: 'Automatic',
     comStepUpRequired: 'Recent re-authentication is required for this action. Please log in again and retry.',
     comPlanWalletBonus: 'Wallet bonus per purchase (USD)', comColOriginal: 'Original', comColDiscount: 'Discount / code', comColFinal: 'Charged', comColBonus: 'Wallet bonus',
     comRepairBonus: 'Repair bonus', comBonusStatusPending: 'pending', comBonusStatusCredited: 'credited', comBonusStatusReversed: 'reversed', comBonusStatusMissing: 'MISSING',
@@ -326,6 +327,7 @@ voiceProvidersTitle: 'ارائه‌دهنده‌های صدا (ElevenLabs)', voi
     comDiscountActivate: 'فعال‌سازی', comDiscountDeactivate: 'غیرفعال‌سازی', comDiscountEdit: 'ویرایش', comDiscountHistory: 'تاریخچهٔ استفاده',
     comDiscountNoCodes: 'هنوز کد تخفیفی ساخته نشده است.', comDiscountUnlimited: 'نامحدود', comDiscountSave: 'ذخیره', comDiscountHeldUntil: 'رزرو تا', comDiscountClose: 'بستن',
     comDiscountStatusActive: 'فعال', comDiscountStatusInactive: 'غیرفعال', comDiscountStatusScheduled: 'زمان‌بندی‌شده', comDiscountStatusExpired: 'منقضی', comDiscountStatusExhausted: 'ظرفیت تکمیل',
+    comDiscountApplicationMode: 'روش اعمال', comDiscountModeCode: 'با کد (کاربر وارد می‌کند)', comDiscountModeAutomatic: 'خودکار (بدون نیاز به کد)', comDiscountPlans: 'برای این اشتراک‌ها', comDiscountAllPlans: 'همهٔ اشتراک‌ها', comDiscountAutomaticBadge: 'خودکار',
     comStepUpRequired: 'این عملیات به احراز هویت مجدد اخیر نیاز دارد. لطفاً دوباره وارد شوید و تلاش کنید.',
     comPlanWalletBonus: 'هدیهٔ کیف پول برای هر خرید (دلار)', comColOriginal: 'قیمت اصلی', comColDiscount: 'تخفیف / کد', comColFinal: 'مبلغ پرداختی', comColBonus: 'هدیهٔ کیف پول',
     comRepairBonus: 'ترمیم هدیه', comBonusStatusPending: 'در انتظار', comBonusStatusCredited: 'واریز شده', comBonusStatusReversed: 'بازگردانده شده', comBonusStatusMissing: 'واریز نشده',
@@ -535,6 +537,7 @@ voiceProvidersTitle: 'مزوّدو الصوت (ElevenLabs)', voiceProvidersHint:
     comDiscountActivate: 'تفعيل', comDiscountDeactivate: 'تعطيل', comDiscountEdit: 'تعديل', comDiscountHistory: 'سجل الاستخدام',
     comDiscountNoCodes: 'لا توجد رموز خصم بعد.', comDiscountUnlimited: 'غير محدود', comDiscountSave: 'حفظ', comDiscountHeldUntil: 'محجوز حتى', comDiscountClose: 'إغلاق',
     comDiscountStatusActive: 'نشط', comDiscountStatusInactive: 'معطّل', comDiscountStatusScheduled: 'مجدوَل', comDiscountStatusExpired: 'منتهٍ', comDiscountStatusExhausted: 'اكتملت الاستخدامات',
+    comDiscountApplicationMode: 'طريقة التطبيق', comDiscountModeCode: 'يكتب العميل رمزًا', comDiscountModeAutomatic: 'تلقائي (بلا رمز)', comDiscountPlans: 'ينطبق على الخطط', comDiscountAllPlans: 'جميع الخطط', comDiscountAutomaticBadge: 'تلقائي',
     comStepUpRequired: 'يتطلب هذا الإجراء إعادة مصادقة حديثة. يُرجى تسجيل الدخول مرة أخرى وإعادة المحاولة.',
     comPlanWalletBonus: 'مكافأة المحفظة لكل عملية شراء (دولار)', comColOriginal: 'السعر الأصلي', comColDiscount: 'الخصم / الرمز', comColFinal: 'المبلغ المدفوع', comColBonus: 'مكافأة المحفظة',
     comRepairBonus: 'إصلاح المكافأة', comBonusStatusPending: 'معلّقة', comBonusStatusCredited: 'مُضافة', comBonusStatusReversed: 'معكوسة', comBonusStatusMissing: 'مفقودة',
@@ -744,6 +747,7 @@ voiceProvidersTitle: 'Proveedores de voz (ElevenLabs)', voiceProvidersHint: 'Cre
     comDiscountActivate: 'Activar', comDiscountDeactivate: 'Desactivar', comDiscountEdit: 'Editar', comDiscountHistory: 'Historial de canjes',
     comDiscountNoCodes: 'Aún no hay códigos de descuento.', comDiscountUnlimited: 'Ilimitado', comDiscountSave: 'Guardar', comDiscountHeldUntil: 'Reservado hasta', comDiscountClose: 'Cerrar',
     comDiscountStatusActive: 'Activo', comDiscountStatusInactive: 'Inactivo', comDiscountStatusScheduled: 'Programado', comDiscountStatusExpired: 'Caducado', comDiscountStatusExhausted: 'Agotado',
+    comDiscountApplicationMode: 'Cómo se aplica', comDiscountModeCode: 'El cliente escribe un código', comDiscountModeAutomatic: 'Automático (sin código)', comDiscountPlans: 'Se aplica a los planes', comDiscountAllPlans: 'Todos los planes', comDiscountAutomaticBadge: 'Automático',
     comStepUpRequired: 'Esta acción requiere una reautenticación reciente. Inicia sesión de nuevo e inténtalo otra vez.',
     comPlanWalletBonus: 'Bono de cartera por compra (USD)', comColOriginal: 'Original', comColDiscount: 'Descuento / código', comColFinal: 'Cobrado', comColBonus: 'Bono de cartera',
     comRepairBonus: 'Reparar bono', comBonusStatusPending: 'pendiente', comBonusStatusCredited: 'acreditado', comBonusStatusReversed: 'revertido', comBonusStatusMissing: 'FALTANTE',
@@ -2780,11 +2784,39 @@ function commercialDiscountCodesSubTab() {
     return { wrap, select };
   }
 
-  // One form for create AND edit (the code string itself is immutable, so it is only asked for on create).
+  const PAID_PLAN_IDS = ['plus', 'pro', 'personalized'];
+  // One form for create AND edit (the code string / application mode are immutable, so they are only asked for on create).
   function codeForm(existing) {
     const card = el('div', 'admin-card');
     card.append(el('h3', '', existing ? t('comDiscountEdit') + ' - ' + existing.code : t('comDiscountCreate')));
-    const codeField = existing ? null : field(t('comDiscountCode'), 'text', '');
+
+    // Application mode - fixed at creation, like the code string. On edit it is shown as read-only fact, never re-sent.
+    let modeSelect = null;
+    if (existing) {
+      const modeRow = el('label', 'field');
+      modeRow.append(el('span', '', t('comDiscountApplicationMode')));
+      modeRow.append(el('span', '', existing.applicationMode === 'automatic' ? t('comDiscountModeAutomatic') : t('comDiscountModeCode')));
+      card.append(modeRow);
+    } else {
+      const modeWrap = el('label', 'field');
+      modeWrap.append(el('span', '', t('comDiscountApplicationMode')));
+      modeSelect = document.createElement('select');
+      [['code', t('comDiscountModeCode')], ['automatic', t('comDiscountModeAutomatic')]].forEach(([value, label]) => {
+        const option = document.createElement('option');
+        option.value = value; option.textContent = label;
+        modeSelect.append(option);
+      });
+      modeWrap.append(modeSelect);
+      card.append(modeWrap);
+    }
+    const codeField = existing || (modeSelect && modeSelect.value === 'automatic') ? null : field(t('comDiscountCode'), 'text', '');
+    if (modeSelect) {
+      // The code field only makes sense for a customer-typed discount - toggled live as the admin picks the mode, before
+      // anything is submitted (the server enforces the same rule regardless).
+      modeSelect.onchange = () => { codeInputWrap.style.display = modeSelect.value === 'automatic' ? 'none' : ''; };
+    }
+    const codeInputWrap = codeField ? codeField.wrap : el('label', 'field');
+    if (!codeField) codeInputWrap.style.display = 'none';
     const campaignField = field(t('comDiscountCampaign'), 'text', existing ? existing.campaignName : '');
     const type = typeSelect(existing ? existing.discountType : 'percent');
     const valueField = field(t('comDiscountValue'), 'number', existing ? existing.discountValue : '');
@@ -2797,15 +2829,36 @@ function commercialDiscountCodesSubTab() {
       const payload = {
         campaignName: campaignField.input.value, discountType: type.select.value, discountValue: Number(valueField.input.value),
         startsAt: toIsoOrNull(startsField.input.value), expiresAt: toIsoOrNull(expiresField.input.value),
-        maxRedemptions: capacityField.input.value === '' ? null : Number(capacityField.input.value)
+        maxRedemptions: capacityField.input.value === '' ? null : Number(capacityField.input.value),
+        planIds: PAID_PLAN_IDS.filter((planId) => planChecks[planId].checked)
       };
       const request = existing
         ? api('/commercial/discount-codes/' + existing.id, { method: 'PATCH', body: JSON.stringify(payload) })
-        : api('/commercial/discount-codes', { method: 'POST', body: JSON.stringify(Object.assign({ code: codeField.input.value }, payload)) });
+        : api('/commercial/discount-codes', { method: 'POST', body: JSON.stringify(Object.assign(
+            { applicationMode: modeSelect.value }, modeSelect.value === 'automatic' ? {} : { code: codeField.input.value }, payload
+          )) });
       request.then(() => { discountEditId = null; done(); }).catch(fail);
     };
-    if (codeField) card.append(codeField.wrap);
-    card.append(campaignField.wrap, type.wrap, valueField.wrap, startsField.wrap, expiresField.wrap, capacityField.wrap, saveBtn);
+    card.append(codeInputWrap);
+    card.append(campaignField.wrap, type.wrap, valueField.wrap, startsField.wrap, expiresField.wrap, capacityField.wrap);
+
+    // Plan scope - which paid plans this discount applies to; nothing checked means every paid plan (the default, so a
+    // code created before this feature existed keeps applying everywhere, exactly as it always has).
+    const scopeWrap = el('label', 'field');
+    scopeWrap.append(el('span', '', t('comDiscountPlans') + ' (' + t('comDiscountAllPlans') + ' ' + t('comDiscountUnlimited').toLowerCase() + ')'));
+    const scopeRow = el('div', 'admin-form-row');
+    const planChecks = {};
+    PAID_PLAN_IDS.forEach((planId) => {
+      const label = el('label', 'field-check');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = Boolean(existing && existing.planIds && existing.planIds.includes(planId));
+      label.append(checkbox, el('span', '', planId.charAt(0).toUpperCase() + planId.slice(1)));
+      planChecks[planId] = checkbox;
+      scopeRow.append(label);
+    });
+    scopeWrap.append(scopeRow);
+    card.append(scopeWrap, saveBtn);
     if (existing) {
       const cancelBtn = el('button', 'btn btn-secondary', t('comDiscountClose'));
       cancelBtn.type = 'button';
@@ -2860,7 +2913,7 @@ function commercialDiscountCodesSubTab() {
       const table = document.createElement('table');
       table.className = 'admin-table';
       const headRow = document.createElement('tr');
-      [t('comDiscountCode'), t('comDiscountCampaign'), t('comDiscountValue'), t('comDiscountStatus'), t('comDiscountStartsAt'), t('comDiscountExpiresAt'),
+      [t('comDiscountCode'), t('comDiscountCampaign'), t('comDiscountApplicationMode'), t('comDiscountPlans'), t('comDiscountValue'), t('comDiscountStatus'), t('comDiscountStartsAt'), t('comDiscountExpiresAt'),
         t('comDiscountConfirmed'), t('comDiscountPending'), t('comDiscountRemaining'), t('colActions')].forEach((label) => headRow.append(el('th', '', label)));
       const thead = document.createElement('thead');
       thead.append(headRow);
@@ -2868,7 +2921,9 @@ function commercialDiscountCodesSubTab() {
       const tbody = document.createElement('tbody');
       data.codes.forEach((code) => {
         const row = document.createElement('tr');
-        [code.code, code.campaignName, valueText(code)].forEach((value) => row.append(el('td', '', String(value))));
+        const modeText = code.applicationMode === 'automatic' ? t('comDiscountAutomaticBadge') : t('comDiscountModeCode');
+        const scopeText = code.planIds && code.planIds.length ? code.planIds.join(', ') : t('comDiscountAllPlans');
+        [code.code, code.campaignName, modeText, scopeText, valueText(code)].forEach((value) => row.append(el('td', '', String(value))));
         const statusTd = document.createElement('td');
         statusTd.append(el('span', 'badge status-' + statusBadgeClass[code.status], t('comDiscountStatus' + code.status.charAt(0).toUpperCase() + code.status.slice(1))));
         row.append(statusTd);
