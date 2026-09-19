@@ -136,16 +136,17 @@ export function router(repo) {
   app.get('/partners/:userId', asyncHandler(async (req, res) => {
     const user = await repo.users.get(req.params.userId);
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND');
-    const [active, history, terms, summary, code] = await Promise.all([
+    const [active, history, terms, summary, code, account] = await Promise.all([
       repo.referralPrograms.getActiveAssignment(user.id), repo.referralPrograms.listAssignments(user.id), resolveReferralTerms(repo, user.id),
-      repo.referralEarnings.summaryForUser(user.id), repo.referral.getCodeByUser(user.id)
+      repo.referralEarnings.summaryForUser(user.id), repo.referral.getCodeByUser(user.id), repo.referral.getAccount(user.id)
     ]);
     const entries = (await repo.auditLog.list({ limit: 500 })).filter((e) => e.targetType === 'referralPartner' && e.targetId === user.id).slice(0, 50);
     res.json({
       userId: user.id, active: active ? toAdminAssignmentDto(active) : null, history: history.map(toAdminAssignmentDto),
       effective: { mode: terms.mode, canAttribute: terms.canAttribute, programId: terms.program ? terms.program.id : null, programName: terms.program ? terms.program.name : null, version: terms.version ? toAdminVersionDto(terms.version) : null, commissionBps: terms.rules ? terms.rules.commissionBps : null },
       code: code ? { publicCode: code.publicCode, status: code.status } : null,
-      balances: summary.totals, openDebtMicroUsd: summary.openDebtMicroUsd, audit: entries
+      balances: summary.totals, openDebtMicroUsd: summary.openDebtMicroUsd,
+      payoutBlocked: account.payoutBlocked, payoutBlockedReason: account.payoutBlockedReason, audit: entries
     });
   }));
   // Disabled / Standard / Influencer is ONLY ever set here (never by the user). An edit supersedes the previous assignment.

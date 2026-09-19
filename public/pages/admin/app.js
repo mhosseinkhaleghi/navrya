@@ -118,6 +118,44 @@ voiceProvidersTitle: 'Voice Providers (ElevenLabs)', voiceProvidersHint: 'Admin-
     comDiscountStatusActive: 'Active', comDiscountStatusInactive: 'Inactive', comDiscountStatusScheduled: 'Scheduled', comDiscountStatusExpired: 'Expired', comDiscountStatusExhausted: 'Fully redeemed',
     comDiscountApplicationMode: 'How it is applied', comDiscountModeCode: 'Customer types a code', comDiscountModeAutomatic: 'Automatic (no code)', comDiscountPlans: 'Applies to plans', comDiscountAllPlans: 'All plans', comDiscountAutomaticBadge: 'Automatic',
     comStepUpRequired: 'Recent re-authentication is required for this action. Please log in again and retry.',
+
+    // Referral & Affiliate (Commercial -> Referral Programs). Deliberately English-only, same
+    // convention as the rest of this tab (see commercialSubNav's own comment) - these keys exist
+    // only in this `en` block, so t() always falls back to English for them regardless of the
+    // active admin language.
+    comSubReferrals: 'Referral Programs',
+    refAdminReportTitle: 'Referral report', refAdminClicks: 'Clicks', refAdminVisitors: 'Unique visitors', refAdminSignups: 'Signups', refAdminFlaggedSignups: 'Flagged (risk)',
+    refAdminQualified: 'Qualified customers', refAdminPending: 'Pending liability', refAdminAvailable: 'Available liability', refAdminConverted: 'Converted to AI credit',
+    refAdminReserved: 'Reserved for payout', refAdminPaid: 'Paid out', refAdminReversed: 'Reversed', refAdminOpenDebt: 'Open debt',
+    refAdminNetRevenue: 'Net revenue', refAdminExpectedCosts: 'Expected costs', refAdminActualCosts: 'Actual costs (AI bonus consumed)', refAdminMargin: 'Post-commission contribution margin',
+    refAdminPayoutsRequested: 'Requested', refAdminPayoutsInReview: 'In review', refAdminPayoutsPaid: 'Paid', refAdminPayoutsClosed: 'Rejected / cancelled / failed',
+    refAdminSkippedTitle: 'Skipped earnings (by reason)',
+    refAdminProgramsTitle: 'Programs', refAdminCreateProgram: 'Create program', refAdminProgramKind: 'Kind', refAdminProgramName: 'Name',
+    refAdminIsDefault: 'Platform default (Standard)', refAdminAutoEnroll: 'Auto-enroll unassigned users', refAdminPause: 'Pause', refAdminResume: 'Resume', refAdminArchive: 'Archive',
+    refAdminNewVersion: 'New draft version', refAdminCloneFrom: 'Clone rules from the published version',
+    refAdminVersionHistory: 'Version history', refAdminNoVersions: 'No versions yet.', refAdminPublish: 'Publish', refAdminSaveDraft: 'Save draft', refAdminPreview: 'Preview profitability',
+    refAdminBudgetUsed: 'Budget used', refAdminBudgetCap: 'Budget cap', refAdminBudgetRemaining: 'Budget remaining', refAdminNoPrograms: 'No referral programs yet.',
+    refFieldCommissionPercent: 'Commission (%)', refFieldSources: 'Eligible sources', refFieldPlans: 'Eligible plans (comma-separated, blank = all)',
+    refFieldProducts: 'Eligible storage products (comma-separated, blank = all)', refFieldAttributionWindow: 'Attribution window (days)', refFieldHoldDays: 'Hold period (days)',
+    refFieldTermDays: 'Commission term (days, blank = unlimited)', refFieldCashOutMin: 'Cash-out minimum (USD)', refFieldBudgetCap: 'Program budget cap (USD, blank = unlimited)',
+    refFieldPerUserCap: 'Per-referrer cap (USD, blank = unlimited)', refFieldPerCustomerCap: 'Per-customer cap (USD, blank = unlimited)', refFieldCampaignCap: 'Campaign cap for this version (USD, blank = unlimited)',
+    refFieldMaxCustomers: 'Max referred customers (blank = unlimited)', refFieldMinMarginUsd: 'Minimum margin (USD floor)', refFieldMinMarginPercent: 'Minimum margin (% of revenue)',
+    refFieldPaymentFeePercent: 'Estimated payment fee (%)', refFieldServiceCostPercent: 'Estimated service cost (%)',
+    refAdminPreviewResults: 'Preview results', refAdminOutcome: 'Outcome',
+    refAdminPayoutConfigTitle: 'BSC payout configuration', refPcEnabled: 'Payouts enabled', refPcTokenContract: 'BEP-20 USDT token contract', refPcTreasury: 'Treasury sender address',
+    refPcDecimals: 'Token decimals', refPcMinConfirmations: 'Minimum confirmations', refPcMinPayoutUsd: 'Minimum payout (USD)', refPcExplorer: 'Explorer tx URL template (must contain {txHash})',
+    refPcKyc: 'Required KYC status', refPcReauthMinutes: 'Re-auth validity (minutes)', refPcTermsVersion: 'Terms version', refPcMakerChecker: 'Require maker-checker (approver ≠ finaliser)',
+    refPcRpcConfigured: 'BSC RPC endpoint configured', refPcRpcMissing: 'Not configured - set it in Crypto payments first', refPcSave: 'Save payout configuration', refPcComplete: 'Configuration complete',
+    refAdminPayoutQueueTitle: 'Payout queue', refAdminNoPayouts: 'No payout requests.', refAdminPayoutUser: 'User', refAdminPayoutAmount: 'Amount', refAdminPayoutRecipient: 'Recipient',
+    refAdminPayoutRisk: 'Risk flagged', refAdminStartReview: 'Start review', refAdminApprove: 'Approve', refAdminReject: 'Reject', refAdminSubmitHash: 'Enter tx hash', refAdminVerify: 'Verify on-chain',
+    refAdminMarkPaid: 'Mark paid', refAdminMarkFailed: 'Mark failed', refAdminReveal: 'Reveal address', refAdminHashPlaceholder: '0x transaction hash', refAdminReasonPlaceholder: 'Reason',
+    refAdminDebtsTitle: 'Referral debt cases', refAdminNoDebts: 'No open debt cases.', refAdminDebtResolve: 'Resolve', refAdminDebtWriteOff: 'Write off', refAdminDebtRecovering: 'Mark partially recovered',
+    refAdminFlaggedTitle: 'Attributions flagged for risk review', refAdminNoFlagged: 'Nothing flagged.', refAdminClearRisk: 'Clear', refAdminConfirmAbuse: 'Confirm abuse', refAdminVoid: 'Void attribution',
+    refAdminPartnershipTitle: 'Referral partnership', refAdminMode: 'Mode', refAdminModeDisabled: 'Disabled', refAdminModeStandard: 'Standard', refAdminModeInfluencer: 'Influencer',
+    refAdminProgramVersion: 'Program version', refAdminRateOverride: 'Negotiated rate override (%, blank = use version rate)', refAdminEffectiveFrom: 'Effective from', refAdminEffectiveTo: 'Effective to (blank = no end date)',
+    refAdminTermDays: 'Commission term override (days, blank = version default)', refAdminPartnershipCap: 'Partnership cap (USD, blank = unlimited)', refAdminNotes: 'Notes',
+    refAdminSourceRestriction: 'Source restriction (blank = inherit the program version)', refAdminSave: 'Save assignment', refAdminHistory: 'Assignment history', refAdminNoHistory: 'No assignment history yet.',
+    refAdminCurrentEffective: 'Currently effective', refAdminBalances: 'Referral balances', refAdminPayoutBlocked: 'Payouts blocked', refAdminBlockPayouts: 'Block payouts', refAdminUnblockPayouts: 'Unblock payouts',
     comPlanWalletBonus: 'Wallet bonus per purchase (USD)', comColOriginal: 'Original', comColDiscount: 'Discount / code', comColFinal: 'Charged', comColBonus: 'Wallet bonus',
     comRepairBonus: 'Repair bonus', comBonusStatusPending: 'pending', comBonusStatusCredited: 'credited', comBonusStatusReversed: 'reversed', comBonusStatusMissing: 'MISSING',
     comBonusUsedAi: 'used on AI', comBonusRemaining: 'remaining', comBonusReversedAmount: 'reversed', comBonusFullyConsumed: 'fully used - nothing reversed', comColBonusLot: 'Subscription bonus', comBonusFromLot: 'from bonus',
@@ -1094,7 +1132,15 @@ function kvRow(labelText, valueNode) {
 }
 
 function userProfilePage(id) {
-  return api('/users/' + id).then(buildUserProfilePage).catch((error) => {
+  return Promise.all([
+    api('/users/' + id),
+    // Referral partnership (Disabled/Standard/Influencer) - independently allowed to fail (e.g. the referral
+    // migrations not having run yet on this environment) without taking down the rest of the profile page.
+    // Validated, not just caught: an unmatched/unexpected response shape (e.g. this route not existing on an
+    // older deployed server, or genuinely no data) must render the rest of the profile page, never crash it.
+    api('/commercial/referrals/partners/' + id).then((data) => (data && data.effective ? data : null)).catch(() => null),
+    api('/commercial/referrals/programs').catch(() => ({ programs: [] }))
+  ]).then(([user, referral, programsData]) => buildUserProfilePage(user, referral, programsData.programs)).catch((error) => {
     const wrap = el('div');
     wrap.append(usersBackButton());
     wrap.append(errorNode(error, () => renderTab()));
@@ -1107,9 +1153,129 @@ function usersBackButton() {
   btn.onclick = () => { usersSelectedId = null; renderTab(); };
   return btn;
 }
+// Disabled/Standard/Influencer is a dedicated, admin-only, audited assignment (server/commercial/
+// referral-programs.mjs) - INTENTIONALLY separate from the profileRoleLabel field just above (a
+// user-editable product label, unrelated to commercial). `referral` is GET .../partners/:userId's
+// response, or null if that fetch failed; `influencerPrograms` are the referral programs list
+// (kind:'influencer' with a published version) the mode=influencer select offers.
+function refPartnershipCard(user, referral, allPrograms) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('refAdminPartnershipTitle')));
+  if (!referral) { card.append(el('p', 'hint', 'Could not load referral partnership data.')); return card; }
+
+  const eff = referral.effective;
+  card.append(kvRow(t('refAdminCurrentEffective'), (eff.programName ? eff.programName + ' - ' : '') + eff.mode + (eff.commissionBps != null ? ' (' + (eff.commissionBps / 100) + '%)' : '')));
+  if (referral.code) card.append(kvRow('Referral code', referral.code.publicCode + ' (' + referral.code.status + ')'));
+  const balances = referral.balances || {};
+  const balancesGrid = el('div', 'admin-form-grid');
+  [['Pending', balances.pendingMicroUsd], ['Available', balances.availableCashMicroUsd], ['AI-converted', balances.aiConvertedMicroUsd],
+    ['Payout-reserved', balances.payoutReservedMicroUsd], ['Paid', balances.paidMicroUsd], ['Reversed', balances.reversedMicroUsd]]
+    .forEach(([label, micro]) => balancesGrid.append(kvRow(label, fmtMicroUsd(micro))));
+  card.append(el('h4', '', t('refAdminBalances')), balancesGrid);
+  if (referral.openDebtMicroUsd > 0) card.append(el('p', 'error-text', 'Open debt: ' + fmtMicroUsd(referral.openDebtMicroUsd)));
+
+  const influencerPrograms = allPrograms.filter((p) => p.kind === 'influencer' && p.publishedVersionId);
+  const active = referral.active;
+  const modeSelect = document.createElement('select');
+  [['disabled', t('refAdminModeDisabled')], ['standard', t('refAdminModeStandard')], ['influencer', t('refAdminModeInfluencer')]]
+    .forEach(([value, label]) => modeSelect.append(new Option(label, value, false, active ? active.mode === value : value === 'disabled')));
+  const modeWrap = el('label', 'field'); modeWrap.append(el('span', '', t('refAdminMode')), modeSelect);
+
+  const versionSelect = document.createElement('select');
+  influencerPrograms.forEach((program) => {
+    const version = program.versions.find((v) => v.id === program.publishedVersionId);
+    const label = program.name + ' - v' + (version ? version.versionNo : '?') + ' (' + (version ? version.commissionPercent : '?') + '%)';
+    versionSelect.append(new Option(label, program.publishedVersionId, false, active && active.programVersionId === program.publishedVersionId));
+  });
+  const versionWrap = el('label', 'field'); versionWrap.append(el('span', '', t('refAdminProgramVersion')), versionSelect);
+
+  const rateField = field(t('refAdminRateOverride'), 'number', active && active.ratePercentOverride != null ? active.ratePercentOverride : '');
+  const fromField = field(t('refAdminEffectiveFrom'), 'datetime-local', '');
+  const toField = field(t('refAdminEffectiveTo'), 'datetime-local', '');
+  const termField = field(t('refAdminTermDays'), 'number', active && active.commissionTermDays != null ? active.commissionTermDays : '');
+  const partnershipCapField = field(t('refAdminPartnershipCap'), 'number', active && active.partnershipCapUsd != null ? active.partnershipCapUsd : '');
+  const perCustomerCapField = field(t('refFieldPerCustomerCap'), 'number', active && active.perCustomerCapUsd != null ? active.perCustomerCapUsd : '');
+  const maxCustomersField = field(t('refFieldMaxCustomers'), 'number', active && active.maxReferredCustomers != null ? active.maxReferredCustomers : '');
+  const sourcesWrap = el('label', 'field'); sourcesWrap.append(el('span', '', t('refAdminSourceRestriction')));
+  const sourcesRow = el('div', 'admin-form-row');
+  const sourceChecks = {};
+  REF_SOURCES.forEach((source) => {
+    const label = el('label', 'field-check');
+    const box = document.createElement('input');
+    box.type = 'checkbox'; box.checked = Boolean(active && active.allowedSources && active.allowedSources.includes(source));
+    label.append(box, el('span', '', REF_SOURCE_LABEL[source]));
+    sourceChecks[source] = box;
+    sourcesRow.append(label);
+  });
+  sourcesWrap.append(sourcesRow);
+  const notesField = field(t('refAdminNotes'), 'text', active ? active.notes || '' : '');
+
+  const formWrap = el('div', 'admin-form-grid');
+  const toggleFormFields = () => { versionWrap.style.display = modeSelect.value === 'influencer' ? '' : 'none'; };
+  modeSelect.onchange = toggleFormFields;
+  formWrap.append(versionWrap, rateField.wrap, fromField.wrap, toField.wrap, termField.wrap, partnershipCapField.wrap, perCustomerCapField.wrap, maxCustomersField.wrap, sourcesWrap, notesField.wrap);
+  card.append(modeWrap, formWrap);
+  toggleFormFields();
+
+  const saveBtn = el('button', 'btn btn-primary btn-sm', t('refAdminSave'));
+  saveBtn.type = 'button';
+  saveBtn.onclick = () => {
+    const body = {
+      mode: modeSelect.value, notes: notesField.input.value.trim() || null,
+      effectiveFrom: fromField.input.value ? new Date(fromField.input.value).toISOString() : undefined,
+      effectiveTo: toField.input.value ? new Date(toField.input.value).toISOString() : null,
+      commissionTermDays: termField.input.value === '' ? null : Number(termField.input.value),
+      partnershipCapUsd: partnershipCapField.input.value === '' ? null : Number(partnershipCapField.input.value),
+      perCustomerCapUsd: perCustomerCapField.input.value === '' ? null : Number(perCustomerCapField.input.value),
+      maxReferredCustomers: maxCustomersField.input.value === '' ? null : Number(maxCustomersField.input.value),
+      allowedSources: REF_SOURCES.filter((source) => sourceChecks[source].checked)
+    };
+    if (!body.allowedSources.length) body.allowedSources = undefined;
+    if (modeSelect.value === 'influencer') {
+      body.programVersionId = versionSelect.value;
+      body.rateBpsOverride = rateField.input.value === '' ? null : Math.round(Number(rateField.input.value) * 100);
+    }
+    api('/commercial/referrals/partners/' + user.id, { method: 'PUT', body: JSON.stringify(body) })
+      .then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+  };
+  card.append(saveBtn);
+
+  if (referral.payoutBlocked) card.append(el('p', 'error-text', t('refAdminPayoutBlocked') + (referral.payoutBlockedReason ? ': ' + referral.payoutBlockedReason : '')));
+  const blockBtn = el('button', 'btn ' + (referral.payoutBlocked ? 'btn-secondary' : 'btn-danger') + ' btn-sm', referral.payoutBlocked ? t('refAdminUnblockPayouts') : t('refAdminBlockPayouts'));
+  blockBtn.type = 'button';
+  blockBtn.onclick = () => {
+    const blocked = !referral.payoutBlocked;
+    const body = { blocked };
+    if (blocked) body.reason = window.prompt(t('refAdminReasonPlaceholder')) || undefined;
+    api('/commercial/referrals/accounts/' + user.id + '/payout-block', { method: 'POST', body: JSON.stringify(body) })
+      .then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+  };
+  card.append(blockBtn);
+
+  if (referral.history && referral.history.length) {
+    card.append(el('h4', '', t('refAdminHistory')));
+    const list = document.createElement('ul');
+    referral.history.forEach((row) => {
+      const li = document.createElement('li');
+      li.textContent = fmtDate(row.createdAt) + ' - ' + row.mode + ' (' + row.status + ')' + (row.notes ? ' - ' + row.notes : '');
+      list.append(li);
+    });
+    card.append(list);
+  } else {
+    card.append(el('p', 'hint', t('refAdminNoHistory')));
+  }
+  if (referral.audit && referral.audit.length) {
+    card.append(el('h4', '', 'Audit log'));
+    const auditList = document.createElement('ul');
+    referral.audit.forEach((entry) => { const li = document.createElement('li'); li.textContent = fmtDate(entry.createdAt) + ' - ' + entry.action; auditList.append(li); });
+    card.append(auditList);
+  }
+  return card;
+}
+
 // `user` here is the fully-enriched GET /api/admin/users/:id response (identity, kyc,
 // profileRole, xpTotal, achievements, subscriptions, usageByProvider, aiCost).
-function buildUserProfilePage(user) {
+function buildUserProfilePage(user, referral, referralPrograms) {
   const wrap = el('div');
   wrap.append(usersBackButton());
 
@@ -1163,6 +1329,8 @@ function buildUserProfilePage(user) {
   };
   verifyCard.append(kycField, saveKycBtn);
   left.append(verifyCard);
+
+  left.append(refPartnershipCard(user, referral, referralPrograms || []));
 
   const xpCard = el('div', 'admin-card');
   xpCard.append(el('h3', '', t('levelCardTitle')));
@@ -2246,7 +2414,7 @@ function commercialSubNav(active) {
   [
     ['plans', t('comSubPlans')], ['wallet', t('comSubWallet')], ['subscriptions', t('comSubSubscriptions')],
     ['storage', t('comSubStorage')], ['transactions', t('comSubTransactions')], ['discountCodes', t('comSubDiscountCodes')], ['history', t('comSubHistory')],
-    ['cryptoPayments', t('comSubCryptoPayments')], ['aiCostControl', t('comSubAiCostControl')]
+    ['cryptoPayments', t('comSubCryptoPayments')], ['aiCostControl', t('comSubAiCostControl')], ['referrals', t('comSubReferrals')]
   ].forEach(([id, label]) => {
     const btn = el('button', 'admin-seg-btn' + (id === active ? ' active' : ''), label);
     btn.type = 'button';
@@ -2955,6 +3123,373 @@ function commercialDiscountCodesSubTab() {
   });
 }
 
+// Referral & Affiliate programs - admin console for server/admin/routes.referrals.mjs. Every
+// mutation here requires a recent admin re-authentication server-side (STEP_UP_REQUIRED -> the
+// same comStepUpRequired toast every other Commercial sub-tab already uses) and is written to the
+// audit log. Deliberately English-only, same convention as the rest of this tab.
+const REF_SOURCES = ['subscription', 'storage_purchase', 'ai_margin'];
+const REF_SOURCE_LABEL = { subscription: 'Subscription payments', storage_purchase: 'Storage purchases', ai_margin: 'AI gross margin' };
+function refFmtUsd(microUsd) { return fmtMicroUsd(microUsd); }
+function refFail(error) { showToast(error && error.message === 'STEP_UP_REQUIRED' ? t('comStepUpRequired') : ((error && error.message) || 'REQUEST_FAILED'), 'danger'); }
+
+// One shared rules editor for "create program" (first draft), "new version" and "edit draft version" - returns
+// {wrap, read()} where read() builds exactly the payload shape server/commercial/referral-rules.mjs's
+// parseProgramVersionInput() expects (commissionPercent -> commissionBps is the ONLY unit conversion the server
+// itself does not do for the admin; every other field already matches the API 1:1).
+function versionRulesForm(existing) {
+  const wrap = el('div', 'admin-form-grid');
+  const commission = field(t('refFieldCommissionPercent'), 'number', existing ? existing.commissionPercent : 10);
+  const sourcesWrap = el('label', 'field');
+  sourcesWrap.append(el('span', '', t('refFieldSources')));
+  const sourcesRow = el('div', 'admin-form-row');
+  const sourceChecks = {};
+  REF_SOURCES.forEach((source) => {
+    const label = el('label', 'field-check');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = existing ? existing.eligibleSources.includes(source) : source === 'subscription';
+    label.append(box, el('span', '', REF_SOURCE_LABEL[source]));
+    sourceChecks[source] = box;
+    sourcesRow.append(label);
+  });
+  sourcesWrap.append(sourcesRow);
+  const plans = field(t('refFieldPlans'), 'text', existing && existing.eligiblePlans ? existing.eligiblePlans.join(', ') : '');
+  const products = field(t('refFieldProducts'), 'text', existing && existing.eligibleProducts ? existing.eligibleProducts.join(', ') : '');
+  const window_ = field(t('refFieldAttributionWindow'), 'number', existing ? existing.attributionWindowDays : 30);
+  const hold = field(t('refFieldHoldDays'), 'number', existing ? existing.holdDays : 14);
+  const term = field(t('refFieldTermDays'), 'number', existing && existing.commissionTermDays != null ? existing.commissionTermDays : '');
+  const cashOutMin = field(t('refFieldCashOutMin'), 'number', existing ? existing.cashOutMinimumUsd : 10);
+  const budgetCap = field(t('refFieldBudgetCap'), 'number', existing && existing.programBudgetCapUsd != null ? existing.programBudgetCapUsd : '');
+  const perUserCap = field(t('refFieldPerUserCap'), 'number', existing && existing.perUserCapUsd != null ? existing.perUserCapUsd : '');
+  const perCustomerCap = field(t('refFieldPerCustomerCap'), 'number', existing && existing.perCustomerCapUsd != null ? existing.perCustomerCapUsd : '');
+  const campaignCap = field(t('refFieldCampaignCap'), 'number', existing && existing.campaignCapUsd != null ? existing.campaignCapUsd : '');
+  const maxCustomers = field(t('refFieldMaxCustomers'), 'number', existing && existing.maxReferredCustomers != null ? existing.maxReferredCustomers : '');
+  const minMarginUsd = field(t('refFieldMinMarginUsd'), 'number', existing ? existing.minMarginUsd : 0);
+  const minMarginPercent = field(t('refFieldMinMarginPercent'), 'number', existing ? existing.minMarginPercent : 0);
+  const paymentFeePercent = field(t('refFieldPaymentFeePercent'), 'number', existing ? existing.paymentFeePercent : 0);
+  const serviceCostPercent = field(t('refFieldServiceCostPercent'), 'number', existing ? existing.serviceCostPercent : 0);
+  [commission.wrap, sourcesWrap, plans.wrap, products.wrap, window_.wrap, hold.wrap, term.wrap, cashOutMin.wrap, budgetCap.wrap,
+    perUserCap.wrap, perCustomerCap.wrap, campaignCap.wrap, maxCustomers.wrap, minMarginUsd.wrap, minMarginPercent.wrap, paymentFeePercent.wrap, serviceCostPercent.wrap
+  ].forEach((node) => wrap.append(node));
+
+  function csvOrNull(input) {
+    const parts = input.value.split(',').map((v) => v.trim()).filter(Boolean);
+    return parts.length ? parts : null;
+  }
+  function numOrNull(input) { return input.value === '' ? null : Number(input.value); }
+  function read() {
+    return {
+      commissionBps: Math.round(Number(commission.input.value) * 100),
+      eligibleSources: REF_SOURCES.filter((source) => sourceChecks[source].checked),
+      eligiblePlans: csvOrNull(plans.input), eligibleProducts: csvOrNull(products.input),
+      attributionWindowDays: Number(window_.input.value), holdDays: Number(hold.input.value),
+      commissionTermDays: numOrNull(term.input), cashOutMinimumUsd: Number(cashOutMin.input.value),
+      programBudgetCapUsd: numOrNull(budgetCap.input), perUserCapUsd: numOrNull(perUserCap.input),
+      perCustomerCapUsd: numOrNull(perCustomerCap.input), campaignCapUsd: numOrNull(campaignCap.input),
+      maxReferredCustomers: numOrNull(maxCustomers.input), minMarginUsd: Number(minMarginUsd.input.value),
+      minMarginPercent: Number(minMarginPercent.input.value), paymentFeePercent: Number(paymentFeePercent.input.value),
+      serviceCostPercent: Number(serviceCostPercent.input.value)
+    };
+  }
+  return { wrap, read };
+}
+
+function refVersionRow(program, version, isDraft) {
+  const row = el('div', 'admin-card');
+  const statusClass = { draft: 'unknown', published: 'valid', superseded: 'unknown', archived: 'invalid' }[version.status] || 'unknown';
+  const head = el('div', 'admin-form-row');
+  head.append(el('span', 'badge status-' + statusClass, version.status), el('strong', '', 'v' + version.versionNo),
+    el('span', '', version.commissionPercent + '% · hold ' + version.holdDays + 'd · cash-out min $' + version.cashOutMinimumUsd));
+  row.append(head);
+  if (isDraft) {
+    const form = versionRulesForm(version);
+    row.append(form.wrap);
+    const saveBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminSaveDraft'));
+    saveBtn.type = 'button';
+    saveBtn.onclick = () => api('/commercial/referrals/programs/' + program.id + '/versions/' + version.id, { method: 'PATCH', body: JSON.stringify(form.read()) })
+      .then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+    const publishBtn = el('button', 'btn btn-primary btn-sm', t('refAdminPublish'));
+    publishBtn.type = 'button';
+    publishBtn.onclick = () => api('/commercial/referrals/programs/' + program.id + '/versions/' + version.id + '/publish', { method: 'POST' })
+      .then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+    row.append(saveBtn, publishBtn);
+  } else if (version.status === 'published') {
+    const archiveBtn = el('button', 'btn btn-danger btn-sm', t('refAdminArchive'));
+    archiveBtn.type = 'button';
+    archiveBtn.onclick = () => { if (window.confirm(t('refAdminArchive') + '?')) api('/commercial/referrals/programs/' + program.id + '/versions/' + version.id + '/archive', { method: 'POST' }).then(() => { showToast(t('saved')); renderTab(); }).catch(refFail); };
+    row.append(archiveBtn);
+  }
+  return row;
+}
+
+function refProgramCard(program, expandedId, setExpanded) {
+  const card = el('div', 'admin-card');
+  const statusClass = { draft: 'unknown', active: 'valid', paused: 'unknown', archived: 'invalid' }[program.status] || 'unknown';
+  const head = el('div', 'admin-form-row');
+  head.append(el('h3', '', program.name), el('span', 'badge status-' + statusClass, program.status), el('span', 'badge', program.kind));
+  if (program.isPlatformDefault) head.append(el('span', 'badge status-valid', 'default'));
+  card.append(head);
+  card.append(kvRow(t('refAdminBudgetUsed'), refFmtUsd((program.budgetUsedUsd || 0) * 1000000)));
+  if (program.budgetCapUsd != null) {
+    card.append(kvRow(t('refAdminBudgetCap'), refFmtUsd(program.budgetCapUsd * 1000000)));
+    card.append(kvRow(t('refAdminBudgetRemaining'), refFmtUsd((program.budgetRemainingUsd || 0) * 1000000)));
+  }
+  const actions = el('div', 'admin-form-row');
+  if (program.status === 'active') { const b = el('button', 'btn btn-secondary btn-sm', t('refAdminPause')); b.type = 'button'; b.onclick = () => api('/commercial/referrals/programs/' + program.id + '/pause', { method: 'POST' }).then(() => renderTab()).catch(refFail); actions.append(b); }
+  if (program.status === 'paused') { const b = el('button', 'btn btn-secondary btn-sm', t('refAdminResume')); b.type = 'button'; b.onclick = () => api('/commercial/referrals/programs/' + program.id + '/resume', { method: 'POST' }).then(() => renderTab()).catch(refFail); actions.append(b); }
+  if (program.status !== 'archived') { const b = el('button', 'btn btn-danger btn-sm', t('refAdminArchive')); b.type = 'button'; b.onclick = () => { if (window.confirm(t('refAdminArchive') + '?')) api('/commercial/referrals/programs/' + program.id + '/archive', { method: 'POST' }).then(() => renderTab()).catch(refFail); }; actions.append(b); }
+  const toggleBtn = el('button', 'btn btn-secondary btn-sm', expandedId === program.id ? t('refAdminVersionHistory') + ' ▲' : t('refAdminVersionHistory') + ' ▼');
+  toggleBtn.type = 'button';
+  toggleBtn.onclick = () => { setExpanded(expandedId === program.id ? null : program.id); renderTab(); };
+  actions.append(toggleBtn);
+  card.append(actions);
+
+  if (expandedId === program.id) {
+    if (!program.versions.length) card.append(el('p', 'hint', t('refAdminNoVersions')));
+    program.versions.forEach((version) => card.append(refVersionRow(program, version, version.status === 'draft')));
+    const published = program.versions.find((v) => v.status === 'published');
+    const newVersionBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminNewVersion'));
+    newVersionBtn.type = 'button';
+    newVersionBtn.onclick = () => {
+      api('/commercial/referrals/programs/' + program.id + '/versions', {
+        method: 'POST', body: JSON.stringify({ cloneFromVersionId: published ? published.id : undefined, rules: published ? {} : versionRulesForm(null).read() })
+      }).then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+    };
+    card.append(newVersionBtn);
+  }
+  return card;
+}
+
+function refPreviewCard() {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('refAdminPreview')));
+  const form = versionRulesForm(null);
+  card.append(form.wrap);
+  const priceField = field('Custom price to preview (USD, optional)', 'number', '');
+  card.append(priceField.wrap);
+  const resultsWrap = el('div');
+  const previewBtn = el('button', 'btn btn-primary btn-sm', t('refAdminPreview'));
+  previewBtn.type = 'button';
+  previewBtn.onclick = () => {
+    const body = form.read();
+    if (priceField.input.value !== '') body.customPriceUsd = Number(priceField.input.value);
+    api('/commercial/referrals/preview', { method: 'POST', body: JSON.stringify(body) }).then((result) => {
+      resultsWrap.replaceChildren();
+      resultsWrap.append(el('h4', '', t('refAdminPreviewResults')));
+      if (!result.samples.length) { resultsWrap.append(el('p', 'hint', 'No paid plans configured yet - try a custom price.')); return; }
+      const tableWrap = el('div', 'admin-table-wrap');
+      const table = document.createElement('table');
+      table.className = 'admin-table';
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      ['Plan', 'Price', 'Formula commission', 'Granted commission', t('refAdminOutcome'), 'Contribution margin'].forEach((label) => headRow.append(el('th', '', label)));
+      thead.append(headRow); table.append(thead);
+      const tbody = document.createElement('tbody');
+      result.samples.forEach((sample) => {
+        const row = document.createElement('tr');
+        [sample.label, '$' + sample.priceUsd.toFixed(2), '$' + sample.formulaCommissionUsd.toFixed(2), '$' + sample.commissionUsd.toFixed(2), sample.outcome, '$' + sample.contributionMarginUsd.toFixed(2) + ' (' + sample.contributionMarginPercent + '%)']
+          .forEach((value) => row.append(el('td', '', String(value))));
+        tbody.append(row);
+      });
+      table.append(tbody); tableWrap.append(table); resultsWrap.append(tableWrap);
+    }).catch(refFail);
+  };
+  card.append(previewBtn, resultsWrap);
+  return card;
+}
+
+function refReportCard(report) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('refAdminReportTitle')));
+  const grid = el('div', 'admin-form-grid');
+  [
+    [t('refAdminClicks'), fmtNumber(report.funnel.clicks)], [t('refAdminVisitors'), fmtNumber(report.funnel.uniqueVisitors)],
+    [t('refAdminSignups'), fmtNumber(report.funnel.signups)], [t('refAdminFlaggedSignups'), fmtNumber(report.funnel.flaggedSignups)],
+    [t('refAdminQualified'), fmtNumber(report.funnel.qualifiedCustomers)],
+    [t('refAdminPending'), refFmtUsd(report.liability.pendingMicroUsd)], [t('refAdminAvailable'), refFmtUsd(report.liability.availableMicroUsd)],
+    [t('refAdminConverted'), refFmtUsd(report.liability.convertedAiCreditMicroUsd)], [t('refAdminReserved'), refFmtUsd(report.liability.reservedPayoutMicroUsd)],
+    [t('refAdminPaid'), refFmtUsd(report.liability.paidMicroUsd)], [t('refAdminReversed'), refFmtUsd(report.liability.reversedMicroUsd)],
+    [t('refAdminOpenDebt'), refFmtUsd(report.liability.openDebtMicroUsd)],
+    [t('refAdminNetRevenue'), refFmtUsd(report.economics.netRevenueMicroUsd)], [t('refAdminExpectedCosts'), refFmtUsd(report.economics.expectedCostsMicroUsd)],
+    [t('refAdminActualCosts'), refFmtUsd(report.economics.actualCostsMicroUsd)], [t('refAdminMargin'), refFmtUsd(report.economics.postCommissionContributionMarginMicroUsd)],
+    [t('refAdminPayoutsRequested'), fmtNumber(report.payouts.requested)], [t('refAdminPayoutsInReview'), fmtNumber(report.payouts.inReview)],
+    [t('refAdminPayoutsPaid'), fmtNumber(report.payouts.paid)], [t('refAdminPayoutsClosed'), fmtNumber(report.payouts.rejectedOrCancelled)]
+  ].forEach(([label, value]) => grid.append(kvRow(label, value)));
+  card.append(grid);
+  if (Object.keys(report.skippedEarnings.byReason).length) {
+    card.append(el('h4', '', t('refAdminSkippedTitle')));
+    const list = document.createElement('ul');
+    Object.entries(report.skippedEarnings.byReason).forEach(([reason, count]) => { const li = document.createElement('li'); li.textContent = reason + ': ' + count; list.append(li); });
+    card.append(list);
+  }
+  return card;
+}
+
+function refPayoutConfigCard(config) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('refAdminPayoutConfigTitle')));
+  card.append(kvRow('Chain', config.chainName + ' (id ' + config.chainId + ')'));
+  card.append(kvRow(t('refPcRpcConfigured'), el('span', 'badge status-' + (config.rpcConfigured ? 'valid' : 'invalid'), config.rpcConfigured ? t('saved') : t('refPcRpcMissing'))));
+  card.append(kvRow(t('refPcComplete'), el('span', 'badge status-' + (config.complete ? 'valid' : 'invalid'), String(config.complete))));
+  const enabledField = el('label', 'field-check');
+  const enabledBox = document.createElement('input'); enabledBox.type = 'checkbox'; enabledBox.checked = config.enabled;
+  enabledField.append(enabledBox, el('span', '', t('refPcEnabled')));
+  const tokenField = field(t('refPcTokenContract'), 'text', config.tokenContract || '');
+  const treasuryField = field(t('refPcTreasury'), 'text', config.treasurySender || '');
+  const decimalsField = field(t('refPcDecimals'), 'number', config.tokenDecimals);
+  const confirmationsField = field(t('refPcMinConfirmations'), 'number', config.minConfirmations);
+  const minPayoutField = field(t('refPcMinPayoutUsd'), 'number', config.minPayoutUsd);
+  const explorerField = field(t('refPcExplorer'), 'text', config.explorerTxUrlTemplate || '');
+  [tokenField, treasuryField].forEach((f) => { f.input.dir = 'ltr'; });
+  const kycSelect = document.createElement('select');
+  [['verified', 'Verified KYC required'], ['none', 'No KYC requirement']].forEach(([value, label]) => kycSelect.append(new Option(label, value, false, config.requiredKycStatus === value)));
+  const kycWrap = el('label', 'field'); kycWrap.append(el('span', '', t('refPcKyc')), kycSelect);
+  const reauthField = field(t('refPcReauthMinutes'), 'number', config.reauthMaxAgeMinutes);
+  const termsField = field(t('refPcTermsVersion'), 'text', config.termsVersion);
+  const makerCheckerField = el('label', 'field-check');
+  const makerCheckerBox = document.createElement('input'); makerCheckerBox.type = 'checkbox'; makerCheckerBox.checked = config.makerCheckerRequired;
+  makerCheckerField.append(makerCheckerBox, el('span', '', t('refPcMakerChecker')));
+  card.append(enabledField, tokenField.wrap, treasuryField.wrap, decimalsField.wrap, confirmationsField.wrap, minPayoutField.wrap, explorerField.wrap, kycWrap, reauthField.wrap, termsField.wrap, makerCheckerField);
+  const saveBtn = el('button', 'btn btn-primary btn-sm', t('refPcSave'));
+  saveBtn.type = 'button';
+  saveBtn.onclick = () => {
+    api('/commercial/referrals/payout-config', {
+      method: 'PATCH', body: JSON.stringify({
+        enabled: enabledBox.checked, tokenContract: tokenField.input.value.trim(), treasurySender: treasuryField.input.value.trim(),
+        tokenDecimals: Number(decimalsField.input.value), minConfirmations: Number(confirmationsField.input.value),
+        minPayoutUsd: Number(minPayoutField.input.value), explorerTxUrlTemplate: explorerField.input.value.trim(),
+        requiredKycStatus: kycSelect.value, reauthMaxAgeMinutes: Number(reauthField.input.value), termsVersion: termsField.input.value.trim(),
+        makerCheckerRequired: makerCheckerBox.checked
+      })
+    }).then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+  };
+  card.append(saveBtn);
+  return card;
+}
+
+function refPayoutQueueCard(payouts) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('refAdminPayoutQueueTitle')));
+  if (!payouts.length) { card.append(el('p', 'hint', t('refAdminNoPayouts'))); return card; }
+  payouts.forEach((payout) => {
+    const row = el('div', 'admin-card');
+    const head = el('div', 'admin-form-row');
+    head.append(el('span', 'badge', payout.status), el('strong', '', refFmtUsd(payout.amountMicroUsd)), el('span', '', payout.recipientMasked));
+    if (payout.hasFlaggedRisk) head.append(el('span', 'badge status-invalid', t('refAdminPayoutRisk')));
+    row.append(head);
+    row.append(kvRow(t('refAdminPayoutUser'), payout.userId));
+    if (payout.txHash) row.append(kvRow('Tx hash', payout.txHash));
+    if (payout.verification && payout.verification.reason) row.append(kvRow('Last verification', payout.verification.ok ? 'ok' : payout.verification.reason));
+    const actions = el('div', 'admin-form-row');
+    const doAction = (path, body) => api('/commercial/referrals/payouts/' + payout.id + '/' + path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }).then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+    if (payout.status === 'requested') { const b = el('button', 'btn btn-secondary btn-sm', t('refAdminStartReview')); b.type = 'button'; b.onclick = () => doAction('start-review'); actions.append(b); }
+    if (payout.status === 'under_review') {
+      const approve = el('button', 'btn btn-primary btn-sm', t('refAdminApprove')); approve.type = 'button'; approve.onclick = () => doAction('approve'); actions.append(approve);
+    }
+    if (['requested', 'under_review', 'approved'].includes(payout.status)) {
+      const rejectBtn = el('button', 'btn btn-danger btn-sm', t('refAdminReject')); rejectBtn.type = 'button';
+      rejectBtn.onclick = () => { const reason = window.prompt(t('refAdminReasonPlaceholder')); if (reason) doAction('reject', { reason }); };
+      actions.append(rejectBtn);
+    }
+    if (['approved', 'submitted'].includes(payout.status)) {
+      const hashInput = document.createElement('input');
+      hashInput.type = 'text'; hashInput.placeholder = t('refAdminHashPlaceholder'); hashInput.dir = 'ltr'; hashInput.className = 'admin-inline-input';
+      const submitHashBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminSubmitHash')); submitHashBtn.type = 'button';
+      submitHashBtn.onclick = () => { if (hashInput.value.trim()) doAction('submit-hash', { txHash: hashInput.value.trim() }); };
+      actions.append(hashInput, submitHashBtn);
+    }
+    if (payout.status === 'submitted') { const b = el('button', 'btn btn-primary btn-sm', t('refAdminVerify')); b.type = 'button'; b.onclick = () => doAction('verify'); actions.append(b); }
+    if (payout.status === 'confirmed') { const b = el('button', 'btn btn-primary btn-sm', t('refAdminMarkPaid')); b.type = 'button'; b.onclick = () => doAction('mark-paid'); actions.append(b); }
+    if (['submitted', 'confirmed'].includes(payout.status)) {
+      const failBtn = el('button', 'btn btn-danger btn-sm', t('refAdminMarkFailed')); failBtn.type = 'button';
+      failBtn.onclick = () => { const reason = window.prompt(t('refAdminReasonPlaceholder')); if (reason) doAction('fail', { reason }); };
+      actions.append(failBtn);
+    }
+    const revealBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminReveal')); revealBtn.type = 'button';
+    revealBtn.onclick = () => api('/commercial/referrals/payouts/' + payout.id + '/reveal-recipient', { method: 'POST' }).then((res) => window.alert(res.address)).catch(refFail);
+    actions.append(revealBtn);
+    row.append(actions);
+    card.append(row);
+  });
+  return card;
+}
+
+function refDebtsCard(debts) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('refAdminDebtsTitle')));
+  if (!debts.length) { card.append(el('p', 'hint', t('refAdminNoDebts'))); return card; }
+  debts.forEach((debt) => {
+    const row = el('div', 'admin-form-row');
+    row.append(el('span', '', debt.userId), el('span', 'badge', debt.status), el('span', '', refFmtUsd(debt.amountMicroUsd - debt.recoveredMicroUsd) + ' open'));
+    const resolveBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminDebtWriteOff')); resolveBtn.type = 'button';
+    resolveBtn.onclick = () => api('/commercial/referrals/debts/' + debt.id + '/resolve', { method: 'POST', body: JSON.stringify({ status: 'written_off', note: window.prompt('Note (optional)') || undefined }) })
+      .then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+    row.append(resolveBtn);
+    card.append(row);
+  });
+  return card;
+}
+
+function refFlaggedCard(attributions) {
+  const card = el('div', 'admin-card');
+  card.append(el('h3', '', t('refAdminFlaggedTitle')));
+  if (!attributions.length) { card.append(el('p', 'hint', t('refAdminNoFlagged'))); return card; }
+  attributions.forEach((attribution) => {
+    const row = el('div', 'admin-form-row');
+    row.append(el('span', '', attribution.referrerUserId), el('span', '', (attribution.riskFlags || []).join(', ')));
+    const clearBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminClearRisk')); clearBtn.type = 'button';
+    clearBtn.onclick = () => api('/commercial/referrals/attributions/' + attribution.id + '/risk', { method: 'POST', body: JSON.stringify({ status: 'cleared' }) }).then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+    const voidBtn = el('button', 'btn btn-danger btn-sm', t('refAdminVoid')); voidBtn.type = 'button';
+    voidBtn.onclick = () => { const reason = window.prompt(t('refAdminReasonPlaceholder')); if (reason) api('/commercial/referrals/attributions/' + attribution.id + '/void', { method: 'POST', body: JSON.stringify({ reason }) }).then(() => { showToast(t('saved')); renderTab(); }).catch(refFail); };
+    row.append(clearBtn, voidBtn);
+    card.append(row);
+  });
+  return card;
+}
+
+let refExpandedProgramId = null;
+function commercialReferralsSubTab() {
+  return Promise.all([
+    api('/commercial/referrals/programs'), api('/commercial/referrals/payout-config'), api('/commercial/referrals/report'),
+    api('/commercial/referrals/payouts'), api('/commercial/referrals/debts?status=open'), api('/commercial/referrals/attributions?riskReviewStatus=flagged')
+  ]).then(([programsData, payoutConfig, report, payoutsData, debts, attributionsData]) => {
+    const wrap = el('div', 'admin-grid');
+    wrap.append(refReportCard(report));
+
+    const programsCard = el('div', 'admin-card');
+    programsCard.append(el('h3', '', t('refAdminProgramsTitle')));
+    if (!programsData.programs.length) programsCard.append(el('p', 'hint', t('refAdminNoPrograms')));
+    programsData.programs.forEach((program) => programsCard.append(refProgramCard(program, refExpandedProgramId, (id) => { refExpandedProgramId = id; })));
+
+    const createCard = el('div', 'admin-card');
+    createCard.append(el('h3', '', t('refAdminCreateProgram')));
+    const kindSelect = document.createElement('select');
+    [['standard', 'Standard'], ['influencer', 'Influencer']].forEach(([value, label]) => kindSelect.append(new Option(label, value)));
+    const kindWrap = el('label', 'field'); kindWrap.append(el('span', '', t('refAdminProgramKind')), kindSelect);
+    const nameField = field(t('refAdminProgramName'), 'text', '');
+    const defaultField = el('label', 'field-check');
+    const defaultBox = document.createElement('input'); defaultBox.type = 'checkbox';
+    defaultField.append(defaultBox, el('span', '', t('refAdminIsDefault')));
+    const autoEnrollField = el('label', 'field-check');
+    const autoEnrollBox = document.createElement('input'); autoEnrollBox.type = 'checkbox';
+    autoEnrollField.append(autoEnrollBox, el('span', '', t('refAdminAutoEnroll')));
+    const createRules = versionRulesForm(null);
+    createCard.append(kindWrap, nameField.wrap, defaultField, autoEnrollField, createRules.wrap);
+    const createBtn = el('button', 'btn btn-primary btn-sm', t('refAdminCreateProgram'));
+    createBtn.type = 'button';
+    createBtn.onclick = () => {
+      api('/commercial/referrals/programs', {
+        method: 'POST',
+        body: JSON.stringify({ kind: kindSelect.value, name: nameField.input.value.trim(), isPlatformDefault: defaultBox.checked, autoEnrollUnassigned: autoEnrollBox.checked, rules: createRules.read() })
+      }).then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
+    };
+    createCard.append(createBtn);
+
+    wrap.append(createCard, programsCard, refPreviewCard(), refPayoutConfigCard(payoutConfig), refPayoutQueueCard(payoutsData.payouts), refDebtsCard(debts), refFlaggedCard(attributionsData.attributions));
+    return wrap;
+  });
+}
+
 // Crypto payments (BSC) - admin config sub-tab (admin-config task). Unlike every OTHER Commercial
 // sub-tab (deliberately English-only for now, per commercialSubNav's own comment above), this one
 // is fully localized in en/fa/ar/es - a new requirement specific to this task, not a retroactive
@@ -3439,7 +3974,7 @@ function listAdaptersProvidersForSelect() { return ['openai', 'anthropic', 'gemi
 const COMMERCIAL_SUB_TAB_BUILDERS = {
   plans: commercialPlansSubTab, wallet: commercialWalletSubTab, subscriptions: commercialSubscriptionsSubTab,
   storage: commercialStorageSubTab, transactions: commercialTransactionsSubTab, discountCodes: commercialDiscountCodesSubTab, history: commercialHistorySubTab,
-  cryptoPayments: commercialCryptoPaymentsSubTab, aiCostControl: commercialAiCostControlSubTab
+  cryptoPayments: commercialCryptoPaymentsSubTab, aiCostControl: commercialAiCostControlSubTab, referrals: commercialReferralsSubTab
 };
 function commercialTab() {
   const builder = COMMERCIAL_SUB_TAB_BUILDERS[commercialSubTab] || commercialPlansSubTab;
@@ -4412,6 +4947,9 @@ function describeGateError(error) {
 // Minimal testability surface (this page otherwise has no window export, matching
 // select/app.js's own standalone-script style) - route() and the XP placeholder tab are pure
 // enough to unit-test directly rather than only indirectly through hash/DOM interaction.
-window.TradeJournalAdminApp = { route: route, xpTab: xpTab, usersTab: usersTab, aiTab: aiTab, commercialAiCostControlSubTab: commercialAiCostControlSubTab };
+window.TradeJournalAdminApp = {
+  route: route, xpTab: xpTab, usersTab: usersTab, aiTab: aiTab, commercialAiCostControlSubTab: commercialAiCostControlSubTab,
+  commercialReferralsSubTab: commercialReferralsSubTab, userProfilePage: userProfilePage
+};
 
 boot();

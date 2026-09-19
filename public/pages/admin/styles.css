@@ -298,6 +298,16 @@ table.admin-table tbody tr:hover { background:rgba(255,255,255,.025); }
 .admin-form-row { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; align-items:end; margin-top:6px; }
 .admin-form-row .field { margin-bottom:0; }
 .admin-form-row-submit > *:last-child { grid-column:1 / -1; }
+/* Referral Programs (Commercial admin): a longer form with many optional numeric/rule fields
+   (rate, caps, hold/term days, margin guard...) - same auto-fill precedent as .admin-grid, just
+   applied inside one card instead of across the page, so a long rules editor wraps into readable
+   columns instead of one narrow stack. */
+.admin-form-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; margin-top:6px; }
+.admin-form-grid .field { margin-bottom:0; }
+/* A short inline text input next to a button (e.g. "enter tx hash" + Submit) - never a full-width
+   .field row for a single short value entered right before an immediate action. */
+.admin-inline-input { height:34px; padding:0 10px; border-radius:6px; border:1px solid var(--line); background-color:rgba(255,255,255,.03); color:var(--text); font:inherit; font-size:13px; min-width:220px; }
+.admin-inline-input:focus { outline:0; border-color:var(--violet); }
 /* A card holding a genuinely wide table (Wallet sub-tab's AI-billing-readiness and ledger
    cards) - spans the full row of its .admin-grid instead of being squeezed into one narrow
    auto-fill column alongside the form cards next to it. */
