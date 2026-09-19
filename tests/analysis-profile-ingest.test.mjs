@@ -8,6 +8,10 @@ import test, { after, afterEach } from 'node:test';
 // understanding + specific checkable concepts). Same "import once, stub globalThis.fetch"
 // convention as tests/analysis-profile-suggest.test.mjs - the underlying provider HTTP call is
 // stubbed, never a mocked callProvider() seam of its own.
+// This file imports the AI gateway, which binds a fixed port (8787) as a side effect of the import - so two test
+// processes running in parallel can collide on it and one dies at import time. Port 0 asks the OS for a free one.
+process.env.PATTERN_AI_PORT = '0';
+process.env.PORT = '0';
 const serverModule = await import('../server/pattern-ai-server.mjs');
 const { ingestAnalysisProfileLearning, buildAnalysisProfileIngestSystemPrompt, sanitizeAnalysisProfileIngest, analysisProfileIngestFormat } = serverModule;
 const server = serverModule.default;

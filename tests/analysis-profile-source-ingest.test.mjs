@@ -8,6 +8,10 @@ import { estimateTokensFromPayload } from '../server/commercial/wallet-service.m
 // (native document understanding by the provider - no local PDF parsing exists), the honest
 // provider gate, the bounded wallet reservation, and the free /read-source route. Same "import
 // once, stub globalThis.fetch" convention as tests/analysis-profile-ingest.test.mjs.
+// This file imports the AI gateway, which binds a fixed port (8787) as a side effect of the import - so two test
+// processes running in parallel can collide on it and one dies at import time. Port 0 asks the OS for a free one.
+process.env.PATTERN_AI_PORT = '0';
+process.env.PORT = '0';
 const serverModule = await import('../server/pattern-ai-server.mjs');
 const { ingestAnalysisProfileLearning, readAnalysisProfileSource, analysisProfileReservationPayload, ANALYSIS_PROFILE_PDF_SUPPORT, AI_BILLED_ROUTES } = serverModule;
 const server = serverModule.default;
