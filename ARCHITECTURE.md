@@ -1543,7 +1543,7 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   - **List/detail UI:** `navrya-src/analysisProfilesView.jsx` - `AnalysisProfilesTab({lang,
     header})`: search (folds Arabic/Persian keyboard forms/ZWNJ/digits via the Style Registry's own
     `search()`), card grid (Open/Edit/Duplicate/Set as Default/Report/Delete), and a detail view
-    with Overview / Setup / Concepts / Knowledge / Memory / Report tabs. `header` is an opaque node the hosting
+    with Overview / Setup / Concepts / Knowledge / Memory / Chat / Preview / Report tabs. `header` is an opaque node the hosting
     hub renders above the LIST screen only (its own hero + the Patterns/Strategies/Positions/
     Analysis Profiles pill bar) - fixes a real bug where opening this tab used to strand the trader
     with no way back to another tab except the sidebar; the detail screen keeps its own real
@@ -1670,15 +1670,53 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     `estimatedExtraPromptTokens` ~ 1 token per 30 decoded bytes, capped at 300k) because
     `estimateTokensFromPayload` sizes a hold from the JSON length and a 15 MB base64 body would reserve
     ~5M tokens; settlement always true-ups to the real usage, and the estimator only ever ADDS the extra.
-  - **Session AI Analysis integration:** `server/pattern-ai-server.mjs`'s
-    `buildSessionAnalysisSystemPrompt` weaves the profile's customFocuses, concepts and
-    understanding into the prompt. A concept with `priority:'mandatory'` becomes a real
-    instruction - "directly address each one... never silently omit one, never invent one that
-    isn't there" - the one deliberate, explicit exception to "profile content is data, not an
-    instruction"; `preferred`/`reference` concepts and the understanding summary stay framed as
-    data/historical context. Verifiable per-concept coverage in the structured result schema (so a
-    report could show whether a mandatory concept was actually addressed) is left for a future
-    Session-integration pass - see the Session-readiness note below.
+  - **Shared profile brief:** `server/ai/analysis-profile-brief.mjs`'s `buildAnalysisProfileBrief()`
+    - the ONE place every prompt that reads a profile is built from: the Session analysis system
+    prompt, the teaching chat, and the Preview tab's sample. Weaves the profile's customFocuses,
+    concepts and understanding into a deterministic, ordered set of lines. A concept with
+    `priority:'mandatory'` becomes a real instruction - "directly address each one... never
+    silently omit one, never invent one that isn't there" - the one deliberate, explicit exception
+    to "profile content is data, not an instruction"; `preferred`/`reference` concepts and the
+    understanding summary stay framed as data/historical context. Deliberately excludes the
+    per-request adherence (open/balanced/strict) - the Session prompt appends that line separately,
+    after the brief, preserving the "freedom/strictness is never part of a profile" boundary even
+    though this module is now the one place three different features read a profile through.
+    Verifiable per-concept coverage in the structured result schema (so a report could show whether
+    a mandatory concept was actually addressed) is left for a future Session-integration pass - see
+    the Session-readiness note below.
+  - **Preview tab, Engine Brief (free, Phase 4):** `public/pages/shared/analysis-profile-brief.js` is
+    a classic-script twin of the server brief module, proven byte-identical across nine shared
+    fixtures (`tests/helpers/analysis-profile-brief-fixtures.mjs`) including every capping rule and
+    malformed-input case. The Preview tab computes it locally from the profile's own already-resolved
+    context (`analysis-context.js`'s `getAnalysisContext()`) - no server round trip, so it can never
+    fail or be billed, and what the trader SEES is, by construction, what the model RECEIVES.
+  - **Preview tab, Sample analysis (billed, opt-in, Phase 4):** `server/pattern-ai-server.mjs`'s
+    `previewAnalysisProfile()` (`POST /api/analysis-profiles/preview`) - a clearly-labelled
+    ILLUSTRATIVE sample; the system prompt explicitly forbids inventing a specific price, date, or
+    claiming to have observed a real chart. Each returned observation has its own "Correct this",
+    which reuses `EngineLearningPanel`'s existing propose/review/apply flow via an `editable` preset
+    variant (below) rather than a second, bespoke review UI.
+  - **Chat tab (Phase 4):** `navrya-src/analysisProfileChat.jsx` + `server/pattern-ai-server.mjs`'s
+    `chatWithAnalysisProfile()` (`POST /api/analysis-profiles/chat`) - an ONGOING conversation,
+    distinct from `/ingest`'s one-shot note, persisted turn by turn in `071_analysis_profile_messages
+    .sql`. A turn (the trader's message + the engine's reply) is appended in ONE request, only after
+    the billed call already succeeded, so a failed call never stores half a turn. A reply's
+    `proposals` (a concept or a rewritten understanding, dedup'd against the SAME `body.profile` the
+    brief itself was built from, never a separately-supplied copy that could disagree with what the
+    model was shown) are reviewed individually: Apply commits through the same `applyLearning()`
+    every other teaching path uses; Dismiss only resolves the proposal's status (`pending` ->
+    `applied`/`dismissed`, once - PATCH `.../messages/:messageId` can never re-resolve or rewrite the
+    engine's own words). Tokens are recorded the moment a reply lands, via one best-effort ledger
+    event, whether or not any proposal is ever applied - the same honesty rule the note-teaching
+    flow follows.
+  - **`EngineLearningPanel`'s `editable` preset (Phase 4):** the Knowledge tab's source-teaching
+    preset (`preset.text` alone is the whole material) and the Preview tab's correction preset
+    (`preset.editable:true`) share one component. An editable preset shows an actual textarea and
+    REQUIRES the trader's own typed text - a correction with no correction text would just resend
+    the sample verbatim and teach nothing; the eventual material is the fixed context plus what the
+    trader typed, never the context alone. `preset.kind` lets the correction flow use the ingest
+    system prompt's distinct correction framing ("the teaching material wins over the current
+    understanding") instead of the Knowledge tab's default `source` framing.
   - **Strategy integration (§15 of the brief):** `strategy-education.types.js`'s `Strategy`
     typedef and `strategy-education-store.js`'s `empty()`/`normalize()` gained an optional
     `linkedAnalysisProfileId` (default `null`, never implicitly auto-selected - a Strategy is
@@ -1715,7 +1753,9 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   never updated or deleted by anything in this codebase) and `070_analysis_profile_sources.sql` (the
   `analysis_profile_sources` child table - `kind` youtube|website|pdf, `status` queued|ready|taught|failed
   with the failure `error_code` kept on the row, a bounded `digest`, and for a PDF a LOOSE
-  `storage_object_id` with no FK, because the Storage page can delete an object independently). All shared normalization (URLs, custom
+  `storage_object_id` with no FK, because the Storage page can delete an object independently) and
+  `071_analysis_profile_messages.sql` (the teaching-chat conversation - `role` user|assistant,
+  `proposals` JSONB, `token_usage` JSONB; rolled to the latest 200 messages per profile). All shared normalization (URLs, custom
   focuses, concepts, understanding) lives in one dependency-free `server/db/analysis-profile-
   normalize.mjs`, imported by both `repo.pg.mjs` and `repo.memory.mjs` (and, for the concept-
   priority enum only, by `pattern-ai-server.mjs` - a pure-function import, not a database
@@ -1725,18 +1765,26 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   `server/community/routes.analysis-profiles.mjs` mounted at `/api/sync/analysis-profiles` in
   `server/community/app.mjs`, mirroring `routes.patterns.mjs`'s shape minus an `/images` route
   (this domain has no user-uploaded files), plus nested, owner-checked
-  `GET`/`POST .../:id/events` for the learning ledger and `GET`/`POST .../:id/sources`,
-  `POST .../:id/sources/pdf`, `PATCH`/`DELETE .../:id/sources/:sourceId` for knowledge sources - each
-  lazily fetched only when the owning tab opens, never part of the boot-time replica hydrate every list
-  domain participates in. A source PATCH only ever touches an allowlist (title, digest, status,
-  errorCode, taughtUnderstandingVersion): the URL and kind are fixed at creation, so a source can never
-  be re-pointed at another URL afterwards. This process never makes an outbound request to a
-  trader-supplied URL - it only RECORDS a link; reading it is the AI gateway's job. A profile holds at
-  most 40 sources and the same URL cannot be added twice (409). `repo.pg.mjs`'s `analysisProfiles.upsert()` additionally clears any other default row for
+  `GET`/`POST .../:id/events` for the learning ledger, `GET`/`POST .../:id/sources`,
+  `POST .../:id/sources/pdf`, `PATCH`/`DELETE .../:id/sources/:sourceId` for knowledge sources, and
+  `GET`/`POST .../:id/messages`, `PATCH .../:id/messages/:messageId`, `DELETE .../:id/messages` for
+  the teaching chat - each lazily fetched only when the owning tab opens, never part of the
+  boot-time replica hydrate every list domain participates in. A source PATCH only ever touches an
+  allowlist (title, digest, status, errorCode, taughtUnderstandingVersion): the URL and kind are
+  fixed at creation, so a source can never be re-pointed at another URL afterwards. This process
+  never makes an outbound request to a trader-supplied URL - it only RECORDS a link; reading it is
+  the AI gateway's job. A profile holds at most 40 sources and the same URL cannot be added twice
+  (409). A messages POST appends one atomic batch (a user message + its reply) with strictly
+  increasing timestamps computed from the real latest row under a row lock on the profile
+  (`repo.pg.mjs` - proven against a real PostgreSQL that a same-millisecond burst or a backward
+  clock step still orders correctly; `repo.memory.mjs` mirrors the same guarantee), never a plain
+  `now()` default that could tie two rows in one INSERT; a messages PATCH only ever resolves a
+  proposal's status once (`pending` -> `applied`/`dismissed`), never rewriting the engine's own
+  words. `repo.pg.mjs`'s `analysisProfiles.upsert()` additionally clears any other default row for
   the same user inside its own transaction (defense in depth, since a client that skipped its own
   clear-the-old-default step would otherwise violate the partial unique index instead of silently
-  succeeding); `repo.memory.mjs` mirrors the same contract for tests (including the cascade of the two child
-  tables when a profile is removed). **Deliberately not gated by
+  succeeding); `repo.memory.mjs` mirrors the same contract for tests (including the cascade of the
+  three child tables when a profile is removed). **Deliberately not gated by
   `createWithQuota`** - unlike Patterns/Strategies (commercial content domains with their own plan
   limits), the brief never asked Analysis Profiles to be plan-limited, so that gate was not added.
 - **Registry storage:** the Style and Focus Registries are product/domain reference data, not user
@@ -1822,7 +1870,27 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   `uploads-pdf-storage.test.mjs` (`savePdf` signature, 1024-byte window, 15 MB cap),
   `analysis-profile-knowledge-ui.test.mjs` (the store's source methods and the create-then-queue
   persistence race in a vm sandbox, `readSource` sending no provider key, PDF attachment on
-  `ingestLearning`, the real error-code mapper evaluated rather than grepped, the tab's cost discipline).
+  `ingestLearning`, the real error-code mapper evaluated rather than grepped, the tab's cost discipline);
+  **teaching chat and Preview:** `analysis-profile-brief.test.mjs` (the shared brief's deterministic
+  section order, MANDATORY-vs-other concept framing, its own re-applied caps, and the load-bearing
+  guarantee that the real Session prompt contains the brief's lines verbatim, adjacent, with only the
+  per-request adherence line appended after); `analysis-profile-brief-browser-twin.test.mjs` (the
+  browser twin proven byte-identical to the server module across nine shared fixtures -
+  `tests/helpers/analysis-profile-brief-fixtures.mjs`); `analysis-profile-messages-normalize.test.mjs`
+  (proposal/token-usage sanitizers, the resolve-once merge); `analysis-profile-messages-api-contract
+  .test.mjs` (real HTTP: atomic batches, immutable words, the 200-message rolling cap, cross-profile/
+  cross-user isolation); `analysis-profile-messages-migration-contract.test.mjs` /
+  `-postgres-integration.test.mjs` (the latter is what actually caught and proved the fix for the
+  ordering gap described in the persistence bullet above, plus a real concurrent-append race against
+  a row lock); `analysis-profile-chat.test.mjs` / `analysis-profile-preview.test.mjs` (the two billed
+  handlers - exactly one call per request, dedup against `body.profile` itself never a separate
+  copy, history capped at 24, illustrative-only framing, sanitizer defense in depth);
+  `analysis-profile-chat-ui.test.mjs` (the store's message methods, and the AI client sending the
+  FULL resolved profile context rather than the style-only shape suggest/ingest use - the exact
+  design bug these tests caught before any UI existed); `analysis-profile-chat-preview-ui.test.mjs`
+  (ChatTab's one-request turn append and per-proposal apply/dismiss, PreviewTab's free-vs-billed
+  separation, `EngineLearningPanel`'s `editable` preset requiring the trader's own typed correction,
+  pill-bar wiring).
 
 ### 7.26 Support Tickets & Notification Badges
 
