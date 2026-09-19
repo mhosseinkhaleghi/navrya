@@ -1435,11 +1435,13 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
 ### 7.25 Analysis Profiles
 
 - **Purpose:** A new, first-class domain describing *how a given user reads a chart* - their
-  primary analytical lens/style, up to two secondary lenses (Hybrid), and the Focus Areas they
-  check first - independent of every other domain that already used the word "strategy" or
-  "pattern" for something else entirely. Built as the foundation a future AI chart-analysis
-  feature will consume; **no chart-analysis AI, scenario generation, or "AI freedom/strictness"
-  preference is implemented anywhere in this domain** - see the explicit boundary note below.
+  primary analytical lens/style, up to two secondary lenses (Hybrid), the Focus Areas they check
+  first, and (since the Training pass below) a set of specific concepts and an evolving
+  understanding they can teach the engine over time - independent of every other domain that
+  already used the word "strategy" or "pattern" for something else entirely. **"AI freedom/
+  strictness" is still never part of this domain** - see the explicit boundary note below, which
+  is a distinct, still-true guarantee from the fact that this domain now does call an LLM for
+  focus/concept suggestions and for turning a trader's note into a concept/understanding proposal.
 - **Conceptual separation, restated because it is easy to blur:**
   - **Analysis Profile** = the analytical lens used to *read* a chart (this section).
   - **Strategy** (§7.7) = execution/risk rules for *trading* on what was read - independent, only
@@ -1482,7 +1484,8 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     `registerListDomain('analysisProfiles', {hydrateUrl:'/api/sync/analysis-profiles', ...})` -
     the current, canonical persistence pattern (see §3's Persistence strategy update below), not
     the older §7.18 sync-queue shape. Public API: `list/listSync/get/find/create/update/save/
-    remove/duplicate/setDefault/getDefault/snapshot/suggestedName`. Every mutation funnels through
+    remove/duplicate/setDefault/getDefault/snapshot/suggestedName/applyLearning/recordNote/
+    recordEvent/settleEvents/listEvents/helpers`. Every mutation funnels through
     one `save()` (the same "single mutation funnel" convention `mental-health-store.js`'s
     `write()` established), which enforces "exactly one default profile" client-side (clearing any
     other profile that was previously default) and dispatches
@@ -1497,13 +1500,19 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     `window.TradeJournalStrategyEducationStore` looked up live - the exact same convention
     `strategy-education-store.js`'s own `orphanLinkedTrades()` already established for Strategy →
     Trade cleanup.
-  - **Future-AI boundary:** `public/pages/shared/analysis-context.js` →
+  - **Analysis context / cache revision:** `public/pages/shared/analysis-context.js` →
     `window.TradeJournalAnalysisContext.getAnalysisContext(profileId)`. Composes the profile, its
-    resolved primary/secondary style definitions, resolved focus definitions, and the union of
-    every involved style's `requiredInputs`, into one normalized bundle. **Pure data assembly -
-    no LLM call, no prompt construction, no provider selection, no scenario generation anywhere in
-    this file or this domain.** This is the one seam a future Session AI Analysis feature is
-    expected to call.
+    resolved primary/secondary style definitions, resolved focus definitions, its customFocuses,
+    its **enabled** concepts, its current understanding summary, and the union of every involved
+    style's `requiredInputs`, into one normalized bundle. **Pure data assembly - no LLM call, no
+    prompt construction, no provider selection, no scenario generation anywhere in this file.**
+    This is the seam Session AI Analysis calls (`session-analysis-client.js`'s
+    `pickAdherenceProfile()`). It also computes `profile.revision` - a deterministic FNV-1a hash
+    over everything a chart analysis actually reads (style/secondary/focusIds/customFocuses/
+    customMethodNotes/enabled-concepts/understanding summary) - folded into the Session analysis
+    cache fingerprint as `profileVersion`. Without this, `registryVersion` alone (the style
+    registry's own version, which never changes on a profile edit) would let an edited profile
+    keep returning a stale cached analysis.
   - **Onboarding UI:** `navrya-src/analysisProfileOnboarding.jsx` -
     `AnalysisProfileOnboarding({mode:'first-run'|'create'|'edit', existingProfile, lang,
     onComplete, onSkip, onCancel})`. The exact two-step questionnaire: Step 1 ("How do you read
@@ -1531,16 +1540,88 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     (`General Market Analysis` / `general_analysis` / `market_structure, trend, key_levels,
     momentum`) so no downstream Session-AI integration ever has to handle a genuinely null
     profile.
-  - **List/detail UI:** `navrya-src/analysisProfilesView.jsx` - `AnalysisProfilesTab({lang})`:
-    search, card grid (Open/Edit/Duplicate/Set as Default/Report/Delete), and a detail view with
-    Overview (Analysis DNA, linked Strategies, an honest Usage section) and Report tabs. **Report
-    v1 shows only real numbers** - created/updated dates, default status, primary/secondary style,
-    focus count, linked-Strategy count and list (derived by filtering
-    `window.TradeJournalStrategyEducationStore.listSync()` for `linkedAnalysisProfileId ===
-    profile.id`). Session-usage count, most-used markets, most-used timeframes, and configuration
-    history all render an honest "insufficient data" state, never a fabricated number - Sessions
-    carry no `analysisProfileId` yet (see the Session-readiness note below), so a per-profile
-    session count cannot be truthfully derived in this phase.
+  - **List/detail UI:** `navrya-src/analysisProfilesView.jsx` - `AnalysisProfilesTab({lang,
+    header})`: search (folds Arabic/Persian keyboard forms/ZWNJ/digits via the Style Registry's own
+    `search()`), card grid (Open/Edit/Duplicate/Set as Default/Report/Delete), and a detail view
+    with Overview / Setup / Concepts / Memory / Report tabs. `header` is an opaque node the hosting
+    hub renders above the LIST screen only (its own hero + the Patterns/Strategies/Positions/
+    Analysis Profiles pill bar) - fixes a real bug where opening this tab used to strand the trader
+    with no way back to another tab except the sidebar; the detail screen keeps its own real
+    "Back to list" button, unaffected. Overview shows the Analysis DNA, the trader's customFocuses,
+    the engine's enabled concepts (mandatory ones visually distinct) and current understanding
+    summary, linked Strategies, and an honest Usage section. **Report v1 shows only real numbers**
+    - created/updated dates, default status, primary/secondary style, focus count, linked-Strategy
+    count and list (derived by filtering `window.TradeJournalStrategyEducationStore.listSync()`
+    for `linkedAnalysisProfileId === profile.id`). Session-usage count, most-used markets,
+    most-used timeframes, and configuration history all render an honest "insufficient data"
+    state, never a fabricated number - Sessions carry no `analysisProfileId` yet (see the
+    Session-readiness note below), so a per-profile session count cannot be truthfully derived in
+    this phase.
+  - **Setup tab:** `SetupTab` inside `analysisProfilesView.jsx` - every field the two-step wizard
+    captures (primary/secondary style, focusIds, customFocuses, customMethodNotes,
+    customMethodLinks), inline-editable through the exact same `store.helpers` validators the
+    wizard uses, saved through one explicit `store.update()` call - so a trader can revisit and
+    change a profile without reopening the wizard.
+  - **Concepts tab:** `navrya-src/analysisProfileConcepts.jsx` - a sortable table of the profile's
+    concepts (title, description, priority, origin badge, enabled toggle, inline rename/delete).
+    Three ways to add, all funneling through the store's one `applyLearning()` (below): manually;
+    "Add starter concepts" (free, no AI call - seeded from the involved styles' own registry
+    `coreConcepts`, deduplicated against what the trader already has, `origin:'starter'`); and
+    "Suggest with AI" (a billed call, proposals shown unselected, added only via one explicit
+    batch button). A rename/add colliding with an existing title (case/whitespace/Arabic-Persian-
+    keyboard-insensitive) is refused in the UI - the store's own normalize() would otherwise
+    silently drop one of the two duplicates. Routine edits (priority, enabled, rename, delete) are
+    plain `store.update()` calls, not "teaching" - they never write a learning-ledger event.
+  - **Memory tab:** `navrya-src/analysisProfileMemory.jsx` - the engine's current `understanding`
+    (editable by hand), the `EngineLearningPanel` (`navrya-src/engineLearning.jsx`, below), and the
+    REAL learning history read from `GET .../:id/events` (never a reconstructed timeline), with a
+    true token total summed over the recorded events.
+  - **Engine-learning loop:** `navrya-src/engineLearning.jsx`'s `EngineLearningPanel` - a trader
+    writes a note or a correction; ONE billed AI call
+    (`window.TradeJournalAnalysisProfileAI.ingestLearning`, POST `/api/analysis-profiles/ingest`)
+    turns it into a PROPOSAL (a rewritten compact understanding + up to 10 specific concepts),
+    shown for explicit review (editable understanding, per-concept accept/priority) and only then
+    committed through `store.applyLearning()` - one profile save, one ledger event. The three
+    displayed "steps" (read / extract concepts / update understanding) are honest: shown as
+    in-progress while the single model call is in flight, replaced by real results (concepts
+    actually found, whether an understanding change was actually proposed, real tokens used) only
+    once it returns - never an animated fake progress bar. Tokens are recorded in the ledger the
+    moment the call returns (a discarded proposal still cost tokens), never counted a second time
+    on apply. "Save without teaching" (`store.recordNote()`) is a plain zero-token diary event -
+    no concept/understanding change, no AI call.
+  - **`applyLearning()`** (`analysis-profile-store.js`): the ONE mutation funnel every "teach the
+    engine" action goes through (a manual concept, starter concepts, an accepted AI suggestion
+    batch, an ingested note/correction, a hand-edited understanding) - never a second, per-item
+    save. `conceptsToAdd` is deduplicated against existing concepts by folded title;
+    `understandingSummary` bumps `understanding.version` only when it genuinely differs from the
+    current one. Exactly one `save()`, then one best-effort `recordEvent()` to the learning ledger.
+  - **AI suggest/ingest client:** `public/pages/shared/analysis-profile-ai.js` →
+    `window.TradeJournalAnalysisProfileAI` - `suggestFocuses`/`suggestConcepts` (POST
+    `/api/analysis-profiles/suggest`, kind-dispatched) and `ingestLearning` (POST
+    `/api/analysis-profiles/ingest`). Bring-your-own-key: when the trader has a personal provider
+    key configured (`TradeJournalAISettingsStore`), every request also carries
+    `provider`/`model`/`apiKey`, so the gateway treats the call as BYOK and never bills the wallet;
+    with no personal key nothing extra is sent and the platform default provider serves the call,
+    billed per the standard token policy (`AI_BILLED_ROUTES`: `analysisProfileSuggest`,
+    `analysisProfileIngest`). Deliberately does **not** fall back to a canned local reply on
+    failure the way `pattern-registry-ai.js`/`strategy-education-ai.js` do for their own
+    features - a billed AI feature silently "succeeding" with fake text would hide a real
+    `WALLET_INSUFFICIENT_BALANCE`/`PROVIDER_PRICING_NOT_CONFIGURED` condition from the trader; a
+    failure rejects with a typed `AnalysisProfileAIError` the UI shows honestly. Server-side
+    handlers (`server/pattern-ai-server.mjs`'s `suggestAnalysisProfile`/
+    `ingestAnalysisProfileLearning`) sanitize every response defensively (existing/already-
+    suggested names never re-proposed, `priority` validated against the one shared
+    `CONCEPT_PRIORITIES` enum, lengths capped) - the strict JSON schema is defense in depth, not
+    the only guard.
+  - **Session AI Analysis integration:** `server/pattern-ai-server.mjs`'s
+    `buildSessionAnalysisSystemPrompt` weaves the profile's customFocuses, concepts and
+    understanding into the prompt. A concept with `priority:'mandatory'` becomes a real
+    instruction - "directly address each one... never silently omit one, never invent one that
+    isn't there" - the one deliberate, explicit exception to "profile content is data, not an
+    instruction"; `preferred`/`reference` concepts and the understanding summary stay framed as
+    data/historical context. Verifiable per-concept coverage in the structured result schema (so a
+    report could show whether a mandatory concept was actually addressed) is left for a future
+    Session-integration pass - see the Session-readiness note below.
   - **Strategy integration (§15 of the brief):** `strategy-education.types.js`'s `Strategy`
     typedef and `strategy-education-store.js`'s `empty()`/`normalize()` gained an optional
     `linkedAnalysisProfileId` (default `null`, never implicitly auto-selected - a Strategy is
@@ -1567,13 +1648,29 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   unique index (`WHERE is_default`) enforcing "at most one default per user" as a hard database
   backstop on top of the client store's own clearing logic; plus `ALTER TABLE strategies ADD
   COLUMN IF NOT EXISTS linked_analysis_profile_id TEXT` (loose, no FK - same convention as
-  `trades.linked_strategy_id`). `server/community/routes.analysis-profiles.mjs` mounted at
-  `/api/sync/analysis-profiles` in `server/community/app.mjs`, mirroring `routes.patterns.mjs`'s
-  shape minus an `/images` route (this domain has no user-uploaded files). `repo.pg.mjs`'s
-  `analysisProfiles.upsert()` additionally clears any other default row for the same user inside
-  its own transaction (defense in depth, since a client that skipped its own clear-the-old-default
-  step would otherwise violate the partial unique index instead of silently succeeding);
-  `repo.memory.mjs` mirrors the same contract for tests. **Deliberately not gated by
+  `trades.linked_strategy_id`). Extended additively by `067_analysis_profile_authoring.sql`
+  (`custom_method_links` JSONB `{youtubeUrl,websiteUrl,referenceUrl}`, each validated http(s) or
+  dropped to `''`; `custom_focuses` JSONB, a trader-added/AI-accepted focus area list kept
+  SEPARATE from the registry-validated `focus_ids`) and `068_analysis_profile_memory.sql`
+  (`concepts` JSONB, `understanding` JSONB `{summary,version,updatedAt}`, plus a new append-only
+  `analysis_profile_events` table - the learning ledger: `kind`/`title`/`detail`/
+  `understanding_version`/real `token_usage`, indexed on `(profile_id, created_at)` and `user_id`,
+  never updated or deleted by anything in this codebase). All shared normalization (URLs, custom
+  focuses, concepts, understanding) lives in one dependency-free `server/db/analysis-profile-
+  normalize.mjs`, imported by both `repo.pg.mjs` and `repo.memory.mjs` (and, for the concept-
+  priority enum only, by `pattern-ai-server.mjs` - a pure-function import, not a database
+  dependency, kept consistent with that gateway's own DB-free posture) so the two backends and the
+  AI schema can never disagree; the browser store carries its own classic-script twin, kept in
+  sync by fixture tests that run both against one shared case list.
+  `server/community/routes.analysis-profiles.mjs` mounted at `/api/sync/analysis-profiles` in
+  `server/community/app.mjs`, mirroring `routes.patterns.mjs`'s shape minus an `/images` route
+  (this domain has no user-uploaded files), plus nested, owner-checked
+  `GET`/`POST .../:id/events` for the learning ledger - lazily fetched only when a profile's
+  Memory tab opens, never part of the boot-time replica hydrate every list domain participates
+  in. `repo.pg.mjs`'s `analysisProfiles.upsert()` additionally clears any other default row for
+  the same user inside its own transaction (defense in depth, since a client that skipped its own
+  clear-the-old-default step would otherwise violate the partial unique index instead of silently
+  succeeding); `repo.memory.mjs` mirrors the same contract for tests. **Deliberately not gated by
   `createWithQuota`** - unlike Patterns/Strategies (commercial content domains with their own plan
   limits), the brief never asked Analysis Profiles to be plan-limited, so that gate was not added.
 - **Registry storage:** the Style and Focus Registries are product/domain reference data, not user
@@ -1582,20 +1679,28 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   value only, with no foreign-key constraint into either registry.
 - **Session-ready architecture, not yet Session-integrated:** `AnalysisProfileStore.snapshot(id)`
   returns the normalized, self-contained `AnalysisProfileSnapshot` shape a future Session record
-  could embed (`{profileId, profileName, primaryStyle, secondaryStyles, focuses,
-  customMethodNotes, capturedAt}` - proven stable after later profile edits by
-  `tests/analysis-profile-store.test.mjs`), matching this codebase's existing snapshot philosophy
-  for Pattern data attached to a historical Scenario. Session records themselves were **not**
-  modified in this pass (no `analysisProfileId`/`analysisProfileSnapshot` field added to
-  `SessionRecord` yet) - the brief explicitly allowed deferring this, and `getAnalysisContext()`
-  (above) is the documented integration seam for whichever future pass wires it in.
+  could embed (`{profileId, profileName, primaryStyle, secondaryStyles, focuses, customFocuses,
+  customMethodNotes, customMethodLinks, concepts (enabled only), understanding, capturedAt}` -
+  proven stable after later profile edits by `tests/analysis-profile-store.test.mjs`), matching
+  this codebase's existing snapshot philosophy for Pattern data attached to a historical Scenario.
+  Session records themselves were **not** modified in this pass (no `analysisProfileId`/
+  `analysisProfileSnapshot` field added to `SessionRecord` yet) - the brief explicitly allowed
+  deferring this. Live Session Analysis instead reads the profile directly and freshly through
+  `getAnalysisContext()` on every call (never a stale snapshot), which is why `profile.revision`
+  exists - the still-undecided open question for a future pass is whether a Session should also
+  start persisting a point-in-time `snapshot()` for its own historical record.
 - **Explicit future-AI boundary, stated here at full strength per the brief's own instruction:**
-  **AI analysis freedom/strictness is intentionally NOT part of Analysis Profile. It will be
-  selected per AI analysis generation request**, at the moment a user presses "Generate AI
-  Analysis" inside a future Session feature - never persisted on the Profile itself, never
-  defaulted, never asked during onboarding. No file in this domain calls an LLM, builds a prompt,
-  chooses a provider, generates a scenario, or scores a pattern; `analysisPrinciples`/
-  `futurePromptGuidance` on each style are structured metadata only, read by nothing today.
+  **AI analysis freedom/strictness is intentionally NOT part of Analysis Profile. It is selected
+  per AI analysis generation request**, at the moment a user presses "Generate AI Analysis" inside
+  a Session - never persisted on the Profile itself, never defaulted, never asked during
+  onboarding. This still holds after the Training pass below: nothing in this domain reads,
+  stores, or defaults a freedom/strictness/creativity preference, and no onboarding step asks for
+  one (`analysis-profile-onboarding.test.mjs` still asserts this structurally). What changed is
+  narrower and separate - this domain now DOES call an LLM for two specific, approval-gated jobs
+  (suggesting focus/concept names, and turning a trader's own note into a concept/understanding
+  proposal), never for scenario generation, never for scoring a pattern, and never to choose or
+  override adherence/freedom. `analysisPrinciples`/`futurePromptGuidance` on each style remain
+  structured metadata only, read by nothing today.
 - **i18n:** all four languages (`fa`/`ar`/`en`/`es`) throughout - registry `name`/
   `shortDescription`/category labels, onboarding copy, list/detail/report UI, validation and
   delete-confirmation text. Registry `coreConcepts`/`analysisPrinciples`/`limitations`/
@@ -1604,15 +1709,37 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   every internal field.
 - **Tests:** `tests/analysis-style-registry.test.mjs`, `analysis-focus-registry.test.mjs` (id
   uniqueness, full-language coverage, cross-registry reference integrity, Hybrid-merge dedup, no
-  AI-freedom field anywhere); `analysis-profile-store.test.mjs` (the same `vm.runInNewContext`
-  harness `tests/patterns-sync.test.mjs` established - CRUD, default-uniqueness, invalid
-  style/focus rejection, secondary-style normalization, custom-notes round trip, snapshot
-  stability, last-profile delete guard, Strategy-link orphaning); `analysis-profiles-api-contract
-  .test.mjs` (user-scoped CRUD over real HTTP, cross-user 403/404, server-side default-uniqueness);
-  `analysis-profile-onboarding.test.mjs` (static source-assertion style, since `.jsx` has no
-  transform in this project's plain `node --test` runner - two steps only, no third question,
-  skip creates the exact safe default, first-run mount condition); `strategy-analysis-profile-
-  link.test.mjs` (link/clear round trip, never implicitly auto-selected, never AI-fillable).
+  AI-freedom field anywhere); `analysis-style-search.test.mjs` (`search()`/`normalizeSearchText()`
+  - Arabic/Persian keyboard forms, ZWNJ, digits, ranking, determinism); `analysis-profile-store
+  .test.mjs` (the same `vm.runInNewContext` harness `tests/patterns-sync.test.mjs` established -
+  CRUD, default-uniqueness, invalid style/focus rejection, secondary-style normalization,
+  custom-notes round trip, snapshot stability, last-profile delete guard, Strategy-link
+  orphaning, `applyLearning()`/`recordNote()`/`listEvents()`); `analysis-profiles-api-contract
+  .test.mjs` / `analysis-profile-events-api-contract.test.mjs` (user-scoped CRUD and the nested
+  learning-ledger routes over real HTTP, cross-user 403/404, server-side default-uniqueness, the
+  ledger's append-only-by-construction guarantee); `analysis-profile-authoring-fields.test.mjs` /
+  `analysis-profile-memory-fields.test.mjs` (the server ESM normalizer and its classic-script
+  browser twin run against one shared fixture set in `tests/helpers/`, so the two can never drift);
+  `analysis-profile-authoring-migration-contract.test.mjs` / `-memory-migration-contract.test.mjs`
+  / their `-postgres-integration.test.mjs` companions (structural SQL contract always, a real
+  Postgres round trip only with `DATABASE_URL` set, skipping cleanly otherwise);
+  `analysis-profile-suggest.test.mjs` / `analysis-profile-ingest.test.mjs` (the two billed AI
+  handlers with a stubbed provider call - exactly one call per request, sanitizer defense in
+  depth, AI_BILLED_ROUTES/dispatch wiring); `analysis-profile-ai-client.test.mjs` (BYOK
+  provider/apiKey passthrough, typed errors, best-effort usage recording);
+  `analysis-profile-training-ui.test.mjs` (Concepts/Memory/engine-learning static-source
+  assertions - one `applyLearning()` per add action never inside a loop, routine edits never write
+  a ledger event, the teach flow's honest three-step reporting, copy-key parity across all four
+  languages); `analysis-context.test.mjs` (`getAnalysisContext`/`profile.revision` - only enabled
+  concepts exposed, revision changes for everything the model reads and only for that);
+  `analysis-profiles-tab-bar.test.mjs` (the list-screen tab-bar fix); `analysis-profile-setup-tab
+  .test.mjs`; `analysis-profile-onboarding.test.mjs` (static source-assertion style, since `.jsx`
+  has no transform in this project's plain `node --test` runner - two steps only, no third
+  question, skip creates the exact safe default, first-run mount condition); `strategy-analysis-
+  profile-link.test.mjs` (link/clear round trip, never implicitly auto-selected, never
+  AI-fillable); `session-analysis-client.test.mjs` / `session-analysis-server.test.mjs` (profile
+  revision folded into the cache fingerprint, concepts/understanding woven into the system prompt,
+  MANDATORY concepts phrased as a real instruction distinct from preferred/reference).
 
 ### 7.26 Support Tickets & Notification Badges
 
