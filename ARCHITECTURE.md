@@ -1729,6 +1729,51 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   end-to-end voice-opening selection, and the best-effort fallback when the shared module isn't
   loaded).
 
+### 7.28 Subscription Discount Codes & Wallet Bonus
+
+- **Dedicated domain:** `discount_codes` + `discount_redemptions` (`064_discount_codes.sql`), never `commercial_config_overrides`. Money is integer only:
+  a percent code stores basis points, a fixed code micro-USD. A redemption is also the **reservation** record
+  (`reserved` -> `confirmed` | `released` | `expired`) and snapshots the code terms + original/discount/final amounts.
+- **One rule set, two repositories:** `server/commercial/discount-codes.mjs` (pure: ASCII-only code normalization, exact BigInt half-up math, status,
+  `assertCodeAvailable`) is used by `repo.discountCodes`/`repo.discountRedemptions` in both `repo.memory.mjs` and `repo.pg.mjs` (identical method
+  surfaces, asserted by `tests/discount-codes-migration-contract.test.mjs`). PostgreSQL serializes each code with `SELECT ... FOR UPDATE`, judges holds by
+  the DB clock and keeps partial unique indexes as a backstop; memory does every read-check-write synchronously. Capacity in use = confirmed + live holds.
+- **Checkout** (`server/commercial/subscription-checkout.mjs`, shared by the Manual and BSC providers): `POST /api/sync/subscriptions/quote` is a read-only,
+  provisional preview; `POST .../upgrade-request { planId, discountCode? }` re-validates, reserves, then creates the transaction at the **final** amount with
+  `metadata.pricing` (original, discount, final, wallet bonus, code terms) - so the BSC invoice and any refund derive from the discounted amount. The client sends
+  only the plan and the code text. A code-produced $0 price is settled server-side through `confirmTransaction` (no invoice, never contacts the chain, no bonus).
+  Code attempts share one per-user rate limit (20 / 10 min).
+- **Holds:** Manual 24h (`MANUAL_CHECKOUT_HOLD_MINUTES`), BSC = the invoice expiry. A lapsed hold stops counting immediately; `failTransaction` and a failed
+  payment rail release it; a refund keeps the redemption consumed (one redemption per user, slot not returned).
+- **Strict late-payment rule** (`payment-service.mjs`): a late confirmation re-claims its lapsed slot if it is still free; if it was reused the subscription is NOT
+  activated - the paid amount is credited once to the PAID wallet (`TOP_UP`, `discount-capacity-lost`), the transaction fails, a BSC invoice ends as
+  `mismatched_credited`, and the outcome is shown as `discountOutcome` to admin and customer.
+- **Wallet bonus** (`server/commercial/subscription-bonus.mjs`): admin `walletBonusUsd` per paid plan (`plan:<plan>:walletBonusUsd`, Free fixed at 0), exposed in the
+  subscription catalog. Granted to the PROMO balance only after a confirmed payment whose final amount is > 0, once (ledger `SUBSCRIPTION_BONUS`,
+  key `subscription-bonus:<txId>`), from the checkout snapshot, and recorded as a **lot** (next bullet). `bonusStatus`
+  (`none|pending|credited|reversed|missing`) is derived from the lot; `POST /api/admin/commercial/transactions/:id/repair-bonus` (step-up, idempotent) recovers `missing`
+  by creating the lot atomically with its grant, and is refused (409 `REFUNDED`) once a refund exists - a check the repository repeats under the account lock, so a repair
+  racing a refund can never leave a granted bonus behind.
+- **Bonus lots** (`065_subscription_bonus_lots.sql`, pure rules in `server/commercial/subscription-bonus-lots.mjs`, `repo.subscriptionBonus` in both repositories): one
+  `subscription_bonus_lots` row per bonus-granting transaction (original / consumed / reversed micro-USD, remaining derived, linked to the payment transaction and to its
+  `SUBSCRIPTION_BONUS` ledger row) plus one **immutable** `subscription_bonus_allocations` row per (lot, `AI_SETTLEMENT`) - the database rejects any UPDATE or DELETE of an
+  allocation. `wallet.settle()` is the only AI spend path: inside its single transaction an AI charge is paid by promo as before, and INSIDE that promo spend the user's
+  ACTIVE lots are consumed first - **oldest grant first (`granted_at`, ties by insertion `seq`)** - then generic promo (signup / admin credit), then paid; lot consumption,
+  allocation rows and the ledger row commit together. **Refund** (`reverseForRefund`) reverses ONLY the lot's unspent remainder: nothing consumed -> the full bonus; partly
+  consumed -> exactly the remainder ($5 bonus, $2.30 spent -> $2.70 reversed); fully consumed -> a zero-amount `SUBSCRIPTION_BONUS_REVERSAL` entry (auditable) and no debit of
+  generic promo or paid balance. The amount is never derived from, or clamped by, the aggregate promo balance, so signup / admin promo is never mistaken for bonus remainder
+  (an admin promo debit is outside lot accounting). **Locking:** every path takes the `wallet_accounts` row FIRST and the lot rows second, so settlement, refund and repair
+  serialise per user and cannot deadlock. **Idempotency:** ledger `idempotency_key`, `UNIQUE(transaction_id)`, `UNIQUE(lot_id, ledger_id)`, reservation status. No backfill
+  (064 never shipped without 065). **DTOs:** transactions carry `bonus { originalMicroUsd, consumedMicroUsd, remainingMicroUsd, reversedMicroUsd, status }` (admin also
+  `bonusStatus`); ledger entries carry `subscriptionBonusUsedMicroUsd` + `subscriptionBonusAllocations` on `AI_SETTLEMENT` and `bonusLot` on bonus / reversal entries, in both the
+  customer and the admin ledgers.
+- **Admin:** `/api/admin/commercial/discount-codes` (list / detail / create / patch); every mutation requires a recent re-authentication and is audited.
+  UI: Commercial -> Discount codes and the enriched Transactions table in `public/pages/admin/app.js`. **Customer UI:** `navrya-src/accountProfileView.jsx`
+  (`PaymentSheet` with `discountEnabled`, plan cards, ledger, billing history), fa/en/ar/es.
+- **Verification note:** PostgreSQL behavior (row locks, unique indexes, the widened `wallet_ledger` CHECK, the allocation trigger, settlement / refund / repair racing on
+  real connections) is verified structurally and by the `DATABASE_URL`-gated `tests/discount-codes-postgres-integration.test.mjs` and
+  `tests/subscription-bonus-lots-postgres-integration.test.mjs`; run both against a disposable real database before a release.
+
 ## 8. AI Integration Points
 
 ### Server configuration
