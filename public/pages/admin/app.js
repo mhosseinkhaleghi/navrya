@@ -3414,17 +3414,23 @@ function refPayoutQueueCard(payouts) {
   return card;
 }
 
-function refDebtsCard(debts) {
+// GET .../debts answers { debts: [...] } (an object, not a bare array) - and 'open' AND 'recovering' cases both still block
+// the referrer's payouts, so both are shown; resolved / written-off ones are history.
+function refDebtsCard(debtsData) {
+  const debts = ((debtsData && debtsData.debts) || []).filter((debt) => debt.status === 'open' || debt.status === 'recovering');
   const card = el('div', 'admin-card');
   card.append(el('h3', '', t('refAdminDebtsTitle')));
   if (!debts.length) { card.append(el('p', 'hint', t('refAdminNoDebts'))); return card; }
   debts.forEach((debt) => {
     const row = el('div', 'admin-form-row');
     row.append(el('span', '', debt.userId), el('span', 'badge', debt.status), el('span', '', refFmtUsd(debt.amountMicroUsd - debt.recoveredMicroUsd) + ' open'));
-    const resolveBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminDebtWriteOff')); resolveBtn.type = 'button';
-    resolveBtn.onclick = () => api('/commercial/referrals/debts/' + debt.id + '/resolve', { method: 'POST', body: JSON.stringify({ status: 'written_off', note: window.prompt('Note (optional)') || undefined }) })
+    const resolve = (status) => () => api('/commercial/referrals/debts/' + debt.id + '/resolve', { method: 'POST', body: JSON.stringify({ status, note: window.prompt('Note (optional)') || undefined }) })
       .then(() => { showToast(t('saved')); renderTab(); }).catch(refFail);
-    row.append(resolveBtn);
+    const resolvedBtn = el('button', 'btn btn-primary btn-sm', t('refAdminDebtResolve')); resolvedBtn.type = 'button';
+    resolvedBtn.onclick = resolve('resolved');
+    const writeOffBtn = el('button', 'btn btn-secondary btn-sm', t('refAdminDebtWriteOff')); writeOffBtn.type = 'button';
+    writeOffBtn.onclick = resolve('written_off');
+    row.append(resolvedBtn, writeOffBtn);
     card.append(row);
   });
   return card;
@@ -3451,7 +3457,7 @@ let refExpandedProgramId = null;
 function commercialReferralsSubTab() {
   return Promise.all([
     api('/commercial/referrals/programs'), api('/commercial/referrals/payout-config'), api('/commercial/referrals/report'),
-    api('/commercial/referrals/payouts'), api('/commercial/referrals/debts?status=open'), api('/commercial/referrals/attributions?riskReviewStatus=flagged')
+    api('/commercial/referrals/payouts'), api('/commercial/referrals/debts'), api('/commercial/referrals/attributions?riskReviewStatus=flagged')
   ]).then(([programsData, payoutConfig, report, payoutsData, debts, attributionsData]) => {
     const wrap = el('div', 'admin-grid');
     wrap.append(refReportCard(report));
