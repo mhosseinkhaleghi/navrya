@@ -5,6 +5,7 @@ import { cancelAtPeriodEnd, reactivateSubscription } from '../commercial/subscri
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
 import { getEffectiveCommercialConfig } from '../commercial/commercial-config.mjs';
 import { quoteSubscription } from '../commercial/subscription-checkout.mjs';
+import { toCodeStatusDto } from '../commercial/discount-codes.mjs';
 import { rateLimit } from './security/rate-limit.mjs';
 
 // Commercial System Slice 2 - the user-facing Subscription surface (spec section 21/22/23).
@@ -25,6 +26,14 @@ const codeAttemptLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, max: 20, keyFn: (req) => 'discount-code:' + req.currentUser.id, message: 'RATE_LIMITED'
 });
 const hasDiscountCode = (body) => Boolean(body) && body.discountCode !== undefined && body.discountCode !== null && body.discountCode !== '';
+
+// The checkout urgency poll (live remaining capacity / expiry of an ALREADY-applied code) is a cheap read-only lookup
+// that reserves nothing and can guess nothing, so it gets its OWN, much more generous budget (30 / minute per user,
+// i.e. one poll every 2s). Keeping it out of codeAttemptLimiter is what lets a client watch a code tick every few
+// seconds without ever eating the 20-per-10-minutes code-guessing throttle - and vice versa.
+const discountStatusLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 30, keyFn: (req) => 'discount-status:' + req.currentUser.id, message: 'RATE_LIMITED'
+});
 
 export function router(repo) {
   const app = express.Router();
@@ -50,6 +59,15 @@ export function router(repo) {
   app.post('/quote', codeAttemptLimiter, asyncHandler(async (req, res) => {
     const { planId, code } = req.body || {};
     res.json(await quoteSubscription(repo, { userId: req.currentUser.id, planId, code }));
+  }));
+
+  // Live status of a code the client already holds the (opaque) id of - obtainable only from a successful quote. It
+  // reports capacity in use RIGHT NOW (confirmed + live reservations, read from the repository on every call, never
+  // cached) and the expiry, so the checkout can show a real countdown and a real "N left" that drops as others buy.
+  app.get('/discount-codes/:id/status', discountStatusLimiter, asyncHandler(async (req, res) => {
+    const code = await repo.discountCodes.get(req.params.id);
+    if (!code) throw new ApiError(404, 'DISCOUNT_CODE_NOT_FOUND');
+    res.json(toCodeStatusDto(code, await repo.discountCodes.stats(code.id)));
   }));
 
   app.post(

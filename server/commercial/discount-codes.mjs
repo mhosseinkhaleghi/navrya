@@ -160,6 +160,13 @@ export function toAdminDiscountValue(code) {
   return code.discountType === 'percent' ? code.discountValue / 100 : code.discountValue / MICRO;
 }
 
+// The lean, customer-facing shape for the checkout urgency poll (GET /api/sync/subscriptions/discount-codes/:id/status)
+// - status/live capacity only, never the admin units, the code text or timestamps a customer has no reason to see.
+export function toCodeStatusDto(code, stats, now = new Date()) {
+  const status = deriveCodeStatus(code, stats, now);
+  return { status, active: status === 'active', expiresAt: code.expiresAt, startsAt: code.startsAt, maxRedemptions: code.maxRedemptions, remaining: stats.remaining };
+}
+
 // The code shape the admin API returns: admin units for the value, derived status, live stats.
 export function toCodeDto(code, stats, now = new Date()) {
   return {

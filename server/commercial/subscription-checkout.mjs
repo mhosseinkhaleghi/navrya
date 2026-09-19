@@ -43,10 +43,15 @@ export async function quoteSubscription(repo, { userId, planId, code }) {
   const { discountAmountMicroUsd, finalAmountMicroUsd } = computeDiscount({
     originalAmountMicroUsd: snapshot.originalAmountMicroUsd, discountType: record.discountType, discountValue: record.discountValue
   });
+  // codeId/expiresAt/maxRedemptions/remaining: the checkout urgency UI's countdown-to-expiry and live-remaining-
+  // capacity display. The client polls GET .../discount-codes/:codeId/status for the live figures - never this
+  // rate-limited quote endpoint - so codeId is the one thing it needs to remember from here.
+  const stats = await repo.discountCodes.stats(record.id);
   return {
-    provisional: true, planId, code: record.code, campaignName: record.campaignName, discountType: record.discountType, currency: 'USD',
+    provisional: true, planId, codeId: record.id, code: record.code, campaignName: record.campaignName, discountType: record.discountType, currency: 'USD',
     originalAmountMicroUsd: snapshot.originalAmountMicroUsd, discountAmountMicroUsd, finalAmountMicroUsd,
-    walletBonusMicroUsd: effectiveBonus(snapshot.planWalletBonusMicroUsd, finalAmountMicroUsd), noCost: finalAmountMicroUsd === 0
+    walletBonusMicroUsd: effectiveBonus(snapshot.planWalletBonusMicroUsd, finalAmountMicroUsd), noCost: finalAmountMicroUsd === 0,
+    expiresAt: record.expiresAt, maxRedemptions: record.maxRedemptions, remaining: stats.remaining
   };
 }
 
