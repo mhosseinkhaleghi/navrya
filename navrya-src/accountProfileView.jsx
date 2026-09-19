@@ -7,6 +7,7 @@ import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { TextField } from '../public/pages/shared/navrya/components/forms/TextField.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
+import { MetricTile } from '../public/pages/shared/navrya/components/metrics/MetricTile.jsx';
 import { RankCrest, RANK_TITLE } from '../public/pages/shared/navrya/components/identity/RankCrest.jsx';
 import { CharacterPortrait } from '../public/pages/shared/navrya/components/identity/CharacterPortrait.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
@@ -214,7 +215,41 @@ const copy = {
     subInvoiceReasonChainMismatch: 'این تراکنش روی شبکهٔ اشتباهی ثبت شده است.',
     subInvoiceReasonConfirming: 'تراکنش شما دیده شد و در انتظار تأیید شبکه است — کمی بعد دوباره بررسی کن.',
     subInvoiceReasonAlreadyClaimed: 'این شناسهٔ تراکنش قبلاً برای فاکتور دیگری استفاده شده است.',
-    subInvoiceReasonInvalidHash: 'این شناسهٔ تراکنش معتبر نیست — باید با 0x شروع شود و ۶۴ کاراکتر باشد.'
+    subInvoiceReasonInvalidHash: 'این شناسهٔ تراکنش معتبر نیست — باید با 0x شروع شود و ۶۴ کاراکتر باشد.',
+
+    tabReferral: 'بازاریابی معرفی',
+    refHeroTitle: 'کد معرفی شما', refHeroSub: 'لینک خود را به اشتراک بگذارید. وقتی کسی از طریق آن ثبت‌نام کند و مشتری پرداخت‌کننده شود، شما کمیسیون می‌گیرید.',
+    refCopyLink: 'کپی لینک', refCopyCode: 'کپی کد', refCopied: 'کپی شد',
+    refProgramStandard: 'برنامهٔ استاندارد', refProgramInfluencer: 'همکاری اینفلوئنسری',
+    refDisabledTitle: 'بازاریابی معرفی هنوز برای حساب شما فعال نشده است', refDisabledBody: 'اگر فکر می‌کنید این یک اشتباه است، با پشتیبانی تماس بگیرید.',
+    refRateLine: 'شما {percent}٪ کمیسیون از پرداخت‌های واجد شرایط می‌گیرید', refHoldLine: 'وجوه به مدت {days} روز پس از پرداخت نگه‌داری می‌شوند تا قابل خرج شدن شوند',
+    refTermLine: 'کمیسیون تا {days} روز پس از ثبت‌نام هر معرفی‌شده اعمال می‌شود', refNoTermLine: 'محدودیت زمانی برای کسب کمیسیون از این معرفی وجود ندارد',
+    refInfluencerDisclosure: 'این یک همکاری پولی است: NAVRYA بابت معرفی‌های انجام‌شده از طریق این لینک به من پرداخت می‌کند.',
+    refFunnelTitle: 'قیف شما', refFunnelClicks: 'کلیک روی لینک', refFunnelVisitors: 'بازدیدکنندگان یکتا', refFunnelSignups: 'ثبت‌نام‌ها', refFunnelQualified: 'مشتریان واجد شرایط',
+    refBalancesTitle: 'درآمد معرفی', refBalPending: 'در انتظار', refBalAvailable: 'قابل برداشت', refBalConverted: 'تبدیل‌شده به اعتبار هوش مصنوعی',
+    refBalReserved: 'رزرو برای برداشت', refBalPaid: 'پرداخت‌شده', refBalReversed: 'برگشت‌خورده', refBalLifetime: 'مجموع کسب‌شده', refBalDebt: 'بدهی قابل‌بازیابی',
+    refBalHint: 'وجوه در انتظار، پس از پایان دورهٔ نگه‌داریِ برنامه، قابل برداشت می‌شوند.',
+    refConvertTitle: 'تبدیل به اعتبار هوش مصنوعی', refConvertBody: 'بخشی یا همهٔ درآمد معرفیِ قابل‌برداشت خود را به اعتبار هوش مصنوعی NAVRYA تبدیل کنید. این کار فوری و غیرقابل‌بازگشت است — اعتبار تبدیل‌شده هرگز قابل برداشت نخواهد بود.',
+    refConvertAmount: 'مبلغ برای تبدیل', refConvertAll: 'تبدیل همهٔ موجودی قابل‌برداشت', refConvertBtn: 'تبدیل به اعتبار هوش مصنوعی',
+    refConvertConfirmTitle: 'تأیید تبدیل به اعتبار هوش مصنوعی', refConvertConfirmBody: 'شما در حال تبدیل {amount} به اعتبار هوش مصنوعی هستید. این کار قابل بازگشت نیست.',
+    refConvertSuccess: '{amount} به اعتبار هوش مصنوعی تبدیل شد.', refConvertError: 'تبدیل ممکن نشد: {error}', refConvertMin: 'حداقل مبلغ تبدیل {amount} است',
+    refPayoutTitle: 'برداشت وجه از طریق BSC (تتر)', refPayoutBody: 'درخواست برداشت درآمد معرفیِ قابل‌برداشت خود را به کیف‌پول USDT از نوع BEP-20 روی شبکهٔ BNB Smart Chain ثبت کنید.',
+    refPayoutBelowMin: 'برای درخواست برداشت، حداقل باید {amount} موجودی قابل‌برداشت داشته باشید.', refPayoutDisabled: 'برداشت وجه در حال حاضر در دسترس نیست.',
+    refPayoutBlockedEmail: 'برای درخواست برداشت، ایمیل خود را تأیید کنید.', refPayoutBlockedKyc: 'پیش از درخواست برداشت، احراز هویت لازم است.',
+    refPayoutBlockedAccount: 'برداشت وجه برای حساب شما موقتاً در دسترس نیست. با پشتیبانی تماس بگیرید.',
+    refPayoutBlockedDebt: 'باید ابتدا یک مسئلهٔ موجودی باز حل شود تا بتوانید درخواست برداشت دهید.',
+    refPayoutReauthTitle: 'تأیید هویت شما', refPayoutReauthBody: 'برای امنیت بیشتر، پیش از درخواست برداشت رمز عبور خود را تأیید کنید.',
+    refPayoutReauthPassword: 'رمز عبور فعلی', refPayoutReauthConfirm: 'تأیید', refPayoutReauthError: 'تأیید ممکن نشد: {error}',
+    refPayoutAmount: 'مبلغ', refPayoutAddress: 'آدرس USDT از نوع BEP-20 (شبکهٔ BSC)', refPayoutAddressConfirm: 'آدرس را دوباره وارد کنید',
+    refPayoutAddressMismatch: 'دو آدرس با هم یکسان نیستند.', refPayoutAddressInvalid: 'یک آدرس معتبر BEP-20 (شبکهٔ BSC) وارد کنید.',
+    refPayoutTermsLabel: 'شرایط برداشت وجه را می‌پذیرم', refPayoutAckIrreversible: 'می‌دانم که تراکنش‌های BSC/BEP-20 پس از ارسال غیرقابل‌بازگشت‌اند.',
+    refPayoutAckNetwork: 'تأیید می‌کنم این آدرس از توکن‌های BEP-20 روی شبکهٔ BNB Smart Chain (شناسهٔ شبکهٔ 56) پشتیبانی می‌کند.',
+    refPayoutSubmit: 'درخواست برداشت', refPayoutSuccess: 'درخواست برداشت ثبت شد.', refPayoutError: 'درخواست برداشت ممکن نشد: {error}',
+    refPayoutCancel: 'لغو درخواست', refPayoutCancelConfirm: 'این درخواست برداشت لغو شود؟',
+    refPayoutHistoryTitle: 'تاریخچهٔ برداشت', refPayoutHistoryEmpty: 'هنوز درخواست برداشتی ثبت نشده است.',
+    refPayoutStatusRequested: 'درخواست‌شده', refPayoutStatusUnderReview: 'در حال بررسی', refPayoutStatusApproved: 'تأییدشده', refPayoutStatusSubmitted: 'ثبت‌شده در شبکه',
+    refPayoutStatusConfirmed: 'تأییدشدهٔ شبکه', refPayoutStatusPaid: 'پرداخت‌شده', refPayoutStatusRejected: 'ردشده', refPayoutStatusCancelled: 'لغوشده', refPayoutStatusFailed: 'ناموفق',
+    refPayoutViewTx: 'مشاهدهٔ تراکنش', refPayoutRecipientLabel: 'به', refLoadError: 'اطلاعات معرفی بارگذاری نشد.'
   },
   en: {
     dossierEyebrow: 'NAVRYA · DOSSIER', dossierTitle: 'Dossier, progress & subscription',
@@ -392,7 +427,41 @@ const copy = {
     subInvoiceReasonChainMismatch: 'This transaction was recorded on the wrong network.',
     subInvoiceReasonConfirming: 'Your transaction was seen and is waiting on network confirmations - check again shortly.',
     subInvoiceReasonAlreadyClaimed: 'This transaction hash was already used for a different invoice.',
-    subInvoiceReasonInvalidHash: 'This transaction hash is not valid - it must start with 0x and be 64 characters long.'
+    subInvoiceReasonInvalidHash: 'This transaction hash is not valid - it must start with 0x and be 64 characters long.',
+
+    tabReferral: 'Referral Marketing',
+    refHeroTitle: 'Your referral code', refHeroSub: 'Share your link. When someone signs up through it and becomes a paying customer, you earn a commission.',
+    refCopyLink: 'Copy link', refCopyCode: 'Copy code', refCopied: 'Copied',
+    refProgramStandard: 'Standard program', refProgramInfluencer: 'Influencer partnership',
+    refDisabledTitle: 'Referral marketing is not enabled for your account yet', refDisabledBody: 'If you believe this is a mistake, contact support.',
+    refRateLine: 'You earn {percent}% commission on qualifying payments', refHoldLine: 'Funds are held for {days} days after a payment before they can be spent',
+    refTermLine: 'Commission applies for {days} days after each referral signs up', refNoTermLine: 'No time limit on how long a referral can earn you commission',
+    refInfluencerDisclosure: 'This is a paid partnership: NAVRYA compensates me for referrals made through this link.',
+    refFunnelTitle: 'Your funnel', refFunnelClicks: 'Link clicks', refFunnelVisitors: 'Unique visitors', refFunnelSignups: 'Signups', refFunnelQualified: 'Qualified customers',
+    refBalancesTitle: 'Referral earnings', refBalPending: 'Pending', refBalAvailable: 'Available', refBalConverted: 'Converted to AI credit',
+    refBalReserved: 'Reserved for payout', refBalPaid: 'Paid out', refBalReversed: 'Reversed', refBalLifetime: 'Lifetime earned', refBalDebt: 'Recoverable debt',
+    refBalHint: 'Pending funds become available once the program’s hold period ends.',
+    refConvertTitle: 'Convert to AI credit', refConvertBody: 'Turn part or all of your available referral earnings into NAVRYA AI credit. This is instant and irreversible - converted credit can never be withdrawn.',
+    refConvertAmount: 'Amount to convert', refConvertAll: 'Convert all available', refConvertBtn: 'Convert to AI credit',
+    refConvertConfirmTitle: 'Confirm AI credit conversion', refConvertConfirmBody: 'You are converting {amount} to AI credit. This cannot be undone.',
+    refConvertSuccess: '{amount} converted to AI credit.', refConvertError: 'Could not convert: {error}', refConvertMin: 'Minimum conversion is {amount}',
+    refPayoutTitle: 'Cash out via BSC (USDT)', refPayoutBody: 'Request a payout of your available referral earnings to your own BEP-20 USDT wallet on BNB Smart Chain.',
+    refPayoutBelowMin: 'You need at least {amount} available to request a payout.', refPayoutDisabled: 'Payouts are not available right now.',
+    refPayoutBlockedEmail: 'Verify your email to request a payout.', refPayoutBlockedKyc: 'Identity verification is required before you can request a payout.',
+    refPayoutBlockedAccount: 'Payouts are temporarily unavailable for your account. Contact support.',
+    refPayoutBlockedDebt: 'An open balance issue must be resolved before you can request a payout.',
+    refPayoutReauthTitle: 'Confirm it’s you', refPayoutReauthBody: 'For your security, confirm your password before requesting a payout.',
+    refPayoutReauthPassword: 'Current password', refPayoutReauthConfirm: 'Confirm', refPayoutReauthError: 'Could not confirm: {error}',
+    refPayoutAmount: 'Amount', refPayoutAddress: 'BEP-20 (BSC) USDT address', refPayoutAddressConfirm: 'Re-enter the address',
+    refPayoutAddressMismatch: 'The two addresses do not match.', refPayoutAddressInvalid: 'Enter a valid BEP-20 (BSC) address.',
+    refPayoutTermsLabel: 'I accept the payout terms', refPayoutAckIrreversible: 'I understand that BSC/BEP-20 transfers are irreversible once sent.',
+    refPayoutAckNetwork: 'I confirm this address supports BEP-20 tokens on BNB Smart Chain (chain ID 56).',
+    refPayoutSubmit: 'Request payout', refPayoutSuccess: 'Payout requested.', refPayoutError: 'Could not request payout: {error}',
+    refPayoutCancel: 'Cancel request', refPayoutCancelConfirm: 'Cancel this payout request?',
+    refPayoutHistoryTitle: 'Payout history', refPayoutHistoryEmpty: 'No payout requests yet.',
+    refPayoutStatusRequested: 'Requested', refPayoutStatusUnderReview: 'Under review', refPayoutStatusApproved: 'Approved', refPayoutStatusSubmitted: 'Submitted',
+    refPayoutStatusConfirmed: 'Confirmed', refPayoutStatusPaid: 'Paid', refPayoutStatusRejected: 'Rejected', refPayoutStatusCancelled: 'Cancelled', refPayoutStatusFailed: 'Failed',
+    refPayoutViewTx: 'View transaction', refPayoutRecipientLabel: 'To', refLoadError: 'Could not load referral information.'
   },
   ar: {
     dossierEyebrow: 'NAVRYA · الملف', dossierTitle: 'الملف والتقدم والاشتراك',
@@ -570,7 +639,41 @@ const copy = {
     subInvoiceReasonChainMismatch: 'سُجِّلت هذه المعاملة على شبكة خاطئة.',
     subInvoiceReasonConfirming: 'شُوهِدَت معاملتك وهي بانتظار تأكيدات الشبكة - تحقّق مجددًا بعد قليل.',
     subInvoiceReasonAlreadyClaimed: 'رقم المعاملة هذا استُخدم بالفعل لفاتورة أخرى.',
-    subInvoiceReasonInvalidHash: 'رقم المعاملة هذا غير صالح - يجب أن يبدأ بـ 0x ويتكوّن من 64 حرفًا.'
+    subInvoiceReasonInvalidHash: 'رقم المعاملة هذا غير صالح - يجب أن يبدأ بـ 0x ويتكوّن من 64 حرفًا.',
+
+    tabReferral: 'تسويق الإحالة',
+    refHeroTitle: 'رمز الإحالة الخاص بك', refHeroSub: 'شارك رابطك. عندما يسجّل شخص ما من خلاله ويصبح عميلًا مدفوعًا، تحصل على عمولة.',
+    refCopyLink: 'نسخ الرابط', refCopyCode: 'نسخ الرمز', refCopied: 'تم النسخ',
+    refProgramStandard: 'البرنامج القياسي', refProgramInfluencer: 'شراكة مؤثرين',
+    refDisabledTitle: 'تسويق الإحالة غير مفعّل لحسابك بعد', refDisabledBody: 'إذا كنت تعتقد أن هذا خطأ، تواصل مع الدعم.',
+    refRateLine: 'تحصل على عمولة {percent}٪ من المدفوعات المؤهّلة', refHoldLine: 'تُحتجز الأموال لمدة {days} يومًا بعد الدفع قبل أن تصبح قابلة للإنفاق',
+    refTermLine: 'تُطبَّق العمولة لمدة {days} يومًا بعد تسجيل كل شخص تمت إحالته', refNoTermLine: 'لا يوجد حد زمني لمدة استمرار كسب العمولة من هذه الإحالة',
+    refInfluencerDisclosure: 'هذه شراكة مدفوعة: تدفع NAVRYA لي مقابل الإحالات التي تتم عبر هذا الرابط.',
+    refFunnelTitle: 'قمع الإحالة الخاص بك', refFunnelClicks: 'نقرات الرابط', refFunnelVisitors: 'زوار فريدون', refFunnelSignups: 'التسجيلات', refFunnelQualified: 'عملاء مؤهّلون',
+    refBalancesTitle: 'أرباح الإحالة', refBalPending: 'معلّق', refBalAvailable: 'متاح', refBalConverted: 'محوَّل إلى رصيد الذكاء الاصطناعي',
+    refBalReserved: 'محجوز للسحب', refBalPaid: 'مدفوع', refBalReversed: 'مُرتجَع', refBalLifetime: 'إجمالي المكتسب', refBalDebt: 'دين قابل للاسترداد',
+    refBalHint: 'تصبح الأموال المعلّقة متاحة بعد انتهاء فترة الاحتجاز الخاصة بالبرنامج.',
+    refConvertTitle: 'التحويل إلى رصيد الذكاء الاصطناعي', refConvertBody: 'حوّل جزءًا أو كل أرباح الإحالة المتاحة لديك إلى رصيد NAVRYA للذكاء الاصطناعي. هذا فوري ولا رجعة فيه - لا يمكن سحب الرصيد المحوَّل أبدًا.',
+    refConvertAmount: 'المبلغ المراد تحويله', refConvertAll: 'تحويل كل المتاح', refConvertBtn: 'تحويل إلى رصيد الذكاء الاصطناعي',
+    refConvertConfirmTitle: 'تأكيد التحويل إلى رصيد الذكاء الاصطناعي', refConvertConfirmBody: 'أنت تُحوّل {amount} إلى رصيد الذكاء الاصطناعي. لا يمكن التراجع عن هذا.',
+    refConvertSuccess: 'تم تحويل {amount} إلى رصيد الذكاء الاصطناعي.', refConvertError: 'تعذّر التحويل: {error}', refConvertMin: 'الحد الأدنى للتحويل هو {amount}',
+    refPayoutTitle: 'السحب عبر BSC (USDT)', refPayoutBody: 'اطلب سحب أرباح الإحالة المتاحة لديك إلى محفظة USDT من نوع BEP-20 الخاصة بك على شبكة BNB Smart Chain.',
+    refPayoutBelowMin: 'تحتاج إلى {amount} على الأقل متاحًا لطلب السحب.', refPayoutDisabled: 'السحب غير متاح حاليًا.',
+    refPayoutBlockedEmail: 'وثّق بريدك الإلكتروني لطلب السحب.', refPayoutBlockedKyc: 'التحقق من الهوية مطلوب قبل طلب السحب.',
+    refPayoutBlockedAccount: 'السحب غير متاح مؤقتًا لحسابك. تواصل مع الدعم.',
+    refPayoutBlockedDebt: 'يجب حل مشكلة رصيد مفتوحة قبل أن تتمكن من طلب السحب.',
+    refPayoutReauthTitle: 'تأكيد هويتك', refPayoutReauthBody: 'لأمانك، أكّد كلمة مرورك قبل طلب السحب.',
+    refPayoutReauthPassword: 'كلمة المرور الحالية', refPayoutReauthConfirm: 'تأكيد', refPayoutReauthError: 'تعذّر التأكيد: {error}',
+    refPayoutAmount: 'المبلغ', refPayoutAddress: 'عنوان USDT من نوع BEP-20 (شبكة BSC)', refPayoutAddressConfirm: 'أعد إدخال العنوان',
+    refPayoutAddressMismatch: 'العنوانان غير متطابقين.', refPayoutAddressInvalid: 'أدخل عنوان BEP-20 (شبكة BSC) صالحًا.',
+    refPayoutTermsLabel: 'أوافق على شروط السحب', refPayoutAckIrreversible: 'أفهم أن تحويلات BSC/BEP-20 لا رجعة فيها بعد الإرسال.',
+    refPayoutAckNetwork: 'أؤكد أن هذا العنوان يدعم رموز BEP-20 على شبكة BNB Smart Chain (معرّف السلسلة 56).',
+    refPayoutSubmit: 'طلب السحب', refPayoutSuccess: 'تم تقديم طلب السحب.', refPayoutError: 'تعذّر طلب السحب: {error}',
+    refPayoutCancel: 'إلغاء الطلب', refPayoutCancelConfirm: 'هل تريد إلغاء طلب السحب هذا؟',
+    refPayoutHistoryTitle: 'سجل السحوبات', refPayoutHistoryEmpty: 'لا توجد طلبات سحب بعد.',
+    refPayoutStatusRequested: 'مطلوب', refPayoutStatusUnderReview: 'قيد المراجعة', refPayoutStatusApproved: 'معتمد', refPayoutStatusSubmitted: 'مُرسَل',
+    refPayoutStatusConfirmed: 'مؤكَّد', refPayoutStatusPaid: 'مدفوع', refPayoutStatusRejected: 'مرفوض', refPayoutStatusCancelled: 'ملغى', refPayoutStatusFailed: 'فشل',
+    refPayoutViewTx: 'عرض المعاملة', refPayoutRecipientLabel: 'إلى', refLoadError: 'تعذّر تحميل معلومات الإحالة.'
   },
   es: {
     dossierEyebrow: 'NAVRYA · EXPEDIENTE', dossierTitle: 'Expediente, progreso y suscripción',
@@ -748,7 +851,41 @@ const copy = {
     subInvoiceReasonChainMismatch: 'Esta transacción se registró en la red equivocada.',
     subInvoiceReasonConfirming: 'Tu transacción fue detectada y espera confirmaciones de la red — vuelve a verificar en breve.',
     subInvoiceReasonAlreadyClaimed: 'Este hash de transacción ya se usó para otra factura.',
-    subInvoiceReasonInvalidHash: 'Este hash de transacción no es válido - debe empezar con 0x y tener 64 caracteres.'
+    subInvoiceReasonInvalidHash: 'Este hash de transacción no es válido - debe empezar con 0x y tener 64 caracteres.',
+
+    tabReferral: 'Marketing de referidos',
+    refHeroTitle: 'Tu código de referido', refHeroSub: 'Comparte tu enlace. Cuando alguien se registre a través de él y se convierta en cliente de pago, ganas una comisión.',
+    refCopyLink: 'Copiar enlace', refCopyCode: 'Copiar código', refCopied: 'Copiado',
+    refProgramStandard: 'Programa estándar', refProgramInfluencer: 'Asociación de influencer',
+    refDisabledTitle: 'El marketing de referidos aún no está habilitado para tu cuenta', refDisabledBody: 'Si crees que se trata de un error, contacta con soporte.',
+    refRateLine: 'Ganas una comisión del {percent}% en los pagos que califican', refHoldLine: 'Los fondos se retienen {days} días después de un pago antes de poder gastarse',
+    refTermLine: 'La comisión se aplica durante {days} días después de que cada referido se registre', refNoTermLine: 'No hay límite de tiempo para cuánto puede generarte comisión un referido',
+    refInfluencerDisclosure: 'Esta es una asociación pagada: NAVRYA me compensa por las referencias realizadas a través de este enlace.',
+    refFunnelTitle: 'Tu embudo', refFunnelClicks: 'Clics en el enlace', refFunnelVisitors: 'Visitantes únicos', refFunnelSignups: 'Registros', refFunnelQualified: 'Clientes calificados',
+    refBalancesTitle: 'Ganancias por referidos', refBalPending: 'Pendiente', refBalAvailable: 'Disponible', refBalConverted: 'Convertido a crédito de IA',
+    refBalReserved: 'Reservado para retiro', refBalPaid: 'Pagado', refBalReversed: 'Revertido', refBalLifetime: 'Total ganado histórico', refBalDebt: 'Deuda recuperable',
+    refBalHint: 'Los fondos pendientes pasan a disponibles al terminar el período de retención del programa.',
+    refConvertTitle: 'Convertir a crédito de IA', refConvertBody: 'Convierte parte o la totalidad de tus ganancias de referidos disponibles en crédito de IA de NAVRYA. Esto es instantáneo e irreversible - el crédito convertido nunca podrá retirarse.',
+    refConvertAmount: 'Monto a convertir', refConvertAll: 'Convertir todo lo disponible', refConvertBtn: 'Convertir a crédito de IA',
+    refConvertConfirmTitle: 'Confirmar conversión a crédito de IA', refConvertConfirmBody: 'Estás convirtiendo {amount} a crédito de IA. Esta acción no se puede deshacer.',
+    refConvertSuccess: 'Se convirtieron {amount} a crédito de IA.', refConvertError: 'No se pudo convertir: {error}', refConvertMin: 'La conversión mínima es {amount}',
+    refPayoutTitle: 'Retirar vía BSC (USDT)', refPayoutBody: 'Solicita un retiro de tus ganancias de referidos disponibles a tu propia billetera USDT BEP-20 en BNB Smart Chain.',
+    refPayoutBelowMin: 'Necesitas al menos {amount} disponible para solicitar un retiro.', refPayoutDisabled: 'Los retiros no están disponibles en este momento.',
+    refPayoutBlockedEmail: 'Verifica tu correo electrónico para solicitar un retiro.', refPayoutBlockedKyc: 'Se requiere verificación de identidad antes de poder solicitar un retiro.',
+    refPayoutBlockedAccount: 'Los retiros no están disponibles temporalmente para tu cuenta. Contacta con soporte.',
+    refPayoutBlockedDebt: 'Debe resolverse un problema de saldo abierto antes de poder solicitar un retiro.',
+    refPayoutReauthTitle: 'Confirma que eres tú', refPayoutReauthBody: 'Por tu seguridad, confirma tu contraseña antes de solicitar un retiro.',
+    refPayoutReauthPassword: 'Contraseña actual', refPayoutReauthConfirm: 'Confirmar', refPayoutReauthError: 'No se pudo confirmar: {error}',
+    refPayoutAmount: 'Monto', refPayoutAddress: 'Dirección USDT BEP-20 (BSC)', refPayoutAddressConfirm: 'Vuelve a introducir la dirección',
+    refPayoutAddressMismatch: 'Las dos direcciones no coinciden.', refPayoutAddressInvalid: 'Introduce una dirección BEP-20 (BSC) válida.',
+    refPayoutTermsLabel: 'Acepto los términos de retiro', refPayoutAckIrreversible: 'Entiendo que las transferencias BSC/BEP-20 son irreversibles una vez enviadas.',
+    refPayoutAckNetwork: 'Confirmo que esta dirección admite tokens BEP-20 en BNB Smart Chain (ID de cadena 56).',
+    refPayoutSubmit: 'Solicitar retiro', refPayoutSuccess: 'Retiro solicitado.', refPayoutError: 'No se pudo solicitar el retiro: {error}',
+    refPayoutCancel: 'Cancelar solicitud', refPayoutCancelConfirm: '¿Cancelar esta solicitud de retiro?',
+    refPayoutHistoryTitle: 'Historial de retiros', refPayoutHistoryEmpty: 'Aún no hay solicitudes de retiro.',
+    refPayoutStatusRequested: 'Solicitado', refPayoutStatusUnderReview: 'En revisión', refPayoutStatusApproved: 'Aprobado', refPayoutStatusSubmitted: 'Enviado',
+    refPayoutStatusConfirmed: 'Confirmado', refPayoutStatusPaid: 'Pagado', refPayoutStatusRejected: 'Rechazado', refPayoutStatusCancelled: 'Cancelado', refPayoutStatusFailed: 'Fallido',
+    refPayoutViewTx: 'Ver transacción', refPayoutRecipientLabel: 'Para', refLoadError: 'No se pudo cargar la información de referidos.'
   }
 };
 
@@ -3041,6 +3178,382 @@ function BillingHistoryCard({ lang }) {
   );
 }
 
+// ---------------------------------------------------------------------------------------------
+// Referral Marketing tab - the customer surface for server/commercial/referral-*.mjs. Every number
+// here is server-authoritative (GET /api/referrals/me, /ledger, /payout-config, /payouts); nothing
+// about a referred person is ever fetched or rendered (see referral-reports.mjs's own privacy
+// contract, verified by tests/referral-customer-privacy.test.mjs). A user never picks Standard vs
+// Influencer here - `program.mode` is read-only, admin-assigned.
+// ---------------------------------------------------------------------------------------------
+function fmtRefUsd(microUsd) { return '$' + (Number(microUsd || 0) / 1000000).toFixed(2); }
+
+function ReferralHero({ lang, me, onNotice }) {
+  const [copiedWhat, setCopiedWhat] = React.useState(null);
+  if (!me.enrolled || !me.code) {
+    return (
+      <Panel variant="base" ornament padding="22px 24px">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Icon name="users" size={22} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'refDisabledTitle')}</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'refDisabledBody')}</span>
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+  const link = window.location.origin + me.code.sharePath;
+  function copy(what, text) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedWhat(what);
+      setTimeout(() => setCopiedWhat(null), 2000);
+      if (onNotice) onNotice(tr(lang, 'refCopied'));
+    }).catch(() => {});
+  }
+  const rate = me.program;
+  return (
+    <Panel variant="base" ornament padding="22px 24px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-muted)' }}>{tr(lang, 'refHeroTitle')}</span>
+            <span style={{ fontSize: 13, color: 'var(--text-dim)', maxWidth: 520 }}>{tr(lang, 'refHeroSub')}</span>
+          </div>
+          <Chip tone={me.program.mode === 'influencer' ? 'gold' : 'accent'} dot>
+            {tr(lang, me.program.mode === 'influencer' ? 'refProgramInfluencer' : 'refProgramStandard')}
+          </Chip>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span dir="ltr" className="navrya-tabular" style={{ flex: '1 1 260px', minWidth: 0, height: 44, display: 'flex', alignItems: 'center', padding: '0 14px', borderRadius: 8, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</span>
+          <Button variant="primary" size="md" icon={copiedWhat === 'link' ? 'check' : 'copy'} onClick={() => copy('link', link)}>{tr(lang, copiedWhat === 'link' ? 'refCopied' : 'refCopyLink')}</Button>
+          <Button variant="secondary" size="md" icon={copiedWhat === 'code' ? 'check' : 'copy'} onClick={() => copy('code', me.code.publicCode)}>{tr(lang, copiedWhat === 'code' ? 'refCopied' : 'refCopyCode')}</Button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>{tr(lang, 'refRateLine', { percent: rate.commissionPercent })}</span>
+          {rate.holdDays > 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'refHoldLine', { days: rate.holdDays })}</span>}
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, rate.commissionTermDays ? 'refTermLine' : 'refNoTermLine', { days: rate.commissionTermDays })}</span>
+        </div>
+
+        {me.influencerDisclosure && (
+          <Notice tone="accent" icon="status">{tr(lang, 'refInfluencerDisclosure')}</Notice>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function ReferralFunnelCard({ lang, funnel }) {
+  return (
+    <Panel variant="base" ornament padding="20px 22px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'refFunnelTitle')}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+          <MetricTile icon="globe" label={tr(lang, 'refFunnelClicks')} value={digits(lang, funnel.clicks)} />
+          <MetricTile icon="users" label={tr(lang, 'refFunnelVisitors')} value={digits(lang, funnel.uniqueVisitors)} />
+          <MetricTile icon="user-round" label={tr(lang, 'refFunnelSignups')} value={digits(lang, funnel.signups)} />
+          <MetricTile icon="check" label={tr(lang, 'refFunnelQualified')} value={digits(lang, funnel.qualifiedCustomers)} />
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ReferralBalancesCard({ lang, balances }) {
+  const rows = [
+    ['refBalPending', balances.pendingMicroUsd], ['refBalAvailable', balances.availableCashMicroUsd],
+    ['refBalConverted', balances.aiConvertedMicroUsd], ['refBalReserved', balances.payoutReservedMicroUsd],
+    ['refBalPaid', balances.paidMicroUsd], ['refBalReversed', balances.reversedMicroUsd]
+  ];
+  return (
+    <Panel variant="base" ornament padding="20px 22px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'refBalancesTitle')}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tr(lang, 'refBalLifetime')}: <span dir="ltr" className="navrya-tabular" style={{ color: 'var(--char-accent)', fontWeight: 700 }}>{fmtRefUsd(balances.lifetimeEarnedMicroUsd)}</span></span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+          {rows.map(([key, micro]) => (
+            <div key={key} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 4 }}>{tr(lang, key)}</div>
+              <div dir="ltr" className="navrya-tabular" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{fmtRefUsd(micro)}</div>
+            </div>
+          ))}
+        </div>
+        {balances.debtMicroUsd > 0 && (
+          <Notice tone="warning" icon="status">{tr(lang, 'refBalDebt')}: {fmtRefUsd(balances.debtMicroUsd)}</Notice>
+        )}
+        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(lang, 'refBalHint')}</span>
+      </div>
+    </Panel>
+  );
+}
+
+function ReferralConvertCard({ lang, me, onNotice, onReload }) {
+  const spendable = me.aiConversion.availableMicroUsd;
+  const [amount, setAmount] = React.useState('');
+  const [confirming, setConfirming] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  if (spendable < me.aiConversion.minimumMicroUsd) return null;
+  const amountUsd = Number(amount) || 0;
+  const amountMicroUsd = Math.round(amountUsd * 1000000);
+  const valid = amountMicroUsd >= me.aiConversion.minimumMicroUsd && amountMicroUsd <= spendable;
+
+  function submit() {
+    setBusy(true);
+    fetch('/api/referrals/convert-to-ai', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountMicroUsd, idempotencyKey: 'ui-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10) })
+    })
+      .then((r) => r.json().then((body) => { if (!r.ok) { const e = new Error(body.error); throw e; } return body; }))
+      .then(() => {
+        onNotice(tr(lang, 'refConvertSuccess', { amount: fmtRefUsd(amountMicroUsd) }));
+        notifyWalletChanged();
+        setAmount(''); setConfirming(false); onReload();
+      })
+      .catch((error) => onNotice(tr(lang, 'refConvertError', { error: error.message })))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <Panel variant="base" ornament padding="20px 22px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'refConvertTitle')}</span>
+        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: 'var(--text-dim)' }}>{tr(lang, 'refConvertBody')}</p>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <TextField label={tr(lang, 'refConvertAmount')} value={amount} onChange={setAmount} type="number" min="0" step="0.01" dir="ltr" style={{ flex: '1 1 160px' }} />
+          <Button variant="secondary" size="md" onClick={() => setAmount(String(spendable / 1000000))}>{tr(lang, 'refConvertAll')}</Button>
+          <Button variant="primary" size="md" icon="check" disabled={!valid} onClick={() => setConfirming(true)}>{tr(lang, 'refConvertBtn')}</Button>
+        </div>
+        {amount !== '' && !valid && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{tr(lang, 'refConvertMin', { amount: fmtRefUsd(me.aiConversion.minimumMicroUsd) })}</span>}
+      </div>
+      {confirming && (
+        <Modal open title={tr(lang, 'refConvertConfirmTitle')} icon="sparkle" onClose={() => !busy && setConfirming(false)} width={440}
+          footer={(
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <Button variant="secondary" onClick={() => setConfirming(false)} disabled={busy}>{tr(lang, 'close')}</Button>
+              <Button variant="primary" icon="check" onClick={submit} loading={busy}>{tr(lang, 'refConvertBtn')}</Button>
+            </div>
+          )}
+        >
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.8, color: 'var(--text-primary)' }}>{tr(lang, 'refConvertConfirmBody', { amount: fmtRefUsd(amountMicroUsd) })}</p>
+        </Modal>
+      )}
+    </Panel>
+  );
+}
+
+// Customer-safe reauth: proves the current password before a payout request, via the new
+// POST /api/auth/reauth (server/community/routes.auth.mjs) - never a separate credential store.
+function ReauthGate({ lang, onConfirmed, onCancel }) {
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  function submit() {
+    setBusy(true); setError('');
+    fetch('/api/auth/reauth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })
+      .then((r) => r.json().then((body) => { if (!r.ok) { throw new Error(body.error); } return body; }))
+      .then(() => onConfirmed())
+      .catch((err) => setError(tr(lang, 'refPayoutReauthError', { error: err.message })))
+      .finally(() => setBusy(false));
+  }
+  return (
+    <Modal open title={tr(lang, 'refPayoutReauthTitle')} icon="honour" onClose={onCancel} width={420}
+      footer={(
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>{tr(lang, 'close')}</Button>
+          <Button variant="primary" icon="check" onClick={submit} loading={busy} disabled={!password}>{tr(lang, 'refPayoutReauthConfirm')}</Button>
+        </div>
+      )}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(lang, 'refPayoutReauthBody')}</p>
+        <TextField label={tr(lang, 'refPayoutReauthPassword')} value={password} onChange={setPassword} type="password" dir="ltr" />
+        {!!error && <Notice tone="danger" icon="status">{error}</Notice>}
+      </div>
+    </Modal>
+  );
+}
+
+const REF_PAYOUT_STATUS_TONE = {
+  requested: 'neutral', under_review: 'neutral', approved: 'accent', submitted: 'accent',
+  confirmed: 'accent', paid: 'success', rejected: 'danger', cancelled: 'neutral', failed: 'danger'
+};
+function statusKeyFor(status) { return 'refPayoutStatus' + status.replace(/(^\w|_\w)/g, (m) => m.replace('_', '').toUpperCase()); }
+
+function ReferralPayoutHistory({ lang, payouts, onCancel }) {
+  if (!payouts.length) {
+    return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tr(lang, 'refPayoutHistoryEmpty')}</span>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {payouts.map((p) => (
+        <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <Chip tone={REF_PAYOUT_STATUS_TONE[p.status] || 'neutral'} dot>{tr(lang, statusKeyFor(p.status))}</Chip>
+            <span dir="ltr" className="navrya-tabular" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{fmtRefUsd(p.amountMicroUsd)}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{tr(lang, 'refPayoutRecipientLabel')} {p.recipientMasked}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {p.explorerUrl && (
+              <a href={p.explorerUrl} target="_blank" rel="noreferrer noopener" style={{ fontSize: 11.5, color: 'var(--char-accent)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Icon name="external-link" size={13} />{tr(lang, 'refPayoutViewTx')}
+              </a>
+            )}
+            {p.cancellable && (
+              <Button variant="ghost" size="sm" onClick={() => onCancel(p.id)}>{tr(lang, 'refPayoutCancel')}</Button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReferralPayoutCard({ lang, me, onNotice, onReload }) {
+  const [config, setConfig] = React.useState(null);
+  const [showForm, setShowForm] = React.useState(false);
+  const [needsReauth, setNeedsReauth] = React.useState(false);
+  const [amount, setAmount] = React.useState('');
+  const [address, setAddress] = React.useState('');
+  const [confirmAddress, setConfirmAddress] = React.useState('');
+  const [ackTerms, setAckTerms] = React.useState(false);
+  const [ackIrreversible, setAckIrreversible] = React.useState(false);
+  const [ackNetwork, setAckNetwork] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [formError, setFormError] = React.useState('');
+
+  React.useEffect(() => {
+    fetch('/api/referrals/payout-config').then((r) => r.json()).then(setConfig).catch(() => setConfig(null));
+  }, []);
+
+  function blockerText(reason) {
+    return {
+      PAYOUT_DISABLED: 'refPayoutDisabled', EMAIL_NOT_VERIFIED: 'refPayoutBlockedEmail', KYC_REQUIRED: 'refPayoutBlockedKyc',
+      PAYOUT_BLOCKED: 'refPayoutBlockedAccount', DEBT_OPEN: 'refPayoutBlockedDebt',
+      BELOW_MINIMUM: 'refPayoutBelowMin'
+    }[reason] || null;
+  }
+
+  function submitRequest() {
+    setBusy(true); setFormError('');
+    fetch('/api/referrals/payouts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amountMicroUsd: Math.round((Number(amount) || 0) * 1000000), address, confirmAddress,
+        acceptedTermsVersion: config.termsVersion, acknowledgeIrreversible: ackIrreversible, acknowledgeNetwork: ackNetwork,
+        idempotencyKey: 'ui-payout-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
+      })
+    })
+      .then((r) => r.json().then((body) => {
+        if (!r.ok) { const e = new Error(body.error === 'ADDRESS_MISMATCH' ? tr(lang, 'refPayoutAddressMismatch') : body.error === 'INVALID_ADDRESS' ? tr(lang, 'refPayoutAddressInvalid') : body.error); e.code = body.error; throw e; }
+        return body;
+      }))
+      .then(() => {
+        onNotice(tr(lang, 'refPayoutSuccess'));
+        notifyWalletChanged();
+        setShowForm(false); setAmount(''); setAddress(''); setConfirmAddress(''); setAckTerms(false); setAckIrreversible(false); setAckNetwork(false);
+        onReload();
+      })
+      .catch((error) => {
+        if (error.code === 'REAUTH_REQUIRED') { setNeedsReauth(true); return; }
+        setFormError(error.message);
+      })
+      .finally(() => setBusy(false));
+  }
+
+  function cancelPayout(id) {
+    fetch('/api/referrals/payouts/' + id + '/cancel', { method: 'POST' }).then(() => onReload());
+  }
+
+  if (!config) return null;
+  const spendable = me.balances.availableCashMicroUsd;
+  const blocked = me.cashOut.blockers[0];
+  const canOpenForm = me.cashOut.enabled;
+  const amountUsd = Number(amount) || 0;
+  const amountMicroUsd = Math.round(amountUsd * 1000000);
+  const addressesMatch = address && confirmAddress && address.trim().toLowerCase() === confirmAddress.trim().toLowerCase();
+  const formValid = amountMicroUsd >= config.minimumMicroUsd && amountMicroUsd <= spendable && addressesMatch && ackTerms && ackIrreversible && ackNetwork;
+
+  return (
+    <Panel variant="base" ornament padding="20px 22px">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'refPayoutTitle')}</span>
+          {canOpenForm && !showForm && (
+            <Button variant="primary" size="md" icon="wallet" onClick={() => setShowForm(true)}>{tr(lang, 'refPayoutSubmit')}</Button>
+          )}
+        </div>
+        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: 'var(--text-dim)' }}>{tr(lang, 'refPayoutBody')}</p>
+        {!canOpenForm && blocked && (
+          <Notice tone="warning" icon="status">{tr(lang, blockerText(blocked) || 'refPayoutDisabled', { amount: fmtRefUsd(config.minimumMicroUsd) })}</Notice>
+        )}
+
+        {showForm && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.35)' }}>
+            <TextField label={tr(lang, 'refPayoutAmount')} value={amount} onChange={setAmount} type="number" min="0" step="0.01" dir="ltr" />
+            <TextField label={tr(lang, 'refPayoutAddress')} value={address} onChange={setAddress} dir="ltr" placeholder="0x..." />
+            <TextField label={tr(lang, 'refPayoutAddressConfirm')} value={confirmAddress} onChange={setConfirmAddress} dir="ltr" placeholder="0x..." />
+            {address && confirmAddress && !addressesMatch && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{tr(lang, 'refPayoutAddressMismatch')}</span>}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-primary)' }}>
+              <input type="checkbox" checked={ackTerms} onChange={(e) => setAckTerms(e.target.checked)} />{tr(lang, 'refPayoutTermsLabel')}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-primary)' }}>
+              <input type="checkbox" checked={ackIrreversible} onChange={(e) => setAckIrreversible(e.target.checked)} />{tr(lang, 'refPayoutAckIrreversible')}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-primary)' }}>
+              <input type="checkbox" checked={ackNetwork} onChange={(e) => setAckNetwork(e.target.checked)} />{tr(lang, 'refPayoutAckNetwork')}
+            </label>
+            {!!formError && <Notice tone="danger" icon="status">{formError}</Notice>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <Button variant="secondary" onClick={() => setShowForm(false)} disabled={busy}>{tr(lang, 'close')}</Button>
+              <Button variant="primary" icon="check" disabled={!formValid} loading={busy} onClick={submitRequest}>{tr(lang, 'refPayoutSubmit')}</Button>
+            </div>
+          </div>
+        )}
+        {needsReauth && (
+          <ReauthGate lang={lang} onCancel={() => setNeedsReauth(false)} onConfirmed={() => { setNeedsReauth(false); submitRequest(); }} />
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '.06em' }}>{tr(lang, 'refPayoutHistoryTitle')}</span>
+          <ReferralPayoutHistory lang={lang} payouts={me.payouts} onCancel={cancelPayout} />
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ReferralMarketingTab({ lang }) {
+  const [me, setMe] = React.useState(null);
+  const [notice, setNotice] = React.useState('');
+  const [failed, setFailed] = React.useState(false);
+
+  const reload = React.useCallback(() => {
+    fetch('/api/referrals/me').then((r) => r.json().then((body) => { if (!r.ok) throw new Error(); return body; })).then((data) => { setMe(data); setFailed(false); }).catch(() => setFailed(true));
+  }, []);
+  React.useEffect(reload, [reload]);
+
+  if (failed) return <Notice tone="danger" icon="status">{tr(lang, 'refLoadError')}</Notice>;
+  if (!me) return null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {!!notice && <Notice tone="accent" icon="status">{notice}</Notice>}
+      <ReferralHero lang={lang} me={me} onNotice={setNotice} />
+      {me.enrolled && (
+        <React.Fragment>
+          <ReferralFunnelCard lang={lang} funnel={me.funnel} />
+          <ReferralBalancesCard lang={lang} balances={me.balances} />
+          <ReferralConvertCard lang={lang} me={me} onNotice={setNotice} onReload={reload} />
+          <ReferralPayoutCard lang={lang} me={me} onNotice={setNotice} onReload={reload} />
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
 // Real Subscription tab (task B.4/B.5) - Billing History (above) already sources exclusively
 // from GET /api/sync/wallet/transactions -> repo.paymentTransactions.listForUser(), never
 // marketplace data. The legacy Marketplace "your subscriptions" mock-purchase panel that used to
@@ -3156,8 +3669,8 @@ function AccountProfileView({ initialTab, character }) {
   const lang = document.documentElement.lang || 'fa';
   const rtl = lang === 'fa' || lang === 'ar';
   const i18n = window.TradeJournalAccountProfileI18n;
-  const [tab, setTab] = React.useState(['identity', 'level', 'ach', 'sub', 'role'].includes(initialTab) ? initialTab
-    : { identity: 'identity', level: 'level', achievements: 'ach', subscriptions: 'sub', role: 'role' }[initialTab] || 'level');
+  const [tab, setTab] = React.useState(['identity', 'level', 'ach', 'sub', 'referral', 'role'].includes(initialTab) ? initialTab
+    : { identity: 'identity', level: 'level', achievements: 'ach', subscriptions: 'sub', referral: 'referral', role: 'role' }[initialTab] || 'level');
   const [profile, setProfile] = React.useState(null);
   const [mastery, setMastery] = React.useState(null);
   const [xpEvents, setXpEvents] = React.useState([]);
@@ -3210,6 +3723,7 @@ function AccountProfileView({ initialTab, character }) {
     { id: 'level', label: tr(lang, 'tabLevel'), icon: 'trending-up' },
     { id: 'ach', label: tr(lang, 'tabAch'), icon: 'trophy' },
     { id: 'sub', label: tr(lang, 'tabSub'), icon: 'crown' },
+    { id: 'referral', label: tr(lang, 'tabReferral'), icon: 'users' },
     { id: 'role', label: tr(lang, 'tabRole'), icon: 'user-cog' }
   ];
 
@@ -3248,6 +3762,7 @@ function AccountProfileView({ initialTab, character }) {
       {tab === 'level' && <LevelTab lang={lang} i18n={i18n} profile={profile} mastery={mastery} xpEvents={xpEvents} unlockedByKey={unlockedByKey} aiDiscipline={aiDiscipline} />}
       {tab === 'ach' && <AchievementsTab lang={lang} i18n={i18n} profile={profile} unlockedByKey={unlockedByKey} openId={openAch} setOpenId={setOpenAch} aiDiscipline={aiDiscipline} />}
       {tab === 'sub' && <SubscriptionTab lang={lang} />}
+      {tab === 'referral' && <ReferralMarketingTab lang={lang} />}
       {tab === 'role' && <RoleTab lang={lang} profile={profile} onSaved={setProfile} />}
     </div>
   );

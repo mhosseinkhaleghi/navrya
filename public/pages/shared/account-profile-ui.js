@@ -201,6 +201,18 @@
   }
 
   // ---------------------------------------------------------------------
+  // Referral Marketing tab - real render only exists in navrya-src/accountProfileView.jsx's
+  // ReferralMarketingTab (window.TradeJournalNavryaAccountProfile.render() above always defers
+  // there first, exactly like every other tab on this page). This vanilla fallback only ever
+  // shows if that hook is genuinely missing, matching subscriptionsTab()'s own precedent.
+  // ---------------------------------------------------------------------
+  function referralTab() {
+    var wrap = el('div', 'account-profile-tab');
+    wrap.append(el('p', 'tj-hint', i18n.t('profileHint')));
+    return wrap;
+  }
+
+  // ---------------------------------------------------------------------
   // Role tab
   // ---------------------------------------------------------------------
   function roleTab(profile) {
@@ -228,7 +240,7 @@
   // Page shell - a real route (#account/profile[/tab]), mirrors
   // mental-health-profile-page.js's route()/render()/open() shape exactly.
   // ---------------------------------------------------------------------
-  var TABS = ['identity', 'level', 'achievements', 'subscriptions', 'role'];
+  var TABS = ['identity', 'level', 'achievements', 'subscriptions', 'referral', 'role'];
   var state = { tab: 'identity' };
 
   function renderPage() {
@@ -268,7 +280,7 @@
     head.append(left);
 
     var nav = el('nav', 'psy-tabs account-profile-tabs');
-    [['identity', 'tabIdentity', 'id-card'], ['level', 'tabLevel', 'trending-up'], ['achievements', 'tabAchievements', 'trophy'], ['subscriptions', 'tabSubscriptions', 'crown'], ['role', 'tabRole', 'user-cog']].forEach(function (item) {
+    [['identity', 'tabIdentity', 'id-card'], ['level', 'tabLevel', 'trending-up'], ['achievements', 'tabAchievements', 'trophy'], ['subscriptions', 'tabSubscriptions', 'crown'], ['referral', 'tabReferral', 'users'], ['role', 'tabRole', 'user-cog']].forEach(function (item) {
       var b = button(i18n.t(item[1]), state.tab === item[0] ? 'active' : '', item[2]);
       b.onclick = function () { history.replaceState(null, '', '#account/profile/' + item[0]); state.tab = item[0]; renderPage(); };
       nav.append(b);
@@ -285,7 +297,8 @@
         state.tab === 'identity' ? identityTab(profile) :
         state.tab === 'level' ? levelTab(profile) :
         state.tab === 'achievements' ? achievementsTab() :
-        state.tab === 'subscriptions' ? (window.TradeJournalNavryaSubscriptions ? window.TradeJournalNavryaSubscriptions.render() : subscriptionsTab()) : roleTab(profile)
+        state.tab === 'subscriptions' ? (window.TradeJournalNavryaSubscriptions ? window.TradeJournalNavryaSubscriptions.render() : subscriptionsTab()) :
+        state.tab === 'referral' ? referralTab() : roleTab(profile)
       );
       icons(body);
     }).catch(function (error) {
@@ -294,7 +307,7 @@
   }
 
   function route() {
-    var match = location.hash.match(/^#account\/profile(?:\/(identity|level|achievements|subscriptions|role))?$/);
+    var match = location.hash.match(/^#account\/profile(?:\/(identity|level|achievements|subscriptions|referral|role))?$/);
     return match ? (match[1] || 'identity') : null;
   }
   function render() {

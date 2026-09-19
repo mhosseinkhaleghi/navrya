@@ -3,7 +3,7 @@
   var messages = {
     en: {
       profileTitle: 'Account Profile', profileHint: 'Your identity, level, achievements, and subscriptions.',
-      tabIdentity: 'Identity', tabLevel: 'Level', tabAchievements: 'Achievements', tabSubscriptions: 'Subscriptions', tabRole: 'Role', back: 'Back',
+      tabIdentity: 'Identity', tabLevel: 'Level', tabAchievements: 'Achievements', tabSubscriptions: 'Subscriptions', tabReferral: 'Referral Marketing', tabRole: 'Role', back: 'Back',
       displayNameLabel: 'Display name', emailLabel: 'Email', phoneLabel: 'Phone', avatarLabel: 'Avatar',
       kycStatusLabel: 'Verification (KYC) status', kycNotStarted: 'Not started', kycPending: 'Pending review', kycVerified: 'Verified', kycRejected: 'Rejected',
       kycEditHint: 'Verification status can only be changed by support - contact support to update it.',
@@ -45,7 +45,7 @@
     },
     fa: {
       profileTitle: 'پروفایل حساب', profileHint: 'هویت، سطح، دستاوردها و اشتراک‌های شما.',
-      tabIdentity: 'هویت', tabLevel: 'سطح', tabAchievements: 'دستاوردها', tabSubscriptions: 'اشتراک‌ها', tabRole: 'نقش', back: 'بازگشت',
+      tabIdentity: 'هویت', tabLevel: 'سطح', tabAchievements: 'دستاوردها', tabSubscriptions: 'اشتراک‌ها', tabReferral: 'بازاریابی معرفی', tabRole: 'نقش', back: 'بازگشت',
       displayNameLabel: 'نام نمایشی', emailLabel: 'ایمیل', phoneLabel: 'شماره تلفن', avatarLabel: 'تصویر پروفایل',
       kycStatusLabel: 'وضعیت احراز هویت (KYC)', kycNotStarted: 'شروع نشده', kycPending: 'در حال بررسی', kycVerified: 'تأیید شده', kycRejected: 'رد شده',
       kycEditHint: 'وضعیت احراز هویت فقط توسط پشتیبانی قابل تغییر است — برای تغییر آن با پشتیبانی تماس بگیرید.',
@@ -87,7 +87,7 @@
     },
     ar: {
       profileTitle: 'الملف الشخصي', profileHint: 'هويتك ومستواك وإنجازاتك واشتراكاتك.',
-      tabIdentity: 'الهوية', tabLevel: 'المستوى', tabAchievements: 'الإنجازات', tabSubscriptions: 'الاشتراكات', tabRole: 'الدور', back: 'رجوع',
+      tabIdentity: 'الهوية', tabLevel: 'المستوى', tabAchievements: 'الإنجازات', tabSubscriptions: 'الاشتراكات', tabReferral: 'تسويق الإحالة', tabRole: 'الدور', back: 'رجوع',
       displayNameLabel: 'الاسم المعروض', emailLabel: 'البريد الإلكتروني', phoneLabel: 'الهاتف', avatarLabel: 'الصورة الرمزية',
       kycStatusLabel: 'حالة التحقق (KYC)', kycNotStarted: 'لم تبدأ', kycPending: 'قيد المراجعة', kycVerified: 'موثّق', kycRejected: 'مرفوض',
       kycEditHint: 'حالة التحقق يغيّرها الدعم فقط — تواصل مع الدعم لتحديثها.',
@@ -129,7 +129,7 @@
     },
     es: {
       profileTitle: 'Perfil de la cuenta', profileHint: 'Tu identidad, nivel, logros y suscripciones.',
-      tabIdentity: 'Identidad', tabLevel: 'Nivel', tabAchievements: 'Logros', tabSubscriptions: 'Suscripciones', tabRole: 'Rol', back: 'Volver',
+      tabIdentity: 'Identidad', tabLevel: 'Nivel', tabAchievements: 'Logros', tabSubscriptions: 'Suscripciones', tabReferral: 'Marketing de referidos', tabRole: 'Rol', back: 'Volver',
       displayNameLabel: 'Nombre visible', emailLabel: 'Correo electrónico', phoneLabel: 'Teléfono', avatarLabel: 'Avatar',
       kycStatusLabel: 'Estado de verificación (KYC)', kycNotStarted: 'No iniciado', kycPending: 'En revisión', kycVerified: 'Verificado', kycRejected: 'Rechazado',
       kycEditHint: 'El estado de verificación solo puede cambiarlo soporte - contacta a soporte para actualizarlo.',
