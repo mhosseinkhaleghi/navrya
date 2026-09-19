@@ -2385,10 +2385,11 @@ export function createMemoryRepo() {
   const findDiscountRowByTransaction = (transactionId) => Array.from(state.discountRedemptions.values()).find((row) => row.transactionId === transactionId) || null;
 
   const discountCodes = {
-    async create({ code, campaignName, discountType, discountValue, startsAt, expiresAt, maxRedemptions, active, createdBy }) {
+    async create({ code, campaignName, discountType, discountValue, startsAt, expiresAt, maxRedemptions, active, createdBy, applicationMode, planIds }) {
       const stamp = now();
       const record = {
         id: newId('discountCode'), code, campaignName, active: active !== false, discountType, discountValue,
+        applicationMode: applicationMode || 'code', planIds: Array.isArray(planIds) ? [...planIds] : [],
         startsAt: startsAt || null, expiresAt: expiresAt || null, maxRedemptions: maxRedemptions === undefined ? null : maxRedemptions,
         createdBy: createdBy || null, updatedBy: null, createdAt: stamp, updatedAt: stamp
       };
@@ -2406,6 +2407,11 @@ export function createMemoryRepo() {
     async list() {
       return Array.from(state.discountCodes.values()).reverse().sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).map(clone);
     },
+    // The ACTIVE automatic-mode discounts, oldest first - the tie-break the per-plan offer resolution relies on.
+    async listAutomatic() {
+      return Array.from(state.discountCodes.values()).filter((code) => code.applicationMode === 'automatic' && code.active)
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0)).map(clone);
+    },
     async stats(id) {
       return discountStatsFor(id);
     },
@@ -2414,7 +2420,7 @@ export function createMemoryRepo() {
     async update(id, patch, { updatedBy } = {}) {
       const code = state.discountCodes.get(id);
       if (!code) throw new ApiError(404, 'DISCOUNT_CODE_NOT_FOUND');
-      const allowed = ['campaignName', 'active', 'discountType', 'discountValue', 'startsAt', 'expiresAt', 'maxRedemptions'];
+      const allowed = ['campaignName', 'active', 'discountType', 'discountValue', 'startsAt', 'expiresAt', 'maxRedemptions', 'planIds'];
       const next = { ...code };
       allowed.forEach((key) => { if (patch && key in patch) next[key] = patch[key]; });
       assertStoredCodeValid(next);
@@ -2426,15 +2432,15 @@ export function createMemoryRepo() {
 
   const discountRedemptions = {
     // Read-only availability check for the provisional checkout quote - the SAME rules reserve() enforces.
-    async check({ codeId, userId }) {
+    async check({ codeId, userId, planId }) {
       const code = state.discountCodes.get(codeId);
-      assertCodeAvailable({ code: clone(code || null), stats: discountStatsFor(codeId), ownRow: liveDiscountRowForUser(codeId, userId), now: Date.now() });
+      assertCodeAvailable({ code: clone(code || null), stats: discountStatsFor(codeId), ownRow: liveDiscountRowForUser(codeId, userId), now: Date.now(), planId });
       return { ok: true };
     },
     async reserve({ codeId, userId, planId, originalAmountMicroUsd, reservedUntil }) {
       const code = state.discountCodes.get(codeId);
       if (code) sweepLapsedDiscountHolds(codeId);
-      assertCodeAvailable({ code: clone(code || null), stats: discountStatsFor(codeId), ownRow: liveDiscountRowForUser(codeId, userId), now: Date.now() });
+      assertCodeAvailable({ code: clone(code || null), stats: discountStatsFor(codeId), ownRow: liveDiscountRowForUser(codeId, userId), now: Date.now(), planId });
       const { discountAmountMicroUsd, finalAmountMicroUsd } = computeDiscount({ originalAmountMicroUsd, discountType: code.discountType, discountValue: code.discountValue });
       const row = {
         id: newId('discountRedemption'), codeId, userId, transactionId: null, status: 'reserved', planId,

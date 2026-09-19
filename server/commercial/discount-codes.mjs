@@ -5,9 +5,14 @@
 // Stored units (never floats): a 'percent' code stores integer BASIS POINTS (1500 = 15%), a 'fixed' code stores
 // integer MICRO-USD. Admin-facing units (percent / USD) exist only at the API boundary and are converted once,
 // with an explicit decimal-places check, by parseDiscountCodeInput().
+import { randomBytes } from 'node:crypto';
 import { ApiError } from '../community/errors.mjs';
+import { PAID_PLAN_NAMES } from './commercial-defaults.mjs';
 
 export const DISCOUNT_TYPES = ['percent', 'fixed'];
+// 'code': the customer types it. 'automatic': there is no code to type - the discount is advertised per customer (the plan
+// cards) and applied at checkout by its id. The mode is fixed at creation, like the code string itself.
+export const APPLICATION_MODES = ['code', 'automatic'];
 const CODE_PATTERN = /^[A-Za-z0-9_-]{3,32}$/;
 const MAX_CAMPAIGN_NAME_LENGTH = 80;
 const MICRO = 1000000;
@@ -20,6 +25,22 @@ export function normalizeDiscountCode(raw) {
   const trimmed = raw.trim();
   if (!CODE_PATTERN.test(trimmed)) return null;
   return trimmed.toUpperCase();
+}
+
+// An automatic discount has no customer-typed code, but every reservation and redemption row is keyed by a code string, so it
+// owns an internal identifier that satisfies the same pattern and unique index: 'AUTO-' + 48 random bits. Nobody is ever
+// shown it, and the checkout refuses to accept it as typed input.
+export function generateAutomaticCode() {
+  return 'AUTO-' + randomBytes(6).toString('hex').toUpperCase();
+}
+
+// planIds is the list of paid plans a discount applies to; an empty (or missing) list means EVERY paid plan.
+export function codeAppliesToPlan(code, planId) {
+  return !Array.isArray(code.planIds) || code.planIds.length === 0 || code.planIds.includes(planId);
+}
+
+function isValidPlanIds(planIds) {
+  return Array.isArray(planIds) && planIds.every((id, index) => PAID_PLAN_NAMES.includes(id) && planIds.indexOf(id) === index);
 }
 
 // Exact integer math. Percent rounds half-up on BigInt (a float product of two large integers can be off by one
@@ -52,8 +73,10 @@ export function deriveCodeStatus(code, stats, now = new Date()) {
 // The ONE availability rule set, shared by the read-only quote check and the authoritative reservation. `ownRow`
 // is this user's live-or-confirmed redemption of the code (if any); `stats` counts confirmed + live reservations.
 // Unknown and deactivated codes are indistinguishable on purpose (no existence oracle).
-export function assertCodeAvailable({ code, stats, ownRow, now = Date.now() }) {
+export function assertCodeAvailable({ code, stats, ownRow, now = Date.now(), planId }) {
   if (!code || !code.active) throw new ApiError(404, 'DISCOUNT_CODE_INVALID');
+  // A live code used on a plan outside its scope is refused with its own reason (the caller already knows the code).
+  if (planId && !codeAppliesToPlan(code, planId)) throw new ApiError(409, 'DISCOUNT_CODE_PLAN_NOT_ELIGIBLE', null, { planIds: code.planIds });
   if (code.expiresAt && toMs(code.expiresAt) <= now) throw new ApiError(409, 'DISCOUNT_CODE_EXPIRED', null, { expiresAt: code.expiresAt });
   if (code.startsAt && toMs(code.startsAt) > now) throw new ApiError(409, 'DISCOUNT_CODE_NOT_STARTED', null, { startsAt: code.startsAt });
   if (ownRow) {
@@ -72,6 +95,8 @@ export function assertStoredCodeValid(code) {
   if (code.discountType === 'fixed' && code.discountValue < 1) throw invalid();
   if (code.maxRedemptions != null && (!Number.isSafeInteger(code.maxRedemptions) || code.maxRedemptions < 1)) throw invalid();
   if (code.startsAt && code.expiresAt && toMs(code.expiresAt) <= toMs(code.startsAt)) throw invalid();
+  if (code.applicationMode !== undefined && !APPLICATION_MODES.includes(code.applicationMode)) throw invalid();
+  if (code.planIds !== undefined && !isValidPlanIds(code.planIds)) throw invalid();
 }
 
 // How many digits follow the decimal point (99 for exponent notation, which is refused rather than guessed).
@@ -83,6 +108,18 @@ export function decimalPlaces(value) {
 }
 
 function fieldError(field) { return new ApiError(400, 'VALIDATION_FAILED', null, { field }); }
+
+// Missing / null / [] = every paid plan. Anything else must be an array of real PAID plan ids (duplicates collapse).
+function parsePlanIds(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw fieldError('planIds');
+  const planIds = [];
+  for (const id of value) {
+    if (typeof id !== 'string' || !PAID_PLAN_NAMES.includes(id)) throw fieldError('planIds');
+    if (!planIds.includes(id)) planIds.push(id);
+  }
+  return planIds;
+}
 
 function parseDate(value, field) {
   if (value === null || value === undefined || value === '') return null;
@@ -98,12 +135,23 @@ export function parseDiscountCodeInput(body, { partial = false, existing = null 
   const out = {};
   const has = (key) => Object.prototype.hasOwnProperty.call(input, key);
 
+  // The mode decides whether a customer-typed code exists at all, so it is settled first. Both it and the code string are
+  // immutable after creation.
   if (partial) {
+    if (has('applicationMode')) throw fieldError('applicationMode');
     if (has('code')) throw fieldError('code');
   } else {
-    const code = normalizeDiscountCode(input.code);
-    if (!code) throw fieldError('code');
-    out.code = code;
+    const mode = has('applicationMode') && input.applicationMode !== undefined && input.applicationMode !== null ? input.applicationMode : 'code';
+    if (!APPLICATION_MODES.includes(mode)) throw fieldError('applicationMode');
+    out.applicationMode = mode;
+    if (mode === 'automatic') {
+      if (has('code') && input.code !== undefined && input.code !== null && input.code !== '') throw fieldError('code');
+      out.code = generateAutomaticCode();
+    } else {
+      const code = normalizeDiscountCode(input.code);
+      if (!code) throw fieldError('code');
+      out.code = code;
+    }
   }
 
   if (!partial || has('campaignName')) {
@@ -147,6 +195,8 @@ export function parseDiscountCodeInput(body, { partial = false, existing = null 
   const expiresAt = 'expiresAt' in out ? out.expiresAt : (existing && existing.expiresAt);
   if (startsAt && expiresAt && toMs(expiresAt) <= toMs(startsAt)) throw fieldError('expiresAt');
 
+  if (!partial || has('planIds')) out.planIds = parsePlanIds(input.planIds);
+
   if (has('active')) {
     if (typeof input.active !== 'boolean') throw fieldError('active');
     out.active = input.active;
@@ -154,6 +204,14 @@ export function parseDiscountCodeInput(body, { partial = false, existing = null 
     out.active = true;
   }
   return out;
+}
+
+// The internal identifier of an AUTOMATIC discount (its 'code') is a server implementation detail, never something a
+// customer typed or should see - scrubbed from every customer-facing pricing snapshot. Admin (which manages the discount by
+// this same codeId) and the server's own stored transaction metadata keep the real value in full.
+export function customerFacingPricing(pricing) {
+  if (!pricing || !pricing.discount || !pricing.discount.automatic) return pricing;
+  return { ...pricing, discount: { ...pricing.discount, code: null } };
 }
 
 export function toAdminDiscountValue(code) {
@@ -171,6 +229,7 @@ export function toCodeStatusDto(code, stats, now = new Date()) {
 export function toCodeDto(code, stats, now = new Date()) {
   return {
     id: code.id, code: code.code, campaignName: code.campaignName, active: code.active, discountType: code.discountType,
+    applicationMode: code.applicationMode || 'code', planIds: Array.isArray(code.planIds) ? code.planIds : [],
     discountValue: toAdminDiscountValue(code), startsAt: code.startsAt, expiresAt: code.expiresAt, maxRedemptions: code.maxRedemptions,
     status: deriveCodeStatus(code, stats, now),
     stats: { confirmed: stats.confirmed, pendingReservations: stats.pendingReservations, remaining: stats.remaining },

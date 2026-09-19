@@ -36,9 +36,9 @@ export class ManualBillingProvider extends BillingProvider {
   // (spec section 2's price-snapshot requirement). The transaction is created at the FINAL (discounted) amount, and
   // a discount code's slot is reserved for MANUAL_CHECKOUT_HOLD_MINUTES while the admin confirmation is
   // outstanding. See subscription-checkout.mjs (shared with the BSC provider).
-  async createSubscription({ userId, planId, discountCode }) {
+  async createSubscription({ userId, planId, discountCode, automaticDiscountId }) {
     if (!PAID_PLAN_NAMES.includes(planId)) throw new ApiError(400, 'VALIDATION_FAILED');
-    const checkout = await prepareSubscriptionCheckout(this.repo, { userId, planId, discountCode, holdMinutes: MANUAL_CHECKOUT_HOLD_MINUTES });
+    const checkout = await prepareSubscriptionCheckout(this.repo, { userId, planId, discountCode, automaticDiscountId, holdMinutes: MANUAL_CHECKOUT_HOLD_MINUTES });
     return createSubscriptionTransaction(this.repo, {
       checkout, userId, planId, provider: 'manual', externalTransactionId: newId('manualTx'), createInvoice: null
     });

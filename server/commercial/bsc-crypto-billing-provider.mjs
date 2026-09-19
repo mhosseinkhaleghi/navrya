@@ -118,10 +118,10 @@ export class BscCryptoBillingProvider extends BillingProvider {
   // transaction.amountMicroUsd) - is created at the FINAL discounted amount: an invoice is never generated for the
   // undiscounted price. A discounted checkout's code slot is held for the invoice's own lifetime. A code-produced
   // $0 price needs no invoice at all and never contacts the chain (see createSubscriptionTransaction()).
-  async createSubscription({ userId, planId, discountCode }) {
+  async createSubscription({ userId, planId, discountCode, automaticDiscountId }) {
     if (!PAID_PLAN_NAMES.includes(planId)) throw new ApiError(400, 'VALIDATION_FAILED');
     const { invoiceExpiryMinutes } = await resolveBscRuntimeConfig(this.repo);
-    const checkout = await prepareSubscriptionCheckout(this.repo, { userId, planId, discountCode, holdMinutes: invoiceExpiryMinutes });
+    const checkout = await prepareSubscriptionCheckout(this.repo, { userId, planId, discountCode, automaticDiscountId, holdMinutes: invoiceExpiryMinutes });
     return createSubscriptionTransaction(this.repo, {
       checkout, userId, planId, provider: 'bsc_crypto', externalTransactionId: newId('bscTx'),
       createInvoice: (transaction) => this._createInvoiceFor(transaction)

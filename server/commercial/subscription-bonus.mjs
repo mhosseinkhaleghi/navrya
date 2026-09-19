@@ -13,6 +13,7 @@
 // written as 0 for a zero-price checkout, and bonusOwedMicroUsd() re-checks the amount at grant time.
 import { ApiError } from '../community/errors.mjs';
 import { grantKey, reversalKey } from './subscription-bonus-lots.mjs';
+import { customerFacingPricing } from './discount-codes.mjs';
 
 export { grantKey, reversalKey };
 export const lostDiscountKey = (transactionId) => 'discount-lost:' + transactionId;
@@ -119,9 +120,15 @@ export async function enrichTransactionsForCustomer(repo, transactions) {
   const described = await describeSubscriptionTransactions(repo, transactions);
   return transactions.map((transaction) => {
     const info = described.get(transaction.id);
+    // The raw `metadata` field is dropped, not merely overridden: it duplicates pricing/bonus/discountOutcome below (which
+    // ARE sanitized) and the customer UI never reads it directly - keeping it around would silently reopen this same leak
+    // the next time something is added to metadata.pricing. customerFacingPricing(): an automatic discount's internal
+    // identifier never reaches the customer, here or anywhere else in their own billing history - enrichTransactionsForAdmin()
+    // keeps it in full.
+    const { metadata, ...rest } = transaction;
     return info
-      ? { ...transaction, pricing: info.pricing, bonus: info.bonus, discountOutcome: info.discountOutcome }
-      : { ...transaction, pricing: null, bonus: { ...NO_BONUS }, discountOutcome: null };
+      ? { ...rest, pricing: customerFacingPricing(info.pricing), bonus: info.bonus, discountOutcome: info.discountOutcome }
+      : { ...rest, pricing: null, bonus: { ...NO_BONUS }, discountOutcome: null };
   });
 }
 

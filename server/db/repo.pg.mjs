@@ -3686,7 +3686,8 @@ export function createPgRepo(pool) {
     return {
       id: row.id, code: row.code, campaignName: row.campaign_name, active: row.active, discountType: row.discount_type,
       discountValue: Number(row.discount_value), startsAt: isoOrNull(row.starts_at), expiresAt: isoOrNull(row.expires_at),
-      maxRedemptions: row.max_redemptions, createdBy: row.created_by, updatedBy: row.updated_by, createdAt: isoOrNull(row.created_at), updatedAt: isoOrNull(row.updated_at)
+      maxRedemptions: row.max_redemptions, createdBy: row.created_by, updatedBy: row.updated_by, createdAt: isoOrNull(row.created_at), updatedAt: isoOrNull(row.updated_at),
+      applicationMode: row.application_mode || 'code', planIds: Array.isArray(row.plan_ids) ? row.plan_ids : []
     };
   }
   function mapDiscountRedemption(row) {
@@ -3721,13 +3722,17 @@ export function createPgRepo(pool) {
   }
 
   const discountCodes = {
-    async create({ code, campaignName, discountType, discountValue, startsAt, expiresAt, maxRedemptions, active, createdBy }) {
-      assertStoredCodeValid({ discountType, discountValue, startsAt: startsAt || null, expiresAt: expiresAt || null, maxRedemptions: maxRedemptions === undefined ? null : maxRedemptions });
+    async create({ code, campaignName, discountType, discountValue, startsAt, expiresAt, maxRedemptions, active, createdBy, applicationMode, planIds }) {
+      assertStoredCodeValid({
+        discountType, discountValue, startsAt: startsAt || null, expiresAt: expiresAt || null, maxRedemptions: maxRedemptions === undefined ? null : maxRedemptions,
+        applicationMode: applicationMode || 'code', planIds: Array.isArray(planIds) ? planIds : []
+      });
       try {
         const { rows } = await pool.query(
-          `INSERT INTO discount_codes (id, code, campaign_name, active, discount_type, discount_value, starts_at, expires_at, max_redemptions, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-          [newId('discountCode'), code, campaignName, active !== false, discountType, discountValue, startsAt || null, expiresAt || null, maxRedemptions === undefined ? null : maxRedemptions, createdBy || null]
+          `INSERT INTO discount_codes (id, code, campaign_name, active, discount_type, discount_value, starts_at, expires_at, max_redemptions, created_by, application_mode, plan_ids)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+          [newId('discountCode'), code, campaignName, active !== false, discountType, discountValue, startsAt || null, expiresAt || null, maxRedemptions === undefined ? null : maxRedemptions, createdBy || null,
+            applicationMode || 'code', Array.isArray(planIds) ? planIds : []]
         );
         return mapDiscountCode(rows[0]);
       } catch (error) {
@@ -3747,6 +3752,11 @@ export function createPgRepo(pool) {
       const { rows } = await pool.query('SELECT * FROM discount_codes ORDER BY created_at DESC');
       return rows.map(mapDiscountCode);
     },
+    // The ACTIVE automatic-mode discounts, oldest first - the tie-break the per-plan offer resolution relies on.
+    async listAutomatic() {
+      const { rows } = await pool.query(`SELECT * FROM discount_codes WHERE application_mode='automatic' AND active ORDER BY created_at ASC, id ASC`);
+      return rows.map(mapDiscountCode);
+    },
     async stats(id) {
       const { rows } = await pool.query('SELECT max_redemptions FROM discount_codes WHERE id=$1', [id]);
       const counts = await discountCounts(pool, id);
@@ -3762,16 +3772,16 @@ export function createPgRepo(pool) {
         const { rows } = await client.query('SELECT * FROM discount_codes WHERE id=$1 FOR UPDATE', [id]);
         if (!rows[0]) throw new ApiError(404, 'DISCOUNT_CODE_NOT_FOUND');
         const next = mapDiscountCode(rows[0]);
-        ['campaignName', 'active', 'discountType', 'discountValue', 'startsAt', 'expiresAt', 'maxRedemptions'].forEach((key) => { if (patch && key in patch) next[key] = patch[key]; });
+        ['campaignName', 'active', 'discountType', 'discountValue', 'startsAt', 'expiresAt', 'maxRedemptions', 'planIds'].forEach((key) => { if (patch && key in patch) next[key] = patch[key]; });
         assertStoredCodeValid(next);
         if (next.maxRedemptions != null) {
           const counts = await discountCounts(client, id);
           if (counts.confirmed + counts.pendingReservations > next.maxRedemptions) throw new ApiError(409, 'DISCOUNT_CAPACITY_BELOW_USED');
         }
         const { rows: updated } = await client.query(
-          `UPDATE discount_codes SET campaign_name=$2, active=$3, discount_type=$4, discount_value=$5, starts_at=$6, expires_at=$7, max_redemptions=$8,
+          `UPDATE discount_codes SET campaign_name=$2, active=$3, discount_type=$4, discount_value=$5, starts_at=$6, expires_at=$7, max_redemptions=$8, plan_ids=$10,
              updated_by=COALESCE($9, updated_by), updated_at=now() WHERE id=$1 RETURNING *`,
-          [id, next.campaignName, next.active, next.discountType, next.discountValue, next.startsAt, next.expiresAt, next.maxRedemptions, updatedBy || null]
+          [id, next.campaignName, next.active, next.discountType, next.discountValue, next.startsAt, next.expiresAt, next.maxRedemptions, updatedBy || null, next.planIds]
         );
         await client.query('COMMIT');
         return mapDiscountCode(updated[0]);
@@ -3786,12 +3796,12 @@ export function createPgRepo(pool) {
 
   const discountRedemptions = {
     // Read-only availability check for the provisional checkout quote - the SAME rules reserve() enforces.
-    async check({ codeId, userId }) {
+    async check({ codeId, userId, planId }) {
       const { rows } = await pool.query('SELECT * FROM discount_codes WHERE id=$1', [codeId]);
       const code = rows[0] ? mapDiscountCode(rows[0]) : null;
       assertCodeAvailable({
         code, stats: code ? await discountCounts(pool, codeId) : { confirmed: 0, pendingReservations: 0 },
-        ownRow: code ? await liveDiscountRowForUser(pool, codeId, userId) : null, now: await databaseNowMs(pool)
+        ownRow: code ? await liveDiscountRowForUser(pool, codeId, userId) : null, now: await databaseNowMs(pool), planId
       });
       return { ok: true };
     },
@@ -3810,7 +3820,7 @@ export function createPgRepo(pool) {
         }
         assertCodeAvailable({
           code, stats: code ? await discountCounts(client, codeId) : { confirmed: 0, pendingReservations: 0 },
-          ownRow: code ? await liveDiscountRowForUser(client, codeId, userId) : null, now: await databaseNowMs(client)
+          ownRow: code ? await liveDiscountRowForUser(client, codeId, userId) : null, now: await databaseNowMs(client), planId
         });
         const { discountAmountMicroUsd, finalAmountMicroUsd } = computeDiscount({ originalAmountMicroUsd, discountType: code.discountType, discountValue: code.discountValue });
         let inserted;

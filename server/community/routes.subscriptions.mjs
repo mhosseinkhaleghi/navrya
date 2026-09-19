@@ -4,7 +4,7 @@ import { getBillingProvider } from '../commercial/billing-provider-factory.mjs';
 import { cancelAtPeriodEnd, reactivateSubscription } from '../commercial/subscription-service.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
 import { getEffectiveCommercialConfig } from '../commercial/commercial-config.mjs';
-import { quoteSubscription } from '../commercial/subscription-checkout.mjs';
+import { quoteSubscription, listAutomaticOffers } from '../commercial/subscription-checkout.mjs';
 import { toCodeStatusDto } from '../commercial/discount-codes.mjs';
 import { rateLimit } from './security/rate-limit.mjs';
 
@@ -26,6 +26,7 @@ const codeAttemptLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, max: 20, keyFn: (req) => 'discount-code:' + req.currentUser.id, message: 'RATE_LIMITED'
 });
 const hasDiscountCode = (body) => Boolean(body) && body.discountCode !== undefined && body.discountCode !== null && body.discountCode !== '';
+const hasAutomaticDiscount = (body) => Boolean(body) && body.automaticDiscountId !== undefined && body.automaticDiscountId !== null && body.automaticDiscountId !== '';
 
 // The checkout urgency poll (live remaining capacity / expiry of an ALREADY-applied code) is a cheap read-only lookup
 // that reserves nothing and can guess nothing, so it gets its OWN, much more generous budget (30 / minute per user,
@@ -33,6 +34,10 @@ const hasDiscountCode = (body) => Boolean(body) && body.discountCode !== undefin
 // seconds without ever eating the 20-per-10-minutes code-guessing throttle - and vice versa.
 const discountStatusLimiter = rateLimit({
   windowMs: 60 * 1000, max: 30, keyFn: (req) => 'discount-status:' + req.currentUser.id, message: 'RATE_LIMITED'
+});
+// Same reasoning for the per-customer automatic offers read behind the plan cards: cheap, read-only, its own budget.
+const automaticOffersLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 30, keyFn: (req) => 'automatic-offers:' + req.currentUser.id, message: 'RATE_LIMITED'
 });
 
 export function router(repo) {
@@ -61,6 +66,12 @@ export function router(repo) {
     res.json(await quoteSubscription(repo, { userId: req.currentUser.id, planId, code }));
   }));
 
+  // The automatic (no-code) discounts this customer can use right now, per plan, with server-computed amounts: the plan cards
+  // strike the list price and show the real one from this, and the checkout claims an offer by its codeId.
+  app.get('/automatic-discounts', automaticOffersLimiter, asyncHandler(async (req, res) => {
+    res.json({ offers: await listAutomaticOffers(repo, { userId: req.currentUser.id }) });
+  }));
+
   // Live status of a code the client already holds the (opaque) id of - obtainable only from a successful quote. It
   // reports capacity in use RIGHT NOW (confirmed + live reservations, read from the repository on every call, never
   // cached) and the expiry, so the checkout can show a real countdown and a real "N left" that drops as others buy.
@@ -72,14 +83,19 @@ export function router(repo) {
 
   app.post(
     '/upgrade-request',
-    (req, res, next) => (hasDiscountCode(req.body) ? codeAttemptLimiter(req, res, next) : next()),
+    // Claiming a discount - typed or automatic - shares the one per-user attempt budget; buying with neither is never counted.
+    (req, res, next) => (hasDiscountCode(req.body) || hasAutomaticDiscount(req.body) ? codeAttemptLimiter(req, res, next) : next()),
     asyncHandler(async (req, res) => {
       const body = req.body || {};
       const withCode = hasDiscountCode(body);
+      const withAutomatic = hasAutomaticDiscount(body);
       if (withCode && typeof body.discountCode !== 'string') throw new ApiError(400, 'VALIDATION_FAILED');
+      if (withAutomatic && typeof body.automaticDiscountId !== 'string') throw new ApiError(400, 'VALIDATION_FAILED');
+      if (withCode && withAutomatic) throw new ApiError(400, 'VALIDATION_FAILED');
       const billingProvider = await getBillingProvider(repo);
       const result = await billingProvider.createSubscription({
-        userId: req.currentUser.id, planId: body.planId, discountCode: withCode ? body.discountCode : undefined
+        userId: req.currentUser.id, planId: body.planId,
+        discountCode: withCode ? body.discountCode : undefined, automaticDiscountId: withAutomatic ? body.automaticDiscountId : undefined
       });
       res.status(201).json(result);
     })
