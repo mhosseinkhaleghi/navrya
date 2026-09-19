@@ -2525,7 +2525,7 @@ export function createPgRepo(pool) {
     }
   };
 
-  // Analysis Profile engine-memory learning ledger (069_analysis_profile_memory.sql) - append-only,
+  // Analysis Profile engine-memory learning ledger (072_analysis_profile_memory.sql) - append-only,
   // never updated or deleted by anything in this codebase. Lazily loaded only when a profile's
   // Memory tab opens (see routes.analysis-profiles.mjs's nested /:id/events routes), never part of
   // the boot-time replica hydrate a flat list domain like analysisProfiles itself uses.
@@ -2566,7 +2566,7 @@ export function createPgRepo(pool) {
     }
   };
 
-  // Analysis Profile knowledge sources (070_analysis_profile_sources.sql) - website / YouTube / PDF
+  // Analysis Profile knowledge sources (073_analysis_profile_sources.sql) - website / YouTube / PDF
   // material a trader teaches a profile from. A child of analysis_profiles (ON DELETE CASCADE),
   // lazily fetched only when a profile's Knowledge tab opens - never part of the boot-time replica
   // hydrate. Ownership is always resolved against the REAL profile row, never trusted from the URL.
@@ -2639,7 +2639,7 @@ export function createPgRepo(pool) {
     }
   };
 
-  // Analysis Profile teaching chat (071_analysis_profile_messages.sql) - a child of analysis_profiles (ON DELETE
+  // Analysis Profile teaching chat (074_analysis_profile_messages.sql) - a child of analysis_profiles (ON DELETE
   // CASCADE), lazily fetched only when the Chat tab opens. Ownership is always resolved against the REAL profile
   // row. A batch of one or two messages is inserted in ONE transaction with strictly increasing timestamps
   // (now() would give both rows the same instant and their order would be a coin toss), the log is rolled to the

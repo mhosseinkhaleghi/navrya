@@ -3,7 +3,7 @@ import test from 'node:test';
 import { dropAnalysisProfileTestUser } from './helpers/analysis-profile-pg-cleanup.mjs';
 
 // The REAL-PostgreSQL companion to analysis-profile-messages-migration-contract.test.mjs and
-// analysis-profile-messages-api-contract.test.mjs - proves migration 071's table really exists and that
+// analysis-profile-messages-api-contract.test.mjs - proves migration 074's table really exists and that
 // repo.pg.mjs's analysisProfileMessages behaves exactly like the memory repository the API contract test runs
 // against (ownership, atomic ordered batches, the rolling cap, immutable words / resolve-once proposals,
 // cascade on profile delete). The ordering test matters most here: a multi-row INSERT with the column default
@@ -42,7 +42,7 @@ if (!hasDb) {
     if (pool) await pool.end();
   });
 
-  test('migration 071 is applied: analysis_profile_messages exists with its role CHECK enforced by the database itself', async () => {
+  test('migration 074 is applied: analysis_profile_messages exists with its role CHECK enforced by the database itself', async () => {
     const { rows } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='analysis_profile_messages'");
     assert.equal(rows.length, 1);
     await assert.rejects(

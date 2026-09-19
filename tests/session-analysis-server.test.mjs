@@ -98,7 +98,7 @@ test('a profile with zero customFocuses adds no "additional focus areas" line at
   assert.doesNotMatch(prompt, /additional focus areas/);
 });
 
-// Engine memory (Phase 2, 069_analysis_profile_memory.sql).
+// Engine memory (Phase 2, 072_analysis_profile_memory.sql).
 test('a MANDATORY concept becomes a real "directly address" instruction, distinct from a preferred/reference concept', () => {
   const prompt = buildSessionAnalysisSystemPrompt({
     analysisType: 'initial', adherence: 'balanced',

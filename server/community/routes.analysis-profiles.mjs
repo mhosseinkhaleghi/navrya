@@ -61,7 +61,7 @@ export function router(repo, uploadsDir) {
     res.status(204).end();
   }));
 
-  // Engine-memory learning ledger (069_analysis_profile_memory.sql) - append-only, nested under
+  // Engine-memory learning ledger (072_analysis_profile_memory.sql) - append-only, nested under
   // its owning profile (same "action route under the parent id" shape as routes.media.mjs's own
   // POST /assets/:id/links), never a top-level server-replica list domain: lazily fetched only
   // when a profile's Memory tab actually opens, not part of the boot-time hydrate every list
@@ -75,7 +75,7 @@ export function router(repo, uploadsDir) {
     res.status(201).json(saved);
   }));
 
-  // Knowledge sources (070_analysis_profile_sources.sql) - website / YouTube / PDF material a
+  // Knowledge sources (073_analysis_profile_sources.sql) - website / YouTube / PDF material a
   // trader teaches a profile from. Nested under the owning profile like the events ledger, lazily
   // fetched when the Knowledge tab opens. Ownership is re-checked against the real profile row
   // inside every repo method. A URL source is only ever RECORDED here - fetching the page is the
@@ -149,7 +149,7 @@ export function router(repo, uploadsDir) {
     res.status(204).end();
   }));
 
-  // Report data source (072_session_analysis_profile_attribution.sql): the server-authoritative runs of AI Session
+  // Report data source (075_session_analysis_profile_attribution.sql): the server-authoritative runs of AI Session
   // Analysis made under THIS profile - when, with which model, the server-clock market session, and the rebuilt
   // mandatory-concept coverage. Read-only, oldest first. Scoped to the caller's own profile: get() returns null both
   // for a missing profile and for someone else's, so both are the same 404 and a stranger can never even learn that
@@ -162,7 +162,7 @@ export function router(repo, uploadsDir) {
     res.json({ analyses: await repo.sessionAiAnalysisCompletions.listForProfile(req.currentUser.id, req.params.id) });
   }));
 
-  // Teaching chat (071_analysis_profile_messages.sql) - the conversation a trader has with the engine to teach
+  // Teaching chat (074_analysis_profile_messages.sql) - the conversation a trader has with the engine to teach
   // a profile. Nested under the owning profile like events and sources, lazily fetched when the Chat tab opens.
   // The browser appends a turn (the trader's message and the engine's reply) only AFTER the AI call succeeded,
   // in one request, so a failed call never leaves half a turn behind. Once stored, a message's words are

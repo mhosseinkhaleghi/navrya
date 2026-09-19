@@ -4,7 +4,7 @@ import { createApp } from '../server/community/app.mjs';
 import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
 
-// Analysis Profile engine-memory learning ledger (069_analysis_profile_memory.sql) - nested,
+// Analysis Profile engine-memory learning ledger (072_analysis_profile_memory.sql) - nested,
 // append-only routes under /api/sync/analysis-profiles/:id/events. Same harness as
 // tests/analysis-profiles-api-contract.test.mjs.
 let server, baseUrl, repo;

@@ -286,7 +286,7 @@ export function router(repo) {
     // trusted merely because the caller sent it.
     const entryId = body.entryId ? String(body.entryId) : null;
     const entryOwned = !entryId || (session.entries || []).some((entry) => entry.id === entryId);
-    // Analysis Profile attribution (072): the id the gateway forwarded is only the BROWSER'S claim about which
+    // Analysis Profile attribution (075): the id the gateway forwarded is only the BROWSER'S claim about which
     // profile it ran under - re-verified here against the real profile row, exactly like session/entry ownership
     // above. A profile that is not this user's (or does not exist) is stored as NULL, never as a claim.
     const claimed = sanitizeCompletionAttribution(body);

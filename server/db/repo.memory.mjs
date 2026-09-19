@@ -1575,7 +1575,7 @@ export function createMemoryRepo() {
     }
   };
 
-  // Analysis Profile engine-memory learning ledger (069_analysis_profile_memory.sql) - mirrors
+  // Analysis Profile engine-memory learning ledger (072_analysis_profile_memory.sql) - mirrors
   // repo.pg.mjs's analysisProfileEvents exactly (append-only, ownership checked against the real
   // profile row, 200-row cap, newest first).
   const analysisProfileEvents = {
@@ -1608,7 +1608,7 @@ export function createMemoryRepo() {
     }
   };
 
-  // Analysis Profile knowledge sources (070_analysis_profile_sources.sql) - website / YouTube / PDF
+  // Analysis Profile knowledge sources (073_analysis_profile_sources.sql) - website / YouTube / PDF
   // material a trader teaches a profile from. Mirrors repo.pg.mjs's analysisProfileSources exactly:
   // ownership always resolved against the real profile row, one URL at most once per profile, a
   // per-profile cap, and a PATCH that can only touch the small allowlisted set the caller passes
@@ -1672,7 +1672,7 @@ export function createMemoryRepo() {
     }
   };
 
-  // Analysis Profile teaching chat (071_analysis_profile_messages.sql) - the conversation a trader has with
+  // Analysis Profile teaching chat (074_analysis_profile_messages.sql) - the conversation a trader has with
   // the engine to teach a profile. Mirrors repo.pg.mjs's analysisProfileMessages exactly: ownership always
   // resolved against the real profile row, a batch of one or two messages appended atomically with strictly
   // increasing timestamps (so a user message and its reply can never tie), a rolling log capped at the

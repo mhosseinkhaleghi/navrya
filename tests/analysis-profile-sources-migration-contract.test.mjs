@@ -3,17 +3,17 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-// Structural contract test against the real 070 migration SQL text - no live Postgres required,
+// Structural contract test against the real 073 migration SQL text - no live Postgres required,
 // same precedent as tests/analysis-profile-memory-migration-contract.test.mjs.
 
 const root = process.cwd();
 let migrationSql;
 
 test.before(async () => {
-  migrationSql = await readFile(path.join(root, 'server', 'db', 'migrations', '070_analysis_profile_sources.sql'), 'utf8');
+  migrationSql = await readFile(path.join(root, 'server', 'db', 'migrations', '073_analysis_profile_sources.sql'), 'utf8');
 });
 
-test('070 creates analysis_profile_sources with every required column, FKs cascading on delete', () => {
+test('073 creates analysis_profile_sources with every required column, FKs cascading on delete', () => {
   const tableMatch = /CREATE TABLE IF NOT EXISTS analysis_profile_sources \(([\s\S]*?)\n\);/.exec(migrationSql);
   assert.ok(tableMatch, 'could not find the real CREATE TABLE statement');
   const body = tableMatch[1];
@@ -51,12 +51,12 @@ test('the kind and status CHECKs match the shared normalizer exactly, so the dat
   assert.deepEqual(statuses, SOURCE_STATUSES);
 });
 
-test('070 declares a per-profile and a per-user index on analysis_profile_sources', () => {
+test('073 declares a per-profile and a per-user index on analysis_profile_sources', () => {
   assert.match(migrationSql, /CREATE INDEX IF NOT EXISTS idx_analysis_profile_sources_profile ON analysis_profile_sources \(profile_id, created_at\);/);
   assert.match(migrationSql, /CREATE INDEX IF NOT EXISTS idx_analysis_profile_sources_user ON analysis_profile_sources \(user_id\);/);
 });
 
-test('070 is additive only: a brand-new table, no destructive statement, no ALTER of any existing table, IF NOT EXISTS everywhere', () => {
+test('073 is additive only: a brand-new table, no destructive statement, no ALTER of any existing table, IF NOT EXISTS everywhere', () => {
   assert.doesNotMatch(migrationSql, /DROP\s+(TABLE|COLUMN|INDEX|SCHEMA)/i);
   assert.doesNotMatch(migrationSql, /\b(TRUNCATE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|INSERT\s+INTO)\b/i, 'no data is rewritten or backfilled');
   assert.doesNotMatch(migrationSql, /CONCURRENTLY/i, 'a plain .sql migration runs inside a transaction');
@@ -65,8 +65,8 @@ test('070 is additive only: a brand-new table, no destructive statement, no ALTE
   assert.equal((migrationSql.match(/CREATE (UNIQUE )?INDEX(?! IF NOT EXISTS)/gi) || []).length, 0, 'every CREATE INDEX is IF NOT EXISTS');
 });
 
-test('070 follows 069 in filename order and is the only migration numbered 070', async () => {
+test('073 follows 072 in filename order and is the only migration numbered 073', async () => {
   const files = (await readdir(path.join(root, 'server', 'db', 'migrations'))).filter((name) => name.endsWith('.sql')).sort();
-  assert.deepEqual(files.filter((name) => name.startsWith('070_')), ['070_analysis_profile_sources.sql']);
-  assert.ok(files.indexOf('070_analysis_profile_sources.sql') > files.indexOf('069_analysis_profile_memory.sql'));
+  assert.deepEqual(files.filter((name) => name.startsWith('073_')), ['073_analysis_profile_sources.sql']);
+  assert.ok(files.indexOf('073_analysis_profile_sources.sql') > files.indexOf('072_analysis_profile_memory.sql'));
 });

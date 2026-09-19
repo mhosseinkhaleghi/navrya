@@ -1280,7 +1280,7 @@ async function suggestAnalysisProfile(body) {
   return { suggestions: sanitizeAnalysisProfileSuggestions(result.suggestions, excludeNames, body.kind), provider, model, usage };
 }
 
-// ---- engine-memory ingest (Phase 2, 069_analysis_profile_memory.sql) ------------------------------
+// ---- engine-memory ingest (Phase 2, 072_analysis_profile_memory.sql) ------------------------------
 //
 // The ONE learning-loop route every "teach the engine" action uses (a note the trader typed today;
 // a chat lesson, a correction, or a source's extracted text in later phases): one billed call in,
@@ -1413,7 +1413,7 @@ async function ingestAnalysisProfileLearning(body) {
   return { ...sanitizeAnalysisProfileIngest(result, existingTitles), provider, model, usage };
 }
 
-// ---- teaching chat (Phase 4, 071_analysis_profile_messages.sql) -----------------------------------
+// ---- teaching chat (Phase 4, 074_analysis_profile_messages.sql) -----------------------------------
 //
 // An ONGOING conversation, unlike /ingest's one-shot note. Same proposal shape either way (a chat
 // reply's proposals go straight into the SAME analysis_profile_messages row the browser stores, and

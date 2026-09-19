@@ -190,7 +190,7 @@ test('snapshot() returns null for an unknown id rather than throwing', async () 
   assert.equal(store.snapshot('not-a-real-id'), null);
 });
 
-// customMethodLinks / customFocuses (068_analysis_profile_authoring.sql).
+// customMethodLinks / customFocuses (071_analysis_profile_authoring.sql).
 test('create() normalizes customMethodLinks and customFocuses, dropping an invalid URL and a duplicate/invalid focus', async () => {
   const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
   await flush();
@@ -284,7 +284,7 @@ test('deleting a Strategy never touches an Analysis Profile - the relationship i
   assert.equal(store.find(b.id).name, 'B');
 });
 
-// Engine memory (Phase 2, 069_analysis_profile_memory.sql) - applyLearning()'s single mutation
+// Engine memory (Phase 2, 072_analysis_profile_memory.sql) - applyLearning()'s single mutation
 // funnel, and the events client.
 test('applyLearning() merges new concepts (deduped by folded title) in exactly one save(), never per-concept', async () => {
   const { store, fetchCalls } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });

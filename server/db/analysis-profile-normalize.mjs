@@ -1,6 +1,6 @@
 // Shared, backend-agnostic normalization for the Analysis Profile authoring fields added by
-// 068_analysis_profile_authoring.sql (customMethodLinks, customFocuses) and the engine-memory
-// fields added by 069_analysis_profile_memory.sql (concepts, understanding). Imported by both
+// 071_analysis_profile_authoring.sql (customMethodLinks, customFocuses) and the engine-memory
+// fields added by 072_analysis_profile_memory.sql (concepts, understanding). Imported by both
 // repo.pg.mjs and repo.memory.mjs so the two backends can never disagree about what a stored
 // profile looks like - the same shared-pure-module precedent as support-ticket-normalize.mjs and
 // learned-command-normalize.mjs. The browser store (public/pages/shared/analysis-profile-store.js)
@@ -89,7 +89,7 @@ export function normalizeCustomFocuses(value, now = () => new Date().toISOString
   return out;
 }
 
-// ---- engine memory (concepts / understanding, 069_analysis_profile_memory.sql) -----------------
+// ---- engine memory (concepts / understanding, 072_analysis_profile_memory.sql) -----------------
 //
 // A Concept is a specific, checkable thing the engine should look for when reading a chart under
 // this profile - "Elliott impulse count", "swept liquidity levels", "order block mitigation".
@@ -156,7 +156,7 @@ export function normalizeUnderstanding(value) {
   };
 }
 
-// ---- knowledge sources (070_analysis_profile_sources.sql) ---------------------------------------
+// ---- knowledge sources (073_analysis_profile_sources.sql) ---------------------------------------
 
 export const SOURCE_KINDS = ['youtube', 'website', 'pdf'];
 export const SOURCE_STATUSES = ['queued', 'ready', 'taught', 'failed'];
@@ -208,7 +208,7 @@ export function sanitizeSourceFields(input, { partial = false } = {}) {
   return out;
 }
 
-// ---- teaching chat (071_analysis_profile_messages.sql) -----------------------------------------------
+// ---- teaching chat (074_analysis_profile_messages.sql) -----------------------------------------------
 
 export const MESSAGE_ROLES = ['user', 'assistant'];
 export const MESSAGE_CONTENT_MAX = 8000;
@@ -288,7 +288,7 @@ export function mergeProposalStatuses(proposals, statuses) {
   ));
 }
 
-// ---- completions-ledger attribution (072_session_analysis_profile_attribution.sql) ---------------------
+// ---- completions-ledger attribution (075_session_analysis_profile_attribution.sql) ---------------------
 
 export const COMPLETION_COVERAGE_STATUSES = ['applied', 'not_visible', 'not_applicable', 'unaddressed'];
 const COMPLETION_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

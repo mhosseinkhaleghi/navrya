@@ -5,7 +5,7 @@ import {
   MESSAGE_CONTENT_MAX, PROPOSALS_PER_MESSAGE_MAX, CONCEPT_TITLE_MAX, CONCEPT_DESCRIPTION_MAX, UNDERSTANDING_SUMMARY_MAX
 } from '../server/db/analysis-profile-normalize.mjs';
 
-// Pure sanitizers for the Analysis Profile teaching chat (071_analysis_profile_messages.sql). Both
+// Pure sanitizers for the Analysis Profile teaching chat (074_analysis_profile_messages.sql). Both
 // repositories and the API run every message through these, so nothing malformed reaches the database.
 
 const concept = (extra) => ({ id: 'p1', kind: 'concept', title: 'Swept liquidity levels', description: 'stops taken', priority: 'mandatory', ...extra });

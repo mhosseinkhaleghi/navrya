@@ -1,5 +1,5 @@
 // Shared fixtures for the two independent normalizers of the Analysis Profile engine-memory
-// fields (concepts / understanding, 069_analysis_profile_memory.sql): server/db/
+// fields (concepts / understanding, 072_analysis_profile_memory.sql): server/db/
 // analysis-profile-normalize.mjs (Node ESM) and its classic-script twin inside
 // public/pages/shared/analysis-profile-store.js (loaded via vm by
 // tests/analysis-profile-memory-fields.test.mjs). Running the SAME cases against both is what

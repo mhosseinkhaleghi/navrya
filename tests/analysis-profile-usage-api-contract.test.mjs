@@ -5,7 +5,7 @@ import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { sanitizeCompletionAttribution } from '../server/db/analysis-profile-normalize.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
 
-// Analysis Profile attribution on the AI Session Analysis completions ledger (072): the internal route
+// Analysis Profile attribution on the AI Session Analysis completions ledger (075): the internal route
 // re-verifies the profile and stamps the server-clock market session, and GET /api/sync/analysis-profiles/
 // :id/usage serves one profile's runs (the Report's data source). Same harnesses as
 // session-analysis-completions-internal-route.test.mjs and analysis-profile-events-api-contract.test.mjs.

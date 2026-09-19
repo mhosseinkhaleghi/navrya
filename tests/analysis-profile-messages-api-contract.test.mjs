@@ -5,7 +5,7 @@ import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { MESSAGES_PER_PROFILE_MAX } from '../server/db/analysis-profile-normalize.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
 
-// Analysis Profile teaching chat (071_analysis_profile_messages.sql) - nested routes under
+// Analysis Profile teaching chat (074_analysis_profile_messages.sql) - nested routes under
 // /api/sync/analysis-profiles/:id/messages, through the real HTTP layer with the memory repository. Same
 // harness as analysis-profile-events-api-contract.test.mjs.
 let server, baseUrl, repo;

@@ -8,7 +8,7 @@ import { createMemoryRepo } from '../server/db/repo.memory.mjs';
 import { invalidateCommercialConfigCache } from '../server/commercial/commercial-config.mjs';
 import { authHeadersFor } from './helpers/auth-token.mjs';
 
-// Analysis Profile knowledge sources (070_analysis_profile_sources.sql) - nested routes under
+// Analysis Profile knowledge sources (073_analysis_profile_sources.sql) - nested routes under
 // /api/sync/analysis-profiles/:id/sources, through the real HTTP layer with the memory repository
 // and a REAL temporary uploads directory (so the PDF bytes, their removal and the quota effect are
 // all observable, not assumed). Same harness as analysis-profile-events-api-contract.test.mjs.

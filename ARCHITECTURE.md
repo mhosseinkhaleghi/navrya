@@ -1698,7 +1698,7 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     variant (below) rather than a second, bespoke review UI.
   - **Chat tab (Phase 4):** `navrya-src/analysisProfileChat.jsx` + `server/pattern-ai-server.mjs`'s
     `chatWithAnalysisProfile()` (`POST /api/analysis-profiles/chat`) - an ONGOING conversation,
-    distinct from `/ingest`'s one-shot note, persisted turn by turn in `071_analysis_profile_messages
+    distinct from `/ingest`'s one-shot note, persisted turn by turn in `074_analysis_profile_messages
     .sql`. A turn (the trader's message + the engine's reply) is appended in ONE request, only after
     the billed call already succeeded, so a failed call never stores half a turn. A reply's
     `proposals` (a concept or a rewritten understanding, dedup'd against the SAME `body.profile` the
@@ -1743,20 +1743,20 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   unique index (`WHERE is_default`) enforcing "at most one default per user" as a hard database
   backstop on top of the client store's own clearing logic; plus `ALTER TABLE strategies ADD
   COLUMN IF NOT EXISTS linked_analysis_profile_id TEXT` (loose, no FK - same convention as
-  `trades.linked_strategy_id`). Extended additively by `068_analysis_profile_authoring.sql`
+  `trades.linked_strategy_id`). Extended additively by `071_analysis_profile_authoring.sql`
   (`custom_method_links` JSONB `{youtubeUrl,websiteUrl,referenceUrl}`, each validated http(s) or
   dropped to `''`; `custom_focuses` JSONB, a trader-added/AI-accepted focus area list kept
-  SEPARATE from the registry-validated `focus_ids`) and `069_analysis_profile_memory.sql`
+  SEPARATE from the registry-validated `focus_ids`) and `072_analysis_profile_memory.sql`
   (`concepts` JSONB, `understanding` JSONB `{summary,version,updatedAt}`, plus a new append-only
   `analysis_profile_events` table - the learning ledger: `kind`/`title`/`detail`/
   `understanding_version`/real `token_usage`, indexed on `(profile_id, created_at)` and `user_id`,
-  never updated or deleted by anything in this codebase) and `070_analysis_profile_sources.sql` (the
+  never updated or deleted by anything in this codebase) and `073_analysis_profile_sources.sql` (the
   `analysis_profile_sources` child table - `kind` youtube|website|pdf, `status` queued|ready|taught|failed
   with the failure `error_code` kept on the row, a bounded `digest`, and for a PDF a LOOSE
   `storage_object_id` with no FK, because the Storage page can delete an object independently) and
-  `071_analysis_profile_messages.sql` (the teaching-chat conversation - `role` user|assistant,
+  `074_analysis_profile_messages.sql` (the teaching-chat conversation - `role` user|assistant,
   `proposals` JSONB, `token_usage` JSONB; rolled to the latest 200 messages per profile) and
-  `072_session_analysis_profile_attribution.sql` (four nullable columns added to the pre-existing
+  `075_session_analysis_profile_attribution.sql` (four nullable columns added to the pre-existing
   `session_ai_analysis_completions` ledger table - see the Run attribution bullet below; this
   migration touches no Analysis Profile table itself). All shared normalization (URLs, custom
   focuses, concepts, understanding) lives in one dependency-free `server/db/analysis-profile-
@@ -1831,7 +1831,7 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   no-mandatory-concepts case in `session-analysis-coverage-server.test.mjs` (15 tests) and the module
   itself in `analysis-profile-coverage.test.mjs` (21 tests, including the evidence-stringification
   and trim-before-strip-punctuation bugs those tests caught).
-- **Run attribution (Phase 5):** `server/db/migrations/072_session_analysis_profile_attribution.sql`
+- **Run attribution (Phase 5):** `server/db/migrations/075_session_analysis_profile_attribution.sql`
   adds four **nullable** columns to the existing, server-verified `session_ai_analysis_completions`
   ledger: `analysis_profile_id` (loose, deliberately **no** foreign key - so deleting a profile never
   deletes the discipline-XP credit already earned for runs made under it), `analysis_profile_revision`,
@@ -1985,7 +1985,7 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   stringification, the fold-before-strip-punctuation fix); `session-analysis-coverage-server.test.mjs`
   (all four provider request shapes with and without mandatory concepts, budget math, Gemini
   enum/maxItems compaction); `session-analysis-profile-attribution-migration-contract.test.mjs` /
-  `-postgres-integration.test.mjs` (migration 072's four nullable columns, no FK on
+  `-postgres-integration.test.mjs` (migration 075's four nullable columns, no FK on
   `analysis_profile_id`, idempotent retry, cross-user isolation on `listForProfile()`, a deleted
   profile's completions surviving with no cascade); `analysis-profile-usage-api-contract.test.mjs`
   (`GET .../:id/usage` - the same 404-for-missing-or-someone-else's-profile shape as every other

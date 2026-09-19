@@ -96,7 +96,7 @@ test('profile.revision is order-independent for array fields (focusIds/secondary
   assert.equal(revisionA, revisionB, 'key order inside an object must never change the computed revision');
 });
 
-// Engine memory (Phase 2, 069_analysis_profile_memory.sql).
+// Engine memory (Phase 2, 072_analysis_profile_memory.sql).
 test('getAnalysisContext exposes only ENABLED concepts, and the trader\'s current understanding summary', async () => {
   const context = await loadContext([baseProfile({
     concepts: [concept(), concept({ id: 'cpt-2', title: 'Disabled one', enabled: false })],

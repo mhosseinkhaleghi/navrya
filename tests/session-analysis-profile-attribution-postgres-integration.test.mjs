@@ -3,7 +3,7 @@ import test from 'node:test';
 import { dropAnalysisProfileTestUser } from './helpers/analysis-profile-pg-cleanup.mjs';
 
 // The REAL-PostgreSQL companion to session-analysis-profile-attribution-migration-contract.test.mjs and
-// analysis-profile-usage-api-contract.test.mjs - proves migration 072 really applies to the live ledger, the
+// analysis-profile-usage-api-contract.test.mjs - proves migration 075 really applies to the live ledger, the
 // JSONB coverage round-trips, listForProfile() filters/orders like the memory repository, and (the one thing only a
 // real database can show) that the loose profile id has NO foreign key: deleting a profile leaves its completions
 // - and the AI Analysis Discipline credit they carry - untouched. Skips cleanly without DATABASE_URL.
@@ -42,7 +42,7 @@ if (!hasDb) {
     if (pool) await pool.end();
   });
 
-  test('migration 072 is applied: the four attribution columns exist, are nullable, and analysis_profile_id has NO foreign key', async () => {
+  test('migration 075 is applied: the four attribution columns exist, are nullable, and analysis_profile_id has NO foreign key', async () => {
     const { rows } = await pool.query("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name='session_ai_analysis_completions' AND column_name IN ('analysis_profile_id','analysis_profile_revision','active_market_session','concept_coverage')");
     const byName = Object.fromEntries(rows.map((r) => [r.column_name, r]));
     assert.equal(Object.keys(byName).length, 4);

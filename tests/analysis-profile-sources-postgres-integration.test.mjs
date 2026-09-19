@@ -3,7 +3,7 @@ import test from 'node:test';
 import { dropAnalysisProfileTestUser } from './helpers/analysis-profile-pg-cleanup.mjs';
 
 // The REAL-PostgreSQL companion to analysis-profile-sources-migration-contract.test.mjs and
-// analysis-profile-sources-api-contract.test.mjs - proves migration 070's table really exists and
+// analysis-profile-sources-api-contract.test.mjs - proves migration 073's table really exists and
 // that repo.pg.mjs's analysisProfileSources behaves exactly like the memory repository the API
 // contract test runs against (ownership, duplicate/limit rules, the PATCH allowlist, cascade on
 // profile delete). Skips cleanly (no DATABASE_URL) - `npm test` must never fail or hang because no
@@ -41,7 +41,7 @@ if (!hasDb) {
     if (pool) await pool.end();
   });
 
-  test('migration 070 is applied: analysis_profile_sources exists with its kind/status CHECKs enforced by the database itself', async () => {
+  test('migration 073 is applied: analysis_profile_sources exists with its kind/status CHECKs enforced by the database itself', async () => {
     const { rows } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='analysis_profile_sources'");
     assert.equal(rows.length, 1);
     await assert.rejects(
