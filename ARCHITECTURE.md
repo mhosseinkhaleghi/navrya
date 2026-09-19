@@ -1789,6 +1789,75 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   real connections) is verified structurally and by the `DATABASE_URL`-gated `tests/discount-codes-postgres-integration.test.mjs` and
   `tests/subscription-bonus-lots-postgres-integration.test.mjs`; run both against a disposable real database before a release.
 
+### 7.29 Referral & Affiliate Programs
+
+An admin-assigned, versioned, financially auditable referral system. It is **not** AI-usage-only: commission comes from confirmed **subscription** payments (default) and
+optionally **storage** payments through `confirmTransaction()`, and - only if a published program version enables it - from settled AI gross margin. Wallet top-ups can never
+earn (a DB CHECK excludes `wallet_topup` from `eligible_sources`); signups, clicks and trading data never earn. Users never pick their own mode; `users.profile_role` / `users.role`
+are never read or written.
+
+- **Modes (admin-only, `referral_partner_assignments`):** `disabled`, `standard` (the published platform-default program) and `influencer` (a specific published program version plus a
+  per-user rate override, term, partnership / per-customer caps, source restriction, dates, notes). An account with no assignment resolves to **implicit Standard** when the default
+  program has `auto_enroll_unassigned` on. An edit supersedes the previous assignment (one active row per user; rows are immutable). `disabled` stops new attributions **and new
+  earnings**; existing balances stay the user's (`referral_accounts.payout_blocked` is the separate kill switch).
+- **Programs / versions (068):** `referral_programs` (standard|influencer; draft|active|paused|archived; at most one platform default, always standard) and immutable
+  `referral_program_versions` (one published per program). Every financial rule lives on the version: `commission_bps`, eligible sources / plans / products, attribution window,
+  hold days, commission term, cash-out minimum, program / per-referrer / per-customer / campaign caps, max referred customers, margin guard (`min_margin_micro_usd`, `min_margin_bps`),
+  estimated `payment_fee_bps` / `service_cost_bps`, payout asset policy, effective dates, `rules_hash`. Only a draft can change; publishing freezes it (trigger); a change = a new
+  draft. `paused` blocks new attributions only; `archived` blocks both. Money is integer micro-USD (BIGINT), rates are BPS, never floats: `commission = floor(base * bps / 10000)` in BigInt.
+- **Attribution (069):** public `GET /api/referrals/c/:publicCode` (before global auth, 60/min/IP) records an aggregate pseudonymous click and sets a signed (HMAC, key domain-separated
+  from `AUTH_TOKEN_SECRET`), host-only, HttpOnly, SameSite=Lax cookie (`__Host-navrya_ref` when Secure, else `navrya_ref`; Max-Age = the referrer's attribution window), then 302s to `/`.
+  Unknown / invalid / paused / disabled codes redirect identically without a cookie (no existence oracle). `claimReferralAttributionSafe` runs only for a **genuinely new account** in
+  the three creation paths (email register, Google new user, OIDC new identity), never on login / collision / an existing user; account age <= 10 min, no confirmed payment, no
+  self-referral, `referred_user_id` UNIQUE; any failure is swallowed (account creation is never blocked). It snapshots assignment + version + rate + sources + caps + payout policy.
+  IP / device overlap (referrer IP match, >= 2 signups from one fingerprint) sets `risk_review_status = flagged` - a review signal, never a ban; earnings still accrue and an admin
+  must clear or void before approving a payout that depends on a flagged attribution. Hashes are HMAC'd; a referrer never sees anything about the people they referred.
+- **Earnings (069):** `awardReferralForTransaction` runs after the subscription / storage activation in `confirmTransaction` (idempotent by transaction id; failure never affects the
+  payment). Order: eligibility (source / plan / product / window / term / disabled) -> margin guard (**clamps**, never denies: `min(formula, base - fee - service cost - bonus cost - min
+  margin)`) -> caps under a `referral_programs` row lock (budget is reserved when the lot is created, spans every version of the program) -> `referral_earning_lots` +
+  `referral_earning_outcomes` (earned | clamped | skipped:reason) + the append-only `referral_ledger_entries`. The AI-margin source (`awardReferralForAiSettlement`, called from
+  `/wallet/settle`) uses only **cash-funded settled gross margin**, is exempt from the estimated fee / service bps, and early-exits through a 60 s cached "any published version enables
+  ai_margin" check. Missed awards are recoverable: `GET /unprocessed` + `POST /transactions/:id/reprocess`.
+- **Lots (FIFO, no scheduler):** a lot stores its original and `ai_converted / payout_reserved / paid / reversed` buckets (CHECK: sum <= original); remaining is derived and **pending vs
+  available is derived from `matures_at`**, so maturity needs no cron. Status words (pending, available_cash, ai_converted, payout_reserved, paid, reversed, debt) are derived; debt is
+  a separate `referral_debt_cases` concept. Allocation is FIFO by `(matures_at, seq)`. Not transferable.
+- **Reversal (refund / chargeback / cancellation):** `planReversal` = cancel pending -> reverse available -> auto-reject a not-yet-sent payout reservation -> **recoverable debt** for
+  converted / paid value (never clawed back); a request in `submitted|confirmed|paid` is treated as "funds may have left" (debt, not auto-reject). Partial refunds are cumulative and
+  idempotent per trigger reference. Open debt blocks payouts and caps conversion at `available - openDebt`. Chargebacks have no processor webhook: an admin records them
+  (`POST /reversals`, same logic as a refund).
+- **AI conversion (voluntary, irreversible):** `POST /api/referrals/convert-to-ai` -> `referral_ai_conversions` + a wallet ledger entry of the new type `REFERRAL_AI_CONVERSION`
+  crediting the **PROMO** balance (the wallet has no withdrawal path, so converted value is non-withdrawable forever). FIFO, atomic, idempotent by `(user, idempotency_key)`. Nothing
+  auto-converts.
+- **Cash-out (manual BSC/USDT only - no hot wallet, key, mnemonic, signer or broadcast anywhere):** threshold = `max(payout config minimum, effective version cash-out minimum)`
+  (default $10), snapshotted on the request. Public settings are ONE versioned `commercial_config_overrides` key `referralPayout:settings` (chain **pinned to 56**, one configured
+  BEP-20 token, decimals >= 6, treasury sender, min confirmations, explorer template, required KYC, reauth window, terms version, maker-checker). A request needs a verified email, KYC as
+  configured, a **recent customer reauthentication** (new `POST /api/auth/reauth`: password or the linked Google credential; OIDC-only accounts sign in again), the current terms
+  version, both acknowledgements, an EIP-55 address entered twice (in-repo Keccak-256, no new dependency; mixed case must match its checksum; the token contract, treasury sender and
+  zero address are refused), stored AES-256-GCM encrypted + HMAC hash + masked. Amount / recipient / asset / policy are immutable (070 trigger). States `requested -> under_review
+  -> approved -> submitted -> confirmed -> paid` (+ `rejected | cancelled | failed`); the user may cancel only before review; reservations release on rejected / cancelled / failed.
+  `submitted` only means an admin typed a hash (unique across payouts); `confirmed` means `verifyBscTransfer` proved chain, token contract, treasury sender, recipient, **exact atomic
+  amount**, a single unambiguous transfer and the confirmation depth against the request's own snapshot; `paid` is set by a **different** admin after a fresh re-verify
+  (maker-checker). A typed hash never marks anything paid. The full address is returned only by the audited, step-up `POST /payouts/:id/reveal-recipient`.
+- **Locking (PG; memory repo is synchronous):** `wallet_accounts -> referral_programs -> referral_accounts -> referral_earning_lots (by seq) -> referral_payout_requests`, everywhere.
+  Append-only / immutable by trigger: versions, assignments, ledger, conversions, allocations, reversals, attempts, payout events, payout amount / recipient + legal transitions.
+- **HTTP:** public `GET /api/referrals/c/:publicCode`; customer (auth + CSRF, rate-limited) `GET /api/referrals/me | /ledger | /payout-config | /payouts`, `POST /convert-to-ai`,
+  `POST /payouts`, `POST /payouts/:id/cancel`; admin `/api/admin/commercial/referrals/*` (programs, versions, publish / pause / resume / archive, preview, partners, payout-block, report,
+  attributions + void / risk, unprocessed / reprocess, reversals, debts, payouts + every workflow step, payout-config). **Every admin mutation requires a recent re-authentication
+  (401 `STEP_UP_REQUIRED`) and writes an audit row `referral.<entity>.<verb>`.** Customer DTOs are whitelist-built (aggregate funnel counts and the user's own balances only).
+- **Code map:** rules `server/commercial/referral-rules.mjs` (pure, shared by both repositories) + `evm-address.mjs`; services `referral-programs / -attribution / -earnings /
+  -conversion / -payout-settings / -payout-verifier / -payouts / -reports.mjs`; repositories `server/db/referral-repo.memory.mjs` + `referral-repo.pg.mjs` (domains `referralPrograms`,
+  `referral`, `referralEarnings`, `referralPayouts`, `referralReports`, identical surfaces); routes `server/community/routes.referrals.mjs` + `server/admin/routes.referrals.mjs`;
+  migrations `068_referral_programs`, `069_referral_attribution_earnings`, `070_referral_payouts`. **UI:** customer "Referral Marketing" tab right after "Subscription" in
+  `navrya-src/accountProfileView.jsx` (+ `account-profile-ui.js` / `-i18n.js`, fa/en/ar/es); admin Commercial -> Referral Programs and a "Referral partnership" card in the user
+  detail in `public/pages/admin/app.js` (English-only, like the rest of Commercial; there is no in-page admin reauth modal - `STEP_UP_REQUIRED` shows the existing "log in again" toast).
+- **Verification note:** memory-repo tests cannot prove locks / CHECKs / triggers, so `tests/referral-postgres-integration.test.mjs` (`DATABASE_URL`-gated; deterministic lock-hold
+  proofs, 24-way concurrency, trigger / CHECK refusals) must be run against a disposable real PostgreSQL before a release. `tests/referral-ui-server-contract.test.mjs` and
+  `tests/referral-customer-ui-contract.test.mjs` run the real admin script / extract the customer tab's reads against a real server, so a DTO rename or a wrong response-shape
+  assumption in either UI fails a test instead of shipping.
+- **Deliberately not built (documented limits):** no automated KYC / AML / sanctions screening of recipients (KYC is the admin-set `users.kyc_status`; the recipient hash is stored for a
+  future blocklist); no tax reporting; the partner-terms and influencer-disclosure copy is configurable / versioned but needs legal review; no treasury signer or on-chain send (by design);
+  no processor chargeback webhook; AI-margin earnings are one lot per settled AI call (roll up daily before enabling it on a high-volume program); the admin report has no date-range picker.
+
 ## 8. AI Integration Points
 
 ### Server configuration
