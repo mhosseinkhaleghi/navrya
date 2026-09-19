@@ -93,13 +93,15 @@ test('accountProfileView.jsx: a PaymentSheet exists, offers crypto/Visa/Iran-gat
 // invoice itself - not a stack of separate modals, and the upgrade no longer has a "confirm the
 // request" step in front of it (explicitly removed).
 test('accountProfileView.jsx: PaymentSheet slides between its three steps inside one modal, ending on the real invoice', async () => {
-  const src = await read('navrya-src', 'accountProfileView.jsx');
+  // Normalized locally (this file's own `read()` keeps the checkout's real line ending, CRLF on a Windows working
+  // tree but LF once git normalizes it on checkout elsewhere, e.g. CI) so the end-boundary search below - and every
+  // assertion against `fn` - works the same on both, without touching `read()` itself or this file's other tests.
+  const src = (await read('navrya-src', 'accountProfileView.jsx')).replace(/\r\n/g, '\n');
   const idx = src.indexOf('function PaymentSheet(');
   // A real end boundary (not a fixed-size window, which this component has already outgrown more than once as
-  // features were added to it) - the same top-level-function convention the newer *-ui-static tests use. This
-  // file's own `read()` keeps the working tree's real CRLF, so the terminator is matched with it.
-  const end = src.indexOf('\r\n}\r\n', idx);
-  const fn = src.slice(idx, end + 5);
+  // features were added to it) - the same top-level-function convention the newer *-ui-static tests use.
+  const end = src.indexOf('\n}\n', idx);
+  const fn = src.slice(idx, end + 3);
   assert.match(src, /const PAY_SHEET_STEPS = 3;/, 'the sheet must carry a third step for the invoice');
   assert.match(fn, /transform: 'translateX\(-' \+ \(step \* \(100 \/ PAY_SHEET_STEPS\)\) \+ '%\)'/, 'all three steps must slide within one sheet');
   assert.match(fn, /<CryptoInvoicePanel ref=\{invoiceApiRef\}[^>]*invoiceId=\{invoiceId\}/, 'the invoice must render INSIDE the sheet, never as a second popup');
