@@ -36,7 +36,7 @@ export function router(repo) {
     res.status(204).end();
   }));
 
-  // Engine-memory learning ledger (067_analysis_profile_memory.sql) - append-only, nested under
+  // Engine-memory learning ledger (068_analysis_profile_memory.sql) - append-only, nested under
   // its owning profile (same "action route under the parent id" shape as routes.media.mjs's own
   // POST /assets/:id/links), never a top-level server-replica list domain: lazily fetched only
   // when a profile's Memory tab actually opens, not part of the boot-time hydrate every list

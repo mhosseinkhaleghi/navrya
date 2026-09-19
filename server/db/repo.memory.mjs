@@ -1562,7 +1562,7 @@ export function createMemoryRepo() {
     }
   };
 
-  // Analysis Profile engine-memory learning ledger (067_analysis_profile_memory.sql) - mirrors
+  // Analysis Profile engine-memory learning ledger (068_analysis_profile_memory.sql) - mirrors
   // repo.pg.mjs's analysisProfileEvents exactly (append-only, ownership checked against the real
   // profile row, 200-row cap, newest first).
   const analysisProfileEvents = {

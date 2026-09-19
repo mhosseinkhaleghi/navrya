@@ -10,7 +10,7 @@
 --                        from focus_ids on purpose: focus_ids reference the code-owned Focus Registry
 --                        by stable id, a custom focus has no registry entry.
 --
--- Additive only (expand, never edit 001-065): both columns default to an empty document, so every
+-- Additive only (expand, never edit 001-066): both columns default to an empty document, so every
 -- existing row and every older client that never sends them keeps working unchanged.
 ALTER TABLE analysis_profiles
   ADD COLUMN IF NOT EXISTS custom_method_links JSONB NOT NULL DEFAULT '{}',

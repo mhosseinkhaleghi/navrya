@@ -3,23 +3,23 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-// Structural contract test against the real 067 migration SQL text - no live Postgres required,
+// Structural contract test against the real 068 migration SQL text - no live Postgres required,
 // same precedent as tests/analysis-profile-authoring-migration-contract.test.mjs.
 
 const root = process.cwd();
 let migrationSql;
 
 test.before(async () => {
-  migrationSql = await readFile(path.join(root, 'server', 'db', 'migrations', '067_analysis_profile_memory.sql'), 'utf8');
+  migrationSql = await readFile(path.join(root, 'server', 'db', 'migrations', '068_analysis_profile_memory.sql'), 'utf8');
 });
 
-test('067 adds concepts and understanding to analysis_profiles, both additive and defaulted', () => {
+test('068 adds concepts and understanding to analysis_profiles, both additive and defaulted', () => {
   assert.match(migrationSql, /ALTER TABLE analysis_profiles/);
   assert.match(migrationSql, /ADD COLUMN IF NOT EXISTS concepts\s+JSONB NOT NULL DEFAULT '\[\]'/);
   assert.match(migrationSql, /ADD COLUMN IF NOT EXISTS understanding\s+JSONB NOT NULL DEFAULT '\{"summary":"","version":0,"updatedAt":null\}'/);
 });
 
-test('067 creates analysis_profile_events with every required column, FKs cascading on delete', () => {
+test('068 creates analysis_profile_events with every required column, FKs cascading on delete', () => {
   const tableMatch = /CREATE TABLE IF NOT EXISTS analysis_profile_events \(([\s\S]*?)\n\);/.exec(migrationSql);
   assert.ok(tableMatch, 'could not find the real CREATE TABLE statement');
   const body = tableMatch[1];
@@ -37,12 +37,12 @@ test('067 creates analysis_profile_events with every required column, FKs cascad
   requiredColumns.forEach(([name, re]) => assert.match(body, re, 'missing or malformed column: ' + name));
 });
 
-test('067 declares a per-profile and a per-user index on analysis_profile_events', () => {
+test('068 declares a per-profile and a per-user index on analysis_profile_events', () => {
   assert.match(migrationSql, /CREATE INDEX IF NOT EXISTS analysis_profile_events_profile_idx ON analysis_profile_events \(profile_id, created_at\);/);
   assert.match(migrationSql, /CREATE INDEX IF NOT EXISTS analysis_profile_events_user_idx ON analysis_profile_events \(user_id\);/);
 });
 
-test('067 is additive only: no destructive statement, no edit of an unrelated existing table, IF NOT EXISTS everywhere', () => {
+test('068 is additive only: no destructive statement, no edit of an unrelated existing table, IF NOT EXISTS everywhere', () => {
   assert.doesNotMatch(migrationSql, /DROP\s+(TABLE|COLUMN|INDEX|SCHEMA)/i);
   assert.doesNotMatch(migrationSql, /\b(TRUNCATE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|INSERT\s+INTO)\b/i, 'no data is rewritten or backfilled');
   assert.doesNotMatch(migrationSql, /CONCURRENTLY/i, 'a plain .sql migration runs inside a transaction');
@@ -51,9 +51,9 @@ test('067 is additive only: no destructive statement, no edit of an unrelated ex
   assert.equal((migrationSql.match(/CREATE (UNIQUE )?INDEX(?! IF NOT EXISTS)/gi) || []).length, 0, 'every CREATE INDEX is IF NOT EXISTS');
 });
 
-test('067 follows 066 in filename order, and no migration before it is edited by this change', async () => {
+test('068 follows 067 in filename order, and no migration before it is edited by this change', async () => {
   const files = (await readdir(path.join(root, 'server', 'db', 'migrations'))).filter((name) => name.endsWith('.sql')).sort();
-  assert.ok(files.includes('067_analysis_profile_memory.sql'));
-  assert.ok(files.includes('066_analysis_profile_authoring.sql'));
-  assert.ok(files.indexOf('067_analysis_profile_memory.sql') > files.indexOf('066_analysis_profile_authoring.sql'));
+  assert.ok(files.includes('068_analysis_profile_memory.sql'));
+  assert.ok(files.includes('067_analysis_profile_authoring.sql'));
+  assert.ok(files.indexOf('068_analysis_profile_memory.sql') > files.indexOf('067_analysis_profile_authoring.sql'));
 });

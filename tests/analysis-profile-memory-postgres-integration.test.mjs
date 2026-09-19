@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 // The REAL-PostgreSQL companion to analysis-profile-memory-fields.test.mjs and
-// analysis-profile-memory-migration-contract.test.mjs - proves migration 067's columns/table
+// analysis-profile-memory-migration-contract.test.mjs - proves migration 068's columns/table
 // really exist and round-trip through repo.pg.mjs's own upsert()/analysisProfileEvents, which the
 // memory repo cannot show. Skips cleanly (no DATABASE_URL) - `npm test` must never fail or hang
 // because no database is reachable, same convention as
@@ -43,7 +43,7 @@ if (!hasDb) {
     if (pool) await pool.end();
   });
 
-  test('migration 067 is applied: analysis_profiles has concepts/understanding (JSONB), and analysis_profile_events exists', async () => {
+  test('migration 068 is applied: analysis_profiles has concepts/understanding (JSONB), and analysis_profile_events exists', async () => {
     const { rows: columns } = await pool.query(
       "SELECT column_name, data_type FROM information_schema.columns WHERE table_name='analysis_profiles' AND column_name IN ('concepts','understanding')"
     );
