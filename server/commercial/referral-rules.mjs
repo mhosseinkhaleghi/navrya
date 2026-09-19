@@ -7,6 +7,7 @@
 // Units (never floats, per instruction): BPS integers 0-10000 for rates/percentages, integer
 // micro-USD for every money value. Every division that produces money uses BigInt and floors
 // (never rounds up - an admin-set rate must never accidentally overpay a referrer).
+import { createHash } from 'node:crypto';
 import { ApiError } from '../community/errors.mjs';
 
 export const MICRO = 1000000;
@@ -92,11 +93,13 @@ export function computeCommissionableBase({ finalAmountMicroUsd, taxMicroUsd = 0
 // Returns the (possibly reduced) commission plus which outcome applied - never throws; a guard
 // that fully exhausts the margin simply clamps the commission to 0 (outcome 'skipped:margin_guard'),
 // it never blocks the underlying payment or the referral relationship itself.
-export function applyMarginGuard({ commissionMicroUsd, netRevenueMicroUsd, paymentFeeBps = 0, serviceCostBps = 0, minMarginMicroUsd = 0, minMarginBps = 0 }) {
+export function applyMarginGuard({ commissionMicroUsd, netRevenueMicroUsd, paymentFeeBps = 0, serviceCostBps = 0, minMarginMicroUsd = 0, minMarginBps = 0, extraCostMicroUsd = 0 }) {
   if (!isMicroUsd(commissionMicroUsd)) throw new RangeError('commissionMicroUsd must be a non-negative integer');
   const revenue = Math.max(0, Number(netRevenueMicroUsd) || 0);
   const paymentFee = Math.trunc((revenue * (Number(paymentFeeBps) || 0)) / BPS_MAX);
-  const serviceCost = Math.trunc((revenue * (Number(serviceCostBps) || 0)) / BPS_MAX);
+  // extraCostMicroUsd = a known, purchase-specific cost (e.g. the subscription's wallet bonus credit) on top of the
+  // estimated bps costs - conservative: counted at face value.
+  const serviceCost = Math.trunc((revenue * (Number(serviceCostBps) || 0)) / BPS_MAX) + Math.max(0, Number(extraCostMicroUsd) || 0);
   const minMargin = Math.max(Number(minMarginMicroUsd) || 0, Math.trunc((revenue * (Number(minMarginBps) || 0)) / BPS_MAX));
   // Room for referral liability = everything left over after fees/costs/the required minimum margin.
   const roomForCommissionMicroUsd = Math.max(0, revenue - paymentFee - serviceCost - minMargin);
@@ -292,6 +295,11 @@ export function parseProgramVersionInput(body, { partial = false, existing = nul
     if (raw !== null && raw !== undefined && !(Array.isArray(raw) && raw.every((v) => typeof v === 'string'))) throw fieldError('eligiblePlans');
     out.eligiblePlans = raw && raw.length ? raw : null; // null = every plan eligible
   }
+  if (need('eligibleProducts')) {
+    const raw = input.eligibleProducts;
+    if (raw !== null && raw !== undefined && !(Array.isArray(raw) && raw.every((v) => typeof v === 'string'))) throw fieldError('eligibleProducts');
+    out.eligibleProducts = raw && raw.length ? raw : null; // null = every storage product eligible
+  }
   if (need('attributionWindowDays')) out.attributionWindowDays = (() => {
     const raw = input.attributionWindowDays;
     if (!Number.isSafeInteger(raw) || raw < 1 || raw > 365) throw fieldError('attributionWindowDays');
@@ -349,7 +357,8 @@ export function parseAssignmentInput(body) {
   out.effectiveFrom = parseDate(input.effectiveFrom, 'effectiveFrom') || new Date().toISOString();
   out.effectiveTo = parseDate(input.effectiveTo, 'effectiveTo');
   if (out.effectiveTo && Date.parse(out.effectiveTo) <= Date.parse(out.effectiveFrom)) throw fieldError('effectiveTo');
-  out.programBudgetCapMicroUsd = parseOptionalUsdToMicro(input.campaignCapUsd, 'campaignCapUsd');
+  out.commissionTermDays = parseOptionalInt(input.commissionTermDays, 'commissionTermDays', { min: 1 });
+  out.partnershipCapMicroUsd = parseOptionalUsdToMicro(input.partnershipCapUsd, 'partnershipCapUsd');
   out.perCustomerCapMicroUsd = parseOptionalUsdToMicro(input.perCustomerCapUsd, 'perCustomerCapUsd');
   out.maxReferredCustomers = parseOptionalInt(input.maxReferredCustomers, 'maxReferredCustomers', { min: 1 });
   out.allowedSources = parseSources(input.allowedSources, 'allowedSources') || null; // null = inherit the program version's eligibleSources
@@ -397,3 +406,176 @@ export function normalizeReferralCode(raw) {
   const trimmed = raw.trim().toUpperCase();
   return referralCodePattern().test(trimmed) ? trimmed : null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Rules snapshot (frozen onto an attribution at claim time and onto every earning lot).
+// ---------------------------------------------------------------------------------------------
+const RULE_FIELDS = [
+  'commissionBps', 'eligibleSources', 'eligiblePlans', 'eligibleProducts', 'attributionWindowDays', 'holdDays',
+  'commissionTermDays', 'cashOutMinimumMicroUsd', 'programBudgetCapMicroUsd', 'perUserCapMicroUsd',
+  'perCustomerCapMicroUsd', 'campaignCapMicroUsd', 'maxReferredCustomers', 'minMarginMicroUsd', 'minMarginBps',
+  'paymentFeeBps', 'serviceCostBps', 'payoutAssetPolicy'
+];
+
+// Deterministic fingerprint of a version's financial rules (array order normalised) - stored on the version so
+// "did the rules change" is a string compare, and copied into every snapshot for audit.
+export function rulesHashOf(rules) {
+  const canonical = {};
+  for (const key of RULE_FIELDS) {
+    const value = rules[key] === undefined ? null : rules[key];
+    canonical[key] = Array.isArray(value) ? [...value].sort() : value;
+  }
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+const minNonNull = (...values) => {
+  const present = values.filter((value) => value != null);
+  return present.length ? Math.min(...present) : null;
+};
+
+// The EFFECTIVE terms a referral relationship earns under: the assigned/default program version, narrowed by an
+// influencer assignment's negotiated overrides (rate override, term, caps, source restriction). Caps only ever get
+// tighter by an assignment (min of the non-null values); a source restriction can only be a subset.
+export function buildRulesSnapshot({ version, assignment, mode }) {
+  const a = mode === 'influencer' && assignment ? assignment : null;
+  const allowed = a && a.allowedSources ? a.allowedSources.filter((source) => version.eligibleSources.includes(source)) : null;
+  return {
+    versionId: version.id, programId: version.programId, rulesHash: version.rulesHash, mode,
+    assignmentId: a ? a.id : null,
+    commissionBps: a && a.rateBpsOverride != null ? a.rateBpsOverride : version.commissionBps,
+    eligibleSources: allowed || [...version.eligibleSources],
+    eligiblePlans: version.eligiblePlans || null,
+    eligibleProducts: version.eligibleProducts || null,
+    attributionWindowDays: version.attributionWindowDays,
+    holdDays: version.holdDays,
+    commissionTermDays: minNonNull(version.commissionTermDays, a && a.commissionTermDays),
+    cashOutMinimumMicroUsd: version.cashOutMinimumMicroUsd,
+    caps: {
+      programBudgetCapMicroUsd: version.programBudgetCapMicroUsd ?? null,   // scope: every version of the program
+      campaignCapMicroUsd: version.campaignCapMicroUsd ?? null,             // scope: this version (one campaign run)
+      perUserCapMicroUsd: version.perUserCapMicroUsd ?? null,               // scope: one referrer within the program
+      perCustomerCapMicroUsd: minNonNull(version.perCustomerCapMicroUsd, a && a.perCustomerCapMicroUsd), // scope: one referred customer
+      partnershipCapMicroUsd: a && a.partnershipCapMicroUsd != null ? a.partnershipCapMicroUsd : null,   // scope: this assignment
+      maxReferredCustomers: minNonNull(version.maxReferredCustomers, a && a.maxReferredCustomers)
+    },
+    margin: {
+      minMarginMicroUsd: version.minMarginMicroUsd || 0, minMarginBps: version.minMarginBps || 0,
+      paymentFeeBps: version.paymentFeeBps || 0, serviceCostBps: version.serviceCostBps || 0
+    },
+    payoutAssetPolicy: version.payoutAssetPolicy
+  };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+export function commissionEndsAtFor(attributedAtIso, termDays) {
+  if (termDays == null) return null;
+  return new Date(Date.parse(attributedAtIso) + termDays * DAY_MS).toISOString();
+}
+export function maturesAtFor(confirmedAtIso, holdDays) {
+  return new Date(Date.parse(confirmedAtIso) + (holdDays || 0) * DAY_MS).toISOString();
+}
+
+// ---------------------------------------------------------------------------------------------
+// The ONE earning decision, shared by both repositories and run INSIDE their locked section (the caller supplies the
+// usage figures it read under the lock). Pure and total: it never throws for "not eligible" - every refusal is an
+// auditable { outcome:'skipped', reason } that the repository records once per (source, sourceEventId).
+// ---------------------------------------------------------------------------------------------
+export function decideEarning({
+  source, attribution, referrerMode, programStatus, planId, productId,
+  finalAmountMicroUsd, taxMicroUsd = 0, excludedMicroUsd = 0, walletBonusMicroUsd = 0,
+  usage = {}, confirmedAt
+}) {
+  const skip = (reason, math = {}) => ({ outcome: 'skipped', reason, commissionMicroUsd: 0, maturesAt: null, math });
+  const rules = attribution && attribution.rulesSnapshot;
+  if (!EARNING_SOURCES.includes(source)) return skip('SOURCE_NOT_ELIGIBLE');
+  if (!attribution || !rules) return skip('NO_ATTRIBUTION');
+  if (attribution.status !== 'active') return skip('ATTRIBUTION_VOID');
+  if (referrerMode === 'disabled') return skip('REFERRER_DISABLED');
+  if (programStatus === 'archived') return skip('PROGRAM_ARCHIVED');
+  if (!rules.eligibleSources.includes(source)) return skip('SOURCE_NOT_ELIGIBLE');
+  if (source === 'subscription' && rules.eligiblePlans && !rules.eligiblePlans.includes(planId)) return skip('PLAN_NOT_ELIGIBLE');
+  if (source === 'storage_purchase' && rules.eligibleProducts && !rules.eligibleProducts.includes(productId)) return skip('PRODUCT_NOT_ELIGIBLE');
+  if (attribution.commissionEndsAt && Date.parse(confirmedAt) > Date.parse(attribution.commissionEndsAt)) return skip('OUTSIDE_TERM');
+  if (!(finalAmountMicroUsd > 0)) return skip('ZERO_AMOUNT');
+  if (!usage.attributionHasEarning && customerCapReached(usage.qualifiedCustomerCount || 0, rules.caps.maxReferredCustomers)) return skip('CUSTOMER_CAP');
+
+  const base = computeCommissionableBase({ finalAmountMicroUsd, taxMicroUsd, excludedMicroUsd });
+  if (base <= 0) return skip('ZERO_BASE');
+  const formula = computeCommission({ commissionableBaseMicroUsd: base, commissionBps: rules.commissionBps });
+  if (formula <= 0) return skip('ZERO_COMMISSION', { base });
+
+  const guard = applyMarginGuard({
+    commissionMicroUsd: formula, netRevenueMicroUsd: base, extraCostMicroUsd: walletBonusMicroUsd, ...rules.margin
+  });
+  const caps = applyCaps(guard.grantedMicroUsd, {
+    programBudget: { capMicroUsd: rules.caps.programBudgetCapMicroUsd, usedMicroUsd: usage.programUsedMicroUsd },
+    campaign: { capMicroUsd: rules.caps.campaignCapMicroUsd, usedMicroUsd: usage.campaignUsedMicroUsd },
+    perUser: { capMicroUsd: rules.caps.perUserCapMicroUsd, usedMicroUsd: usage.perUserUsedMicroUsd },
+    perCustomer: { capMicroUsd: rules.caps.perCustomerCapMicroUsd, usedMicroUsd: usage.perCustomerUsedMicroUsd },
+    partnership: { capMicroUsd: rules.caps.partnershipCapMicroUsd, usedMicroUsd: usage.partnershipUsedMicroUsd }
+  });
+  const math = {
+    base, commissionBps: rules.commissionBps, formulaMicroUsd: formula, guard, capsLimitedBy: caps.limitedBy,
+    walletBonusMicroUsd, taxMicroUsd, excludedMicroUsd
+  };
+  if (caps.grantedMicroUsd <= 0) return skip(guard.grantedMicroUsd <= 0 ? 'MARGIN_GUARD' : 'CAP_REACHED', math);
+  const reduced = caps.grantedMicroUsd < formula;
+  const reasons = [];
+  if (guard.grantedMicroUsd < formula) reasons.push('MARGIN_GUARD');
+  if (caps.limitedBy.length) reasons.push('CAP:' + caps.limitedBy.join('+'));
+  return {
+    outcome: reduced ? 'clamped' : 'earned', reason: reasons.length ? reasons.join(',') : null,
+    commissionMicroUsd: caps.grantedMicroUsd, commissionableBaseMicroUsd: base, commissionBps: rules.commissionBps,
+    maturesAt: maturesAtFor(confirmedAt, rules.holdDays), math
+  };
+}
+
+// Balances of a user's lots, every figure derived - never stored. `openDebtMicroUsd` comes from the open debt cases.
+export function summarizeLots(lots, { openDebtMicroUsd = 0, now = Date.now() } = {}) {
+  const totals = {
+    pendingMicroUsd: 0, availableCashMicroUsd: 0, aiConvertedMicroUsd: 0, payoutReservedMicroUsd: 0,
+    paidMicroUsd: 0, reversedMicroUsd: 0, lifetimeEarnedMicroUsd: 0
+  };
+  for (const lot of lots) {
+    const remaining = lotRemainingMicroUsd(lot);
+    if (lotIsMatured(lot, now)) totals.availableCashMicroUsd += remaining; else totals.pendingMicroUsd += remaining;
+    totals.aiConvertedMicroUsd += lot.aiConvertedMicroUsd;
+    totals.payoutReservedMicroUsd += lot.payoutReservedMicroUsd;
+    totals.paidMicroUsd += lot.paidMicroUsd;
+    totals.reversedMicroUsd += lot.reversedMicroUsd;
+    totals.lifetimeEarnedMicroUsd += lot.originalMicroUsd - lot.reversedMicroUsd;
+  }
+  totals.debtMicroUsd = openDebtMicroUsd;
+  // Conversion / payout may only draw on what is left AFTER open debt, so a debt stays recoverable.
+  totals.spendableMicroUsd = Math.max(0, totals.availableCashMicroUsd - openDebtMicroUsd);
+  return totals;
+}
+
+// A refund / chargeback / cancellation shrinks what the lot may keep to `commissionAfterMicroUsd`. The incremental
+// amount to claw back is (original - commissionAfter - alreadyClawed), taken from the least-committed money first:
+// the free remainder (pending or available -> cancel/reverse), then the payout-reserved part, and only the rest -
+// value already converted to AI credit or paid out, which can never be taken back in place - becomes DEBT.
+// `alreadyClawedMicroUsd` = everything earlier reversal rows of this lot already took (remaining + reserved + debt),
+// which is what makes a second partial refund reverse only the increment.
+export function planReversal({ originalMicroUsd, remainingMicroUsd, reservedMicroUsd, alreadyClawedMicroUsd = 0, commissionAfterMicroUsd }) {
+  const target = Math.max(0, originalMicroUsd - Math.max(0, commissionAfterMicroUsd));
+  const totalMicroUsd = Math.max(0, target - alreadyClawedMicroUsd);
+  const fromRemaining = Math.min(totalMicroUsd, remainingMicroUsd);
+  const fromReserved = Math.min(totalMicroUsd - fromRemaining, reservedMicroUsd);
+  const debt = totalMicroUsd - fromRemaining - fromReserved;
+  return { totalMicroUsd, fromRemaining, fromReserved, debt };
+}
+
+// USD micro-units -> the token's atomic units, exact (BigInt). A token with fewer than 6 decimals could not
+// represent every micro-USD amount, so it is refused rather than rounded.
+export function atomicAmountFor(microUsd, tokenDecimals) {
+  if (!Number.isSafeInteger(microUsd) || microUsd <= 0) throw new RangeError('microUsd must be a positive integer');
+  if (!Number.isInteger(tokenDecimals) || tokenDecimals < 6 || tokenDecimals > 36) throw new RangeError('tokenDecimals must be an integer in [6, 36]');
+  return (BigInt(microUsd) * 10n ** BigInt(tokenDecimals - 6)).toString();
+}
+
+// Payout states in which the requested funds may already have left the treasury - a reversal arriving in one of
+// these becomes debt (never an auto-reject). Every non-terminal state holds a reservation on the lots.
+export const PAYOUT_FUNDS_MAY_HAVE_LEFT = ['submitted', 'confirmed', 'paid'];
+export const PAYOUT_RESERVING_STATES = ['requested', 'under_review', 'approved', 'submitted', 'confirmed'];
+export const PAYOUT_PRE_SEND_STATES = ['requested', 'under_review', 'approved'];

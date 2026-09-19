@@ -46,15 +46,16 @@ CREATE TABLE IF NOT EXISTS referral_program_versions (
   -- eligible-source values, so a top-up can never be configured as commission-earning even by
   -- admin mistake (instruction: "Wallet top-ups must never earn commission").
   eligible_sources                TEXT[] NOT NULL DEFAULT ARRAY['subscription'],
-  eligible_plans                  TEXT[],  -- NULL = every plan eligible
+  eligible_plans                  TEXT[],  -- subscription plan ids; NULL = every plan eligible
+  eligible_products               TEXT[],  -- storage product ids; NULL = every storage product eligible
   attribution_window_days         INT NOT NULL DEFAULT 30 CHECK (attribution_window_days BETWEEN 1 AND 365),
   hold_days                       INT NOT NULL DEFAULT 14 CHECK (hold_days BETWEEN 0 AND 180),
   commission_term_days            INT CHECK (commission_term_days IS NULL OR commission_term_days >= 1),
   cash_out_minimum_micro_usd      BIGINT NOT NULL DEFAULT 10000000 CHECK (cash_out_minimum_micro_usd >= 0),
-  program_budget_cap_micro_usd    BIGINT CHECK (program_budget_cap_micro_usd IS NULL OR program_budget_cap_micro_usd >= 0),
+  program_budget_cap_micro_usd    BIGINT CHECK (program_budget_cap_micro_usd IS NULL OR program_budget_cap_micro_usd >= 0), -- scope: ALL versions of the program, so a new version cannot reset the budget
   per_user_cap_micro_usd          BIGINT CHECK (per_user_cap_micro_usd IS NULL OR per_user_cap_micro_usd >= 0),
   per_customer_cap_micro_usd      BIGINT CHECK (per_customer_cap_micro_usd IS NULL OR per_customer_cap_micro_usd >= 0),
-  campaign_cap_micro_usd          BIGINT CHECK (campaign_cap_micro_usd IS NULL OR campaign_cap_micro_usd >= 0),
+  campaign_cap_micro_usd          BIGINT CHECK (campaign_cap_micro_usd IS NULL OR campaign_cap_micro_usd >= 0), -- scope: everything accrued under THIS version (one campaign run)
   max_referred_customers          INT CHECK (max_referred_customers IS NULL OR max_referred_customers >= 1),
   -- Contribution-margin guard estimates (no per-payment fee/cost column exists yet - see
   -- payment_transactions' own column list - so these are admin-set, program-version-snapshotted
@@ -100,6 +101,7 @@ BEGIN
       OR NEW.commission_bps IS DISTINCT FROM OLD.commission_bps
       OR NEW.eligible_sources IS DISTINCT FROM OLD.eligible_sources
       OR NEW.eligible_plans IS DISTINCT FROM OLD.eligible_plans
+      OR NEW.eligible_products IS DISTINCT FROM OLD.eligible_products
       OR NEW.attribution_window_days IS DISTINCT FROM OLD.attribution_window_days
       OR NEW.hold_days IS DISTINCT FROM OLD.hold_days
       OR NEW.commission_term_days IS DISTINCT FROM OLD.commission_term_days
@@ -145,7 +147,8 @@ CREATE TABLE IF NOT EXISTS referral_partner_assignments (
   rate_bps_override               INT CHECK (rate_bps_override IS NULL OR rate_bps_override BETWEEN 0 AND 10000),
   effective_from                  TIMESTAMPTZ NOT NULL DEFAULT now(),
   effective_to                    TIMESTAMPTZ,
-  program_budget_cap_micro_usd    BIGINT CHECK (program_budget_cap_micro_usd IS NULL OR program_budget_cap_micro_usd >= 0), -- the negotiated partnership/campaign cap
+  commission_term_days            INT CHECK (commission_term_days IS NULL OR commission_term_days >= 1), -- negotiated term limit
+  partnership_cap_micro_usd       BIGINT CHECK (partnership_cap_micro_usd IS NULL OR partnership_cap_micro_usd >= 0), -- the negotiated partnership cap (scope: this assignment)
   per_customer_cap_micro_usd      BIGINT CHECK (per_customer_cap_micro_usd IS NULL OR per_customer_cap_micro_usd >= 0),
   max_referred_customers          INT CHECK (max_referred_customers IS NULL OR max_referred_customers >= 1),
   allowed_sources                 TEXT[], -- NULL = inherit the assigned program version's eligible_sources
@@ -177,7 +180,8 @@ BEGIN
     OR NEW.rate_bps_override IS DISTINCT FROM OLD.rate_bps_override
     OR NEW.effective_from IS DISTINCT FROM OLD.effective_from
     OR NEW.effective_to IS DISTINCT FROM OLD.effective_to
-    OR NEW.program_budget_cap_micro_usd IS DISTINCT FROM OLD.program_budget_cap_micro_usd
+    OR NEW.commission_term_days IS DISTINCT FROM OLD.commission_term_days
+    OR NEW.partnership_cap_micro_usd IS DISTINCT FROM OLD.partnership_cap_micro_usd
     OR NEW.per_customer_cap_micro_usd IS DISTINCT FROM OLD.per_customer_cap_micro_usd
     OR NEW.max_referred_customers IS DISTINCT FROM OLD.max_referred_customers
     OR NEW.allowed_sources IS DISTINCT FROM OLD.allowed_sources
