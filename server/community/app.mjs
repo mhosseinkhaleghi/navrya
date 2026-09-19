@@ -215,7 +215,7 @@ export function createApp({ repo, uploadsDir, authDeps }) {
   app.use('/api/sync/sessions', routesTradingSessions.router(repo, uploadsDir));
   app.use('/api/sync/patterns', routesPatterns.router(repo, uploadsDir));
   app.use('/api/sync/strategies', routesStrategies.router(repo, uploadsDir));
-  app.use('/api/sync/analysis-profiles', routesAnalysisProfiles.router(repo));
+  app.use('/api/sync/analysis-profiles', routesAnalysisProfiles.router(repo, uploadsDir));
   app.use('/api/sync/trades', routesTrades.router(repo, uploadsDir));
   app.use('/api/sync/accounts', routesAccounts.router(repo));
   app.use('/api/sync/instrument-catalog', routesInstrumentCatalog.router(repo));

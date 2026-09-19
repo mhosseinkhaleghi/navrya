@@ -4,7 +4,7 @@
 // every call site. `LocalDiskObjectStorageProvider` is the only implementation this slice ships -
 // it wraps the existing, unmodified storage.mjs (still real local disk, still the same
 // validation/re-encoding pipeline).
-import { saveImage, deleteFile } from './storage.mjs';
+import { saveImage, savePdf, deleteFile } from './storage.mjs';
 
 /**
  * @typedef {{ objectKey: string, url: string, sizeBytes: number, mimeType: string }} StoredObject
@@ -18,6 +18,15 @@ export class ObjectStorageProvider {
    */
   // eslint-disable-next-line no-unused-vars
   async put(dataUrl, options) { throw new Error('NOT_IMPLEMENTED'); }
+  /**
+   * A PDF document (Analysis Profile knowledge sources) - kept beside put() rather than widening
+   * it, because an image goes through a decode/re-encode pipeline and a PDF does not.
+   * @param {string} dataUrl
+   * @param {{ category: string }} options
+   * @returns {Promise<StoredObject>}
+   */
+  // eslint-disable-next-line no-unused-vars
+  async putDocument(dataUrl, options) { throw new Error('NOT_IMPLEMENTED'); }
   /**
    * @param {string} objectKey
    * @returns {Promise<void>}
@@ -37,6 +46,10 @@ export class LocalDiskObjectStorageProvider extends ObjectStorageProvider {
     // rather than duplicating storage.mjs's filename-generation logic here.
     const objectKey = url.replace(/^\/uploads\//, '');
     return { objectKey, url, sizeBytes, mimeType };
+  }
+  async putDocument(dataUrl, { category }) {
+    const { url, sizeBytes, mimeType } = await savePdf(dataUrl, { uploadsDir: this.uploadsDir, category });
+    return { objectKey: url.replace(/^\/uploads\//, ''), url, sizeBytes, mimeType };
   }
   // Validation Gate (spec section 15) - real deletion, delegated to storage.mjs's own
   // path-traversal-safe deleteFile() (the one module that owns local-disk I/O). No commercial/

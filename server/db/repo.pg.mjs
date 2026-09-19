@@ -13,7 +13,7 @@ import { createReferralPgDomains } from './referral-repo.pg.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -2549,6 +2549,79 @@ export function createPgRepo(pool) {
           (event && event.tokenUsage) ? JSON.stringify(event.tokenUsage) : null]
       );
       return mapAnalysisProfileEvent(rows[0]);
+    }
+  };
+
+  // Analysis Profile knowledge sources (070_analysis_profile_sources.sql) - website / YouTube / PDF
+  // material a trader teaches a profile from. A child of analysis_profiles (ON DELETE CASCADE),
+  // lazily fetched only when a profile's Knowledge tab opens - never part of the boot-time replica
+  // hydrate. Ownership is always resolved against the REAL profile row, never trusted from the URL.
+  function mapAnalysisProfileSource(row) {
+    return {
+      id: row.id, userId: row.user_id, profileId: row.profile_id, kind: row.kind, status: row.status,
+      title: row.title, url: row.url, digest: row.digest, errorCode: row.error_code,
+      storageObjectId: row.storage_object_id || null, fileUrl: row.file_url, fileName: row.file_name,
+      fileSizeBytes: row.file_size_bytes == null ? null : Number(row.file_size_bytes),
+      taughtAt: row.taught_at || null, taughtUnderstandingVersion: row.taught_understanding_version == null ? null : Number(row.taught_understanding_version),
+      createdAt: row.created_at, updatedAt: row.updated_at
+    };
+  }
+  async function assertOwnsAnalysisProfile(userId, profileId) {
+    const owner = await pool.query('SELECT user_id FROM analysis_profiles WHERE id=$1', [profileId]);
+    if (!owner.rows[0]) throw new ApiError(404, 'ANALYSIS_PROFILE_NOT_FOUND');
+    if (owner.rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+  }
+  const analysisProfileSources = {
+    async listByProfile(userId, profileId) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const { rows } = await pool.query('SELECT * FROM analysis_profile_sources WHERE profile_id=$1 ORDER BY created_at DESC', [profileId]);
+      return rows.map(mapAnalysisProfileSource);
+    },
+    async create(userId, profileId, fields, file) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const clean = sanitizeSourceFields(fields);
+      if (!clean) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (clean.kind === 'pdf' && !(file && file.storageObjectId)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const { rows: existing } = await pool.query('SELECT url FROM analysis_profile_sources WHERE profile_id=$1', [profileId]);
+      if (existing.length >= SOURCES_PER_PROFILE_MAX) throw new ApiError(400, 'ANALYSIS_PROFILE_SOURCE_LIMIT');
+      if (clean.url && existing.some((row) => row.url === clean.url)) throw new ApiError(409, 'ANALYSIS_PROFILE_SOURCE_DUPLICATE');
+      const { rows } = await pool.query(
+        `INSERT INTO analysis_profile_sources
+           (id, user_id, profile_id, kind, status, title, url, digest, error_code, storage_object_id, file_url, file_name, file_size_bytes, taught_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [newId('ap-source'), userId, profileId, clean.kind, clean.status, clean.title, clean.url, clean.digest, clean.errorCode,
+          file ? file.storageObjectId : null, file ? String(file.fileUrl || '') : '', file ? String(file.fileName || '').slice(0, 200) : '',
+          file && Number.isFinite(Number(file.fileSizeBytes)) ? Number(file.fileSizeBytes) : null,
+          clean.status === 'taught' ? new Date().toISOString() : null]
+      );
+      return mapAnalysisProfileSource(rows[0]);
+    },
+    async update(userId, profileId, sourceId, patch) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const { rows: currentRows } = await pool.query('SELECT * FROM analysis_profile_sources WHERE id=$1 AND profile_id=$2', [sourceId, profileId]);
+      const current = currentRows[0];
+      if (!current) throw new ApiError(404, 'ANALYSIS_PROFILE_SOURCE_NOT_FOUND');
+      const clean = sanitizeSourceFields(patch, { partial: true });
+      if (!clean) throw new ApiError(400, 'VALIDATION_FAILED');
+      const columns = { title: 'title', digest: 'digest', status: 'status', errorCode: 'error_code', taughtUnderstandingVersion: 'taught_understanding_version' };
+      const sets = []; const values = [];
+      Object.keys(columns).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(clean, key)) { values.push(clean[key]); sets.push(`${columns[key]}=$${values.length}`); }
+      });
+      // A source that is no longer failed must not keep showing the old failure reason.
+      if (clean.status && clean.status !== 'failed' && !Object.prototype.hasOwnProperty.call(clean, 'errorCode')) sets.push("error_code=''");
+      if (clean.status === 'taught' && current.status !== 'taught') sets.push('taught_at=now()');
+      sets.push('updated_at=now()');
+      values.push(sourceId);
+      const { rows } = await pool.query(`UPDATE analysis_profile_sources SET ${sets.join(', ')} WHERE id=$${values.length} RETURNING *`, values);
+      return mapAnalysisProfileSource(rows[0]);
+    },
+    // Returns the removed record (or null when it never existed) so the route can also delete the
+    // stored PDF - idempotent, like every other delete in this file.
+    async remove(userId, profileId, sourceId) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const { rows } = await pool.query('DELETE FROM analysis_profile_sources WHERE id=$1 AND profile_id=$2 RETURNING *', [sourceId, profileId]);
+      return rows[0] ? mapAnalysisProfileSource(rows[0]) : null;
     }
   };
 
@@ -5248,7 +5321,7 @@ export function createPgRepo(pool) {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
-    strategies, analysisProfiles, analysisProfileEvents, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

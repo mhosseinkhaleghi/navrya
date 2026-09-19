@@ -154,3 +154,28 @@ export async function saveVideos(dataUrls, options) {
   for (const dataUrl of list) results.push(await saveVideo(dataUrl, options));
   return results;
 }
+
+// Analysis Profile knowledge PDFs (Phase 3, ARCHITECTURE.md §7.25): a trader's own training
+// material, kept so the engine can be re-taught from it later. Same shape as saveVideo() - no
+// decode/re-encode defense exists for a PDF without a new dependency, so the defense is the same
+// two-part one: the declared MIME must be application/pdf AND the bytes must really start like a
+// PDF (the spec allows up to 1024 bytes of leading junk before the "%PDF-" header, so the first
+// KiB is scanned, not just byte 0). This file is never rendered by the app or served publicly - it
+// lives in a private category (owner-only via upload-ownership.mjs) and is only ever handed back
+// to its owner or forwarded to the AI provider as an attached document.
+const MAX_PDF_BYTES = 15 * 1024 * 1024; // same ceiling as one image; well inside app.mjs's per-route JSON body limit
+const PDF_SIGNATURE = Buffer.from('%PDF-', 'ascii');
+export async function savePdf(dataUrl, { uploadsDir, category }) {
+  const match = typeof dataUrl === 'string' ? dataUrl.match(DATA_URL_PATTERN) : null;
+  if (!match) throw new ApiError(400, 'INVALID_PDF_TYPE');
+  const [, declaredMime, base64] = match;
+  if (declaredMime.toLowerCase() !== 'application/pdf') throw new ApiError(400, 'INVALID_PDF_TYPE');
+  const buffer = Buffer.from(base64, 'base64');
+  if (buffer.byteLength > MAX_PDF_BYTES) throw new ApiError(400, 'PDF_TOO_LARGE');
+  if (buffer.subarray(0, 1024).indexOf(PDF_SIGNATURE) === -1) throw new ApiError(400, 'INVALID_PDF_TYPE');
+  const fileName = `${newId('pdf')}.pdf`;
+  const dir = path.join(uploadsDir, category);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, fileName), buffer);
+  return { url: `/uploads/${category}/${fileName}`, sizeBytes: buffer.byteLength, mimeType: 'application/pdf' };
+}

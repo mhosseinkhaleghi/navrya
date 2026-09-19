@@ -153,7 +153,12 @@ export function providerCostMicroUsdFor(rate, tokenUsage) {
 // side, which the request payload says nothing about.
 const ASSUMED_MAX_COMPLETION_TOKENS = 2000;
 export function estimateTokensFromPayload(payload) {
-  const approxPromptTokens = Math.ceil(JSON.stringify(payload || {}).length / 4);
+  // `estimatedExtraPromptTokens` is set ONLY by the AI gateway, for a request whose bulk (a base64 PDF)
+  // it deliberately strips from the reservation payload and replaces with a bounded estimate - the
+  // JSON-length heuristic below would otherwise reserve ~1 token per 4 base64 chars. It can only ever
+  // ADD to the hold (never below zero), so a hand-crafted value cannot make a reservation smaller.
+  const extraPromptTokens = Number.isFinite(payload && payload.estimatedExtraPromptTokens) ? Math.max(0, Math.trunc(payload.estimatedExtraPromptTokens)) : 0;
+  const approxPromptTokens = Math.ceil(JSON.stringify(payload || {}).length / 4) + extraPromptTokens;
   return { promptTokens: approxPromptTokens, completionTokens: ASSUMED_MAX_COMPLETION_TOKENS };
 }
 

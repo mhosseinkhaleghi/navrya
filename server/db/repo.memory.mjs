@@ -13,7 +13,7 @@ import { createReferralMemoryDomains } from './referral-repo.memory.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -30,7 +30,7 @@ export function createMemoryRepo() {
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     sessionAiAnalysisCompletions: new Map(), disciplineSettings: new Map(),
-    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), analysisProfileEvents: new Map(), trades: new Map(), accounts: new Map(),
+    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), analysisProfileEvents: new Map(), analysisProfileSources: new Map(), trades: new Map(), accounts: new Map(),
     instrumentCatalog: new Map(), learnedCommands: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
@@ -1559,6 +1559,9 @@ export function createMemoryRepo() {
       if (!record) return;
       if (record.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
       state.analysisProfiles.delete(id);
+      // Parity with the pg schema's ON DELETE CASCADE on the two child tables.
+      for (const [eventId, event] of state.analysisProfileEvents) if (event.profileId === id) state.analysisProfileEvents.delete(eventId);
+      for (const [sourceId, source] of state.analysisProfileSources) if (source.profileId === id) state.analysisProfileSources.delete(sourceId);
     }
   };
 
@@ -1592,6 +1595,70 @@ export function createMemoryRepo() {
       };
       state.analysisProfileEvents.set(stored.id, stored);
       return clone(stored);
+    }
+  };
+
+  // Analysis Profile knowledge sources (070_analysis_profile_sources.sql) - website / YouTube / PDF
+  // material a trader teaches a profile from. Mirrors repo.pg.mjs's analysisProfileSources exactly:
+  // ownership always resolved against the real profile row, one URL at most once per profile, a
+  // per-profile cap, and a PATCH that can only touch the small allowlisted set the caller passes
+  // through sanitizeSourceFields({partial:true}).
+  function assertOwnsAnalysisProfile(userId, profileId) {
+    const profile = state.analysisProfiles.get(profileId);
+    if (!profile) throw new ApiError(404, 'ANALYSIS_PROFILE_NOT_FOUND');
+    if (profile.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_PROFILE_OWNER');
+  }
+  const analysisProfileSources = {
+    async listByProfile(userId, profileId) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      return Array.from(state.analysisProfileSources.values())
+        .filter((s) => s.profileId === profileId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .map(clone);
+    },
+    async create(userId, profileId, fields, file) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      const clean = sanitizeSourceFields(fields);
+      if (!clean) throw new ApiError(400, 'VALIDATION_FAILED');
+      if (clean.kind === 'pdf' && !(file && file.storageObjectId)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const existing = Array.from(state.analysisProfileSources.values()).filter((s) => s.profileId === profileId);
+      if (existing.length >= SOURCES_PER_PROFILE_MAX) throw new ApiError(400, 'ANALYSIS_PROFILE_SOURCE_LIMIT');
+      if (clean.url && existing.some((s) => s.url === clean.url)) throw new ApiError(409, 'ANALYSIS_PROFILE_SOURCE_DUPLICATE');
+      const stamp = now();
+      const stored = {
+        id: newId('ap-source'), userId, profileId, ...clean,
+        storageObjectId: file ? file.storageObjectId : null,
+        fileUrl: file ? String(file.fileUrl || '') : '',
+        fileName: file ? String(file.fileName || '').slice(0, 200) : '',
+        fileSizeBytes: file && Number.isFinite(Number(file.fileSizeBytes)) ? Number(file.fileSizeBytes) : null,
+        taughtAt: clean.status === 'taught' ? stamp : null,
+        taughtUnderstandingVersion: null,
+        createdAt: stamp, updatedAt: stamp
+      };
+      state.analysisProfileSources.set(stored.id, stored);
+      return clone(stored);
+    },
+    async update(userId, profileId, sourceId, patch) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      const current = state.analysisProfileSources.get(sourceId);
+      if (!current || current.profileId !== profileId) throw new ApiError(404, 'ANALYSIS_PROFILE_SOURCE_NOT_FOUND');
+      const clean = sanitizeSourceFields(patch, { partial: true });
+      if (!clean) throw new ApiError(400, 'VALIDATION_FAILED');
+      const next = { ...current, ...clean, updatedAt: now() };
+      if (clean.status === 'taught' && current.status !== 'taught') next.taughtAt = next.updatedAt;
+      // A source that is no longer failed must not keep showing the old failure reason.
+      if (clean.status && clean.status !== 'failed' && !Object.prototype.hasOwnProperty.call(clean, 'errorCode')) next.errorCode = '';
+      state.analysisProfileSources.set(sourceId, next);
+      return clone(next);
+    },
+    // Returns the removed record (or null when it never existed) so the route can also delete the
+    // stored PDF - idempotent, like every other delete in this file.
+    async remove(userId, profileId, sourceId) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      const current = state.analysisProfileSources.get(sourceId);
+      if (!current || current.profileId !== profileId) return null;
+      state.analysisProfileSources.delete(sourceId);
+      return clone(current);
     }
   };
 
@@ -3513,7 +3580,7 @@ export function createMemoryRepo() {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
-    strategies, analysisProfiles, analysisProfileEvents, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

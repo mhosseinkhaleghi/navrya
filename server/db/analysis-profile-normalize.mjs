@@ -155,3 +155,55 @@ export function normalizeUnderstanding(value) {
     version, updatedAt
   };
 }
+
+// ---- knowledge sources (070_analysis_profile_sources.sql) ---------------------------------------
+
+export const SOURCE_KINDS = ['youtube', 'website', 'pdf'];
+export const SOURCE_STATUSES = ['queued', 'ready', 'taught', 'failed'];
+export const SOURCE_TITLE_MAX = 200;
+export const SOURCE_DIGEST_MAX = 8000;
+export const SOURCES_PER_PROFILE_MAX = 40;
+const SOURCE_ERROR_CODE_PATTERN = /^[A-Z0-9_]{1,80}$/;
+
+// Validates the fields a trader/the reader may set on a source. Returns the clean fields, or null
+// when the input cannot describe a source at all (unknown kind, a URL kind without a valid URL, a
+// YouTube source whose URL is not YouTube) - the caller turns null into a 400. A `partial` call
+// (PATCH) only returns keys that were actually supplied AND valid, so an omitted field is never
+// silently reset to its default. The digest is capped here even though the reader already caps it:
+// this is the last stop before the database and never trusts the caller.
+export function sanitizeSourceFields(input, { partial = false } = {}) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const out = {};
+  const has = (key) => Object.prototype.hasOwnProperty.call(source, key);
+
+  if (!partial || has('kind')) {
+    if (!SOURCE_KINDS.includes(source.kind)) return null;
+    out.kind = source.kind;
+  }
+  if (!partial || has('url')) {
+    const href = normalizeHttpUrl(source.url);
+    // A stored PDF has no URL; every other kind must carry a real one.
+    if (!href && (partial ? has('url') && source.url : out.kind !== 'pdf')) return null;
+    out.url = out.kind === 'pdf' ? '' : href;
+  }
+  if (out.kind === 'youtube' && !isYoutubeUrl(out.url)) return null;
+  if (out.kind === 'website' && isYoutubeUrl(out.url)) return null; // a YouTube link is a youtube source, never a scraped web page
+
+  if (!partial || has('title')) out.title = String(source.title == null ? '' : source.title).replace(/\s+/g, ' ').trim().slice(0, SOURCE_TITLE_MAX);
+  if (!partial || has('digest')) out.digest = String(source.digest == null ? '' : source.digest).trim().slice(0, SOURCE_DIGEST_MAX);
+  if (has('status')) {
+    if (!SOURCE_STATUSES.includes(source.status)) return null;
+    out.status = source.status;
+  } else if (!partial) {
+    out.status = 'queued';
+  }
+  if (!partial || has('errorCode')) {
+    const code = String(source.errorCode == null ? '' : source.errorCode).trim();
+    out.errorCode = SOURCE_ERROR_CODE_PATTERN.test(code) ? code : '';
+  }
+  if (has('taughtUnderstandingVersion')) {
+    const version = Number(source.taughtUnderstandingVersion);
+    if (Number.isFinite(version) && version >= 0) out.taughtUnderstandingVersion = Math.trunc(version);
+  }
+  return out;
+}
