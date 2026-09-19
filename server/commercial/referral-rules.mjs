@@ -504,8 +504,12 @@ export function decideEarning({
   const formula = computeCommission({ commissionableBaseMicroUsd: base, commissionBps: rules.commissionBps });
   if (formula <= 0) return skip('ZERO_COMMISSION', { base });
 
+  // An ai_margin base is ALREADY net of the provider cost (it is settled gross margin), so the estimated payment-fee and
+  // service-cost percentages - which model the cost of a subscription/storage sale - are not applied on top of it again;
+  // only the minimum-margin floor still is.
+  const marginRules = source === 'ai_margin' ? { ...rules.margin, paymentFeeBps: 0, serviceCostBps: 0 } : rules.margin;
   const guard = applyMarginGuard({
-    commissionMicroUsd: formula, netRevenueMicroUsd: base, extraCostMicroUsd: walletBonusMicroUsd, ...rules.margin
+    commissionMicroUsd: formula, netRevenueMicroUsd: base, extraCostMicroUsd: walletBonusMicroUsd, ...marginRules
   });
   const caps = applyCaps(guard.grantedMicroUsd, {
     programBudget: { capMicroUsd: rules.caps.programBudgetCapMicroUsd, usedMicroUsd: usage.programUsedMicroUsd },

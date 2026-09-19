@@ -6,6 +6,7 @@
 import { ApiError } from '../community/errors.mjs';
 import { activateOrRenewSubscription, revokeSubscriptionForRefund } from './subscription-service.mjs';
 import { grantSubscriptionBonus, reverseSubscriptionBonus, pricingOf, lostDiscountKey } from './subscription-bonus.mjs';
+import { safeAwardReferral, safeReverseReferral } from './referral-earnings.mjs';
 
 export async function confirmTransaction(repo, transactionId, { adminUserId } = {}) {
   const transaction = await repo.paymentTransactions.get(transactionId);
@@ -40,6 +41,9 @@ export async function confirmTransaction(repo, transactionId, { adminUserId } = 
     // Wallet bonus: from the checkout snapshot, exactly once (transaction-derived ledger key), and only when the
     // confirmed final payable amount is greater than zero - see subscription-bonus.mjs.
     await grantSubscriptionBonus(repo, transaction);
+    // Referral commission: only from this CONFIRMED, non-zero payment, exactly once (idempotent by the transaction id), and never
+    // able to fail or delay the payment itself (see referral-earnings.mjs). A wallet top-up deliberately never reaches it.
+    await safeAwardReferral(repo, confirmed);
   } else if (transaction.type === 'storage_purchase') {
     const meta = transaction.metadata || {};
     const expiresAt = new Date(Date.now() + meta.validityDays * 24 * 60 * 60 * 1000);
@@ -48,6 +52,7 @@ export async function confirmTransaction(repo, transactionId, { adminUserId } = 
       pricePaidSnapshotMicroUsd: meta.priceAmountMicroUsd, currency: transaction.currency,
       validityDaysSnapshot: meta.validityDays, expiresAt: expiresAt.toISOString(), paymentTransactionId: transactionId
     });
+    await safeAwardReferral(repo, confirmed);
   } else if (transaction.type === 'refund') {
     const original = transaction.metadata && transaction.metadata.originalTransactionId
       ? await repo.paymentTransactions.get(transaction.metadata.originalTransactionId) : null;
@@ -71,6 +76,9 @@ export async function confirmTransaction(repo, transactionId, { adminUserId } = 
       const entitlement = await repo.storageEntitlements.getByPaymentTransactionId(original.id);
       if (entitlement) await repo.storageEntitlements.revoke(entitlement.id);
     }
+    // The referral commission this purchase earned is cancelled / reversed / released; value already converted or paid out
+    // becomes recoverable debt (see repo.referralEarnings.reverseEarning). Never able to fail the refund itself.
+    if (original) await safeReverseReferral(repo, original, { reason: 'refund', triggerRef: transaction.id });
   }
 
   return { alreadyProcessed: false, transaction: confirmed };

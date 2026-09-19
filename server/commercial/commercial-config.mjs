@@ -6,6 +6,7 @@
 // Postgres access by design - it reads resolved config over the internal HTTP bridge instead
 // (server/community/routes.internal.mjs's /internal/entitlements/:userId and wallet endpoints).
 import { PLAN_DEFAULTS, WALLET_DEFAULTS, BSC_DEFAULTS, PLAN_NAMES, MAX_WALLET_BONUS_USD } from './commercial-defaults.mjs';
+import { mergeReferralPayoutSettings } from './referral-payout-settings.mjs';
 
 const CACHE_TTL_MS = 30000;
 let cache = { data: null, fetchedAt: 0 };
@@ -39,6 +40,9 @@ function buildEffective(overrideRows) {
   PLAN_NAMES.forEach((plan) => { plans[plan] = cloneDeep(PLAN_DEFAULTS[plan]); });
   const wallet = cloneDeep(WALLET_DEFAULTS);
   const bsc = bscEnvFallback();
+  // Referral BSC payout settings (server/commercial/referral-payout-settings.mjs): ONE versioned override row, re-validated on
+  // every read so a corrupt stored value can never widen the pinned chain or enable an incomplete configuration.
+  let referralPayout = mergeReferralPayoutSettings(null);
   const overridesByKey = {};
 
   overrideRows.forEach((row) => {
@@ -84,6 +88,8 @@ function buildEffective(overrideRows) {
       if (Number.isFinite(value.amount) && value.amount >= 0) wallet.minimumTopUpUsd = value.amount;
     } else if (row.configKey === 'wallet:signupPromoRetailUsd') {
       if (Number.isFinite(value.amount) && value.amount >= 0) wallet.signupPromoRetailUsd = value.amount;
+    } else if (row.configKey === 'referralPayout:settings') {
+      referralPayout = mergeReferralPayoutSettings(value);
     } else if (row.configKey === 'bsc:enabled') {
       bsc.enabled = Boolean(value.enabled);
     } else if (row.configKey === 'bsc:chainId') {
@@ -105,7 +111,7 @@ function buildEffective(overrideRows) {
     }
   });
 
-  return { plans, wallet, bsc, overridesByKey };
+  return { plans, wallet, bsc, referralPayout, overridesByKey };
 }
 
 export async function getEffectiveCommercialConfig(repo) {
@@ -136,6 +142,13 @@ export async function getPlanPrice(repo, plan) {
 export async function getBscPublicConfig(repo) {
   const config = await getEffectiveCommercialConfig(repo);
   return config.bsc;
+}
+
+// Public (non-secret) referral BSC payout settings. The RPC endpoint the verifier uses is the SAME encrypted secret the inbound
+// BSC payments already use (bsc-config.mjs's resolveBscRuntimeConfig) - it is never part of these settings.
+export async function getReferralPayoutConfig(repo) {
+  const config = await getEffectiveCommercialConfig(repo);
+  return config.referralPayout;
 }
 
 // retailMultiplier = 1 + markupPercent/100 (spec section 16) - the one formula every markup

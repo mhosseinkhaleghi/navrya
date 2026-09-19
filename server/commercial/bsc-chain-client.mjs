@@ -90,6 +90,22 @@ export function decodeTransferLogs(receipt, tokenContract) {
     .filter(Boolean);
 }
 
+// Strict outbound-transfer matcher used only when `expected.sender` is set (see verifyBscTransfer). `transfers` are already
+// filtered to logs emitted BY the configured token contract, so a Transfer event forged by any other contract in the same
+// transaction can never satisfy it. Reasons are ordered from "not our token at all" down to "right everything, wrong amount".
+export function matchPayoutTransfer(transfers, expected) {
+  if (!transfers.length) return { ok: false, reason: 'TOKEN_MISMATCH' };
+  const sender = expected.sender.toLowerCase();
+  const recipient = expected.recipient.toLowerCase();
+  const fromSender = transfers.filter((t) => t.from.toLowerCase() === sender);
+  if (!fromSender.length) return { ok: false, reason: 'SENDER_MISMATCH' };
+  const toRecipient = fromSender.filter((t) => t.to.toLowerCase() === recipient);
+  if (!toRecipient.length) return { ok: false, reason: 'RECIPIENT_MISMATCH' };
+  if (toRecipient.length > 1) return { ok: false, reason: 'AMBIGUOUS_TRANSFERS' };
+  if (toRecipient[0].value !== BigInt(expected.atomicAmount)) return { ok: false, reason: 'AMOUNT_MISMATCH', actualAtomicAmount: toRecipient[0].value.toString() };
+  return { ok: true };
+}
+
 // The single place every BSC payment confirmation path (the client's own "check now" poll, or the
 // optional webhook) runs its validation - checked in this exact order: chain id, receipt
 // existence/success, a genuine Transfer log from the configured token contract to the configured
@@ -116,6 +132,20 @@ export async function verifyBscTransfer({ rpcUrl, txHash, expected, confirmation
   const transfers = decodeTransferLogs(receipt, expected.tokenContract);
   const expectedAtomic = BigInt(expected.atomicAmount);
   const recipientLower = expected.recipient.toLowerCase();
+
+  // OUTBOUND PAYOUT MODE (referral payouts): `expected.sender` pins the treasury address the token must have left.
+  // The verdict is strictly all-or-nothing - the ONLY success is exactly one Transfer of the configured token, from
+  // that sender, to that recipient, for EXACTLY the expected atomic amount (never `>=`, never a sum of pieces). Every
+  // other shape is a distinct, named failure so an operator sees precisely what was wrong. Same confirmation rule as
+  // below. Invoice callers never pass `sender`, so their behaviour is unchanged.
+  if (expected.sender) {
+    const verdict = matchPayoutTransfer(transfers, expected);
+    if (!verdict.ok) return verdict;
+    const payoutBlock = await getBlockNumber(rpcUrl);
+    const payoutConfirmations = Math.max(0, payoutBlock - parseInt(receipt.blockNumber, 16) + 1);
+    if (payoutConfirmations < confirmationsRequired) return { ok: false, reason: 'INSUFFICIENT_CONFIRMATIONS', confirmations: payoutConfirmations };
+    return { ok: true, confirmations: payoutConfirmations };
+  }
   const toRecipient = transfers.filter((t) => t.to.toLowerCase() === recipientLower);
   const matching = toRecipient.find((t) => t.value === expectedAtomic);
   // A real transfer of the right token, on the right chain, TO THE RIGHT RECIPIENT, just not for

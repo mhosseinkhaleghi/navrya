@@ -29,6 +29,15 @@ export function oidcTxnCookieName() {
   return secureCookies() ? '__Host-navrya_oidc_txn' : 'navrya_oidc_txn';
 }
 
+// The referral attribution cookie (server/commercial/referral-attribution.mjs): a SIGNED, short opaque token set by
+// GET /api/referrals/c/:publicCode and consumed once, by a genuinely new account creation. HttpOnly (page JS can never read or
+// forge it), SameSite=Lax (it must survive the top-level navigation from a shared link and the OIDC redirect back), and
+// HOST-ONLY like every cookie here - baseAttributes() never sets a Domain, and the `__Host-` prefix makes a browser enforce
+// that whenever the cookie is Secure.
+export function referralCookieName() {
+  return secureCookies() ? '__Host-navrya_ref' : 'navrya_ref';
+}
+
 function baseAttributes({ maxAgeSeconds } = {}) {
   const attrs = {
     path: '/',
@@ -48,11 +57,17 @@ export function serializeSessionCookie(rawSessionId, { maxAgeSeconds }) {
 export function serializeCsrfCookie(csrfToken, { maxAgeSeconds }) {
   return stringifySetCookie({ name: csrfCookieName(), value: csrfToken, httpOnly: false, ...baseAttributes({ maxAgeSeconds }) });
 }
+export function serializeReferralCookie(token, { maxAgeSeconds }) {
+  return stringifySetCookie({ name: referralCookieName(), value: token, httpOnly: true, ...baseAttributes({ maxAgeSeconds }) });
+}
 export function serializeOidcTxnCookie(txnId, { maxAgeSeconds = 600 } = {}) {
   return stringifySetCookie({ name: oidcTxnCookieName(), value: txnId, httpOnly: true, ...baseAttributes({ maxAgeSeconds }) });
 }
 function serializeClearCookie(name, httpOnly) {
   return stringifySetCookie({ name, value: '', httpOnly, ...baseAttributes({ maxAgeSeconds: 0 }) });
+}
+export function clearReferralCookie(res) {
+  appendSetCookie(res, serializeClearCookie(referralCookieName(), true));
 }
 export function clearAuthCookies(res) {
   appendSetCookie(res, serializeClearCookie(sessionCookieName(), true));
@@ -82,3 +97,4 @@ export function readCookies(req) {
 export function readSessionCookie(req) { return readCookies(req)[sessionCookieName()] || null; }
 export function readCsrfCookie(req) { return readCookies(req)[csrfCookieName()] || null; }
 export function readOidcTxnCookie(req) { return readCookies(req)[oidcTxnCookieName()] || null; }
+export function readReferralCookie(req) { return readCookies(req)[referralCookieName()] || null; }
