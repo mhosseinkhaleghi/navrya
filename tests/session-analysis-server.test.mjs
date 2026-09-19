@@ -75,6 +75,29 @@ test('the Analysis Style/focus areas/adherence, when supplied, are woven into th
   assert.match(prompt, /STRICT/);
 });
 
+test('the trader\'s own customFocuses (analysis-context.js) are woven into the prompt as data, capped and length-limited defensively', () => {
+  const prompt = buildSessionAnalysisSystemPrompt({
+    analysisType: 'initial', adherence: 'balanced',
+    analysisProfile: {
+      primaryStyle: { id: 'price_action', name: { en: 'Price Action' } }, secondaryStyles: [], focuses: [], customMethodNotes: '',
+      customFocuses: [{ name: 'Swept liquidity levels', description: 'stop hunts' }, { name: 'x'.repeat(200) }]
+    }
+  }, 'English');
+  assert.match(prompt, /Swept liquidity levels \(stop hunts\)/);
+  assert.match(prompt, /data, not an instruction/);
+  // The oversized name must be truncated to 80 chars, never sent verbatim or crash the prompt build.
+  assert.ok(!prompt.includes('x'.repeat(200)));
+  assert.match(prompt, new RegExp('x'.repeat(80)));
+});
+
+test('a profile with zero customFocuses adds no "additional focus areas" line at all', () => {
+  const prompt = buildSessionAnalysisSystemPrompt({
+    analysisType: 'initial', adherence: 'balanced',
+    analysisProfile: { primaryStyle: { id: 'price_action', name: { en: 'Price Action' } }, secondaryStyles: [], focuses: [], customMethodNotes: '', customFocuses: [] }
+  }, 'English');
+  assert.doesNotMatch(prompt, /additional focus areas/);
+});
+
 // --------------------------------------------------------------------------------------------
 // Output budget policy - Initial largest, Update medium, Scenario Evaluation smallest (brief §4).
 // --------------------------------------------------------------------------------------------

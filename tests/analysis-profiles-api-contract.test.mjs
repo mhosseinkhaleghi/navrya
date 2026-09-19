@@ -141,3 +141,35 @@ test('a different user setting their own default never affects another user\'s d
   assert.equal(aliceList.body.analysisProfiles.filter((p) => p.isDefault).length, 1);
   assert.equal(aliceList.body.analysisProfiles[0].id, 'alice-default');
 });
+
+// customMethodLinks / customFocuses (066_analysis_profile_authoring.sql) - real HTTP round trip
+// over the memory repo, server-side re-normalization on every write (never trusts the client
+// alone), matching server/db/analysis-profile-normalize.mjs's own fixture tests.
+test('customMethodLinks/customFocuses round-trip through POST/GET, and the server re-normalizes them - never trusts the client alone', async () => {
+  const user = await createUser('Trader Seven');
+  const created = await api('POST', '/api/sync/analysis-profiles', { userId: user.id, body: sampleProfile('ap-g', {
+    customMethodLinks: { youtubeUrl: 'https://youtu.be/abc123', websiteUrl: 'javascript:alert(1)', referenceUrl: 'https://user:pw@example.com/' },
+    customFocuses: [
+      { id: 'cf-1', name: '  Swept liquidity levels  ', description: 'stop hunts', origin: 'user' },
+      { id: 'cf-1', name: 'Duplicate id, must be dropped' },
+      { id: 'not valid!', name: 'Invalid id, must be dropped' }
+    ]
+  }) });
+  assert.equal(created.status, 200);
+  assert.equal(created.body.customMethodLinks.youtubeUrl, 'https://youtu.be/abc123');
+  assert.equal(created.body.customMethodLinks.websiteUrl, '', 'a javascript: URL must never be stored');
+  assert.equal(created.body.customMethodLinks.referenceUrl, '', 'a URL with embedded credentials must never be stored');
+  assert.equal(created.body.customFocuses.length, 1, 'the duplicate id and the invalid id must both be dropped server-side');
+  assert.equal(created.body.customFocuses[0].name, 'Swept liquidity levels');
+
+  const fetched = await api('GET', '/api/sync/analysis-profiles/ap-g', { userId: user.id });
+  assert.deepEqual(fetched.body.customMethodLinks, created.body.customMethodLinks);
+  assert.deepEqual(fetched.body.customFocuses, created.body.customFocuses);
+});
+
+test('omitting customMethodLinks/customFocuses on POST defaults them to the empty shape, never null/undefined - a pre-authoring-fields client keeps working unchanged', async () => {
+  const user = await createUser('Trader Eight');
+  const created = await api('POST', '/api/sync/analysis-profiles', { userId: user.id, body: sampleProfile('ap-h') });
+  assert.deepEqual(created.body.customMethodLinks, { youtubeUrl: '', websiteUrl: '', referenceUrl: '' });
+  assert.deepEqual(created.body.customFocuses, []);
+});

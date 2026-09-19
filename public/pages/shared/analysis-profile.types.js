@@ -20,11 +20,26 @@
  * @property {string[]} secondaryStyleIds        - up to 2 for a Hybrid profile, else []
  * @property {string[]} focusIds                 - ids from analysis-focus-registry.js
  * @property {string} customMethodNotes          - user-authored explanation (Custom Method / free notes)
+ * @property {CustomMethodLinks} customMethodLinks - optional teaching material links (each '' or a validated http(s) URL)
+ * @property {CustomFocus[]} customFocuses       - trader-added / accepted-AI focus areas (max 30) - kept SEPARATE from
+ *                                                 focusIds, which only ever hold Focus Registry ids
  * @property {boolean} isDefault                 - exactly one true per user, enforced by the store
  * @property {boolean} isActive                  - archived (false) profiles are hidden, never auto-deleted
  * @property {number} registryVersion            - style/focus registry version this profile was built against
  * @property {string} createdAt
  * @property {string} updatedAt
+ *
+ * @typedef {Object} CustomMethodLinks
+ * @property {string} youtubeUrl    - '' or a YouTube video/channel URL
+ * @property {string} websiteUrl    - '' or an educational website URL
+ * @property {string} referenceUrl  - '' or any other reference link (an article, a shared document)
+ *
+ * @typedef {Object} CustomFocus
+ * @property {string} id            - stable, `cf-...`; never a Focus Registry id
+ * @property {string} name          - the trader's own wording (<= 80 chars)
+ * @property {string} description   - optional one-liner (<= 240 chars)
+ * @property {'user'|'ai'} origin   - who authored it ('ai' = an accepted AI suggestion)
+ * @property {string} createdAt
  *
  * A normalized, historical-snapshot view of one AnalysisProfile - see
  * `AnalysisProfileStore.snapshot(id)`. Captures the analytical lens as it existed at a point in
@@ -42,7 +57,9 @@
  * @property {{id:string, name:Object<string,string>, registryVersion:number}} primaryStyle
  * @property {{id:string, name:Object<string,string>, registryVersion:number}[]} secondaryStyles
  * @property {{id:string, name:Object<string,string>}[]} focuses
+ * @property {{id:string, name:string, description:string}[]} customFocuses
  * @property {string} customMethodNotes
+ * @property {CustomMethodLinks} customMethodLinks
  * @property {string} capturedAt
  */
 (function () {

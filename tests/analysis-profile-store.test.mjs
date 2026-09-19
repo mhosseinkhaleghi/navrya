@@ -22,7 +22,10 @@ async function loadStore({ fetchImpl, currentUserId } = {}) {
     window: { __NAVRYA_AUTH__: authState }, fetch: fetchFn,
     document: { body: { appendChild() {} }, documentElement: { lang: 'en' }, createElement: () => ({ setAttribute() {} }) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options && options.detail; } },
-    setTimeout: (fn) => fn()
+    setTimeout: (fn) => fn(),
+    // A bare vm sandbox has no URL global (unlike a real browser/Node global scope) - needed by
+    // the store's own customMethodLinks normalization (analysis-profile-store.js).
+    URL
   };
   sandbox.window = Object.assign(sandbox.window, { dispatchEvent() {}, addEventListener() {} });
   vm.createContext(sandbox);
@@ -185,6 +188,50 @@ test('snapshot() returns null for an unknown id rather than throwing', async () 
   const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
   await flush();
   assert.equal(store.snapshot('not-a-real-id'), null);
+});
+
+// customMethodLinks / customFocuses (066_analysis_profile_authoring.sql).
+test('create() normalizes customMethodLinks and customFocuses, dropping an invalid URL and a duplicate/invalid focus', async () => {
+  const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
+  await flush();
+  const created = store.create({
+    name: 'Custom', primaryStyleId: 'custom_method', customMethodNotes: 'my own way',
+    customMethodLinks: { youtubeUrl: 'https://youtu.be/abc', websiteUrl: 'not a url' },
+    customFocuses: [{ id: 'cf-1', name: 'Swept liquidity levels' }, { id: 'cf-1', name: 'dup' }, { id: '', name: 'no id' }]
+  });
+  assert.equal(created.customMethodLinks.youtubeUrl, 'https://youtu.be/abc');
+  assert.equal(created.customMethodLinks.websiteUrl, '');
+  assert.equal(created.customFocuses.length, 1);
+  assert.equal(created.customFocuses[0].name, 'Swept liquidity levels');
+});
+
+test('a profile created before customMethodLinks/customFocuses existed normalizes to the empty shape, never null/undefined', async () => {
+  const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
+  await flush();
+  const created = store.create({ name: 'Legacy', primaryStyleId: 'general_analysis' });
+  // The vm sandbox returns cross-realm plain objects/arrays - deepEqual (deepStrictEqual under
+  // node:assert/strict) also compares prototypes, so re-serialize through JSON first.
+  assert.deepEqual(JSON.parse(JSON.stringify(created.customMethodLinks)), { youtubeUrl: '', websiteUrl: '', referenceUrl: '' });
+  assert.deepEqual(JSON.parse(JSON.stringify(created.customFocuses)), []);
+});
+
+test('snapshot() carries the trader\'s own customFocuses/customMethodLinks and stays stable after the live profile later changes', async () => {
+  const { store } = await loadStore({ currentUserId: 'user-1', fetchImpl: memoryUpsertFetch() });
+  await flush();
+  const created = store.create({
+    name: 'Custom', primaryStyleId: 'custom_method', customMethodNotes: 'my own way',
+    customMethodLinks: { websiteUrl: 'https://school.example.com/' },
+    customFocuses: [{ id: 'cf-1', name: 'Swept liquidity levels', description: 'stop hunts' }]
+  });
+  await flush();
+  const snap = store.snapshot(created.id);
+  assert.equal(snap.customFocuses.length, 1);
+  assert.equal(snap.customFocuses[0].name, 'Swept liquidity levels');
+  assert.equal(snap.customMethodLinks.websiteUrl, 'https://school.example.com/');
+
+  store.update(created.id, { customFocuses: [] });
+  await flush();
+  assert.equal(snap.customFocuses.length, 1, 'a previously captured snapshot must never retroactively change');
 });
 
 test('getDefault() returns the real default profile, falling back to the first profile if none is explicitly flagged', async () => {

@@ -13,6 +13,7 @@ import { createReferralMemoryDomains } from './referral-repo.memory.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses } from './analysis-profile-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -1534,6 +1535,8 @@ export function createMemoryRepo() {
         secondaryStyleIds: Array.isArray(record.secondaryStyleIds) ? record.secondaryStyleIds.slice() : [],
         focusIds: Array.isArray(record.focusIds) ? record.focusIds.slice() : [],
         customMethodNotes: record.customMethodNotes || '',
+        customMethodLinks: normalizeCustomMethodLinks(record.customMethodLinks),
+        customFocuses: normalizeCustomFocuses(record.customFocuses),
         isDefault, isActive: record.isActive !== false,
         registryVersion: Math.max(1, Number(record.registryVersion) || 1),
         createdAt: existing ? existing.createdAt : stamp, updatedAt: stamp

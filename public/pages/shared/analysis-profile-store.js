@@ -23,6 +23,75 @@
   function uid(prefix) { return (prefix || 'analysis-profile') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9); }
   function now() { return new Date().toISOString(); }
 
+  // ---- authoring fields (customMethodLinks / customFocuses) --------------------------------------
+  // Classic-script twin of server/db/analysis-profile-normalize.mjs - the server re-normalizes on
+  // every write, so these only need to agree with it, and tests/analysis-profile-authoring-fields
+  // .test.mjs runs both against one fixture set to keep them from drifting. Never throws: an
+  // optional link that does not validate is dropped to '' rather than failing a profile save.
+  var LINK_KEYS = ['youtubeUrl', 'websiteUrl', 'referenceUrl'];
+  var LINK_MAX_LENGTH = 2048;
+  var CUSTOM_FOCUS_MAX = 30, CUSTOM_FOCUS_NAME_MAX = 80, CUSTOM_FOCUS_DESCRIPTION_MAX = 240;
+  var CUSTOM_FOCUS_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+  var YOUTUBE_HOST_PATTERN = /^(www\.|m\.|music\.)?youtube\.com$|^youtu\.be$/;
+
+  function normalizeHttpUrl(value) {
+    var text = typeof value === 'string' ? value.trim() : '';
+    if (!text || text.length > LINK_MAX_LENGTH) return '';
+    var url;
+    try { url = new URL(text); } catch (_) { return ''; }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    if (url.username || url.password) return '';
+    if (!url.hostname || url.hostname.indexOf('.') < 0) return '';
+    return url.href;
+  }
+  function isYoutubeUrl(value) {
+    var href = normalizeHttpUrl(value);
+    return Boolean(href) && YOUTUBE_HOST_PATTERN.test(new URL(href).hostname.toLowerCase());
+  }
+  function normalizeCustomMethodLinks(value) {
+    var source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    var out = {};
+    LINK_KEYS.forEach(function (key) {
+      var href = normalizeHttpUrl(source[key]);
+      out[key] = key === 'youtubeUrl' ? (href && isYoutubeUrl(href) ? href : '') : href;
+    });
+    return out;
+  }
+  function foldFocusName(name) {
+    return String(name == null ? '' : name).toLowerCase()
+      .replace(/[‌‍]/g, '')
+      .replace(/[يى]/g, 'ی').replace(/ك/g, 'ک')
+      .replace(/\s+/g, ' ').trim();
+  }
+  function normalizeCustomFocuses(value) {
+    var list = Array.isArray(value) ? value : [];
+    var seenIds = {}, seenNames = {}, out = [];
+    for (var i = 0; i < list.length && out.length < CUSTOM_FOCUS_MAX; i += 1) {
+      var item = list[i];
+      if (!item || typeof item !== 'object') continue;
+      var id = typeof item.id === 'string' ? item.id.trim() : '';
+      var name = String(item.name == null ? '' : item.name).replace(/\s+/g, ' ').trim().slice(0, CUSTOM_FOCUS_NAME_MAX);
+      if (!CUSTOM_FOCUS_ID_PATTERN.test(id) || !name) continue;
+      var nameKey = foldFocusName(name);
+      if (seenIds[id] || seenNames[nameKey]) continue;
+      seenIds[id] = true; seenNames[nameKey] = true;
+      out.push({
+        id: id, name: name,
+        description: String(item.description == null ? '' : item.description).replace(/\s+/g, ' ').trim().slice(0, CUSTOM_FOCUS_DESCRIPTION_MAX),
+        origin: item.origin === 'ai' ? 'ai' : 'user',
+        createdAt: typeof item.createdAt === 'string' && !isNaN(Date.parse(item.createdAt)) ? item.createdAt : now()
+      });
+    }
+    return out;
+  }
+  // A brand-new custom focus with a fresh stable id - what the wizard's "+ Add your own" and an
+  // accepted AI suggestion both create. Returns null for an empty name.
+  function makeCustomFocus(seed) {
+    var value = seed || {};
+    var made = normalizeCustomFocuses([{ id: uid('cf'), name: value.name, description: value.description, origin: value.origin, createdAt: now() }]);
+    return made[0] || null;
+  }
+
   function empty(seed) {
     var stamp = now(), value = seed || {};
     return {
@@ -34,6 +103,8 @@
       secondaryStyleIds: Array.isArray(value.secondaryStyleIds) ? value.secondaryStyleIds : [],
       focusIds: Array.isArray(value.focusIds) ? value.focusIds : [],
       customMethodNotes: String(value.customMethodNotes || ''),
+      customMethodLinks: normalizeCustomMethodLinks(value.customMethodLinks),
+      customFocuses: normalizeCustomFocuses(value.customFocuses),
       isDefault: Boolean(value.isDefault),
       isActive: value.isActive !== false,
       registryVersion: Number.isFinite(Number(value.registryVersion)) ? Number(value.registryVersion) : ((styleRegistry() && styleRegistry().VERSION) || 1),
@@ -55,6 +126,8 @@
     base.name = String(source.name || '');
     base.description = String(source.description || '');
     base.customMethodNotes = String(source.customMethodNotes || '');
+    base.customMethodLinks = normalizeCustomMethodLinks(source.customMethodLinks);
+    base.customFocuses = normalizeCustomFocuses(source.customFocuses);
     base.isDefault = Boolean(source.isDefault);
     base.isActive = source.isActive !== false;
 
@@ -239,7 +312,11 @@
         var focus = focuses ? focuses.get(fid) : null;
         return focus ? { id: focus.id, name: focus.name } : null;
       }).filter(Boolean),
+      // A custom focus has no registry entry to resolve a localized name from - it is the trader's
+      // own wording, captured verbatim.
+      customFocuses: (profile.customFocuses || []).map(function (focus) { return { id: focus.id, name: focus.name, description: focus.description }; }),
       customMethodNotes: profile.customMethodNotes,
+      customMethodLinks: normalizeCustomMethodLinks(profile.customMethodLinks),
       capturedAt: now()
     };
   }
@@ -258,6 +335,16 @@
     getDefault: getDefault,
     snapshot: snapshot,
     suggestedName: suggestedName,
-    AnalysisProfileError: AnalysisProfileError
+    AnalysisProfileError: AnalysisProfileError,
+    // Pure authoring helpers the wizard/inline editor share so validation never forks per screen.
+    helpers: {
+      normalizeHttpUrl: normalizeHttpUrl,
+      isYoutubeUrl: isYoutubeUrl,
+      normalizeCustomMethodLinks: normalizeCustomMethodLinks,
+      normalizeCustomFocuses: normalizeCustomFocuses,
+      makeCustomFocus: makeCustomFocus,
+      foldFocusName: foldFocusName,
+      LIMITS: { customFocusMax: CUSTOM_FOCUS_MAX, customFocusNameMax: CUSTOM_FOCUS_NAME_MAX, customFocusDescriptionMax: CUSTOM_FOCUS_DESCRIPTION_MAX }
+    }
   };
 }());

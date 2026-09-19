@@ -13,6 +13,7 @@ import { createReferralPgDomains } from './referral-repo.pg.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses } from './analysis-profile-normalize.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -403,6 +404,8 @@ function mapAnalysisProfile(row) {
     id: row.id, userId: row.user_id, name: row.name, description: row.description,
     primaryStyleId: row.primary_style_id, secondaryStyleIds: row.secondary_style_ids || [],
     focusIds: row.focus_ids || [], customMethodNotes: row.custom_method_notes,
+    customMethodLinks: normalizeCustomMethodLinks(row.custom_method_links),
+    customFocuses: normalizeCustomFocuses(row.custom_focuses),
     isDefault: row.is_default, isActive: row.is_active, registryVersion: row.registry_version,
     createdAt: row.created_at, updatedAt: row.updated_at
   };
@@ -2461,18 +2464,22 @@ export function createPgRepo(pool) {
         const { rows } = await client.query(
           `INSERT INTO analysis_profiles
             (id, user_id, name, description, primary_style_id, secondary_style_ids, focus_ids,
-             custom_method_notes, is_default, is_active, registry_version, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+             custom_method_notes, is_default, is_active, registry_version, custom_method_links,
+             custom_focuses, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
            ON CONFLICT (id) DO UPDATE SET
              name=$3, description=$4, primary_style_id=$5, secondary_style_ids=$6, focus_ids=$7,
-             custom_method_notes=$8, is_default=$9, is_active=$10, registry_version=$11, updated_at=now()
+             custom_method_notes=$8, is_default=$9, is_active=$10, registry_version=$11,
+             custom_method_links=$12, custom_focuses=$13, updated_at=now()
            RETURNING *`,
           [record.id, userId, record.name || '', record.description || '',
             record.primaryStyleId || 'general_analysis',
             JSON.stringify(Array.isArray(record.secondaryStyleIds) ? record.secondaryStyleIds : []),
             JSON.stringify(Array.isArray(record.focusIds) ? record.focusIds : []),
             record.customMethodNotes || '', isDefault, record.isActive !== false,
-            Math.max(1, Number(record.registryVersion) || 1)]
+            Math.max(1, Number(record.registryVersion) || 1),
+            JSON.stringify(normalizeCustomMethodLinks(record.customMethodLinks)),
+            JSON.stringify(normalizeCustomFocuses(record.customFocuses))]
         );
 
         await client.query('COMMIT');

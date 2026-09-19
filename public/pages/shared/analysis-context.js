@@ -49,6 +49,36 @@
     return out;
   }
 
+  // Deterministic content hash of everything about a profile that reaches the model. Session
+  // analysis folds it into its cache fingerprint (session-analysis-client.js), because the style
+  // registry's own VERSION - what `registryVersion` carries - never changes when a trader edits
+  // their profile: without this, re-analyzing an unchanged chart after editing the profile's focus
+  // areas would silently return the OLD cached analysis with zero model calls.
+  function stableStringify(value) {
+    if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+    if (value && typeof value === 'object') {
+      return '{' + Object.keys(value).sort().map(function (key) { return JSON.stringify(key) + ':' + stableStringify(value[key]); }).join(',') + '}';
+    }
+    return JSON.stringify(value === undefined ? null : value);
+  }
+  function hashString(text) {
+    var hash = 0x811c9dc5; // FNV-1a, 32-bit
+    for (var i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
+    }
+    return hash.toString(36);
+  }
+  function computeProfileRevision(profile) {
+    return hashString(stableStringify({
+      primary: profile.primaryStyleId || '',
+      secondary: profile.secondaryStyleIds || [],
+      focuses: profile.focusIds || [],
+      customFocuses: (profile.customFocuses || []).map(function (focus) { return [focus.id, focus.name, focus.description]; }),
+      notes: profile.customMethodNotes || ''
+    }));
+  }
+
   function getAnalysisContext(profileId) {
     var store = profileStore();
     var profile = store ? store.get(profileId) : null;
@@ -64,11 +94,14 @@
         name: profile.name,
         description: profile.description,
         isDefault: profile.isDefault,
-        registryVersion: profile.registryVersion
+        registryVersion: profile.registryVersion,
+        revision: computeProfileRevision(profile)
       },
       primaryStyle: primaryStyle,
       secondaryStyles: secondaryStyles,
       focuses: focuses,
+      // The trader's own (or accepted-AI) focus areas - their own wording, no registry entry.
+      customFocuses: (profile.customFocuses || []).map(function (focus) { return { name: focus.name, description: focus.description }; }),
       customMethodNotes: profile.customMethodNotes,
       requiredInputs: mergedRequiredInputs(primaryStyle, secondaryStyles, focuses),
       // analysisPrinciples/futurePromptGuidance are carried through unmodified from the registry

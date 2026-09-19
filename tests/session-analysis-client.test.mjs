@@ -152,6 +152,38 @@ test('analyzeSession resolves from cache with zero network calls when the finger
   assert.equal(fetchCalls, 0, 'a cache hit must never reach the network');
 });
 
+// Analysis Profile content revision (analysis-context.js's computeProfileRevision): registryVersion
+// alone never moves when a trader edits their profile's focuses/notes, so the cache fingerprint
+// must fold in the content revision too - otherwise re-analyzing after an edit would silently
+// return the OLD cached analysis with zero model calls.
+test('the request body carries analysisContext.profile.revision through into a profileVersion that includes it, and customFocuses reach analysisProfile.customFocuses', async () => {
+  let capturedBody = null;
+  const { client } = await loadClient({
+    fetch: async (url, options) => { capturedBody = JSON.parse(options.body); return { ok: true, json: async () => ({ data: { thesis: { headline: 'h', summary: '' }, stateMetrics: [], whatChanged: null, blocks: [], scenarios: [], scenarioEvaluations: [], watchItems: [], unknowns: [], whatWouldChangeView: [], confidence: 50, memoryUpdate: {} }, provider: 'openai', model: 'gpt-5.6-luna', usage: null }) }; },
+    TradeJournalAISettingsStore: { capabilitiesFor: () => ({ supportsVision: false }), getKey: () => '' }
+  });
+  const session = { id: 's1', entries: [{ id: 'e1', type: 'chart', scenarios: [] }] };
+  const analysisContext = {
+    profile: { id: 'p1', registryVersion: 1, revision: 'abc123' },
+    primaryStyle: { id: 'price_action' }, secondaryStyles: [],
+    focuses: [], customFocuses: [{ name: 'Swept liquidity levels', description: 'stop hunts' }],
+    customMethodNotes: '', requiredInputs: []
+  };
+  await client.analyzeSession({ session, entry: session.entries[0], provider: 'openai', model: 'gpt-5.6-luna', analysisType: 'initial', profileId: 'p1', analysisContext, adherence: 'balanced' });
+  assert.ok(capturedBody, 'a real network call must have been made');
+  assert.equal(capturedBody.analysisProfile.customFocuses[0].name, 'Swept liquidity levels');
+  assert.equal(capturedBody.analysisProfile.adherence, 'balanced');
+});
+
+test('two analyses that differ ONLY in analysisContext.profile.revision (e.g. after the trader edits the profile) produce different cache fingerprints', async () => {
+  const { sandbox } = await loadClient();
+  const schema = sandbox.window.TradeJournalSessionAnalysisSchema;
+  const base = { sessionId: 's1', entryId: 'e1', imageIdentity: '', provider: 'openai', model: 'gpt-5.6-luna', analysisType: 'initial', profileId: 'p1', memoryVersion: 0, depth: 'auto' };
+  const before = schema.buildAnalysisFingerprint({ ...base, profileVersion: '1.abc123' });
+  const after = schema.buildAnalysisFingerprint({ ...base, profileVersion: '1.def456' });
+  assert.notEqual(before, after, 'an edited profile must never keep returning a cached pre-edit analysis');
+});
+
 test('computeAnalysisPatches derives entry + session patches, and Session Memory eventCount grows across calls', async () => {
   const { client, sandbox } = await loadClient();
   const schema = sandbox.window.TradeJournalSessionAnalysisSchema;

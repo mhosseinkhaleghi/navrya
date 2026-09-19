@@ -312,12 +312,22 @@
   // RULE") - this function never calls the endpoint more than once for a given analyze() call.
   // ------------------------------------------------------------------------------------------
 
+  // '<registryVersion>.<contentRevision>' (or just the registry version for a context that predates
+  // the revision hash, or 0 for no profile at all).
+  function profileVersionFor(analysisContext) {
+    var profile = analysisContext && analysisContext.profile;
+    if (!profile) return 0;
+    var registryVersion = profile.registryVersion || 0;
+    return profile.revision ? registryVersion + '.' + profile.revision : registryVersion;
+  }
+
   function pickAdherenceProfile(analysisContext, adherence) {
     if (!analysisContext) return null;
     return {
       primaryStyle: analysisContext.primaryStyle || null,
       secondaryStyles: analysisContext.secondaryStyles || [],
       focuses: analysisContext.focuses || [],
+      customFocuses: analysisContext.customFocuses || [],
       customMethodNotes: analysisContext.customMethodNotes || '',
       adherence: adherence,
       // Section 4 - the union of every involved style/focus's declared requiredInputs, echoed to
@@ -362,7 +372,9 @@
       sessionId: session && session.id, entryId: entry && entry.id, imageIdentity: imageIdentity,
       imageIdentities: hasMultiImages ? entryImagesIdentity(entry) : undefined,
       provider: opts.provider, model: opts.model, analysisType: analysisType,
-      profileId: opts.profileId, profileVersion: (opts.analysisContext && opts.analysisContext.profile && opts.analysisContext.profile.registryVersion) || 0,
+      // registryVersion alone never moves when a trader edits their profile - the content revision
+      // (analysis-context.js) does, so an edited profile can never be answered from a stale cache.
+      profileId: opts.profileId, profileVersion: profileVersionFor(opts.analysisContext),
       memoryVersion: memory ? memory.eventCount : 0, depth: depth, scenarioTargets: opts.scenarioTargets,
       userInstruction: userInstruction,
       pendingNoteRevisions: pendingNotes.map(function (n) { return n.entryId + ':' + n.field + ':' + n.revision; }),
