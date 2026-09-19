@@ -13,7 +13,7 @@ import { createReferralMemoryDomains } from './referral-repo.memory.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX, sanitizeMessageFields, mergeProposalStatuses, MESSAGE_BATCH_MAX, MESSAGES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
 
 // Same method surface as repo.pg.mjs, re-implementing the same business-rule invariants
 // (unique purchase per buyer/listing, rating requires a prior purchase, thread find-or-create
@@ -30,7 +30,7 @@ export function createMemoryRepo() {
     voiceProviderCredentials: new Map(), voiceLanguageConfigs: new Map(), voiceCharacterConfigs: new Map(), voiceTtsUsage: new Map(),
     xpEvents: new Map(), achievements: new Map(), xpConfig: new Map(),
     sessionAiAnalysisCompletions: new Map(), disciplineSettings: new Map(),
-    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), analysisProfileEvents: new Map(), analysisProfileSources: new Map(), trades: new Map(), accounts: new Map(),
+    tradingSessions: new Map(), patterns: new Map(), strategies: new Map(), analysisProfiles: new Map(), analysisProfileEvents: new Map(), analysisProfileSources: new Map(), analysisProfileMessages: new Map(), trades: new Map(), accounts: new Map(),
     instrumentCatalog: new Map(), learnedCommands: new Map(),
     mentalHealthProfiles: new Map(), aiChatHistory: new Map(), companionState: new Map(),
     sessionSignatures: new Map(), userPreferences: new Map(),
@@ -1562,6 +1562,7 @@ export function createMemoryRepo() {
       // Parity with the pg schema's ON DELETE CASCADE on the two child tables.
       for (const [eventId, event] of state.analysisProfileEvents) if (event.profileId === id) state.analysisProfileEvents.delete(eventId);
       for (const [sourceId, source] of state.analysisProfileSources) if (source.profileId === id) state.analysisProfileSources.delete(sourceId);
+      for (const [messageId, message] of state.analysisProfileMessages) if (message.profileId === id) state.analysisProfileMessages.delete(messageId);
     }
   };
 
@@ -1659,6 +1660,63 @@ export function createMemoryRepo() {
       if (!current || current.profileId !== profileId) return null;
       state.analysisProfileSources.delete(sourceId);
       return clone(current);
+    }
+  };
+
+  // Analysis Profile teaching chat (071_analysis_profile_messages.sql) - the conversation a trader has with
+  // the engine to teach a profile. Mirrors repo.pg.mjs's analysisProfileMessages exactly: ownership always
+  // resolved against the real profile row, a batch of one or two messages appended atomically with strictly
+  // increasing timestamps (so a user message and its reply can never tie), a rolling log capped at the
+  // latest MESSAGES_PER_PROFILE_MAX, and proposals whose STATUS is the only thing that can change afterwards.
+  const analysisProfileMessages = {
+    async listByProfile(userId, profileId) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      return Array.from(state.analysisProfileMessages.values())
+        .filter((m) => m.profileId === profileId)
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        .slice(-MESSAGES_PER_PROFILE_MAX)
+        .map(clone);
+    },
+    async append(userId, profileId, messages) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      const list = Array.isArray(messages) ? messages : [];
+      if (!list.length || list.length > MESSAGE_BATCH_MAX) throw new ApiError(400, 'VALIDATION_FAILED');
+      const clean = list.map(sanitizeMessageFields);
+      if (clean.some((m) => !m)) throw new ApiError(400, 'VALIDATION_FAILED');
+      // Strictly increasing per profile, not merely within this batch: two appends in the same millisecond (or
+      // a clock that stepped back) would otherwise tie on createdAt and the log would mis-order - found by
+      // running the same scenario against a real Postgres, where the tie showed up as the wrong message being
+      // trimmed by the rolling cap.
+      const latest = Array.from(state.analysisProfileMessages.values()).filter((m) => m.profileId === profileId)
+        .reduce((max, m) => Math.max(max, Date.parse(m.createdAt)), 0);
+      const base = Math.max(Date.now(), latest + 1);
+      const saved = clean.map((message, index) => {
+        const stored = { id: newId('ap-msg'), userId, profileId, ...message, createdAt: new Date(base + index).toISOString() };
+        state.analysisProfileMessages.set(stored.id, stored);
+        return stored;
+      });
+      const mine = Array.from(state.analysisProfileMessages.values()).filter((m) => m.profileId === profileId)
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      for (const stale of mine.slice(0, Math.max(0, mine.length - MESSAGES_PER_PROFILE_MAX))) state.analysisProfileMessages.delete(stale.id);
+      return saved.map(clone);
+    },
+    async updateProposalStatuses(userId, profileId, messageId, statuses) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      const current = state.analysisProfileMessages.get(messageId);
+      if (!current || current.profileId !== profileId || current.role !== 'assistant') throw new ApiError(404, 'ANALYSIS_PROFILE_MESSAGE_NOT_FOUND');
+      const merged = mergeProposalStatuses(current.proposals, statuses);
+      if (!merged) throw new ApiError(400, 'VALIDATION_FAILED');
+      const next = { ...current, proposals: merged };
+      state.analysisProfileMessages.set(messageId, next);
+      return clone(next);
+    },
+    async clear(userId, profileId) {
+      assertOwnsAnalysisProfile(userId, profileId);
+      let removed = 0;
+      for (const [messageId, message] of state.analysisProfileMessages) {
+        if (message.profileId === profileId) { state.analysisProfileMessages.delete(messageId); removed += 1; }
+      }
+      return removed;
     }
   };
 
@@ -3580,7 +3638,7 @@ export function createMemoryRepo() {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
-    strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, analysisProfileMessages, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,

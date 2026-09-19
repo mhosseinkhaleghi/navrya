@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { dropAnalysisProfileTestUser } from './helpers/analysis-profile-pg-cleanup.mjs';
 
 // The REAL-PostgreSQL companion to analysis-profile-authoring-fields.test.mjs and
 // analysis-profile-authoring-migration-contract.test.mjs - proves migration 068's two columns
@@ -34,11 +35,7 @@ if (!hasDb) {
   });
 
   test.after(async () => {
-    const swallow = (promise) => promise.catch(() => {});
-    if (pool && userId) {
-      await swallow(pool.query('DELETE FROM analysis_profiles WHERE user_id=$1', [userId]));
-      await swallow(pool.query('DELETE FROM users WHERE id=$1', [userId]));
-    }
+    await dropAnalysisProfileTestUser(pool, userId);
     if (pool) await pool.end();
   });
 

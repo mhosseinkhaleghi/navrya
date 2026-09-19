@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { dropAnalysisProfileTestUser } from './helpers/analysis-profile-pg-cleanup.mjs';
 
 // The REAL-PostgreSQL companion to analysis-profile-sources-migration-contract.test.mjs and
 // analysis-profile-sources-api-contract.test.mjs - proves migration 070's table really exists and
@@ -23,27 +24,21 @@ if (!hasDb) {
   const { run: runMigrations } = await import('../server/db/migrate.mjs');
   const { createPgRepo } = await import('../server/db/repo.pg.mjs');
 
-  let pool, repo, userId, otherId;
+  let pool, repo, userId;
+  // A stranger never needs to exist as a user: ownership is checked against the profile row and refused first.
+  const otherId = 'apsrc-it-stranger';
 
   test.before(async () => {
     await runMigrations();
     pool = createPool(process.env.DATABASE_URL);
     repo = createPgRepo(pool);
     userId = (await repo.users.create({ displayName: 'APSrcIT Trader' })).id;
-    otherId = (await repo.users.create({ displayName: 'APSrcIT Stranger' })).id;
     await repo.analysisProfiles.upsert(userId, { id: 'apsrc-it-1', name: 'IT', primaryStyleId: 'price_action', secondaryStyleIds: [], focusIds: [] });
   });
 
   test.after(async () => {
-    const swallow = (promise) => promise.catch(() => {});
-    if (pool) {
-      for (const id of [userId, otherId].filter(Boolean)) {
-        await swallow(pool.query('DELETE FROM analysis_profile_sources WHERE user_id=$1', [id]));
-        await swallow(pool.query('DELETE FROM analysis_profiles WHERE user_id=$1', [id]));
-        await swallow(pool.query('DELETE FROM users WHERE id=$1', [id]));
-      }
-      await pool.end();
-    }
+    await dropAnalysisProfileTestUser(pool, userId);
+    if (pool) await pool.end();
   });
 
   test('migration 070 is applied: analysis_profile_sources exists with its kind/status CHECKs enforced by the database itself', async () => {

@@ -207,3 +207,83 @@ export function sanitizeSourceFields(input, { partial = false } = {}) {
   }
   return out;
 }
+
+// ---- teaching chat (071_analysis_profile_messages.sql) -----------------------------------------------
+
+export const MESSAGE_ROLES = ['user', 'assistant'];
+export const MESSAGE_CONTENT_MAX = 8000;
+export const MESSAGES_PER_PROFILE_MAX = 200;
+export const MESSAGE_BATCH_MAX = 2;
+export const PROPOSAL_KINDS = ['concept', 'understanding'];
+export const PROPOSAL_STATUSES = ['pending', 'applied', 'dismissed'];
+export const PROPOSALS_PER_MESSAGE_MAX = 8;
+const PROPOSAL_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+// What the engine PROPOSED to learn from one chat turn. Each proposal is either a concept
+// ({ title, description, priority }) or a rewritten understanding ({ text }), with a status that only
+// ever moves pending -> applied | dismissed. Never throws; anything malformed is dropped.
+export function normalizeMessageProposals(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of value) {
+    if (out.length >= PROPOSALS_PER_MESSAGE_MAX) break;
+    if (!item || typeof item !== 'object') continue;
+    const id = typeof item.id === 'string' && PROPOSAL_ID_PATTERN.test(item.id) ? item.id : '';
+    if (!id || seen.has(id)) continue;
+    const status = PROPOSAL_STATUSES.includes(item.status) ? item.status : 'pending';
+    if (item.kind === 'concept') {
+      const title = String(item.title == null ? '' : item.title).replace(/\s+/g, ' ').trim().slice(0, CONCEPT_TITLE_MAX);
+      if (!title) continue;
+      seen.add(id);
+      out.push({
+        id, kind: 'concept', title,
+        description: String(item.description == null ? '' : item.description).replace(/\s+/g, ' ').trim().slice(0, CONCEPT_DESCRIPTION_MAX),
+        priority: CONCEPT_PRIORITIES.includes(item.priority) ? item.priority : 'preferred', status
+      });
+    } else if (item.kind === 'understanding') {
+      const text = String(item.text == null ? '' : item.text).trim().slice(0, UNDERSTANDING_SUMMARY_MAX);
+      if (!text) continue;
+      seen.add(id);
+      out.push({ id, kind: 'understanding', text, status });
+    }
+  }
+  return out;
+}
+
+// Only the two numbers the history and the ledger actually use, as non-negative whole numbers - or
+// null. Never trusts a client-supplied object to carry anything else into the database.
+export function normalizeTokenUsage(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const whole = (n) => (Number.isFinite(Number(n)) && Number(n) >= 0 ? Math.trunc(Number(n)) : 0);
+  const promptTokens = whole(value.promptTokens);
+  const completionTokens = whole(value.completionTokens);
+  return promptTokens || completionTokens ? { promptTokens, completionTokens } : null;
+}
+
+// Validates one chat message. Returns { role, content, proposals, tokenUsage } or null when it cannot
+// describe a message (unknown role, or nothing to say). A user message must have text and never carries
+// proposals or usage; an assistant message needs text or at least one proposal.
+export function sanitizeMessageFields(input) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  if (!MESSAGE_ROLES.includes(source.role)) return null;
+  const content = String(source.content == null ? '' : source.content).trim().slice(0, MESSAGE_CONTENT_MAX);
+  if (source.role === 'user') return content ? { role: 'user', content, proposals: [], tokenUsage: null } : null;
+  const proposals = normalizeMessageProposals(source.proposals);
+  if (!content && !proposals.length) return null;
+  return { role: 'assistant', content, proposals, tokenUsage: normalizeTokenUsage(source.tokenUsage) };
+}
+
+// Applies { [proposalId]: 'applied' | 'dismissed' } to a message's proposals. A proposal can only be
+// resolved once (pending -> applied|dismissed): an already-resolved one is left alone, so a stale or
+// repeated request can never flip an applied proposal back or apply it twice. Returns null when the
+// statuses object is not usable at all.
+export function mergeProposalStatuses(proposals, statuses) {
+  if (!statuses || typeof statuses !== 'object' || Array.isArray(statuses)) return null;
+  const changes = Object.entries(statuses).filter(([, status]) => status === 'applied' || status === 'dismissed');
+  if (!changes.length) return null;
+  const lookup = Object.fromEntries(changes);
+  return (Array.isArray(proposals) ? proposals : []).map((proposal) => (
+    proposal.status === 'pending' && Object.prototype.hasOwnProperty.call(lookup, proposal.id) ? { ...proposal, status: lookup[proposal.id] } : proposal
+  ));
+}

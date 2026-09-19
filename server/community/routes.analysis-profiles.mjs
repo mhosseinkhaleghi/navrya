@@ -149,5 +149,26 @@ export function router(repo, uploadsDir) {
     res.status(204).end();
   }));
 
+  // Teaching chat (071_analysis_profile_messages.sql) - the conversation a trader has with the engine to teach
+  // a profile. Nested under the owning profile like events and sources, lazily fetched when the Chat tab opens.
+  // The browser appends a turn (the trader's message and the engine's reply) only AFTER the AI call succeeded,
+  // in one request, so a failed call never leaves half a turn behind. Once stored, a message's words are
+  // immutable: the only thing PATCH can do is resolve a proposal (pending -> applied | dismissed), and only
+  // once. Everything is owner-checked against the real profile row inside the repo methods.
+  app.get('/:id/messages', asyncHandler(async (req, res) => {
+    res.json({ messages: await repo.analysisProfileMessages.listByProfile(req.currentUser.id, req.params.id) });
+  }));
+  app.post('/:id/messages', asyncHandler(async (req, res) => {
+    const saved = await repo.analysisProfileMessages.append(req.currentUser.id, req.params.id, (req.body || {}).messages);
+    res.status(201).json({ messages: saved });
+  }));
+  app.patch('/:id/messages/:messageId', asyncHandler(async (req, res) => {
+    res.json(await repo.analysisProfileMessages.updateProposalStatuses(req.currentUser.id, req.params.id, req.params.messageId, (req.body || {}).statuses));
+  }));
+  app.delete('/:id/messages', asyncHandler(async (req, res) => {
+    await repo.analysisProfileMessages.clear(req.currentUser.id, req.params.id);
+    res.status(204).end();
+  }));
+
   return app;
 }

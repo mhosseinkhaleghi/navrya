@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { dropAnalysisProfileTestUser } from './helpers/analysis-profile-pg-cleanup.mjs';
 
 // The REAL-PostgreSQL companion to analysis-profile-memory-fields.test.mjs and
 // analysis-profile-memory-migration-contract.test.mjs - proves migration 069's columns/table
@@ -34,12 +35,7 @@ if (!hasDb) {
   });
 
   test.after(async () => {
-    const swallow = (promise) => promise.catch(() => {});
-    if (pool && userId) {
-      await swallow(pool.query('DELETE FROM analysis_profile_events WHERE user_id=$1', [userId]));
-      await swallow(pool.query('DELETE FROM analysis_profiles WHERE user_id=$1', [userId]));
-      await swallow(pool.query('DELETE FROM users WHERE id=$1', [userId]));
-    }
+    await dropAnalysisProfileTestUser(pool, userId);
     if (pool) await pool.end();
   });
 
@@ -85,8 +81,8 @@ if (!hasDb) {
     assert.equal(events[0].title, 'Second', 'newest event must come first');
     assert.equal(events[0].tokenUsage.promptTokens, 50);
 
-    const other = await repo.users.create({ displayName: 'APMemIT Stranger' });
-    await assert.rejects(() => repo.analysisProfileEvents.listByProfile(other.id, 'apmem-it-3'), /NOT_ANALYSIS_PROFILE_OWNER/);
-    await pool.query('DELETE FROM users WHERE id=$1', [other.id]);
+    // The ownership check compares against the profile row's owner and refuses BEFORE anything is read or
+    // written, so the stranger does not need to exist as a user at all (creating one leaked a wallet row).
+    await assert.rejects(() => repo.analysisProfileEvents.listByProfile('apmem-it-stranger', 'apmem-it-3'), /NOT_ANALYSIS_PROFILE_OWNER/);
   });
 }

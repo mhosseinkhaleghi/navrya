@@ -13,7 +13,7 @@ import { createReferralPgDomains } from './referral-repo.pg.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
-import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
+import { normalizeCustomMethodLinks, normalizeCustomFocuses, normalizeConcepts, normalizeUnderstanding, sanitizeSourceFields, SOURCES_PER_PROFILE_MAX, sanitizeMessageFields, mergeProposalStatuses, MESSAGE_BATCH_MAX, MESSAGES_PER_PROFILE_MAX } from './analysis-profile-normalize.mjs';
 
 // Commercial System Slice 1 (026_commercial_config.sql) - reads the admin-set signup promo
 // amount directly rather than going through commercial-config.mjs's getWalletRules(), since that
@@ -2622,6 +2622,84 @@ export function createPgRepo(pool) {
       await assertOwnsAnalysisProfile(userId, profileId);
       const { rows } = await pool.query('DELETE FROM analysis_profile_sources WHERE id=$1 AND profile_id=$2 RETURNING *', [sourceId, profileId]);
       return rows[0] ? mapAnalysisProfileSource(rows[0]) : null;
+    }
+  };
+
+  // Analysis Profile teaching chat (071_analysis_profile_messages.sql) - a child of analysis_profiles (ON DELETE
+  // CASCADE), lazily fetched only when the Chat tab opens. Ownership is always resolved against the REAL profile
+  // row. A batch of one or two messages is inserted in ONE transaction with strictly increasing timestamps
+  // (now() would give both rows the same instant and their order would be a coin toss), the log is rolled to the
+  // latest MESSAGES_PER_PROFILE_MAX, and only a proposal's STATUS is ever updatable afterwards.
+  function mapAnalysisProfileMessage(row) {
+    return {
+      id: row.id, userId: row.user_id, profileId: row.profile_id, role: row.role, content: row.content,
+      proposals: Array.isArray(row.proposals) ? row.proposals : [], tokenUsage: row.token_usage || null, createdAt: row.created_at
+    };
+  }
+  const analysisProfileMessages = {
+    async listByProfile(userId, profileId) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const { rows } = await pool.query(
+        'SELECT * FROM (SELECT * FROM analysis_profile_messages WHERE profile_id=$1 ORDER BY created_at DESC LIMIT $2) latest ORDER BY created_at ASC',
+        [profileId, MESSAGES_PER_PROFILE_MAX]
+      );
+      return rows.map(mapAnalysisProfileMessage);
+    },
+    async append(userId, profileId, messages) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const list = Array.isArray(messages) ? messages : [];
+      if (!list.length || list.length > MESSAGE_BATCH_MAX) throw new ApiError(400, 'VALIDATION_FAILED');
+      const clean = list.map(sanitizeMessageFields);
+      if (clean.some((m) => !m)) throw new ApiError(400, 'VALIDATION_FAILED');
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        // Serialise appends to ONE conversation (two tabs, a double click) on the profile row, then start the
+        // batch strictly after the latest existing message - so the log's order is a fact of the data, never
+        // a tie between two messages stamped in the same millisecond.
+        await client.query('SELECT id FROM analysis_profiles WHERE id=$1 FOR UPDATE', [profileId]);
+        const latestRow = await client.query('SELECT COALESCE(EXTRACT(EPOCH FROM MAX(created_at)) * 1000, 0) AS latest FROM analysis_profile_messages WHERE profile_id=$1', [profileId]);
+        // ceil, not floor: EXTRACT(EPOCH ...) * 1000 can come back as 1758000000123.9999 for a row stored at
+        // exactly ...124 ms, and flooring that would let the next message tie with it. ceil is always >= the
+        // stored value, so latest + 1 is always strictly later, whichever way the float noise falls.
+        const base = Math.max(Date.now(), Math.ceil(Number(latestRow.rows[0].latest)) + 1);
+        const saved = [];
+        for (let index = 0; index < clean.length; index += 1) {
+          const message = clean[index];
+          const { rows } = await client.query(
+            `INSERT INTO analysis_profile_messages (id, user_id, profile_id, role, content, proposals, token_usage, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            [newId('ap-msg'), userId, profileId, message.role, message.content, JSON.stringify(message.proposals),
+              message.tokenUsage ? JSON.stringify(message.tokenUsage) : null, new Date(base + index).toISOString()]
+          );
+          saved.push(mapAnalysisProfileMessage(rows[0]));
+        }
+        await client.query(
+          'DELETE FROM analysis_profile_messages WHERE profile_id=$1 AND id NOT IN (SELECT id FROM analysis_profile_messages WHERE profile_id=$1 ORDER BY created_at DESC LIMIT $2)',
+          [profileId, MESSAGES_PER_PROFILE_MAX]
+        );
+        await client.query('COMMIT');
+        return saved;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async updateProposalStatuses(userId, profileId, messageId, statuses) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const { rows } = await pool.query("SELECT * FROM analysis_profile_messages WHERE id=$1 AND profile_id=$2 AND role='assistant'", [messageId, profileId]);
+      if (!rows[0]) throw new ApiError(404, 'ANALYSIS_PROFILE_MESSAGE_NOT_FOUND');
+      const merged = mergeProposalStatuses(Array.isArray(rows[0].proposals) ? rows[0].proposals : [], statuses);
+      if (!merged) throw new ApiError(400, 'VALIDATION_FAILED');
+      const updated = await pool.query('UPDATE analysis_profile_messages SET proposals=$1 WHERE id=$2 RETURNING *', [JSON.stringify(merged), messageId]);
+      return mapAnalysisProfileMessage(updated.rows[0]);
+    },
+    async clear(userId, profileId) {
+      await assertOwnsAnalysisProfile(userId, profileId);
+      const result = await pool.query('DELETE FROM analysis_profile_messages WHERE profile_id=$1', [profileId]);
+      return result.rowCount || 0;
     }
   };
 
@@ -5321,7 +5399,7 @@ export function createPgRepo(pool) {
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
-    strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
+    strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, analysisProfileMessages, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
     commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
