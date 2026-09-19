@@ -5,7 +5,9 @@
  * makes: `suggestFocuses` (the onboarding wizard's "Suggest more with AI"), `suggestConcepts` (the
  * Concepts tab's own suggestions) - both POST to `/api/analysis-profiles/suggest` - and
  * `ingestLearning` (the engine-memory learning loop, POST `/api/analysis-profiles/ingest`); all
- * three are real, wallet-billed routes in server/pattern-ai-server.mjs. Same real request()/baseUrl convention as
+ * three are real, wallet-billed routes in server/pattern-ai-server.mjs. `readSource` (POST
+ * `/api/analysis-profiles/read-source`) is the one call here that is NOT billed - it only fetches
+ * a website/YouTube page and never touches an LLM, so it carries no provider key and records no usage. Same real request()/baseUrl convention as
  * pattern-registry-ai.js/strategy-education-ai.js, but deliberately does NOT fall back to a canned
  * local reply on failure - a billed AI feature that silently pretends to succeed with fake text
  * would hide a real WALLET_INSUFFICIENT_BALANCE/PROVIDER_PRICING_NOT_CONFIGURED condition from the
@@ -44,11 +46,14 @@
     } catch (_) { return {}; }
   }
 
-  function request(path, payload) {
+  // `settings.free` (read-source) sends no provider key and allows the longer wait a server-side page
+  // fetch can take; every billed call keeps the original 45s ceiling and carries the BYOK context.
+  function request(path, payload, settings) {
+    var free = Boolean(settings && settings.free);
     var controller = new AbortController();
-    var timeout = window.setTimeout(function () { controller.abort(); }, 45000);
+    var timeout = window.setTimeout(function () { controller.abort(); }, free ? 60000 : 45000);
     return fetch(baseUrl + path, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, providerContext(), payload)), signal: controller.signal
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, free ? {} : providerContext(), payload)), signal: controller.signal
     }).then(function (response) {
       if (!response.ok) {
         return response.json().catch(function () { return {}; }).then(function (body) {
@@ -104,7 +109,8 @@
 
   // The engine-memory learning loop's ONE AI call. options: { kind: 'note' | 'chat' | 'correction'
   // | 'source', text, primaryStyleId, secondaryStyleIds, customMethodNotes, existingConceptTitles,
-  // currentUnderstanding, language }. Resolves to a PROPOSAL only -
+  // currentUnderstanding, language, attachment? }. `attachment` ({ dataUrl, fileName }) is a PDF the
+  // model reads natively - only valid for kind 'source', and then `text` may be empty. Resolves to a PROPOSAL only -
   // { updatedUnderstanding, conceptsProposed: [{title, description, priority}], provider, usage } -
   // which the caller shows for explicit approval and then applies through
   // TradeJournalAnalysisProfileStore.applyLearning() (one save, one ledger event); this function
@@ -113,12 +119,13 @@
   async function ingestLearning(options) {
     var opts = options || {};
     var text = typeof opts.text === 'string' ? opts.text.trim() : '';
-    if (!text) throw new AnalysisProfileAIError('ANALYSIS_PROFILE_INGEST_TEXT_REQUIRED');
+    var attachment = opts.attachment && typeof opts.attachment.dataUrl === 'string' && opts.attachment.dataUrl ? { dataUrl: opts.attachment.dataUrl, fileName: opts.attachment.fileName || 'source.pdf' } : null;
+    if (!text && !attachment) throw new AnalysisProfileAIError('ANALYSIS_PROFILE_INGEST_TEXT_REQUIRED');
     var payload = Object.assign({
       kind: opts.kind || 'note', text: text, language: opts.language || 'en',
       currentUnderstanding: opts.currentUnderstanding || '',
       existingConcepts: (opts.existingConceptTitles || []).slice(0, 120).map(function (title) { return { title: title }; })
-    }, styleContext(opts));
+    }, attachment ? { attachment: attachment } : {}, styleContext(opts));
     var result = await request('/api/analysis-profiles/ingest', payload);
     recordUsage('analysisProfiles.ingest', result);
     return {
@@ -128,8 +135,24 @@
     };
   }
 
+  // Reads a website or YouTube URL server-side (SSRF-hardened) into a title and a BOUNDED plain-text
+  // digest. Free: no tokens, no provider key sent. Resolves to { type: 'website' | 'youtube', url,
+  // title, digest, transcriptAvailable? } - `transcriptAvailable:false` on a YouTube result means the
+  // video offered no readable captions, and the UI asks the trader to paste a transcript instead.
+  // Rejects with the server's stable code (SOURCE_ADDRESS_BLOCKED, SOURCE_TIMEOUT, ...).
+  async function readSource(options) {
+    var opts = options || {};
+    var url = typeof opts.url === 'string' ? opts.url.trim() : '';
+    if (!url) throw new AnalysisProfileAIError('SOURCE_URL_INVALID');
+    var result = await request('/api/analysis-profiles/read-source', { url: url, language: opts.language || 'en' }, { free: true });
+    return {
+      type: result.type === 'youtube' ? 'youtube' : 'website', url: String(result.url || url), title: String(result.title || ''),
+      digest: String(result.digest || ''), transcriptAvailable: result.type === 'youtube' ? Boolean(result.transcriptAvailable) : undefined
+    };
+  }
+
   window.TradeJournalAnalysisProfileAI = {
-    suggestFocuses: suggestFocuses, suggestConcepts: suggestConcepts, ingestLearning: ingestLearning,
+    suggestFocuses: suggestFocuses, suggestConcepts: suggestConcepts, ingestLearning: ingestLearning, readSource: readSource,
     AnalysisProfileAIError: AnalysisProfileAIError
   };
 }());

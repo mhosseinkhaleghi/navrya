@@ -247,10 +247,24 @@
         }
       });
     }
-    if (replica()) replica().upsert(record).catch(function () {});
+    trackPersist(record);
     notifyChanged();
     return record;
   }
+
+  // The latest in-flight server write per profile id. A CHILD resource (a knowledge source, a
+  // learning-ledger event) is owner-checked against the REAL profile row on the server, so a caller
+  // that has just created or edited a profile and immediately adds a child must wait for this first -
+  // otherwise the child request can arrive before the profile exists there and 404. Never rejects:
+  // a failed profile write already surfaces through the replica's own failure handling.
+  var persistTail = {};
+  function trackPersist(record) {
+    if (!replica()) return;
+    var pending = replica().upsert(record).then(function () { return true; }, function () { return false; });
+    persistTail[record.id] = pending;
+    pending.then(function () { if (persistTail[record.id] === pending) delete persistTail[record.id]; });
+  }
+  function whenPersisted(id) { return persistTail[id] || Promise.resolve(true); }
 
   // ---- engine-memory learning ledger (append-only, lazily fetched per profile) --------------------
   // NOT a server-replica list domain (never part of the boot-time hydrate) - nested under its
@@ -281,6 +295,60 @@
   }
   // Resolves (never rejects) once every ledger write started so far has finished, success or not.
   function settleEvents() { return Promise.all(inflightEvents.slice()).then(function () {}); }
+
+  // ---- knowledge sources (website / YouTube / PDF the trader teaches a profile from) -------------------
+  // Same shape as the events ledger: NOT a replica list domain, nested under the owning profile and
+  // fetched only when the Knowledge tab opens. Unlike the ledger (best-effort diary), a failure here is
+  // something the trader must be told about, so these REJECT with an AnalysisProfileError carrying the
+  // server's stable error code (ANALYSIS_PROFILE_SOURCE_DUPLICATE, STORAGE_QUOTA_EXCEEDED, ...).
+  function sourcesUrl(profileId, suffix) { return '/api/sync/analysis-profiles/' + encodeURIComponent(profileId) + '/sources' + (suffix || ''); }
+  async function sourceRequest(method, url, body) {
+    var init = { method: method };
+    if (body !== undefined) { init.headers = { 'Content-Type': 'application/json' }; init.body = JSON.stringify(body); }
+    var response = await fetch(url, init);
+    if (response.status === 204) return null;
+    var parsed = await response.json().catch(function () { return {}; });
+    if (!response.ok) throw new AnalysisProfileError(parsed.error || 'ANALYSIS_PROFILE_SOURCE_REQUEST_FAILED');
+    return parsed;
+  }
+  async function listSources(profileId) {
+    await whenPersisted(profileId);
+    var body = await sourceRequest('GET', sourcesUrl(profileId));
+    return (body && body.sources) || [];
+  }
+  // fields: { kind: 'website' | 'youtube', url, title?, digest?, status?, errorCode? }
+  async function addSource(profileId, fields) {
+    await whenPersisted(profileId);
+    return sourceRequest('POST', sourcesUrl(profileId), fields || {});
+  }
+  // patch: any of { title, digest, status, errorCode, taughtUnderstandingVersion } - the server ignores
+  // everything else, so a source can never be re-pointed at another URL after it was recorded.
+  function updateSource(profileId, sourceId, patch) { return sourceRequest('PATCH', sourcesUrl(profileId, '/' + encodeURIComponent(sourceId)), patch || {}); }
+  function removeSource(profileId, sourceId) { return sourceRequest('DELETE', sourcesUrl(profileId, '/' + encodeURIComponent(sourceId))); }
+  // file: { dataUrl, filename, title? } - a real PDF; counts against the storage quota.
+  async function uploadSourcePdf(profileId, file) {
+    await whenPersisted(profileId);
+    return sourceRequest('POST', sourcesUrl(profileId, '/pdf'), file || {});
+  }
+  // The links a Custom Method profile captured in the wizard become QUEUED sources (never read, never
+  // billed) - the trader reads and teaches from them later, from the Knowledge tab. A link that is
+  // already recorded (409) is simply skipped. Resolves to how many were newly queued.
+  async function queueLinkSources(profileId, links) {
+    var source = links && typeof links === 'object' ? links : {};
+    var seen = {};
+    var queued = 0;
+    var keys = ['youtubeUrl', 'websiteUrl', 'referenceUrl'];
+    for (var i = 0; i < keys.length; i += 1) {
+      var url = normalizeHttpUrl(source[keys[i]]);
+      if (!url || seen[url]) continue;
+      seen[url] = true;
+      try {
+        await addSource(profileId, { kind: isYoutubeUrl(url) ? 'youtube' : 'website', url: url });
+        queued += 1;
+      } catch (error) { /* a duplicate or one bad link must never stop the rest from being queued */ }
+    }
+    return queued;
+  }
 
   // A plain diary entry: zero tokens, no concept/understanding change, no profile save at all - the
   // "Save without teaching" action. Best-effort like every ledger write (resolves null on any
@@ -474,6 +542,13 @@
     recordEvent: recordEvent,
     settleEvents: settleEvents,
     listEvents: listEvents,
+    whenPersisted: whenPersisted,
+    listSources: listSources,
+    addSource: addSource,
+    updateSource: updateSource,
+    removeSource: removeSource,
+    uploadSourcePdf: uploadSourcePdf,
+    queueLinkSources: queueLinkSources,
     AnalysisProfileError: AnalysisProfileError,
     // Pure authoring helpers the wizard/inline editor share so validation never forks per screen.
     helpers: {

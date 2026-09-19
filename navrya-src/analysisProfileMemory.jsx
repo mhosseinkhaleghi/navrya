@@ -16,6 +16,7 @@ function store() { return window.TradeJournalAnalysisProfileStore; }
 const EVENT_LABELS = {
   concept_added: 'evtConceptAdded', starter_concepts_added: 'evtStarter', concepts_ai_accepted: 'evtAiAccepted',
   ai_suggested_concepts: 'evtAiSuggested', ai_analyzed_note: 'evtAiAnalyzed', ai_analyzed_correction: 'evtAiAnalyzed',
+  ai_analyzed_source: 'evtAiAnalyzed', taught_source: 'evtTaughtSource',
   taught_note: 'evtTaughtNote', taught_correction: 'evtTaughtCorrection', understanding_edited: 'evtUnderstandingEdited', note: 'evtNote'
 };
 function eventIcon(kind) {

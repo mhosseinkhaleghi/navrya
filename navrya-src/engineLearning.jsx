@@ -20,6 +20,13 @@ import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 //  - Tokens are recorded in the learning history the moment the AI call returns (a discarded proposal
 //    still cost tokens), not only when something is applied.
 //  - "Save without teaching" is a plain diary note: zero tokens, no concept/understanding change.
+//
+// `preset` (Knowledge tab): teach from a recorded SOURCE instead of typed text. { title, text,
+// loadAttachment?, onClose? } - `text` is the source's bounded digest, and for a stored PDF
+// `loadAttachment()` fetches the file only when the trader presses the button (nothing is downloaded
+// or billed before that). The propose -> review -> apply flow below is exactly the same one; only the
+// material and the ledger kind ('source') differ, and `onTaught(version)` tells the caller that
+// something was really applied so the source can be marked taught.
 
 function store() { return window.TradeJournalAnalysisProfileStore; }
 function aiClient() { return window.TradeJournalAnalysisProfileAI; }
@@ -46,7 +53,7 @@ const fieldStyle = {
   background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'inherit', fontSize: 13, lineHeight: 1.8, outline: 'none', width: '100%'
 };
 
-export function EngineLearningPanel({ lang, profile, onChanged }) {
+export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught }) {
   const [text, setText] = React.useState('');
   const [kind, setKind] = React.useState('note');
   const [phase, setPhase] = React.useState('idle'); // idle | working | review
@@ -69,21 +76,28 @@ export function EngineLearningPanel({ lang, profile, onChanged }) {
 
   const currentUnderstanding = profile.understanding ? profile.understanding.summary : '';
   const trimmed = text.trim();
+  // What is being taught from: a source's digest/title, or what the trader just typed.
+  const material = preset ? String(preset.text || '').trim() : trimmed;
+  const label = preset ? String(preset.title || '').trim() : trimmed;
+  const teachKind = preset ? 'source' : kind;
 
   async function teach() {
     const client = aiClient();
     const profiles = store();
-    if (!client || !profiles || !trimmed || phase === 'working') return;
+    if (!client || !profiles || (!preset && !trimmed) || phase === 'working') return;
     setPhase('working'); setError(''); setNotice('');
     try {
+      // A stored PDF is only downloaded now, on the explicit click - and a failure to load it is
+      // reported before any billed call is made.
+      const attachment = preset && preset.loadAttachment ? await preset.loadAttachment() : null;
       const result = await client.ingestLearning({
-        kind, text: trimmed, language: lang, primaryStyleId: profile.primaryStyleId, secondaryStyleIds: profile.secondaryStyleIds,
+        kind: teachKind, text: material, attachment, language: lang, primaryStyleId: profile.primaryStyleId, secondaryStyleIds: profile.secondaryStyleIds,
         customMethodNotes: profile.customMethodNotes, currentUnderstanding, existingConceptTitles: profile.concepts.map((c) => c.title)
       });
       // The tokens are spent the moment the call returns, whether or not the trader applies the
       // result - so the history records them now, as their own honest event.
       profiles.recordEvent(profile.id, {
-        kind: 'ai_analyzed_' + kind, title: trimmed.slice(0, 80), detail: trimmed,
+        kind: 'ai_analyzed_' + teachKind, title: label.slice(0, 80), detail: material || label,
         understandingVersion: profile.understanding.version, tokenUsage: result.usage || null
       }).catch(() => {});
       const proposedUnderstanding = result.updatedUnderstanding.trim();
@@ -96,7 +110,9 @@ export function EngineLearningPanel({ lang, profile, onChanged }) {
       profiles.settleEvents().then(changed);
     } catch (caught) {
       setPhase('idle');
-      setError(caught && caught.code === 'WALLET_INSUFFICIENT_BALANCE' ? trt(lang, 'aiErrorBalance') : trt(lang, 'aiErrorGeneric'));
+      setError(caught && caught.code === 'WALLET_INSUFFICIENT_BALANCE' ? trt(lang, 'aiErrorBalance')
+        : caught && caught.code === 'MODEL_PDF_UNSUPPORTED' ? trt(lang, 'sourceErrPdfProvider')
+          : trt(lang, 'aiErrorGeneric'));
     }
   }
 
@@ -111,11 +127,12 @@ export function EngineLearningPanel({ lang, profile, onChanged }) {
     if (!conceptsToAdd.length && !understandingChange) { discard(); return; }
     const saved = profiles.applyLearning(profile.id, {
       conceptsToAdd, understandingSummary: understandingChange,
-      eventKind: kind === 'correction' ? 'taught_correction' : 'taught_note', eventTitle: trimmed.slice(0, 80), eventDetail: trimmed,
+      eventKind: preset ? 'taught_source' : (kind === 'correction' ? 'taught_correction' : 'taught_note'), eventTitle: label.slice(0, 80), eventDetail: material || label,
       tokenUsage: null // already recorded on the analysis event above - never counted twice
     });
     setPhase('idle'); setProposal(null); setText('');
     if (saved) flash(trt(lang, 'applied', { n: trDigits(lang, saved.understanding.version) }));
+    if (saved && preset && onTaught) onTaught(saved.understanding.version);
     profiles.settleEvents().then(changed);
   }
 
@@ -139,7 +156,21 @@ export function EngineLearningPanel({ lang, profile, onChanged }) {
           <span style={{ color: 'var(--char-accent)' }}><Icon name="sparkle" size={17} /></span>{trt(lang, 'teachTitle')}
         </span>
 
-        {phase !== 'review' && (
+        {phase !== 'review' && preset && (
+          <React.Fragment>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+              <span dir="auto" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{trt(lang, 'sourceTeaching', { title: label })}</span>
+              {preset.loadAttachment && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'sourcePdfHint')}</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Button variant="primary" size="sm" icon="sparkle" loading={phase === 'working'} disabled={phase === 'working'} onClick={teach}>{trt(lang, 'teachBtn')}</Button>
+              {preset.onClose && <Button variant="ghost" size="sm" icon="close" disabled={phase === 'working'} onClick={preset.onClose}>{trt(lang, 'closePanel')}</Button>}
+            </div>
+            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'sourceTeachHint')}</span>
+          </React.Fragment>
+        )}
+
+        {phase !== 'review' && !preset && (
           <React.Fragment>
             <div style={{ display: 'flex', gap: 6 }}>
               {[['note', 'teachKindNote'], ['correction', 'teachKindCorrection']].map(([id, key]) => (

@@ -57,7 +57,7 @@ test('trDigits localizes ASCII digits for fa/ar only, and trDate never throws on
 });
 
 test('every key a training component looks up actually exists (a typo would render the raw key in the UI)', async () => {
-  const files = ['analysisProfileConcepts.jsx', 'analysisProfileMemory.jsx', 'engineLearning.jsx', 'analysisProfilesView.jsx'];
+  const files = ['analysisProfileConcepts.jsx', 'analysisProfileMemory.jsx', 'analysisProfileKnowledge.jsx', 'engineLearning.jsx', 'analysisProfilesView.jsx'];
   const known = new Set(Object.keys(trainingCopy.en));
   for (const file of files) {
     const source = await read(file);
@@ -202,6 +202,7 @@ test('every ledger event kind the UI writes has a label in the history (so no ro
   }
   written.add('ai_analyzed_note'); written.add('ai_analyzed_correction'); // built as 'ai_analyzed_' + kind
   written.add('taught_note'); written.add('taught_correction');           // built with a ternary in apply()
+  written.add('ai_analyzed_source'); written.add('taught_source');       // the source (Knowledge tab) variants of the two above
   const memory = await read('analysisProfileMemory.jsx');
   const labelled = new Set([...memory.matchAll(/(?:^|\n|, |\{ )\s*([a-z_]+): 'evt[A-Za-z]+'/g)].map((m) => m[1]));
   for (const kind of written) {
@@ -212,9 +213,9 @@ test('every ledger event kind the UI writes has a label in the history (so no ro
 
 // ---- wiring --------------------------------------------------------------------------------------
 
-test('the profile detail pill bar exposes Concepts and Memory, and renders the matching tabs keyed by profile id', async () => {
+test('the profile detail pill bar exposes Concepts, Knowledge and Memory, and renders the matching tabs keyed by profile id', async () => {
   const source = await read('analysisProfilesView.jsx');
-  assert.match(source, /\['concepts', tr\(lang, 'tabConcepts'\)\], \['memory', tr\(lang, 'tabMemory'\)\]/);
+  assert.match(source, /\['concepts', tr\(lang, 'tabConcepts'\)\], \['knowledge', tr\(lang, 'tabKnowledge'\)\], \['memory', tr\(lang, 'tabMemory'\)\]/);
   assert.match(source, /dtab === 'concepts' && <ConceptsTab key=\{profile\.id\}/);
   assert.match(source, /dtab === 'memory' && <MemoryTab key=\{profile\.id\}/);
   for (const lang of LANGS) {
