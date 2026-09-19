@@ -2303,10 +2303,29 @@ function StrategiesHub({ character }) {
   // pattern as Positions above - no Analysis-Profile business logic lives in this file, only the
   // tab entry and this one render branch, per the brief's "not internally coupled to Strategies"
   // requirement (movable later to #ai/analysis-profiles with no rewrite).
+  //
+  // The hub owns the hero + TopTabBar (exactly like PositionsView/IndexView above) and hands them to
+  // the tab as an opaque `header` node it renders on its LIST screen. Without this the list screen
+  // was orphaned from the Patterns/Strategies/Positions pill bar - the only way back was the
+  // sidebar. The detail screen deliberately keeps its own "Back to list", same as a Pattern detail.
   if (tab === 'analysis-profiles') {
+    const header = (
+      <React.Fragment>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, maxWidth: 640, paddingTop: 6 }}>
+          <span style={{ fontSize: 11, letterSpacing: '.14em', color: 'var(--char-accent)' }}>{tr(lang, 'eyebrow')}</span>
+          <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.25, fontWeight: 700, color: 'var(--parchment)' }}>{tr(lang, 'title')}</h1>
+          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{tr(lang, 'subtitle')}</p>
+        </div>
+        <TopTabBar
+          lang={lang} tab={tab} setTab={setTab} patternsCount={patterns.length} strategiesCount={strategies.length}
+          tradesCount={window.TradeJournalTradeStore ? window.TradeJournalTradeStore.listSync().length : 0}
+          analysisProfilesCount={window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.listSync().length : 0}
+        />
+      </React.Fragment>
+    );
     return (
-      <div style={container}>
-        <AnalysisProfilesTab lang={lang} character={character} />
+      <div className="navrya-strategies-hub" style={container}>
+        <AnalysisProfilesTab lang={lang} character={character} header={header} />
       </div>
     );
   }
