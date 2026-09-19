@@ -6,6 +6,8 @@ import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-
 import { normalizeLearnedPhrase, applyLearnedCommandOutcome, validateFieldMappingsStrict, validateTargetStrategy, FieldMappingValidationError } from './learned-command-normalize.mjs';
 import { isLearnableAction, reusableFieldsFor } from './action-learnability.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
+import { assertCodeAvailable, assertStoredCodeValid, computeDiscount } from '../commercial/discount-codes.mjs';
+import { allocateFifo, sumAllocations, lotRemainingMicroUsd, grantKey as bonusGrantKey, reversalKey as bonusReversalKey, reversalMetadata } from '../commercial/subscription-bonus-lots.mjs';
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
@@ -35,6 +37,8 @@ export function createMemoryRepo() {
     providerModelPricing: new Map(), walletAccounts: new Map(), walletLedger: new Map(), walletReservations: new Map(),
     quotaLocks: new Map(), analysisSymbols: new Map(),
     subscriptions: new Map(), paymentTransactions: new Map(), paymentEvents: new Map(), cryptoInvoices: new Map(),
+    discountCodes: new Map(), discountRedemptions: new Map(),
+    subscriptionBonusLots: new Map(), subscriptionBonusAllocations: new Map(),
     // Singleton row, mirrors the real 039_bsc_payment_secrets.sql table (id 'default' implied -
     // there is exactly one BSC provider config per deployment) - a plain object, not a Map.
     bscPaymentSecrets: {
@@ -1956,6 +1960,23 @@ export function createMemoryRepo() {
   }
   const STALE_RESERVATION_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes - see repo.pg.mjs's identical constant
 
+  // Subscription-bonus lots (065) - see repo.pg.mjs's identical-purpose helpers. `bonusLotSeq` is the insertion-order
+  // tie-break of the FIFO key (grantedAt, seq).
+  let bonusLotSeq = 0;
+  const byLotOrder = (a, b) => (a.grantedAt < b.grantedAt ? -1 : a.grantedAt > b.grantedAt ? 1 : a.seq - b.seq);
+  const publicBonusLot = (lot) => ({
+    id: lot.id, userId: lot.userId, transactionId: lot.transactionId, grantLedgerId: lot.grantLedgerId,
+    originalMicroUsd: lot.originalMicroUsd, consumedMicroUsd: lot.consumedMicroUsd, reversedMicroUsd: lot.reversedMicroUsd, remainingMicroUsd: lotRemainingMicroUsd(lot),
+    status: lot.status, grantedAt: lot.grantedAt, reversedAt: lot.reversedAt, reversalLedgerId: lot.reversalLedgerId, refundTransactionId: lot.refundTransactionId
+  });
+  // The immutable allocations of one AI_SETTLEMENT ledger entry in lot (FIFO) order - what a replayed settlement reports.
+  function bonusReplayFor(ledgerId) {
+    const allocations = Array.from(state.subscriptionBonusAllocations.values()).filter((a) => a.ledgerId === ledgerId)
+      .map((a) => ({ a, lot: state.subscriptionBonusLots.get(a.lotId) })).sort((x, y) => byLotOrder(x.lot, y.lot))
+      .map(({ a, lot }) => ({ lotId: a.lotId, transactionId: lot.transactionId, amountMicroUsd: a.amountMicroUsd }));
+    return { subscriptionBonusUsedMicroUsd: sumAllocations(allocations), subscriptionBonusAllocations: allocations };
+  }
+
   const wallet = {
     async getAccount(userId) {
       if (!state.walletAccounts.has(userId)) state.walletAccounts.set(userId, { userId, paidBalanceMicroUsd: 0, promoBalanceMicroUsd: 0, createdAt: now(), updatedAt: now() });
@@ -1991,12 +2012,21 @@ export function createMemoryRepo() {
       if (!reservation) throw new ApiError(404, 'WALLET_RESERVATION_NOT_FOUND');
       if (idempotencyKey) {
         const existing = Array.from(state.walletLedger.values()).find((e) => e.idempotencyKey === idempotencyKey);
-        if (existing) return { ok: true, alreadySettled: true, ledgerEntry: clone(existing) };
+        if (existing) return { ok: true, alreadySettled: true, ledgerEntry: clone(existing), ...bonusReplayFor(existing.id) };
       }
-      if (reservation.status !== 'pending') return { ok: true, alreadySettled: true, ledgerEntry: null };
+      if (reservation.status !== 'pending') return { ok: true, alreadySettled: true, ledgerEntry: null, subscriptionBonusUsedMicroUsd: 0, subscriptionBonusAllocations: [] };
       const account = state.walletAccounts.get(reservation.userId);
       const promoSpend = Math.max(0, Math.min(account.promoBalanceMicroUsd, retailChargeMicroUsd));
       const paidSpend = retailChargeMicroUsd - promoSpend;
+      // Subscription-bonus lots first (oldest grant first, ties by insertion order) out of the promo part of the charge.
+      // The whole of settle() is one synchronous block, the in-memory equivalent of repo.pg.mjs's single transaction.
+      const bonusAllocations = allocateFifo(
+        Array.from(state.subscriptionBonusLots.values())
+          .filter((lot) => lot.userId === reservation.userId && lot.status === 'active' && lotRemainingMicroUsd(lot) > 0)
+          .sort((a, b) => (a.grantedAt < b.grantedAt ? -1 : a.grantedAt > b.grantedAt ? 1 : a.seq - b.seq))
+          .map((lot) => ({ id: lot.id, transactionId: lot.transactionId, remainingMicroUsd: lotRemainingMicroUsd(lot) })),
+        promoSpend
+      );
       account.promoBalanceMicroUsd -= promoSpend;
       account.paidBalanceMicroUsd -= paidSpend;
       account.updatedAt = now();
@@ -2012,7 +2042,12 @@ export function createMemoryRepo() {
         adminUserId: null, idempotencyKey: idempotencyKey || null, metadata: { reservationId }, createdAt: now()
       };
       state.walletLedger.set(entry.id, entry);
-      return { ok: true, ledgerEntry: clone(entry) };
+      bonusAllocations.forEach((allocation) => {
+        state.subscriptionBonusLots.get(allocation.lotId).consumedMicroUsd += allocation.amountMicroUsd;
+        const record = { id: newId('bonusAllocation'), lotId: allocation.lotId, ledgerId: entry.id, userId: reservation.userId, amountMicroUsd: allocation.amountMicroUsd, createdAt: now() };
+        state.subscriptionBonusAllocations.set(record.id, record);
+      });
+      return { ok: true, ledgerEntry: clone(entry), subscriptionBonusUsedMicroUsd: sumAllocations(bonusAllocations), subscriptionBonusAllocations: bonusAllocations };
     },
     async release(reservationId) {
       const reservation = state.walletReservations.get(reservationId);
@@ -2029,8 +2064,10 @@ export function createMemoryRepo() {
       return { ok: true };
     },
     async grant(userId, { type, cashDeltaMicroUsd = 0, promoDeltaMicroUsd = 0, adminUserId, sourceAction, idempotencyKey, metadata }) {
-      if (idempotencyKey && Array.from(state.walletLedger.values()).some((e) => e.idempotencyKey === idempotencyKey)) return { ok: true, duplicate: true };
       await wallet.getAccount(userId);
+      // No await from here to the write: the duplicate check and the ledger insert are one atomic step, the
+      // in-memory equivalent of wallet_ledger's UNIQUE idempotency_key (concurrent same-key grants must not all pass).
+      if (idempotencyKey && Array.from(state.walletLedger.values()).some((e) => e.idempotencyKey === idempotencyKey)) return { ok: true, duplicate: true };
       const account = state.walletAccounts.get(userId);
       account.paidBalanceMicroUsd += cashDeltaMicroUsd;
       account.promoBalanceMicroUsd += promoDeltaMicroUsd;
@@ -2043,6 +2080,12 @@ export function createMemoryRepo() {
       };
       state.walletLedger.set(entry.id, entry);
       return { ok: true, ledgerEntry: clone(entry) };
+    },
+    // One batched lookup by idempotency key - how subscription-bonus.mjs learns whether a transaction's bonus
+    // (or its reversal, or a lost-discount credit) was actually written, without N queries per list.
+    async ledgerEntriesByIdempotencyKeys(keys) {
+      const wanted = new Set(keys || []);
+      return Array.from(state.walletLedger.values()).filter((e) => e.idempotencyKey && wanted.has(e.idempotencyKey)).map(clone);
     },
     async ledgerForUser(userId, { limit } = {}) {
       return Array.from(state.walletLedger.values()).filter((e) => e.userId === userId)
@@ -2073,6 +2116,86 @@ export function createMemoryRepo() {
       const cashMicroUsd = matches.reduce((sum, e) => sum + Math.abs(e.cashDeltaMicroUsd), 0);
       const promoMicroUsd = matches.reduce((sum, e) => sum + Math.abs(e.promoDeltaMicroUsd), 0);
       return { count: matches.length, cashMicroUsd, promoMicroUsd, totalMicroUsd: cashMicroUsd + promoMicroUsd };
+    }
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Subscription-bonus lots (065_subscription_bonus_lots.sql) - mirrors repo.pg.mjs's identical-named domain exactly.
+  // repo.pg.mjs serializes settlement / refund / repair with the wallet_accounts row lock; here JS is single-threaded,
+  // so the equivalent guarantee is that every read-check-write below (and wallet.settle() above) is ONE synchronous
+  // block with no suspension point between the check and the write.
+  // ---------------------------------------------------------------------------------------------
+  const subscriptionBonus = {
+    async grant({ userId, transactionId, amountMicroUsd, planId }) {
+      await wallet.getAccount(userId);
+      const existing = Array.from(state.subscriptionBonusLots.values()).find((lot) => lot.transactionId === transactionId);
+      if (existing) return { ok: true, granted: false, duplicate: true, lot: publicBonusLot(existing) };
+      const refunded = Array.from(state.paymentTransactions.values()).some((t) => t.type === 'refund' && t.metadata && t.metadata.originalTransactionId === transactionId);
+      if (refunded) return { ok: false, reason: 'REFUNDED' };
+      const idempotencyKey = bonusGrantKey(transactionId);
+      if (Array.from(state.walletLedger.values()).some((e) => e.idempotencyKey === idempotencyKey)) return { ok: true, granted: false, duplicate: true, lot: null };
+      const account = state.walletAccounts.get(userId);
+      account.promoBalanceMicroUsd += amountMicroUsd;
+      account.updatedAt = now();
+      const entry = {
+        id: newId('walletLedger'), userId, type: 'SUBSCRIPTION_BONUS', cashDeltaMicroUsd: 0, promoDeltaMicroUsd: amountMicroUsd,
+        providerCostMicroUsd: null, retailChargeMicroUsd: null, markupPercent: null, retailMultiplier: null,
+        provider: null, model: null, feature: null, sourceAction: 'subscription-bonus',
+        adminUserId: null, idempotencyKey, metadata: { transactionId, planId: planId || null }, createdAt: now()
+      };
+      state.walletLedger.set(entry.id, entry);
+      bonusLotSeq += 1;
+      const lot = {
+        id: newId('bonusLot'), seq: bonusLotSeq, userId, transactionId, grantLedgerId: entry.id, originalMicroUsd: amountMicroUsd,
+        consumedMicroUsd: 0, reversedMicroUsd: 0, status: 'active', grantedAt: now(), reversedAt: null, reversalLedgerId: null, refundTransactionId: null, createdAt: now()
+      };
+      state.subscriptionBonusLots.set(lot.id, lot);
+      return { ok: true, granted: true, duplicate: false, lot: publicBonusLot(lot) };
+    },
+    async reverseForRefund({ transactionId, refundTransactionId, adminUserId }) {
+      const lot = Array.from(state.subscriptionBonusLots.values()).find((candidate) => candidate.transactionId === transactionId);
+      if (!lot) return { ok: true, reversed: false, duplicate: false, reason: 'NO_LOT', lot: null, reversedMicroUsd: 0, fullyConsumed: false };
+      if (lot.status === 'reversed') {
+        return { ok: true, reversed: false, duplicate: true, reason: 'ALREADY_REVERSED', lot: publicBonusLot(lot), reversedMicroUsd: lot.reversedMicroUsd, fullyConsumed: lot.reversedMicroUsd === 0 };
+      }
+      const reversedMicroUsd = lotRemainingMicroUsd(lot);
+      const account = state.walletAccounts.get(lot.userId);
+      account.promoBalanceMicroUsd -= reversedMicroUsd;
+      account.updatedAt = now();
+      const entry = {
+        id: newId('walletLedger'), userId: lot.userId, type: 'SUBSCRIPTION_BONUS_REVERSAL', cashDeltaMicroUsd: 0, promoDeltaMicroUsd: 0 - reversedMicroUsd,
+        providerCostMicroUsd: null, retailChargeMicroUsd: null, markupPercent: null, retailMultiplier: null,
+        provider: null, model: null, feature: null, sourceAction: 'subscription-refund',
+        adminUserId: adminUserId || null, idempotencyKey: bonusReversalKey(transactionId),
+        metadata: reversalMetadata({
+          lotId: lot.id, originalTransactionId: transactionId, refundTransactionId, originalMicroUsd: lot.originalMicroUsd,
+          consumedMicroUsd: lot.consumedMicroUsd, reversedMicroUsd
+        }),
+        createdAt: now()
+      };
+      state.walletLedger.set(entry.id, entry);
+      lot.status = 'reversed';
+      lot.reversedMicroUsd = reversedMicroUsd;
+      lot.reversedAt = now();
+      lot.reversalLedgerId = entry.id;
+      lot.refundTransactionId = refundTransactionId || null;
+      return { ok: true, reversed: true, duplicate: false, lot: publicBonusLot(lot), reversedMicroUsd, fullyConsumed: reversedMicroUsd === 0 };
+    },
+    async getByTransactionId(transactionId) {
+      const lot = Array.from(state.subscriptionBonusLots.values()).find((candidate) => candidate.transactionId === transactionId);
+      return lot ? publicBonusLot(lot) : null;
+    },
+    async listByTransactionIds(transactionIds) {
+      const wanted = new Set(transactionIds || []);
+      return Array.from(state.subscriptionBonusLots.values()).filter((lot) => wanted.has(lot.transactionId)).map(publicBonusLot);
+    },
+    // The allocations of a set of AI_SETTLEMENT ledger entries, each settlement's rows in lot (FIFO) order.
+    async allocationsForLedgerIds(ledgerIds) {
+      const wanted = new Set(ledgerIds || []);
+      return Array.from(state.subscriptionBonusAllocations.values()).filter((a) => wanted.has(a.ledgerId))
+        .map((a) => ({ a, lot: state.subscriptionBonusLots.get(a.lotId) }))
+        .sort((x, y) => (x.a.ledgerId < y.a.ledgerId ? -1 : x.a.ledgerId > y.a.ledgerId ? 1 : byLotOrder(x.lot, y.lot)))
+        .map(({ a, lot }) => ({ id: a.id, lotId: a.lotId, transactionId: lot.transactionId, ledgerId: a.ledgerId, userId: a.userId, amountMicroUsd: a.amountMicroUsd, createdAt: a.createdAt }));
     }
   };
 
@@ -2231,6 +2354,144 @@ export function createMemoryRepo() {
       if (state.paymentEvents.has(key)) return { isNew: false };
       state.paymentEvents.set(key, { id: newId('paymentEvent'), provider, externalEventId, transactionId: transactionId || null, processedAt: now(), createdAt: now() });
       return { isNew: true };
+    }
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Subscription discount codes (064_discount_codes.sql) - mirrors repo.pg.mjs's identical-named domains
+  // exactly. repo.pg.mjs serializes every capacity decision for one code with a row lock; here JS is
+  // single-threaded, so the equivalent guarantee is that each read-check-write below is ONE synchronous
+  // block with no await between the check and the write. Capacity in use = confirmed redemptions + reserved
+  // redemptions whose hold has not lapsed; a lapsed hold stops counting the instant it lapses.
+  // ---------------------------------------------------------------------------------------------
+  const discountRowsFor = (codeId) => Array.from(state.discountRedemptions.values()).filter((row) => row.codeId === codeId);
+  const isLiveDiscountHold = (row) => row.status === 'reserved' && new Date(row.reservedUntil).getTime() > Date.now();
+  const discountUsage = (codeId, exceptId) => discountRowsFor(codeId).filter((row) => row.id !== exceptId && (row.status === 'confirmed' || isLiveDiscountHold(row))).length;
+  function sweepLapsedDiscountHolds(codeId) {
+    discountRowsFor(codeId).forEach((row) => {
+      if (row.status === 'reserved' && new Date(row.reservedUntil).getTime() <= Date.now()) {
+        row.status = 'expired'; row.releasedAt = now(); row.releaseReason = 'hold_lapsed';
+      }
+    });
+  }
+  function discountStatsFor(codeId) {
+    const code = state.discountCodes.get(codeId);
+    const confirmed = discountRowsFor(codeId).filter((row) => row.status === 'confirmed').length;
+    const pendingReservations = discountRowsFor(codeId).filter(isLiveDiscountHold).length;
+    const remaining = !code || code.maxRedemptions == null ? null : Math.max(0, code.maxRedemptions - confirmed - pendingReservations);
+    return { confirmed, pendingReservations, remaining };
+  }
+  const liveDiscountRowForUser = (codeId, userId) => discountRowsFor(codeId).find((row) => row.userId === userId && (row.status === 'confirmed' || isLiveDiscountHold(row))) || null;
+  const findDiscountRowByTransaction = (transactionId) => Array.from(state.discountRedemptions.values()).find((row) => row.transactionId === transactionId) || null;
+
+  const discountCodes = {
+    async create({ code, campaignName, discountType, discountValue, startsAt, expiresAt, maxRedemptions, active, createdBy }) {
+      const stamp = now();
+      const record = {
+        id: newId('discountCode'), code, campaignName, active: active !== false, discountType, discountValue,
+        startsAt: startsAt || null, expiresAt: expiresAt || null, maxRedemptions: maxRedemptions === undefined ? null : maxRedemptions,
+        createdBy: createdBy || null, updatedBy: null, createdAt: stamp, updatedAt: stamp
+      };
+      assertStoredCodeValid(record);
+      if (Array.from(state.discountCodes.values()).some((existing) => existing.code === record.code)) throw new ApiError(409, 'DISCOUNT_CODE_EXISTS');
+      state.discountCodes.set(record.id, record);
+      return clone(record);
+    },
+    async get(id) {
+      return clone(state.discountCodes.get(id) || null);
+    },
+    async getByCode(code) {
+      return clone(Array.from(state.discountCodes.values()).find((existing) => existing.code === code) || null);
+    },
+    async list() {
+      return Array.from(state.discountCodes.values()).reverse().sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).map(clone);
+    },
+    async stats(id) {
+      return discountStatsFor(id);
+    },
+    // Lowering the cap re-checks usage in the same synchronous block that applies it - the counterpart of
+    // repo.pg.mjs re-checking under the code's row lock.
+    async update(id, patch, { updatedBy } = {}) {
+      const code = state.discountCodes.get(id);
+      if (!code) throw new ApiError(404, 'DISCOUNT_CODE_NOT_FOUND');
+      const allowed = ['campaignName', 'active', 'discountType', 'discountValue', 'startsAt', 'expiresAt', 'maxRedemptions'];
+      const next = { ...code };
+      allowed.forEach((key) => { if (patch && key in patch) next[key] = patch[key]; });
+      assertStoredCodeValid(next);
+      if (next.maxRedemptions != null && discountUsage(id) > next.maxRedemptions) throw new ApiError(409, 'DISCOUNT_CAPACITY_BELOW_USED');
+      Object.assign(code, next, { updatedBy: updatedBy || code.updatedBy, updatedAt: now() });
+      return clone(code);
+    }
+  };
+
+  const discountRedemptions = {
+    // Read-only availability check for the provisional checkout quote - the SAME rules reserve() enforces.
+    async check({ codeId, userId }) {
+      const code = state.discountCodes.get(codeId);
+      assertCodeAvailable({ code: clone(code || null), stats: discountStatsFor(codeId), ownRow: liveDiscountRowForUser(codeId, userId), now: Date.now() });
+      return { ok: true };
+    },
+    async reserve({ codeId, userId, planId, originalAmountMicroUsd, reservedUntil }) {
+      const code = state.discountCodes.get(codeId);
+      if (code) sweepLapsedDiscountHolds(codeId);
+      assertCodeAvailable({ code: clone(code || null), stats: discountStatsFor(codeId), ownRow: liveDiscountRowForUser(codeId, userId), now: Date.now() });
+      const { discountAmountMicroUsd, finalAmountMicroUsd } = computeDiscount({ originalAmountMicroUsd, discountType: code.discountType, discountValue: code.discountValue });
+      const row = {
+        id: newId('discountRedemption'), codeId, userId, transactionId: null, status: 'reserved', planId,
+        code: code.code, campaignName: code.campaignName, discountType: code.discountType, discountValue: code.discountValue,
+        originalAmountMicroUsd, discountAmountMicroUsd, finalAmountMicroUsd, reservedUntil,
+        confirmedAt: null, releasedAt: null, releaseReason: null, refundedAt: null, createdAt: now()
+      };
+      state.discountRedemptions.set(row.id, row);
+      return clone(row);
+    },
+    async attachTransaction(redemptionId, transactionId) {
+      const row = state.discountRedemptions.get(redemptionId);
+      if (!row) throw new ApiError(404, 'DISCOUNT_REDEMPTION_NOT_FOUND');
+      if (findDiscountRowByTransaction(transactionId)) throw new ApiError(409, 'DISCOUNT_TRANSACTION_ALREADY_ATTACHED');
+      row.transactionId = transactionId;
+      return clone(row);
+    },
+    // The ONLY place a redemption becomes 'confirmed'. Idempotent. A hold that lapsed (still 'reserved', or already
+    // swept to 'expired') is RE-CLAIMED if the slot is still free; if it was reused - or the user has since got
+    // another live redemption - the strict rule applies: { ok: false, reason: 'DISCOUNT_CAPACITY_LOST' } and the
+    // cap is never exceeded (payment-service.mjs then fails the transaction and credits the wallet instead).
+    async confirmForTransaction(transactionId) {
+      const row = findDiscountRowByTransaction(transactionId);
+      if (!row) return { ok: false, reason: 'DISCOUNT_REDEMPTION_NOT_FOUND' };
+      if (row.status === 'confirmed') return { ok: true, redemption: clone(row) };
+      if (row.status === 'released') return { ok: false, reason: 'DISCOUNT_RESERVATION_RELEASED' };
+      const code = state.discountCodes.get(row.codeId);
+      const userHasOtherLiveRow = discountRowsFor(row.codeId).some((other) => other.id !== row.id && other.userId === row.userId && (other.status === 'confirmed' || isLiveDiscountHold(other)));
+      if (userHasOtherLiveRow || (code.maxRedemptions != null && discountUsage(row.codeId, row.id) >= code.maxRedemptions)) return { ok: false, reason: 'DISCOUNT_CAPACITY_LOST' };
+      row.status = 'confirmed'; row.confirmedAt = now(); row.releasedAt = null; row.releaseReason = null;
+      return { ok: true, redemption: clone(row) };
+    },
+    async releaseForTransaction(transactionId, reason) {
+      const row = findDiscountRowByTransaction(transactionId);
+      if (!row || row.status !== 'reserved') return { ok: true, released: false };
+      row.status = 'released'; row.releasedAt = now(); row.releaseReason = reason || null;
+      return { ok: true, released: true };
+    },
+    // Same as releaseForTransaction() for a reservation that never got a transaction attached (checkout failed
+    // between the reservation and the transaction insert).
+    async releaseRedemption(redemptionId, reason) {
+      const row = state.discountRedemptions.get(redemptionId);
+      if (!row || row.status !== 'reserved') return { ok: true, released: false };
+      row.status = 'released'; row.releasedAt = now(); row.releaseReason = reason || null;
+      return { ok: true, released: true };
+    },
+    // A refund never returns the slot or the user's one redemption - it only records that it happened.
+    async markRefundedForTransaction(transactionId) {
+      const row = findDiscountRowByTransaction(transactionId);
+      if (row && row.status === 'confirmed' && !row.refundedAt) row.refundedAt = now();
+      return clone(row);
+    },
+    async getByTransactionId(transactionId) {
+      return clone(findDiscountRowByTransaction(transactionId));
+    },
+    async listForCode(codeId, { limit } = {}) {
+      return discountRowsFor(codeId).reverse().sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, limit || 200).map(clone);
     }
   };
 
@@ -3204,8 +3465,8 @@ export function createMemoryRepo() {
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
-    commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
+    commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
     mediaAssets, mediaAssetLinks,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
     providerCostCredentials, providerCostSync, providerBalanceSnapshots, clientErrors

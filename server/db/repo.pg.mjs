@@ -6,6 +6,8 @@ import { normalizeInstrumentCode, normalizeInstrumentCodes } from './instrument-
 import { normalizeLearnedPhrase, applyLearnedCommandOutcome, validateFieldMappingsStrict, validateTargetStrategy, FieldMappingValidationError } from './learned-command-normalize.mjs';
 import { isLearnableAction, reusableFieldsFor } from './action-learnability.mjs';
 import { WALLET_DEFAULTS, DEFAULT_STORAGE_PRODUCTS } from '../commercial/commercial-defaults.mjs';
+import { assertCodeAvailable, assertStoredCodeValid, computeDiscount } from '../commercial/discount-codes.mjs';
+import { allocateFifo, sumAllocations, grantKey as bonusGrantKey, reversalKey as bonusReversalKey, reversalMetadata } from '../commercial/subscription-bonus-lots.mjs';
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
@@ -3039,6 +3041,17 @@ export function createPgRepo(pool) {
   }
   const STALE_RESERVATION_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 
+  // The immutable subscription-bonus allocations of one AI_SETTLEMENT ledger entry, in lot (FIFO) order - the answer a
+  // replayed settlement gives, so a retry reports exactly what the first call consumed. `queryable` is the pool or a client.
+  async function bonusAllocationsForLedger(queryable, ledgerId) {
+    const { rows } = await queryable.query(
+      `SELECT a.lot_id, a.amount_micro_usd, l.transaction_id FROM subscription_bonus_allocations a
+       JOIN subscription_bonus_lots l ON l.id = a.lot_id WHERE a.ledger_id=$1 ORDER BY l.granted_at, l.seq`,
+      [ledgerId]
+    );
+    return rows.map((row) => ({ lotId: row.lot_id, transactionId: row.transaction_id, amountMicroUsd: Number(row.amount_micro_usd) }));
+  }
+
   const wallet = {
     async getAccount(userId) {
       const { rows } = await pool.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING RETURNING *', [userId]);
@@ -3120,8 +3133,9 @@ export function createPgRepo(pool) {
         if (!reservation) { await client.query('ROLLBACK'); throw new ApiError(404, 'WALLET_RESERVATION_NOT_FOUND'); }
         if (reservation.status !== 'pending') {
           const { rows: existingLedger } = await client.query('SELECT * FROM wallet_ledger WHERE idempotency_key=$1', [idempotencyKey || null]);
+          const replayed = existingLedger[0] ? await bonusAllocationsForLedger(client, existingLedger[0].id) : [];
           await client.query('COMMIT');
-          return { ok: true, alreadySettled: true, ledgerEntry: existingLedger[0] ? mapWalletLedgerEntry(existingLedger[0]) : null };
+          return { ok: true, alreadySettled: true, ledgerEntry: existingLedger[0] ? mapWalletLedgerEntry(existingLedger[0]) : null, subscriptionBonusUsedMicroUsd: sumAllocations(replayed), subscriptionBonusAllocations: replayed };
         }
         const userId = reservation.user_id;
         const { rows: accountRows } = await client.query('SELECT * FROM wallet_accounts WHERE user_id=$1 FOR UPDATE', [userId]);
@@ -3132,6 +3146,19 @@ export function createPgRepo(pool) {
           `UPDATE wallet_accounts SET promo_balance_micro_usd = promo_balance_micro_usd - $2, paid_balance_micro_usd = paid_balance_micro_usd - $3, updated_at=now() WHERE user_id=$1`,
           [userId, promoSpend, paidSpend]
         );
+        // Subscription-bonus lots (065): the ACTIVE lots of this user are consumed first, oldest grant first (ties by
+        // insertion order), out of the promo part of this charge. They are locked AFTER the wallet_accounts row (the
+        // one lock order every lot path uses), so this settlement, a refund reversal and a bonus repair serialise per user.
+        const { rows: lotRows } = await client.query(
+          `SELECT id, transaction_id, original_micro_usd, consumed_micro_usd, reversed_micro_usd FROM subscription_bonus_lots
+           WHERE user_id=$1 AND status='active' AND original_micro_usd - consumed_micro_usd - reversed_micro_usd > 0
+           ORDER BY granted_at, seq FOR UPDATE`,
+          [userId]
+        );
+        const bonusAllocations = allocateFifo(lotRows.map((lot) => ({
+          id: lot.id, transactionId: lot.transaction_id,
+          remainingMicroUsd: Number(lot.original_micro_usd) - Number(lot.consumed_micro_usd) - Number(lot.reversed_micro_usd)
+        })), promoSpend);
         await client.query(`UPDATE wallet_reservations SET status='settled', resolved_at=now() WHERE id=$1`, [reservationId]);
         let ledgerRow;
         try {
@@ -3147,14 +3174,24 @@ export function createPgRepo(pool) {
           ledgerRow = rows[0];
         } catch (error) {
           if (error && error.code === '23505') {
+            // The whole transaction - balances, lot consumption and allocations included - is rolled back.
             await client.query('ROLLBACK');
             const { rows: existingLedger } = await pool.query('SELECT * FROM wallet_ledger WHERE idempotency_key=$1', [idempotencyKey]);
-            return { ok: true, alreadySettled: true, ledgerEntry: existingLedger[0] ? mapWalletLedgerEntry(existingLedger[0]) : null };
+            const replayed = existingLedger[0] ? await bonusAllocationsForLedger(pool, existingLedger[0].id) : [];
+            return { ok: true, alreadySettled: true, ledgerEntry: existingLedger[0] ? mapWalletLedgerEntry(existingLedger[0]) : null, subscriptionBonusUsedMicroUsd: sumAllocations(replayed), subscriptionBonusAllocations: replayed };
           }
           throw error;
         }
+        // Lot consumption and its immutable allocation records commit atomically with the ledger row they explain.
+        for (const allocation of bonusAllocations) {
+          await client.query('UPDATE subscription_bonus_lots SET consumed_micro_usd = consumed_micro_usd + $2 WHERE id=$1', [allocation.lotId, allocation.amountMicroUsd]);
+          await client.query(
+            'INSERT INTO subscription_bonus_allocations (id, lot_id, ledger_id, user_id, amount_micro_usd) VALUES ($1,$2,$3,$4,$5)',
+            [newId('bonusAllocation'), allocation.lotId, ledgerRow.id, userId, allocation.amountMicroUsd]
+          );
+        }
         await client.query('COMMIT');
-        return { ok: true, ledgerEntry: mapWalletLedgerEntry(ledgerRow) };
+        return { ok: true, ledgerEntry: mapWalletLedgerEntry(ledgerRow), subscriptionBonusUsedMicroUsd: sumAllocations(bonusAllocations), subscriptionBonusAllocations: bonusAllocations };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -3218,6 +3255,13 @@ export function createPgRepo(pool) {
         client.release();
       }
     },
+    // One batched lookup by idempotency key - how subscription-bonus.mjs learns whether a transaction's bonus
+    // (or its reversal, or a lost-discount credit) was actually written, without N queries per list.
+    async ledgerEntriesByIdempotencyKeys(keys) {
+      if (!keys || !keys.length) return [];
+      const { rows } = await pool.query('SELECT * FROM wallet_ledger WHERE idempotency_key = ANY($1::text[])', [keys]);
+      return rows.map(mapWalletLedgerEntry);
+    },
     async ledgerForUser(userId, { limit } = {}) {
       const { rows } = await pool.query('SELECT * FROM wallet_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2', [userId, limit || 50]);
       return rows.map(mapWalletLedgerEntry);
@@ -3268,6 +3312,152 @@ export function createPgRepo(pool) {
       );
       const row = rows[0];
       return { count: row.count, cashMicroUsd: Number(row.cash), promoMicroUsd: Number(row.promo), totalMicroUsd: Number(row.cash) + Number(row.promo) };
+    }
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Subscription-bonus lots (065_subscription_bonus_lots.sql) - mirrors repo.memory.mjs's identical-named domain
+  // exactly. One lot per bonus-granting payment transaction, created in the SAME database transaction as its
+  // SUBSCRIPTION_BONUS ledger grant and the promo credit; AI settlement consumes lots FIFO inside wallet.settle();
+  // a refund reverses only the lot's unspent remainder. EVERY path takes the wallet_accounts row lock FIRST and the
+  // lot row lock second, so settlement, refund and repair serialise per user and cannot deadlock. The reversed
+  // amount is the lot's own (original - consumed): it is never read from, or clamped by, the aggregate promo
+  // balance, so signup / admin promo is never mistaken for bonus remainder.
+  // ---------------------------------------------------------------------------------------------
+  function mapBonusLot(row) {
+    const originalMicroUsd = Number(row.original_micro_usd);
+    const consumedMicroUsd = Number(row.consumed_micro_usd);
+    const reversedMicroUsd = Number(row.reversed_micro_usd);
+    return {
+      id: row.id, userId: row.user_id, transactionId: row.transaction_id, grantLedgerId: row.grant_ledger_id,
+      originalMicroUsd, consumedMicroUsd, reversedMicroUsd, remainingMicroUsd: originalMicroUsd - consumedMicroUsd - reversedMicroUsd,
+      status: row.status, grantedAt: isoOrNull(row.granted_at), reversedAt: isoOrNull(row.reversed_at),
+      reversalLedgerId: row.reversal_ledger_id, refundTransactionId: row.refund_transaction_id
+    };
+  }
+  const subscriptionBonus = {
+    // Idempotent (a second call for the same transaction reports duplicate) and REFUSES - writing nothing - once a
+    // refund exists for the transaction. The refund check runs under the account lock, and a refund's reversal takes
+    // the same lock, so a repair racing a refund either sees the refund and stops, or lands first and is then reversed.
+    async grant({ userId, transactionId, amountMicroUsd, planId }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('INSERT INTO wallet_accounts (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId]);
+        await client.query('SELECT * FROM wallet_accounts WHERE user_id=$1 FOR UPDATE', [userId]);
+        const { rows: existing } = await client.query('SELECT * FROM subscription_bonus_lots WHERE transaction_id=$1', [transactionId]);
+        if (existing[0]) {
+          await client.query('COMMIT');
+          return { ok: true, granted: false, duplicate: true, lot: mapBonusLot(existing[0]) };
+        }
+        const { rows: refunds } = await client.query(`SELECT 1 FROM payment_transactions WHERE type='refund' AND metadata->>'originalTransactionId'=$1 LIMIT 1`, [transactionId]);
+        if (refunds[0]) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'REFUNDED' };
+        }
+        await client.query(
+          'UPDATE wallet_accounts SET promo_balance_micro_usd = promo_balance_micro_usd + $2, updated_at=now() WHERE user_id=$1',
+          [userId, amountMicroUsd]
+        );
+        let lotRow;
+        try {
+          const { rows: ledgerRows } = await client.query(
+            `INSERT INTO wallet_ledger (id, user_id, type, cash_delta_micro_usd, promo_delta_micro_usd, source_action, idempotency_key, metadata)
+             VALUES ($1,$2,'SUBSCRIPTION_BONUS',0,$3,'subscription-bonus',$4,$5) RETURNING *`,
+            [newId('walletLedger'), userId, amountMicroUsd, bonusGrantKey(transactionId), JSON.stringify({ transactionId, planId: planId || null })]
+          );
+          ({ rows: [lotRow] } = await client.query(
+            'INSERT INTO subscription_bonus_lots (id, user_id, transaction_id, grant_ledger_id, original_micro_usd) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+            [newId('bonusLot'), userId, transactionId, ledgerRows[0].id, amountMicroUsd]
+          ));
+        } catch (error) {
+          // A ledger row with this key already exists (or a concurrent writer beat the lot insert): nothing may be credited twice.
+          if (error && error.code === '23505') { await client.query('ROLLBACK'); return { ok: true, granted: false, duplicate: true, lot: null }; }
+          throw error;
+        }
+        await client.query('COMMIT');
+        return { ok: true, granted: true, duplicate: false, lot: mapBonusLot(lotRow) };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    // Reverses ONLY the unspent remainder of the lot. A fully consumed lot still gets its reversal ledger entry - with
+    // zero deltas - so the outcome is auditable, and nothing else is debited. Idempotent: a reversed lot answers duplicate.
+    async reverseForRefund({ transactionId, refundTransactionId, adminUserId }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: owner } = await client.query('SELECT user_id FROM subscription_bonus_lots WHERE transaction_id=$1', [transactionId]);
+        if (!owner[0]) {
+          await client.query('COMMIT');
+          return { ok: true, reversed: false, duplicate: false, reason: 'NO_LOT', lot: null, reversedMicroUsd: 0, fullyConsumed: false };
+        }
+        const userId = owner[0].user_id;
+        await client.query('SELECT * FROM wallet_accounts WHERE user_id=$1 FOR UPDATE', [userId]);
+        const { rows } = await client.query('SELECT * FROM subscription_bonus_lots WHERE transaction_id=$1 FOR UPDATE', [transactionId]);
+        const lot = rows[0];
+        if (lot.status === 'reversed') {
+          await client.query('COMMIT');
+          return { ok: true, reversed: false, duplicate: true, reason: 'ALREADY_REVERSED', lot: mapBonusLot(lot), reversedMicroUsd: Number(lot.reversed_micro_usd), fullyConsumed: Number(lot.reversed_micro_usd) === 0 };
+        }
+        const reversedMicroUsd = Number(lot.original_micro_usd) - Number(lot.consumed_micro_usd) - Number(lot.reversed_micro_usd);
+        let ledgerRow;
+        try {
+          await client.query(
+            'UPDATE wallet_accounts SET promo_balance_micro_usd = promo_balance_micro_usd - $2, updated_at=now() WHERE user_id=$1',
+            [userId, reversedMicroUsd]
+          );
+          ({ rows: [ledgerRow] } = await client.query(
+            `INSERT INTO wallet_ledger (id, user_id, type, cash_delta_micro_usd, promo_delta_micro_usd, admin_user_id, source_action, idempotency_key, metadata)
+             VALUES ($1,$2,'SUBSCRIPTION_BONUS_REVERSAL',0,$3,$4,'subscription-refund',$5,$6) RETURNING *`,
+            [newId('walletLedger'), userId, 0 - reversedMicroUsd, adminUserId || null, bonusReversalKey(transactionId), JSON.stringify(reversalMetadata({
+              lotId: lot.id, originalTransactionId: transactionId, refundTransactionId, originalMicroUsd: Number(lot.original_micro_usd),
+              consumedMicroUsd: Number(lot.consumed_micro_usd), reversedMicroUsd
+            }))]
+          ));
+        } catch (error) {
+          if (error && error.code === '23505') { await client.query('ROLLBACK'); return { ok: true, reversed: false, duplicate: true, reason: 'ALREADY_REVERSED', lot: mapBonusLot(lot), reversedMicroUsd: 0, fullyConsumed: false }; }
+          throw error;
+        }
+        const { rows: updated } = await client.query(
+          `UPDATE subscription_bonus_lots SET status='reversed', reversed_micro_usd=$2, reversed_at=clock_timestamp(), reversal_ledger_id=$3, refund_transaction_id=$4
+           WHERE id=$1 RETURNING *`,
+          [lot.id, reversedMicroUsd, ledgerRow.id, refundTransactionId || null]
+        );
+        await client.query('COMMIT');
+        return { ok: true, reversed: true, duplicate: false, lot: mapBonusLot(updated[0]), reversedMicroUsd, fullyConsumed: reversedMicroUsd === 0 };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async getByTransactionId(transactionId) {
+      const { rows } = await pool.query('SELECT * FROM subscription_bonus_lots WHERE transaction_id=$1', [transactionId]);
+      return rows[0] ? mapBonusLot(rows[0]) : null;
+    },
+    async listByTransactionIds(transactionIds) {
+      if (!transactionIds || !transactionIds.length) return [];
+      const { rows } = await pool.query('SELECT * FROM subscription_bonus_lots WHERE transaction_id = ANY($1::text[])', [transactionIds]);
+      return rows.map(mapBonusLot);
+    },
+    // The allocations of a set of AI_SETTLEMENT ledger entries, each settlement's rows in lot (FIFO) order.
+    async allocationsForLedgerIds(ledgerIds) {
+      if (!ledgerIds || !ledgerIds.length) return [];
+      const { rows } = await pool.query(
+        `SELECT a.id, a.lot_id, a.ledger_id, a.user_id, a.amount_micro_usd, a.created_at, l.transaction_id
+         FROM subscription_bonus_allocations a JOIN subscription_bonus_lots l ON l.id = a.lot_id
+         WHERE a.ledger_id = ANY($1::text[]) ORDER BY a.ledger_id, l.granted_at, l.seq`,
+        [ledgerIds]
+      );
+      return rows.map((row) => ({
+        id: row.id, lotId: row.lot_id, transactionId: row.transaction_id, ledgerId: row.ledger_id, userId: row.user_id,
+        amountMicroUsd: Number(row.amount_micro_usd), createdAt: isoOrNull(row.created_at)
+      }));
     }
   };
 
@@ -3479,6 +3669,266 @@ export function createPgRepo(pool) {
         [newId('paymentEvent'), provider, externalEventId, transactionId || null]
       );
       return { isNew: rows.length > 0 };
+    }
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Subscription discount codes (064_discount_codes.sql) - mirrors repo.memory.mjs's identical-named
+  // domains exactly. Every capacity decision for one code is made while holding a ROW LOCK on that code
+  // (SELECT ... FOR UPDATE), so concurrent reservations/confirmations/cap edits for the same code serialize
+  // across connections; the partial unique indexes in the migration are the database-level backstop for
+  // "one live redemption per user per code" and "one redemption per transaction", and the reservation INSERT
+  // itself carries a capacity guard so the limit holds even if a caller ever skipped the lock. Hold lapse is
+  // always judged by the DATABASE clock (now()), never the app server's.
+  // ---------------------------------------------------------------------------------------------
+  const isoOrNull = (value) => (value ? new Date(value).toISOString() : null);
+  function mapDiscountCode(row) {
+    return {
+      id: row.id, code: row.code, campaignName: row.campaign_name, active: row.active, discountType: row.discount_type,
+      discountValue: Number(row.discount_value), startsAt: isoOrNull(row.starts_at), expiresAt: isoOrNull(row.expires_at),
+      maxRedemptions: row.max_redemptions, createdBy: row.created_by, updatedBy: row.updated_by, createdAt: isoOrNull(row.created_at), updatedAt: isoOrNull(row.updated_at)
+    };
+  }
+  function mapDiscountRedemption(row) {
+    return {
+      id: row.id, codeId: row.code_id, userId: row.user_id, transactionId: row.transaction_id, status: row.status, planId: row.plan_id,
+      code: row.code_snapshot, campaignName: row.campaign_name_snapshot, discountType: row.discount_type_snapshot, discountValue: Number(row.discount_value_snapshot),
+      originalAmountMicroUsd: Number(row.original_amount_micro_usd), discountAmountMicroUsd: Number(row.discount_amount_micro_usd), finalAmountMicroUsd: Number(row.final_amount_micro_usd),
+      reservedUntil: isoOrNull(row.reserved_until), confirmedAt: isoOrNull(row.confirmed_at), releasedAt: isoOrNull(row.released_at),
+      releaseReason: row.release_reason, refundedAt: isoOrNull(row.refunded_at), createdAt: isoOrNull(row.created_at)
+    };
+  }
+  // `queryable` is the pool, or a client that is inside a transaction holding the code's row lock.
+  async function discountCounts(queryable, codeId) {
+    const { rows } = await queryable.query(
+      `SELECT COUNT(*) FILTER (WHERE status='confirmed')::int AS confirmed,
+              COUNT(*) FILTER (WHERE status='reserved' AND reserved_until > now())::int AS pending
+       FROM discount_redemptions WHERE code_id=$1`,
+      [codeId]
+    );
+    return { confirmed: rows[0].confirmed, pendingReservations: rows[0].pending };
+  }
+  async function liveDiscountRowForUser(queryable, codeId, userId) {
+    const { rows } = await queryable.query(
+      `SELECT * FROM discount_redemptions WHERE code_id=$1 AND user_id=$2 AND (status='confirmed' OR (status='reserved' AND reserved_until > now())) LIMIT 1`,
+      [codeId, userId]
+    );
+    return rows[0] ? mapDiscountRedemption(rows[0]) : null;
+  }
+  async function databaseNowMs(queryable) {
+    const { rows } = await queryable.query('SELECT now() AS now');
+    return new Date(rows[0].now).getTime();
+  }
+
+  const discountCodes = {
+    async create({ code, campaignName, discountType, discountValue, startsAt, expiresAt, maxRedemptions, active, createdBy }) {
+      assertStoredCodeValid({ discountType, discountValue, startsAt: startsAt || null, expiresAt: expiresAt || null, maxRedemptions: maxRedemptions === undefined ? null : maxRedemptions });
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO discount_codes (id, code, campaign_name, active, discount_type, discount_value, starts_at, expires_at, max_redemptions, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+          [newId('discountCode'), code, campaignName, active !== false, discountType, discountValue, startsAt || null, expiresAt || null, maxRedemptions === undefined ? null : maxRedemptions, createdBy || null]
+        );
+        return mapDiscountCode(rows[0]);
+      } catch (error) {
+        if (error && error.code === '23505') throw new ApiError(409, 'DISCOUNT_CODE_EXISTS');
+        throw error;
+      }
+    },
+    async get(id) {
+      const { rows } = await pool.query('SELECT * FROM discount_codes WHERE id=$1', [id]);
+      return rows[0] ? mapDiscountCode(rows[0]) : null;
+    },
+    async getByCode(code) {
+      const { rows } = await pool.query('SELECT * FROM discount_codes WHERE code=$1', [code]);
+      return rows[0] ? mapDiscountCode(rows[0]) : null;
+    },
+    async list() {
+      const { rows } = await pool.query('SELECT * FROM discount_codes ORDER BY created_at DESC');
+      return rows.map(mapDiscountCode);
+    },
+    async stats(id) {
+      const { rows } = await pool.query('SELECT max_redemptions FROM discount_codes WHERE id=$1', [id]);
+      const counts = await discountCounts(pool, id);
+      const max = rows[0] ? rows[0].max_redemptions : null;
+      return { ...counts, remaining: max == null ? null : Math.max(0, max - counts.confirmed - counts.pendingReservations) };
+    },
+    // Lowering the cap re-checks usage under the SAME row lock every reservation takes, so a reservation cannot
+    // slip in between the check and the update.
+    async update(id, patch, { updatedBy } = {}) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows } = await client.query('SELECT * FROM discount_codes WHERE id=$1 FOR UPDATE', [id]);
+        if (!rows[0]) throw new ApiError(404, 'DISCOUNT_CODE_NOT_FOUND');
+        const next = mapDiscountCode(rows[0]);
+        ['campaignName', 'active', 'discountType', 'discountValue', 'startsAt', 'expiresAt', 'maxRedemptions'].forEach((key) => { if (patch && key in patch) next[key] = patch[key]; });
+        assertStoredCodeValid(next);
+        if (next.maxRedemptions != null) {
+          const counts = await discountCounts(client, id);
+          if (counts.confirmed + counts.pendingReservations > next.maxRedemptions) throw new ApiError(409, 'DISCOUNT_CAPACITY_BELOW_USED');
+        }
+        const { rows: updated } = await client.query(
+          `UPDATE discount_codes SET campaign_name=$2, active=$3, discount_type=$4, discount_value=$5, starts_at=$6, expires_at=$7, max_redemptions=$8,
+             updated_by=COALESCE($9, updated_by), updated_at=now() WHERE id=$1 RETURNING *`,
+          [id, next.campaignName, next.active, next.discountType, next.discountValue, next.startsAt, next.expiresAt, next.maxRedemptions, updatedBy || null]
+        );
+        await client.query('COMMIT');
+        return mapDiscountCode(updated[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+  };
+
+  const discountRedemptions = {
+    // Read-only availability check for the provisional checkout quote - the SAME rules reserve() enforces.
+    async check({ codeId, userId }) {
+      const { rows } = await pool.query('SELECT * FROM discount_codes WHERE id=$1', [codeId]);
+      const code = rows[0] ? mapDiscountCode(rows[0]) : null;
+      assertCodeAvailable({
+        code, stats: code ? await discountCounts(pool, codeId) : { confirmed: 0, pendingReservations: 0 },
+        ownRow: code ? await liveDiscountRowForUser(pool, codeId, userId) : null, now: await databaseNowMs(pool)
+      });
+      return { ok: true };
+    },
+    async reserve({ codeId, userId, planId, originalAmountMicroUsd, reservedUntil }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: codeRows } = await client.query('SELECT * FROM discount_codes WHERE id=$1 FOR UPDATE', [codeId]);
+        const code = codeRows[0] ? mapDiscountCode(codeRows[0]) : null;
+        if (code) {
+          await client.query(
+            `UPDATE discount_redemptions SET status='expired', released_at=now(), release_reason='hold_lapsed'
+             WHERE code_id=$1 AND status='reserved' AND reserved_until <= now()`,
+            [codeId]
+          );
+        }
+        assertCodeAvailable({
+          code, stats: code ? await discountCounts(client, codeId) : { confirmed: 0, pendingReservations: 0 },
+          ownRow: code ? await liveDiscountRowForUser(client, codeId, userId) : null, now: await databaseNowMs(client)
+        });
+        const { discountAmountMicroUsd, finalAmountMicroUsd } = computeDiscount({ originalAmountMicroUsd, discountType: code.discountType, discountValue: code.discountValue });
+        let inserted;
+        try {
+          ({ rows: inserted } = await client.query(
+            `INSERT INTO discount_redemptions (id, code_id, user_id, status, plan_id, code_snapshot, campaign_name_snapshot, discount_type_snapshot, discount_value_snapshot,
+               original_amount_micro_usd, discount_amount_micro_usd, final_amount_micro_usd, reserved_until)
+             SELECT $1,$2,$3,'reserved',$4,$5,$6,$7,$8,$9,$10,$11,$12
+             WHERE (SELECT max_redemptions FROM discount_codes WHERE id=$2) IS NULL
+                OR (SELECT COUNT(*) FROM discount_redemptions WHERE code_id=$2 AND (status='confirmed' OR (status='reserved' AND reserved_until > now())))
+                   < (SELECT max_redemptions FROM discount_codes WHERE id=$2)
+             RETURNING *`,
+            [newId('discountRedemption'), codeId, userId, planId, code.code, code.campaignName, code.discountType, code.discountValue, originalAmountMicroUsd, discountAmountMicroUsd, finalAmountMicroUsd, reservedUntil]
+          ));
+        } catch (error) {
+          // The partial unique index caught a live row for this user that the lookup above did not see.
+          if (error && error.code === '23505') throw new ApiError(409, 'DISCOUNT_CODE_RESERVATION_PENDING');
+          throw error;
+        }
+        if (!inserted.length) throw new ApiError(409, 'DISCOUNT_CODE_EXHAUSTED');
+        await client.query('COMMIT');
+        return mapDiscountRedemption(inserted[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async attachTransaction(redemptionId, transactionId) {
+      try {
+        const { rows } = await pool.query('UPDATE discount_redemptions SET transaction_id=$2 WHERE id=$1 RETURNING *', [redemptionId, transactionId]);
+        if (!rows[0]) throw new ApiError(404, 'DISCOUNT_REDEMPTION_NOT_FOUND');
+        return mapDiscountRedemption(rows[0]);
+      } catch (error) {
+        if (error && error.code === '23505') throw new ApiError(409, 'DISCOUNT_TRANSACTION_ALREADY_ATTACHED');
+        throw error;
+      }
+    },
+    // The ONLY place a redemption becomes 'confirmed'. Idempotent. Takes the code's row lock first (the same order
+    // reserve() uses), so a late confirmation and a competing reservation serialize. A hold that lapsed is
+    // RE-CLAIMED if the slot is still free; if it was reused - or the user has since got another live redemption -
+    // the strict rule applies: { ok: false, reason: 'DISCOUNT_CAPACITY_LOST' } and the cap is never exceeded.
+    async confirmForTransaction(transactionId) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: found } = await client.query('SELECT code_id FROM discount_redemptions WHERE transaction_id=$1', [transactionId]);
+        if (!found[0]) { await client.query('ROLLBACK'); return { ok: false, reason: 'DISCOUNT_REDEMPTION_NOT_FOUND' }; }
+        const { rows: codeRows } = await client.query('SELECT * FROM discount_codes WHERE id=$1 FOR UPDATE', [found[0].code_id]);
+        const code = mapDiscountCode(codeRows[0]);
+        const { rows: current } = await client.query('SELECT * FROM discount_redemptions WHERE transaction_id=$1 FOR UPDATE', [transactionId]);
+        const row = current[0];
+        if (row.status === 'confirmed') { await client.query('COMMIT'); return { ok: true, redemption: mapDiscountRedemption(row) }; }
+        if (row.status === 'released') { await client.query('COMMIT'); return { ok: false, reason: 'DISCOUNT_RESERVATION_RELEASED' }; }
+        const { rows: otherForUser } = await client.query(
+          `SELECT 1 FROM discount_redemptions WHERE code_id=$1 AND user_id=$2 AND id <> $3 AND (status='confirmed' OR (status='reserved' AND reserved_until > now())) LIMIT 1`,
+          [row.code_id, row.user_id, row.id]
+        );
+        const { rows: usedRows } = await client.query(
+          `SELECT COUNT(*)::int AS used FROM discount_redemptions WHERE code_id=$1 AND id <> $2 AND (status='confirmed' OR (status='reserved' AND reserved_until > now()))`,
+          [row.code_id, row.id]
+        );
+        if (otherForUser.length || (code.maxRedemptions != null && usedRows[0].used >= code.maxRedemptions)) {
+          await client.query('COMMIT');
+          return { ok: false, reason: 'DISCOUNT_CAPACITY_LOST' };
+        }
+        let updated;
+        try {
+          ({ rows: updated } = await client.query(
+            `UPDATE discount_redemptions SET status='confirmed', confirmed_at=now(), released_at=NULL, release_reason=NULL WHERE id=$1 RETURNING *`,
+            [row.id]
+          ));
+        } catch (error) {
+          if (error && error.code === '23505') { await client.query('ROLLBACK'); return { ok: false, reason: 'DISCOUNT_CAPACITY_LOST' }; }
+          throw error;
+        }
+        await client.query('COMMIT');
+        return { ok: true, redemption: mapDiscountRedemption(updated[0]) };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async releaseForTransaction(transactionId, reason) {
+      const { rows } = await pool.query(
+        `UPDATE discount_redemptions SET status='released', released_at=now(), release_reason=$2 WHERE transaction_id=$1 AND status='reserved' RETURNING id`,
+        [transactionId, reason || null]
+      );
+      return { ok: true, released: rows.length > 0 };
+    },
+    // Same as releaseForTransaction() for a reservation that never got a transaction attached (checkout failed
+    // between the reservation and the transaction insert).
+    async releaseRedemption(redemptionId, reason) {
+      const { rows } = await pool.query(
+        `UPDATE discount_redemptions SET status='released', released_at=now(), release_reason=$2 WHERE id=$1 AND status='reserved' RETURNING id`,
+        [redemptionId, reason || null]
+      );
+      return { ok: true, released: rows.length > 0 };
+    },
+    // A refund never returns the slot or the user's one redemption - it only records that it happened.
+    async markRefundedForTransaction(transactionId) {
+      const { rows } = await pool.query(
+        `UPDATE discount_redemptions SET refunded_at=COALESCE(refunded_at, now()) WHERE transaction_id=$1 AND status='confirmed' RETURNING *`,
+        [transactionId]
+      );
+      if (rows[0]) return mapDiscountRedemption(rows[0]);
+      return discountRedemptions.getByTransactionId(transactionId);
+    },
+    async getByTransactionId(transactionId) {
+      const { rows } = await pool.query('SELECT * FROM discount_redemptions WHERE transaction_id=$1', [transactionId]);
+      return rows[0] ? mapDiscountRedemption(rows[0]) : null;
+    },
+    async listForCode(codeId, { limit } = {}) {
+      const { rows } = await pool.query('SELECT * FROM discount_redemptions WHERE code_id=$1 ORDER BY created_at DESC LIMIT $2', [codeId, limit || 200]);
+      return rows.map(mapDiscountRedemption);
     }
   };
 
@@ -4733,8 +5183,8 @@ export function createPgRepo(pool) {
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
     strategies, analysisProfiles, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
-    commercialConfig, markupRules, providerModelPricing, wallet, quota, analysisSymbols,
-    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
+    commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
+    subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
     mediaAssets, mediaAssetLinks,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,
     providerCostCredentials, providerCostSync, providerBalanceSnapshots, clientErrors
