@@ -404,6 +404,10 @@
       // evidence of anything: the server re-verifies session/entry ownership before recording.
       sessionId: session && session.id, entryId: entry && entry.id,
       analysisProfile: pickAdherenceProfile(opts.analysisContext, opts.adherence),
+      // Which profile this run is attributed to (Analysis Profile Report). Only a CLAIM: the gateway forwards it to the
+      // completions ledger, which re-verifies the profile really belongs to the verified user before storing it.
+      analysisProfileId: (opts.analysisContext && opts.analysisContext.profile && opts.analysisContext.profile.id) || null,
+      analysisProfileRevision: (opts.analysisContext && opts.analysisContext.profile && opts.analysisContext.profile.revision) || null,
       adherence: opts.adherence || 'balanced',
       // "Your view and instruction" (brief 1.B) - the wire field name (userView) is kept for
       // backward compatibility with the server's own existing body.userView reader; only the
@@ -445,7 +449,9 @@
       analysisType: analysisType, provider: payload.provider, model: payload.model,
       generatedAt: new Date().toISOString(), fingerprint: fingerprint, usage: payload.usage,
       entryId: entry && entry.id,
-      requiredInputsFlagged: (opts.analysisContext && opts.analysisContext.requiredInputs) || []
+      requiredInputsFlagged: (opts.analysisContext && opts.analysisContext.requiredInputs) || [],
+      analysisProfileRef: opts.analysisContext && opts.analysisContext.profile
+        ? { id: opts.analysisContext.profile.id, name: opts.analysisContext.profile.name, revision: opts.analysisContext.profile.revision } : null
     });
     // Deferred scenarios are NAVRYA's own computed list (brief: "never silently omit them"), not
     // model output - attached after normalization so a malformed/partial provider response can
@@ -579,6 +585,8 @@
       aiSource: {
         source: 'ai_analysis', analysisId: context.analysisId, sourceEntryId: context.entry.id,
         provider: context.provider, model: context.model, generatedScenarioKey: aiScenario.localKey,
+        // Analysis Profile Report: which profile's training produced this scenario, so its later outcome can be attributed.
+        analysisProfileId: context.analysisProfileId || null,
         kind: aiScenario.kind, role: aiScenario.role, confidence: aiScenario.confidence,
         confirmations: aiScenario.confirmations, evidenceFor: aiScenario.evidenceFor, evidenceAgainst: aiScenario.evidenceAgainst,
         visualizationBrief: aiScenario.visualizationBrief
@@ -760,6 +768,8 @@
   }
 
   window.TradeJournalSessionAnalysisClient = {
+    // Exported so tests can prove other consumers of the trained profile (the Analysis Map AI node) never drift from it.
+    pickAdherenceProfile: pickAdherenceProfile,
     resolveEntryImageDataUrl: resolveEntryImageDataUrl,
     entryImageIdentity: entryImageIdentity,
     canonicalEntryImages: canonicalEntryImages,

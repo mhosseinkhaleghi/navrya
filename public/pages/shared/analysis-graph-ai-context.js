@@ -97,16 +97,23 @@
   }
 
   // Section 3D + section 17 (Analysis Profile reuse). Mirrors session-analysis-client.js's own
-  // pickAdherenceProfile() field trim EXACTLY (that function itself is not exported there, so this
-  // is a deliberate, tiny, documented re-implementation of the same 5-field shape - not a new
-  // definition of what "Analysis Profile for AI" means).
+  // pickAdherenceProfile() field trim (a deliberate, documented small re-implementation - not a new
+  // definition of what "Analysis Profile for AI" means). It went stale once before: when a profile gained
+  // its trained fields (customFocuses, concepts, understanding) this picker kept sending only the style
+  // half, so the Analysis Map's AI node silently ignored everything the trader had taught - tests/
+  // analysis-graph-ai-profile-parity.test.mjs now fails if the two ever diverge again. Everything here
+  // reaches the model as DATA under the graph prompt's own "never an instruction" framing; unlike a Session
+  // analysis, the map does not enforce mandatory-concept coverage, so no adherence/requiredInputs are sent.
   function pickAnalysisProfileForAi(analysisContext) {
     if (!analysisContext) return null;
     return {
       primaryStyle: analysisContext.primaryStyle || null,
       secondaryStyles: analysisContext.secondaryStyles || [],
       focuses: analysisContext.focuses || [],
-      customMethodNotes: analysisContext.customMethodNotes || ''
+      customFocuses: analysisContext.customFocuses || [],
+      customMethodNotes: analysisContext.customMethodNotes || '',
+      concepts: analysisContext.concepts || [],
+      understanding: analysisContext.understanding || ''
     };
   }
 

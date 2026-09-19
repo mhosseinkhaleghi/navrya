@@ -1843,7 +1843,7 @@ function EntryDetailPanel({ session, entry, index, lang, imageUrl, openScenarios
   const analysisVisualization = localAnalysisVisualization || (result && result.wholeVisualization) || null;
   async function handleAddAiScenario(aiScenario) {
     if (!onAddAiScenario || !result) return;
-    onAddAiScenario(aiScenario, { entry, analysisId: result.analysisId, provider: result.provider, model: result.model });
+    onAddAiScenario(aiScenario, { entry, analysisId: result.analysisId, provider: result.provider, model: result.model, analysisProfileId: result.analysisProfileRef ? result.analysisProfileRef.id : null });
   }
   async function handleVisualizeAiScenario(aiScenario) {
     if (!onVisualizeAiScenario || !result) return;
@@ -2866,7 +2866,7 @@ function FateSummaryModal({ session, lang, character, onClose, onSave, onAnalysi
               memoryReceipt={window.TradeJournalSessionAnalysisClient ? window.TradeJournalSessionAnalysisClient.buildMemoryReceipt(session) : null}
               depth="auto" addedScenarioKeys={addedScenarioKeys} scenarioVisualizations={mergedScenarioVisualizations}
               scenarioTitleFor={scenarioTitleFor}
-              onAddScenario={(scenario) => onAddAiScenario && analysisEntry && onAddAiScenario(scenario, { entry: analysisEntry, analysisId: latest.analysisId, provider: latest.provider, model: latest.model })}
+              onAddScenario={(scenario) => onAddAiScenario && analysisEntry && onAddAiScenario(scenario, { entry: analysisEntry, analysisId: latest.analysisId, provider: latest.provider, model: latest.model, analysisProfileId: latest.analysisProfileRef ? latest.analysisProfileRef.id : null })}
               onVisualizeScenario={(scenario) => handleVisualize(scenario, { entry: analysisEntry, analysisId: latest.analysisId })}
               onVisualizeAnalysis={analysisEntry ? handleVisualizeAnalysis : null} analysisVisualization={analysisVisualization}
             />
@@ -4730,7 +4730,9 @@ export function LiveSessionView({ character, sessionId, navActiveId, language, i
     if (client.scenarioAlreadyAdded(targetEntry, ctx.analysisId, aiScenario.localKey)) return;
     const draft = client.buildScenarioDraftFromAi(aiScenario, {
       newId: window.TradeJournalWorkspace.id('scenario'), entry: targetEntry,
-      analysisId: ctx.analysisId, provider: ctx.provider, model: ctx.model
+      analysisId: ctx.analysisId, provider: ctx.provider, model: ctx.model,
+      // The profile whose training produced this scenario (Analysis Profile Report) - stamped into aiSource.
+      analysisProfileId: ctx.analysisProfileId || null
     });
     persist((s) => {
       const target = (s.entries || []).find((e) => e.id === targetEntry.id);

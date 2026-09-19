@@ -192,6 +192,7 @@ const copy = {
     userViewPlaceholder: 'مثلاً: به نظرم قیمت در حال جمع‌آوری نقدینگی قبل از یک حرکت بزرگ‌تر است…',
     modelLabel: 'مدل هوش مصنوعی',
     profileLabel: 'سبک تحلیل', profileNone: 'بدون پروفایل تحلیل', addProfile: 'افزودن پروفایل جدید',
+    trainedMandatory: 'مفاهیم اجباری برای گزارش: {n}', trainedUnderstanding: 'درک موتور نسخه {n}',
     adherenceLabel: 'میزان وفاداری به سبک تحلیل',
     adherenceTitle: { open: 'باز', balanced: 'متعادل', strict: 'سخت‌گیرانه' },
     adherenceDesc: {
@@ -222,6 +223,7 @@ const copy = {
     userViewPlaceholder: 'مثال: أعتقد أن السعر يجمع السيولة قبل حركة أكبر…',
     modelLabel: 'نموذج الذكاء الاصطناعي',
     profileLabel: 'أسلوب التحليل', profileNone: 'بدون ملف تحليل', addProfile: 'إضافة ملف جديد',
+    trainedMandatory: 'مفاهيم إلزامية للتقرير: {n}', trainedUnderstanding: 'فهم المحرك v{n}',
     adherenceLabel: 'مدى الالتزام بأسلوب التحليل',
     adherenceTitle: { open: 'مفتوح', balanced: 'متوازن', strict: 'صارم' },
     adherenceDesc: {
@@ -252,6 +254,7 @@ const copy = {
     userViewPlaceholder: 'e.g. I think price is collecting liquidity before a bigger move…',
     modelLabel: 'AI model',
     profileLabel: 'Analysis style', profileNone: 'No analysis profile', addProfile: 'Add new profile',
+    trainedMandatory: 'Mandatory concepts to report on: {n}', trainedUnderstanding: 'engine understanding v{n}',
     adherenceLabel: 'Adherence to analysis style',
     adherenceTitle: { open: 'Open', balanced: 'Balanced', strict: 'Strict' },
     adherenceDesc: {
@@ -282,6 +285,7 @@ const copy = {
     userViewPlaceholder: 'p. ej. creo que el precio está acumulando liquidez antes de un movimiento mayor…',
     modelLabel: 'Modelo de IA',
     profileLabel: 'Estilo de análisis', profileNone: 'Sin perfil de análisis', addProfile: 'Añadir nuevo perfil',
+    trainedMandatory: 'Conceptos obligatorios a reportar: {n}', trainedUnderstanding: 'comprensión del motor v{n}',
     adherenceLabel: 'Fidelidad al estilo de análisis',
     adherenceTitle: { open: 'Abierto', balanced: 'Equilibrado', strict: 'Estricto' },
     adherenceDesc: {
@@ -488,6 +492,20 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
     (profileId && analysisContextApi()) ? analysisContextApi().getAnalysisContext(profileId) : null
   ), [profileId]);
   const preflightWarnings = React.useMemo(() => requiredInputWarnings(activeLang, liveAnalysisContext), [activeLang, liveAnalysisContext]);
+  // Trained-profile chip (Analysis Profile Phase 5): before the trader presses Analyze, how much of their own training this run
+  // will carry - the mandatory concepts the engine is REQUIRED to report on (verified per concept on the result card) and the
+  // engine's current understanding version. Read from the SAME context the request itself sends, so it can never overstate.
+  const trainingChip = React.useMemo(() => {
+    if (!liveAnalysisContext) return '';
+    const mandatory = (liveAnalysisContext.concepts || []).filter((c) => c.priority === 'mandatory').length;
+    const store = window.TradeJournalAnalysisProfileStore;
+    const stored = store && profileId ? store.find(profileId) : null;
+    const version = stored && stored.understanding ? stored.understanding.version : 0;
+    const parts = [];
+    if (mandatory) parts.push(tr(activeLang, 'trainedMandatory').replace('{n}', String(mandatory)));
+    if (version) parts.push(tr(activeLang, 'trainedUnderstanding').replace('{n}', String(version)));
+    return parts.join(' · ');
+  }, [liveAnalysisContext, profileId, activeLang]);
 
   const contextRefs = React.useMemo(() => buildSessionContextRefs(session), [session]);
   const contextRows = [
@@ -718,6 +736,9 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
                     }}
                   ><Icon name="plus" size={16} /></button>
                 </div>
+                {trainingChip && (
+                  <span data-profile-training-chip style={{ alignSelf: 'flex-start', fontSize: 11, padding: '3px 10px', borderRadius: 999, border: '1px solid var(--divider-gold)', color: 'var(--gold-warm)', background: 'rgba(183,138,74,.06)' }}>{trainingChip}</span>
+                )}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -789,7 +810,7 @@ export function SessionAiAnalysisModal({ session, entry: pinnedEntry, lang, char
               addedScenarioKeys={computedAddedScenarioKeys}
               scenarioVisualizations={mergedVisualizations}
               scenarioTitleFor={scenarioTitleFor}
-              onAddScenario={(scenario) => onAddScenario && onAddScenario(scenario, { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId, provider: analysisResult.provider, model: analysisResult.model })}
+              onAddScenario={(scenario) => onAddScenario && onAddScenario(scenario, { entry: analysisMeta && analysisMeta.entry, analysisId: analysisResult.analysisId, provider: analysisResult.provider, model: analysisResult.model, analysisProfileId: analysisResult.analysisProfileRef ? analysisResult.analysisProfileRef.id : null })}
               onVisualizeScenario={handleVisualizeLocal}
               onVisualizeAnalysis={analysisMeta && analysisMeta.entry ? handleVisualizeAnalysisLocal : null}
               analysisVisualization={mergedAnalysisVisualization}

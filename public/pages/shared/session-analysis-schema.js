@@ -143,6 +143,28 @@
   // this same shape's client-side counterpart, computeAnalysisPatches' noteFeedback pass below)
   // both drop any item whose noteRef was not part of what was actually sent - see that function's
   // own comment for why this is the one place hallucinated identity must never be trusted.
+  // Analysis Profile (Phase 5). The ref records WHICH profile - and which content revision of it - an analysis was
+  // run under, stamped by the client from the very context it sent (never model output); it is what lets a later
+  // Report attribute a run and separate "before" from "after" a piece of training. Null when the analysis was run
+  // with no profile (or before this field existed).
+  function normalizeProfileRef(raw) {
+    var source = raw && typeof raw === 'object' ? raw : {};
+    var id = str(source.id);
+    return id ? { id: id.slice(0, 64), name: str(source.name).slice(0, 100), revision: str(source.revision).slice(0, 40) } : null;
+  }
+
+  var COVERAGE_STATUSES = ['applied', 'not_visible', 'not_applicable', 'unaddressed'];
+  // The server's rebuilt mandatory-concept coverage (server/ai/analysis-profile-coverage.mjs): one row per mandatory
+  // concept of the profile the analysis was run under. Re-normalized here defensively (a stored or cached result may
+  // come from any version): an unknown status is 'unaddressed' - never silently promoted to applied. Absent -> [].
+  function normalizeConceptCoverage(raw) {
+    return arr(raw).map(function (row) {
+      var source = row && typeof row === 'object' ? row : {};
+      // Trimmed BEFORE the blank-title filter below: a whitespace-only title is truthy and would otherwise survive as an empty-looking row.
+      return { conceptId: str(source.conceptId).trim().slice(0, 64), title: str(source.title).trim().slice(0, 100), status: oneOf(COVERAGE_STATUSES, source.status, 'unaddressed'), evidence: str(source.evidence).trim().slice(0, 400) };
+    }).filter(function (row) { return row.title; }).slice(0, 40);
+  }
+
   function normalizeNoteFeedback(raw) {
     var source = raw && typeof raw === 'object' ? raw : {};
     var ref = source.noteRef && typeof source.noteRef === 'object' ? source.noteRef : {};
@@ -270,7 +292,11 @@
       // Section 4 - style/focus-declared required inputs this analysis was warned about (echoed
       // back from the request, not model-controlled) so the card can show what was flagged even
       // after later reopening a saved result.
-      requiredInputsFlagged: arr(m.requiredInputsFlagged).map(str).slice(0, 10)
+      requiredInputsFlagged: arr(m.requiredInputsFlagged).map(str).slice(0, 10),
+      // Analysis Profile attribution + verifiable mandatory-concept coverage (Phase 5) - additive, both empty for any
+      // analysis that predates them or ran without a profile.
+      analysisProfileRef: normalizeProfileRef(m.analysisProfileRef),
+      conceptCoverage: normalizeConceptCoverage(source.conceptCoverage)
     };
   }
 

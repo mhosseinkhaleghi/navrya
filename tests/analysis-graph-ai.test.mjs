@@ -181,7 +181,9 @@ test('market context inclusion (test 8): resolves a real marketContext node when
 });
 
 test('Analysis Profile inclusion (test 9): calls the real window.TradeJournalAnalysisContext.getAnalysisContext() and trims it the same way session-analysis-client.js\'s own pickAdherenceProfile() does - never a second/duplicated profile system', async () => {
-  const fakeContext = { primaryStyle: { id: 'smc' }, secondaryStyles: [], focuses: [{ id: 'liquidity' }], customMethodNotes: 'trade liquidity sweeps' };
+  // The trained fields (customFocuses/concepts/understanding) MUST travel too - this picker once kept sending only the style half after
+  // pickAdherenceProfile() had grown them, so the Analysis Map AI node silently ignored everything the trader taught the profile.
+  const fakeContext = { primaryStyle: { id: 'smc' }, secondaryStyles: [], focuses: [{ id: 'liquidity' }], customMethodNotes: 'trade liquidity sweeps', customFocuses: [{ name: 'Session opens', description: '' }], concepts: [{ id: 'c1', title: 'Swept liquidity levels', priority: 'mandatory' }], understanding: 'Waits for a sweep.' };
   const sandbox = await loadSandbox({
     window: {
       TradeJournalAnalysisContext: { getAnalysisContext: (id) => (id === 'profile-1' ? fakeContext : null) },
@@ -189,7 +191,10 @@ test('Analysis Profile inclusion (test 9): calls the real window.TradeJournalAna
     }
   });
   const pkg = plain(sandbox.window.TradeJournalAnalysisGraphAiContext.build({ session: sampleSession(), graph: sampleGraph(), selectedNodeId: 'A' }));
-  assert.deepEqual(pkg.analysisProfile, { primaryStyle: { id: 'smc' }, secondaryStyles: [], focuses: [{ id: 'liquidity' }], customMethodNotes: 'trade liquidity sweeps' });
+  assert.deepEqual(pkg.analysisProfile, {
+    primaryStyle: { id: 'smc' }, secondaryStyles: [], focuses: [{ id: 'liquidity' }], customFocuses: [{ name: 'Session opens', description: '' }], customMethodNotes: 'trade liquidity sweeps',
+    concepts: [{ id: 'c1', title: 'Swept liquidity levels', priority: 'mandatory' }], understanding: 'Waits for a sweep.'
+  });
 });
 
 test('approxTokens uses the real repo-wide chars/4 heuristic (ai-context-builder.js\'s own debugLastPackage() convention) and grows with more included content', async () => {

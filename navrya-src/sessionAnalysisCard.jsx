@@ -44,6 +44,7 @@ const copy = {
     trend_up: 'صعودی', trend_down: 'نزولی', trend_range: 'رنج', trend_unclear: 'نامشخص',
     momentum_accelerating: 'در حال شتاب‌گیری', momentum_decelerating: 'در حال کاهش شتاب', momentum_steady: 'ثابت', momentum_unclear: 'نامشخص',
     noteFeedbackTitle: 'بازخورد یادداشت‌های شما', noteEvidenceLabel: 'شواهد', noteCorrectionLabel: 'اصلاح', noteEncouragementLabel: 'نقطه قوت', noteWatchForLabel: 'در ادامه مراقب باشید',
+    coverageTitle: 'پوشش مفاهیم اجباری', coverageSummary: '{applied} از {total} مفهوم اجباری اعمال شد', coverage_applied: 'اعمال شد', coverage_not_visible: 'روی چارت دیده نمی‌شود', coverage_not_applicable: 'مرتبط نیست', coverage_unaddressed: 'بررسی نشد', coverageUnaddressedHint: 'موتور این مفهوم را گزارش نکرد — به‌عنوان «بررسی نشد» ثبت شد، نه «اعمال شد».', coverageEvidence: 'شواهد',
     verdict_supported: 'تأیید شد', verdict_partially_supported: 'تا حدی تأیید شد', verdict_contradicted: 'نقض شد', verdict_insufficient_evidence: 'شواهد کافی نیست',
     unresolvedItemsTitle: 'موارد نامشخص و اقدام لازم', actionLabel: 'اقدام لازم', missingEvidenceLabel: 'شواهد ناقص',
     unresolvedStatus_open: 'باز', unresolvedStatus_partially_resolved: 'تا حدی حل‌شده', unresolvedStatus_resolved: 'حل‌شده', unresolvedStatus_superseded: 'جای خود را به مورد جدید داد',
@@ -74,6 +75,7 @@ const copy = {
     trend_up: 'صاعد', trend_down: 'نازل', trend_range: 'نطاق', trend_unclear: 'غير واضح',
     momentum_accelerating: 'يتسارع', momentum_decelerating: 'يتباطأ', momentum_steady: 'ثابت', momentum_unclear: 'غير واضح',
     noteFeedbackTitle: 'ملاحظات على يومياتك', noteEvidenceLabel: 'الدليل', noteCorrectionLabel: 'تصحيح', noteEncouragementLabel: 'نقطة قوة', noteWatchForLabel: 'راقب هذا لاحقاً',
+    coverageTitle: 'تغطية المفاهيم الإلزامية', coverageSummary: 'تم تطبيق {applied} من {total} مفهوم إلزامي', coverage_applied: 'طُبّق', coverage_not_visible: 'غير ظاهر في الرسم', coverage_not_applicable: 'غير منطبق', coverage_unaddressed: 'لم يُفحص', coverageUnaddressedHint: 'لم يُبلغ المحرك عن هذا المفهوم — سُجّل كـ«لم يُفحص» وليس «طُبّق».', coverageEvidence: 'الدليل',
     verdict_supported: 'مؤكَّد', verdict_partially_supported: 'مؤكَّد جزئياً', verdict_contradicted: 'مخالِف', verdict_insufficient_evidence: 'دليل غير كافٍ',
     unresolvedItemsTitle: 'نقاط غير واضحة وإجراء مطلوب', actionLabel: 'الإجراء المطلوب', missingEvidenceLabel: 'الدليل الناقص',
     unresolvedStatus_open: 'مفتوح', unresolvedStatus_partially_resolved: 'حُلّ جزئياً', unresolvedStatus_resolved: 'محلول', unresolvedStatus_superseded: 'حلّ محله بند جديد',
@@ -104,6 +106,7 @@ const copy = {
     trend_up: 'Up', trend_down: 'Down', trend_range: 'Range', trend_unclear: 'Unclear',
     momentum_accelerating: 'Accelerating', momentum_decelerating: 'Decelerating', momentum_steady: 'Steady', momentum_unclear: 'Unclear',
     noteFeedbackTitle: 'Feedback on Your Notes', noteEvidenceLabel: 'Evidence', noteCorrectionLabel: 'Correction', noteEncouragementLabel: 'Strength', noteWatchForLabel: 'Watch for',
+    coverageTitle: 'Mandatory concept coverage', coverageSummary: '{applied} of {total} mandatory concepts applied', coverage_applied: 'Applied', coverage_not_visible: 'Not visible on this chart', coverage_not_applicable: 'Not applicable', coverage_unaddressed: 'Not checked', coverageUnaddressedHint: 'The engine did not report on this concept - it is recorded as Not checked, never as Applied.', coverageEvidence: 'Evidence',
     verdict_supported: 'Supported', verdict_partially_supported: 'Partially supported', verdict_contradicted: 'Contradicted', verdict_insufficient_evidence: 'Insufficient evidence',
     unresolvedItemsTitle: 'Unresolved Points & Next Action', actionLabel: 'Action needed', missingEvidenceLabel: 'Missing evidence',
     unresolvedStatus_open: 'Open', unresolvedStatus_partially_resolved: 'Partially resolved', unresolvedStatus_resolved: 'Resolved', unresolvedStatus_superseded: 'Superseded',
@@ -134,6 +137,7 @@ const copy = {
     trend_up: 'Alcista', trend_down: 'Bajista', trend_range: 'Rango', trend_unclear: 'Poco claro',
     momentum_accelerating: 'Acelerando', momentum_decelerating: 'Desacelerando', momentum_steady: 'Estable', momentum_unclear: 'Poco claro',
     noteFeedbackTitle: 'Comentarios sobre tus notas', noteEvidenceLabel: 'Evidencia', noteCorrectionLabel: 'Corrección', noteEncouragementLabel: 'Punto fuerte', noteWatchForLabel: 'Vigila esto',
+    coverageTitle: 'Cobertura de conceptos obligatorios', coverageSummary: '{applied} de {total} conceptos obligatorios aplicados', coverage_applied: 'Aplicado', coverage_not_visible: 'No visible en este gráfico', coverage_not_applicable: 'No aplicable', coverage_unaddressed: 'No comprobado', coverageUnaddressedHint: 'El motor no informó sobre este concepto: se registra como No comprobado, nunca como Aplicado.', coverageEvidence: 'Evidencia',
     verdict_supported: 'Respaldado', verdict_partially_supported: 'Parcialmente respaldado', verdict_contradicted: 'Contradicho', verdict_insufficient_evidence: 'Evidencia insuficiente',
     unresolvedItemsTitle: 'Puntos sin resolver y próxima acción', actionLabel: 'Acción necesaria', missingEvidenceLabel: 'Evidencia faltante',
     unresolvedStatus_open: 'Abierto', unresolvedStatus_partially_resolved: 'Parcialmente resuelto', unresolvedStatus_resolved: 'Resuelto', unresolvedStatus_superseded: 'Reemplazado',
@@ -472,6 +476,35 @@ function NoteFeedbackBlock({ noteFeedback, lang, noteLabelFor }) {
   );
 }
 
+const COVERAGE_TONE = { applied: 'success', not_visible: 'neutral', not_applicable: 'neutral', unaddressed: 'danger' };
+// Analysis Profile Phase 5 - verifiable mandatory-concept coverage. The server rebuilt this list so it holds exactly one row
+// per mandatory concept of the profile the analysis ran under; a concept the model skipped is shown as "Not checked" in the
+// danger tone - never dressed up as applied. Rendered only when there is coverage at all (a profile with no mandatory
+// concepts, and every analysis that predates this, has none).
+function ConceptCoverageBlock({ coverage, lang }) {
+  if (!coverage || !coverage.length) return null;
+  const applied = coverage.filter((row) => row.status === 'applied').length;
+  const unaddressed = coverage.some((row) => row.status === 'unaddressed');
+  return (
+    <div data-concept-coverage style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 10, border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.05)' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold-warm)' }}>{tr(lang, 'coverageTitle')}</span>
+        <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'coverageSummary', { applied: String(applied), total: String(coverage.length) })}</span>
+      </span>
+      {coverage.map((row) => (
+        <div key={row.conceptId || row.title} style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span dir="auto" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{row.title}</span>
+            <Chip tone={COVERAGE_TONE[row.status] || 'neutral'}>{tr(lang, 'coverage_' + row.status)}</Chip>
+          </span>
+          {row.evidence && <span dir="auto" style={{ fontSize: 10.5, color: 'var(--text-muted)' }}><b>{tr(lang, 'coverageEvidence')}:</b> {row.evidence}</span>}
+        </div>
+      ))}
+      {unaddressed && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'coverageUnaddressedHint')}</span>}
+    </div>
+  );
+}
+
 const UNRESOLVED_STATUS_TONE = { open: 'neutral', partially_resolved: 'accent', resolved: 'success', superseded: 'neutral' };
 // Section 1.C - structured unresolved-item lifecycle, replacing the old plain-string `unknowns`
 // list. Reads `result.unresolvedItems` when present; a stored result from before this upgrade
@@ -647,6 +680,8 @@ export function SessionAnalysisCard({
           <span dir="auto" style={{ fontSize: 11.5, color: 'var(--text-primary)' }}>{result.watchItems.join(' · ')}</span>
         </div>
       )}
+
+      <ConceptCoverageBlock coverage={result.conceptCoverage} lang={activeLang} />
 
       <NoteFeedbackBlock noteFeedback={result.noteFeedback} lang={activeLang} />
 
