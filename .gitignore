@@ -11,3 +11,6 @@ tailadmin-reference/
 # scratch scripts or generated audio/test artifacts.
 voice-ab-scratch/
 voice-review/
+# Ad-hoc generated output (e.g. exported PDFs) from local verification work in this shared
+# worktree - same "never commit scratch/generated artifacts" convention as above.
+output/
