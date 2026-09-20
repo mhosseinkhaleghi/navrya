@@ -37,6 +37,17 @@ COPY server ./server
 # and no real deploy had exercised any of those specific routes until now. See
 # tests/dockerfile-app-image-contract.test.mjs for the regression guard.
 COPY public/pages/shared/ai-conversation-matcher.js ./public/pages/shared/ai-conversation-matcher.js
+# Vibe Coding Panel Studio: server/pattern-ai-server.mjs imports these three pure, dependency-free
+# ESM modules directly from navrya-src/ (the coding-engine resolver, the target-manifest registry,
+# and the dashboard.panel generation prompt builder) - same "copy just the one file the server
+# actually needs" boundary as ai-conversation-matcher.js above, not a blanket COPY of navrya-src/
+# (which is browser source compiled into the `web` stage's bundles, not meant to ship in this
+# stateless API image). dashboardPanelSandbox.jsx is never copied - it is client-only, never
+# imported by any server process. See tests/panel-studio-dockerfile-contract.test.mjs.
+COPY navrya-src/codingEngine.js ./navrya-src/codingEngine.js
+COPY navrya-src/panelStudioTargets.js ./navrya-src/panelStudioTargets.js
+COPY navrya-src/dashboardPanelBuilder.js ./navrya-src/dashboardPanelBuilder.js
+COPY navrya-src/dashboardPanelBridgeDoc.js ./navrya-src/dashboardPanelBridgeDoc.js
 RUN mkdir -p /app/uploads && chown -R node:node /app
 USER node
 
