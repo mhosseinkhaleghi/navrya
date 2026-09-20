@@ -18,6 +18,14 @@ import { CONCEPT_PRIORITIES, UNDERSTANDING_SUMMARY_MAX } from './db/analysis-pro
 import { readWebsiteSource, readYoutubeSource, extractYoutubeVideoId } from './ai/source-reader.mjs';
 import { describeAnalysisStyle, buildAnalysisProfileBrief } from './ai/analysis-profile-brief.mjs';
 import { mandatoryConceptsOf, sessionAnalysisFormatWithCoverage, coverageOutputBudget, buildConceptCoverageInstruction, sanitizeConceptCoverage, coverageForLedger } from './ai/analysis-profile-coverage.mjs';
+// Vibe Coding Panel Studio: pure, dependency-free ESM modules under navrya-src/, the same
+// "importable with zero JSX transform" convention this gateway already relies on for
+// analysis-profile-normalize.mjs above. Never JSX, never a window/browser dependency - safe for
+// this deliberately DB-free, browser-free process. See Dockerfile's app stage for how these three
+// files reach the production image (dashboardPanelSandbox.jsx is client-only and never copied).
+import { resolveCodingEngine } from '../navrya-src/codingEngine.js';
+import { isSupportedTarget } from '../navrya-src/panelStudioTargets.js';
+import { buildGenerationPrompt as buildDashboardPanelPrompt, parseGeneration as parseDashboardPanelGeneration, titleFromPrompt as dashboardPanelTitleFromPrompt, byteLength as dashboardPanelByteLength, MAX_SOURCE_BYTES as DASHBOARD_PANEL_MAX_SOURCE_BYTES, MAX_PROMPT_CHARS as DASHBOARD_PANEL_MAX_PROMPT_CHARS } from '../navrya-src/dashboardPanelBuilder.js';
 // Note on CORS here: this gateway's `Access-Control-Allow-Origin: '*'` (see json() below) is
 // deliberately NOT tightened to an allowlist in this pass. Since identity now travels as a
 // HttpOnly, host-only session cookie (never a bearer header a cross-origin script could attach
@@ -379,7 +387,8 @@ const AI_BILLED_ROUTES = {
   '/api/analysis-profiles/suggest': 'analysisProfileSuggest',
   '/api/analysis-profiles/ingest': 'analysisProfileIngest',
   '/api/analysis-profiles/chat': 'analysisProfileChat',
-  '/api/analysis-profiles/preview': 'analysisProfilePreview'
+  '/api/analysis-profiles/preview': 'analysisProfilePreview',
+  '/api/ai/panel-builder/generate': 'aiPanelBuilder'
 };
 
 // Both image-generation routes above are explicitly, always OpenAI/IMAGE_EDIT_MODEL (see
@@ -1101,6 +1110,284 @@ async function callProvider(providerInput, apiKeyOverride, modelOverride, payloa
     reportProviderHealth({ provider, ok: false, errorCode: error.message, latencyMs: Date.now() - startedAt, source });
     throw error;
   }
+}
+
+// ============================================================================
+// Vibe Coding Panel Studio: POST /api/ai/panel-builder/generate (SSE)
+//
+// The only streaming (token-delta) route in this gateway - every other route here does one
+// await fetch() then one json() write. Deliberately built from scratch on plain node:http SSE
+// primitives (no library - this file never uses Express), since this repo has no existing SSE
+// precedent to reuse (confirmed by an explicit search before writing this).
+//
+// Normalized client-facing protocol, decoupled from either provider's own raw event shape:
+//   started     {requestId}
+//   engine      {codingEngineId, codingEngineLabel, provider, model}
+//   delta       {text}                          - one per upstream chunk, incremental
+//   validating  {}                               - once the upstream stream itself completes
+//   complete    {artifact, revision}             - only after validation AND persistence succeed
+//   error       {code, message}                  - terminal; always followed by response.end()
+//
+// "No partial/cancelled source is ever persisted" is structural, not a check-then-hope: the
+// internal persistence bridge call is the LAST thing that happens, reachable only after
+// parseDashboardPanelGeneration()/size checks both succeed, and a client disconnect
+// (clientDisconnectController, already wired generically below) aborts the upstream fetch and
+// throws before validating/persistence are ever reached.
+// ============================================================================
+
+function writeSseHeaders(response) {
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'X-Accel-Buffering': 'no'
+  });
+}
+
+function sseWrite(response, event, data) {
+  if (response.writableEnded) return;
+  response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+// Parses a fetch Response's body as newline-delimited SSE frames (`event:`/`data:` lines
+// separated by a blank line - the standard wire format both OpenAI's and Anthropic's own
+// streaming endpoints use), calling onEvent(eventName, parsedData) per frame. Provider-agnostic;
+// each provider's own event NAMES are interpreted by its own caller below.
+async function forEachSseEvent(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary;
+    while ((boundary = buffer.indexOf('\n\n')) > -1) {
+      const rawFrame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      let eventName = 'message';
+      const dataLines = [];
+      rawFrame.split('\n').forEach((line) => {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      });
+      if (!dataLines.length) continue;
+      let data = null;
+      try { data = JSON.parse(dataLines.join('\n')); } catch (_) { data = null; }
+      onEvent(eventName, data);
+    }
+  }
+}
+
+const EMPTY_USAGE = { promptTokens: null, completionTokens: null, totalTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null, raw: null };
+
+// Streaming twin of callOpenAI() above - plain-text output (no text.format/structured-JSON mode:
+// this route generates raw HTML+CSS+JS source, not a JSON payload, and streaming a partial JSON
+// string is exactly the complexity this design avoids). onDelta(chunk) fires once per real
+// upstream text delta, verbatim, never batched/faked.
+async function callOpenAIStreaming(payload, apiKey, model, externalSignal, onDelta) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, input: payload.input, stream: true }),
+      signal: composedSignal(controller.signal, externalSignal)
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.error?.message || `OPENAI_${response.status}`);
+    }
+    let usage = null;
+    let streamError = null;
+    await forEachSseEvent(response, (eventName, data) => {
+      if (!data) return;
+      if (eventName === 'response.output_text.delta' && typeof data.delta === 'string') onDelta(data.delta);
+      else if (eventName === 'response.completed' && data.response && data.response.usage) {
+        const u = data.response.usage;
+        usage = {
+          promptTokens: u.input_tokens ?? null, completionTokens: u.output_tokens ?? null, totalTokens: u.total_tokens ?? null,
+          cachedInputTokens: u.input_tokens_details?.cached_tokens ?? null, cacheWriteInputTokens: null,
+          reasoningTokens: u.output_tokens_details?.reasoning_tokens ?? null, raw: u
+        };
+      } else if (eventName === 'response.failed' || eventName === 'error') {
+        streamError = (data.response && data.response.error && data.response.error.message) || data.message || 'OPENAI_STREAM_FAILED';
+      }
+    });
+    if (streamError) throw new Error(streamError);
+    return { usage: usage || EMPTY_USAGE };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Streaming twin of callAnthropic() above - plain assistant message, no forced tool-use (that
+// trick exists only to obtain structured JSON, which this route never needs).
+async function callAnthropicStreaming(payload, apiKey, model, externalSignal, onDelta) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 4096, messages: payload.messages, stream: true }),
+      signal: composedSignal(controller.signal, externalSignal)
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.error?.message || `ANTHROPIC_${response.status}`);
+    }
+    let inputTokens = null;
+    let outputTokens = null;
+    let streamError = null;
+    await forEachSseEvent(response, (eventName, data) => {
+      if (!data) return;
+      if (eventName === 'content_block_delta' && data.delta && data.delta.type === 'text_delta') onDelta(data.delta.text || '');
+      else if (eventName === 'message_start' && data.message && data.message.usage) inputTokens = data.message.usage.input_tokens ?? null;
+      else if (eventName === 'message_delta' && data.usage) outputTokens = data.usage.output_tokens ?? null;
+      else if (eventName === 'error') streamError = (data.error && data.error.message) || 'ANTHROPIC_STREAM_FAILED';
+    });
+    if (streamError) throw new Error(streamError);
+    const usage = (inputTokens != null || outputTokens != null)
+      ? {
+        promptTokens: inputTokens, completionTokens: outputTokens,
+        totalTokens: (inputTokens != null && outputTokens != null) ? inputTokens + outputTokens : null,
+        cachedInputTokens: null, cacheWriteInputTokens: null, reasoningTokens: null,
+        raw: { input_tokens: inputTokens, output_tokens: outputTokens }
+      }
+      : EMPTY_USAGE;
+    return { usage };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Duplicated, standalone key/model resolution (deliberately NOT a refactor of callProvider()'s own
+// inline logic above, to avoid any risk of changing behavior for every other existing route this
+// gateway already serves) - identical precedence order: request override -> admin-configured key
+// -> .env. Only ever called with 'openai'/'anthropic' (resolveCodingEngine() already gated the
+// caller against anything else), so providerEnvKey/providerEnvModel/providerDefaultModel are safe
+// to index directly.
+async function resolvePanelBuilderProviderKeyAndModel(provider, apiKeyOverride, modelOverride) {
+  let key = typeof apiKeyOverride === 'string' && apiKeyOverride.trim() ? apiKeyOverride.trim() : '';
+  if (!key) {
+    const configured = await adminKeys();
+    key = (configured && configured[provider]) || '';
+  }
+  if (!key) key = process.env[providerEnvKey[provider]] || '';
+  if (!key) throw new Error(providerEnvKey[provider] + '_MISSING');
+  const configuredModels = await adminModelOverrides();
+  const configuredModel = configuredModels && typeof configuredModels[provider] === 'string' ? configuredModels[provider].trim() : '';
+  const model = (typeof modelOverride === 'string' && modelOverride.trim())
+    ? modelOverride.trim()
+    : (configuredModel || process.env[providerEnvModel[provider]] || providerDefaultModel[provider]);
+  return { key, model };
+}
+
+// Same generic internal-bridge shape as internalWalletCall() above (x-internal-secret header,
+// COMMUNITY_API_URL base, bounded timeout) - a distinct helper only so a future change to either
+// bridge's timeout/retry policy doesn't have to consider the other's callers.
+async function internalPanelArtifactsCall(path, payload) {
+  try {
+    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + path;
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
+    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) });
+    return response.ok ? await response.json() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// The route handler. Writes its OWN complete SSE response (headers through the terminal frame and
+// response.end()) - the dispatcher below never writes a second response for this route (guarded on
+// the __streamed flag in its returned result, exactly like every other route's result is read
+// generically for wallet-settle/usage-record purposes without needing any route-specific code
+// there).
+async function panelBuilderGenerate(body, session, response, externalSignal) {
+  const target = String(body.target || '');
+  if (!isSupportedTarget(target)) throw new Error('PANEL_STUDIO_TARGET_UNSUPPORTED');
+  const rawPrompt = String(body.prompt || '').trim();
+  if (!rawPrompt) throw new Error('PANEL_STUDIO_PROMPT_REQUIRED');
+  const boundedPrompt = rawPrompt.slice(0, DASHBOARD_PANEL_MAX_PROMPT_CHARS);
+  const engine = resolveCodingEngine(body.provider);
+  if (!engine) throw new Error('PANEL_STUDIO_PROVIDER_UNSUPPORTED');
+
+  const provider = body.provider;
+  const { key, model } = await resolvePanelBuilderProviderKeyAndModel(provider, body.apiKey, body.model);
+
+  writeSseHeaders(response);
+  sseWrite(response, 'started', { requestId: randomUUID() });
+  sseWrite(response, 'engine', { codingEngineId: engine.codingEngineId, codingEngineLabel: engine.codingEngineLabel, provider, model });
+
+  // The trader's raw text is untrusted data wrapped by this module's own system policy (output
+  // contract, sandbox capabilities, honesty rule) - built here, server-side, immediately before
+  // dispatch, never accepted from the client as a pre-built instruction.
+  const instruction = buildDashboardPanelPrompt({ prompt: boundedPrompt, lang: body.language, previousSource: body.previousSource || null });
+
+  let fullText = '';
+  const onDelta = (chunk) => { fullText += chunk; sseWrite(response, 'delta', { text: chunk }); };
+
+  let usage;
+  try {
+    if (provider === 'openai') {
+      const outcome = await callOpenAIStreaming({ input: [{ role: 'user', content: [{ type: 'input_text', text: instruction }] }] }, key, model, externalSignal, onDelta);
+      usage = outcome.usage;
+    } else {
+      const outcome = await callAnthropicStreaming({ messages: [{ role: 'user', content: [{ type: 'text', text: instruction }] }] }, key, model, externalSignal, onDelta);
+      usage = outcome.usage;
+    }
+  } catch (error) {
+    // A genuine client disconnect: the underlying connection is already gone, there is nothing
+    // meaningful left to write, and validating/persistence must never be reached. Still calling
+    // response.end() defensively (a no-op on an already-destroyed socket) matters because the SSE
+    // headers were already sent above - without marking the response ended here, the outer
+    // dispatcher's catch block would not know headers already went out and would attempt a second,
+    // conflicting write (ERR_HTTP_HEADERS_SENT).
+    if (externalSignal.aborted) {
+      if (!response.writableEnded) { try { response.end(); } catch (_) { /* socket already gone */ } }
+      throw error;
+    }
+    sseWrite(response, 'error', { code: 'PROVIDER_ERROR', message: error.message || 'PROVIDER_FAILED' });
+    response.end();
+    throw Object.assign(new Error('PANEL_STUDIO_GENERATION_FAILED'), { alreadyStreamed: true });
+  }
+
+  sseWrite(response, 'validating', {});
+  const parsed = parseDashboardPanelGeneration(fullText);
+  if (!parsed.ok) {
+    const code = parsed.reason === 'unavailable' ? 'GENERATION_UNAVAILABLE' : 'GENERATION_EMPTY';
+    sseWrite(response, 'error', { code, message: parsed.message || '' });
+    response.end();
+    throw Object.assign(new Error('PANEL_STUDIO_GENERATION_FAILED'), { alreadyStreamed: true });
+  }
+  if (dashboardPanelByteLength(parsed.source) > DASHBOARD_PANEL_MAX_SOURCE_BYTES) {
+    sseWrite(response, 'error', { code: 'GENERATION_TOO_LARGE', message: '' });
+    response.end();
+    throw Object.assign(new Error('PANEL_STUDIO_GENERATION_FAILED'), { alreadyStreamed: true });
+  }
+
+  // Persist ONLY after validation succeeded above - never on a cancelled or errored stream.
+  const bridgeResult = await internalPanelArtifactsCall('/internal/panel-artifacts/revisions', {
+    userId: session.userId, artifactId: body.artifactId || null, target,
+    title: body.artifactId ? undefined : dashboardPanelTitleFromPrompt(boundedPrompt),
+    source: parsed.source, prompt: boundedPrompt, provider, model,
+    codingEngineId: engine.codingEngineId, baseRevisionId: body.baseRevisionId || null
+  });
+  if (!bridgeResult || !bridgeResult.artifact) {
+    // A conflict/ownership/validation failure from the internal bridge surfaces here only as a
+    // generic PERSIST_FAILED (the richer error code is not threaded through internalPanelArtifactsCall's
+    // null-on-non-2xx contract) - an acknowledged, documented v1 limitation, not an oversight.
+    sseWrite(response, 'error', { code: 'PERSIST_FAILED', message: '' });
+    response.end();
+    throw Object.assign(new Error('PANEL_STUDIO_GENERATION_FAILED'), { alreadyStreamed: true });
+  }
+
+  sseWrite(response, 'complete', { artifact: bridgeResult.artifact, revision: bridgeResult.revision });
+  response.end();
+  return { __streamed: true, provider, model, usage };
 }
 
 const stageFormat = {
@@ -4320,6 +4607,7 @@ const server = http.createServer(async (request, response) => {
     // Live Voice Mode's own speak path - any real, verified, non-suspended session (not admin-only:
     // every end user using Voice Mode reaches this), same auth/quota gate as every route above.
     else if (request.url === '/api/ai/voice/speak') result = await speakWithVoiceProvider(body);
+    else if (request.url === '/api/ai/panel-builder/generate') result = await panelBuilderGenerate(body, session, response, clientDisconnectController.signal);
     else return json(response, 404, { error: 'NOT_FOUND' });
 
     if (walletReservationId) await settleWalletFundsForCall({ reservationId: walletReservationId, provider: result && result.provider, model: result && result.model, feature: billedFeature, usage: result && result.usage });
@@ -4345,11 +4633,23 @@ const server = http.createServer(async (request, response) => {
         conceptCoverage: result && result.data && result.data.conceptCoverage
       });
     }
+    // The SSE panel-builder route already wrote and ended its own complete response above -
+    // writing a second one here would throw ERR_HTTP_HEADERS_SENT / write-after-end.
+    if (result && result.__streamed) return;
     return json(response, 200, result);
   } catch (error) {
     if (walletReservationId) await releaseWalletFundsForCall(walletReservationId); // failed calls are never charged (spec section 27)
+    // Same reasoning as the __streamed guard above: the SSE route already sent its own terminal
+    // `error` frame and called response.end() before throwing PANEL_STUDIO_GENERATION_FAILED.
+    if (response.writableEnded) return;
     const status = error.message === 'REQUEST_TOO_LARGE' ? 413
       : error.message === 'INVALID_JSON' ? 400
+      : error.message === 'PANEL_STUDIO_TARGET_UNSUPPORTED' || error.message === 'PANEL_STUDIO_PROMPT_REQUIRED' || error.message === 'PANEL_STUDIO_PROVIDER_UNSUPPORTED' ? 400
+      // The SSE route always writes its own terminal `error` frame before throwing this - the
+      // status computed here is never actually read by an SSE client, but response.writableEnded
+      // already returned above in every real case, so this branch only matters for the (already
+      // covered) fully-synthetic direct-unit-test call of panelBuilderGenerate itself.
+      : error.message === 'PANEL_STUDIO_GENERATION_FAILED' ? 500
       : /_API_KEY_MISSING$/.test(error.message || '') ? 503
       // geminiVoiceFailureCode() embeds the real upstream HTTP status in the message (e.g.
       // GEMINI_TTS_FAILED_429 when Gemini itself rate-limits the call) - surface that real status
