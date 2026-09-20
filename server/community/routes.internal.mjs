@@ -1,5 +1,5 @@
 import express from 'express';
-import { asyncHandler } from './errors.mjs';
+import { asyncHandler, ApiError } from './errors.mjs';
 import { resolveSessionByRawId } from './security/session-service.mjs';
 import { resolveRedisClient } from './security/rate-limit.mjs';
 import { resolveUserEntitlements } from '../commercial/entitlement-resolver.mjs';
@@ -305,6 +305,42 @@ export function router(repo) {
     // clear the per-user evaluation bound so the very next GET /me/achievements sees it at once.
     if (result.created) invalidateNewAchievementEvaluation(userId);
     res.status(result.created ? 201 : 200).json(result.completion);
+  }));
+
+  // Vibe Coding Panel Studio: called ONLY from pattern-ai-server.mjs's SSE generation handler,
+  // ONLY after a streamed generation has fully completed and passed deterministic validation -
+  // never on a cancelled or errored stream (see panelBuilderGenerate() in pattern-ai-server.mjs).
+  // userId is the gateway's own server-verified session.userId, never a client-supplied value; this
+  // route still independently re-verifies artifact ownership before writing, the same trust
+  // posture /session-analysis-completions above already established for this file.
+  app.post('/panel-artifacts/revisions', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const body = req.body || {};
+    const userId = String(body.userId || '');
+    if (!userId) return res.status(400).json({ error: 'VALIDATION_FAILED' });
+    const user = await repo.users.get(userId);
+    if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+
+    const artifactId = body.artifactId ? String(body.artifactId) : null;
+    if (artifactId) {
+      const artifact = await repo.panelStudioArtifacts.get(artifactId);
+      if (!artifact) return res.status(404).json({ error: 'ARTIFACT_NOT_FOUND' });
+      if (artifact.userId !== userId) return res.status(403).json({ error: 'NOT_ARTIFACT_OWNER' });
+    }
+    try {
+      const result = await repo.panelStudioArtifacts.createRevision({
+        userId, artifactId, target: String(body.target || ''),
+        title: body.title ? String(body.title).slice(0, 120) : undefined,
+        source: String(body.source || ''), sourceKind: 'generated',
+        prompt: body.prompt ? String(body.prompt).slice(0, 400) : null,
+        provider: body.provider || null, model: body.model || null, codingEngineId: body.codingEngineId || null,
+        baseRevisionId: body.baseRevisionId || null, createdBy: userId
+      });
+      res.status(201).json(result);
+    } catch (error) {
+      if (error instanceof ApiError) return res.status(error.status).json({ error: error.code });
+      throw error;
+    }
   }));
 
   return app;

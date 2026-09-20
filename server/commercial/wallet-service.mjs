@@ -185,6 +185,15 @@ export const ASSUMED_MAX_VOICE_SESSION_SECONDS = 120;
 export async function reserveForAiCall(repo, { userId, feature, provider, model, payload }) {
   const entitlements = await resolveUserEntitlements(userId, repo);
   if (!entitlements.features.ai) return { ok: false, reason: 'FEATURE_NOT_ENTITLED' };
+  // Real server-side enforcement of a feature-SPECIFIC entitlement, not just the blanket `ai`
+  // flag - only fires when `feature` itself names a real features.* key (today, only
+  // aiPanelBuilder, the Vibe Coding Panel Studio's existing plan flag from
+  // commercial-defaults.mjs, already read client-side by liveSessionView.jsx as a UX-only lock).
+  // Every other AI_BILLED_ROUTES feature name (sessionAnalyze, aiChat, ...) is not itself a
+  // features.* key, so hasOwnProperty guards this from ever firing for them.
+  if (feature && Object.prototype.hasOwnProperty.call(entitlements.features, feature) && entitlements.features[feature] !== true) {
+    return { ok: false, reason: 'FEATURE_NOT_ENTITLED' };
+  }
   const rate = await resolvePricingRate(repo, { provider, model });
   if (!rate) return { ok: false, reason: 'PROVIDER_PRICING_NOT_CONFIGURED' };
   const { markupPercent, retailMultiplier } = await resolveRetailMultiplier(repo, { feature, provider, model });

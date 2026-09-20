@@ -10,6 +10,7 @@ import { assertCodeAvailable, assertStoredCodeValid, computeDiscount } from '../
 import { allocateFifo, sumAllocations, grantKey as bonusGrantKey, reversalKey as bonusReversalKey, reversalMetadata } from '../commercial/subscription-bonus-lots.mjs';
 import { computeAudioContentHash } from '../community/conversation-audio-identity.mjs';
 import { createReferralPgDomains } from './referral-repo.pg.mjs';
+import { createPanelStudioPgDomains } from './panel-studio-repo.pg.mjs';
 import { effectiveVoiceTextFor } from '../community/performance-text.mjs';
 import { getConversationMatcher } from '../community/conversation-matcher-bridge.mjs';
 import { normalizeTicketSubject, normalizeTicketCategory, normalizeTicketMessage, normalizeTicketAttachments, TICKET_STATUSES } from './support-ticket-normalize.mjs';
@@ -5407,9 +5408,13 @@ export function createPgRepo(pool) {
 
   // Referral & Affiliate domains (068-070): implemented in referral-repo.pg.mjs (mirror of referral-repo.memory.mjs).
   const referralDomains = createReferralPgDomains({ pool, newId, mapWalletLedgerEntry });
+  // Vibe Coding Panel Studio (076_panel_studio_artifacts.sql): implemented in
+  // panel-studio-repo.pg.mjs (mirror of panel-studio-repo.memory.mjs).
+  const panelStudioDomains = createPanelStudioPgDomains({ pool, newId });
 
   return {
     ...referralDomains,
+    ...panelStudioDomains,
     users, posts, comments, likes, listings, purchases, ratings, threads, messages, reports, supportTickets, communityCursors, notifications, sessions, usageEvents,
     providerHealth, providerPricing, adminKeys, adminModelOverrides, adminGeminiVoiceProfiles, auditLog, voiceProviderCredentials, voiceLanguageConfigs, voiceCharacterConfigs, voiceTtsUsage,
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
